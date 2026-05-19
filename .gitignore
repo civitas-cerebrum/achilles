@@ -1,0 +1,38 @@
+node_modules/
+*.tgz
+.DS_Store
+.env
+.env.local
+.env.*.local
+/.claude
+/.playwright-cli
+/.playwright-mcp
+
+# Companion-mode local workspace — runtime artefacts from companion-mode runs
+# (run-<N>/ subdirs, trigger-eval drafts, evidence bundles). Never tracked,
+# never shipped via npm publish (the `discoverSkills` function in
+# scripts/postinstall.js excludes it because it has no SKILL.md). Lives
+# under skills/ for adjacency to the companion-mode skill itself.
+skills/companion-mode-workspace/
+/skills/*-workspace
+
+# Hook runtime state — recreated by harness hooks on each run, never source.
+tests/e2e/docs/.in-flight-composers.json
+tests/e2e/docs/.coverage-expansion-cycle-*.json
+tests/e2e/docs/onboarding-phase-ledger.json
+tests/e2e/docs/coverage-expansion-state.json
+tests/e2e/docs/.adversarial-findings.lock
+tests/e2e/docs/.subagent-returns/
+tests/e2e/docs/.handover-payloads/
+
+# Per-PR contribution handover — local working artefact, validated by
+# hooks/contribution-handover-gate.sh on push. Never committed; the
+# schema/template at .contribution-handover.template.json stays tracked.
+/.contribution-handover.json
+
+# Allowlist tracked data assets that would otherwise match *.txt.
+!hooks/data/canonical-sections.txt
+
+# selector-development skill: local-only receipts, scope pointer, snapshots, cached convention.
+# Never committed — receipts authorize one commit each then archive locally.
+tests/e2e/.selector-development/
