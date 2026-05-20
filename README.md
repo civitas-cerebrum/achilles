@@ -59,20 +59,21 @@ npm install --save-dev @civitas-cerebrum/achilles
 
 That's the whole install. `@civitas-cerebrum/element-interactions` and `@playwright/test` come along as transitive dependencies — you don't have to add them yourself.
 
-`postinstall` lands the agent skills + harness hooks into both:
+`postinstall` does everything end-to-end on a single `npm install`:
 
-- `<your-project>/.claude/skills/` and `<your-project>/.claude/hooks/`
-- `~/.claude/skills/` and `~/.claude/hooks/`
+1. Lands the agent skills into `<your-project>/.claude/skills/` and `~/.claude/skills/`.
+2. Lands the harness hooks into `~/.claude/hooks/` and registers them in `~/.claude/settings.json` (pre-existing user hooks preserved).
+3. Bundles a pinned `jq` binary at `~/.claude/hooks/bin/jq` for hook JSON parsing.
+4. Fetches the chromium headless-shell binary that the harness uses for live-DOM inspection — `@playwright/cli` is a transitive dep, and `postinstall` calls `playwright-cli install-browser chromium` for you (idempotent — no-ops when already cached).
 
-so Claude Code picks them up automatically on the next session restart.
+So after one `npm install`, restart Claude Code and you're ready to drive.
 
-After install, run once to fetch the headless-shell binary the harness uses for live DOM inspection:
+> **Why the chromium fetch matters.** The methodology bundles `@playwright/cli` so skills can drive a real browser from the Bash tool — no MCP plugin to enable, no `.mcp.json` to write. The harness inspects the live DOM before writing any locator, which removes the most common source of AI-generated test flakiness.
 
-```bash
-npx playwright-cli install-browser chromium
-```
-
-> **Why this one-time step matters.** The methodology bundles `@playwright/cli` so skills can drive a real browser from the Bash tool — no MCP plugin to enable, no `.mcp.json` to write. The harness inspects the live DOM before writing any locator, which removes the most common source of AI-generated test flakiness.
+**Opt-outs** (set before `npm install`):
+- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` — skip the chromium fetch (offline installs, container builds with a pre-warmed cache).
+- `CIVITAS_SKIP_HOOK_INSTALL=1` — skip the hook registration in `~/.claude/settings.json` (enterprise-managed settings).
+- `CIVITAS_SKIP_JQ_INSTALL=1` — skip the bundled jq fetch (rely on system jq on PATH).
 
 ---
 
