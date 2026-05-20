@@ -23,8 +23,10 @@ If you only want the Steps API in your own hand-written tests, install element-i
 ## Installation
 
 ```bash
-npm install --save-dev @civitas-cerebrum/achilles @civitas-cerebrum/element-interactions @playwright/test
+npm install --save-dev @civitas-cerebrum/achilles
 ```
+
+That's the whole install. `@civitas-cerebrum/element-interactions` and `@playwright/test` come along as transitive dependencies — you don't have to add them yourself.
 
 `postinstall` lands the agent skills + harness hooks into both:
 
