@@ -2,6 +2,12 @@
 
 [![NPM Version](https://img.shields.io/npm/v/@civitas-cerebrum/achilles?color=rgb(88%2C%20171%2C%2070))](https://www.npmjs.com/package/@civitas-cerebrum/achilles)
 
+> ### *"Achilles, complete E2E test automation of example.com."*
+>
+> One sentence. The agent owns everything that follows — scaffold, crawl, journey map, happy path, coverage passes, adversarial bug-hunts, summary deck. No incremental confirmations, no scope renegotiation, no babysitting.
+
+---
+
 A new medium of quality assurance, powered by Playwright and harness engineering. The system comprises two packages: [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions) — a Steps API that streamlines UI interactions — and `@civitas-cerebrum/achilles` (this package) — the QA methodology that drives the agentic process around it.
 
 Achilles is what you install when you want **Claude Code** (or any LLM agent driving Playwright) to autonomously scaffold, map, compose, probe, and report on a web application's test surface. It does not replace element-interactions; it sits on top of it and **orchestrates** the framework through eight documented phases.
