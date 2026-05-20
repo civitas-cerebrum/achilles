@@ -309,7 +309,7 @@ The offer is **automation-first**. Failure-diagnosis remains the path on a faile
 
 | Setup state | Offer (verbatim shape) |
 |---|---|
-| **Any** | *"Want me to hand off to `failure-diagnosis` to classify this as a test issue or an app bug? Once that's resolved, I can come back to the automation question."* The automation offer is **deferred** until the failure is diagnosed — it would be wrong to graduate a failing run into a durable test, and equally wrong to start onboarding off a flow that isn't actually working. |
+| **Any** | *"Want me to hand off to `failure-diagnosis` to classify this as a test issue or an app bug? Once that's resolved, I can come back to the automation question."* The automation offer is **deferred** until the failure is diagnosed — it would be wrong to graduate a failing run into a durable test, and equally wrong to start onboarding off a flow that isn't actually working. If `failure-diagnosis` concludes the root cause is an **app bug** (not a test issue), companion mode offers a follow-on: *"Want me to file a bug ticket using `bug-report`? The evidence bundle is ready to attach."* |
 
 #### Verdict: INCONCLUSIVE
 
@@ -335,6 +335,20 @@ The offer is **automation-first**. Failure-diagnosis remains the path on a faile
 2. Pass the bundle path so onboarding can reference the evidence bundle in its onboarding-report.md ("happy path verified in advance via companion-mode bundle: `<path>`").
 3. The bundle stays in place as the pre-onboarding audit trail.
 
+**Failed × `failure-diagnosis` accepted × diagnosis = app bug × "yes" (file ticket):**
+1. Invoke `bug-report`. Pass the following inputs extracted from the bundle:
+   - **Evidence files**: all files in `<bundle>/screenshots/`, `<bundle>/video.webm`, `<bundle>/console.log` — listed verbatim as attachments.
+   - **Steps to reproduce**: the numbered step list from `summary.md` §"What I did".
+   - **Actual result**: the failure assertion message from the Playwright run output (quoted verbatim).
+   - **Environment**: the App URL from Phase 1.
+   - **Pass criterion** (as the Expected result): copied verbatim from `summary.md`.
+2. Companion mode does NOT pre-fill Severity or Priority — `bug-report` follows its own engine and asks the user to confirm those fields.
+3. The bundle stays in place as the evidence source. Companion mode does not modify it.
+4. After `bug-report` completes, the automation question is re-offered once the underlying app bug is resolved — companion mode does NOT automatically re-run or re-offer now.
+
+**Failed × `failure-diagnosis` accepted × diagnosis = test issue:**
+- The automation offer remains deferred. The user should fix the test issue (via `test-repair` if needed), then re-run companion mode to produce a fresh bundle.
+
 **"no" or no response:**
 - Leave the bundle in place. Do not delete, do not modify, do not retry.
 - End the session.
@@ -351,7 +365,9 @@ The advisory does NOT alter the offer matrix, NOR does it block graduation. It i
 
 - It does NOT pick between "(a) just this task" and "(b) full onboarding" on the user's behalf. Even if onboarding seems "obviously better" for the project, the user picks. Inferring the answer is a contract violation.
 - It does NOT hand off without an explicit "yes / (a) / (b)" from the user. A vague reply ("sure", "whatever") gets a clarifying re-prompt, not a guess.
-- It does NOT chain handoffs. After dispatching to Stage 3 or `onboarding`, companion mode is done — the receiving skill owns the rest. Do not "supervise" the durable run.
+- It does NOT chain handoffs. After dispatching to Stage 3, `onboarding`, or `bug-report`, companion mode is done — the receiving skill owns the rest. Do not "supervise" the durable run.
+- It does NOT pre-fill Severity or Priority when handing off to `bug-report`. Those fields are confirmed by the user inside `bug-report`'s own engine.
+- It does NOT invoke `bug-report` for a PASSED verdict. Bug filing is only offered when `failure-diagnosis` has confirmed an app bug on a FAILED run.
 
 ---
 
@@ -433,6 +449,8 @@ These override convenience and apply to every invocation.
 | "The verdict is passed and the project is fully onboarded — I'll graduate the test silently to save a round-trip." | The Phase-6 offer is mandatory even when graduation seems obvious. The user might have run companion mode specifically because they did NOT want a durable test (e.g. evidence for a one-off ticket). Always ask. |
 | "The verdict is failed — I'll skip the offer entirely since automation can't happen yet." | Wrong shape. On failure, print the failure-diagnosis offer (the deferred-automation message), don't print nothing. The user needs to know automation is on hold pending diagnosis, not silently dropped. |
 | "User declined graduation — let me leave a TODO in the bundle to retry next session." | No. A decline is a decline. Companion mode does not pre-stage the next session's offer. The user can re-invoke companion mode or `element-interactions` themselves if they change their mind. |
+| "The run failed — I'll offer `bug-report` right away since the screenshots show an obvious app bug." | The `bug-report` offer only comes **after** `failure-diagnosis` confirms the root cause is an app bug. Skipping `failure-diagnosis` risks filing a ticket for what is actually a selector mismatch or test setup issue. |
+| "I'll pre-fill Severity and Priority when handing off to `bug-report`." | Severity and Priority are confirmed by the user inside `bug-report`'s own engine. Companion mode passes evidence only — it does not shortcut `bug-report`'s confirmation step. |
 
 ---
 
@@ -481,12 +499,15 @@ The full mechanics live in §"Phase 6: Report and automation offer". This sectio
 | `(b) full onboarding` | A / B / C | Hand task + pass criterion + bundle path to onboarding as `happyPathDescription` | `onboarding` |
 | `no` / no answer | Any | Leave bundle in place, end session | — |
 | FAILED verdict offer accepted | Any | Hand off to failure-diagnosis; automation question deferred | `failure-diagnosis` |
+| FAILED + diagnosis = app bug + "yes" (file ticket) | Any | Pass bundle evidence to `bug-report`; automation deferred until bug is fixed | `bug-report` |
+| FAILED + diagnosis = test issue | Any | Defer; user fixes test issue, then re-runs companion mode | — |
 
 Hard invariants across all paths:
 
 - The bundle is **never** moved, deleted, or modified after Phase 5. It stays in `tests/e2e/evidence/<slug>-<ts>/` as the audit trail and is referenced (not copied) by the receiving skill in its commit message or report.
-- Companion mode does **not** chain handoffs. After invoking Stage 3 or `onboarding`, companion mode is done.
+- Companion mode does **not** chain handoffs. After invoking Stage 3, `onboarding`, or `bug-report`, companion mode is done.
 - Companion mode **never** performs a Phase-6 handoff without an explicit `yes / (a) / (b)` from the user. Vague replies get a clarifying re-prompt.
+- The `bug-report` offer appears **only** after `failure-diagnosis` has confirmed the root cause is an app bug — never speculatively on a FAILED verdict alone.
 
 ---
 
@@ -601,4 +622,4 @@ digraph companion_mode {
 - **Writes during Phase 6 (only on `(a) just this task` × Level A/B):** `package.json` + `package-lock.json` + `node_modules/` (Level A install), and the minimum scaffold among `playwright.config.ts`, `tests/fixtures/base.ts`, `page-repository.json` (Level A/B). All other Phase-6 paths perform NO writes — the receiving skill (`element-interactions` Stage 3 or `onboarding`) owns those.
 - **Returns to caller (interactive):** the printed Phase-6 report plus, if a handoff was made, control transfers to the receiving skill. Companion mode does not return a structured value to an interactive user.
 - **Returns to caller (autonomousMode):** `{ status: 'passed' | 'failed' | 'inconclusive', bundlePath: '<absolute>', specPath: '<absolute>', graduated: 'none' | 'stage3' | 'onboarding' }`.
-- **Skill invocations:** never invokes another skill during Phases 1–5. Phase 6 may invoke `element-interactions` (Stage 3) or `onboarding` — and only one of them, and only with explicit user assent (or the `graduate=` arg in autonomous mode).
+- **Skill invocations:** never invokes another skill during Phases 1–5. Phase 6 may invoke `element-interactions` (Stage 3), `onboarding`, `failure-diagnosis`, or `bug-report` — and only one of them per session, and only with explicit user assent. `bug-report` is only offered after `failure-diagnosis` has confirmed an app bug on a FAILED run.
