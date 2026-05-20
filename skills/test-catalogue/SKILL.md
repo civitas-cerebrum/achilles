@@ -8,6 +8,9 @@ description: >
   `tests/e2e/docs/journey-map.md` and at least one spec file to be present.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Test Catalogue — Stakeholder-Ready Scenario Inventory PDF
 
 Generate a printable, stakeholder-facing catalogue that answers the question **"what scenarios are we running, and why?"** at a glance. The audience is non-technical: a product owner, a manager, a sponsor. They want to see coverage organised by primary section and priority, with a short human-readable line per scenario and a transparent list of anything explicitly deferred.

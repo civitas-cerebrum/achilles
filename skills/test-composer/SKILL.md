@@ -11,6 +11,9 @@ description: >
   variant set.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Test Composer — Stage 5 Atom: One Journey's Full Test Portfolio
 
 > **Skill names: see `../element-interactions/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
