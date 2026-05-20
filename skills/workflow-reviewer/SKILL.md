@@ -12,6 +12,9 @@ description: >
   the skill in a Skill-tool invocation.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Workflow reviewer — pipeline state-machine gate
 
 > **Subagent-only.** This skill is dispatched by the onboarding

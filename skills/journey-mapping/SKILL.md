@@ -8,6 +8,9 @@ description: >
   "map the app", "discover user journeys", "map user flows", or "understand the app".
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Journey Mapping — App Discovery & User Flow Analysis
 
 Systematic discovery of a web application's structure, pages, and user journeys. Produces a prioritized journey map that serves as the blueprint for test coverage. Every test composed after this stage traces back to a mapped journey.
