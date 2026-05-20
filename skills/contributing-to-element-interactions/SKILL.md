@@ -63,6 +63,9 @@ description: >
   implies work *on the package itself* rather than *with it*.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Contributing to @civitas-cerebrum/element-interactions
 
 This package is a Playwright-on-top facade. Every API decision should preserve the framework's two non-negotiable promises:
