@@ -12,6 +12,9 @@ description: >
   and Audit (whole-app workflow, opt-in).
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # selector-development — Stable Selector Instrumentation
 
 A companion skill of `@civitas-cerebrum/element-interactions` that closes the gap between "no stable selector" and "resume test authoring". When the test workflow is co-located with the frontend source, this skill adds a single inert test attribute to the offending element, proves the change has zero functional or visual impact through an 8-step hook-enforced guardrail pipeline, and returns control to the calling skill.

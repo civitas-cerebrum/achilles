@@ -14,6 +14,9 @@ description: >
   that is `test-composer`.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Singularity — Test Repair
 
 Batch orchestrator for repairing a rotted suite. Runs the suite, clusters failures by emergent patterns, verifies each hypothesis with targeted smaller batches, then delegates atomic heal-or-classify work to `failure-diagnosis`. Returns only when every test is passing stably or explicitly escalated — no silent skips, no silent deletes, no healing around app bugs.

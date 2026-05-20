@@ -9,6 +9,9 @@ description: >
   on-demand only — it never activates during test writing or debugging workflows.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Work Summary Deck — QA Achievement Report Generator
 
 Generate a branded HTML presentation deck that summarizes the test automation work done in the current project. The deck is designed to communicate QA value to stakeholders — managers, product owners, and team leads who want to understand what was built, what it covers, and what value it delivers.

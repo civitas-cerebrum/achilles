@@ -8,6 +8,9 @@ description: >
   ComposerReturn schema.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Secrets sweep — Phase 7
 
 The purpose of this skill is to ensure the test suite is free of hardcoded

@@ -9,6 +9,9 @@ description: >
   from an external automated CLI driver for a hands-off run.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Onboarding — eight-phase e2e bootstrap
 
 This is the umbrella methodology for taking a project from zero e2e tests to
