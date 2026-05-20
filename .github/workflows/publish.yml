@@ -1,0 +1,44 @@
+name: 🚀 Publish Package
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🗂️  Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️  Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+
+      # --omit=dev skips the file:../element-interactions devDep that only
+      # resolves on a local dev machine where both repos sit side-by-side.
+      # --ignore-scripts skips the package's own postinstall (which copies
+      # hooks + skills into ~/.claude/ — not what we want on the CI runner).
+      - name: 🧩  Install runtime dependencies
+        run: npm install --omit=dev --ignore-scripts
+
+      - name: 🔎  Schemas lint
+        run: npm run schemas:lint
+
+      - name: 🧪  Hook tests
+        run: npm run test:hooks
+
+      # --ignore-scripts skips prepack (which would re-run test:hooks)
+      # and any other lifecycle scripts on the publisher side.
+      - name: 📦  Publish Package
+        run: npm publish --ignore-scripts --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
