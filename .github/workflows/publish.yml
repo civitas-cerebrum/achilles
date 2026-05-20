@@ -23,12 +23,16 @@ jobs:
           node-version: '24'
           registry-url: https://registry.npmjs.org
 
-      # --omit=dev skips the file:../element-interactions devDep that only
-      # resolves on a local dev machine where both repos sit side-by-side.
+      # npm ci is strict-lockfile-enforced and matches the install idiom
+      # used by sibling publishing workflows (@civitas-cerebrum/element-repository,
+      # @civitas-cerebrum/element-interactions). package-lock.json is committed
+      # to the repo so the deterministic install works on the CI runner.
+      # --omit=dev skips dev-only deps (none here resolve via file:// — the
+      # local-link devDep was retired in the 0.1.0 dep restructure).
       # --ignore-scripts skips the package's own postinstall (which copies
       # hooks + skills into ~/.claude/ — not what we want on the CI runner).
       - name: 🧩  Install runtime dependencies
-        run: npm install --omit=dev --ignore-scripts
+        run: npm ci --omit=dev --ignore-scripts
 
       - name: 🔎  Schemas lint
         run: npm run schemas:lint
