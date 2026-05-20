@@ -21,6 +21,9 @@ description: >
   hunting at the page level, or failing-test diagnosis — those route to their own skills.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Contract Testing — API Surface Verification
 
 A structured protocol for writing **contract-style** tests against HTTP backends using the Steps API (`steps.apiGet/Post/Put/Delete/Patch/Head` + `verifyApiStatus`/`verifyApiHeader`). These tests lock the *contract* between a client and a service — status codes, headers, response schema, error shape — without testing business logic or UI.

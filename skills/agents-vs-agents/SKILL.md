@@ -10,6 +10,9 @@ description: >
   AI-driven decision systems, or any LLM-integrated feature for safety and correctness.
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Agents vs Agents — Adversarial AI Testing
 
 A methodology for testing AI-integrated applications by pitting one LLM (the adversary) against the application's AI (the target), with a third LLM (the judge) evaluating the results. This creates adaptive, evolving attack patterns that static test cases cannot match.

@@ -29,6 +29,9 @@ description: >
 subagent-only: true
 ---
 
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+
+
 # Singularity — Failure Diagnosis
 
 A structured diagnostic protocol for failing Playwright tests. Every failure gets the full pipeline — no "retry and hope."
