@@ -2,27 +2,15 @@
 
 [![NPM Version](https://img.shields.io/npm/v/@civitas-cerebrum/achilles?color=rgb(88%2C%20171%2C%2070))](https://www.npmjs.com/package/@civitas-cerebrum/achilles)
 
-A new medium of quality assurance, powered by Playwright and harness engineering. The system comprises two packages: [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions) — a Steps API that streamlines UI interactions — and `@civitas-cerebrum/achilles` (this package) — the QA methodology that drives the agentic process around it.
+A new medium of quality assurance, powered by Playwright and harness engineering. The system comprises two packages: [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions) — a Steps API that streamlines UI interactions — and `@civitas-cerebrum/achilles` — the QA methodology that drives the agentic process around it.
 
-Achilles is what you install when you want **Claude Code** (or any LLM agent driving Playwright) to autonomously scaffold, map, compose, probe, and report on a web application's test surface. It does not replace element-interactions; it sits on top of it and **orchestrates** the framework through eight documented phases.
-
----
-
-## Three packages, one pipeline
-
-| Package | Role |
-|---|---|
-| [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions) | The Steps API — a Playwright facade. Programmatic surface for humans + AI to write tests. |
-| **`@civitas-cerebrum/achilles`** (this package) | The methodology — agent skills + harness hooks + return-shape schemas + postinstall plumbing. |
-| `@civitas-cerebrum/achilles-cli` (optional) | A deterministic shell-driven orchestrator CLI for running the pipeline non-interactively. |
-
-If you only want the Steps API in your own hand-written tests, install element-interactions alone. If you want Claude Code to drive the whole pipeline, install achilles.
+Achilles will drive **Claude Code** (or any LLM agent) to autonomously scaffold, map, compose, probe, and report on a web application's test surface.
 
 ---
 
 ## 🤖 Autonomous Quality Assurance
 
-The harness ships inside the npm package. When you install `@civitas-cerebrum/achilles`, Claude Code picks the skills up from `node_modules` automatically — nothing extra to configure. The hooks that gate every phase, pass, and cycle transition register themselves in `~/.claude/settings.json` on postinstall. The agent doesn't *opt into* the methodology; it has no other path through the work.
+The harness ships inside the npm package. When you install `@civitas-cerebrum/achilles`, Claude Code picks the methodology up from `node_modules` automatically — nothing extra to configure. The hooks that gate every phase, pass, and cycle transition register themselves in `~/.claude/settings.json` on postinstall. The agent doesn't *opt into* the methodology; it has no other path through the work.
 
 You drive it in plain English. The orchestrators detect project state and route to the right skill on their own:
 
