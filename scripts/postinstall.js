@@ -127,6 +127,22 @@ const HOOK_MANIFEST = [
   { file: 'commit-message-gate.sh',               event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   { file: 'subagent-schema-preread-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   { file: 'standard-mode-first-pass-guard.sh',    event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
+  // Batched-dispatch cap: deny any [group] / [P3-batch] Agent dispatch
+  // naming more than 7 journeys. coverage-expansion caps every batched
+  // brief at 7 — past that a batched composer/probe rations attention
+  // and per-journey Test-expectation coverage degrades. Markdown-only
+  // before; a benchmark run consolidated 15 journeys into one [group].
+  { file: 'group-size-cap-guard.sh',              event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
+  // Process-validator checkpoint: the WORKFLOW-level fix for wave
+  // shaping. A Phase-5 composer/probe wave cannot fan out until a
+  // process-validator subagent has reviewed the plan manifest and
+  // returned greenlight. Registered on BOTH PreToolUse (gate the wave)
+  // and PostToolUse (record the greenlight). Makes the methodology's
+  // documented-but-unenforced plan-review checkpoint non-skippable —
+  // catches over-cap groups, unmarked batching, journey-skipping as
+  // one class, where group-size-cap-guard only catches the literal
+  // cap-7 number.
+  { file: 'process-validator-checkpoint-gate.sh', event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every
   // phase / pass / cycle transition through a workflow-reviewer-*
@@ -143,6 +159,13 @@ const HOOK_MANIFEST = [
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 3 },
+  // Phase-progression gate: deny any onboarding-status.json write that
+  // advances currentPhase past a phase that is not yet reviewer-approved
+  // on disk, and forbid multi-phase jumps. Forces phase-by-phase
+  // reviewer-gated advancement for EVERY phase (1-8) — closes the
+  // 'orchestrator-direct then retroactively reviewer-walked' gap that
+  // the dispatch-side ledger-gate alone did not catch on Phases 1-3.
+  { file: 'ledger-phase-progression-guard.sh',    event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 5 },
   // Phase-4 fidelity gates: ensure the journey-mapping skill is the
   // only legitimate author of tests/e2e/docs/journey-map.md. The
   // sentinel gate enforces the line-1 marker + the cycle-state preflight
@@ -157,6 +180,11 @@ const HOOK_MANIFEST = [
 
   // PostToolUse — observers (record + warn)
   { file: 'subagent-return-schema-guard.sh',      event: 'PostToolUse', matcher: 'Agent',      timeout: 10 },
+  // Process-validator checkpoint, PostToolUse half: records a
+  // process-validator-* greenlight return so the PreToolUse half can
+  // unlock that pass's composer/probe wave. Same file as the PreToolUse
+  // entry above — registered on both events.
+  { file: 'process-validator-checkpoint-gate.sh', event: 'PostToolUse', matcher: 'Agent',      timeout: 10 },
   // Reviewer attestation integrity: WARN when a workflow-reviewer-*
   // approves without citing real on-disk file paths. PostToolUse can't
   // reverse the return, but the WARN ensures the audit trail captures
