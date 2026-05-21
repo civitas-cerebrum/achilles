@@ -16,7 +16,7 @@ Achilles will drive **Claude Code** (or any LLM agent) to autonomously scaffold,
 
 ## 🤖 Autonomous Quality Assurance
 
-The harness ships inside the npm package. When you install `@civitas-cerebrum/achilles`, Claude Code picks the methodology up from `node_modules` automatically — nothing extra to configure. The hooks that gate every phase, pass, and cycle transition register themselves in `~/.claude/settings.json` on postinstall. The agent doesn't *opt into* the methodology; it has no other path through the work.
+The harness ships inside the npm package. When you install `@civitas-cerebrum/achilles`, your coding agent picks the methodology up from `node_modules` automatically — nothing extra to configure. The hooks that gate every phase, pass, and cycle transition register themselves in `~/.claude/settings.json` on postinstall. The agent doesn't *opt into* the methodology; it has no other path through the work.
 
 You drive it in plain English. The orchestrators detect project state and route to the right skill on their own:
 
@@ -48,7 +48,7 @@ Once the run starts, the agent owns the lifecycle. No incremental confirmation p
 ## Installation
 
 ```bash
-npm install --save-dev @civitas-cerebrum/achilles
+npm install @civitas-cerebrum/achilles
 ```
 
 That's the whole install. `@civitas-cerebrum/element-interactions` and `@playwright/test` come along as transitive dependencies — you don't have to add them yourself.
