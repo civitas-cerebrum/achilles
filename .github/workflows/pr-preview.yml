@@ -1,0 +1,40 @@
+name: 🔎 PR Preview
+
+# Deploys a temporary, isolated preview of docs/ for every pull request.
+# rossjrw/pr-preview-action publishes the PR's build to
+#   gh-pages/pr-preview/pr-<N>/
+# and posts/updates a comment on the PR with the live URL:
+#   https://civitas-cerebrum.github.io/achilles/pr-preview/pr-<N>/
+# On PR close it removes that subdirectory again.
+#
+# Requires GitHub Pages to serve from the gh-pages branch (see pages.yml).
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+permissions:
+  contents: write       # push the preview to the gh-pages branch
+  pull-requests: write  # post / update the preview-URL comment
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🗂️  Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔎  Deploy / update / remove PR preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./docs
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
