@@ -9,6 +9,7 @@
   <meta property="og:description" content="What if your full regression suite built itself overnight? Achilles turns a project with no tests into a maintained suite in one autonomous run." />
   <meta property="og:type" content="website" />
   <meta name="theme-color" content="#0a0a0b" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -337,12 +338,9 @@
     .phase-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
 
     .phase-arrow {
-      position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
-      width: 24px; height: 24px;
-      background: rgba(16, 185, 129, 0.08);
-      border: 1px solid rgba(16, 185, 129, 0.22); border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; color: var(--emerald); z-index: 2;
+      position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+      font-size: 26px; line-height: 1; font-weight: 300;
+      color: var(--emerald); opacity: 0.85; z-index: 2;
     }
 
     .phases > .phase:nth-child(4n) .phase-arrow,
@@ -423,14 +421,6 @@
       padding: 120px 0;
       text-align: center;
       position: relative;
-    }
-
-    .cta-glow {
-      position: absolute;
-      bottom: -100px; left: 50%; transform: translateX(-50%);
-      width: 800px; height: 500px;
-      background: radial-gradient(ellipse, rgba(168, 85, 247, 0.1) 0%, transparent 70%);
-      pointer-events: none;
     }
 
     .cta-title { font-size: clamp(36px, 5vw, 64px); font-weight: 900; letter-spacing: -0.04em; margin-bottom: 20px; }
@@ -523,7 +513,7 @@
   <div class="hero-glow"></div>
   <div class="container">
     <div class="hero-content">
-      <div class="hero-badge"><span></span> Autonomous QA</div>
+      <div class="hero-badge"><span></span> Autonomous QA Agent</div>
 
       <h1 class="hero-headline">
         What if your full regression<br />
@@ -762,7 +752,6 @@
 
 <!-- ── CTA ───────────────────────────────────────────────────────────────── -->
 <section class="cta-section">
-  <div class="cta-glow"></div>
   <div class="container">
     <div class="reveal">
       <h2 class="cta-title">Ready to automate<br /><span class="grad">everything?</span></h2>
@@ -789,7 +778,7 @@
 <footer>
   <div class="container">
     <div class="footer-logo grad">Civitas Cerebrum</div>
-    <div class="footer-sub">Achilles — Autonomous QA for the agentic era</div>
+    <div class="footer-sub">Achilles — Autonomous Quality Assurance for the agentic era</div>
     <div class="footer-links">
       <a href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">GitHub</a>
       <a href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">npm</a>
@@ -812,8 +801,12 @@
   const CONNECT_DIST = 160;
 
   function resize() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function makeNode() {
