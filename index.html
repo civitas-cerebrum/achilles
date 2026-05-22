@@ -9,8 +9,8 @@
   <meta property="og:description" content="What if your full regression suite built itself overnight? Achilles turns a project with no tests into a maintained suite in one autonomous run." />
   <meta property="og:type" content="website" />
   <meta name="theme-color" content="#0a0a0b" />
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -51,10 +51,15 @@
     /* ── NEURAL CANVAS ─────────────────────────────────────────────────────── */
     #neural-canvas {
       position: fixed;
-      inset: 0;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 220vh;
       z-index: 0;
       opacity: 0.5;
       pointer-events: none;
+      will-change: transform;
+      --parallax-y: 0px;
+      transform: translate3d(0, var(--parallax-y), 0) scale(1.2);
     }
 
     /* ── LAYOUT ────────────────────────────────────────────────────────────── */
@@ -122,26 +127,70 @@
     /* ── HERO ──────────────────────────────────────────────────────────────── */
     #hero {
       min-height: 100vh;
-      display: flex; align-items: center;
-      padding-top: 96px;
+      display: flex; flex-direction: column;
       position: relative;
+    }
+
+    #hero > .container {
+      display: flex; flex-direction: column;
+      flex: 1;
+    }
+
+    .hero-top {
+      padding: 5px 0 0;
+      text-align: center;
+    }
+
+    .badge-anchor {
+      position: relative;
+      display: inline-block;
+    }
+
+    .hero-body {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      padding: 48px 0 80px;
+    }
+
+    .hero-content {
+      text-align: center;
+      max-width: 860px;
+      margin: 0 auto;
     }
 
     .hero-glow {
       position: absolute;
-      top: -200px; left: 50%; transform: translateX(-50%);
-      width: 900px; height: 700px;
-      background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.1) 0%, transparent 70%);
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 1400px; height: 1000px;
+      background:
+        radial-gradient(ellipse 44% 50% at center,
+          rgba(16, 185, 129, 0.28) 0%,
+          rgba(16, 185, 129, 0.21) 12%,
+          rgba(16, 185, 129, 0.155) 24%,
+          rgba(16, 185, 129, 0.110) 35%,
+          rgba(16, 185, 129, 0.075) 46%,
+          rgba(16, 185, 129, 0.048) 57%,
+          rgba(16, 185, 129, 0.028) 68%,
+          rgba(16, 185, 129, 0.014) 79%,
+          rgba(16, 185, 129, 0.005) 90%,
+          transparent 100%),
+        radial-gradient(ellipse 78% 75% at center,
+          rgba(168, 85, 247, 0.08) 0%,
+          rgba(168, 85, 247, 0.05) 28%,
+          rgba(168, 85, 247, 0.025) 55%,
+          rgba(168, 85, 247, 0.010) 78%,
+          transparent 95%);
+      filter: blur(70px);
       pointer-events: none;
+      will-change: transform;
+      z-index: -1;
     }
-
-    .hero-content { text-align: center; max-width: 860px; margin: 0 auto; }
 
     .hero-badge {
       display: inline-flex; align-items: center; gap: 8px;
       border: 1px solid var(--border-glow);
       border-radius: 100px;
-      padding: 6px 16px; margin-bottom: 32px;
+      padding: 6px 16px; margin-bottom: 56px;
       font-size: 13px; color: var(--emerald-bright); font-weight: 500;
       background: rgba(16, 185, 129, 0.08);
       backdrop-filter: blur(8px);
@@ -407,7 +456,14 @@
       position: relative;
     }
 
-    .quote-mark { font-size: 80px; line-height: 0.5; color: var(--emerald); opacity: 0.45; font-family: Georgia, serif; }
+    .quote-mark {
+      font-family: var(--font-display);
+      font-size: 96px;
+      line-height: 0.8;
+      color: var(--emerald);
+      opacity: 0.5;
+      margin-bottom: -16px;
+    }
 
     .quote-text {
       font-size: clamp(20px, 2.5vw, 28px);
@@ -512,11 +568,15 @@
 
 <!-- ── HERO ─────────────────────────────────────────────────────────────── -->
 <section id="hero">
-  <div class="hero-glow"></div>
   <div class="container">
+    <div class="hero-top">
+      <div class="badge-anchor">
+        <div class="hero-glow"></div>
+        <div class="hero-badge"><span></span> Autonomous QA Agent</div>
+      </div>
+    </div>
+    <div class="hero-body">
     <div class="hero-content">
-      <div class="hero-badge"><span></span> Autonomous QA Agent</div>
-
       <h1 class="hero-headline">
         What if your full regression<br />
         suite <span class="accent-purple">built itself</span><br />
@@ -546,24 +606,7 @@
         <button class="copy-btn" onclick="copyInstall(this)">copy</button>
       </div>
 
-      <div class="hero-stats">
-        <div class="stat">
-          <div class="stat-value grad">8</div>
-          <div class="stat-label">Autonomous Phases</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value grad">15+</div>
-          <div class="stat-label">Claude Code Skills</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value grad">39</div>
-          <div class="stat-label">Harness Hooks</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value grad">365+</div>
-          <div class="stat-label">Hook Tests</div>
-        </div>
-      </div>
+    </div>
     </div>
   </div>
 </section>
@@ -688,7 +731,7 @@
 <section class="quote-section">
   <div class="container">
     <div class="quote-block reveal">
-      <div class="quote-mark">"</div>
+      <div class="quote-mark">“</div>
       <p class="quote-text">You stay in the loop where it matters: reviewing, prioritising, deciding. Achilles handles everything else.</p>
       <div class="quote-caption">Civitas Cerebrum · Achilles Design Principle</div>
     </div>
@@ -760,7 +803,7 @@
       <p class="cta-sub">One install. One sentence. A complete test suite by morning.</p>
       <div class="hero-actions" style="justify-content:center">
         <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
-          npm i @civitas-cerebrum/achilles
+          Get Started
         </a>
         <a class="btn-secondary" href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">
           Read the Docs
@@ -799,13 +842,14 @@
   // Civitas Cerebrum accents: emerald (primary) + purple (secondary).
   const EMERALD = 'rgba(16,185,129,';
   const PURPLE  = 'rgba(168,85,247,';
-  const NODE_COUNT = 65;
+  const NODE_COUNT = 110;
   const CONNECT_DIST = 160;
+  const PARALLAX_FACTOR = 0.1; // background scrolls at 10% of foreground speed
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     W = window.innerWidth;
-    H = window.innerHeight;
+    H = window.innerHeight * 2.2;
     canvas.width  = W * dpr;
     canvas.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -873,6 +917,9 @@
   }
 
   window.addEventListener('resize', () => { resize(); });
+  window.addEventListener('scroll', () => {
+    canvas.style.setProperty('--parallax-y', `${-window.scrollY * PARALLAX_FACTOR}px`);
+  }, { passive: true });
   init();
   draw();
 })();
