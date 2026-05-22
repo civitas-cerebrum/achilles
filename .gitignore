@@ -36,3 +36,4 @@ tests/e2e/docs/.handover-payloads/
 # selector-development skill: local-only receipts, scope pointer, snapshots, cached convention.
 # Never committed — receipts authorize one commit each then archive locally.
 tests/e2e/.selector-development/
+/.understand-anything
