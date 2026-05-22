@@ -422,14 +422,6 @@
       position: relative;
     }
 
-    .cta-glow {
-      position: absolute;
-      bottom: -100px; left: 50%; transform: translateX(-50%);
-      width: 800px; height: 500px;
-      background: radial-gradient(ellipse, rgba(168, 85, 247, 0.1) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
     .cta-title { font-size: clamp(36px, 5vw, 64px); font-weight: 900; letter-spacing: -0.04em; margin-bottom: 20px; }
     .cta-sub   { font-size: 18px; color: var(--muted); margin-bottom: 48px; }
 
@@ -759,7 +751,6 @@
 
 <!-- ── CTA ───────────────────────────────────────────────────────────────── -->
 <section class="cta-section">
-  <div class="cta-glow"></div>
   <div class="container">
     <div class="reveal">
       <h2 class="cta-title">Ready to automate<br /><span class="grad">everything?</span></h2>
@@ -809,8 +800,12 @@
   const CONNECT_DIST = 160;
 
   function resize() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function makeNode() {
