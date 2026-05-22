@@ -125,61 +125,64 @@
     /* ── HERO ──────────────────────────────────────────────────────────────── */
     #hero {
       min-height: 100vh;
-      display: flex; align-items: center;
-      padding: 12vh 0;
+      display: flex; flex-direction: column;
       position: relative;
+    }
+
+    #hero > .container {
+      display: flex; flex-direction: column;
+      flex: 1;
+    }
+
+    .hero-top {
+      padding: 120px 0 0;
+      text-align: center;
+    }
+
+    .badge-anchor {
+      position: relative;
+      display: inline-block;
+    }
+
+    .hero-body {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      padding: 48px 0 80px;
     }
 
     .hero-content {
       text-align: center;
       max-width: 860px;
       margin: 0 auto;
-      position: relative;
     }
 
     .hero-glow {
       position: absolute;
-      top: 14px; left: 50%; transform: translate(-50%, -50%);
-      width: 1320px; height: 960px;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 1400px; height: 1000px;
       background:
-        radial-gradient(ellipse 46% 50% at center,
-          rgba(16, 185, 129, 0.32) 0%,
-          rgba(16, 185, 129, 0.27) 5%,
-          rgba(16, 185, 129, 0.225) 10%,
-          rgba(16, 185, 129, 0.185) 16%,
-          rgba(16, 185, 129, 0.150) 22%,
-          rgba(16, 185, 129, 0.120) 29%,
-          rgba(16, 185, 129, 0.094) 36%,
-          rgba(16, 185, 129, 0.072) 43%,
-          rgba(16, 185, 129, 0.054) 50%,
-          rgba(16, 185, 129, 0.040) 57%,
-          rgba(16, 185, 129, 0.028) 64%,
-          rgba(16, 185, 129, 0.019) 71%,
-          rgba(16, 185, 129, 0.012) 78%,
-          rgba(16, 185, 129, 0.006) 86%,
-          rgba(16, 185, 129, 0.002) 93%,
+        radial-gradient(ellipse 44% 50% at center,
+          rgba(16, 185, 129, 0.28) 0%,
+          rgba(16, 185, 129, 0.21) 12%,
+          rgba(16, 185, 129, 0.155) 24%,
+          rgba(16, 185, 129, 0.110) 35%,
+          rgba(16, 185, 129, 0.075) 46%,
+          rgba(16, 185, 129, 0.048) 57%,
+          rgba(16, 185, 129, 0.028) 68%,
+          rgba(16, 185, 129, 0.014) 79%,
+          rgba(16, 185, 129, 0.005) 90%,
           transparent 100%),
-        radial-gradient(ellipse 68% 60% at 48% 52%,
-          rgba(16, 185, 129, 0.14) 0%,
-          rgba(16, 185, 129, 0.09) 22%,
-          rgba(16, 185, 129, 0.05) 44%,
-          rgba(16, 185, 129, 0.02) 66%,
-          transparent 90%),
-        radial-gradient(ellipse 82% 80% at center,
-          rgba(168, 85, 247, 0.09) 0%,
-          rgba(168, 85, 247, 0.065) 14%,
-          rgba(168, 85, 247, 0.045) 28%,
-          rgba(168, 85, 247, 0.028) 44%,
-          rgba(168, 85, 247, 0.015) 60%,
-          rgba(168, 85, 247, 0.006) 78%,
-          transparent 92%);
-      filter: blur(40px);
+        radial-gradient(ellipse 78% 75% at center,
+          rgba(168, 85, 247, 0.08) 0%,
+          rgba(168, 85, 247, 0.05) 28%,
+          rgba(168, 85, 247, 0.025) 55%,
+          rgba(168, 85, 247, 0.010) 78%,
+          transparent 95%);
+      filter: blur(70px);
       pointer-events: none;
       will-change: transform;
       z-index: -1;
     }
-
-    .hero-content > *:not(.hero-glow) { position: relative; z-index: 1; }
 
     .hero-badge {
       display: inline-flex; align-items: center; gap: 8px;
@@ -557,10 +560,14 @@
 <!-- ── HERO ─────────────────────────────────────────────────────────────── -->
 <section id="hero">
   <div class="container">
+    <div class="hero-top">
+      <div class="badge-anchor">
+        <div class="hero-glow"></div>
+        <div class="hero-badge"><span></span> Autonomous QA Agent</div>
+      </div>
+    </div>
+    <div class="hero-body">
     <div class="hero-content">
-      <div class="hero-glow"></div>
-      <div class="hero-badge"><span></span> Autonomous QA Agent</div>
-
       <h1 class="hero-headline">
         What if your full regression<br />
         suite <span class="accent-purple">built itself</span><br />
@@ -608,6 +615,7 @@
           <div class="stat-label">Hook Tests</div>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </section>
@@ -804,8 +812,7 @@
       <p class="cta-sub">One install. One sentence. A complete test suite by morning.</p>
       <div class="hero-actions" style="justify-content:center">
         <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-          Install
+          Get Started
         </a>
         <a class="btn-secondary" href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">
           Read the Docs
