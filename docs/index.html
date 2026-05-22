@@ -92,7 +92,7 @@
       border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
       font-weight: 800; font-size: 16px; color: #050505;
-      box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
     }
 
     .logo-text { font-weight: 700; font-size: 18px; letter-spacing: -0.02em; color: var(--white); }
@@ -111,15 +111,15 @@
       padding: 8px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
       text-decoration: none;
       transition: opacity 0.2s, box-shadow 0.2s;
-      box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.16);
     }
-    .nav-cta:hover { opacity: 0.92; box-shadow: 0 0 30px rgba(16, 185, 129, 0.5); }
+    .nav-cta:hover { opacity: 0.92; box-shadow: 0 0 16px rgba(16, 185, 129, 0.28); }
 
     /* ── HERO ──────────────────────────────────────────────────────────────── */
     #hero {
       min-height: 100vh;
       display: flex; align-items: center;
-      padding-top: 80px;
+      padding-top: 124px;
       position: relative;
     }
 
@@ -127,7 +127,7 @@
       position: absolute;
       top: -200px; left: 50%; transform: translateX(-50%);
       width: 900px; height: 700px;
-      background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.16) 0%, transparent 70%);
+      background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.1) 0%, transparent 70%);
       pointer-events: none;
     }
 
@@ -145,7 +145,7 @@
     .hero-badge span { width: 7px; height: 7px; background: var(--emerald); border-radius: 50%; animation: pulse 2s infinite; }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
       50%       { opacity: 0.7; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
     }
 
@@ -173,11 +173,11 @@
       color: #050505; border: none; border-radius: 12px;
       padding: 16px 36px; font-size: 16px; font-weight: 700;
       cursor: pointer; text-decoration: none;
-      box-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.18);
       transition: transform 0.2s, box-shadow 0.2s;
       display: inline-flex; align-items: center; gap: 8px;
     }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 60px rgba(16, 185, 129, 0.6); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 24px rgba(16, 185, 129, 0.3); }
 
     .btn-secondary {
       background: transparent;
@@ -277,9 +277,9 @@
 
     .mode-card:hover.c-purple,
     .mode-card:hover.c-orange,
-    .mode-card:hover.c-pink   { box-shadow: 0 8px 40px rgba(16, 185, 129, 0.2); }
+    .mode-card:hover.c-pink   { box-shadow: 0 8px 26px rgba(16, 185, 129, 0.12); }
     .mode-card:hover.c-cyan,
-    .mode-card:hover.c-green  { box-shadow: 0 8px 40px rgba(168, 85, 247, 0.18); }
+    .mode-card:hover.c-green  { box-shadow: 0 8px 26px rgba(168, 85, 247, 0.12); }
 
     .mode-icon {
       width: 52px; height: 52px; border-radius: 14px;
@@ -338,11 +338,12 @@
     .phase-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
 
     .phase-arrow {
-      position: absolute; right: -14px; top: 50%; transform: translateY(-50%);
-      width: 28px; height: 28px; background: var(--bg);
-      border: 1px solid var(--border-glow); border-radius: 50%;
+      position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+      width: 24px; height: 24px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.22); border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 12px; color: var(--emerald); z-index: 2;
+      font-size: 11px; color: var(--emerald); z-index: 2;
     }
 
     .phases > .phase:nth-child(4n) .phase-arrow,
@@ -465,6 +466,7 @@
       .phases { grid-template-columns: repeat(2, 1fr); }
       .diffs-grid { grid-template-columns: 1fr 1fr; }
       .nav-links { display: none; }
+      .phase-arrow { display: none; }
     }
 
     @media (max-width: 640px) {
@@ -521,7 +523,7 @@
   <div class="hero-glow"></div>
   <div class="container">
     <div class="hero-content">
-      <div class="hero-badge"><span></span> Autonomous QA · Powered by Playwright</div>
+      <div class="hero-badge"><span></span> Autonomous QA</div>
 
       <h1 class="hero-headline">
         What if your full regression<br />
@@ -548,7 +550,7 @@
 
       <div class="install-bar">
         <span class="prompt">$</span>
-        <span class="cmd">npm install @civitas-cerebrum/achilles</span>
+        <span class="cmd">npm i @civitas-cerebrum/achilles</span>
         <button class="copy-btn" onclick="copyInstall(this)">copy</button>
       </div>
 
@@ -752,12 +754,10 @@
     <div class="tech-row">
       <span class="tech-pill"><span class="dot dot-purple"></span>Playwright</span>
       <span class="tech-pill"><span class="dot dot-cyan"></span>Claude Code</span>
-      <span class="tech-pill"><span class="dot dot-green"></span>Managed Agents</span>
-      <span class="tech-pill"><span class="dot dot-purple"></span>Steps API</span>
-      <span class="tech-pill"><span class="dot dot-cyan"></span>JSON Schema</span>
-      <span class="tech-pill"><span class="dot dot-green"></span>Pixelmatch</span>
-      <span class="tech-pill"><span class="dot dot-purple"></span>Babel Parser</span>
-      <span class="tech-pill"><span class="dot dot-cyan"></span>MIT License</span>
+      <span class="tech-pill"><span class="dot dot-green"></span>Steps API</span>
+      <span class="tech-pill"><span class="dot dot-purple"></span>JSON Schema</span>
+      <span class="tech-pill"><span class="dot dot-cyan"></span>Pixelmatch</span>
+      <span class="tech-pill"><span class="dot dot-green"></span>Babel Parser</span>
     </div>
   </div>
 </section>
@@ -771,7 +771,7 @@
       <p class="cta-sub">One install. One sentence. A complete test suite by morning.</p>
       <div class="hero-actions" style="justify-content:center">
         <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
-          npm install @civitas-cerebrum/achilles
+          npm i @civitas-cerebrum/achilles
         </a>
         <a class="btn-secondary" href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">
           Read the Docs
@@ -900,7 +900,7 @@
 
 // ── COPY INSTALL ─────────────────────────────────────────────────────────
 function copyInstall(btn) {
-  navigator.clipboard.writeText('npm install @civitas-cerebrum/achilles');
+  navigator.clipboard.writeText('npm i @civitas-cerebrum/achilles');
   btn.textContent = 'copied!';
   setTimeout(() => (btn.textContent = 'copy'), 1800);
 }
