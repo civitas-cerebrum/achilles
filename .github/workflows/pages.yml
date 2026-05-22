@@ -1,5 +1,12 @@
 name: 🌐 Deploy GitHub Pages
 
+# Production deploy. Publishes docs/ to the ROOT of the gh-pages branch.
+# GitHub Pages must be configured to serve from the gh-pages branch
+# (Settings → Pages → Build and deployment → Deploy from a branch →
+# gh-pages / (root)). The branch model is required so per-PR previews
+# (see pr-preview.yml) can be served from gh-pages/pr-preview/pr-<N>/
+# alongside the production site.
+
 on:
   push:
     branches:
@@ -9,32 +16,25 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages
+  group: pages-deploy
   cancel-in-progress: false
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: 🗂️  Checkout
         uses: actions/checkout@v4
 
-      - name: ⚙️  Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: 📦  Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: 🚀  Publish docs/ to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: ./docs
-
-      - name: 🚀  Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          folder: docs
+          branch: gh-pages
+          clean: true
+          # Never wipe in-flight PR previews on a production deploy.
+          clean-exclude: |
+            pr-preview/
