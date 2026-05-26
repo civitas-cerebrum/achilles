@@ -30,7 +30,7 @@
     "parse5": "^7.3.0",
     "pixelmatch": "^5.3.0",
     "pngjs": "^7.0.0",
-    "svelte": "^4.2.20",
+    "svelte": "^5.55.9",
     "yaml": "^2.9.0"
   },
   "keywords": [
