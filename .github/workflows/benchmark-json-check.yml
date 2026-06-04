@@ -1,0 +1,31 @@
+name: ✅ Benchmark JSON present
+
+# Verifies the PR includes/updates .benchmark/results.json and that the file
+# conforms to the bookhive-benchmark schema. Static, fast (~10 s), gates every PR.
+
+on: pull_request
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Diff includes .benchmark/results.json
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          if ! git diff --name-only $BASE...HEAD | grep -q '^.benchmark/results.json$'; then
+            echo "::error::PR must include or update .benchmark/results.json (run bookhive-benchmark locally — https://github.com/Feyzabora/bookhive-benchmark)"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Validate against schema
+        run: |
+          npm i -g ajv-cli ajv-formats
+          curl -fsSL -o /tmp/results.schema.json \
+            https://raw.githubusercontent.com/Feyzabora/bookhive-benchmark/main/schema/results.schema.json
+          ajv validate -s /tmp/results.schema.json -d .benchmark/results.json -c ajv-formats --spec=draft2020

@@ -176,6 +176,11 @@ const HOOK_MANIFEST = [
 
   // selector-development — Stop-time revert WARN
   { file: 'selector-development-revert-on-stop.sh',      event: 'Stop', matcher: null,                 timeout: 10 },
+
+  // bookhive-benchmark — writes <project>/.achilles/run-summary.json at Stop so
+  // the external benchmark (Feyzabora/bookhive-benchmark) has an authoritative
+  // self-report. No-op outside benchmark runs; just emits a fresh file each Stop.
+  { file: 'run-summary-writer.sh',                       event: 'Stop', matcher: null,                 timeout: 15 },
 ];
 
 function copyHookFile(hookSrc, hookDest) {
