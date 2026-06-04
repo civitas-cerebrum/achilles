@@ -12,7 +12,17 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
+      - name: Bootstrap check — skip if benchmark has never been run on base
+        id: bootstrap
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          if ! git cat-file -e "$BASE:.benchmark/results.json" 2>/dev/null; then
+            echo "::notice::No .benchmark/results.json exists on base yet — benchmark not bootstrapped. Skipping check; will activate once the first results.json is committed."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Diff includes .benchmark/results.json
+        if: steps.bootstrap.outputs.skip != 'true'
         run: |
           BASE=${{ github.event.pull_request.base.sha }}
           if ! git diff --name-only $BASE...HEAD | grep -q '^.benchmark/results.json$'; then
@@ -21,9 +31,11 @@ jobs:
           fi
 
       - uses: actions/setup-node@v4
+        if: steps.bootstrap.outputs.skip != 'true'
         with: { node-version: "20" }
 
       - name: Validate against schema
+        if: steps.bootstrap.outputs.skip != 'true'
         run: |
           npm i -g ajv-cli ajv-formats
           curl -fsSL -o /tmp/results.schema.json \
