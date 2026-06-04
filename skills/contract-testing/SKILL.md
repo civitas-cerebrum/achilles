@@ -43,6 +43,7 @@ A structured protocol for writing **contract-style** tests against HTTP backends
 - **True consumer-driven contract testing with brokers** (Pact, Spring Cloud Contract) → this framework doesn't produce/consume pact files. These tests are *contract-style integration tests*, not CDC-with-a-broker. Be honest with the user about this distinction if they ask.
 - **Load / performance** testing → wrong tool
 - **Security testing** → out of scope
+- **Asserting that a mutation persisted to the database** → use `database-testing` (the DB-as-oracle companion to API contract tests).
 
 If the user wants a true Pact broker workflow, tell them upfront: *"This framework gives you contract-style assertions over a live endpoint. It doesn't generate or verify pact files against a broker. If you need that, you need Pact. Want to proceed with contract-style tests anyway?"*
 
