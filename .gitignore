@@ -37,3 +37,7 @@ tests/e2e/docs/.handover-payloads/
 # Never committed — receipts authorize one commit each then archive locally.
 tests/e2e/.selector-development/
 /.understand-anything
+
+# Superpowers brainstorming specs & implementation plans — never commit
+docs/superpowers/
+.superpowers/
