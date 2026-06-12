@@ -125,6 +125,11 @@ const HOOK_MANIFEST = [
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   { file: 'commit-message-gate.sh',               event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
+  // Out-of-band mutation guard: Bash writes to pipeline-state artifacts
+  // (ledger, journey map, approver registry, findings, hook install) are
+  // denied — Write/Edit are the only sanctioned mutation paths, because
+  // that is where the gates live. Pairs with ledger-integrity-chain.sh.
+  { file: 'protected-artifact-bash-guard.sh',     event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
   { file: 'subagent-schema-preread-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   { file: 'standard-mode-first-pass-guard.sh',    event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
