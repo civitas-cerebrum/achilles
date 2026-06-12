@@ -117,6 +117,22 @@ assert_warn() {
   echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
 }
 
+# assert_eq <actual> <expected> <case-name>
+#   Plain string equality between two precomputed values. Useful for
+#   asserting on artifact contents a hook wrote (e.g. jq extractions).
+assert_eq() {
+  local actual="$1" expected="$2" name="$3"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [ "$actual" = "$expected" ]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    FAIL_DETAILS+=("${name}: expected '${expected}', got '${actual:0:200}'")
+    echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(expected '${expected}', got '${actual:0:80}')${CLR_RST}"
+  fi
+}
+
 # assert_block_subagent <hook> <stdin> <case-name> [stderr-substring]
 #   For SubagentStop hooks: expect exit 2 (block stop) with feedback on
 #   stderr. Optionally check stderr contains <stderr-substring>.
