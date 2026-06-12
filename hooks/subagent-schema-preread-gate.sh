@@ -12,10 +12,11 @@
 # the subagent is expected to conform to. The role→schema mapping mirrors
 # subagent-return-schema-guard.sh exactly:
 #
-#   composer-<slug>      → composer.schema.json
-#   reviewer-<slug>      → reviewer-inloop.schema.json
-#   probe-<slug>         → probe.schema.json
-#   phase-validator-<N>  → phase-validator.schema.json
+#   composer-<slug>           → composer.schema.json
+#   reviewer-<slug>           → reviewer-inloop.schema.json
+#   probe-<slug>              → probe.schema.json
+#   phase-validator-<N>       → phase-validator.schema.json
+#   workflow-reviewer-<unit>  → workflow-reviewer.schema.json
 #
 # Free-form prefixes (phase1-*, stage2-*, cleanup-*, process-validator-*,
 # anything else) are silent-allow — they carry no structural contract.

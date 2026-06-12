@@ -21,7 +21,6 @@
 #   probe-<slug>               → schemas/subagent-returns/probe.schema.json
 #   phase-validator-<N>        → schemas/subagent-returns/phase-validator.schema.json
 #   workflow-reviewer-<unit>   → schemas/subagent-returns/workflow-reviewer.schema.json
-#                                (post-only mapping — see lib/schema-role-map.sh)
 #
 # No-schema roles (silent allow on schema step):
 #   process-validator-*, phase1-*, stage2-*, cleanup-*, bare j-/sj-
@@ -87,9 +86,9 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""')
 
 # Shared role-mapping. Single source of truth — same file is sourced by
 # the PreToolUse half of the contract (subagent-schema-preread-gate.sh).
-# This guard uses the post-only superset resolve_schema_role_post(),
-# which additionally maps workflow-reviewer-* (the preread gate must
-# not enforce that role — rationale in lib/schema-role-map.sh).
+# workflow-reviewer-* is mapped here too: the reviewer-brief contract
+# now requires citing workflow-reviewer.schema.json, so both halves use
+# resolve_schema_role (migration note in lib/schema-role-map.sh).
 # Unknown prefix → silent allow (out of scope). Known prefix with no
 # schema (process-validator-*) → empty SCHEMA_ROLE, continues to the
 # handover-envelope warn path below; the schema step is skipped via
@@ -97,7 +96,7 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""')
 # shellcheck source=lib/schema-role-map.sh
 # shellcheck disable=SC1091
 . "$HOOK_LIB_DIR/schema-role-map.sh"
-if ! SCHEMA_ROLE=$(resolve_schema_role_post "$DESCRIPTION"); then
+if ! SCHEMA_ROLE=$(resolve_schema_role "$DESCRIPTION"); then
   exit 0
 fi
 

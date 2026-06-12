@@ -48,10 +48,11 @@ assert_deny "$H" "$(payload tool_name=Agent description='composer-j-x-1-c1' prom
 section "schema-preread-gate: citation must match the dispatched role, not a sibling role"
 assert_deny "$H" "$(payload tool_name=Agent description='composer-j-x-1-c1' prompt='See probe.schema.json for context.')" "composer + wrong schema cited → DENY" "composer.schema.json"
 
-section "schema-preread-gate: workflow-reviewer is post-only (no preread enforcement)"
-# workflow-reviewer-* maps to a schema ONLY in resolve_schema_role_post()
-# (consumed by the PostToolUse return guard). The reviewer-brief contract
-# documented in skills/workflow-reviewer/SKILL.md does not instruct citing
-# the schema, so the preread gate must not deny such briefs — see
-# hooks/lib/schema-role-map.sh for the rationale.
-assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase2: review Phase 2 exit criteria' prompt='Read the ledger at tests/e2e/docs/onboarding-status.json and verify Phase 2 deliverables on disk.')" "workflow-reviewer brief without schema citation → silent allow"
+section "schema-preread-gate: workflow-reviewer briefs must cite the schema"
+# workflow-reviewer-* now lives in resolve_schema_role(): the reviewer-brief
+# contract (skills/workflow-reviewer/SKILL.md §"Inputs the reviewer receives
+# in its brief" input 5) requires citing workflow-reviewer.schema.json, so
+# the preread gate denies briefs that omit it — see the migration note in
+# hooks/lib/schema-role-map.sh.
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase2: review Phase 2 exit criteria' prompt='Read the ledger at tests/e2e/docs/onboarding-status.json and verify Phase 2 deliverables on disk.')" "workflow-reviewer brief without schema citation → DENY" "workflow-reviewer.schema.json"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase2: review Phase 2 exit criteria' prompt='Read the ledger at tests/e2e/docs/onboarding-status.json and verify Phase 2 deliverables on disk. Return per schemas/subagent-returns/workflow-reviewer.schema.json.')" "workflow-reviewer brief with schema citation → ALLOW"

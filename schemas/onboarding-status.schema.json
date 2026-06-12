@@ -29,6 +29,11 @@
       "enum": ["standard", "depth"],
       "description": "Mirrors the value captured at the onboarding front-load gate. Propagates to Phase 4 cycleStrictness and Phase 5 coverage-expansion runMode."
     },
+    "modeAuthorizer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Verbatim operator quote authorising the persisted runMode. Required by the write-gate whenever runMode is set or changed (gate-enforced co-location; the schema documents the field, the gate enforces the pairing)."
+    },
     "startedAt": {
       "type": "string",
       "format": "date-time",
