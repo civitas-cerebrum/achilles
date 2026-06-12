@@ -60,8 +60,8 @@ REDIR_HIT=$(echo "$CMD" | grep -cE ">>?[[:space:]]*[^[:space:];|&]*(${PROTECTED}
 # 2. Mutation commands co-occurring with a protected name anywhere.
 MUTATE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(tee|cp|mv|rm|install|ln|truncate|sponge|shred)([[:space:]]|$)" || true)
 
-# 3. In-place editors.
-INPLACE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(sed|perl)[[:space:]][^;|&]*-i" || true)
+# 3. In-place editors (sed, perl, yq -i). Note: jq has no -i flag; redirects already cover jq writes.
+INPLACE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(sed|perl|yq)[[:space:]][^;|&]*-i" || true)
 DD_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])dd[[:space:]][^;|&]*of=" || true)
 
 # 4. Interpreter one-liners mentioning a protected path at all.

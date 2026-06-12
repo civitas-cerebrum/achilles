@@ -18,6 +18,7 @@ assert_deny "$HOOK" "$(bash_payload 'node -e "require(\"fs\").writeFileSync(proc
 assert_deny "$HOOK" "$(bash_payload 'cp my-hook.sh ~/.claude/hooks/onboarding-ledger-gate.sh')" "overwrite installed hook" "protected"
 assert_deny "$HOOK" "$(bash_payload 'tee tests/e2e/docs/coverage-expansion-state.json < /tmp/x')" "tee into coverage state" "protected"
 assert_deny "$HOOK" "$(bash_payload 'truncate -s 0 tests/e2e/docs/.ledger-integrity.json')" "truncate integrity sidecar" "protected"
+assert_deny "$HOOK" "$(bash_payload 'yq -i ".a=1" tests/e2e/docs/journey-map.md')" "yq -i in-place edit on journey map" "protected"
 
 section "protected-artifact-bash-guard: ALLOW read-only access + unrelated writes"
 assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json')" "read ledger"
@@ -27,3 +28,4 @@ assert_allow "$HOOK" "$(bash_payload 'git diff tests/e2e/docs/journey-map.md')" 
 assert_allow "$HOOK" "$(bash_payload 'echo hello > /tmp/scratch.txt')" "unrelated redirect"
 assert_allow "$HOOK" "$(bash_payload 'npx playwright test')" "unrelated command"
 assert_allow "$HOOK" "$(bash_payload 'ls tests/e2e/docs/')" "ls docs dir"
+assert_allow "$HOOK" "$(bash_payload 'yq .currentPhase tests/e2e/docs/onboarding-status.json')" "yq read-only (no -i)"
