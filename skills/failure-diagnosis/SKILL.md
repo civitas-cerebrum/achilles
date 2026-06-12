@@ -162,7 +162,7 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 | **c. Flow-step drift** | **Propose** | App shows an extra/missing/reordered step between expected actions; screenshot confirms correct page state at each step the app does reach | Present the detected flow diff to the operator; apply on approval |
 | **d. Assertion re-baseline** | **Propose** | Hardcoded literal no longer matches; UI state around the assertion is otherwise correct | Present old vs new value to the operator; apply on approval |
 | **e. State isolation** | **Auto** | Test passes when run alone, fails when run after specific predecessors (verified empirically) | Add fresh context / storage reset / cleanup hook; re-run in suite order |
-| **f. Flake quarantine** | **Report** | Flake persisted after two heal attempts of different strategies; root cause unclear | Tag test `@flaky`, add to repair summary with diagnostic notes; do NOT silently skip |
+| **f. Flake quarantine** | **Report** | Flake persisted after two heal attempts of different strategies; root cause unclear | Tag test `@flaky`, append an entry to the quarantine ledger (see §"Quarantine ledger" below), add to repair summary with diagnostic notes; do NOT silently skip |
 | **g. Whole-test rewrite** | **Operator-aligned** | Flow changed so fundamentally that the scenario no longer maps to the app as-is; no incremental heal applies | Present to operator; on approval, invoke `test-composer` with journey context. Never regenerate without alignment. |
 | **h. Documented-quirk match — no heal** | **Report** | The observed failure shape exactly matches a documented quirk in `app-context.md` (configuration-dependent option subsets, redirect-vs-popup auth patterns, vendor-aliased options, etc.) **OR** matches a documented app-degradation signal (a degradation-banner copy string from `app-context.md`'s documented-banners list, the documented hanging spinner-sentinel custom element, 5xx in network capture) | Report observed-vs-documented diff; do NOT modify the test. The skip / failure is correct; the regression is in the app or in the documentation. Cross-link the relevant `app-context.md` section in the report. |
 
@@ -179,6 +179,30 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 9. If the test scenario no longer maps to the app flow → (g) rewrite → operator-align
 
 The precondition columns exist to keep you honest: any heal applied without meeting its precondition is a guess, and guesses mask bugs.
+
+### Quarantine ledger (heal (f) only)
+
+A `@flaky` tag without a record is how quarantined tests rot forever — nobody remembers why they were tagged, so nobody dares untag them. Every heal (f) MUST append an entry to `tests/e2e/docs/flake-quarantine.md` (create the file with the header below if absent):
+
+```markdown
+# Flake Quarantine Ledger
+
+Tests tagged `@flaky` after resisting two heal strategies. Entries are closed by
+`test-repair`'s quarantine review (Stage 5.5) when the test proves stable, or
+escalated to the operator when they persist. Do not delete entries — closed
+entries keep their block with `status: unquarantined` for the audit trail.
+
+## <spec-path>::<test-title>
+- **status:** quarantined
+- **quarantined:** YYYY-MM-DD
+- **error signature:** <one line — the failing assertion/timeout as observed>
+- **failure shape:** <pattern from test-repair Stage 2 if known: flaky-consistent | flaky-chaotic | n/a>
+- **heals attempted:** <strategy letter + one-line outcome, per attempt>
+- **evidence:** <screenshot / trace / report paths>
+- **suspected cause:** <best current hypothesis, or `unknown`>
+```
+
+Exit from quarantine belongs to `test-repair` (its Stage 5.5 quarantine review) — this skill only writes entries, it never removes the `@flaky` tag. The ledger is committed (not gitignored): quarantine state must survive sessions, or every repair run rediscovers the same flakes from scratch.
 
 ### Stage 4b — Live DOM re-learning (for heal strategy (a) only)
 

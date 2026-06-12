@@ -176,7 +176,7 @@ When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `r
 
 **Process:**
 
-1. Read `references/test-optimization.md` — load the full protocol (8 sections).
+1. Read `references/test-optimization.md` — load the full protocol (all sections, §1–§8 including §3b).
 2. Read every test file written or modified in this session, plus `tests/fixtures/base.ts` and `tests/e2e/docs/app-context.md`'s `## Test Infrastructure` section.
 3. Run the 6 checks against each spec.
 4. Apply auto-fixes (per-test patterns, §1–§5 with auto-fix). Write proactive helpers into `base.ts` (cross-test patterns) only when both gates apply (UI-covered + API discovered, see §4). Re-run the affected tests; confirm they still pass.

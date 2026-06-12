@@ -48,7 +48,7 @@ Every invocation performs these stages in order, inside this subagent's own cont
 
 1. **Compose** (Steps 2–3 below) — write the full variant set for the journey, adding selectors to `page-repository.json` as needed.
 2. **Stabilize** (Step 4) — run, fix, re-run until 100% of new tests pass.
-3. **Test Optimization** (Step 6a) — load `../element-interactions/references/test-optimization.md` and run its 6-check protocol on the freshly-written tests. Apply auto-fixes; re-stabilize if any auto-fix regresses a test.
+3. **Test Optimization** (Step 6a) — load `../element-interactions/references/test-optimization.md` and run its 7-check protocol on the freshly-written tests. Apply auto-fixes; re-stabilize if any auto-fix regresses a test.
 4. **API compliance review** (Step 6b) — run the Stage 4b API review protocol on the freshly-written tests. Fix any non-compliance and re-stabilize if needed.
 5. **Coverage verification + whole-suite gate** (Step 7) — check every step, branch, and applicable state variation from the journey's map block against the composed tests. Loop back to Compose for any missing coverage. After coverage is exhaustive, run the whole-suite re-run gate (see Step 7); only return to the caller when the gate passes.
 
@@ -213,7 +213,7 @@ Save to `docs/e2e-test-scenarios.md` (or a path the user specifies).
 
 ### Step 6a: Test Optimization
 
-Load `../element-interactions/references/test-optimization.md` and run the 6-check protocol against the freshly-written tests for this journey. Apply auto-fixes per the protocol; re-stabilize (Step 4) if any auto-fix causes a regression (follow Rule 7 — failure-diagnosis).
+Load `../element-interactions/references/test-optimization.md` and run the 7-check protocol against the freshly-written tests for this journey. Apply auto-fixes per the protocol; re-stabilize (Step 4) if any auto-fix causes a regression (follow Rule 7 — failure-diagnosis).
 
 Emit the structured return per `../element-interactions/references/test-optimization.md` §8 as part of this skill's per-journey return block (under a new top-level `stage_4a` key — see Step 8's Canonical return schema for the addition).
 
