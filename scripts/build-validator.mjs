@@ -10,7 +10,8 @@
 //   replace <target-file> <old-file> <new-file> [--all]
 //     stdout = file content with literal replacement applied.
 //     exit 0 ok; exit 3 old-string not found; exit 4 old-string matched
-//     more than once without --all; exit 2 usage.
+//     more than once without --all; exit 2 usage or unreadable input files
+//     (stderr line prefixed REPLACE_FAIL:).
 
 import { readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -64,9 +65,12 @@ function cmdValidate(id, dataFile) {
 }
 
 function cmdReplace(targetFile, oldFile, newFile, all) {
-  const content = readFileSync(targetFile, 'utf8');
-  const oldStr = readFileSync(oldFile, 'utf8');
-  const newStr = readFileSync(newFile, 'utf8');
+  let content, oldStr, newStr;
+  try {
+    content = readFileSync(targetFile, 'utf8');
+    oldStr  = readFileSync(oldFile,   'utf8');
+    newStr  = readFileSync(newFile,   'utf8');
+  } catch (e) { console.error('REPLACE_FAIL: ' + e.message); process.exit(2); }
   if (oldStr.length === 0) { console.error('REPLACE_FAIL: empty old-string'); process.exit(2); }
   const count = content.split(oldStr).length - 1;
   if (count === 0) { console.error('REPLACE_FAIL: old-string not found'); process.exit(3); }
@@ -86,6 +90,7 @@ else { console.error('Usage: validator.bundle.mjs validate <id> <data-file> | re
 
 const GEN_ENTRY = 'scripts/.validator-entry.gen.mjs';
 writeFileSync(GEN_ENTRY, entrySource);
+rmSync('hooks/lib/validator.bundle.mjs', { force: true });
 try {
   await build({
     entryPoints: [GEN_ENTRY],
