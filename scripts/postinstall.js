@@ -148,6 +148,10 @@ const HOOK_MANIFEST = [
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 3 },
+  // Tamper-evident ledger chain: Pre verifies the on-disk ledger against
+  // the sanctioned hash sidecar; Post records each sanctioned write.
+  { file: 'ledger-integrity-chain.sh',            event: 'PreToolUse',  matcher: 'Write|Edit', timeout: 5 },
+  { file: 'ledger-integrity-chain.sh',            event: 'PostToolUse', matcher: 'Write|Edit', timeout: 5 },
   // Phase-4 fidelity gates: ensure the journey-mapping skill is the
   // only legitimate author of tests/e2e/docs/journey-map.md. The
   // sentinel gate enforces the line-1 marker + the cycle-state preflight

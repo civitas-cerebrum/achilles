@@ -24,6 +24,7 @@ tests/e2e/docs/coverage-expansion-state.json
 tests/e2e/docs/.adversarial-findings.lock
 tests/e2e/docs/.subagent-returns/
 tests/e2e/docs/.handover-payloads/
+tests/e2e/docs/.ledger-integrity.json
 
 # Per-PR contribution handover — local working artefact, validated by
 # hooks/contribution-handover-gate.sh on push. Never committed; the

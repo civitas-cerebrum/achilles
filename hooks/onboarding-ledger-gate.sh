@@ -79,30 +79,6 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
 [ -n "$DESCRIPTION" ] || exit 0
 
-# Rule 4 (allow-list): workflow-reviewer-* dispatches always pass.
-if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*workflow-reviewer-(phase[1-8]|pass[1-5]|cycle[1-5])[:_-]'; then
-  exit 0
-fi
-
-# Resolve repo root + ledger path.
-GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
-GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-LEDGER="$GUARD_REPO_ROOT/tests/e2e/docs/onboarding-status.json"
-
-# Rule 5: silent-allow when the ledger is missing — brand-new run.
-[ -f "$LEDGER" ] || exit 0
-
-# Probe the ledger. Any extraction failure → silent allow (malformed
-# ledger should not jam the pipeline; the write-gate is responsible for
-# ledger integrity).
-SCHEMA_VERSION=$("$JQ" -r '.schemaVersion // empty' "$LEDGER" 2>/dev/null || echo "")
-[ -n "$SCHEMA_VERSION" ] || exit 0
-
-CURRENT_PHASE=$("$JQ" -r '.currentPhase // empty' "$LEDGER" 2>/dev/null || echo "")
-case "$CURRENT_PHASE" in
-  ''|*[!0-9]*) exit 0 ;;
-esac
-
 # Helper: emit a DENY payload with the supplied reason.
 emit_deny() {
   local reason="$1"
@@ -114,6 +90,54 @@ emit_deny() {
     }
   }'
 }
+
+# Rule 4 (allow-list): workflow-reviewer-* dispatches always pass.
+if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*workflow-reviewer-(phase[1-8]|pass[1-5]|cycle[1-5])[:_-]'; then
+  exit 0
+fi
+
+# Resolve repo root + ledger path.
+GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
+GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+LEDGER="$GUARD_REPO_ROOT/tests/e2e/docs/onboarding-status.json"
+
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
+SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
+
+# Rule 5: silent-allow when the ledger is missing — brand-new run. But a
+# missing ledger WITH a surviving integrity sidecar is the rm-reset trick:
+# deny until the operator clears both files.
+if [ ! -f "$LEDGER" ]; then
+  if [ -f "$SIDECAR" ] && [ -n "$("$JQ" -r '.records[-1].sha256 // empty' "$SIDECAR" 2>/dev/null)" ]; then
+    emit_deny "[BLOCKED] onboarding-status.json is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing tests/e2e/docs/.ledger-integrity.json in their own terminal."
+    exit 0
+  fi
+  exit 0
+fi
+
+# Integrity verify: the ledger must match its sanctioned hash chain
+# before any of its state is honored for dispatch decisions.
+if [ -f "$SIDECAR" ]; then
+  CHAIN_LATEST=$("$JQ" -r '.records[-1].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
+  CHAIN_PREV=$("$JQ" -r '.records[-2].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
+  LEDGER_HASH=$(file_sha256 "$LEDGER")
+  if [ -n "$CHAIN_LATEST" ] && [ -n "$LEDGER_HASH" ] && [ "$LEDGER_HASH" != "$CHAIN_LATEST" ] && [ "$LEDGER_HASH" != "$CHAIN_PREV" ]; then
+    emit_deny "[BLOCKED] onboarding-status.json does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete tests/e2e/docs/.ledger-integrity.json in their own terminal)."
+    exit 0
+  fi
+fi
+
+# Probe the ledger. Any extraction failure → silent allow (malformed
+# ledger should not jam the pipeline; the write-gate is responsible for
+# ledger integrity).
+SCHEMA_VERSION=$("$JQ" -r '.schemaVersion // empty' "$LEDGER" 2>/dev/null || echo "")
+[ -n "$SCHEMA_VERSION" ] || exit 0
+
+CURRENT_PHASE=$("$JQ" -r '.currentPhase // empty' "$LEDGER" 2>/dev/null || echo "")
+case "$CURRENT_PHASE" in
+  ''|*[!0-9]*) exit 0 ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Detect a transition-point: last in-progress phase's reviewerVerdict is
