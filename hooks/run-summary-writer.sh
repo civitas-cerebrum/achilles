@@ -5,7 +5,7 @@
 # Reads the artifacts the skills ACTUALLY write:
 #   tests/e2e/docs/onboarding-status.json   (phases)
 #   tests/e2e/docs/adversarial-findings.md  (findings ledger, '#### <ID> [sev] — title')
-#   tests/e2e/docs/journey-map.md           (journey count)
+#   tests/e2e/docs/journey-map.md           (journey count = level-3 journey headings)
 #   playwright-report/results.json | test-results/results.json (whichever is newer)
 #
 # Severity vocabulary: the canonical five (critical/high/medium/low/info).
@@ -33,7 +33,7 @@ scenarios_json='[]'
 bugs_ids='[]'; sev_counts='{"critical":0,"high":0,"medium":0,"low":0,"info":0}'
 if [ -f "$DOCS/adversarial-findings.md" ]; then
   bugs_ids=$(grep -E '^#### ' "$DOCS/adversarial-findings.md" | sed -E 's/^#### ([^ ]+) .*/\1/' | "$JQ" -R . | "$JQ" -s .)
-  sev_counts=$(grep -E '^#### ' "$DOCS/adversarial-findings.md" | sed -E 's/^#### [^ ]+ \[([a-z]+)\].*/\1/' | "$JQ" -R . | "$JQ" -s '
+  sev_counts=$(grep -E '^#### ' "$DOCS/adversarial-findings.md" | sed -E 's/^#### [^ ]+ \[([A-Za-z]+)\].*/\1/' | tr '[:upper:]' '[:lower:]' | "$JQ" -R . | "$JQ" -s '
     reduce .[] as $s ({"critical":0,"high":0,"medium":0,"low":0,"info":0};
       if has($s) then .[$s] += 1 else . end)')
 fi
@@ -55,7 +55,7 @@ if [ -n "$RESULTS" ]; then
         total: (($s.expected // 0) + ($s.unexpected // 0) + ($s.flaky // 0) + ($s.skipped // 0)),
         status: (if ($s.unexpected // 0) > 0 then "failing" else "passing" end) }
     else
-      # Fallback: walk every spec, last result of first test decides.
+      # Best-effort for non-standard report shapes; .results[-1] = LAST retry result per test.
       ([.. | objects | select(has("tests")) | .tests[]?] ) as $tests |
       ($tests | map(.results[-1].status // "unknown")) as $st |
       { passing: ($st | map(select(. == "passed")) | length),
@@ -68,7 +68,7 @@ fi
 
 journeys=0
 if [ -f "$DOCS/journey-map.md" ]; then
-  journeys=$(grep -cE '^## ' "$DOCS/journey-map.md" 2>/dev/null) || journeys=0
+  journeys=$(grep -cE '^### j-' "$DOCS/journey-map.md" 2>/dev/null) || journeys=0
 fi
 
 ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
