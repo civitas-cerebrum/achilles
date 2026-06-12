@@ -7,10 +7,12 @@
 # Mirrors scripts/postinstall.js's REAL copy set:
 #   - every HOOK_MANIFEST entry's .sh script   (copyHookFile, chmod 755)
 #   - hooks/lib/ top-level FILES only           (no subdirectories)
+#   - hooks/data/ top-level FILES only          (vocabularies, e.g.
+#     canonical-sections.txt)
 #   - bin/jq                                    (postinstall downloads a
 #     pinned jq; the sim stands in the resolved test-harness jq)
-# NOT copied by postinstall (and therefore not copied here): hooks/data/,
-# hooks/tests/. Hooks must degrade gracefully without those.
+# NOT copied by postinstall (and therefore not copied here): hooks/tests/.
+# Hooks must degrade gracefully without those.
 #
 # NOTE: this MIRRORS postinstall's copy set (does not execute postinstall.js
 # itself — the installer's own copyHookFile/mtime logic is out of scope here).
@@ -58,7 +60,7 @@ run_install_simulation() {
   trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE"' EXIT
   fake_hooks="$work/home/.claude/hooks"
   fake_project="$work/project"
-  mkdir -p "$fake_hooks/lib" "$fake_hooks/bin" "$fake_project/tests/e2e/docs"
+  mkdir -p "$fake_hooks/lib" "$fake_hooks/data" "$fake_hooks/bin" "$fake_project/tests/e2e/docs"
 
   # --- Mirror the postinstall copy set ------------------------------------
   # 1. Hook scripts: exactly the HOOK_MANIFEST entries, parsed live from
@@ -99,7 +101,13 @@ run_install_simulation() {
     [ -f "$entry" ] && cp "$entry" "$fake_hooks/lib/"
   done
 
-  # 3. bin/jq — postinstall downloads a pinned binary to ~/.claude/hooks/bin/jq.
+  # 3. hooks/data/ — top-level files only, exactly like postinstall (same
+  #    readdir loop as lib/; subdirectories are NOT copied).
+  for entry in "$repo_root"/hooks/data/*; do
+    [ -f "$entry" ] && cp "$entry" "$fake_hooks/data/"
+  done
+
+  # 4. bin/jq — postinstall downloads a pinned binary to ~/.claude/hooks/bin/jq.
   #    Use the repo-bundled binary when present; otherwise symlink the jq the
   #    test harness resolved. (Symlink, not copy: macOS SIGKILLs copies of
   #    signed platform binaries like /usr/bin/jq.) Either way the hooks'
@@ -139,6 +147,17 @@ run_install_simulation() {
       sim_fail "$f present and executable in the installed set" "not found or not executable at $fake_hooks/$f"
     fi
   done
+
+  # --- Assertion: hooks/data vocabulary lands in the copy set -------------
+  # standard-mode-first-pass-guard.sh reads data/canonical-sections.txt; the
+  # install must ship it so installed hooks don't run on the hardcoded
+  # fallback vocabulary.
+  if [ -f "$fake_hooks/data/canonical-sections.txt" ]; then
+    sim_pass "canonical-sections.txt lands in the copy set (hooks/data shipped)"
+  else
+    sim_fail "canonical-sections.txt lands in the copy set (hooks/data shipped)" \
+      "missing at $fake_hooks/data/canonical-sections.txt — postinstall must copy hooks/data/"
+  fi
 
   # --- Assertion 5+6: write-gate DENIES a schema-invalid ledger write -----
   # Run from the fake project (no repo, no schemas/ dir anywhere above) with

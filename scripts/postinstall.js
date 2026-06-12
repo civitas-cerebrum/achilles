@@ -307,6 +307,34 @@ function installCivitasHooks() {
     }
   }
 
+  // Copy hooks/data/ vocabularies (e.g. canonical-sections.txt, read by
+  // standard-mode-first-pass-guard.sh). Without these, installed hooks fall
+  // back to their hardcoded vocabularies and silently drift from the repo's
+  // canonical data. Pattern: idempotent file copy with mtime check, same as
+  // copyHookFile() above; top-level files only.
+  const dataSrcDir  = path.join(packageDir, 'hooks', 'data');
+  const dataDestDir = path.join(userHooksDir, 'data');
+  if (fs.existsSync(dataSrcDir)) {
+    fs.mkdirSync(dataDestDir, { recursive: true });
+    for (const entry of fs.readdirSync(dataSrcDir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const srcPath  = path.join(dataSrcDir, entry.name);
+      const destPath = path.join(dataDestDir, entry.name);
+      let shouldCopy = !fs.existsSync(destPath);
+      if (!shouldCopy) {
+        try {
+          shouldCopy = fs.statSync(srcPath).mtimeMs > fs.statSync(destPath).mtimeMs;
+        } catch (_) {
+          shouldCopy = true;
+        }
+      }
+      if (shouldCopy) {
+        fs.copyFileSync(srcPath, destPath);
+        copiedCount++;
+      }
+    }
+  }
+
   if (settingsModified) {
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
