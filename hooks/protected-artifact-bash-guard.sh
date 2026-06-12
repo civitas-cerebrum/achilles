@@ -20,10 +20,14 @@
 # tamper-evident ledger chain (ledger-integrity-chain.sh) DETECTS whatever
 # this guard fails to PREVENT. The two ship as a pair.
 #
-# False-positive tradeoff (accepted): mutation commands (cp/mv/rm/tee/…)
-# are denied on co-occurrence with a protected basename anywhere in the
-# command — so `cp onboarding-status.json /tmp/backup` (a read-only use)
-# is denied too. The deny text names the sanctioned alternative.
+# False-positive tradeoff (accepted): any mutate verb (cp/mv/rm/tee/…) or
+# interpreter one-liner (-c/-e) co-occurring with a protected name anywhere
+# in the command is denied — even when the verb targets an unrelated path
+# (e.g. `rm /tmp/junk && cat <ledger>` denies, as does `cp <ledger> /tmp`).
+# The deny text names the sanctioned alternative.
+#
+# settings.local.json: coverage is a deliberate superset of spec §A3's
+# settings.json — local overrides carry the same mutation risk.
 #
 # Canonical reference
 # -------------------
@@ -54,8 +58,8 @@ PROTECTED='onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|co
 
 echo "$CMD" | grep -qE "$PROTECTED" || exit 0
 
-# 1. Redirection targeting a protected path.
-REDIR_HIT=$(echo "$CMD" | grep -cE ">>?[[:space:]]*[^[:space:];|&]*(${PROTECTED})" || true)
+# 1. Redirection targeting a protected path (including >| clobber redirect).
+REDIR_HIT=$(echo "$CMD" | grep -cE ">>?\|?[[:space:]]*[^[:space:];|&]*(${PROTECTED})" || true)
 
 # 2. Mutation commands co-occurring with a protected name anywhere.
 MUTATE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(tee|cp|mv|rm|install|ln|truncate|sponge|shred)([[:space:]]|$)" || true)

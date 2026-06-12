@@ -20,6 +20,12 @@ assert_deny "$HOOK" "$(bash_payload 'tee tests/e2e/docs/coverage-expansion-state
 assert_deny "$HOOK" "$(bash_payload 'truncate -s 0 tests/e2e/docs/.ledger-integrity.json')" "truncate integrity sidecar" "protected"
 assert_deny "$HOOK" "$(bash_payload 'yq -i ".a=1" tests/e2e/docs/journey-map.md')" "yq -i in-place edit on journey map" "protected"
 
+assert_deny "$HOOK" "$(bash_payload ': >| tests/e2e/docs/onboarding-status.json')" "clobber redirect into ledger" "protected"
+# Pin the documented false-positive tradeoff: cp is a read-only use of the protected file,
+# but the guard denies it anyway because a mutate verb co-occurs with a protected name.
+# DO NOT 'fix' this — it is an accepted over-deny by design (see header comment).
+assert_deny "$HOOK" "$(bash_payload 'cp tests/e2e/docs/onboarding-status.json /tmp/backup.json')" "accepted false positive: read-only cp of protected file (intentional over-deny)" "protected"
+
 section "protected-artifact-bash-guard: ALLOW read-only access + unrelated writes"
 assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json')" "read ledger"
 assert_allow "$HOOK" "$(bash_payload 'jq .currentPhase tests/e2e/docs/onboarding-status.json')" "jq read ledger"
