@@ -450,4 +450,38 @@ echo "%PDF" > "$TMP_REPO/qa-summary-deck.pdf"
 assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P8_COMPLETED")" \
   "Phase 8 → completed with HTML+PDF deck → ALLOW"
 
+# ---------------------------------------------------------------------------
+section "ledger-write-gate: Edit-path synthesis (literal replacement, validator bundle)"
+# The Edit path synthesises the post-edit content before validating. The
+# pre-bundle implementation used awk sub(), which treated old_string as a
+# REGEX — any [ or ( metachar aborted the synthesis and the gate
+# silent-allowed the write. These cases pin the literal-string semantics
+# and the deny-on-synthesis-failure contract.
+
+# 1. Metachar old_string whose result is schema-INVALID → DENY (schema).
+rm -f "$LEDGER_PATH"
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_deny "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='"phases": [' new_string='"phases": "nope", "x": [')" \
+  "Edit with metachar old_string producing schema-invalid ledger → DENY" "fails schema validation"
+
+# 2. Metachar old_string whose result is VALID → ALLOW.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_allow "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='{"id":1,"name":"Scaffold","status":"in-progress","reviewerVerdict":"pending","reviewerCycles":0,"deliverables":[]}' \
+  new_string='{"id":1,"name":"Scaffold","status":"in-progress","reviewerVerdict":"pending","reviewerCycles":0,"deliverables":["playwright.config.ts"]}')" \
+  "Edit with metachar old_string producing valid ledger → ALLOW"
+
+# 3. old_string not present in the file → synthesis fails → DENY.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_deny "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='THIS-DOES-NOT-OCCUR-ANYWHERE' new_string='whatever')" \
+  "Edit whose old_string is absent from the ledger → DENY" "could not be synthesised"
+
+# 4. old_string occurs multiple times, replace_all absent → DENY.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_deny "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='"reviewerCycles":0' new_string='"reviewerCycles":1')" \
+  "Edit whose old_string is not unique (replace_all absent) → DENY" "could not be synthesised"
+
 rm -f "$LEDGER_PATH"
