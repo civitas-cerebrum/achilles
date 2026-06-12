@@ -45,3 +45,28 @@ resolve_schema_role() {
     *)                   return 1 ;;
   esac
 }
+
+# resolve_schema_role_post <description>
+#
+# Superset of resolve_schema_role consumed ONLY by the PostToolUse half
+# (subagent-return-schema-guard.sh, WARN mode). Adds:
+#
+#   workflow-reviewer-*  → workflow-reviewer
+#
+# The workflow-reviewer mapping is post-only ON PURPOSE: the documented
+# reviewer-brief contract (skills/workflow-reviewer/SKILL.md §"Inputs the
+# reviewer receives in its brief", skills/onboarding/SKILL.md §"Status
+# ledger + workflow reviewer") does NOT instruct the orchestrator to cite
+# workflow-reviewer.schema.json in the dispatch brief — the return shape
+# is owned by the subagent-only workflow-reviewer skill, which the
+# reviewer loads itself. Putting the role in resolve_schema_role would
+# make the PreToolUse preread gate (DENY mode) reject exactly the briefs
+# the skill teaches. If/when the skills add a brief-template line citing
+# the schema, move the mapping into resolve_schema_role and delete this
+# function's extra case.
+resolve_schema_role_post() {
+  case "$1" in
+    workflow-reviewer-*) echo "workflow-reviewer"; return 0 ;;
+  esac
+  resolve_schema_role "$1"
+}
