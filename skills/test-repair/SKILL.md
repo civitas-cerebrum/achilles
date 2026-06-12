@@ -72,6 +72,8 @@ done
 
 Record per-test, per-run outcome. The resulting matrix is the dataset for Stage 2.
 
+**Quarantined tests run in the baseline.** If `tests/e2e/docs/flake-quarantine.md` exists with open entries, the baseline runs include the `@flaky`-tagged tests (do not `--grep-invert` them out). Their per-run outcomes feed Stage 5.5 — the quarantine review that gives quarantined tests a way back out.
+
 Why 3 and not 5 upfront: running 5× full suites when the suite is truly broken wastes time on tests that will need healing regardless. Three runs catch the dominant patterns; more runs are spent adaptively in Stage 3, targeted at specific hypotheses.
 
 ### Stage 2 — Pattern detection and clustering
@@ -146,6 +148,18 @@ done
 
 If any post-heal run fails, identify which heal introduced the regression, revert it, and re-enter Stage 2 for that specific test. Do not proceed to Stage 6 with an unverified heal.
 
+### Stage 5.5 — Quarantine review
+
+Quarantine without an exit path converts every flake into permanent dead coverage. Once per repair session, review the open entries in `tests/e2e/docs/flake-quarantine.md` (the ledger `failure-diagnosis` heal (f) writes — see its §"Quarantine ledger") against the session's run data:
+
+1. **Exit candidates.** An open entry whose test passed **every** baseline run in Stage 1 is a candidate for release — the underlying cause (app fix, env change, sibling-test heal) may have resolved since quarantine.
+2. **Confirm before releasing.** A 3/3 baseline is necessary, not sufficient. Run the candidate **5× in suite order**; all 5 must pass.
+3. **Release.** Remove the `@flaky` tag, set the ledger entry to `status: unquarantined` with the date and the evidence line (`5/5 suite-order + 3/3 baseline`). Keep the entry block — the audit trail is the point of the ledger.
+4. **Still flaking.** An open entry that failed any baseline run stays quarantined; append a one-line observation to its entry (date + failure shape) so the entry accumulates signal instead of going stale.
+5. **Escalate the stale.** An entry that has survived **3 or more** repair sessions (count the appended observations) gets surfaced to the operator in the Stage 6 summary as a decision item: invest in a root-cause investigation, rewrite the test (heal (g) path), or retire the scenario. Quarantine is a holding area, not a destination.
+
+New quarantines from this session's Stage 4 (`failure-diagnosis` returning **Quarantined**) get their ledger entries written by `failure-diagnosis` itself; Stage 5.5 only verifies they exist and are well-formed.
+
 ### Stage 6 — Repair summary
 
 Write `test-results/repair-session-<ISO-timestamp>.md` with a clear audit trail:
@@ -163,6 +177,8 @@ Write `test-results/repair-session-<ISO-timestamp>.md` with a clear audit trail:
 - Reported bugs (NOT modified): <count>
 - Operator-pending: <count>
 - Quarantined `@flaky`: <count>
+- Released from quarantine: <count>
+- Stale quarantine entries needing an operator decision: <count>
 - Still green: <count>
 
 ## Healed (auto)
@@ -179,6 +195,10 @@ Write `test-results/repair-session-<ISO-timestamp>.md` with a clear audit trail:
 
 ## Quarantined
 - `tests/flaky-thing.spec.ts::TC_007` — intermittent timeout on `result-panel`; pattern persisted after timing-hardening heal. Tagged `@flaky` pending deeper investigation.
+
+## Quarantine review (Stage 5.5)
+- Released: `tests/search.spec.ts::TC_009` — 3/3 baseline + 5/5 suite-order; `@flaky` removed, ledger entry closed.
+- Stale (operator decision needed): `tests/flaky-thing.spec.ts::TC_007` — 4th repair session in quarantine; recommend root-cause investigation or scenario rewrite.
 ```
 
 Present the summary in chat with counts; link the file for the full audit trail.
@@ -203,7 +223,7 @@ These are the non-negotiables that every cluster decision must respect. Together
 
 ## Scope boundaries (YAGNI)
 
-- **No persistent flake database across sessions.** Each repair session is stateless. The repair summary is the record; long-term trending lives elsewhere.
+- **The quarantine ledger is the only cross-session state.** `tests/e2e/docs/flake-quarantine.md` (written by `failure-diagnosis` heal (f), reviewed in Stage 5.5) persists quarantine status and per-session observations — without it, every repair session rediscovers the same flakes and no quarantined test ever earns its way back. Everything else stays stateless: no run-history database, no latency trending; the repair summary is the per-session record.
 - **No CI retry policies.** Infra concerns (flaky network, runner OOM) are out of scope; report and stop.
 - **No test deletion.** Every test ends in one of: passing stably, reported as bug, operator-pending, quarantined. Deletion is a separate operator decision.
 - **No new test authoring beyond (g) operator-approved rewrites.** New coverage is `test-composer`'s job.
@@ -232,8 +252,9 @@ A repair session is complete when:
 
 1. Every test in scope is in one of: passing stably (verified 5× in suite order), reported as app bug, operator-pending, or quarantined `@flaky` with evidence.
 2. No new failures were introduced by heals (confirmed in Stage 5).
-3. The repair-session summary has been written to `test-results/repair-session-<timestamp>.md`.
-4. Zero tests were silently skipped or deleted.
+3. The quarantine review (Stage 5.5) ran whenever `tests/e2e/docs/flake-quarantine.md` had open entries — every open entry was either released, annotated with this session's observation, or escalated as stale.
+4. The repair-session summary has been written to `test-results/repair-session-<timestamp>.md`.
+5. Zero tests were silently skipped or deleted.
 
 If any of these cannot be achieved, the session is NOT complete. Report the blocker to the operator and stop — an incomplete repair that claims success is worse than one that clearly escalates.
 

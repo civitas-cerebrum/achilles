@@ -316,7 +316,7 @@ You MUST create a task for each of these items and complete them in order (Stage
 5. **User approves selectors** — hard gate
 6. **Stage 3: Write Automation** — write the test using the Steps API and approved selectors
 7. **Run and validate** — execute the test, inspect failures visually, iterate until passing
-8. **Stage 4a: Test Optimization** — triggers automatically each time a test passes. Load `references/test-optimization.md` and run its 6-check protocol on the new tests; apply auto-fixes; re-stabilize on regression
+8. **Stage 4a: Test Optimization** — triggers automatically each time a test passes. Load `references/test-optimization.md` and run its 7-check protocol on the new tests; apply auto-fixes; re-stabilize on regression
 9. **Stage 4b: API Compliance Review** — triggers automatically once Stage 4a returns clean. Review that test's code against the API Reference; fix any non-compliance
 10. **Fix any issues found** — correct misuse from either sub-stage, re-run to confirm still passing
 11. **Commit** — commit after each passing + optimized + compliant test case
@@ -365,7 +365,7 @@ digraph element_interactions {
     "Inspect screenshot, fix, re-run" [shape=box];
 
     "STAGE 4a: Test Optimization" [shape=box, style=bold];
-    "Run 6-check protocol\n(test-optimization.md)" [shape=box];
+    "Run 7-check protocol\n(test-optimization.md)" [shape=box];
     "Issues found in 4a?" [shape=diamond];
     "Fix 4a misuse,\nre-run tests" [shape=box];
     "Test still passes\nafter 4a fixes?" [shape=diamond];
@@ -422,8 +422,8 @@ digraph element_interactions {
     "Mini-inspection:\ninspect DOM, propose,\nget approval" -> "Inspect screenshot, fix, re-run";
     "Inspect screenshot, fix, re-run" -> "Run test";
 
-    "STAGE 4a: Test Optimization" -> "Run 6-check protocol\n(test-optimization.md)";
-    "Run 6-check protocol\n(test-optimization.md)" -> "Issues found in 4a?" [label="emit structured return"];
+    "STAGE 4a: Test Optimization" -> "Run 7-check protocol\n(test-optimization.md)";
+    "Run 7-check protocol\n(test-optimization.md)" -> "Issues found in 4a?" [label="emit structured return"];
     "Issues found in 4a?" -> "STAGE 4b: API Compliance Review" [label="no — clean"];
     "Issues found in 4a?" -> "Fix 4a misuse,\nre-run tests" [label="yes — auto-fix"];
     "Fix 4a misuse,\nre-run tests" -> "Test still passes\nafter 4a fixes?";

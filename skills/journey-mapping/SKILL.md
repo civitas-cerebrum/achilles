@@ -63,7 +63,7 @@ The five-phase mapping pipeline is split as follows:
 
 - **Phase 1** — Page discovery (parallel `playwright-cli` crawl) + Test Infrastructure probe.
 - **Phase 2** — Flow identification: derive user flows from the discovered pages.
-- **Phase 3** — Journey prioritization: P0 / P1 / P2 / P3 tier.
+- **Phase 3** — Journey prioritization: P0 / P1 / P2 / P3 tier (business impact) + defect-likelihood risk factors (second axis — see `references/phases.md` §"Defect-likelihood risk factors").
 - **Phase 3.5** — Redundancy revision: deduplicate overlapping flows; promote sub-journeys.
 - **Phase 4** — Journey-map document authoring (sentinel-bearing).
 - **Phase 5** — Coverage checkpoint (sentinel re-verification + roster snapshot).
@@ -76,6 +76,7 @@ Phases 1 → 3.5 detail (process, parallel-discovery model, output formats) is i
 - **Every journey is a self-contained `### j-<slug>:` block.** Downstream subagents receive ONLY their assigned journey block (plus referenced `sj-` sub-journeys) — cross-section reading is forbidden. Block format must support that isolation.
 - **The `<!-- journey-mapping:generated -->` sentinel is line 1 of `journey-map.md`.** Maps without the sentinel are not valid. Tools (coverage-expansion, test-composer) refuse to consume sentinel-less maps.
 - **Priority is load-bearing.** P0 / P1 / P2 / P3 ordering drives dispatch order in coverage-expansion AND batching eligibility (only P3 may batch). Misclassifying a journey as P3 is a contract violation, not an optimization.
+- **Risk factors are the second axis, never a priority modifier.** The `Risk factors:` field (canonical vocabulary in `references/phases.md` §"Defect-likelihood risk factors") records defect *likelihood*; priority records business *impact*. Two or more factors → `risk: elevated`, which drives adversarial probe ordering and excludes the journey from grouped dispatches — it never promotes or demotes the P-tier. Maps without the field are valid: consumers default every journey to `risk: baseline`.
 - **Phase 4 is sentinel-bearing.** Phase 5 re-verifies. A Phase-4 commit without the sentinel re-fires Phase 4.
 - **In `phases-2-4` mode, Phases 2 / 3 / 3.5 run as iterative cycles, not as one sequential walkthrough.** See §"Iterative discovery cycles" below. The single-subagent sequential walkthrough is forbidden in `phases-2-4` mode — it produces shallow per-section coverage and hides the parallelism the skill was designed for.
 - **Cycle 1 (discovery) is strict per-section parallel in EVERY mode.** A single-subagent walkthrough is forbidden in cycle 1 of `full` mode AND `phases-2-4` mode — `full` mode previously left this under-specified, allowing a single agent to collapse the whole phase and hide the parallelism the skill was designed for. The first cycle establishes the section baseline at maximum fidelity; that quality propagates through every later cycle and into authoring. Harness-enforced: the `standard-mode-first-pass-guard.sh` hook denies a `phase4-prioritise-author:` dispatch until ≥ 2 distinct `phase4-cycle-1-section-<id>:` dispatches have been recorded, and denies a dispatch description that names ≥ 3 canonical section IDs in one brief (the single-agent-collapse heuristic).
@@ -484,6 +485,7 @@ Each journey is a self-contained block so a downstream subagent can be handed **
 
 ### j-<slug>: <name>
 **Priority:** P0 | P1 | P2 | P3
+**Risk factors:** [comma-separated factors from the canonical vocabulary in `references/phases.md` §"Defect-likelihood risk factors", or `none`]
 **Category:** Conversion | Core experience | Content | Account | Error recovery | Return visitor
 **Entry:** /path
 **Pages touched:** [comma-separated list of URLs or page names from the site map]

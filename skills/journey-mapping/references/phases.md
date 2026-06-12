@@ -204,17 +204,44 @@ For each flow, ask:
 If the app's business purpose is unclear, ask the user:
 > "What is the primary goal of this application? What action do you most want users to complete?"
 
+### Defect-likelihood risk factors (second axis)
+
+Priority captures **business impact** — what it costs when the flow breaks. It says nothing about **how likely the flow is to break**. A static legal page and a payment integration can both be reachable from the footer, but only one of them has the failure surface of a distributed system. Risk factors capture that second axis so downstream adversarial work concentrates where defects actually live.
+
+Tag each journey with every factor that applies, from this canonical vocabulary:
+
+| Factor | Applies when the journey... |
+|---|---|
+| `state-mutation` | Creates, updates, or deletes server-side records (anything beyond reads) |
+| `payment` | Touches payment entry, pricing computation, discounts, refunds, or billing |
+| `pii` | Collects, displays, or exports personal data (emails, addresses, documents, health/financial data) |
+| `auth-boundary` | Crosses an authentication or authorization boundary (login, role switch, permission-gated actions, resource ownership) |
+| `concurrent-use` | Involves resources multiple users or sessions can mutate simultaneously (shared inventory, bookings, collaborative editing) |
+| `third-party` | Depends on an external integration observed at runtime (payment gateways, calendars, maps, embedded widgets, OAuth providers) |
+| `async-heavy` | Relies on background processing the UI polls or waits for (report generation, email delivery, queued jobs, websocket pushes) |
+| `complex-validation` | Has multi-field, cross-field, or stateful input validation (wizards, conditional forms, file uploads with constraints) |
+
+Evidence for each tag comes from Phase 1/2 observation — network shapes recorded during discovery, the Test Infrastructure probe's mutation-endpoint table, third-party origins seen in snapshots. Do not tag speculatively: a factor with no observed evidence is a guess, and guesses inflate every downstream pass.
+
+**Derived risk tier:** a journey with **two or more** factors is `risk: elevated`; zero or one factor is `risk: baseline`.
+
+**What risk does and does not do:**
+
+- Risk **never changes the P-tier.** A P3 journey with `payment` + `third-party` factors stays P3 for coverage *depth* — it gets elevated *adversarial* attention, not a promoted variant portfolio. Conflating the axes is how peripheral journeys quietly absorb P0-level budget.
+- Downstream consumers read the tier: `coverage-expansion` dispatches elevated-risk journeys per-journey (never inside `[group]` / `[P3-batch]` dispatches) and orders them first within their priority tier; `bug-discovery` probes elevated-risk journeys first within a pass and weights its probe categories toward the tagged factors (e.g. `concurrent-use` → race-condition and concurrent-state probes; `auth-boundary` → permission/access and IDOR probes).
+- A journey map without risk tags (produced before this field existed) is still valid — consumers treat every journey as `risk: baseline` and behave exactly as before.
+
 ### Output
 
-The flow list from Phase 2, now with priorities assigned:
+The flow list from Phase 2, now with priorities and risk factors assigned:
 
 ```markdown
-| Priority | Flow | Category | Entry → Exit |
-|----------|------|----------|-------------|
-| P0 | Visitor to Contact | Conversion | / → /contact → booking |
-| P1 | Service browsing | Core experience | / → /services/* → /contact |
-| P2 | Content discovery | Content | / → /guides → /guides/* |
-| P3 | Legal review | Peripheral | footer → /terms-conditions |
+| Priority | Flow | Category | Risk factors | Entry → Exit |
+|----------|------|----------|--------------|-------------|
+| P0 | Visitor to Contact | Conversion | third-party | / → /contact → booking |
+| P1 | Service browsing | Core experience | none | / → /services/* → /contact |
+| P2 | Content discovery | Content | none | / → /guides → /guides/* |
+| P3 | Legal review | Peripheral | none | footer → /terms-conditions |
 ```
 
 ---

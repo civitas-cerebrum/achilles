@@ -8,7 +8,7 @@
 
 ## When this protocol runs
 
-Stage 4a runs after a test reaches passing state in stabilization, **before** Stage 4b (API Compliance Review). It reviews the freshly-written tests against six best-practice checks — three reliability checks, two speed checks, one DRY check — and applies fixes before handing off to 4b.
+Stage 4a runs after a test reaches passing state in stabilization, **before** Stage 4b (API Compliance Review). It reviews the freshly-written tests against seven best-practice checks — four reliability checks, two speed checks, one DRY check — and applies fixes before handing off to 4b.
 
 The protocol assumes:
 
@@ -18,7 +18,7 @@ The protocol assumes:
 
 Missing either of those two → stop the protocol, return an error pointing the caller at the missing prerequisite. Do not synthesize the missing artifact.
 
-**Single-spec mode.** If `journey-map.md` exists and has the sentinel but no journey blocks are populated with `UI-covers:` fields yet (e.g. during onboarding's Phase 3 happy-path before Phase 4 produces the full map), Stage 4a runs in **single-spec mode**: §4 (API shortcuts) is skipped entirely — no UI-covers registry to consult, so all prerequisites stay UI-driven. Checks §1, §2, §3, §5, §6 still apply. The `next_stage` of the structured return notes `mode: single-spec`.
+**Single-spec mode.** If `journey-map.md` exists and has the sentinel but no journey blocks are populated with `UI-covers:` fields yet (e.g. during onboarding's Phase 3 happy-path before Phase 4 produces the full map), Stage 4a runs in **single-spec mode**: §4 (API shortcuts) is skipped entirely — no UI-covers registry to consult, so all prerequisites stay UI-driven. Checks §1, §2, §3, §3b, §5, §6 still apply. The `next_stage` of the structured return notes `mode: single-spec`.
 
 ## Placeholder convention
 
@@ -42,6 +42,7 @@ A template with any unresolved `«…»` placeholder MUST NOT be written into `b
 | 1 | Reliability | State isolation (`beforeEach(resetState)`) | yes (per-spec insert) |
 | 2 | Reliability | Hardcoded shared resources | yes (per-spec rotate or fall through to #1) |
 | 3 | Reliability | Per-run uniqueness (`Date.now()`/`crypto.randomUUID()`) | yes (per-spec rewrite literal) |
+| 3b | Reliability | Assertion robustness — oracle audit | yes (per-spec rewrite assertion) / flag-only for copy-churn |
 | 4 | Speed | API shortcuts for tested prerequisites | yes (per-spec replace UI prereq with helper call; populate helper in `base.ts` if absent) |
 | 5 | Speed | Cookie banner / persistent modal handling | yes (per-spec strip duplicated dismiss; populate `dismissBanners` in `base.ts`) |
 | 6 | DRY | Serial mode discipline | flag-only (do not silently strip `mode: 'serial'`) |
@@ -207,6 +208,29 @@ const email = `new-user-${Date.now()}@test.com`;
 For values that participate in case-sensitivity tests, prefer `crypto.randomUUID().slice(0, 8)` to avoid timing collisions.
 
 **Allowance — duplicate-detection tests:** if the spec is *about* duplicate detection (file name or describe title contains `duplicate` / `already-exists` / `taken`), the literal stays — the test is verifying the duplicate path. Add a `// stage4a:duplicate-deliberate` comment for human review and skip the auto-fix.
+
+## §3b Assertion robustness (oracle audit)
+
+§3 hardens the *input* side of a test (what the test types in). §3b hardens the *oracle* side (what the test asserts). A test whose assertion hardcodes a value the app computes — a timestamp, a count that depends on seed data, a locale-formatted price — passes today and fails the moment the data, locale, or clock shifts. Those failures then consume a full failure-diagnosis pipeline run only to end in heal (d) assertion re-baseline. This check catches them before the test ever lands.
+
+**Trigger:** any assertion in the spec under review whose expected value is a literal in one of these volatile classes:
+
+| Volatile class | Example literal | Robust replacement |
+|---|---|---|
+| **Timestamps / dates** | `verifyText('createdAt', '2026-06-12')` | Derive from the test's own clock context, or assert shape: `expect(...).text.toMatch(/\d{4}-\d{2}-\d{2}/)` |
+| **Server-generated IDs** | `verifyText('orderId', 'ORD-10231')` | Capture the ID at creation (extraction step or API response) and assert the round-trip, or assert shape via regex |
+| **Counts dependent on seed data** | `verifyCount('Page', 'rows', { exactly: 14 })` | Assert the *delta* the test caused: capture count before, assert `before + 1` after — not an absolute that drifts with the dataset |
+| **Locale / currency formatting** | `verifyText('total', '$1,234.56')` | Derive the expected total from the test's own inputs and format it the same way, or assert the numeric substring |
+| **Aggregates the app computes** | `verifyText('cartTotal', '42.50')` | Recompute from the items the test added (`price × qty`), assert the derived value |
+| **Order-dependent list reads** | `getAll()[2]` then assert its text | Match by content (`byText` / `withDescendant`), not position, unless the test is *about* ordering (`verifyListOrder` is the right tool there) |
+
+**Rule:** the expected value of every assertion must be traceable to one of: (a) the test's own inputs (round-trip oracle — the strongest form), (b) a value captured earlier in the same test (extraction or API response), (c) a documented invariant from `app-context.md`, or (d) a shape assertion (regex / matcher tree predicate) when the exact value is genuinely nondeterministic. A bare literal in a volatile class satisfies none of these.
+
+**Auto-fix:** rewrite the assertion to the robust replacement from the table — prefer (a) round-trip derivation, fall back to delta assertions for counts and shape assertions (`.toMatch`, `.satisfy(...)`) for server-generated values. The Steps API matcher tree (`steps.expect(...).text.toMatch(...)`, `.count`, `.satisfy(...)`) covers every replacement form; no raw-Playwright escape needed.
+
+**Flag-only branch — exact-copy assertions:** when the assertion is *about* the exact copy (error-message wording tests, i18n string tests, legal text), the literal is the point. Add a `// stage4a:oracle-deliberate` comment and surface `{ rule: '§3b', severity: 'review' }` in the structured return instead of rewriting. Marketing-adjacent copy (hero text, taglines) gets the same flag — those strings churn with campaigns, and the human reviewer decides whether the test should anchor on a stable substring instead.
+
+**What this check is not:** it does not relax assertions. Replacing `exactly: 14` with `greaterThan: 0` is assertion-weakening, not oracle-hardening — the delta form keeps the assertion strength while removing the seed-data coupling. If a robust replacement cannot preserve the assertion's discriminating power, flag for review rather than weaken.
 
 ## §4 API shortcuts for tested prerequisites
 
@@ -422,6 +446,7 @@ Stage 4a returns a structured JSON-shaped block back to its caller. The block is
   "fixtures_modified": ["tests/fixtures/base.ts"],
   "findings": [
     { "rule": "§1", "severity": "fixed", "spec": "<path>", "summary": "Inserted beforeEach(resetState)." },
+    { "rule": "§3b", "severity": "fixed", "spec": "<path>", "summary": "Rewrote hardcoded row count to a captured-before/delta assertion." },
     { "rule": "§4", "severity": "fixed", "spec": "<path>", "summary": "Replaced UI signup with setAuthCookie() (login UI-covered in j-login-to-purchase)." },
     { "rule": "§4", "severity": "gap-flagged", "spec": "<path>", "summary": "Cart-add not UI-covered in any journey; kept UI flow and flagged journey-mapping." },
     { "rule": "§6", "severity": "review", "spec": "<path>", "summary": "Serial mode without sentinel; inserted // stage4a:serial-mode-review comment." }

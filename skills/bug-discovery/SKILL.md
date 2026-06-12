@@ -124,6 +124,23 @@ This skill runs in two scopes. The probing categories below apply to both, but t
 
 When standalone, derive an analogous per-page negative-case list on the fly: for every primary positive flow you observe on a page (the "QA happy-path" interpretation), enumerate at least one negative complement (missing required field, malformed input, unauthorised access, replay / idempotency, session boundary) before moving on. The matrix concept does not vanish in standalone mode — it is built ad-hoc from observation rather than supplied in a brief.
 
+### Risk-weighted probe ordering
+
+When a sentinel-bearing `journey-map.md` with `Risk factors:` fields is available (see `journey-mapping/references/phases.md` §"Defect-likelihood risk factors"), use it to order and weight probing — within each priority tier, probe `risk: elevated` journeys (2+ factors) before `risk: baseline` siblings, and weight probe categories toward the tagged factors:
+
+| Risk factor | Probe categories to weight |
+|---|---|
+| `state-mutation` | State transitions (double-submit, refresh mid-flow), data lifecycle |
+| `payment` | Boundary inputs on amounts (zero, negative, precision), replay / idempotency, out-of-order operations |
+| `pii` | Permission/access (other users' resources), data edge cases (exports, long values), session boundaries |
+| `auth-boundary` | Permission/access, `auth-tamper`, `idor`, role/session transitions |
+| `concurrent-use` | Race conditions, concurrent state (two-tab edits), cumulative state |
+| `third-party` | Upstream dependency failures, interrupted flows (widget timeout mid-flow) |
+| `async-heavy` | Interrupted flows, race conditions (interact during processing), cumulative state |
+| `complex-validation` | Boundary inputs, out-of-order operations (skip wizard steps), cross-feature |
+
+Weighting raises the floor for the tagged categories — it never excuses skipping the others, and the negative-case matrix remains the non-negotiable baseline either way. Without risk fields in the map (or in standalone mode without a map), derive the same signal from observation: pages firing mutation endpoints, payment forms, and role-gated routes get probed first.
+
 **App-wide bug-discovery is a parent-only orchestrator.** Dispatching this skill as a subagent at app-wide scope (Phase 1a / Phase 1b across multiple journeys, "standalone bug-discovery", "fan out probes") hits the recursive-dispatch wall — subagents cannot fan out their own children. The parent must iterate journeys itself and dispatch one `probe-j-<slug>:` Agent call per journey directly. The journey-scoped invocation (called by `coverage-expansion` as a Pass-4/5 leaf) is leaf-shape and remains valid. **Methodology rule** — app-wide / multi-journey dispatches via orchestrator-role language are forbidden, regardless of whether the literal "skill"/"SKILL.md" word appears; per-journey single-scope dispatches with `probe-j-<slug>:` description prefix are the only valid form. (The harness-enforcement hook for this rule was retired in the 0.3.6 cleanup.)
 
 ### Relevance grouping for Phase 6 probes
@@ -137,6 +154,7 @@ Per-journey dispatch is the default for Phase 6 element and flow probing — one
 - **Same section / shared `Pages touched`.** Group by relevance — auth-section journeys together, cart-section journeys together, etc. Section sharing is what makes the per-journey context overhead amortise.
 - **Cap 7.** Maximum 7 journeys per group. If a relevance cluster has 9 journeys, split into 7+2.
 - **No journeys carrying flagged remediation work.** If a journey is being re-probed because a prior pass surfaced a gap that needs targeted attention, dispatch it per-journey, not in a group.
+- **No elevated-risk journeys.** A journey whose map block carries 2+ `Risk factors:` tags (`risk: elevated` per `journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is probed per-journey, not in a group — concentrated failure surfaces deserve a dedicated brief. Journeys without the field default to `risk: baseline` and group normally.
 
 **Role-prefix.** Dispatch description: `[group] probe-j-<a>,probe-j-<b>,...:`. Items must all be `probe-j-` slugs (priority-pure, no mixing with `composer-j-`). Cap-7 rule, enforced by methodology (the comma count in the description tells you whether you're at the cap). The dispatch-guard hook that previously enforced this was retired in the 0.3.6 cleanup; the rule still applies. The parent-only-orchestrator methodology rule treats `[group]` dispatches the same way it treats `[P3-batch]` — both are valid leaf-shape forms.
 
@@ -215,9 +233,10 @@ Shift from discovery to analysis. NOW read the accumulated context.
 ### Steps
 
 1. Read `app-context.md` — check "Known issues" for each page
-2. Filter out findings already documented as known quirks or accepted behavior
-3. Flag findings that **contradict** documented behavior — these escalate, they do NOT get filtered out
-4. Note any discrepancies between documented state and observed state for Phase 4
+2. Read the prior `docs/e2e/bug-discovery-report.md` if one exists — findings whose triage status is `deferred` or `wontfix` (see Phase 7 §"Triage lifecycle") are operator-accepted behaviour and filter like known issues; findings at `fix-in-progress` or `fix-verified` are re-check candidates for Phase 3
+3. Filter out findings already documented as known quirks or accepted behavior
+4. Flag findings that **contradict** documented behavior — these escalate, they do NOT get filtered out. A re-observed finding that was `wontfix` but now presents at higher severity also escalates rather than filters
+5. Note any discrepancies between documented state and observed state for Phase 4
 
 ### Output
 
@@ -412,6 +431,7 @@ Run DOM-only issues: `npx playwright test --grep @dom-only`
 
 ### [BUG-001] Title
 **Severity:** Critical | High | Medium | Low
+**Triage:** new | acknowledged | fix-in-progress | fix-verified | deferred | wontfix
 **Visibility:** User-visible (confirmed via screenshot)
 **Category:** Boundary input | State transition | Race condition | ...
 **Phase discovered:** 1a | 1b | 4
@@ -442,6 +462,27 @@ Each entry asks: "Is this intentional?"
 - Categories covered: [list]
 - Areas not probed (and why): [list]
 ```
+
+### Triage lifecycle
+
+A report whose findings never change state is a snapshot, not a tracking instrument. Every finding carries a `**Triage:**` status:
+
+| Status | Meaning | Who sets it |
+|---|---|---|
+| `new` | Found this run, not yet seen by the operator | This skill, at report time — always the initial value |
+| `acknowledged` | Operator has seen it; fix not started | Operator (or this skill, on operator instruction) |
+| `fix-in-progress` | A fix is being worked | Operator |
+| `fix-verified` | The reproduction test passes — the bug is gone | **This skill only**, and only on reproduction-test evidence |
+| `deferred` | Operator accepts the bug for now; revisit later | Operator — requires an in-conversation operator decision, never self-assigned |
+| `wontfix` | Operator declares the behaviour accepted permanently | Operator — same rule; record the operator's stated reason on the entry |
+
+**Rules:**
+
+- This skill never assigns `deferred` or `wontfix` on its own judgement — accepting a bug is the operator's call, and self-assigned acceptance is silent scope compression. Record the operator's verbatim instruction on the entry.
+- `fix-verified` requires evidence, not absence: the finding's Phase-6 reproduction test (which asserts *correct* behaviour) now passes. A finding that merely failed to reproduce in a later probe stays at its current status with a `live-unconfirmed` note — same epistemics as the static-mode rule.
+- Severity never changes as part of triage. A bug deferred at `high` is still `high` — the two fields answer different questions ("how bad" vs "what are we doing about it").
+
+**Re-run reconciliation.** When this skill runs against an app with a prior report, Phase 3 (test cross-reference) re-runs the reproduction tests of every prior finding not at `deferred`/`wontfix`/`fix-verified`: a passing reproduction test flips the entry to `fix-verified` (dated); a still-failing one keeps its status and gets a re-observed note. The new report carries forward all prior entries with their statuses — findings are never dropped from the report by a later run, only advanced.
 
 ### Post-Report
 
