@@ -484,4 +484,13 @@ assert_deny "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
   old_string='"reviewerCycles":0' new_string='"reviewerCycles":1')" \
   "Edit whose old_string is not unique (replace_all absent) → DENY" "could not be synthesised"
 
+# 5. old_string occurs multiple times, replace_all=true, schema-valid result
+#    → ALLOW (exercises the validator bundle's --all plumbing end-to-end).
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+P_RA=$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='"reviewerCycles":0' new_string='"reviewerCycles": 0')
+P_RA=$(echo "$P_RA" | "$JQ" -c '.tool_input.replace_all = true')
+assert_allow "$H" "$P_RA" \
+  "Edit with replace_all=true on a non-unique old_string, schema-valid result → ALLOW (--all plumbing)"
+
 rm -f "$LEDGER_PATH"

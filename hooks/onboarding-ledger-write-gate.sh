@@ -111,6 +111,9 @@ emit_deny() {
 # matching the Edit tool's semantics, including uniqueness and
 # replace_all). For Edit without an existing file, the operation will
 # fail downstream — silent allow here.
+# NB: command substitution strips a trailing newline vs the actual on-disk
+# write — benign for JSON (parse/validation insensitive), would matter for
+# whitespace-sensitive formats.
 PROPOSED_CONTENT=""
 case "$TOOL_NAME" in
   Write)

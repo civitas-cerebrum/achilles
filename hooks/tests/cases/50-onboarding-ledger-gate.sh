@@ -231,3 +231,20 @@ assert_deny "$H" "$(payload tool_name=Agent description='phase2-groundwork' prom
 
 rm -f "$SIDECAR_50"
 clear_ledger
+
+# ---------------------------------------------------------------------------
+section "ledger-gate: any reviewer scope is allow-listed (unified reviewer-prefix)"
+# The allow-list previously hardcoded (phase[1-8]|pass[1-5]|cycle[1-5]) — a
+# legitimate workflow-reviewer-pass9: dispatch (long coverage runs exceed 5
+# passes) was denied at transition points while the approver registry
+# accepted it. The shared lib/reviewer-prefix.sh helper widens the
+# allow-list to any reviewer scope.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 2 |
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "pending" |
+  .phases[0].handoverEnvelope = {"role":"phase1-scaffold","status":"complete"}
+')"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-pass9: pass-9 dedup verification' prompt='Review.' cwd="$TMP_REPO")" \
+  "workflow-reviewer-pass9 at transition point → ALLOW (widened allow-list)"
+clear_ledger

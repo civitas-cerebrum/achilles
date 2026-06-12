@@ -135,9 +135,9 @@ const HOOK_MANIFEST = [
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every
   // phase / pass / cycle transition through a workflow-reviewer-*
-  // subagent. 10s timeout for the Agent gate (may shell out to git +
-  // jq); 3s timeout for the write gate (read-only-ish — Ajv compile
-  // plus a JSON parse).
+  // subagent. 10s timeout for both gates — the write gate boots node and
+  // compiles the Ajv validator bundle (plus Edit-content synthesis), which
+  // can exceed 3s on a cold start.
   { file: 'onboarding-ledger-gate.sh',            event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   // Approver registry: records workflow-reviewer-* / phase-validator-*
   // dispatches so the ledger-write-gate can verify approval transitions
@@ -147,7 +147,7 @@ const HOOK_MANIFEST = [
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
-  { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 3 },
+  { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
   // Tamper-evident ledger chain: Pre verifies the on-disk ledger against
   // the sanctioned hash sidecar; Post records each sanctioned write.
   { file: 'ledger-integrity-chain.sh',            event: 'PreToolUse',  matcher: 'Write|Edit', timeout: 5 },

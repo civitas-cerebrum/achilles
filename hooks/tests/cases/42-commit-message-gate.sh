@@ -40,3 +40,21 @@ assert_deny "$H" "$(payload tool_name=Bash command="git commit -m 'feat(onboardi
 
 section "commit-message-gate: review(...) commits DENY"
 assert_deny "$H" "$(payload tool_name=Bash command="git commit -m 'review(j-checkout): findings'")" "review(...) → DENY" "Review-tagged commits are forbidden"
+
+section "commit-message-gate: --message= / -F <file> extraction + heredoc fallback"
+# --message=<msg> form carries the same banned patterns as -m.
+assert_deny "$H" "$(payload tool_name=Bash command="git commit --message='review(j-checkout): findings'")" \
+  "--message= with review(...) → DENY" "Review-tagged commits are forbidden"
+# -F <path>: the gate reads the message from the file when it exists.
+MSGFILE_42=$(mktemp /tmp/commit-msg-gate-XXXXXX)
+printf 'review(j-checkout): findings from pass 2\n' > "$MSGFILE_42"
+assert_deny "$H" "$(payload tool_name=Bash command="git commit -F $MSGFILE_42")" \
+  "-F <file> with banned message inside the file → DENY" "Review-tagged commits are forbidden"
+rm -f "$MSGFILE_42"
+# Unparseable message source (heredoc via -F -): deny only when the raw
+# command string matches the banned patterns — a clean heredoc message allows.
+HEREDOC_CLEAN_42='git commit -F - <<EOF
+test(j-checkout): cycle-2 — multi-item variant
+EOF'
+assert_allow "$H" "$(payload tool_name=Bash command="$HEREDOC_CLEAN_42")" \
+  "heredoc commit with clean message → ALLOW"

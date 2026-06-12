@@ -91,8 +91,13 @@ emit_deny() {
   }'
 }
 
-# Rule 4 (allow-list): workflow-reviewer-* dispatches always pass.
-if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*workflow-reviewer-(phase[1-8]|pass[1-5]|cycle[1-5])[:_-]'; then
+# Rule 4 (allow-list): approver-role dispatches (workflow-reviewer-* /
+# phase-validator-*) always pass. Detection lives in lib/reviewer-prefix.sh
+# — the same helper the approver registry uses, so the allow-list can never
+# drift from the set of scopes the registry accepts.
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+if is_reviewer_description "$DESCRIPTION"; then
   exit 0
 fi
 

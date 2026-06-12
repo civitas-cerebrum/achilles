@@ -14,29 +14,33 @@ assert_allow "$H" "$(payload tool_name=Write file_path='/tmp/x')" "Write → sil
 section "reviewer-brief-gate: non-reviewer Agent prefixes are silent allow"
 assert_allow "$H" "$(payload tool_name=Agent description='composer-j-x' prompt='compose')" "composer- → silent allow"
 assert_allow "$H" "$(payload tool_name=Agent description='probe-j-y' prompt='probe')" "probe- → silent allow"
-assert_allow "$H" "$(payload tool_name=Agent description='phase-validator-1' prompt='validate')" "phase-validator- → silent allow"
+# Separator-less prefix is outside the canonical reviewer-prefix contract.
+assert_allow "$H" "$(payload tool_name=Agent description='phase-validator-1' prompt='validate')" "separator-less phase-validator-1 → silent allow"
+
+section "reviewer-brief-gate: phase-validator-N: dispatches are gated too (unified reviewer-prefix)"
+assert_deny "$H" "$(payload tool_name=Agent description='phase-validator-1: greenlight phase 1' prompt='just approve')" "phase-validator-1: short brief → DENY" "Brief too short"
 
 section "reviewer-brief-gate: well-formed brief allows"
-assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1' prompt="$GOOD_BRIEF")" "complete brief → ALLOW"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' prompt="$GOOD_BRIEF")" "complete brief → ALLOW"
 
 section "reviewer-brief-gate: missing ledger reference DENIES"
 NO_LEDGER='You are workflow-reviewer-phase1. Read the deliverables and verify them against the exit criteria. Use the workflow-reviewer.schema.json shape. Inspect the on-disk Playwright config and fixtures. Emit verdict: approve only after this verification; otherwise verdict: reject with surgical findings naming each gap. The reviewer must run the methodology checklist in full.'
-assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1' prompt="$NO_LEDGER")" "missing ledger ref → DENY" "Missing ledger reference"
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' prompt="$NO_LEDGER")" "missing ledger ref → DENY" "Missing ledger reference"
 
 section "reviewer-brief-gate: missing verification verb DENIES"
 NO_VERB='You are workflow-reviewer-phase1. The dispatcher knows that phases[0].handoverEnvelope at tests/e2e/docs/onboarding-status.json shows everything is fine. Phase 1 is done. The deliverables array is populated. The status is completed. The handoverEnvelope has the right shape. The exit criteria from skills/onboarding/SKILL.md are satisfied. Return verdict approve with the workflow-reviewer.schema.json shape.'
-assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1' prompt="$NO_VERB")" "missing verification verb → DENY" "Missing verification verb"
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' prompt="$NO_VERB")" "missing verification verb → DENY" "Missing verification verb"
 
 section "reviewer-brief-gate: too-short brief DENIES"
 SHORT='workflow-reviewer-phase1: Read tests/e2e/docs/onboarding-status.json, approve if good.'
-assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1' prompt="$SHORT")" "too short → DENY" "Brief too short"
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' prompt="$SHORT")" "too short → DENY" "Brief too short"
 
 section "reviewer-brief-gate: multiple violations enumerated in a single DENY"
 BAD='do the thing'
-assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-pass2' prompt="$BAD")" "all three violations → DENY" "Brief too short"
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-pass2: review pass 2' prompt="$BAD")" "all three violations → DENY" "Brief too short"
 
 section "reviewer-brief-gate: bypass env disables the gate"
-BYPASS_INPUT=$(payload tool_name=Agent description='workflow-reviewer-cycle1' prompt='short')
+BYPASS_INPUT=$(payload tool_name=Agent description='workflow-reviewer-cycle1: review cycle 1' prompt='short')
 TESTS_RUN=$((TESTS_RUN+1))
 BYPASS_OUT=$(printf '%s' "$BYPASS_INPUT" | WORKFLOW_REVIEWER_BRIEF_GATE=off bash "$H" 2>/dev/null)
 BYPASS_EC=$?
@@ -47,5 +51,5 @@ else
 fi
 
 section "reviewer-brief-gate: workflow-reviewer-pass<N> and -cycle<N> also gated"
-assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-pass2' prompt='quick approval')" "pass2 short brief → DENY" "Brief too short"
-assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-cycle1' prompt='quick approval')" "cycle1 short brief → DENY" "Brief too short"
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-pass2: review pass 2' prompt='quick approval')" "pass2 short brief → DENY" "Brief too short"
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-cycle1: review cycle 1' prompt='quick approval')" "cycle1 short brief → DENY" "Brief too short"

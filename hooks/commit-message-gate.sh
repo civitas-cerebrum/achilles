@@ -116,14 +116,36 @@ Fix: investigate the underlying issue and address it. Hooks exist to catch real 
   exit 0
 fi
 
-# Extract commit message via -m"..." or -m '...'.
+# Extract the commit message. Recognised sources, in order:
+#   -m "..." / -m '...'            (first -m flag)
+#   --message="..." / --message='...'
+#   -F <path> / --file <path>      (message read from the file when it exists)
 MSG=$(echo "$CMD" | grep -oE -- "-m[[:space:]]*['\"][^'\"]+['\"]" | head -1 | sed -E "s/^-m[[:space:]]*['\"]//;s/['\"]$//" || true)
+if [ -z "$MSG" ]; then
+  MSG=$(echo "$CMD" | grep -oE -- "--message=['\"][^'\"]+['\"]" | head -1 | sed -E "s/^--message=['\"]//;s/['\"]$//" || true)
+fi
+if [ -z "$MSG" ]; then
+  MSG_FILE=$(echo "$CMD" | grep -oE -- "(-F|--file)[[:space:]=][[:space:]]*[^[:space:]]+" | head -1 \
+    | sed -E "s/^(-F|--file)[[:space:]=][[:space:]]*//;s/^['\"]//;s/['\"]$//" || true)
+  if [ -n "$MSG_FILE" ] && [ "$MSG_FILE" != "-" ] && [ -f "$MSG_FILE" ]; then
+    MSG=$(cat "$MSG_FILE" 2>/dev/null || true)
+  fi
+fi
+
+# When the message source is unparseable (heredoc via `-F -`, command
+# substitution, an editor-composed message, …) fall back to scanning the
+# RAW command string: deny only when a banned pattern appears verbatim
+# there; otherwise allow. Never deny blind on extraction failure.
+SCAN="$MSG"
+if [ -z "$SCAN" ]; then
+  SCAN="$CMD"
+fi
 
 # Anti-pattern: multi-journey commit shape  test(j-a,j-b,...): ...
-if echo "$MSG" | grep -qE 'test\([^)]*j-[a-z0-9-]+[[:space:]]*,'; then
+if echo "$SCAN" | grep -qE 'test\([^)]*j-[a-z0-9-]+[[:space:]]*,'; then
   emit_deny "[BLOCKED] Multi-journey commit detected.
 
-Message: \"${MSG}\"
+Message: \"${SCAN}\"
 
 Fix: split into one commit per journey. The convention from coverage-expansion §\"Commit-message conventions\" is one journey per commit, no exceptions:
 
@@ -135,10 +157,10 @@ Why: per-journey commits make the git log filterable by j-<slug>. A multi-journe
 fi
 
 # Anti-pattern: feat(e2e): ... — coverage expansion / e2e tests are never `feat`.
-if echo "$MSG" | grep -qiE '^feat\((e2e|tests|test|coverage|journey|onboarding)\)'; then
+if echo "$SCAN" | grep -qiE '^feat\((e2e|tests|test|coverage|journey|onboarding)\)'; then
   emit_deny "[BLOCKED] Test/coverage commits are 'test:' not 'feat:'.
 
-Message: \"${MSG}\"
+Message: \"${SCAN}\"
 
 Fix: use the convention from coverage-expansion §\"Commit-message conventions\":
 
@@ -155,10 +177,10 @@ fi
 # commits per coverage-expansion/SKILL.md §"Commit-message conventions"
 # and §"Dual-stage per-pass contract". Reviewer judgements live in the
 # state file, not the git log.
-if echo "$MSG" | grep -qiE '^review\('; then
+if echo "$SCAN" | grep -qiE '^review\('; then
   emit_deny "[BLOCKED] Review-tagged commits are forbidden.
 
-Message: \"${MSG}\"
+Message: \"${SCAN}\"
 
 Fix: Stage B reviewer judgements go in the state file's per-journey \`review_status\` and \`final_must_fix\` fields, never as commits. The git log records what landed (Stage A's tests, ledger entries, regression locks) — not the review trail.
 
