@@ -7,6 +7,9 @@
 
 H="$HOOK_DIR/selector-development-pipeline-stepper.sh"
 
+# Portable sha256 helper (macOS ships shasum, not sha256sum)
+. "$HOOK_DIR/lib/hash.sh"
+
 # ---------------------------------------------------------------------------
 # Workspace builders
 # ---------------------------------------------------------------------------
@@ -680,11 +683,17 @@ printf '{"lockfileVersion":3}\n' > "$UNRELATED_FILE"
 
 # Stage ONLY the frontend file first and compute its per-file hash
 git -C "$WS_GIT" add src/Button.tsx
-EXPECTED_HASH=$(git -C "$WS_GIT" diff --cached -- src/Button.tsx | sha256sum | awk '{print $1}')
+_tmp_hash_14a=$(mktemp)
+git -C "$WS_GIT" diff --cached -- src/Button.tsx > "$_tmp_hash_14a"
+EXPECTED_HASH=$(file_sha256 "$_tmp_hash_14a")
+rm -f "$_tmp_hash_14a"
 
 # Now also stage the unrelated file — the full staging area hash will differ
 git -C "$WS_GIT" add package-lock.json
-FULL_STAGING_HASH=$(git -C "$WS_GIT" diff --cached | sha256sum | awk '{print $1}')
+_tmp_hash_14b=$(mktemp)
+git -C "$WS_GIT" diff --cached > "$_tmp_hash_14b"
+FULL_STAGING_HASH=$(file_sha256 "$_tmp_hash_14b")
+rm -f "$_tmp_hash_14b"
 
 # Confirm the two hashes differ (validates the test setup is meaningful)
 TESTS_RUN=$((TESTS_RUN + 1))
@@ -824,7 +833,10 @@ SPACED_FILE="$WS_SPACE/src/my component/Button.tsx"
 printf 'export const Button = () => <button data-testid="submit-button">Click</button>;\n' > "$SPACED_FILE"
 git -C "$WS_SPACE" add "src/my component/Button.tsx"
 
-SPACE_HASH=$(git -C "$WS_SPACE" diff --cached -- "src/my component/Button.tsx" | sha256sum | awk '{print $1}')
+_tmp_hash_16=$(mktemp)
+git -C "$WS_SPACE" diff --cached -- "src/my component/Button.tsx" > "$_tmp_hash_16"
+SPACE_HASH=$(file_sha256 "$_tmp_hash_16")
+rm -f "$_tmp_hash_16"
 
 printf '%s' "submit-button" > "$WS_SPACE/tests/e2e/.selector-development/.current-scope"
 jq -n \

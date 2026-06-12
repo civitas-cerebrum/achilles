@@ -20,6 +20,10 @@ assert_allow "$H" "$(payload tool_name=Agent description='phase-validator-1' pro
 section "reviewer-brief-gate: phase-validator-N: dispatches are gated too (unified reviewer-prefix)"
 assert_deny "$H" "$(payload tool_name=Agent description='phase-validator-1: greenlight phase 1' prompt='just approve')" "phase-validator-1: short brief → DENY" "Brief too short"
 
+section "reviewer-brief-gate: well-formed phase-validator brief allows"
+GOOD_PV_BRIEF='You are phase-validator-3. Read the ledger at tests/e2e/docs/onboarding-status.json and verify that phases[2].handoverEnvelope + .deliverables match the Phase 3 exit criteria documented in skills/onboarding/SKILL.md. The canonical return shape is workflow-reviewer.schema.json. Inspect the on-disk Playwright config, tests/e2e/fixtures/, tests/e2e/docs/ structure, and confirm .gitignore additions are present. Emit verdict: approve only after this verification is complete; otherwise verdict: reject with surgical findings naming each gap.'
+assert_allow "$H" "$(payload tool_name=Agent description='phase-validator-3: validate phase 3' prompt="$GOOD_PV_BRIEF")" "phase-validator-3: complete brief → ALLOW"
+
 section "reviewer-brief-gate: well-formed brief allows"
 assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' prompt="$GOOD_BRIEF")" "complete brief → ALLOW"
 
