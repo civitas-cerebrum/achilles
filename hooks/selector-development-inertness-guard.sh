@@ -33,14 +33,21 @@
 
 set -euo pipefail
 
+JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
+[ -x "$JQ" ] || JQ="$(command -v jq || true)"
+if [ -z "$JQ" ]; then
+  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
+  exit 1
+fi
+
 # Resolve hook's own lib directory so the validator can be found when this hook
 # is installed into ~/.claude/hooks/ (where $ws/hooks/lib won't exist).
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 HOOK_LIB="$HOOK_DIR/lib"
 
 input=$(cat)
-tool_name=$(echo "$input" | jq -r '.tool_name // empty')
-file_path=$(echo "$input" | jq -r '.tool_input.file_path // empty')
+tool_name=$(echo "$input" | "$JQ" -r '.tool_name // empty')
+file_path=$(echo "$input" | "$JQ" -r '.tool_input.file_path // empty')
 
 case "$tool_name" in Edit|Write) ;; *) exit 0 ;; esac
 
@@ -81,14 +88,14 @@ before_content=$(cat "$file_path")
 
 # Compute after content from tool payload
 if [ "$tool_name" = "Write" ]; then
-  after_content=$(echo "$input" | jq -r '.tool_input.content // empty')
+  after_content=$(echo "$input" | "$JQ" -r '.tool_input.content // empty')
 elif [ "$tool_name" = "Edit" ]; then
-  old_string=$(echo "$input" | jq -r '.tool_input.old_string // empty')
-  new_string=$(echo "$input" | jq -r '.tool_input.new_string // empty')
+  old_string=$(echo "$input" | "$JQ" -r '.tool_input.old_string // empty')
+  new_string=$(echo "$input" | "$JQ" -r '.tool_input.new_string // empty')
   # Apply the Edit's single-occurrence replacement via python3 (safe for arbitrary content).
   after_content=$(python3 -c "import sys, json
 data = json.load(sys.stdin)
-print(data['before'].replace(data['old'], data['new'], 1), end='')" <<<"$(jq -n \
+print(data['before'].replace(data['old'], data['new'], 1), end='')" <<<"$("$JQ" -n \
     --arg before "$before_content" \
     --arg old "$old_string" \
     --arg new "$new_string" \
@@ -126,13 +133,13 @@ process.stdout.write(JSON.stringify(r));
 " "$before_tmp" "$after_tmp" "$convention" "$file_path" 2>/dev/null) \
   || result='{"ok":false,"reason":"node-error","detail":"validator failed to run"}'
 
-ok=$(echo "$result" | jq -r '.ok')
+ok=$(echo "$result" | "$JQ" -r '.ok')
 if [ "$ok" = "true" ]; then
   exit 0
 fi
 
 suffix="The only allowed edit is appending exactly one ${convention} attribute (kebab-case value) to one opening tag, with no other byte changes."
-echo "$result" | jq -c \
+echo "$result" | "$JQ" -c \
   --arg sfx "$suffix" \
   '{hookSpecificOutput:{permissionDecision:"deny",permissionDecisionReason:("selector-development-inertness-guard: " + .reason + ". " + (.detail // "") + ". " + $sfx)}}'
 exit 0
