@@ -32,7 +32,7 @@ for f in "${case_files[@]}"; do
   fi
 done
 
-if [ "${#selected[@]}" -eq 0 ]; then
+if [ "${#selected[@]}" -eq 0 ] && [[ "install-simulation.sh" != *"$filter"* ]]; then
   echo "No test files match filter '$filter'" >&2
   exit 1
 fi

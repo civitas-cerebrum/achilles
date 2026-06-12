@@ -12,6 +12,9 @@
 # NOT copied by postinstall (and therefore not copied here): hooks/data/,
 # hooks/tests/. Hooks must degrade gracefully without those.
 #
+# NOTE: this MIRRORS postinstall's copy set (does not execute postinstall.js
+# itself — the installer's own copyHookFile/mtime logic is out of scope here).
+#
 # Everything runs against temp dirs only — never touches ~/.claude.
 #
 # Dual-mode:
@@ -46,8 +49,13 @@ sim_fail() {
 
 run_install_simulation() {
   local repo_root="$INSTALL_SIM_REPO_ROOT"
-  local work fake_hooks fake_project
+  local work fake_hooks fake_project errfile
   work=$(mktemp -d /tmp/achilles-install-sim-XXXXXX)
+  errfile=$(mktemp /tmp/achilles-install-sim-err-XXXXXX)
+  # Capture paths into non-local vars so the EXIT trap can see them even when
+  # the function has already returned (local vars go out of scope at return).
+  _SIM_WORK="$work"; _SIM_ERRFILE="$errfile"
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE"' EXIT
   fake_hooks="$work/home/.claude/hooks"
   fake_project="$work/project"
   mkdir -p "$fake_hooks/lib" "$fake_hooks/bin" "$fake_project/tests/e2e/docs"
@@ -55,11 +63,26 @@ run_install_simulation() {
   # --- Mirror the postinstall copy set ------------------------------------
   # 1. Hook scripts: exactly the HOOK_MANIFEST entries, parsed live from
   #    postinstall.js so the sim never drifts from the real installer.
+  # Parse the literal HOOK_MANIFEST array from postinstall.js using Node so
+  # the sim never drifts from the real installer. Node is guaranteed (the
+  # suite builds the validator with it). Matches file: '...' / file: "..."
+  # entries, strips lines whose non-whitespace content starts with //, and
+  # deduplicates via Set — exactly mirroring what postinstall installs.
   local manifest_files f
-  manifest_files=$(sed -n "s/.*{ file: '\([^']*\.sh\)'.*/\1/p" "$repo_root/scripts/postinstall.js" | sort -u)
+  manifest_files=$(node -e "
+    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
+    const m = s.match(/const HOOK_MANIFEST = \[([\s\S]*?)\];/);
+    if (!m) { process.exit(1); }
+    const lines = m[1].split('\n');
+    const files = [...new Set(
+      lines
+        .filter(l => !/^\s*\/\//.test(l))
+        .flatMap(l => [...l.matchAll(/file:\s*['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]))
+    )];
+    console.log(files.join('\n'));
+  " 2>/dev/null)
   if [ -z "$manifest_files" ]; then
     sim_fail "manifest parse" "could not extract HOOK_MANIFEST file list from scripts/postinstall.js"
-    rm -rf "$work"
     return
   fi
   for f in $manifest_files; do
@@ -144,14 +167,12 @@ run_install_simulation() {
 
   # --- Assertion 7+8: return-schema guard yields a REAL validation verdict
   # (not a module-not-found warning) from the installed location.
-  local ret_payload guard_out guard_err errfile
+  local ret_payload guard_out guard_err
   ret_payload=$("$JQ" -n --arg d "composer-j-login: compose tests" \
     '{tool_name:"Agent", tool_input:{description:$d}, tool_response:"status: not-a-valid-composer-return"}')
-  errfile=$(mktemp /tmp/achilles-install-sim-err-XXXXXX)
   guard_out=$(cd "$fake_project" && printf '%s' "$ret_payload" \
     | HOME="$work/home" bash "$fake_hooks/subagent-return-schema-guard.sh" 2>"$errfile") || true
   guard_err=$(cat "$errfile" 2>/dev/null || true)
-  rm -f "$errfile"
   # A real verdict carries the validator's SCHEMA_FAIL lines / schema-error
   # header AND is not the bundle-missing fallback message.
   if printf '%s' "$guard_out" | grep -q 'SCHEMA_FAIL\|Schema validation' \
@@ -167,8 +188,6 @@ run_install_simulation() {
   else
     sim_pass "return guard has no unresolved module deps when installed"
   fi
-
-  rm -rf "$work"
 }
 
 run_install_simulation
