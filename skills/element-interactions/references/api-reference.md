@@ -26,6 +26,9 @@ import { baseFixture } from '@civitas-cerebrum/element-interactions';
 export const test = baseFixture(base, 'tests/data/page-repository.json', {
   timeout: 60000,              // element timeout (default: 30000)
   // repoTimeout: 15000,       // repo resolution timeout (default: 15000)
+  // interceptionRetry: false, // default true: intercepted clicks fall back to a dispatched DOM click event.
+                               // false makes genuine overlay bugs (stuck modals, cookie walls) fail the click —
+                               // recommended for adversarial/bug-discovery suites
   // blockedOrigins: /regex/,  // auto-abort matching routes
   // screenshotOnFailure: true, // auto-capture on failure (default: true)
 });
@@ -166,8 +169,8 @@ const count = steps.getTabCount();
 
 ```ts
 await steps.click('elementName', 'PageName');
-await steps.click('elementName', 'PageName', { force: true });              // dispatch native click (bypasses overlays)
-await steps.click('elementName', 'PageName', { withoutScrolling: true });   // click without auto-scroll
+await steps.click('elementName', 'PageName', { force: true });              // dispatches a DOM 'click' event directly — NOT Playwright's force: true (no pointer simulation, no actionability checks; rename pending in a future major)
+await steps.click('elementName', 'PageName', { withoutScrolling: true });   // alias semantics of force: dispatches a DOM 'click' event without scrolling into view
 const clicked = await steps.clickIfPresent('elementName', 'PageName');      // returns boolean, false if absent
 await steps.clickRandom('elementName', 'PageName');
 await steps.clickNth('elementName', 'PageName', 2);           // zero-based index
@@ -196,7 +199,7 @@ await steps.dragAndDrop('elementName', 'PageName', { xOffset: 100, yOffset: 0 })
 await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { target: otherLocatorOrElement });
 ```
 
-**Note:** `click()` automatically retries with a native DOM event when Playwright reports pointer interception — no `{ force: true }` needed in most cases.
+**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. The fallback logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`. Set `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) to rethrow the original interception error instead — recommended for adversarial/bug-discovery suites where a stuck modal or cookie wall should fail the click.
 
 ### Data Extraction
 
@@ -463,9 +466,14 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 ### Waiting
 
 ```ts
-await steps.waitForState('elementName', 'PageName');                        // default: 'visible'
+// waitForState THROWS on timeout as of 0.4.0 and returns Promise<boolean>.
+await steps.waitForState('elementName', 'PageName');                        // default: 'visible'; throws on timeout
 await steps.waitForState('elementName', 'PageName', 'hidden');              // also: 'attached', 'detached'
-await steps.waitAndClick('elementName', 'PageName');                        // waits for visible, then clicks
+// Soft probe: { optional: true } resolves false on timeout instead of throwing.
+const present = await steps.waitForState('elementName', 'PageName', 'visible', { optional: true });
+// Per-call timeout override:
+await steps.waitForState('elementName', 'PageName', 'visible', { timeout: 5_000 });
+await steps.waitAndClick('elementName', 'PageName');                        // waits for visible, then clicks; throws if never visible
 await steps.waitForNetworkIdle();
 await steps.waitForResponse('/api/data', async () => {
   await steps.click('submitButton', 'PageName');

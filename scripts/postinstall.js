@@ -125,14 +125,19 @@ const HOOK_MANIFEST = [
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   { file: 'commit-message-gate.sh',               event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
+  // Out-of-band mutation guard: Bash writes to pipeline-state artifacts
+  // (ledger, journey map, approver registry, findings, hook install) are
+  // denied — Write/Edit are the only sanctioned mutation paths, because
+  // that is where the gates live. Pairs with ledger-integrity-chain.sh.
+  { file: 'protected-artifact-bash-guard.sh',     event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
   { file: 'subagent-schema-preread-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   { file: 'standard-mode-first-pass-guard.sh',    event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every
   // phase / pass / cycle transition through a workflow-reviewer-*
-  // subagent. 10s timeout for the Agent gate (may shell out to git +
-  // jq); 3s timeout for the write gate (read-only-ish — Ajv compile
-  // plus a JSON parse).
+  // subagent. 10s timeout for both gates — the write gate boots node and
+  // compiles the Ajv validator bundle (plus Edit-content synthesis), which
+  // can exceed 3s on a cold start.
   { file: 'onboarding-ledger-gate.sh',            event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   // Approver registry: records workflow-reviewer-* / phase-validator-*
   // dispatches so the ledger-write-gate can verify approval transitions
@@ -142,7 +147,11 @@ const HOOK_MANIFEST = [
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
-  { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 3 },
+  { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+  // Tamper-evident ledger chain: Pre verifies the on-disk ledger against
+  // the sanctioned hash sidecar; Post records each sanctioned write.
+  { file: 'ledger-integrity-chain.sh',            event: 'PreToolUse',  matcher: 'Write|Edit', timeout: 5 },
+  { file: 'ledger-integrity-chain.sh',            event: 'PostToolUse', matcher: 'Write|Edit', timeout: 5 },
   // Phase-4 fidelity gates: ensure the journey-mapping skill is the
   // only legitimate author of tests/e2e/docs/journey-map.md. The
   // sentinel gate enforces the line-1 marker + the cycle-state preflight
@@ -283,6 +292,34 @@ function installCivitasHooks() {
       if (!entry.isFile()) continue;
       const srcPath  = path.join(libSrcDir, entry.name);
       const destPath = path.join(libDestDir, entry.name);
+      let shouldCopy = !fs.existsSync(destPath);
+      if (!shouldCopy) {
+        try {
+          shouldCopy = fs.statSync(srcPath).mtimeMs > fs.statSync(destPath).mtimeMs;
+        } catch (_) {
+          shouldCopy = true;
+        }
+      }
+      if (shouldCopy) {
+        fs.copyFileSync(srcPath, destPath);
+        copiedCount++;
+      }
+    }
+  }
+
+  // Copy hooks/data/ vocabularies (e.g. canonical-sections.txt, read by
+  // standard-mode-first-pass-guard.sh). Without these, installed hooks fall
+  // back to their hardcoded vocabularies and silently drift from the repo's
+  // canonical data. Pattern: idempotent file copy with mtime check, same as
+  // copyHookFile() above; top-level files only.
+  const dataSrcDir  = path.join(packageDir, 'hooks', 'data');
+  const dataDestDir = path.join(userHooksDir, 'data');
+  if (fs.existsSync(dataSrcDir)) {
+    fs.mkdirSync(dataDestDir, { recursive: true });
+    for (const entry of fs.readdirSync(dataSrcDir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const srcPath  = path.join(dataSrcDir, entry.name);
+      const destPath = path.join(dataDestDir, entry.name);
       let shouldCopy = !fs.existsSync(destPath);
       if (!shouldCopy) {
         try {

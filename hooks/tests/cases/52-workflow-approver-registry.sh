@@ -26,7 +26,7 @@ assert_allow "$H" "$(payload tool_name=Agent description='reviewer-j-x-1-c1' cwd
 
 section "approver-registry: workflow-reviewer-* registers"
 rm -f "$REG"
-P=$(payload tool_name=Agent description='workflow-reviewer-phase1' cwd="$TMPREG")
+P=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1 exit criteria' cwd="$TMPREG")
 P=$(echo "$P" | "$JQ" -c '. + {tool_use_id: "toolu_wr_001"}')
 assert_allow "$H" "$P" "workflow-reviewer- → silent allow"
 TESTS_RUN=$((TESTS_RUN+1))
@@ -37,7 +37,7 @@ else
 fi
 
 section "approver-registry: phase-validator-* registers"
-P=$(payload tool_name=Agent description='phase-validator-3' cwd="$TMPREG")
+P=$(payload tool_name=Agent description='phase-validator-3: greenlight phase 3' cwd="$TMPREG")
 P=$(echo "$P" | "$JQ" -c '. + {tool_use_id: "toolu_pv_003"}')
 assert_allow "$H" "$P" "phase-validator- → silent allow"
 TESTS_RUN=$((TESTS_RUN+1))
@@ -47,16 +47,27 @@ else
   TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} registry missing phase-validator entry"
 fi
 
+section "approver-registry: separator-less prefix does NOT register (unified reviewer-prefix contract)"
+# The canonical dispatch form is `workflow-reviewer-<scope>:` — detection is
+# shared with onboarding-ledger-gate via lib/reviewer-prefix.sh, so a
+# description the dispatch gate would not allow-list must not register either.
+rm -f "$REG"
+P=$(payload tool_name=Agent description='workflow-reviewer-phase1' cwd="$TMPREG")
+P=$(echo "$P" | "$JQ" -c '. + {tool_use_id: "toolu_wr_nosep"}')
+assert_allow "$H" "$P" "separator-less workflow-reviewer-phase1 → silent allow"
+TESTS_RUN=$((TESTS_RUN+1))
+if [ ! -f "$REG" ]; then TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} separator-less prefix did NOT write registry"; else TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} separator-less prefix unexpectedly wrote registry"; fi
+
 section "approver-registry: missing tool_use_id silent-allows without writing"
 rm -f "$REG"
-assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase2' cwd="$TMPREG")" "workflow-reviewer- without tool_use_id → silent allow"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase2: review phase 2' cwd="$TMPREG")" "workflow-reviewer- without tool_use_id → silent allow"
 TESTS_RUN=$((TESTS_RUN+1))
 [ ! -f "$REG" ] && { TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} no registry entry when tool_use_id absent"; } || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} registry written despite missing tool_use_id"; }
 
 section "approver-registry: missing tests/e2e/docs dir silent-allows without writing"
 NODOCS=$(mktemp -d)
 ( cd "$NODOCS" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
-P=$(payload tool_name=Agent description='workflow-reviewer-phase1' cwd="$NODOCS")
+P=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' cwd="$NODOCS")
 P=$(echo "$P" | "$JQ" -c '. + {tool_use_id: "toolu_xxx"}')
 assert_allow "$H" "$P" "no docs dir → silent allow"
 TESTS_RUN=$((TESTS_RUN+1))

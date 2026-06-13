@@ -43,12 +43,18 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
 
-# Only register approver-prefixed dispatches.
-case "$DESCRIPTION" in
-  workflow-reviewer-*) APPROVER_ROLE="workflow-reviewer" ;;
-  phase-validator-*)   APPROVER_ROLE="phase-validator" ;;
-  *)                   exit 0 ;;
-esac
+# Only register approver-prefixed dispatches. Detection is shared with the
+# ledger-gate / brief-gate / attestation-gate via lib/reviewer-prefix.sh.
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+is_reviewer_description "$DESCRIPTION" || exit 0
+
+# Role extraction (after the boolean check) — which approver family.
+if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*workflow-reviewer-'; then
+  APPROVER_ROLE="workflow-reviewer"
+else
+  APPROVER_ROLE="phase-validator"
+fi
 
 AGENT_TOOL_USE_ID=$(echo "$INPUT" | "$JQ" -r '.tool_use_id // empty' 2>/dev/null || echo "")
 [ -n "$AGENT_TOOL_USE_ID" ] || exit 0  # no id, can't register — silent allow

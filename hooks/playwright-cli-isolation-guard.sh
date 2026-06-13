@@ -192,7 +192,7 @@ Allowed prefixes: composer- | reviewer- | probe- | phase1- | phase2- | phase4- |
 
 Bare \`j-\` and \`sj-\` slug prefixes are rejected — they're role-ambiguous. Use \`composer-j-<slug>\`, \`reviewer-j-<slug>\`, or \`probe-j-<slug>\` based on the dispatching subagent's role.
 
-Why: a slug without a role prefix is unreviewable — you can't tell from .playwright-cli/<slug>* which subagent or pass produced the artifacts. The convention also locks subagent description ↔ CLI slug into a mechanical mapping (same prefix on both ends). See coverage-expansion-dispatch-guard.sh and playwright-cli-protocol.md §3.1."
+Why: a slug without a role prefix is unreviewable — you can't tell from .playwright-cli/<slug>* which subagent or pass produced the artifacts. The convention also locks subagent description ↔ CLI slug into a mechanical mapping (same prefix on both ends). See protected-artifact-bash-guard.sh and playwright-cli-protocol.md §3.1."
   exit 0
 fi
 

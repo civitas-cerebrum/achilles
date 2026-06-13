@@ -49,11 +49,11 @@ findings:
   - checklist-item: foo
     what-missing: bar
     fix-instruction: baz'
-P_REJ=$(payload tool_name=Agent description='workflow-reviewer-phase1' response_text="$RESP_REJECT" cwd="$ATTEST_TMP")
+P_REJ=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_REJECT" cwd="$ATTEST_TMP")
 assert_allow "$H" "$P_REJ" "reject verdict → silent allow"
 
 RESP_ESCALATE=$(printf '%s' "$RESP_REJECT" | sed 's/verdict: reject/verdict: escalate/' | sed 's/status: rejected/status: escalated-to-user/')
-P_ESC=$(payload tool_name=Agent description='workflow-reviewer-phase1' response_text="$RESP_ESCALATE" cwd="$ATTEST_TMP")
+P_ESC=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_ESCALATE" cwd="$ATTEST_TMP")
 assert_allow "$H" "$P_ESC" "escalate verdict → silent allow"
 
 section "attestation-gate: approve with no path citation WARNS"
@@ -64,7 +64,7 @@ RESP_NOPATH='handover:
   next-action: orchestrator
 verdict: approve
 attestation: all checks passed'
-P_NOPATH=$(payload tool_name=Agent description='workflow-reviewer-phase1' response_text="$RESP_NOPATH" cwd="$ATTEST_TMP")
+P_NOPATH=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_NOPATH" cwd="$ATTEST_TMP")
 assert_warn "$H" "$P_NOPATH" "approve no-path → WARN" "approval without on-disk evidence"
 
 section "attestation-gate: approve citing existent path silent-allows"
@@ -75,7 +75,7 @@ RESP_OK='handover:
   next-action: orchestrator
 verdict: approve
 attestation: verified tests/e2e/docs/onboarding-status.json and scripts/postinstall.js on disk'
-P_OK=$(payload tool_name=Agent description='workflow-reviewer-phase1' response_text="$RESP_OK" cwd="$ATTEST_TMP")
+P_OK=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_OK" cwd="$ATTEST_TMP")
 assert_allow "$H" "$P_OK" "approve + existing paths → silent allow"
 
 section "attestation-gate: approve citing non-existent path WARNS"
@@ -86,7 +86,7 @@ RESP_FAKE='handover:
   next-action: orchestrator
 verdict: approve
 attestation: verified tests/e2e/docs/nonexistent.json on disk'
-P_FAKE=$(payload tool_name=Agent description='workflow-reviewer-phase1' response_text="$RESP_FAKE" cwd="$ATTEST_TMP")
+P_FAKE=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_FAKE" cwd="$ATTEST_TMP")
 assert_warn "$H" "$P_FAKE" "approve + missing path → WARN" "cites paths that do not exist"
 
 section "attestation-gate: approve with checklist evidence citing real paths silent-allows"
@@ -104,9 +104,9 @@ checklist:
   - item: postinstall present
     satisfied: true
     evidence: confirmed scripts/postinstall.js exists'
-P_CL=$(payload tool_name=Agent description='workflow-reviewer-phase1' response_text="$RESP_CHECKLIST" cwd="$ATTEST_TMP")
+P_CL=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_CHECKLIST" cwd="$ATTEST_TMP")
 assert_allow "$H" "$P_CL" "approve + checklist evidence + real paths → silent allow"
 
 section "attestation-gate: malformed YAML response silent-allows (return-schema-guard owns shape)"
-P_MAL=$(payload tool_name=Agent description='workflow-reviewer-phase1' response_text='::: not yaml :::' cwd="$ATTEST_TMP")
+P_MAL=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text='::: not yaml :::' cwd="$ATTEST_TMP")
 assert_allow "$H" "$P_MAL" "malformed return → silent allow"

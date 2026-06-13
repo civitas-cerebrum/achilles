@@ -119,3 +119,29 @@ exit-criteria-checked:
     satisfied: true
 summary: phase 3 complete"
 assert_allow "$H" "$(payload tool_name=Agent description='phase-validator-3' response_text="$GOOD_PV")" "well-formed phase-validator greenlight → silent allow"
+
+# Installed-layout (packaged node_modules) behavior is covered by Task 9's
+# install simulation, not here.
+section "subagent-return-schema: workflow-reviewer schema-invalid return WARNs"
+BAD_WORKFLOW_REVIEWER="handover:
+  role: workflow-reviewer-phase3
+  cycle: 1
+  status: approved
+  next-action: orchestrator
+verdict: maybe
+phase: 3
+summary: probably fine"
+assert_warn "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase3: review Phase 3 exit criteria' response_text="$BAD_WORKFLOW_REVIEWER")" "workflow-reviewer verdict: maybe → WARN" "workflow-reviewer"
+
+section "subagent-return-schema: well-formed workflow-reviewer approve is silent allow"
+GOOD_WORKFLOW_REVIEWER="handover:
+  role: workflow-reviewer-phase3
+  cycle: 1
+  status: approved
+  next-action: orchestrator may advance to Phase 4
+verdict: approve
+phase: 3
+reviewerCycle: 1
+attestation: Phase 3 exit criteria verified on disk
+summary: Approved."
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase3: review Phase 3 exit criteria' response_text="$GOOD_WORKFLOW_REVIEWER")" "well-formed workflow-reviewer approve → silent allow"

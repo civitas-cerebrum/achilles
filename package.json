@@ -4,7 +4,8 @@
   "description": "Autonomous quality-assurance methodology — agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
-    "test:hooks": "hooks/tests/run.sh",
+    "build:validator": "node scripts/build-validator.mjs",
+    "test:hooks": "npm run build:validator && hooks/tests/run.sh",
     "sync-hooks": "node scripts/sync-hooks.js",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
     "prepack": "npm run test:hooks"
@@ -17,6 +18,7 @@
   ],
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "esbuild": "^0.25.12",
     "typescript": "^5.0.0"
   },
   "dependencies": {

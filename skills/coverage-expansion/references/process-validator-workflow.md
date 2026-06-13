@@ -71,7 +71,7 @@ The parent dispatches the validator with a **manifest** of the planned wave. The
 | Field | Rule |
 |---|---|
 | `description prefix` | Begins with `composer-` / `reviewer-` / `probe-` / `process-validator-`. Bare `j-` / `sj-` are forbidden — they're role-ambiguous. |
-| `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the dispatch-guard checks. |
+| `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the validator checks (the dispatch-guard hook that previously checked it mechanically was retired in 0.3.6). |
 | `slug` | The CLI session slug for this dispatch. Pattern matches the role (composer-j-… / reviewer-j-… / probe-j-…) and respects the 28-char cap. |
 | `model-hint` | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. |
 | `must-fix-list summary` | One-line summary of the Stage B feedback this Stage A retry must address, OR `(n/a)` for fresh-cycle composer dispatches. |
@@ -177,7 +177,7 @@ findings:
 
 The spill file starts with the sentinel `<!-- subagent-returns:process-validator:<scope>:cycle-<C> -->`. Per-violation blocks (with `manifest-row:` / `issue:` / `fix:` sub-bullets) go in the spill body, NOT inline in the return.
 
-A `SubagentStop` rewrite-gate enforces the contract — non-compliant returns are blocked at stop and the validator rewrites in-session, so the verbose violation blocks never reach the parent's transcript. `greenlight` returns are exempt (already index-only).
+The `SubagentStop` rewrite-gate that previously enforced this contract was retired in 0.3.6; the rule still applies — keep the verbose violation blocks in the spill file so they never reach the parent's transcript. `greenlight` returns are exempt (already index-only).
 
 ### Banned tokens
 

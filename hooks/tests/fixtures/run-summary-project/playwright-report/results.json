@@ -1,0 +1,8 @@
+{
+  "suites": [{ "specs": [
+    { "tests": [{ "results": [{ "status": "passed" }] }] },
+    { "tests": [{ "results": [{ "status": "failed" }, { "status": "passed" }] }] },
+    { "tests": [{ "results": [{ "status": "failed" }, { "status": "failed" }] }] }
+  ]}],
+  "stats": { "expected": 2, "unexpected": 1, "flaky": 1, "skipped": 0 }
+}

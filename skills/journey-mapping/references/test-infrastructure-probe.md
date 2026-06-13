@@ -14,7 +14,7 @@ The probe runs in two coordinated layers — observation during the crawl + a de
 
 **Why this split.** The deliberate probe (B / C / D + the A/E reconciliation) is several thousand tokens of network output, DOM snapshots, and parsing. Running it inline in the orchestrator's context puts that load on every downstream phase. Dispatching it as a subagent confines the load to a single throwaway context — the orchestrator only sees the subagent's structured return (the `## Test Infrastructure` markdown block + a list of constraint tags for the audit). This is the same context-discipline rule coverage-expansion enforces for composer/probe work, applied to journey-mapping Phase 1.
 
-**Dispatch slug:** `phase1-test-infra:` (recognised by the dispatch-guard's `phase1-[a-z0-9-]+` allowed-prefix regex). Single dispatch — not per-entry-point. Runs after the crawl roster reports complete. CLI session slug: `phase1-test-infra` (same prefix, isolated session).
+**Dispatch slug:** `phase1-test-infra:` (the `phase1-` family is a conventional free-form role prefix; the dispatch-guard hook that previously recognised it via a `phase1-[a-z0-9-]+` allowed-prefix regex was retired in 0.3.6 — the convention still applies). Single dispatch — not per-entry-point. Runs after the crawl roster reports complete. CLI session slug: `phase1-test-infra` (same prefix, isolated session).
 
 **Subagent return shape:** structured Markdown matching the canonical `## Test Infrastructure` template below + a top-of-return `tags:` array carrying the constraint tags surfaced for the onboarding shared-resource audit (`global-reset:cross-test-race`, `single-tenant-global-state`, `csrf-session-bound`, etc. — see `onboarding/SKILL.md` §"Shared-resource audit").
 

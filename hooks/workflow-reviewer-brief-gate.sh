@@ -76,11 +76,11 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
 
-# Only act on workflow-reviewer-* dispatches.
-case "$DESCRIPTION" in
-  workflow-reviewer-*) ;;
-  *) exit 0 ;;
-esac
+# Only act on approver-role dispatches (workflow-reviewer-* /
+# phase-validator-*). Detection is shared via lib/reviewer-prefix.sh.
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+is_reviewer_description "$DESCRIPTION" || exit 0
 
 # Optional bypass for special-case re-dispatches. The bypass is
 # advisory — the operator is expected to document the authorisation.

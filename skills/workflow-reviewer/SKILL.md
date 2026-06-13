@@ -70,6 +70,13 @@ Every dispatch brief should give the reviewer:
    does not pre-digest.
 4. **The closing handover envelope** of the last subagent of the unit
    being reviewed (matches `schemas/subagent-returns/handover.schema.json`).
+5. **The return-schema citation.** The dispatching brief MUST cite the
+   reviewer's return-schema path —
+   `schemas/subagent-returns/workflow-reviewer.schema.json` — so the
+   reviewer knows the exact shape to return. Harness-enforced: the
+   `subagent-schema-preread-gate.sh` hook (PreToolUse:Agent, DENY)
+   rejects `workflow-reviewer-*` dispatches whose brief omits the
+   `workflow-reviewer.schema.json` citation.
 
 ---
 

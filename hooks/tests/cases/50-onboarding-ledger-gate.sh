@@ -199,4 +199,52 @@ assert_allow "$H" "$(payload tool_name=Agent description='cleanup-pass1-findings
 assert_allow "$H" "$(payload tool_name=Agent description='process-validator-3' prompt='Audit.' cwd="$TMP_REPO")" \
   "process-validator-* without phase-N+1 jump → ALLOW"
 
+# ---------------------------------------------------------------------------
+section "ledger-gate: integrity-chain verification before honoring ledger state"
+# shellcheck disable=SC1091
+. "$HOOK_DIR/lib/hash.sh"
+SIDECAR_50="$TMP_REPO/tests/e2e/docs/.ledger-integrity.json"
+
+# (a) Matching ledger + sidecar → prior behavior unchanged (same scenario as
+# "approved verdict allows next phase to begin" → ALLOW).
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 2 |
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "approved" |
+  .phases[0].reviewerCycles = 1 |
+  .phases[0].handoverEnvelope = {"role":"phase1-scaffold","status":"complete"} |
+  .phases[1].status = "in-progress"
+')"
+printf '%s' "{\"records\":[{\"sha256\":\"$(file_sha256 "$LEDGER")\",\"ts\":1}]}" > "$SIDECAR_50"
+assert_allow "$H" "$(payload tool_name=Agent description='phase2-groundwork' prompt='Author.' cwd="$TMP_REPO")" \
+  "matching ledger + sidecar → prior outcome unchanged (ALLOW)"
+
+# (b) Ledger mutated out of band (sidecar no longer matches) → DENY.
+printf ' ' >> "$LEDGER"
+assert_deny "$H" "$(payload tool_name=Agent description='phase2-groundwork' prompt='Author.' cwd="$TMP_REPO")" \
+  "mutated ledger vs sidecar → DENY" "hash chain"
+
+# (c) Ledger missing + sidecar present (rm-reset trick) → DENY.
+clear_ledger
+assert_deny "$H" "$(payload tool_name=Agent description='phase2-groundwork' prompt='Author.' cwd="$TMP_REPO")" \
+  "missing ledger + surviving sidecar → DENY" "deleted out of band"
+
+rm -f "$SIDECAR_50"
+clear_ledger
+
+# ---------------------------------------------------------------------------
+section "ledger-gate: any reviewer scope is allow-listed (unified reviewer-prefix)"
+# The allow-list previously hardcoded (phase[1-8]|pass[1-5]|cycle[1-5]) — a
+# legitimate workflow-reviewer-pass9: dispatch (long coverage runs exceed 5
+# passes) was denied at transition points while the approver registry
+# accepted it. The shared lib/reviewer-prefix.sh helper widens the
+# allow-list to any reviewer scope.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 2 |
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "pending" |
+  .phases[0].handoverEnvelope = {"role":"phase1-scaffold","status":"complete"}
+')"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-pass9: pass-9 dedup verification' prompt='Review.' cwd="$TMP_REPO")" \
+  "workflow-reviewer-pass9 at transition point → ALLOW (widened allow-list)"
 clear_ledger

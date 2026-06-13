@@ -61,7 +61,12 @@ cycle N → cycle N+1 inside Phase 4) is gated by a
 `workflow-reviewer-*` subagent. The reviewer reads the ledger row +
 the closing subagent's handover envelope + the canonical methodology
 section, returns `verdict: approve | reject | escalate`, and the
-orchestrator only advances when the verdict is `approve`.
+orchestrator only advances when the verdict is `approve`. Every
+`workflow-reviewer-*` dispatching brief MUST cite the reviewer's
+return-schema path
+(`schemas/subagent-returns/workflow-reviewer.schema.json`) — the
+`subagent-schema-preread-gate.sh` hook denies briefs that omit the
+citation.
 
 The contract is harness-enforced:
 

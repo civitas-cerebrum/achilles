@@ -1,62 +1,90 @@
-#!/bin/sh
+#!/bin/bash
 # Stop hook. Writes <project>/.achilles/run-summary.json — the authoritative
-# self-report consumed by Feyzabora/bookhive-benchmark to cross-check what the
-# Claude Code transcript saw.
+# self-report consumed by Feyzabora/bookhive-benchmark.
+#
+# Reads the artifacts the skills ACTUALLY write:
+#   tests/e2e/docs/onboarding-status.json   (phases)
+#   tests/e2e/docs/adversarial-findings.md  (findings ledger, '#### <ID> [sev] — title')
+#   tests/e2e/docs/journey-map.md           (journey count = level-3 journey headings)
+#   playwright-report/results.json | test-results/results.json (whichever is newer)
+#
+# Severity vocabulary: the canonical five (critical/high/medium/low/info).
+# No result file → tests block is null-statused, never a fake pass.
 #
 # Auto-registered via scripts/sync-hooks.js on `npm install`.
 
-set -eu
+set -u
+
+JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
+[ -x "$JQ" ] || JQ="$(command -v jq || true)"
+[ -n "$JQ" ] || { printf '{}\n'; exit 0; }
 
 ROOT="${PWD}"
-out="${ROOT}/.achilles/run-summary.json"
-mkdir -p "${ROOT}/.achilles"
+DOCS="$ROOT/tests/e2e/docs"
+out="$ROOT/.achilles/run-summary.json"
+mkdir -p "$ROOT/.achilles"
 
-if [ -f "${ROOT}/.achilles/onboarding-ledger.json" ]; then
-  phases_json=$(jq -c '.phases // []' "${ROOT}/.achilles/onboarding-ledger.json" 2>/dev/null || echo '[]')
-else
-  phases_json='[]'
-fi
+phases_json='[]'
+[ -f "$DOCS/onboarding-status.json" ] && phases_json=$("$JQ" -c '.phases // []' "$DOCS/onboarding-status.json" 2>/dev/null || echo '[]')
 
 scenarios_json='[]'
-if [ -d "${ROOT}/tests" ]; then
-  scenarios_json=$(find "${ROOT}/tests" -type f \( -name '*.spec.ts' -o -name '*.spec.js' -o -name '*.spec.mjs' \) | jq -R . | jq -s .)
+[ -d "$ROOT/tests" ] && scenarios_json=$(find "$ROOT/tests" -type f \( -name '*.spec.ts' -o -name '*.spec.js' -o -name '*.spec.mjs' \) | "$JQ" -R . | "$JQ" -s .)
+
+bugs_ids='[]'; sev_counts='{"critical":0,"high":0,"medium":0,"low":0,"info":0}'
+if [ -f "$DOCS/adversarial-findings.md" ]; then
+  bugs_ids=$(grep -E '^#### ' "$DOCS/adversarial-findings.md" | sed -E 's/^#### ([^ ]+) .*/\1/' | "$JQ" -R . | "$JQ" -s .)
+  sev_counts=$(grep -E '^#### ' "$DOCS/adversarial-findings.md" | sed -E 's/^#### [^ ]+ \[([A-Za-z]+)\].*/\1/' | tr '[:upper:]' '[:lower:]' | "$JQ" -R . | "$JQ" -s '
+    reduce .[] as $s ({"critical":0,"high":0,"medium":0,"low":0,"info":0};
+      if has($s) then .[$s] += 1 else . end)')
 fi
 
-bugs_ids='[]'
-bugs_high=0; bugs_med=0; bugs_low=0
-if [ -d "${ROOT}/.bug-ledger" ]; then
-  bugs_ids=$(find "${ROOT}/.bug-ledger" -name '*.json' -exec jq -r '.id // empty' {} \; | jq -R . | jq -s .)
-  bugs_high=$(find "${ROOT}/.bug-ledger" -name '*.json' -exec jq -r 'select(.severity=="high") | .id' {} \; | wc -l | tr -d ' ')
-  bugs_med=$(find "${ROOT}/.bug-ledger" -name '*.json' -exec jq -r 'select(.severity=="med") | .id' {} \; | wc -l | tr -d ' ')
-  bugs_low=$(find "${ROOT}/.bug-ledger" -name '*.json' -exec jq -r 'select(.severity=="low") | .id' {} \; | wc -l | tr -d ' ')
+# Newest results file wins.
+RESULTS=""
+for cand in "$ROOT/playwright-report/results.json" "$ROOT/test-results/results.json"; do
+  [ -f "$cand" ] || continue
+  if [ -z "$RESULTS" ] || [ "$cand" -nt "$RESULTS" ]; then RESULTS="$cand"; fi
+done
+
+tests_json='{"passing":null,"failing":null,"flaky":null,"skipped":null,"total":null,"status":null}'
+if [ -n "$RESULTS" ]; then
+  tests_json=$("$JQ" -c '
+    (.stats // {}) as $s |
+    if ($s | has("expected")) then
+      { passing: $s.expected, failing: ($s.unexpected // 0),
+        flaky: ($s.flaky // 0), skipped: ($s.skipped // 0),
+        total: (($s.expected // 0) + ($s.unexpected // 0) + ($s.flaky // 0) + ($s.skipped // 0)),
+        status: (if ($s.unexpected // 0) > 0 then "failing" else "passing" end) }
+    else
+      # Best-effort for non-standard report shapes; .results[-1] = LAST retry result per test.
+      ([.. | objects | select(has("tests")) | .tests[]?] ) as $tests |
+      ($tests | map(.results[-1].status // "unknown")) as $st |
+      { passing: ($st | map(select(. == "passed")) | length),
+        failing: ($st | map(select(. == "failed" or . == "timedOut" or . == "interrupted")) | length),
+        flaky: null, skipped: ($st | map(select(. == "skipped")) | length),
+        total: ($st | length),
+        status: (if ($st | map(select(. == "failed" or . == "timedOut" or . == "interrupted")) | length) > 0 then "failing" else "passing" end) }
+    end' "$RESULTS" 2>/dev/null || echo "$tests_json")
 fi
 
-pw_exit=0
-passing=0
-total=0
-if [ -f "${ROOT}/test-results/results.json" ]; then
-  passing=$(jq '[.suites[]?.specs[]? | select(.tests[0].results[0].status=="passed")] | length' "${ROOT}/test-results/results.json" 2>/dev/null || echo 0)
-  total=$(jq '[.suites[]?.specs[]?] | length' "${ROOT}/test-results/results.json" 2>/dev/null || echo 0)
+journeys=0
+if [ -f "$DOCS/journey-map.md" ]; then
+  journeys=$(grep -cE '^### j-' "$DOCS/journey-map.md" 2>/dev/null) || journeys=0
 fi
 
-pages=0
-if [ -f "${ROOT}/.achilles/journey-map.json" ]; then
-  pages=$(jq '.pages | length' "${ROOT}/.achilles/journey-map.json" 2>/dev/null || echo 0)
-fi
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+sha=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo "")
+ach_ver=$("$JQ" -r '.version // ""' "$ROOT/node_modules/@civitas-cerebrum/achilles/package.json" 2>/dev/null || echo "")
 
-jq -n \
-  --argjson phases "$phases_json" \
-  --argjson scenarios "$scenarios_json" \
-  --argjson ids "$bugs_ids" \
-  --argjson high "$bugs_high" --argjson med "$bugs_med" --argjson low "$bugs_low" \
-  --argjson passing "$passing" --argjson total "$total" --argjson pw_exit "$pw_exit" \
-  --argjson pages "$pages" \
-  '{
-    phases: $phases,
-    scenarios: { files: $scenarios },
-    bugs: { ids: $ids, by_severity: { high: $high, med: $med, low: $low } },
-    tests: { passing: $passing, total: $total, playwright_exit_code: $pw_exit },
-    journey_map: { pages: $pages }
-  }' > "$out"
+"$JQ" -n \
+  --argjson phases "$phases_json" --argjson scenarios "$scenarios_json" \
+  --argjson ids "$bugs_ids" --argjson sev "$sev_counts" \
+  --argjson tests "$tests_json" --argjson journeys "$journeys" \
+  --arg ts "$ts" --arg sha "$sha" --arg ver "$ach_ver" \
+  '{ meta: { timestamp: $ts, git_sha: $sha, achilles_version: $ver, schema: "run-summary/v2" },
+     phases: $phases,
+     scenarios: { files: $scenarios },
+     bugs: { ids: $ids, by_severity: $sev },
+     tests: $tests,
+     journey_map: { journeys: $journeys } }' > "$out"
 
 printf '{}\n'
