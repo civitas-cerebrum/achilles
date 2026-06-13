@@ -2,13 +2,13 @@
 
 **Subagent returns** are validated against per-role JSON Schemas under [`schemas/subagent-returns/`](../../../schemas/subagent-returns/README.md). That directory is the source of truth — see its README for the role-to-schema table and authoring conventions.
 
-**Adversarial-findings ledger** (markdown) is documented in §1 below. The ledger format is prose because the ledger file (`tests/e2e/docs/adversarial-findings.md`) is markdown, not YAML — there is no machine-readable schema for it. §1 is therefore the source of truth for ledger entries.
+**Adversarial-findings ledger** (markdown) is documented in §3 below (finding-block format in §1). The ledger format is prose because the ledger file (`tests/e2e/docs/adversarial-findings.md`) is markdown, not YAML — there is no machine-readable schema for it. §3 is therefore the source of truth for ledger entries.
 
 ---
 
 ## 1. Canonical finding-return schema (mandatory, prose, for the ledger)
 
-Every subagent dispatched by `coverage-expansion`, `test-composer`, or `bug-discovery` that reports a finding MUST format each finding exactly as:
+Every subagent dispatched by `coverage-expansion`, `test-composer`, `bug-discovery`, or `agents-vs-agents` that reports a finding MUST format each finding exactly as:
 
 ```
 - **<FINDING-ID>** [<severity>] — <one-line title>
@@ -22,7 +22,7 @@ Every subagent dispatched by `coverage-expansion`, `test-composer`, or `bug-disc
 
 | Field | Rule |
 |---|---|
-| `FINDING-ID` | `<journey-slug>-<pass>-<nn>` (inside a numbered pass, Stage A findings) or `<journey-slug>-<nn>` (outside pass numbering). `<nn>` is a two-digit integer, zero-padded. Reviewer findings (Stage B) use the extended subformat `<journey-slug>-<pass>-<cycle>-R-<nn>` — see §2.4. No other alternative ID schemes (`AF-XX-NN`, `P4-XX-BUG-NN`, `REG-XX-NN`) are accepted. |
+| `FINDING-ID` | `<journey-slug>-<pass>-<nn>` (inside a numbered pass, Stage A findings) or `<journey-slug>-<nn>` (outside pass numbering). `<nn>` is a two-digit integer, zero-padded. Reviewer findings (Stage B) use the extended subformat `<journey-slug>-<pass>-<cycle>-R-<nn>` — see §2.4. Phase-validator findings use `pv-<phase>-<nn>` (phase 1–8, §2.5); `agents-vs-agents` findings use `ai-<category-slug>-<nn>`. No other alternative ID schemes (`AF-XX-NN`, `P4-XX-BUG-NN`, `REG-XX-NN`, `BUG-NNN`) are accepted. IDs are never renumbered or reused across runs — triage state keys on the FINDING-ID. |
 | `severity` | One of `critical`, `high`, `medium`, `low`, `info`. No other values. Do not invent new severities (no `no-impact`, `blocker`, `p0`). Map DOM-only / no-impact items to `info`. **Applies to Stage A finding blocks only.** Stage B (reviewer) findings use a fixed `[must-fix]` priority bracket, not a severity bracket — per §2.4. The "no other values" rule is scoped to Stage A; §1's bracket position is not meaningful for reviewer returns. |
 | `title` | One line. No trailing period. Describes the finding, not the test. |
 | `scope` | One sentence naming the probe surface — page, endpoint, element, flow step. |
@@ -32,15 +32,21 @@ Every subagent dispatched by `coverage-expansion`, `test-composer`, or `bug-disc
 
 ### Severity rubric
 
+This table is the single severity authority. No other file may restate the enum inline — point here. The `critical` row's criteria are the **security-class** criteria referenced by the evidence rule below.
+
 | Severity | Definition |
 |---|---|
-| `critical` | Security vulnerability, privacy violation, authentication bypass, data exfiltration path, complete failure of a primary user journey, or legal / compliance risk. |
-| `high` | Functional bug that blocks a user journey without an obvious workaround. Core feature broken. |
+| `critical` | Monetary loss, data exfiltration, privilege escalation, auth bypass, credential/key exposure, or legal-or-compliance risk. |
+| `high` | A state the app must prevent, or material user impact — a blocked journey, a core feature broken. |
 | `medium` | Degraded UX or data correctness issue. User notices, but can still use the app. |
 | `low` | Minor inconsistency, cosmetic defect, UX nit. |
 | `info` | DOM-only / no user impact. Code hygiene. |
 
-No finding may escalate above `info` if it is not visible in a screenshot. That rule is enforced by `bug-discovery` and inherited here.
+Report-facing label mappings are documented in the skills that present findings — `bug-discovery`'s "No impact (DOM-only)" is the report-facing label for canonical `info`; `bug-report`'s Jira labels are the title-cased canonical values (`info` is never ticketed); `agents-vs-agents` judge severities map verbatim, lowercased. No skill invents a new scale.
+
+### Evidence rule
+
+Every finding above `info` MUST cite captured evidence appropriate to its oracle — a screenshot for visual/UX findings; a saved response body, header dump, console capture, DOM/source excerpt, or static-inference rationale (`inferred: true`) for API/security/privacy findings. Findings with no captured evidence cap at `info`. Security-class findings (the critical-row criteria) are severity-rated on impact regardless of screenshot visibility. The rule is operationalised by `bug-discovery` Phase 5 and inherited here.
 
 ### Worked example
 
@@ -126,7 +132,7 @@ The adversarial findings ledger is enforced, not conventional. Every subagent th
 
 The ledger lives at `tests/e2e/docs/adversarial-findings.md`. It is created on the first Pass-4 subagent invocation.
 
-**Relationship to `skills/coverage-expansion/references/adversarial-findings-schema.md`.** This section replaces the **structural** portions of that file (header layout, per-journey block, finding block shape, pass summary line). The existing file is retained only for the **probe-category vocabulary** (`auth-tamper`, `input-tamper`, `price-tamper`, etc.) and the **severity rubric** referenced by subagents. When the two files overlap on structure, this file wins. A single cleanup follow-up will move the vocabulary into this file and delete the legacy schema; until then, callers cite both files explicitly in their dispatch briefs.
+This section is the single structural authority for the ledger (header layout, per-journey block, finding block shape, pass summary line). The probe-category vocabulary that subagents pick from lives in §3.6 below; the severity rubric is §1's table. The former legacy schema (`skills/coverage-expansion/references/adversarial-findings-schema.md`) has been deleted — its vocabulary moved here (§3.6) and its 3-value severity rubric superseded by §1's five-value enum. Every citation repoints to §1 / §3 / §3.6 of this file.
 
 ### 3.1 File header (written once, by the first Pass-4 subagent)
 
@@ -228,6 +234,35 @@ Scope: compound probes, ambiguous-resolution, regression authoring for pass-4 bo
 - Never rewrite another journey's section. Appends are additive to one `### j-<slug>` block per dispatch.
 - Cross-cutting consolidation is the cleanup subagent's job only (runs once after Pass 5).
 
+### 3.6 Probe-category vocabulary
+
+Subagents pick categories based on the journey's flow. This is the single naming surface so the ledger, the dedup `fingerprint:` field, and the cleanup-pass dedup step stay consistent. It is **non-exhaustive** — a probe that does not fit an existing label uses the closest match plus a one-word qualifier rather than inventing a parallel scheme.
+
+**Web / API adversarial categories:**
+
+- `auth-tamper` — missing/expired/wrong-user tokens, session fixation
+- `input-tamper` — injection payloads, type confusion, extreme values
+- `price-tamper` — client-side price or total manipulation
+- `qty-tamper` — negative, zero, non-integer quantities
+- `balance-bypass` — direct-API paths that skip client-side balance checks
+- `state-skip` — submitting later-step actions without earlier steps
+- `replay` — re-sending idempotency-sensitive requests
+- `idor` — access another user's resources by ID guess
+- `priv-esc` — regular user performing admin-scoped actions
+- `client-server-divergence` — diverge client state from server state
+- `race` — concurrent requests on shared state
+- `boundary-values` — limits: max quantity, max string length, expiry edges
+- `compound` — two or more probes combined (used heavily in Pass 5 / consolidation)
+
+**AI-safety categories** (used by `agents-vs-agents`; see that skill's category map):
+
+- `prompt-leak` — system-prompt extraction / instruction disclosure
+- `guardrail-bias` — discriminatory output along protected characteristics
+- `scope-escape` — AI abandons its intended functional scope or persona
+- `output-injection` — unsanitised injectable content in AI output (XSS/SQL/phishing)
+- `ai-data-leak` — cross-user data, system internals, or model identity disclosure
+- `multi-turn-erosion` — guardrail decay across a long social-engineering conversation
+
 ---
 
 ## 4. Caller contract
@@ -261,7 +296,7 @@ The same grep-based shape signals are enforced at the harness layer by a `PostTo
 
 ### 4.3 Harness validator — handover-envelope leash + deregistration
 
-The same return-schema guard also enforces the §2.0 handover envelope and drives the registry leash. On every `composer-` / `reviewer-` / `probe-` / `process-validator-` / `phase-validator-` / `selector-development-` return it parses the envelope, looks up the in-flight registry entry by slug, cycle-matches, and removes the slug on a terminal status (or leaves it in place for a non-terminal redispatch). Missing envelope or cycle-mismatch emits a fix-message WARN; the registry slot stays held until the TTL failsafe expires. **Deregistration itself fires regardless of validation mode** — the registry update is mechanical bookkeeping, not validation, so the leash works correctly even when envelope-validation is in WARN mode.
+The same return-schema guard also enforces the §2.0 handover envelope and drives the registry leash. On every `composer-` / `reviewer-` / `probe-` / `process-validator-` / `phase-validator-` return it parses the envelope, looks up the in-flight registry entry by slug, cycle-matches, and removes the slug on a terminal status (or leaves it in place for a non-terminal redispatch). Missing envelope or cycle-mismatch emits a fix-message WARN; the registry slot stays held until the TTL failsafe expires. **Deregistration itself fires regardless of validation mode** — the registry update is mechanical bookkeeping, not validation, so the leash works correctly even when envelope-validation is in WARN mode.
 
 Explicit deregistration via terminal-status handover is the primary cleanup path; the registry TTL is the secondary one for crashed / abandoned dispatches that never return an envelope. (Hook index: [harness-hooks.md](harness-hooks.md).)
 
@@ -272,12 +307,16 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 | `composer-<j-slug>:` | Stage A — `status:` enum (new-tests-landed \| covered-exhaustively \| blocked \| skipped) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
 | `reviewer-<j-slug>:` | Stage B (§2.4) — `status:` (greenlight \| improvements-needed) + journey/pass/cycle + summary on greenlight \| findings sub-list on improvements-needed |
 | `probe-<j-slug>:` | Adversarial — `probes:` + `boundaries:` + `findings:` count or list |
-| `process-validator-<scope>:` | Sub-orchestrator — reviewer-shape applied to a manifest (`status:`, `findings:`, `summary:`) |
 | `phase-validator-<N>:` | Phase-exit checkpoint (§2.5) — `status:` + `phase:` + `exit-criteria-checked:` array + `summary:` (REQUIRED on both statuses) + `findings: []` literal on greenlight \| ≥1 `pv-<phase>-<nn>` must-fix on improvements-needed |
-| `selector-development-<scope>:` | Selector-development — `status:` enum (ok \| skipped \| blocked) + `mode` (jit \| audit) + `attribute` + `files_modified` + `guardrails` (7 sub-statuses) + `skipped_reason` (when status=skipped) + `blocked_artifact` (when status=blocked) |
-| `phase1-` / `stage2-` / `cleanup-` / bare `j-` / bare `sj-` | Silent allow — free-form or unstructured returns; no validation |
+| `workflow-reviewer-<scope>:` | Workflow-reviewer (`workflow-reviewer.schema.json`) — `verdict:` (approve \| reject \| escalate) + cycle accounting |
+| `phase4-prioritise-author*` | Phase-4 prioritise-author (`phase4-prioritise-author.schema.json`) — convergence + authored journeys |
+| `phase4-cycle-<N>:` | Phase-4 section agent (`section-agent.schema.json`) |
+| `process-validator-` / `phase1-` / `stage2-` / `cleanup-` / `companion-` / `fd-` | Envelope-sanity only — the §2.0 handover envelope is parsed; no per-role JSON-Schema validation |
+| bare `j-` / bare `sj-` | Silent allow — free-form or unstructured returns; no validation |
 
-### 4.5 Selector-development return schema
+### 4.5 Selector-development return shape (convention)
+
+Selector-development is **not** validated by the return-schema guard — it has no entry in the §4.4 routing table and no per-role schema. Its discipline is enforced instead by its own dedicated hooks (activation gate, inertness guard, pipeline stepper, revert-on-stop — see [harness-hooks.md](harness-hooks.md)). The shape below is a documented convention for the calling skill to read, not a harness-validated contract.
 
 Subagents dispatched under the `selector-development-<scope>:` description prefix return a result envelope documenting whether a stable test-attribute was added (`ok`), was already present or inapplicable (`skipped`), or could not be applied due to a missing prerequisite (`blocked`).
 
