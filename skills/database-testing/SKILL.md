@@ -22,6 +22,8 @@ description: >
 
 # Database Testing — Persistence-Layer Verification
 
+> **⚠ Not-yet-shipped surface.** The `steps.sql*` methods and `verifySql*` matchers this skill governs are NOT exposed by the current framework dependency (`@civitas-cerebrum/element-interactions` `^0.3.6`). No spec may be written against them until the Phase-0 preflight below confirms the installed framework exposes them. When the framework ships the surface, pin the exact minimum version here (replacing this banner) — until then this document is the contract the surface will satisfy, not a description of something currently callable. Do NOT fall back to raw `pg`/`mysql` clients in specs to work around the gap.
+
 A structured protocol for writing **database-backed** tests using the Steps API
 (`steps.sqlQuery/sqlExecute/sqlTransaction` + `sqlSelect/Insert/Update/Delete` + `verifySql*`).
 These tests verify what actually persisted — the oracle that closes the loop on UI and API actions.
@@ -47,7 +49,7 @@ Verify ALL before starting; if any is missing, stop and ask.
 
 - A reachable non-production SQL database (local/staging) with a known connection string in an env var.
 - `baseFixture` is wired with `dbUrl` (and any `dbProviders`) in the test fixture.
-- `@civitas-cerebrum/element-interactions` (≥ the version exposing `steps.sql*`) is the test framework.
+- `@civitas-cerebrum/element-interactions` is the test framework (check `package.json`) AND the Phase-0 preflight confirms it exposes `steps.sql*` — the current `^0.3.6` dep does not (see banner).
 - A source of truth for expected data — a deterministic seed, a fixture, or known reference values.
 - **Local `file:`/`npm link` of the framework** can load `@playwright/test` twice → `No tests found`.
   Fix: remove the framework's nested `node_modules/@playwright*`, or set `NODE_OPTIONS=--preserve-symlinks`.
@@ -72,6 +74,15 @@ prefer `verifySqlContains` over brittle full-row equality; clean up mutations so
 ## Methodology — Autonomously Discover & Compose DB Tests
 
 This extends the discovery loops of `contract-testing` (API surface) and `test-composer` (UI flows).
+
+### Phase 0 — Preflight (is the surface shipped?)
+
+Before any other phase, verify the installed framework actually exposes `steps.sqlQuery`:
+
+- grep the package's type declarations: `grep -r "sqlQuery" node_modules/@civitas-cerebrum/element-interactions/**/*.d.ts`, or
+- check at runtime in a scratch spec: `typeof steps.sqlQuery === 'function'`.
+
+If absent, return `status: blocked` with a `blocked-reason` naming the version gap (the installed version vs. the framework version that ships `steps.sql*`). Do NOT fall back to raw `pg`/`mysql` clients in specs — that bypasses the Steps API's provider routing, logging, and assertion surface, and produces specs the framework can never validate.
 
 ### Phase 1 — Discover the schema (introspection)
 
@@ -105,6 +116,9 @@ For each discovered structure, emit the canonical scenario set:
   COMMIT path and a ROLLBACK-on-error path.
 - **Ordering** → an ORDER BY query verified with `verifySqlColumn`.
 - **Edge** → empty result (`verifySqlEmpty`), boundary values, and an invalid query (expect throw).
+  Derive boundary values from the partition discipline in
+  `../test-composer/references/input-domain-analysis.md` — one test per equivalence class, pairs at
+  each partition edge, not ad-hoc "weird values".
 
 ### Phase 3 — DB-as-oracle for UI/API actions (the cross-skill bridge)
 
@@ -130,5 +144,18 @@ writes data.
 
 ## Return Shape
 
-When invoked as a subagent, return the project's standard ComposerReturn shape (see other achilles
-skills): the specs created, scenarios covered, tables/relationships exercised, and any gaps.
+When invoked as a subagent, returns conform to `schemas/subagent-returns/composer.schema.json`.
+Status enum: `new-tests-landed | covered-exhaustively | blocked | skipped`. Every return MUST open
+with a `handover` envelope whose required fields are `role`, `status`, and `next-action` (plus
+`cycle`, an integer ≥ 1) — see `schemas/subagent-returns/handover.schema.json`. The body names the
+specs created, scenarios covered, tables/relationships exercised, and any gaps (no silent truncation).
+
+```json
+{
+  "handover": { "role": "composer-db-orders", "cycle": 1, "status": "new-tests-landed", "next-action": "orchestrator to record DB coverage for orders" },
+  "tests-added": 6,
+  "summary": "Created tests/e2e/db/orders.spec.ts — CRUD round-trip on orders, transaction commit/rollback across orders+order_items, FK join orders→users; uncovered: audit_log (no deterministic seed)."
+}
+```
+
+A Phase-0 preflight failure returns `status: blocked` with `blocked-reason` naming the version gap, per the banner.

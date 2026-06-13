@@ -24,7 +24,7 @@ If the user provides a complete scenario or detailed acceptance criteria upfront
 
 When the user provides a URL, a vague idea, or needs help figuring out what to test:
 
-1. **Get the app URL or acceptance criteria.** The user may provide a URL, a description of the scenario, or both. If they provide a URL, use `playwright-cli` (see [`references/playwright-cli-protocol.md`](references/playwright-cli-protocol.md)) to navigate and explore.
+1. **Get the app URL or acceptance criteria.** The user may provide a URL, a description of the scenario, or both. If they provide a URL, use `playwright-cli` (see [`playwright-cli-protocol.md`](playwright-cli-protocol.md)) to navigate and explore.
 2. **Discover the app.** Use `playwright-cli` to navigate to the app, take snapshots (`playwright-cli snapshot`), and understand what the application does. Explore the pages relevant to the scenario.
 3. **Ask clarifying questions — one at a time.** Focus on understanding:
    - What is the user flow being tested?
@@ -142,7 +142,7 @@ Show the user the exact JSON entries you want to add:
 
 1. **Check project setup.** Read `tests/fixtures/base.ts` and `playwright.config.ts` — create or update only if missing or broken. Also verify that `.gitignore` includes `.claude/` and `CLAUDE.md` to prevent Claude Code configuration from being pushed to the repository — add them if missing.
 2. **Add approved selectors** to `page-repository.json` (if not already done).
-3. **Read `references/api-reference.md`** — load the full API reference before writing any test code. Do not write from memory.
+3. **Read `api-reference.md`** — load the full API reference before writing any test code. Do not write from memory.
 4. **Write the test file** using the Steps API. Every interaction goes through `steps.*` methods — no raw `page.locator()` calls.
 5. **Every test MUST end with a verification that proves the ACTION's EFFECT.** A test that performs actions (click, fill, drag, hover, check, upload, setSliderValue, etc.) and never asserts a resulting state is not a test — it's a smoke call that only catches thrown exceptions. Before declaring a test done, confirm the final meaningful statement is a `verify*`, a matcher-tree assertion (`.text.toBe`, `.visible.toBeTrue`, `.satisfy`, …), or a typed `expect(extractedValue)` that reflects what the action was supposed to change.
 
@@ -162,7 +162,7 @@ Show the user the exact JSON entries you want to add:
 
 ### Skip-to-Stage-3 (Fix/Edit Mode)
 
-When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `references/api-reference.md`, then read the existing test, understand the issue, and proceed directly to fixing and running. If fixing requires new selectors, use the mini-inspection flow described above — do NOT silently add selectors.
+When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `api-reference.md`, then read the existing test, understand the issue, and proceed directly to fixing and running. If fixing requires new selectors, use the mini-inspection flow described above — do NOT silently add selectors.
 
 ---
 
@@ -176,11 +176,11 @@ When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `r
 
 **Process:**
 
-1. Read `references/test-optimization.md` — load the full protocol (8 sections).
+1. Read `test-optimization.md` — load the full protocol (all sections §1–§8, including §3b).
 2. Read every test file written or modified in this session, plus `tests/fixtures/base.ts` and `tests/e2e/docs/app-context.md`'s `## Test Infrastructure` section.
-3. Run the 6 checks against each spec.
+3. Run the 7 checks against each spec.
 4. Apply auto-fixes (per-test patterns, §1–§5 with auto-fix). Write proactive helpers into `base.ts` (cross-test patterns) only when both gates apply (UI-covered + API discovered, see §4). Re-run the affected tests; confirm they still pass.
-5. Emit the structured return per `references/test-optimization.md` §8.
+5. Emit the structured return per `test-optimization.md` §8.
 6. Proceed to Stage 4b.
 
 If Stage 4a's auto-fixes cause a previously-passing test to fail, follow Rule 7 (failure-diagnosis protocol) — inspect the screenshot, classify, fix or revert. Do not advance to Stage 4b until Stage 4a's tests are green again.
@@ -198,7 +198,7 @@ For each test file, verify:
 1. **Method signatures** — every `steps.*` call matches the exact signature in the API Reference (correct argument count, correct argument order, correct types).
 2. **Imports** — all types used (`DropdownSelectType`, `EmailFilterType`, `FillFormValue`, etc.) are imported from `@civitas-cerebrum/element-interactions` (or `@civitas-cerebrum/email-client` for email types). No invented imports.
 3. **Page/element naming** — `pageName` uses PascalCase, `elementName` uses camelCase, and both match entries in `page-repository.json`.
-4. **Listed element options** — `child` uses `{ pageName, elementName }` repo references where possible instead of inline selectors (per Rule 5).
+4. **Listed element options** — `child` uses `{ pageName, elementName }` repo references where possible instead of inline selectors (per Rule 6).
 5. **Dropdown select usage** — `DropdownSelectType.RANDOM`, `.VALUE`, or `.INDEX` with the correct companion field (`value` or `index`).
 6. **Email API usage** — `steps.sendEmail` / `steps.receiveEmail` / `steps.receiveAllEmails` / `steps.cleanEmails` match the documented signatures. Filter types use `EmailFilterType` enum.
 7. **No raw Playwright calls** — no `page.locator()`, `page.click()`, `page.fill()`, or other raw Playwright methods where a `steps.*` equivalent exists.
@@ -213,12 +213,12 @@ For each test file, verify:
 
 ### Process
 
-1. **Read `references/api-reference.md`** — load the full API reference. Do not review from memory.
+1. **Read `api-reference.md`** — load the full API reference. Do not review from memory.
 2. **Read each test file** written or modified in this session.
 3. **Cross-reference every API call** against the API Reference.
 4. **Report findings** to the user — list any issues found with the specific line, what's wrong, and the correct usage.
 5. **If issues are found:** investigate *why* the non-compliant code was written — was the API misunderstood? Was a method signature wrong in the scenario? Did a previous stage produce incorrect assumptions? Understanding the root cause prevents the same mistake from recurring in the next scenario. Then fix, re-run the tests, and confirm they still pass.
-6. **If fixes cause a test failure:** follow Rule 6 — inspect the failure screenshot first before attempting any further fix. Do NOT guess from the error message alone.
+6. **If fixes cause a test failure:** follow Rule 7 — inspect the failure screenshot first before attempting any further fix. Do NOT guess from the error message alone.
 7. **If no issues are found:** confirm compliance and proceed to commit.
 
 ### Output Format
@@ -229,7 +229,7 @@ Present the review as:
 >
 > Reviewed: `tests/example.spec.ts`, `tests/login.spec.ts`
 >
-> - **`example.spec.ts:15`** — `steps.backOrForward('back')` should be `steps.backOrForward('BACKWARDS')` (uses uppercase enum-style strings)
+> - **`example.spec.ts:15`** — `steps.verifyText(el, page, undefined, { notEmpty: true })` is the deprecated 4-arg form — use `steps.verifyText(el, page)` (no-args asserts not empty)
 > - **`login.spec.ts:8`** — missing import for `DropdownSelectType`
 >
 > [number] issue(s) found. Fixing now.
@@ -273,7 +273,7 @@ After any Stage 4 commit, when the user indicates they are done adding individua
 > - **Generate a work summary deck** — produce a stakeholder-facing report of what was built so far
 
 4. **Wait for explicit user choice.** Do NOT auto-proceed. Do NOT assume yes.
-5. **On user approval of Stage 5:** invoke the `test-composer` skill via the Skill tool. Pass along the readiness check results and the list of pages already covered so test-composer's Step 1 (Inventory) starts from a known baseline.
+5. **On user approval of Stage 5:** invoke the `coverage-expansion` skill via the Skill tool, passing the readiness-check results and the list of pages already covered so coverage-expansion starts from a known baseline. (`coverage-expansion` owns iterative journey-by-journey suite growth and dispatches `test-composer` per journey; do not invoke `test-composer` directly here.)
 6. **On user pause:** confirm the session is at a clean stopping point and end gracefully. Remind the user how to resume ("just say 'expand coverage' or 'add more tests' next time").
 
 ### Hard rule

@@ -15,7 +15,7 @@ For the adversarial Stage A contract, see `adversarial-subagent-contract.md`.
 Every one of the 5 passes runs **per journey** as two sequential stages:
 
 - **Stage A — Compose / Probe.** The existing `test-composer` (passes 1–3) or adversarial probe subagent (passes 4–5). Dispatch contract unchanged from the single-stage era.
-- **Stage B — Adversarial Review.** A fresh staff-level-QA reviewer subagent, per journey, with its own isolated context and its own isolated `playwright-cli` session (`-s=<journey-slug>-stage-b`). Reads Stage A's output and the live app; returns `greenlight` or `improvements-needed`. Never writes tests, never appends to the ledger, never modifies files.
+- **Stage B — Adversarial Review.** A fresh staff-level-QA reviewer subagent, per journey, with its own isolated context and its own isolated `playwright-cli` session (`-s=reviewer-j-<slug>-<pass>-c<N>`). Reads Stage A's output and the live app; returns `greenlight` or `improvements-needed`. Never writes tests, never appends to the ledger, never modifies files.
 
 The dual-stage design addresses a concrete failure mode: a single subagent that both does the work AND self-certifies it misses scenarios a fresh independent reviewer would catch. Stage B is that independent reviewer. It exists to catch what Stage A missed.
 

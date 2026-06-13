@@ -38,19 +38,30 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 | [`references/test-optimization.md`](references/test-optimization.md) | Stage 4a optimization checklist + the whole-suite re-run gate. |
 | [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md) | Per-caller `autonomousMode: true` contracts. |
 | [`references/skill-registry.md`](references/skill-registry.md) | Canonical skill name registry. |
+| [`references/cascade-detector.md`](references/cascade-detector.md) | Canonical onboarding-state probe (Levels A/B/C/None) and per-caller responses. |
+
+## Stage ladder (canonical)
+
+One ladder governs every stage reference in this file and its references:
+
+| Stage | What it is | Runs |
+|---|---|---|
+| **1–4** | Scenario discovery → element inspection → write automation → 4a optimization + 4b API compliance | Inline, this skill |
+| **5** | Coverage expansion — journey-by-journey suite growth | Dispatched — invoke `coverage-expansion` |
+| **6** | Bug discovery — adversarial probing | Dispatched — invoke `bug-discovery` |
+| **7** | Adversarial AI testing | Dispatched — invoke `agents-vs-agents`; conditional: AI-feature apps only |
 
 ## Autonomous-mode invocation cheat-sheet
 
-Callers (external automated CLI drivers' happy-path step, `coverage-expansion`, `test-composer`, `companion-mode`) invoke this orchestrator with `autonomousMode: true` to disable the interactive hard gates. Each caller has its own required-args contract — they are NOT interchangeable.
+Two callers invoke this orchestrator with `autonomousMode: true` to disable the interactive hard gates: `onboarding`'s Phase-3 happy-path step (including when an external automated CLI driver drives the pipeline) and `companion-mode`'s Phase-6 graduation. Each caller has its own required-args contract — they are NOT interchangeable.
 
 | Caller | Required args | Optional args |
 |---|---|---|
-| external-driver happy-path step | `autonomousMode: true`, `happyPathDescription: "<sentence>"` | `context: [...]` |
-| `coverage-expansion` pass 1–3 | `autonomousMode: true`, `journey: "<j-id>"` | — |
+| `onboarding` Phase-3 happy-path step (incl. external automated CLI drivers) | `autonomousMode: true`, `happyPathDescription: "<sentence>"` | `context: [...]` |
 | `companion-mode` Phase-6 graduation | `autonomousMode: true`, `entry: "stage3"`, `bundlePath: "<absolute-path>"` | — |
 | user direct | — (no autonomous flags) | — (full Stage 1–4 interactive flow) |
 
-`happyPathDescription` replaces the Stage-1 discovery conversation; `journey: "<j-id>"` references an entry in `tests/e2e/docs/journey-map.md`; `bundlePath` references a `tests/e2e/evidence/<slug>-<ts>/` directory whose `summary.md` carries task description / pass criterion / app URL and whose `spec.ts` carries the already-discovered selectors. `entry: "stage3"` skips Stages 1 and 2 (companion-mode already did the equivalent). Full per-entry-point contracts, bundle-read schema, malformed-bundle handling, and return shape: [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md).
+`happyPathDescription` replaces the Stage-1 discovery conversation; `bundlePath` references a `tests/e2e/evidence/<slug>-<ts>/` directory whose `summary.md` carries task description / pass criterion / app URL and whose `spec.ts` carries the already-discovered selectors. `entry: "stage3"` skips Stages 1 and 2 (companion-mode already did the equivalent). Full per-entry-point contracts, bundle-read schema, malformed-bundle handling, and return shape: [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md).
 
 ## Companion Skills
 
@@ -59,12 +70,12 @@ This skill is the orchestrator for a group of testing skills. It handles Stages 
 | Skill | Activates when | What it does |
 |---|---|---|
 | `journey-mapping` | Before coverage work; map missing or stale | Discovers pages, identifies user journeys, produces the sentinel-bearing `journey-map.md` |
-| `coverage-expansion` | User asks to expand coverage, or Stage 5 reached | Iterative journey-by-journey coverage growth (default `mode: depth`, three passes) or a one-pass breadth sweep (`mode: breadth`) |
+| `coverage-expansion` | User asks to expand coverage, or Stage 5 reached | Three modes: `breadth` (one-pass sweep) \| `standard` (default — 3 compositional + 2 adversarial passes + dedup) \| `depth` (strict per-journey, ~20× cost, explicit opt-in) |
 | `test-composer` | Compose tests for one specific journey (usually called by `coverage-expansion`) | Atomic single-journey scope: happy path + variants, stabilize, API review, coverage verification |
 | `bug-discovery` | Automatically after Stage 5 achieves 100% coverage | Adversarial bug hunting after tests pass |
 | `test-repair` | User reports a broken/rotted/flaky suite, OR auto-escalated from `failure-diagnosis` / `test-composer` / `bug-discovery` when a run produces many failures at once | Batch repair pipeline: baseline 3× → pattern cluster → adaptive verification → delegate per cluster to `failure-diagnosis` → post-heal verification → summary |
 | `agents-vs-agents` | App has AI features, or user mentions AI guardrails/red-teaming/bias testing | Adversarial AI testing with LLM-powered attacker + judge |
-| `contract-testing` | User mentions contract tests, API contract, schema test, pact, breaking-change detection, or spec conformance — OR before writing any pure-API test that asserts response shape/status | Structured contract-style verification against real endpoints (status / headers / schema / error shape) using `steps.apiGet/Post/Put/Delete/Patch` |
+| `contract-testing` | User mentions contract tests, API contract, schema test, pact, breaking-change detection, or spec conformance — auto-invoked whenever a test (API-only or UI-flow) emits any `steps.api*` / `steps.verifyApi*` call | Structured contract-style verification against real endpoints (status / headers / schema / error shape) using `steps.apiGet/Post/Put/Delete/Patch` |
 | `database-testing` | User mentions database tests, SQL tests, verifying DB state, asserting persisted data, or any test that calls `steps.sql*` / `steps.verifySql*` | Persistence-layer verification: read contracts, CRUD round-trips, transactions, and DB-as-oracle for UI/API mutations |
 | `test-catalogue` | User asks for a "test catalogue", "scenario report", "client-ready catalogue", or an inventory of what the suite runs — opt-in only, never mandatory | Parses spec files + journey map, groups scenarios by app section and priority, renders a stakeholder-facing A4-landscape PDF catalogue (plus source HTML) with dedicated regression and skipped-with-reason sections |
 | `companion-mode` | User asks for ad-hoc functional verification with evidence (screenshots, video, trace) — opt-in only, never mandatory | Single-task evidence-first verification: produces an immutable bundle at `tests/e2e/evidence/<slug>-<ts>/`, then on a passed run proactively offers durable-automation graduation back into this orchestrator (Stage 3) or into the `onboarding` skill per the project's cascade-detector level. For projects with no element-interactions scaffold, the user is pointed at the `onboarding` skill (interactive) or an external automated CLI driver. Full behaviour: `skills/companion-mode/SKILL.md`. |
@@ -99,10 +110,10 @@ Related subagent contracts (read alongside the canonical schema):
 These rules are non-negotiable. They override helpfulness, initiative, and assumptions. If you are unsure about any rule, ask the user. Do not guess.
 
 ### 1. Do NOT skip stages
-- This skill operates in five stages. You MUST complete each stage and get user approval before advancing.
+- This skill operates in four inline stages plus dispatched Stages 5–7 (see the stage ladder above). You MUST complete each inline stage and get user approval before advancing.
 - Do NOT jump ahead. Do NOT write automation code during the discovery stage.
 - Exception: API questions and fix/edit requests bypass the staged flow (see Opening section).
-- **Stages 5+**: See Companion Skills table above for when to activate `test-composer`, `bug-discovery`, and `agents-vs-agents`.
+- **Stages 5–7**: See the stage ladder and Companion Skills table above for when to activate `coverage-expansion`, `bug-discovery`, and `agents-vs-agents`.
 
 ### 2. Do NOT edit `page-repository.json` without explicit permission
 - Show the user the exact JSON you want to add. Wait for "yes." Then edit.
@@ -143,7 +154,7 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
   - **Test issue (fix it yourself):** wrong selector, test logic error, timing/race condition, missing page-repository entry, incorrect API usage, flaky network — the test is wrong, not the app.
   - **Application bug (report and stop):** the app itself behaves incorrectly — a button doesn't work, a page crashes, data is wrong, a flow is broken, a feature doesn't do what it should, a UI element is missing or misplaced, an API returns an error. The test is correct but the app is broken.
 - **How to tell the difference:**
-  1. Look at the failure screenshot (Rule 6). Does the app look/behave wrong, or did your test target the wrong thing?
+  1. Look at the failure screenshot (Rule 7). Does the app look/behave wrong, or did your test target the wrong thing?
   2. Verify your selectors and API usage are correct. If they are, the problem is in the app.
   3. If a user flow that *should* work based on the scenario doesn't work because the app won't let it — that's an application bug, not a test to fix.
 - **When you identify an application bug:**
@@ -160,7 +171,7 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
 - **The test's job is to describe correct behavior. If the app doesn't match, that's a bug to report, not a test to fix.**
 
 ### 10. Save application context on every page visit or component discovery
-This is a **critical action** that must happen automatically during Stages 1, 2, and 5 (Test Composer).
+This is a **critical action** that must happen automatically during Stages 1, 2, and 5 (Coverage Expansion).
 
 Every time you navigate to a new page or discover a new component (via `playwright-cli` snapshot, DOM inspection, or test execution), you MUST save what you learned to a context file at `tests/e2e/docs/app-context.md`. This file is the team's living knowledge base of the application under test.
 
@@ -188,7 +199,7 @@ Every time you navigate to a new page or discover a new component (via `playwrig
 **When to update:**
 - During Stage 1 discovery — as you explore the app
 - During Stage 2 inspection — as you inspect DOM elements
-- During Stage 5 Test Composer — as you discover new pages in each iteration
+- During Stage 5 coverage expansion — as composer agents discover new pages in each pass
 - When a test failure screenshot reveals unexpected page state
 - When you discover a new route, component, or state variation
 
@@ -263,7 +274,7 @@ Two rules govern how test data shows up in spec files.
   // …use TestData.BASE_URL / TestData.ADMIN_EMAIL throughout the spec…
   ```
 
-If you genuinely need a one-off literal in a spec (a hard-coded element label, a test-only string), put it inline in the assertion — the guard only flags top-level uppercase constant declarations, not inline literals inside `expect(...).toBe("literal")` or step calls.
+If you genuinely need a one-off literal in a spec (a hard-coded element label, a test-only string), put it inline in the assertion — the `secrets-sweep` skill's Phase-7 sweep flags top-level uppercase constant declarations; inline assertion literals inside `expect(...).toBe("literal")` or step calls are exempt.
 
 ### 16. Visual regression — `verifyVisualMatch` with masks, not animation-freezing hacks
 
@@ -300,7 +311,7 @@ Element-scoped variant + raw-selector escape hatch are documented in `references
 
 ## Staged Workflow
 
-This skill operates in **four stages**. Each stage has a hard gate — you MUST get user approval before advancing to the next stage.
+This skill runs Stages 1–4 inline — each with a hard gate, requiring user approval before advancing — then dispatches Stages 5–7 per the stage ladder above.
 
 <HARD-GATE>
 Do NOT write any automation code until Stage 3. Do NOT create selectors until Stage 2. Do NOT skip the discovery conversation in Stage 1. Every engagement follows all four stages regardless of perceived simplicity.
@@ -317,14 +328,15 @@ You MUST create a task for each of these items and complete them in order (Stage
 5. **User approves selectors** — hard gate
 6. **Stage 3: Write Automation** — write the test using the Steps API and approved selectors
 7. **Run and validate** — execute the test, inspect failures visually, iterate until passing
-8. **Stage 4a: Test Optimization** — triggers automatically each time a test passes. Load `references/test-optimization.md` and run its 6-check protocol on the new tests; apply auto-fixes; re-stabilize on regression
+8. **Stage 4a: Test Optimization** — triggers automatically each time a test passes. Load `references/test-optimization.md` and run its 7-check protocol on the new tests; apply auto-fixes; re-stabilize on regression
 9. **Stage 4b: API Compliance Review** — triggers automatically once Stage 4a returns clean. Review that test's code against the API Reference; fix any non-compliance
 10. **Fix any issues found** — correct misuse from either sub-stage, re-run to confirm still passing
 11. **Commit** — commit after each passing + optimized + compliant test case
 12. **Repeat 6-11** for each additional scenario the user requests
 13. **Onboarding completion gate** — When the user signals they have no more individual scenarios, you MUST explicitly offer Stage 5 before ending the session. See the "Onboarding Completion Gate" section below. Do NOT silently stop.
-14. **Stage 5: Test Composer** (on user approval at gate) — invoke the `test-composer` skill for the iterative test composition workflow
+14. **Stage 5: Coverage Expansion** (on user approval at gate) — invoke the `coverage-expansion` skill for iterative journey-by-journey suite growth
 15. **Stage 6: Bug Discovery** (auto after Stage 5) — invoke the `bug-discovery` skill to actively probe for bugs
+16. **Stage 7: Adversarial AI Testing** (conditional — only when the app has AI features) — invoke the `agents-vs-agents` skill
 
 ### Process Flow
 
@@ -366,7 +378,7 @@ digraph element_interactions {
     "Inspect screenshot, fix, re-run" [shape=box];
 
     "STAGE 4a: Test Optimization" [shape=box, style=bold];
-    "Run 6-check protocol\n(test-optimization.md)" [shape=box];
+    "Run 7-check protocol\n(test-optimization.md)" [shape=box];
     "Issues found in 4a?" [shape=diamond];
     "Fix 4a misuse,\nre-run tests" [shape=box];
     "Test still passes\nafter 4a fixes?" [shape=diamond];
@@ -423,8 +435,8 @@ digraph element_interactions {
     "Mini-inspection:\ninspect DOM, propose,\nget approval" -> "Inspect screenshot, fix, re-run";
     "Inspect screenshot, fix, re-run" -> "Run test";
 
-    "STAGE 4a: Test Optimization" -> "Run 6-check protocol\n(test-optimization.md)";
-    "Run 6-check protocol\n(test-optimization.md)" -> "Issues found in 4a?" [label="emit structured return"];
+    "STAGE 4a: Test Optimization" -> "Run 7-check protocol\n(test-optimization.md)";
+    "Run 7-check protocol\n(test-optimization.md)" -> "Issues found in 4a?" [label="emit structured return"];
     "Issues found in 4a?" -> "STAGE 4b: API Compliance Review" [label="no — clean"];
     "Issues found in 4a?" -> "Fix 4a misuse,\nre-run tests" [label="yes — auto-fix"];
     "Fix 4a misuse,\nre-run tests" -> "Test still passes\nafter 4a fixes?";
@@ -466,7 +478,7 @@ Only show the greeting menu if the user's message is vague or just says somethin
 ### Routing
 
 - **Onboarding intent** — see "Onboarding a new project" below. Onboarding is no longer invoked from inside Claude Code; it runs as an external CLI driver.
-- **Coverage expansion intent (deep)** — phrases like "increase coverage", "deeper coverage", "add more scenarios", "iterative test expansion", "expand tests", "deep coverage pass" → invoke `coverage-expansion` with default `mode: depth` (three passes, journey-by-journey, parallel where independent).
+- **Coverage expansion intent** — phrases like "increase coverage", "add more scenarios", "iterative test expansion", "expand tests" → invoke `coverage-expansion` with default `mode: standard` (3 compositional + 2 adversarial passes + dedup, journey-by-journey, parallel where independent). Reserve `mode: depth` (strict per-journey on every pass, ~20× cost) for explicit "deep coverage pass" / audit phrasing.
 - **Coverage expansion intent (breadth)** — phrases like "quick coverage", "fast coverage", "breadth coverage", "sweep coverage" → invoke `coverage-expansion` with `mode: breadth`.
 - **Compose tests for one journey** — phrases like "compose tests for journey X", "tests for j-<slug>", "test this journey" → invoke `test-composer` with `args: "journey=<j-id>"`.
 - **Companion-mode evidence run** — when the deliverable the user wants is an artifact a human will open (screenshots, video, summary), not a spec they will check in → invoke `companion-mode`. Full trigger list in the registry. Do NOT downshift to Stages 1–4 because it would "be more reusable" — the user asked for evidence, not a durable test.

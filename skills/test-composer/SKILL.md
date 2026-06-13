@@ -48,7 +48,7 @@ Every invocation performs these stages in order, inside this subagent's own cont
 
 1. **Compose** (Steps 2–3 below) — write the full variant set for the journey, adding selectors to `page-repository.json` as needed.
 2. **Stabilize** (Step 4) — run, fix, re-run until 100% of new tests pass.
-3. **Test Optimization** (Step 6a) — load `../element-interactions/references/test-optimization.md` and run its 6-check protocol on the freshly-written tests. Apply auto-fixes; re-stabilize if any auto-fix regresses a test.
+3. **Test Optimization** (Step 6a) — load `../element-interactions/references/test-optimization.md` and run its 7-check protocol on the freshly-written tests. Apply auto-fixes; re-stabilize if any auto-fix regresses a test.
 4. **API compliance review** (Step 6b) — run the Stage 4b API review protocol on the freshly-written tests. Fix any non-compliance and re-stabilize if needed.
 5. **Coverage verification + whole-suite gate** (Step 7) — check every step, branch, and applicable state variation from the journey's map block against the composed tests. Loop back to Compose for any missing coverage. After coverage is exhaustive, run the whole-suite re-run gate (see Step 7); only return to the caller when the gate passes.
 
@@ -64,7 +64,7 @@ The caller (user or `coverage-expansion`) passes `journey=<id>` referencing an e
 2. Locate the `### j-<id>: <name>` block in the map. Load **only** that block plus any `sj-<slug>` blocks it references under `Sub-journey refs:`.
 3. Note the journey's `Priority`, `Pages touched:`, and `Test expectations:`. These determine which variants to compose:
    - **P0** → happy-path + error-states + edge-cases + mobile + negative flows + any data-lifecycle variants in the expectations list.
-   - **P1** → happy-path + error-states + edge-cases + mobile (if expectations list it).
+   - **P1** → happy-path + error-states + edge-cases + mobile.
    - **P2** → happy-path + one error-state + one data-verification check.
    - **P3** → smoke test (loads, key elements present).
 4. List existing tests that already cover any step of this journey (from `npx playwright test --list`). These are the starting point — add variants, do not duplicate.
@@ -102,7 +102,7 @@ For each uncovered page or feature, use `@playwright/cli` (see [`../element-inte
 
 ## Step 3: Implement
 
-Write tests in batches of 5-15 per spec file, organized by area.
+A spec file contains exactly the tests its journey expectations and partition analysis demand — never pad toward a count, never stop at one. Split files by area when they exceed ~200 lines.
 
 **Implementation rules:**
 - Every test must use the Steps API from `./fixtures/base`
@@ -113,6 +113,7 @@ Write tests in batches of 5-15 per spec file, organized by area.
   **What counts as a mutable endpoint.** Any request whose server response represents a persistence change against tenant or user data — entity create / update / delete, state transitions (publish, archive, submit), role or permission mutations, file uploads that persist, password or MFA changes. Read-only methods (GET / HEAD / OPTIONS) do NOT trigger the rule, even when they tunnel through a POST for query-payload reasons, **provided** the handler is idempotent and server-side writes are limited to audit-log entries. When in doubt, apply the rule: the cost is one line of configuration per file; the cost of missing it is non-deterministic CI failures that surface later as "flaky auth".
 - Tests that depend on data from other tests must handle both states (e.g., job status could be "draft" or "published")
 - Tests that need specific data should use `test.skip()` when that data isn't found, not fail
+- **If any variant emits `steps.api*` calls, invoke the `contract-testing` skill** and apply its minimum obligations (status + error-envelope assertion) to each endpoint touched. This is what makes an L2 oracle real (see §"Oracle strength ladder" below) — an unasserted `apiGet` is not an oracle.
 
 **Prioritize by test type:**
 1. **Functional tests** — verify things work when clicked/submitted (highest value)
@@ -129,13 +130,36 @@ Compose variants in this order so selectors build up cleanly and each variant in
 
 1. **Happy path end-to-end.** Walk every step of the journey, introducing selectors for every page the journey touches. Every later variant inherits these selectors.
 2. **Error-state variants.** Validation errors, network failures, session expiry, invalid input at each step.
-3. **Edge-case variants.** Boundary inputs, unusual timing, empty or overflow data.
+3. **Edge-case variants.** Boundary inputs, unusual timing, empty or overflow data. Load `references/input-domain-analysis.md` and derive the edge-case variant set from the partition table, not ad hoc.
 4. **Mobile variant** (P0/P1 only). The happy path at mobile viewport (375x812).
 5. **Negative flows.** Permission-denied, unauthorized access, out-of-order step execution.
 6. **Data-lifecycle variants** (where `Test expectations:` lists them): create → read → update → delete across sessions, draft persistence, bulk operations.
 7. **Visual-regression variants — when the surface is design-locked.** For pages or components whose visual layout the team treats as a contract (marketing landing pages, settled design-system components, dashboard layouts in a stable product), add one `verifyVisualMatch` test. Reference dynamic regions (clocks, generated ids, live counters, "updated N minutes ago" badges, user avatars, charts that re-render) by `{ elementName, pageName }` in the `mask` option so the pixel diff stays stable across runs. **Skip this variant for surfaces still under active design churn** — visual regression on a moving target is pure noise, and the right call there is to come back to it after the design settles. See `element-interactions/SKILL.md` §16 (visual regression — `verifyVisualMatch` with masks, not animation-freezing hacks) for the full policy.
 
 Each variant is its own `test(...)` inside one describe block for the journey — or split into a small cluster of describe blocks if the file grows beyond ~200 lines.
+
+### Oracle strength ladder
+
+Every test proves its claim through an **oracle** — the assertion that would fail if the app regressed. Oracles vary in strength, and a variant's required strength is set by the journey's priority and whether the step mutates state. This subsection is the canonical ladder definition; `element-interactions/SKILL.md`'s kernel rule and the reviewer calibration in `../coverage-expansion/references/reviewer-subagent-contract.md` mirror it in one line each.
+
+| Level | Oracle | What it proves |
+|---|---|---|
+| **L0** | Visibility (toast, heading, success banner) | The UI *said* it worked. |
+| **L1** | UI round-trip — reload or re-navigate, then re-verify the persisted state via extraction | The app *renders* the mutation after a fresh load. |
+| **L2** | API oracle — `steps.apiGet` of the mutated resource + status/shape assertions per `contract-testing`'s minimum obligations | The backend *serves* the mutation. |
+| **L3** | DB oracle — `steps.sql*` via the `database-testing` skill (gated on the framework version shipping `steps.sql*`; see that skill's preflight) | The mutation *persisted* to the database. |
+
+**Required strength:**
+
+| Journey priority | Mutating steps | Non-mutating steps |
+|---|---|---|
+| P0 | ≥ L2 (L3 when a DB is configured AND `steps.sql*` has shipped) | ≥ L1 |
+| P1 | ≥ L1 | L0 acceptable |
+| P2/P3 | L0 acceptable | L0 acceptable |
+
+**Reciprocal rule:** any variant whose strongest oracle is L0 on a P0 mutating step is a coverage gap — loop back in Step 7.
+
+**UI bite-check** (analogue of `contract-testing` Rule 8): for each journey, mutate the expected value of one L1+ assertion, confirm the test fails with a useful diff, then revert. A round-trip assertion that cannot fail is L0 wearing an L1 costume.
 
 ### Tenant cleanup hooks are non-negotiable for add-* journeys
 
@@ -144,7 +168,7 @@ Any journey whose happy path creates a persistent tenant entity (typically `j-*-
 Two cases, both mandatory:
 
 1. **UI exposes a Delete affordance.** The spec's `test.afterAll` uses the Steps API to delete every entity the suite created. If the teardown step itself fails, the spec must surface that failure in the subagent's structured return rather than swallowing it.
-2. **UI lacks a Delete affordance.** The spec calls the framework-level helper `cleanupViaApiBackdoor(<entity-type>, <id>)` — see contract below. If the helper is unavailable in the current project (e.g., per-tenant API credentials not configured), the subagent does **not** silently skip cleanup. It returns `cleanup: blocked` in its structured summary so the orchestrator can log the tenant-pollution risk explicitly instead of having it hide in the spec.
+2. **UI lacks a Delete affordance.** The spec calls `cleanupViaApiBackdoor(<entity-type>, <id>)` from the local stub `tests/e2e/utils/cleanup-backdoor.ts` — see contract below. While the real helper is unshipped (or unavailable in the current project, e.g., per-tenant API credentials not configured), the subagent does **not** silently skip cleanup. It records the `cleanup-blocked` annotation and returns `cleanup: blocked` in its structured summary so the orchestrator can log the tenant-pollution risk explicitly instead of having it hide in the spec.
 
 **Rationalizations to reject:**
 
@@ -154,23 +178,45 @@ Two cases, both mandatory:
 | "I don't have API credentials so I'll log in as the shared admin and call the UI delete" | That bypasses the reason the backdoor exists (UI has no Delete). If the UI has no Delete path, an admin-UI Delete doesn't exist either — you are inventing a workflow the app does not expose. Return `cleanup: blocked`. |
 | "One record per test doesn't matter, the tenant is big" | Per pass × per journey × per variant × 5 compositional passes × 2 adversarial passes = hundreds of records per run. Pollution compounds across runs. |
 | "I'll skip cleanup and add a TODO" | A TODO in a committed spec is a silent commitment to do the work later. It rarely gets done. Return `cleanup: blocked` — the orchestrator's log of blocked cleanups IS the follow-up ledger. |
-| "The backdoor helper isn't implemented yet so I'll skip" | Correct response: write the `cleanupViaApiBackdoor` call as documented, let it fail at runtime, and return `cleanup: blocked` with the runtime error. Do NOT inline ad-hoc cleanup that circumvents the contract. |
+| "The backdoor helper isn't implemented yet so I'll skip" | Correct response: create/import the local stub (`tests/e2e/utils/cleanup-backdoor.ts`, contract below), call it as documented, catch the `CleanupBackdoorUnavailableError`, annotate, and return `cleanup: blocked`. Do NOT inline ad-hoc cleanup that circumvents the contract. |
 
-#### `cleanupViaApiBackdoor` contract (documentation only — helper is a future follow-up)
+#### `cleanupViaApiBackdoor` contract (local stub until the framework ships the real helper)
 
-> **⚠ Not-yet-implemented helper.** The helper below is contracted here but has no implementation yet. Specs written against this contract today will throw at runtime the first time `cleanupViaApiBackdoor(...)` is called — by design, because the spec's `test.afterAll` catches and returns `cleanup: blocked`. This is the expected behaviour until the framework-level follow-up lands. Do NOT substitute an inline ad-hoc cleanup to make the call succeed; that would mask the pollution risk the return value is meant to surface.
+> **⚠ Not-yet-shipped helper.** The framework does not expose `cleanupViaApiBackdoor` yet. Specs do NOT call a phantom framework export and let it crash — they create (or import, if a sibling spec already created it) a **local stub** at `tests/e2e/utils/cleanup-backdoor.ts` that throws a named error, so the `test.afterAll` catch path is typed, deterministic, and leaves a per-run signal in the test report. Do NOT substitute an inline ad-hoc cleanup to make the call succeed; that would mask the pollution risk the return value is meant to surface. When the framework ships the real helper, pin the dependency to that named framework version and replace the stub's body with a re-export — the call sites do not change.
 
-This PR documents the contract. The helper implementation itself is a separate framework-level follow-up; per-tenant API credentials live in env.
+**The stub:**
 
+```ts
+// tests/e2e/utils/cleanup-backdoor.ts
+export class CleanupBackdoorUnavailableError extends Error {
+  constructor(entityType: string, id: string) {
+    super(`cleanupViaApiBackdoor unavailable — cannot clean up ${entityType}:${id}`);
+    this.name = 'CleanupBackdoorUnavailableError';
+  }
+}
+
+export async function cleanupViaApiBackdoor(entityType: string, id: string): Promise<void> {
+  throw new CleanupBackdoorUnavailableError(entityType, id);
+}
 ```
-cleanupViaApiBackdoor(entityType: string, id: string): Promise<void>
+
+**The call site** — the spec's `test.afterAll` catches the error and records a `cleanup-blocked` annotation so every future run carries the per-run signal:
+
+```ts
+test.afterAll(async ({}, testInfo) => {
+  try {
+    await cleanupViaApiBackdoor('user', createdId);
+  } catch (e) {
+    testInfo.annotations.push({ type: 'cleanup-blocked', description: `user:${createdId}` });
+  }
+});
 ```
 
 - **Intent.** Delete a tenant entity created during a test when the UI exposes no Delete path. Invoked from `test.afterAll` after the suite's happy-path variant has finished.
-- **Signature.** `entityType` is a framework-recognised entity slug (e.g., `'user'`, `'record'`, `'team'`, `'resource'`). `id` is the server-assigned identifier captured during the create flow.
-- **Credentials.** Per-tenant API credentials live in env (`<TENANT>_API_TOKEN` or equivalent). The helper reads them; specs never handle raw credentials.
-- **Failure mode.** On non-2xx response, the helper throws; the spec's `test.afterAll` catches and surfaces `cleanup: blocked` in the subagent return.
-- **Status.** Contract only in this PR. The helper implementation, the env-credential convention, and any per-entity endpoint mapping are future follow-up work and out of scope here.
+- **Signature.** `entityType` is an entity slug (e.g., `'user'`, `'record'`, `'team'`, `'resource'`). `id` is the server-assigned identifier captured during the create flow.
+- **Credentials.** Per-tenant API credentials live in env (`<TENANT>_API_TOKEN` or equivalent). The real helper will read them; specs never handle raw credentials.
+- **Subagent return.** The subagent still returns `cleanup: blocked` in its structured summary. `cleanup` is a typed enum (`done | blocked | not-needed`) documented in `schemas/subagent-returns/composer.schema.json`.
+- **Status.** Stub-backed contract. The real helper, the env-credential convention, and any per-entity endpoint mapping ship as a framework follow-up; pin the named framework version here once known.
 
 Cross-journey ordering (which journey to tackle first among many) is the caller's concern, not this skill's.
 
@@ -213,7 +259,7 @@ Save to `docs/e2e-test-scenarios.md` (or a path the user specifies).
 
 ### Step 6a: Test Optimization
 
-Load `../element-interactions/references/test-optimization.md` and run the 6-check protocol against the freshly-written tests for this journey. Apply auto-fixes per the protocol; re-stabilize (Step 4) if any auto-fix causes a regression (follow Rule 7 — failure-diagnosis).
+Load `../element-interactions/references/test-optimization.md` and run the 7-check protocol against the freshly-written tests for this journey. Apply auto-fixes per the protocol; re-stabilize (Step 4) if any auto-fix causes a regression (follow Rule 7 — failure-diagnosis).
 
 Emit the structured return per `../element-interactions/references/test-optimization.md` §8 as part of this skill's per-journey return block (under a new top-level `stage_4a` key — see Step 8's Canonical return schema for the addition).
 
@@ -239,7 +285,7 @@ A lightweight self-review checklist for this journey only:
 Before returning, verify the journey is exhaustively covered. This is the coverage-ownership contract:
 
 1. Re-read the assigned journey block's `Steps:`, `Branches:`, and `State variations:` lists.
-2. Build a coverage matrix: each listed item × the tests that exercise it.
+2. Build a coverage matrix: each listed item × the tests that exercise it, plus a **partitions covered** column mapping each input's equivalence classes and boundary pairs (from the spec file's partition table — see `references/input-domain-analysis.md`) to the tests that exercise them.
 3. If any step, branch, or applicable state variation has zero tests, loop back to Step 3 (Implement) to add missing coverage, then re-stabilize (Step 4) and re-review (Step 6).
 4. Only exit the loop when every item is covered or each remaining gap has an explicit justification (e.g., "branch X requires a seeded database row that cannot be created in tests — documented as external-setup gap").
 
@@ -272,7 +318,7 @@ Every finding reported in the return block (coverage gaps, app-bug flags, new-di
 ```
 
 - `FINDING-ID` uses `<journey-slug>-<pass>-<nn>` (when invoked by `coverage-expansion` with a pass number) or `<journey-slug>-<nn>` (standalone).
-- `severity` is one of `critical`, `high`, `medium`, `low`, `info`. No other values.
+- `severity` per `../element-interactions/references/subagent-return-schema.md` §1.
 - Do not invent alternative ID schemes or severities.
 
 ### Return states — covered-exhaustively vs rationalisation
@@ -434,6 +480,8 @@ Do NOT use `test(pass<N>): …`, `feat(e2e): …`, or `test(<j1>, <j2>): …` �
 **Over-mocking:** E2E tests should exercise the real application. Don't mock APIs, don't intercept network requests, don't stub components. If a feature needs external data, use `test.skip()` instead of faking it.
 
 **Giant spec files:** Keep spec files under 200 lines. Split by area, not by "I kept adding tests to the same file."
+
+**Count padding:** `tests-added` is a report field, not a score. Three tests that exhaust distinct equivalence classes beat fifteen same-class duplicates that dedup will delete next pass.
 
 ---
 

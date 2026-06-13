@@ -8,7 +8,7 @@
 
 ## When this protocol runs
 
-Stage 4a runs after a test reaches passing state in stabilization, **before** Stage 4b (API Compliance Review). It reviews the freshly-written tests against six best-practice checks — three reliability checks, two speed checks, one DRY check — and applies fixes before handing off to 4b.
+Stage 4a runs after a test reaches passing state in stabilization, **before** Stage 4b (API Compliance Review). It reviews the freshly-written tests against seven best-practice checks — four reliability checks, two speed checks, one DRY check — and applies fixes before handing off to 4b.
 
 The protocol assumes:
 
@@ -16,9 +16,9 @@ The protocol assumes:
 - `tests/e2e/docs/journey-map.md` exists and is sentinel-bearing.
 - `tests/fixtures/base.ts` exists and contains `HELPER SLOT` comment markers (produced by `onboarding`'s Phase 1 scaffold).
 
-Missing either of those two → stop the protocol, return an error pointing the caller at the missing prerequisite. Do not synthesize the missing artifact.
+Missing any of these three → stop the protocol, return an error pointing the caller at the missing prerequisite. Do not synthesize the missing artifact.
 
-**Single-spec mode.** If `journey-map.md` exists and has the sentinel but no journey blocks are populated with `UI-covers:` fields yet (e.g. during onboarding's Phase 3 happy-path before Phase 4 produces the full map), Stage 4a runs in **single-spec mode**: §4 (API shortcuts) is skipped entirely — no UI-covers registry to consult, so all prerequisites stay UI-driven. Checks §1, §2, §3, §5, §6 still apply. The `next_stage` of the structured return notes `mode: single-spec`.
+**Single-spec mode.** If `journey-map.md` exists and has the sentinel but no journey blocks are populated with `UI-covers:` fields yet (e.g. during onboarding's Phase 3 happy-path before Phase 4 produces the full map), Stage 4a runs in **single-spec mode**: §4 (API shortcuts) is skipped entirely — no UI-covers registry to consult, so all prerequisites stay UI-driven. Checks §1, §2, §3, §3b, §5, §6 still apply. The `next_stage` of the structured return notes `mode: single-spec`.
 
 ## Placeholder convention
 
@@ -29,24 +29,26 @@ Helper-code blocks below contain placeholders inside `«double-angle-brackets»`
 | `«BASE_URL»` | `playwright.config.ts` `baseURL` |
 | `«RESET_ENDPOINT»` | Test Infrastructure `Reset / seed endpoints` |
 | `«LOGIN_ENDPOINT»` | Test Infrastructure `Auth model → Login endpoint` |
+| `«SIGNUP_ENDPOINT»` | Test Infrastructure `signup / mutation endpoints`, or `.discovery-draft.json` `handover-to-phase4.credentials-discovered.signup-endpoint` |
 | `«COOKIE_NAME»` | Test Infrastructure `Auth model → Cookie name` |
 | `«CART_ADD_ENDPOINT»` | Test Infrastructure `Mutation endpoints` row matching cart-add |
 | `«BANNER_DISMISS_SELECTORS»` | Test Infrastructure `Persistent banners / modals` (each banner's dismissal selector, comma-separated) |
 
 A template with any unresolved `«…»` placeholder MUST NOT be written into `base.ts`. Stage 4a halts and returns `placeholder-unresolved` if it cannot find the substitution in app-context.
 
-## The six checks
+## The seven checks
 
 | # | Category | Name | Auto-fix? |
 |---|---|---|---|
 | 1 | Reliability | State isolation (`beforeEach(resetState)`) | yes (per-spec insert) |
 | 2 | Reliability | Hardcoded shared resources | yes (per-spec rotate or fall through to #1) |
 | 3 | Reliability | Per-run uniqueness (`Date.now()`/`crypto.randomUUID()`) | yes (per-spec rewrite literal) |
+| 3b | Reliability | Assertion robustness — oracle audit | yes (per-spec rewrite assertion) / flag-only for copy-churn |
 | 4 | Speed | API shortcuts for tested prerequisites | yes (per-spec replace UI prereq with helper call; populate helper in `base.ts` if absent) |
 | 5 | Speed | Cookie banner / persistent modal handling | yes (per-spec strip duplicated dismiss; populate `dismissBanners` in `base.ts`) |
 | 6 | DRY | Serial mode discipline | flag-only (do not silently strip `mode: 'serial'`) |
 
-The detailed rules for each check are in §1 through §6 below.
+The detailed rules for each check are in §1 through §6 below; §3b sits between §3 and §4 (numbering is frozen — §7/§8 are cross-referenced externally).
 
 ## §1 State isolation
 
@@ -107,13 +109,21 @@ The detailed rules for each check are in §1 through §6 below.
 3. Each spec uses `freshUser` per-test, with assertions scoped to that user:
 
    ```typescript
-   test('listing creates and appears on MY profile', async ({ page }) => {
+   test('listing creates and appears on MY profile', async ({ page, steps }) => {
      const { email, password } = await freshUser(page);
-     await steps.signin(email, password);
-     await steps.createListing({ title: 'My item', price: 10 });
+     // Sign in through the real UI — every interaction goes through steps.*
+     await steps.navigateTo('/login');
+     await steps.fill('emailInput', 'LoginPage', email);
+     await steps.fill('passwordInput', 'LoginPage', password);
+     await steps.click('submitButton', 'LoginPage');
+     // Create the listing through the UI.
+     await steps.navigateTo('/listings/new');
+     await steps.fill('titleInput', 'NewListingPage', 'My item');
+     await steps.fill('priceInput', 'NewListingPage', '10');
+     await steps.click('publishButton', 'NewListingPage');
      // SCOPED — assert on MY profile, not on the global marketplace.
      await steps.navigateTo('/me/listings');
-     await steps.verifyText('listingTitle', 'My item');
+     await steps.verifyText('listingTitle', 'MyListingsPage', 'My item');
    });
    ```
 
@@ -207,6 +217,45 @@ const email = `new-user-${Date.now()}@test.com`;
 For values that participate in case-sensitivity tests, prefer `crypto.randomUUID().slice(0, 8)` to avoid timing collisions.
 
 **Allowance — duplicate-detection tests:** if the spec is *about* duplicate detection (file name or describe title contains `duplicate` / `already-exists` / `taken`), the literal stays — the test is verifying the duplicate path. Add a `// stage4a:duplicate-deliberate` comment for human review and skip the auto-fix.
+
+## §3b Assertion robustness — oracle audit
+
+**Trigger:** the spec asserts an expected value that is *volatile* — a value the app legitimately changes between runs even when behaviour is correct. A passing assertion against a volatile value is a flake waiting to happen (and a re-baseline tax every time the data moves). This is the per-spec **oracle audit**: every assertion in the spec is graded for whether it pins a *stable* truth or an *incidental* one.
+
+Volatile values to flag:
+
+- **Timestamps / dates** — `'2026-06-12'`, `'2 minutes ago'`, anything derived from "now".
+- **Server-assigned IDs** — auto-increment row IDs, UUIDs minted by the backend, order numbers.
+- **Seed-dependent counts** — `verifyCount(..., { exactly: 14 })` where `14` is "however many rows the seed happens to have today".
+- **Locale / currency formatting** — `'$1,234.56'` vs `'1234.56'` vs `'1.234,56 €'`; thousands separators and decimal marks drift with locale config.
+- **Computed aggregates** — totals, averages, "X of Y" summaries that depend on other rows.
+- **Positional list reads** — `getText` of "the 3rd row" when row order is not guaranteed stable.
+
+**Rule:** rewrite the assertion to a **stable oracle** instead of a hardcoded incidental value:
+
+- **Round-trip oracle** — assert the value the test *itself* produced, not a literal. A listing created with `title = 'My item-${Date.now()}'` is asserted by matching the same captured string, not a frozen literal.
+- **Delta oracle** — capture `getCount`/`getText` before the action, act, then assert the *change* (count + 1, total + price), not the absolute post-state.
+- **Shape oracle** — assert the value *matches a pattern* rather than equals a literal: `text.toMatch(/^\$\d[\d,]*\.\d{2}$/)` for currency, `.satisfy(el => Number(el.text) > 0)` for a positive count, `verifyListOrder` for ordering instead of a fixed positional read.
+
+**Auto-fix?** Yes when the robust rewrite is mechanical (round-trip against a captured value, delta capture, pattern match) — apply it per-spec. **Flag-only** when the assertion looks like *copy-churn* — a hand-written human expectation (e.g. a marketing string, a fixed business rule) where rewriting to a pattern would weaken the test's intent. In that case add a `// stage4a:assertion-volatile-review` comment and surface it as `review`, do not auto-rewrite.
+
+**Examples:**
+
+```typescript
+// before — pins a volatile timestamp the app regenerates every run
+await steps.verifyText('createdAt', 'PageName', '2026-06-12');
+// after — shape oracle: assert it looks like an ISO date, not a frozen one
+await steps.expect('createdAt', 'PageName').text.toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+// before — seed-dependent absolute count
+await steps.verifyCount('rows', 'PageName', { exactly: 14 });
+// after — delta oracle: capture before, act, assert the change
+const before = await steps.getCount('rows', 'PageName');
+await steps.click('addRowButton', 'PageName');
+await steps.verifyCount('rows', 'PageName', { exactly: before + 1 });
+```
+
+**Cross-reference:** this is the authoring-time analogue of `failure-diagnosis`'s heal step (d) *assertion re-baseline* — §3b prevents the volatile assertion from being written in the first place, so the suite never reaches the re-baseline churn that (d) cleans up after.
 
 ## §4 API shortcuts for tested prerequisites
 
@@ -422,6 +471,7 @@ Stage 4a returns a structured JSON-shaped block back to its caller. The block is
   "fixtures_modified": ["tests/fixtures/base.ts"],
   "findings": [
     { "rule": "§1", "severity": "fixed", "spec": "<path>", "summary": "Inserted beforeEach(resetState)." },
+    { "rule": "§3b", "severity": "fixed", "spec": "<path>", "summary": "Rewrote verifyText('createdAt', …, '2026-06-12') to a shape oracle (text.toMatch ISO-date) — volatile timestamp." },
     { "rule": "§4", "severity": "fixed", "spec": "<path>", "summary": "Replaced UI signup with setAuthCookie() (login UI-covered in j-login-to-purchase)." },
     { "rule": "§4", "severity": "gap-flagged", "spec": "<path>", "summary": "Cart-add not UI-covered in any journey; kept UI flow and flagged journey-mapping." },
     { "rule": "§6", "severity": "review", "spec": "<path>", "summary": "Serial mode without sentinel; inserted // stage4a:serial-mode-review comment." }

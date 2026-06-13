@@ -32,7 +32,7 @@ subagent-only: true
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
-# Singularity — Failure Diagnosis
+# Failure Diagnosis
 
 A structured diagnostic protocol for failing Playwright tests. Every failure gets the full pipeline — no "retry and hope."
 
@@ -41,6 +41,9 @@ A structured diagnostic protocol for failing Playwright tests. Every failure get
 - A test run produces failures (from any mode)
 - User says "test is failing", "debug this", "why is this failing", "fix this test"
 - Another companion skill encounters a failure during its workflow
+  (exception: `companion-mode` treats Phase-4 failures as a first-class
+  bundle outcome — failure-diagnosis is only its Phase-6 handoff, on
+  explicit user assent)
 
 ---
 
@@ -162,7 +165,7 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 | **c. Flow-step drift** | **Propose** | App shows an extra/missing/reordered step between expected actions; screenshot confirms correct page state at each step the app does reach | Present the detected flow diff to the operator; apply on approval |
 | **d. Assertion re-baseline** | **Propose** | Hardcoded literal no longer matches; UI state around the assertion is otherwise correct | Present old vs new value to the operator; apply on approval |
 | **e. State isolation** | **Auto** | Test passes when run alone, fails when run after specific predecessors (verified empirically) | Add fresh context / storage reset / cleanup hook; re-run in suite order |
-| **f. Flake quarantine** | **Report** | Flake persisted after two heal attempts of different strategies; root cause unclear | Tag test `@flaky`, add to repair summary with diagnostic notes; do NOT silently skip |
+| **f. Flake quarantine** | **Report** | Flake persisted after two heal attempts of different strategies; root cause unclear | Tag test `@flaky`, append an entry to the quarantine ledger (see §Quarantine ledger below), add to repair summary with diagnostic notes; do NOT silently skip |
 | **g. Whole-test rewrite** | **Operator-aligned** | Flow changed so fundamentally that the scenario no longer maps to the app as-is; no incremental heal applies | Present to operator; on approval, invoke `test-composer` with journey context. Never regenerate without alignment. |
 | **h. Documented-quirk match — no heal** | **Report** | The observed failure shape exactly matches a documented quirk in `app-context.md` (configuration-dependent option subsets, redirect-vs-popup auth patterns, vendor-aliased options, etc.) **OR** matches a documented app-degradation signal (a degradation-banner copy string from `app-context.md`'s documented-banners list, the documented hanging spinner-sentinel custom element, 5xx in network capture) | Report observed-vs-documented diff; do NOT modify the test. The skip / failure is correct; the regression is in the app or in the documentation. Cross-link the relevant `app-context.md` section in the report. |
 
@@ -179,6 +182,41 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 9. If the test scenario no longer maps to the app flow → (g) rewrite → operator-align
 
 The precondition columns exist to keep you honest: any heal applied without meeting its precondition is a guess, and guesses mask bugs.
+
+### Quarantine ledger (heal (f) only)
+
+Heal (f) appends an entry to the quarantine ledger at
+`tests/e2e/docs/flake-quarantine.md`. The ledger is **committed, not
+gitignored** — quarantine is cross-session state that the next
+`test-repair` session must see.
+
+Ledger header (first lines of the file):
+
+```markdown
+# Flake quarantine ledger
+<!-- Written by failure-diagnosis heal (f); released by test-repair Stage 5.5.
+     Out-of-band shell edits are denied by hooks/protected-artifact-bash-guard.sh. -->
+```
+
+Entry template (one per quarantined test):
+
+```markdown
+### `tests/<file>.spec.ts::<test-name>`
+- **Quarantined:** YYYY-MM-DD
+- **Failure-shape:** flaky-consistent | flaky-chaotic
+- **Heal attempts:** <strategy 1>, <strategy 2> — both destabilized
+- **Error signature:** <one-line dominant error when failing>
+- **Diagnostic notes:** <what the evidence showed; why root cause is unclear>
+- **Observations:** <dated appends from later sessions — e.g. "YYYY-MM-DD: still flaking 1/3 in Stage-1 baseline">
+- **Status:** quarantined | unquarantined (YYYY-MM-DD — <evidence: 3/3 baseline + 5/5 suite-order green>)
+```
+
+Ownership is write-only and split: **failure-diagnosis writes**
+entries (heal (f)); **test-repair releases** them (its Stage 5.5
+quarantine review flips `Status:` to `unquarantined` with dated
+evidence, or appends a still-flaking observation). No other skill
+edits the ledger, and entries are never deleted — a released entry
+keeps its history.
 
 ### Stage 4b — Live DOM re-learning (for heal strategy (a) only)
 
@@ -211,7 +249,7 @@ If triage attributes the failure to a fragile selector (text drift, position-dep
 
 ### Stage 5 — Fix and stability (test issues only)
 
-1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly — refer to the API Reference in the main `singularity` skill for all method signatures.
+1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly — refer to [`../element-interactions/references/api-reference.md`](../element-interactions/references/api-reference.md) for all method signatures.
 2. **If the fix requires new selectors:** Stage 4b has produced the proposal. For Auto strategies the update applies directly; for Propose strategies confirm with the operator first.
 3. **Run the test 3-5 times** to confirm stability. A single pass is not sufficient — flaky tests are worse than failing tests.
    ```bash
@@ -233,11 +271,16 @@ Present the bug report to the user with this structure:
 > **Expected:** Dashboard page loads with welcome message and user stats
 > **Actual:** Page shows "500 Internal Server Error"
 >
-> **Screenshot:** [describe what the screenshot shows]
-> **DOM:** [describe what DOM inspection revealed — e.g., error page rendered, expected component absent]
+> **Screenshot:** <on-disk path> — <one-line description>
+> **DOM evidence:** <error-context.md or snapshot path>
+> **Severity:** <per bug-report rubric>
+> **Environment:** <base URL + browser>
+> **Journey:** j-<slug> (when journey-map.md present)
 > **Reproducible:** Yes — confirmed by navigating manually via `playwright-cli`
 >
 > This is an application bug. The test has NOT been modified.
+
+**Hard rule:** every app-bug report MUST cite at least one on-disk artifact path (screenshot, `error-context.md`, snapshot, or capture file). Prose supplements the artifact, never replaces it.
 
 Do NOT modify the test to work around the bug. Do NOT skip the test. Do NOT add try/catch blocks to swallow the error. Report and stop.
 
@@ -289,4 +332,4 @@ The operator can override back to single-failure mode if they have a reason to k
 
 ## API Reference
 
-Refer to the API Reference in the main `singularity` skill for all method signatures, argument orders, and types. All Steps methods use `(elementName, pageName)` order.
+Refer to [`../element-interactions/references/api-reference.md`](../element-interactions/references/api-reference.md) for all method signatures, argument orders, and types. All Steps methods use `(elementName, pageName)` order.
