@@ -81,7 +81,7 @@ Inside the package:
 | `skills/` | 15+ Claude Code skill packs covering scaffold, journey-mapping, test-composer, bug-discovery, secrets-sweep, coverage-expansion, and the orchestrator's onboarding workflow | Claude Code (auto-discovered) |
 | `hooks/` | Harness hooks that enforce contract discipline at the tool boundary — phase-ordering, dispatch-shape validation, return-schema validation, ledger integrity, parent-only-orchestrator policies, playwright-cli session isolation | Claude Code (registered in `~/.claude/settings.json` by postinstall) |
 | `schemas/` | JSON Schemas for subagent return shapes + the onboarding-status ledger; fixtures for both the valid and invalid cases | Subagent return validators + reviewer subagents |
-| `scripts/` | `postinstall.js` (skill+hook copy + chromium fetch), `compile-schemas.mjs` + `validate-schema-fixtures.mjs` (schemas:lint), `sync-hooks.js` (dev convenience) | npm install, CI |
+| `scripts/` | `postinstall.js` is the only script shipped in the tarball (skill+hook copy + chromium fetch); the lint/build/sync scripts live in the repo only — `compile-schemas.mjs` + `validate-schema-fixtures.mjs` (schemas:lint), `build-validator.mjs` (regenerates the bundled validator), `lint-doc-drift.mjs` (doc-surface drift), `sync-hooks.js` (dev convenience) | npm install, CI |
 
 ---
 
@@ -112,11 +112,11 @@ Once kicked off, the orchestrators run end-to-end without further prompts. `onbo
 
 ---
 
-## Verifying the package locally
+## Verifying (from a repo checkout)
 
 ```bash
-npm run schemas:lint   # all 9 subagent-return schemas + 6 onboarding-status fixtures
-npm run test:hooks     # 365 hook tests
+npm run schemas:lint   # compiles every schema and exercises every fixture
+npm run test:hooks     # full hook test suite (count printed at the end)
 npm pack --dry-run     # tarball shape sanity check
 ```
 

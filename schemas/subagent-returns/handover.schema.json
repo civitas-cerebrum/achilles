@@ -5,14 +5,17 @@
   "description": "Mandatory envelope at the top of every skill-loading subagent return. Includes optional dispatch-mode + parallel-wave-size fields that the workflow reviewer inspects on cycle-1 (journey-mapping) and pass-1 (coverage-expansion) returns to reject grouped or single-agent-collapsed first-cycle/first-pass work (reviewer-enforced; the dispatch-side half is harness-enforced by hooks/standard-mode-first-pass-guard.sh).",
   "type": "object",
   "additionalProperties": true,
+  "required": ["role", "status", "next-action"],
   "properties": {
     "role": {
       "type": "string",
+      "minLength": 1,
       "description": "Role slug. Pattern guidance: kebab-case, optionally with journey suffix."
     },
     "cycle": {
       "type": ["integer", "string"],
-      "description": "Cycle number within the role's dispatch loop (accepts integer or numeric string)."
+      "minimum": 1,
+      "description": "Cycle number within the role's dispatch loop (accepts integer ≥ 1 or numeric string; the minimum applies to the integer form)."
     },
     "status": {
       "type": "string",
@@ -20,6 +23,7 @@
     },
     "next-action": {
       "type": "string",
+      "minLength": 1,
       "description": "One-line directive for the orchestrator."
     },
     "dispatch-mode": {

@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "timestamp": "2026-06-12T18:04:11Z",
+    "git_sha": "09f99681c2a14d4f8f5a8c2e7c3b1d0a9e8f7a6b",
+    "achilles_version": "0.1.0",
+    "schema": "run-summary/v2"
+  },
+  "phases": [
+    { "phase": 1, "name": "scaffold", "status": "completed", "reviewerVerdict": "approved" },
+    { "phase": 2, "name": "groundwork", "status": "completed", "reviewerVerdict": "approved" }
+  ],
+  "scenarios": {
+    "files": [
+      "tests/e2e/sign-in.spec.ts",
+      "tests/e2e/checkout.spec.ts",
+      "tests/contracts/orders-api.spec.ts"
+    ]
+  },
+  "bugs": {
+    "ids": ["j-checkout-4-01", "j-checkout-4-02"],
+    "by_severity": { "critical": 0, "high": 1, "medium": 0, "low": 0, "info": 1 }
+  },
+  "tests": {
+    "passing": 41,
+    "failing": 0,
+    "flaky": 1,
+    "skipped": 2,
+    "total": 44,
+    "status": "passing"
+  },
+  "journey_map": { "journeys": 11 }
+}
