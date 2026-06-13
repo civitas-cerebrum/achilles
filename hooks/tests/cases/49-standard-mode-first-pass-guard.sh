@@ -23,6 +23,15 @@ write_cycle_state() {
 clear_cycle_state() {
   rm -f "$TMP_REPO/tests/e2e/docs/.phase4-cycle-state.json"
 }
+write_workflow_ledger() {
+  echo "$1" > "$TMP_REPO/tests/e2e/docs/onboarding-status.json"
+}
+clear_workflow_ledger() {
+  rm -f "$TMP_REPO/tests/e2e/docs/onboarding-status.json"
+}
+# Phase-4 ledger — Rule 3 (journey-mapping single-agent walkthrough) is
+# only in scope during Phase 4.
+PHASE4_LEDGER='{"currentPhase":4,"currentSubStage":"cycle-1"}'
 
 section "first-pass-guard: tool-name filtering"
 assert_allow "$H" "$(payload tool_name=Bash command='ls')" "Bash → silent allow"
@@ -75,23 +84,46 @@ assert_allow "$H" "$(payload tool_name=Agent description='phase4-prioritise-auth
 
 section "first-pass-guard: Rule 3 — single-agent walkthrough of cycle 1 DENIED"
 clear_cycle_state
+write_workflow_ledger "$PHASE4_LEDGER"
 assert_deny "$H" "$(payload tool_name=Agent description='walk-app: cover auth, catalog, and cart' prompt='Map them all.' cwd="$TMP_REPO")" \
   "single-agent walking ≥3 sections → DENY" "Single-subagent walkthrough"
 assert_deny "$H" "$(payload tool_name=Agent description='map-discovery: explore auth and cart and order' prompt='Map them all.' cwd="$TMP_REPO")" \
   "single-agent walking 3 sections with and → DENY" "Single-subagent walkthrough"
+# Regression (change #3): genuine multi-section walk with currentPhase=4 and
+# no cycle state → DENY. Pins that Phase-4 scoping does not suppress a real
+# cycle-1 collapse.
+assert_deny "$H" "$(payload tool_name=Agent description='discover: walk auth, cart and order sections' prompt='Map them all.' cwd="$TMP_REPO")" \
+  "genuine 'walk auth, cart and order sections' @ phase4, no cycle state → DENY" "Single-subagent walkthrough"
+
+section "first-pass-guard: Rule 3 — out-of-Phase-4 multi-section dispatches ALLOWED"
+# Regression (change #3): a Phase-5 coordinator listing 3 journey slugs is
+# NOT a journey-mapping cycle collapse. Two guards combine: (a) journey
+# literals are stripped before section counting, (b) Rule 3 is Phase-4-scoped.
+clear_cycle_state
+write_workflow_ledger '{"currentPhase":5,"currentSubStage":"pass-2"}'
+assert_allow "$H" "$(payload tool_name=Agent description='coordinate pass: j-auth, j-cart and j-order' prompt='Dispatch composers.' cwd="$TMP_REPO")" \
+  "phase5 coordinator listing 3 j-slugs → ALLOW (journey literals stripped + out of Phase 4)"
+# Even a literal section-name walk is out of scope when the ledger says
+# Phase 5 — Rule 3 only governs journey-mapping (Phase 4).
+assert_allow "$H" "$(payload tool_name=Agent description='report: summarise auth, cart and order coverage' prompt='Summarise.' cwd="$TMP_REPO")" \
+  "phase5 reporter naming 3 sections → ALLOW (Rule 3 is Phase-4-scoped)"
+clear_workflow_ledger
 
 section "first-pass-guard: Rule 3 — ≤2 section references ALLOWED"
 clear_cycle_state
+write_workflow_ledger "$PHASE4_LEDGER"
 assert_allow "$H" "$(payload tool_name=Agent description='single-section: cover auth and cart' prompt='Map.' cwd="$TMP_REPO")" \
   "≤2 section IDs → ALLOW"
 
 section "first-pass-guard: Rule 3 — single-section role per-section subagent ALLOWED"
 clear_cycle_state
+write_workflow_ledger "$PHASE4_LEDGER"
 assert_allow "$H" "$(payload tool_name=Agent description='phase4-cycle-1-section-auth:' prompt='Map auth section.' cwd="$TMP_REPO")" \
   "phase4-cycle-1-section-<id> → ALLOW (single-section per-agent)"
 
 section "first-pass-guard: Rule 3 — legitimate multi-section roles ALLOWED"
 clear_cycle_state
+write_workflow_ledger "$PHASE4_LEDGER"
 assert_allow "$H" "$(payload tool_name=Agent description='phase-validator-4: review auth catalog cart' prompt='Validate. phase-validator.schema.json.' cwd="$TMP_REPO")" \
   "phase-validator naming multiple sections → ALLOW (exempted role)"
 assert_allow "$H" "$(payload tool_name=Agent description='process-validator-cycle-1: audit auth catalog cart roster' prompt='Audit.' cwd="$TMP_REPO")" \
@@ -100,12 +132,14 @@ assert_allow "$H" "$(payload tool_name=Agent description='cleanup-cross-pass: de
   "cleanup-<scope> naming multiple sections → ALLOW (exempted role)"
 
 section "first-pass-guard: Rule 3 — cycle 1 already in flight ALLOWS later multi-section dispatches"
+write_workflow_ledger "$PHASE4_LEDGER"
 write_cycle_state '{"cycles":{"1":{"dispatched-sections":["auth","catalog","cart"]}}}'
 assert_allow "$H" "$(payload tool_name=Agent description='cycle-2-walkthrough: revisit auth catalog cart' prompt='Edge-probe.' cwd="$TMP_REPO")" \
   "multi-section after cycle-1 establishes baseline → ALLOW (relaxed)"
 
 clear_cycle_state
 clear_cov_state
+clear_workflow_ledger
 
 # ============================================================================
 # Depth-mode tests — runMode + cycleStrictness depth keep the strict contract
@@ -139,6 +173,7 @@ assert_allow "$H" "$(payload tool_name=Agent description='[group] composer-j-car
 clear_cov_state
 
 section "first-pass-guard: Rule 3 — cycleStrictness=depth DENIES single-agent cycle-2+ walkthroughs"
+write_workflow_ledger "$PHASE4_LEDGER"
 write_cycle_state '{"cycleStrictness":"depth","cycles":{"1":{"dispatched-sections":["auth","catalog","cart"]}}}'
 assert_deny "$H" "$(payload tool_name=Agent description='cycle-2-walkthrough: revisit auth catalog cart' prompt='Edge-probe.' cwd="$TMP_REPO")" \
   "multi-section cycle-2 walkthrough with cycleStrictness=depth → DENY" "depth"
@@ -147,11 +182,13 @@ assert_deny "$H" "$(payload tool_name=Agent description='cycle-3: cover auth, ca
   "multi-section cycle-3 walkthrough with cycleStrictness=depth → DENY" "depth"
 
 section "first-pass-guard: Rule 3 — cycleStrictness=standard preserves cycle-2+ ALLOW path"
+write_workflow_ledger "$PHASE4_LEDGER"
 write_cycle_state '{"cycleStrictness":"standard","cycles":{"1":{"dispatched-sections":["auth","catalog","cart"]}}}'
 assert_allow "$H" "$(payload tool_name=Agent description='cycle-2-walkthrough: revisit auth catalog cart' prompt='Edge-probe.' cwd="$TMP_REPO")" \
   "multi-section cycle-2 walkthrough with cycleStrictness=standard → ALLOW"
 
 section "first-pass-guard: Rule 3 — cycleStrictness=depth still exempts legitimate multi-section roles"
+write_workflow_ledger "$PHASE4_LEDGER"
 write_cycle_state '{"cycleStrictness":"depth","cycles":{"1":{"dispatched-sections":["auth","catalog","cart","order"]}}}'
 assert_allow "$H" "$(payload tool_name=Agent description='phase-validator-4: review auth catalog cart order' prompt='Validate. phase-validator.schema.json.' cwd="$TMP_REPO")" \
   "phase-validator naming multiple sections under depth → ALLOW (exempted role)"
@@ -160,3 +197,4 @@ assert_allow "$H" "$(payload tool_name=Agent description='cleanup-cross-cycle: d
 
 clear_cycle_state
 clear_cov_state
+clear_workflow_ledger

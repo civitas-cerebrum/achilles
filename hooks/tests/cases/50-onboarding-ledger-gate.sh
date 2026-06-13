@@ -87,6 +87,29 @@ assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-cycl
   "workflow-reviewer-cycle1 → ALLOW"
 
 # ---------------------------------------------------------------------------
+section "ledger-gate: reviewerCycles cap denies a 4th reviewer dispatch (#8b)"
+# Phase 1 at reviewerCycles=3, verdict rejected (not escalated): a fresh
+# workflow-reviewer-phase1 dispatch is a 4th round → DENY.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "rejected" |
+  .phases[0].reviewerCycles = 3
+')"
+assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: re-review Phase 1' prompt='Review again.' cwd="$TMP_REPO")" \
+  "reviewer dispatch at reviewerCycles=3 (rejected) → DENY (cap)" "reviewerCycles is already 3"
+# Once escalated, the cap exemption is satisfied — but an escalated phase
+# isn't re-reviewed in practice; the gate allows the dispatch (no 4th-round
+# block) so the escalation can be recorded/handled.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "escalated-to-user" |
+  .phases[0].reviewerCycles = 3 |
+  .status = "blocked"
+')"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: confirm escalation' prompt='Review.' cwd="$TMP_REPO")" \
+  "reviewer dispatch at reviewerCycles=3 (escalated-to-user) → ALLOW"
+
+# ---------------------------------------------------------------------------
 section "ledger-gate: transition-point forces workflow-reviewer-* dispatch"
 write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
   .currentPhase = 2 |

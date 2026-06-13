@@ -37,13 +37,22 @@
 #   # ... use $SCHEMA_ROLE
 resolve_schema_role() {
   case "$1" in
-    workflow-reviewer-*) echo "workflow-reviewer"; return 0 ;;
-    composer-*)          echo "composer";          return 0 ;;
-    reviewer-*)          echo "reviewer-inloop";   return 0 ;;
-    probe-*)             echo "probe";             return 0 ;;
-    phase-validator-*)   echo "phase-validator";   return 0 ;;
-    process-validator-*) echo "";                  return 0 ;;
-    *)                   return 1 ;;
+    workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;
+    composer-*)               echo "composer";               return 0 ;;
+    reviewer-*)               echo "reviewer-inloop";        return 0 ;;
+    probe-*)                  echo "probe";                  return 0 ;;
+    phase-validator-*)        echo "phase-validator";        return 0 ;;
+    # phase4-prioritise-author* is checked BEFORE phase4-cycle-* so the
+    # author role wins its dedicated schema; both anchor at string start
+    # with no overlap, but the explicit ordering documents intent.
+    phase4-prioritise-author*) echo "phase4-prioritise-author"; return 0 ;;
+    phase4-cycle-*)           echo "section-agent";          return 0 ;;
+    # Known prefixes with NO schema — envelope-sanity path only (the
+    # caller validates the handover envelope but skips JSON-Schema). Same
+    # behaviour as process-validator-*.
+    process-validator-*|phase1-*|stage2-*|cleanup-*|companion-*|fd-*)
+                              echo "";                       return 0 ;;
+    *)                        return 1 ;;
   esac
 }
 

@@ -148,6 +148,16 @@ const HOOK_MANIFEST = [
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+  // Harness self-protection: deny Write|Edit to the installed hook surface
+  // (~/.claude/hooks/*) and settings.json/settings.local.json. Closes the
+  // Write|Edit vector that protected-artifact-bash-guard.sh covers only for
+  // the Bash vector.
+  { file: 'harness-self-protection-guard.sh',     event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 5 },
+  // Hook-authored state guard: deny direct Write|Edit to the approver
+  // registry + integrity sidecar (hook-authored), and gate monotonicity of
+  // the cycle/coverage progress files (dispatched/returned rosters only
+  // grow). Pairs with ledger-integrity-chain.sh.
+  { file: 'hook-authored-state-guard.sh',         event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 5 },
   // Tamper-evident ledger chain: Pre verifies the on-disk ledger against
   // the sanctioned hash sidecar; Post records each sanctioned write.
   { file: 'ledger-integrity-chain.sh',            event: 'PreToolUse',  matcher: 'Write|Edit', timeout: 5 },
@@ -332,6 +342,38 @@ function installCivitasHooks() {
         fs.copyFileSync(srcPath, destPath);
         copiedCount++;
       }
+    }
+  }
+
+  // Prune DANGLING registrations: settings.json entries pointing at a
+  // legacy hook file we no longer ship (and that pruneRetiredHooks deletes
+  // from disk below). Without this, an upgraded install keeps firing — or
+  // failing to fire — against a registration whose script is gone. Only
+  // touches entries whose command basename is a known legacy hook AND whose
+  // path is under our own userHooksDir; third-party user hooks are
+  // preserved. Empty matcher groups left behind are dropped.
+  if (settings && settings.hooks && typeof settings.hooks === 'object') {
+    const legacySet = new Set(LEGACY_EI_HOOKS);
+    for (const event of Object.keys(settings.hooks)) {
+      const groups = settings.hooks[event];
+      if (!Array.isArray(groups)) continue;
+      const keptGroups = [];
+      for (const group of groups) {
+        if (!group || !Array.isArray(group.hooks)) { keptGroups.push(group); continue; }
+        const before = group.hooks.length;
+        group.hooks = group.hooks.filter(h => {
+          if (!h || h.type !== 'command' || typeof h.command !== 'string') return true;
+          const isOurs = h.command.startsWith(userHooksDir);
+          const isLegacy = legacySet.has(path.basename(h.command));
+          if (isOurs && isLegacy) { settingsModified = true; return false; }
+          return true;
+        });
+        if (group.hooks.length !== before) settingsModified = true;
+        // Drop a group that has become empty as a result of pruning.
+        if (group.hooks.length === 0) { settingsModified = true; continue; }
+        keptGroups.push(group);
+      }
+      settings.hooks[event] = keptGroups;
     }
   }
 

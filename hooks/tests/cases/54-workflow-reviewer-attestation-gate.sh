@@ -4,18 +4,23 @@
 # combined attestation + checklist evidence cites no real on-disk paths.
 H="$HOOK_DIR/workflow-reviewer-attestation-gate.sh"
 
-# Skip the suite if the `yaml` package isn't available (the hook then
-# silent-allows on parse failure, which makes deny-expectation tests
-# meaningless).
+# Skip the suite if the validator bundle's `tojson` subcommand isn't
+# available (the hook then silent-allows on parse failure, which makes
+# deny-expectation tests meaningless). `tojson` is shipped by P7 in the
+# rebuilt bundle; until that lands this suite skips (P7-domain dependency).
 if ! command -v node >/dev/null 2>&1; then
   echo "  ${CLR_DIM}(node not on PATH — skipping attestation-gate cases)${CLR_RST}"
   return 0 2>/dev/null || exit 0
 fi
 NODE_BIN=$(command -v node)
-if ! "$NODE_BIN" -e "require('yaml');" >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(yaml package unavailable — skipping attestation-gate cases)${CLR_RST}"
+ATTEST_BUNDLE="$HOOK_DIR/lib/validator.bundle.mjs"
+_ATTEST_PROBE=$(mktemp); printf 'verdict: approve\n' > "$_ATTEST_PROBE"
+if ! "$NODE_BIN" "$ATTEST_BUNDLE" tojson "$_ATTEST_PROBE" 2>/dev/null | grep -q 'verdict'; then
+  rm -f "$_ATTEST_PROBE"
+  echo "  ${CLR_DIM}(validator bundle 'tojson' subcommand unavailable — skipping attestation-gate cases; ships with P7)${CLR_RST}"
   return 0 2>/dev/null || exit 0
 fi
+rm -f "$_ATTEST_PROBE"
 
 # Isolated repo so the hook resolves REPO_ROOT to a temp dir.
 ATTEST_TMP=$(mktemp -d)

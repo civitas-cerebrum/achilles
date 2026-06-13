@@ -91,4 +91,9 @@ reset_chain_fixture
 assert_deny "$H" "$(payload tool_name=Write file_path="$CHAIN_SIDECAR" content='{}' hook_event_name=PreToolUse cwd="$TMP_CHAIN")" \
   "direct Write to the sidecar → DENY" "hook-authored"
 
+# ---------------------------------------------------------------------------
+section "ledger-integrity-chain: BARE RELATIVE sidecar path is gated like absolute (#15)"
+assert_deny "$H" "$(payload tool_name=Write file_path='tests/e2e/docs/.ledger-integrity.json' content='{}' hook_event_name=PreToolUse)" \
+  "relative sidecar path → DENY" "hook-authored"
+
 rm -rf "$TMP_CHAIN"

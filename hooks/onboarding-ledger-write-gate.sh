@@ -88,8 +88,12 @@ esac
 
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 
-# Rule 4: silent-allow when this isn't a ledger write.
-case "$FILE_PATH" in
+# Rule 4: silent-allow when this isn't a ledger write. Match the path
+# suffix against a leading-slash-normalised form so a BARE RELATIVE path
+# (tests/e2e/docs/onboarding-status.json) matches the same pattern as an
+# absolute one — otherwise a relative-path write would slip the gate.
+NORM_PATH="/${FILE_PATH#/}"
+case "$NORM_PATH" in
   */tests/e2e/docs/onboarding-status.json) ;;
   *) exit 0 ;;
 esac
@@ -316,6 +320,76 @@ See: schemas/onboarding-status.schema.json
      schemas/subagent-returns/handover.schema.json"
     exit 0
   fi
+
+  # ---------------------------------------------------------------------
+  # reviewerCycles enforcement (change #8a).
+  #  - Any write that CHANGES a phase's reviewerVerdict must increment that
+  #    phase's reviewerCycles by exactly 1 (each verdict is one review
+  #    round; skipping the counter hides re-review churn / lets the 3-cap
+  #    be evaded).
+  #  - At reviewerCycles == 3 the verdict may NOT be "rejected": the 3rd
+  #    rejection must escalate — reviewerVerdict "escalated-to-user" AND the
+  #    top-level pipeline status "blocked".
+  # ---------------------------------------------------------------------
+  for vp_idx in 0 1 2 3 4 5 6 7; do
+    PRIOR_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$FILE_PATH" 2>/dev/null || echo "")
+    NEW_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
+    [ -n "$NEW_V" ] || continue
+    PRIOR_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$FILE_PATH" 2>/dev/null || echo "0")
+    NEW_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$TMP_PROPOSED" 2>/dev/null || echo "0")
+    case "$PRIOR_C" in ''|*[!0-9]*) PRIOR_C=0 ;; esac
+    case "$NEW_C"   in ''|*[!0-9]*) NEW_C=0 ;; esac
+    PHASE_ID=$((vp_idx + 1))
+    # Exempt user-authorised skips: a phase whose new status is "skipped"
+    # with a matching approvedDeviations[] authorizer is approved via the
+    # user channel, not a reviewer round — reviewerCycles does not apply.
+    NEW_STATUS_VP=$("$JQ" -r ".phases[${vp_idx}].status // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
+    if [ "$NEW_STATUS_VP" = "skipped" ]; then
+      HAS_AUTH=$("$JQ" -r --argjson id "$PHASE_ID" \
+        '((.approvedDeviations // []) | any(.phase == $id and ((.authorizer // "") | length) > 0))' \
+        "$TMP_PROPOSED" 2>/dev/null || echo "false")
+      [ "$HAS_AUTH" = "true" ] && continue
+    fi
+    if [ "$NEW_V" != "$PRIOR_V" ]; then
+      # Verdict changed — reviewerCycles must increment by exactly 1.
+      if [ "$NEW_C" -ne "$((PRIOR_C + 1))" ]; then
+        emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict changed (\"${PRIOR_V:-<unset>}\" → \"${NEW_V}\") without incrementing reviewerCycles by exactly 1 (was ${PRIOR_C}, proposed ${NEW_C}).
+
+File: ${FILE_PATH}
+
+Each verdict is one review round. reviewerCycles is the round counter the
+3-cycle escalation cap keys on — a verdict change that doesn't bump it by
+exactly 1 either hides re-review churn or evades the cap.
+
+Fix: set phases[${vp_idx}].reviewerCycles = $((PRIOR_C + 1)) in the same write.
+
+See: schemas/onboarding-status.schema.json
+     skills/workflow-reviewer/SKILL.md §\"Reject cap\""
+        exit 0
+      fi
+    fi
+    # 3rd-round rejection must escalate, not reject — fires whenever the
+    # proposed state lands a rejected verdict at the cap, whether or not the
+    # verdict string changed in this write.
+    if [ "$NEW_C" -eq 3 ] && [ "$NEW_V" = "rejected" ]; then
+      NEW_PIPE=$("$JQ" -r '.status // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+      emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict \"rejected\" at reviewerCycles == 3.
+
+File: ${FILE_PATH}
+
+The reviewer reject cap is 3 rounds. A 3rd rejection cannot stay
+\"rejected\" — it must escalate to the user: reviewerVerdict
+\"escalated-to-user\" AND the top-level pipeline status \"blocked\"
+(observed pipeline status: \"${NEW_PIPE:-<unset>}\").
+
+Fix: set phases[${vp_idx}].reviewerVerdict = \"escalated-to-user\" and the
+top-level .status = \"blocked\". The orchestrator surfaces the blockage to
+the user rather than looping a 4th review.
+
+See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
+      exit 0
+    fi
+  done
 fi
 
 # ---------------------------------------------------------------------------
@@ -699,6 +773,34 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
           "skills/coverage-expansion/SKILL.md §\"Non-negotiables\""
       fi
 
+      # Phase-5 ordering (cross-cutting §12): a standard/depth run only
+      # completes when ALL FIVE passes plus the cleanup/dedup step are
+      # recorded in coverage-expansion-state.json. The cleanup commit
+      # RECORDS passes 1-5 + cleanup and does NOT delete the state file;
+      # the orchestrator deletes it only AFTER reviewer approval, as the
+      # final post-approval act, then writes the Phase-5 ledger completion.
+      # So at the moment this completion write lands, the state file must
+      # still exist and carry the full record. (A breadth-mode run is the
+      # documented single-pass exception — it records cleanup with a
+      # `mode: breadth` marker and is exempt from the 5-pass requirement.)
+      RUN_MODE_COV=$("$JQ" -r '.runMode // .mode // "standard"' "$COV_STATE_PATH" 2>/dev/null || echo "standard")
+      if [ "$RUN_MODE_COV" != "breadth" ]; then
+        MISSING_PASSES=""
+        for pnum in 1 2 3 4 5; do
+          HAS_P=$("$JQ" -r --arg p "$pnum" '.passes[$p] != null' "$COV_STATE_PATH" 2>/dev/null || echo "false")
+          [ "$HAS_P" = "true" ] || MISSING_PASSES="${MISSING_PASSES} ${pnum}"
+        done
+        CLEANUP_RECORDED=$("$JQ" -r '
+          (.cleanup != null) or (.cleanupRecorded == true) or (.passes["cleanup"] != null)
+        ' "$COV_STATE_PATH" 2>/dev/null || echo "false")
+        if [ -n "$MISSING_PASSES" ] || [ "$CLEANUP_RECORDED" != "true" ]; then
+          emit_phase_deny "5" \
+            "coverage-expansion-state.json does not record the full five-pass run + cleanup. Missing pass record(s):${MISSING_PASSES:- none}; cleanup recorded: ${CLEANUP_RECORDED}. A standard/depth Phase 5 completes only after passes 1-5 AND the cleanup/dedup step are recorded." \
+            "complete all five passes (compositional 1-3 + adversarial 4-5) and the cleanup/dedup step. The ordering is: RECORD passes 1-5 + cleanup in coverage-expansion-state.json → workflow-reviewer-phase5 approval → the orchestrator DELETES the state file as the final post-approval act → write this Phase-5 ledger completion. The state file must still be present and complete at this write (deletion happens post-approval, not before)." \
+            "skills/coverage-expansion/SKILL.md §\"Five passes\" + cross-cutting §12 (phase-5 state-file ordering)"
+        fi
+      fi
+
       # Coverage-completeness check: Pass 1's dispatched-journeys + any
       # deferredJourneys[] entries must together cover the journey map's
       # full roster. Catches the "dispatched 8 of 41 journeys, called
@@ -706,7 +808,10 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
       # derived from the journey-map.md (one entry per `^#### j-` block).
       MAP_PATH="$PROJECT_ROOT/tests/e2e/docs/journey-map.md"
       if [ -f "$MAP_PATH" ]; then
-        ROSTER_COUNT=$(grep -c '^#### j-' "$MAP_PATH" 2>/dev/null; true)
+        # Roster headings are canonical `### j-<slug>: <name>`; the prior
+        # `^#### j-` pattern (4 hashes) never matched the real map and left
+        # the coverage-completeness check dead. Accept `### j-` or `#### j-`.
+        ROSTER_COUNT=$(grep -cE '^###[#]? j-' "$MAP_PATH" 2>/dev/null; true)
         ROSTER_COUNT=${ROSTER_COUNT:-0}
         DISPATCHED_COUNT=$("$JQ" -r '.passes["1"]["dispatched-journeys"] // [] | length' "$COV_STATE_PATH" 2>/dev/null || echo "0")
         DEFERRED_COUNT=$("$JQ" -r '.passes["1"]["deferredJourneys"] // [] | length' "$COV_STATE_PATH" 2>/dev/null || echo "0")

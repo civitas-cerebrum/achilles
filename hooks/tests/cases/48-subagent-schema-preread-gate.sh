@@ -48,6 +48,20 @@ assert_deny "$H" "$(payload tool_name=Agent description='composer-j-x-1-c1' prom
 section "schema-preread-gate: citation must match the dispatched role, not a sibling role"
 assert_deny "$H" "$(payload tool_name=Agent description='composer-j-x-1-c1' prompt='See probe.schema.json for context.')" "composer + wrong schema cited → DENY" "composer.schema.json"
 
+section "schema-preread-gate: phase4-prioritise-author with / without citation (§9)"
+# Now schema-validated → phase4-prioritise-author.schema.json.
+assert_allow "$H" "$(payload tool_name=Agent description='phase4-prioritise-author: rank journeys' prompt='Author the map. Return per phase4-prioritise-author.schema.json.')" "phase4-prioritise-author + citation → ALLOW"
+assert_deny "$H" "$(payload tool_name=Agent description='phase4-prioritise-author: rank journeys' prompt='Author the journey map from the section returns.')" "phase4-prioritise-author + no citation → DENY" "phase4-prioritise-author.schema.json"
+
+section "schema-preread-gate: phase4-cycle-* maps to section-agent schema (§9)"
+assert_allow "$H" "$(payload tool_name=Agent description='phase4-cycle-1-section-auth:' prompt='Map the auth section. Return per section-agent.schema.json.')" "phase4-cycle-1-section + citation → ALLOW"
+assert_deny "$H" "$(payload tool_name=Agent description='phase4-cycle-1-section-auth:' prompt='Map the auth section.')" "phase4-cycle-1-section + no citation → DENY" "section-agent.schema.json"
+assert_deny "$H" "$(payload tool_name=Agent description='phase4-cycle-2-edge-probe:' prompt='Edge-probe the discovered sections.')" "phase4-cycle-2-edge-probe + no citation → DENY" "section-agent.schema.json"
+
+section "schema-preread-gate: companion-* / fd-* are envelope-sanity (no schema, silent-allow)"
+assert_allow "$H" "$(payload tool_name=Agent description='companion-verify-login' prompt='Verify the login flow with evidence.')" "companion- prefix → silent allow"
+assert_allow "$H" "$(payload tool_name=Agent description='fd-flaky-cart-spec' prompt='Diagnose the failing cart spec.')" "fd- prefix → silent allow"
+
 section "schema-preread-gate: workflow-reviewer briefs must cite the schema"
 # workflow-reviewer-* now lives in resolve_schema_role(): the reviewer-brief
 # contract (skills/workflow-reviewer/SKILL.md §"Inputs the reviewer receives
