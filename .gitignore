@@ -47,3 +47,9 @@ tests/e2e/.selector-development/
 
 # Harness runtime state (run summaries, schema-guard calibration log)
 .achilles/
+
+# Superpowers brainstorming specs & implementation plans — never commit
+docs/superpowers/
+.superpowers/
+.achilles/run-summary.json
+.achilles/schema-guard-log.jsonl
