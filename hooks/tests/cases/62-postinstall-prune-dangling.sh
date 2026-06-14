@@ -28,6 +28,7 @@ fs.writeFileSync(settingsPath, JSON.stringify({ hooks: { PreToolUse: [
   { matcher: 'Bash', hooks: [
     { type: 'command', command: path.join(userHooks, 'commit-attribution-gate.sh') },
     { type: 'command', command: path.join(userHooks, 'commit-message-gate.sh') },
+    { type: 'command', command: path.join(userHooks, 'some-removed-future-hook.sh') },
     { type: 'command', command: '/opt/thirdparty/my-hook.sh' },
   ]},
   { matcher: 'Agent', hooks: [
@@ -43,6 +44,8 @@ const after = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 const cmds = after.hooks.PreToolUse.flatMap(g => (g.hooks||[]).map(h => h.command));
 assert.ok(!cmds.some(c => c.endsWith('commit-attribution-gate.sh')), 'legacy pruned');
 assert.ok(!cmds.some(c => c.endsWith('bash-command-allowlist.sh')), 'legacy pruned');
+assert.ok(!cmds.some(c => c.endsWith('some-removed-future-hook.sh')), 'dangling (non-legacy, missing file) pruned');
+assert.ok(cmds.some(c => c.endsWith('commit-message-gate.sh')), 'shipped hook preserved (file exists after copy)');
 assert.ok(cmds.includes('/opt/thirdparty/my-hook.sh'), 'third-party preserved');
 assert.ok(after.hooks.PreToolUse.filter(g => g.matcher==='Agent').every(g => (g.hooks||[]).length>0), 'empty group dropped');
 console.log('PRUNE_OK');

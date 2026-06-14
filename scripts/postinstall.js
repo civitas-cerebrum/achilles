@@ -363,9 +363,17 @@ function installCivitasHooks() {
         const before = group.hooks.length;
         group.hooks = group.hooks.filter(h => {
           if (!h || h.type !== 'command' || typeof h.command !== 'string') return true;
-          const isOurs = h.command.startsWith(userHooksDir);
-          const isLegacy = legacySet.has(path.basename(h.command));
-          if (isOurs && isLegacy) { settingsModified = true; return false; }
+          // Only ever touch registrations that point into our own hooks dir;
+          // a bare leading path is ours, `node "…"` / third-party commands are not.
+          const scriptPath = h.command.trim().split(/\s+/)[0].replace(/^["']|["']$/g, '');
+          const isOurs = scriptPath.startsWith(userHooksDir + path.sep);
+          if (!isOurs) return true;
+          const isLegacy = legacySet.has(path.basename(scriptPath));
+          // Drop a known-retired hook OR any registration whose target script
+          // no longer exists on disk — the latter is what produces the
+          // "/bin/sh: …: No such file or directory" non-blocking failures.
+          const isDangling = !fs.existsSync(scriptPath);
+          if (isLegacy || isDangling) { settingsModified = true; return false; }
           return true;
         });
         if (group.hooks.length !== before) settingsModified = true;
