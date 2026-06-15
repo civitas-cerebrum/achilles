@@ -19,11 +19,11 @@ Each pass runs a journey-by-journey pipeline with parallel dispatch where indepe
 Every pass in depth mode runs this pipeline; steps 4 and 7 differ between compositional (1–3) and adversarial (4–5) passes.
 
 1. **Read the map** (sentinel-verified). Build an in-memory index: `[(j-id, priority, pages-touched, test-expectations)]`. Read **only** these fields per journey — not full step lists, branches, or state variations.
-2. **Recompute priority ordering.** Honour the map's priorities, but if a journey's `Test expectations` or pages touched have changed since the last pass, adjust position.
+2. **Recompute priority ordering.** Honour the map's priorities, but if a journey's `Test expectations` or pages touched have changed since the last pass, adjust position. Within a priority tier, order `risk: elevated` journeys (2+ `Risk factors:` tags per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") before `risk: baseline` ones — risk is the within-tier tie-break, never a cross-tier promoter.
 3. **Build the journey independence graph.** The graph is the same across compositional and adversarial passes.
 4. **Emit the per-pass scope preview** (the declarative pre-dispatch summary documented near the end of §"Model selection" — `[coverage-expansion] Pass <N>/5 — dispatching ...`). Declarative only; no confirmation prompt.
 5. **Run the per-journey dual-stage retry loop** for every journey in the map — parallel for independent journeys, sequential for dependent ones, per §"Parallelism". Each journey's A↔B loop follows [`dual-stage-retry-loop.md` §"Retry loop"](dual-stage-retry-loop.md). The loop terminates when the journey has one of the four terminal `review_status` values.
-   - Model selection per §"Model selection" — default opus for both stages.
+   - Model selection per the hybrid table in `coverage-expansion/SKILL.md` §"Hybrid model selection" (§"Model selection" below points at it).
    - P3 batching narrowed per §"Batched dispatch for P3 peripheral journeys" — Stage A may be batched; Stage B never is.
 6. **Collect all journey outputs.** Each journey contributes: its committed test files (from the final greenlit or blocked-with-tests-landed Stage A cycle), its `review_status`, its cycle counts, and (if blocked) its final `must-fix` list. The orchestrator does NOT hold Stage A test source or Stage B review bodies — only structured summaries and the on-disk file paths.
 7. **Reconcile artefacts.**
@@ -42,6 +42,19 @@ Every pass in depth mode runs this pipeline; steps 4 and 7 differ between compos
 | 5 — adversarial consolidation | adversarial + regression | Second adversarial turn. Each subagent reads its journey's pass-4 ledger section, re-probes any negative-case-matrix entries that returned `Ambiguous`, attempts compound probes that combine matrix entries (e.g., auth-tamper × idempotency, tenant-isolation × session-boundary), and writes **passing** regression tests for every verified boundary (pass 4 + pass 5 combined) into `j-<slug>-regression.spec.ts`. Suspected bugs remain ledger-only — never committed as `test.fail()`. |
 
 After pass 5: one single-dispatch cleanup subagent dedupes the ledger. See §"Ledger dedup" below.
+
+### Pre-Pass-4 step — P3 adversarial opt-out proposal (before the app-wide prelude)
+
+Before the Pass-4 app-wide-scan prelude is dispatched, the orchestrator mechanically evaluates the four P3 adversarial-opt-out exclusion criteria (per `coverage-expansion/SKILL.md` §"P3 small-surface journeys may opt OUT of adversarial passes") for every candidate journey, **restricted to `risk: baseline` journeys** — a `risk: elevated` journey (2+ `Risk factors:` tags per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is never an opt-out candidate, regardless of priority.
+
+For each candidate, evaluate all four criteria:
+
+- `priority-p3` — the journey is P3.
+- `page-subset-covered` — its `Pages touched` is a subset of pages already adversarial-probed by a larger journey AND covered by an app-wide pattern entry.
+- `zero-prior-findings` — zero unique adversarial findings in any prior pass-4 ledger entry (or no prior entries).
+- `low-surface-shape` — one of: logout, role-chooser, single-modal disclosure, single-info-display, breadcrumb-nav, or equivalent.
+
+Emit a candidate table (one row per journey that meets ALL four criteria) and request **one** approval from the user: `approve all / name exclusions / deny`. In `onboarding` autonomous mode this question folds into the existing front-load gate (P6 owns the onboarding text; noted here for cross-reference only). Approved entries land in `adversarialSkippedJourneys[]` in a **dedicated commit** before the prelude runs — satisfying the authorisation clause in [`state-file-schema.md`](state-file-schema.md) §"`adversarialSkippedJourneys[]` field" (entries are never appended inferentially mid-pass; they land at a user-authorised commit). Journeys not approved stay in the Pass-4/5 roster.
 
 ### Commit-message conventions
 
@@ -68,13 +81,19 @@ Anti-patterns — do NOT use:
 
 ### Per-pass completion criteria
 
-A pass is complete only when **every** criterion for that pass is met. "Ran some journeys, ran out of budget" is not complete — see `coverage-expansion/SKILL.md` §"Non-negotiables for depth mode" for the resume-state contract.
+A pass is complete only when **every** criterion for that pass is met. "Ran some journeys, ran out of budget" is not complete — see `coverage-expansion/SKILL.md` §"Non-negotiables for standard mode" for the resume-state contract.
 
 - **Pass 1** complete = `test-composer` has been dispatched for and has returned on **every** journey in the map. Not "enough journeys", not "the P0/P1 tier", not "the journeys that fit the budget". Every journey.
 - **Pass 2** complete = `test-composer` has been re-dispatched and returned for every journey, AND the map has been reconciled with any newly-promoted branches or sub-journeys surfaced in pass 1 or 2, AND — if the reconciliation produced map edits — the reconciliation commit has landed. If no map edits were needed, the pass still completes, but the orchestrator records `"pass 2 reconciliation — no map edits required"` in the state file / progress log rather than silently skipping the commit.
 - **Pass 3** complete = cross-journey and data-lifecycle variants have been dispatched for every journey whose `Test expectations:` calls for them, AND any journey that returned residual coverage gaps in passes 1 or 2 has been re-attempted, AND the pass commit has landed (if tests were added in this pass).
 - **Pass 4** complete = (a) the app-wide-scan prelude has emitted `tests/e2e/docs/app-wide-patterns.md` with the canonical sentinel (per `references/app-wide-scan.md`), AND (b) the adversarial-probe subagent has run for every journey in `journeyRoster - adversarialSkippedJourneys[].journey`, with terminal `review_status`. Journeys in `adversarialSkippedJourneys[]` are validly excluded per [`coverage-expansion/SKILL.md`](../SKILL.md) §"P3 small-surface journeys may opt OUT of adversarial passes". For every dispatched journey, the subagent's findings are appended to `tests/e2e/docs/adversarial-findings.md`. If no probes landed for a given dispatched journey (e.g., the subagent found nothing to probe or was gated), the orchestrator records `"no boundaries probed — <reason>"` for that journey in the ledger — it does NOT silently skip the journey. An empty ledger section for a dispatched journey is a bug, not a pass-4 completion state. The app-wide-scan prelude itself does NOT count toward the per-journey dispatch total — it is exempt per `app-wide-scan.md` §"Hard constraints".
-- **Pass 5** complete = every verified pass-4 finding has either a committed regression test in `j-<slug>-regression.spec.ts` OR an explicit decline-with-reason line in the ledger ("no regression written — finding classified as suspected bug / ambiguous / duplicate of cross-cutting #N"). Regression-test files are committed per journey.
+- **Pass 5** complete = every verified pass-4 finding has either a committed regression test in `j-<slug>-regression.spec.ts` OR an explicit decline-with-reason line in the ledger, drawn from one of four decline categories:
+  - `no regression written — finding classified as suspected bug`
+  - `no regression written — finding classified as ambiguous`
+  - `no regression written — duplicate of cross-cutting #N`
+  - `no regression written — value gate: <reason>`, where `<reason>` is one of: (a) `severity=low AND journey priority P2/P3`; (b) `framework-default server validation already exercised by an existing error-state test`; (c) `boundary subsumed by an existing stronger-oracle test (<spec § test name>)`. A value-gated boundary stays in the ledger as a `Boundaries verified` finding — the decline is about not duplicating a lock, not about un-verifying the boundary. A value-gate decline with a named reason is **not** a matrix-coverage gap (the Stage B reviewer does not flag it — see `reviewer-subagent-contract.md`).
+
+  Regression-test files are committed per journey. The Pass-5 gap-analysis dispatch reports the estimated added suite runtime contributed by the pass's regression tests in its pass summary line (surfaced by the orchestrator per `coverage-expansion/SKILL.md` §"Progress output" Pass-5 added-runtime line).
 - **Per-pass dedup** complete (every pass 1–5) = one cleanup subagent has run for the pass, the within-pass consolidation commit (`docs(ledger): pass <N> test dedup` for compositional passes, `docs(ledger): pass <N> findings dedup` for adversarial passes) has landed (with empty diff + a "no consolidation" log entry if nothing was merged), AND the whole-suite re-run gate has passed since the dedup commit. The next pass does NOT dispatch until this criterion holds.
 - **Post-pass-5 cross-pass cleanup** complete = one cross-pass cleanup subagent has run once, cross-cutting findings are consolidated into the top-level section with backrefs in each journey's section, and the commit `docs(ledger): dedupe cross-cutting findings` has landed. This is in addition to Pass 5's per-pass findings dedup — the cross-pass cleanup synthesises across all five passes' ledger contributions.
 
@@ -244,6 +263,7 @@ A pass MAY use both paths in the same wave (one or more `[P3-batch]` dispatches 
 - **Same priority.** A relevance group's journeys must all share a priority tier — never mix P1 and P2 in one group. Priority is load-bearing for the orchestrator's pass-level decisions; mixing tiers in one brief erases that signal.
 - **Same section / shared `Pages touched`.** Group by relevance: prefer journeys that share a section identifier (e.g., all auth-section journeys, all cart-section journeys). When section alone leaves a tier with too few groupable journeys, fall back to overlapping `Pages touched` from the journey-map block — journeys that touch the same routes share page-repository entries and app-context knowledge, which is the cost saving the path is built around.
 - **No pending gap flags.** A journey carrying any of the three re-pass triggers (coverage gap, deferred stabilization, refined map block) is dispatched per-journey, not in a group. Same rule as P3-batch — flagged journeys need the brief's full attention.
+- **No elevated-risk journeys.** A journey whose map block carries 2+ `Risk factors:` tags (`risk: elevated` per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is dispatched per-journey, never in a group — concentrated failure surfaces are what grouped attention-rationing misses. Journeys without the field default to `risk: baseline` and group normally. Methodology rule, not hook-enforced.
 - **Cap 7.** Maximum 7 journeys per group. A tier of 28 journeys at the same priority becomes ⌈28/7⌉ = 4 groups. If a relevance cluster has 9 journeys, split it into 7+2 (the 2-journey group is fine — singleton and small groups are valid).
 
 **Parallelism preserved.** Each group dispatches as ONE Stage A subagent under the `[group]` marker; multiple groups dispatch in parallel up to the host-max cap. With 28 journeys grouped 7-per (4 groups) the wave size is 4 — comparable to N parallel single-journey dispatches but with roughly one seventh of the brief overhead per dispatch. Across-tier ordering (P0 first, then P1, then P2, then P3) is unchanged.
@@ -273,7 +293,7 @@ A pass MAY use both paths in the same wave (one or more `[P3-batch]` dispatches 
 
 Dual-stage narrows this:
 
-- **Stage A may still be batched** for eligible P3 journeys (shared project, no pending gap flags, same priority tier, cap 7 per brief).
+- **Stage A may still be batched** for eligible P3 journeys (shared project, no pending gap flags, no elevated-risk journeys, same priority tier, cap 7 per brief). A `risk: elevated` P3 journey (2+ `Risk factors:` tags per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is dispatched per-journey, never in a `[P3-batch]`.
 - **Stage B per-journey by default; one documented batch exception for compositional cycle-1.** In the P3-batch-A path, every journey in a batched Stage A still gets its own dedicated cycle-1 Stage B reviewer (the per-journey contract). The compositional-cycle-1 batch-reviewer exception (documented in `reviewer-subagent-contract.md` §"Batch reviewer mode (cycle-1 compositional only)") is a separate, narrower path — one reviewer per pass for the first cycle of compositional Passes 1, 2, 3 only — and **does NOT compose with P3-batch-A**: a P3 journey's batched Stage A still produces a per-journey cycle-1 Stage B (not folded into the cross-pass batch reviewer). Cycle-2+ is per-journey regardless. Adversarial passes (4 and 5) are always per-journey.
 - Batching is accepted ONLY when every journey in the batch's cycle-1 Stage B returns `greenlight`.
 - If any journey's cycle-1 Stage B returns `improvements-needed`: split the batch. From cycle 2 onward, the affected journey breaks out and runs its own per-journey Stage A plus its own Stage B. The batched cycle-1 Stage A return is retained as history input to the broken-out cycle-2 Stage A brief. The remaining greenlit journeys in the batch stay accepted at cycle 1 and proceed.
@@ -353,7 +373,7 @@ After pass 5 commits, the orchestrator dispatches one additional, non-per-journe
 
 ### Cleanup subagent constraints
 
-- Model: **haiku** is sufficient. This is text-only editing with no browser session, no test composition, no probing.
+- Model: **opus** (per the Cleanup ledger dedup row of `coverage-expansion/SKILL.md` §"Hybrid model selection" — the kernel table wins). Semantic clustering of near-duplicate findings across journey sections is judgement work, not mechanical text editing.
 - Single dispatch — NOT per-journey. Just one subagent, handed the full ledger file path.
 - Isolated context. No prior session content.
 - Does not modify the journey-map, the page-repository, or any test files. Only the ledger.

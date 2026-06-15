@@ -143,6 +143,33 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$A
   "Write with approved verdict but null handoverEnvelope → DENY" "handoverEnvelope is null"
 
 # ---------------------------------------------------------------------------
+section "ledger-write-gate: reviewerCycles enforcement (#8a)"
+# A verdict change must bump reviewerCycles by exactly 1.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+VERDICT_NO_BUMP=$(echo "$VALID_FRESH" | "$JQ" '
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "rejected" |
+  .phases[0].handoverEnvelope = {"role":"phase1","status":"complete"}
+')  # reviewerCycles stays 0
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$VERDICT_NO_BUMP")" \
+  "verdict change pending→rejected without reviewerCycles bump → DENY" "without incrementing reviewerCycles"
+# 3rd-round rejection must escalate, not stay rejected.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+# Prior: phase 1 rejected at cycles 2.
+PRIOR_C2=$(echo "$VALID_FRESH" | "$JQ" '
+  .phases[0].status = "completed" | .phases[0].reviewerVerdict = "rejected" | .phases[0].reviewerCycles = 2 |
+  .phases[0].handoverEnvelope = {"role":"phase1","status":"complete"}
+')
+printf '%s' "$PRIOR_C2" > "$LEDGER_PATH"
+THIRD_REJECT=$(echo "$PRIOR_C2" | "$JQ" '.phases[0].reviewerCycles = 3')  # still rejected at cycles 3
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$THIRD_REJECT")" \
+  "3rd-round 'rejected' at reviewerCycles==3 → DENY (must escalate)" "reviewerCycles == 3"
+# Escalation at cycles 3 → ALLOW (verdict escalated-to-user + status blocked).
+ESCALATE=$(echo "$PRIOR_C2" | "$JQ" '.phases[0].reviewerCycles = 3 | .phases[0].reviewerVerdict = "escalated-to-user" | .status = "blocked"')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$ESCALATE")" \
+  "3rd-round escalated-to-user + status blocked → ALLOW"
+
+# ---------------------------------------------------------------------------
 section "ledger-write-gate: actor-identity on approval transitions"
 # The state-machine + shape checks above don't enforce WHO writes the
 # ledger. This section verifies the separation-of-duties layer: a write
@@ -323,51 +350,87 @@ EOF
 assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
   "Phase 5 → completed without pass-1 record → DENY" "no pass-1 record"
 
+# Cross-cutting §12 helper: build a coverage-expansion-state with passes
+# 1-5 + cleanup recorded; pass-1's journey arrays are parameterised so the
+# coverage-completeness / deferral checks below can vary them. $1 = the
+# pass-1 object body (without the surrounding {"1":...}).
+cov_state_full() {
+  cat <<EOF
+{"coverage-expansion-state-version":1,"runMode":"standard","currentPass":5,
+ "passes":{
+   "1":$1,
+   "2":{"kind":"compositional","dispatched-journeys":["j-x"],"returned-journeys":["j-x"]},
+   "3":{"kind":"compositional","dispatched-journeys":["j-x"],"returned-journeys":["j-x"]},
+   "4":{"kind":"adversarial","dispatched-journeys":["j-x"],"returned-journeys":["j-x"]},
+   "5":{"kind":"adversarial","dispatched-journeys":["j-x"],"returned-journeys":["j-x"]}
+ },
+ "cleanup":{"recorded-at":"2026-05-19T10:00:00Z","deduped":true}}
+EOF
+}
+
+# §12 ordering: passes 1-5 + cleanup must all be recorded. A pass-1-only
+# state → DENY on the five-pass-ordering gate.
 cat > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json" <<'EOF'
 {"coverage-expansion-state-version":1,"runMode":"standard","currentPass":1,"passes":{"1":{"kind":"compositional","dispatched-journeys":["j-x"],"returned-journeys":["j-x"]}}}
 EOF
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → completed with only pass-1 (no passes 2-5 + cleanup) → DENY (§12 ordering)" "full five-pass run"
+
+# Full passes 1-5 + cleanup recorded, empty journey-map (roster=0) → ALLOW.
+cov_state_full '{"kind":"compositional","dispatched-journeys":["j-x"],"returned-journeys":["j-x"]}' \
+  > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
 # At this point a sentinel-bearing journey-map.md from the prior Phase-4
 # test is still on disk (line 1 sentinel + `# Map` body). It has zero
-# `^#### j-` blocks, so the coverage-completeness check sees roster=0
-# and skips the comparison — ALLOW.
+# roster blocks, so the coverage-completeness check sees roster=0 and skips
+# the comparison — ALLOW.
 assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
-  "Phase 5 → completed with pass-1 record + empty journey-map → ALLOW (roster=0 skips count check)"
+  "Phase 5 → completed with full 5-pass+cleanup record + empty journey-map → ALLOW"
 
 # Phase 5 coverage-completeness: roster has 3 journeys, dispatched 1,
-# no deferrals → DENY (silent scope compression).
+# no deferrals → DENY (silent scope compression). Regression for change
+# #6: the roster headings are the CANONICAL `### j-<slug>: <name>` form
+# (3 hashes + name), which the prior `^#### j-` (4-hash, name-less)
+# pattern never matched — leaving this check dead. The gate now counts
+# `^###[#]? j-`, so the canonical map yields roster=3 and the DENY fires.
 cat > "$TMP_REPO/tests/e2e/docs/journey-map.md" <<'EOF'
 <!-- journey-mapping:generated -->
 # Map
-#### j-alpha
-#### j-beta
-#### j-gamma
+### j-alpha: Alpha journey
+### j-beta: Beta journey
+### j-gamma: Gamma journey
 EOF
 assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
-  "Phase 5 → completed with 1/3 journeys dispatched, no deferrals → DENY" "silently missing"
+  "Phase 5 → completed with 1/3 canonical journeys dispatched, no deferrals → DENY" "silently missing"
 
 # Phase 5 coverage-completeness: roster 3 dispatched 1, 2 deferred with
-# valid structural reason prefixes → ALLOW.
-cat > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json" <<'EOF'
-{"coverage-expansion-state-version":1,"runMode":"standard","currentPass":1,"passes":{"1":{"kind":"compositional","dispatched-journeys":["j-alpha"],"returned-journeys":["j-alpha"],"deferredJourneys":[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-007"},{"journey":"j-gamma","reason":"test-data-prerequisite:premium-seed-user"}]}}}
-EOF
+# valid structural reason prefixes → ALLOW. (Full 5-pass+cleanup record so
+# the §12 ordering gate passes; pass-1 carries the deferrals under test.)
+cov_state_full '{"kind":"compositional","dispatched-journeys":["j-alpha"],"returned-journeys":["j-alpha"],"deferredJourneys":[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-007"},{"journey":"j-gamma","reason":"test-data-prerequisite:premium-seed-user"}]}' \
+  > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
 assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
   "Phase 5 → completed with 1 dispatched + 2 structurally-deferred → ALLOW"
 
 # Phase 5 deferral-authorisation: a deferral without a structural prefix
 # AND without an authorizer quote → DENY.
-cat > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json" <<'EOF'
-{"coverage-expansion-state-version":1,"runMode":"standard","currentPass":1,"passes":{"1":{"kind":"compositional","dispatched-journeys":["j-alpha"],"returned-journeys":["j-alpha"],"deferredJourneys":[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-007"},{"journey":"j-gamma","reason":"budget-cap"}]}}}
-EOF
+cov_state_full '{"kind":"compositional","dispatched-journeys":["j-alpha"],"returned-journeys":["j-alpha"],"deferredJourneys":[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-007"},{"journey":"j-gamma","reason":"budget-cap"}]}' \
+  > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
 assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
   "Phase 5 → completed with deferral citing 'budget-cap' + no authorizer → DENY" "neither a structural reason prefix"
 
 # Phase 5 deferral-authorisation: a deferral with authorizer quote
 # (verbatim user authorisation) → ALLOW even with a non-structural reason.
-cat > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json" <<'EOF'
-{"coverage-expansion-state-version":1,"runMode":"standard","currentPass":1,"passes":{"1":{"kind":"compositional","dispatched-journeys":["j-alpha"],"returned-journeys":["j-alpha"],"deferredJourneys":[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-007"},{"journey":"j-gamma","reason":"session-length","authorizer":"user said: defer the adversarial journeys to a follow-up run"}]}}}
-EOF
+cov_state_full '{"kind":"compositional","dispatched-journeys":["j-alpha"],"returned-journeys":["j-alpha"],"deferredJourneys":[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-007"},{"journey":"j-gamma","reason":"session-length","authorizer":"user said: defer the adversarial journeys to a follow-up run"}]}' \
+  > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
 assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
   "Phase 5 → completed with deferral carrying authorizer quote → ALLOW"
+
+# §12 full-sequence happy path: full 5-pass + cleanup record, roster fully
+# covered (3 dispatched, 0 deferred), sentinel map → ALLOW. Exercises the
+# whole completion sequence the ordering gate guards.
+cov_state_full '{"kind":"compositional","dispatched-journeys":["j-alpha","j-beta","j-gamma"],"returned-journeys":["j-alpha","j-beta","j-gamma"]}' \
+  > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → full 5-pass+cleanup, roster fully covered → ALLOW (§12 sequence)"
 
 # Actor-identity check must fire even when `node` is unavailable to the
 # hook (closes the node-missing bypass: prior to 5549c1d the hook
@@ -449,5 +512,55 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$P
 echo "%PDF" > "$TMP_REPO/qa-summary-deck.pdf"
 assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P8_COMPLETED")" \
   "Phase 8 → completed with HTML+PDF deck → ALLOW"
+
+# ---------------------------------------------------------------------------
+section "ledger-write-gate: Edit-path synthesis (literal replacement, validator bundle)"
+# The Edit path synthesises the post-edit content before validating. The
+# pre-bundle implementation used awk sub(), which treated old_string as a
+# REGEX — any [ or ( metachar aborted the synthesis and the gate
+# silent-allowed the write. These cases pin the literal-string semantics
+# and the deny-on-synthesis-failure contract.
+
+# 1. Metachar old_string whose result is schema-INVALID → DENY (schema).
+rm -f "$LEDGER_PATH"
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_deny "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='"phases": [' new_string='"phases": "nope", "x": [')" \
+  "Edit with metachar old_string producing schema-invalid ledger → DENY" "fails schema validation"
+
+# 2. Metachar old_string whose result is VALID → ALLOW.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_allow "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='{"id":1,"name":"Scaffold","status":"in-progress","reviewerVerdict":"pending","reviewerCycles":0,"deliverables":[]}' \
+  new_string='{"id":1,"name":"Scaffold","status":"in-progress","reviewerVerdict":"pending","reviewerCycles":0,"deliverables":["playwright.config.ts"]}')" \
+  "Edit with metachar old_string producing valid ledger → ALLOW"
+
+# 3. old_string not present in the file → synthesis fails → DENY.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_deny "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='THIS-DOES-NOT-OCCUR-ANYWHERE' new_string='whatever')" \
+  "Edit whose old_string is absent from the ledger → DENY" "could not be synthesised"
+
+# 4. old_string occurs multiple times, replace_all absent → DENY.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+assert_deny "$H" "$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='"reviewerCycles":0' new_string='"reviewerCycles":1')" \
+  "Edit whose old_string is not unique (replace_all absent) → DENY" "could not be synthesised"
+
+# 5. old_string occurs multiple times, replace_all=true, schema-valid result
+#    → ALLOW (exercises the validator bundle's --all plumbing end-to-end).
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+P_RA=$(payload tool_name=Edit file_path="$LEDGER_PATH" \
+  old_string='"reviewerCycles":0' new_string='"reviewerCycles": 0')
+P_RA=$(echo "$P_RA" | "$JQ" -c '.tool_input.replace_all = true')
+assert_allow "$H" "$P_RA" \
+  "Edit with replace_all=true on a non-unique old_string, schema-valid result → ALLOW (--all plumbing)"
+
+# ---------------------------------------------------------------------------
+section "ledger-write-gate: BARE RELATIVE path is gated like an absolute one (#15)"
+# A relative file_path must still be recognised as a ledger write — a
+# non-JSON body then trips the parseability deny.
+assert_deny "$H" "$(payload tool_name=Write file_path='tests/e2e/docs/onboarding-status.json' content='not-json-at-all')" \
+  "relative ledger path with non-JSON content → DENY" "not parseable JSON"
 
 rm -f "$LEDGER_PATH"

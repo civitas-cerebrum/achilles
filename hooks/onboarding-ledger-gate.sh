@@ -79,30 +79,6 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
 [ -n "$DESCRIPTION" ] || exit 0
 
-# Rule 4 (allow-list): workflow-reviewer-* dispatches always pass.
-if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*workflow-reviewer-(phase[1-8]|pass[1-5]|cycle[1-5])[:_-]'; then
-  exit 0
-fi
-
-# Resolve repo root + ledger path.
-GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
-GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-LEDGER="$GUARD_REPO_ROOT/tests/e2e/docs/onboarding-status.json"
-
-# Rule 5: silent-allow when the ledger is missing — brand-new run.
-[ -f "$LEDGER" ] || exit 0
-
-# Probe the ledger. Any extraction failure → silent allow (malformed
-# ledger should not jam the pipeline; the write-gate is responsible for
-# ledger integrity).
-SCHEMA_VERSION=$("$JQ" -r '.schemaVersion // empty' "$LEDGER" 2>/dev/null || echo "")
-[ -n "$SCHEMA_VERSION" ] || exit 0
-
-CURRENT_PHASE=$("$JQ" -r '.currentPhase // empty' "$LEDGER" 2>/dev/null || echo "")
-case "$CURRENT_PHASE" in
-  ''|*[!0-9]*) exit 0 ;;
-esac
-
 # Helper: emit a DENY payload with the supplied reason.
 emit_deny() {
   local reason="$1"
@@ -114,6 +90,93 @@ emit_deny() {
     }
   }'
 }
+
+# Rule 4 (allow-list): approver-role dispatches (workflow-reviewer-* /
+# phase-validator-*) always pass. Detection lives in lib/reviewer-prefix.sh
+# — the same helper the approver registry uses, so the allow-list can never
+# drift from the set of scopes the registry accepts.
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+
+# Resolve repo root + ledger path (needed for the reviewerCycles cap check
+# on reviewer dispatches, below).
+GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
+GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+LEDGER="$GUARD_REPO_ROOT/tests/e2e/docs/onboarding-status.json"
+
+if is_reviewer_description "$DESCRIPTION"; then
+  # Rule 4 normally always-allows reviewer dispatches. EXCEPTION (change
+  # #8b): a reviewer dispatch targeting a phase whose reviewerCycles is
+  # already >= 3 without an escalated verdict is denied — the reject cap is
+  # 3 rounds; a 4th review round means the cap was meant to escalate and
+  # didn't. Parse the target phase from the description (workflow-reviewer-
+  # phase<N>: / phase-validator-<N>:) and check the ledger.
+  if [ -f "$LEDGER" ]; then
+    CAP_PHASE=$(echo "$DESCRIPTION" | sed -nE 's/^(workflow-reviewer-phase|phase-validator-)([0-9]+).*/\2/p' | head -1)
+    if [ -n "$CAP_PHASE" ]; then
+      CAP_CYCLES=$("$JQ" -r --argjson id "$CAP_PHASE" \
+        '[.phases[]? | select(.id == $id)] | .[0].reviewerCycles // 0' "$LEDGER" 2>/dev/null || echo "0")
+      CAP_VERDICT=$("$JQ" -r --argjson id "$CAP_PHASE" \
+        '[.phases[]? | select(.id == $id)] | .[0].reviewerVerdict // "pending"' "$LEDGER" 2>/dev/null || echo "pending")
+      case "$CAP_CYCLES" in ''|*[!0-9]*) CAP_CYCLES=0 ;; esac
+      if [ "$CAP_CYCLES" -ge 3 ] && [ "$CAP_VERDICT" != "escalated-to-user" ]; then
+        emit_deny "[BLOCKED] Reviewer dispatch for phase ${CAP_PHASE} denied — reviewerCycles is already ${CAP_CYCLES} (cap is 3) and the verdict is \"${CAP_VERDICT}\", not \"escalated-to-user\".
+
+Description: \"${DESCRIPTION}\"
+
+The reviewer reject cap is 3 rounds. After the 3rd round the phase must
+escalate to the user (reviewerVerdict \"escalated-to-user\", pipeline
+status \"blocked\"), not enter a 4th review.
+
+Fix: stop re-dispatching the reviewer. Update the ledger so phase
+${CAP_PHASE} carries reviewerVerdict \"escalated-to-user\" and surface the
+blockage to the user.
+
+See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
+        exit 0
+      fi
+    fi
+  fi
+  exit 0
+fi
+
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
+SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
+
+# Rule 5: silent-allow when the ledger is missing — brand-new run. But a
+# missing ledger WITH a surviving integrity sidecar is the rm-reset trick:
+# deny until the operator clears both files.
+if [ ! -f "$LEDGER" ]; then
+  if [ -f "$SIDECAR" ] && [ -n "$("$JQ" -r '.records[-1].sha256 // empty' "$SIDECAR" 2>/dev/null)" ]; then
+    emit_deny "[BLOCKED] onboarding-status.json is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing tests/e2e/docs/.ledger-integrity.json in their own terminal."
+    exit 0
+  fi
+  exit 0
+fi
+
+# Integrity verify: the ledger must match its sanctioned hash chain
+# before any of its state is honored for dispatch decisions.
+if [ -f "$SIDECAR" ]; then
+  CHAIN_LATEST=$("$JQ" -r '.records[-1].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
+  CHAIN_PREV=$("$JQ" -r '.records[-2].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
+  LEDGER_HASH=$(file_sha256 "$LEDGER")
+  if [ -n "$CHAIN_LATEST" ] && [ -n "$LEDGER_HASH" ] && [ "$LEDGER_HASH" != "$CHAIN_LATEST" ] && [ "$LEDGER_HASH" != "$CHAIN_PREV" ]; then
+    emit_deny "[BLOCKED] onboarding-status.json does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete tests/e2e/docs/.ledger-integrity.json in their own terminal)."
+    exit 0
+  fi
+fi
+
+# Probe the ledger. Any extraction failure → silent allow (malformed
+# ledger should not jam the pipeline; the write-gate is responsible for
+# ledger integrity).
+SCHEMA_VERSION=$("$JQ" -r '.schemaVersion // empty' "$LEDGER" 2>/dev/null || echo "")
+[ -n "$SCHEMA_VERSION" ] || exit 0
+
+CURRENT_PHASE=$("$JQ" -r '.currentPhase // empty' "$LEDGER" 2>/dev/null || echo "")
+case "$CURRENT_PHASE" in
+  ''|*[!0-9]*) exit 0 ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Detect a transition-point: last in-progress phase's reviewerVerdict is

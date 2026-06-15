@@ -141,3 +141,10 @@ echo "$WELL_FORMED_MAP" > "$MAP_PATH"
 make_cycle_state 3
 assert_allow "$H" "$(payload tool_name=Write file_path="$COVERAGE_PATH" content='| Journey | Spec |')" \
   "Write coverage matrix when sentinel-bearing map exists → ALLOW"
+
+# ---------------------------------------------------------------------------
+section "journey-map-sentinel: BARE RELATIVE path is gated like an absolute one (#15)"
+# A relative file_path must hit the same suffix match — otherwise the gate
+# slips. Non-sentinel first line → DENY on the sentinel rule.
+assert_deny "$H" "$(payload tool_name=Write file_path='tests/e2e/docs/journey-map.md' content='# hand-rolled, no sentinel')" \
+  "relative journey-map.md write without sentinel → DENY" "line 1 must be the literal sentinel"

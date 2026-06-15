@@ -32,7 +32,7 @@ for f in "${case_files[@]}"; do
   fi
 done
 
-if [ "${#selected[@]}" -eq 0 ]; then
+if [ "${#selected[@]}" -eq 0 ] && [[ "install-simulation.sh" != *"$filter"* ]]; then
   echo "No test files match filter '$filter'" >&2
   exit 1
 fi
@@ -49,6 +49,17 @@ for f in "${selected[@]}"; do
   # shellcheck source=/dev/null
   source "$f"
 done
+
+# Install simulation — proves the gates fire from a consumer-style install
+# (HOOK_MANIFEST scripts + lib/ + bin/jq copied to a fake home, no repo
+# context). Sourced so its assertions share the counters above and land in
+# the final tally. Respects the filter like any case file.
+if [ -z "$filter" ] || [[ "install-simulation.sh" == *"$filter"* ]]; then
+  echo
+  echo "=== install-simulation.sh ==="
+  # shellcheck source=install-simulation.sh
+  source "$SCRIPT_DIR/install-simulation.sh"
+fi
 
 # Summary.
 echo

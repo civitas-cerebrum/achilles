@@ -61,7 +61,12 @@ cycle N → cycle N+1 inside Phase 4) is gated by a
 `workflow-reviewer-*` subagent. The reviewer reads the ledger row +
 the closing subagent's handover envelope + the canonical methodology
 section, returns `verdict: approve | reject | escalate`, and the
-orchestrator only advances when the verdict is `approve`.
+orchestrator only advances when the verdict is `approve`. Every
+`workflow-reviewer-*` dispatching brief MUST cite the reviewer's
+return-schema path
+(`schemas/subagent-returns/workflow-reviewer.schema.json`) — the
+`subagent-schema-preread-gate.sh` hook denies briefs that omit the
+citation.
 
 The contract is harness-enforced:
 
@@ -150,6 +155,13 @@ strict-parallel-everywhere mode. Cost: up to ~20× more subagent
 dispatches and token spend than `mode: standard`. Confirm with the user
 before defaulting to depth on any run that is not explicitly a
 high-stakes audit or benchmark.
+
+The pre-Pass-4 P3 adversarial opt-out proposal (defined in
+`coverage-expansion`'s depth-mode pipeline step,
+`skills/coverage-expansion/references/depth-mode-pipeline.md`) is folded
+into this gate so no mid-run prompt is added: any
+`adversarialSkippedJourneys` opt-out is proposed and answered here,
+alongside mode selection.
 
 ### Steps 1–3 — Preconditions
 
@@ -254,7 +266,7 @@ Load `test-composer` for the dispatch contract; consult
 ## Phase 4 — Journey mapping
 
 **Goal.** Produce a structured map of every user journey worth testing,
-prioritised P1 / P2 / P3.
+prioritised P0 / P1 / P2 / P3 (per `journey-mapping`'s priority framework).
 
 > **Phase 4 cannot be done in-orchestrator.** "Load `journey-mapping`"
 > means invoke the Skill tool with skill name `journey-mapping` and
@@ -317,8 +329,9 @@ the priority-tier rubric.
 
 ## Phase 5 — Coverage expansion
 
-**Goal.** Land one spec per priority-2 / priority-3 journey not already
-covered, plus per-pass dedup.
+**Goal.** Land one spec per journey in the map not already covered by a
+Phase-3 spec (all tiers, P0 first per `journey-mapping`'s dispatch
+order), plus per-pass dedup.
 
 > **Phase 5 cannot be done in-orchestrator.** "Load `coverage-expansion`"
 > means invoke the Skill tool with skill name `coverage-expansion` and
@@ -351,8 +364,9 @@ covered, plus per-pass dedup.
    true` is opt-in) or `args: "mode: depth"` under `runMode: depth`
    (strict per-journey on every pass — `[group]` and `[P3-batch]`
    forbidden across all 5 passes; adversarial Passes 4-5 are
-   strict-per-journey by default). The skill defines compositional
-   passes (1–5) plus an adversarial pass and a cleanup/dedup pass.
+   strict-per-journey by default). The skill defines three
+   compositional passes (1-3), two adversarial passes (4-5), plus a
+   cleanup/dedup pass.
    The orchestrator writes `runMode` into
    `tests/e2e/docs/coverage-expansion-state.json` on the first
    state-file write so the `standard-mode-first-pass-guard.sh` hook
@@ -367,12 +381,18 @@ covered, plus per-pass dedup.
 4. **Per-pass dedup.** Run one cleanup subagent at the end of every pass
    to consolidate duplicate scenarios within the pass.
 5. **Adversarial passes.** Pass 4 (first adversarial) and pass 5 (second
-   adversarial) emit findings. If pass 5 surfaces seven or more
-   *unique* findings after dedup, run a third adversarial pass.
+   adversarial) emit findings. If Pass 5 emits any critical/high finding
+   after dedup, flag the affected journeys for a focused Phase-6
+   `bug-discovery` probe (pass the finding-IDs in the Phase-6 brief) —
+   there is no Pass 6.
 
 **Exit criteria.**
-- Every P2 / P3 journey in the map has either a spec or a documented
-  skip with explicit authorisation.
+- Every journey in the map not already covered by a Phase-3 spec (all
+  tiers, P0 first per `journey-mapping`'s dispatch order) has a spec or
+  a documented skip with explicit authorisation; P0/P1 journeys may not
+  be skipped without naming the authorising user message;
+  `journey-map-coverage.md` `<missing>` rows for P0/P1 close before
+  P2/P3.
 - The dedup pass at the end of each pass landed without leaving
   duplicate-scenario findings open.
 
@@ -411,7 +431,9 @@ application — and lock the failure modes with regression specs.
    specs; they go into `tests/e2e/docs/adversarial-findings.md`.
 
 **Exit criteria.**
-- Every probe completed (status `clean` or `findings-emitted`).
+- Every probe terminal (`clean` | `findings-emitted` | `blocked`);
+  blocked probes require a ledger deferral entry with an `authorizer`
+  or a re-dispatch.
 - All `findings-emitted` returns have a corresponding regression spec
   or an explicit `app-bug` flag for human triage.
 
@@ -430,14 +452,20 @@ should be portable across local / CI / staging targets.
 
 1. Load `secrets-sweep`. The skill defines the four literal classes
    (credentials, API keys, PII, URLs) and the extraction playbook.
-2. Scan `tests/e2e/**/*.spec.ts` and `tests/e2e/fixtures/**/*.ts`.
-   *Do not* touch application source under `src/` or `app/`.
+   Phase 7 dispatches `secrets-sweep` with the
+   `composer-secrets-sweep:` description prefix.
+2. Scan `tests/**/*.{ts,json}` and root `playwright*.config.ts` per
+   the `secrets-sweep` skill's scope.
+   *Do not* touch application source under `src/` or `app/`. Evidence
+   bundles (`tests/e2e/evidence/`) are NOT swept by Phase 7 — they are
+   redacted by `companion-mode`'s Phase-5 redaction step.
 3. Replace literals with `process.env.<NAME>`; write `.env` (real
    values, gitignored) and `.env.example` (placeholders, committed);
    ensure `.gitignore` covers `.env`.
 
 **Exit criteria.**
-- A re-scan of `tests/e2e/**` surfaces no literal credentials.
+- A re-scan of `tests/**` (plus root `playwright*.config.ts`) surfaces
+  no literal credentials.
 - `.env`, `.env.example`, and the `.gitignore` entry are all in place.
 - `npx playwright test` still passes against the now-env-driven suite.
 

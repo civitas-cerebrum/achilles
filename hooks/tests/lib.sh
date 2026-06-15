@@ -4,6 +4,20 @@
 # Each hook test file (cases/*.sh) sources this and uses the helpers below
 # to register cases. The runner (run.sh) sources every cases/*.sh and
 # iterates the resulting array.
+#
+# Allow-test convention (mandatory for pattern-based heuristics)
+# --------------------------------------------------------------
+# Every assert_deny for a pattern-based heuristic ships with >= 2
+# assert_allow cases drawn from realistic ADJACENT traffic — the
+# read-only variant of the denied write, and the orchestration/meta
+# variant that looks similar but is legitimate. A deny-only test proves
+# the pattern fires; it does not prove the pattern is SCOPED. The allow
+# cases are what catch over-broad regexes before they reach production.
+# Examples already in tree:
+#   - cases/57: interpreter READS (python3 -c json.load / node -e
+#     readFileSync) alongside the write-shaped denies.
+#   - cases/49: phase5 / phase8 coordinators and workflow-reviewer-*
+#     briefs that list >= 3 j-slugs / section names but must ALLOW.
 
 set -uo pipefail   # not -e — individual cases are allowed to fail without aborting the runner
 
@@ -91,6 +105,35 @@ assert_deny() {
   echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
 }
 
+#   assert_ask <hook> <stdin> <case-name> [reason-substring]
+#     Hook should emit a deny-shaped JSON whose permissionDecision is "ask".
+#     Optionally checks that permissionDecisionReason contains a substring.
+assert_ask() {
+  local hook="$1" stdin="$2" name="$3" reason_substr="${4:-}"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  run_hook "$hook" "$stdin"
+  local decision
+  decision=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  if [ "$decision" != "ask" ]; then
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    FAIL_DETAILS+=("${name}: expected ask, got decision='${decision}' output=${HOOK_OUT:0:200}")
+    echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(expected ask, got '${decision}')${CLR_RST}"
+    return
+  fi
+  if [ -n "$reason_substr" ]; then
+    local reason
+    reason=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+    if ! echo "$reason" | grep -qF -- "$reason_substr"; then
+      TESTS_FAILED=$((TESTS_FAILED + 1))
+      FAIL_DETAILS+=("${name}: ask reason missing substring '${reason_substr}'. reason=${reason:0:200}")
+      echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(ask reason missing substring)${CLR_RST}"
+      return
+    fi
+  fi
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+  echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
+}
+
 assert_warn() {
   local hook="$1" stdin="$2" name="$3" message_substr="${4:-}"
   TESTS_RUN=$((TESTS_RUN + 1))
@@ -115,6 +158,22 @@ assert_warn() {
   fi
   TESTS_PASSED=$((TESTS_PASSED + 1))
   echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
+}
+
+# assert_eq <actual> <expected> <case-name>
+#   Plain string equality between two precomputed values. Useful for
+#   asserting on artifact contents a hook wrote (e.g. jq extractions).
+assert_eq() {
+  local actual="$1" expected="$2" name="$3"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [ "$actual" = "$expected" ]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    FAIL_DETAILS+=("${name}: expected '${expected}', got '${actual:0:200}'")
+    echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(expected '${expected}', got '${actual:0:80}')${CLR_RST}"
+  fi
 }
 
 # assert_block_subagent <hook> <stdin> <case-name> [stderr-substring]

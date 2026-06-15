@@ -106,6 +106,8 @@ Practical guidance:
 
 If a longer slug is unavoidable, set `TMPDIR=/tmp` for the run — a shorter base path buys back a few characters — but treat that as a workaround, not a fix.
 
+**These prefixes are hook-enforced.** `playwright-cli-isolation-guard.sh` (a `PreToolUse`/`Bash` hook in `scripts/postinstall.js`'s `HOOK_MANIFEST`) inspects every `playwright-cli` invocation and **denies** any `-s=` slug that does not match `phase1-|phase2-|phase4-|stage2-|composer-|reviewer-|probe-|cleanup-|companion-|fd-` (full regex: `^(phase1|phase2|phase4|stage2|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*`). Bare `j-`/`sj-` slugs are rejected — use the role-explicit forms. Session-agnostic subcommands (`close-all`, `kill-all`, `list`, `install-browser`, …) are allowed without a slug. See [`harness-hooks.md`](harness-hooks.md) for the full hook catalogue.
+
 ### 3.2 Quarantine on start
 
 Onboarding-style workflows (and any pipeline that may have been interrupted) should run `playwright-cli close-all` at the start to reap stale sessions from prior runs. A leftover named session blocks future `-s=<same-name> open`.
@@ -198,19 +200,19 @@ playwright-cli snapshot "#main"        # CSS-selector-anchored
 Pre-authenticated browser state replays cleanly across sessions. The replay flow is `open → state-load → reload`:
 
 ```bash
-# capture
-playwright-cli -s=auth open --browser=chromium http://app/login
-playwright-cli -s=auth fill e1 "user@example.com"
-playwright-cli -s=auth fill e2 "password"
-playwright-cli -s=auth click e3
-playwright-cli -s=auth state-save tests/e2e/.auth/admin.json
-playwright-cli -s=auth close
+# capture (Stage-2 auth-capture session)
+playwright-cli -s=stage2-auth-cap open --browser=chromium http://app/login
+playwright-cli -s=stage2-auth-cap fill e1 "user@example.com"
+playwright-cli -s=stage2-auth-cap fill e2 "password"
+playwright-cli -s=stage2-auth-cap click e3
+playwright-cli -s=stage2-auth-cap state-save tests/e2e/.auth/admin.json
+playwright-cli -s=stage2-auth-cap close
 
-# replay in a fresh worker session
-playwright-cli -s=worker open --browser=chromium http://app/
-playwright-cli -s=worker state-load tests/e2e/.auth/admin.json
-playwright-cli -s=worker reload
-playwright-cli -s=worker --raw snapshot   # post-login state
+# replay in a fresh worker session (compositional Pass-1 cycle-1 worker)
+playwright-cli -s=composer-j-x-1-c1 open --browser=chromium http://app/
+playwright-cli -s=composer-j-x-1-c1 state-load tests/e2e/.auth/admin.json
+playwright-cli -s=composer-j-x-1-c1 reload
+playwright-cli -s=composer-j-x-1-c1 --raw snapshot   # post-login state
 ```
 
 The state file is the standard Playwright `storageState` JSON: cookies + per-origin localStorage. Reuse it across `coverage-expansion` workers, `bug-discovery` probes, and `failure-diagnosis` debug sessions for the same role.

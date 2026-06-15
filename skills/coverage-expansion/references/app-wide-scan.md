@@ -15,7 +15,7 @@ A **single** adversarial dispatch fired before Pass 4's per-journey probes. Its 
 
 ## When the scan runs
 
-Once per `mode: depth` run, dispatched as the **first** Pass-4 step (before any per-journey probe). Output file is `tests/e2e/docs/app-wide-patterns.md` (created by the scan; absent before).
+Once per five-pass run (`mode: standard` or `mode: depth`; not `mode: breadth`), dispatched as the **first** Pass-4 step (before any per-journey probe). Output file is `tests/e2e/docs/app-wide-patterns.md` (created by the scan; absent before).
 
 In `mode: breadth`, the scan does NOT run — breadth is a single-sweep mode that doesn't dedicate a pass to adversarial work. Breadth users who want app-wide pattern documentation can invoke the scan manually.
 
@@ -135,7 +135,7 @@ The `coverage:` field IS the citation. The per-journey probe does NOT re-documen
 
 ## Hard constraints
 
-- **One scan per `mode: depth` run.** Re-runs only when the orchestrator starts a fresh `mode: depth` invocation. **Resume signal:** the orchestrator treats the **presence** of `tests/e2e/docs/app-wide-patterns.md` (with the `<!-- app-wide-scan:generated -->` sentinel) as the sole resume signal — if the file exists, the prelude has already run for this `mode: depth` invocation; if not, dispatch it. This avoids polluting the state-file schema with a Pass-4-specific flag.
+- **One scan per five-pass run (`mode: standard` or `mode: depth`; not `mode: breadth`).** Re-runs only when the orchestrator starts a fresh five-pass invocation. **Resume signal:** the orchestrator treats the **presence** of `tests/e2e/docs/app-wide-patterns.md` (with the `<!-- app-wide-scan:generated -->` sentinel) as the sole resume signal — if the file exists, the prelude has already run for this five-pass invocation; if not, dispatch it. This avoids polluting the state-file schema with a Pass-4-specific flag.
 - **Runs first.** The app-wide scan finishes (output file written + committed) before any Pass-4 per-journey probe is dispatched.
 - **Single subagent, no fan-out.** The scan is a leaf probe; it does NOT dispatch its own children. The pattern catalogue (16 patterns at the time of writing — see §"Pattern catalogue checklist") is short enough that one subagent covers it.
 - **Exempt from dual-stage Stage A/B contract.** The app-wide-scan prelude is a leaf reconnaissance dispatch, not a journey-iteration cycle. It has no Stage B reviewer. The Stage A output (the catalogue file) is the entire deliverable; subsequent per-journey Pass-4 probes use it as input, but those per-journey probes carry their own dual-stage A/B per the journey contract. The prelude does NOT count toward Pass-4 dispatch totals.
@@ -148,5 +148,5 @@ The `coverage:` field IS the citation. The per-journey probe does NOT re-documen
 
 - `coverage-expansion/SKILL.md` §"Adversarial passes (4 and 5)" — invokes this scan as the Pass-4 prelude.
 - `adversarial-subagent-contract.md` §"Inputs" — per-journey probes get the app-wide-patterns file as Input 9 alongside the journey-specific inputs.
-- `references/adversarial-findings-schema.md` — the `coverage:` field that holds the citation.
+- `../../element-interactions/references/subagent-return-schema.md` §1 — documents the `coverage:` field that holds the citation.
 - The empirical motivation and savings analysis for this scan are documented in the project history.

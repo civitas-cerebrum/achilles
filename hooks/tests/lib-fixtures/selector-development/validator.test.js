@@ -49,6 +49,28 @@ const cases = [
     after:  'export function C() { return <button onClick={b} data-testid="submit-button">x</button>; }',
     expected: 'data-testid', file: 'jsx-expr-change.tsx',
     pass: false, reason: 'modifies-existing-attribute' },
+
+  // Svelte 5 parser (change #17). These depend on the svelte ^5.55.9 bump
+  // (P7) — the TS-aware parser handles <script lang="ts"> directly and a
+  // literal </script> inside a template string no longer cuts the file
+  // short.
+  // (1) lang="ts" baseline → additive data-testid → ALLOW.
+  { name: 'svelte5 lang=ts additive data-testid → ALLOW',
+    before: fixtures('svelte-baseline.svelte'),
+    after:  fixtures('svelte-additive.svelte'),
+    expected: 'data-testid', file: 'svelte-additive.svelte', pass: true },
+  // (2) literal </script> inside a template string → normal validation
+  //     (additive data-testid passes), NOT a parser-error.
+  { name: 'svelte5 literal </script> in template string → normal validation (ALLOW additive)',
+    before: fixtures('svelte-ts-template-string-baseline.svelte'),
+    after:  fixtures('svelte-ts-template-string-additive.svelte'),
+    expected: 'data-testid', file: 'svelte-ts-template-string-additive.svelte', pass: true },
+  // (3) structural template change in a lang="ts" component → DENY.
+  { name: 'svelte5 structural template change in lang=ts component → DENY',
+    before: fixtures('svelte-baseline.svelte'),
+    after:  fixtures('svelte-ts-structural-change.svelte'),
+    expected: 'data-testid', file: 'svelte-ts-structural-change.svelte',
+    pass: false, reason: 'structural-change' },
 ];
 
 let passed = 0, failed = 0;

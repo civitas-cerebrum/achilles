@@ -125,14 +125,19 @@ const HOOK_MANIFEST = [
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   { file: 'commit-message-gate.sh',               event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
+  // Out-of-band mutation guard: Bash writes to pipeline-state artifacts
+  // (ledger, journey map, approver registry, findings, hook install) are
+  // denied — Write/Edit are the only sanctioned mutation paths, because
+  // that is where the gates live. Pairs with ledger-integrity-chain.sh.
+  { file: 'protected-artifact-bash-guard.sh',     event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
   { file: 'subagent-schema-preread-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   { file: 'standard-mode-first-pass-guard.sh',    event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every
   // phase / pass / cycle transition through a workflow-reviewer-*
-  // subagent. 10s timeout for the Agent gate (may shell out to git +
-  // jq); 3s timeout for the write gate (read-only-ish — Ajv compile
-  // plus a JSON parse).
+  // subagent. 10s timeout for both gates — the write gate boots node and
+  // compiles the Ajv validator bundle (plus Edit-content synthesis), which
+  // can exceed 3s on a cold start.
   { file: 'onboarding-ledger-gate.sh',            event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   // Approver registry: records workflow-reviewer-* / phase-validator-*
   // dispatches so the ledger-write-gate can verify approval transitions
@@ -142,7 +147,21 @@ const HOOK_MANIFEST = [
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
-  { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 3 },
+  { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+  // Harness self-protection: deny Write|Edit to the installed hook surface
+  // (~/.claude/hooks/*) and settings.json/settings.local.json. Closes the
+  // Write|Edit vector that protected-artifact-bash-guard.sh covers only for
+  // the Bash vector.
+  { file: 'harness-self-protection-guard.sh',     event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 5 },
+  // Hook-authored state guard: deny direct Write|Edit to the approver
+  // registry + integrity sidecar (hook-authored), and gate monotonicity of
+  // the cycle/coverage progress files (dispatched/returned rosters only
+  // grow). Pairs with ledger-integrity-chain.sh.
+  { file: 'hook-authored-state-guard.sh',         event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 5 },
+  // Tamper-evident ledger chain: Pre verifies the on-disk ledger against
+  // the sanctioned hash sidecar; Post records each sanctioned write.
+  { file: 'ledger-integrity-chain.sh',            event: 'PreToolUse',  matcher: 'Write|Edit', timeout: 5 },
+  { file: 'ledger-integrity-chain.sh',            event: 'PostToolUse', matcher: 'Write|Edit', timeout: 5 },
   // Phase-4 fidelity gates: ensure the journey-mapping skill is the
   // only legitimate author of tests/e2e/docs/journey-map.md. The
   // sentinel gate enforces the line-1 marker + the cycle-state preflight
@@ -176,6 +195,11 @@ const HOOK_MANIFEST = [
 
   // selector-development — Stop-time revert WARN
   { file: 'selector-development-revert-on-stop.sh',      event: 'Stop', matcher: null,                 timeout: 10 },
+
+  // bookhive-benchmark — writes <project>/.achilles/run-summary.json at Stop so
+  // the external benchmark (Feyzabora/bookhive-benchmark) has an authoritative
+  // self-report. No-op outside benchmark runs; just emits a fresh file each Stop.
+  { file: 'run-summary-writer.sh',                       event: 'Stop', matcher: null,                 timeout: 15 },
 ];
 
 function copyHookFile(hookSrc, hookDest) {
@@ -290,6 +314,74 @@ function installCivitasHooks() {
         fs.copyFileSync(srcPath, destPath);
         copiedCount++;
       }
+    }
+  }
+
+  // Copy hooks/data/ vocabularies (e.g. canonical-sections.txt, read by
+  // standard-mode-first-pass-guard.sh). Without these, installed hooks fall
+  // back to their hardcoded vocabularies and silently drift from the repo's
+  // canonical data. Pattern: idempotent file copy with mtime check, same as
+  // copyHookFile() above; top-level files only.
+  const dataSrcDir  = path.join(packageDir, 'hooks', 'data');
+  const dataDestDir = path.join(userHooksDir, 'data');
+  if (fs.existsSync(dataSrcDir)) {
+    fs.mkdirSync(dataDestDir, { recursive: true });
+    for (const entry of fs.readdirSync(dataSrcDir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const srcPath  = path.join(dataSrcDir, entry.name);
+      const destPath = path.join(dataDestDir, entry.name);
+      let shouldCopy = !fs.existsSync(destPath);
+      if (!shouldCopy) {
+        try {
+          shouldCopy = fs.statSync(srcPath).mtimeMs > fs.statSync(destPath).mtimeMs;
+        } catch (_) {
+          shouldCopy = true;
+        }
+      }
+      if (shouldCopy) {
+        fs.copyFileSync(srcPath, destPath);
+        copiedCount++;
+      }
+    }
+  }
+
+  // Prune DANGLING registrations: settings.json entries pointing at a
+  // legacy hook file we no longer ship (and that pruneRetiredHooks deletes
+  // from disk below). Without this, an upgraded install keeps firing — or
+  // failing to fire — against a registration whose script is gone. Only
+  // touches entries whose command basename is a known legacy hook AND whose
+  // path is under our own userHooksDir; third-party user hooks are
+  // preserved. Empty matcher groups left behind are dropped.
+  if (settings && settings.hooks && typeof settings.hooks === 'object') {
+    const legacySet = new Set(LEGACY_EI_HOOKS);
+    for (const event of Object.keys(settings.hooks)) {
+      const groups = settings.hooks[event];
+      if (!Array.isArray(groups)) continue;
+      const keptGroups = [];
+      for (const group of groups) {
+        if (!group || !Array.isArray(group.hooks)) { keptGroups.push(group); continue; }
+        const before = group.hooks.length;
+        group.hooks = group.hooks.filter(h => {
+          if (!h || h.type !== 'command' || typeof h.command !== 'string') return true;
+          // Only ever touch registrations that point into our own hooks dir;
+          // a bare leading path is ours, `node "…"` / third-party commands are not.
+          const scriptPath = h.command.trim().split(/\s+/)[0].replace(/^["']|["']$/g, '');
+          const isOurs = scriptPath.startsWith(userHooksDir + path.sep);
+          if (!isOurs) return true;
+          const isLegacy = legacySet.has(path.basename(scriptPath));
+          // Drop a known-retired hook OR any registration whose target script
+          // no longer exists on disk — the latter is what produces the
+          // "/bin/sh: …: No such file or directory" non-blocking failures.
+          const isDangling = !fs.existsSync(scriptPath);
+          if (isLegacy || isDangling) { settingsModified = true; return false; }
+          return true;
+        });
+        if (group.hooks.length !== before) settingsModified = true;
+        // Drop a group that has become empty as a result of pruning.
+        if (group.hooks.length === 0) { settingsModified = true; continue; }
+        keptGroups.push(group);
+      }
+      settings.hooks[event] = keptGroups;
     }
   }
 

@@ -152,7 +152,15 @@ function flattenVue(node) {
 
 function parseSvelte(src) {
   const { parse } = require('svelte/compiler');
-  return parse(src).html;
+  // Svelte 5's parser IS TypeScript-aware: it parses `<script lang="ts">`
+  // blocks directly, so the old strip-the-script hack (which cut a file
+  // short whenever a template-string contained a literal `</script>`) is
+  // no longer needed. Passing { filename } gives better diagnostics.
+  // AST assumption (pin): svelte 5 legacy parse (modern unset) — the tree
+  // exposes `root.html` with legacy Element nodes (type === 'Element',
+  // attributes[], children[]), which flattenSvelte below walks. Revisit
+  // before svelte 6 removes legacy mode.
+  return parse(src, { filename: 'component.svelte' }).html;
 }
 
 /**

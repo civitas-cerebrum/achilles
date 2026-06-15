@@ -41,9 +41,16 @@
 
 set -euo pipefail
 
+JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
+[ -x "$JQ" ] || JQ="$(command -v jq || true)"
+if [ -z "$JQ" ]; then
+  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
+  exit 1
+fi
+
 input=$(cat)
-tool_name=$(echo "$input" | jq -r '.tool_name // empty')
-file_path=$(echo "$input" | jq -r '.tool_input.file_path // empty')
+tool_name=$(echo "$input" | "$JQ" -r '.tool_name // empty')
+file_path=$(echo "$input" | "$JQ" -r '.tool_input.file_path // empty')
 
 case "$tool_name" in Edit|Write) ;; *) exit 0 ;; esac
 
@@ -73,7 +80,7 @@ fi
 # Frontend marker check
 fe_present=0
 if [ -f "$ws/package.json" ]; then
-  if jq -e '(.dependencies // {}) + (.devDependencies // {}) | has("react") or has("vue") or has("svelte") or has("@angular/core") or has("solid-js") or has("preact") or has("lit")' "$ws/package.json" >/dev/null 2>&1; then
+  if "$JQ" -e '(.dependencies // {}) + (.devDependencies // {}) | has("react") or has("vue") or has("svelte") or has("@angular/core") or has("solid-js") or has("preact") or has("lit")' "$ws/package.json" >/dev/null 2>&1; then
     fe_present=1
   fi
 fi
@@ -108,7 +115,7 @@ fi
 # can still land the attribute; the consumer is expected to author
 # the matching test as their next step. WARN, don't DENY.
 if [ "$tests_present" -eq 0 ]; then
-  jq -n --arg ws "$ws" '{
+  "$JQ" -n --arg ws "$ws" '{
     "systemMessage": ("[WARN] selector-development-activation-gate: tests/e2e/*.spec.ts not yet present under " + $ws + ". The pipeline will land the inert attribute, but the matching test is the human follow-up — without it the selector has no consumer and visual-diff verification will not cover this edit. Add tests/e2e/<journey>.spec.ts that uses the new selector before commit."),
     "suppressOutput": false
   }'

@@ -12,13 +12,18 @@
 # the subagent is expected to conform to. The role→schema mapping mirrors
 # subagent-return-schema-guard.sh exactly:
 #
-#   composer-<slug>      → composer.schema.json
-#   reviewer-<slug>      → reviewer-inloop.schema.json
-#   probe-<slug>         → probe.schema.json
-#   phase-validator-<N>  → phase-validator.schema.json
+#   composer-<slug>            → composer.schema.json
+#   reviewer-<slug>            → reviewer-inloop.schema.json
+#   probe-<slug>               → probe.schema.json
+#   phase-validator-<N>        → phase-validator.schema.json
+#   workflow-reviewer-<unit>   → workflow-reviewer.schema.json
+#   phase4-prioritise-author*  → phase4-prioritise-author.schema.json
+#   phase4-cycle-<N>-*         → section-agent.schema.json
 #
-# Free-form prefixes (phase1-*, stage2-*, cleanup-*, process-validator-*,
-# anything else) are silent-allow — they carry no structural contract.
+# Known-prefix, NO schema (envelope-sanity only — silent-allow on the
+# citation check): process-validator-*, phase1-*, stage2-*, cleanup-*,
+# companion-*, fd-*. Any other free-form prefix is also silent-allow —
+# it carries no structural contract.
 #
 # The brief satisfies the gate by containing the literal substring
 #   "<role>.schema.json"

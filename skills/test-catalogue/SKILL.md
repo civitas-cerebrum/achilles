@@ -88,6 +88,7 @@ For each extracted test:
 - If the spec file name ends in `-regression.spec.ts` → mark as `adversarial-regression` and, when adversarial-findings.md lists a matching boundary (`VB-NN` or `P4-…` code), attach that code.
 - If the enclosing describe starts with `sj-` → mark as `structural` (these are composed into journeys rather than being user-facing journeys themselves).
 - If the test is `test.skip` at statement position → keep the skip + capture any human-readable reason from a nearby comment on the preceding lines (best-effort).
+- If the test name carries an `@flaky` tag OR the test has an entry with `Status: quarantined` in `tests/e2e/docs/flake-quarantine.md` (when that ledger exists) → mark the status `Quarantined`. Quarantined tests must not render as Active.
 
 Unmatched tests go into an "Unmapped" bucket in the catalogue — visible so the user sees what needs mapping.
 
@@ -136,7 +137,7 @@ Each scenario row shows:
   - regression (file in `-regression.spec.ts`)
   
   When a test matches more than one rule, pick the **most specific** one (mobile > edge > error > structural > regression > happy path).
-- **Status chip** — Active / Skipped (with reason) / Failing-expected.
+- **Status chip** — Active / Skipped (with reason) / Failing-expected / Quarantined (sourced from `@flaky` tags + `flake-quarantine.md` entries).
 
 ### Phase 4 — Render HTML
 
@@ -160,7 +161,7 @@ Styling rules:
 - Typography: Inter via Google Fonts, fallback to system sans.
 - Tables: zebra rows at low opacity (`rgba(255,255,255,0.02)`), 1px rule below the header, tight line-height.
 - Priority chips: P0 = crit red, P1 = high orange, P2 = medium yellow, P3 = low grey.
-- Status chips: `Active` = ok-green, `Skipped` = mute-grey, `Failing-expected` = accent-orange.
+- Status chips: `Active` = ok-green, `Skipped` = mute-grey, `Failing-expected` = accent-orange, `Quarantined` = med-yellow.
 - Never include runtime / effort / "we wrote this in X hours" language. Never include an author block.
 - Screenshots (if the template references any) must always use `screenshots/<file>.png` path-qualified, never bare basenames (§3.0 convention).
 

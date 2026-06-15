@@ -11,7 +11,7 @@
         { "$ref": "handover.schema.json" }
       ]
     },
-    "phase": { "type": "integer", "minimum": 1, "maximum": 7 },
+    "phase": { "type": "integer", "minimum": 1, "maximum": 8 },
     "sub-skill": { "type": "string" },
     "exit-criteria-checked": {
       "type": "array",
@@ -27,7 +27,7 @@
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "properties": { "status": { "const": "improvements-needed" } } } }
+        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "improvements-needed" } } } }
       },
       "then": {
         "type": "object",
@@ -38,7 +38,7 @@
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "properties": { "status": { "const": "greenlight" } } } }
+        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "greenlight" } } } }
       },
       "then": {
         "type": "object",

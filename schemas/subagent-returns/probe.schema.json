@@ -21,6 +21,13 @@
     },
     "journey": { "type": "string", "pattern": "^j-[a-z0-9-]+$" },
     "findings-emitted": { "type": "integer", "minimum": 0 },
+    "finding-ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "$comment": "Ledger anchor IDs for the findings appended this dispatch (e.g. j-acme-4-01). Array length should equal the findings-emitted count.",
+      "description": "Ledger anchor IDs of the emitted findings; length should equal findings-emitted."
+    },
     "tests-added": { "type": "integer", "minimum": 0 },
     "summary": { "type": "string" },
     "spill": { "type": "string" },
@@ -30,18 +37,21 @@
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "properties": { "status": { "const": "findings-emitted" } } } }
+        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "findings-emitted" } } } }
       },
       "then": {
         "type": "object",
-        "required": ["findings-emitted"],
-        "properties": { "findings-emitted": { "type": "integer", "minimum": 1 } }
+        "required": ["findings-emitted", "finding-ids"],
+        "properties": {
+          "findings-emitted": { "type": "integer", "minimum": 1 },
+          "finding-ids": { "type": "array", "minItems": 1 }
+        }
       }
     },
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "properties": { "status": { "const": "blocked" } } } }
+        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "blocked" } } } }
       },
       "then": {
         "type": "object",

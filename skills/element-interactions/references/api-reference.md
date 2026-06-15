@@ -26,6 +26,9 @@ import { baseFixture } from '@civitas-cerebrum/element-interactions';
 export const test = baseFixture(base, 'tests/data/page-repository.json', {
   timeout: 60000,              // element timeout (default: 30000)
   // repoTimeout: 15000,       // repo resolution timeout (default: 15000)
+  // interceptionRetry: false, // default true: intercepted clicks fall back to a dispatched DOM click event.
+                               // false makes genuine overlay bugs (stuck modals, cookie walls) fail the click —
+                               // recommended for adversarial/bug-discovery suites
   // blockedOrigins: /regex/,  // auto-abort matching routes
   // screenshotOnFailure: true, // auto-capture on failure (default: true)
 });
@@ -38,6 +41,8 @@ export { expect };
 | `repo` | `ElementRepository` | Direct repository access for advanced locator queries |
 | `interactions` | `ElementInteractions` | Raw interactions API for custom locators |
 | `contextStore` | `ContextStore` | Shared in-memory key-value store for passing data between steps within a test |
+
+> **Version gate — `interceptionRetry` (0.4.0+).** This package's pinned dep is `^0.3.6`. On **0.3.x** the `interceptionRetry` opt-out shown above is **not available** and the report-visible `interception-fallback` test annotation is **not emitted** — both are no-ops on the current dep. The DOM-click fallback itself behaves the same; what changes at 0.4.0 is the *opt-out* and the *annotation*. Do not teach `interceptionRetry: false` as a currently-callable knob until the dep is bumped — verify the installed version before relying on it.
 
 `baseFixture` attaches a full-page `failure-screenshot` to the HTML report on every failed test automatically.
 
@@ -166,8 +171,8 @@ const count = steps.getTabCount();
 
 ```ts
 await steps.click('elementName', 'PageName');
-await steps.click('elementName', 'PageName', { force: true });              // dispatch native click (bypasses overlays)
-await steps.click('elementName', 'PageName', { withoutScrolling: true });   // click without auto-scroll
+await steps.click('elementName', 'PageName', { force: true });              // dispatches a DOM 'click' event directly — NOT Playwright's force: true (no pointer simulation, no actionability checks; rename pending in a future major)
+await steps.click('elementName', 'PageName', { withoutScrolling: true });   // alias semantics of force: dispatches a DOM 'click' event without scrolling into view
 const clicked = await steps.clickIfPresent('elementName', 'PageName');      // returns boolean, false if absent
 await steps.clickRandom('elementName', 'PageName');
 await steps.clickNth('elementName', 'PageName', 2);           // zero-based index
@@ -196,7 +201,7 @@ await steps.dragAndDrop('elementName', 'PageName', { xOffset: 100, yOffset: 0 })
 await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { target: otherLocatorOrElement });
 ```
 
-**Note:** `click()` automatically retries with a native DOM event when Playwright reports pointer interception — no `{ force: true }` needed in most cases.
+**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. On **0.4.0+** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — recommended for adversarial/bug-discovery suites where a stuck modal or cookie wall should fail the click. On **0.3.x (current pinned dep)** the fallback still happens but the annotation and the `interceptionRetry` opt-out are not available — see the version gate under [Setup — Fixtures](#setup--fixtures).
 
 ### Data Extraction
 
@@ -462,10 +467,18 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 
 ### Waiting
 
+> **Version gate — `waitForState` semantics (0.3.x vs 0.4.0).** This package's pinned dep is `^0.3.6`. On **0.3.x (current dep)** `waitForState` resolves `false` on timeout and **MUST NOT be used as an assertion** — a soft probe that returns `false` is silently ignored. Always follow a `waitForState` with an explicit `verify*` (e.g. `verifyState('elementName', 'PageName', 'visible')`) so a missed wait fails the test. The `{ optional: true }` / `{ timeout }` option bags shown below, and the throw-on-timeout behaviour, are **0.4.0+** and are no-ops on 0.3.x. Treat the throwing form as forward-looking until the dep is bumped.
+
 ```ts
-await steps.waitForState('elementName', 'PageName');                        // default: 'visible'
+// waitForState THROWS on timeout as of 0.4.0 and returns Promise<boolean>.
+// On 0.3.x (current dep) it resolves false on timeout — never an assertion; follow with verify*.
+await steps.waitForState('elementName', 'PageName');                        // default: 'visible'; throws on timeout
 await steps.waitForState('elementName', 'PageName', 'hidden');              // also: 'attached', 'detached'
-await steps.waitAndClick('elementName', 'PageName');                        // waits for visible, then clicks
+// Soft probe: { optional: true } resolves false on timeout instead of throwing.
+const present = await steps.waitForState('elementName', 'PageName', 'visible', { optional: true });
+// Per-call timeout override:
+await steps.waitForState('elementName', 'PageName', 'visible', { timeout: 5_000 });
+await steps.waitAndClick('elementName', 'PageName');                        // waits for visible, then clicks; throws if never visible
 await steps.waitForNetworkIdle();
 await steps.waitForResponse('/api/data', async () => {
   await steps.click('submitButton', 'PageName');
@@ -537,7 +550,7 @@ await steps.verifyVisualMatch('login.png', {
 
 **Baselines:** the first run writes the baseline; subsequent runs diff. Use `npx playwright test --update-snapshots` to refresh baselines intentionally. Playwright fingerprints baselines per OS / browser channel, so generate them in the same environment your CI runs.
 
-See [`VisualMatchOptions`](../../../src/enum/Options.ts) for the full options surface (`maskColor`, `fullPage`, `maxDiffPixelRatio`, `maxDiffPixels`, `timeout`).
+The full options surface — `maskColor`, `fullPage`, `maxDiffPixelRatio`, `maxDiffPixels`, `timeout` — is defined by `VisualMatchOptions` in the `@civitas-cerebrum/element-interactions` package.
 
 ## Fluent API — `steps.on()`
 
@@ -655,22 +668,24 @@ repo.driver;                                                       // bound Page
 
 ## Raw Interactions API
 
-Bypass the repository for dynamically generated locators. All methods accept both `Locator` and `Element`:
+Bypass the repository for dynamically generated locators. **Verified at 0.3.6:** every `interact` / `verify` / `extract` method takes a `WebElement` (the element-repository `Element`), **not** a raw Playwright `Locator`. To bridge a raw locator, wrap it with `new WebElement(locator)` at the call site:
 
 ```ts
-import { ElementInteractions } from '@civitas-cerebrum/element-interactions';
+import { ElementInteractions, WebElement } from '@civitas-cerebrum/element-interactions';
 
 const interactions = new ElementInteractions(page);
-const locator = page.locator('button.dynamic-class');
-await interactions.interact.click(locator, { withoutScrolling: true });
-await interactions.verify.count(locator, { greaterThan: 2 });
 
-// Also works with Element from repo
+// Wrap a raw Playwright Locator before passing it in.
+const el = new WebElement(page.locator('button.dynamic-class'));
+await interactions.interact.click(el, { withoutScrolling: true });
+await interactions.verify.count(el, { greaterThan: 2 });
+
+// Or get an Element straight from the repo — already a WebElement.
 const element = await repo.get('submitButton', 'LoginPage');
 await interactions.interact.click(element);
 ```
 
-All `interact`, `verify`, `extract`, and `navigate` methods are available on `ElementInteractions`.
+All `interact`, `verify`, `extract`, and `navigate` methods are available on `ElementInteractions`. `WebElement` is re-exported from `@civitas-cerebrum/element-interactions` (originating in `@civitas-cerebrum/element-repository`).
 
 ## Email API
 

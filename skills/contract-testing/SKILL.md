@@ -14,11 +14,12 @@ description: >
   Also activates on phrases that signal a backend interaction is about to land: "call the API in a
   test", "test against the backend", "consume the API", "verify the response", "assert the JSON
   shape", "validate the API response", "lock the backend's response", "endpoint should return", and
-  any mention of an HTTP verb against a project URL inside a spec context. The callers (test-composer,
-  bug-discovery's API-surface probes, coverage-expansion adversarial passes that touch APIs) invoke
-  this skill via the Skill tool whenever they emit `steps.api*` lines, rather than treating contract
-  shape as optional. Not for: pure UI flow assertions, coverage expansion at journey scope, bug
-  hunting at the page level, or failing-test diagnosis — those route to their own skills.
+  any mention of an HTTP verb against a project URL inside a spec context. Real routes in:
+  element-interactions' companion-skills table (which routes contract intent here), direct user
+  intent, and test-composer's Step-3 implementation rule, which invokes this skill via the Skill
+  tool whenever a variant emits `steps.api*` lines rather than treating contract shape as optional.
+  Not for: pure UI flow assertions, coverage expansion at journey scope, bug hunting at the page
+  level, or failing-test diagnosis — those route to their own skills.
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "pr": {
+    "title": "docs: clarify presence-detect contract in api-reference",
+    "branch": "docs/presence-detect-clarification",
+    "summary": "Documentation-only PR clarifying the presence-detect contract; no source or test changes."
+  },
+  "preflight": {
+    "branchSyncedWithMain": true,
+    "duplicateIssuesSearched": true,
+    "duplicatePRsSearched": true,
+    "depVersionsChecked": "n/a",
+    "depVersionsCheckedReason": "Docs-only change — no dependency surface touched."
+  },
+  "design": {
+    "argumentOrderConvention": "n/a",
+    "argumentOrderConventionReason": "Docs-only PR — no API surface changed.",
+    "asyncEverywhere": "n/a",
+    "asyncEverywhereReason": "Docs-only PR — no source code changed.",
+    "stepsKeptLightweight": "n/a",
+    "stepsKeptLightweightReason": "Docs-only PR — no Steps code changed.",
+    "namingConvention": "n/a",
+    "namingConventionReason": "Docs-only PR — nothing named.",
+    "noRawLocatorInSrc": "n/a",
+    "noRawLocatorInSrcReason": "Docs-only PR — src/ untouched.",
+    "presenceDetectInActions": "n/a",
+    "presenceDetectInActionsReason": "Docs-only PR — no action code changed.",
+    "webOnlyCastAtSite": "n/a",
+    "webOnlyCastAtSiteReason": "Docs-only PR — no casts introduced.",
+    "errorMessageFormatFollowed": "n/a",
+    "errorMessageFormatFollowedReason": "Docs-only PR — no error messages changed.",
+    "loggingPresent": "n/a",
+    "loggingPresentReason": "Docs-only PR — no executable paths added.",
+    "typescriptDiscipline": "n/a",
+    "typescriptDisciplineReason": "Docs-only PR — no TypeScript changed."
+  },
+  "tests": {
+    "implemented": "n/a",
+    "implementedReason": "Docs-only PR — no behaviour to test.",
+    "exerciseRealVueApp": "n/a",
+    "exerciseRealVueAppReason": "No tests added.",
+    "nonTautologicalAssertions": "n/a",
+    "nonTautologicalAssertionsReason": "No assertions added.",
+    "passing": true
+  },
+  "build": {
+    "buildPasses": true,
+    "fullSuitePassing": true,
+    "knownFailures": "docker-compose-backed sql suites not run locally (no daemon); unrelated to this PR."
+  },
+  "coverage": {
+    "apiCoverageGate100": "n/a",
+    "apiCoverageGate100Reason": "No public API added or changed."
+  },
+  "docs": {
+    "readmeUpdated": false,
+    "readmeUpdatedReason": "Clarification lives in api-reference.md; README does not duplicate that section.",
+    "apiReferenceUpdated": true,
+    "skillFilesUpdated": true
+  },
+  "version": {
+    "patchBumpedOnce": true,
+    "from": "0.3.6",
+    "to": "0.3.7"
+  }
+}

@@ -70,6 +70,13 @@ Every dispatch brief should give the reviewer:
    does not pre-digest.
 4. **The closing handover envelope** of the last subagent of the unit
    being reviewed (matches `schemas/subagent-returns/handover.schema.json`).
+5. **The return-schema citation.** The dispatching brief MUST cite the
+   reviewer's return-schema path —
+   `schemas/subagent-returns/workflow-reviewer.schema.json` — so the
+   reviewer knows the exact shape to return. Harness-enforced: the
+   `subagent-schema-preread-gate.sh` hook (PreToolUse:Agent, DENY)
+   rejects `workflow-reviewer-*` dispatches whose brief omits the
+   `workflow-reviewer.schema.json` citation.
 
 ---
 
@@ -103,22 +110,23 @@ the return.
 - Required: cycle 1 + at least one edge-probe cycle ran (minimum 2 cycles)
 
 ### Phase 5 — Coverage-expansion (`workflow-reviewer-phase5`)
-- Every P2 / P3 journey in the map has a spec OR a documented skip with `authorizer`
+- Every journey in the map not already covered by a Phase-3 spec (all tiers, P0 first per `journey-mapping`'s dispatch order) has a spec OR a documented skip with `authorizer`; P0/P1 journeys may not be skipped without naming the authorising user message; `journey-map-coverage.md` `<missing>` rows for P0/P1 close before P2/P3
 - Per-pass dedup landed at the end of every pass (no open duplicate findings)
-- `coverage-expansion-state.json` has been deleted (successful completion marker)
+- `coverage-expansion-state.json` records all five passes + cleanup (deletion happens post-approval)
 
 ### Phase 6 — Bug-discovery (`workflow-reviewer-phase6`)
-- Every probe completed (`status: clean` or `findings-emitted`)
+- Every probe terminal (`clean` | `findings-emitted` | `blocked`); blocked probes require a ledger deferral entry with an `authorizer` or a re-dispatch
 - Every `findings-emitted` return has a regression spec OR an explicit `app-bug` flag
 
 ### Phase 7 — Secrets-sweep (`workflow-reviewer-phase7`)
-- A re-scan of `tests/e2e/**` surfaces no literal credentials / API keys / PII / URLs
+- A re-scan of `tests/**` (plus root `playwright*.config.ts`) surfaces no literal credentials / API keys / PII / URLs
 - `.env`, `.env.example`, and the `.gitignore` entry all in place
 - `npx playwright test` still passes against the env-driven suite
 
 ### Phase 8 — Report (`workflow-reviewer-phase8`)
 - `qa-summary-deck.html` + `qa-summary-deck.pdf` exist at the project root
 - Numbers in the deck match the actual state of the suite (no stale figures)
+- Staleness gate honoured: the deck's report-JSON `stats.startTime` + test count match the current suite (`git log -1 --format=%cI -- tests/` + the computed `test()` count), OR every results-derived slide carries the "results as of `<date>`; suite has changed since" annotation — verify the annotation or the freshness, not vibes
 
 ### Per coverage-expansion pass (`workflow-reviewer-pass<N>`)
 - Every journey in the roster dispatched AND returned for this pass
@@ -247,6 +255,12 @@ non-empty `authorizer`.
 
 Per-unit reviewer dispatch count is tracked in the ledger's
 `reviewerCycles` field (0 .. 3) for each phase / pass / cycle row.
+The cap is harness-enforced: `onboarding-ledger-write-gate.sh` couples
+every ledger write to a matching reviewer verdict + `reviewerCycles`
+increment (a write that advances the unit without the recorded verdict,
+or that skips/rewinds the cycle count, is denied), and
+`onboarding-ledger-gate.sh` denies any further `workflow-reviewer-*`
+dispatch for a unit whose `reviewerCycles` is already at the cap.
 
 - **Cycle 1** — first review. Approve → advance; reject → record
   findings + surgical fix + re-dispatch.

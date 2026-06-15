@@ -71,10 +71,11 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 [ "$TOOL_NAME" = "Agent" ] || exit 0
 
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
-case "$DESCRIPTION" in
-  workflow-reviewer-*) ;;
-  *) exit 0 ;;
-esac
+# Only act on approver-role dispatches (workflow-reviewer-* /
+# phase-validator-*). Detection is shared via lib/reviewer-prefix.sh.
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+is_reviewer_description "$DESCRIPTION" || exit 0
 
 # Extract the reviewer's return text from the tool response. Same shape
 # the existing return-schema-guard parses.
@@ -98,23 +99,22 @@ emit_warn() {
   }'
 }
 
-# Parse the return. The reviewer's return is YAML in practice; for
-# tolerance we try jq's --argfile-style parse first (in case it's JSON),
-# then fall back to a yaml→json conversion via node if available.
+# Parse the return. The reviewer's return is YAML in practice; we convert
+# it to JSON through the bundled validator's `tojson` subcommand (P7
+# ships this in the rebuilt bundle: `node validator.bundle.mjs tojson
+# <file>` reads the file, parses YAML, prints JSON, exit 1 on failure).
+# This removes the dependency on a hoisted `yaml` module, which was a
+# silent no-op at every install location that didn't happen to hoist it.
 NODE_BIN="$(command -v node || true)"
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+VALIDATOR_BUNDLE="$HOOK_LIB_DIR/validator.bundle.mjs"
 TMP_RESP=$(mktemp /tmp/wr-attestation-XXXXXX.txt)
 trap 'rm -f "$TMP_RESP" "$TMP_RESP.json"' EXIT
 printf '%s' "$RESPONSE" > "$TMP_RESP"
 
 PARSED_JSON=""
-if [ -n "$NODE_BIN" ]; then
-  PARSED_JSON=$("$NODE_BIN" -e "
-    const fs = require('fs');
-    let yaml;
-    try { yaml = require('yaml'); } catch (e) { process.exit(0); }
-    const raw = fs.readFileSync('$TMP_RESP', 'utf8');
-    try { console.log(JSON.stringify(yaml.parse(raw))); } catch (e) { process.exit(0); }
-  " 2>/dev/null || echo "")
+if [ -n "$NODE_BIN" ] && [ -f "$VALIDATOR_BUNDLE" ]; then
+  PARSED_JSON=$("$NODE_BIN" "$VALIDATOR_BUNDLE" tojson "$TMP_RESP" 2>/dev/null || echo "")
 fi
 
 # If parse failed, silent allow — return-schema-guard handles invalid
@@ -136,15 +136,15 @@ EVIDENCE_TEXT=$(echo "$PARSED_JSON" | "$JQ" -r '
 ' 2>/dev/null || echo "")
 
 # Extract file-path-shaped substrings.
-# Pattern 1: known project-typed dirs followed by a path segment. The optional
-#            `` prefix captures the post-reshape layout — paths
-#            inside this package live under ``, so a reviewer who
-#            cites `scripts/postinstall.js` must yield the full
-#            path (not the stripped `scripts/postinstall.js` substring) so the
-#            existence check below resolves correctly.
+# Pattern 1: known project-typed dirs followed by a path segment. (This
+#            pattern was templated from the pre-reshape civitas-cerebrum
+#            monorepo layout, where it carried an optional
+#            `packages/civitas-cerebrum/` prefix group; the reshape blanked
+#            that prefix to a vestigial empty `()?` group, now removed —
+#            cited paths resolve against the repo root directly.)
 # Pattern 2: a bare filename with common project extensions.
 PATHS=$(printf '%s' "$EVIDENCE_TEXT" | grep -oE \
-  '()?(tests|src|app|hooks|skills|schemas|scripts|docs)/[A-Za-z0-9_./-]+[A-Za-z0-9_]|[A-Za-z0-9_-]+\.(spec\.ts|schema\.json|json|md|ts|yaml|yml)' \
+  '(tests|src|app|hooks|skills|schemas|scripts|docs)/[A-Za-z0-9_./-]+[A-Za-z0-9_]|[A-Za-z0-9_-]+\.(spec\.ts|schema\.json|json|md|ts|yaml|yml)' \
   2>/dev/null | sort -u || true)
 
 if [ -z "$PATHS" ]; then

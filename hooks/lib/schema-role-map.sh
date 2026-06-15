@@ -37,11 +37,36 @@
 #   # ... use $SCHEMA_ROLE
 resolve_schema_role() {
   case "$1" in
-    composer-*)          echo "composer";          return 0 ;;
-    reviewer-*)          echo "reviewer-inloop";   return 0 ;;
-    probe-*)             echo "probe";             return 0 ;;
-    phase-validator-*)   echo "phase-validator";   return 0 ;;
-    process-validator-*) echo "";                  return 0 ;;
-    *)                   return 1 ;;
+    workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;
+    composer-*)               echo "composer";               return 0 ;;
+    reviewer-*)               echo "reviewer-inloop";        return 0 ;;
+    probe-*)                  echo "probe";                  return 0 ;;
+    phase-validator-*)        echo "phase-validator";        return 0 ;;
+    # phase4-prioritise-author* is checked BEFORE phase4-cycle-* so the
+    # author role wins its dedicated schema; both anchor at string start
+    # with no overlap, but the explicit ordering documents intent.
+    phase4-prioritise-author*) echo "phase4-prioritise-author"; return 0 ;;
+    phase4-cycle-*)           echo "section-agent";          return 0 ;;
+    # Known prefixes with NO schema — envelope-sanity path only (the
+    # caller validates the handover envelope but skips JSON-Schema). Same
+    # behaviour as process-validator-*.
+    process-validator-*|phase1-*|stage2-*|cleanup-*|companion-*|fd-*)
+                              echo "";                       return 0 ;;
+    *)                        return 1 ;;
   esac
 }
+
+# Migration note: workflow-reviewer-* used to live in a post-only superset
+# (resolve_schema_role_post, consumed only by subagent-return-schema-guard.sh)
+# because the documented reviewer-brief contract did not instruct the
+# orchestrator to cite workflow-reviewer.schema.json — pre-gating would have
+# rejected exactly the briefs the skill taught. The brief contract now
+# REQUIRES the citation (skills/workflow-reviewer/SKILL.md §"Inputs the
+# reviewer receives in its brief" input 5; skills/onboarding/SKILL.md
+# §"Status ledger + workflow reviewer"), so the mapping was promoted into
+# resolve_schema_role and the post-only function was deleted — both the
+# PreToolUse preread gate and the PostToolUse return guard now use
+# resolve_schema_role directly.
+# NOTE: the workflow-reviewer-* case is listed BEFORE reviewer-* for
+# clarity; case globs anchor at the string start so there is no actual
+# overlap ("workflow-reviewer-…" does not match "reviewer-*").

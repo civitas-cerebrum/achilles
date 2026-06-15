@@ -38,12 +38,23 @@
 
 set -euo pipefail
 
+JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
+[ -x "$JQ" ] || JQ="$(command -v jq || true)"
+if [ -z "$JQ" ]; then
+  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
+  exit 1
+fi
+
+# Portable sha256 (macOS ships shasum, not sha256sum).
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 emit_deny() {
-  jq -n --arg r "$1" '{
+  "$JQ" -n --arg r "$1" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
@@ -153,8 +164,8 @@ step_predecessor() {
 # ---------------------------------------------------------------------------
 
 INPUT=$(cat)
-EVENT_NAME=$(echo "$INPUT" | jq -r '.hook_event_name // ""')
-TOOL_NAME=$(echo "$INPUT"  | jq -r '.tool_name // empty')
+EVENT_NAME=$(echo "$INPUT" | "$JQ" -r '.hook_event_name // ""')
+TOOL_NAME=$(echo "$INPUT"  | "$JQ" -r '.tool_name // empty')
 
 # Only handle Bash, Edit, Write
 case "$TOOL_NAME" in
@@ -165,7 +176,7 @@ esac
 # Resolve workspace root
 WS="${WORKSPACE_ROOT:-}"
 if [ -z "$WS" ]; then
-  CWD=$(echo "$INPUT" | jq -r '.cwd // "."' 2>/dev/null || echo ".")
+  CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
   WS=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || echo "$CWD")
 fi
 
@@ -187,14 +198,14 @@ if [ ! -f "$RECEIPT" ]; then
   exit 0
 fi
 
-# Must be valid JSON
-echo "$RECEIPT" | xargs cat 2>/dev/null | jq empty 2>/dev/null || exit 0
+# Must be valid JSON. (No xargs — it word-splits paths with spaces.)
+while IFS= read -r f; do cat "$f" 2>/dev/null; done <<< "$RECEIPT" | "$JQ" empty 2>/dev/null || exit 0
 
 # Extract tool input
 CMD_OR_PATH=""
 case "$TOOL_NAME" in
-  Bash)       CMD_OR_PATH=$(echo "$INPUT" | jq -r '.tool_input.command // ""') ;;
-  Edit|Write) CMD_OR_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""') ;;
+  Bash)       CMD_OR_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""') ;;
+  Edit|Write) CMD_OR_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // ""') ;;
 esac
 
 STEP=$(detect_step "$TOOL_NAME" "$CMD_OR_PATH")
@@ -203,14 +214,14 @@ if [ -z "$STEP" ]; then
 fi
 
 # Load current steps from receipt
-STEPS_JSON=$(jq '.steps // []' "$RECEIPT" 2>/dev/null || echo "[]")
+STEPS_JSON=$("$JQ" '.steps // []' "$RECEIPT" 2>/dev/null || echo "[]")
 
 # ---------------------------------------------------------------------------
 # === PostToolUse branch: record result =====================================
 # ---------------------------------------------------------------------------
 if [ "$EVENT_NAME" = "PostToolUse" ]; then
-  TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}')
-  EXIT_CODE=$(echo "$TOOL_RESPONSE" | jq -r '.exitCode // .exit_code // .returncode // "unknown"')
+  TOOL_RESPONSE=$(echo "$INPUT" | "$JQ" -c '.tool_response // {}')
+  EXIT_CODE=$(echo "$TOOL_RESPONSE" | "$JQ" -r '.exitCode // .exit_code // .returncode // "unknown"')
 
   STATUS="pass"
   if [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "unknown" ]; then
@@ -224,7 +235,7 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
     patch_applied)
       # Append step entry with files field
       FILE_PATH="$CMD_OR_PATH"
-      NEW_STEPS=$(jq -n \
+      NEW_STEPS=$("$JQ" -n \
         --argjson steps "$STEPS_JSON" \
         --arg name "$STEP" \
         --arg status "$STATUS" \
@@ -232,15 +243,20 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
         --arg file "$FILE_PATH" \
         '$steps + [{name: $name, status: $status, ts: $ts, files: [$file]}]')
 
-      # Compute git_diff_hash for the staged changes to this file
+      # Compute git_diff_hash for the staged changes to this file. The diff
+      # goes through a tempfile + file_sha256 so the digest stays byte-exact
+      # (trailing newline included) and portable to macOS (no sha256sum).
       if [ -n "${FAKE_STAGED_HASH:-}" ]; then
         DIFF_HASH="$FAKE_STAGED_HASH"
       else
-        DIFF_HASH=$(git -C "$WS" diff --cached -- "$FILE_PATH" 2>/dev/null | sha256sum | awk '{print $1}' || echo "")
+        DIFF_TMP=$(mktemp /tmp/seldev-diff-XXXXXX)
+        git -C "$WS" diff --cached -- "$FILE_PATH" > "$DIFF_TMP" 2>/dev/null || true
+        DIFF_HASH=$(file_sha256 "$DIFF_TMP")
+        rm -f "$DIFF_TMP"
       fi
 
       # Write updated receipt: steps + git_diff_hash + append to top-level files
-      jq \
+      "$JQ" \
         --argjson steps "$NEW_STEPS" \
         --arg hash "$DIFF_HASH" \
         --arg file "$FILE_PATH" \
@@ -252,14 +268,14 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
 
     visual_diff)
       # Parse diff_pixels from tool_response.stdout JSON
-      STDOUT_RAW=$(echo "$TOOL_RESPONSE" | jq -r '.stdout // ""')
-      DIFF_PIXELS=$(echo "$STDOUT_RAW" | jq -r '.diffPixels // 0' 2>/dev/null || echo "0")
+      STDOUT_RAW=$(echo "$TOOL_RESPONSE" | "$JQ" -r '.stdout // ""')
+      DIFF_PIXELS=$(echo "$STDOUT_RAW" | "$JQ" -r '.diffPixels // 0' 2>/dev/null || echo "0")
       # Ensure it's a number (default 0 if not parseable)
       if ! echo "$DIFF_PIXELS" | grep -qE '^[0-9]+$'; then
         DIFF_PIXELS=0
       fi
 
-      NEW_STEPS=$(jq -n \
+      NEW_STEPS=$("$JQ" -n \
         --argjson steps "$STEPS_JSON" \
         --arg name "$STEP" \
         --arg status "$STATUS" \
@@ -267,7 +283,7 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
         --argjson diff_pixels "$DIFF_PIXELS" \
         '$steps + [{name: $name, status: $status, ts: $ts, diff_pixels: $diff_pixels}]')
 
-      jq --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
+      "$JQ" --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
         && mv "${RECEIPT}.tmp" "$RECEIPT" \
         || rm -f "${RECEIPT}.tmp"
       ;;
@@ -279,14 +295,14 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
       fi
 
       # Append the step entry to the journal
-      NEW_STEPS=$(jq -n \
+      NEW_STEPS=$("$JQ" -n \
         --argjson steps "$STEPS_JSON" \
         --arg name "$STEP" \
         --arg status "$STATUS" \
         --arg ts "$TS" \
         '$steps + [{name: $name, status: $status, ts: $ts}]')
 
-      jq --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
+      "$JQ" --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
         && mv "${RECEIPT}.tmp" "$RECEIPT" \
         || rm -f "${RECEIPT}.tmp"
 
@@ -303,14 +319,14 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
     *)
       # Default: before_snapshot, typecheck, unit_tests, e2e, after_snapshot
       # Shape: {name, status, ts} — no extras needed
-      NEW_STEPS=$(jq -n \
+      NEW_STEPS=$("$JQ" -n \
         --argjson steps "$STEPS_JSON" \
         --arg name "$STEP" \
         --arg status "$STATUS" \
         --arg ts "$TS" \
         '$steps + [{name: $name, status: $status, ts: $ts}]')
 
-      jq --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
+      "$JQ" --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
         && mv "${RECEIPT}.tmp" "$RECEIPT" \
         || rm -f "${RECEIPT}.tmp"
       ;;
@@ -325,7 +341,7 @@ fi
 if [ "$EVENT_NAME" = "PreToolUse" ]; then
 
   # Check for any failed steps — a fail requires revert + restart
-  FAILED_STEP=$(echo "$STEPS_JSON" | jq -r '[.[] | select(.status == "fail")] | .[0].name // ""' 2>/dev/null || echo "")
+  FAILED_STEP=$(echo "$STEPS_JSON" | "$JQ" -r '[.[] | select(.status == "fail")] | .[0].name // ""' 2>/dev/null || echo "")
   if [ -n "$FAILED_STEP" ]; then
     emit_deny "[BLOCKED] selector-development pipeline: ${FAILED_STEP} fail — must revert and restart.
 
@@ -348,7 +364,7 @@ Receipt: ${RECEIPT}"
   fi
 
   # Check that the predecessor has a pass entry in the journal
-  PRED_STATUS=$(echo "$STEPS_JSON" | jq -r \
+  PRED_STATUS=$(echo "$STEPS_JSON" | "$JQ" -r \
     --arg pred "$PREDECESSOR" \
     '[.[] | select(.name == $pred)] | last | .status // ""' 2>/dev/null || echo "")
 
@@ -373,7 +389,7 @@ Receipt: ${RECEIPT}"
 
   # Step 8 (commit) additional check: git_diff_hash must match staged diff
   if [ "$STEP" = "commit" ]; then
-    RECEIPT_HASH=$(jq -r '.git_diff_hash // ""' "$RECEIPT" 2>/dev/null || echo "")
+    RECEIPT_HASH=$("$JQ" -r '.git_diff_hash // ""' "$RECEIPT" 2>/dev/null || echo "")
 
     if [ -n "${FAKE_STAGED_HASH:-}" ]; then
       STAGED_HASH="$FAKE_STAGED_HASH"
@@ -384,8 +400,14 @@ Receipt: ${RECEIPT}"
       FILES_ARR=()
       while IFS= read -r _line; do
         FILES_ARR+=("$_line")
-      done < <(jq -r '.files[]? // empty' "$RECEIPT" 2>/dev/null)
-      STAGED_HASH=$(git -C "$WS" diff --cached -- "${FILES_ARR[@]}" 2>/dev/null | sha256sum | awk '{print $1}' || echo "")
+      done < <("$JQ" -r '.files[]? // empty' "$RECEIPT" 2>/dev/null)
+      # ${ARR[@]+...} guards the expansion when the array is empty — bash 3.2
+      # under `set -u` treats an empty array's "${ARR[@]}" as unbound.
+      # Tempfile + file_sha256 keeps the digest byte-exact and macOS-portable.
+      STAGED_TMP=$(mktemp /tmp/seldev-staged-XXXXXX)
+      git -C "$WS" diff --cached -- ${FILES_ARR[@]+"${FILES_ARR[@]}"} > "$STAGED_TMP" 2>/dev/null || true
+      STAGED_HASH=$(file_sha256 "$STAGED_TMP")
+      rm -f "$STAGED_TMP"
     fi
 
     if [ -z "$RECEIPT_HASH" ] || [ "$RECEIPT_HASH" != "$STAGED_HASH" ]; then

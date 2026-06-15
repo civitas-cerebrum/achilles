@@ -45,16 +45,31 @@ for (const file of schemaFiles) {
   }
 }
 
-// Also compile the onboarding-status schema (lives one directory up).
-try {
-  const onboardingPath = 'schemas/onboarding-status.schema.json';
-  const schema = JSON.parse(readFileSync(onboardingPath, 'utf8'));
-  ajv.compile(schema);
-  console.log('✓ onboarding-status');
-} catch (err) {
-  failures += 1;
-  console.error(`✗ onboarding-status: ${err.message}`);
+// Standalone schemas (live one directory up, outside the subagent-return
+// collection). Each gets a fresh Ajv instance — they are independent
+// documents with no $ref into the handover envelope.
+function compileStandalone(name, schemaPath) {
+  try {
+    const standaloneAjv = new Ajv({
+      strict: true,
+      allErrors: true,
+      loadSchema: false,
+      allowUnionTypes: true,
+      strictSchema: false,
+    });
+    addFormats(standaloneAjv);
+    const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+    standaloneAjv.compile(schema);
+    console.log(`✓ ${name}`);
+  } catch (err) {
+    failures += 1;
+    console.error(`✗ ${name}: ${err.message}`);
+  }
 }
+
+compileStandalone('onboarding-status', 'schemas/onboarding-status.schema.json');
+compileStandalone('contribution-handover', 'schemas/contribution-handover.schema.json');
+compileStandalone('run-summary', 'schemas/run-summary.schema.json');
 
 if (failures > 0) {
   console.error(`\n${failures} schema(s) failed to compile.`);

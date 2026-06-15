@@ -63,7 +63,7 @@ The five-phase mapping pipeline is split as follows:
 
 - **Phase 1** — Page discovery (parallel `playwright-cli` crawl) + Test Infrastructure probe.
 - **Phase 2** — Flow identification: derive user flows from the discovered pages.
-- **Phase 3** — Journey prioritization: P0 / P1 / P2 / P3 tier.
+- **Phase 3** — Journey prioritization: P0 / P1 / P2 / P3 tier + defect-likelihood risk factors (second axis — see `references/phases.md` §"Defect-likelihood risk factors").
 - **Phase 3.5** — Redundancy revision: deduplicate overlapping flows; promote sub-journeys.
 - **Phase 4** — Journey-map document authoring (sentinel-bearing).
 - **Phase 5** — Coverage checkpoint (sentinel re-verification + roster snapshot).
@@ -76,6 +76,7 @@ Phases 1 → 3.5 detail (process, parallel-discovery model, output formats) is i
 - **Every journey is a self-contained `### j-<slug>:` block.** Downstream subagents receive ONLY their assigned journey block (plus referenced `sj-` sub-journeys) — cross-section reading is forbidden. Block format must support that isolation.
 - **The `<!-- journey-mapping:generated -->` sentinel is line 1 of `journey-map.md`.** Maps without the sentinel are not valid. Tools (coverage-expansion, test-composer) refuse to consume sentinel-less maps.
 - **Priority is load-bearing.** P0 / P1 / P2 / P3 ordering drives dispatch order in coverage-expansion AND batching eligibility (only P3 may batch). Misclassifying a journey as P3 is a contract violation, not an optimization.
+- **Risk factors are the second axis, never a priority modifier.** The journey block's `Risk factors:` field (canonical 8-factor vocabulary in `references/phases.md` §"Defect-likelihood risk factors") derives `risk: elevated` (2+ factors) vs `risk: baseline` (default when the field is absent or `none`). Risk NEVER changes the P-tier and never adds or removes test expectations; it orders dispatch within a tier (elevated first) and excludes elevated journeys from `[group]` / `[P3-batch]` dispatches in coverage-expansion. Methodology rule, not hook-enforced.
 - **Phase 4 is sentinel-bearing.** Phase 5 re-verifies. A Phase-4 commit without the sentinel re-fires Phase 4.
 - **In `phases-2-4` mode, Phases 2 / 3 / 3.5 run as iterative cycles, not as one sequential walkthrough.** See §"Iterative discovery cycles" below. The single-subagent sequential walkthrough is forbidden in `phases-2-4` mode — it produces shallow per-section coverage and hides the parallelism the skill was designed for.
 - **Cycle 1 (discovery) is strict per-section parallel in EVERY mode.** A single-subagent walkthrough is forbidden in cycle 1 of `full` mode AND `phases-2-4` mode — `full` mode previously left this under-specified, allowing a single agent to collapse the whole phase and hide the parallelism the skill was designed for. The first cycle establishes the section baseline at maximum fidelity; that quality propagates through every later cycle and into authoring. Harness-enforced: the `standard-mode-first-pass-guard.sh` hook denies a `phase4-prioritise-author:` dispatch until ≥ 2 distinct `phase4-cycle-1-section-<id>:` dispatches have been recorded, and denies a dispatch description that names ≥ 3 canonical section IDs in one brief (the single-agent-collapse heuristic).
@@ -170,8 +171,9 @@ orchestrator-loop (cycle N from 1 to 5):
        - apply canonical section-id normalization (see §"Section vocabulary")
        - drop new-sections-discovered already present in cycles 1..N
        - record duplicates-merged
-  5. Decision (auto-derived by harness from the data — orchestrator-written
-     convergence-status field is informational only):
+  5. Decision (orchestrator-derived from the cycle data per the rules below.
+     Methodology rule — the harness cycle-gate hook that previously derived
+     this mechanically was retired in 0.3.6; the rules still apply):
        - cycles.<highest>.dispatched-sections == returned-sections AND
          post-dedup new-sections-discovered is empty AND
          at least one cycle has kind == "edge-probe" AND
@@ -188,10 +190,14 @@ post-cycle: dispatch phase4-prioritise-author: (single subagent)
   The author consumes the union of every cycle's spill files. Authoring while
   cycle agents are still in flight produces a partial journey map — the
   edge findings from in-flight agents land in `.subagent-returns/` after the
-  map is committed and silently disappear. The harness denies the author
-  dispatch when convergence-status (auto-derived from cycle data) is not
-  "converged" or "hard-cap-reached"; both require every dispatched section
-  in the highest cycle to appear in returned-sections.
+  map is committed and silently disappear. The author dispatch is forbidden
+  while convergence-status is not "converged" or "hard-cap-reached"; both
+  require every dispatched section in the highest cycle to appear in
+  returned-sections. (Methodology rule — the harness cycle-gate hook that
+  previously enforced this was retired in 0.3.6; the rule still applies.
+  The live partial gate: standard-mode-first-pass-guard.sh Rule 2 denies a
+  phase4-prioritise-author: dispatch until ≥ 2 distinct
+  phase4-cycle-1-section-<id>: dispatches have been recorded.)
   - reads ALL section blocks from cycle returns (spill files + state file)
   - applies Phase 3 prioritisation (P0/P1/P2/P3)
   - applies Phase 3.5 redundancy revision + structural-smell prevention
@@ -207,7 +213,7 @@ post-cycle: dispatch phase4-prioritise-author: (single subagent)
 
 **Why the edge-probe is non-negotiable.** A naïve "terminate when cycle 1 surfaces no new sections" rule would let shallow exploration pass for full mapping. The edge-probe re-engages the same section agents with a different lens — explicitly asking for the flows users wouldn't volunteer ("how do I delete my account", "what happens when my session expires mid-checkout", "what does the admin path look like"). If the edge-probe genuinely surfaces nothing, that IS the converged state — but it's a confirmed convergence, not an assumed one.
 
-**Cycles must be contiguous.** Keys 1..N with no gaps. The harness `compute_convergence` explicitly checks this — a run with cycle keys {1, 3, 5} (gaps) cannot converge regardless of edge-probe presence. This closes a hole in the env-var escape hatch (`JOURNEY_MAPPING_CYCLE_GATE=off`) — even with the gate off, the convergence math refuses non-contiguous runs.
+**Cycles must be contiguous.** Keys 1..N with no gaps — a run with cycle keys {1, 3, 5} cannot converge regardless of edge-probe presence. Methodology rule — the harness cycle-gate hook that previously enforced this was retired in 0.3.6; the rule still applies.
 
 ### Per-section-agent contract (`phase4-cycle-<N>-section-<id>:`)
 
@@ -222,6 +228,7 @@ Each cycle agent receives a focused brief and returns a structured section block
 - **Credentials policy** — from the draft's `credentials-discovered`. If self-credentialing is viable, the agent registers its own user via the documented signup endpoint. If not, the agent attempts only the unauthed surface and marks gated routes for handover to coverage-expansion.
 - **Prior-cycle context** (cycles ≥ 2 only) — the section's prior block, if any. The agent extends rather than replaces.
 - **CLI session slug** — `phase4-c<N>-s-<id>`. Open + close own session.
+- **Return-schema citation** — the brief MUST contain the literal `section-agent.schema.json` (the role's return schema at `schemas/subagent-returns/section-agent.schema.json`). Harness-enforced: `subagent-schema-preread-gate.sh` denies schema-validated role dispatches whose brief omits the citation.
 
 **Behaviour:**
 
@@ -249,7 +256,7 @@ Each cycle agent receives a focused brief and returns a structured section block
   "routes-driven": ["/checkout", "/checkout/payment"],
   "flows-identified": 4,
   "state-variations-recorded": 2,
-  "spill": "tests/e2e/docs/journey-map/sections/checkout.md",
+  "spill": "tests/e2e/docs/.subagent-returns/phase4-cycle-1-section-checkout.md",
   "summary": "Four flows mapped including one error variant."
 }
 ```
@@ -331,7 +338,7 @@ For each gated route a cycle agent encounters:
 
 ### Author step (`phase4-prioritise-author:`)
 
-Single dispatch after cycles converge OR hit the hard cap. Inputs:
+Single dispatch after cycles converge OR hit the hard cap. The dispatch brief MUST contain the literal `phase4-prioritise-author.schema.json` (the role's return schema; `subagent-schema-preread-gate.sh` denies the dispatch without the citation). Inputs:
 
 - All section blocks from cycle returns (read from spill files).
 - The discovery draft (for `credentials-discovered`).
@@ -343,6 +350,7 @@ Outputs:
 - A revision log appended under `## Phase 3.5 Revision Log` documenting every sub-journey extraction, variant collapse, and decomposition.
 - Frontmatter line `**Mapping completeness:**` with one of: `converged at cycle <N>`, `hard-cap-reached at cycle <N>`. (The legacy `single-cycle-floor` value is deprecated — the protocol now requires at least 1 discovery + 1 edge-probe cycle, so a single-cycle convergence is structurally impossible.)
 - A mandatory `## Section → Journey Map` table mapping every canonical section ID from the cycle returns to the journey IDs that cover it. Sections from `unvalidated-sections-flagged` are either normalised against the canonical vocabulary (preferred) OR carry an explicit `(novel)` annotation in the table with a one-sentence rationale.
+- A `## Coverage Plan` section, per priority tier (P0 / P1 / P2 / P3): journey count, planned passes (per coverage-expansion's five-pass standard contract), estimated dispatch count and wall-clock (reuse the heuristic in `coverage-expansion/references/depth-mode-pipeline.md` §"Model selection" — per-subagent run times observed so far, or ~20 min per opus dispatch when no prior data exists), and the P3 adversarial opt-out candidates with the four exclusion criteria (`priority-p3`, `page-subset-covered`, `zero-prior-findings`, `low-surface-shape`) pre-evaluated per candidate. The plan is presented to the user at the journey-map hard gate (see §"Hard Gate" below).
 
 The author does NOT drive `playwright-cli` itself — all live observation happened in cycle agents. The author's job is synthesis: prioritisation, dedup, document authoring.
 
@@ -467,7 +475,7 @@ Each journey is a self-contained block so a downstream subagent can be handed **
 **Pages discovered:** X
 **Flows identified:** X
 **Priority breakdown:** X P0, X P1, X P2, X P3
-**Mapping completeness:** converged at cycle <N> | hard-cap-reached at cycle <N> | single-cycle-floor
+**Mapping completeness:** converged at cycle <N> | hard-cap-reached at cycle <N>
 
 ## Site Map
 [flat URL list from Phase 1]
@@ -484,6 +492,7 @@ Each journey is a self-contained block so a downstream subagent can be handed **
 
 ### j-<slug>: <name>
 **Priority:** P0 | P1 | P2 | P3
+**Risk factors:** [comma-separated factors from the canonical vocabulary, or none]
 **Category:** Conversion | Core experience | Content | Account | Error recovery | Return visitor
 **Entry:** /path
 **Pages touched:** [comma-separated list of URLs or page names from the site map]
@@ -494,11 +503,11 @@ Each journey is a self-contained block so a downstream subagent can be handed **
 **Branches:** [alternative paths]
 **State variations:** [empty, loading, errored, with data]
 **Exit:** [outcome]
-**Test expectations:**
-- Full journey test (entry to exit)
-- Error state: [what if step N fails?]
-- Edge case: [unusual input, timing, etc.]
-- Mobile: [applicable? yes / no]
+**Test expectations:** [priority-conditional — author EXACTLY the tier's set, per the Phase-3 coverage-expectation column in references/phases.md §"Priority Framework"]
+- P0: full journey test (entry to exit) + Error state: [what if step N fails?] for every failure branch + Edge case: [unusual input, timing, etc.] + Mobile: [yes / no with rationale] + performance baseline
+- P1: full journey test (entry to exit) + key error states + data verification
+- P2: page loads + links work + content present + one journey test
+- P3: smoke-level only — page loads, no broken links
 **UI-covers:** [comma-separated canonical flow names this journey exercises through the UI in its happy-path]
 
 ### j-<slug>: <next journey>
@@ -520,6 +529,9 @@ or they need user-supplied credentials.
 
 ## Gated Areas (Not Mapped)
 [pages behind auth, paywalls, etc. with notes on what's needed to access]
+
+## Coverage Plan
+[per priority tier: journey count, planned passes, estimated dispatch count + wall-clock, P3 adversarial opt-out candidates with the four criteria pre-evaluated — see §"Author step" Outputs]
 
 ## Coverage Checkpoint Template
 [filled in during Phase 5, after coverage-expansion completes]
@@ -544,11 +556,11 @@ The first line of the generated file is always the literal HTML comment `<!-- jo
 
 ### Hard Gate
 
-After writing the journey map, present it to the user:
+After writing the journey map, present it to the user — including the `## Coverage Plan` section:
 
-> "Journey map written to `tests/e2e/docs/journey-map.md`. I identified X user journeys across X pages (X P0, X P1, X P2, X P3). Please review before I begin test implementation."
+> "Journey map written to `tests/e2e/docs/journey-map.md`. I identified X user journeys across X pages (X P0, X P1, X P2, X P3). The `## Coverage Plan` estimates Y dispatches (~Zh wall-clock) across the five coverage-expansion passes and lists N P3 adversarial opt-out candidates with their criteria pre-evaluated. Please review the map and the plan before I begin test implementation."
 
-Wait for approval before proceeding to test-composer.
+Wait for approval before proceeding to test-composer. An approved plan is citable downstream: coverage-expansion's intent declaration accepts `Authorisation: approved-coverage-plan: <path>` naming the sentinel-bearing map whose `## Coverage Plan` was approved at this gate.
 
 ---
 
@@ -559,33 +571,47 @@ This phase runs **after test-composer completes** — not during mapping. It com
 ### Process
 
 1. **Read the journey map** (`tests/e2e/docs/journey-map.md`) and verify the first line is `<!-- journey-mapping:generated -->`. If the sentinel is missing, the file was not produced by this skill — stop and ask the user how to proceed rather than running the checkpoint against a foreign document.
-2. **Read all spec files** and list which journey steps are covered by tests
+2. **Read all spec files** and map every journey's authored `Test expectations:` entries to the tests that cover them. The checkpoint measures coverage of **authored expectations** — the priority-conditional set written into each journey block at Phase 4 — not raw step counts. Because expectations bind at authoring time, "complete" means the same thing at every tier: 100% of what was authored for that journey.
 3. **Build a coverage matrix:**
 
 ```markdown
 ## Coverage Checkpoint
 
-| Journey | Priority | Steps | Steps covered | Coverage | Status |
-|---------|----------|-------|---------------|----------|--------|
+| Journey | Priority | Expectations authored | Expectations covered | Coverage | Status |
+|---------|----------|-----------------------|----------------------|----------|--------|
 | Visitor to Contact | P0 | 6 | 6 | 100% | Complete |
-| Service browsing | P1 | 4 | 3 | 75% | Missing: case study branch |
+| Service browsing | P1 | 4 | 3 | 75% | Missing: case-study error state |
 | Content discovery | P2 | 3 | 3 | 100% | Complete |
-| Legal review | P3 | 2 | 2 | 100% | Complete |
+| Legal review | P3 | 1 | 1 | 100% | Complete |
 ```
 
 4. **Flag gaps:**
-   - P0 journey with < 100% step coverage → **Must fix before shipping**
-   - P0 journey without error state tests → **Must fix**
-   - P1 journey with < 75% coverage → **Should fix**
-   - P2/P3 with < 50% → **Nice to have**
+   - Any journey with < 100% coverage of its authored expectations → **gap** (the checkpoint passes only at 100% for every journey; a gap is closed by implementing the missing coverage or by an explicit user-authorised deferral recorded against the journey)
+   - P0 journey with < 100% → **Must fix before shipping** (hard gate below)
 
-5. **Report to user:**
+5. **Append the required `## Residual Risk` section** to the coverage checkpoint, enumerating the five residual-risk sources with counts + journey IDs:
 
-> "Coverage checkpoint complete. X/Y journeys fully covered. Z gaps found: [list P0/P1 gaps]. Should I implement the missing coverage?"
+```markdown
+## Residual Risk
+
+| Source | Count | Journey IDs / details |
+|---|---|---|
+| Gated Areas not mapped (journey-map `## Gated Areas (Not Mapped)`) | N | [areas + credentials needed] |
+| Adversarial opt-outs (`adversarialSkippedJourneys[]`) | N | [j-slugs] |
+| Blocked journeys (`blocked-cycle-exhausted` / `blocked-cycle-stalled`) with unresolved `final_must_fix` | N | [j-slugs + finding-IDs] |
+| Ambiguous ledger findings | N | [finding-IDs] |
+| Structural-only / skipped-placeholder tests | N | [j-slugs + spec paths] |
+```
+
+   Every row is required, with `0` and `—` when a source is empty. The section makes the run's known-unverified surface explicit instead of letting it vanish into a green summary.
+
+6. **Report to user:**
+
+> "Coverage checkpoint complete. X/Y journeys at 100% of authored expectations. Z gaps found: [list gaps]. Residual risk: [one-line summary of the five sources]. Should I implement the missing coverage?"
 
 ### Hard Gate
 
-If any P0 journey has less than 100% step coverage, the test suite is **not complete**. The coverage checkpoint must pass before the work-summary-deck is generated.
+If any P0 journey has less than 100% coverage of its authored expectations, the test suite is **not complete**. The coverage checkpoint must pass before the work-summary-deck is generated.
 
 ---
 
@@ -595,9 +621,10 @@ This skill accepts up to two optional parameters via the `args` string when invo
 
 | Mode | Behaviour |
 |---|---|
-| `phases: 'full'` (default) | Run Phases 1–5 as documented above. **Cycle 1 of the iterative discovery cycles is strict per-section parallel** (inherits the first-cycle strict rule — see §"Iterative discovery cycles"); cycle 2+ may be single-subagent sequential under `cycle-strictness: standard`. A single subagent attempting to collapse all of cycle 1 is hook-denied. |
+| `phases: 'full'` (default) | Run Phases 1–4 now; Phase 5 runs on re-invocation with `phases: 'phase-5-only'` after test composition (the coverage checkpoint cannot run before tests exist). **Cycle 1 of the iterative discovery cycles is strict per-section parallel** (inherits the first-cycle strict rule — see §"Iterative discovery cycles"); cycle 2+ may be single-subagent sequential under `cycle-strictness: standard`. A single subagent attempting to collapse all of cycle 1 is hook-denied. |
 | `phases: 'phase-1-only'` | Run Phase 1 (Page Discovery) only. Write a sentinel-bearing `journey-map.md` whose body contains the site map and empty `## User Journeys` / `## Gated Areas` / `## Coverage Checkpoint Template` headings for a later invocation to fill in. Do not run Phases 2, 3, 4, or 5. Commit with the message `docs: initial app-context and site map` if the caller is `onboarding`. |
-| `phases: 'phases-2-4'` | Require that `tests/e2e/docs/journey-map.md` already exists and carries the sentinel on line 1, AND that `tests/e2e/docs/.discovery-draft.json` exists with a valid version-1 sentinel. Read the Phase-1 site map and the discovery draft. Run **iterative discovery cycles** per §"Iterative discovery cycles" (3-5 cycles driven by `.phase4-cycle-state.json` — cycle 1 strict per-section parallel, cycle 2+ relaxed under `cycle-strictness: standard`), then a single `phase4-prioritise-author:` subagent applies Phase 3 prioritisation + Phase 3.5 redundancy revision + Phase 4 authoring, overwriting `journey-map.md` in place (sentinel preserved). Do not re-run Phase 1 or Phase 5. The single-subagent sequential walkthrough is forbidden for cycle 1 in this mode. |
+| `phases: 'phases-2-4'` | Require that `tests/e2e/docs/journey-map.md` already exists and carries the sentinel on line 1, AND that `tests/e2e/docs/.discovery-draft.json` exists with a valid version-1 sentinel. Read the Phase-1 site map and the discovery draft. Run **iterative discovery cycles** per §"Iterative discovery cycles" (2-5 cycles driven by `.phase4-cycle-state.json` — cycle 1 strict per-section parallel, cycle 2+ relaxed under `cycle-strictness: standard`), then a single `phase4-prioritise-author:` subagent applies Phase 3 prioritisation + Phase 3.5 redundancy revision + Phase 4 authoring, overwriting `journey-map.md` in place (sentinel preserved). Do not re-run Phase 1 or Phase 5. The single-subagent sequential walkthrough is forbidden for cycle 1 in this mode. |
+| `phases: 'phase-5-only'` | Run Phase 5 (Coverage Checkpoint) only, against a sentinel-bearing `tests/e2e/docs/journey-map.md` AND a composed suite (at least one spec file under `tests/e2e/`). Verify the sentinel, build the expectation-coverage matrix, append the `## Residual Risk` section, apply the P0 hard gate. Do not run Phases 1–4. Invoked by `coverage-expansion` after its cross-pass cleanup commit so the checkpoint + Residual Risk section are always produced. |
 
 **Optional `cycle-strictness` parameter** (independent of `phases`):
 
@@ -606,7 +633,7 @@ This skill accepts up to two optional parameters via the `args` string when invo
 | `cycle-strictness: standard` (default) | Cycle 1 strict per-section parallel, cycle 2+ may be single-subagent sequential. The original behaviour. |
 | `cycle-strictness: depth` | **Every** cycle is strict per-section parallel — cycle 1 AND every later cycle (edge-probe and any additional discovery cycles). Single-subagent walkthroughs are forbidden in every cycle. The orchestrator writes `cycleStrictness: "depth"` into `.phase4-cycle-state.json` on the first state-file write so the `standard-mode-first-pass-guard.sh` hook denies single-agent cycle-N dispatches for any cycle. Selected by `onboarding`'s `runMode: depth` front-load gate; cost is up to ~5× the section-agent count of the default. |
 
-Parameter parsing: the Skill tool passes `args` as a free-form string; the skill should recognise the literal substrings `phase-1-only`, `phases-2-4`, or `full` for the phases parameter, and the literal substring `cycle-strictness: depth` (with optional surrounding whitespace) for the cycle-strictness parameter, anywhere in `args`. If neither phases substring appears, default to `full`. If `cycle-strictness:` is absent OR the value is anything other than `depth`, default to `standard`. Reject conflicting combinations (e.g. both `phase-1-only` and `phases-2-4`) with a clear error, do nothing, and return.
+Parameter parsing: the Skill tool passes `args` as a free-form string; the skill should recognise the literal substrings `phase-1-only`, `phases-2-4`, `phase-5-only`, or `full` for the phases parameter, and the literal substring `cycle-strictness: depth` (with optional surrounding whitespace) for the cycle-strictness parameter, anywhere in `args`. If no phases substring appears, default to `full`. If `cycle-strictness:` is absent OR the value is anything other than `depth`, default to `standard`. Reject conflicting combinations (e.g. both `phase-1-only` and `phases-2-4`) with a clear error, do nothing, and return.
 
 ## Integration with Other Skills
 
@@ -618,10 +645,10 @@ Journey mapping activates as a companion skill:
 
 ### test-composer
 Test composer reads the journey map to determine:
-- **What to implement** — journey steps that lack test coverage
-- **Implementation order** — P0 journeys first, then P1, P2, P3
-- **Coverage depth** — P0 gets full journey + error states + mobile; P3 gets smoke tests
-- **When to stop** — all journey steps covered at the depth specified by their priority
+- **What to implement** — authored `Test expectations:` entries that lack a covering test
+- **Implementation order** — P0 journeys first, then P1, P2, P3 (within a tier, `risk: elevated` journeys first)
+- **Coverage depth** — set by the journey's authored expectations, which are priority-conditional at authoring time (P0 carries the full set incl. mobile + error states; P3 carries smoke-level only)
+- **When to stop** — every authored expectation is covered; the expectations list is the contract, not an open-ended depth target
 
 ### bug-discovery
 Bug discovery uses the journey map to design adversarial flow probes:

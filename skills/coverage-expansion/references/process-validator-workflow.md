@@ -71,7 +71,7 @@ The parent dispatches the validator with a **manifest** of the planned wave. The
 | Field | Rule |
 |---|---|
 | `description prefix` | Begins with `composer-` / `reviewer-` / `probe-` / `process-validator-`. Bare `j-` / `sj-` are forbidden — they're role-ambiguous. |
-| `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the dispatch-guard checks. |
+| `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the validator checks (the dispatch-guard hook that previously checked it mechanically was retired in 0.3.6). |
 | `slug` | The CLI session slug for this dispatch. Pattern matches the role (composer-j-… / reviewer-j-… / probe-j-…) and respects the 28-char cap. |
 | `model-hint` | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. |
 | `must-fix-list summary` | One-line summary of the Stage B feedback this Stage A retry must address, OR `(n/a)` for fresh-cycle composer dispatches. |
@@ -99,7 +99,7 @@ The validator runs the following checks against the manifest. Each check produce
 | **Journey-coverage completeness** | For composer/reviewer waves: the wave covers every journey listed in the current pass's roster (or the must-fix-list's journey-set for retry waves). | `journey-coverage-gap` — list missing journeys. |
 | **No duplicates** | No two rows share a slug or a journey-id. | `duplicate-slug` / `duplicate-journey` — name the conflicting rows. |
 | **Brief-minimalism (proxied via must-fix-list summary)** | The must-fix-list summary ≤ 240 chars; no orchestrator meta-content (`depth mode`, `5-pass pipeline`, `Pass 4/5`, etc.). | `brief-leak` — name the row + leaked phrase. |
-| **Parallelism cap** | Wave size ≤ host-max parallelism cap (typically `P=4` per the playwright-cli-protocol §1.1 empirical numbers; the cap is a function of the consumer's host). | `parallelism-cap-violation` — name the planned size + cap. |
+| **Parallelism cap** | Wave size ≤ the effective cap = user override (`parallel-cap: N`) if any, else shared-resource-audit credential caps if any, else unlimited (host max). Flag `parallelism-cap-violation` ONLY when a declared override or audit cap is exceeded — never against a fixed numeric default. | `parallelism-cap-violation` — name the planned size + the override/audit cap it exceeded. |
 | **Hook-rule pre-checks** | All bullets in the manifest's "Pre-checks performed by parent" section are checked. | `pre-check-not-acknowledged` — name the unchecked bullet. |
 | **Model-hint sanity** | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. | `model-mismatch` — name the row + suggested model. |
 | **Pass-boundary fit** | The wave's pass + stage match the coverage-expansion-state.json's pending state. | `state-misalignment` — quote the conflict. |
@@ -177,7 +177,7 @@ findings:
 
 The spill file starts with the sentinel `<!-- subagent-returns:process-validator:<scope>:cycle-<C> -->`. Per-violation blocks (with `manifest-row:` / `issue:` / `fix:` sub-bullets) go in the spill body, NOT inline in the return.
 
-A `SubagentStop` rewrite-gate enforces the contract — non-compliant returns are blocked at stop and the validator rewrites in-session, so the verbose violation blocks never reach the parent's transcript. `greenlight` returns are exempt (already index-only).
+The `SubagentStop` rewrite-gate that previously enforced this contract was retired in 0.3.6; the rule still applies — keep the verbose violation blocks in the spill file so they never reach the parent's transcript. `greenlight` returns are exempt (already index-only).
 
 ### Banned tokens
 
