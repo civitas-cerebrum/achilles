@@ -51,6 +51,3 @@ tests/e2e/.selector-development/
 # Superpowers brainstorming specs & implementation plans — never commit
 docs/superpowers/
 .superpowers/
-.achilles/run-summary.json
-.achilles/schema-guard-log.jsonl
-/docs
