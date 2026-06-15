@@ -16,6 +16,8 @@ on:
       - reopened
       - synchronize
       - closed
+    paths:
+      - 'docs/**'
 
 permissions:
   contents: write       # push the preview to the gh-pages branch
