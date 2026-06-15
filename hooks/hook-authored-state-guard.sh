@@ -43,7 +43,7 @@
 #
 # Canonical reference
 # -------------------
-# docs/superpowers/specs/2026-06-12-phase1-harness-integrity-design.md
+# skills/element-interactions/references/harness-hooks.md
 # hooks/ledger-integrity-chain.sh (sibling — sidecar self-deny + chain)
 
 set -uo pipefail
