@@ -60,6 +60,20 @@ From the collected data, compute:
 
 If a data source doesn't exist, skip that metric — don't fabricate numbers.
 
+### Step 2.5: Staleness gate
+
+Test-results data can predate the current suite. Before generating, check
+that the results are fresh:
+
+1. Read the report JSON (`playwright-report/` / `test-results/`):
+   `stats.startTime` and the total test count it recorded.
+2. Compare against the suite's current state: `git log -1 --format=%cI -- tests/`
+   (last suite change) and the Step-2 computed `test()` count.
+3. **On mismatch** (results predate the last suite change, or the counts
+   differ): offer the user a re-run before generating, OR annotate every
+   results-derived slide with *"results as of `<date>`; suite has changed
+   since"*. Never present stale pass/fail rates as current.
+
 ### Step 3: Identify the Framework
 
 Detect which framework the project uses:
@@ -146,9 +160,15 @@ The flow is non-interactive — once the HTML is written, the PDF export runs au
 1. **Write the HTML file** to the project root as `qa-summary-deck.html` (or a name the user specifies).
 2. **Render the PDF** by running:
    ```bash
-   node node_modules/@civitas-cerebrum/element-interactions/skills/work-summary-deck/scripts/export-pdf.js qa-summary-deck.html
+   node node_modules/@civitas-cerebrum/achilles/skills/work-summary-deck/scripts/export-pdf.js qa-summary-deck.html
    ```
-   The script uses the project's existing `@playwright/test` peer dependency (no extra install) to print the deck in landscape with `@page` defaults preserved. Output PDF lands next to the HTML (`qa-summary-deck.pdf`). The script prints the resolved PDF path to stdout. If the script's stdout is non-empty AND the file exists, treat the export as complete.
+   If that path does not exist (e.g. the suite consumes the skills via the
+   postinstall copy rather than the package dir), fall back to:
+   ```bash
+   node .claude/skills/work-summary-deck/scripts/export-pdf.js qa-summary-deck.html
+   ```
+   (the package's postinstall copies the skill directory, scripts included,
+   into `.claude/skills/`). The script uses the project's existing `@playwright/test` peer dependency (no extra install) to print the deck in landscape with `@page` defaults preserved. Output PDF lands next to the HTML (`qa-summary-deck.pdf`). The script prints the resolved PDF path to stdout. If the script's stdout is non-empty AND the file exists, treat the export as complete.
 3. **Open the PDF** for the user — `open <pdf-path>` on macOS, `xdg-open <pdf-path>` on Linux. Open the HTML too only if the user asked for it; the PDF is the canonical deliverable.
 
 If the script errors (e.g. no Chromium binary, no `@playwright/test`), report the failure with the exact stderr to the user — do NOT silently fall back to "open it and Print > Save as PDF". The contract for this skill is: PDF every time, automatically.

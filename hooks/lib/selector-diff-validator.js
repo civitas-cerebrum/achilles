@@ -152,16 +152,15 @@ function flattenVue(node) {
 
 function parseSvelte(src) {
   const { parse } = require('svelte/compiler');
-  // Svelte 4's parser doesn't handle TypeScript in script blocks.
-  // Strip all <script> blocks before parsing so only the template remains.
-  // Limitation: this strips `<script>...</script>` non-greedily before handing
-  // the remaining template to svelte/compiler v4 (which can't parse `<script lang="ts">`).
-  // A `.svelte` file whose script body contains a literal `</script>` inside a
-  // template-string will be cut short here and produce `parser-error` downstream
-  // (fails closed — never a false-positive ALLOW). Tracked as a v2 follow-up:
-  // upgrade to svelte 5's typescript-aware parser, or write a tag-aware splitter.
-  const stripped = src.replace(/<script[^>]*>[\s\S]*?<\/script>/g, '');
-  return parse(stripped).html;
+  // Svelte 5's parser IS TypeScript-aware: it parses `<script lang="ts">`
+  // blocks directly, so the old strip-the-script hack (which cut a file
+  // short whenever a template-string contained a literal `</script>`) is
+  // no longer needed. Passing { filename } gives better diagnostics.
+  // AST assumption (pin): svelte 5 legacy parse (modern unset) — the tree
+  // exposes `root.html` with legacy Element nodes (type === 'Element',
+  // attributes[], children[]), which flattenSvelte below walks. Revisit
+  // before svelte 6 removes legacy mode.
+  return parse(src, { filename: 'component.svelte' }).html;
 }
 
 /**

@@ -2,10 +2,21 @@
 # subagent-return-schema-guard.sh — JSON-Schema validator for subagent returns
 #
 # Hook    : PostToolUse:Agent
-# Mode    : WARN (initial release; will flip to DENY in a follow-up after
-#           false-positive rate is calibrated on a representative run)
-# State   : none
-# Env     : none
+# Mode    : WARN by default. Env-gated strict mode (SCHEMA_RETURN_GUARD=strict)
+#           promotes a validation failure to a BLOCK (exit 2 + re-dispatch
+#           message). The default stays WARN until calibrated.
+# State   : appends one JSON line per validation to
+#           <project>/.achilles/schema-guard-log.jsonl ({role, valid, errors[]})
+# Env     : SCHEMA_RETURN_GUARD=strict  → exit 2 (block) on validation failure
+#
+# Flip criterion (WARN → strict default)
+# --------------------------------------
+# Promote the DEFAULT to strict only after the logged validations show a
+# false-positive rate below 2% over at least 200 logged validations
+# (read .achilles/schema-guard-log.jsonl across representative runs;
+# `valid:false` entries whose return was actually conformant are the
+# false positives). Until that bar is met the default remains WARN; strict
+# is opt-in via the env var.
 #
 # Rule
 # ----
@@ -21,9 +32,12 @@
 #   probe-<slug>               → schemas/subagent-returns/probe.schema.json
 #   phase-validator-<N>        → schemas/subagent-returns/phase-validator.schema.json
 #   workflow-reviewer-<unit>   → schemas/subagent-returns/workflow-reviewer.schema.json
+#   phase4-prioritise-author*  → schemas/subagent-returns/phase4-prioritise-author.schema.json
+#   phase4-cycle-<N>-*         → schemas/subagent-returns/section-agent.schema.json
 #
-# No-schema roles (silent allow on schema step):
-#   process-validator-*, phase1-*, stage2-*, cleanup-*, bare j-/sj-
+# No-schema roles (silent allow on schema step; envelope-sanity only):
+#   process-validator-*, phase1-*, stage2-*, cleanup-*, companion-*, fd-*,
+#   bare j-/sj-
 #
 # The handover envelope is validated as part of the schema (handover is a
 # required nested key in every role schema).
@@ -168,9 +182,52 @@ if [ -n "$SCHEMA_ROLE" ]; then
   fi
 fi
 
+# === Calibration log ======================================================
+# Append one JSON line per validation ({role, valid, errors[]}) to
+# <project>/.achilles/schema-guard-log.jsonl. This is the dataset the
+# WARN→strict flip criterion is measured against (see header). Best-effort:
+# a logging failure must never affect the hook's verdict.
+GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
+GUARD_PROJECT_ROOT=$(cd "$GUARD_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+LOG_DIR="$GUARD_PROJECT_ROOT/.achilles"
+LOG_FILE="$LOG_DIR/schema-guard-log.jsonl"
+VALID_FLAG=true
+[ -n "$SCHEMA_ERRORS" ] && VALID_FLAG=false
+[ ${#HANDOVER_WARNS[@]} -gt 0 ] && VALID_FLAG=false
+{
+  mkdir -p "$LOG_DIR" 2>/dev/null && \
+  "$JQ" -nc \
+    --arg role "${SCHEMA_ROLE:-${DESCRIPTION%%[-:]*}}" \
+    --argjson valid "$VALID_FLAG" \
+    --arg errs "$SCHEMA_ERRORS" \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{ts:$ts, role:$role, valid:$valid, errors:(($errs | split("\n")) | map(select(length>0)))}' \
+    >> "$LOG_FILE" 2>/dev/null
+} || true
+
 # === Emit warning if any issues found =====================================
 if [ ${#HANDOVER_WARNS[@]} -eq 0 ] && [ -z "$SCHEMA_ERRORS" ]; then
   exit 0
+fi
+
+# === Strict mode (opt-in): promote the validation failure to a BLOCK ======
+# SCHEMA_RETURN_GUARD=strict turns a return-schema failure into a blocking
+# exit-2 with a re-dispatch instruction on stderr (the SubagentStop / Agent
+# block contract). The default stays WARN — see the flip criterion in the
+# header.
+if [ "${SCHEMA_RETURN_GUARD:-warn}" = "strict" ]; then
+  {
+    echo "[BLOCK] Subagent return failed schema validation (SCHEMA_RETURN_GUARD=strict)."
+    echo "Description: \"${DESCRIPTION}\""
+    echo "Role:        ${SCHEMA_ROLE:-${DESCRIPTION%%[-:]*}}"
+    [ -n "$SCHEMA_ERRORS" ] && { echo "Schema errors (schemas/subagent-returns/${SCHEMA_ROLE}.schema.json):"; echo "$SCHEMA_ERRORS"; }
+    if [ ${#HANDOVER_WARNS[@]} -gt 0 ]; then
+      echo "Handover envelope (§2.0):"
+      for item in "${HANDOVER_WARNS[@]}"; do echo "  - ${item}"; done
+    fi
+    echo "Re-dispatch the subagent with a brief that quotes the schema constraints verbatim."
+  } >&2
+  exit 2
 fi
 
 WARNING="[WARN] Subagent return validation surfaced issues.

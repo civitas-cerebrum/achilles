@@ -85,21 +85,26 @@ esac
 
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 
+# Normalise to a leading-slash form so a bare relative path
+# (tests/e2e/docs/journey-map.md) is gated like an absolute one.
+NORM_PATH="/${FILE_PATH#/}"
+
 # Rule 4: silent-allow for non-Phase-4 paths.
 IS_MAP=0
 IS_COVERAGE=0
-case "$FILE_PATH" in
+case "$NORM_PATH" in
   */tests/e2e/docs/journey-map.md)          IS_MAP=1 ;;
   */tests/e2e/docs/journey-map-coverage.md) IS_COVERAGE=1 ;;
   *) exit 0 ;;
 esac
 
-# Resolve the project root (the parent of tests/e2e/docs/).
-case "$FILE_PATH" in
+# Resolve the project root (the parent of tests/e2e/docs/). Derive from the
+# normalised path so the strip works regardless of absolute/relative input.
+case "$NORM_PATH" in
   */tests/e2e/docs/journey-map.md)
-    PROJECT_ROOT="${FILE_PATH%/tests/e2e/docs/journey-map.md}" ;;
+    PROJECT_ROOT="${NORM_PATH%/tests/e2e/docs/journey-map.md}" ;;
   */tests/e2e/docs/journey-map-coverage.md)
-    PROJECT_ROOT="${FILE_PATH%/tests/e2e/docs/journey-map-coverage.md}" ;;
+    PROJECT_ROOT="${NORM_PATH%/tests/e2e/docs/journey-map-coverage.md}" ;;
 esac
 
 MAP_PATH="$PROJECT_ROOT/tests/e2e/docs/journey-map.md"

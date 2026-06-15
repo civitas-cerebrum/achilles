@@ -89,7 +89,10 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 case "$TOOL_NAME" in
   Write|Edit)
     FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
-    case "$FILE_PATH" in
+    # Normalise to leading-slash form so a bare relative path is gated like
+    # an absolute one.
+    NORM_PATH="/${FILE_PATH#/}"
+    case "$NORM_PATH" in
       */tests/e2e/docs/journey-map.md|*/tests/e2e/docs/journey-map-coverage.md)
         TRIGGER_KIND="write"
         ;;

@@ -34,19 +34,23 @@
       "description": "Path to spillover file when status requires spill."
     },
     "blocked-reason": { "type": "string" },
-    "skip-authorisation": { "type": "string" }
+    "skip-authorisation": { "type": "string" },
+    "cleanup": {
+      "enum": ["done", "blocked", "not-needed"],
+      "description": "Cleanup-stub outcome: done (stub executed), blocked (stub could not run — explain in summary), not-needed (nothing to clean up)."
+    }
   },
   "allOf": [
     {
-      "if": { "type": "object", "properties": { "handover": { "type": "object", "properties": { "status": { "const": "blocked" } } } } },
+      "if": { "type": "object", "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "blocked" } } } } },
       "then": { "type": "object", "properties": { "blocked-reason": { "type": "string" } }, "required": ["blocked-reason"] }
     },
     {
-      "if": { "type": "object", "properties": { "handover": { "type": "object", "properties": { "status": { "const": "skipped" } } } } },
+      "if": { "type": "object", "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "skipped" } } } } },
       "then": { "type": "object", "properties": { "skip-authorisation": { "type": "string" } }, "required": ["skip-authorisation"] }
     },
     {
-      "if": { "type": "object", "properties": { "handover": { "type": "object", "properties": { "status": { "const": "new-tests-landed" } } } } },
+      "if": { "type": "object", "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "new-tests-landed" } } } } },
       "then": { "type": "object", "properties": { "tests-added": { "type": "integer" }, "summary": { "type": "string" } }, "required": ["tests-added", "summary"] }
     }
   ]

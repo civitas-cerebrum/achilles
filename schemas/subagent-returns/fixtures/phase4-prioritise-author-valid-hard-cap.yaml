@@ -1,0 +1,19 @@
+handover:
+  role: phase4-prioritise-author
+  cycle: 5
+  status: journey-map-authored
+  next-action: deregister; advance to Phase 5 (map authored at the cycle hard cap)
+cycles-consumed: 5
+convergence-status: hard-cap-reached
+journey-map:
+  path: tests/e2e/docs/journey-map.md
+  pages-discovered: 31
+  flows-identified: 19
+  priority-breakdown:
+    P0: 4
+    P1: 6
+    P2: 6
+    P3: 3
+gated-areas-not-mapped: 1
+mapping-completeness-note: Cycle hard cap (5) reached before the admin section converged; one gated area left unmapped.
+summary: Journey map authored at the cycle hard cap without full convergence.

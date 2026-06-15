@@ -42,6 +42,8 @@ export { expect };
 | `interactions` | `ElementInteractions` | Raw interactions API for custom locators |
 | `contextStore` | `ContextStore` | Shared in-memory key-value store for passing data between steps within a test |
 
+> **Version gate — `interceptionRetry` (0.4.0+).** This package's pinned dep is `^0.3.6`. On **0.3.x** the `interceptionRetry` opt-out shown above is **not available** and the report-visible `interception-fallback` test annotation is **not emitted** — both are no-ops on the current dep. The DOM-click fallback itself behaves the same; what changes at 0.4.0 is the *opt-out* and the *annotation*. Do not teach `interceptionRetry: false` as a currently-callable knob until the dep is bumped — verify the installed version before relying on it.
+
 `baseFixture` attaches a full-page `failure-screenshot` to the HTML report on every failed test automatically.
 
 **Extending with custom fixtures** — `baseFixture` returns a standard Playwright `test` object, so use `.extend<T>()` as usual.
@@ -199,7 +201,7 @@ await steps.dragAndDrop('elementName', 'PageName', { xOffset: 100, yOffset: 0 })
 await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { target: otherLocatorOrElement });
 ```
 
-**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. The fallback logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`. Set `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) to rethrow the original interception error instead — recommended for adversarial/bug-discovery suites where a stuck modal or cookie wall should fail the click.
+**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. On **0.4.0+** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — recommended for adversarial/bug-discovery suites where a stuck modal or cookie wall should fail the click. On **0.3.x (current pinned dep)** the fallback still happens but the annotation and the `interceptionRetry` opt-out are not available — see the version gate under [Setup — Fixtures](#setup--fixtures).
 
 ### Data Extraction
 
@@ -465,8 +467,11 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 
 ### Waiting
 
+> **Version gate — `waitForState` semantics (0.3.x vs 0.4.0).** This package's pinned dep is `^0.3.6`. On **0.3.x (current dep)** `waitForState` resolves `false` on timeout and **MUST NOT be used as an assertion** — a soft probe that returns `false` is silently ignored. Always follow a `waitForState` with an explicit `verify*` (e.g. `verifyState('elementName', 'PageName', 'visible')`) so a missed wait fails the test. The `{ optional: true }` / `{ timeout }` option bags shown below, and the throw-on-timeout behaviour, are **0.4.0+** and are no-ops on 0.3.x. Treat the throwing form as forward-looking until the dep is bumped.
+
 ```ts
 // waitForState THROWS on timeout as of 0.4.0 and returns Promise<boolean>.
+// On 0.3.x (current dep) it resolves false on timeout — never an assertion; follow with verify*.
 await steps.waitForState('elementName', 'PageName');                        // default: 'visible'; throws on timeout
 await steps.waitForState('elementName', 'PageName', 'hidden');              // also: 'attached', 'detached'
 // Soft probe: { optional: true } resolves false on timeout instead of throwing.
@@ -545,7 +550,7 @@ await steps.verifyVisualMatch('login.png', {
 
 **Baselines:** the first run writes the baseline; subsequent runs diff. Use `npx playwright test --update-snapshots` to refresh baselines intentionally. Playwright fingerprints baselines per OS / browser channel, so generate them in the same environment your CI runs.
 
-See [`VisualMatchOptions`](../../../src/enum/Options.ts) for the full options surface (`maskColor`, `fullPage`, `maxDiffPixelRatio`, `maxDiffPixels`, `timeout`).
+The full options surface — `maskColor`, `fullPage`, `maxDiffPixelRatio`, `maxDiffPixels`, `timeout` — is defined by `VisualMatchOptions` in the `@civitas-cerebrum/element-interactions` package.
 
 ## Fluent API — `steps.on()`
 
@@ -663,22 +668,24 @@ repo.driver;                                                       // bound Page
 
 ## Raw Interactions API
 
-Bypass the repository for dynamically generated locators. All methods accept both `Locator` and `Element`:
+Bypass the repository for dynamically generated locators. **Verified at 0.3.6:** every `interact` / `verify` / `extract` method takes a `WebElement` (the element-repository `Element`), **not** a raw Playwright `Locator`. To bridge a raw locator, wrap it with `new WebElement(locator)` at the call site:
 
 ```ts
-import { ElementInteractions } from '@civitas-cerebrum/element-interactions';
+import { ElementInteractions, WebElement } from '@civitas-cerebrum/element-interactions';
 
 const interactions = new ElementInteractions(page);
-const locator = page.locator('button.dynamic-class');
-await interactions.interact.click(locator, { withoutScrolling: true });
-await interactions.verify.count(locator, { greaterThan: 2 });
 
-// Also works with Element from repo
+// Wrap a raw Playwright Locator before passing it in.
+const el = new WebElement(page.locator('button.dynamic-class'));
+await interactions.interact.click(el, { withoutScrolling: true });
+await interactions.verify.count(el, { greaterThan: 2 });
+
+// Or get an Element straight from the repo — already a WebElement.
 const element = await repo.get('submitButton', 'LoginPage');
 await interactions.interact.click(element);
 ```
 
-All `interact`, `verify`, `extract`, and `navigate` methods are available on `ElementInteractions`.
+All `interact`, `verify`, `extract`, and `navigate` methods are available on `ElementInteractions`. `WebElement` is re-exported from `@civitas-cerebrum/element-interactions` (originating in `@civitas-cerebrum/element-repository`).
 
 ## Email API
 

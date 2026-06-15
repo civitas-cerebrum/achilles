@@ -54,7 +54,7 @@ CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "
 [ -n "$CMD" ] || exit 0
 
 # Protected artifact patterns (extended regex).
-PROTECTED='onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|\.claude/hooks|\.claude/settings(\.local)?\.json'
+PROTECTED='onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/hooks|\.claude/settings(\.local)?\.json'
 
 echo "$CMD" | grep -qE "$PROTECTED" || exit 0
 
@@ -68,10 +68,60 @@ MUTATE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(tee|cp|mv|rm|install|ln|
 INPLACE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(sed|perl|yq)[[:space:]][^;|&]*-i" || true)
 DD_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])dd[[:space:]][^;|&]*of=" || true)
 
-# 4. Interpreter one-liners mentioning a protected path at all.
-INTERP_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(python3?|node|ruby|perl)[[:space:]][^;|&]*-[ce]([[:space:]]|$)" || true)
+# 4. Interpreter one-liners (-c/-e) mentioning a protected path.
+#    A bare interpreter one-liner is NOT itself a write — `python3 -c
+#    json.load(...)` and `node -e readFileSync(...)` are read-only and must
+#    NOT be denied (the prior unconditional INTERP_HIT denied every
+#    interpreter that mentioned a protected name, a high-volume false
+#    positive on legitimate reads). We split the signal:
+#      - INTERP_WRITE_HIT: interpreter one-liner that ALSO carries a
+#        recognizable write-shape token → DENY (fail-closed, the real risk).
+#      - INTERP_AMBIG_HIT: interpreter one-liner with NO recognizable
+#        read/write token → permissionDecision "ask" (can't classify it;
+#        defer to the operator rather than deny a possibly-read).
+INTERP_ANY_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(python3?|node|ruby|perl)[[:space:]][^;|&]*-[ce]([[:space:]]|$)" || true)
 
-if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_HIT" = "0" ]; then
+# Write-shape tokens: open(…, 'w'/'a'/'x'), .write(), .write_text(),
+# json.dump(), fs.write/append/rm/unlink/rename, writeFileSync,
+# os.remove/unlink/rename/truncate, shutil.*, File.write/delete, unlink(.
+WRITE_SHAPE_RE="open\\([^)]*,[[:space:]]*[\"'][wax]|\\.write\\(|\\.write_text\\(|json\\.dump\\(|fs\\.(write|append|rm|unlink|rename)|writeFileSync|os\\.(remove|unlink|rename|truncate)|shutil\\.|File\\.(write|delete)|unlink\\("
+# Read-shape tokens: anything that reads (open(…, 'r')/default, readFileSync,
+# json.load, .read(), .read_text(), File.read). Used only to decide
+# ask-vs-deny on an interpreter one-liner with no write-shape.
+READ_SHAPE_RE="open\\(|readFileSync|readFile\\(|json\\.load|\\.read\\(|\\.read_text\\(|File\\.read|cat\\("
+
+INTERP_WRITE_HIT=0
+INTERP_AMBIG_HIT=0
+if [ "$INTERP_ANY_HIT" != "0" ]; then
+  if echo "$CMD" | grep -qE "$WRITE_SHAPE_RE"; then
+    INTERP_WRITE_HIT=1
+  elif echo "$CMD" | grep -qE "$READ_SHAPE_RE"; then
+    INTERP_WRITE_HIT=0   # recognizably read-only — allow
+  else
+    INTERP_AMBIG_HIT=1   # no recognizable read/write token — ask
+  fi
+fi
+
+# Ambiguous interpreter one-liner (protected path mentioned, but no
+# recognizable read or write token) → ask the operator rather than deny.
+if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ] && [ "$INTERP_AMBIG_HIT" = "1" ]; then
+  "$JQ" -n --arg r "[ASK] This Bash command runs an interpreter one-liner that mentions a protected pipeline-state artifact, but the harness cannot tell whether it reads or writes it.
+
+Command: ${CMD}
+
+If this only READS the artifact, approve it. If it WRITES the artifact, cancel and use the Write/Edit tool instead (that is where the harness gates live).
+
+See: docs/superpowers/specs/2026-06-12-phase1-harness-integrity-design.md §A3" '{
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "ask",
+      "permissionDecisionReason": $r
+    }
+  }'
+  exit 0
+fi
+
+if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ]; then
   exit 0   # read-only access to a protected artifact
 fi
 

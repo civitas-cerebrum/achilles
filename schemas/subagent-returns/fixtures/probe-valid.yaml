@@ -5,5 +5,8 @@ handover:
   next-action: deregister; findings appended to adversarial-findings.md
 journey: j-acme
 findings-emitted: 2
+finding-ids:
+  - j-acme-4-01
+  - j-acme-4-02
 tests-added: 1
 summary: Two info-severity findings, one regression test added.

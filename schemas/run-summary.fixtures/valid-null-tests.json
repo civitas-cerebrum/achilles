@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "timestamp": "2026-06-12T18:04:11Z",
+    "git_sha": "",
+    "achilles_version": "",
+    "schema": "run-summary/v2"
+  },
+  "phases": [],
+  "scenarios": { "files": [] },
+  "bugs": {
+    "ids": [],
+    "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0 }
+  },
+  "tests": {
+    "passing": null,
+    "failing": null,
+    "flaky": null,
+    "skipped": null,
+    "total": null,
+    "status": null
+  },
+  "journey_map": { "journeys": 0 }
+}

@@ -12,8 +12,10 @@ The orchestrator supports two autonomous entry points, distinguished by the `ent
 
 | Entry | Used by | Skips | Starts at |
 |---|---|---|---|
-| `entry: "stage1"` (default if absent) | `onboarding` Phase 3, `coverage-expansion` pass 1–3 | — | Stage 1 (scenario discovery) |
+| `entry: "stage1"` (default if absent) | `onboarding` Phase 3 (incl. an external automated CLI driver driving the same pipeline) | — | Stage 1 (scenario discovery) |
 | `entry: "stage3"` | `companion-mode` Phase-6 graduation | Stages 1 + 2 | Stage 3 (write the durable spec) |
+
+> **Note — `coverage-expansion` does NOT invoke this orchestrator with `autonomousMode`.** Coverage expansion runs journey-by-journey through the `test-composer` skill (which it dispatches per journey); it does not re-enter `element-interactions` as an autonomous caller. The only two autonomous callers are the two rows above.
 
 ---
 
@@ -23,13 +25,11 @@ The orchestrator supports two autonomous entry points, distinguished by the `ent
 
 | Caller | Required | Optional |
 |---|---|---|
-| `onboarding` Phase 3 | `autonomousMode: true`, `happyPathDescription: "<one sentence>"` | `context: [...]` |
-| `coverage-expansion` pass 1–3 | `autonomousMode: true`, `journey: "<j-id>"` | — |
+| `onboarding` Phase 3 (incl. external automated CLI driver) | `autonomousMode: true`, `happyPathDescription: "<one sentence>"` | `context: [...]` |
 
 ### Behaviour
 
 - `happyPathDescription` replaces the Stage-1 discovery conversation. The orchestrator reformats it into Given/When/Then silently and proceeds to Stage 2 (selector inspection) using `@playwright/cli` (see [`playwright-cli-protocol.md`](playwright-cli-protocol.md)).
-- For `coverage-expansion`: `journey: "<j-id>"` references an entry in `tests/e2e/docs/journey-map.md`. The orchestrator loads only that journey's block, not the whole map.
 - The orchestrator runs the full Stage 1 → 2 → 3 → 4 sequence under autonomous gates.
 
 ### Mandatory output — discovery draft + app-context updates

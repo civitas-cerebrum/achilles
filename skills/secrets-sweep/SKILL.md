@@ -22,7 +22,8 @@ and removes it.
 
 This skill does **not** sanitise the application under test. Application
 source code is out of scope. The sweep only edits files under
-`tests/e2e/` and the project's root `.env` / `.env.example` /
+`tests/` (e2e, contracts, fixtures, data), the project's root
+`playwright*.config.ts`, and the root `.env` / `.env.example` /
 `.gitignore`.
 
 ---
@@ -50,14 +51,20 @@ Strict allow-list. Everything else is off-limits.
 
 | Touchable | Off-limits |
 |---|---|
-| `tests/e2e/**/*.spec.ts` | `src/**`, `app/**`, any application source |
-| `tests/e2e/fixtures/**/*.ts` | Anything outside the test tree |
-| `tests/e2e/playwright.config.ts` (if it carries hardcoded URLs) | Renames or new spec files |
+| `tests/e2e/**` (specs, fixtures, configs) | `src/**`, `app/**`, any application source |
+| `tests/contracts/**` (incl. `schemas.ts`) | Anything outside the test tree and root configs |
+| `tests/fixtures/**`, `tests/data/**` (incl. `page-repository.json`) | Renames or new spec files |
+| Root `playwright*.config.ts` (glob — incl. `playwright.contracts.config.ts`) | `tests/e2e/evidence/**` (see below) |
 | Root `.env`, `.env.example`, `.gitignore` | |
 
 If you find a credential hard-coded in application source, **flag it in
 the summary** rather than editing the application code. The application
 team owns that remediation.
+
+**Evidence bundles are not swept.** `tests/e2e/evidence/` bundles
+(screenshots, HARs, traces) are covered by `companion-mode`'s Phase-5
+redaction step at bundle-write time, not by this sweep. Do not grep or
+edit them here.
 
 ---
 
@@ -68,14 +75,24 @@ Work the playbook in order. Each step has a verification.
 ### a. List candidates
 
 ```bash
-git grep -nE 'password|secret|token|api[_-]?key|bearer|sk-[A-Za-z0-9]' -- 'tests/e2e/' || true
-git grep -nE '@[a-z0-9._-]+\.(com|io|net|org)' -- 'tests/e2e/' || true
-git grep -nE 'https?://|:[0-9]{4,5}' -- 'tests/e2e/' || true
+git grep -nE 'password|secret|token|api[_-]?key|bearer|sk-[A-Za-z0-9]' -- 'tests/' 'playwright*.config.ts' || true
+git grep -nE '@[a-z0-9._-]+\.(com|io|net|org)' -- 'tests/' 'playwright*.config.ts' || true
+git grep -nE 'https?://|:[0-9]{4,5}' -- 'tests/' 'playwright*.config.ts' || true
+# token-shape patterns
+git grep -nE 'eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*' -- 'tests/' || true   # raw 3-segment JWT
+git grep -nE 'AKIA[0-9A-Z]{16}' -- 'tests/' || true                                          # AWS access key id
+git grep -nE 'ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}' -- 'tests/' || true          # GitHub tokens
+git grep -nE 'xox[baprs]-' -- 'tests/' || true                                               # Slack tokens
+# credential-shaped second argument to type/fill calls
+git grep -nE "(type|fill)\((['\"]).*[Pp]ass.*\2," -- 'tests/' || true
 ```
 
 Read each hit and decide which class it belongs to. False positives
 (documentation strings, deliberately-public test endpoints) are fine to
 skip — note them in the summary so reviewers see the audit covered them.
+A standing example: the `expect.stringMatching(...)` regex literals in
+`tests/contracts/schemas.ts` (email shapes, ISO-date shapes) are
+deliberate non-secrets — note them as skips, don't extract them.
 
 ### b. Pick stable env-var names
 
@@ -163,7 +180,15 @@ A failing suite at this point usually means an env var didn't get loaded
 — check that `dotenv` (or the test harness's equivalent) runs before
 the specs.
 
-### i. Stage and commit
+### i. Second opinion (optional)
+
+If `gitleaks` or `detect-secrets` is on PATH, run it over `tests/` as a
+second opinion and reconcile its hits against your skip notes from step
+(a). Do not install either tool for this — the grep playbook remains the
+no-dependency floor; the scanner only adds confidence when it happens to
+be available.
+
+### j. Stage and commit
 
 ```
 chore: extract secrets to .env
@@ -178,8 +203,37 @@ changes.
 ## Return shape
 
 This skill's subagent returns conform to the `composer` schema (see
-`schemas/subagent-returns/composer.schema.json`). The schema's status
-enum is `{blocked, skipped, new-tests-landed, covered-exhaustively}`:
+`schemas/subagent-returns/composer.schema.json`). `onboarding` dispatches
+this skill with the `composer-secrets-sweep:` description prefix, so
+returns are schema-validated against `composer.schema.json` with zero
+hook change.
+
+Every return MUST open with a `handover` envelope as its first key:
+
+| Field | Rule |
+|---|---|
+| `role` | Kebab-case slug: `secrets-sweep`. |
+| `cycle` | Integer ≥ 1. |
+| `status` | One of `new-tests-landed`, `covered-exhaustively`, `blocked`, `skipped`. |
+| `next-action` | One-line directive for the orchestrator. |
+
+**Worked example — `covered-exhaustively`:**
+
+```json
+{
+  "handover": {
+    "role": "secrets-sweep",
+    "cycle": 1,
+    "status": "covered-exhaustively",
+    "next-action": "orchestrator to record Phase-7 completion in the onboarding ledger"
+  },
+  "tests-added": 0,
+  "summary": "Extracted 5 literals into APP_URL, TEST_USER_EMAIL, TEST_USER_PASSWORD, STRIPE_API_KEY; 7 files modified; .env/.env.example/.gitignore written; re-scan clean (2 noted skips); suite green."
+}
+```
+
+The schema's status enum is
+`{blocked, skipped, new-tests-landed, covered-exhaustively}`:
 
 - `new-tests-landed` — when `tests-added > 0` because a regression
   fixture was authored as part of the sweep.
@@ -190,7 +244,7 @@ enum is `{blocked, skipped, new-tests-landed, covered-exhaustively}`:
   clean). Provide a `skip-authorisation` line explaining how you
   verified.
 - `blocked` — when the project structure is unrecognisable (no
-  `tests/e2e/` directory, no `package.json`, etc.) or a literal lives
+  `tests/` directory, no `package.json`, etc.) or a literal lives
   in *application source* (which is out of scope for this skill);
   `blocked-reason` MUST name the un-extracted findings so the human
   can route them.

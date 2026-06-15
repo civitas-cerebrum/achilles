@@ -12,7 +12,7 @@
       ]
     },
     "cycles-consumed": { "type": "integer", "minimum": 1 },
-    "convergence-status": { "enum": ["converged", "cap-hit", "deferred"] },
+    "convergence-status": { "enum": ["converged", "hard-cap-reached"] },
     "journey-map": {
       "type": "object",
       "required": ["path", "pages-discovered", "flows-identified", "priority-breakdown"],
@@ -42,7 +42,7 @@
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "properties": { "status": { "const": "journey-map-authored" } } } }
+        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "journey-map-authored" } } } }
       },
       "then": {
         "type": "object",
@@ -57,7 +57,7 @@
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "properties": { "status": { "const": "blocked" } } } }
+        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "blocked" } } } }
       },
       "then": {
         "type": "object",

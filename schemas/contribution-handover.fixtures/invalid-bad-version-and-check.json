@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "pr": {
+    "title": "feat(steps): add verifyDownloadStarted assertion",
+    "branch": "feat/verify-download-started",
+    "summary": "Version block uses a non-semver string and a check field uses a free-form string instead of true/false/n-a."
+  },
+  "preflight": {
+    "branchSyncedWithMain": true,
+    "duplicateIssuesSearched": "yes",
+    "duplicatePRsSearched": true,
+    "depVersionsChecked": true
+  },
+  "design": {
+    "argumentOrderConvention": true,
+    "asyncEverywhere": true,
+    "stepsKeptLightweight": true,
+    "namingConvention": true,
+    "noRawLocatorInSrc": true,
+    "presenceDetectInActions": true,
+    "webOnlyCastAtSite": true,
+    "errorMessageFormatFollowed": true,
+    "loggingPresent": true,
+    "typescriptDiscipline": true
+  },
+  "tests": {
+    "implemented": true,
+    "exerciseRealVueApp": true,
+    "nonTautologicalAssertions": true,
+    "passing": true
+  },
+  "build": {
+    "buildPasses": true,
+    "fullSuitePassing": true
+  },
+  "coverage": {
+    "apiCoverageGate100": true
+  },
+  "docs": {
+    "readmeUpdated": true,
+    "apiReferenceUpdated": true,
+    "skillFilesUpdated": true
+  },
+  "version": {
+    "patchBumpedOnce": true,
+    "from": "v0.3.6",
+    "to": "0.3.7"
+  }
+}

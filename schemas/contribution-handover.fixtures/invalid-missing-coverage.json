@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "pr": {
+    "title": "feat(steps): add verifyDownloadStarted assertion",
+    "branch": "feat/verify-download-started",
+    "summary": "Adds a verifyDownloadStarted step assertion but forgot the coverage sign-off block."
+  },
+  "preflight": {
+    "branchSyncedWithMain": true,
+    "duplicateIssuesSearched": true,
+    "duplicatePRsSearched": true,
+    "depVersionsChecked": true
+  },
+  "design": {
+    "argumentOrderConvention": true,
+    "asyncEverywhere": true,
+    "stepsKeptLightweight": true,
+    "namingConvention": true,
+    "noRawLocatorInSrc": true,
+    "presenceDetectInActions": true,
+    "webOnlyCastAtSite": true,
+    "errorMessageFormatFollowed": true,
+    "loggingPresent": true,
+    "typescriptDiscipline": true
+  },
+  "tests": {
+    "implemented": true,
+    "exerciseRealVueApp": true,
+    "nonTautologicalAssertions": true,
+    "passing": true
+  },
+  "build": {
+    "buildPasses": true,
+    "fullSuitePassing": true
+  },
+  "docs": {
+    "readmeUpdated": true,
+    "apiReferenceUpdated": true,
+    "skillFilesUpdated": true
+  },
+  "version": {
+    "patchBumpedOnce": true,
+    "from": "0.3.6",
+    "to": "0.3.7"
+  }
+}

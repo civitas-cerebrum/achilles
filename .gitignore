@@ -44,3 +44,13 @@ scripts/.validator-entry.gen.mjs
 # Never committed — receipts authorize one commit each then archive locally.
 tests/e2e/.selector-development/
 /.understand-anything
+
+# Harness runtime state (run summaries, schema-guard calibration log)
+.achilles/
+
+# Superpowers brainstorming specs & implementation plans — never commit
+docs/superpowers/
+.superpowers/
+.achilles/run-summary.json
+.achilles/schema-guard-log.jsonl
+/docs

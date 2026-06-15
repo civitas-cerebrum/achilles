@@ -157,3 +157,15 @@ else
   TESTS_RUN=$((TESTS_RUN + 1))
   echo "${CLR_PASS}  ✓${CLR_RST} JOURNEY_MAPPING_PREREAD_GATE=off bypass"
 fi
+
+# ---------------------------------------------------------------------------
+section "preread: BARE RELATIVE journey-map.md path is gated like absolute (#15)"
+# A relative file_path must still trigger the write-gate surface. Transcript
+# shows no preread → DENY.
+REL_WRITE=$("$JQ" -n --arg tp "$NEITHER_TRANSCRIPT" '{
+  tool_name: "Write",
+  tool_input: { file_path: "tests/e2e/docs/journey-map.md", content: "<!-- journey-mapping:generated -->" },
+  transcript_path: $tp
+}')
+assert_deny "$H" "$REL_WRITE" \
+  "relative journey-map.md write without preread → DENY" "requires the journey-mapping skill"

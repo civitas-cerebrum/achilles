@@ -1,8 +1,8 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://civitas-cerebrum.github.io/element-interactions/contribution-handover.schema.json",
   "title": "Contribution Handover",
-  "description": "Structured sign-off captured per-PR against @civitas-cerebrum/element-interactions. Every boolean maps to a hard rule or design rule in skills/contributing-to-element-interactions/SKILL.md. Every false / n/a value must be paired with a specific *Reason field. The contribution-handover-gate.sh hook reads this file and refuses git push origin / gh pr create when fields are missing or unjustified.",
+  "description": "Structured sign-off captured per-PR against @civitas-cerebrum/element-interactions. Every boolean maps to a hard rule or design rule in skills/contributing-to-element-interactions/SKILL.md. Every false / n/a value must be paired with a specific *Reason field. Methodology rule — the handover file is validated manually against this schema before git push origin / gh pr create; the harness hook that previously enforced this (contribution-handover-gate.sh) was retired in 0.3.6; the rule still applies.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "pr", "preflight", "design", "tests", "build", "coverage", "docs", "version"],
@@ -28,10 +28,10 @@
       "description": "Hard Rule: Before filing an issue or opening a PR — duplicate check + sync status.",
       "required": ["branchSyncedWithMain", "duplicateIssuesSearched", "duplicatePRsSearched", "depVersionsChecked"],
       "properties": {
-        "branchSyncedWithMain": { "$ref": "#/definitions/checkOrReason" },
-        "duplicateIssuesSearched": { "$ref": "#/definitions/checkOrReason" },
-        "duplicatePRsSearched": { "$ref": "#/definitions/checkOrReason" },
-        "depVersionsChecked": { "$ref": "#/definitions/checkOrReason" },
+        "branchSyncedWithMain": { "$ref": "#/$defs/checkOrReason" },
+        "duplicateIssuesSearched": { "$ref": "#/$defs/checkOrReason" },
+        "duplicatePRsSearched": { "$ref": "#/$defs/checkOrReason" },
+        "depVersionsChecked": { "$ref": "#/$defs/checkOrReason" },
         "branchSyncedWithMainReason": { "type": "string" },
         "duplicateIssuesSearchedReason": { "type": "string" },
         "duplicatePRsSearchedReason": { "type": "string" },
@@ -55,16 +55,16 @@
         "typescriptDiscipline"
       ],
       "properties": {
-        "argumentOrderConvention": { "$ref": "#/definitions/checkOrReason" },
-        "asyncEverywhere": { "$ref": "#/definitions/checkOrReason" },
-        "stepsKeptLightweight": { "$ref": "#/definitions/checkOrReason" },
-        "namingConvention": { "$ref": "#/definitions/checkOrReason" },
-        "noRawLocatorInSrc": { "$ref": "#/definitions/checkOrReason" },
-        "presenceDetectInActions": { "$ref": "#/definitions/checkOrReason" },
-        "webOnlyCastAtSite": { "$ref": "#/definitions/checkOrReason" },
-        "errorMessageFormatFollowed": { "$ref": "#/definitions/checkOrReason" },
-        "loggingPresent": { "$ref": "#/definitions/checkOrReason" },
-        "typescriptDiscipline": { "$ref": "#/definitions/checkOrReason" },
+        "argumentOrderConvention": { "$ref": "#/$defs/checkOrReason" },
+        "asyncEverywhere": { "$ref": "#/$defs/checkOrReason" },
+        "stepsKeptLightweight": { "$ref": "#/$defs/checkOrReason" },
+        "namingConvention": { "$ref": "#/$defs/checkOrReason" },
+        "noRawLocatorInSrc": { "$ref": "#/$defs/checkOrReason" },
+        "presenceDetectInActions": { "$ref": "#/$defs/checkOrReason" },
+        "webOnlyCastAtSite": { "$ref": "#/$defs/checkOrReason" },
+        "errorMessageFormatFollowed": { "$ref": "#/$defs/checkOrReason" },
+        "loggingPresent": { "$ref": "#/$defs/checkOrReason" },
+        "typescriptDiscipline": { "$ref": "#/$defs/checkOrReason" },
         "argumentOrderConventionReason": { "type": "string" },
         "asyncEverywhereReason": { "type": "string" },
         "stepsKeptLightweightReason": { "type": "string" },
@@ -83,10 +83,10 @@
       "description": "Hard Rules: tests hit real Vue test app + assertions are non-tautological.",
       "required": ["implemented", "exerciseRealVueApp", "nonTautologicalAssertions", "passing"],
       "properties": {
-        "implemented": { "$ref": "#/definitions/checkOrReason" },
-        "exerciseRealVueApp": { "$ref": "#/definitions/checkOrReason" },
-        "nonTautologicalAssertions": { "$ref": "#/definitions/checkOrReason" },
-        "passing": { "$ref": "#/definitions/checkOrReason" },
+        "implemented": { "$ref": "#/$defs/checkOrReason" },
+        "exerciseRealVueApp": { "$ref": "#/$defs/checkOrReason" },
+        "nonTautologicalAssertions": { "$ref": "#/$defs/checkOrReason" },
+        "passing": { "$ref": "#/$defs/checkOrReason" },
         "specFiles": { "type": "array", "items": { "type": "string" }, "description": "New or modified spec files in this PR." },
         "implementedReason": { "type": "string" },
         "exerciseRealVueAppReason": { "type": "string" },
@@ -99,8 +99,8 @@
       "additionalProperties": false,
       "required": ["buildPasses", "fullSuitePassing"],
       "properties": {
-        "buildPasses": { "$ref": "#/definitions/checkOrReason" },
-        "fullSuitePassing": { "$ref": "#/definitions/checkOrReason" },
+        "buildPasses": { "$ref": "#/$defs/checkOrReason" },
+        "fullSuitePassing": { "$ref": "#/$defs/checkOrReason" },
         "knownFailures": { "type": "string", "description": "Any pre-existing failures observed locally that are unrelated to this PR (e.g. docker-compose-backed tests not running)." },
         "buildPassesReason": { "type": "string" },
         "fullSuitePassingReason": { "type": "string" }
@@ -112,7 +112,7 @@
       "description": "Hard Rule: 100% API coverage gate.",
       "required": ["apiCoverageGate100"],
       "properties": {
-        "apiCoverageGate100": { "$ref": "#/definitions/checkOrReason" },
+        "apiCoverageGate100": { "$ref": "#/$defs/checkOrReason" },
         "apiCoverageGate100Reason": { "type": "string" }
       }
     },
@@ -122,9 +122,9 @@
       "description": "Rule 19 — README + api-reference are mandatory for any new public API. skill files are required only when workflow/rules change.",
       "required": ["readmeUpdated", "apiReferenceUpdated", "skillFilesUpdated"],
       "properties": {
-        "readmeUpdated": { "$ref": "#/definitions/checkOrReason" },
-        "apiReferenceUpdated": { "$ref": "#/definitions/checkOrReason" },
-        "skillFilesUpdated": { "$ref": "#/definitions/checkOrReason" },
+        "readmeUpdated": { "$ref": "#/$defs/checkOrReason" },
+        "apiReferenceUpdated": { "$ref": "#/$defs/checkOrReason" },
+        "skillFilesUpdated": { "$ref": "#/$defs/checkOrReason" },
         "readmeUpdatedReason": { "type": "string" },
         "apiReferenceUpdatedReason": { "type": "string" },
         "skillFilesUpdatedReason": { "type": "string" }
@@ -136,14 +136,14 @@
       "description": "Rule 15 — single patch bump per PR.",
       "required": ["patchBumpedOnce", "from", "to"],
       "properties": {
-        "patchBumpedOnce": { "$ref": "#/definitions/checkOrReason" },
+        "patchBumpedOnce": { "$ref": "#/$defs/checkOrReason" },
         "from": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
         "to":   { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
         "patchBumpedOnceReason": { "type": "string" }
       }
     }
   },
-  "definitions": {
+  "$defs": {
     "checkOrReason": {
       "description": "true = signed off as compliant; false = explicitly violated and a *Reason field must justify; \"n/a\" = rule does not apply and a *Reason field must explain why.",
       "oneOf": [

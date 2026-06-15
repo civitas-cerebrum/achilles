@@ -12,7 +12,7 @@ Every return and every ledger append produced under this contract MUST conform t
 
 - **Finding-return format** — every finding emitted by the subagent (in its return, in the ledger, or both) uses the `- **<FINDING-ID>** [<severity>] — <title>` block with `scope` / `expected` / `observed` / `coverage` sub-bullets.
 - **FINDING-ID scheme** — `<journey-slug>-<pass>-<nn>` for all Pass-4 and Pass-5 findings. Do not use legacy schemes (`AF-*`, `BUG-*`, `P4-*-BUG-NN`, `REG-*`).
-- **Severities** — `critical`, `high`, `medium`, `low`, `info`. No others.
+- **Severities** — the single rubric in [`../../element-interactions/references/subagent-return-schema.md`](../../element-interactions/references/subagent-return-schema.md) §1. Do not restate the enum inline.
 - **Return states** — if a subagent dispatch ends without new findings, it returns `status: covered-exhaustively` with the per-expectation mapping table from §2 of the reference file. `status: no-new-tests-by-rationalisation` is **not a valid return**.
 - **Ledger schema** — the exact Markdown schema for `tests/e2e/docs/adversarial-findings.md` (see §3 of the reference file). Validate every append in-memory against that schema before releasing the lockfile.
 
@@ -32,10 +32,10 @@ The dispatch brief written by the `coverage-expansion` orchestrator includes a p
 
 ## Behavior
 
-1. Open your dedicated `playwright-cli` session: `npx playwright-cli -s=<journey-slug>-<pass>-stage-a open --browser=chromium <baseURL>` (pass = 4 or 5). Sessions are OS-isolated by construction — one browser process per `-s=<name> open` — so there is no isolation-prerequisite check to run before dispatching (see [`../../element-interactions/references/playwright-cli-protocol.md`](../../element-interactions/references/playwright-cli-protocol.md) §1). Receive an isolated context window — no prior session content. Close the session at the end with `npx playwright-cli -s=<your-slug> close`. Do NOT run `close-all` (the parent owns that).
+1. Open your dedicated `playwright-cli` session: `npx playwright-cli -s=probe-j-<slug>-<pass> open --browser=chromium <baseURL>` (pass = 4 or 5). Sessions are OS-isolated by construction — one browser process per `-s=<name> open` — so there is no isolation-prerequisite check to run before dispatching (see [`../../element-interactions/references/playwright-cli-protocol.md`](../../element-interactions/references/playwright-cli-protocol.md) §1). Receive an isolated context window — no prior session content. Close the session at the end with `npx playwright-cli -s=<your-slug> close`. Do NOT run `close-all` (the parent owns that).
 2. **Pass 4:** read the map block + page-repo slice + any existing composed tests for the journey. Before invoking `bug-discovery`, derive a **negative-case matrix** for the journey — one negative-case complement per `Test expectations:` entry, plus the standard cross-cutting negatives (auth, tenant isolation, idempotency, session expiry) (see §"Negative-case matrix — full QA scope" below). Invoke the `bug-discovery` skill scoped to this one journey, passing the matrix in the dispatch brief alongside the journey block and page-repo slice. The subagent's probing MUST cover every entry in the matrix in addition to the open-ended adversarial probe-categories that `bug-discovery` drives from live observation. Classify every finding as `Boundaries verified`, `Suspected bugs`, or `Ambiguous`. Do NOT write any tests.
 3. **Pass 5:** additionally read the journey's existing section in `adversarial-findings.md` (pass-4 findings). Re-invoke `bug-discovery` with instructions to (a) resolve `Ambiguous` findings where possible, (b) attempt compound probes pass 4 did not try, (c) probe follow-ups implied by pass-4 boundary verifications, and (d) re-probe any negative-case-matrix entries that returned `Ambiguous` in pass 4 — the matrix is the deterministic floor across both adversarial passes. Write a passing regression test for every `Boundaries verified` finding (pass 4 + pass 5 combined) into `tests/e2e/j-<slug>-regression.spec.ts`. Never write tests for `Suspected bugs` or `Ambiguous` findings.
-4. Append all new findings to the journey's section of the ledger, using the canonical ledger schema in [`../../element-interactions/references/subagent-return-schema.md`](../../element-interactions/references/subagent-return-schema.md) §3. The legacy `adversarial-findings-schema.md` is retained for probe-category vocabulary reference only; **the canonical schema governs structure**. Create the journey section if absent. Create the ledger file with its header if absent. Validate the append in-memory against the canonical schema BEFORE releasing the lockfile — if validation fails, fix the append and re-validate.
+4. Append all new findings to the journey's section of the ledger, using the canonical ledger schema in [`../../element-interactions/references/subagent-return-schema.md`](../../element-interactions/references/subagent-return-schema.md) §3. Probe-category vocabulary: subagent-return-schema.md §3.6; structure and severities: §1 + §3. Create the journey section if absent. Create the ledger file with its header if absent. Validate the append in-memory against the canonical schema BEFORE releasing the lockfile — if validation fails, fix the append and re-validate.
 5. Stabilize any regression tests written in pass 5 to 3× green using the normal test-composer stabilization loop. If stabilization fails after 3 cycles, DO NOT commit a `test.fail()` marker; instead move the finding to `Suspected bugs` with note `deterministic-test-not-feasible` and continue.
 6. **If your verdict is `findings-emitted` (the §2.0 envelope status when the probe surfaces ≥1 finding), apply the §2.6 spillover contract** — write the full `findings:` sub-list with sub-bullets (`scope:` / `expected:` / `observed:` / `coverage:`) to `tests/e2e/docs/.subagent-returns/probe-<journey-slug>-<pass>-c<cycle>.md` (start the file with the sentinel `<!-- subagent-returns:probe:<journey-slug>:pass-<N>:cycle-<C> -->`). Your return body inlines only the index-level fields — `status: findings-emitted`, `journey`, `pass`, `cycle`, `spill: <path>`, `probes: <count>`, `boundaries: <count>`, and a `findings:` list of finding-IDs (no inline blocks). The harness `SubagentStop` rewrite-gate that previously enforced this was retired in 0.3.6; the rule still applies — the live `subagent-return-schema-guard.sh` WARNs on returns that fail `probe.schema.json` (see [harness-hooks.md](../../element-interactions/references/harness-hooks.md)). `clean` and `blocked` returns are exempt from spillover (no findings to spill / one-line reason). The probe also writes findings to the cross-pass canonical ledger at `tests/e2e/docs/adversarial-findings.md` (per §3 of the canonical schema) — the ledger is the cross-cycle authoritative log; the spill file is per-cycle-and-orchestrator-context isolation. Both coexist.
 7. Return a structured discovery report to the orchestrator. No probe transcripts, no DOM snapshots, no test source.
@@ -133,40 +133,35 @@ rmdir tests/e2e/docs/.adversarial-findings.lock
 
 Holding the lock should take under 500ms per subagent. Read the file, compute the append, write, release. Do not hold the lock during probing or any `playwright-cli` calls.
 
-## Return shape (text block, not JSON — orchestrator parses keys)
+## Return shape
 
-The top-level return is a summary block with the keys shown below. Any per-finding detail emitted inside the return (e.g. high-severity suspected bugs the orchestrator needs to surface) MUST follow the canonical finding-return schema in the reference file — do not invent alternative finding blocks here.
+The return is JSON, conformant with `schemas/subagent-returns/probe.schema.json` and the Behaviour-item-6 spillover contract. The `handover` envelope is the **first key** (`role: probe-j-<slug>`, `cycle`, `status`, `next-action` per §2.0 of the canonical schema); `status` is `findings-emitted` (≥1 finding), `clean` (no findings), or `blocked`. Index-level fields follow at the top level — never inside `handover`. Per-finding detail does NOT inline in the return: it spills to `tests/e2e/docs/.subagent-returns/probe-<journey-slug>-<pass>-c<cycle>.md` (per Behaviour item 6) and is referenced by `spill:` + the `finding-ids:` list (per the schema's `finding-ids` field). Any per-finding block that does appear anywhere MUST follow the canonical §1 finding-return block in the reference file — do not invent alternative finding shapes.
 
+**Worked example — `findings-emitted` (pass 4):**
 
-```
-journey: j-<slug>
-pass: 4
-probes_attempted: 14
-probe_categories: auth-tamper, input-tamper, price-tamper, qty-tamper, boundary-values
-findings:
-  boundaries_verified: 9
-  suspected_bugs: 2
-  ambiguous: 1
-regression_tests_added: 0
-high_severity_bugs_found: 0
-stabilization: n/a
-ledger_bytes_appended: 3412
+```json
+{
+  "handover": {
+    "role": "probe-j-checkout",
+    "cycle": 1,
+    "status": "findings-emitted",
+    "next-action": "orchestrator to commit ledger section; advance to pass 5"
+  },
+  "journey": "j-checkout",
+  "pass": 4,
+  "findings-emitted": 3,
+  "finding-ids": ["j-checkout-4-01", "j-checkout-4-02", "j-checkout-4-03"],
+  "probes": 14,
+  "boundaries": 9,
+  "probe_categories": ["auth-tamper", "input-tamper", "price-tamper", "qty-tamper", "boundary-values"],
+  "tests-added": 0,
+  "stabilization": "n/a",
+  "spill": "tests/e2e/docs/.subagent-returns/probe-j-checkout-4-c1.md",
+  "summary": "14 probes across 5 categories; 9 boundaries verified, 2 suspected bugs, 1 ambiguous. No tests in pass 4."
+}
 ```
 
-```
-journey: j-<slug>
-pass: 5
-probes_attempted: 8
-probe_categories: compound, auth-tamper+qty-tamper, header-bypass, ambiguous-resolution
-findings:
-  boundaries_verified: 5
-  suspected_bugs: 1
-  ambiguous: 0
-regression_tests_added: 14
-high_severity_bugs_found: 1
-stabilization: 3x-green-after-1-retry for 1 test; rest green-on-first
-ledger_bytes_appended: 1892
-```
+On pass 5 the same shape carries `pass: 5`, `tests-added: <N>` for the regression tests written, and `stabilization:` describing the 3×-green result (e.g. `"3x-green-after-1-retry for 1 test; rest green-on-first"`). A `clean` return omits `finding-ids`/`spill` and carries only `summary`; a `blocked` return carries `blocked-reason` (one-line). `clean` and `blocked` returns are exempt from spillover.
 
 ## Hard constraints
 

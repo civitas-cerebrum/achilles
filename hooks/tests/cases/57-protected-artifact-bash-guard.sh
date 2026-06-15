@@ -35,3 +35,23 @@ assert_allow "$HOOK" "$(bash_payload 'echo hello > /tmp/scratch.txt')" "unrelate
 assert_allow "$HOOK" "$(bash_payload 'npx playwright test')" "unrelated command"
 assert_allow "$HOOK" "$(bash_payload 'ls tests/e2e/docs/')" "ls docs dir"
 assert_allow "$HOOK" "$(bash_payload 'yq .currentPhase tests/e2e/docs/onboarding-status.json')" "yq read-only (no -i)"
+# Interpreter one-liner READS of a protected artifact must ALLOW — the
+# prior unconditional INTERP_HIT denied these. (Allow-test convention:
+# the read-only adjacents to the write-shaped python/node denies above.)
+assert_allow "$HOOK" "$(bash_payload 'python3 -c "import json; print(json.load(open(\"tests/e2e/docs/onboarding-status.json\"))[\"currentPhase\"])"')" "python3 -c json.load read of ledger"
+assert_allow "$HOOK" "$(bash_payload 'node -e "console.log(require(\"fs\").readFileSync(\"tests/e2e/docs/coverage-expansion-state.json\",\"utf8\"))"')" "node -e readFileSync read of coverage state"
+
+section "protected-artifact-bash-guard: ambiguous interpreter one-liner → ASK"
+# Interpreter one-liner mentioning a protected path with NO recognizable
+# read or write token — can't classify, so defer to the operator.
+assert_ask "$HOOK" "$(bash_payload 'python3 -c "import sys; sys.argv.append(\"tests/e2e/docs/onboarding-status.json\")"')" "interpreter one-liner, no read/write token → ask" "ASK"
+
+section "protected-artifact-bash-guard: flake-quarantine.md is protected"
+# harvest-U3: the flake-quarantine ledger is a protected pipeline-state
+# artifact — sed -i against it is denied; a Write-tool append is the
+# sanctioned path (Write/Edit are not seen by this Bash-only guard, so
+# the guard silent-allows non-Bash tools by tool-name filter).
+assert_deny "$HOOK" "$(bash_payload 'sed -i "" "s/a/b/" tests/e2e/docs/flake-quarantine.md')" "sed -i on flake-quarantine ledger → DENY" "protected"
+assert_allow "$HOOK" "$(bash_payload 'grep -n FLAKE tests/e2e/docs/flake-quarantine.md')" "grep flake-quarantine read → ALLOW"
+# Write-tool append goes through Write|Edit, which this Bash guard never sees.
+assert_allow "$HOOK" "$("$JQ" -n '{tool_name:"Write", tool_input:{file_path:"tests/e2e/docs/flake-quarantine.md", content:"x"}}')" "Write-tool append to flake-quarantine → ALLOW (non-Bash)"

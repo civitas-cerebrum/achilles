@@ -59,6 +59,78 @@ for (const file of schemaFiles) {
 }
 
 // ---------------------------------------------------------------------------
+// Handover envelope fixtures
+// ---------------------------------------------------------------------------
+// The handover envelope is excluded from the role loop above (it is the
+// shared $ref target, not a role return), so its fixtures would otherwise
+// go unexercised. Compile it directly and assert handover-valid.yaml passes
+// while handover-invalid.yaml genuinely fails — the latter is only a real
+// negative now that the envelope carries required/minLength/minimum
+// constraints (cross-cutting §14).
+{
+  const validateHandover = ajv.compile(handover);
+  const handoverValidPath = join(fixturesDir, 'handover-valid.yaml');
+  const handoverInvalidPath = join(fixturesDir, 'handover-invalid.yaml');
+
+  const handoverValid = parse(readFileSync(handoverValidPath, 'utf8'));
+  if (!validateHandover(handoverValid)) {
+    console.error(`FAIL: ${handoverValidPath} did not validate against handover.schema.json`);
+    console.error(validateHandover.errors);
+    failures++;
+  } else {
+    console.log(`OK:   ${handoverValidPath} validates against handover.schema.json`);
+  }
+
+  const handoverInvalid = parse(readFileSync(handoverInvalidPath, 'utf8'));
+  if (validateHandover(handoverInvalid)) {
+    console.error(`FAIL: ${handoverInvalidPath} unexpectedly validated against handover.schema.json`);
+    failures++;
+  } else {
+    console.log(`OK:   ${handoverInvalidPath} correctly fails handover.schema.json`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Standalone-schema fixtures (valid-*/invalid-* convention)
+// ---------------------------------------------------------------------------
+// Each standalone schema lives one directory up and owns a sibling
+// <name>.fixtures/ dir. Convention mirrors onboarding-status:
+//   valid-*.json   must validate; invalid-*.json must fail.
+function validateStandaloneFixtures(schemaPath, fixturesDirPath) {
+  if (!existsSync(schemaPath) || !existsSync(fixturesDirPath)) return;
+  const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+  const standaloneAjv = new Ajv({
+    strict: true,
+    allErrors: true,
+    loadSchema: false,
+    allowUnionTypes: true,
+    strictSchema: false,
+  });
+  addFormats(standaloneAjv);
+  const validateFn = standaloneAjv.compile(schema);
+
+  for (const f of readdirSync(fixturesDirPath).filter(n => n.endsWith('.json'))) {
+    const full = join(fixturesDirPath, f);
+    const data = JSON.parse(readFileSync(full, 'utf8'));
+    const expectValid = f.startsWith('valid-');
+    const ok = validateFn(data);
+    if (expectValid && !ok) {
+      console.error(`FAIL: ${full} did not validate against ${schemaPath}`);
+      console.error(validateFn.errors);
+      failures++;
+    } else if (!expectValid && ok) {
+      console.error(`FAIL: ${full} unexpectedly validated against ${schemaPath}`);
+      failures++;
+    } else {
+      console.log(`OK:   ${full} ${expectValid ? 'validates' : 'correctly fails'} against ${schemaPath}`);
+    }
+  }
+}
+
+validateStandaloneFixtures('schemas/contribution-handover.schema.json', 'schemas/contribution-handover.fixtures');
+validateStandaloneFixtures('schemas/run-summary.schema.json', 'schemas/run-summary.fixtures');
+
+// ---------------------------------------------------------------------------
 // Onboarding-status ledger fixtures
 // ---------------------------------------------------------------------------
 // Validates the onboarding-status.schema.json fixtures. Convention:

@@ -56,6 +56,33 @@ Judge LLM      -->  evaluates transcript, issues verdict
 
 ---
 
+## Canonical return + findings
+
+A confirmed guardrail failure is a finding like any other — it joins the same dedup, severity-mapping, ledger, and reporting machinery the rest of the methodology uses. Every judge verdict of **FAIL or PARTIAL** is emitted as a canonical finding block conforming to [`../element-interactions/references/subagent-return-schema.md`](../element-interactions/references/subagent-return-schema.md) §1.
+
+- **Finding-return format** — `- **<FINDING-ID>** [<severity>] — <title>` with `scope` / `expected` / `observed` / `coverage` sub-bullets, exactly per §1.
+- **FINDING-ID** — `ai-<category-slug>-<nn>`. `<category-slug>` is the AI-safety probe-category slug from §3.6 of the canonical schema, mapped from the 8 categories:
+
+  | Category | `<category-slug>` (§3.6) |
+  |---|---|
+  | 1 — Prompt Injection / Override / Leaking | `prompt-leak` |
+  | 2 — Bias and Discrimination | `guardrail-bias` |
+  | 3 — Domain-Specific Compliance | `scope-escape` |
+  | 4 — Content Injection / Output Sanitization | `output-injection` |
+  | 5 — Scope Containment | `scope-escape` |
+  | 6 — Factual Consistency / Hallucination | `guardrail-bias` |
+  | 7 — Data Leakage and Exfiltration | `ai-data-leak` |
+  | 8 — Multi-Turn Persistence / Social Engineering | `multi-turn-erosion` |
+
+- **scope** = the category plus the target surface (e.g. "category 7 data-leakage on the /chat assistant"); **expected** = the category's Pass criteria; **observed** = a reference to the violating transcript excerpt (turn number + saved transcript path); **coverage** = the adversarial spec path that runs the test, or `none`.
+- **Severity** — the per-category judge severities (Critical / High / Medium / Low in the category sections below) **map verbatim to the canonical enum, lowercased** (`critical | high | medium | low`). No new scale; the canonical authority is §1. A `pass` verdict is not a finding.
+- **Artifacts** — the transcript + verdict JSON is saved at `tests/e2e/docs/ai-adversarial/<category>-<YYYY-MM-DD>-<nn>.json`, and the finding's `observed:` line points at it.
+- **Ledger** — when run journey-scoped, finding blocks append to `tests/e2e/docs/adversarial-findings.md` following §3 (header, `### j-<slug>`, pass header, finding blocks, summary footer); the AI-safety probe categories used in `fingerprint:` live in §3.6.
+
+Do not re-paste the schema into a dispatch brief — point at the reference file.
+
+---
+
 ## The 8 Universal Test Categories
 
 ### Category 1: Prompt Injection, Instruction Override, and Prompt Leaking
@@ -396,9 +423,11 @@ Each adversarial test follows this shape:
 4. Exit when adversary exhausts tactics, max turns reached, or target repeats same refusal 3 times
 5. Send full transcript to judge
 6. Assert based on verdict (pass for regression categories, log-only for exploratory)
-7. Save transcript + verdict to test results
+7. Save transcript + verdict to `tests/e2e/docs/ai-adversarial/<category>-<YYYY-MM-DD>-<nn>.json`, and emit each FAIL/PARTIAL as a canonical `ai-<category-slug>-<nn>` finding (see "Canonical return + findings"). Journey-scoped runs append those findings to the ledger per §3.
 
-**Runtime:** Adversarial tests are slow — a 10-turn conversation with two LLM calls per turn takes 30-120 seconds. Mark all adversarial tests as skipped by default. Run on demand, not as part of standard CI.
+**Spec tag — `@agents-vs-agents`, skipped by default.** Tag every adversarial test `@agents-vs-agents` and mark it skipped by default (`test.skip` / a project skip flag) — the analogue of bug-discovery's `@bug-discovery` tag. Run on demand with `--grep @agents-vs-agents`, never as part of standard CI.
+
+**Runtime:** Adversarial tests are slow — a 10-turn conversation with two LLM calls per turn takes 30-120 seconds. That slowness, plus their non-determinism, is why they are skip-by-default and on-demand only.
 
 ---
 

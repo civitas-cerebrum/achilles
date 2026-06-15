@@ -67,6 +67,11 @@ The contract:
 
 **Batch reviewer mode — Pass 1/2/3 cycle-1 only.** For the cycle-1 Stage B of compositional Passes 1, 2, and 3, the orchestrator dispatches **one** Opus reviewer that reads all in-flight journeys' Stage A spill files together and emits per-journey verdicts in a single return. ~85% of compositional cycle-1 reviews return greenlight; per-journey isolation over-pays for that majority. Role-prefix `reviewer-batch-pass-<N>:`; return shape in [`references/reviewer-subagent-contract.md`](references/reviewer-subagent-contract.md) §"Batch reviewer mode (cycle-1 compositional only)". For any flagged journey in the batch return, the orchestrator dispatches a follow-up cycle-2 `mode: per-journey` reviewer. **Adversarial Passes 4 and 5 never batch** — the per-journey live-app probe + matrix coverage check is load-bearing. **Cycle-2+ is always per-journey**, regardless of pass.
 
+**Two precedence rules override the batch default** (see [`references/reviewer-subagent-contract.md`](references/reviewer-subagent-contract.md) §"Mode selection"):
+
+- **Any journey in a `[group]` / `[P3-batch]` Stage A dispatch gets a per-journey cycle-1 reviewer**, not the cross-pass batch reviewer. A grouped Stage A always produces per-journey cycle-1 Stage B reviewers (see §"Relevance grouping" in `references/depth-mode-pipeline.md`); the batch reviewer is the path for individually-dispatched journeys' cycle-1 reviews. The two do not compose.
+- **`mode: depth` uses per-journey reviewers on every cycle of every pass.** Batch reviewer mode is a standard-mode economy; under depth, Stage B is per-journey throughout (cycle-1 included).
+
 If you are about to stop after Stage A claiming "running 16 reviewers is too much for this session" — re-read this section. 16 reviewers in parallel is one wave. The wave is the contract.
 
 See §"Parallelism — Intra-group pipelining (dual-stage)" for the full pipelining model.
@@ -159,8 +164,6 @@ When a kernel-resident rule changes, the editor updates BOTH the kernel block he
 
 Stage A skills (`test-composer`, `bug-discovery`) have short "Role under dual-stage" awareness paragraphs near the top of their own SKILL.md files but no dual-stage-specific rules — their behaviour is unchanged from the single-stage era; they just know they will be reviewed.
 
-Stage A skills (`test-composer`, `bug-discovery`) have short "Role under dual-stage" awareness paragraphs near the top of their own SKILL.md files but no dual-stage-specific rules — their behaviour is unchanged from the single-stage era; they just know they will be reviewed.
-
 ### Adding a new pass type
 
 If a future contributor needs to add (say) a Pass 6 — accessibility-specific adversarial — the seven decisions to make explicit are:
@@ -214,7 +217,7 @@ Read these as hard rules, not guidance. They prevent the most common shortcut pa
   2. Write state to `tests/e2e/docs/coverage-expansion-state.json` containing at minimum: the journey index (IDs, priorities, pages-touched), the set of completed passes, the set of pending journeys within any in-flight pass, and the current pass number.
   3. **STOP with a clear "resume needed" message** to the caller naming the state-file path, the passes completed, and the passes still pending. Do NOT silently skip remaining passes and claim the pipeline is done.
 - **On resume**, the orchestrator reads `coverage-expansion-state.json`, verifies that each previously-reported-completed pass actually landed as a commit (not just scaffolded in state), and continues from the first incomplete pass. A pass that was marked complete in the state file but whose commit is missing from git history is treated as incomplete and re-run.
-- **State-file lifecycle.** The state file is a resume marker, not a run log. On **successful completion of all five passes + cleanup**, the orchestrator MUST delete `tests/e2e/docs/coverage-expansion-state.json` as part of the cleanup commit — otherwise the next invocation will mistake a completed run for a resume. On a **fresh invocation**, if the state file is present the orchestrator treats the run as a resume and verifies commit-existence per the previous bullet; it does NOT start from scratch silently. If the file exists but references a journey-map or commit graph that no longer matches reality (e.g., the branch was rebased, or journey IDs changed), the orchestrator stops and reports the conflict to the caller rather than guessing. **Cross-phase signals belong on the workflow ledger, not here.** Questions like "is grouping permitted on this Phase-6 dispatch?" or "what mode was this run started in?" survive Phase 5 only if they are read from `tests/e2e/docs/onboarding-status.json`, which lives for the whole 8-phase pipeline. The `standard-mode-first-pass-guard.sh` hook reads `runMode` + `currentPhase` + `currentSubStage` from the workflow ledger as its primary source, and falls back to `coverage-expansion-state.json` only for bare coverage-expansion invocations outside the onboarding pipeline. Concretely: deleting `coverage-expansion-state.json` at Pass-5 cleanup does NOT silently re-enable Pass-1-strict on Phase-6 grouped probes, because the harness reads its grouping-permission state from the workflow ledger.
+- **State-file lifecycle.** The state file is a resume marker AND the closing record of the run. On **successful completion of all five passes + cleanup**, the cross-pass cleanup commit RECORDS all five passes + cleanup in `tests/e2e/docs/coverage-expansion-state.json` (it does NOT delete it at this point — the `onboarding-ledger-write-gate.sh` phase-5 case requires passes 1–5 + cleanup recorded, and `workflow-reviewer-phase5` verifies the recorded state before approving). Deletion is the **final post-approval act**: after `workflow-reviewer-phase5` approves, the orchestrator deletes `coverage-expansion-state.json` and then writes the Phase-5 ledger completion — otherwise the next invocation will mistake a completed run for a resume. On a **fresh invocation**, if the state file is present the orchestrator treats the run as a resume and verifies commit-existence per the previous bullet; it does NOT start from scratch silently. If the file exists but references a journey-map or commit graph that no longer matches reality (e.g., the branch was rebased, or journey IDs changed), the orchestrator stops and reports the conflict to the caller rather than guessing. **Cross-phase signals belong on the workflow ledger, not here.** Questions like "is grouping permitted on this Phase-6 dispatch?" or "what mode was this run started in?" survive Phase 5 only if they are read from `tests/e2e/docs/onboarding-status.json`, which lives for the whole 8-phase pipeline. The `standard-mode-first-pass-guard.sh` hook reads `runMode` + `currentPhase` + `currentSubStage` from the workflow ledger as its primary source, and falls back to `coverage-expansion-state.json` only for bare coverage-expansion invocations outside the onboarding pipeline. Concretely: deleting `coverage-expansion-state.json` at Pass-5 cleanup does NOT silently re-enable Pass-1-strict on Phase-6 grouped probes, because the harness reads its grouping-permission state from the workflow ledger.
 - **"Structural-only" / "blocked with skipped placeholder" tests** count as coverage ONLY when the blocker is a documented tenant-data or environment constraint (e.g., "requires admin seed user not present in demo tenant"). Structural-only tests MUST appear in a separate column from fully-automated tests in any coverage report — never rolled into the automated total. Structural-only tests NEVER satisfy a Pass 4 or Pass 5 adversarial-probe requirement: a skipped placeholder is not an adversarial finding, a verified boundary, or a regression test.
 
 ---
@@ -248,9 +251,9 @@ This contract closes the "scope-to-gap-journeys" loophole — an orchestrator di
 2. **Every journey in the map gets a dispatch every adversarial pass.** Pass 4 and Pass 5 run bug-discovery per journey — 0 journeys × Pass 4 is not Pass 4. A journey whose adversarial subagent returns "no meaningful boundaries found" must still be recorded in the ledger section with that result — the dispatch happened.
 
    **Pass-4 prelude — app-wide pattern scan.** Before the per-journey Pass-4 dispatches start, the orchestrator dispatches **one** `probe-app-wide:` subagent that establishes the app-wide pattern catalogue at `tests/e2e/docs/app-wide-patterns.md`. The catalogue documents recurring patterns (CSRF tamper status, autocomplete attrs, sort-unknown-field handling, response headers, error envelope shapes, asset disclosure, rate limiting, session-cookie flags) that ~80% of per-journey `info`-severity findings empirically duplicate. After the scan, every per-journey Pass-4 / Pass-5 dispatch receives the catalogue file as input and cites patterns via `coverage: app-wide:<pattern-id>` rather than re-deriving them. Full spec: [`references/app-wide-scan.md`](references/app-wide-scan.md). The scan does NOT run in `mode: breadth`.
-3. **Every dispatch returns a structured result.** Options are `new-tests-landed`, `no-new-tests (exhaustively covered)`, `blocked (reason)`, or `skipped (reason + who-authorized)`. `blocked` is **subagent-returned** and does not need orchestrator or user approval — it is the subagent saying "I dispatched but cannot complete because of tenant data / environment / credential gaps" (e.g., admin seed user missing in demo tenant). `skipped` is **orchestrator-proposed** and is only valid when the orchestrator has the user's explicit in-conversation authorisation to skip that specific journey; an LLM orchestrator may not authorise itself, and the budget-pressure clause in §"Non-negotiables for standard mode" is NOT such authorisation. If the orchestrator cannot tell whether a journey should be blocked or skipped, it dispatches and lets the subagent decide — that is always the correct default.
+3. **Every dispatch returns a structured result.** Options are `new-tests-landed`, `covered-exhaustively (no new tests needed)`, `blocked (reason)`, or `skipped (reason + who-authorized)`. `blocked` is **subagent-returned** and does not need orchestrator or user approval — it is the subagent saying "I dispatched but cannot complete because of tenant data / environment / credential gaps" (e.g., admin seed user missing in demo tenant). `skipped` is **orchestrator-proposed** and is only valid when the orchestrator has the user's explicit in-conversation authorisation to skip that specific journey; an LLM orchestrator may not authorise itself, and the budget-pressure clause in §"Non-negotiables for standard mode" is NOT such authorisation. If the orchestrator cannot tell whether a journey should be blocked or skipped, it dispatches and lets the subagent decide — that is always the correct default.
 4. **Scope compression is a caller-facing decision.** If the orchestrator determines before dispatching that a journey's Pass-N work is likely no-op, it still dispatches; if it wants to formally skip, it RETURNS TO THE CALLER with a scope-compression proposal and waits for the caller to approve. Silent scope compression is a contract violation.
-5. **No-op dispatches are cheap by design.** A well-behaved test-composer subagent, given an already-exhaustive journey, returns `no-new-tests` in seconds with no test-run — there is no budget justification for scope-compression on that basis.
+5. **No-op dispatches are cheap by design.** A well-behaved test-composer subagent, given an already-exhaustive journey, returns `covered-exhaustively` in seconds with no test-run — there is no budget justification for scope-compression on that basis.
 6. **Pass 2 and Pass 3** may record `gated_skip: true` entries in lieu of dispatch when all three orchestrator triggers are false — see §"Trigger-gated re-pass for Passes 2 & 3". Gated-skips count as `result: covered-exhaustively` for the no-skip contract; the harness validates the trigger evidence.
 
 ### Structured-return recording
@@ -258,7 +261,7 @@ This contract closes the "scope-to-gap-journeys" loophole — an orchestrator di
 Every dispatch's return goes in two places, and both are required:
 
 - **Progress log for the current run** — a per-journey line in the caller-visible progress output, of the form `j-<slug>: <return-type> — <reason-if-any>`.
-- **`coverage-expansion-state.json`** — in the per-pass record, a `dispatches` array with one entry per journey: `{ journey: "j-<slug>", result: "new-tests-landed|no-new-tests|blocked|skipped", reason: "<text or null>", authorizer: "<user|null>" }`. `authorizer` is only non-null for `skipped`.
+- **`coverage-expansion-state.json`** — in the per-pass record, a `dispatches` array with one entry per journey: `{ journey: "j-<slug>", result: "new-tests-landed|covered-exhaustively|blocked|skipped", reason: "<text or null>", authorizer: "<user|null>" }`. `authorizer` is only non-null for `skipped`.
 
 A state file without the `dispatches` array for every pass that has run is incomplete — it cannot be used to verify the no-skip contract was honoured on resume.
 
@@ -271,8 +274,8 @@ This contract applies to **both** `mode: standard` (including the `mode: depth` 
    remaining 41 had no map-growth so I skipped them."
 
 ✅ RIGHT (compositional): "Pass 2 dispatched test-composer for all 44 journeys in 11 waves
-   of parallel dispatch (per the independence graph). 38 returned `no-new-tests`
-   (exhaustive), 3 returned `new-tests-landed`, 3 returned `blocked (tenant data)`.
+   of parallel dispatch (per the independence graph). 38 returned `covered-exhaustively`,
+   3 returned `new-tests-landed`, 3 returned `blocked (tenant data)`.
    Pass 2 complete."
 
 ❌ WRONG (adversarial): "Pass 4 probed the 9 journeys with state-changing APIs; the other
@@ -322,11 +325,13 @@ After the state-file read (next section) and before any subagent dispatch, the o
   Plan: dispatch every journey in `tests/e2e/docs/journey-map.md` for every required pass
         (standard = 3 compositional + 2 adversarial + cleanup; breadth = 1 sweep).
         Pass 1 strict per-journey (no [group]/[P3-batch]); Passes 2-5 may group.
-  Authorisation: <full-pipeline | user-authorised-scope>
+  Authorisation: <full-pipeline | user-authorised-scope | approved-coverage-plan: <path>>
   If "user-authorised-scope":
     Scope reduction: <description, e.g. "Pass 1 only across all journeys">
     Authorising user message: "<exact verbatim quote of the user's authorising words>"
     Conversation turn of authorisation: <turn number or "this turn">
+  If "approved-coverage-plan: <path>":
+    Map path: <the sentinel-bearing journey-map.md whose ## Coverage Plan the user approved at the journey-map hard gate>
 ```
 
 Rules for this declaration:
@@ -334,6 +339,7 @@ Rules for this declaration:
 - It is emitted exactly once per invocation, before the first dispatch.
 - "Authorisation: full-pipeline" is the default and requires no quote — the full pipeline is what the skill exists to run.
 - "Authorisation: user-authorised-scope" requires a verbatim quote of the user's words. *Inferred* preferences ("the user clearly wants…") do not count and must not be cited. If you cannot fill in a verbatim quote, you do not have authorisation; either declare full-pipeline or stop and ask.
+- "Authorisation: approved-coverage-plan: <path>" cites a sentinel-bearing `journey-map.md` whose `## Coverage Plan` section the user approved at the journey-mapping hard gate (see `../journey-mapping/SKILL.md` §"Hard Gate"). The approved plan's per-tier pass counts and P3 adversarial opt-out candidates are the authorised scope; a run that follows the plan is not a scope reduction. If the run would deviate from the approved plan, fall back to `user-authorised-scope` with a fresh quote or declare `full-pipeline`.
 - Auto-mode does not satisfy "user-authorised-scope". Auto-mode authorises proceeding without confirmation on routine decisions; scope-of-pipeline is not a routine decision per §"Two valid exits".
 - After the declaration is emitted, the orchestrator is bound to it. A run that declares "full-pipeline" and then runs only Pass 1 is in violation regardless of intent.
 
@@ -352,7 +358,7 @@ The skill's first action on entry is to read `tests/e2e/docs/coverage-expansion-
 - **Read first, before anything else.** If currentPass is set, resume from that pass; if absent or `status == "complete"`, start Pass 1 from scratch.
 - **The file is authoritative.** Do not reason about "where did we leave off" from chat history, commit log, or journey-map deltas — those are diagnostic, not authoritative. If the file says currentPass=3 with 22 of 45 journeys complete, Pass 3 resumes with the remaining 23.
 - **Write after every per-pass commit AND every auto-compaction trigger.** A state file written without the dual-stage fields (`stage_a_cycles`, `stage_b_cycles`, `review_status`, `final_must_fix`) is incomplete — resume cannot reconstruct mid-A↔B-cycle journeys.
-- **Delete after successful 5-pass + cleanup completion.** Otherwise the next invocation mistakes a completed run for a resume.
+- **Delete only after `workflow-reviewer-phase5` approval — post-approval, as the final act.** The cross-pass cleanup commit RECORDS all five passes + cleanup in the state file (it does not delete it); the reviewer verifies the recorded state; the orchestrator deletes the file after approval, then writes the Phase-5 ledger completion. Deleting at cleanup-commit time (before approval) is a contract violation — see §"Non-negotiables for standard mode" State-file lifecycle. Otherwise the next invocation mistakes a completed run for a resume.
 - **Roster is frozen at the start of each pass.** Journeys discovered mid-pass go to the NEXT pass's roster, not retroactively to the current pass's. Reconciliation commits write the new roster at the same commit that appends new map blocks.
 - **Missing dual-stage fields = corrupt state.** A state file lacking `stage_a_cycles`, `stage_b_cycles`, or `review_status` for any journey that ran this pass is corrupt — stop and report; never silently proceed.
 - **Corrupt-state stops the run.** Self-repair is out of scope — surface the mismatch to the caller. State referencing journeys not in `journey-map.md`, or `completedJourneys` ⊋ `journeyRoster`, both qualify.
@@ -377,6 +383,7 @@ Standard mode is the default for non-quick-pass coverage growth. Pass 1 fidelity
 
 - **No grouping anywhere.** `[group]` and `[P3-batch]` markers are FORBIDDEN on Passes 1, 2, 3, 4, AND 5 — every Stage A composer/probe dispatch is per-journey, in parallel waves up to the host-max cap.
 - **Adversarial Passes 4-5 strict by default.** The `strict-adversarial: true` opt-in described in §"Adversarial grouping for Passes 4 and 5" is implicit under depth mode; the per-journey contract already holds, so explicit declaration is a no-op.
+- **Per-journey reviewers on every cycle of every pass.** The cycle-1 batch reviewer is a standard-mode economy; under depth, Stage B is per-journey throughout — there is no batch reviewer on any pass. (See §"Reviewer parallelism is non-negotiable" and `references/reviewer-subagent-contract.md` §"Mode selection".)
 - **State-file marker.** The orchestrator writes `"runMode": "depth"` into `tests/e2e/docs/coverage-expansion-state.json` on the first state-file write. The `standard-mode-first-pass-guard.sh` hook reads this field and denies any `[group]` / `[P3-batch]` dispatch on any pass when the mode is `depth`.
 - **Cost.** Up to ~20× more subagent dispatches and token spend than `mode: standard`. The orchestrator emits one `[coverage-expansion] mode: depth — strict-per-journey on every pass (~20× cost vs standard)` declaration line on entry so the operator sees the trade-off acknowledged.
 - **Pipeline shape unchanged.** All other pipeline rules (5-passes-+-cleanup, per-pass dedup, no-skip contract, hybrid model selection, auto-compaction, P3 adversarial opt-out, gated-skip logic for Passes 2-3) hold identically under both modes.
@@ -478,6 +485,7 @@ The §"Re-pass mode for compositional passes 2–3" reference (depth-mode-pipeli
 - **All priorities eligible.** P0/P1/P2/P3 all qualify once any tier crosses the >5 threshold.
 - **Same-section preferred.** Group by section or overlapping `Pages touched`; cross-section grouping is allowed when section clusters are sparse.
 - **`adversarialSkippedJourneys[]` honoured.** Opted-out P3 journeys (per §"Hard rules — kernel-resident" on P3 small-surface opt-out) are excluded from group composition.
+- **No elevated-risk journeys.** A journey whose map block carries 2+ `Risk factors:` tags (`risk: elevated` per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is probed per-journey, never in a `[group]` — concentrated failure surfaces are what grouped attention-rationing misses. Journeys without the field default to `risk: baseline` and group normally. Methodology rule, not hook-enforced.
 - **Role-prefix:** `[group] probe-j-<a>,probe-j-<b>,...:`. Items use `probe-j-` (not `composer-j-`) — adversarial probes return Stage A finding shape + ledger appends per `references/adversarial-subagent-contract.md`.
 - **Stage B remains per-journey** within a Pass-4/5 group — the cycle-1 batch-reviewer exception is compositional-only and does NOT extend to adversarial passes.
 
@@ -531,12 +539,30 @@ Emit one line per significant event, prefixed `[coverage-expansion]`:
 ...
 [coverage-expansion] Pass 4/5 complete — 216 probes, 147 boundaries verified, 9 suspected bugs (3 high, 5 medium, 1 low), all journeys greenlit
 [coverage-expansion] Pass 5/5 starting — adversarial consolidation + regression authoring, dual-stage A↔B
-[coverage-expansion] Pass 5/5 complete — 54 regression tests added, 11 new findings, all committed
+[coverage-expansion] Pass 5/5 complete — 54 regression tests added, 11 new findings, +312s added suite runtime, all committed
 [coverage-expansion] Cleanup — 7 cross-cutting findings consolidated across 18 journey sections
 [coverage-expansion] Depth run complete — 5 passes + cleanup, 122 tests + 54 regression tests, ledger at tests/e2e/docs/adversarial-findings.md
+[coverage-expansion] residual-risk:
+  Gated Areas not mapped: 1 — [admin panel (admin role required)]
+  Adversarial opt-outs (adversarialSkippedJourneys[]): 2 — [j-logout, j-role-chooser]
+  Blocked journeys (blocked-cycle-exhausted/stalled) w/ unresolved final_must_fix: 1 — [j-view-pricing (j-view-pricing-1-02)]
+  Ambiguous ledger findings: 3 — [j-checkout-4-05, j-checkout-5-02, j-cart-4-09]
+  Structural-only / skipped-placeholder tests: 1 — [j-admin-seed (tests/e2e/j-admin-seed.spec.ts)]
 ```
 
 The `Pass <N>/5, journey j-<slug>: cycle <c>/7, review <status>` per-cycle line is the user-facing visibility into the dual-stage retry loop. Emit one such line whenever a journey's A↔B cycle terminates (greenlight / blocked-cycle-stalled / blocked-cycle-exhausted / blocked-dispatch-failure). Skip per-cycle lines for cycles that complete with `improvements-needed` and trigger an immediate retry — only emit on terminal states or notable retries (cycle ≥ 2).
+
+**Pass-5 added-runtime line (required).** The Pass-5 completion line MUST report the estimated added suite runtime contributed by that pass's regression tests (`+<N>s added suite runtime`), so the operator can weigh the regression layer's cost against its value. The figure comes from the Pass-5 gap-analysis dispatch's pass summary.
+
+**Mandatory final `[coverage-expansion] residual-risk:` block (required at run end).** After the cleanup commit and before returning to the caller, the orchestrator emits a `residual-risk:` block enumerating the five residual-risk sources with counts + journey IDs (the same five sources the Phase-5 coverage-checkpoint `## Residual Risk` table records — see `../journey-mapping/SKILL.md` §"Phase 5: Coverage Checkpoint"):
+
+- **Gated Areas not mapped** — from the journey-map's `## Gated Areas (Not Mapped)` heading.
+- **Adversarial opt-outs** — `adversarialSkippedJourneys[]`.
+- **Blocked journeys** — `blocked-cycle-exhausted` / `blocked-cycle-stalled` journeys with unresolved `final_must_fix` (count + journey IDs + finding-IDs).
+- **Ambiguous ledger findings** — finding-IDs classified `ambiguous` in the ledger.
+- **Structural-only / skipped-placeholder tests** — journey IDs + spec paths.
+
+Every source is emitted with a `0` count and `—` when empty. The cleanup/dedup subagent's completion criterion includes emitting this block; a run that returns without it is incomplete.
 
 ---
 
@@ -574,7 +600,7 @@ If orchestrator context approaches a budget boundary, follow the auto-compaction
 
 ## Integration with other skills
 
-- **`journey-mapping`** — produces the precisely-embeddable journey map this skill reads. Map must be sentinel-bearing. No schema change required for adversarial passes.
+- **`journey-mapping`** — produces the precisely-embeddable journey map this skill reads. Map must be sentinel-bearing. No schema change required for adversarial passes. **Completion contract:** after the cross-pass cleanup commit (and, in the onboarding pipeline, after `workflow-reviewer-phase5` approval and state-file deletion), the orchestrator invokes `journey-mapping` with `args: "phases: phase-5-only"` so the coverage checkpoint + `## Residual Risk` section are always produced against the composed suite.
 - **`test-composer`** — called once per journey per compositional pass (1–3) with `args: "journey=<j-id>"`. Owns compose, stabilize, API compliance, coverage verification. NOT called during adversarial passes.
 - **`bug-discovery`** — invoked from **inside** each adversarial-pass subagent, scoped to one journey. No change to the skill itself; it accepts a scoped invocation. Subagents decide probe-category selection autonomously based on live observation.
 - **`failure-diagnosis`** — invoked inside any subagent (compositional or adversarial) when stabilization fails. The orchestrator does not call it directly.

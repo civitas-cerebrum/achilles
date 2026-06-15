@@ -44,15 +44,36 @@ emit_deny() {
 
 # Deny any direct Write/Edit to the sidecar itself (only this hook's Post
 # path may author it).
-case "$FILE_PATH" in
+#
+# Chain coverage extends beyond the onboarding ledger to the two
+# orchestrator-written progress files (cycle + coverage state): each
+# sanctioned Write/Edit records the resulting hash; an out-of-band mutation
+# then drifts from the chain and is denied on the next sanctioned write.
+# The records are keyed by file basename inside the single sidecar.
+# Match against a leading-slash-normalised form so a bare relative path
+# (tests/e2e/docs/onboarding-status.json) is gated like an absolute one.
+CHAIN_KEY=""
+NORM_PATH="/${FILE_PATH#/}"
+case "$NORM_PATH" in
   */tests/e2e/docs/.ledger-integrity.json)
     [ "$EVENT" = "PreToolUse" ] && emit_deny "[BLOCKED] The integrity sidecar .ledger-integrity.json is hook-authored state. It is never written via Write/Edit — it updates automatically when the ledger is written through the sanctioned path."
     exit 0 ;;
-  */tests/e2e/docs/onboarding-status.json) ;;
+  */tests/e2e/docs/onboarding-status.json)        CHAIN_KEY="onboarding-status.json" ;;
+  */tests/e2e/docs/.phase4-cycle-state.json)      CHAIN_KEY=".phase4-cycle-state.json" ;;
+  */tests/e2e/docs/coverage-expansion-state.json) CHAIN_KEY="coverage-expansion-state.json" ;;
   *) exit 0 ;;
 esac
 
 SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
+
+# The onboarding ledger uses the legacy flat `.records[]` chain (preserved
+# for backward compatibility); the two progress files use a per-file chain
+# under `.keyedRecords["<basename>"][]`. Pick the read/write jq path.
+if [ "$CHAIN_KEY" = "onboarding-status.json" ]; then
+  CHAIN_FILTER_GET='.records'
+else
+  CHAIN_FILTER_GET=".keyedRecords[\"$CHAIN_KEY\"]"
+fi
 
 if [ "$EVENT" = "PostToolUse" ]; then
   # RECORD: hash the on-disk result of the sanctioned write.
@@ -60,11 +81,14 @@ if [ "$EVENT" = "PostToolUse" ]; then
   DIGEST=$(file_sha256 "$FILE_PATH")
   [ -n "$DIGEST" ] || exit 0   # no hashing tool — chain disabled, never jam
   NOW=$(date +%s)
-  if [ -f "$SIDECAR" ]; then
-    UPDATED=$("$JQ" --arg d "$DIGEST" --argjson t "$NOW" \
-      '.records = ((.records // []) + [{sha256:$d, ts:$t}] | .[-20:])' "$SIDECAR" 2>/dev/null || echo "")
+  BASE='{}'
+  [ -f "$SIDECAR" ] && BASE=$(cat "$SIDECAR" 2>/dev/null || echo '{}')
+  if [ "$CHAIN_KEY" = "onboarding-status.json" ]; then
+    UPDATED=$(printf '%s' "$BASE" | "$JQ" --arg d "$DIGEST" --argjson t "$NOW" \
+      '.records = ((.records // []) + [{sha256:$d, ts:$t}] | .[-20:])' 2>/dev/null || echo "")
   else
-    UPDATED=$("$JQ" -n --arg d "$DIGEST" --argjson t "$NOW" '{records:[{sha256:$d, ts:$t}]}')
+    UPDATED=$(printf '%s' "$BASE" | "$JQ" --arg d "$DIGEST" --argjson t "$NOW" --arg k "$CHAIN_KEY" \
+      '.keyedRecords = ((.keyedRecords // {})) | .keyedRecords[$k] = (((.keyedRecords[$k]) // []) + [{sha256:$d, ts:$t}] | .[-20:])' 2>/dev/null || echo "")
   fi
   [ -n "$UPDATED" ] && printf '%s' "$UPDATED" > "$SIDECAR"
   exit 0
@@ -76,37 +100,37 @@ fi
 if [ ! -f "$SIDECAR" ]; then
   exit 0   # bootstrap: first sanctioned write will create the chain
 fi
-LATEST=$("$JQ" -r '.records[-1].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
-PREVIOUS=$("$JQ" -r '.records[-2].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
-[ -n "$LATEST" ] || exit 0   # malformed sidecar — treat as bootstrap
+LATEST=$("$JQ" -r "${CHAIN_FILTER_GET}[-1].sha256 // empty" "$SIDECAR" 2>/dev/null || echo "")
+PREVIOUS=$("$JQ" -r "${CHAIN_FILTER_GET}[-2].sha256 // empty" "$SIDECAR" 2>/dev/null || echo "")
+[ -n "$LATEST" ] || exit 0   # malformed sidecar / no chain for this file — bootstrap
 
 if [ ! -f "$FILE_PATH" ]; then
-  emit_deny "[BLOCKED] onboarding-status.json has been deleted out of band — the integrity sidecar still holds its sanctioned hash chain.
+  emit_deny "[BLOCKED] ${CHAIN_KEY} has been deleted out of band — the integrity sidecar still holds its sanctioned hash chain.
 
-Deleting the ledger resets the pipeline gates to a brand-new run; that is
-an operator decision, not an agent action.
+Deleting a chained pipeline-state file resets the gates that depend on it;
+that is an operator decision, not an agent action.
 
 Fix: ask the user to confirm the reset. The user removes BOTH files in
 their own terminal:
-  rm tests/e2e/docs/onboarding-status.json tests/e2e/docs/.ledger-integrity.json
-Until then, ledger writes and phase dispatches stay blocked."
+  rm tests/e2e/docs/${CHAIN_KEY} tests/e2e/docs/.ledger-integrity.json
+Until then, writes and dispatches that depend on it stay blocked."
   exit 0
 fi
 
 CURRENT=$(file_sha256 "$FILE_PATH")
 [ -n "$CURRENT" ] || exit 0   # no hashing tool — chain disabled
 if [ "$CURRENT" != "$LATEST" ] && [ "$CURRENT" != "$PREVIOUS" ]; then
-  emit_deny "[BLOCKED] onboarding-status.json was mutated out of band — its content no longer matches the sanctioned hash chain.
+  emit_deny "[BLOCKED] ${CHAIN_KEY} was mutated out of band — its content no longer matches the sanctioned hash chain.
 
 On-disk sha256:   ${CURRENT}
 Last sanctioned:  ${LATEST}
 
-Every sanctioned ledger write (Write/Edit through the gates) records its
-hash in .ledger-integrity.json. A mismatch means something else changed
-the file — a shell write, an external editor, or manual tampering.
+Every sanctioned write (Write/Edit through the gates) records its hash in
+.ledger-integrity.json. A mismatch means something else changed the file
+— a shell write, an external editor, or manual tampering.
 
 Fix: surface this to the user. Recovery is an operator action: the user
-either restores the ledger's sanctioned content or, to accept the
+either restores the file's sanctioned content or, to accept the
 out-of-band state, deletes tests/e2e/docs/.ledger-integrity.json in their
 own terminal. The agent cannot self-clear this block."
   exit 0

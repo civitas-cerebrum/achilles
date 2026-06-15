@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "pr": {
+    "title": "feat(steps): add verifyDownloadStarted assertion",
+    "branch": "feat/verify-download-started",
+    "summary": "Adds a verifyDownloadStarted step assertion with presence-detect, tests against the real Vue app, and full docs."
+  },
+  "preflight": {
+    "branchSyncedWithMain": true,
+    "duplicateIssuesSearched": true,
+    "duplicatePRsSearched": true,
+    "depVersionsChecked": true
+  },
+  "design": {
+    "argumentOrderConvention": true,
+    "asyncEverywhere": true,
+    "stepsKeptLightweight": true,
+    "namingConvention": true,
+    "noRawLocatorInSrc": true,
+    "presenceDetectInActions": true,
+    "webOnlyCastAtSite": true,
+    "errorMessageFormatFollowed": true,
+    "loggingPresent": true,
+    "typescriptDiscipline": true
+  },
+  "tests": {
+    "implemented": true,
+    "exerciseRealVueApp": true,
+    "nonTautologicalAssertions": true,
+    "passing": true,
+    "specFiles": ["tests/steps/verify-download-started.spec.ts"]
+  },
+  "build": {
+    "buildPasses": true,
+    "fullSuitePassing": true
+  },
+  "coverage": {
+    "apiCoverageGate100": true
+  },
+  "docs": {
+    "readmeUpdated": true,
+    "apiReferenceUpdated": true,
+    "skillFilesUpdated": "n/a",
+    "skillFilesUpdatedReason": "No workflow or rule change in this PR — API addition only."
+  },
+  "version": {
+    "patchBumpedOnce": true,
+    "from": "0.3.6",
+    "to": "0.3.7"
+  }
+}

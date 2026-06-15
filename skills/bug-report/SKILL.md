@@ -39,7 +39,7 @@ Ask for all missing items in a single message — never one field at a time.
 | Steps to reproduce | ✅ |
 | Expected vs actual result | ✅ |
 | Evidence files (screenshots, video, logs) | ✅ |
-| User credentials | Optional — only if login is required to reproduce |
+| Credential reference (never the secret itself) | Optional — only if login is required to reproduce |
 | Severity / Priority | ✅ — offer the Severity vs Priority table to help |
 
 ---
@@ -57,7 +57,11 @@ Ask for all missing items in a single message — never one field at a time.
 | Actual result | Quote error messages verbatim; reference specific file names |
 | Attachments | List every evidence file by name |
 | Severity | Suggest using the rules below; user confirms |
-| Priority | Ask the user — they know the release context |
+| Priority | Pre-fill from the bug-discovery `f(severity, journey tier)` matrix suggestion when handed over; otherwise ask. User always confirms. |
+| Build/Commit | The build identifier or commit SHA the bug was observed against |
+| Finding ID | The canonical bug-discovery FINDING-ID (`<journey-slug>-<nn>` / `<journey-slug>-<pass>-<nn>`), or `n/a` if the report did not originate from bug-discovery |
+| Reproduction test | Spec path › test name that reproduces it, or `none` |
+| Journey | `j-<slug>` plus its priority tier, or `n/a` |
 
 **Severity suggestion rules:**
 - Uncaught exception, data loss, security issue, core feature fully blocked → suggest **Critical**
@@ -80,6 +84,7 @@ Do not output the final ticket until the user explicitly confirms. Incorporate c
 
 ### Engine hard rules
 
+- **Never paste plaintext secrets into a ticket.** Test-account passwords, API keys, tokens, or any credential value never go into a ticket body, attachment, or comment. Reference the credential store or the `.env` key name instead (e.g. `STAGING_QA_USER` / `STAGING_QA_PASSWORD` from `.env`). This mirrors the `secrets-sweep` convention — credentials live in `.env`/the secret store, and only their key names travel. A ticket that needs a login points the developer at the named credential, never the value.
 - **Never fabricate evidence.** Only list attachments that actually exist.
 - **Quote error messages verbatim.** Never paraphrase what the system said.
 - **Console errors belong in the ticket body.** Relevant errors go into Description or Actual result — not only in Attachments.
@@ -108,9 +113,7 @@ Environment: [Test environment name/URL]
 
 Device/Browser: [Device model (OS version) + Browser name and version]
 
-User data:
-Email: [test account email]
-Password: [test account password]
+Test account: [credential-store reference or .env key name, e.g. STAGING_QA_USER / STAGING_QA_PASSWORD (.env) — never paste secret values into tickets]
 
 Steps to Reproduce:
 1. [Start from the very beginning — launching app or loading URL]
@@ -129,6 +132,12 @@ Attachments:
 
 Severity: [Critical / High / Medium / Low]
 Priority: [Highest / High / Medium / Low]
+
+Traceability:
+Finding ID: [canonical bug-discovery FINDING-ID, e.g. j-login-03 / j-login-4-03 — or n/a]
+Journey: [j-<slug> + tier, e.g. j-login (P0) — or n/a]
+Build/Commit: [build identifier or commit SHA observed against]
+Reproduction test: [spec path › test name — or none]
 ```
 
 ## Field-by-Field Guide
@@ -202,6 +211,25 @@ Describe **exactly** what happened. Stick to facts.
 
 > A bug can have **High severity** but **Low priority** (rare crash in unused area), or **Low severity** but **High priority** (typo on homepage during marketing campaign).
 
+When the report is handed over from `bug-discovery`, **Priority arrives pre-filled** from that skill's `f(severity, journey tier)` matrix suggestion — present it as the suggestion and let the user confirm, exactly as with Severity.
+
+### Test Account
+Reference the credential, never the value. Point at the credential store or the `.env` key name (e.g. `STAGING_QA_USER` / `STAGING_QA_PASSWORD`). A developer reproducing the bug looks the secret up from the named source — it never appears in the ticket. (See the Engine hard rule on plaintext secrets.)
+
+```
+✅ Test account: STAGING_QA_USER / STAGING_QA_PASSWORD (.env)
+✅ Test account: vault://qa/staging/login (credential store)
+❌ Email: test@example.com  Password: 123!Password
+```
+
+### Traceability
+Four fields that link the ticket back to its origin so it can be deduplicated, regression-checked, and closed against the right build. Use `n/a` / `none` honestly — a missing field is better than a guessed one.
+
+- **Finding ID**: the canonical bug-discovery FINDING-ID (`<journey-slug>-<nn>` standalone, `<journey-slug>-<pass>-<nn>` from coverage-expansion). `n/a` if the report did not come from bug-discovery. Never invent a `BUG-NNN`.
+- **Journey**: `j-<slug>` plus its priority tier (`P0`–`P3`), or `n/a`.
+- **Build/Commit**: the build identifier or commit SHA the bug was observed against — without it, regression-vs-new is unanswerable.
+- **Reproduction test**: `spec-path › test name`, or `none`.
+
 ### Attachments
 Always include evidence. Place attachments **at the end** of the ticket.
 
@@ -225,8 +253,12 @@ Always include evidence. Place attachments **at the end** of the ticket.
 | Actual Result | ✅ | Facts only, no opinions |
 | Attachments | ✅ | At end of ticket |
 | Severity | ✅ | Critical/High/Medium/Low |
-| Priority | ✅ | Highest/High/Medium/Low |
-| User Data | Optional | When relevant to reproduction |
+| Priority | ✅ | Highest/High/Medium/Low — pre-filled from the bug-discovery matrix when handed over |
+| Test account | Optional | Credential-store reference or `.env` key name only — never the secret value |
+| Finding ID | Optional | Canonical bug-discovery FINDING-ID, or `n/a` |
+| Journey | Optional | `j-<slug>` + tier, or `n/a` |
+| Build/Commit | ✅ | Build id or commit SHA observed against |
+| Reproduction test | Optional | Spec path › test name, or `none` |
 
 ## Example
 
@@ -240,9 +272,7 @@ Environment: https://staging.example.com
 
 Device/Browser: iPhone 13 Pro (iOS 18.1) Safari
 
-User data:
-Email: test@example.com
-Password: 123!Password
+Test account: STAGING_QA_USER / STAGING_QA_PASSWORD (.env)
 
 Steps to Reproduce:
 1. Open Safari on iPhone 13 Pro.
@@ -263,6 +293,12 @@ Attachments:
 
 Severity: High
 Priority: High
+
+Traceability:
+Finding ID: j-login-03
+Journey: j-login (P0)
+Build/Commit: a1b9f3c
+Reproduction test: tests/e2e/j-login-regression.spec.ts › login button unresponsive on mobile Safari
 ```
 
 ## Common Mistakes
@@ -276,3 +312,5 @@ Priority: High
 | Attachment placed mid-ticket | Move all attachments to the end |
 | Expected result mixed with actual | Keep them strictly separate |
 | Subjective language ("looks weird") | Objective facts only |
+| Plaintext password/key in the ticket | Reference the credential store or `.env` key name; never the secret value |
+| Missing build/commit or finding ID | Always record traceability — without it, regression-vs-new and dedup are impossible |

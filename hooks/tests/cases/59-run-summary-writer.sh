@@ -41,6 +41,31 @@ assert_eq "$("$JQ" -r '.meta.timestamp | length > 0' "$SUMMARY")" "true" "meta.t
 assert_eq "$("$JQ" -r '.meta.schema' "$SUMMARY")" "run-summary/v2" "schema is run-summary/v2"
 
 # ---------------------------------------------------------------------------
+section "run-summary-writer: output validates against run-summary schema (#18)"
+# The writer's output must conform to schemas/run-summary.schema.json
+# (authored + bundled by P7). Validate the produced file through the same
+# bundle the other gates use. Skip gracefully if the schema isn't in the
+# bundle yet (P7 dependency).
+RSW_VALIDATOR="$HOOK_DIR/lib/validator.bundle.mjs"
+RSW_NODE=$(command -v node 2>/dev/null || true)
+if [ -n "$RSW_NODE" ] && [ -f "$RSW_VALIDATOR" ] \
+   && ! "$RSW_NODE" "$RSW_VALIDATOR" validate run-summary "$SUMMARY" 2>&1 | grep -q 'No schema for id'; then
+  TESTS_RUN=$((TESTS_RUN + 1))
+  RSW_VAL_OUT=$("$RSW_NODE" "$RSW_VALIDATOR" validate run-summary "$SUMMARY" 2>&1)
+  RSW_VAL_EC=$?
+  if [ "$RSW_VAL_EC" = "0" ] && [ -z "$RSW_VAL_OUT" ]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "${CLR_PASS}  ✓${CLR_RST} run-summary output validates against run-summary schema"
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    FAIL_DETAILS+=("run-summary schema validation: ${RSW_VAL_OUT:0:200}")
+    echo "${CLR_FAIL}  ✗${CLR_RST} run-summary output validates against run-summary schema ${CLR_DIM}(${RSW_VAL_OUT:0:120})${CLR_RST}"
+  fi
+else
+  echo "${CLR_DIM}  (run-summary schema not in validator bundle — skipping schema validation; ships with P7)${CLR_RST}"
+fi
+
+# ---------------------------------------------------------------------------
 section "run-summary-writer: empty project never fakes a pass"
 RSW_TMP_B=$(mktemp -d /tmp/run-summary-b-XXXXXX)
 rsw_run "$RSW_TMP_B"

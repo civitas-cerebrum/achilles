@@ -59,7 +59,7 @@ If the user's intent is durable test growth, route them to the right skill — d
 | Skill | Scope | Output | Persistence |
 |---|---|---|---|
 | `element-interactions` Stage 3 | One scenario, durable | `tests/<spec>.spec.ts` | Committed to suite |
-| `onboarding` | Whole app from zero | Install + scaffold + happy path + journey map + 5 coverage passes + 2 bug hunts + summary deck | Fully committed pipeline |
+| `onboarding` | Whole app from zero | Install + scaffold + happy path + journey map + 5 coverage passes + 2 bug hunts + secrets sweep + summary deck | Fully committed pipeline |
 | `test-composer` | One journey, full variant set | Many spec files for that journey | Committed |
 | `coverage-expansion` | Whole app, iterative | Suite-wide growth across passes | Committed |
 | `bug-discovery` | Adversarial probing | Findings + reproduction tests | Findings ledger |
@@ -109,6 +109,7 @@ Capture, in this order:
 1. **Task description** — a single sentence stating the *what*: "Verify a returning user can log in and see their dashboard." If the user gave a paragraph, compress it; if they gave one word, ask for one clarifying sentence.
 2. **App URL** — the entry point. If absent, ask for it; do NOT guess from `playwright.config.ts` baseURL — companion mode is environment-explicit.
 3. **Credentials / state** (optional) — if the task requires auth, ask for credentials or a path to a saved auth state. Never invent credentials.
+3b. **Build identifier** (optional) — a user-supplied app build/version id for the bundle's `summary.md` `**App build:**` line. If not supplied, the line reads `not supplied`; do not infer one.
 4. **Pass criterion** — one sentence: "what does success look like to you?" The bundle's pass/fail verdict is grounded in this answer, not the agent's interpretation.
 5. **Bundle slug** — a short kebab-case slug derived from the task (e.g. `checkout-happy-path`). The user may override.
 
@@ -152,6 +153,7 @@ Write **one** spec file under `tests/e2e/evidence/<slug>-<ts>/spec.ts` (the bund
 - **Wire the HAR and console capture hooks in the spec itself.** The Phase-4 capture table only populates if these hooks are in place; if you omit them, the bundle ships with `Capture gaps: HAR` / `Capture gaps: console` and the cause is the spec, not the runner. Specifically:
   - **Console capture:** in a `test.beforeEach`, register `page.on('console', msg => …)` and write each message to `<bundle>/console.log` with timestamp and level.
   - **HAR capture:** in the `baseFixture` extension or a `test.use({ contextOptions: { recordHar: { path: '<bundle>/network.har', mode: 'minimal' } } })` call, set `recordHar` to write to the bundle's `network.har`.
+  - **Video capture:** in the spec, call `test.use({ video: 'on' })` — video is wired in-spec, not via a runner flag.
   - A bundle with `Capture gaps` because the hook was omitted is a contract violation, not a recording failure. Wiring failures (browser version, permissions, disk full) are recording failures and warrant the gap entry; missing hooks are skill failures and require fixing the spec.
 
 ### Forbidden in companion mode
@@ -179,8 +181,6 @@ npx playwright test tests/e2e/evidence/<slug>-<ts>/spec.ts \
   --output=tests/e2e/evidence/<slug>-<ts>/run-output \
   --reporter=html,json \
   --trace=on \
-  --video=on \
-  -- \
   --workers=1
 ```
 
@@ -189,7 +189,7 @@ Required capture flags:
 | Capture | Flag / mechanism | Lands at |
 |---|---|---|
 | Per-step screenshots | `steps.screenshot()` calls in the spec | `<bundle>/screenshots/` |
-| Video recording | `--video=on` | `<bundle>/run-output/.../video.webm` (move to `<bundle>/video.webm`) |
+| Video recording | `test.use({ video: 'on' })` in the spec | `<bundle>/run-output/.../video.webm` (move to `<bundle>/video.webm`) |
 | Playwright trace | `--trace=on` | `<bundle>/run-output/.../trace.zip` (move to `<bundle>/trace.zip`) |
 | HAR (network) | Configure `recordHar` in test fixture context | `<bundle>/network.har` |
 | Console output | Listen on `page.on('console', …)` from a `before` hook in the spec | `<bundle>/console.log` |
@@ -219,6 +219,19 @@ tests/e2e/evidence/<slug>-<YYYYMMDD-HHMMSS>/
 └── run-output/          ← raw playwright output (kept for forensic use)
 ```
 
+### Redaction (mandatory, before the bundle freezes)
+
+Before Phase 5 assembles the final bundle (and before Rule 11's
+immutability kicks in), run a redaction pass over `console.log` and
+`network.har`: grep both for the four `secrets-sweep` literal classes —
+credentials, API keys, PII shapes, and tokens in `Authorization` /
+`Set-Cookie` headers — and redact matches in place. Every redaction is
+recorded in `summary.md` under a `## Redactions` section (what was
+redacted and where — named, not silent, consistent with the
+no-fabrication rule). Evidence bundles are NOT swept by onboarding
+Phase 7's `secrets-sweep`; this step is the bundle's only redaction
+pass.
+
 ### `summary.md` — required sections
 
 ```markdown
@@ -227,6 +240,8 @@ tests/e2e/evidence/<slug>-<YYYYMMDD-HHMMSS>/
 **Run timestamp:** <ISO 8601 local + UTC offset>
 **Verdict:** ✅ PASSED  |  ❌ FAILED  |  ⚠️ INCONCLUSIVE
 **App URL:** <url>
+**Browser:** chromium <version>   <!-- from `npx playwright --version` or the report metadata -->
+**App build:** <user-supplied id, or "not supplied">
 **Pass criterion (user-supplied):** "<verbatim>"
 
 ## What I did
@@ -303,7 +318,7 @@ The offer is **automation-first**. Failure-diagnosis remains the path on a faile
 | Setup state | Offer (verbatim shape) |
 |---|---|
 | **None** (fully onboarded) | *"This task is now captured as evidence. Want me to **automate it into the durable suite**? I'll hand the task description, pass criterion, and selectors to `element-interactions` Stage 3 and let it author the durable test properly. (yes / no)"* |
-| **A / B / C** (not onboarded or partially onboarded) | *"This task is now captured as evidence, but this project isn't fully set up for automation yet (Level <A/B/C>: <summary>). Want me to **automate this task**? Two ways forward — pick one: (a) **Just this task** — install the framework, scaffold the minimum needed, and add this single task as a durable test; (b) **Full onboarding** — run the autonomous `onboarding` pipeline (scaffold → happy path → journey mapping → coverage expansion → bug hunts → summary deck). Or `no` to leave it as evidence-only."* |
+| **A / B / C** (not onboarded or partially onboarded) | *"This task is now captured as evidence, but this project isn't fully set up for automation yet (Level <A/B/C>: <summary>). Want me to **automate this task**? Two ways forward — pick one: (a) **Just this task** — install the framework, scaffold the minimum needed, and add this single task as a durable test; (b) **Full onboarding** — run the autonomous `onboarding` pipeline (scaffold → happy path → journey mapping → coverage expansion → bug hunts → secrets sweep → summary deck). Or `no` to leave it as evidence-only."* |
 
 #### Verdict: FAILED
 
@@ -381,7 +396,8 @@ companion-mode mode=live \
   appUrl="https://staging.example.com/login" \
   passCriterion="Dashboard heading reads 'Welcome back, <user>' within 5s of submit." \
   slug="login-returning-user" \
-  credentials=<ref-to-secret>
+  credentials=<ref-to-secret> \
+  build=<app-build-id>            # optional — lands on summary.md's "App build:" line
 ```
 
 Gate suspension matches the `element-interactions` autonomous-mode contract: page-repository proposals are written directly, no Phase-1 prompts are issued, the Phase-6 automation offer is suppressed (the caller's args resolve graduation explicitly via `graduate=` below). The bundle is still produced and its path is returned to the caller as the result.

@@ -204,18 +204,51 @@ For each flow, ask:
 If the app's business purpose is unclear, ask the user:
 > "What is the primary goal of this application? What action do you most want users to complete?"
 
+### Defect-likelihood risk factors (second axis)
+
+Priority (P0–P3) captures **business impact** — what it costs if a flow breaks. It says nothing about **how likely a flow is to break**. A stable P1 marketing page and a hot, recently-rewritten P1 checkout wizard get the same P-tier, yet the wizard is far likelier to harbour a defect. The risk axis is the second, orthogonal signal: it captures defect *likelihood* so coverage-expansion can spend adversarial attention where defects actually concentrate.
+
+Risk is assessed from **observed evidence only** — signals the section agents already recorded during Phases 1–2, or that the workspace makes mechanically available. Do not guess, intuit, or infer risk from a flow's name; if the evidence for a factor is not in hand, that factor is absent.
+
+For every journey, count how many of the following eight factors are present. Each factor names the evidence that establishes it:
+
+| # | Risk factor | Present when (observed evidence) |
+|---|---|---|
+| 1 | **Input-heavy surface** | The journey's recorded steps include a multi-field form (≥3 user-supplied fields), a wizard, or a file upload — `input-tamper` / `boundary-values` surface. |
+| 2 | **Mutating / state-changing** | The journey fires a state-changing request (POST/PUT/PATCH/DELETE observed in Phase 1 network capture, or a persisted record in the flow) — `replay` / idempotency surface. |
+| 3 | **Auth / permission boundary** | The journey crosses an authentication or role boundary (login-gated route, role-gated action, tenant-scoped resource) — `auth-tamper` / `idor` / `priv-esc` surface. |
+| 4 | **Payment / money path** | The journey touches pricing, checkout, billing, balances, or refunds — `price-tamper` / `qty-tamper` / `balance-bypass` surface. |
+| 5 | **Third-party / external integration** | The journey depends on an external service (payment processor, calendar/booking embed, OAuth provider, webhook) observed in the crawl. |
+| 6 | **High state-variation count** | The section agent recorded ≥3 distinct `State variations:` (empty / loading / errored / data / role) on the journey's pages. |
+| 7 | **Prior defect history** | A prior `tests/e2e/docs/adversarial-findings.md` (if present) records ≥1 `Suspected bugs` or `Ambiguous` finding whose fingerprint routes to a page this journey touches. |
+| 8 | **Recent churn** | Optional, only when the workspace contains the frontend source (same workspace detection `selector-development` uses): `git log --since=90.days -- <component paths the journey touches>` shows commits in the window. Absent when source is unavailable — never a guess. |
+
+**Derived tier.** A journey with **2 or more factors present** is `risk: elevated`. A journey with 0 or 1 factor — and any journey whose `Risk factors:` block field is absent — is `risk: baseline` (the default).
+
+**What risk does — and does not — do.**
+
+- **Does** order dispatch *within* a priority tier in coverage-expansion: `risk: elevated` journeys dispatch before `risk: baseline` ones in the same P-tier.
+- **Does** exclude `risk: elevated` journeys from grouped dispatch — they are never folded into a `[group]` or `[P3-batch]` brief (compositional grouping, adversarial grouping, AND P3-batch eligibility). Concentrated failure surfaces are exactly what grouped attention-rationing misses.
+- **Does NOT** change the P-tier. Risk is a second axis, never a priority modifier — an elevated P2 journey stays P2; it does not get promoted to P1.
+- **Does NOT** add or remove test expectations. Expectations are priority-conditional (§"Priority Framework" coverage-expectation column); risk leaves them untouched.
+- **Backward-compatible.** A journey block with no `Risk factors:` field is `risk: baseline` and groups normally. No existing map breaks.
+
+This is a **methodology rule, not hook-enforced** — no harness hook reads or validates the `Risk factors:` field; the discipline lives in this protocol and in the consuming skills (`coverage-expansion`, `bug-discovery`). The probe categories named above are the canonical vocabulary in `../element-interactions/references/subagent-return-schema.md` §3.6.
+
 ### Output
 
-The flow list from Phase 2, now with priorities assigned:
+The flow list from Phase 2, now with priorities and defect-likelihood risk factors assigned:
 
 ```markdown
-| Priority | Flow | Category | Entry → Exit |
-|----------|------|----------|-------------|
-| P0 | Visitor to Contact | Conversion | / → /contact → booking |
-| P1 | Service browsing | Core experience | / → /services/* → /contact |
-| P2 | Content discovery | Content | / → /guides → /guides/* |
-| P3 | Legal review | Peripheral | footer → /terms-conditions |
+| Priority | Risk | Risk factors | Flow | Category | Entry → Exit |
+|----------|------|--------------|------|----------|-------------|
+| P0 | elevated | mutating, auth-boundary, payment, third-party | Visitor to Contact | Conversion | / → /contact → booking |
+| P1 | baseline | mutating | Service browsing | Core experience | / → /services/* → /contact |
+| P2 | baseline | none | Content discovery | Content | / → /guides → /guides/* |
+| P3 | baseline | none | Legal review | Peripheral | footer → /terms-conditions |
 ```
+
+The `Risk` column is the derived tier (`elevated` when ≥2 factors, else `baseline`); the `Risk factors` column lists the present factors (or `none`). Both flow into the Phase-4 journey block's `Risk factors:` field.
 
 ---
 

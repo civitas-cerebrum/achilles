@@ -200,7 +200,7 @@ The orchestrator decides a journey is "trivial enough" to skip its cycle-1 Stage
 - "previous pass greenlit, this pass will too — record greenlight directly"
 - "saving a dispatch on the trivial cases is fine"
 
-**Reality:** Self-certifying greenlights without a reviewer dispatch is the failure mode the dual-stage design exists to close. The fast path for trivial journeys is the cycle-1 Stage B sonnet-confirmation exception (`references/depth-mode-pipeline.md` §"Model selection") — NOT skipping the dispatch.
+**Reality:** Self-certifying greenlights without a reviewer dispatch is the failure mode the dual-stage design exists to close. The fast path for trivial journeys is the cycle-1 batch reviewer (`references/reviewer-subagent-contract.md` §"Batch reviewer mode (cycle-1 compositional only)") — one Opus reviewer cross-synthesises every in-flight journey's cycle-1 review in a single dispatch — NOT skipping the dispatch.
 
 **Hooks that catch this:**
 - State-file schema rule: `review_status: greenlight` entries with `stage_b_cycles: 0` are invalid (the minimum for an actually-dispatched Stage B is 1). (The harness schema guard that previously flagged this was retired in 0.3.6; the rule still applies.)

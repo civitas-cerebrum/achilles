@@ -329,7 +329,12 @@ for sec in $CANONICAL_SECTIONS; do
   # \b-style word boundaries via grep -w on a tokenised description.
   # Replace commas + "and" with whitespace first so multi-section lists like
   # "auth, cart, and order" tokenise cleanly.
-  TOKENS=$(echo "$DESCRIPTION" | sed -E 's/[,]/ /g; s/[[:space:]]+and[[:space:]]+/ /g' | tr -s ' ')
+  # Strip journey-slug literals (j-<slug> / sj-<slug>) BEFORE section
+  # counting — a Phase-5/8 coordinator listing several journey slugs (e.g.
+  # "j-auth, j-cart, j-order") is NOT a single-agent section walkthrough,
+  # but the bare section names embedded in those slugs would otherwise be
+  # counted as section hits (auth, cart, order). Remove the slugs first.
+  TOKENS=$(echo "$DESCRIPTION" | sed -E 's/\b(s?j-[a-z0-9-]+)//g; s/[,]/ /g; s/[[:space:]]+and[[:space:]]+/ /g' | tr -s ' ')
   if echo "$TOKENS" | grep -qiwE "$sec"; then
     HIT_COUNT=$((HIT_COUNT + 1))
     HIT_NAMES="${HIT_NAMES}${sec} "
@@ -337,6 +342,28 @@ for sec in $CANONICAL_SECTIONS; do
 done
 
 if [ "$HIT_COUNT" -ge 3 ]; then
+  # Phase-scope guard: Rule 3 (single-agent cycle walkthrough) is a
+  # journey-mapping Phase-4 rule. It must NOT fire outside Phase 4 — a
+  # Phase-5 coverage coordinator or a Phase-8 reporter that names several
+  # sections in its brief is not a journey-mapping cycle collapse. Read
+  # the workflow ledger (like Rule 1): evaluate only when currentPhase==4,
+  # OR (no ledger AND the description carries a phase4-* shape, i.e. a
+  # bare journey-mapping run outside onboarding).
+  RULE3_IN_SCOPE=0
+  if [ -f "$WORKFLOW_LEDGER" ]; then
+    R3_PHASE=$("$JQ" -r '.currentPhase // 0' "$WORKFLOW_LEDGER" 2>/dev/null || echo "0")
+    case "$R3_PHASE" in ''|*[!0-9]*) R3_PHASE=0 ;; esac
+    [ "$R3_PHASE" -eq 4 ] && RULE3_IN_SCOPE=1
+  else
+    # No workflow ledger — only treat phase4-shaped dispatches as in-scope.
+    case "$DESCRIPTION" in
+      phase4-*|phase4_*) RULE3_IN_SCOPE=1 ;;
+    esac
+  fi
+  if [ "$RULE3_IN_SCOPE" != "1" ]; then
+    exit 0
+  fi
+
   # Read cycle state: dispatched-sections count + cycleStrictness.
   CYCLE_1_DISPATCHED=0
   CYCLE_STRICTNESS="standard"
@@ -358,7 +385,7 @@ if [ "$HIT_COUNT" -ge 3 ]; then
   # Heuristic: skip the rule when the role prefix is one of the legitimate
   # multi-section consumers.
   case "$DESCRIPTION" in
-    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*) ;;
+    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*|workflow-reviewer-*|composer-*|reviewer-*|probe-*|phase[1-8]-*) ;;
     *)
       # Under cycleStrictness: depth, DENY for ANY cycle (including cycle 2+
       # after cycle 1 has dispatched-sections recorded). Under standard,
