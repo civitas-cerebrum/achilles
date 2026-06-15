@@ -186,13 +186,20 @@ IN_ORDER=$(echo "$VALID_FRESH" | "$JQ" '
   .phases[1].status = "in-progress"
 ')
 
-# Test: orchestrator-direct write (no parent_tool_use_id) approving phase 1 → DENY
+# Actor-identity convention: a dispatched subagent's tool calls carry a
+# non-empty `agent_id`; the orchestrator's carry none. The write-gate keys
+# the separation-of-duties check on `agent_id` presence + a fresh, non-empty
+# approver registry (the dispatch tool_use_id cannot be matched to the write
+# in this build, so registry freshness + the ledger-gate's per-transition
+# ordering stand in for per-write role attribution).
+
+# Test: orchestrator-direct write (no agent_id) approving phase 1 → DENY
 assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")" \
   "Orchestrator direct write approving phase → DENY" "separation-of-duties"
 
-# Test: subagent context but no approver registry → DENY
+# Test: subagent context (agent_id present) but no approver registry → DENY
 P_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_NOREG=$(echo "$P_NOREG" | "$JQ" -c '. + {parent_tool_use_id: "toolu_some_subagent"}')
+P_NOREG=$(echo "$P_NOREG" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
 assert_deny "$H" "$P_NOREG" "Subagent context but no registry → DENY" "no approver registry exists"
 
 # Seed the approver registry next to the ledger, then re-test.
@@ -200,22 +207,23 @@ NOW=$(date +%s)
 REGISTRY="$TMP_REPO/tests/e2e/docs/.workflow-approvers.json"
 printf '{"toolu_approved":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$NOW" > "$REGISTRY"
 
-# Test: registered workflow-reviewer subagent approves → ALLOW
+# Test: subagent context + fresh non-empty approver registry → ALLOW
 P_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_OK=$(echo "$P_OK" | "$JQ" -c '. + {parent_tool_use_id: "toolu_approved"}')
-assert_allow "$H" "$P_OK" "Registered workflow-reviewer subagent → ALLOW"
+P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+assert_allow "$H" "$P_OK" "Subagent context + fresh approver registry → ALLOW"
 
-# Test: subagent context but the tool_use_id is not in the registry → DENY
-P_UNREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_UNREG=$(echo "$P_UNREG" | "$JQ" -c '. + {parent_tool_use_id: "toolu_unknown"}')
-assert_deny "$H" "$P_UNREG" "Unregistered subagent (e.g., composer) approving → DENY" "NOT in the approver registry"
+# Test: subagent context but the approver registry is empty → DENY
+printf '{}' > "$REGISTRY"
+P_EMPTY=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
+P_EMPTY=$(echo "$P_EMPTY" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+assert_deny "$H" "$P_EMPTY" "Subagent context but empty registry → DENY" "approver registry is empty"
 
-# Test: registry entry expired (> 30 min) → DENY
+# Test: most-recent approver registration expired (> 30 min) → DENY
 EXPIRED_TS=$((NOW - 3600))
 printf '{"toolu_expired":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$EXPIRED_TS" > "$REGISTRY"
 P_EXP=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_EXP=$(echo "$P_EXP" | "$JQ" -c '. + {parent_tool_use_id: "toolu_expired"}')
-assert_deny "$H" "$P_EXP" "Expired approver entry → DENY" "registry entry has expired"
+P_EXP=$(echo "$P_EXP" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+assert_deny "$H" "$P_EXP" "Expired approver registration → DENY" "has expired"
 
 # Test: write that does NOT transition any reviewerVerdict → ALLOW even from orchestrator
 printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"

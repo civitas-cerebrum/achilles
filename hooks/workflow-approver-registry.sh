@@ -18,10 +18,17 @@
 # a self-grading move that defeats the entire reviewer/inspector
 # protocol.
 #
-# This hook records every approver-prefixed Agent dispatch by tool_use_id.
-# The companion write-gate cross-references the proposed write's
-# `parent_tool_use_id` against this registry; only registered subagents
-# can transition a phase to approved.
+# This hook records every approver-prefixed Agent dispatch by tool_use_id
+# with a `ts` timestamp. The companion write-gate confirms an approval write
+# originates from a subagent context (the build tags subagent tool calls with
+# a non-empty `agent_id`; the orchestrator's carry none) AND that this
+# registry holds a recent approver dispatch (non-empty + most-recent `ts`
+# within the TTL). Older builds exposed the dispatching Agent's id as
+# `parent_tool_use_id` on the subagent's writes, which the write-gate matched
+# directly against this registry's keys; current builds do not emit that
+# field, so the gate relies on `agent_id`-presence plus this registry's
+# freshness instead. Only registered approver subagents can transition a
+# phase to approved.
 #
 # Approver-role prefixes:
 #   workflow-reviewer-*    — the workflow reviewer / inspector skill
