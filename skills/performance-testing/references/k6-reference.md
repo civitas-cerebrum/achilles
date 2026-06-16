@@ -188,6 +188,11 @@ export const handleSummary = writeSummary('checkout');
 
 ## Running
 
+- The `handleSummary` keys are paths relative to the **invocation cwd** — run k6 from the repo
+  root so `tests/perf/results/<slug>.json` lands where `results-analysis.md` expects it.
+- Ensure the output dir exists first: `mkdir -p tests/perf/results`. Older k6 does **not** create
+  a missing directory and silently drops the summary file (exit 0) — a missing JSON looks like a
+  passing run with no results.
 - Smoke first: `k6 run -e PERF_BASE_URL=https://staging.example.com tests/perf/scenarios/checkout.js`
   (temporarily swap the profile to `smoke` for the 1-VU pass).
 - Then the real profile. Exit code 0 = all thresholds held; non-zero = a breach (a finding).
