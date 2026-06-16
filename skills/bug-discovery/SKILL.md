@@ -7,6 +7,9 @@ description: >
   Do NOT use for writing initial tests — that is element-interactions Stages 1-4. Do NOT use for
   expanding coverage — one journey's variant set is test-composer; whole-app iteration is
   coverage-expansion. Do NOT use for evidence-first single-task verification — that is companion-mode.
+  Do NOT use for load / performance testing — "stress test the app" here means adversarial functional
+  probing (malformed input, state corruption, edge cases), not load; throughput /
+  latency-under-concurrency / VU-ramp work routes to performance-testing, not this skill.
   Use only when the goal is to actively discover bugs.
 ---
 
