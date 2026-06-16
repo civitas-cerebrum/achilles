@@ -1,0 +1,45 @@
+name: ✅ CI
+
+# Runs the package's own gates on every PR and on every push to main:
+# schema lint, the full hook-test suite, and the doc-drift lint. These are
+# the same checks publish.yml runs before publishing — running them here
+# catches regressions at PR time instead of at release time.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🗂️  Checkout
+        uses: actions/checkout@v4
+
+      - name: ⚙️  Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Dev deps included: test:hooks → build:validator imports esbuild (devDep)
+      # to bundle the self-contained validator. --ignore-scripts skips the
+      # package's own postinstall (which copies hooks/skills into ~/.claude).
+      - name: 🧩  Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: 🔎  Schemas lint
+        run: npm run schemas:lint
+
+      - name: 🧪  Hook tests
+        run: npm run test:hooks
+
+      - name: 📐  Doc-drift lint
+        run: node scripts/lint-doc-drift.mjs
