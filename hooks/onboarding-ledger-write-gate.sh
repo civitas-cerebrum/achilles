@@ -458,11 +458,22 @@ HAS_NEW_PHASE_APPROVAL=$([ "$NEW_APPROVAL_IDS" = "[]" ] && echo "no" || echo "ye
 HAS_NEW_SUBSTAGE_APPROVAL=$([ "$NEW_SUBSTAGE_APPROVAL_IDS" = "[]" ] && echo "no" || echo "yes")
 
 if [ "$HAS_NEW_PHASE_APPROVAL" = "yes" ] || [ "$HAS_NEW_SUBSTAGE_APPROVAL" = "yes" ]; then
-  PARENT_ID=$(echo "$INPUT" | "$JQ" -r '.parent_tool_use_id // empty' 2>/dev/null || echo "")
+  # Actor-identity discriminator (Claude Code subagent convention).
+  # A tool call from a dispatched subagent carries a non-empty `agent_id`
+  # (+ `agent_type`); the top-level orchestrator's tool calls carry neither.
+  # Older builds exposed the dispatching Agent's id as `parent_tool_use_id`
+  # and this gate matched it against the tool_use_id-keyed approver registry;
+  # current builds do not emit `parent_tool_use_id` (the child's `agent_id`
+  # is assigned after dispatch and cannot be pre-recorded). The convention is
+  # now `agent_id`-presence + a non-empty approver registry; the per-transition
+  # ordering enforced by onboarding-ledger-gate.sh (only an approver-prefixed
+  # dispatch is permitted while a phase is pending-review) guarantees the
+  # subagent writing at an approval moment is the approver.
+  AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
   APPROVAL_SUMMARY="phase ids: $NEW_APPROVAL_IDS, substage ids: $NEW_SUBSTAGE_APPROVAL_IDS"
 
-  if [ -z "$PARENT_ID" ]; then
-    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to reviewerVerdict: \"approved\" but the write is coming directly from the orchestrator context (no parent_tool_use_id).
+  if [ -z "$AGENT_ID" ]; then
+    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to reviewerVerdict: \"approved\" but the write is coming directly from the orchestrator context (no agent_id — not a dispatched subagent).
 
 File: ${FILE_PATH}
 
@@ -501,9 +512,18 @@ verdicts."
     exit 0
   fi
 
-  ENTRY=$("$JQ" -c --arg id "$PARENT_ID" '.[$id] // empty' "$REGISTRY_FILE" 2>/dev/null || echo "")
-  if [ -z "$ENTRY" ]; then
-    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved but the dispatching subagent (parent_tool_use_id=${PARENT_ID}) is NOT in the approver registry.
+  # The registry is keyed by dispatch tool_use_id, but this build's subagent
+  # writes carry `agent_id` (assigned post-dispatch), so the write cannot be
+  # matched to a specific registry entry. Instead require: at least one
+  # approver-prefixed dispatch recorded, AND its registration within the TTL.
+  # The onboarding-ledger-gate.sh ordering check guarantees the only subagent
+  # that can be dispatched while a phase is pending-review is an approver, so
+  # "a recent approver was dispatched + this write is from a subagent" is a
+  # sound proxy for "this write is from the approver".
+  REGISTRY_COUNT=$("$JQ" -r '[keys[]] | length' "$REGISTRY_FILE" 2>/dev/null || echo 0)
+  case "$REGISTRY_COUNT" in ''|*[!0-9]*) REGISTRY_COUNT=0 ;; esac
+  if [ "$REGISTRY_COUNT" -lt 1 ]; then
+    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from a subagent context, but the approver registry is empty.
 
 File: ${FILE_PATH}
 Registry: ${REGISTRY_FILE}
@@ -514,22 +534,23 @@ record approvals:
   workflow-reviewer-<scope>:   the workflow reviewer / inspector skill
   phase-validator-<N>:         per-phase greenlight emitter
 
-The current parent dispatch likely used a different prefix (composer-,
-probe-, cleanup-, etc.). Those roles do the work but do not record
+An empty registry means no approver-role subagent was dispatched. Other
+prefixes (composer-, probe-, cleanup-) do the work but do not record
 verdicts.
 
-Fix: dispatch a \`workflow-reviewer-*\` or \`phase-validator-*\` with this
-write in its scope."
+Fix: dispatch a \`workflow-reviewer-*\` or \`phase-validator-*\` to author
+this approval write."
     exit 0
   fi
 
-  # TTL check — 30 minutes from registration.
+  # TTL check — most recent approver registration within 30 minutes.
   NOW=$(date +%s)
   TTL=1800
-  ENTRY_TS=$(echo "$ENTRY" | "$JQ" -r '.ts // 0' 2>/dev/null || echo "0")
-  ENTRY_AGE=$((NOW - ENTRY_TS))
-  if [ "$ENTRY_AGE" -gt "$TTL" ]; then
-    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from an approver whose registry entry has expired (age ${ENTRY_AGE}s, TTL ${TTL}s).
+  LATEST_TS=$("$JQ" -r '[.[].ts // 0] | max // 0' "$REGISTRY_FILE" 2>/dev/null || echo "0")
+  case "$LATEST_TS" in ''|*[!0-9]*) LATEST_TS=0 ;; esac
+  REG_AGE=$((NOW - LATEST_TS))
+  if [ "$REG_AGE" -gt "$TTL" ]; then
+    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved but the most recent approver registration has expired (age ${REG_AGE}s, TTL ${TTL}s).
 
 Registry entries live for 30 minutes from dispatch. If the approver
 subagent has been running longer than that, re-dispatch a fresh

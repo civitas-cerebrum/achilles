@@ -31,7 +31,7 @@
 #
 # Canonical reference
 # -------------------
-# docs/superpowers/specs/2026-06-12-phase1-harness-integrity-design.md §A3
+# skills/element-interactions/references/harness-hooks.md
 
 set -uo pipefail
 
@@ -111,7 +111,7 @@ Command: ${CMD}
 
 If this only READS the artifact, approve it. If it WRITES the artifact, cancel and use the Write/Edit tool instead (that is where the harness gates live).
 
-See: docs/superpowers/specs/2026-06-12-phase1-harness-integrity-design.md §A3" '{
+See: skills/element-interactions/references/harness-hooks.md" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "ask",
