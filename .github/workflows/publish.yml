@@ -27,12 +27,15 @@ jobs:
       # used by sibling publishing workflows (@civitas-cerebrum/element-repository,
       # @civitas-cerebrum/element-interactions). package-lock.json is committed
       # to the repo so the deterministic install works on the CI runner.
-      # --omit=dev skips dev-only deps (none here resolve via file:// — the
-      # local-link devDep was retired in the 0.1.0 dep restructure).
+      # Dev deps ARE installed: the pre-publish `test:hooks` step runs
+      # `build:validator`, which imports `esbuild` (a devDependency) to bundle
+      # the self-contained validator. Omitting dev deps breaks that build. Dev
+      # deps never reach the published tarball anyway — `files:` in package.json
+      # governs the tarball, not node_modules.
       # --ignore-scripts skips the package's own postinstall (which copies
       # hooks + skills into ~/.claude/ — not what we want on the CI runner).
-      - name: 🧩  Install runtime dependencies
-        run: npm ci --omit=dev --ignore-scripts
+      - name: 🧩  Install dependencies (incl. dev — esbuild needed to build the validator)
+        run: npm ci --ignore-scripts
 
       - name: 🔎  Schemas lint
         run: npm run schemas:lint
