@@ -3,7 +3,7 @@ name: 🧪 Benchmark trigger
 # Fires repository_dispatch to bookhive-benchmark on every PR, so the benchmark
 # CI run can post its results back here.
 # Requires the secret BENCHMARK_DISPATCH_TOKEN: a PAT with `contents: write` on
-# Feyzabora/bookhive-benchmark (enough to send a repository_dispatch).
+# civitas-cerebrum/bookhive-benchmark (enough to send a repository_dispatch).
 
 on:
   pull_request:
@@ -16,7 +16,7 @@ jobs:
       - uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.BENCHMARK_DISPATCH_TOKEN }}
-          repository: Feyzabora/bookhive-benchmark
+          repository: civitas-cerebrum/bookhive-benchmark
           event-type: achilles-pr
           client-payload: |
             {"pr_number":"${{ github.event.pull_request.number }}",
