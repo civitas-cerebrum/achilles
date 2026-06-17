@@ -391,3 +391,178 @@ See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
   done
   return 1
 }
+
+# pipeline_check_sod <tmp_proposed> <file_path> <agent_id>
+# Separation-of-duties: any write that newly approves a phase or substage
+# must come from a dispatched subagent that is in the approver registry and
+# within the TTL. Also strips user-authorised skips from the approval set.
+# Returns 0 + emits deny on violation; 1 when no new approvals (silent pass)
+# or when all checks pass.
+# Requires: JQ
+# The registry file is expected at $(dirname <file_path>)/.workflow-approvers.json
+# Caller: on return 0 → exit 0.
+pipeline_check_sod() {
+  local TMP_PROPOSED="$1"
+  local FILE_PATH="$2"
+  local AGENT_ID="$3"
+
+  # Compute the set of phase ids that are NEWLY approved in this write.
+  local PRIOR_APPROVED NEW_APPROVED NEW_APPROVAL_IDS SKIP_AUTHORISED_IDS
+  if [ -f "$FILE_PATH" ]; then
+    PRIOR_APPROVED=$("$JQ" -c '[.phases[]? | select(.reviewerVerdict == "approved") | .id]' "$FILE_PATH" 2>/dev/null || echo "[]")
+  else
+    PRIOR_APPROVED="[]"
+  fi
+  NEW_APPROVED=$("$JQ" -c '[.phases[]? | select(.reviewerVerdict == "approved") | .id]' "$TMP_PROPOSED" 2>/dev/null || echo "[]")
+
+  NEW_APPROVAL_IDS=$("$JQ" -nc \
+    --argjson prior "$PRIOR_APPROVED" \
+    --argjson new "$NEW_APPROVED" \
+    '[$new[] | select(. as $n | $prior | index($n) | not)]' 2>/dev/null || echo "[]")
+
+  # Carve-out: user-authorised skips. A phase whose `status == "skipped"`
+  # AND has a matching `approvedDeviations[]` entry with a non-empty
+  # `authorizer` field is approved via the user-authorization channel,
+  # not via a reviewer subagent. The authorizer's verbatim quote is the
+  # attestation. Remove these phase ids from the approval-set so the
+  # actor-identity check below doesn't fire on them.
+  SKIP_AUTHORISED_IDS=$("$JQ" -c '
+    [ .phases[]? as $p
+      | select($p.status == "skipped" and $p.reviewerVerdict == "approved")
+      | $p.id as $pid
+      | select(
+          (.approvedDeviations // [])
+          | any(.phase == $pid and ((.authorizer // "") | length) > 0)
+        )
+      | $pid
+    ]
+  ' "$TMP_PROPOSED" 2>/dev/null || echo "[]")
+
+  NEW_APPROVAL_IDS=$("$JQ" -nc \
+    --argjson all "$NEW_APPROVAL_IDS" \
+    --argjson skip "$SKIP_AUTHORISED_IDS" \
+    '[$all[] | select(. as $n | $skip | index($n) | not)]' 2>/dev/null || echo "[]")
+
+  # Same check at sub-stage level (Phase-4 cycles, Phase-5 passes). We
+  # expose the substage approvals as `<phase-id>.<substage-id>` strings.
+  local PRIOR_SUBSTAGE_APPROVED NEW_SUBSTAGE_APPROVED NEW_SUBSTAGE_APPROVAL_IDS
+  if [ -f "$FILE_PATH" ]; then
+    PRIOR_SUBSTAGE_APPROVED=$("$JQ" -c '
+      [ .phases[]? as $p | $p.subStages[]? | select(.reviewerVerdict == "approved")
+        | "\($p.id).\(.id)" ]
+    ' "$FILE_PATH" 2>/dev/null || echo "[]")
+  else
+    PRIOR_SUBSTAGE_APPROVED="[]"
+  fi
+  NEW_SUBSTAGE_APPROVED=$("$JQ" -c '
+    [ .phases[]? as $p | $p.subStages[]? | select(.reviewerVerdict == "approved")
+      | "\($p.id).\(.id)" ]
+  ' "$TMP_PROPOSED" 2>/dev/null || echo "[]")
+  NEW_SUBSTAGE_APPROVAL_IDS=$("$JQ" -nc \
+    --argjson prior "$PRIOR_SUBSTAGE_APPROVED" \
+    --argjson new "$NEW_SUBSTAGE_APPROVED" \
+    '[$new[] | select(. as $n | $prior | index($n) | not)]' 2>/dev/null || echo "[]")
+
+  # Are there any new approvals at all?
+  local HAS_NEW_PHASE_APPROVAL HAS_NEW_SUBSTAGE_APPROVAL
+  HAS_NEW_PHASE_APPROVAL=$([ "$NEW_APPROVAL_IDS" = "[]" ] && echo "no" || echo "yes")
+  HAS_NEW_SUBSTAGE_APPROVAL=$([ "$NEW_SUBSTAGE_APPROVAL_IDS" = "[]" ] && echo "no" || echo "yes")
+
+  if [ "$HAS_NEW_PHASE_APPROVAL" != "yes" ] && [ "$HAS_NEW_SUBSTAGE_APPROVAL" != "yes" ]; then
+    return 1
+  fi
+
+  # Actor-identity discriminator (Claude Code subagent convention).
+  # A tool call from a dispatched subagent carries a non-empty `agent_id`
+  # (+ `agent_type`); the top-level orchestrator's tool calls carry neither.
+  local APPROVAL_SUMMARY
+  APPROVAL_SUMMARY="phase ids: $NEW_APPROVAL_IDS, substage ids: $NEW_SUBSTAGE_APPROVAL_IDS"
+
+  if [ -z "$AGENT_ID" ]; then
+    pipeline_emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to reviewerVerdict: \"approved\" but the write is coming directly from the orchestrator context (no agent_id — not a dispatched subagent).
+
+File: ${FILE_PATH}
+
+This is the separation-of-duties gate: the orchestrator does the work, an
+approver subagent records the verdict. Only writes originating inside a
+\`workflow-reviewer-*\` or \`phase-validator-*\` subagent are permitted to
+transition a reviewerVerdict to approved.
+
+Fix: dispatch the matching approver subagent (e.g. \`workflow-reviewer-phase1:\`
+or \`phase-validator-1:\`) and let it author this write. The orchestrator's
+job ends at dispatch; the approver owns the verdict record.
+
+See:
+  - hooks/workflow-approver-registry.sh (PreToolUse:Agent — records approvers)
+  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
+  - schemas/subagent-returns/workflow-reviewer.schema.json"
+    return 0
+  fi
+
+  # Subagent context — verify the parent is in the approver registry.
+  local REGISTRY_FILE
+  REGISTRY_FILE="$(dirname "$FILE_PATH")/.workflow-approvers.json"
+  if [ ! -f "$REGISTRY_FILE" ]; then
+    pipeline_emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from a subagent context, but no approver registry exists at:
+
+  ${REGISTRY_FILE}
+
+The registry is written by hooks/workflow-approver-registry.sh when a
+\`workflow-reviewer-*\` or \`phase-validator-*\` Agent dispatch fires.
+Its absence means the dispatching Agent did NOT have an approver-role
+description prefix.
+
+Fix: ensure the approving subagent is dispatched with description
+prefix \`workflow-reviewer-<scope>:\` or \`phase-validator-<N>:\`. Other
+prefixes (composer-, probe-, cleanup-) do the work but cannot record
+verdicts."
+    return 0
+  fi
+
+  # The registry is keyed by dispatch tool_use_id, but this build's subagent
+  # writes carry `agent_id` (assigned post-dispatch), so the write cannot be
+  # matched to a specific registry entry. Instead require: at least one
+  # approver-prefixed dispatch recorded, AND its registration within the TTL.
+  local REGISTRY_COUNT
+  REGISTRY_COUNT=$("$JQ" -r '[keys[]] | length' "$REGISTRY_FILE" 2>/dev/null || echo 0)
+  case "$REGISTRY_COUNT" in ''|*[!0-9]*) REGISTRY_COUNT=0 ;; esac
+  if [ "$REGISTRY_COUNT" -lt 1 ]; then
+    pipeline_emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from a subagent context, but the approver registry is empty.
+
+File: ${FILE_PATH}
+Registry: ${REGISTRY_FILE}
+
+Only subagents dispatched with one of these description prefixes can
+record approvals:
+
+  workflow-reviewer-<scope>:   the workflow reviewer / inspector skill
+  phase-validator-<N>:         per-phase greenlight emitter
+
+An empty registry means no approver-role subagent was dispatched. Other
+prefixes (composer-, probe-, cleanup-) do the work but do not record
+verdicts.
+
+Fix: dispatch a \`workflow-reviewer-*\` or \`phase-validator-*\` to author
+this approval write."
+    return 0
+  fi
+
+  # TTL check — most recent approver registration within 30 minutes.
+  local NOW TTL LATEST_TS REG_AGE
+  NOW=$(date +%s)
+  TTL=1800
+  LATEST_TS=$("$JQ" -r '[.[].ts // 0] | max // 0' "$REGISTRY_FILE" 2>/dev/null || echo "0")
+  case "$LATEST_TS" in ''|*[!0-9]*) LATEST_TS=0 ;; esac
+  REG_AGE=$((NOW - LATEST_TS))
+  if [ "$REG_AGE" -gt "$TTL" ]; then
+    pipeline_emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved but the most recent approver registration has expired (age ${REG_AGE}s, TTL ${TTL}s).
+
+Registry entries live for 30 minutes from dispatch. If the approver
+subagent has been running longer than that, re-dispatch a fresh
+\`workflow-reviewer-*\` to land the verdict.
+
+Fix: re-dispatch the approver."
+    return 0
+  fi
+  return 1
+}
