@@ -130,6 +130,75 @@ See:
   return 1
 }
 
+# pipeline_schema_validate <tmp_proposed> <file_path>
+# Validates <tmp_proposed> against the Ajv schema named by PIPELINE_SCHEMA_NAME.
+# Sets PIPELINE_SCHEMA_VALIDATION_SKIPPED=1 when node/bundle are unavailable
+# (schema check is skipped, but jq-parseability check still fires in caller).
+# Returns 0 + emits deny on failure; 1 when schema check was skipped;
+# 2 when validation passed.
+# Requires: PIPELINE_SCHEMA_NAME  NODE_BIN  VALIDATOR  JQ
+# Caller: on return 0 → exit 0.
+pipeline_schema_validate() {
+  local TMP_PROPOSED="$1"
+  local FILE_PATH="$2"
+  PIPELINE_SCHEMA_VALIDATION_SKIPPED=0
+  local VALIDATE_EXIT=0
+  local VALIDATE_OUT=""
+  if [ -z "${NODE_BIN:-}" ] || [ ! -f "${VALIDATOR:-}" ]; then
+    PIPELINE_SCHEMA_VALIDATION_SKIPPED=1
+    return 1
+  fi
+  VALIDATE_OUT=$("$NODE_BIN" "$VALIDATOR" validate "$PIPELINE_SCHEMA_NAME" "$TMP_PROPOSED" 2>&1) || VALIDATE_EXIT=$?
+  if [ "$VALIDATE_EXIT" != "0" ]; then
+    local IS_PARSE_FAIL=0
+    case "$VALIDATE_OUT" in
+      *PARSE_FAIL:*) IS_PARSE_FAIL=1 ;;
+    esac
+    # The bundle reads the data file with a YAML-tolerant parser, so a
+    # non-JSON bare scalar (e.g. 'not-json-at-all') parses as a YAML
+    # string and surfaces as SCHEMA_FAIL ('/ must be object') instead of
+    # PARSE_FAIL. Re-check with jq so the parse/schema deny split stays
+    # accurate for JSON.
+    if [ "$IS_PARSE_FAIL" = "0" ] && ! "$JQ" -e . "$TMP_PROPOSED" >/dev/null 2>&1; then
+      IS_PARSE_FAIL=1
+    fi
+    if [ "$IS_PARSE_FAIL" = "1" ]; then
+      pipeline_emit_deny "[BLOCKED] Proposed ${PIPELINE_SCHEMA_NAME}.json is not parseable JSON.
+
+File: ${FILE_PATH}
+
+The ledger is the single source of truth for the pipeline state. A
+malformed write would silently degrade every downstream gate.
+
+Validator output:
+${VALIDATE_OUT}
+
+Fix: re-author the JSON, run \`jq . <<< '<contents>'\` locally to confirm
+it parses, then re-issue the write.
+
+See: schemas/${PIPELINE_SCHEMA_NAME}.schema.json"
+      return 0
+    fi
+
+    pipeline_emit_deny "[BLOCKED] Proposed ${PIPELINE_SCHEMA_NAME}.json fails schema validation.
+
+File: ${FILE_PATH}
+Schema: ${PIPELINE_SCHEMA_NAME} (inlined in hooks/lib/validator.bundle.mjs; source schemas/${PIPELINE_SCHEMA_NAME}.schema.json)
+
+Validator output:
+${VALIDATE_OUT}
+
+Fix: correct the failing field(s) above; the schema is the authoritative
+spec. The valid + invalid fixtures under schemas/${PIPELINE_SCHEMA_NAME}.fixtures/
+are working examples of the shape.
+
+See: schemas/${PIPELINE_SCHEMA_NAME}.schema.json
+     skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
+    return 0
+  fi
+  return 2
+}
+
 # pipeline_out_of_order_phase_check <description> <current_phase> <infer_fn>
 # Rules 1+2: if the description targets a phase ahead of current and the
 # prior phase is not approved, deny. <infer_fn> is the name of a bash

@@ -98,6 +98,12 @@ case "$NORM_PATH" in
   *) exit 0 ;;
 esac
 
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
+PIPELINE_LEDGER="$FILE_PATH"
+PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
+PIPELINE_SCHEMA_NAME="onboarding-status"
+
 emit_deny() {
   local reason="$1"
   "$JQ" -n --arg r "$reason" '{
@@ -185,68 +191,16 @@ printf '%s' "$PROPOSED_CONTENT" > "$TMP_PROPOSED"
 
 NODE_BIN="${NODE_BIN:-$(command -v node 2>/dev/null || true)}"
 VALIDATOR="$(dirname "${BASH_SOURCE[0]}")/lib/validator.bundle.mjs"
-SCHEMA_VALIDATION_SKIPPED=0
-VALIDATE_EXIT=0
-VALIDATE_OUT=""
-if [ -z "$NODE_BIN" ] || [ ! -f "$VALIDATOR" ]; then
-  SCHEMA_VALIDATION_SKIPPED=1
-else
-  VALIDATE_OUT=$("$NODE_BIN" "$VALIDATOR" validate onboarding-status "$TMP_PROPOSED" 2>&1) || VALIDATE_EXIT=$?
-fi
 
-if [ "$VALIDATE_EXIT" != "0" ]; then
-  IS_PARSE_FAIL=0
-  case "$VALIDATE_OUT" in
-    *PARSE_FAIL:*) IS_PARSE_FAIL=1 ;;
-  esac
-  # The bundle reads the data file with a YAML-tolerant parser, so a
-  # non-JSON bare scalar (e.g. 'not-json-at-all') parses as a YAML
-  # string and surfaces as SCHEMA_FAIL ('/ must be object') instead of
-  # PARSE_FAIL. Re-check with jq so the parse/schema deny split stays
-  # accurate for JSON.
-  if [ "$IS_PARSE_FAIL" = "0" ] && ! "$JQ" -e . "$TMP_PROPOSED" >/dev/null 2>&1; then
-    IS_PARSE_FAIL=1
-  fi
-  if [ "$IS_PARSE_FAIL" = "1" ]; then
-    emit_deny "[BLOCKED] Proposed onboarding-status.json is not parseable JSON.
-
-File: ${FILE_PATH}
-
-The ledger is the single source of truth for the pipeline state. A
-malformed write would silently degrade every downstream gate.
-
-Validator output:
-${VALIDATE_OUT}
-
-Fix: re-author the JSON, run \`jq . <<< '<contents>'\` locally to confirm
-it parses, then re-issue the write.
-
-See: schemas/onboarding-status.schema.json"
-    exit 0
-  fi
-
-  emit_deny "[BLOCKED] Proposed onboarding-status.json fails schema validation.
-
-File: ${FILE_PATH}
-Schema: onboarding-status (inlined in hooks/lib/validator.bundle.mjs; source schemas/onboarding-status.schema.json)
-
-Validator output:
-${VALIDATE_OUT}
-
-Fix: correct the failing field(s) above; the schema is the authoritative
-spec. The valid + invalid fixtures under schemas/onboarding-status.fixtures/
-are working examples of the shape.
-
-See: schemas/onboarding-status.schema.json
-     skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
-  exit 0
-fi
+pipeline_schema_validate "$TMP_PROPOSED" "$FILE_PATH"
+_psv_ret=$?
+[ "$_psv_ret" -eq 0 ] && exit 0
 
 # When schema validation was skipped (no node / no ajv), we still need
 # the proposed content parseable as JSON for the downstream jq queries
 # to be meaningful. Fail-closed: deny on malformed JSON regardless of
 # whether ajv was available.
-if [ "$SCHEMA_VALIDATION_SKIPPED" = "1" ]; then
+if [ "${PIPELINE_SCHEMA_VALIDATION_SKIPPED:-0}" = "1" ]; then
   if ! "$JQ" -e . "$TMP_PROPOSED" >/dev/null 2>&1; then
     emit_deny "[BLOCKED] Proposed onboarding-status.json is not parseable JSON (schema validation was skipped because node/ajv is unavailable, but jq parsing failed).
 
