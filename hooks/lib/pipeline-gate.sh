@@ -84,3 +84,48 @@ pipeline_ledger_integrity_check() {
   fi
   return 2
 }
+
+# pipeline_transition_point_check <description>
+# Rule 3: if the last completed/blocked phase has reviewerVerdict pending,
+# force a reviewer dispatch. Returns 0 + emits deny if gated; 1 otherwise.
+# Requires: PIPELINE_LEDGER  JQ
+pipeline_transition_point_check() {
+  local DESCRIPTION="$1"
+  local LAST_DONE_PHASE LAST_DONE_VERDICT
+  LAST_DONE_PHASE=$("$JQ" -r '
+    [.phases[]? | select(.status == "completed" or .status == "blocked")] |
+    if length == 0 then "" else (.[-1].id | tostring) end
+  ' "$PIPELINE_LEDGER" 2>/dev/null || echo "")
+
+  LAST_DONE_VERDICT=""
+  if [ -n "$LAST_DONE_PHASE" ]; then
+    LAST_DONE_VERDICT=$("$JQ" -r --argjson id "$LAST_DONE_PHASE" '
+      [.phases[]? | select(.id == $id)] | .[0].reviewerVerdict // "pending"
+    ' "$PIPELINE_LEDGER" 2>/dev/null || echo "")
+  fi
+
+  if [ -n "$LAST_DONE_PHASE" ] && [ "$LAST_DONE_VERDICT" = "pending" ]; then
+    pipeline_emit_deny "[BLOCKED] Phase ${LAST_DONE_PHASE} completed but no workflow-reviewer-phase${LAST_DONE_PHASE}: has approved the transition yet.
+
+Description: \"${DESCRIPTION}\"
+
+The ledger at tests/e2e/docs/onboarding-status.json shows phase ${LAST_DONE_PHASE}
+finished (status = completed / blocked) but reviewerVerdict is still
+\"pending\". Every phase / pass / cycle transition is gated by a
+workflow-reviewer-* subagent — the orchestrator cannot start the next
+unit of work until the reviewer for the prior unit has returned
+\`verdict: approve\`.
+
+Fix: dispatch \`workflow-reviewer-phase${LAST_DONE_PHASE}:\` next. Brief
+the reviewer with the ledger row + the closing subagent's handoverEnvelope
+and the canonical exit criteria from skills/onboarding/SKILL.md §\"Phase
+${LAST_DONE_PHASE}\".
+
+See:
+  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
+  - skills/workflow-reviewer/SKILL.md
+  - schemas/subagent-returns/workflow-reviewer.schema.json"
+    return 0
+  fi
+  return 1
+}
