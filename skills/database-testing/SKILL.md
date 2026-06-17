@@ -84,6 +84,18 @@ Before any other phase, verify the installed framework actually exposes `steps.s
 
 If absent, return `status: blocked` with a `blocked-reason` naming the version gap (the installed version vs. the framework version that ships `steps.sql*`). Do NOT fall back to raw `pg`/`mysql` clients in specs — that bypasses the Steps API's provider routing, logging, and assertion surface, and produces specs the framework can never validate.
 
+**Then ensure the engine driver is installed.** element-interactions and sql-client do **not** bundle SQL drivers — you must install the driver for the database under test, or the first `steps.sql*` call throws `UnsupportedEngineException` naming the missing package. Match the driver to the `dbUrl` scheme and install it as a devDependency:
+
+| `dbUrl` scheme | Driver to install |
+|---|---|
+| `postgres://` · `postgresql://` | `npm i -D pg` |
+| `mysql://` · `mariadb://` | `npm i -D mysql2` |
+| `sqlite:` · `file:` · `:memory:` | `npm i -D better-sqlite3` |
+| `mssql://` · `sqlserver://` | `npm i -D mssql` |
+| `oracle://` · `oracledb://` | `npm i -D oracledb` |
+
+Verify it resolves (`node -e "require('pg')"`) before proceeding. This is a one-time setup per project/engine — skip it if the driver is already present.
+
 ### Phase 1 — Discover the schema (introspection)
 
 Query `information_schema` to map the database without prior knowledge:
