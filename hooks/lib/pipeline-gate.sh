@@ -246,3 +246,148 @@ See:
   fi
   return 1
 }
+
+# pipeline_validate_transition <tmp_proposed> <file_path>
+# State-machine transition checks: phase-skip, approved-requires-handover,
+# reviewerCycles+1 on verdict-change, 3rd-reject-must-escalate.
+# Only meaningful when <file_path> exists (prior ledger present).
+# Returns 0 + emits deny on violation; 1 when all checks pass.
+# Requires: JQ
+# Caller: on return 0 → exit 0.
+pipeline_validate_transition() {
+  local TMP_PROPOSED="$1"
+  local FILE_PATH="$2"
+  [ -f "$FILE_PATH" ] || return 1
+
+  local PRIOR_PHASE NEW_PHASE
+  PRIOR_PHASE=$("$JQ" -r '.currentPhase // empty' "$FILE_PATH" 2>/dev/null || echo "")
+  NEW_PHASE=$("$JQ" -r '.currentPhase // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+  case "$PRIOR_PHASE" in ''|*[!0-9]*) PRIOR_PHASE=0 ;; esac
+  case "$NEW_PHASE"   in ''|*[!0-9]*) NEW_PHASE=0 ;; esac
+
+  # Phase-skip detection: new > prior + 1 AND the in-between phase is
+  # still `pending` in the new content.
+  if [ "$NEW_PHASE" -gt "$((PRIOR_PHASE + 1))" ]; then
+    # For every phase id between prior+1 and new-1, check status.
+    local MID_ID MID_STATUS
+    for MID_ID in $(seq $((PRIOR_PHASE + 1)) $((NEW_PHASE - 1))); do
+      MID_STATUS=$("$JQ" -r --argjson id "$MID_ID" '
+        [.phases[]? | select(.id == $id)] | .[0].status // "pending"
+      ' "$TMP_PROPOSED" 2>/dev/null || echo "pending")
+      if [ "$MID_STATUS" = "pending" ] || [ "$MID_STATUS" = "in-progress" ]; then
+        pipeline_emit_deny "[BLOCKED] Out-of-order ledger transition — currentPhase jumped ${PRIOR_PHASE} → ${NEW_PHASE} while phase ${MID_ID} is still \"${MID_STATUS}\".
+
+File: ${FILE_PATH}
+
+Every phase must progress through pending → in-progress → completed in
+order. Skips are allowed only when the phase's status is set to
+\"skipped\" AND an approvedDeviations[] entry carries a verbatim
+authorizer field.
+
+Fix: either (a) complete phase ${MID_ID} first, OR (b) mark phase
+${MID_ID} as status: skipped AND add the corresponding
+approvedDeviations[] entry with the authorizer quote.
+
+See: schemas/onboarding-status.schema.json
+     skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
+        return 0
+      fi
+    done
+  fi
+
+  # reviewerVerdict approved without handoverEnvelope check — scan every
+  # phase's new state for the violation.
+  local BAD_PHASE
+  BAD_PHASE=$("$JQ" -r '
+    [.phases[]? | select(.reviewerVerdict == "approved" and (.handoverEnvelope == null))] |
+    if length == 0 then "" else (.[0].id | tostring) end
+  ' "$TMP_PROPOSED" 2>/dev/null || echo "")
+  if [ -n "$BAD_PHASE" ]; then
+    pipeline_emit_deny "[BLOCKED] Ledger phase ${BAD_PHASE} has reviewerVerdict: \"approved\" but handoverEnvelope is null.
+
+File: ${FILE_PATH}
+
+A phase cannot be approved unless the closing subagent's handover
+envelope is captured in the same record — the reviewer reads the
+envelope as part of its evidence base, and downstream tooling needs the
+envelope to reconstruct what the phase produced.
+
+Fix: populate phases[${BAD_PHASE} - 1].handoverEnvelope with the closing
+subagent's envelope (see schemas/subagent-returns/handover.schema.json
+for the shape) before re-issuing the write.
+
+See: schemas/onboarding-status.schema.json
+     schemas/subagent-returns/handover.schema.json"
+    return 0
+  fi
+
+  # reviewerCycles enforcement.
+  #  - Any write that CHANGES a phase's reviewerVerdict must increment that
+  #    phase's reviewerCycles by exactly 1 (each verdict is one review
+  #    round; skipping the counter hides re-review churn / lets the 3-cap
+  #    be evaded).
+  #  - At reviewerCycles == 3 the verdict may NOT be "rejected": the 3rd
+  #    rejection must escalate — reviewerVerdict "escalated-to-user" AND the
+  #    top-level pipeline status "blocked".
+  local vp_idx PRIOR_V NEW_V PRIOR_C NEW_C PHASE_ID NEW_STATUS_VP HAS_AUTH NEW_PIPE
+  for vp_idx in 0 1 2 3 4 5 6 7; do
+    PRIOR_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$FILE_PATH" 2>/dev/null || echo "")
+    NEW_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
+    [ -n "$NEW_V" ] || continue
+    PRIOR_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$FILE_PATH" 2>/dev/null || echo "0")
+    NEW_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$TMP_PROPOSED" 2>/dev/null || echo "0")
+    case "$PRIOR_C" in ''|*[!0-9]*) PRIOR_C=0 ;; esac
+    case "$NEW_C"   in ''|*[!0-9]*) NEW_C=0 ;; esac
+    PHASE_ID=$((vp_idx + 1))
+    # Exempt user-authorised skips: a phase whose new status is "skipped"
+    # with a matching approvedDeviations[] authorizer is approved via the
+    # user channel, not a reviewer round — reviewerCycles does not apply.
+    NEW_STATUS_VP=$("$JQ" -r ".phases[${vp_idx}].status // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
+    if [ "$NEW_STATUS_VP" = "skipped" ]; then
+      HAS_AUTH=$("$JQ" -r --argjson id "$PHASE_ID" \
+        '((.approvedDeviations // []) | any(.phase == $id and ((.authorizer // "") | length) > 0))' \
+        "$TMP_PROPOSED" 2>/dev/null || echo "false")
+      [ "$HAS_AUTH" = "true" ] && continue
+    fi
+    if [ "$NEW_V" != "$PRIOR_V" ]; then
+      # Verdict changed — reviewerCycles must increment by exactly 1.
+      if [ "$NEW_C" -ne "$((PRIOR_C + 1))" ]; then
+        pipeline_emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict changed (\"${PRIOR_V:-<unset>}\" → \"${NEW_V}\") without incrementing reviewerCycles by exactly 1 (was ${PRIOR_C}, proposed ${NEW_C}).
+
+File: ${FILE_PATH}
+
+Each verdict is one review round. reviewerCycles is the round counter the
+3-cycle escalation cap keys on — a verdict change that doesn't bump it by
+exactly 1 either hides re-review churn or evades the cap.
+
+Fix: set phases[${vp_idx}].reviewerCycles = $((PRIOR_C + 1)) in the same write.
+
+See: schemas/onboarding-status.schema.json
+     skills/workflow-reviewer/SKILL.md §\"Reject cap\""
+        return 0
+      fi
+    fi
+    # 3rd-round rejection must escalate, not reject — fires whenever the
+    # proposed state lands a rejected verdict at the cap, whether or not the
+    # verdict string changed in this write.
+    if [ "$NEW_C" -eq 3 ] && [ "$NEW_V" = "rejected" ]; then
+      NEW_PIPE=$("$JQ" -r '.status // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+      pipeline_emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict \"rejected\" at reviewerCycles == 3.
+
+File: ${FILE_PATH}
+
+The reviewer reject cap is 3 rounds. A 3rd rejection cannot stay
+\"rejected\" — it must escalate to the user: reviewerVerdict
+\"escalated-to-user\" AND the top-level pipeline status \"blocked\"
+(observed pipeline status: \"${NEW_PIPE:-<unset>}\").
+
+Fix: set phases[${vp_idx}].reviewerVerdict = \"escalated-to-user\" and the
+top-level .status = \"blocked\". The orchestrator surfaces the blockage to
+the user rather than looping a 4th review.
+
+See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
+      return 0
+    fi
+  done
+  return 1
+}
