@@ -146,67 +146,29 @@ esac
 pipeline_transition_point_check "$DESCRIPTION" && exit 0
 
 # ---------------------------------------------------------------------------
-# Rule 1 & 2: out-of-order phase / pass / cycle dispatch.
-# Heuristic: if the description names a target phase / pass / cycle that
-# is ahead of the ledger's currentPhase or currentSubStage, and the
-# previous unit has not been reviewer-approved, DENY.
+# Rule 1 & 2: out-of-order phase / pass / cycle dispatch (lib call).
+# Onboarding-specific target-phase inference; the generic rule lives in lib.
 # ---------------------------------------------------------------------------
-# Extract a target-phase hint from the description. Patterns observed:
+# Patterns observed:
 #   phase<N>-*           → target N
-#   composer-happy-path  → Phase 3
-#   phase4-*             → Phase 4
-#   composer-j-*         → Phase 5
-#   probe-j-*            → Phase 6 (if currentPhase >= 5) or Phase 5 adversarial
 #   secrets-sweep-*      → Phase 7
 #   work-summary-deck-*  → Phase 8
-TARGET_PHASE=""
-case "$DESCRIPTION" in
-  phase1-*|phase1_*) TARGET_PHASE=1 ;;
-  phase2-*|phase2_*) TARGET_PHASE=2 ;;
-  phase3-*|phase3_*) TARGET_PHASE=3 ;;
-  phase4-*|phase4_*) TARGET_PHASE=4 ;;
-  phase5-*|phase5_*) TARGET_PHASE=5 ;;
-  phase6-*|phase6_*) TARGET_PHASE=6 ;;
-  phase7-*|phase7_*) TARGET_PHASE=7 ;;
-  phase8-*|phase8_*) TARGET_PHASE=8 ;;
-  secrets-sweep-*|secrets_sweep-*) TARGET_PHASE=7 ;;
-  work-summary-deck-*|qa-summary-*) TARGET_PHASE=8 ;;
-esac
-
-# If the target-phase is known AND ahead of the current phase, check the
-# prior phase's verdict.
-if [ -n "$TARGET_PHASE" ] && [ "$TARGET_PHASE" -gt "$CURRENT_PHASE" ]; then
-  PRIOR_PHASE=$((TARGET_PHASE - 1))
-  PRIOR_VERDICT=$("$JQ" -r --argjson id "$PRIOR_PHASE" '
-    [.phases[]? | select(.id == $id)] | .[0].reviewerVerdict // "pending"
-  ' "$LEDGER" 2>/dev/null || echo "pending")
-  if [ "$PRIOR_VERDICT" != "approved" ]; then
-    emit_deny "[BLOCKED] Out-of-order phase dispatch — phase ${TARGET_PHASE} cannot start while phase ${PRIOR_PHASE} is not reviewer-approved.
-
-Description: \"${DESCRIPTION}\"
-
-The ledger at tests/e2e/docs/onboarding-status.json shows:
-  currentPhase     = ${CURRENT_PHASE}
-  target phase     = ${TARGET_PHASE} (inferred from the dispatch description)
-  prior phase      = ${PRIOR_PHASE}
-  prior verdict    = \"${PRIOR_VERDICT}\" (must be \"approved\")
-
-Every phase transition is state-machine-enforced via the
-workflow-reviewer-* subagent family.
-
-Fix: dispatch \`workflow-reviewer-phase${PRIOR_PHASE}:\` first. If the
-reviewer returns \`verdict: approve\`, the orchestrator updates the
-ledger (reviewerVerdict → approved, currentPhase → ${TARGET_PHASE}) and
-re-issues this dispatch.
-
-See:
-  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
-  - skills/workflow-reviewer/SKILL.md
-  - schemas/onboarding-status.schema.json
-  - schemas/subagent-returns/workflow-reviewer.schema.json"
-    exit 0
-  fi
-fi
+onboarding_infer_target_phase() {
+  local DESC="$1"
+  case "$DESC" in
+    phase1-*|phase1_*) echo 1 ;;
+    phase2-*|phase2_*) echo 2 ;;
+    phase3-*|phase3_*) echo 3 ;;
+    phase4-*|phase4_*) echo 4 ;;
+    phase5-*|phase5_*) echo 5 ;;
+    phase6-*|phase6_*) echo 6 ;;
+    phase7-*|phase7_*) echo 7 ;;
+    phase8-*|phase8_*) echo 8 ;;
+    secrets-sweep-*|secrets_sweep-*) echo 7 ;;
+    work-summary-deck-*|qa-summary-*) echo 8 ;;
+  esac
+}
+pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" onboarding_infer_target_phase && exit 0
 
 # ---------------------------------------------------------------------------
 # Sub-stage gate (Phase 4 cycles + Phase 5 passes).

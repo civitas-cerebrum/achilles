@@ -129,3 +129,51 @@ See:
   fi
   return 1
 }
+
+# pipeline_out_of_order_phase_check <description> <current_phase> <infer_fn>
+# Rules 1+2: if the description targets a phase ahead of current and the
+# prior phase is not approved, deny. <infer_fn> is the name of a bash
+# function defined by the caller that echoes the target phase number (or
+# empty string) given the description.
+# Returns 0 + emits deny if gated; 1 for fall-through.
+# Requires: PIPELINE_LEDGER  JQ
+pipeline_out_of_order_phase_check() {
+  local DESCRIPTION="$1"
+  local CURRENT_PHASE="$2"
+  local INFER_FN="$3"
+  local TARGET_PHASE PRIOR_PHASE PRIOR_VERDICT
+  TARGET_PHASE=$("$INFER_FN" "$DESCRIPTION")
+  if [ -n "$TARGET_PHASE" ] && [ "$TARGET_PHASE" -gt "$CURRENT_PHASE" ]; then
+    PRIOR_PHASE=$((TARGET_PHASE - 1))
+    PRIOR_VERDICT=$("$JQ" -r --argjson id "$PRIOR_PHASE" '
+      [.phases[]? | select(.id == $id)] | .[0].reviewerVerdict // "pending"
+    ' "$PIPELINE_LEDGER" 2>/dev/null || echo "pending")
+    if [ "$PRIOR_VERDICT" != "approved" ]; then
+      pipeline_emit_deny "[BLOCKED] Out-of-order phase dispatch — phase ${TARGET_PHASE} cannot start while phase ${PRIOR_PHASE} is not reviewer-approved.
+
+Description: \"${DESCRIPTION}\"
+
+The ledger at tests/e2e/docs/onboarding-status.json shows:
+  currentPhase     = ${CURRENT_PHASE}
+  target phase     = ${TARGET_PHASE} (inferred from the dispatch description)
+  prior phase      = ${PRIOR_PHASE}
+  prior verdict    = \"${PRIOR_VERDICT}\" (must be \"approved\")
+
+Every phase transition is state-machine-enforced via the
+workflow-reviewer-* subagent family.
+
+Fix: dispatch \`workflow-reviewer-phase${PRIOR_PHASE}:\` first. If the
+reviewer returns \`verdict: approve\`, the orchestrator updates the
+ledger (reviewerVerdict → approved, currentPhase → ${TARGET_PHASE}) and
+re-issues this dispatch.
+
+See:
+  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
+  - skills/workflow-reviewer/SKILL.md
+  - schemas/onboarding-status.schema.json
+  - schemas/subagent-returns/workflow-reviewer.schema.json"
+      return 0
+    fi
+  fi
+  return 1
+}
