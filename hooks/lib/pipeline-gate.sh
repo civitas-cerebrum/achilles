@@ -58,3 +58,29 @@ See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
   fi
   return 1
 }
+
+# pipeline_ledger_integrity_check
+# Missing-ledger + hash-chain guard. Returns 0 and emits deny on violation;
+# returns 1 to signal "ledger absent but clean" (silent allow); returns 2
+# when ledger exists and is valid (fall-through to further checks).
+# Caller: on return 0 → exit 0; on return 1 → exit 0; on return 2 → continue.
+# Requires: PIPELINE_LEDGER  PIPELINE_SIDECAR  JQ  file_sha256 (from hash.sh)
+pipeline_ledger_integrity_check() {
+  if [ ! -f "$PIPELINE_LEDGER" ]; then
+    if [ -f "$PIPELINE_SIDECAR" ] && [ -n "$("$JQ" -r '.records[-1].sha256 // empty' "$PIPELINE_SIDECAR" 2>/dev/null)" ]; then
+      pipeline_emit_deny "[BLOCKED] onboarding-status.json is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing tests/e2e/docs/.ledger-integrity.json in their own terminal."
+      return 0
+    fi
+    return 1
+  fi
+  if [ -f "$PIPELINE_SIDECAR" ]; then
+    CHAIN_LATEST=$("$JQ" -r '.records[-1].sha256 // empty' "$PIPELINE_SIDECAR" 2>/dev/null || echo "")
+    CHAIN_PREV=$("$JQ" -r '.records[-2].sha256 // empty' "$PIPELINE_SIDECAR" 2>/dev/null || echo "")
+    LEDGER_HASH=$(file_sha256 "$PIPELINE_LEDGER")
+    if [ -n "$CHAIN_LATEST" ] && [ -n "$LEDGER_HASH" ] && [ "$LEDGER_HASH" != "$CHAIN_LATEST" ] && [ "$LEDGER_HASH" != "$CHAIN_PREV" ]; then
+      pipeline_emit_deny "[BLOCKED] onboarding-status.json does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete tests/e2e/docs/.ledger-integrity.json in their own terminal)."
+      return 0
+    fi
+  fi
+  return 2
+}

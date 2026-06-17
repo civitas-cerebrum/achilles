@@ -123,28 +123,11 @@ if is_reviewer_description "$DESCRIPTION"; then
   exit 0
 fi
 
-# Rule 5: silent-allow when the ledger is missing — brand-new run. But a
-# missing ledger WITH a surviving integrity sidecar is the rm-reset trick:
-# deny until the operator clears both files.
-if [ ! -f "$LEDGER" ]; then
-  if [ -f "$SIDECAR" ] && [ -n "$("$JQ" -r '.records[-1].sha256 // empty' "$SIDECAR" 2>/dev/null)" ]; then
-    emit_deny "[BLOCKED] onboarding-status.json is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing tests/e2e/docs/.ledger-integrity.json in their own terminal."
-    exit 0
-  fi
-  exit 0
-fi
-
-# Integrity verify: the ledger must match its sanctioned hash chain
-# before any of its state is honored for dispatch decisions.
-if [ -f "$SIDECAR" ]; then
-  CHAIN_LATEST=$("$JQ" -r '.records[-1].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
-  CHAIN_PREV=$("$JQ" -r '.records[-2].sha256 // empty' "$SIDECAR" 2>/dev/null || echo "")
-  LEDGER_HASH=$(file_sha256 "$LEDGER")
-  if [ -n "$CHAIN_LATEST" ] && [ -n "$LEDGER_HASH" ] && [ "$LEDGER_HASH" != "$CHAIN_LATEST" ] && [ "$LEDGER_HASH" != "$CHAIN_PREV" ]; then
-    emit_deny "[BLOCKED] onboarding-status.json does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete tests/e2e/docs/.ledger-integrity.json in their own terminal)."
-    exit 0
-  fi
-fi
+# Rule 5 + integrity verify: missing-ledger guard and hash-chain check.
+pipeline_ledger_integrity_check
+_lic_ret=$?
+[ "$_lic_ret" -eq 0 ] && exit 0
+[ "$_lic_ret" -eq 1 ] && exit 0
 
 # Probe the ledger. Any extraction failure → silent allow (malformed
 # ledger should not jam the pipeline; the write-gate is responsible for
