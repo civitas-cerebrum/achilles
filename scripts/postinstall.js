@@ -206,6 +206,10 @@ const HOOK_MANIFEST = [
   // the external benchmark (Feyzabora/bookhive-benchmark) has an authoritative
   // self-report. No-op outside benchmark runs; just emits a fresh file each Stop.
   { file: 'run-summary-writer.sh',                       event: 'Stop', matcher: null,                 timeout: 15 },
+  // perf-onboarding — writes <project>/.achilles/perf-summary.json at Stop when
+  // tests/perf/docs/perf-onboarding-status.json exists (perf projects only).
+  // NO-OP on non-perf projects; never interferes with run-summary-writer.sh.
+  { file: 'perf-summary-writer.sh',                      event: 'Stop', matcher: null,                 timeout: 15 },
 ];
 
 function copyHookFile(hookSrc, hookDest) {

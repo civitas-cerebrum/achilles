@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "pipelineVersion": "0.1.0",
+  "runMode": "standard",
+  "startedAt": "2026-06-18T09:00:00Z",
+  "currentPhase": 5,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1, "name": "Scaffold",
+      "startedAt": "2026-06-18T09:00:00Z", "finishedAt": "2026-06-18T09:10:00Z",
+      "status": "completed",
+      "reviewerVerdict": "approved", "reviewerCycles": 1, "reviewerFindings": []
+    },
+    {
+      "id": 2, "name": "Readiness",
+      "startedAt": "2026-06-18T09:10:00Z", "finishedAt": "2026-06-18T09:30:00Z",
+      "status": "completed",
+      "reviewerVerdict": "approved", "reviewerCycles": 1, "reviewerFindings": []
+    }
+  ],
+  "approvedDeviations": []
+}

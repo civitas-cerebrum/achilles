@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/perf-summary.schema.json",
+  "title": "Achilles perf summary (perf-summary/v1)",
+  "description": "Contract for <project>/.achilles/perf-summary.json as emitted by hooks/perf-summary-writer.sh (Stop hook) — the authoritative self-report for the perf-onboarding pipeline. The slo_results block is null-statused when no k6 results file exists; verdict and metrics are never fabricated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meta", "phases", "scenarios", "slo_results", "breaches", "baseline_comparison"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "generatedAt", "gitSha", "runMode"],
+      "properties": {
+        "schema": { "const": "perf-summary/v1" },
+        "generatedAt": { "type": "string", "format": "date-time", "description": "UTC timestamp of when perf-summary-writer.sh ran." },
+        "gitSha": { "type": "string", "description": "HEAD sha of the project repo; empty string outside a git checkout." },
+        "runMode": { "type": "string", "description": "runMode from the perf-onboarding ledger; empty string when not parseable." }
+      }
+    },
+    "phases": {
+      "type": "array",
+      "description": "Verbatim .phases array from tests/perf/docs/perf-onboarding-status.json; empty when the ledger is absent.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "scenarios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files"],
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Every *.js path found under tests/perf/scenarios/."
+        }
+      }
+    },
+    "slo_results": {
+      "type": "array",
+      "description": "Per-scenario SLO result parsed from tests/perf/results/*.json (k6 handleSummary JSON). Metrics and verdict are null when no result file was found — never a fabricated pass.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "p95Ms", "p99Ms", "errorRate", "throughput", "verdict"],
+        "properties": {
+          "scenario": { "type": "string" },
+          "p95Ms": { "type": ["number", "null"] },
+          "p99Ms": { "type": ["number", "null"] },
+          "errorRate": { "type": ["number", "null"] },
+          "throughput": { "type": ["number", "null"] },
+          "verdict": {
+            "enum": ["passing", "failing", null],
+            "description": "null when no result file was found — never a fake pass."
+          }
+        }
+      }
+    },
+    "breaches": {
+      "type": "array",
+      "description": "SLO threshold breaches; empty when none parseable.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "severity", "condition"],
+        "properties": {
+          "scenario": { "type": "string" },
+          "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+          "condition": { "type": "string" }
+        }
+      }
+    },
+    "baseline_comparison": {
+      "type": "array",
+      "description": "Per-scenario comparison against tests/perf/baselines/*.json; fields are null when either baseline or results are absent.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "baselineP95Ms", "currentP95Ms", "regressionPct"],
+        "properties": {
+          "scenario": { "type": "string" },
+          "baselineP95Ms": { "type": ["number", "null"] },
+          "currentP95Ms": { "type": ["number", "null"] },
+          "regressionPct": { "type": ["number", "null"] }
+        }
+      }
+    }
+  }
+}
