@@ -148,6 +148,12 @@ const HOOK_MANIFEST = [
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+  // Perf-onboarding pipeline gates: same phase-machine model as the
+  // onboarding pipeline, scoped to tests/perf/docs/perf-onboarding-status.json
+  // and the perf-reviewer-* subagent family.
+  { file: 'perf-onboarding-ledger-gate.sh',       event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
+  { file: 'perf-onboarding-ledger-write-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+  { file: 'perf-load-safety-gate.sh',             event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   // Harness self-protection: deny Write|Edit to the installed hook surface
   // (~/.claude/hooks/*) and settings.json/settings.local.json. Closes the
   // Write|Edit vector that protected-artifact-bash-guard.sh covers only for
