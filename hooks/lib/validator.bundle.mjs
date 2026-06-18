@@ -15773,6 +15773,206 @@ var onboarding_status_schema_default = {
   }
 };
 
+// schemas/perf-onboarding-status.schema.json
+var perf_onboarding_status_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://civitas-cerebrum.github.io/element-interactions/schemas/perf-onboarding-status.schema.json",
+  title: "Perf-onboarding pipeline status ledger",
+  description: "Single source of truth for the perf-onboarding pipeline's state. Owned by the perf orchestrator (interactive) or an external automated CLI driver. Read by the workflow-reviewer-* subagents and by the perf-ledger-* hooks. Lives at tests/perf/docs/perf-onboarding-status.json in consumer projects (gitignored \u2014 same pattern as .phase4-cycle-state.json + coverage-expansion-state.json).",
+  type: "object",
+  additionalProperties: true,
+  required: [
+    "schemaVersion",
+    "pipelineVersion",
+    "runMode",
+    "startedAt",
+    "currentPhase",
+    "status",
+    "phases"
+  ],
+  properties: {
+    schemaVersion: {
+      type: "integer",
+      const: 1,
+      description: "Schema version for forward-compat. Bump when the shape changes."
+    },
+    pipelineVersion: {
+      type: "string",
+      description: "The achilles methodology package version that produced this ledger, e.g. '1.0.0'. Used by the workflow-reviewer to check it is reading a ledger shape it understands."
+    },
+    runMode: {
+      type: "string",
+      enum: ["standard", "depth"],
+      description: "Mirrors the value captured at the onboarding front-load gate. Propagates to Phase 4 cycleStrictness and Phase 5 coverage-expansion runMode."
+    },
+    modeAuthorizer: {
+      type: "string",
+      minLength: 1,
+      description: "Verbatim operator quote authorising the persisted runMode. Required by the write-gate whenever runMode is set or changed (gate-enforced co-location; the schema documents the field, the gate enforces the pairing)."
+    },
+    startedAt: {
+      type: "string",
+      format: "date-time",
+      description: "ISO-8601 timestamp of the front-load gate completion (Step 0 mode selection done, preconditions confirmed)."
+    },
+    currentPhase: {
+      type: "integer",
+      minimum: 1,
+      maximum: 7,
+      description: "1=Scaffold, 2=Readiness, 3=Scenario-model, 4=Baseline, 5=Load-run, 6=Threshold-gate, 7=Report."
+    },
+    currentSubStage: {
+      type: ["string", "null"],
+      description: "For phase 5 (Load-run) only. Values: pass-load|pass-stress|pass-spike|pass-soak. Null otherwise.",
+      pattern: "^pass-(load|stress|spike|soak)$"
+    },
+    status: {
+      type: "string",
+      enum: ["in-progress", "blocked", "complete", "aborted"],
+      description: "Pipeline-level status."
+    },
+    phases: {
+      type: "array",
+      minItems: 7,
+      maxItems: 7,
+      description: "Length-7 array, populated as the run progresses. Phases 1-7 in order.",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["id", "name", "status"],
+        properties: {
+          id: {
+            type: "integer",
+            minimum: 1,
+            maximum: 7
+          },
+          name: {
+            type: "string",
+            enum: [
+              "Scaffold",
+              "Readiness",
+              "Scenario-model",
+              "Baseline",
+              "Load-run",
+              "Threshold-gate",
+              "Report"
+            ]
+          },
+          startedAt: {
+            type: ["string", "null"],
+            format: "date-time"
+          },
+          finishedAt: {
+            type: ["string", "null"],
+            format: "date-time"
+          },
+          status: {
+            type: "string",
+            enum: ["pending", "in-progress", "completed", "blocked", "skipped"]
+          },
+          handoverEnvelope: {
+            type: ["object", "null"],
+            additionalProperties: true,
+            description: "The closing subagent's handover envelope for this phase. See schemas/subagent-returns/handover.schema.json. Required (non-null) when reviewerVerdict != 'pending'."
+          },
+          reviewerVerdict: {
+            type: ["string", "null"],
+            enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+          },
+          reviewerCycles: {
+            type: "integer",
+            minimum: 0,
+            maximum: 3,
+            description: "Number of workflow-reviewer-* dispatches for this phase. Cap is 3; the 3rd rejection escalates."
+          },
+          reviewerFindings: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                "checklist-item": { type: "string" },
+                "what-missing": { type: "string" },
+                "methodology-ref": { type: "string" },
+                "fix-instruction": { type: "string" }
+              }
+            }
+          },
+          deliverables: {
+            type: "array",
+            items: { type: "string" },
+            description: "Relative paths of files committed during this phase."
+          },
+          subStages: {
+            type: "array",
+            description: "Optional. Used by phase 5 (Load-run).",
+            items: {
+              type: "object",
+              additionalProperties: true,
+              required: ["id", "status"],
+              properties: {
+                id: {
+                  type: "string",
+                  pattern: "^pass-(load|stress|spike|soak)$"
+                },
+                status: {
+                  type: "string",
+                  enum: ["pending", "in-progress", "completed", "blocked", "skipped"]
+                },
+                handoverEnvelope: {
+                  type: ["object", "null"],
+                  additionalProperties: true
+                },
+                reviewerVerdict: {
+                  type: ["string", "null"],
+                  enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+                },
+                reviewerCycles: {
+                  type: "integer",
+                  minimum: 0,
+                  maximum: 3
+                },
+                reviewerFindings: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    approvedDeviations: {
+      type: "array",
+      description: "Structured exceptions: skip-phase / early-stop authorisations captured during the run.",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["phase", "deviation", "authorizer"],
+        properties: {
+          phase: {
+            type: "integer",
+            minimum: 1,
+            maximum: 7
+          },
+          deviation: {
+            type: "string",
+            description: "Short description, e.g. 'skipped' or 'early-stop-at-pass-3'."
+          },
+          authorizer: {
+            type: "string",
+            minLength: 1,
+            description: "Verbatim user quote OR a structured reviewer attestation (e.g. 'reviewer-attestation: phase6-redundant-with-phase5')."
+          }
+        }
+      }
+    }
+  }
+};
+
 // schemas/run-summary.schema.json
 var run_summary_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -15877,6 +16077,7 @@ var SCHEMAS = {
   "section-agent": section_agent_schema_default,
   "workflow-reviewer": workflow_reviewer_schema_default,
   "onboarding-status": onboarding_status_schema_default,
+  "perf-onboarding-status": perf_onboarding_status_schema_default,
   "run-summary": run_summary_schema_default
 };
 function makeAjv() {

@@ -129,6 +129,7 @@ function validateStandaloneFixtures(schemaPath, fixturesDirPath) {
 
 validateStandaloneFixtures('schemas/contribution-handover.schema.json', 'schemas/contribution-handover.fixtures');
 validateStandaloneFixtures('schemas/run-summary.schema.json', 'schemas/run-summary.fixtures');
+validateStandaloneFixtures('schemas/perf-onboarding-status.schema.json', 'schemas/perf-onboarding-status.fixtures');
 
 // ---------------------------------------------------------------------------
 // Onboarding-status ledger fixtures
