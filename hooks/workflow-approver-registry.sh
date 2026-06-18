@@ -59,6 +59,8 @@ is_reviewer_description "$DESCRIPTION" || exit 0
 # Role extraction (after the boolean check) — which approver family.
 if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*workflow-reviewer-'; then
   APPROVER_ROLE="workflow-reviewer"
+elif echo "$DESCRIPTION" | grep -qE '^[[:space:]]*perf-reviewer-'; then
+  APPROVER_ROLE="perf-reviewer"
 else
   APPROVER_ROLE="phase-validator"
 fi
@@ -68,7 +70,12 @@ AGENT_TOOL_USE_ID=$(echo "$INPUT" | "$JQ" -r '.tool_use_id // empty' 2>/dev/null
 
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 REPO_ROOT=$(cd "$GUARD_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-REGISTRY_DIR="$REPO_ROOT/tests/e2e/docs"
+# Route perf-reviewer dispatches to the perf registry; all others use e2e.
+if [ "$APPROVER_ROLE" = "perf-reviewer" ]; then
+  REGISTRY_DIR="$REPO_ROOT/tests/perf/docs"
+else
+  REGISTRY_DIR="$REPO_ROOT/tests/e2e/docs"
+fi
 REGISTRY_FILE="$REGISTRY_DIR/.workflow-approvers.json"
 
 # Best-effort: if the docs dir doesn't exist yet (early in Phase 1), the
