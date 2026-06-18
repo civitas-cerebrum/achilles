@@ -76,7 +76,8 @@ NORM="/${FILE_PATH#/}"
 
 # --- Class 1: hook-authored state — never Write|Edit. ---
 case "$NORM" in
-  */tests/e2e/docs/.workflow-approvers.json)
+  */tests/e2e/docs/.workflow-approvers.json | \
+  */tests/perf/docs/.workflow-approvers.json)
     emit_deny "[BLOCKED] .workflow-approvers.json is hook-authored state.
 
 File: ${FILE_PATH}
@@ -89,7 +90,8 @@ relies on to verify that approvals come from a registered approver context.
 Fix: do not write this file. Dispatch the approver subagent with the correct
 description prefix; the registry hook records it automatically."
     ;;
-  */tests/e2e/docs/.ledger-integrity.json)
+  */tests/e2e/docs/.ledger-integrity.json | \
+  */tests/perf/docs/.ledger-integrity.json)
     emit_deny "[BLOCKED] .ledger-integrity.json is hook-authored state.
 
 File: ${FILE_PATH}
