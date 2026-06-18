@@ -37,6 +37,7 @@
 #   # ... use $SCHEMA_ROLE
 resolve_schema_role() {
   case "$1" in
+    perf-reviewer-*)          echo "perf-reviewer";          return 0 ;;
     workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;
     composer-*)               echo "composer";               return 0 ;;
     reviewer-*)               echo "reviewer-inloop";        return 0 ;;
@@ -67,6 +68,6 @@ resolve_schema_role() {
 # resolve_schema_role and the post-only function was deleted — both the
 # PreToolUse preread gate and the PostToolUse return guard now use
 # resolve_schema_role directly.
-# NOTE: the workflow-reviewer-* case is listed BEFORE reviewer-* for
-# clarity; case globs anchor at the string start so there is no actual
-# overlap ("workflow-reviewer-…" does not match "reviewer-*").
+# NOTE: perf-reviewer-* is listed BEFORE workflow-reviewer-* and reviewer-*
+# so it cannot be shadowed by either broader pattern; case globs anchor at
+# the string start so there is no overlap between the three.

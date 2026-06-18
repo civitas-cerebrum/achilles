@@ -309,6 +309,7 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 | `probe-<j-slug>:` | Adversarial — `probes:` + `boundaries:` + `findings:` count or list |
 | `phase-validator-<N>:` | Phase-exit checkpoint (§2.5) — `status:` + `phase:` + `exit-criteria-checked:` array + `summary:` (REQUIRED on both statuses) + `findings: []` literal on greenlight \| ≥1 `pv-<phase>-<nn>` must-fix on improvements-needed |
 | `workflow-reviewer-<scope>:` | Workflow-reviewer (`workflow-reviewer.schema.json`) — `verdict:` (approve \| reject \| escalate) + cycle accounting |
+| `perf-reviewer-<scope>:` | Perf-reviewer (`perf-reviewer.schema.json`) — `verdict:` (approve \| reject \| escalate) + cycle accounting for the perf-onboarding pipeline |
 | `phase4-prioritise-author*` | Phase-4 prioritise-author (`phase4-prioritise-author.schema.json`) — convergence + authored journeys |
 | `phase4-cycle-<N>:` | Phase-4 section agent (`section-agent.schema.json`) |
 | `process-validator-` / `phase1-` / `stage2-` / `cleanup-` / `companion-` / `fd-` | Envelope-sanity only — the §2.0 handover envelope is parsed; no per-role JSON-Schema validation |

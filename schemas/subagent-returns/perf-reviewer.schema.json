@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/subagent-returns/perf-reviewer.schema.json",
+  "title": "Perf-reviewer return",
+  "description": "Return shape for the perf-reviewer-phase<N>: / perf-reviewer-pass-<load|stress|spike|soak>: subagent family. Fires between each perf-onboarding phase and after each load-test pass. Gates the next transition: on approve, the orchestrator advances; on reject (cap 3), the orchestrator surgically fixes per findings + re-dispatches the same reviewer; on the 3rd consecutive reject the reviewer returns escalated-to-user and the run pauses for human triage.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["handover", "verdict"],
+  "properties": {
+    "handover": {
+      "allOf": [
+        { "$ref": "handover.schema.json" },
+        {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "pattern": "^perf-reviewer-(phase[1-7]|pass-(load|stress|spike|soak))$"
+            },
+            "status": {
+              "enum": ["approved", "rejected", "escalated-to-user"]
+            }
+          }
+        }
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "reject", "escalate"]
+    },
+    "phase": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 7,
+      "description": "Perf-onboarding phase being reviewed (perf-reviewer-phase<N> only)."
+    },
+    "pass": {
+      "type": ["string", "null"],
+      "enum": ["load", "stress", "spike", "soak", null],
+      "description": "Load-test pass being reviewed (perf-reviewer-pass-<load|stress|spike|soak> only)."
+    },
+    "checklist": {
+      "type": "array",
+      "description": "Per-item pass/fail of the canonical perf-onboarding exit criteria.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["item", "satisfied"],
+        "properties": {
+          "item": { "type": "string" },
+          "satisfied": { "type": "boolean" },
+          "evidence": { "type": "string" },
+          "methodology-ref": { "type": "string" }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Surgical fix list. Required when verdict == 'reject' or 'escalate'. Empty when verdict == 'approve'.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["checklist-item", "what-missing", "fix-instruction"],
+        "properties": {
+          "checklist-item": { "type": "string" },
+          "what-missing": { "type": "string" },
+          "methodology-ref": { "type": "string" },
+          "fix-instruction": { "type": "string" }
+        }
+      }
+    },
+    "attestation": {
+      "type": "string",
+      "description": "One-line summary of what was verified. Required when verdict == 'approve'."
+    },
+    "authorizer": {
+      "type": "string",
+      "description": "Required when the reviewer approves a skip / early-stop transition. Must carry either a verbatim user quote OR a documented structural exception."
+    },
+    "reviewerCycle": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "description": "Which perf-reviewer dispatch this is for the phase / pass. The orchestrator increments per reject."
+    },
+    "summary": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": { "verdict": { "const": "approve" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["attestation"],
+        "properties": {
+          "attestation": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "verdict": { "const": "reject" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["findings"],
+        "properties": {
+          "findings": { "type": "array", "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "verdict": { "const": "escalate" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["findings"],
+        "properties": {
+          "findings": { "type": "array", "minItems": 1 }
+        }
+      }
+    }
+  ]
+}
