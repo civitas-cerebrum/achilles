@@ -10,6 +10,16 @@
 #   PIPELINE_SCHEMA_NAME   — validator-bundle schema id (write-gate only)
 #   PIPELINE_CAP_PREFIX_RE — sed -E capture extracting a reviewer's target phase
 #   JQ                     — path to jq (the gate resolves this already)
+#
+# Message-token contract (set by the sourcing gate alongside the above):
+#   PIPELINE_MSG_LEDGER_NAME   — bare ledger filename (e.g. onboarding-status.json)
+#   PIPELINE_MSG_SIDECAR_REL   — relative sidecar path (e.g. tests/e2e/docs/.ledger-integrity.json)
+#   PIPELINE_MSG_LEDGER_REL    — relative ledger path  (e.g. tests/e2e/docs/onboarding-status.json)
+#   PIPELINE_MSG_REVIEWER_LABEL — reviewer description prefix without trailing number/colon
+#                                 (e.g. workflow-reviewer-phase — appended with "${N}:")
+#   PIPELINE_MSG_SKILL_REF     — orchestrator skill path (e.g. skills/onboarding/SKILL.md)
+#   PIPELINE_MSG_SCHEMA_REF    — ledger schema path (e.g. schemas/onboarding-status.schema.json)
+#   PIPELINE_MSG_REVIEWER_SKILL — reviewer skill path (e.g. skills/workflow-reviewer/SKILL.md)
 
 # Emit a PreToolUse deny payload with the supplied reason (stdout JSON).
 pipeline_emit_deny() {
@@ -51,7 +61,7 @@ Fix: stop re-dispatching the reviewer. Update the ledger so phase
 ${CAP_PHASE} carries reviewerVerdict \"escalated-to-user\" and surface the
 blockage to the user.
 
-See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
+See: ${PIPELINE_MSG_REVIEWER_SKILL} §\"Reject cap\" (3-cycle limit)"
         return 0
       fi
     fi
@@ -68,7 +78,7 @@ See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
 pipeline_ledger_integrity_check() {
   if [ ! -f "$PIPELINE_LEDGER" ]; then
     if [ -f "$PIPELINE_SIDECAR" ] && [ -n "$("$JQ" -r '.records[-1].sha256 // empty' "$PIPELINE_SIDECAR" 2>/dev/null)" ]; then
-      pipeline_emit_deny "[BLOCKED] onboarding-status.json is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing tests/e2e/docs/.ledger-integrity.json in their own terminal."
+      pipeline_emit_deny "[BLOCKED] ${PIPELINE_MSG_LEDGER_NAME} is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing ${PIPELINE_MSG_SIDECAR_REL} in their own terminal."
       return 0
     fi
     return 1
@@ -78,7 +88,7 @@ pipeline_ledger_integrity_check() {
     CHAIN_PREV=$("$JQ" -r '.records[-2].sha256 // empty' "$PIPELINE_SIDECAR" 2>/dev/null || echo "")
     LEDGER_HASH=$(file_sha256 "$PIPELINE_LEDGER")
     if [ -n "$CHAIN_LATEST" ] && [ -n "$LEDGER_HASH" ] && [ "$LEDGER_HASH" != "$CHAIN_LATEST" ] && [ "$LEDGER_HASH" != "$CHAIN_PREV" ]; then
-      pipeline_emit_deny "[BLOCKED] onboarding-status.json does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete tests/e2e/docs/.ledger-integrity.json in their own terminal)."
+      pipeline_emit_deny "[BLOCKED] ${PIPELINE_MSG_LEDGER_NAME} does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete ${PIPELINE_MSG_SIDECAR_REL} in their own terminal)."
       return 0
     fi
   fi
@@ -105,25 +115,25 @@ pipeline_transition_point_check() {
   fi
 
   if [ -n "$LAST_DONE_PHASE" ] && [ "$LAST_DONE_VERDICT" = "pending" ]; then
-    pipeline_emit_deny "[BLOCKED] Phase ${LAST_DONE_PHASE} completed but no workflow-reviewer-phase${LAST_DONE_PHASE}: has approved the transition yet.
+    pipeline_emit_deny "[BLOCKED] Phase ${LAST_DONE_PHASE} completed but no ${PIPELINE_MSG_REVIEWER_LABEL}${LAST_DONE_PHASE}: has approved the transition yet.
 
 Description: \"${DESCRIPTION}\"
 
-The ledger at tests/e2e/docs/onboarding-status.json shows phase ${LAST_DONE_PHASE}
+The ledger at ${PIPELINE_MSG_LEDGER_REL} shows phase ${LAST_DONE_PHASE}
 finished (status = completed / blocked) but reviewerVerdict is still
 \"pending\". Every phase / pass / cycle transition is gated by a
 workflow-reviewer-* subagent — the orchestrator cannot start the next
 unit of work until the reviewer for the prior unit has returned
 \`verdict: approve\`.
 
-Fix: dispatch \`workflow-reviewer-phase${LAST_DONE_PHASE}:\` next. Brief
+Fix: dispatch \`${PIPELINE_MSG_REVIEWER_LABEL}${LAST_DONE_PHASE}:\` next. Brief
 the reviewer with the ledger row + the closing subagent's handoverEnvelope
-and the canonical exit criteria from skills/onboarding/SKILL.md §\"Phase
+and the canonical exit criteria from ${PIPELINE_MSG_SKILL_REF} §\"Phase
 ${LAST_DONE_PHASE}\".
 
 See:
-  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
-  - skills/workflow-reviewer/SKILL.md
+  - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\"
+  - ${PIPELINE_MSG_REVIEWER_SKILL}
   - schemas/subagent-returns/workflow-reviewer.schema.json"
     return 0
   fi
@@ -193,7 +203,7 @@ spec. The valid + invalid fixtures under schemas/${PIPELINE_SCHEMA_NAME}.fixture
 are working examples of the shape.
 
 See: schemas/${PIPELINE_SCHEMA_NAME}.schema.json
-     skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
+     ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\""
     return 0
   fi
   return 2
@@ -222,7 +232,7 @@ pipeline_out_of_order_phase_check() {
 
 Description: \"${DESCRIPTION}\"
 
-The ledger at tests/e2e/docs/onboarding-status.json shows:
+The ledger at ${PIPELINE_MSG_LEDGER_REL} shows:
   currentPhase     = ${CURRENT_PHASE}
   target phase     = ${TARGET_PHASE} (inferred from the dispatch description)
   prior phase      = ${PRIOR_PHASE}
@@ -231,15 +241,15 @@ The ledger at tests/e2e/docs/onboarding-status.json shows:
 Every phase transition is state-machine-enforced via the
 workflow-reviewer-* subagent family.
 
-Fix: dispatch \`workflow-reviewer-phase${PRIOR_PHASE}:\` first. If the
+Fix: dispatch \`${PIPELINE_MSG_REVIEWER_LABEL}${PRIOR_PHASE}:\` first. If the
 reviewer returns \`verdict: approve\`, the orchestrator updates the
 ledger (reviewerVerdict → approved, currentPhase → ${TARGET_PHASE}) and
 re-issues this dispatch.
 
 See:
-  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
-  - skills/workflow-reviewer/SKILL.md
-  - schemas/onboarding-status.schema.json
+  - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\"
+  - ${PIPELINE_MSG_REVIEWER_SKILL}
+  - ${PIPELINE_MSG_SCHEMA_REF}
   - schemas/subagent-returns/workflow-reviewer.schema.json"
       return 0
     fi
@@ -288,8 +298,8 @@ Fix: either (a) complete phase ${MID_ID} first, OR (b) mark phase
 ${MID_ID} as status: skipped AND add the corresponding
 approvedDeviations[] entry with the authorizer quote.
 
-See: schemas/onboarding-status.schema.json
-     skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
+See: ${PIPELINE_MSG_SCHEMA_REF}
+     ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\""
         return 0
       fi
     done
@@ -316,7 +326,7 @@ Fix: populate phases[${BAD_PHASE} - 1].handoverEnvelope with the closing
 subagent's envelope (see schemas/subagent-returns/handover.schema.json
 for the shape) before re-issuing the write.
 
-See: schemas/onboarding-status.schema.json
+See: ${PIPELINE_MSG_SCHEMA_REF}
      schemas/subagent-returns/handover.schema.json"
     return 0
   fi
@@ -362,8 +372,8 @@ exactly 1 either hides re-review churn or evades the cap.
 
 Fix: set phases[${vp_idx}].reviewerCycles = $((PRIOR_C + 1)) in the same write.
 
-See: schemas/onboarding-status.schema.json
-     skills/workflow-reviewer/SKILL.md §\"Reject cap\""
+See: ${PIPELINE_MSG_SCHEMA_REF}
+     ${PIPELINE_MSG_REVIEWER_SKILL} §\"Reject cap\""
         return 0
       fi
     fi
@@ -385,7 +395,7 @@ Fix: set phases[${vp_idx}].reviewerVerdict = \"escalated-to-user\" and the
 top-level .status = \"blocked\". The orchestrator surfaces the blockage to
 the user rather than looping a 4th review.
 
-See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
+See: ${PIPELINE_MSG_REVIEWER_SKILL} §\"Reject cap\" (3-cycle limit)"
       return 0
     fi
   done
@@ -494,7 +504,7 @@ job ends at dispatch; the approver owns the verdict record.
 
 See:
   - hooks/workflow-approver-registry.sh (PreToolUse:Agent — records approvers)
-  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
+  - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\"
   - schemas/subagent-returns/workflow-reviewer.schema.json"
     return 0
   fi
@@ -615,8 +625,8 @@ If the user has not yet been asked, ASK first; then write the ledger
 with the captured quote.
 
 See:
-  - schemas/onboarding-status.schema.json §runMode
-  - skills/onboarding/SKILL.md §\"Front-load mode-selection gate\""
+  - ${PIPELINE_MSG_SCHEMA_REF} §runMode
+  - ${PIPELINE_MSG_SKILL_REF} §\"Front-load mode-selection gate\""
       return 0
     fi
   fi
@@ -641,7 +651,7 @@ Fix: keep the existing modeAuthorizer field unchanged, OR update both
 runMode AND modeAuthorizer together (which re-triggers the case-A
 check above).
 
-See: schemas/onboarding-status.schema.json §runMode"
+See: ${PIPELINE_MSG_SCHEMA_REF} §runMode"
     return 0
   fi
   return 1

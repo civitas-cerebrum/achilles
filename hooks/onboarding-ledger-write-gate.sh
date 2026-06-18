@@ -103,6 +103,13 @@ esac
 PIPELINE_LEDGER="$FILE_PATH"
 PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
 PIPELINE_SCHEMA_NAME="onboarding-status"
+PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
+PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
+PIPELINE_MSG_LEDGER_REL='tests/e2e/docs/onboarding-status.json'
+PIPELINE_MSG_REVIEWER_LABEL='workflow-reviewer-phase'
+PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
+PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
+PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
 emit_deny() {
   local reason="$1"
