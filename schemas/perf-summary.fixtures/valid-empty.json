@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "schema": "perf-summary/v1",
+    "generatedAt": "2026-06-18T12:00:00Z",
+    "gitSha": "",
+    "runMode": ""
+  },
+  "phases": [],
+  "scenarios": { "files": [] },
+  "slo_results": [
+    {
+      "scenario": "load",
+      "p95Ms": null,
+      "p99Ms": null,
+      "errorRate": null,
+      "throughput": null,
+      "verdict": null
+    }
+  ],
+  "breaches": [],
+  "baseline_comparison": [
+    {
+      "scenario": "load",
+      "baselineP95Ms": null,
+      "currentP95Ms": null,
+      "regressionPct": null
+    }
+  ]
+}

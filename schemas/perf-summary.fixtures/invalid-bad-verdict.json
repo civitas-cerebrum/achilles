@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "schema": "perf-summary/v1",
+    "generatedAt": "2026-06-18T12:00:00Z",
+    "gitSha": "abc123",
+    "runMode": "standard"
+  },
+  "phases": [],
+  "scenarios": { "files": [] },
+  "slo_results": [
+    {
+      "scenario": "load",
+      "p95Ms": 250,
+      "p99Ms": 400,
+      "errorRate": 0.01,
+      "throughput": 100,
+      "verdict": "maybe"
+    }
+  ],
+  "breaches": [],
+  "baseline_comparison": []
+}

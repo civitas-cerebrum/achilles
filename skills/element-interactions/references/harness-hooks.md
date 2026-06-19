@@ -48,6 +48,7 @@ Orchestrator-mode and cascade-routing concerns previously enforced by this packa
 ## Stop
 
 - **[run-summary-writer](../../../hooks/run-summary-writer.sh)** — `Stop`. Writes `<project>/.achilles/run-summary.json`, the authoritative self-report consumed by external benchmark drivers (e.g. `Feyzabora/bookhive-benchmark`). Reads the artifacts the skills actually write (onboarding ledger phases, adversarial-findings ledger IDs + severity counts, journey-map headings, newest Playwright `results.json`); when no result file exists the tests block is null-statused, never a fake pass. Never blocks. [escape hatch: n/a (never denies)]
+- **[perf-summary-writer](../../../hooks/perf-summary-writer.sh)** — `Stop`. Writes `<project>/.achilles/perf-summary.json`, the authoritative perf self-report for the perf-onboarding pipeline. NO-OP when `tests/perf/docs/perf-onboarding-status.json` does not exist (non-perf projects unaffected). Reads perf ledger phases + runMode, scenario files, k6 handleSummary results, and baseline snapshots; metrics and verdict are null when no result file is present — never a fabricated pass. Never blocks. [escape hatch: n/a (never denies)]
 - **[selector-development-revert-on-stop](../../../hooks/selector-development-revert-on-stop.sh)** — `Stop`. Warns at orchestrator Stop when a selector-development scope is active and its receipt's last passing step is not `visual_diff` or `commit` — i.e. the pipeline stopped mid-flight; surfaces the recovery instruction. [escape hatch: no]
 
 ## SubagentStop
