@@ -98,6 +98,12 @@ case "$NORM_PATH" in
   *) exit 0 ;;
 esac
 
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
+PIPELINE_LEDGER="$FILE_PATH"
+PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
+PIPELINE_SCHEMA_NAME="onboarding-status"
+
 emit_deny() {
   local reason="$1"
   "$JQ" -n --arg r "$reason" '{
@@ -185,68 +191,16 @@ printf '%s' "$PROPOSED_CONTENT" > "$TMP_PROPOSED"
 
 NODE_BIN="${NODE_BIN:-$(command -v node 2>/dev/null || true)}"
 VALIDATOR="$(dirname "${BASH_SOURCE[0]}")/lib/validator.bundle.mjs"
-SCHEMA_VALIDATION_SKIPPED=0
-VALIDATE_EXIT=0
-VALIDATE_OUT=""
-if [ -z "$NODE_BIN" ] || [ ! -f "$VALIDATOR" ]; then
-  SCHEMA_VALIDATION_SKIPPED=1
-else
-  VALIDATE_OUT=$("$NODE_BIN" "$VALIDATOR" validate onboarding-status "$TMP_PROPOSED" 2>&1) || VALIDATE_EXIT=$?
-fi
 
-if [ "$VALIDATE_EXIT" != "0" ]; then
-  IS_PARSE_FAIL=0
-  case "$VALIDATE_OUT" in
-    *PARSE_FAIL:*) IS_PARSE_FAIL=1 ;;
-  esac
-  # The bundle reads the data file with a YAML-tolerant parser, so a
-  # non-JSON bare scalar (e.g. 'not-json-at-all') parses as a YAML
-  # string and surfaces as SCHEMA_FAIL ('/ must be object') instead of
-  # PARSE_FAIL. Re-check with jq so the parse/schema deny split stays
-  # accurate for JSON.
-  if [ "$IS_PARSE_FAIL" = "0" ] && ! "$JQ" -e . "$TMP_PROPOSED" >/dev/null 2>&1; then
-    IS_PARSE_FAIL=1
-  fi
-  if [ "$IS_PARSE_FAIL" = "1" ]; then
-    emit_deny "[BLOCKED] Proposed onboarding-status.json is not parseable JSON.
-
-File: ${FILE_PATH}
-
-The ledger is the single source of truth for the pipeline state. A
-malformed write would silently degrade every downstream gate.
-
-Validator output:
-${VALIDATE_OUT}
-
-Fix: re-author the JSON, run \`jq . <<< '<contents>'\` locally to confirm
-it parses, then re-issue the write.
-
-See: schemas/onboarding-status.schema.json"
-    exit 0
-  fi
-
-  emit_deny "[BLOCKED] Proposed onboarding-status.json fails schema validation.
-
-File: ${FILE_PATH}
-Schema: onboarding-status (inlined in hooks/lib/validator.bundle.mjs; source schemas/onboarding-status.schema.json)
-
-Validator output:
-${VALIDATE_OUT}
-
-Fix: correct the failing field(s) above; the schema is the authoritative
-spec. The valid + invalid fixtures under schemas/onboarding-status.fixtures/
-are working examples of the shape.
-
-See: schemas/onboarding-status.schema.json
-     skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
-  exit 0
-fi
+pipeline_schema_validate "$TMP_PROPOSED" "$FILE_PATH"
+_psv_ret=$?
+[ "$_psv_ret" -eq 0 ] && exit 0
 
 # When schema validation was skipped (no node / no ajv), we still need
 # the proposed content parseable as JSON for the downstream jq queries
 # to be meaningful. Fail-closed: deny on malformed JSON regardless of
 # whether ajv was available.
-if [ "$SCHEMA_VALIDATION_SKIPPED" = "1" ]; then
+if [ "${PIPELINE_SCHEMA_VALIDATION_SKIPPED:-0}" = "1" ]; then
   if ! "$JQ" -e . "$TMP_PROPOSED" >/dev/null 2>&1; then
     emit_deny "[BLOCKED] Proposed onboarding-status.json is not parseable JSON (schema validation was skipped because node/ajv is unavailable, but jq parsing failed).
 
@@ -258,382 +212,21 @@ Fix: re-author the JSON, run \`jq . <<< '<contents>'\` locally to confirm it par
 fi
 
 # ---------------------------------------------------------------------------
-# State-machine transition check — only meaningful when there is a prior
-# ledger to compare against.
+# State-machine transition check (lib call) — phase-skip, approved-requires-
+# handover, reviewerCycles+1 on verdict-change, 3rd-reject-must-escalate.
 # ---------------------------------------------------------------------------
-if [ -f "$FILE_PATH" ]; then
-  PRIOR_PHASE=$("$JQ" -r '.currentPhase // empty' "$FILE_PATH" 2>/dev/null || echo "")
-  NEW_PHASE=$("$JQ" -r '.currentPhase // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
-  case "$PRIOR_PHASE" in ''|*[!0-9]*) PRIOR_PHASE=0 ;; esac
-  case "$NEW_PHASE"   in ''|*[!0-9]*) NEW_PHASE=0 ;; esac
-
-  # Phase-skip detection: new > prior + 1 AND the in-between phase is
-  # still `pending` in the new content.
-  if [ "$NEW_PHASE" -gt "$((PRIOR_PHASE + 1))" ]; then
-    # For every phase id between prior+1 and new-1, check status.
-    for MID_ID in $(seq $((PRIOR_PHASE + 1)) $((NEW_PHASE - 1))); do
-      MID_STATUS=$("$JQ" -r --argjson id "$MID_ID" '
-        [.phases[]? | select(.id == $id)] | .[0].status // "pending"
-      ' "$TMP_PROPOSED" 2>/dev/null || echo "pending")
-      if [ "$MID_STATUS" = "pending" ] || [ "$MID_STATUS" = "in-progress" ]; then
-        emit_deny "[BLOCKED] Out-of-order ledger transition — currentPhase jumped ${PRIOR_PHASE} → ${NEW_PHASE} while phase ${MID_ID} is still \"${MID_STATUS}\".
-
-File: ${FILE_PATH}
-
-Every phase must progress through pending → in-progress → completed in
-order. Skips are allowed only when the phase's status is set to
-\"skipped\" AND an approvedDeviations[] entry carries a verbatim
-authorizer field.
-
-Fix: either (a) complete phase ${MID_ID} first, OR (b) mark phase
-${MID_ID} as status: skipped AND add the corresponding
-approvedDeviations[] entry with the authorizer quote.
-
-See: schemas/onboarding-status.schema.json
-     skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
-        exit 0
-      fi
-    done
-  fi
-
-  # reviewerVerdict approved without handoverEnvelope check — scan every
-  # phase's new state for the violation.
-  BAD_PHASE=$("$JQ" -r '
-    [.phases[]? | select(.reviewerVerdict == "approved" and (.handoverEnvelope == null))] |
-    if length == 0 then "" else (.[0].id | tostring) end
-  ' "$TMP_PROPOSED" 2>/dev/null || echo "")
-  if [ -n "$BAD_PHASE" ]; then
-    emit_deny "[BLOCKED] Ledger phase ${BAD_PHASE} has reviewerVerdict: \"approved\" but handoverEnvelope is null.
-
-File: ${FILE_PATH}
-
-A phase cannot be approved unless the closing subagent's handover
-envelope is captured in the same record — the reviewer reads the
-envelope as part of its evidence base, and downstream tooling needs the
-envelope to reconstruct what the phase produced.
-
-Fix: populate phases[${BAD_PHASE} - 1].handoverEnvelope with the closing
-subagent's envelope (see schemas/subagent-returns/handover.schema.json
-for the shape) before re-issuing the write.
-
-See: schemas/onboarding-status.schema.json
-     schemas/subagent-returns/handover.schema.json"
-    exit 0
-  fi
-
-  # ---------------------------------------------------------------------
-  # reviewerCycles enforcement (change #8a).
-  #  - Any write that CHANGES a phase's reviewerVerdict must increment that
-  #    phase's reviewerCycles by exactly 1 (each verdict is one review
-  #    round; skipping the counter hides re-review churn / lets the 3-cap
-  #    be evaded).
-  #  - At reviewerCycles == 3 the verdict may NOT be "rejected": the 3rd
-  #    rejection must escalate — reviewerVerdict "escalated-to-user" AND the
-  #    top-level pipeline status "blocked".
-  # ---------------------------------------------------------------------
-  for vp_idx in 0 1 2 3 4 5 6 7; do
-    PRIOR_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$FILE_PATH" 2>/dev/null || echo "")
-    NEW_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
-    [ -n "$NEW_V" ] || continue
-    PRIOR_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$FILE_PATH" 2>/dev/null || echo "0")
-    NEW_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$TMP_PROPOSED" 2>/dev/null || echo "0")
-    case "$PRIOR_C" in ''|*[!0-9]*) PRIOR_C=0 ;; esac
-    case "$NEW_C"   in ''|*[!0-9]*) NEW_C=0 ;; esac
-    PHASE_ID=$((vp_idx + 1))
-    # Exempt user-authorised skips: a phase whose new status is "skipped"
-    # with a matching approvedDeviations[] authorizer is approved via the
-    # user channel, not a reviewer round — reviewerCycles does not apply.
-    NEW_STATUS_VP=$("$JQ" -r ".phases[${vp_idx}].status // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
-    if [ "$NEW_STATUS_VP" = "skipped" ]; then
-      HAS_AUTH=$("$JQ" -r --argjson id "$PHASE_ID" \
-        '((.approvedDeviations // []) | any(.phase == $id and ((.authorizer // "") | length) > 0))' \
-        "$TMP_PROPOSED" 2>/dev/null || echo "false")
-      [ "$HAS_AUTH" = "true" ] && continue
-    fi
-    if [ "$NEW_V" != "$PRIOR_V" ]; then
-      # Verdict changed — reviewerCycles must increment by exactly 1.
-      if [ "$NEW_C" -ne "$((PRIOR_C + 1))" ]; then
-        emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict changed (\"${PRIOR_V:-<unset>}\" → \"${NEW_V}\") without incrementing reviewerCycles by exactly 1 (was ${PRIOR_C}, proposed ${NEW_C}).
-
-File: ${FILE_PATH}
-
-Each verdict is one review round. reviewerCycles is the round counter the
-3-cycle escalation cap keys on — a verdict change that doesn't bump it by
-exactly 1 either hides re-review churn or evades the cap.
-
-Fix: set phases[${vp_idx}].reviewerCycles = $((PRIOR_C + 1)) in the same write.
-
-See: schemas/onboarding-status.schema.json
-     skills/workflow-reviewer/SKILL.md §\"Reject cap\""
-        exit 0
-      fi
-    fi
-    # 3rd-round rejection must escalate, not reject — fires whenever the
-    # proposed state lands a rejected verdict at the cap, whether or not the
-    # verdict string changed in this write.
-    if [ "$NEW_C" -eq 3 ] && [ "$NEW_V" = "rejected" ]; then
-      NEW_PIPE=$("$JQ" -r '.status // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
-      emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict \"rejected\" at reviewerCycles == 3.
-
-File: ${FILE_PATH}
-
-The reviewer reject cap is 3 rounds. A 3rd rejection cannot stay
-\"rejected\" — it must escalate to the user: reviewerVerdict
-\"escalated-to-user\" AND the top-level pipeline status \"blocked\"
-(observed pipeline status: \"${NEW_PIPE:-<unset>}\").
-
-Fix: set phases[${vp_idx}].reviewerVerdict = \"escalated-to-user\" and the
-top-level .status = \"blocked\". The orchestrator surfaces the blockage to
-the user rather than looping a 4th review.
-
-See: skills/workflow-reviewer/SKILL.md §\"Reject cap\" (3-cycle limit)"
-      exit 0
-    fi
-  done
-fi
+pipeline_validate_transition "$TMP_PROPOSED" "$FILE_PATH" && exit 0
 
 # ---------------------------------------------------------------------------
-# Actor-identity check on approval transitions (separation of duties).
-# Any phase whose reviewerVerdict transitions from non-approved to
-# `approved` requires the write to originate from a registered approver
-# subagent context. Without this check the orchestrator can self-approve.
+# Actor-identity check on approval transitions — separation of duties (lib call).
 # ---------------------------------------------------------------------------
-# Compute the set of phase ids that are NEWLY approved in this write.
-if [ -f "$FILE_PATH" ]; then
-  PRIOR_APPROVED=$("$JQ" -c '[.phases[]? | select(.reviewerVerdict == "approved") | .id]' "$FILE_PATH" 2>/dev/null || echo "[]")
-else
-  PRIOR_APPROVED="[]"
-fi
-NEW_APPROVED=$("$JQ" -c '[.phases[]? | select(.reviewerVerdict == "approved") | .id]' "$TMP_PROPOSED" 2>/dev/null || echo "[]")
-
-NEW_APPROVAL_IDS=$("$JQ" -nc \
-  --argjson prior "$PRIOR_APPROVED" \
-  --argjson new "$NEW_APPROVED" \
-  '[$new[] | select(. as $n | $prior | index($n) | not)]' 2>/dev/null || echo "[]")
-
-# Carve-out: user-authorised skips. A phase whose `status == "skipped"`
-# AND has a matching `approvedDeviations[]` entry with a non-empty
-# `authorizer` field is approved via the user-authorization channel,
-# not via a reviewer subagent. The authorizer's verbatim quote is the
-# attestation. Remove these phase ids from the approval-set so the
-# actor-identity check below doesn't fire on them.
-SKIP_AUTHORISED_IDS=$("$JQ" -c '
-  [ .phases[]? as $p
-    | select($p.status == "skipped" and $p.reviewerVerdict == "approved")
-    | $p.id as $pid
-    | select(
-        (.approvedDeviations // [])
-        | any(.phase == $pid and ((.authorizer // "") | length) > 0)
-      )
-    | $pid
-  ]
-' "$TMP_PROPOSED" 2>/dev/null || echo "[]")
-
-NEW_APPROVAL_IDS=$("$JQ" -nc \
-  --argjson all "$NEW_APPROVAL_IDS" \
-  --argjson skip "$SKIP_AUTHORISED_IDS" \
-  '[$all[] | select(. as $n | $skip | index($n) | not)]' 2>/dev/null || echo "[]")
-
-# Same check at sub-stage level (Phase-4 cycles, Phase-5 passes). We
-# expose the substage approvals as `<phase-id>.<substage-id>` strings.
-if [ -f "$FILE_PATH" ]; then
-  PRIOR_SUBSTAGE_APPROVED=$("$JQ" -c '
-    [ .phases[]? as $p | $p.subStages[]? | select(.reviewerVerdict == "approved")
-      | "\($p.id).\(.id)" ]
-  ' "$FILE_PATH" 2>/dev/null || echo "[]")
-else
-  PRIOR_SUBSTAGE_APPROVED="[]"
-fi
-NEW_SUBSTAGE_APPROVED=$("$JQ" -c '
-  [ .phases[]? as $p | $p.subStages[]? | select(.reviewerVerdict == "approved")
-    | "\($p.id).\(.id)" ]
-' "$TMP_PROPOSED" 2>/dev/null || echo "[]")
-NEW_SUBSTAGE_APPROVAL_IDS=$("$JQ" -nc \
-  --argjson prior "$PRIOR_SUBSTAGE_APPROVED" \
-  --argjson new "$NEW_SUBSTAGE_APPROVED" \
-  '[$new[] | select(. as $n | $prior | index($n) | not)]' 2>/dev/null || echo "[]")
-
-# Are there any new approvals at all?
-HAS_NEW_PHASE_APPROVAL=$([ "$NEW_APPROVAL_IDS" = "[]" ] && echo "no" || echo "yes")
-HAS_NEW_SUBSTAGE_APPROVAL=$([ "$NEW_SUBSTAGE_APPROVAL_IDS" = "[]" ] && echo "no" || echo "yes")
-
-if [ "$HAS_NEW_PHASE_APPROVAL" = "yes" ] || [ "$HAS_NEW_SUBSTAGE_APPROVAL" = "yes" ]; then
-  # Actor-identity discriminator (Claude Code subagent convention).
-  # A tool call from a dispatched subagent carries a non-empty `agent_id`
-  # (+ `agent_type`); the top-level orchestrator's tool calls carry neither.
-  # Older builds exposed the dispatching Agent's id as `parent_tool_use_id`
-  # and this gate matched it against the tool_use_id-keyed approver registry;
-  # current builds do not emit `parent_tool_use_id` (the child's `agent_id`
-  # is assigned after dispatch and cannot be pre-recorded). The convention is
-  # now `agent_id`-presence + a non-empty approver registry; the per-transition
-  # ordering enforced by onboarding-ledger-gate.sh (only an approver-prefixed
-  # dispatch is permitted while a phase is pending-review) guarantees the
-  # subagent writing at an approval moment is the approver.
-  AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
-  APPROVAL_SUMMARY="phase ids: $NEW_APPROVAL_IDS, substage ids: $NEW_SUBSTAGE_APPROVAL_IDS"
-
-  if [ -z "$AGENT_ID" ]; then
-    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to reviewerVerdict: \"approved\" but the write is coming directly from the orchestrator context (no agent_id — not a dispatched subagent).
-
-File: ${FILE_PATH}
-
-This is the separation-of-duties gate: the orchestrator does the work, an
-approver subagent records the verdict. Only writes originating inside a
-\`workflow-reviewer-*\` or \`phase-validator-*\` subagent are permitted to
-transition a reviewerVerdict to approved.
-
-Fix: dispatch the matching approver subagent (e.g. \`workflow-reviewer-phase1:\`
-or \`phase-validator-1:\`) and let it author this write. The orchestrator's
-job ends at dispatch; the approver owns the verdict record.
-
-See:
-  - hooks/workflow-approver-registry.sh (PreToolUse:Agent — records approvers)
-  - skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"
-  - schemas/subagent-returns/workflow-reviewer.schema.json"
-    exit 0
-  fi
-
-  # Subagent context — verify the parent is in the approver registry.
-  REGISTRY_FILE="$(dirname "$FILE_PATH")/.workflow-approvers.json"
-  if [ ! -f "$REGISTRY_FILE" ]; then
-    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from a subagent context, but no approver registry exists at:
-
-  ${REGISTRY_FILE}
-
-The registry is written by hooks/workflow-approver-registry.sh when a
-\`workflow-reviewer-*\` or \`phase-validator-*\` Agent dispatch fires.
-Its absence means the dispatching Agent did NOT have an approver-role
-description prefix.
-
-Fix: ensure the approving subagent is dispatched with description
-prefix \`workflow-reviewer-<scope>:\` or \`phase-validator-<N>:\`. Other
-prefixes (composer-, probe-, cleanup-) do the work but cannot record
-verdicts."
-    exit 0
-  fi
-
-  # The registry is keyed by dispatch tool_use_id, but this build's subagent
-  # writes carry `agent_id` (assigned post-dispatch), so the write cannot be
-  # matched to a specific registry entry. Instead require: at least one
-  # approver-prefixed dispatch recorded, AND its registration within the TTL.
-  # The onboarding-ledger-gate.sh ordering check guarantees the only subagent
-  # that can be dispatched while a phase is pending-review is an approver, so
-  # "a recent approver was dispatched + this write is from a subagent" is a
-  # sound proxy for "this write is from the approver".
-  REGISTRY_COUNT=$("$JQ" -r '[keys[]] | length' "$REGISTRY_FILE" 2>/dev/null || echo 0)
-  case "$REGISTRY_COUNT" in ''|*[!0-9]*) REGISTRY_COUNT=0 ;; esac
-  if [ "$REGISTRY_COUNT" -lt 1 ]; then
-    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from a subagent context, but the approver registry is empty.
-
-File: ${FILE_PATH}
-Registry: ${REGISTRY_FILE}
-
-Only subagents dispatched with one of these description prefixes can
-record approvals:
-
-  workflow-reviewer-<scope>:   the workflow reviewer / inspector skill
-  phase-validator-<N>:         per-phase greenlight emitter
-
-An empty registry means no approver-role subagent was dispatched. Other
-prefixes (composer-, probe-, cleanup-) do the work but do not record
-verdicts.
-
-Fix: dispatch a \`workflow-reviewer-*\` or \`phase-validator-*\` to author
-this approval write."
-    exit 0
-  fi
-
-  # TTL check — most recent approver registration within 30 minutes.
-  NOW=$(date +%s)
-  TTL=1800
-  LATEST_TS=$("$JQ" -r '[.[].ts // 0] | max // 0' "$REGISTRY_FILE" 2>/dev/null || echo "0")
-  case "$LATEST_TS" in ''|*[!0-9]*) LATEST_TS=0 ;; esac
-  REG_AGE=$((NOW - LATEST_TS))
-  if [ "$REG_AGE" -gt "$TTL" ]; then
-    emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved but the most recent approver registration has expired (age ${REG_AGE}s, TTL ${TTL}s).
-
-Registry entries live for 30 minutes from dispatch. If the approver
-subagent has been running longer than that, re-dispatch a fresh
-\`workflow-reviewer-*\` to land the verdict.
-
-Fix: re-dispatch the approver."
-    exit 0
-  fi
-fi
+AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
+pipeline_check_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" && exit 0
 
 # ---------------------------------------------------------------------------
-# Mode-authorisation check.
-# Setting or changing `runMode` requires the operator's explicit choice
-# captured in `modeAuthorizer` (a verbatim user quote). Forces the
-# orchestrator to ASK before silently defaulting to one of the two
-# documented coverage-expansion modes.
+# Mode-authorisation check (lib call) — runMode/modeAuthorizer co-location.
 # ---------------------------------------------------------------------------
-NEW_MODE=$("$JQ" -r '.runMode // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
-NEW_AUTHORIZER=$("$JQ" -r '.modeAuthorizer // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
-
-PRIOR_MODE=""
-PRIOR_AUTHORIZER=""
-if [ -f "$FILE_PATH" ]; then
-  PRIOR_MODE=$("$JQ" -r '.runMode // empty' "$FILE_PATH" 2>/dev/null || echo "")
-  PRIOR_AUTHORIZER=$("$JQ" -r '.modeAuthorizer // empty' "$FILE_PATH" 2>/dev/null || echo "")
-fi
-
-# Case A: runMode being set or changed. The new value differs from the
-# prior (or the prior didn't exist). Requires a non-empty modeAuthorizer
-# in the SAME write — co-located with the runMode field so the audit
-# trail can't be reconstructed out of order.
-if [ -n "$NEW_MODE" ] && [ "$NEW_MODE" != "$PRIOR_MODE" ]; then
-  if [ -z "$NEW_AUTHORIZER" ]; then
-    emit_deny "[BLOCKED] runMode being set to \"${NEW_MODE}\" without a modeAuthorizer field.
-
-File: ${FILE_PATH}
-Prior runMode: \"${PRIOR_MODE:-<unset>}\"
-New runMode:   \"${NEW_MODE}\"
-
-The orchestrator cannot silently choose between \`standard\` and \`depth\`
-coverage-expansion modes — the user must make that choice explicitly
-and the choice must land in the ledger as an audit-trail quote.
-
-Fix: add a top-level \`modeAuthorizer\` field to the proposed write,
-containing the user's verbatim quote. Examples:
-
-  \"modeAuthorizer\": \"user said: run onboarding in standard mode\"
-  \"modeAuthorizer\": \"user typed 'depth' in response to mode-selection prompt\"
-  \"modeAuthorizer\": \"external CLI driver --mode=depth (CLI flag)\"
-
-If the user has not yet been asked, ASK first; then write the ledger
-with the captured quote.
-
-See:
-  - schemas/onboarding-status.schema.json §runMode
-  - skills/onboarding/SKILL.md §\"Front-load mode-selection gate\""
-    exit 0
-  fi
-fi
-
-# Case B: runMode persists across the write but modeAuthorizer was
-# silently cleared. Prevents post-hoc tampering of the audit trail —
-# once a mode is authorised, the authoriser quote stays in the ledger
-# for as long as that mode is in effect.
-if [ -n "$NEW_MODE" ] && [ -n "$PRIOR_AUTHORIZER" ] && [ -z "$NEW_AUTHORIZER" ]; then
-  emit_deny "[BLOCKED] modeAuthorizer cleared while runMode remains set.
-
-File: ${FILE_PATH}
-runMode (preserved):       \"${NEW_MODE}\"
-Prior modeAuthorizer:      \"${PRIOR_AUTHORIZER}\"
-New modeAuthorizer:        <empty/missing>
-
-Once a mode has been user-authorised, the authorisation quote must
-stay in the ledger for as long as the mode is in effect. Clearing it
-post-hoc would erase the audit trail.
-
-Fix: keep the existing modeAuthorizer field unchanged, OR update both
-runMode AND modeAuthorizer together (which re-triggers the case-A
-check above).
-
-See: schemas/onboarding-status.schema.json §runMode"
-  exit 0
-fi
+pipeline_check_mode_authorizer "$TMP_PROPOSED" "$FILE_PATH" && exit 0
 
 # ---------------------------------------------------------------------------
 # Per-phase positive-deliverable checks (Phase-N → completed transitions).
