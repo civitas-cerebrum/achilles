@@ -155,9 +155,24 @@ import { DropdownSelectType, ListedElementMatch, VerifyListedOptions, GetListedD
 
 ```ts
 await steps.navigateTo('/path');
+await steps.navigateTo('/search', { query: { q: 'hello', page: '2' } });   // appends ?q=hello&page=2
+await steps.navigateTo('/path', { waitUntil: 'domcontentloaded' });        // 0.4.0+ — SPA-safe; default is 'load'
 await steps.refresh();
 await steps.backOrForward('back'); // or 'forward'
 await steps.setViewport(1280, 720);
+
+// Current URL (value getters — companions to verifyUrlContains)  (0.4.0+)
+const url  = steps.getUrl();           // full href
+const path = steps.getCurrentPath();   // pathname only (no origin/query/hash)
+
+// Wait for a URL change — glob string, RegExp, or (url: URL) => boolean   (0.4.0+)
+await steps.waitForUrl(/\/account\//);
+await steps.waitForUrl((u) => u.pathname.endsWith('/checkout'));
+// Race-safe form: pass the triggering action so the wait is armed BEFORE it runs
+// (issued concurrently via Promise.all) — for fast client-side route changes.
+await steps.waitForUrl(/\/products\//, async () => {
+  await steps.on('colourSwatch', 'ProductPage').first().click();
+}, { timeout: 15000, waitUntil: 'domcontentloaded' });
 
 // Tab management
 const newPage = await steps.switchToNewTab(async () => {
@@ -166,6 +181,13 @@ const newPage = await steps.switchToNewTab(async () => {
 await steps.closeTab(newPage);
 const count = steps.getTabCount();
 ```
+
+> **`navigateTo` waitUntil (0.4.0+).** The second arg is `{ query?, waitUntil? }`.
+> `waitUntil` (`'load'` default, `'domcontentloaded'`, `'networkidle'`, `'commit'`)
+> threads straight into `page.goto`. Prefer `'domcontentloaded'` for SPA
+> navigations that stall a cold WebKit/Safari on the full `'load'` event — this is
+> the in-framework replacement for dropping to raw `page.goto(url, { waitUntil })`.
+> On **0.3.x** `navigateTo` accepts only `{ query }` and always waits for `'load'`.
 
 ### Interaction
 
@@ -221,6 +243,12 @@ const allHrefs = await steps.getAll('links', 'PageName', { extractAttribute: 'hr
 // Returns null when the key is absent (matches native getItem contract).
 const theme = await steps.getLocalStorage('theme');           // string | null
 const cart  = await steps.getSessionStorage('cart.count');    // string | null
+
+// Browser storage — page-level writes (mutating companions to the getters).  (0.4.0+)
+// Use to seed persisted state, or to drive resilience checks with malformed values.
+await steps.setLocalStorage('theme', 'dark');
+await steps.setLocalStorage('wishlist', 'not-json-{[bogus');   // corrupt value the app must tolerate
+await steps.setSessionStorage('cart.count', '3');
 ```
 
 ### Verification
@@ -480,6 +508,7 @@ const present = await steps.waitForState('elementName', 'PageName', 'visible', {
 await steps.waitForState('elementName', 'PageName', 'visible', { timeout: 5_000 });
 await steps.waitAndClick('elementName', 'PageName');                        // waits for visible, then clicks; throws if never visible
 await steps.waitForNetworkIdle();
+await steps.waitForNetworkIdle({ timeout: 10000, optional: true });        // 0.4.0+ — bounded; optional swallows timeout
 await steps.waitForResponse('/api/data', async () => {
   await steps.click('submitButton', 'PageName');
 });
