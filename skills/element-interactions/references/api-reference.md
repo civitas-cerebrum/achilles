@@ -249,6 +249,12 @@ const cart  = await steps.getSessionStorage('cart.count');    // string | null
 await steps.setLocalStorage('theme', 'dark');
 await steps.setLocalStorage('wishlist', 'not-json-{[bogus');   // corrupt value the app must tolerate
 await steps.setSessionStorage('cart.count', '3');
+
+// Browser storage — page-level removes / clears (native removeItem / clear).  (0.4.0+)
+await steps.removeLocalStorage('wishlist');       // drop one key (no-op when absent)
+await steps.removeSessionStorage('cart.count');
+await steps.clearLocalStorage();                  // empty the whole store
+await steps.clearSessionStorage();
 ```
 
 ### Verification
