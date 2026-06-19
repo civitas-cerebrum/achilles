@@ -54,6 +54,9 @@
     "type": "git",
     "url": "git+https://github.com/civitas-cerebrum/achilles.git"
   },
+  "overrides": {
+    "nodemailer": "^9.0.1"
+  },
   "author": "Umut Ay Bora",
   "license": "MIT"
 }
