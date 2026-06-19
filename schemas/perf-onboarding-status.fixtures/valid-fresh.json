@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pipelineVersion": "0.1.0",
+  "runMode": "standard",
+  "startedAt": "2026-06-18T09:00:00Z",
+  "currentPhase": 1,
+  "currentSubStage": null,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Scaffold",
+      "startedAt": "2026-06-18T09:00:00Z",
+      "finishedAt": null,
+      "status": "in-progress",
+      "handoverEnvelope": null,
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "reviewerFindings": [],
+      "deliverables": []
+    },
+    { "id": 2, "name": "Readiness",       "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [] },
+    { "id": 3, "name": "Scenario-model",  "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [] },
+    { "id": 4, "name": "Baseline",        "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [] },
+    { "id": 5, "name": "Load-run",        "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [], "subStages": [] },
+    { "id": 6, "name": "Threshold-gate",  "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [] },
+    { "id": 7, "name": "Report",          "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [] }
+  ],
+  "approvedDeviations": []
+}

@@ -55,10 +55,12 @@ emit_deny() {
 CHAIN_KEY=""
 NORM_PATH="/${FILE_PATH#/}"
 case "$NORM_PATH" in
-  */tests/e2e/docs/.ledger-integrity.json)
+  */tests/e2e/docs/.ledger-integrity.json | \
+  */tests/perf/docs/.ledger-integrity.json)
     [ "$EVENT" = "PreToolUse" ] && emit_deny "[BLOCKED] The integrity sidecar .ledger-integrity.json is hook-authored state. It is never written via Write/Edit — it updates automatically when the ledger is written through the sanctioned path."
     exit 0 ;;
   */tests/e2e/docs/onboarding-status.json)        CHAIN_KEY="onboarding-status.json" ;;
+  */tests/perf/docs/perf-onboarding-status.json)  CHAIN_KEY="perf-onboarding-status.json" ;;
   */tests/e2e/docs/.phase4-cycle-state.json)      CHAIN_KEY=".phase4-cycle-state.json" ;;
   */tests/e2e/docs/coverage-expansion-state.json) CHAIN_KEY="coverage-expansion-state.json" ;;
   *) exit 0 ;;
@@ -69,7 +71,7 @@ SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
 # The onboarding ledger uses the legacy flat `.records[]` chain (preserved
 # for backward compatibility); the two progress files use a per-file chain
 # under `.keyedRecords["<basename>"][]`. Pick the read/write jq path.
-if [ "$CHAIN_KEY" = "onboarding-status.json" ]; then
+if [ "$CHAIN_KEY" = "onboarding-status.json" ] || [ "$CHAIN_KEY" = "perf-onboarding-status.json" ]; then
   CHAIN_FILTER_GET='.records'
 else
   CHAIN_FILTER_GET=".keyedRecords[\"$CHAIN_KEY\"]"
@@ -83,7 +85,7 @@ if [ "$EVENT" = "PostToolUse" ]; then
   NOW=$(date +%s)
   BASE='{}'
   [ -f "$SIDECAR" ] && BASE=$(cat "$SIDECAR" 2>/dev/null || echo '{}')
-  if [ "$CHAIN_KEY" = "onboarding-status.json" ]; then
+  if [ "$CHAIN_KEY" = "onboarding-status.json" ] || [ "$CHAIN_KEY" = "perf-onboarding-status.json" ]; then
     UPDATED=$(printf '%s' "$BASE" | "$JQ" --arg d "$DIGEST" --argjson t "$NOW" \
       '.records = ((.records // []) + [{sha256:$d, ts:$t}] | .[-20:])' 2>/dev/null || echo "")
   else

@@ -33,6 +33,8 @@ roleFiles.forEach((f, i) => {
 });
 imports.push(`import sOnboarding from '../schemas/onboarding-status.schema.json';`);
 entries.push(`  'onboarding-status': sOnboarding,`);
+imports.push(`import sPerfOnboarding from '../schemas/perf-onboarding-status.schema.json';`);
+entries.push(`  'perf-onboarding-status': sPerfOnboarding,`);
 imports.push(`import sRunSummary from '../schemas/run-summary.schema.json';`);
 entries.push(`  'run-summary': sRunSummary,`);
 

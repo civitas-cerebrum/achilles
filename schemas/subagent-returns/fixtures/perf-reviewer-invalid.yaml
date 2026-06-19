@@ -1,0 +1,10 @@
+handover:
+  role: perf-reviewer-phase3
+  cycle: 1
+  status: rejected
+  next-action: redispatch perf-reviewer-phase3
+verdict: reject
+phase: 3
+reviewerCycle: 1
+# Missing required `findings` array — reject must always carry the surgical fix list.
+attestation: rejected without explanation

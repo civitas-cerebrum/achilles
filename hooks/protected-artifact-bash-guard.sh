@@ -54,7 +54,7 @@ CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "
 [ -n "$CMD" ] || exit 0
 
 # Protected artifact patterns (extended regex).
-PROTECTED='onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/hooks|\.claude/settings(\.local)?\.json'
+PROTECTED='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/hooks|\.claude/settings(\.local)?\.json'
 
 echo "$CMD" | grep -qE "$PROTECTED" || exit 0
 

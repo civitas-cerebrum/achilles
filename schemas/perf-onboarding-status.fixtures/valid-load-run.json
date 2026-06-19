@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "pipelineVersion": "0.1.0",
+  "runMode": "standard",
+  "startedAt": "2026-06-18T09:00:00Z",
+  "currentPhase": 5,
+  "currentSubStage": "pass-load",
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1, "name": "Scaffold",
+      "startedAt": "2026-06-18T09:00:00Z", "finishedAt": "2026-06-18T09:10:00Z",
+      "status": "completed",
+      "handoverEnvelope": { "role": "perf-phase1-scaffold", "status": "complete" },
+      "reviewerVerdict": "approved", "reviewerCycles": 1, "reviewerFindings": [],
+      "deliverables": ["tests/perf/k6/base.js"]
+    },
+    {
+      "id": 2, "name": "Readiness",
+      "startedAt": "2026-06-18T09:10:00Z", "finishedAt": "2026-06-18T09:30:00Z",
+      "status": "completed",
+      "handoverEnvelope": { "role": "perf-phase2-readiness", "status": "complete" },
+      "reviewerVerdict": "approved", "reviewerCycles": 1, "reviewerFindings": [],
+      "deliverables": ["tests/perf/docs/readiness-checklist.md"]
+    },
+    {
+      "id": 3, "name": "Scenario-model",
+      "startedAt": "2026-06-18T09:30:00Z", "finishedAt": "2026-06-18T10:00:00Z",
+      "status": "completed",
+      "handoverEnvelope": { "role": "perf-phase3-scenario-model", "status": "complete" },
+      "reviewerVerdict": "approved", "reviewerCycles": 1, "reviewerFindings": [],
+      "deliverables": ["tests/perf/docs/scenario-model.json"]
+    },
+    {
+      "id": 4, "name": "Baseline",
+      "startedAt": "2026-06-18T10:00:00Z", "finishedAt": "2026-06-18T10:30:00Z",
+      "status": "completed",
+      "handoverEnvelope": { "role": "perf-phase4-baseline", "status": "complete" },
+      "reviewerVerdict": "approved", "reviewerCycles": 1, "reviewerFindings": [],
+      "deliverables": ["tests/perf/docs/baseline.json"]
+    },
+    {
+      "id": 5, "name": "Load-run",
+      "startedAt": "2026-06-18T10:30:00Z", "finishedAt": null,
+      "status": "in-progress",
+      "handoverEnvelope": null,
+      "reviewerVerdict": "pending", "reviewerCycles": 0, "reviewerFindings": [],
+      "deliverables": [],
+      "subStages": [
+        { "id": "pass-load", "status": "in-progress" }
+      ]
+    },
+    { "id": 6, "name": "Threshold-gate", "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [] },
+    { "id": 7, "name": "Report",         "status": "pending", "reviewerVerdict": "pending", "reviewerCycles": 0, "deliverables": [] }
+  ],
+  "approvedDeviations": []
+}

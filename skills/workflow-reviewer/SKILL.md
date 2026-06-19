@@ -135,6 +135,58 @@ the return.
 - Pass-1 only: dispatch-mode in handover envelopes is `per-journey`, not `grouped` or `single-agent-collapsed`
 - Pass-N+1 may not start until this pass's verdict is approved (enforced by `onboarding-ledger-gate.sh`)
 
+---
+
+## Perf-onboarding pipeline reviewer (`perf-reviewer-*`)
+
+The perf-reviewer gate mirrors the onboarding workflow-reviewer but is scoped to the performance-testing pipeline. It fires after each of the 7 perf-onboarding phases and after each named load-test pass.
+
+> **Schema:** `schemas/subagent-returns/perf-reviewer.schema.json`
+> **Prefix:** `perf-reviewer-phase<N>:` (phases 1–7) and `perf-reviewer-pass-<load|stress|spike|soak>:`
+
+### Perf Phase 1 — Scaffold (`perf-reviewer-phase1`)
+- `tests/perf/perf-onboarding.config.json` exists and contains a non-empty `allowlist` array and a `caps` object (VU limits, duration limits)
+- `tests/perf/lib/` directory present with at least one helper file (utilities shared by scenarios)
+- `k6` binary is available on the PATH (`k6 version` exits 0)
+
+### Perf Phase 2 — Readiness (`perf-reviewer-phase2`)
+- `tests/perf/docs/readiness.md` exists and records: cascade-detector result, capture presence, journey-map presence, derive-vs-bootstrap decision, targets, and SLO source
+- Each of those six items is present as a named section or labelled line — no silent omission
+
+### Perf Phase 3 — Scenario-model (`perf-reviewer-phase3`)
+- `tests/perf/docs/scenario-model.md` exists with the sentinel `<!-- perf-onboarding:scenario-model -->` on line 1
+- The document lists scenarios, load profiles, SLO targets, and priority ordering
+- At least one `tests/perf/scenarios/*.js` file exists
+- SLO targets in the document are traced to a documented source (a referenced SLA, a baseline measurement, or a stated business requirement) — invented ceilings are not acceptable
+
+### Perf Phase 4 — Baseline (`perf-reviewer-phase4`)
+- Every scenario listed in `tests/perf/docs/scenario-model.md` has been smoke-run at 1 VU (evidence: a run entry per scenario)
+- `tests/perf/baselines/` directory contains at least one `*.json` file per scenario (baseline result artefact)
+- No scenario has been skipped without an `authorizer` entry in the phase ledger
+
+### Perf Phase 5 — Load-run (`perf-reviewer-phase5`)
+Reviews one load-test pass (load / stress / spike / soak); dispatched as `perf-reviewer-pass-<kind>:`.
+- The named pass's profile ran (k6 run completed, not aborted)
+- `tests/perf/results/` contains at least one `*.json` result file whose filename records the pass name (e.g. `load-*.json`, `stress-*.json`)
+- Correlation is handled: no hardcoded session tokens, auth cookies, or user IDs appear in scenario source; dynamic data is derived from setup stages or k6 shared-scenarios
+- Threshold assertions are present in the scenario(s) for this pass (at minimum: p95 response-time and error-rate)
+
+### Perf Phase 6 — Threshold-gate (`perf-reviewer-phase6`)
+- `tests/perf/docs/threshold-verdict.json` exists with a non-empty `deliberateBreach` block (demonstrating that threshold rules are enforced, not decorative)
+- The document contains per-scenario verdicts (pass / breach / skip-with-authorizer for each scenario)
+- A regression-vs-baseline comparison is included — each scenario's p95/error-rate is compared against the Phase 4 baseline and any statistically significant regression is called out explicitly
+
+### Perf Phase 7 — Report (`perf-reviewer-phase7`)
+- `tests/perf/docs/perf-report.md` exists with the sentinel `<!-- perf-onboarding:report -->` on line 1
+- Every threshold breach recorded in `threshold-verdict.json` is surfaced in the report's findings section (no silent omission of a breach)
+- Numeric figures in the report (p95 values, error rates, VU counts) are consistent with the result artefacts in `tests/perf/results/`
+
+### Per load-test pass (`perf-reviewer-pass-<load|stress|spike|soak>`)
+- The named pass (load / stress / spike / soak) completed — k6 process exit code was 0 or threshold-only-failure (not a crash or config error)
+- At least one result artefact (`tests/perf/results/<pass>-*.json`) written for the pass
+- Correlation verified: no literal credentials or hardcoded tokens visible in any `tests/perf/scenarios/*.js` file consumed by this pass
+- Threshold assertions defined for the pass; any breach is recorded in a findings entry (not silently ignored)
+
 ### Per journey-mapping cycle (`workflow-reviewer-cycle<N>`)
 - Every target section in `cycle-N-targets` dispatched (cycle 1 strict per-section; cycle 2+ relaxed under `cycleStrictness: standard`, strict under `depth`)
 - `returned-sections` covers `dispatched-sections` (no abandoned dispatches)

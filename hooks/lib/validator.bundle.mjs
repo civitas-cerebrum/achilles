@@ -15110,6 +15110,137 @@ var handover_schema_default = {
   }
 };
 
+// schemas/subagent-returns/perf-reviewer.schema.json
+var perf_reviewer_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://civitas-cerebrum.github.io/element-interactions/schemas/subagent-returns/perf-reviewer.schema.json",
+  title: "Perf-reviewer return",
+  description: "Return shape for the perf-reviewer-phase<N>: / perf-reviewer-pass-<load|stress|spike|soak>: subagent family. Fires between each perf-onboarding phase and after each load-test pass. Gates the next transition: on approve, the orchestrator advances; on reject (cap 3), the orchestrator surgically fixes per findings + re-dispatches the same reviewer; on the 3rd consecutive reject the reviewer returns escalated-to-user and the run pauses for human triage.",
+  type: "object",
+  additionalProperties: true,
+  required: ["handover", "verdict"],
+  properties: {
+    handover: {
+      allOf: [
+        { $ref: "handover.schema.json" },
+        {
+          type: "object",
+          properties: {
+            role: {
+              type: "string",
+              pattern: "^perf-reviewer-(phase[1-7]|pass-(load|stress|spike|soak))$"
+            },
+            status: {
+              enum: ["approved", "rejected", "escalated-to-user"]
+            }
+          }
+        }
+      ]
+    },
+    verdict: {
+      type: "string",
+      enum: ["approve", "reject", "escalate"]
+    },
+    phase: {
+      type: ["integer", "null"],
+      minimum: 1,
+      maximum: 7,
+      description: "Perf-onboarding phase being reviewed (perf-reviewer-phase<N> only)."
+    },
+    pass: {
+      type: ["string", "null"],
+      enum: ["load", "stress", "spike", "soak", null],
+      description: "Load-test pass being reviewed (perf-reviewer-pass-<load|stress|spike|soak> only)."
+    },
+    checklist: {
+      type: "array",
+      description: "Per-item pass/fail of the canonical perf-onboarding exit criteria.",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["item", "satisfied"],
+        properties: {
+          item: { type: "string" },
+          satisfied: { type: "boolean" },
+          evidence: { type: "string" },
+          "methodology-ref": { type: "string" }
+        }
+      }
+    },
+    findings: {
+      type: "array",
+      description: "Surgical fix list. Required when verdict == 'reject' or 'escalate'. Empty when verdict == 'approve'.",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["checklist-item", "what-missing", "fix-instruction"],
+        properties: {
+          "checklist-item": { type: "string" },
+          "what-missing": { type: "string" },
+          "methodology-ref": { type: "string" },
+          "fix-instruction": { type: "string" }
+        }
+      }
+    },
+    attestation: {
+      type: "string",
+      description: "One-line summary of what was verified. Required when verdict == 'approve'."
+    },
+    authorizer: {
+      type: "string",
+      description: "Required when the reviewer approves a skip / early-stop transition. Must carry either a verbatim user quote OR a documented structural exception."
+    },
+    reviewerCycle: {
+      type: "integer",
+      minimum: 1,
+      maximum: 3,
+      description: "Which perf-reviewer dispatch this is for the phase / pass. The orchestrator increments per reject."
+    },
+    summary: { type: "string" }
+  },
+  allOf: [
+    {
+      if: {
+        type: "object",
+        properties: { verdict: { const: "approve" } }
+      },
+      then: {
+        type: "object",
+        required: ["attestation"],
+        properties: {
+          attestation: { type: "string", minLength: 1 }
+        }
+      }
+    },
+    {
+      if: {
+        type: "object",
+        properties: { verdict: { const: "reject" } }
+      },
+      then: {
+        type: "object",
+        required: ["findings"],
+        properties: {
+          findings: { type: "array", minItems: 1 }
+        }
+      }
+    },
+    {
+      if: {
+        type: "object",
+        properties: { verdict: { const: "escalate" } }
+      },
+      then: {
+        type: "object",
+        required: ["findings"],
+        properties: {
+          findings: { type: "array", minItems: 1 }
+        }
+      }
+    }
+  ]
+};
+
 // schemas/subagent-returns/phase-validator.schema.json
 var phase_validator_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -15773,6 +15904,206 @@ var onboarding_status_schema_default = {
   }
 };
 
+// schemas/perf-onboarding-status.schema.json
+var perf_onboarding_status_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://civitas-cerebrum.github.io/element-interactions/schemas/perf-onboarding-status.schema.json",
+  title: "Perf-onboarding pipeline status ledger",
+  description: "Single source of truth for the perf-onboarding pipeline's state. Owned by the perf orchestrator (interactive) or an external automated CLI driver. Read by the workflow-reviewer-* subagents and by the perf-ledger-* hooks. Lives at tests/perf/docs/perf-onboarding-status.json in consumer projects (gitignored \u2014 same pattern as .phase4-cycle-state.json + coverage-expansion-state.json).",
+  type: "object",
+  additionalProperties: true,
+  required: [
+    "schemaVersion",
+    "pipelineVersion",
+    "runMode",
+    "startedAt",
+    "currentPhase",
+    "status",
+    "phases"
+  ],
+  properties: {
+    schemaVersion: {
+      type: "integer",
+      const: 1,
+      description: "Schema version for forward-compat. Bump when the shape changes."
+    },
+    pipelineVersion: {
+      type: "string",
+      description: "The achilles methodology package version that produced this ledger, e.g. '1.0.0'. Used by the workflow-reviewer to check it is reading a ledger shape it understands."
+    },
+    runMode: {
+      type: "string",
+      enum: ["standard", "depth"],
+      description: "Mirrors the value captured at the onboarding front-load gate. Propagates to Phase 4 cycleStrictness and Phase 5 coverage-expansion runMode."
+    },
+    modeAuthorizer: {
+      type: "string",
+      minLength: 1,
+      description: "Verbatim operator quote authorising the persisted runMode. Required by the write-gate whenever runMode is set or changed (gate-enforced co-location; the schema documents the field, the gate enforces the pairing)."
+    },
+    startedAt: {
+      type: "string",
+      format: "date-time",
+      description: "ISO-8601 timestamp of the front-load gate completion (Step 0 mode selection done, preconditions confirmed)."
+    },
+    currentPhase: {
+      type: "integer",
+      minimum: 1,
+      maximum: 7,
+      description: "1=Scaffold, 2=Readiness, 3=Scenario-model, 4=Baseline, 5=Load-run, 6=Threshold-gate, 7=Report."
+    },
+    currentSubStage: {
+      type: ["string", "null"],
+      description: "For phase 5 (Load-run) only. Values: pass-load|pass-stress|pass-spike|pass-soak. Null otherwise.",
+      pattern: "^pass-(load|stress|spike|soak)$"
+    },
+    status: {
+      type: "string",
+      enum: ["in-progress", "blocked", "complete", "aborted"],
+      description: "Pipeline-level status."
+    },
+    phases: {
+      type: "array",
+      minItems: 7,
+      maxItems: 7,
+      description: "Length-7 array, populated as the run progresses. Phases 1-7 in order.",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["id", "name", "status"],
+        properties: {
+          id: {
+            type: "integer",
+            minimum: 1,
+            maximum: 7
+          },
+          name: {
+            type: "string",
+            enum: [
+              "Scaffold",
+              "Readiness",
+              "Scenario-model",
+              "Baseline",
+              "Load-run",
+              "Threshold-gate",
+              "Report"
+            ]
+          },
+          startedAt: {
+            type: ["string", "null"],
+            format: "date-time"
+          },
+          finishedAt: {
+            type: ["string", "null"],
+            format: "date-time"
+          },
+          status: {
+            type: "string",
+            enum: ["pending", "in-progress", "completed", "blocked", "skipped"]
+          },
+          handoverEnvelope: {
+            type: ["object", "null"],
+            additionalProperties: true,
+            description: "The closing subagent's handover envelope for this phase. See schemas/subagent-returns/handover.schema.json. Required (non-null) when reviewerVerdict != 'pending'."
+          },
+          reviewerVerdict: {
+            type: ["string", "null"],
+            enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+          },
+          reviewerCycles: {
+            type: "integer",
+            minimum: 0,
+            maximum: 3,
+            description: "Number of workflow-reviewer-* dispatches for this phase. Cap is 3; the 3rd rejection escalates."
+          },
+          reviewerFindings: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                "checklist-item": { type: "string" },
+                "what-missing": { type: "string" },
+                "methodology-ref": { type: "string" },
+                "fix-instruction": { type: "string" }
+              }
+            }
+          },
+          deliverables: {
+            type: "array",
+            items: { type: "string" },
+            description: "Relative paths of files committed during this phase."
+          },
+          subStages: {
+            type: "array",
+            description: "Optional. Used by phase 5 (Load-run).",
+            items: {
+              type: "object",
+              additionalProperties: true,
+              required: ["id", "status"],
+              properties: {
+                id: {
+                  type: "string",
+                  pattern: "^pass-(load|stress|spike|soak)$"
+                },
+                status: {
+                  type: "string",
+                  enum: ["pending", "in-progress", "completed", "blocked", "skipped"]
+                },
+                handoverEnvelope: {
+                  type: ["object", "null"],
+                  additionalProperties: true
+                },
+                reviewerVerdict: {
+                  type: ["string", "null"],
+                  enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+                },
+                reviewerCycles: {
+                  type: "integer",
+                  minimum: 0,
+                  maximum: 3
+                },
+                reviewerFindings: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    approvedDeviations: {
+      type: "array",
+      description: "Structured exceptions: skip-phase / early-stop authorisations captured during the run.",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["phase", "deviation", "authorizer"],
+        properties: {
+          phase: {
+            type: "integer",
+            minimum: 1,
+            maximum: 7
+          },
+          deviation: {
+            type: "string",
+            description: "Short description, e.g. 'skipped' or 'early-stop-at-pass-3'."
+          },
+          authorizer: {
+            type: "string",
+            minLength: 1,
+            description: "Verbatim user quote OR a structured reviewer attestation (e.g. 'reviewer-attestation: phase6-redundant-with-phase5')."
+          }
+        }
+      }
+    }
+  }
+};
+
 // schemas/run-summary.schema.json
 var run_summary_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -15870,6 +16201,7 @@ var run_summary_schema_default = {
 var SCHEMAS = {
   "composer": composer_schema_default,
   "handover": handover_schema_default,
+  "perf-reviewer": perf_reviewer_schema_default,
   "phase-validator": phase_validator_schema_default,
   "phase4-prioritise-author": phase4_prioritise_author_schema_default,
   "probe": probe_schema_default,
@@ -15877,6 +16209,7 @@ var SCHEMAS = {
   "section-agent": section_agent_schema_default,
   "workflow-reviewer": workflow_reviewer_schema_default,
   "onboarding-status": onboarding_status_schema_default,
+  "perf-onboarding-status": perf_onboarding_status_schema_default,
   "run-summary": run_summary_schema_default
 };
 function makeAjv() {

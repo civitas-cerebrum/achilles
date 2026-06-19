@@ -111,6 +111,13 @@ SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
 PIPELINE_LEDGER="$LEDGER"
 PIPELINE_SIDECAR="$SIDECAR"
 PIPELINE_CAP_PREFIX_RE='s/^(workflow-reviewer-phase|phase-validator-)([0-9]+).*/\2/p'
+PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
+PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
+PIPELINE_MSG_LEDGER_REL='tests/e2e/docs/onboarding-status.json'
+PIPELINE_MSG_REVIEWER_LABEL='workflow-reviewer-phase'
+PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
+PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
+PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
 if is_reviewer_description "$DESCRIPTION"; then
   # Rule 4 normally always-allows reviewer dispatches. EXCEPTION (change
