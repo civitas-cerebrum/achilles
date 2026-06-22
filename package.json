@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@babel/parser": "^7.29.3",
-    "@civitas-cerebrum/element-interactions": "^0.3.6",
+    "@civitas-cerebrum/element-interactions": "^0.3.7",
     "@playwright/cli": "0.1.10",
     "@playwright/test": "^1.60.0",
     "@vue/compiler-sfc": "^3.5.34",
