@@ -15,6 +15,10 @@ assert_deny "$HOOK" "$(bash_payload 'sed -i "" "s/a/b/" tests/e2e/docs/adversari
 assert_deny "$HOOK" "$(bash_payload 'mv /tmp/forged.json tests/e2e/docs/.phase4-cycle-state.json')" "mv onto cycle state" "protected"
 assert_deny "$HOOK" "$(bash_payload 'python3 -c "open(\"tests/e2e/docs/onboarding-status.json\",\"w\").write(\"{}\")"')" "python -c mentioning ledger" "protected"
 assert_deny "$HOOK" "$(bash_payload 'node -e "require(\"fs\").writeFileSync(process.env.HOME+\"/.claude/settings.json\",\"{}\")"')" "node -e touching settings.json" "protected"
+# Guardrail: a require()-READ that ALSO carries a write-shape is still DENY —
+# write-shape is classified before read-shape, so require-as-read can never
+# launder an actual write past the guard.
+assert_deny "$HOOK" "$(bash_payload 'node -e "require(\"tests/e2e/docs/onboarding-status.json\"); require(\"fs\").writeFileSync(\"tests/e2e/docs/onboarding-status.json\",\"{}\")"')" "node -e require()+writeFileSync still denied (write-shape wins)" "protected"
 assert_deny "$HOOK" "$(bash_payload 'cp my-hook.sh ~/.claude/hooks/onboarding-ledger-gate.sh')" "overwrite installed hook" "protected"
 assert_deny "$HOOK" "$(bash_payload 'tee tests/e2e/docs/coverage-expansion-state.json < /tmp/x')" "tee into coverage state" "protected"
 assert_deny "$HOOK" "$(bash_payload 'truncate -s 0 tests/e2e/docs/.ledger-integrity.json')" "truncate integrity sidecar" "protected"
@@ -40,6 +44,10 @@ assert_allow "$HOOK" "$(bash_payload 'yq .currentPhase tests/e2e/docs/onboarding
 # the read-only adjacents to the write-shaped python/node denies above.)
 assert_allow "$HOOK" "$(bash_payload 'python3 -c "import json; print(json.load(open(\"tests/e2e/docs/onboarding-status.json\"))[\"currentPhase\"])"')" "python3 -c json.load read of ledger"
 assert_allow "$HOOK" "$(bash_payload 'node -e "console.log(require(\"fs\").readFileSync(\"tests/e2e/docs/coverage-expansion-state.json\",\"utf8\"))"')" "node -e readFileSync read of coverage state"
+# require(<ledger>.json) is the Node idiom for load+parse — a READ. Previously
+# unrecognized (no read token) → fell to ASK; now classified as read → ALLOW.
+assert_allow "$HOOK" "$(bash_payload 'node -e "const j=require(\"tests/e2e/docs/onboarding-status.json\"); console.log(j.currentPhase)"')" "node -e require() read of ledger"
+assert_allow "$HOOK" "$(bash_payload 'node -e "const j=require(\"tests/perf/docs/perf-onboarding-status.json\"); console.log(j.status)"')" "node -e require() read of perf ledger"
 
 section "protected-artifact-bash-guard: ambiguous interpreter one-liner → ASK"
 # Interpreter one-liner mentioning a protected path with NO recognizable
