@@ -86,9 +86,12 @@ INTERP_ANY_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(python3?|node|ruby|p
 # os.remove/unlink/rename/truncate, shutil.*, File.write/delete, unlink(.
 WRITE_SHAPE_RE="open\\([^)]*,[[:space:]]*[\"'][wax]|\\.write\\(|\\.write_text\\(|json\\.dump\\(|fs\\.(write|append|rm|unlink|rename)|writeFileSync|os\\.(remove|unlink|rename|truncate)|shutil\\.|File\\.(write|delete)|unlink\\("
 # Read-shape tokens: anything that reads (open(…, 'r')/default, readFileSync,
-# json.load, .read(), .read_text(), File.read). Used only to decide
-# ask-vs-deny on an interpreter one-liner with no write-shape.
-READ_SHAPE_RE="open\\(|readFileSync|readFile\\(|json\\.load|\\.read\\(|\\.read_text\\(|File\\.read|cat\\("
+# json.load, .read(), .read_text(), File.read, require(<json>) — the Node
+# load+parse idiom). Used only to decide ask-vs-deny on an interpreter
+# one-liner with no write-shape. require() is read-only for a JSON file; a
+# require() that also writes still carries a write-shape, which is classified
+# first (above), so this can never launder a write into an allow.
+READ_SHAPE_RE="open\\(|readFileSync|readFile\\(|json\\.load|\\.read\\(|\\.read_text\\(|File\\.read|require\\(|cat\\("
 
 INTERP_WRITE_HIT=0
 INTERP_AMBIG_HIT=0
