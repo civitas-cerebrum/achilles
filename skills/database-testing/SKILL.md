@@ -22,7 +22,7 @@ description: >
 
 # Database Testing — Persistence-Layer Verification
 
-> **⚠ Not-yet-shipped surface.** The `steps.sql*` methods and `verifySql*` matchers this skill governs are NOT exposed by the current framework dependency (`@civitas-cerebrum/element-interactions` `^0.3.6`). No spec may be written against them until the Phase-0 preflight below confirms the installed framework exposes them. When the framework ships the surface, pin the exact minimum version here (replacing this banner) — until then this document is the contract the surface will satisfy, not a description of something currently callable. Do NOT fall back to raw `pg`/`mysql` clients in specs to work around the gap.
+> **Surface shipped in `@civitas-cerebrum/element-interactions` ≥ 0.3.7.** The `steps.sql*` methods and `verifySql*` matchers this skill governs are available from framework **0.3.7** onward — the minimum this package now depends on. The framework does **not** bundle SQL drivers: the engine driver (`pg`/`mysql2`/`better-sqlite3`/`mssql`/`oracledb`) is an optional peer dep you install in Phase 0. The Phase-0 preflight still runs to confirm the *installed* framework actually exposes `steps.sql*` (a project pinning an older version returns `status: blocked`). Do NOT fall back to raw `pg`/`mysql` clients in specs to work around a version gap.
 
 A structured protocol for writing **database-backed** tests using the Steps API
 (`steps.sqlQuery/sqlExecute/sqlTransaction` + `sqlSelect/Insert/Update/Delete` + `verifySql*`).
@@ -49,7 +49,8 @@ Verify ALL before starting; if any is missing, stop and ask.
 
 - A reachable non-production SQL database (local/staging) with a known connection string in an env var.
 - `baseFixture` is wired with `dbUrl` (and any `dbProviders`) in the test fixture.
-- `@civitas-cerebrum/element-interactions` is the test framework (check `package.json`) AND the Phase-0 preflight confirms it exposes `steps.sql*` — the current `^0.3.6` dep does not (see banner).
+- `@civitas-cerebrum/element-interactions` **≥ 0.3.7** is the test framework (check `package.json`) — it ships `steps.sql*`; the Phase-0 preflight confirms the *installed* version exposes them.
+- The engine driver for the database under test is installed (Phase 0) — the framework bundles none.
 - A source of truth for expected data — a deterministic seed, a fixture, or known reference values.
 - **Local `file:`/`npm link` of the framework** can load `@playwright/test` twice → `No tests found`.
   Fix: remove the framework's nested `node_modules/@playwright*`, or set `NODE_OPTIONS=--preserve-symlinks`.

@@ -42,7 +42,7 @@ export { expect };
 | `interactions` | `ElementInteractions` | Raw interactions API for custom locators |
 | `contextStore` | `ContextStore` | Shared in-memory key-value store for passing data between steps within a test |
 
-> **Version gate — `interceptionRetry` (0.4.0+).** This package's pinned dep is `^0.3.6`. On **0.3.x** the `interceptionRetry` opt-out shown above is **not available** and the report-visible `interception-fallback` test annotation is **not emitted** — both are no-ops on the current dep. The DOM-click fallback itself behaves the same; what changes at 0.4.0 is the *opt-out* and the *annotation*. Do not teach `interceptionRetry: false` as a currently-callable knob until the dep is bumped — verify the installed version before relying on it.
+> **Version gate — `interceptionRetry` (0.4.0+).** This package's pinned dep is `^0.3.7`. On **0.3.x** the `interceptionRetry` opt-out shown above is **not available** and the report-visible `interception-fallback` test annotation is **not emitted** — both are no-ops on the current dep. The DOM-click fallback itself behaves the same; what changes at 0.4.0 is the *opt-out* and the *annotation*. Do not teach `interceptionRetry: false` as a currently-callable knob until the dep is bumped — verify the installed version before relying on it.
 
 `baseFixture` attaches a full-page `failure-screenshot` to the HTML report on every failed test automatically.
 
@@ -467,7 +467,7 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 
 ### Waiting
 
-> **Version gate — `waitForState` semantics (0.3.x vs 0.4.0).** This package's pinned dep is `^0.3.6`. On **0.3.x (current dep)** `waitForState` resolves `false` on timeout and **MUST NOT be used as an assertion** — a soft probe that returns `false` is silently ignored. Always follow a `waitForState` with an explicit `verify*` (e.g. `verifyState('elementName', 'PageName', 'visible')`) so a missed wait fails the test. The `{ optional: true }` / `{ timeout }` option bags shown below, and the throw-on-timeout behaviour, are **0.4.0+** and are no-ops on 0.3.x. Treat the throwing form as forward-looking until the dep is bumped.
+> **Version gate — `waitForState` semantics (0.3.x vs 0.4.0).** This package's pinned dep is `^0.3.7`. On **0.3.x (current dep)** `waitForState` resolves `false` on timeout and **MUST NOT be used as an assertion** — a soft probe that returns `false` is silently ignored. Always follow a `waitForState` with an explicit `verify*` (e.g. `verifyState('elementName', 'PageName', 'visible')`) so a missed wait fails the test. The `{ optional: true }` / `{ timeout }` option bags shown below, and the throw-on-timeout behaviour, are **0.4.0+** and are no-ops on 0.3.x. Treat the throwing form as forward-looking until the dep is bumped.
 
 ```ts
 // waitForState THROWS on timeout as of 0.4.0 and returns Promise<boolean>.
