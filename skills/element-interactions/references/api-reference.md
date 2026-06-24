@@ -233,6 +233,8 @@ const href = await steps.getAttribute('elementName', 'PageName', 'href');
 const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
+const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.4.0+)
+const outer = await steps.getHtml('elementName', 'PageName', { outer: true }); // outerHTML (incl. the tag)
 
 // Bulk extraction
 const allTexts = await steps.getAll('listItems', 'PageName');
@@ -279,6 +281,13 @@ await steps.verifyImages('elementName', 'PageName');                        // v
 await steps.verifyImages('elementName', 'PageName', true, { verifyDecoded: true }); // also runs Image.decode() per image
 await steps.verifyUrlContains('/dashboard');
 await steps.verifyTabCount(2);
+
+// Page-level text — document scope, web-first (string | RegExp).   (0.4.0+)
+// For 404-body / page-copy / "no <script>" checks without page.locator('body').innerText().
+await steps.verifyPageContainsText('Wishlist');
+await steps.verifyPageContainsText(/404|niet gevonden/i);
+await steps.verifyPageNotContainsText('<script>alert');
+await steps.verifyPageTitle(/Wishlist/i);                   // wraps expect(page).toHaveTitle
 
 // Browser storage — one method per store, discriminated matcher.
 // Pick exactly one: { equals } | { contains } | { matches } | { present }.
@@ -598,6 +607,13 @@ await steps.on('productCards', 'CollectionsPage').random().click({ withoutScroll
 await steps.on('productCards', 'CollectionsPage').nth(2).click();
 await steps.on('categories', 'HomePage').byText('Buttons').click();
 await steps.on('items', 'ListPage').byAttribute('data-status', 'active').click();
+
+// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.4.0+)
+// Closes scoped getByRole counts and page.locator(parent).getByText/.locator(child) compositions.
+await steps.on('cookieDialog', 'CookieBanner').findByRole('button').count.toBe(2);
+await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /voorkeuren|manage/i }).count.toBe(0);
+await steps.on('cartDrawer', 'CartDrawer').findByText('Je winkelwagen is leeg').verifyState('visible');
+await steps.on('panel', 'Page').findBySelector("input[name='email']").fill('a@b.com');
 
 // Conditional visibility — silently skips if element is not visible
 await steps.on('cookieBanner', 'Page').ifVisible().click();
