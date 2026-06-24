@@ -157,9 +157,16 @@ import { DropdownSelectType, ListedElementMatch, VerifyListedOptions, GetListedD
 await steps.navigateTo('/path');
 await steps.navigateTo('/search', { query: { q: 'hello', page: '2' } });   // appends ?q=hello&page=2
 await steps.navigateTo('/path', { waitUntil: 'domcontentloaded' });        // 0.3.7+ — SPA-safe; default is 'load'
+const res = await steps.navigateTo('/missing-route');                      // 0.4.0+ — returns Response | null
+expect(res?.status()).toBe(404);                                           // assert 404/redirect contracts (no raw page.goto)
 await steps.refresh();
 await steps.backOrForward('back'); // or 'forward'
 await steps.setViewport(1280, 720);
+
+// Standalone lifecycle wait — after an action that does NOT navigate.   (0.4.0+)
+// state: 'load' | 'domcontentloaded' | 'networkidle' (the LoadState type).
+await steps.waitForLoadState('domcontentloaded');
+await steps.waitForLoadState('networkidle', { timeout: 10000 });
 
 // Current URL (value getters — companions to verifyUrlContains)  (0.3.7+)
 const url  = steps.getUrl();           // full href
@@ -243,6 +250,14 @@ const allHrefs = await steps.getAll('links', 'PageName', { extractAttribute: 'hr
 // Returns null when the key is absent (matches native getItem contract).
 const theme = await steps.getLocalStorage('theme');           // string | null
 const cart  = await steps.getSessionStorage('cart.count');    // string | null
+
+// Enumerate all keys — e.g. to discover a runtime-derived key.   (0.4.0+)
+const lsKeys = await steps.getLocalStorageKeys();             // string[]
+const ssKeys = await steps.getSessionStorageKeys();           // string[]
+
+// Page-level text (document.body.innerText) — companion to getPageHtml.   (0.4.0+)
+// For 404-body / page-copy assertions without page.locator('body').innerText().
+const bodyText = await steps.getPageText();                   // string
 
 // Browser storage — page-level writes (mutating companions to the getters).  (0.3.7+)
 // Use to seed persisted state, or to drive resilience checks with malformed values.
@@ -598,6 +613,10 @@ await steps.on('productCards', 'CollectionsPage').random().click({ withoutScroll
 await steps.on('productCards', 'CollectionsPage').nth(2).click();
 await steps.on('categories', 'HomePage').byText('Buttons').click();
 await steps.on('items', 'ListPage').byAttribute('data-status', 'active').click();
+// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (0.4.0+)
+// Selects the visible one and proceeds (throws if none visible) — unlike ifVisible()
+// which SKIPS when hidden. Replaces getByRole(...).filter({ visible: true }).first().
+await steps.on('accordionTrigger', 'ProductPage').visible().click();
 
 // Conditional visibility — silently skips if element is not visible
 await steps.on('cookieBanner', 'Page').ifVisible().click();
