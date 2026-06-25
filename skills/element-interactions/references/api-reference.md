@@ -210,6 +210,9 @@ await steps.typeSequentially('elementName', 'PageName', 'text', 50); // optional
 await steps.uploadFile('elementName', 'PageName', 'path/to/file.pdf');
 await steps.setSliderValue('elementName', 'PageName', 75);
 await steps.pressKey('Enter');                                 // 'Escape', 'Tab', 'Control+A', etc.
+await steps.pressKeys(['Control', 'A']);                       // 0.4.0+ — multi-key chord, joined with '+'; throws on []
+await steps.dispatchEvent('elementName', 'PageName', 'click'); // 0.4.0+ — synthetic DOM event, NO actionability checks
+await steps.dispatchEvent('elementName', 'PageName', 'input', { bubbles: true }); // optional eventInit payload
 
 // Dropdowns
 const val = await steps.selectDropdown('elementName', 'PageName');                                              // random (default)
@@ -233,6 +236,7 @@ const href = await steps.getAttribute('elementName', 'PageName', 'href');
 const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
+const box = await steps.getBoundingBox('elementName', 'PageName');  // 0.4.0+ — { x, y, width, height } | null (null when not rendered)
 
 // Bulk extraction
 const allTexts = await steps.getAll('listItems', 'PageName');
@@ -518,6 +522,23 @@ await steps.waitForNetworkIdle({ timeout: 10000, optional: true });        // 0.
 await steps.waitForResponse('/api/data', async () => {
   await steps.click('submitButton', 'PageName');
 });
+```
+
+### Timing / pacing (0.4.0+)
+
+> **Reach for `waitForState` / `waitForUrl` / web-first assertions first.** `pace` is *deliberate* timing — settling a debounce, spacing rapid-fire actions — NOT a substitute for waiting on a condition. A `pace` standing in for a missing wait is a flake waiting to happen.
+
+```ts
+await steps.pace(120);                                // deliberate pause (ms); throws on negative/non-finite
+
+// repeat: run an action N times with the zero-based index, collect each result;
+// intervalMs paces BETWEEN iterations (never before the first or after the last).
+const codes = await steps.repeat(
+  (i) => steps.requestGet(`/p/${i}`).then(r => r.status),
+  3,
+  { intervalMs: 100 },
+);                                                    // => [200, 200, 200]
+await steps.repeat((i) => steps.clickNth('swatch', 'PDP', i), 3);  // throws on a non-integer / negative count
 ```
 
 ### Composite / Workflow
