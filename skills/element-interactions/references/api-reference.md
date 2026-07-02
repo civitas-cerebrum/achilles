@@ -10,6 +10,7 @@ The following sections document the full API available for writing tests in Stag
 - [Accessing the Repository Directly](#accessing-the-repository-directly)
 - [Raw Interactions API](#raw-interactions-api)
 - [Email API](#email-api) (setup, sending, receiving, marking, cleaning)
+- [Session-aware HTTP Requests](#session-aware-http-requests) (page.request — browser-session cookies)
 - [HTTP API Steps](#http-api-steps) (fixture setup, default & named providers, methods, verifications)
 
 ---
@@ -157,9 +158,16 @@ import { DropdownSelectType, ListedElementMatch, VerifyListedOptions, GetListedD
 await steps.navigateTo('/path');
 await steps.navigateTo('/search', { query: { q: 'hello', page: '2' } });   // appends ?q=hello&page=2
 await steps.navigateTo('/path', { waitUntil: 'domcontentloaded' });        // 0.3.7+ — SPA-safe; default is 'load'
+const res = await steps.navigateTo('/missing-route');                      // 0.4.0+ — returns Response | null
+expect(res?.status()).toBe(404);                                           // assert 404/redirect contracts (no raw page.goto)
 await steps.refresh();
 await steps.backOrForward('back'); // or 'forward'
 await steps.setViewport(1280, 720);
+
+// Standalone lifecycle wait — after an action that does NOT navigate.   (0.4.0+)
+// state: 'load' | 'domcontentloaded' | 'networkidle' (the LoadState type).
+await steps.waitForLoadState('domcontentloaded');
+await steps.waitForLoadState('networkidle', { timeout: 10000 });
 
 // Current URL (value getters — companions to verifyUrlContains)  (0.3.7+)
 const url  = steps.getUrl();           // full href
@@ -233,6 +241,8 @@ const href = await steps.getAttribute('elementName', 'PageName', 'href');
 const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
+const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.4.0+)
+const outer = await steps.getHtml('elementName', 'PageName', { outer: true }); // outerHTML (incl. the tag)
 
 // Bulk extraction
 const allTexts = await steps.getAll('listItems', 'PageName');
@@ -243,6 +253,14 @@ const allHrefs = await steps.getAll('links', 'PageName', { extractAttribute: 'hr
 // Returns null when the key is absent (matches native getItem contract).
 const theme = await steps.getLocalStorage('theme');           // string | null
 const cart  = await steps.getSessionStorage('cart.count');    // string | null
+
+// Enumerate all keys — e.g. to discover a runtime-derived key.   (0.4.0+)
+const lsKeys = await steps.getLocalStorageKeys();             // string[]
+const ssKeys = await steps.getSessionStorageKeys();           // string[]
+
+// Page-level text (document.body.innerText) — companion to getPageHtml.   (0.4.0+)
+// For 404-body / page-copy assertions without page.locator('body').innerText().
+const bodyText = await steps.getPageText();                   // string
 
 // Browser storage — page-level writes (mutating companions to the getters).  (0.3.7+)
 // Use to seed persisted state, or to drive resilience checks with malformed values.
@@ -255,6 +273,16 @@ await steps.removeLocalStorage('wishlist');       // drop one key (no-op when ab
 await steps.removeSessionStorage('cart.count');
 await steps.clearLocalStorage();                  // empty the whole store
 await steps.clearSessionStorage();
+
+// Window-level JS state — controlled access by dotted path (no raw page.evaluate).  (0.4.0+)
+const fired = await steps.getWindowProperty('__XSS_FIRED');   // read; undefined if absent
+await steps.setWindowProperty('__test.flag', true);           // set (creates intermediate objects)
+// verifyWindowProperty — retrying; one matcher of equals|contains|matches|present|truthy|
+// greaterThan|lessThan, with { negated?, timeout?, errorMessage? }.
+await steps.verifyWindowProperty('dataLayer.length', { greaterThan: 0 });
+await steps.verifyWindowProperty('__XSS_FIRED', { truthy: false });
+// The single labelled escape hatch over page.evaluate — typed + logged; prefer targeted steps.
+const imgs = await steps.evaluateScript(() => document.querySelectorAll('img').length);
 ```
 
 ### Verification
@@ -279,6 +307,13 @@ await steps.verifyImages('elementName', 'PageName');                        // v
 await steps.verifyImages('elementName', 'PageName', true, { verifyDecoded: true }); // also runs Image.decode() per image
 await steps.verifyUrlContains('/dashboard');
 await steps.verifyTabCount(2);
+
+// Page-level text — document scope, web-first (string | RegExp).   (0.4.0+)
+// For 404-body / page-copy / "no <script>" checks without page.locator('body').innerText().
+await steps.verifyPageContainsText('Wishlist');
+await steps.verifyPageContainsText(/404|niet gevonden/i);
+await steps.verifyPageNotContainsText('<script>alert');
+await steps.verifyPageTitle(/Wishlist/i);                   // wraps expect(page).toHaveTitle
 
 // Browser storage — one method per store, discriminated matcher.
 // Pick exactly one: { equals } | { contains } | { matches } | { present }.
@@ -603,6 +638,17 @@ await steps.on('productCards', 'CollectionsPage').random().click({ withoutScroll
 await steps.on('productCards', 'CollectionsPage').nth(2).click();
 await steps.on('categories', 'HomePage').byText('Buttons').click();
 await steps.on('items', 'ListPage').byAttribute('data-status', 'active').click();
+// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (0.4.0+)
+// Selects the visible one and proceeds (throws if none visible) — unlike ifVisible()
+// which SKIPS when hidden. Replaces getByRole(...).filter({ visible: true }).first().
+await steps.on('accordionTrigger', 'ProductPage').visible().click();
+
+// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.4.0+)
+// Closes scoped getByRole counts and page.locator(parent).getByText/.locator(child) compositions.
+await steps.on('cookieDialog', 'CookieBanner').findByRole('button').count.toBe(2);
+await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /voorkeuren|manage/i }).count.toBe(0);
+await steps.on('cartDrawer', 'CartDrawer').findByText('Je winkelwagen is leeg').verifyState('visible');
+await steps.on('panel', 'Page').findBySelector("input[name='email']").fill('a@b.com');
 
 // Conditional visibility — silently skips if element is not visible
 await steps.on('cookieBanner', 'Page').ifVisible().click();
@@ -811,6 +857,25 @@ await steps.cleanEmails(); // delete all
 ```
 
 Filter types: `SUBJECT`, `FROM`, `TO`, `CONTENT` (body text/HTML), `SINCE` (Date).
+
+## Session-aware HTTP Requests  (0.4.0+)
+
+Browser-context HTTP, backed by Playwright's `page.request` — **shares the browser
+context's cookies/session**. The right tool for authenticated redirect / protected-route
+contracts (e.g. "a logged-out user hitting `/account` is 307'd to `/login`"). Distinct
+from the `## HTTP API Steps` below, which use the `wasapi` external-service client and do
+**not** carry the browser session.
+
+```ts
+// verbs: requestGet / requestPost / requestPut / requestPatch / requestDelete / requestHead
+// opts: { maxRedirects?, headers?, params?, data?, form?, failOnStatusCode? }  (failOnStatusCode defaults false)
+const res = await steps.requestGet('/account', { maxRedirects: 0 });   // uses the logged-in session
+// BrowserResponse: { status, ok, url, headers, statusText, json<T>(), text(), body() }
+await steps.verifyRequestStatus(res, 307);
+await steps.verifyRequestHeader(res, 'location', /\/login/);            // value optional → presence check
+await steps.verifyRequestOk(res);                                      // 2xx
+const body = await res.json();
+```
 
 ## HTTP API Steps
 
