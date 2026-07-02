@@ -54,6 +54,31 @@ section "protected-artifact-bash-guard: ambiguous interpreter one-liner → ASK"
 # read or write token — can't classify, so defer to the operator.
 assert_ask "$HOOK" "$(bash_payload 'python3 -c "import sys; sys.argv.append(\"tests/e2e/docs/onboarding-status.json\")"')" "interpreter one-liner, no read/write token → ask" "ASK"
 
+section "protected-artifact-bash-guard: evasion vectors (negative-security)"
+# Token-split of the harness surface: assemble .claude in a var so
+# ".claude/settings.json" never appears contiguously. Previously ALLOWED.
+assert_deny "$HOOK" "$(bash_payload 'D=$HOME/.claude; echo {} > "$D/settings.json"')" "token-split settings.json redirect → DENY" "protected"
+assert_deny "$HOOK" "$(bash_payload 'C=$HOME/.claude; cp /tmp/x.sh "$C/hooks/onboarding-ledger-gate.sh"')" "token-split hooks-dir cp → DENY" "protected"
+# find -delete / find -exec: cheap way to reset protected state without a
+# redirect or top-level mutate verb. Previously ALLOWED.
+assert_deny "$HOOK" "$(bash_payload 'find tests/e2e/docs -name onboarding-status.json -delete')" "find -delete ledger → DENY" "protected"
+assert_deny "$HOOK" "$(bash_payload 'find tests/e2e/docs -name journey-map.md -exec rm {} +')" "find -exec rm journey map → DENY" "protected"
+# Line editors / patchers with no -i flag. Previously ALLOWED.
+assert_deny "$HOOK" "$(bash_payload 'ed tests/e2e/docs/onboarding-status.json')" "ed line-editor on ledger → DENY" "protected"
+assert_deny "$HOOK" "$(bash_payload 'patch tests/e2e/docs/journey-map.md < p.patch')" "patch journey map in place → DENY" "protected"
+# Heredoc-fed interpreter (bare `-` stdin, no -c/-e flag) carrying a
+# write-shape. Previously ALLOWED.
+assert_deny "$HOOK" "$(bash_payload 'python3 - <<EOF
+open("tests/e2e/docs/onboarding-status.json","w").write("{}")
+EOF')" "heredoc python bare-stdin write → DENY" "protected"
+# Allow-test convention: adjacent legitimate traffic that must NOT trip the
+# broadened patterns.
+assert_allow "$HOOK" "$(bash_payload 'find tests/e2e -name "*.spec.ts"')" "find specs, no -delete → ALLOW"
+assert_allow "$HOOK" "$(bash_payload 'cat "$HOME/.claude/settings.json"')" "token-split settings.json READ → ALLOW"
+assert_allow "$HOOK" "$(bash_payload 'python3 - <<EOF
+import json; print(json.load(open("tests/e2e/docs/onboarding-status.json"))["currentPhase"])
+EOF')" "heredoc python bare-stdin READ → ALLOW"
+
 section "protected-artifact-bash-guard: flake-quarantine.md is protected"
 # harvest-U3: the flake-quarantine ledger is a protected pipeline-state
 # artifact — sed -i against it is denied; a Write-tool append is the

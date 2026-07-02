@@ -48,9 +48,18 @@
 
 set -uo pipefail
 
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+# shellcheck source=lib/guard-common.sh
+if [ -f "$HOOK_LIB_DIR/guard-common.sh" ]; then source "$HOOK_LIB_DIR/guard-common.sh"; fi
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[hook-authored-state-guard] FATAL: jq not found." >&2; exit 1; }
+# Fail CLOSED when jq is missing — this guard protects pipeline-state files.
+if [ -z "$JQ" ]; then
+  command -v guard_emit_deny_no_jq >/dev/null 2>&1 && guard_emit_deny_no_jq "hook-authored-state" \
+    || printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] hook-authored-state guard cannot run: jq not found. Fails closed. Reinstall @civitas-cerebrum/achilles or install jq."}}'
+  exit 0
+fi
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
@@ -70,9 +79,14 @@ emit_deny() {
   exit 0
 }
 
-# Normalise to leading-slash form so bare relative paths match the same
-# suffix patterns as absolute ones.
-NORM="/${FILE_PATH#/}"
+# Lexically normalise (leading slash, collapse //, resolve . and ..) so bare
+# relative paths AND evasion forms that resolve to a protected file match the
+# same suffix patterns as absolute ones.
+if command -v normalize_path >/dev/null 2>&1; then
+  NORM="$(normalize_path "$FILE_PATH")"
+else
+  NORM="/${FILE_PATH#/}"
+fi
 
 # --- Class 1: hook-authored state — never Write|Edit. ---
 case "$NORM" in

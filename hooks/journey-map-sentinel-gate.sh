@@ -68,11 +68,17 @@
 
 set -uo pipefail
 
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+# shellcheck source=lib/guard-common.sh
+if [ -f "$HOOK_LIB_DIR/guard-common.sh" ]; then source "$HOOK_LIB_DIR/guard-common.sh"; fi
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
+# Fail CLOSED when jq is missing — this guard protects the journey-map sentinel.
 if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
+  command -v guard_emit_deny_no_jq >/dev/null 2>&1 && guard_emit_deny_no_jq "journey-map-sentinel-gate" \
+    || printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] journey-map-sentinel-gate cannot run: jq not found. Fails closed. Reinstall @civitas-cerebrum/achilles or install jq."}}'
+  exit 0
 fi
 
 INPUT=$(cat)
@@ -85,9 +91,14 @@ esac
 
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 
-# Normalise to a leading-slash form so a bare relative path
-# (tests/e2e/docs/journey-map.md) is gated like an absolute one.
-NORM_PATH="/${FILE_PATH#/}"
+# Lexically normalise (leading slash, collapse //, resolve . and ..) so a bare
+# relative path (tests/e2e/docs/journey-map.md) AND evasion forms are gated
+# like an absolute one.
+if command -v normalize_path >/dev/null 2>&1; then
+  NORM_PATH="$(normalize_path "$FILE_PATH")"
+else
+  NORM_PATH="/${FILE_PATH#/}"
+fi
 
 # Rule 4: silent-allow for non-Phase-4 paths.
 IS_MAP=0

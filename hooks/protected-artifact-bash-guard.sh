@@ -35,11 +35,21 @@
 
 set -uo pipefail
 
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+# shellcheck source=lib/guard-common.sh
+if [ -f "$HOOK_LIB_DIR/guard-common.sh" ]; then source "$HOOK_LIB_DIR/guard-common.sh"; fi
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[protected-artifact-bash-guard] FATAL: jq not found." >&2; exit 1; }
+# Fail CLOSED when jq is missing — this guard is the only thing standing
+# between a Bash write and the protected pipeline-state artifacts. Denying a
+# Bash command when jq is absent is disruptive but safe; allowing one is not.
+if [ -z "$JQ" ]; then
+  command -v guard_emit_deny_no_jq >/dev/null 2>&1 && guard_emit_deny_no_jq "protected-artifact-bash-guard" \
+    || printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] protected-artifact-bash-guard cannot run: jq not found. Fails closed. Reinstall @civitas-cerebrum/achilles or install jq."}}'
+  exit 0
+fi
 
-HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
 if [ -f "$HOOK_LIB_DIR/no-skip-messaging.sh" ]; then
   # shellcheck disable=SC1091
   source "$HOOK_LIB_DIR/no-skip-messaging.sh"
@@ -56,10 +66,34 @@ CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "
 # Protected artifact patterns (extended regex).
 PROTECTED='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/hooks|\.claude/settings(\.local)?\.json'
 
-echo "$CMD" | grep -qE "$PROTECTED" || exit 0
+# Split-token evasion for the harness surface: an agent can defeat the
+# contiguous `.claude/settings.json` match by assembling the path in a
+# variable — `D=$HOME/.claude; echo {} > "$D/settings.json"` — where
+# `.claude` and `settings.json` never appear adjacent. When the command
+# mentions `.claude` at all AND a bare settings/hooks token anywhere, treat
+# it as a protected hit and (below) broaden the redirect-target match to the
+# bare tokens. This accepts extra false positives on the rare case of an
+# unrelated project settings.json referenced next to a `.claude` mention —
+# but such a bash write should go through the Write tool anyway, and a
+# read-only mention still exits 0 further down.
+CLAUDE_CONTEXT=0
+echo "$CMD" | grep -qE '\.claude([^a-zA-Z0-9]|$)' && CLAUDE_CONTEXT=1
+SPLIT_HIT=0
+if [ "$CLAUDE_CONTEXT" = "1" ] && echo "$CMD" | grep -qE 'settings(\.local)?\.json|(^|[/[:space:]"'\''])hooks/'; then
+  SPLIT_HIT=1
+fi
+
+if ! echo "$CMD" | grep -qE "$PROTECTED" && [ "$SPLIT_HIT" = "0" ]; then
+  exit 0
+fi
+
+# Redirect-target alternation. Under a `.claude` context, also treat the
+# bare settings tokens as protected redirect targets (split-token case).
+REDIR_TARGET_RE="$PROTECTED"
+[ "$SPLIT_HIT" = "1" ] && REDIR_TARGET_RE="${PROTECTED}|settings(\\.local)?\\.json"
 
 # 1. Redirection targeting a protected path (including >| clobber redirect).
-REDIR_HIT=$(echo "$CMD" | grep -cE ">>?\|?[[:space:]]*[^[:space:];|&]*(${PROTECTED})" || true)
+REDIR_HIT=$(echo "$CMD" | grep -cE ">>?\|?[[:space:]]*[^[:space:];|&]*(${REDIR_TARGET_RE})" || true)
 
 # 2. Mutation commands co-occurring with a protected name anywhere.
 MUTATE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(tee|cp|mv|rm|install|ln|truncate|sponge|shred)([[:space:]]|$)" || true)
@@ -68,18 +102,28 @@ MUTATE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(tee|cp|mv|rm|install|ln|
 INPLACE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(sed|perl|yq)[[:space:]][^;|&]*-i" || true)
 DD_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])dd[[:space:]][^;|&]*of=" || true)
 
-# 4. Interpreter one-liners (-c/-e) mentioning a protected path.
-#    A bare interpreter one-liner is NOT itself a write — `python3 -c
-#    json.load(...)` and `node -e readFileSync(...)` are read-only and must
-#    NOT be denied (the prior unconditional INTERP_HIT denied every
-#    interpreter that mentioned a protected name, a high-volume false
-#    positive on legitimate reads). We split the signal:
-#      - INTERP_WRITE_HIT: interpreter one-liner that ALSO carries a
+# 3b. find … -delete / find … -exec <mutator>: a cheap way to remove or
+#     rewrite a protected artifact that carries no redirect and no mutate
+#     verb at the top level.
+FIND_DELETE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])find[[:space:]][^;|&]*(-delete|-exec[[:space:]]+(rm|truncate|tee|sed|mv|cp|dd)([[:space:]]|$))" || true)
+
+# 3c. Line editors / patchers that mutate a named file in place without an
+#     -i flag: `ed`, `ex`, `vi -es`, `patch`. `ed`/`ex` require a boundary
+#     char before them so `sed`/`export` don't match.
+EDITOR_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(ed|ex|patch)([[:space:]]|$)|(^|[;&|[:space:]])vi[[:space:]][^;|&]*-e?s" || true)
+
+# 4. Interpreter invocations mentioning a protected path. Covers three
+#    launch shapes: `-c`/`-e` one-liners, a bare `-` stdin script, and a
+#    heredoc (`python3 - <<EOF`). A bare interpreter that only READS is not
+#    a write — `python3 -c json.load(...)` / `node -e readFileSync(...)` /
+#    `python3 - <<'EOF'\njson.load(open(...))\nEOF` must NOT be denied. We
+#    split the signal:
+#      - INTERP_WRITE_HIT: interpreter invocation that ALSO carries a
 #        recognizable write-shape token → DENY (fail-closed, the real risk).
-#      - INTERP_AMBIG_HIT: interpreter one-liner with NO recognizable
+#      - INTERP_AMBIG_HIT: interpreter invocation with NO recognizable
 #        read/write token → permissionDecision "ask" (can't classify it;
 #        defer to the operator rather than deny a possibly-read).
-INTERP_ANY_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(python3?|node|ruby|perl)[[:space:]][^;|&]*-[ce]([[:space:]]|$)" || true)
+INTERP_ANY_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(python3?|node|ruby|perl)[[:space:]]([^;|&]*-[ce]([[:space:]]|$)|-([[:space:]]|$)|[^;|&]*<<)" || true)
 
 # Write-shape tokens: open(…, 'w'/'a'/'x'), .write(), .write_text(),
 # json.dump(), fs.write/append/rm/unlink/rename, writeFileSync,
@@ -107,7 +151,9 @@ fi
 
 # Ambiguous interpreter one-liner (protected path mentioned, but no
 # recognizable read or write token) → ask the operator rather than deny.
-if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ] && [ "$INTERP_AMBIG_HIT" = "1" ]; then
+# An unambiguous write vector (redirect / mutate / editor / find-delete)
+# takes precedence over the ask path below.
+if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$FIND_DELETE_HIT" = "0" ] && [ "$EDITOR_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ] && [ "$INTERP_AMBIG_HIT" = "1" ]; then
   "$JQ" -n --arg r "[ASK] This Bash command runs an interpreter one-liner that mentions a protected pipeline-state artifact, but the harness cannot tell whether it reads or writes it.
 
 Command: ${CMD}
@@ -124,7 +170,7 @@ See: skills/element-interactions/references/harness-hooks.md" '{
   exit 0
 fi
 
-if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ]; then
+if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$FIND_DELETE_HIT" = "0" ] && [ "$EDITOR_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ]; then
   exit 0   # read-only access to a protected artifact
 fi
 
