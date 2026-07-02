@@ -71,7 +71,7 @@ Adding any forbidden attribute would violate the inertness contract: the change 
 
 ## 4. Storage in page-repository.json
 
-Once a test attribute is added and validated through the guardrail pipeline, it is recorded in `tests/e2e/docs/page-repository.json` as a locator selector:
+Once a test attribute is added and validated through the guardrail pipeline, it is recorded in `tests/e2e/page-repository.json` as a locator selector:
 
 ```json
 {

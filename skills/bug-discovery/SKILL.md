@@ -283,7 +283,7 @@ Scan existing test coverage against remaining findings.
 ### Steps
 
 1. Read all spec files in the test directory
-2. Read scenario docs (`docs/e2e-test-scenarios.md`) if they exist
+2. Read scenario docs (`tests/e2e/docs/test-scenarios.md`) if they exist
 3. Filter out findings already covered by a passing test
 4. Flag findings that contradict what an existing test asserts in a different context — these are **regression candidates**
 
@@ -466,7 +466,26 @@ Run DOM-only issues: `npx playwright test --grep @dom-only`
 
 ## Phase 7: Report & Triage
 
-### Report Location
+### Output by invocation scope (read this first)
+
+This skill produces **different deliverables depending on how it was invoked** —
+getting this wrong strands the caller's completion gate:
+
+| Invocation | Required deliverable | Prose report |
+|---|---|---|
+| **Standalone** ("find bugs", "bug hunt") | — | `docs/e2e/bug-discovery-report.md` (the template below) |
+| **onboarding Phase 6** | `tests/e2e/docs/adversarial-findings.md` (the §3 ledger — the file `onboarding-ledger-write-gate.sh` requires before Phase 6 → completed) | optional |
+| **coverage-expansion Pass 4/5 leaf** | append to `tests/e2e/docs/adversarial-findings.md` (§3 ledger) | none |
+
+When invoked by onboarding or coverage-expansion, the **ledger at
+`tests/e2e/docs/adversarial-findings.md` is the gated artifact** — write it,
+not (or in addition to) the standalone prose report. Every `findings-emitted`
+probe must land either a regression spec or an explicit `@bug` + `app-bug`
+flag; the orchestrator cannot silently discard findings (onboarding Phase 6
+exit criteria). Emitting only `docs/e2e/bug-discovery-report.md` in these
+scopes leaves the gate unsatisfied and the phase blocked.
+
+### Report Location (standalone scope)
 
 `docs/e2e/bug-discovery-report.md`
 
