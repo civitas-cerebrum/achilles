@@ -16664,7 +16664,32 @@ var run_summary_schema_default = {
           enum: ["passing", "failing", null],
           description: "null when no results file was found \u2014 never a fake pass."
         }
-      }
+      },
+      allOf: [
+        {
+          description: "A non-null status means a results file was parsed, so the counts must be real integers \u2014 a `passing` status with null counts is the fabricated pass this schema exists to forbid.",
+          if: { properties: { status: { type: "string" } }, required: ["status"] },
+          then: {
+            required: ["passing", "failing", "total"],
+            properties: {
+              passing: { type: "integer" },
+              failing: { type: "integer" },
+              total: { type: "integer" }
+            }
+          }
+        },
+        {
+          description: "A null status means no results file \u2014 the counts must all be null, not a stale carried-over number.",
+          if: { properties: { status: { type: "null" } }, required: ["status"] },
+          then: {
+            properties: {
+              passing: { type: "null" },
+              failing: { type: "null" },
+              total: { type: "null" }
+            }
+          }
+        }
+      ]
     },
     journey_map: {
       type: "object",
