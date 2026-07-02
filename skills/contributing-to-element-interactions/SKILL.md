@@ -671,7 +671,7 @@ A contributor (or an agent acting for one) may bump only when **the user has exp
 
 ```bash
 npm version patch --no-git-tag-version
-npm version 0.4.0
+npm version 0.3.8
 ```
 
 **Why.** Per-PR bumping causes version-number collisions when PRs merge out of order, reviewer cognitive cost from a version line in every diff, and rebase churn that has nothing to do with the actual change. Release-time bumping collapses every PR diff to "the actual change" and keeps release control with the maintainer.
