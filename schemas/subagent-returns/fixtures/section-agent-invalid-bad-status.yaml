@@ -1,0 +1,9 @@
+handover:
+  role: section-agent-browse
+  cycle: 1
+  status: complete
+  next-action: return to orchestrator
+section: browse
+cycle: 1
+kind: section
+summary: off-enum status "complete" (should be section-complete) — must be rejected

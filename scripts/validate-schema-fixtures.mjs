@@ -38,7 +38,6 @@ for (const file of schemaFiles) {
   const validate = ajv.compile(schema);
 
   const validPath = join(fixturesDir, `${role}-valid.yaml`);
-  const invalidPath = join(fixturesDir, `${role}-invalid.yaml`);
 
   const validData = parse(readFileSync(validPath, 'utf8'));
   if (!validate(validData)) {
@@ -49,12 +48,27 @@ for (const file of schemaFiles) {
     console.log(`OK:   ${validPath} validates against ${file}`);
   }
 
-  const invalidData = parse(readFileSync(invalidPath, 'utf8'));
-  if (validate(invalidData)) {
-    console.error(`FAIL: ${invalidPath} unexpectedly validated against ${file}`);
+  // Every invalid fixture for the role must fail: the canonical
+  // `<role>-invalid.yaml` plus any focused `<role>-invalid-<case>.yaml`
+  // variants (e.g. -invalid-bad-status). One-violation-per-file keeps each
+  // negative fixture honest — a bundled multi-violation fixture can hide a
+  // schema gap by failing for the wrong reason.
+  const invalidFixtures = readdirSync(fixturesDir).filter(
+    n => (n === `${role}-invalid.yaml` || n.startsWith(`${role}-invalid-`)) && n.endsWith('.yaml'),
+  );
+  if (invalidFixtures.length === 0) {
+    console.error(`FAIL: no invalid fixture found for role ${role} (expected ${role}-invalid.yaml)`);
     failures++;
-  } else {
-    console.log(`OK:   ${invalidPath} correctly fails ${file}`);
+  }
+  for (const inv of invalidFixtures) {
+    const invalidPath = join(fixturesDir, inv);
+    const invalidData = parse(readFileSync(invalidPath, 'utf8'));
+    if (validate(invalidData)) {
+      console.error(`FAIL: ${invalidPath} unexpectedly validated against ${file}`);
+      failures++;
+    } else {
+      console.log(`OK:   ${invalidPath} correctly fails ${file}`);
+    }
   }
 }
 

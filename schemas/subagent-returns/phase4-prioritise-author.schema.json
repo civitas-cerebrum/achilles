@@ -4,65 +4,162 @@
   "title": "Phase-4 prioritise-author return",
   "type": "object",
   "additionalProperties": true,
-  "required": ["handover"],
+  "required": [
+    "handover"
+  ],
   "properties": {
     "handover": {
       "allOf": [
-        { "$ref": "handover.schema.json" }
+        {
+          "$ref": "handover.schema.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "journey-map-authored",
+                "blocked"
+              ]
+            }
+          }
+        }
       ]
     },
-    "cycles-consumed": { "type": "integer", "minimum": 1 },
-    "convergence-status": { "enum": ["converged", "hard-cap-reached"] },
+    "cycles-consumed": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "convergence-status": {
+      "enum": [
+        "converged",
+        "hard-cap-reached"
+      ]
+    },
     "journey-map": {
       "type": "object",
-      "required": ["path", "pages-discovered", "flows-identified", "priority-breakdown"],
+      "required": [
+        "path",
+        "pages-discovered",
+        "flows-identified",
+        "priority-breakdown"
+      ],
       "additionalProperties": false,
       "properties": {
-        "path": { "type": "string" },
-        "pages-discovered": { "type": "integer", "minimum": 0 },
-        "flows-identified": { "type": "integer", "minimum": 0 },
+        "path": {
+          "type": "string"
+        },
+        "pages-discovered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "flows-identified": {
+          "type": "integer",
+          "minimum": 0
+        },
         "priority-breakdown": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "P0": { "type": "integer", "minimum": 0 },
-            "P1": { "type": "integer", "minimum": 0 },
-            "P2": { "type": "integer", "minimum": 0 },
-            "P3": { "type": "integer", "minimum": 0 }
+            "P0": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "P1": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "P2": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "P3": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         }
       }
     },
-    "gated-areas-not-mapped": { "type": "integer", "minimum": 0 },
-    "mapping-completeness-note": { "type": "string" },
-    "summary": { "type": "string" },
-    "blocked-reason": { "type": "string" }
+    "gated-areas-not-mapped": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "mapping-completeness-note": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "blocked-reason": {
+      "type": "string"
+    }
   },
   "allOf": [
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "journey-map-authored" } } } }
+        "properties": {
+          "handover": {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "journey-map-authored"
+              }
+            }
+          }
+        }
       },
       "then": {
         "type": "object",
-        "required": ["journey-map", "cycles-consumed", "convergence-status"],
+        "required": [
+          "journey-map",
+          "cycles-consumed",
+          "convergence-status"
+        ],
         "properties": {
-          "journey-map": { "type": "object" },
-          "cycles-consumed": { "type": "integer" },
-          "convergence-status": { "type": "string" }
+          "journey-map": {
+            "type": "object"
+          },
+          "cycles-consumed": {
+            "type": "integer"
+          },
+          "convergence-status": {
+            "type": "string"
+          }
         }
       }
     },
     {
       "if": {
         "type": "object",
-        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "blocked" } } } }
+        "properties": {
+          "handover": {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "blocked"
+              }
+            }
+          }
+        }
       },
       "then": {
         "type": "object",
-        "required": ["blocked-reason"],
-        "properties": { "blocked-reason": { "type": "string" } }
+        "required": [
+          "blocked-reason"
+        ],
+        "properties": {
+          "blocked-reason": {
+            "type": "string"
+          }
+        }
       }
     }
   ]

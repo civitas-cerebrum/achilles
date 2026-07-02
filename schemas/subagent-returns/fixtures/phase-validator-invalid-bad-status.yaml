@@ -1,0 +1,6 @@
+handover:
+  role: phase-validator-phase3
+  status: passed
+  next-action: advance to phase 4
+phase: 3
+summary: off-enum status "passed" bypasses both conditional branches — must be rejected

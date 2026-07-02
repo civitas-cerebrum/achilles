@@ -15248,46 +15248,112 @@ var phase_validator_schema_default = {
   title: "Phase-validator return",
   type: "object",
   additionalProperties: true,
-  required: ["handover"],
+  required: [
+    "handover"
+  ],
   properties: {
     handover: {
       allOf: [
-        { $ref: "handover.schema.json" }
+        {
+          $ref: "handover.schema.json"
+        },
+        {
+          type: "object",
+          properties: {
+            status: {
+              enum: [
+                "greenlight",
+                "improvements-needed"
+              ]
+            }
+          }
+        }
       ]
     },
-    phase: { type: "integer", minimum: 1, maximum: 8 },
-    "sub-skill": { type: "string" },
+    phase: {
+      type: "integer",
+      minimum: 1,
+      maximum: 8
+    },
+    "sub-skill": {
+      type: "string"
+    },
     "exit-criteria-checked": {
       type: "array",
-      items: { type: "object", additionalProperties: true }
+      items: {
+        type: "object",
+        additionalProperties: true
+      }
     },
     findings: {
       type: "array",
-      items: { type: "object", additionalProperties: true }
+      items: {
+        type: "object",
+        additionalProperties: true
+      }
     },
-    summary: { type: "string" }
+    summary: {
+      type: "string"
+    }
   },
   allOf: [
     {
       if: {
         type: "object",
-        properties: { handover: { type: "object", required: ["status"], properties: { status: { const: "improvements-needed" } } } }
+        properties: {
+          handover: {
+            type: "object",
+            required: [
+              "status"
+            ],
+            properties: {
+              status: {
+                const: "improvements-needed"
+              }
+            }
+          }
+        }
       },
       then: {
         type: "object",
-        required: ["findings"],
-        properties: { findings: { type: "array", minItems: 1 } }
+        required: [
+          "findings"
+        ],
+        properties: {
+          findings: {
+            type: "array",
+            minItems: 1
+          }
+        }
       }
     },
     {
       if: {
         type: "object",
-        properties: { handover: { type: "object", required: ["status"], properties: { status: { const: "greenlight" } } } }
+        properties: {
+          handover: {
+            type: "object",
+            required: [
+              "status"
+            ],
+            properties: {
+              status: {
+                const: "greenlight"
+              }
+            }
+          }
+        }
       },
       then: {
         type: "object",
-        required: ["exit-criteria-checked"],
-        properties: { "exit-criteria-checked": { type: "array" } }
+        required: [
+          "exit-criteria-checked"
+        ],
+        properties: {
+          "exit-criteria-checked": {
+            type: "array"
+          }
+        }
       }
     }
   ]
@@ -15300,65 +15366,162 @@ var phase4_prioritise_author_schema_default = {
   title: "Phase-4 prioritise-author return",
   type: "object",
   additionalProperties: true,
-  required: ["handover"],
+  required: [
+    "handover"
+  ],
   properties: {
     handover: {
       allOf: [
-        { $ref: "handover.schema.json" }
+        {
+          $ref: "handover.schema.json"
+        },
+        {
+          type: "object",
+          properties: {
+            status: {
+              enum: [
+                "journey-map-authored",
+                "blocked"
+              ]
+            }
+          }
+        }
       ]
     },
-    "cycles-consumed": { type: "integer", minimum: 1 },
-    "convergence-status": { enum: ["converged", "hard-cap-reached"] },
+    "cycles-consumed": {
+      type: "integer",
+      minimum: 1
+    },
+    "convergence-status": {
+      enum: [
+        "converged",
+        "hard-cap-reached"
+      ]
+    },
     "journey-map": {
       type: "object",
-      required: ["path", "pages-discovered", "flows-identified", "priority-breakdown"],
+      required: [
+        "path",
+        "pages-discovered",
+        "flows-identified",
+        "priority-breakdown"
+      ],
       additionalProperties: false,
       properties: {
-        path: { type: "string" },
-        "pages-discovered": { type: "integer", minimum: 0 },
-        "flows-identified": { type: "integer", minimum: 0 },
+        path: {
+          type: "string"
+        },
+        "pages-discovered": {
+          type: "integer",
+          minimum: 0
+        },
+        "flows-identified": {
+          type: "integer",
+          minimum: 0
+        },
         "priority-breakdown": {
           type: "object",
           additionalProperties: false,
           properties: {
-            P0: { type: "integer", minimum: 0 },
-            P1: { type: "integer", minimum: 0 },
-            P2: { type: "integer", minimum: 0 },
-            P3: { type: "integer", minimum: 0 }
+            P0: {
+              type: "integer",
+              minimum: 0
+            },
+            P1: {
+              type: "integer",
+              minimum: 0
+            },
+            P2: {
+              type: "integer",
+              minimum: 0
+            },
+            P3: {
+              type: "integer",
+              minimum: 0
+            }
           }
         }
       }
     },
-    "gated-areas-not-mapped": { type: "integer", minimum: 0 },
-    "mapping-completeness-note": { type: "string" },
-    summary: { type: "string" },
-    "blocked-reason": { type: "string" }
+    "gated-areas-not-mapped": {
+      type: "integer",
+      minimum: 0
+    },
+    "mapping-completeness-note": {
+      type: "string"
+    },
+    summary: {
+      type: "string"
+    },
+    "blocked-reason": {
+      type: "string"
+    }
   },
   allOf: [
     {
       if: {
         type: "object",
-        properties: { handover: { type: "object", required: ["status"], properties: { status: { const: "journey-map-authored" } } } }
+        properties: {
+          handover: {
+            type: "object",
+            required: [
+              "status"
+            ],
+            properties: {
+              status: {
+                const: "journey-map-authored"
+              }
+            }
+          }
+        }
       },
       then: {
         type: "object",
-        required: ["journey-map", "cycles-consumed", "convergence-status"],
+        required: [
+          "journey-map",
+          "cycles-consumed",
+          "convergence-status"
+        ],
         properties: {
-          "journey-map": { type: "object" },
-          "cycles-consumed": { type: "integer" },
-          "convergence-status": { type: "string" }
+          "journey-map": {
+            type: "object"
+          },
+          "cycles-consumed": {
+            type: "integer"
+          },
+          "convergence-status": {
+            type: "string"
+          }
         }
       }
     },
     {
       if: {
         type: "object",
-        properties: { handover: { type: "object", required: ["status"], properties: { status: { const: "blocked" } } } }
+        properties: {
+          handover: {
+            type: "object",
+            required: [
+              "status"
+            ],
+            properties: {
+              status: {
+                const: "blocked"
+              }
+            }
+          }
+        }
       },
       then: {
         type: "object",
-        required: ["blocked-reason"],
-        properties: { "blocked-reason": { type: "string" } }
+        required: [
+          "blocked-reason"
+        ],
+        properties: {
+          "blocked-reason": {
+            type: "string"
+          }
+        }
       }
     }
   ]
@@ -15437,34 +15600,97 @@ var reviewer_inloop_schema_default = {
   description: "Return shape for the in-loop reviewer dispatch that follows each composer cycle.",
   type: "object",
   additionalProperties: true,
-  required: ["handover"],
+  required: [
+    "handover"
+  ],
   properties: {
     handover: {
       allOf: [
-        { $ref: "handover.schema.json" }
+        {
+          $ref: "handover.schema.json"
+        },
+        {
+          type: "object",
+          properties: {
+            status: {
+              enum: [
+                "greenlight",
+                "improvements-needed"
+              ]
+            }
+          }
+        }
       ]
     },
-    journey: { type: "string", pattern: "^j-[a-z0-9-]+$" },
-    pass: { type: "integer", minimum: 1 },
-    cycle: { type: "integer", minimum: 1 },
-    "missing-scenarios": { type: "array", items: { $ref: "#/$defs/reviewerFinding" } },
-    "craft-issues": { type: "array", items: { $ref: "#/$defs/reviewerFinding" } },
-    "verification-misses": { type: "array", items: { $ref: "#/$defs/reviewerFinding" } },
-    summary: { type: "string" }
+    journey: {
+      type: "string",
+      pattern: "^j-[a-z0-9-]+$"
+    },
+    pass: {
+      type: "integer",
+      minimum: 1
+    },
+    cycle: {
+      type: "integer",
+      minimum: 1
+    },
+    "missing-scenarios": {
+      type: "array",
+      items: {
+        $ref: "#/$defs/reviewerFinding"
+      }
+    },
+    "craft-issues": {
+      type: "array",
+      items: {
+        $ref: "#/$defs/reviewerFinding"
+      }
+    },
+    "verification-misses": {
+      type: "array",
+      items: {
+        $ref: "#/$defs/reviewerFinding"
+      }
+    },
+    summary: {
+      type: "string"
+    }
   },
   $defs: {
     reviewerFinding: {
       type: "object",
-      required: ["id", "title", "scope", "expected", "observed"],
+      required: [
+        "id",
+        "title",
+        "scope",
+        "expected",
+        "observed"
+      ],
       additionalProperties: false,
       properties: {
-        id: { type: "string", pattern: "^j-[a-z0-9-]+-[0-9]+-[0-9]+-R-[0-9]{2}$" },
-        priority: { const: "must-fix" },
-        title: { type: "string", minLength: 1 },
-        scope: { type: "string" },
-        expected: { type: "string" },
-        observed: { type: "string" },
-        coverage: { type: "string" }
+        id: {
+          type: "string",
+          pattern: "^j-[a-z0-9-]+-[0-9]+-[0-9]+-R-[0-9]{2}$"
+        },
+        priority: {
+          const: "must-fix"
+        },
+        title: {
+          type: "string",
+          minLength: 1
+        },
+        scope: {
+          type: "string"
+        },
+        expected: {
+          type: "string"
+        },
+        observed: {
+          type: "string"
+        },
+        coverage: {
+          type: "string"
+        }
       }
     }
   },
@@ -15472,14 +15698,53 @@ var reviewer_inloop_schema_default = {
     {
       if: {
         type: "object",
-        properties: { handover: { type: "object", properties: { status: { const: "improvements-needed" } } } }
+        properties: {
+          handover: {
+            type: "object",
+            properties: {
+              status: {
+                const: "improvements-needed"
+              }
+            }
+          }
+        }
       },
       then: {
         type: "object",
         anyOf: [
-          { type: "object", required: ["missing-scenarios"], properties: { "missing-scenarios": { type: "array" } } },
-          { type: "object", required: ["craft-issues"], properties: { "craft-issues": { type: "array" } } },
-          { type: "object", required: ["verification-misses"], properties: { "verification-misses": { type: "array" } } }
+          {
+            type: "object",
+            required: [
+              "missing-scenarios"
+            ],
+            properties: {
+              "missing-scenarios": {
+                type: "array"
+              }
+            }
+          },
+          {
+            type: "object",
+            required: [
+              "craft-issues"
+            ],
+            properties: {
+              "craft-issues": {
+                type: "array"
+              }
+            }
+          },
+          {
+            type: "object",
+            required: [
+              "verification-misses"
+            ],
+            properties: {
+              "verification-misses": {
+                type: "array"
+              }
+            }
+          }
         ]
       }
     }
@@ -15493,73 +15758,175 @@ var section_agent_schema_default = {
   title: "Section-agent return",
   description: "Section-agent serves two modes: per-section work (require `section`) and phase-1-only groundwork (no section). The schema is permissive on additional properties because the groundwork mode includes a rich, model-shaped status body (artifacts, audit-tags, mode, etc.) that isn't section-specific.",
   type: "object",
-  required: ["handover"],
+  required: [
+    "handover"
+  ],
   additionalProperties: true,
   properties: {
     handover: {
       allOf: [
-        { $ref: "handover.schema.json" }
+        {
+          $ref: "handover.schema.json"
+        },
+        {
+          type: "object",
+          properties: {
+            status: {
+              enum: [
+                "section-complete",
+                "section-deferred",
+                "blocked"
+              ]
+            }
+          }
+        }
       ]
     },
-    section: { type: "string" },
-    cycle: { type: "integer", minimum: 1 },
-    kind: { enum: ["section", "edge-probe"] },
-    "routes-driven": { type: "array", items: { type: "string" } },
-    "routes-suggested": { type: "array", items: { type: "string" } },
-    "flows-identified": { type: "integer", minimum: 0 },
-    "state-variations-recorded": { type: "integer", minimum: 0 },
+    section: {
+      type: "string"
+    },
+    cycle: {
+      type: "integer",
+      minimum: 1
+    },
+    kind: {
+      enum: [
+        "section",
+        "edge-probe"
+      ]
+    },
+    "routes-driven": {
+      type: "array",
+      items: {
+        type: "string"
+      }
+    },
+    "routes-suggested": {
+      type: "array",
+      items: {
+        type: "string"
+      }
+    },
+    "flows-identified": {
+      type: "integer",
+      minimum: 0
+    },
+    "state-variations-recorded": {
+      type: "integer",
+      minimum: 0
+    },
     "new-sections-discovered": {
       type: "array",
       items: {
         type: "object",
-        required: ["id"],
-        properties: { id: { type: "string" }, rationale: { type: "string" } }
+        required: [
+          "id"
+        ],
+        properties: {
+          id: {
+            type: "string"
+          },
+          rationale: {
+            type: "string"
+          }
+        }
       }
     },
     "edge-findings": {
       type: "array",
       items: {
         type: "object",
-        required: ["id", "summary"],
-        properties: { id: { type: "string" }, summary: { type: "string" } }
+        required: [
+          "id",
+          "summary"
+        ],
+        properties: {
+          id: {
+            type: "string"
+          },
+          summary: {
+            type: "string"
+          }
+        }
       }
     },
     "gated-deferred-to-coverage-expansion": {
       type: "array",
       items: {
         type: "object",
-        required: ["section"],
-        properties: { section: { type: "string" }, reason: { type: "string" } }
+        required: [
+          "section"
+        ],
+        properties: {
+          section: {
+            type: "string"
+          },
+          reason: {
+            type: "string"
+          }
+        }
       }
     },
-    spill: { type: "string" },
-    summary: { type: "string" }
+    spill: {
+      type: "string"
+    },
+    summary: {
+      type: "string"
+    }
   },
   allOf: [
     {
       if: {
         type: "object",
-        properties: { kind: { const: "edge-probe" } }
+        properties: {
+          kind: {
+            const: "edge-probe"
+          }
+        }
       },
       then: {
         type: "object",
-        required: ["edge-findings"],
-        properties: { "edge-findings": { type: "array" } }
+        required: [
+          "edge-findings"
+        ],
+        properties: {
+          "edge-findings": {
+            type: "array"
+          }
+        }
       }
     },
     {
       if: {
         type: "object",
-        required: ["section"],
+        required: [
+          "section"
+        ],
         properties: {
-          section: { type: "string" },
-          handover: { type: "object", properties: { status: { const: "section-complete" } } }
+          section: {
+            type: "string"
+          },
+          handover: {
+            type: "object",
+            properties: {
+              status: {
+                const: "section-complete"
+              }
+            }
+          }
         }
       },
       then: {
         type: "object",
-        required: ["spill"],
-        properties: { spill: { type: "string", minLength: 1 } }
+        required: [
+          "spill"
+        ],
+        properties: {
+          spill: {
+            type: "string",
+            minLength: 1
+          }
+        }
       }
     }
   ]
