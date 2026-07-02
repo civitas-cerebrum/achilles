@@ -158,13 +158,13 @@ import { DropdownSelectType, ListedElementMatch, VerifyListedOptions, GetListedD
 await steps.navigateTo('/path');
 await steps.navigateTo('/search', { query: { q: 'hello', page: '2' } });   // appends ?q=hello&page=2
 await steps.navigateTo('/path', { waitUntil: 'domcontentloaded' });        // 0.3.7+ — SPA-safe; default is 'load'
-const res = await steps.navigateTo('/missing-route');                      // 0.4.0+ — returns Response | null
+const res = await steps.navigateTo('/missing-route');                      // 0.3.8+ — returns Response | null
 expect(res?.status()).toBe(404);                                           // assert 404/redirect contracts (no raw page.goto)
 await steps.refresh();
 await steps.backOrForward('back'); // or 'forward'
 await steps.setViewport(1280, 720);
 
-// Standalone lifecycle wait — after an action that does NOT navigate.   (0.4.0+)
+// Standalone lifecycle wait — after an action that does NOT navigate.   (0.3.8+)
 // state: 'load' | 'domcontentloaded' | 'networkidle' (the LoadState type).
 await steps.waitForLoadState('domcontentloaded');
 await steps.waitForLoadState('networkidle', { timeout: 10000 });
@@ -241,7 +241,7 @@ const href = await steps.getAttribute('elementName', 'PageName', 'href');
 const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
-const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.4.0+)
+const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.3.8+)
 const outer = await steps.getHtml('elementName', 'PageName', { outer: true }); // outerHTML (incl. the tag)
 
 // Bulk extraction
@@ -254,11 +254,11 @@ const allHrefs = await steps.getAll('links', 'PageName', { extractAttribute: 'hr
 const theme = await steps.getLocalStorage('theme');           // string | null
 const cart  = await steps.getSessionStorage('cart.count');    // string | null
 
-// Enumerate all keys — e.g. to discover a runtime-derived key.   (0.4.0+)
+// Enumerate all keys — e.g. to discover a runtime-derived key.   (0.3.8+)
 const lsKeys = await steps.getLocalStorageKeys();             // string[]
 const ssKeys = await steps.getSessionStorageKeys();           // string[]
 
-// Page-level text (document.body.innerText) — companion to getPageHtml.   (0.4.0+)
+// Page-level text (document.body.innerText) — companion to getPageHtml.   (0.3.8+)
 // For 404-body / page-copy assertions without page.locator('body').innerText().
 const bodyText = await steps.getPageText();                   // string
 
@@ -274,7 +274,7 @@ await steps.removeSessionStorage('cart.count');
 await steps.clearLocalStorage();                  // empty the whole store
 await steps.clearSessionStorage();
 
-// Window-level JS state — controlled access by dotted path (no raw page.evaluate).  (0.4.0+)
+// Window-level JS state — controlled access by dotted path (no raw page.evaluate).  (0.3.8+)
 const fired = await steps.getWindowProperty('__XSS_FIRED');   // read; undefined if absent
 await steps.setWindowProperty('__test.flag', true);           // set (creates intermediate objects)
 // verifyWindowProperty — retrying; one matcher of equals|contains|matches|present|truthy|
@@ -308,7 +308,7 @@ await steps.verifyImages('elementName', 'PageName', true, { verifyDecoded: true 
 await steps.verifyUrlContains('/dashboard');
 await steps.verifyTabCount(2);
 
-// Page-level text — document scope, web-first (string | RegExp).   (0.4.0+)
+// Page-level text — document scope, web-first (string | RegExp).   (0.3.8+)
 // For 404-body / page-copy / "no <script>" checks without page.locator('body').innerText().
 await steps.verifyPageContainsText('Wishlist');
 await steps.verifyPageContainsText(/404|niet gevonden/i);
@@ -638,12 +638,12 @@ await steps.on('productCards', 'CollectionsPage').random().click({ withoutScroll
 await steps.on('productCards', 'CollectionsPage').nth(2).click();
 await steps.on('categories', 'HomePage').byText('Buttons').click();
 await steps.on('items', 'ListPage').byAttribute('data-status', 'active').click();
-// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (0.4.0+)
+// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (0.3.8+)
 // Selects the visible one and proceeds (throws if none visible) — unlike ifVisible()
 // which SKIPS when hidden. Replaces getByRole(...).filter({ visible: true }).first().
 await steps.on('accordionTrigger', 'ProductPage').visible().click();
 
-// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.4.0+)
+// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.3.8+)
 // Closes scoped getByRole counts and page.locator(parent).getByText/.locator(child) compositions.
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button').count.toBe(2);
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /voorkeuren|manage/i }).count.toBe(0);
@@ -858,7 +858,7 @@ await steps.cleanEmails(); // delete all
 
 Filter types: `SUBJECT`, `FROM`, `TO`, `CONTENT` (body text/HTML), `SINCE` (Date).
 
-## Session-aware HTTP Requests  (0.4.0+)
+## Session-aware HTTP Requests  (0.3.8+)
 
 Browser-context HTTP, backed by Playwright's `page.request` — **shares the browser
 context's cookies/session**. The right tool for authenticated redirect / protected-route
