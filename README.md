@@ -24,6 +24,7 @@ You drive it in plain English. The orchestrators detect project state and route 
 > *"Increase coverage."*
 > *"Find bugs."*
 > *"Repair the suite."*
+> *"The app changed — sync the suite."*
 > *"Verify the checkout flow with evidence."*
 
 Once the run starts, the agent owns the lifecycle. No incremental confirmation prompts, no scope renegotiation, no "are you sure you want me to keep going?" — the harness enforces phase completion before any advance, so the agent either finishes the work or surfaces a blocker for human triage.
@@ -40,6 +41,7 @@ Once the run starts, the agent owns the lifecycle. No incremental confirmation p
 | **Database testing** | Persistence-layer verification: query/assert SQL state, transactions, and DB-as-oracle for UI/API mutations. Extends contract-testing and test-composer. |
 | **Failure diagnosis** | When a test fails in any mode, runs evidence-based triage — screenshot analysis, DOM inspection, root-cause hypothesis — then either fixes the test autonomously or flags an app bug with the evidence to back it. |
 | **Suite repair** | When many tests fail at once (suite rot, app drift), batch-clusters failures by shared root cause and heals them per cluster instead of one-by-one — far faster than per-test diagnosis at scale. |
+| **Suite maintenance** | Proactive drift loop for an already-onboarded suite: detects where the app moved (failing specs, changed source, new/retired routes), scopes the affected journeys, and routes each drift class to journey-mapping, coverage-expansion, or repair — keeping the suite in sync with the app instead of waiting for it to break. |
 | **Companion mode** | Single-task evidence-first verification for daily QA. Runs one focused check against the live app and produces a bundle of per-step screenshots, video, Playwright trace, HAR, console log, and a summary — the artifact a developer reads, not a durable suite test. |
 | **Test catalogue** | Stakeholder-facing PDF answering *"what scenarios are we running, and why?"* — A4-landscape, organised by portal and priority, with skipped-with-reason transparency. |
 | **Work summary deck** | Branded HTML deck summarising the QA work delivered, exportable to PDF for managers, product owners, and clients. |
