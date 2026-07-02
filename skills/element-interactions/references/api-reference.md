@@ -10,6 +10,7 @@ The following sections document the full API available for writing tests in Stag
 - [Accessing the Repository Directly](#accessing-the-repository-directly)
 - [Raw Interactions API](#raw-interactions-api)
 - [Email API](#email-api) (setup, sending, receiving, marking, cleaning)
+- [Session-aware HTTP Requests](#session-aware-http-requests) (page.request — browser-session cookies)
 - [HTTP API Steps](#http-api-steps) (fixture setup, default & named providers, methods, verifications)
 
 ---
@@ -272,6 +273,16 @@ await steps.removeLocalStorage('wishlist');       // drop one key (no-op when ab
 await steps.removeSessionStorage('cart.count');
 await steps.clearLocalStorage();                  // empty the whole store
 await steps.clearSessionStorage();
+
+// Window-level JS state — controlled access by dotted path (no raw page.evaluate).  (0.4.0+)
+const fired = await steps.getWindowProperty('__XSS_FIRED');   // read; undefined if absent
+await steps.setWindowProperty('__test.flag', true);           // set (creates intermediate objects)
+// verifyWindowProperty — retrying; one matcher of equals|contains|matches|present|truthy|
+// greaterThan|lessThan, with { negated?, timeout?, errorMessage? }.
+await steps.verifyWindowProperty('dataLayer.length', { greaterThan: 0 });
+await steps.verifyWindowProperty('__XSS_FIRED', { truthy: false });
+// The single labelled escape hatch over page.evaluate — typed + logged; prefer targeted steps.
+const imgs = await steps.evaluateScript(() => document.querySelectorAll('img').length);
 ```
 
 ### Verification
@@ -841,6 +852,25 @@ await steps.cleanEmails(); // delete all
 ```
 
 Filter types: `SUBJECT`, `FROM`, `TO`, `CONTENT` (body text/HTML), `SINCE` (Date).
+
+## Session-aware HTTP Requests  (0.4.0+)
+
+Browser-context HTTP, backed by Playwright's `page.request` — **shares the browser
+context's cookies/session**. The right tool for authenticated redirect / protected-route
+contracts (e.g. "a logged-out user hitting `/account` is 307'd to `/login`"). Distinct
+from the `## HTTP API Steps` below, which use the `wasapi` external-service client and do
+**not** carry the browser session.
+
+```ts
+// verbs: requestGet / requestPost / requestPut / requestPatch / requestDelete / requestHead
+// opts: { maxRedirects?, headers?, params?, data?, form?, failOnStatusCode? }  (failOnStatusCode defaults false)
+const res = await steps.requestGet('/account', { maxRedirects: 0 });   // uses the logged-in session
+// BrowserResponse: { status, ok, url, headers, statusText, json<T>(), text(), body() }
+await steps.verifyRequestStatus(res, 307);
+await steps.verifyRequestHeader(res, 'location', /\/login/);            // value optional → presence check
+await steps.verifyRequestOk(res);                                      // 2xx
+const body = await res.json();
+```
 
 ## HTTP API Steps
 
