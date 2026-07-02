@@ -42,7 +42,7 @@ export { expect };
 | `interactions` | `ElementInteractions` | Raw interactions API for custom locators |
 | `contextStore` | `ContextStore` | Shared in-memory key-value store for passing data between steps within a test |
 
-> **Version gate — `interceptionRetry` (0.4.0+).** This package's pinned dep is `^0.3.7`. On **0.3.x** the `interceptionRetry` opt-out shown above is **not available** and the report-visible `interception-fallback` test annotation is **not emitted** — both are no-ops on the current dep. The DOM-click fallback itself behaves the same; what changes at 0.4.0 is the *opt-out* and the *annotation*. Do not teach `interceptionRetry: false` as a currently-callable knob until the dep is bumped — verify the installed version before relying on it.
+> **`interceptionRetry` — available as of 0.3.7 (the current pinned dep).** The `interceptionRetry` opt-out shown above and the report-visible `interception-fallback` test annotation both ship in `@civitas-cerebrum/element-interactions@0.3.7` (`BaseFixture` / `Steps` / `ElementInteractions` accept `interceptionRetry`; the fallback logs a warning and pushes the annotation). The default is `true`: an intercepted click silently falls back to a dispatched DOM `'click'` — which can **mask** a stuck modal or cookie wall that should have failed the click. **For bug-discovery and adversarial suites, set `interceptionRetry: false`** so an interception rethrows and fails the test instead of being papered over; treat any `interception-fallback` annotation in a report as a suspected app bug to investigate, not noise.
 
 `baseFixture` attaches a full-page `failure-screenshot` to the HTML report on every failed test automatically.
 
@@ -223,7 +223,7 @@ await steps.dragAndDrop('elementName', 'PageName', { xOffset: 100, yOffset: 0 })
 await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { target: otherLocatorOrElement });
 ```
 
-**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. On **0.4.0+** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — recommended for adversarial/bug-discovery suites where a stuck modal or cookie wall should fail the click. On **0.3.x (current pinned dep)** the fallback still happens but the annotation and the `interceptionRetry` opt-out are not available — see the version gate under [Setup — Fixtures](#setup--fixtures).
+**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. As of **0.3.7 (the current pinned dep)** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — **recommended for adversarial/bug-discovery suites** where a stuck modal or cookie wall should fail the click rather than be clicked through. See [Setup — Fixtures](#setup--fixtures).
 
 ### Data Extraction
 
@@ -501,11 +501,11 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 
 ### Waiting
 
-> **Version gate — `waitForState` semantics (0.3.x vs 0.4.0).** This package's pinned dep is `^0.3.7`. On **0.3.x (current dep)** `waitForState` resolves `false` on timeout and **MUST NOT be used as an assertion** — a soft probe that returns `false` is silently ignored. Always follow a `waitForState` with an explicit `verify*` (e.g. `verifyState('elementName', 'PageName', 'visible')`) so a missed wait fails the test. The `{ optional: true }` / `{ timeout }` option bags shown below, and the throw-on-timeout behaviour, are **0.4.0+** and are no-ops on 0.3.x. Treat the throwing form as forward-looking until the dep is bumped.
+> **`waitForState` semantics — throws on timeout as of 0.3.7 (the current pinned dep).** By default `waitForState` **throws** on timeout (Options.d.ts: "timeouts throw as of 0.3.7"), so it IS a valid assertion — a missed wait fails the test on its own; you do not need to pad it with a following `verify*`. The soft-probe form is `{ optional: true }`, which resolves `false` on timeout instead of throwing (use it only when absence is an acceptable outcome, and then branch on the boolean). The `{ timeout }` per-call override is also live in 0.3.7.
 
 ```ts
-// waitForState THROWS on timeout as of 0.4.0 and returns Promise<boolean>.
-// On 0.3.x (current dep) it resolves false on timeout — never an assertion; follow with verify*.
+// waitForState THROWS on timeout as of 0.3.7 and returns Promise<boolean>.
+// The throwing form is a valid assertion — no trailing verify* needed.
 await steps.waitForState('elementName', 'PageName');                        // default: 'visible'; throws on timeout
 await steps.waitForState('elementName', 'PageName', 'hidden');              // also: 'attached', 'detached'
 // Soft probe: { optional: true } resolves false on timeout instead of throwing.
