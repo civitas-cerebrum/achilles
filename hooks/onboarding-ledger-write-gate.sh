@@ -70,11 +70,17 @@
 
 set -uo pipefail
 
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+# shellcheck source=lib/guard-common.sh
+if [ -f "$HOOK_LIB_DIR/guard-common.sh" ]; then source "$HOOK_LIB_DIR/guard-common.sh"; fi
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
+# Fail CLOSED when jq is missing — this guard validates every ledger write.
 if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
+  command -v guard_emit_deny_no_jq >/dev/null 2>&1 && guard_emit_deny_no_jq "onboarding-ledger-write-gate" \
+    || printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] onboarding-ledger-write-gate cannot run: jq not found. Fails closed. Reinstall @civitas-cerebrum/achilles or install jq."}}'
+  exit 0
 fi
 
 INPUT=$(cat)
@@ -88,11 +94,16 @@ esac
 
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 
-# Rule 4: silent-allow when this isn't a ledger write. Match the path
-# suffix against a leading-slash-normalised form so a BARE RELATIVE path
-# (tests/e2e/docs/onboarding-status.json) matches the same pattern as an
-# absolute one — otherwise a relative-path write would slip the gate.
-NORM_PATH="/${FILE_PATH#/}"
+# Rule 4: silent-allow when this isn't a ledger write. Lexically normalise
+# the path (leading slash, collapse //, resolve . and ..) so a BARE RELATIVE
+# path (tests/e2e/docs/onboarding-status.json) AND evasion forms
+# (tests/e2e/docs/./onboarding-status.json) match the same pattern as an
+# absolute one — otherwise such a write would slip the gate.
+if command -v normalize_path >/dev/null 2>&1; then
+  NORM_PATH="$(normalize_path "$FILE_PATH")"
+else
+  NORM_PATH="/${FILE_PATH#/}"
+fi
 case "$NORM_PATH" in
   */tests/e2e/docs/onboarding-status.json) ;;
   *) exit 0 ;;

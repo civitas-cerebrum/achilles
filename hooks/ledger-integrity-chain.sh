@@ -26,11 +26,20 @@
 
 set -uo pipefail
 
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+# shellcheck source=lib/guard-common.sh
+if [ -f "$HOOK_LIB_DIR/guard-common.sh" ]; then source "$HOOK_LIB_DIR/guard-common.sh"; fi
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[ledger-integrity-chain] FATAL: jq not found." >&2; exit 1; }
+# Fail CLOSED when jq is missing — this guard protects the tamper-evident chain.
+if [ -z "$JQ" ]; then
+  command -v guard_emit_deny_no_jq >/dev/null 2>&1 && guard_emit_deny_no_jq "ledger-integrity-chain" \
+    || printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] ledger-integrity-chain guard cannot run: jq not found. Fails closed. Reinstall @civitas-cerebrum/achilles or install jq."}}'
+  exit 0
+fi
 # shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
+. "$HOOK_LIB_DIR/hash.sh"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
@@ -53,7 +62,11 @@ emit_deny() {
 # Match against a leading-slash-normalised form so a bare relative path
 # (tests/e2e/docs/onboarding-status.json) is gated like an absolute one.
 CHAIN_KEY=""
-NORM_PATH="/${FILE_PATH#/}"
+if command -v normalize_path >/dev/null 2>&1; then
+  NORM_PATH="$(normalize_path "$FILE_PATH")"
+else
+  NORM_PATH="/${FILE_PATH#/}"
+fi
 case "$NORM_PATH" in
   */tests/e2e/docs/.ledger-integrity.json | \
   */tests/perf/docs/.ledger-integrity.json)

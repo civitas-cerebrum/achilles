@@ -43,11 +43,17 @@
 
 set -uo pipefail
 
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+# shellcheck source=lib/guard-common.sh
+if [ -f "$HOOK_LIB_DIR/guard-common.sh" ]; then source "$HOOK_LIB_DIR/guard-common.sh"; fi
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
+# Fail CLOSED when jq is missing — this guard validates every perf-ledger write.
 if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
+  command -v guard_emit_deny_no_jq >/dev/null 2>&1 && guard_emit_deny_no_jq "perf-onboarding-ledger-write-gate" \
+    || printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] perf-onboarding-ledger-write-gate cannot run: jq not found. Fails closed. Reinstall @civitas-cerebrum/achilles or install jq."}}'
+  exit 0
 fi
 
 INPUT=$(cat)
@@ -61,9 +67,14 @@ esac
 
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 
-# Silent-allow when this isn't the perf ledger. Normalise leading slash so
-# bare relative paths also match.
-NORM_PATH="/${FILE_PATH#/}"
+# Silent-allow when this isn't the perf ledger. Lexically normalise the path
+# (leading slash, collapse //, resolve . and ..) so bare relative paths AND
+# evasion forms also match.
+if command -v normalize_path >/dev/null 2>&1; then
+  NORM_PATH="$(normalize_path "$FILE_PATH")"
+else
+  NORM_PATH="/${FILE_PATH#/}"
+fi
 case "$NORM_PATH" in
   */tests/perf/docs/perf-onboarding-status.json) ;;
   *) exit 0 ;;

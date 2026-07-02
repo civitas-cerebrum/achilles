@@ -18,6 +18,14 @@ assert_deny "$H" "$(we_payload Edit "$HOME/.claude/settings.local.json")" "Edit 
 # Bare relative form normalises to the same suffix and is still denied.
 assert_deny "$H" "$(we_payload Write ".claude/hooks/x.sh")" "relative .claude/hooks/x.sh → DENY" "installed harness"
 
+section "harness-self-protection-guard: path-normalisation evasion (negative-security)"
+# The Write/Edit tool resolves ., //, .. before writing, so these all land
+# on the real settings.json/hook. Previously ALLOWED (glob missed them).
+assert_deny "$H" "$(we_payload Write "$HOME/.claude/./settings.json")" "dot-segment settings.json → DENY" "installed harness"
+assert_deny "$H" "$(we_payload Write "$HOME/.claude//settings.json")" "double-slash settings.json → DENY" "installed harness"
+assert_deny "$H" "$(we_payload Write "$HOME/.claude/hooks/../settings.json")" "parent-segment settings.json → DENY" "installed harness"
+assert_deny "$H" "$(we_payload Edit "$HOME/.claude/hooks/lib/../commit-message-gate.sh")" "parent-segment into hooks → DENY" "installed harness"
+
 section "harness-self-protection-guard: project-local skills + unrelated paths ALLOWED"
 assert_allow "$H" "$(we_payload Write "$HOME/project/.claude/skills/journey-mapping/SKILL.md")" "project-local .claude/skills write → ALLOW"
 assert_allow "$H" "$(we_payload Write "/tmp/scratch.txt")" "unrelated path → ALLOW"

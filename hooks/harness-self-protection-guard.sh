@@ -52,9 +52,22 @@
 
 set -uo pipefail
 
+HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
+# shellcheck source=lib/guard-common.sh
+if [ -f "$HOOK_LIB_DIR/guard-common.sh" ]; then source "$HOOK_LIB_DIR/guard-common.sh"; fi
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[harness-self-protection-guard] FATAL: jq not found." >&2; exit 1; }
+# Fail CLOSED: a guard that protects the harness surface must never allow a
+# write through just because jq is missing (see guard-common.sh).
+if [ -z "$JQ" ]; then
+  if command -v guard_emit_deny_no_jq >/dev/null 2>&1; then
+    guard_emit_deny_no_jq "harness-self-protection"
+  else
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] harness-self-protection guard cannot run: jq not found. Fails closed. Reinstall @civitas-cerebrum/achilles or install jq."}}'
+  fi
+  exit 0
+fi
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
@@ -63,9 +76,16 @@ case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 [ -n "$FILE_PATH" ] || exit 0
 
-# Normalise to a leading-slash form so a bare relative path
-# (.claude/hooks/x.sh) matches the same case patterns as an absolute one.
-NORM="/${FILE_PATH#/}"
+# Lexically normalise (leading slash, collapse //, resolve . and ..) so a
+# bare relative path (.claude/hooks/x.sh) AND evasion forms that resolve to
+# a protected file (.claude/./settings.json, .claude/hooks/../settings.json,
+# .claude//settings.json) all match the same case patterns. The Write/Edit
+# tool resolves those forms before writing, so the guard must too.
+if command -v normalize_path >/dev/null 2>&1; then
+  NORM="$(normalize_path "$FILE_PATH")"
+else
+  NORM="/${FILE_PATH#/}"
+fi
 
 case "$NORM" in
   */.claude/hooks/*|*/.claude/settings.json|*/.claude/settings.local.json) ;;
