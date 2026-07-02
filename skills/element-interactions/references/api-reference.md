@@ -292,6 +292,11 @@ await steps.verifyLocalStorage('theme', { equals: 'light', negated: true }); // 
 await steps.verifySessionStorage('cart.count', { equals: '3' });             // same shape
 await steps.verifyOrder('listItems', 'PageName', ['First', 'Second', 'Third']);
 await steps.verifyListOrder('listItems', 'PageName', 'asc');               // or 'desc'
+// ⚠ verifyListOrder PASSES when the list has < 2 items (a broken/empty page
+// that renders zero rows "is sorted"). It also reads once with no auto-wait.
+// Guard it: assert the list is populated FIRST, e.g.
+//   await steps.verifyCount('listItems', 'PageName', { greaterThan: 1 });
+//   await steps.verifyListOrder('listItems', 'PageName', 'asc');
 await steps.verifyCssProperty('elementName', 'PageName', 'color', 'rgb(255, 0, 0)');
 ```
 
