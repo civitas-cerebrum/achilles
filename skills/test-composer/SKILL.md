@@ -247,7 +247,7 @@ After stabilization, write every scenario in plain English. No code. No selector
 **Expected Result:** "Welkom terug" heading and "spriteCloud" are visible
 ```
 
-Save to `docs/e2e-test-scenarios.md` (or a path the user specifies).
+Save to `tests/e2e/docs/test-scenarios.md` (or a path the user specifies).
 
 **Why this matters:** The plain English document serves as the single source of truth for what's tested. It's reviewable by non-technical stakeholders, it reveals gaps that code-level review misses, and it's the input for the next review step.
 

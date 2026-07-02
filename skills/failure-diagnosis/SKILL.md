@@ -58,7 +58,7 @@ Before collecting evidence on the failing test, read what the project already do
 1. **`tests/e2e/docs/app-context.md`** — page structures, intended modal lifecycles, `data-qa` selectors, known UI quirks (configuration-dependent option subsets, redirect-vs-popup auth patterns, vendor-aliased payment / shipping methods, async-loaded modal placeholders, documented degradation banners, etc.). Read the section for the page the test was on at the moment of failure. This is where the failing element's intended behaviour is documented.
 2. **`tests/e2e/docs/test-scenarios.md`** — the regression / scenario matrix. Confirms whether the failing scenario is even supposed to run on this configuration in the first place.
 3. **`tests/e2e/docs/journey-map.md`** (when present) — the user journey map produced by the `journey-mapping` skill. Tells you whether the app's flow has changed since the test was written.
-4. **`tests/data/page-repository.json`** — the locator entries for the page in question. A stale or missing entry is one of the most common true root causes.
+4. **`tests/e2e/page-repository.json`** — the locator entries for the page in question. A stale or missing entry is one of the most common true root causes.
 
 Capture, in plain text, the documented expectations relevant to the failing step. The rest of the diagnostic pipeline is then comparing **observed** state against **documented** state — not against your recollection of what the page should do.
 

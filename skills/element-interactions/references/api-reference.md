@@ -23,7 +23,7 @@ Read `tests/fixtures/base.ts` first if it exists — do not overwrite without ch
 import { test as base, expect } from '@playwright/test';
 import { baseFixture } from '@civitas-cerebrum/element-interactions';
 
-export const test = baseFixture(base, 'tests/data/page-repository.json', {
+export const test = baseFixture(base, 'tests/e2e/page-repository.json', {
   timeout: 60000,              // element timeout (default: 30000)
   // repoTimeout: 15000,       // repo resolution timeout (default: 15000)
   // interceptionRetry: false, // default true: intercepted clicks fall back to a dispatched DOM click event.
@@ -50,7 +50,7 @@ export { expect };
 
 ## Locator Format
 
-All selectors live in `tests/data/page-repository.json`.
+All selectors live in `tests/e2e/page-repository.json`.
 
 ```json
 {
@@ -731,7 +731,7 @@ Send and receive emails in tests. Supports plain-text, inline HTML, and HTML fil
 Provide `smtp`, `imap`, or both depending on which features you need:
 
 ```ts
-export const test = baseFixture(base, 'tests/data/page-repository.json', {
+export const test = baseFixture(base, 'tests/e2e/page-repository.json', {
   emailCredentials: {
     smtp: {
       email: process.env.SENDER_EMAIL!,
@@ -816,7 +816,7 @@ Direct HTTP calls against one or more backends, co-located with UI tests. Powere
 Both `apiBaseUrl` and `apiProviders` are optional. Configure either, both, or neither. Testing multiple backends in the same test is first-class:
 
 ```ts
-export const test = baseFixture(base, 'tests/data/page-repository.json', {
+export const test = baseFixture(base, 'tests/e2e/page-repository.json', {
   apiBaseUrl: 'https://api.example.com',
   apiProviders: {
     billing: 'https://billing.example.com',

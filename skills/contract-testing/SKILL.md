@@ -164,7 +164,7 @@ Add / extend `baseFixture` to wire the API client(s). All API fixture params are
 import { test as base, expect } from '@playwright/test';
 import { baseFixture } from '@civitas-cerebrum/element-interactions';
 
-export const test = baseFixture(base, 'tests/data/page-repository.json', {
+export const test = baseFixture(base, 'tests/e2e/page-repository.json', {
   apiBaseUrl: process.env.API_BASE_URL,        // default provider
   apiProviders: {                               // optional — only if multi-backend
     billing: process.env.BILLING_BASE_URL!,
