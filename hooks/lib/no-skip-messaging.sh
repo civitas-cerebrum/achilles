@@ -23,10 +23,19 @@
 # This library exposes `no_skip_messaging_block` which echos a four-line
 # canonical block:
 #   1. The "Pipeline phases cannot be skipped" headline.
-#   2. The legitimate early-stop sentinel path.
+#   2. The legitimate early-stop path (a workflow-reviewer-approved
+#      approvedDeviations[] ledger entry — the harness-enforced mechanism,
+#      NOT a self-serve `touch` sentinel).
 #   3. The framings-not-authorisation reminder.
 #   4. The pointer to skills/onboarding/SKILL.md §"Hard rules — kernel-
 #      resident".
+#
+# Note: earlier versions advertised `touch .claude/onboarding-stop-authorized`
+# as the early-stop path. The hook that consumed that sentinel
+# (onboarding-pipeline-incomplete-stop-deny.sh) was retired in the
+# external-driver handoff and is now in the postinstall prune list — the
+# sentinel did nothing. The live mechanism is the workflow-reviewer + the
+# ledger's approvedDeviations[] entry, gated by onboarding-ledger-write-gate.sh.
 #
 # Hooks consume it by interpolating the function output into their
 # existing deny/warn payload (typically just before the References
@@ -63,9 +72,9 @@ no_skip_messaging_block() {
 No-skip onboarding contract — Pipeline phases cannot be skipped:
 ──────────────────────────────────────────────────────────────────
 The onboarding pipeline runs to one of two valid exits — full
-greenlight (all phases 1–7), or an explicit user-authorised early
-stop (touch `.claude/onboarding-stop-authorized`). Pipeline phases
-cannot be skipped under any other framing.
+greenlight (all phases 1–8), or an explicit user-authorised early
+stop recorded as an approvedDeviations[] entry in the ledger.
+Pipeline phases cannot be skipped under any other framing.
 
   "honest partial reporting"           — NOT authorisation.
   "pragmatic Pass N"                   — NOT authorisation.
@@ -74,8 +83,15 @@ cannot be skipped under any other framing.
   "BENCHMARK is the deliverable so I should write it now"
                                        — NOT authorisation.
 
-The legitimate early-stop path:
-  mkdir -p .claude && touch .claude/onboarding-stop-authorized
+The legitimate early-stop path (harness-enforced by
+onboarding-ledger-write-gate.sh):
+  1. The workflow-reviewer for the prior phase approves the deviation,
+     returning an `authorizer` field carrying a verbatim user quote or a
+     documented structural exception.
+  2. The orchestrator records an approvedDeviations[] entry in
+     tests/e2e/docs/onboarding-status.json carrying that authorizer.
+Self-imposed reasons (session-length, budget-cap, auto-mode) are not an
+authorizer — the write-gate rejects ledger writes that lack one.
 
 Reference: skills/onboarding/SKILL.md §"Hard rules — kernel-resident"
 NO_SKIP_BLOCK_EOF
@@ -90,7 +106,7 @@ if [ "${NO_SKIP_MESSAGING_SELFTEST:-0}" = "1" ]; then
   ok=1
   for substr in \
       "Pipeline phases cannot be skipped" \
-      ".claude/onboarding-stop-authorized" \
+      "approvedDeviations" \
       "NOT authorisation" \
       "skills/onboarding/SKILL.md"; do
     if ! printf '%s' "$out" | grep -qF -- "$substr"; then
