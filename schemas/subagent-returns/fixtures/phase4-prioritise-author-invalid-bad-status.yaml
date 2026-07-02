@@ -1,0 +1,5 @@
+handover:
+  role: phase4-prioritise-author
+  status: authored
+  next-action: advance to phase 5
+summary: off-enum status "authored" (should be journey-map-authored) — must be rejected

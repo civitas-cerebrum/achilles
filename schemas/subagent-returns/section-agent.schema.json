@@ -4,73 +4,175 @@
   "title": "Section-agent return",
   "description": "Section-agent serves two modes: per-section work (require `section`) and phase-1-only groundwork (no section). The schema is permissive on additional properties because the groundwork mode includes a rich, model-shaped status body (artifacts, audit-tags, mode, etc.) that isn't section-specific.",
   "type": "object",
-  "required": ["handover"],
+  "required": [
+    "handover"
+  ],
   "additionalProperties": true,
   "properties": {
     "handover": {
       "allOf": [
-        { "$ref": "handover.schema.json" }
+        {
+          "$ref": "handover.schema.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "section-complete",
+                "section-deferred",
+                "blocked"
+              ]
+            }
+          }
+        }
       ]
     },
-    "section": { "type": "string" },
-    "cycle": { "type": "integer", "minimum": 1 },
-    "kind": { "enum": ["section", "edge-probe"] },
-    "routes-driven": { "type": "array", "items": { "type": "string" } },
-    "routes-suggested": { "type": "array", "items": { "type": "string" } },
-    "flows-identified": { "type": "integer", "minimum": 0 },
-    "state-variations-recorded": { "type": "integer", "minimum": 0 },
+    "section": {
+      "type": "string"
+    },
+    "cycle": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kind": {
+      "enum": [
+        "section",
+        "edge-probe"
+      ]
+    },
+    "routes-driven": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "routes-suggested": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "flows-identified": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "state-variations-recorded": {
+      "type": "integer",
+      "minimum": 0
+    },
     "new-sections-discovered": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id"],
-        "properties": { "id": { "type": "string" }, "rationale": { "type": "string" } }
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          }
+        }
       }
     },
     "edge-findings": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "summary"],
-        "properties": { "id": { "type": "string" }, "summary": { "type": "string" } }
+        "required": [
+          "id",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
       }
     },
     "gated-deferred-to-coverage-expansion": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["section"],
-        "properties": { "section": { "type": "string" }, "reason": { "type": "string" } }
+        "required": [
+          "section"
+        ],
+        "properties": {
+          "section": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
       }
     },
-    "spill": { "type": "string" },
-    "summary": { "type": "string" }
+    "spill": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    }
   },
   "allOf": [
     {
       "if": {
         "type": "object",
-        "properties": { "kind": { "const": "edge-probe" } }
+        "properties": {
+          "kind": {
+            "const": "edge-probe"
+          }
+        }
       },
       "then": {
         "type": "object",
-        "required": ["edge-findings"],
-        "properties": { "edge-findings": { "type": "array" } }
+        "required": [
+          "edge-findings"
+        ],
+        "properties": {
+          "edge-findings": {
+            "type": "array"
+          }
+        }
       }
     },
     {
       "if": {
         "type": "object",
-        "required": ["section"],
+        "required": [
+          "section"
+        ],
         "properties": {
-          "section": { "type": "string" },
-          "handover": { "type": "object", "properties": { "status": { "const": "section-complete" } } }
+          "section": {
+            "type": "string"
+          },
+          "handover": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "section-complete"
+              }
+            }
+          }
         }
       },
       "then": {
         "type": "object",
-        "required": ["spill"],
-        "properties": { "spill": { "type": "string", "minLength": 1 } }
+        "required": [
+          "spill"
+        ],
+        "properties": {
+          "spill": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     }
   ]

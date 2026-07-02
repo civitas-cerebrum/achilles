@@ -1,0 +1,9 @@
+handover:
+  role: reviewer-inloop-acme
+  cycle: 1
+  status: done
+  next-action: advance
+journey: j-acme
+pass: 1
+cycle: 1
+summary: off-enum status must be rejected (status enum is greenlight|improvements-needed)

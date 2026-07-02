@@ -159,8 +159,19 @@ section "subagent-return-schema: well-formed phase4-prioritise-author is silent 
 GOOD_AUTHOR="handover:
   role: phase4-prioritise-author
   cycle: 2
-  status: complete
+  status: journey-map-authored
   next-action: orchestrator
+cycles-consumed: 2
+convergence-status: converged
+journey-map:
+  path: tests/e2e/docs/journey-map.md
+  pages-discovered: 12
+  flows-identified: 18
+  priority-breakdown:
+    P0: 3
+    P1: 5
+    P2: 6
+    P3: 4
 summary: Authored the journey map from cycle returns."
 assert_allow "$H" "$(payload tool_name=Agent description='phase4-prioritise-author: rank journeys' response_text="$GOOD_AUTHOR")" \
   "well-formed phase4-prioritise-author → silent allow"
@@ -171,10 +182,11 @@ assert_warn "$H" "$(payload tool_name=Agent description='phase4-cycle-1-section-
 GOOD_SECTION="handover:
   role: phase4-cycle-1-section-auth
   cycle: 1
-  status: complete
+  status: section-complete
   next-action: orchestrator
 kind: section
 section: auth
+spill: tests/e2e/docs/.subagent-returns/phase4-cycle-1-section-auth.md
 summary: Mapped the auth section."
 assert_allow "$H" "$(payload tool_name=Agent description='phase4-cycle-1-section-auth:' response_text="$GOOD_SECTION")" \
   "well-formed section-agent return → silent allow"
