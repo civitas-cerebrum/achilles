@@ -22,6 +22,19 @@ description: >
 
 Systematic, automated bug discovery that runs after all existing test stages are complete. The agent probes the live application for bugs across edge cases, user flows, and cross-feature interactions, then cross-references findings against accumulated context and existing tests to produce a prioritized bug report with reproduction tests.
 
+> **Environment safety gate (read before probing).** This skill fires
+> destructive probes — double-submit, bulk-delete, state-corruption,
+> `auth-rate-limit` (rapid bad-credential logins), repeated mutations at
+> volume. **Never run these against production without an explicit, verbatim
+> per-run user authorization** (same guard as `contract-testing`,
+> `database-testing`, `performance-testing`). Confirm the target is
+> `local`/`staging` — or that the user has authorized production destructive
+> testing — before the first probe. When invoked by onboarding, the
+> front-load gate's `targetEnvironment` classification carries this; a bare
+> standalone "find bugs on example.com" against an unclassified apex domain
+> stops and asks first. Ambiguity blocks probing; it does not default to
+> "probably safe".
+
 **Core principle — "First time effect":** Probe the live app BEFORE reading any context. Fresh eyes catch things that familiarity blinds you to. Context is used afterward to filter, classify, and derive additional findings.
 
 **Probing perspective — think like a QA engineer.** This skill is not just for hunting "interesting" bugs in unusual corners. It is the QA-coverage layer of the pipeline: every potential use case a QA engineer would design a test for, including negative cases. When you sit down to probe a page or a journey, your starting question is *"what are all the use cases a QA engineer assigned to this feature would write tests for, including the negative complement of every positive expectation?"* Bug-hunting categories (race conditions, cross-feature, cumulative state) extend above that floor — they do not replace it.

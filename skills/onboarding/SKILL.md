@@ -163,9 +163,9 @@ into this gate so no mid-run prompt is added: any
 `adversarialSkippedJourneys` opt-out is proposed and answered here,
 alongside mode selection.
 
-### Steps 1–3 — Preconditions
+### Steps 1–4 — Preconditions
 
-Once the run mode is captured, confirm three preconditions:
+Once the run mode is captured, confirm four preconditions:
 
 1. **Dev server runs locally.** You can launch the app and reach its
    landing page in a browser. Phase 2's groundwork depends on this.
@@ -176,6 +176,22 @@ Once the run mode is captured, confirm three preconditions:
 3. **No prior e2e suite in conflict.** If `tests/e2e/` already exists with
    committed specs, this is a *resume* (not onboarding). Switch to running
    the relevant phase skill directly.
+4. **Target environment classified (safety gate).** Determine whether the
+   target URL is `local`, `staging`, or `production` and record it as
+   `targetEnvironment` in the ledger + `app-context.md`. This pipeline is
+   **destructive by design** — Phase 2 mints real users (signup → confirm →
+   login), Phase 5's adversarial passes and Phase 6 bug-discovery run
+   double-submit, bulk-delete, state-corruption, and rapid bad-credential
+   probes. **Never run onboarding against production without an explicit,
+   verbatim per-run user authorization** (mirrors the guard in
+   `contract-testing`, `database-testing`, and `performance-testing`).
+   Default and strongly recommended target: `local` or `staging`. If the URL
+   looks like production (bare apex/`www` domain, no `localhost`/`staging`/
+   `dev`/`.test`/`.local` marker, or the user says so) and the user has not
+   explicitly authorized destructive testing against it, STOP and ask —
+   classification ambiguity blocks the run, it does not default to "probably
+   fine". A production run's authorization quote is recorded as an
+   `approvedDeviations[]`-style `authorizer` on the environment classification.
 
 If the project already runs `playwright` end-to-end with substantial
 coverage, do not run onboarding — it's designed for zero-to-suite, not
@@ -500,6 +516,13 @@ the suite covers without reading every spec.
 These rules apply to every phase. Violating them is a phase failure even
 when the exit criteria are technically met.
 
+- **Environment safety.** Destructive phases (2 user-minting, 5 adversarial,
+  6 bug-discovery) run only against the classified `targetEnvironment` when
+  it is `local`/`staging`, or against `production` only under the explicit
+  per-run authorization captured at the front-load gate. If a phase would
+  fire a destructive probe and the environment is unclassified or classified
+  `production` without authorization, stop and surface to the user — this is
+  a phase failure, not a judgement call.
 - **Self-credentialing first.** No spec hard-codes a username, password,
   or token. Auth flows mint test users at runtime.
 - **One commit per landed deliverable.** Phases commit per-spec, not
