@@ -2,6 +2,8 @@
 
 Every subagent dispatched by `coverage-expansion` during pass 4 or pass 5 follows this contract. It is analogous to the compositional-pass subagent contract in SKILL.md but covers adversarial probing specifics.
 
+**Environment safety.** Adversarial probes are destructive (state corruption, bulk delete, rapid bad-credential logins, repeated mutation). They run only against a `local`/`staging` target, or against `production` under the explicit per-run authorization captured at the onboarding front-load gate (`targetEnvironment`). A dispatch brief for an adversarial probe MUST name the target environment; a subagent that finds the target unclassified or `production`-without-authorization stops and returns `status: blocked` with `blocked-reason: environment-unsafe`, rather than probing. This mirrors the production guard in `contract-testing` / `database-testing` / `performance-testing`.
+
 **Role under dual-stage.** This is the **Stage A contract for adversarial passes** (4 and 5). Stage A adversarial subagents probe the live app, write findings to the adversarial-findings ledger, and — in pass 5 — write regression tests for verified boundaries.
 
 The **Stage B contract for adversarial passes** — the reviewer's role — is in `reviewer-subagent-contract.md`. A Stage B reviewer does NOT append to the ledger and does NOT write regression tests; it reads the Stage A output and the live app, judges adversarial surface coverage + ledger craft + regression-lock quality, and returns `greenlight` or `improvements-needed`. If the reviewer's `improvements-needed` list includes adversarial-missed findings, Stage A addresses them on the next cycle — the reviewer never appends its own probe findings to the ledger directly.

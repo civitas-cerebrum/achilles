@@ -16099,8 +16099,27 @@ var onboarding_status_schema_default = {
     },
     runMode: {
       type: "string",
-      enum: ["standard", "depth"],
+      enum: [
+        "standard",
+        "depth"
+      ],
       description: "Mirrors the value captured at the onboarding front-load gate. Propagates to Phase 4 cycleStrictness and Phase 5 coverage-expansion runMode."
+    },
+    targetEnvironment: {
+      type: "string",
+      enum: [
+        "local",
+        "staging",
+        "production"
+      ],
+      description: "Target-URL environment class captured at the front-load gate (precondition 4). Destructive phases (2 user-minting, 5 adversarial, 6 bug-discovery) run against local/staging freely; production requires an explicit per-run authorization recorded in targetEnvironmentAuthorizer."
+    },
+    targetEnvironmentAuthorizer: {
+      type: [
+        "string",
+        "null"
+      ],
+      description: "Verbatim user authorization quote when targetEnvironment is production. Required (non-empty) for production; null/absent otherwise. Self-imposed reasons are not an authorizer (mirrors approvedDeviations authorizer rules)."
     },
     modeAuthorizer: {
       type: "string",
@@ -16119,13 +16138,21 @@ var onboarding_status_schema_default = {
       description: "1=Scaffold, 2=Groundwork, 3=Happy-path, 4=Journey-mapping, 5=Coverage-expansion, 6=Bug-discovery, 7=Secrets-sweep, 8=Report."
     },
     currentSubStage: {
-      type: ["string", "null"],
+      type: [
+        "string",
+        "null"
+      ],
       description: "For phases 4 (cycles) + 5 (passes) only. Values: 'pass-1'..'pass-5', 'cycle-1'..'cycle-5'. Null otherwise.",
       pattern: "^(pass-[1-5]|cycle-[1-5])$"
     },
     status: {
       type: "string",
-      enum: ["in-progress", "blocked", "complete", "aborted"],
+      enum: [
+        "in-progress",
+        "blocked",
+        "complete",
+        "aborted"
+      ],
       description: "Pipeline-level status."
     },
     phases: {
@@ -16136,7 +16163,11 @@ var onboarding_status_schema_default = {
       items: {
         type: "object",
         additionalProperties: true,
-        required: ["id", "name", "status"],
+        required: [
+          "id",
+          "name",
+          "status"
+        ],
         properties: {
           id: {
             type: "integer",
@@ -16157,25 +16188,49 @@ var onboarding_status_schema_default = {
             ]
           },
           startedAt: {
-            type: ["string", "null"],
+            type: [
+              "string",
+              "null"
+            ],
             format: "date-time"
           },
           finishedAt: {
-            type: ["string", "null"],
+            type: [
+              "string",
+              "null"
+            ],
             format: "date-time"
           },
           status: {
             type: "string",
-            enum: ["pending", "in-progress", "completed", "blocked", "skipped"]
+            enum: [
+              "pending",
+              "in-progress",
+              "completed",
+              "blocked",
+              "skipped"
+            ]
           },
           handoverEnvelope: {
-            type: ["object", "null"],
+            type: [
+              "object",
+              "null"
+            ],
             additionalProperties: true,
             description: "The closing subagent's handover envelope for this phase. See schemas/subagent-returns/handover.schema.json. Required (non-null) when reviewerVerdict != 'pending'."
           },
           reviewerVerdict: {
-            type: ["string", "null"],
-            enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+            type: [
+              "string",
+              "null"
+            ],
+            enum: [
+              "pending",
+              "approved",
+              "rejected",
+              "escalated-to-user",
+              null
+            ]
           },
           reviewerCycles: {
             type: "integer",
@@ -16189,16 +16244,26 @@ var onboarding_status_schema_default = {
               type: "object",
               additionalProperties: true,
               properties: {
-                "checklist-item": { type: "string" },
-                "what-missing": { type: "string" },
-                "methodology-ref": { type: "string" },
-                "fix-instruction": { type: "string" }
+                "checklist-item": {
+                  type: "string"
+                },
+                "what-missing": {
+                  type: "string"
+                },
+                "methodology-ref": {
+                  type: "string"
+                },
+                "fix-instruction": {
+                  type: "string"
+                }
               }
             }
           },
           deliverables: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              type: "string"
+            },
             description: "Relative paths of files committed during this phase."
           },
           subStages: {
@@ -16207,7 +16272,10 @@ var onboarding_status_schema_default = {
             items: {
               type: "object",
               additionalProperties: true,
-              required: ["id", "status"],
+              required: [
+                "id",
+                "status"
+              ],
               properties: {
                 id: {
                   type: "string",
@@ -16215,15 +16283,33 @@ var onboarding_status_schema_default = {
                 },
                 status: {
                   type: "string",
-                  enum: ["pending", "in-progress", "completed", "blocked", "skipped"]
+                  enum: [
+                    "pending",
+                    "in-progress",
+                    "completed",
+                    "blocked",
+                    "skipped"
+                  ]
                 },
                 handoverEnvelope: {
-                  type: ["object", "null"],
+                  type: [
+                    "object",
+                    "null"
+                  ],
                   additionalProperties: true
                 },
                 reviewerVerdict: {
-                  type: ["string", "null"],
-                  enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+                  type: [
+                    "string",
+                    "null"
+                  ],
+                  enum: [
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "escalated-to-user",
+                    null
+                  ]
                 },
                 reviewerCycles: {
                   type: "integer",
@@ -16249,7 +16335,11 @@ var onboarding_status_schema_default = {
       items: {
         type: "object",
         additionalProperties: true,
-        required: ["phase", "deviation", "authorizer"],
+        required: [
+          "phase",
+          "deviation",
+          "authorizer"
+        ],
         properties: {
           phase: {
             type: "integer",
@@ -16268,7 +16358,34 @@ var onboarding_status_schema_default = {
         }
       }
     }
-  }
+  },
+  allOf: [
+    {
+      if: {
+        type: "object",
+        properties: {
+          targetEnvironment: {
+            const: "production"
+          }
+        },
+        required: [
+          "targetEnvironment"
+        ]
+      },
+      then: {
+        type: "object",
+        required: [
+          "targetEnvironmentAuthorizer"
+        ],
+        properties: {
+          targetEnvironmentAuthorizer: {
+            type: "string",
+            minLength: 1
+          }
+        }
+      }
+    }
+  ]
 };
 
 // schemas/perf-onboarding-status.schema.json
