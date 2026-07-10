@@ -37,15 +37,26 @@ for (const file of schemaFiles) {
   const schema = JSON.parse(readFileSync(join(dir, file), 'utf8'));
   const validate = ajv.compile(schema);
 
-  const validPath = join(fixturesDir, `${role}-valid.yaml`);
-
-  const validData = parse(readFileSync(validPath, 'utf8'));
-  if (!validate(validData)) {
-    console.error(`FAIL: ${validPath} did not validate against ${file}`);
-    console.error(validate.errors);
+  // Every valid fixture for the role must validate: the canonical
+  // `<role>-valid.yaml` plus any focused `<role>-valid-<case>.yaml` variants
+  // (e.g. -valid-batch pins a legitimate batch-reviewer return shape).
+  const validFixtures = readdirSync(fixturesDir).filter(
+    n => (n === `${role}-valid.yaml` || n.startsWith(`${role}-valid-`)) && n.endsWith('.yaml'),
+  );
+  if (validFixtures.length === 0) {
+    console.error(`FAIL: no valid fixture found for role ${role} (expected ${role}-valid.yaml)`);
     failures++;
-  } else {
-    console.log(`OK:   ${validPath} validates against ${file}`);
+  }
+  for (const val of validFixtures) {
+    const validPath = join(fixturesDir, val);
+    const validData = parse(readFileSync(validPath, 'utf8'));
+    if (!validate(validData)) {
+      console.error(`FAIL: ${validPath} did not validate against ${file}`);
+      console.error(validate.errors);
+      failures++;
+    } else {
+      console.log(`OK:   ${validPath} validates against ${file}`);
+    }
   }
 
   // Every invalid fixture for the role must fail: the canonical

@@ -1,0 +1,16 @@
+# Batch reviewer (reviewer-batch-pass-<N>) return: role resolves to the
+# reviewer-inloop schema via schema-role-map (reviewer-* -> reviewer-inloop),
+# status is batch-complete, per-journey verdicts are a top-level array.
+# Pins the batch-complete enum value the batch-reviewer contract documents
+# (reviewer-subagent-contract.md §"Batch reviewer mode").
+handover:
+  role: reviewer-batch-pass-1
+  cycle: 1
+  status: batch-complete
+  next-action: orchestrator dispatches cycle-2 per-journey reviewers for flagged journeys
+verdicts:
+  - journey: j-acme
+    verdict: greenlight
+  - journey: j-widgets
+    verdict: improvements-needed
+summary: Batch cycle-1 review of 2 in-flight journeys; 1 flagged.

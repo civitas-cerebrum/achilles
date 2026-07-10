@@ -88,9 +88,12 @@ if ! echo "$CMD" | grep -qE "$PROTECTED" && [ "$SPLIT_HIT" = "0" ]; then
 fi
 
 # Redirect-target alternation. Under a `.claude` context, also treat the
-# bare settings tokens as protected redirect targets (split-token case).
+# bare settings tokens AND a bare `hooks/<name>.sh` path as protected
+# redirect targets (split-token case) — otherwise
+# `C=$HOME/.claude; echo x > "$C/hooks/gate.sh"` neutralises a guard script
+# without ever writing the contiguous `.claude/hooks` substring.
 REDIR_TARGET_RE="$PROTECTED"
-[ "$SPLIT_HIT" = "1" ] && REDIR_TARGET_RE="${PROTECTED}|settings(\\.local)?\\.json"
+[ "$SPLIT_HIT" = "1" ] && REDIR_TARGET_RE="${PROTECTED}|settings(\\.local)?\\.json|hooks/[^[:space:];|&]*\\.sh"
 
 # 1. Redirection targeting a protected path (including >| clobber redirect).
 REDIR_HIT=$(echo "$CMD" | grep -cE ">>?\|?[[:space:]]*[^[:space:];|&]*(${REDIR_TARGET_RE})" || true)
@@ -108,9 +111,13 @@ DD_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])dd[[:space:]][^;|&]*of=" || t
 FIND_DELETE_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])find[[:space:]][^;|&]*(-delete|-exec[[:space:]]+(rm|truncate|tee|sed|mv|cp|dd)([[:space:]]|$))" || true)
 
 # 3c. Line editors / patchers that mutate a named file in place without an
-#     -i flag: `ed`, `ex`, `vi -es`, `patch`. `ed`/`ex` require a boundary
-#     char before them so `sed`/`export` don't match.
-EDITOR_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(ed|ex|patch)([[:space:]]|$)|(^|[;&|[:space:]])vi[[:space:]][^;|&]*-e?s" || true)
+#     -i flag: `ed`, `ex`, `vi -es`, `patch`. Anchor the verb to COMMAND
+#     position — start of line or immediately after a separator (`;`/`&`/`|`,
+#     which also covers `&&`, `||`, and pipes) — NOT any whitespace. A plain
+#     space boundary matched the verb in argument position, so a harmless
+#     read like `grep -n patch adversarial-findings.md` (the findings ledger
+#     legitimately contains the word "patch") was false-denied.
+EDITOR_HIT=$(echo "$CMD" | grep -cE "(^|[;&|][[:space:]]*)(ed|ex|patch)([[:space:]]|$)|(^|[;&|][[:space:]]*)vi[[:space:]][^;|&]*-e?s" || true)
 
 # 4. Interpreter invocations mentioning a protected path. Covers three
 #    launch shapes: `-c`/`-e` one-liners, a bare `-` stdin script, and a

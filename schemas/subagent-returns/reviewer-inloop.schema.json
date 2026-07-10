@@ -20,7 +20,8 @@
             "status": {
               "enum": [
                 "greenlight",
-                "improvements-needed"
+                "improvements-needed",
+                "batch-complete"
               ]
             }
           }

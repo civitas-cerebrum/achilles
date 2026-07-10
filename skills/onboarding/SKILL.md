@@ -112,7 +112,8 @@ makes those failure modes harness-denied rather than instruction-only.
 ## Front-load gate (before Phase 1)
 
 Before any scaffolding, two things happen in order: (0) run-mode
-selection, then (1–3) the three preconditions.
+selection, then (1–4) the four preconditions (the fourth is the
+target-environment safety classification).
 
 ### Step 0 — Mode selection (ask the user first)
 

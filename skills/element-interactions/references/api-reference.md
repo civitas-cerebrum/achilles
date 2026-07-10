@@ -241,7 +241,7 @@ const href = await steps.getAttribute('elementName', 'PageName', 'href');
 const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
-const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.3.8+)
+const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.3.7+)
 const outer = await steps.getHtml('elementName', 'PageName', { outer: true }); // outerHTML (incl. the tag)
 
 // Bulk extraction

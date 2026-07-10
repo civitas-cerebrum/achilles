@@ -45,11 +45,19 @@ All per-journey reasoning happens inside the dispatched skills' subagents.
    maintenance — run the onboarding cascade detector
    (`../element-interactions/references/cascade-detector.md`) and route to
    `onboarding` instead.
-2. **A reachable target of a known environment class.** Reuse the
-   `targetEnvironment` classification rule from `onboarding` (precondition 4):
-   drift re-crawl and any adversarial re-pass are destructive and follow the
-   same production-safety gate — `local`/`staging` freely, `production` only
-   under explicit per-run authorization.
+2. **Classify THIS run's target environment (safety gate — do not inherit).**
+   Re-classify the maintenance target URL every run; do **not** trust the
+   `targetEnvironment` recorded in `onboarding-status.json`, because a suite
+   onboarded against `local` can be pointed at production for a maintenance
+   pass and the stored value would wave it through. Apply `onboarding`
+   precondition 4 verbatim on the URL you are about to drive: if it looks like
+   production (bare apex/`www`, no `localhost`/`staging`/`dev`/`.test`/`.local`
+   marker, or the user says so) and the user has not given an explicit,
+   verbatim per-run authorization, **STOP and ask** — Phase 1 runs the suite
+   and a live re-crawl, and Phase 2 dispatches destructive adversarial
+   re-passes, all against this target. Classification ambiguity blocks the run;
+   it does not default to "probably fine". Record the (re-)classification and
+   any authorizer before Phase 1.
 3. **A drift reference point.** Either a git ref (the commit the suite was last
    known-good against — default: the most recent commit that touched
    `tests/e2e/`), a changelog/PR the user names, or "re-crawl and diff" when no

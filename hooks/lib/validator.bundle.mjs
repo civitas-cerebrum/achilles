@@ -15615,7 +15615,8 @@ var reviewer_inloop_schema_default = {
             status: {
               enum: [
                 "greenlight",
-                "improvements-needed"
+                "improvements-needed",
+                "batch-complete"
               ]
             }
           }
@@ -16679,12 +16680,14 @@ var run_summary_schema_default = {
           }
         },
         {
-          description: "A null status means no results file \u2014 the counts must all be null, not a stale carried-over number.",
+          description: "A null status means no results file \u2014 all five counts must be null, not a stale carried-over or fabricated number.",
           if: { properties: { status: { type: "null" } }, required: ["status"] },
           then: {
             properties: {
               passing: { type: "null" },
               failing: { type: "null" },
+              flaky: { type: "null" },
+              skipped: { type: "null" },
               total: { type: "null" }
             }
           }

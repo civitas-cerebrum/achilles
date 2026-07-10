@@ -71,6 +71,14 @@ assert_deny "$HOOK" "$(bash_payload 'patch tests/e2e/docs/journey-map.md < p.pat
 assert_deny "$HOOK" "$(bash_payload 'python3 - <<EOF
 open("tests/e2e/docs/onboarding-status.json","w").write("{}")
 EOF')" "heredoc python bare-stdin write → DENY" "protected"
+# Split-token write into a hooks/*.sh SCRIPT via a plain redirect: assemble
+# .claude in a var so ".claude/hooks" is never contiguous. The redirect
+# TARGET is a bare hooks/<name>.sh path — previously ALLOWED (only settings
+# tokens were widened), which let an agent neutralise a guard script.
+assert_deny "$HOOK" "$(bash_payload 'C=$HOME/.claude; echo exit 0 > "$C/hooks/journey-map-sentinel-gate.sh"')" "token-split hooks/*.sh redirect → DENY" "protected"
+assert_deny "$HOOK" "$(bash_payload 'C=$HOME/.claude; cat > "$C/hooks/onboarding-ledger-write-gate.sh" <<EOF
+exit 0
+EOF')" "token-split hooks/*.sh heredoc redirect → DENY" "protected"
 # Allow-test convention: adjacent legitimate traffic that must NOT trip the
 # broadened patterns.
 assert_allow "$HOOK" "$(bash_payload 'find tests/e2e -name "*.spec.ts"')" "find specs, no -delete → ALLOW"
@@ -78,6 +86,13 @@ assert_allow "$HOOK" "$(bash_payload 'cat "$HOME/.claude/settings.json"')" "toke
 assert_allow "$HOOK" "$(bash_payload 'python3 - <<EOF
 import json; print(json.load(open("tests/e2e/docs/onboarding-status.json"))["currentPhase"])
 EOF')" "heredoc python bare-stdin READ → ALLOW"
+# Regression guards for the EDITOR_HIT false-deny (finding: command-position
+# anchor). `patch`/`ed`/`ex` as ARGUMENT tokens next to a protected filename
+# must NOT deny — the findings ledger legitimately contains the word "patch".
+assert_allow "$HOOK" "$(bash_payload 'grep -n patch tests/e2e/docs/adversarial-findings.md')" "grep for word 'patch' in findings ledger → ALLOW"
+assert_allow "$HOOK" "$(bash_payload 'grep ed tests/e2e/docs/journey-map.md')" "grep for 'ed' in journey map → ALLOW"
+# But a piped patch (command position after a pipe) is still a real write → DENY.
+assert_deny "$HOOK" "$(bash_payload 'cat p.patch | patch tests/e2e/docs/journey-map.md')" "piped patch into journey map → DENY" "protected"
 
 section "protected-artifact-bash-guard: flake-quarantine.md is protected"
 # harvest-U3: the flake-quarantine ledger is a protected pipeline-state
