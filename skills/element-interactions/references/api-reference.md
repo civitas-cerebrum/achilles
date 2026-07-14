@@ -219,8 +219,15 @@ await steps.uploadFile('elementName', 'PageName', 'path/to/file.pdf');
 await steps.setSliderValue('elementName', 'PageName', 75);
 await steps.pressKey('Enter');                                 // 'Escape', 'Tab', 'Control+A', etc.
 await steps.pressKeys(['Control', 'A']);                       // 0.4.0+ — multi-key chord, joined with '+'; throws on []
-await steps.dispatchEvent('elementName', 'PageName', 'click'); // 0.4.0+ — synthetic DOM event, NO actionability checks
-await steps.dispatchEvent('elementName', 'PageName', 'input', { bubbles: true }); // optional eventInit payload
+
+// dispatchEvent — synthetic DOM event, no actionability checks (0.4.0+)
+// LAST RESORT: reach for this only when a real interaction cannot express the case.
+// The element only needs to be attached, not visible or enabled.
+await steps.dispatchEvent('elementName', 'PageName', 'click');
+await steps.dispatchEvent('elementName', 'PageName', 'input', { bubbles: true });
+await steps.dispatchEvent('elementName', 'PageName', 'change');
+await steps.dispatchEvent('elementName', 'PageName', 'focus');
+await steps.dispatchEvent('elementName', 'PageName', 'keydown', { key: 'Enter', bubbles: true });
 
 // Dropdowns
 const val = await steps.selectDropdown('elementName', 'PageName');                                              // random (default)
@@ -233,6 +240,16 @@ await steps.dragAndDrop('elementName', 'PageName', { target: otherLocatorOrEleme
 await steps.dragAndDrop('elementName', 'PageName', { xOffset: 100, yOffset: 0 });
 await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { target: otherLocatorOrElement });
 ```
+
+**`dispatchEvent` — when to use it and when not to (0.4.0+).** `dispatchEvent(elementName, pageName, type, eventInit?)` fires a synthetic DOM event directly on the element, bypassing all Playwright actionability checks (visibility, enabled state, scrolling into view). Use it **only** in situations where a real interaction cannot express the case:
+- **Custom events** the app dispatches or listens for (e.g. `'app:cart-updated'`).
+- **`input` / `change` on widgets** that intercept pointer events and ignore synthetic typing, preventing `fill()` from triggering their handlers.
+- **`focus` / `blur`** to drive validation logic without a real tab sequence.
+- **`keydown` / `keyup` / `keypress`** with a specific `key` payload on a focusable element (e.g. `{ key: 'Escape', bubbles: true }` to close a modal via keyboard).
+
+The optional `eventInit` object is passed as the second argument to `new Event(type, eventInit)` / `new KeyboardEvent(type, eventInit)` — any property accepted by the relevant DOM event constructor works. Always set `bubbles: true` when the handler lives on an ancestor element.
+
+**Prefer `click()` / `fill()` / `pressKey()` for real user input.** `dispatchEvent` skips actionability, so a misspelled element name or an off-screen element will not be caught. It also skips Playwright's retry-on-intercept logic — if you're trying to click an element that is behind an overlay, `click()` (which retries and can fall back to a dispatched click automatically) is the right call, not `dispatchEvent`.
 
 **Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. On **0.4.0+** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — recommended for adversarial/bug-discovery suites where a stuck modal or cookie wall should fail the click. On **0.3.x (current pinned dep)** the fallback still happens but the annotation and the `interceptionRetry` opt-out are not available — see the version gate under [Setup — Fixtures](#setup--fixtures).
 
