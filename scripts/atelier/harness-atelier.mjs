@@ -57,22 +57,30 @@ const SCHEMA_LOG = join(project, '.achilles', 'schema-guard-log.jsonl');
 const PROCESS_TABLE = join(project, '.achilles', '.agent-process-table.json');
 
 function readJsonl(path) {
-  if (!existsSync(path)) return [];
-  const out = [];
+  if (!existsSync(path)) return { rows: [], skipped: 0 };
+  const rows = [];
+  let skipped = 0;
   const lines = readFileSync(path, 'utf8').split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    try { out.push({ line: i + 1, ...JSON.parse(line) }); } catch { /* skip corrupt line */ }
+    try { rows.push({ line: i + 1, ...JSON.parse(line) }); } catch { skipped++; }
   }
-  return out;
+  return { rows, skipped };
 }
+
+// Sizing: every *_bytes field in the telemetry is a character count (the
+// collector measures string lengths; ≈ bytes for ASCII payloads). The unit
+// that actually bounds an agent's window is TOKENS, so the report displays
+// estimated tokens (chars ÷ 4) everywhere, with raw char counts alongside.
+const CHARS_PER_TOKEN = 4;
+const estTok = n => Math.round((n || 0) / CHARS_PER_TOKEN);
 
 // ---------------------------------------------------------------------------
 // Aggregate
 // ---------------------------------------------------------------------------
-const events = readJsonl(TELEMETRY);
-const schemaLog = readJsonl(SCHEMA_LOG);
+const { rows: events, skipped: telemetrySkipped } = readJsonl(TELEMETRY);
+const { rows: schemaLog, skipped: schemaSkipped } = readJsonl(SCHEMA_LOG);
 
 // Agents: pair dispatch + return by tool_use_id.
 const agents = new Map();
@@ -83,17 +91,38 @@ function agent(id) {
   }
   return agents.get(id);
 }
-// Per-context Bash activity (actor = orchestrator | agent_id).
+// Per-context ingest (actor = orchestrator | agent_id). bytes_out is Bash
+// stdout; tool_bytes_out is everything the generic tool events pulled in
+// (Read/Grep/WebFetch/…); skill_bytes_out is instruction content Skill
+// invocations injected. total_ingest_bytes sums the three.
 const contexts = new Map();
 function context(actor, role) {
-  if (!contexts.has(actor)) contexts.set(actor, { actor, role, commands: 0, bytes_out: 0 });
+  if (!contexts.has(actor)) {
+    contexts.set(actor, { actor, role, commands: 0, bytes_out: 0,
+      tool_calls: 0, tool_bytes_out: 0, skill_bytes_out: 0, total_ingest_bytes: 0 });
+  }
   const c = contexts.get(actor);
   if (role && role !== 'unconfined') c.role = role;
   return c;
 }
 
+// What to do about each leak channel — attached to every leak so the panel
+// is actionable, not just diagnostic.
+const REMEDIATION = {
+  'bash-ingest': 'Payload content was dumped straight into the orchestrator window. Dispatch a reader-role subagent to ingest this artifact and return a structured summary; keep the privilege guard on so the dump is denied while a pipeline is live.',
+  'oversized-return': 'Bulk content flowed up instead of a summary. Tighten this role\'s return schema and brief template ("return the structured summary only"); raise ATELIER_RETURN_BUDGET only if the volume is genuinely required.',
+  'pasted-source-return': 'The return pasted a large source block. Brief the role to reference file paths plus line ranges instead of pasting content, and keep code out of the return schema\'s fields.',
+};
+const REMEDIATION_DEFAULT = 'Tighten the dispatch brief, return schema, or role privileges at the cited event.';
+
 const leaks = [];
 let nestedDispatches = 0;
+// Orchestrator-window accounting: briefs it authors and returns it ingests
+// both occupy its window, alongside its own Bash/tool/skill ingest.
+let orchBrief = 0, orchReturn = 0;
+// Waste: the full size of each leaking transfer (return payload or dumped
+// command stdout) — what the leak channels pushed into the window.
+let leakedBytes = 0;
 
 // Skill segments: a `skill` event marks the start of a segment for its
 // actor; every later byte-bearing event by the same actor attributes to
@@ -122,6 +151,7 @@ for (const ev of events) {
     a.brief_bytes += ev.brief_bytes || 0;
     a.dispatched = true;
     if (ev.actor && ev.actor !== 'orchestrator') nestedDispatches++;
+    else orchBrief += ev.brief_bytes || 0;
   } else if (ev.event === 'return') {
     const a = agent(ev.tool_use_id || `return@${ev.line}`);
     a.role = ev.dispatch_role || a.role;
@@ -129,6 +159,7 @@ for (const ev of events) {
     a.return_bytes += ev.return_bytes || 0;
     a.returned = true;
     if (ev.leak) a.leak = ev.leak;
+    if ((ev.actor || 'orchestrator') === 'orchestrator') orchReturn += ev.return_bytes || 0;
   } else if (ev.event === 'command') {
     const c = context(ev.actor || 'orchestrator', ev.role);
     c.commands++;
@@ -140,11 +171,15 @@ for (const ev of events) {
     sk.invocations++;
     sk.injected_bytes += ev.bytes_out || 0;
     activeSkill.set(ev.actor || 'orchestrator', name);
+    context(ev.actor || 'orchestrator', ev.role).skill_bytes_out += ev.bytes_out || 0;
   } else if (ev.event === 'tool') {
     const t = ev.tool || '(tool)';
     if (!tools.has(t)) tools.set(t, { tool: t, calls: 0, bytes_out: 0 });
     tools.get(t).calls++;
     tools.get(t).bytes_out += ev.bytes_out || 0;
+    const c = context(ev.actor || 'orchestrator', ev.role);
+    c.tool_calls++;
+    c.tool_bytes_out += ev.bytes_out || 0;
     attribute(ev.actor || 'orchestrator', ev.bytes_out || 0);
   }
   if (ev.event === 'dispatch') {
@@ -155,10 +190,17 @@ for (const ev of events) {
   }
   if (ev.event === 'return') attribute(ev.actor || 'orchestrator', ev.return_bytes || 0);
   if (ev.leak) {
+    leakedBytes += ev.event === 'return' ? (ev.return_bytes || 0)
+      : ev.event === 'command' ? (ev.bytes_out || 0) : 0;
     leaks.push({ line: ev.line, ts: ev.ts, event: ev.event, actor: ev.actor,
       role: ev.role, channel: ev.leak.channel, evidence: ev.leak.evidence,
-      ref: ev.tool_use_id || ev.command_head || '' });
+      ref: ev.tool_use_id || ev.command_head || '',
+      remediation: REMEDIATION[ev.leak.channel] || REMEDIATION_DEFAULT });
   }
+}
+
+for (const c of contexts.values()) {
+  c.total_ingest_bytes = c.bytes_out + c.tool_bytes_out + c.skill_bytes_out;
 }
 
 const agentList = [...agents.values()];
@@ -198,11 +240,31 @@ try {
   if (existsSync(PROCESS_TABLE)) processTable = JSON.parse(readFileSync(PROCESS_TABLE, 'utf8'));
 } catch { /* malformed table — report without it */ }
 
-const orch = contexts.get('orchestrator') || { actor: 'orchestrator', role: 'orchestrator', commands: 0, bytes_out: 0 };
+const orch = contexts.get('orchestrator') || { actor: 'orchestrator', role: 'orchestrator',
+  commands: 0, bytes_out: 0, tool_calls: 0, tool_bytes_out: 0, skill_bytes_out: 0, total_ingest_bytes: 0 };
+
+// The one budget the harness protects: everything that landed in the
+// orchestrator's window (briefs it authored, returns it ingested, its own
+// Bash stdout, tool ingest, and skill injections) — and how much of that
+// was leak waste.
+const orchWindowBytes = orchBrief + orchReturn + orch.bytes_out + orch.tool_bytes_out + orch.skill_bytes_out;
+const wasteShare = orchWindowBytes ? leakedBytes / orchWindowBytes : null;
+
+const worstReturns = agentList.filter(a => a.return_bytes > 0)
+  .sort((a, b) => b.return_bytes - a.return_bytes).slice(0, 5)
+  .map(a => ({ tool_use_id: a.tool_use_id, role: a.role, description: a.description,
+    return_bytes: a.return_bytes, leak_channel: a.leak ? a.leak.channel : null }));
+const worstIngest = [...contexts.values()].filter(c => c.total_ingest_bytes > 0)
+  .sort((a, b) => b.total_ingest_bytes - a.total_ingest_bytes).slice(0, 5)
+  .map(c => ({ actor: c.actor, role: c.role, total_ingest_bytes: c.total_ingest_bytes }));
 
 const summary = {
+  schema_version: 2,
+  sizing: { unit: 'chars', chars_per_token_estimate: CHARS_PER_TOKEN },
   project,
   telemetry_file: TELEMETRY,
+  telemetry_skipped_lines: telemetrySkipped,
+  schema_log_skipped_lines: schemaSkipped,
   events: events.length,
   agents: agentList.length,
   dispatches: agentList.filter(a => a.dispatched).length,
@@ -210,7 +272,16 @@ const summary = {
   nested_dispatches: nestedDispatches,
   total_brief_bytes: totalBrief,
   total_return_bytes: totalReturn,
+  total_brief_tokens_est: estTok(totalBrief),
+  total_return_tokens_est: estTok(totalReturn),
   orchestrator_bash_ingest_bytes: orch.bytes_out,
+  orchestrator_total_ingest_bytes: orch.total_ingest_bytes,
+  orchestrator_window_bytes: orchWindowBytes,
+  orchestrator_window_tokens_est: estTok(orchWindowBytes),
+  leaked_bytes: leakedBytes,
+  leaked_tokens_est: estTok(leakedBytes),
+  leak_waste_share: wasteShare,
+  worst_offenders: { returns: worstReturns, ingest: worstIngest },
   median_return_to_brief_ratio: medianRatio,
   leaks: leaks.length,
   leak_channels: leaks.reduce((m, l) => ((m[l.channel] = (m[l.channel] || 0) + 1), m), {}),
@@ -234,13 +305,24 @@ if (asJson) {
 // HTML report
 // ---------------------------------------------------------------------------
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const kb = n => n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`;
+// Display sizes token-first (the unit that bounds a window), chars alongside.
+const fmtTok = n => { const t = (n || 0) / CHARS_PER_TOKEN; return t >= 1000 ? `≈${(t / 1000).toFixed(1)}k tok` : `≈${Math.round(t)} tok`; };
+const fmtChars = n => (n || 0) >= 1000 ? `${((n || 0) / 1000).toFixed(1)}k chars` : `${n || 0} chars`;
+const szTitle = n => `${fmtTok(n)} (${fmtChars(n)})`;
+const tdSz = n => `<td class="num" title="${esc(fmtChars(n))}">${esc(fmtTok(n))}</td>`;
 
 // Flow map: orchestrator on the left, one node per agent on the right,
 // a down-edge (brief) and an up-edge (return) per agent; edge width ∝
-// sqrt(bytes); returns that leaked render red.
+// sqrt(size); returns that leaked render red. Capped at the 40 largest
+// agents by context volume — the cap is stated in the report, and the
+// Agents table always lists everything.
 const ROW = 46, TOP = 30;
-const flowAgents = agentList.slice(0, 40);
+const flowAgents = [...agentList]
+  .sort((a, b) => (b.brief_bytes + b.return_bytes) - (a.brief_bytes + a.return_bytes))
+  .slice(0, 40);
+const flowCapNote = agentList.length > flowAgents.length
+  ? `<p class="note">map shows the ${flowAgents.length} largest of ${agentList.length} agents by context volume — the Agents table lists all ${agentList.length}.</p>`
+  : '';
 const svgH = Math.max(120, TOP + flowAgents.length * ROW + 20);
 const maxBytes = Math.max(1, ...flowAgents.flatMap(a => [a.brief_bytes, a.return_bytes]));
 const w = b => Math.max(1.2, 14 * Math.sqrt(b / maxBytes));
@@ -248,17 +330,17 @@ let svg = `<svg viewBox="0 0 860 ${svgH}" xmlns="http://www.w3.org/2000/svg" rol
 const orchY = svgH / 2;
 svg += `<rect x="20" y="${orchY - 26}" width="170" height="52" rx="8" class="node orch"/>` +
   `<text x="105" y="${orchY - 4}" class="nlabel">orchestrator</text>` +
-  `<text x="105" y="${orchY + 14}" class="nsub">${esc(kb(orch.bytes_out))} bash ingest</text>`;
+  `<text x="105" y="${orchY + 14}" class="nsub">${esc(fmtTok(orch.total_ingest_bytes))} ingested</text>`;
 flowAgents.forEach((a, i) => {
   const y = TOP + i * ROW + ROW / 2;
   const leakUp = !!a.leak;
-  svg += `<path d="M 190 ${orchY - 6} C 380 ${orchY - 6}, 420 ${y - 6}, 610 ${y - 6}" class="edge down" style="stroke-width:${w(a.brief_bytes)}"><title>brief → ${esc(a.role)}: ${esc(kb(a.brief_bytes))}</title></path>`;
+  svg += `<path d="M 190 ${orchY - 6} C 380 ${orchY - 6}, 420 ${y - 6}, 610 ${y - 6}" class="edge down" style="stroke-width:${w(a.brief_bytes)}"><title>brief → ${esc(a.role)}: ${esc(szTitle(a.brief_bytes))}</title></path>`;
   if (a.returned) {
-    svg += `<path d="M 610 ${y + 6} C 420 ${y + 6}, 380 ${orchY + 6}, 190 ${orchY + 6}" class="edge up${leakUp ? ' leak' : ''}" style="stroke-width:${w(a.return_bytes)}"><title>return ← ${esc(a.role)}: ${esc(kb(a.return_bytes))}${leakUp ? ` — LEAK (${esc(a.leak.channel)})` : ''}</title></path>`;
+    svg += `<path d="M 610 ${y + 6} C 420 ${y + 6}, 380 ${orchY + 6}, 190 ${orchY + 6}" class="edge up${leakUp ? ' leak' : ''}" style="stroke-width:${w(a.return_bytes)}"><title>return ← ${esc(a.role)}: ${esc(szTitle(a.return_bytes))}${leakUp ? ` — LEAK (${esc(a.leak.channel)})` : ''}</title></path>`;
   }
   svg += `<rect x="610" y="${y - 18}" width="230" height="36" rx="6" class="node${leakUp ? ' leaknode' : ''}"/>` +
     `<text x="725" y="${y - 2}" class="nlabel small">${esc(a.role)}</text>` +
-    `<text x="725" y="${y + 12}" class="nsub">${esc(kb(a.brief_bytes))} ↓ · ${esc(kb(a.return_bytes))} ↑</text>`;
+    `<text x="725" y="${y + 12}" class="nsub">${esc(fmtTok(a.brief_bytes))} ↓ · ${esc(fmtTok(a.return_bytes))} ↑</text>`;
 });
 svg += '</svg>';
 
@@ -267,38 +349,64 @@ const dur = sessionSeconds >= 3600 ? `${Math.floor(sessionSeconds / 3600)}h ${Ma
 const tiles = [
   ['session span', tsList.length ? dur : '—'],
   ['agents dispatched', String(summary.dispatches)],
-  ['brief bytes ↓', kb(totalBrief)],
-  ['return bytes ↑', kb(totalReturn)],
+  ['brief ↓ (est tokens)', fmtTok(totalBrief)],
+  ['return ↑ (est tokens)', fmtTok(totalReturn)],
   ['median return/brief', medianRatio == null ? '—' : medianRatio.toFixed(2)],
-  ['orchestrator bash ingest', kb(orch.bytes_out)],
+  ['orchestrator ingest', fmtTok(orch.total_ingest_bytes)],
   ['leaks', String(leaks.length)],
 ].map(([k, v]) => `<div class="tile${k === 'leaks' && leaks.length ? ' bad' : ''}"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join('');
 
+const budgetTiles = [
+  ['orchestrator window (est tokens)', fmtTok(orchWindowBytes), false],
+  ['leaked into window', fmtTok(leakedBytes), leakedBytes > 0],
+  ['waste share', wasteShare == null ? '—' : `${(wasteShare * 100).toFixed(1)}%`, leakedBytes > 0],
+].map(([k, v, bad]) => `<div class="tile${bad ? ' bad' : ''}"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join('');
+
+const budgetRows = [
+  ['briefs authored ↓', orchBrief],
+  ['returns ingested ↑', orchReturn],
+  ['bash stdout', orch.bytes_out],
+  ['other-tool ingest', orch.tool_bytes_out],
+  ['skill injections', orch.skill_bytes_out],
+].map(([k, v]) => `<tr><td>${esc(k)}</td>${tdSz(v)}<td class="num">${orchWindowBytes ? Math.round((100 * v) / orchWindowBytes) : 0}%</td></tr>`).join('');
+
+const offenderReturnRows = worstReturns.map(o => `<tr${o.leak_channel ? ' class="leakrow"' : ''}>` +
+  `<td><code>${esc(o.role)}</code></td><td>${esc(o.description)}</td>${tdSz(o.return_bytes)}` +
+  `<td>${o.leak_channel ? `<span class="pill">${esc(o.leak_channel)}</span>` : ''}</td></tr>`).join('');
+const offenderIngestRows = worstIngest.map(o => `<tr><td><code>${esc(o.actor)}</code></td>` +
+  `<td><code>${esc(o.role)}</code></td>${tdSz(o.total_ingest_bytes)}</tr>`).join('');
+
 const agentRows = agentList.map(a => `<tr${a.leak ? ' class="leakrow"' : ''}>` +
   `<td><code>${esc(a.role)}</code></td><td>${esc(a.description)}</td>` +
-  `<td class="num">${esc(kb(a.brief_bytes))}</td><td class="num">${esc(kb(a.return_bytes))}</td>` +
+  `${tdSz(a.brief_bytes)}${tdSz(a.return_bytes)}` +
   `<td class="num">${a.brief_bytes ? (a.return_bytes / a.brief_bytes).toFixed(2) : '—'}</td>` +
   `<td>${a.leak ? `<span class="pill">${esc(a.leak.channel)}</span>` : ''}</td></tr>`).join('');
 
 const ctxRows = [...contexts.values()].map(c => `<tr><td><code>${esc(c.actor)}</code></td>` +
-  `<td><code>${esc(c.role)}</code></td><td class="num">${c.commands}</td><td class="num">${esc(kb(c.bytes_out))}</td></tr>`).join('');
+  `<td><code>${esc(c.role)}</code></td><td class="num">${c.commands}</td>${tdSz(c.bytes_out)}` +
+  `<td class="num">${c.tool_calls}</td>${tdSz(c.tool_bytes_out)}${tdSz(c.skill_bytes_out)}${tdSz(c.total_ingest_bytes)}</tr>`).join('');
 
 const skillRows = [...skills.values()].sort((a, b) => (b.injected_bytes + b.attributed_bytes) - (a.injected_bytes + a.attributed_bytes))
   .map(sk => `<tr><td><code>${esc(sk.skill)}</code></td><td class="num">${sk.invocations}</td>` +
-    `<td class="num">${esc(kb(sk.injected_bytes))}</td><td class="num">${esc(kb(sk.attributed_bytes))}</td>` +
+    `${tdSz(sk.injected_bytes)}${tdSz(sk.attributed_bytes)}` +
     `<td class="num">${sk.dispatches}</td></tr>`).join('');
 
 const roleRows = [...byRole.values()].sort((a, b) => b.brief_bytes - a.brief_bytes)
   .map(r => `<tr${r.leaks ? ' class="leakrow"' : ''}><td><code>${esc(r.role)}</code></td><td class="num">${r.dispatches}</td>` +
-    `<td class="num">${esc(kb(r.brief_bytes))}</td><td class="num">${esc(kb(r.return_bytes))}</td>` +
+    `${tdSz(r.brief_bytes)}${tdSz(r.return_bytes)}` +
     `<td class="num">${r.brief_bytes ? (r.return_bytes / r.brief_bytes).toFixed(2) : '—'}</td><td class="num">${r.leaks}</td></tr>`).join('');
 
 const toolRows = [...tools.values()].sort((a, b) => b.bytes_out - a.bytes_out)
-  .map(t => `<tr><td><code>${esc(t.tool)}</code></td><td class="num">${t.calls}</td><td class="num">${esc(kb(t.bytes_out))}</td></tr>`).join('');
+  .map(t => `<tr><td><code>${esc(t.tool)}</code></td><td class="num">${t.calls}</td>${tdSz(t.bytes_out)}</tr>`).join('');
 
 const leakItems = leaks.map(l => `<li><span class="pill">${esc(l.channel)}</span> ` +
   `<strong>${esc(l.event)}</strong> by <code>${esc(l.actor)}</code> (role <code>${esc(l.role)}</code>) — ${esc(l.evidence)}<br>` +
-  `<span class="where">where: ${esc(TELEMETRY)}:${l.line}${l.ref ? ` · ref <code>${esc(l.ref)}</code>` : ''} · ${esc(l.ts || '')}</span></li>`).join('');
+  `<span class="where">where: ${esc(TELEMETRY)}:${l.line}${l.ref ? ` · ref <code>${esc(l.ref)}</code>` : ''} · ${esc(l.ts || '')}</span>` +
+  `<span class="fix">fix: ${esc(l.remediation)}</span></li>`).join('');
+
+const skippedNote = telemetrySkipped
+  ? `<p class="warn">⚠ ${telemetrySkipped} malformed telemetry line(s) skipped — every count below is an undercount until the log is repaired.</p>`
+  : '';
 
 const schemaRows = [...schemaByRole.values()].map(s => {
   const total = s.valid + s.invalid;
@@ -330,23 +438,35 @@ const html = `<!doctype html>
   .edge { fill: none; stroke: rgba(90,140,220,.55); } .edge.up { stroke: rgba(90,190,120,.6); }
   .edge.leak { stroke: rgba(221,51,51,.75); }
   .where { opacity: .65; font-size: .78rem; }
+  .fix { display: block; opacity: .8; font-size: .78rem; margin-top: .15rem; }
+  .note { opacity: .65; font-size: .8rem; }
+  .warn { color: #d33; font-weight: 600; }
   li { margin-bottom: .55rem; }
   .empty { opacity: .6; font-style: italic; }
 </style>
 <h1>harness-atelier <small>${esc(project)}${sessionStart ? ` · session ${esc(sessionStart)} → ${esc(sessionEnd)}` : ''}</small></h1>
+<p class="note">sizes are recorded as character counts and shown as estimated tokens (chars ÷ ${CHARS_PER_TOKEN}) — tokens are the unit that actually bounds an agent's window; hover any size for the raw chars.</p>
+${skippedNote}
 <div class="tiles">${tiles}</div>
+<h2>Context budget &amp; waste</h2>
+<div class="tiles">${budgetTiles}</div>
+<table><tr><th>orchestrator window source</th><th class="num">size</th><th class="num">share</th></tr>${budgetRows}</table>
+<h3>Worst offenders — returns</h3>
+${offenderReturnRows ? `<table><tr><th>role</th><th>dispatch</th><th class="num">return ↑</th><th>leak</th></tr>${offenderReturnRows}</table>` : '<p class="empty">no returns recorded.</p>'}
+<h3>Worst offenders — context ingest</h3>
+${offenderIngestRows ? `<table><tr><th>context</th><th>role</th><th class="num">total ingest</th></tr>${offenderIngestRows}</table>` : '<p class="empty">no ingest recorded.</p>'}
 <h2>Context-transfer map</h2>
-${flowAgents.length ? svg : '<p class="empty">no dispatches recorded yet — run the harness with the atelier collector installed.</p>'}
+${flowAgents.length ? svg + flowCapNote : '<p class="empty">no dispatches recorded yet — run the harness with the atelier collector installed.</p>'}
 <h2>Agents — context use</h2>
 ${agentRows ? `<table><tr><th>role</th><th>dispatch</th><th class="num">brief ↓</th><th class="num">return ↑</th><th class="num">ratio</th><th>leak</th></tr>${agentRows}</table>` : '<p class="empty">none recorded.</p>'}
-<h2>Execution contexts — Bash activity</h2>
-${ctxRows ? `<table><tr><th>context</th><th>role</th><th class="num">commands</th><th class="num">stdout bytes ingested</th></tr>${ctxRows}</table>` : '<p class="empty">none recorded.</p>'}
+<h2>Execution contexts — per-actor ingest</h2>
+${ctxRows ? `<table><tr><th>context</th><th>role</th><th class="num">commands</th><th class="num">bash ingest</th><th class="num">tool calls</th><th class="num">tool ingest</th><th class="num">skill inject</th><th class="num">total ingest</th></tr>${ctxRows}</table>` : '<p class="empty">none recorded.</p>'}
 <h2>Context by skill</h2>
-${skillRows ? `<table><tr><th>skill</th><th class="num">invocations</th><th class="num">injected bytes</th><th class="num">attributed bytes</th><th class="num">dispatches</th></tr>${skillRows}</table>` : '<p class="empty">no skill events recorded — the collector tags Skill-tool invocations automatically.</p>'}
+${skillRows ? `<table><tr><th>skill</th><th class="num">invocations</th><th class="num">injected</th><th class="num">attributed</th><th class="num">dispatches</th></tr>${skillRows}</table>` : '<p class="empty">no skill events recorded — the collector tags Skill-tool invocations automatically.</p>'}
 <h2>Context impact by role (pipeline stage)</h2>
 ${roleRows ? `<table><tr><th>role / stage</th><th class="num">dispatches</th><th class="num">brief ↓</th><th class="num">return ↑</th><th class="num">ratio</th><th class="num">leaks</th></tr>${roleRows}</table>` : '<p class="empty">none recorded.</p>'}
 <h2>Tool mix — context ingestion by tool</h2>
-${toolRows ? `<table><tr><th>tool</th><th class="num">calls</th><th class="num">bytes ingested</th></tr>${toolRows}</table>` : '<p class="empty">no generic tool events recorded.</p>'}
+${toolRows ? `<table><tr><th>tool</th><th class="num">calls</th><th class="num">ingested</th></tr>${toolRows}</table>` : '<p class="empty">no generic tool events recorded.</p>'}
 <h2>Leak panel — where exactly</h2>
 ${leakItems ? `<ol>${leakItems}</ol>` : '<p class="empty">no leaks detected. The orchestrator window stayed clean.</p>'}
 <h2>Return-schema validity</h2>
@@ -355,4 +475,4 @@ ${schemaRows ? `<table><tr><th>role</th><th class="num">valid</th><th class="num
 
 mkdirSync(dirname(outFile), { recursive: true });
 writeFileSync(outFile, html);
-console.log(`harness-atelier: ${events.length} events, ${summary.dispatches} dispatches, ${leaks.length} leak(s) → ${outFile}`);
+console.log(`harness-atelier: ${events.length} events, ${summary.dispatches} dispatches, ${leaks.length} leak(s)${telemetrySkipped ? `, ${telemetrySkipped} malformed line(s) skipped` : ''} → ${outFile}`);

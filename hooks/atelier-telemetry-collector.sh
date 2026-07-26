@@ -58,6 +58,11 @@
 # oversized-return (> ATELIER_RETURN_BUDGET bytes, default 8000),
 # pasted-source-return (fenced code block > 1200 chars inside a return).
 #
+# Sizing: every *_bytes field is a CHARACTER count (string length; ≈ bytes
+# for ASCII payloads). The field names keep the _bytes suffix for schema
+# stability — the visualizer displays estimated tokens (chars ÷ 4), the
+# unit that actually bounds an agent's window.
+#
 # Failure posture: every write is best-effort (|| true); a telemetry
 # failure must never affect the tool call being observed.
 #

@@ -28,6 +28,8 @@ Every event carries `ts`, `event`, `actor` (`orchestrator` or the subagent's `ag
 
 This five-event schema is the **integration contract**: any coding agent (Claude Code or otherwise) that writes these JSON lines can be visualized by the CLI via `--telemetry` — the collector hook is just the Claude Code adapter.
 
+**Units.** Every `*_bytes` field is a **character count** (string length; ≈ bytes for ASCII payloads). The field names keep the `_bytes` suffix for schema stability, but the report displays **estimated tokens** (`chars ÷ 4`) everywhere — tokens are the unit that actually bounds an agent's window — with raw char counts on hover and alongside. The `--json` aggregate declares this in `sizing` (`{unit: "chars", chars_per_token_estimate: 4}`) and carries `schema_version` so CI consumers can pin the shape. Malformed telemetry lines are never silently dropped: the aggregate reports `telemetry_skipped_lines` / `schema_log_skipped_lines`, the report shows an undercount warning, and the CLI's stdout line says how many were skipped.
+
 ## Leak channels
 
 | Channel | Meaning |
@@ -36,14 +38,15 @@ This five-event schema is the **integration contract**: any coding agent (Claude
 | `oversized-return` | A subagent return exceeded the return budget (`ATELIER_RETURN_BUDGET`, default 8000 bytes) — bulk content flowing up instead of a structured summary. |
 | `pasted-source-return` | A return carried a fenced code block over 1200 chars — pasted test source / transcript inside the return channel. |
 
-Each leak in the report's **leak panel** cites its channel, actor, role, evidence, and the exact `atelier-telemetry.jsonl:<line>` it was recorded at — the "where exactly" pointer for harness development.
+Each leak in the report's **leak panel** cites its channel, actor, role, evidence, the exact `atelier-telemetry.jsonl:<line>` it was recorded at — the "where exactly" pointer for harness development — and a per-channel **remediation**: the concrete contract fix for that channel (dispatch a reader-role subagent instead of dumping; tighten the return schema/brief; reference paths instead of pasting source).
 
 ## What the report shows
 
-- **Summary tiles** — session span, dispatches, total brief bytes ↓, total return bytes ↑, median return/brief ratio, orchestrator Bash ingest volume, leak count.
-- **Context-transfer map** — SVG flow: orchestrator on the left, one node per agent on the right; down-edges sized by brief bytes, up-edges by return bytes; leaking returns render red.
+- **Summary tiles** — session span, dispatches, total brief ↓ and return ↑ (estimated tokens), median return/brief ratio, orchestrator total ingest, leak count.
+- **Context budget & waste** — the headline the whole harness exists to protect: the orchestrator-window load (briefs authored ↓ + returns ingested ↑ + its own Bash stdout, tool ingest, and skill injections, with a per-source breakdown), how much of it was **leak waste** (the full size of each leaking transfer) and the resulting waste share, plus **worst-offender** tables (largest returns, largest per-context ingest) — the first places to fix. In `--json`: `orchestrator_window_bytes`/`_tokens_est`, `leaked_bytes`/`_tokens_est`, `leak_waste_share`, `worst_offenders`.
+- **Context-transfer map** — SVG flow: orchestrator on the left, one node per agent on the right; down-edges sized by brief size, up-edges by return size; leaking returns render red. Shows the 40 largest agents by context volume; when telemetry has more, the cap and the full count are stated under the map (the Agents table always lists everything).
 - **Agents table** — per dispatch: role, brief ↓, return ↑, compression ratio, leak flag.
-- **Execution contexts table** — per actor: command count and stdout bytes ingested.
+- **Execution contexts table** — per actor: command count, Bash ingest, tool calls, tool ingest, skill injections, and total ingest — the complete per-context ingest picture, not just Bash.
 - **Context by skill** — per skill: invocations, injected bytes (the skill's own instruction content), attributed bytes (everything its segment then consumed — briefs, returns, command stdout, tool ingestion), dispatches initiated.
 - **Context impact by role (pipeline stage)** — per dispatch role: dispatches, brief ↓ / return ↑ totals, compression ratio, leak count. For a pipeline harness the roles are the stages (composer/reviewer/probe map to passes), so this is the per-stage context-impact view.
 - **Tool mix** — bytes ingested per tool (Read vs Grep vs WebFetch …), the "what is actually filling the window" breakdown.
