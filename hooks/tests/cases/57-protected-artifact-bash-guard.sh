@@ -63,3 +63,12 @@ assert_deny "$HOOK" "$(bash_payload 'sed -i "" "s/a/b/" tests/e2e/docs/flake-qua
 assert_allow "$HOOK" "$(bash_payload 'grep -n FLAKE tests/e2e/docs/flake-quarantine.md')" "grep flake-quarantine read → ALLOW"
 # Write-tool append goes through Write|Edit, which this Bash guard never sees.
 assert_allow "$HOOK" "$("$JQ" -n '{tool_name:"Write", tool_input:{file_path:"tests/e2e/docs/flake-quarantine.md", content:"x"}}')" "Write-tool append to flake-quarantine → ALLOW (non-Bash)"
+
+section "protected-artifact-bash-guard: .agent-process-table.json is protected"
+# The agentic-OS process table (written by agentic-process-registrar.sh) is
+# the substrate agent-role-privilege-guard.sh resolves roles from — Bash
+# mutation would let a context forge its own privilege set.
+assert_deny "$HOOK" "$(bash_payload 'echo "{}" > .achilles/.agent-process-table.json')" "redirect into process table → DENY" "protected"
+assert_deny "$HOOK" "$(bash_payload 'rm .achilles/.agent-process-table.json')" "rm process table → DENY" "protected"
+assert_allow "$HOOK" "$(bash_payload 'cat .achilles/.agent-process-table.json')" "cat process table read → ALLOW"
+assert_allow "$HOOK" "$(bash_payload 'jq ".[] | .role" .achilles/.agent-process-table.json')" "jq read of process table → ALLOW"

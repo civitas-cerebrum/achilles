@@ -104,6 +104,20 @@ hash chain.
 Fix: do not write this file. To accept an out-of-band ledger state, the
 operator deletes the sidecar in their own terminal."
     ;;
+  */.achilles/.agent-process-table.json)
+    emit_deny "[BLOCKED] .agent-process-table.json is hook-authored state.
+
+File: ${FILE_PATH}
+
+The agentic-OS process table is written ONLY by hooks/agentic-process-registrar.sh
+when an Agent dispatch fires. agent-role-privilege-guard.sh resolves the
+executing subagent's role — and therefore its privilege set — from this
+table. A direct Write|Edit forges process records (e.g. seeding an
+'unconfined' entry to weaken the liveness-intersection fallback).
+
+Fix: do not write this file. Dispatch subagents with role-prefixed
+descriptions; the registrar records them automatically."
+    ;;
 esac
 
 # --- Class 2: monotonicity of orchestrator-written progress state. ---

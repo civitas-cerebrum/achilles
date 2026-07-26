@@ -55,3 +55,12 @@ section "hook-authored-state-guard: unrelated paths silent-allow"
 assert_allow "$H" "$(wpayload "/tmp/whatever.json" '{}')" "unrelated json write → ALLOW"
 
 rm -rf "$TMP_HAS"
+
+section "hook-authored-state-guard: .agent-process-table.json is never Write|Edit"
+# Hook-authored by agentic-process-registrar.sh; a direct Write forges
+# process records (e.g. an 'unconfined' entry to weaken the privilege
+# guard's liveness-intersection fallback).
+assert_deny "$H" "$(wpayload "/repo/.achilles/.agent-process-table.json" '{"toolu_x":{"role":"unconfined","denied":[],"ts":1}}')" \
+  ".agent-process-table.json Write → DENY" "hook-authored state"
+assert_allow "$H" "$(wpayload "/repo/.achilles/run-summary.json" '{}')" \
+  "sibling .achilles/run-summary.json Write → ALLOW (not the process table)"

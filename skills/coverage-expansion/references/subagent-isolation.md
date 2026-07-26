@@ -40,3 +40,5 @@ Every adversarial probe subagent dispatched by this skill must:
 
 The orchestrator does not paste any probe transcripts, DOM snapshots, test source, or stabilization output into its own context at any point.
 
+This rule is mechanically enforced by the agentic-OS role-privilege hooks: every dispatch is registered as a process under a role user, and `agent-role-privilege-guard.sh` denies the orchestrator the `payload-ingest` command class (Bash dumps of payload artifacts) while a pipeline is live, alongside per-role denials inside subagent contexts (reviewer mutation, text-only-role browser use, nested dispatch, subagent pushes). Spec: `skills/element-interactions/references/agentic-os-roles.md`.
+

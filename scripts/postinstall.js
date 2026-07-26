@@ -143,6 +143,16 @@ const HOOK_MANIFEST = [
   // dispatches so the ledger-write-gate can verify approval transitions
   // come from a registered approver context (separation of duties).
   { file: 'workflow-approver-registry.sh',        event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
+  // Agentic-OS role privileges: dispatching a subagent is process creation
+  // under a role user. The registrar records EVERY Agent dispatch into
+  // <project>/.achilles/.agent-process-table.json with the role's privilege
+  // snapshot (lib/agent-role-privileges.sh); the guard is the capability
+  // check — it denies command classes the executing context's role lacks
+  // (orchestrator payload-ingest of subagent artifacts, reviewer mutation,
+  // text-only-role browser use, nested dispatch, subagent git push).
+  { file: 'agentic-process-registrar.sh',         event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
+  { file: 'agent-role-privilege-guard.sh',        event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
+  { file: 'agent-role-privilege-guard.sh',        event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   // Reviewer brief integrity: deny workflow-reviewer-* dispatches whose
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.
