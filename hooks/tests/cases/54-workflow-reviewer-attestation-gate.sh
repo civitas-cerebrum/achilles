@@ -68,7 +68,11 @@ RESP_NOPATH='handover:
   status: approved
   next-action: orchestrator
 verdict: approve
-attestation: all checks passed'
+attestation: all checks passed
+checklist:
+  - item: exit criteria reviewed
+    satisfied: true
+    evidence: assessed against the phase-1 criteria'
 P_NOPATH=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_NOPATH" cwd="$ATTEST_TMP")
 assert_warn "$H" "$P_NOPATH" "approve no-path → WARN" "approval without on-disk evidence"
 
@@ -79,7 +83,11 @@ RESP_OK='handover:
   status: approved
   next-action: orchestrator
 verdict: approve
-attestation: verified tests/e2e/docs/onboarding-status.json and scripts/postinstall.js on disk'
+attestation: verified tests/e2e/docs/onboarding-status.json and scripts/postinstall.js on disk
+checklist:
+  - item: exit criteria reviewed
+    satisfied: true
+    evidence: assessed on disk'
 P_OK=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_OK" cwd="$ATTEST_TMP")
 assert_allow "$H" "$P_OK" "approve + existing paths → silent allow"
 
@@ -90,7 +98,11 @@ RESP_FAKE='handover:
   status: approved
   next-action: orchestrator
 verdict: approve
-attestation: verified tests/e2e/docs/nonexistent.json on disk'
+attestation: verified tests/e2e/docs/nonexistent.json on disk
+checklist:
+  - item: exit criteria reviewed
+    satisfied: true
+    evidence: assessed against the criteria'
 P_FAKE=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_FAKE" cwd="$ATTEST_TMP")
 assert_warn "$H" "$P_FAKE" "approve + missing path → WARN" "cites paths that do not exist"
 
@@ -115,3 +127,64 @@ assert_allow "$H" "$P_CL" "approve + checklist evidence + real paths → silent 
 section "attestation-gate: malformed YAML response silent-allows (return-schema-guard owns shape)"
 P_MAL=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text='::: not yaml :::' cwd="$ATTEST_TMP")
 assert_allow "$H" "$P_MAL" "malformed return → silent allow"
+
+section "attestation-gate: criteria-coherence — approve must reconcile with checklist"
+# Anti-rubber-stamp: approving while a criterion is unsatisfied, or with no
+# criteria at all, WARNs (independent-reviewer contract).
+RESP_UNSAT='handover:
+  role: workflow-reviewer-phase1
+  cycle: 1
+  status: approved
+  next-action: orchestrator
+verdict: approve
+attestation: reviewed scripts/postinstall.js
+checklist:
+  - item: criterion A
+    satisfied: true
+  - item: criterion B
+    satisfied: false'
+P_UNSAT=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_UNSAT" cwd="$ATTEST_TMP")
+assert_warn "$H" "$P_UNSAT" "approve with an unsatisfied criterion → WARN" "not grounded in a criteria assessment"
+
+RESP_EMPTY='handover:
+  role: workflow-reviewer-phase1
+  cycle: 1
+  status: approved
+  next-action: orchestrator
+verdict: approve
+attestation: looks good
+checklist: []'
+P_EMPTY=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_EMPTY" cwd="$ATTEST_TMP")
+assert_warn "$H" "$P_EMPTY" "approve with an empty checklist → WARN" "not grounded in a criteria assessment"
+
+# A reject that honestly records an unsatisfied criterion does NOT warn.
+RESP_HONEST_REJECT='handover:
+  role: workflow-reviewer-phase1
+  cycle: 1
+  status: rejected
+  next-action: orchestrator
+verdict: reject
+checklist:
+  - item: criterion A
+    satisfied: false
+findings:
+  - checklist-item: criterion A
+    what-missing: not done
+    fix-instruction: do it'
+P_HR=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_HONEST_REJECT" cwd="$ATTEST_TMP")
+assert_allow "$H" "$P_HR" "reject with an unsatisfied criterion → silent allow (honest)"
+
+# phase-validator (approval via handover.status, no verdict) with an
+# unsatisfied exit criterion → coherence WARN (cross-family coverage).
+RESP_PV='handover:
+  role: phase-validator-2
+  cycle: 1
+  status: approved
+  next-action: orchestrator
+exit-criteria-checked:
+  - item: criterion A
+    satisfied: true
+  - item: criterion B
+    satisfied: false'
+P_PV=$(payload tool_name=Agent description='phase-validator-2: greenlight phase 2' response_text="$RESP_PV" cwd="$ATTEST_TMP")
+assert_warn "$H" "$P_PV" "phase-validator approved with unsatisfied exit-criterion → WARN" "not grounded in a criteria assessment"

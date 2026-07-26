@@ -131,6 +131,28 @@
           "findings": { "type": "array", "minItems": 1 }
         }
       }
+    },
+    {
+      "$comment": "Verdict/checklist coherence: an approval must be grounded in an actual criteria assessment — a non-empty checklist with every item satisfied. This is what makes the reviewer assess rather than rubber-stamp; approving with an empty checklist or any unsatisfied item is incoherent.",
+      "if": {
+        "type": "object",
+        "properties": { "verdict": { "const": "approve" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["checklist"],
+        "properties": {
+          "checklist": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["satisfied"],
+              "properties": { "satisfied": { "const": true } }
+            }
+          }
+        }
+      }
     }
   ]
 }

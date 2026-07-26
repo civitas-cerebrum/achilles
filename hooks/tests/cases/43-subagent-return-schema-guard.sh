@@ -142,6 +142,10 @@ GOOD_WORKFLOW_REVIEWER="handover:
 verdict: approve
 phase: 3
 reviewerCycle: 1
+checklist:
+  - item: Happy-path specs land and pass locally
+    satisfied: true
+    evidence: tests/e2e/sign-in.spec.ts green
 attestation: Phase 3 exit criteria verified on disk
 summary: Approved."
 assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase3: review Phase 3 exit criteria' response_text="$GOOD_WORKFLOW_REVIEWER")" "well-formed workflow-reviewer approve → silent allow"

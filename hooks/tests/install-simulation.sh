@@ -218,10 +218,12 @@ run_install_simulation() {
   probe=$(mktemp "$work/tojson-probe-XXXXXX"); printf 'verdict: approve\n' > "$probe"
   if [ -n "$NODE_BIN" ] && [ -f "$fake_hooks/lib/validator.bundle.mjs" ] \
      && node "$fake_hooks/lib/validator.bundle.mjs" tojson "$probe" 2>/dev/null | grep -q 'verdict'; then
-    # Evidence-free approve return (no on-disk path cited in attestation).
+    # Evidence-free approve return: a satisfied checklist (so the
+    # criteria-coherence check passes) but NO on-disk path cited in the
+    # attestation/evidence — isolates the path-evidence WARN.
     local ev_free_payload
     ev_free_payload=$("$JQ" -n --arg d "workflow-reviewer-phase3: review" \
-      '{tool_name:"Agent", tool_input:{description:$d}, cwd:".", tool_response:"verdict: approve\nattestation: all good"}')
+      '{tool_name:"Agent", tool_input:{description:$d}, cwd:".", tool_response:"verdict: approve\nchecklist:\n  - item: criteria reviewed\n    satisfied: true\n    evidence: assessed against the criteria\nattestation: all good"}')
     attest_out=$(cd "$fake_project" && printf '%s' "$ev_free_payload" \
       | HOME="$work/home" bash "$fake_hooks/workflow-reviewer-attestation-gate.sh" 2>/dev/null) || true
     attest_msg=$(printf '%s' "$attest_out" | "$JQ" -r '.systemMessage // empty' 2>/dev/null || echo "")

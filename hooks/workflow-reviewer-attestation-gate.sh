@@ -122,6 +122,84 @@ fi
 [ -n "$PARSED_JSON" ] || exit 0
 
 VERDICT=$(echo "$PARSED_JSON" | "$JQ" -r '.verdict // empty' 2>/dev/null || echo "")
+HANDOVER_STATUS=$(echo "$PARSED_JSON" | "$JQ" -r '.handover.status // empty' 2>/dev/null || echo "")
+# An approval is signalled either by verdict==approve (workflow-/perf-
+# reviewer) or by an approved handover status (phase-validator has no
+# verdict field). Anything else needs no positive evidence.
+case "$VERDICT:$HANDOVER_STATUS" in
+  approve:*|*:approved) ;;
+  *) exit 0 ;;
+esac
+
+# --- Criteria-coherence check ------------------------------------------------
+# An approval must be grounded in an ACTUAL criteria assessment: a non-empty
+# list of criteria with none marked unsatisfied. This is the anti-rubber-
+# stamp check — the reviewer's job is to assess whether the stage/task
+# criteria are satisfied, not to emit a bare "approve". Criteria live under
+# `.checklist[]` (workflow-/perf-reviewer) or `.exit-criteria-checked[]`
+# (phase-validator). We look at both. A `satisfied: false` on any item, or
+# an approval with zero criteria items, is incoherent.
+#
+# For the schema-validated families (workflow-reviewer / perf-reviewer) this
+# is ALSO enforced declaratively in the schema (approve ⟹ checklist
+# non-empty + all satisfied), caught by subagent-return-schema-guard; the
+# WARN here surfaces it in the default (non-strict) audit trail with a
+# targeted message, and additionally covers phase-validator's
+# exit-criteria-checked, which is loosely typed in the schema.
+CRIT_TOTAL=$(echo "$PARSED_JSON" | "$JQ" -r '
+  [ (.checklist // []) + (.["exit-criteria-checked"] // []) | .[]
+    | select(type == "object" and has("satisfied")) ] | length
+' 2>/dev/null || echo 0)
+CRIT_UNSAT=$(echo "$PARSED_JSON" | "$JQ" -r '
+  [ (.checklist // []) + (.["exit-criteria-checked"] // []) | .[]
+    | select(type == "object" and .satisfied == false) ] | length
+' 2>/dev/null || echo 0)
+CHECKLIST_LEN=$(echo "$PARSED_JSON" | "$JQ" -r '(.checklist // []) | length' 2>/dev/null || echo 0)
+case "$CRIT_TOTAL" in ''|*[!0-9]*) CRIT_TOTAL=0 ;; esac
+case "$CRIT_UNSAT" in ''|*[!0-9]*) CRIT_UNSAT=0 ;; esac
+case "$CHECKLIST_LEN" in ''|*[!0-9]*) CHECKLIST_LEN=0 ;; esac
+
+COHERENCE_MSG=""
+if [ "$CRIT_UNSAT" -gt 0 ]; then
+  COHERENCE_MSG="approves the stage but ${CRIT_UNSAT} criterion/criteria are marked \`satisfied: false\`. An approval cannot stand on unmet criteria — the verdict must be \`reject\` (with findings) until every criterion is satisfied."
+elif [ "$CRIT_TOTAL" -eq 0 ] && [ "$VERDICT" = "approve" ]; then
+  # verdict-carrying reviewers must show their work; phase-validator
+  # (no verdict, criteria loosely typed) is exempt from the empty case.
+  COHERENCE_MSG="approves with no assessed criteria — the checklist is empty or absent. An approval with zero criteria items is a rubber-stamp: enumerate the canonical exit criteria and mark each satisfied before approving."
+fi
+
+if [ -n "$COHERENCE_MSG" ]; then
+  emit_warn "[WARN] reviewer approval is not grounded in a criteria assessment.
+
+Description: \"${DESCRIPTION}\"
+Verdict:     ${VERDICT:-<none>} (handover status: ${HANDOVER_STATUS:-<none>})
+Criteria:    ${CRIT_TOTAL} assessed, ${CRIT_UNSAT} unsatisfied, checklist length ${CHECKLIST_LEN}
+
+The reviewer ${COHERENCE_MSG}
+
+This is the independent-reviewer contract: the reviewer exists to assess
+whether the task/stage exit criteria are actually met. A verdict that
+doesn't reconcile with its own criteria assessment defeats that role.
+
+This is a WARN (PostToolUse cannot reverse a produced return). For the
+workflow-/perf-reviewer families the same rule is enforced declaratively
+in the return schema (approve ⟹ non-empty checklist, all satisfied), so a
+schema-strict run blocks it; here it is surfaced for the audit trail.
+
+See:
+  - schemas/subagent-returns/workflow-reviewer.schema.json (verdict/checklist coherence)
+  - skills/workflow-reviewer/SKILL.md"
+  # Continue to the path-existence checks below as well — both WARNs are
+  # useful; emit_warn prints one JSON object, so fall through only if we
+  # haven't already emitted. To keep one systemMessage per run, return here.
+  exit 0
+fi
+
+# The on-disk path-evidence check below is shaped for the verdict-carrying
+# reviewer families (attestation + checklist[].evidence). phase-validator
+# (approval via handover.status, evidence under exit-criteria-checked) is
+# covered by the coherence check above but not this one — skip it here to
+# avoid a false "no evidence" WARN.
 [ "$VERDICT" = "approve" ] || exit 0
 
 # Resolve repo root for existence checks.
