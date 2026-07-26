@@ -158,6 +158,14 @@ run_install_simulation() {
     sim_fail "canonical-sections.txt lands in the copy set (hooks/data shipped)" \
       "missing at $fake_hooks/data/canonical-sections.txt — postinstall must copy hooks/data/"
   fi
+  # The pinned reviewer criteria must land on the protected hook surface so
+  # reviewer-criteria-preread-gate.sh and the brief-gate can rely on it.
+  if [ -f "$fake_hooks/data/reviewer-criteria.txt" ]; then
+    sim_pass "reviewer-criteria.txt (pinned bar) lands in the copy set"
+  else
+    sim_fail "reviewer-criteria.txt (pinned bar) lands in the copy set" \
+      "missing at $fake_hooks/data/reviewer-criteria.txt — postinstall must copy hooks/data/"
+  fi
 
   # --- Assertion 5+6: write-gate DENIES a schema-invalid ledger write -----
   # Run from the fake project (no repo, no schemas/ dir anywhere above) with

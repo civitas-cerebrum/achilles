@@ -1,0 +1,121 @@
+# reviewer-criteria.txt — PINNED, authoritative exit criteria for the
+# independent workflow-reviewer / perf-reviewer.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The reviewer's job is to decide whether a stage's exit criteria are met.
+# Those criteria must NOT be suppliable, paraphraseable, or softenable by
+# the orchestrator that is being reviewed — otherwise "dispatch a reviewer
+# and tell it the bar is already met" defeats the whole check. This file is
+# the bar. It is installed under ~/.claude/hooks/data/ (the harness surface),
+# which the orchestrator cannot edit — Write/Edit is denied by
+# harness-self-protection-guard.sh and Bash mutation by
+# protected-artifact-bash-guard.sh. The reviewer is required to READ this
+# file (enforced by reviewer-criteria-preread-gate.sh) and evaluate against
+# THESE criteria, not against any copy pasted into its dispatch brief.
+#
+# FORMAT
+# ------
+# One `[unit]` section per review scope, then one criterion per line:
+#   (stable-id) human-readable criterion
+# Lines beginning with `#`, and blank lines, are ignored by readers.
+# The stable-id (kebab-case, in parens) is the machine handle; the prose is
+# the authoritative statement of the criterion the reviewer must assess.
+#
+# This file mirrors skills/workflow-reviewer/SKILL.md §"Per-unit checklist"
+# and §"Perf-onboarding pipeline reviewer" — but THIS copy is the pinned,
+# un-editable source of truth the runtime enforces against.
+
+[phase1]
+(list-zero-specs-clean) `npx playwright test --list` lists zero specs without error
+(config-present) `playwright.config.ts` exists with project URL + reporters
+(scaffold-dirs-present) `tests/e2e/fixtures/`, `tests/e2e/docs/`, `tests/e2e/playwright.setup.ts` exist
+(gitignore-covers-artifacts) `tests/e2e/.gitignore` covers `playwright-report/`, `test-results/`, `.last-run.json`
+
+[phase2]
+(app-context-complete) `tests/e2e/docs/app-context.md` covers what the app is + roles + auth model + URL surface
+(page-repository-populated) `tests/e2e/page-repository.json` has one entry per discoverable page
+(auth-runtime-users) `tests/e2e/fixtures/auth.ts` mints test users at runtime (no hard-coded credentials)
+
+[phase3]
+(happy-path-specs-pass) one `tests/e2e/<journey>.spec.ts` per primary user flow, all passing locally
+(discovery-draft-sentinel) `tests/e2e/docs/.discovery-draft.json` exists with the Stage-3 sentinel
+(inloop-returns-recorded) composer reviewer-inloop returns recorded (no greenlights without an inloop pass)
+
+[phase4]
+(journey-map-sentinel) `tests/e2e/docs/journey-map.md` exists with priority groupings + sentinel on line 1
+(coverage-map-complete) `journey-map-coverage.md` maps every journey to a spec or `<missing>`
+(edge-probe-reflected) the edge-probe cycle's findings are reflected in the map (not discarded)
+(min-two-cycles) cycle 1 + at least one edge-probe cycle ran (minimum 2 cycles)
+
+[phase5]
+(all-journeys-covered-or-authorized) every uncovered journey (all tiers, P0 first) has a spec OR a documented skip with `authorizer`; P0/P1 may not be skipped without naming the authorising user message
+(per-pass-dedup-landed) per-pass dedup landed at the end of every pass (no open duplicate findings)
+(five-passes-plus-cleanup) `coverage-expansion-state.json` records all five passes + cleanup
+
+[phase6]
+(probes-terminal) every probe terminal (`clean` | `findings-emitted` | `blocked`); blocked probes require a ledger deferral with `authorizer` or a re-dispatch
+(findings-have-regression-or-appbug) every `findings-emitted` return has a regression spec OR an explicit `app-bug` flag
+
+[phase7]
+(rescan-no-secrets) a re-scan of `tests/**` (+ root `playwright*.config.ts`) surfaces no literal credentials / API keys / PII / URLs
+(env-files-in-place) `.env`, `.env.example`, and the `.gitignore` entry all in place
+(suite-passes-env-driven) `npx playwright test` still passes against the env-driven suite
+
+[phase8]
+(deck-html-pdf-present) `qa-summary-deck.html` + `qa-summary-deck.pdf` exist at the project root
+(deck-numbers-current) numbers in the deck match the actual state of the suite (no stale figures)
+(staleness-gate-honoured) the deck's report-JSON startTime + test count match the current suite, OR results slides carry the freshness annotation
+
+[pass]
+(roster-dispatched-and-returned) every journey in the roster dispatched AND returned for this pass
+(dedup-commit-landed) per-pass dedup commit landed (empty-diff acceptable; silent skip is not)
+(stage-a-and-b-ran) Stage A + Stage B both ran for every journey
+(pass1-per-journey-mode) pass-1 only: dispatch-mode is `per-journey`, not `grouped` or `single-agent-collapsed`
+
+[cycle]
+(targets-dispatched) every target section in `cycle-N-targets` dispatched (cycle 1 strict per-section)
+(returned-covers-dispatched) `returned-sections` covers `dispatched-sections` (no abandoned dispatches)
+(new-sections-feed-or-converged) `new-sections-discovered` feeds cycle N+1 OR convergence-status is `converged`
+(min-cycle1-plus-edge) at least cycle 1 + one edge-probe cycle for the phase to complete
+
+[perf-phase1]
+(perf-config-allowlist-caps) `tests/perf/perf-onboarding.config.json` has a non-empty `allowlist` and a `caps` object
+(perf-lib-present) `tests/perf/lib/` present with at least one helper file
+(k6-available) `k6` binary available on PATH (`k6 version` exits 0)
+
+[perf-phase2]
+(readiness-six-items) `tests/perf/docs/readiness.md` records all six items (cascade result, capture, journey-map, derive-vs-bootstrap, targets, SLO source), none silently omitted
+
+[perf-phase3]
+(scenario-model-sentinel) `tests/perf/docs/scenario-model.md` exists with sentinel on line 1
+(scenario-model-complete) lists scenarios, load profiles, SLO targets, priority ordering
+(one-scenario-file) at least one `tests/perf/scenarios/*.js` exists
+(slo-sourced) SLO targets traced to a documented source (no invented ceilings)
+
+[perf-phase4]
+(baseline-smoke-per-scenario) every scenario smoke-run at 1 VU (a run entry per scenario)
+(baseline-artefact-per-scenario) `tests/perf/baselines/` has at least one `*.json` per scenario
+(no-unauthorized-skip) no scenario skipped without an `authorizer` in the phase ledger
+
+[perf-phase5]
+(pass-profile-ran) the named pass profile ran (k6 completed, not aborted)
+(pass-result-artefact) `tests/perf/results/` has at least one `*.json` recording the pass name
+(correlation-clean) no hardcoded session tokens / auth cookies / user IDs in scenario source
+(thresholds-present) threshold assertions present (at minimum p95 response-time + error-rate)
+
+[perf-phase6]
+(threshold-verdict-deliberate-breach) `threshold-verdict.json` has a non-empty `deliberateBreach` block
+(per-scenario-verdicts) per-scenario verdicts present (pass / breach / skip-with-authorizer)
+(regression-vs-baseline) each scenario's p95/error-rate compared vs Phase-4 baseline; significant regressions called out
+
+[perf-phase7]
+(perf-report-sentinel) `tests/perf/docs/perf-report.md` exists with sentinel on line 1
+(breaches-surfaced) every breach in `threshold-verdict.json` surfaced in the report (no silent omission)
+(figures-consistent) numeric figures consistent with `tests/perf/results/` artefacts
+
+[perf-pass]
+(pass-completed) the named pass completed (k6 exit 0 or threshold-only-failure, not a crash/config error)
+(pass-artefact-written) at least one `tests/perf/results/<pass>-*.json` written
+(pass-correlation-clean) no literal credentials/hardcoded tokens in any consumed `tests/perf/scenarios/*.js`
+(pass-thresholds-recorded) threshold assertions defined; any breach recorded in a findings entry

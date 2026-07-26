@@ -30,7 +30,7 @@
 # What it gates
 # -------------
 # For dispatch descriptions matching `workflow-reviewer-*`, the brief
-# (the `tool_input.prompt` field) MUST contain ALL THREE:
+# (the `tool_input.prompt` field) MUST satisfy ALL of:
 #
 #   1. **Ledger reference**: the literal substring `onboarding-status.json`
 #      somewhere in the brief. Forces the reviewer to know where to look.
@@ -42,6 +42,15 @@
 #      is at least 4-5 sentences (context + checklist pointer + evidence
 #      sources + return-shape pointer). Short briefs are by definition
 #      "just approve" patterns.
+#   4. **Pinned-criteria reference**: the substring `reviewer-criteria.txt`.
+#      The reviewer's bar must come from the pinned, un-editable criteria
+#      file — not from criteria the orchestrator pastes into the brief. The
+#      reviewer-criteria-preread-gate then enforces the reviewer actually
+#      READ it before an approval lands.
+#   5. **No fault-suppression directives**: the brief must NOT instruct the
+#      reviewer to ignore faults / treat the work as pre-approved / skip
+#      verification / not open the evidence / just approve. A brief that
+#      tells the reviewer how to conclude is a self-grading move.
 #
 # What it does NOT catch
 # ----------------------
@@ -139,6 +148,48 @@ if [ "$PROMPT_LEN" -lt 400 ]; then
     evidence sources (ledger path, deliverables paths, handoverEnvelope),
     and (d) a pointer to the return schema. Briefs shorter than that
     threshold are functionally \"just approve\" patterns.
+"
+fi
+
+# Check 4: pinned-criteria reference. The brief must point the reviewer at
+# the PINNED, un-editable exit criteria (hooks/data/reviewer-criteria.txt),
+# so the bar comes from that file — not from criteria the orchestrator
+# pastes into the brief. Cite the filename; the reviewer-criteria-preread-
+# gate then enforces the reviewer actually READ it before approving.
+if ! printf '%s' "$PROMPT" | grep -qF "reviewer-criteria.txt"; then
+  VIOLATIONS="${VIOLATIONS}
+  - **Missing pinned-criteria reference.** The brief does not cite the
+    pinned criteria file \`reviewer-criteria.txt\`. The reviewer must
+    evaluate against the pinned exit criteria (installed at
+    \`~/.claude/hooks/data/reviewer-criteria.txt\`), NOT against criteria
+    supplied in this brief — instruct it to \"Read the pinned criteria for
+    this unit from reviewer-criteria.txt and build the checklist from
+    them\". The bar the orchestrator is reviewed against is not the
+    orchestrator's to state.
+"
+fi
+
+# Check 5: no fault-suppression directives. A brief that tells the reviewer
+# to ignore faults, treat the work as pre-approved, skip verification, or
+# not open the evidence is a self-grading move — deny it outright. The
+# match is on directive phrasings, not incidental mentions; each pattern is
+# an instruction to lower the bar. (Heuristic — it raises the cost of the
+# blatant vectors; a subtle injection that avoids these phrasings still
+# passes, which is why the pinned-criteria + preread + coherence layers
+# exist.) Bypass via WORKFLOW_REVIEWER_BRIEF_GATE=off if a legitimate brief
+# trips a false positive (audit the use).
+SUPPRESSION=$(printf '%s' "$PROMPT" | grep -oiE \
+  'ignore ([a-z]+ )*(the )?(fault|issue|problem|failure|error|finding|criteri)|pre-?(approved|authoriz)|already approved|user (has )?approved|skip ([a-z]+ )*(the )?(verif|review|check|inspection)|(no need|do ?n.?t need|dont need|don.t need) to (read|open|verify|check|inspect)|(read|verified) (it|them|everything) for you|just (approve|confirm|sign ?off|greenlight)|(override|bypass|disregard) ([a-z]+ )*(the )?criteri|rubber.?stamp|approve (regardless|anyway|without)' \
+  | head -1 || true)
+if [ -n "$SUPPRESSION" ]; then
+  VIOLATIONS="${VIOLATIONS}
+  - **Fault-suppression directive in the brief** (matched: \"${SUPPRESSION}\").
+    The brief instructs the reviewer to ignore faults / treat the work as
+    pre-approved / skip verification / not open the evidence / just approve.
+    The reviewer is the orchestrator's only independent check; a brief that
+    tells it how to conclude defeats that. Remove the directive: the brief
+    routes the reviewer to the evidence + the pinned criteria and asks for
+    an independent verdict — it does not state the verdict.
 "
 fi
 

@@ -176,6 +176,13 @@ const HOOK_MANIFEST = [
   // short. Closes the orchestrator → reviewer brief-injection surface.
   { file: 'workflow-reviewer-brief-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   { file: 'onboarding-ledger-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+  // Sealed reviewer criteria: an approval write to the ledger is denied
+  // unless the approving context's transcript shows it Read the pinned,
+  // un-editable criteria (hooks/data/reviewer-criteria.txt). Forces the
+  // reviewer's bar to come from the pinned file, not the orchestrator's
+  // brief. Pairs with the brief-gate's pinned-criteria + fault-suppression
+  // checks. Fail-open on missing transcript (brief-gate is the floor).
+  { file: 'reviewer-criteria-preread-gate.sh',    event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 5 },
   // Perf-onboarding pipeline gates: same phase-machine model as the
   // onboarding pipeline, scoped to tests/perf/docs/perf-onboarding-status.json
   // and the perf-reviewer-* subagent family.
