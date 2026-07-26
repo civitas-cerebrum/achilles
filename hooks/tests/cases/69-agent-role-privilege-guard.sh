@@ -207,3 +207,40 @@ assert_allow "$H" "$(payload tool_name=Agent description='helper: free-form' cwd
   "plain repo: nested free-form dispatch → allow"
 rm -rf "$PLAINPG"
 rm -f "$TBL" "$LEDGER"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: orchestrator loses browser — UI inspection is subagent work"
+echo '{"currentPhase": 5}' > "$LEDGER"
+assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=phase1-public open https://app.example.com' cwd="$TMPPG")" \
+  "orchestrator playwright-cli open → deny" "'browser'"
+assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=stage2-login snapshot' cwd="$TMPPG")" \
+  "orchestrator DOM snapshot → deny, redirects to roles" "stage2-<scenario>"
+# Sanctioned orchestrator maintenance + subagent browser work stay allowed.
+assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli close-all' cwd="$TMPPG")" \
+  "orchestrator close-all (session-agnostic cleanup) → allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli install-browser chromium' cwd="$TMPPG")" \
+  "orchestrator install-browser → allow"
+seed_table phase1-discovery
+assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=phase1-public open https://app.example.com' cwd="$TMPPG" agent_id=sub_p1 parent_tool_use_id=toolu_phase1-discovery)" \
+  "phase1 subagent opens the same session → allow (browser-privileged role)"
+rm -f "$TBL"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: orchestrator loses app-fetch — page bodies are discovery payload"
+assert_deny "$H" "$(payload tool_name=Bash command='curl -s https://app.example.com/checkout' cwd="$TMPPG")" \
+  "orchestrator curl page body → deny" "'app-fetch'"
+assert_deny "$H" "$(payload tool_name=Bash command='wget -qO- http://localhost:3000/api/products' cwd="$TMPPG")" \
+  "orchestrator wget body to stdout → deny" "'app-fetch'"
+# Bounded liveness probes + non-app fetches stay allowed.
+assert_allow "$H" "$(payload tool_name=Bash command='curl -I https://app.example.com' cwd="$TMPPG")" \
+  "orchestrator curl -I (header-only health check) → allow"
+assert_allow "$H" "$(payload tool_name=Bash command="curl -o /dev/null -w '%{http_code}' https://app.example.com" cwd="$TMPPG")" \
+  "orchestrator curl body-discarded status probe → allow"
+assert_allow "$H" "$(payload tool_name=Bash command='echo see https://app.example.com/docs' cwd="$TMPPG")" \
+  "URL inside a non-fetch command → allow"
+assert_allow "$H" "$(payload tool_name=Bash command='curl -s http://localhost:3000/api/products' cwd="$TMPPG" agent_id=sub_ct)" \
+  "subagent curl of the app → allow (fetch happens in ITS context)"
+rm -f "$LEDGER"
+assert_allow "$H" "$(payload tool_name=Bash command='curl -s https://app.example.com/checkout' cwd="$TMPPG")" \
+  "orchestrator curl, NO pipeline → allow (not policed)"
+rm -f "$TBL" "$LEDGER"

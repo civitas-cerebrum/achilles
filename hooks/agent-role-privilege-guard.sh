@@ -305,6 +305,33 @@ exercises_payload_ingest() {
   echo "$CMD" | grep -qE "$PAYLOAD_ARTIFACT_RE"
 }
 
+# Orchestrator-flavoured browser check: a playwright-cli invocation that
+# is NOT one of the session-agnostic cleanup/maintenance subcommands
+# (those are the orchestrator's sanctioned surface — belt-and-suspenders
+# close-all after a pass, install-browser at setup).
+exercises_ui_inspection() {
+  exercises_browser || return 1
+  echo "$CMD" | grep -qE 'playwright-cli[[:space:]]+(install-browser|close-all|kill-all|list|list-sessions|sessions|--help|-h|--version|-v)([[:space:]]|$)' && return 1
+  return 0
+}
+
+# App-surface fetch: curl/wget pulling a page or API-response BODY into
+# the executing window. Bounded probes stay allowed: curl -I/--head,
+# body discarded to /dev/null, wget --spider, wget-to-file (no stdout).
+exercises_app_fetch() {
+  local url_re='https?://|localhost|127\.0\.0\.1'
+  if echo "$CMD" | grep -qE "${WORD}curl[[:space:]]" && echo "$CMD" | grep -qE "$url_re"; then
+    echo "$CMD" | grep -qE '(^|[[:space:]])(-[a-zA-Z]*I[a-zA-Z]*|--head)([[:space:]]|$)' && return 1
+    echo "$CMD" | grep -qE '(-o|--output)[[:space:]]+/dev/null' && return 1
+    return 0
+  fi
+  if echo "$CMD" | grep -qE "${WORD}wget[[:space:]]" && echo "$CMD" | grep -qE "$url_re"; then
+    echo "$CMD" | grep -qE '(-qO-|-O[[:space:]]*-([[:space:]]|$)|--output-document=-)' && return 0
+    return 1
+  fi
+  return 1
+}
+
 # --- actor resolution --------------------------------------------------------
 if [ -z "$AGENT_ID" ]; then
   # Orchestrator context (ring 0's OWNER, but with the payload-ingest
@@ -329,6 +356,42 @@ Do this instead:
   - Need one journey's ledger section (the single sanctioned exception)? Use the Read tool on that bounded slice, not a Bash dump.
 
 $(cite '§"Privilege classes" — the payload-ingest class (the context-leak class)') Also: skills/coverage-expansion/references/subagent-isolation.md."
+    exit 0
+  fi
+
+  if exercises_ui_inspection; then
+    emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'browser' capability.
+
+Command: $CMD_PREVIEW
+
+UI inspection and discovery are SUBAGENT work. A playwright-cli session opened in the orchestrator context pulls DOM snapshots, element trees, and page content straight into the orchestrator window — exactly the contamination the fan-out exists to prevent. The orchestrator dispatches and integrates structured returns; it never looks at the app itself.
+
+Do this instead — dispatch the role whose contract owns this work:
+  phase1-<entry>:      app discovery / crawling
+  stage2-<scenario>:   element + DOM inspection
+  composer-<j-slug>:   journey composition (inspects while composing)
+  probe-<j-slug>:      adversarial probing
+  companion-<task>:    one-off evidence-first verification
+The subagent opens its own isolated -s=<role-slug> session, inspects in ITS context, and returns a structured summary.
+
+Still allowed from the orchestrator: the session-agnostic maintenance subcommands (close-all, kill-all, list, install-browser).
+
+$(cite '§"Privilege classes" — the browser class (UI inspection/discovery is subagent work)')"
+    exit 0
+  fi
+
+  if exercises_app_fetch; then
+    emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'app-fetch' capability.
+
+Command: $CMD_PREVIEW
+
+Fetching application pages or API-response bodies into the orchestrator window is UI/API discovery by another route — the body is discovery payload, same as a DOM snapshot. The orchestrator's window must stay clean of app content.
+
+Do this instead:
+  - Dispatch phase1-<entry>: (discovery), stage2-<scenario>: (inspection), or a contract-testing subagent — it fetches in ITS context and returns a structured summary.
+  - Liveness/health checks stay allowed in bounded form: curl -I <url>, curl --head <url>, or curl -o /dev/null -w '%{http_code}' <url>.
+
+$(cite '§"Privilege classes" — the app-fetch class (application bodies are discovery payload)')"
     exit 0
   fi
   exit 0

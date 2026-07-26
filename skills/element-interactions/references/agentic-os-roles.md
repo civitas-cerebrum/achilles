@@ -30,17 +30,20 @@ A subagent's privilege set is fixed at dispatch time by its role and cannot be r
 |---|---|---|
 | `payload-ingest` | Ingestion of subagent payload artifacts into the orchestrator window, on BOTH vectors: Bash dumps (`cat`, `head`, `tail`, `less`, `more`, `nl`, `strings`, `base64`, `xxd`, `od`) and the `Read` tool. Payload artifacts: `*.spec.ts` test source, `tests/e2e/docs/.subagent-returns/` spill files, `.playwright-cli/` traces, `test-results/`, `playwright-report/`, HAR/trace archives. The single sanctioned bounded Read — one journey's pass-4 section of the adversarial-findings ledger — is not in the artifact set and stays allowed. | **orchestrator** |
 | `mutate` | Write-shaped Bash: `git commit`, `rm`/`mv`/`cp`/`touch`/`mkdir`/`ln`/`chmod`/`chown`/`truncate`, in-place editors (`sed -i`, `perl -i`), package installs, `tee`/redirection into non-scratch targets (`/dev/*`, `/tmp/*`, `$TMPDIR` stay allowed). | reviewer-inloop, workflow-reviewer, perf-reviewer, phase-validator, process-validator |
-| `browser` | `playwright-cli` invocations. | cleanup, phase4-prioritise-author (text-only contracts) |
+| `browser` | `playwright-cli` invocations. | cleanup, phase4-prioritise-author (text-only contracts); **orchestrator** (UI inspection/discovery is subagent work — the session-agnostic maintenance subcommands `close-all` / `kill-all` / `list` / `install-browser` stay allowed) |
+| `app-fetch` | `curl`/`wget` pulls of application page or API-response BODIES into the executing window. Bounded liveness probes stay allowed: `curl -I`/`--head`, body discarded to `/dev/null`. | **orchestrator** (application bodies are discovery payload) |
 | `dispatch` | Nested `Agent` dispatch from inside a subagent context. | every known role |
 | `remote-push` | `git push`. | every known role |
 
 `payload-ingest` is the context-leak class: it is how subagent payload content would flow **upward** into the orchestrator window, violating the "never hold subagent payload content" rule. Metadata reads (`ls`, `find`, `wc`, `grep -c`, `grep -l`, `stat`) are always allowed, and the class is enforced only while a pipeline is live (live process-table entries, or an onboarding / coverage-expansion / perf ledger on disk) so quiet sessions are untouched. Subagent `Read`s are never gated — subagents read their own slices by contract.
 
+**The orchestrator does not retain all rights.** Its capability set is dispatch-and-integrate: it creates processes, reads structured returns and bounded ledger slices, and runs metadata checks. Every operation that would pull bulk app or payload data into its window is removed — payload dumps and Reads (`payload-ingest`), live-DOM inspection (`browser`), and application-body fetches (`app-fetch`). UI inspection and discovery belong to the roles whose contracts own them: `phase1-<entry>:` (discovery/crawling), `stage2-<scenario>:` (element/DOM inspection), `composer-`/`probe-` (in-journey inspection), `companion-` (one-off verification). The deny messages name those roles and cite this section — blocked *and* redirected.
+
 ## Roles
 
 | Role (description prefix) | Denied classes |
 |---|---|
-| orchestrator (no `agent_id`) | `payload-ingest` |
+| orchestrator (no `agent_id`) | `payload-ingest browser app-fetch` |
 | composer (`composer-*`) | `dispatch remote-push` |
 | reviewer-inloop (`reviewer-*`) | `dispatch remote-push mutate` |
 | probe (`probe-*`) | `dispatch remote-push` |

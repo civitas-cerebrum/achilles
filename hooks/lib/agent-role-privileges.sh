@@ -29,7 +29,14 @@
 #                    verifies is not a reviewer.
 #   browser        — playwright-cli invocations. Denied to text-only roles
 #                    (cleanup, phase4-prioritise-author) whose contracts
-#                    say "no browser session".
+#                    say "no browser session", AND to the orchestrator
+#                    (UI inspection/discovery is subagent work; the
+#                    session-agnostic cleanup subcommands stay allowed).
+#   app-fetch      — curl/wget dumps of the application surface into the
+#                    executing window. Denied to the ORCHESTRATOR: page
+#                    and API-response bodies are discovery payload;
+#                    bounded probes (-I/--head, -o /dev/null) stay
+#                    allowed.
 #   dispatch       — spawning further subagents (nested Agent calls). The
 #                    methodology is single-level fan-out: only the
 #                    orchestrator creates processes. Denied to every known
@@ -89,8 +96,16 @@ resolve_privilege_role() {
 # subagent role loses `dispatch` (single-level fan-out) and `remote-push`.
 role_denied_classes() {
   case "$1" in
+    # The orchestrator is NOT all-privileged: it loses every class that
+    # pulls bulk app/payload data into its window. UI inspection and
+    # discovery are subagent work (phase1-discovery, stage2-inspector,
+    # composer, probe) — the orchestrator dispatches, it never looks at
+    # the app itself. `browser` for the orchestrator exempts the
+    # session-agnostic cleanup subcommands (close-all / kill-all / list /
+    # install-browser); `app-fetch` covers curl/wget body dumps of the
+    # application surface.
     orchestrator)
-      echo "payload-ingest" ;;
+      echo "payload-ingest browser app-fetch" ;;
     reviewer-inloop|workflow-reviewer|perf-reviewer|phase-validator|process-validator)
       echo "dispatch remote-push mutate" ;;
     cleanup|phase4-prioritise-author)

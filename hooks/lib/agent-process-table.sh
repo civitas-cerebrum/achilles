@@ -129,7 +129,7 @@ apt_resolve_actor() {
   fi
   # Intersection: a class survives only if every live process denies it.
   local class kept=""
-  for class in payload-ingest mutate browser dispatch remote-push; do
+  for class in payload-ingest mutate browser app-fetch dispatch remote-push; do
     local all=1 r
     for r in "$@"; do
       role_denies_class "$r" "$class" || { all=0; break; }
