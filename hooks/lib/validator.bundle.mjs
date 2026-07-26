@@ -15873,6 +15873,11 @@ var onboarding_status_schema_default = {
               }
             }
           },
+          criteriaCovered: {
+            type: "array",
+            items: { type: "string" },
+            description: "Pinned criterion IDs (from hooks/data/reviewer-criteria.txt \xA7[phase<N>]) the reviewer assessed as satisfied when it approved this phase. Required on an approval: reviewer-criteria-preread-gate.sh DENIES the approval write unless this covers EVERY pinned criterion for the unit \u2014 so a reviewer cannot approve while silently dropping a criterion."
+          },
           deliverables: {
             type: "array",
             items: { type: "string" },
@@ -15913,6 +15918,11 @@ var onboarding_status_schema_default = {
                     type: "object",
                     additionalProperties: true
                   }
+                },
+                criteriaCovered: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Pinned criterion IDs (\xA7[pass] / \xA7[cycle]) the reviewer assessed as satisfied when approving this substage. Coverage of every pinned criterion is enforced by reviewer-criteria-preread-gate.sh."
                 }
               }
             }

@@ -76,6 +76,11 @@ Every dispatch brief should give the reviewer:
    (`reviewer-criteria-preread-gate.sh`). This exists so that "dispatch a
    reviewer and tell it the bar is already met" cannot work — the bar is
    not the orchestrator's to state.
+   **On approve**, record every pinned criterion id you assessed in the
+   ledger's `phases[].criteriaCovered` (or the substage's) — the approval
+   write is DENIED unless that list covers EVERY pinned criterion for the
+   unit (`reviewer-criteria-preread-gate.sh`). You cannot approve while
+   silently dropping a criterion.
 3. **The deliverables actually produced** — discovered via
    `git log --since=<unit start time>` plus reads of the named spec /
    doc files. The reviewer reads these directly; the orchestrator

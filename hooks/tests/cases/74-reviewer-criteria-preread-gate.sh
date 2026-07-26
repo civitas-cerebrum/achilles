@@ -22,7 +22,10 @@ echo '{"message":{"content":[{"type":"tool_use","name":"Read","input":{"file_pat
 TRANS_BASH=$(mktemp)
 echo '{"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat ~/.claude/hooks/data/reviewer-criteria.txt"}}]}}' > "$TRANS_BASH"
 
-APPROVE_CONTENT='{"phases":[{"id":1,"reviewerVerdict":"approved"},{"id":2,"reviewerVerdict":"pending"}]}'
+# A fully-covered phase-1 approval (every pinned [phase1] criterion id in
+# criteriaCovered) — so these fixtures isolate the transcript READ check.
+P1_COVERED='["list-zero-specs-clean","config-present","scaffold-dirs-present","gitignore-covers-artifacts"]'
+APPROVE_CONTENT="$("$JQ" -nc --argjson c "$P1_COVERED" '{phases:[{id:1,reviewerVerdict:"approved",criteriaCovered:$c},{id:2,reviewerVerdict:"pending"}]}')"
 
 wpayload() { # <content> <transcript>
   "$JQ" -nc --arg f "$LEDGER" --arg c "$1" --arg cw "$TMPRC" --arg tp "$2" \
@@ -76,5 +79,34 @@ echo '{}' > "$PLAINRC/tests/e2e/docs/onboarding-status.json"
 OFF_OUT=$(printf '%s' "$(wpayload "$APPROVE_CONTENT" "$TRANS_NONE")" | REVIEWER_CRITERIA_PREREAD_GATE=off bash "$H" 2>/dev/null)
 assert_eq "$OFF_OUT" "" "REVIEWER_CRITERIA_PREREAD_GATE=off → silent allow"
 rm -rf "$PLAINRC"
+
+section "reviewer-criteria-preread: coverage — approval must cover every pinned criterion"
+# Partial coverage (drops a pinned [phase1] criterion) → DENY, even with the
+# criteria read present (coverage is the transcript-independent hard gate).
+PARTIAL=$("$JQ" -nc '{phases:[{id:1,reviewerVerdict:"approved",criteriaCovered:["list-zero-specs-clean","config-present"]},{id:2,reviewerVerdict:"pending"}]}')
+assert_deny "$H" "$(wpayload "$PARTIAL" "$TRANS_READ")" \
+  "approval covering only 2 of 4 pinned criteria → DENY" "does not cover every pinned criterion"
+# No criteriaCovered field at all → DENY.
+NOCOV=$("$JQ" -nc '{phases:[{id:1,reviewerVerdict:"approved"},{id:2,reviewerVerdict:"pending"}]}')
+assert_deny "$H" "$(wpayload "$NOCOV" "$TRANS_READ")" \
+  "approval with no criteriaCovered → DENY" "does not cover every pinned criterion"
+# Full coverage but NO criteria read → still DENY (read check), different reason.
+FULL_NOREAD=$("$JQ" -nc --argjson c "$P1_COVERED" '{phases:[{id:1,reviewerVerdict:"approved",criteriaCovered:$c},{id:2,reviewerVerdict:"pending"}]}')
+assert_deny "$H" "$(wpayload "$FULL_NOREAD" "$TRANS_NONE")" \
+  "full coverage but no criteria read → DENY (read check)" "without reading the pinned criteria"
+# Coverage is transcript-INDEPENDENT: partial coverage denies even with NO transcript.
+assert_deny "$H" "$("$JQ" -nc --arg f "$LEDGER" --arg c "$PARTIAL" --arg cw "$TMPRC" \
+  '{tool_name:"Write",tool_input:{file_path:$f,content:$c},cwd:$cw,agent_id:"sub_rev"}')" \
+  "partial coverage, no transcript → DENY (coverage is transcript-independent)" "does not cover every pinned criterion"
+
+section "reviewer-criteria-preread: substage coverage (pass/cycle)"
+# A pass approval must cover the [pass] pinned criteria.
+PASS_IDS='["roster-dispatched-and-returned","dedup-commit-landed","stage-a-and-b-ran","pass1-per-journey-mode"]'
+PASS_FULL=$("$JQ" -nc --argjson c "$PASS_IDS" '{phases:[{id:5,reviewerVerdict:"pending","subStages":[{id:"pass-2",reviewerVerdict:"approved",criteriaCovered:$c}]}]}')
+assert_allow "$H" "$(wpayload "$PASS_FULL" "$TRANS_READ")" \
+  "pass-2 approval covering all [pass] criteria + read → allow"
+PASS_PARTIAL=$("$JQ" -nc '{phases:[{id:5,reviewerVerdict:"pending","subStages":[{id:"pass-2",reviewerVerdict:"approved",criteriaCovered:["dedup-commit-landed"]}]}]}')
+assert_deny "$H" "$(wpayload "$PASS_PARTIAL" "$TRANS_READ")" \
+  "pass-2 approval covering 1 of 4 [pass] criteria → DENY" "does not cover every pinned criterion"
 
 rm -f "$TRANS_READ" "$TRANS_NONE" "$TRANS_BASH"
