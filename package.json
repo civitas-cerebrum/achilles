@@ -14,7 +14,8 @@
     "hooks",
     "skills",
     "schemas",
-    "scripts/postinstall.js"
+    "scripts/postinstall.js",
+    "scripts/agentic-os"
   ],
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -19,6 +19,8 @@ The harness treats the agentic run as an operating system:
 | Process table | `<project>/.achilles/.agent-process-table.json`, written by [`../../../hooks/agentic-process-registrar.sh`](../../../hooks/agentic-process-registrar.sh) on every dispatch (30-minute TTL; hook-authored state — direct writes are denied). |
 | Kernel capability check | [`../../../hooks/agent-role-privilege-guard.sh`](../../../hooks/agent-role-privilege-guard.sh) on `PreToolUse:Bash` and `PreToolUse:Agent` — denies command classes the executing context's role lacks. |
 | Ring boundary | The `agent_id` field on hook payloads: tool calls from dispatched subagents carry a non-empty `agent_id`; the orchestrator's carry none. |
+| setuid / privilege drop | [`../../../hooks/agentic-user-exec.sh`](../../../hooks/agentic-user-exec.sh) — when the role users are provisioned, subagent Bash commands are re-executed under the role-bound `achl-*` OS user (see §"OS-user execution mode"). |
+| useradd / account provisioning | [`../../../scripts/agentic-os/provision-role-users.sh`](../../../scripts/agentic-os/provision-role-users.sh) — operator-run; creates the role users, tier groups, sudoers drop-in, project ACLs, and the enablement marker. |
 
 A subagent's privilege set is fixed at dispatch time by its role and cannot be raised from inside the process — the guard reads the mapping from the shared library, not from anything the subagent can write (the process table itself is protected by `hook-authored-state-guard.sh` and `protected-artifact-bash-guard.sh`).
 
@@ -67,6 +69,33 @@ The guard resolves the executing role in this order:
 4. **Multiple live role classes** → intersection: a class is denied only if every live process denies it (sound under ambiguity — never stricter than the weakest live process).
 5. **Empty/absent table** → unconfined (fail-open).
 
-## Escape hatch
+## OS-user execution mode
 
-`AGENT_ROLE_PRIVILEGE_GUARD=off` disables the guard (calibration / operator override). The registrar has no off switch — it never blocks.
+The hook layer above enforces role privileges heuristically (pattern-matched command classes). OS-user execution mode makes them **real user privileges**: each role maps to a dedicated system account, and every Bash command a dispatched subagent runs is re-executed under that account — the kernel, not a regex, decides what the process may touch.
+
+**Provisioning (operator-run, root, Linux):**
+
+```bash
+sudo scripts/agentic-os/provision-role-users.sh provision \
+  --session-user <claude-code-user> --project <project-root>
+```
+
+This creates, idempotently:
+
+- **Users** — one `achl-*` system account per role (`role_os_user` in the privileges lib; the roster is generated from `list_privilege_roles` so it cannot drift from the role map). Nologin shells, homes under `/var/lib/achilles/`.
+- **Tier groups** — `achl-agents` (read+traverse on the project, every role user), `achl-write` (rwX on the working surfaces: `tests/`, `.git/`, `test-results/`, `playwright-report/`, `.playwright-cli/`, `node_modules/`), `achl-read` (no write grants — the verifier tier). Tier membership is derived from the `mutate` denial (`role_os_tier`), so the kernel is never laxer than the hook policy.
+- **Protected-artifact ACLs** — the ledgers, journey map, approver registry, integrity sidecar, findings ledger, and the process table are pinned `r--` for **both** tiers: no role user can mutate them by any command shape. The sanctioned Write/Edit paths run as the session user and are unaffected.
+- **Sudoers drop-in** — `/etc/sudoers.d/achilles-agentic-os`: the session user may run commands as the `achl-*` users only, `NOPASSWD`, with `PATH`/`TMPDIR`/`PLAYWRIGHT_*` kept.
+- **Enablement marker** — `/etc/achilles-agentic-os/enabled`, listing the provisioned users.
+
+**Execution:** once the marker exists, [`agentic-user-exec.sh`](../../../hooks/agentic-user-exec.sh) (`PreToolUse:Bash`) rewrites each subagent command to `sudo -n --preserve-env=… --set-home -u achl-<role> -- bash -c '<command>'` via the documented `updatedInput` contract. It rewrites **only** on an exact role resolution (ladder steps 1–3) — the ambiguity intersection is sound to *deny* on but never to *pick a uid* from — and only to users listed in the marker. The orchestrator, unconfined, and ambiguous contexts keep the session user. Sibling PreToolUse hooks all see the original command, so the privilege guard's class enforcement is unchanged, and a deny from any hook still wins over the rewrite's allow.
+
+**What this buys beyond the hook layer:** a reviewer-family subagent *cannot* write the project tree no matter how a mutation is spelled; no role user can touch the ledgers or the installed hook surface; and file ownership on everything a subagent writes attributes the artifact to its role (`ls -l` shows which role authored what; `ps -u achl-composer` shows what a role is doing right now).
+
+`deprovision` reverses the accounts/sudoers/marker; `status` reports the current roster. On non-Linux hosts (or before provisioning) the mode is inert and the hook layer remains the enforcement floor.
+
+## Escape hatches
+
+- `AGENT_ROLE_PRIVILEGE_GUARD=off` disables the privilege guard (calibration / operator override).
+- `AGENTIC_OS_USER_MODE=off` disables the role-user rewrite; deprovisioning (or deleting the marker) disables it host-wide.
+- The registrar has no off switch — it never blocks.

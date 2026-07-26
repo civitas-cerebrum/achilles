@@ -91,6 +91,9 @@ fi
 # shellcheck source=lib/agent-role-privileges.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/agent-role-privileges.sh"
+# shellcheck source=lib/agent-process-table.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/agent-process-table.sh"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
@@ -101,24 +104,9 @@ PARENT_ID=$(echo "$INPUT" | "$JQ" -r '.parent_tool_use_id // empty' 2>/dev/null 
 
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 REPO_ROOT=$(cd "$GUARD_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-TABLE_FILE="$REPO_ROOT/.achilles/.agent-process-table.json"
 
-NOW=$(date +%s)
-TTL_SECONDS=1800  # matches agentic-process-registrar.sh
-
-# Live process-table slice: {id: {role, denied[], ...}} with expired
-# entries dropped. Empty object when the table is absent or malformed.
-LIVE="{}"
-if [ -f "$TABLE_FILE" ]; then
-  LIVE=$("$JQ" -c --argjson now "$NOW" --argjson ttl "$TTL_SECONDS" '
-    if type == "object"
-      then with_entries(select((.value.ts // 0) >= ($now - $ttl)))
-      else {}
-    end
-  ' "$TABLE_FILE" 2>/dev/null || echo "{}")
-  echo "$LIVE" | "$JQ" -e 'type == "object"' >/dev/null 2>&1 || LIVE="{}"
-fi
-LIVE_COUNT=$(echo "$LIVE" | "$JQ" -r 'length' 2>/dev/null || echo 0)
+# Live process-table slice (shared load + resolution — lib/agent-process-table.sh).
+apt_load_live "$REPO_ROOT"
 
 emit_deny() {
   "$JQ" -n --arg r "$1" '{
@@ -131,63 +119,6 @@ emit_deny() {
 }
 
 DOC_REF="skills/element-interactions/references/agentic-os-roles.md"
-
-# resolve_actor_role — sets ACTOR_ROLE and ACTOR_DENIED for a subagent
-# context, following the resolution ladder in the header. For the
-# intersection fallback, ACTOR_ROLE is the synthetic "ambiguous(<roles>)"
-# and ACTOR_DENIED is the class set every live process denies.
-resolve_actor_role() {
-  local claimed_slug="$1"
-
-  # (1) Exact: parent_tool_use_id → live table entry.
-  if [ -n "$PARENT_ID" ] && [ "$LIVE_COUNT" -gt 0 ]; then
-    local hit
-    hit=$(echo "$LIVE" | "$JQ" -r --arg id "$PARENT_ID" '.[$id].role // empty' 2>/dev/null || echo "")
-    if [ -n "$hit" ]; then
-      ACTOR_ROLE="$hit"
-      ACTOR_DENIED=$(role_denied_classes "$hit")
-      return 0
-    fi
-  fi
-
-  # (2) Role claim via the -s=<slug> session flag (same prefix vocabulary
-  # as description prefixes; convention enforced by the isolation guard).
-  if [ -n "$claimed_slug" ]; then
-    local slug_role
-    if slug_role=$(resolve_privilege_role "$claimed_slug"); then
-      ACTOR_ROLE="$slug_role"
-      ACTOR_DENIED=$(role_denied_classes "$slug_role")
-      return 0
-    fi
-  fi
-
-  # (3)/(4)/(5) Liveness fallback.
-  if [ "$LIVE_COUNT" -eq 0 ]; then
-    ACTOR_ROLE="unconfined"
-    ACTOR_DENIED=""
-    return 0
-  fi
-  local roles
-  roles=$(echo "$LIVE" | "$JQ" -r '[.[].role] | unique | join(" ")' 2>/dev/null || echo "")
-  set -- $roles
-  if [ "$#" -eq 1 ]; then
-    ACTOR_ROLE="$1"
-    ACTOR_DENIED=$(role_denied_classes "$1")
-    return 0
-  fi
-  # Intersection: a class survives only if every live process denies it.
-  local class kept=""
-  for class in payload-ingest mutate browser dispatch remote-push; do
-    local all=1 r
-    for r in "$@"; do
-      role_denies_class "$r" "$class" || { all=0; break; }
-    done
-    [ "$all" -eq 1 ] && kept="$kept $class"
-  done
-  ACTOR_ROLE="ambiguous($roles)"
-  ACTOR_DENIED="${kept# }"
-  return 0
-}
 
 denied_has() {
   case " $ACTOR_DENIED " in *" $1 "*) return 0 ;; *) return 1 ;; esac
@@ -202,7 +133,7 @@ if [ "$TOOL_NAME" = "Agent" ]; then
   [ -n "$AGENT_ID" ] || exit 0
 
   DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
-  resolve_actor_role ""
+  apt_resolve_actor "$PARENT_ID" ""
   if denied_has dispatch; then
     emit_deny "[BLOCKED] Privilege violation: role '${ACTOR_ROLE}' lacks the 'dispatch' capability.
 
@@ -290,7 +221,7 @@ if [ -z "$AGENT_ID" ]; then
   # Only police the orchestrator while a pipeline is actually live —
   # ordinary dev sessions in non-achilles projects stay untouched.
   PIPELINE_LIVE=0
-  [ "$LIVE_COUNT" -gt 0 ] && PIPELINE_LIVE=1
+  [ "$APT_LIVE_COUNT" -gt 0 ] && PIPELINE_LIVE=1
   for f in \
     "$REPO_ROOT/tests/e2e/docs/onboarding-status.json" \
     "$REPO_ROOT/tests/e2e/docs/coverage-expansion-state.json" \
@@ -318,11 +249,8 @@ Reference: ${DOC_REF} §\"payload-ingest\"; skills/coverage-expansion/references
 fi
 
 # Subagent context.
-CLAIMED_SLUG=$(echo "$CMD" | grep -oE -- '-s=[A-Za-z0-9_.-]+' | head -1 | sed 's/^-s=//' || true)
-if [ -z "$CLAIMED_SLUG" ]; then
-  CLAIMED_SLUG=$(echo "$CMD" | grep -oE -- '-s[[:space:]]+[A-Za-z0-9_.-]+' | head -1 | sed -E 's/^-s[[:space:]]+//' || true)
-fi
-resolve_actor_role "$CLAIMED_SLUG"
+CLAIMED_SLUG=$(apt_extract_slug "$CMD")
+apt_resolve_actor "$PARENT_ID" "$CLAIMED_SLUG"
 [ -n "$ACTOR_DENIED" ] || exit 0
 
 if denied_has browser && exercises_browser; then

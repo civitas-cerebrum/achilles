@@ -153,6 +153,12 @@ const HOOK_MANIFEST = [
   { file: 'agentic-process-registrar.sh',         event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   { file: 'agent-role-privilege-guard.sh',        event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
   { file: 'agent-role-privilege-guard.sh',        event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
+  // Agentic-OS user mode: when the operator has provisioned the achl-*
+  // role users (scripts/agentic-os/provision-role-users.sh), rewrite
+  // subagent Bash commands to execute under the role-bound OS user —
+  // privileges become kernel-enforced. NO-OP (silent allow) until the
+  // /etc/achilles-agentic-os/enabled marker exists.
+  { file: 'agentic-user-exec.sh',                 event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
   // Reviewer brief integrity: deny workflow-reviewer-* dispatches whose
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.
