@@ -3,7 +3,7 @@
 **Status:** authoritative spec for the role → privilege model enforced by the agentic-OS hook pair. Cited from the hook headers and `harness-hooks.md`.
 **Scope:** the process model (dispatch = process creation under a role user), the privilege-class vocabulary, the per-role assignment, the process table, role resolution, and fail-open semantics.
 
-For the isolation contract this model mechanises, see [`../../coverage-expansion/references/subagent-isolation.md`](../../coverage-expansion/references/subagent-isolation.md). For the session-slug convention the role claim rides on, see [`playwright-cli-protocol.md`](playwright-cli-protocol.md) §3.
+For the isolation contract this model mechanises, see [`../../coverage-expansion/references/subagent-isolation.md`](../../coverage-expansion/references/subagent-isolation.md). For the session-slug convention the role claim rides on, see [`playwright-cli-protocol.md`](playwright-cli-protocol.md) §3. For the observability companion that measures what these hooks enforce (context flows, transfer map, leak panel), see [`harness-atelier.md`](harness-atelier.md).
 
 ---
 

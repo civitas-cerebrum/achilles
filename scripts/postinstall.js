@@ -159,6 +159,14 @@ const HOOK_MANIFEST = [
   // privileges become kernel-enforced. NO-OP (silent allow) until the
   // /etc/achilles-agentic-os/enabled marker exists.
   { file: 'agentic-user-exec.sh',                 event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
+  // harness-atelier telemetry: pure observer (never blocks) recording
+  // every context transfer — dispatch briefs down, subagent returns up,
+  // per-context Bash ingest, leak events — into
+  // <project>/.achilles/atelier-telemetry.jsonl for the visualizer
+  // (`npm run atelier` → scripts/atelier/harness-atelier.mjs).
+  { file: 'atelier-telemetry-collector.sh',       event: 'PreToolUse',  matcher: 'Agent',      timeout: 5 },
+  { file: 'atelier-telemetry-collector.sh',       event: 'PostToolUse', matcher: 'Agent',      timeout: 5 },
+  { file: 'atelier-telemetry-collector.sh',       event: 'PostToolUse', matcher: 'Bash',       timeout: 5 },
   // Reviewer brief integrity: deny workflow-reviewer-* dispatches whose
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.
