@@ -188,3 +188,41 @@ exit-criteria-checked:
     satisfied: false'
 P_PV=$(payload tool_name=Agent description='phase-validator-2: greenlight phase 2' response_text="$RESP_PV" cwd="$ATTEST_TMP")
 assert_warn "$H" "$P_PV" "phase-validator approved with unsatisfied exit-criterion → WARN" "not grounded in a criteria assessment"
+
+section "attestation-gate: reject-completeness — every failed criterion needs a fix instruction"
+# A reject that leaves an unsatisfied criterion uncovered by any finding
+# WARNs (the worker has nothing to act on for it).
+RESP_REJECT_GAP='handover:
+  role: workflow-reviewer-phase1
+  cycle: 1
+  status: rejected
+  next-action: orchestrator
+verdict: reject
+checklist:
+  - item: criterion A must hold
+    satisfied: false
+  - item: criterion B must hold
+    satisfied: false
+findings:
+  - checklist-item: criterion A must hold
+    what-missing: A is absent from the deliverable
+    fix-instruction: add A to the spec and re-run stabilization'
+P_RGAP=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_REJECT_GAP" cwd="$ATTEST_TMP")
+assert_warn "$H" "$P_RGAP" "reject with an uncovered failed criterion → WARN" "does not tell the worker what to fix"
+
+# A reject where every unsatisfied criterion is covered by a finding → silent allow.
+RESP_REJECT_FULL='handover:
+  role: workflow-reviewer-phase1
+  cycle: 1
+  status: rejected
+  next-action: orchestrator
+verdict: reject
+checklist:
+  - item: criterion A must hold
+    satisfied: false
+findings:
+  - checklist-item: criterion A must hold
+    what-missing: A is absent from the deliverable
+    fix-instruction: add A to the spec and re-run stabilization'
+P_RFULL=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' response_text="$RESP_REJECT_FULL" cwd="$ATTEST_TMP")
+assert_allow "$H" "$P_RFULL" "reject with every failed criterion covered → silent allow"

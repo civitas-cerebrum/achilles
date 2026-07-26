@@ -15175,10 +15175,10 @@ var perf_reviewer_schema_default = {
         additionalProperties: true,
         required: ["checklist-item", "what-missing", "fix-instruction"],
         properties: {
-          "checklist-item": { type: "string" },
-          "what-missing": { type: "string" },
+          "checklist-item": { type: "string", minLength: 1 },
+          "what-missing": { type: "string", minLength: 8, description: "Concrete statement of what is missing/wrong for this criterion \u2014 the worker acts on this." },
           "methodology-ref": { type: "string" },
-          "fix-instruction": { type: "string" }
+          "fix-instruction": { type: "string", minLength: 8, description: "Precise, actionable instruction the worker follows to satisfy the criterion." }
         }
       }
     },
@@ -15659,10 +15659,10 @@ var workflow_reviewer_schema_default = {
         additionalProperties: true,
         required: ["checklist-item", "what-missing", "fix-instruction"],
         properties: {
-          "checklist-item": { type: "string" },
-          "what-missing": { type: "string" },
+          "checklist-item": { type: "string", minLength: 1 },
+          "what-missing": { type: "string", minLength: 8, description: "Concrete statement of what is missing/wrong for this criterion \u2014 not an empty or one-word placeholder. The worker acts on this." },
           "methodology-ref": { type: "string" },
-          "fix-instruction": { type: "string" }
+          "fix-instruction": { type: "string", minLength: 8, description: "Precise, actionable instruction the worker follows to satisfy the criterion. Must be specific enough to act on without re-deriving the problem." }
         }
       }
     },

@@ -574,6 +574,70 @@ subagent has been running longer than that, re-dispatch a fresh
 Fix: re-dispatch the approver."
     return 0
   fi
+
+  # ---- Scope-match: the RIGHT reviewer approved the RIGHT stage. --------
+  # "An approver was dispatched" is not enough — the approval must be
+  # authored by a reviewer dispatched for THIS specific phase / pass /
+  # cycle. Otherwise a stale phase-1 reviewer (still within TTL) could
+  # authorise a phase-3 approval, or the orchestrator could land an
+  # approval for a stage it never actually dispatched a reviewer to
+  # inspect. We derive the set of fresh approver SCOPES from the registry
+  # descriptions and require each newly-approved stage to have one.
+  #
+  # Scope tokens: workflow-reviewer-phase<N> / -pass<K> / -cycle<K>, and
+  # phase-validator-<N> (validates a phase → phase<N>).
+  local FRESH_SCOPES
+  FRESH_SCOPES=$("$JQ" -r --argjson now "$NOW" --argjson ttl "$TTL" '
+    [ .[]
+      | select((.ts // 0) >= ($now - $ttl))
+      | (.description // "")
+      | ( (capture("workflow-reviewer-(?<s>phase[0-9]+|pass[0-9]+|cycle[0-9]+)") | .s)
+          // (capture("perf-reviewer-(?<s>phase[0-9]+)") | .s)
+          // (capture("phase-validator-(?<n>[0-9]+)") | "phase" + .n)
+          // empty )
+    ] | unique | .[]
+  ' "$REGISTRY_FILE" 2>/dev/null || echo "")
+
+  scope_present() { printf '%s\n' "$FRESH_SCOPES" | grep -qx "$1"; }
+
+  # Required scope per newly-approved id. Phase ids are bare integers;
+  # substage ids arrive as "<phase>.<pass-K|cycle-K>".
+  local MISSING_SCOPES="" id req
+  for id in $("$JQ" -r '.[]' <<<"$NEW_APPROVAL_IDS" 2>/dev/null); do
+    req="phase${id}"
+    scope_present "$req" || MISSING_SCOPES="${MISSING_SCOPES} ${req}(phase ${id})"
+  done
+  for id in $("$JQ" -r '.[]' <<<"$NEW_SUBSTAGE_APPROVAL_IDS" 2>/dev/null); do
+    # id like "4.cycle-1" or "5.pass-2" → req "cycle1" / "pass2".
+    req=$(printf '%s' "$id" | sed -E 's/^[0-9]+\.(pass|cycle)-([0-9]+)$/\1\2/')
+    if [ "$req" = "$id" ]; then continue; fi  # unrecognised substage shape — skip
+    scope_present "$req" || MISSING_SCOPES="${MISSING_SCOPES} ${req}(${id})"
+  done
+
+  if [ -n "$MISSING_SCOPES" ]; then
+    pipeline_emit_deny "[BLOCKED] Ledger write approves a stage with no scope-matched reviewer.
+
+File: ${FILE_PATH}
+Approving: ${APPROVAL_SUMMARY}
+Fresh approver scopes on record: $(printf '%s' "$FRESH_SCOPES" | tr '\n' ' ')
+No scope-matched approver for:${MISSING_SCOPES}
+
+Only the INDEPENDENT REVIEWER DISPATCHED FOR THIS STAGE may approve it.
+A reviewer registered for a different phase / pass / cycle (or a stale
+one) cannot authorise this transition — that would let the orchestrator
+advance a stage no reviewer actually inspected.
+
+Fix: dispatch the scope-matched approver and let IT author the verdict:
+  approving phase N   → workflow-reviewer-phaseN:  (or phase-validator-N:)
+  approving pass K    → workflow-reviewer-passK:
+  approving cycle K   → workflow-reviewer-cycleK:
+
+See:
+  - hooks/workflow-approver-registry.sh (records approver scope by dispatch)
+  - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\""
+    return 0
+  fi
+
   return 1
 }
 

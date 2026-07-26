@@ -62,10 +62,10 @@
         "additionalProperties": true,
         "required": ["checklist-item", "what-missing", "fix-instruction"],
         "properties": {
-          "checklist-item": { "type": "string" },
-          "what-missing": { "type": "string" },
+          "checklist-item": { "type": "string", "minLength": 1 },
+          "what-missing": { "type": "string", "minLength": 8, "description": "Concrete statement of what is missing/wrong for this criterion — the worker acts on this." },
           "methodology-ref": { "type": "string" },
-          "fix-instruction": { "type": "string" }
+          "fix-instruction": { "type": "string", "minLength": 8, "description": "Precise, actionable instruction the worker follows to satisfy the criterion." }
         }
       }
     },

@@ -123,6 +123,54 @@ fi
 
 VERDICT=$(echo "$PARSED_JSON" | "$JQ" -r '.verdict // empty' 2>/dev/null || echo "")
 HANDOVER_STATUS=$(echo "$PARSED_JSON" | "$JQ" -r '.handover.status // empty' 2>/dev/null || echo "")
+
+# --- Reject-completeness check (precise reviewer→worker communication) --------
+# A reject must tell the worker EXACTLY what to fix: every criterion the
+# reviewer marked unsatisfied has to be covered by a finding whose
+# `checklist-item` references it. An unsatisfied criterion with no matching
+# finding leaves the worker guessing — the reject is not actionable. (The
+# schema separately enforces that each finding's what-missing/fix-instruction
+# are non-empty and substantive.) reject is signalled by verdict==reject or
+# a rejected handover status.
+case "$VERDICT:$HANDOVER_STATUS" in
+  reject:*|*:rejected|escalate:*|*:escalated-to-user)
+    UNCOVERED=$(echo "$PARSED_JSON" | "$JQ" -r '
+      (.findings // []) as $f
+      | [ .checklist[]? | select(.satisfied == false) | (.item // "") | select(length > 0) ]
+      | map( . as $item
+             | select(
+                 ( $f | map(."checklist-item" // "")
+                   | any( . as $ref
+                          | ($ref | length) > 0
+                          and ( ($item | ascii_downcase | contains($ref | ascii_downcase))
+                             or ($ref | ascii_downcase | contains($item | ascii_downcase)) ) ) )
+                 | not ) )
+      | .[]
+    ' 2>/dev/null || echo "")
+    if [ -n "$UNCOVERED" ]; then
+      UNCOVERED_LIST=$(printf '%s' "$UNCOVERED" | sed 's/^/  - /')
+      emit_warn "[WARN] reviewer reject does not tell the worker what to fix for every failed criterion.
+
+Description: \"${DESCRIPTION}\"
+Verdict:     ${VERDICT:-<none>} (handover status: ${HANDOVER_STATUS:-<none>})
+
+These checklist items are marked \`satisfied: false\` but no finding
+references them, so the worker has no fix-instruction for them:
+${UNCOVERED_LIST}
+
+The reviewer→worker hand-off must be precise: every unsatisfied criterion
+needs a matching \`findings[]\` entry with \`what-missing\` + a concrete
+\`fix-instruction\` (set \`checklist-item\` to the criterion text so the
+mapping is unambiguous). A reject the worker can't act on wastes a cycle.
+
+See:
+  - schemas/subagent-returns/workflow-reviewer.schema.json (findings[])
+  - skills/workflow-reviewer/SKILL.md"
+    fi
+    exit 0
+    ;;
+esac
+
 # An approval is signalled either by verdict==approve (workflow-/perf-
 # reviewer) or by an approved handover status (phase-validator has no
 # verdict field). Anything else needs no positive evidence.

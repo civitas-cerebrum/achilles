@@ -273,6 +273,34 @@ state-file update. "Re-do the whole phase" is not a surgical fix; if
 the unit's work is structurally wrong, return `verdict: escalate` even
 on cycle 1.
 
+**Reject-completeness (enforced).** The reject→worker hand-off must be
+precise enough to act on without re-deriving the problem. Two rules are
+mechanically checked:
+
+1. **Cover every failed criterion.** Every checklist item you mark
+   `satisfied: false` MUST have a matching `findings[]` entry (set its
+   `checklist-item` to the criterion text so the mapping is
+   unambiguous). An unsatisfied criterion with no finding leaves the
+   worker guessing — `workflow-reviewer-attestation-gate.sh` WARNs on it.
+2. **Substantive instructions.** `what-missing` and `fix-instruction`
+   must be non-empty and specific (schema `minLength`); empty or
+   one-word placeholders fail schema validation.
+
+**Coherence (enforced).** An `approve` verdict must reconcile with its
+own assessment: a non-empty checklist with **every** item
+`satisfied: true`. Approving with an empty checklist or any
+`satisfied: false` item is a rubber-stamp — the return schema rejects it
+(and a schema-strict run BLOCKS it). If any criterion is unmet, the
+verdict is `reject` (with findings), never `approve`.
+
+**Scope-matched approval (enforced).** Only the reviewer dispatched for
+*this* stage may land its approval. The ledger-write gate requires a
+fresh, scope-matched approver on record (approving phase N needs
+`workflow-reviewer-phaseN` / `phase-validator-N`; pass K → `-passK`;
+cycle K → `-cycleK`). A reviewer dispatched for a different phase / pass
+/ cycle — or a stale one — cannot authorise this transition, and the
+orchestrator can never self-approve (its writes carry no `agent_id`).
+
 ---
 
 ## Skip / early-stop authorisation

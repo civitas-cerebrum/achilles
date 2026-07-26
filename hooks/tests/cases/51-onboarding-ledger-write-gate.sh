@@ -212,6 +212,21 @@ P_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
 P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
 assert_allow "$H" "$P_OK" "Subagent context + fresh approver registry → ALLOW"
 
+# Test: SCOPE-MISMATCH — the write approves phase 1 but the only fresh
+# approver was dispatched for phase 3. Only the reviewer dispatched for
+# THIS stage may approve it → DENY.
+printf '{"toolu_wrongscope":{"role":"workflow-reviewer","description":"workflow-reviewer-phase3: review phase 3","ts":%d}}' "$NOW" > "$REGISTRY"
+P_SCOPE=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
+P_SCOPE=$(echo "$P_SCOPE" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+assert_deny "$H" "$P_SCOPE" "Approve phase 1 with only a phase-3 reviewer on record → DENY" "no scope-matched reviewer"
+# A phase-validator dispatched for the right phase also satisfies scope-match.
+printf '{"toolu_pv":{"role":"phase-validator","description":"phase-validator-1: greenlight phase 1","ts":%d}}' "$NOW" > "$REGISTRY"
+P_PVOK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
+P_PVOK=$(echo "$P_PVOK" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+assert_allow "$H" "$P_PVOK" "Approve phase 1 with a phase-validator-1 on record → ALLOW"
+# Restore the scope-matched workflow-reviewer registry for subsequent tests.
+printf '{"toolu_approved":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$NOW" > "$REGISTRY"
+
 # Test: subagent context but the approver registry is empty → DENY
 printf '{}' > "$REGISTRY"
 P_EMPTY=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
