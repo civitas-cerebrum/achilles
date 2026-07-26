@@ -231,10 +231,83 @@ function checkRoleMapCoverage() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Check 5 — role-prefix vocabulary consistency across the three subsystems
+//   privilege map (agent-role-privileges.sh :: resolve_privilege_role)  — the
+//     authoritative role vocabulary; every dispatched role is confined here.
+//   schema map   (schema-role-map.sh :: resolve_schema_role)            — the
+//     schema-validated / envelope-only subset.
+//   slug regex   (playwright-cli-isolation-guard.sh :: SLUG_PREFIX_REGEX) — the
+//     browser-using subset.
+// The three are intentionally NOT equal (they scope different concerns), but
+// the two narrower sets must be COVERED by the privilege map: a prefix known
+// to the schema map or the slug regex but absent from the privilege map would
+// be a role that some subsystem recognises yet the privilege layer leaves
+// unconfined. This check locks that subset relation.
+// ---------------------------------------------------------------------------
+function checkRolePrefixVocabulary() {
+  const detail = [];
+  const PRIV = 'hooks/lib/agent-role-privileges.sh';
+  const SLUG_GUARD = 'hooks/playwright-cli-isolation-guard.sh';
+
+  // Extract the case-glob stems from a single shell function body.
+  function stemsFromFunction(file, fnName) {
+    const src = readFileSync(file, 'utf8');
+    const start = src.indexOf(`${fnName}()`);
+    if (start < 0) { detail.push(`${fnName} not found in ${file}`); return null; }
+    // Slice to the function's closing `}` at column 0.
+    const rest = src.slice(start);
+    const end = rest.search(/\n\}/);
+    const body = end < 0 ? rest : rest.slice(0, end);
+    const stems = [];
+    for (const m of body.matchAll(/^\s*([a-z0-9-]+\*?(?:\|[a-z0-9-]+\*?)*)\)/gm)) {
+      if (m[1] === '*') continue; // default arm
+      for (const glob of m[1].split('|')) {
+        // Normalise to the bare role token: strip a trailing glob `*` and
+        // any trailing separator `-` (internal dashes are preserved), so
+        // `composer-*` and the slug-regex `composer` compare equal.
+        const stem = glob.replace(/[-*]+$/, '');
+        if (stem) stems.push(stem);
+      }
+    }
+    return [...new Set(stems)];
+  }
+
+  const privStems = stemsFromFunction(PRIV, 'resolve_privilege_role');
+  const schemaStems = stemsFromFunction(ROLE_MAP, 'resolve_schema_role');
+
+  // Slug-regex alternation: SLUG_PREFIX_REGEX='^(a|b|c)-...'
+  const slugSrc = readFileSync(SLUG_GUARD, 'utf8');
+  const slugM = slugSrc.match(/SLUG_PREFIX_REGEX='\^\(([^)]+)\)/);
+  const slugStems = slugM ? slugM[1].split('|').map((s) => s.trim()).filter(Boolean) : null;
+
+  if (!privStems || !schemaStems || !slugStems) {
+    report('role-prefix vocabulary consistency', false,
+      detail.length ? detail : ['could not extract one of the three vocabularies']);
+    return;
+  }
+
+  // A narrower stem N is covered iff some privilege stem P is a prefix of N
+  // (privilege globs anchor at string start: `phase4` covers `phase4-cycle`).
+  const coveredBy = (n) => privStems.some((p) => n.startsWith(p));
+  const schemaUncovered = schemaStems.filter((s) => !coveredBy(s));
+  const slugUncovered = slugStems.filter((s) => !coveredBy(s));
+
+  if (schemaUncovered.length) detail.push(`schema-role-map prefixes not in the privilege map: ${schemaUncovered.join(', ')}`);
+  if (slugUncovered.length) detail.push(`slug-regex prefixes not in the privilege map: ${slugUncovered.join(', ')}`);
+
+  report(
+    `role-prefix vocabulary: schema-map (${schemaStems.length}) + slug-regex (${slugStems.length}) ⊆ privilege-map (${privStems.length})`,
+    schemaUncovered.length === 0 && slugUncovered.length === 0,
+    detail,
+  );
+}
+
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
 checkRoleMapCoverage();
+checkRolePrefixVocabulary();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

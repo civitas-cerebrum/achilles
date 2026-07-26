@@ -96,9 +96,19 @@ AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "")
 [ -n "$CMD" ] || exit 0
 
-# No double-wrapping: a command already routed through the role-user
-# wrapper stays as-is.
-echo "$CMD" | grep -qE '^sudo -n .*-u achl-' && exit 0
+# NO double-wrap skip. Earlier versions skipped rewriting a command that
+# already looked like our `sudo -n … -u achl-…` wrapper — but the wrapper
+# prefix is not secret, so that skip was a bypass: a subagent could
+# hand-write `sudo -n -u achl-<laxer-role> -- bash -c '…'` and run
+# UN-rewritten as the session user, whom the provisioned sudoers lets
+# impersonate any achl-* role (U1). The skip is also unnecessary: this
+# hook only ever sees the command the MODEL emitted, never its own output
+# (the harness executes the rewrite, it doesn't re-feed it through
+# PreToolUse). So we ALWAYS wrap. A hand-crafted inner `sudo -u achl-other`
+# is thereby nested inside our wrapper and runs AS achl-<this-role>, who is
+# NOT a sudoer (only the session user is) — the inner sudo fails closed.
+# Legitimate commands never arrive pre-wrapped, so always-wrap has no
+# real-traffic cost.
 
 PARENT_ID=$(echo "$INPUT" | "$JQ" -r '.parent_tool_use_id // empty' 2>/dev/null || echo "")
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")

@@ -92,9 +92,23 @@ INNER=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.updatedInput.command' 2
 ROUNDTRIP=$(eval "${INNER#sudo -n --preserve-env=PATH,TMPDIR,PLAYWRIGHT_BROWSERS_PATH,PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD --set-home -u achl-composer -- }" 2>/dev/null)
 assert_eq "$ROUNDTRIP" "hello world" "quoted command round-trips through the wrapper"
 
-section "user-exec: no double-wrapping"
-assert_noop "$(payload tool_name=Bash command="sudo -n --preserve-env=PATH --set-home -u achl-composer -- bash -c 'ls'" cwd="$TMPUX" agent_id=sub_c parent_tool_use_id=toolu_composer)" \
-  "already-wrapped command → no rewrite"
+section "user-exec: hand-crafted sudo is wrapped, not skipped (U1)"
+# A subagent that hand-writes its own sudo-to-a-role-user must NOT run
+# un-rewritten (that was the bypass): it is wrapped like any command, so
+# the inner sudo runs as the (non-sudoer) role user and fails closed.
+seed_one composer
+run_exec "$(payload tool_name=Bash command="sudo -n --preserve-env=PATH --set-home -u achl-reviewer -- bash -c 'rm -rf tests'" cwd="$TMPUX" agent_id=sub_c parent_tool_use_id=toolu_composer)"
+WRAP_DEC=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+WRAP_CMD=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.updatedInput.command // empty' 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$WRAP_DEC" = "allow" ] \
+  && echo "$WRAP_CMD" | grep -qE '^sudo -n .*-u achl-composer -- bash -c ' \
+  && echo "$WRAP_CMD" | grep -qF -- "sudo -n --preserve-env=PATH --set-home -u achl-reviewer"; then
+  TESTS_PASSED=$((TESTS_PASSED + 1)); echo "${CLR_PASS}  ✓${CLR_RST} hand-crafted sudo is wrapped by the true role (inner sudo neutralized)"
+else
+  TESTS_FAILED=$((TESTS_FAILED + 1)); FAIL_DETAILS+=("U1: expected outer -u achl-composer wrapping the inner sudo; got dec='$WRAP_DEC' cmd='${WRAP_CMD:0:180}'")
+  echo "${CLR_FAIL}  ✗${CLR_RST} hand-crafted sudo not neutralized"
+fi
 
 section "user-exec: unprovisioned / unresolvable contexts stay on the session user"
 seed_one probe   # achl-probe NOT in the test marker roster
