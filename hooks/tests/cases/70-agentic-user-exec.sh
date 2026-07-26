@@ -126,3 +126,13 @@ PLAINUX=$(mktemp -d)
 PLAIN_OUT=$(printf '%s' "$(payload tool_name=Bash command='npx playwright-cli -s=composer-j-x-1-c1 open https://x' cwd="$PLAINUX" agent_id=sub_c)" | AGENTIC_OS_MARKER="$MARKER" bash "$H" 2>/dev/null)
 assert_eq "$PLAIN_OUT" "" "plain repo → no rewrite despite marker + slug"
 rm -rf "$PLAINUX"
+
+section "user-exec: slug honored only from a real playwright-cli invocation (R1)"
+# Ambiguous table (two live roles) so the SLUG is what would flip
+# ACTOR_EXACT and pick a uid. A -s= token in arbitrary command text must
+# NOT be honored; the same slug from a real playwright-cli command is.
+echo "{\"toolu_a\": {\"role\": \"composer\", \"denied\": [], \"ts\": $NOW}, \"toolu_b\": {\"role\": \"reviewer-inloop\", \"denied\": [], \"ts\": $NOW}}" > "$TBL"
+assert_noop "$(payload tool_name=Bash command='git commit -m "wip -s=composer-x"' cwd="$TMPUX" agent_id=sub_g)" \
+  "git commit with -s= in message, ambiguous table → no rewrite (slug ignored: not playwright-cli)"
+assert_rewrite "$(payload tool_name=Bash command='npx playwright-cli -s=composer-x open https://y' cwd="$TMPUX" agent_id=sub_g)" \
+  "playwright-cli -s=composer-x, ambiguous table → rewrites to achl-composer (slug honored)" "achl-composer" "playwright-cli"

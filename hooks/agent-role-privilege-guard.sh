@@ -141,6 +141,13 @@ emit_deny() {
 
 DOC_REF="skills/element-interactions/references/agentic-os-roles.md"
 
+# Single source of truth for "payload artifact" (C2) — shared by the
+# Read-vector gate and the Bash-dump detector so the two cannot diverge.
+# The distinctive dir names match with or without a trailing slash so a
+# bare `find test-results … | xargs cat` is caught as well as a
+# slash-qualified `cat test-results/run.json`.
+PAYLOAD_ARTIFACT_RE='\.spec\.(ts|js|mjs|tsx)([[:space:]"'"'"']|$)|\.subagent-returns|\.playwright-cli|test-results|playwright-report|trace\.zip|\.har([[:space:]"'"'"']|$)'
+
 denied_has() {
   case " $ACTOR_DENIED " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
@@ -229,7 +236,10 @@ if [ "$TOOL_NAME" = "Read" ]; then
   pipeline_live || exit 0
   FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // ""' 2>/dev/null || echo "")
   [ -n "$FILE_PATH" ] || exit 0
-  if echo "$FILE_PATH" | grep -qE '\.spec\.(ts|js|mjs|tsx)$|/\.subagent-returns/|/\.playwright-cli/|/test-results/|/playwright-report/|trace\.zip$|\.har$'; then
+  # Shared PAYLOAD_ARTIFACT_RE (C2) — one definition for Read + Bash. A
+  # trailing space is appended so the `([[:space:]"']|$)` end-anchors on
+  # the `.spec`/`.har` alternatives fire on a bare path too.
+  if echo "$FILE_PATH " | grep -qE "$PAYLOAD_ARTIFACT_RE"; then
     emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'payload-ingest' capability (Read vector).
 
 File: ${FILE_PATH}
@@ -256,14 +266,18 @@ CMD_PREVIEW="$CMD"
 [ ${#CMD} -gt 160 ] && CMD_PREVIEW="${CMD:0:160}..."
 
 # --- class detectors --------------------------------------------------------
-# Command-word anchor: start of line or after a separator, tolerating
-# `command` / `env` wrappers (same posture as commit-message-gate.sh).
-WORD='(^|[;&|(][[:space:]]*)((command|env)[[:space:]]+)?'
+# Command-word anchor: start of line, after a separator (`;`, `&&`, `||`,
+# `|`, `&`, `(`), tolerating leading process wrappers (`command`, `env`,
+# `sudo`, `time`, `nice`, `timeout <n>`, `xargs …`). One anchor for every
+# class detector so the "command word" idea is enforced identically
+# everywhere (a past inconsistency had the browser check tolerate fewer
+# wrappers than the payload check).
+WORD='(^|[;&|(][[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*)((command|env|sudo|time|nice|xargs|timeout([[:space:]]+[0-9smhd]+)?)[[:space:]]+)*'
+# npm/npx/etc. runner prefixes, tolerating runner flags like `npx -y`.
+RUNNERS='(npx|bunx|pnpm[[:space:]]+exec|yarn[[:space:]]+exec)([[:space:]]+-[-A-Za-z]+)*[[:space:]]+'
 
 exercises_browser() {
-  local runners='(npx|bunx|pnpm[[:space:]]+exec|yarn[[:space:]]+exec)[[:space:]]+'
-  local sep='(^|[;|][[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*)'
-  echo "$CMD" | grep -qE "${sep}(${runners})?playwright-cli[[:space:]]"
+  echo "$CMD" | grep -qE "${WORD}(${RUNNERS})?playwright-cli[[:space:]]"
 }
 
 exercises_remote_push() {
@@ -273,8 +287,14 @@ exercises_remote_push() {
 exercises_mutate() {
   # git commit
   echo "$CMD" | grep -qE "${WORD}git([[:space:]]+(-[cC][[:space:]]+[^[:space:]]+|--[a-z-]+(=[^[:space:]]+)?))*[[:space:]]+commit([[:space:]]|\$)" && return 0
-  # filesystem mutators as the command word
-  echo "$CMD" | grep -qE "${WORD}(rm|mv|cp|touch|mkdir|ln|chmod|chown|truncate)[[:space:]]" && return 0
+  # filesystem mutators as the command word — EXCEPT when every path
+  # operand is scratch (/tmp, /dev, $TMPDIR). The deny message promises
+  # verifier roles a scratch workspace; without this exemption
+  # `cp report /tmp/x`, `mkdir -p /tmp/w`, `touch /tmp/f` were denied,
+  # contradicting the promise.
+  if echo "$CMD" | grep -qE "${WORD}(rm|mv|cp|touch|mkdir|ln|chmod|chown|truncate)[[:space:]]"; then
+    mutate_targets_all_scratch || return 0
+  fi
   # in-place editors
   echo "$CMD" | grep -qE "${WORD}sed[[:space:]]+[^;|&]*-i" && return 0
   echo "$CMD" | grep -qE "${WORD}perl[[:space:]]+[^;|&]*-i" && return 0
@@ -299,10 +319,30 @@ exercises_mutate() {
   return 1
 }
 
-PAYLOAD_ARTIFACT_RE='\.spec\.(ts|js|mjs|tsx)|\.subagent-returns|\.playwright-cli/|test-results/|playwright-report/|trace\.zip|\.har([[:space:]]|$)'
+# Content-dumping tools. Split into two families:
+#   DUMP_TOOL     — prints file/stdin content verbatim.
+#   COUNT_FLAGS   — flags that turn a dumper into a metadata read (grep -c
+#                   etc.) which stays allowed.
+DUMP_TOOL='(cat|head|tail|less|more|nl|strings|base64|xxd|od|tac|hexdump|xxd|awk|cut|rev|fold|expand|column)'
 exercises_payload_ingest() {
-  echo "$CMD" | grep -qE "${WORD}(cat|head|tail|less|more|nl|strings|base64|xxd|od)[[:space:]]" || return 1
-  echo "$CMD" | grep -qE "$PAYLOAD_ARTIFACT_RE"
+  echo "$CMD" | grep -qE "$PAYLOAD_ARTIFACT_RE" || return 1
+  # A dumper as the command word (wrappers/xargs tolerated by WORD). The
+  # tool may sit at end-of-line — `… | xargs cat` reads its target from
+  # stdin, so `cat` has no trailing operand.
+  echo "$CMD" | grep -qE "${WORD}${DUMP_TOOL}([[:space:]]|\$)" && return 0
+  # grep that PRINTS content (not -c/-l/-L/-q counting/listing) on an
+  # artifact — `grep . foo.spec.ts` dumps the whole file.
+  if echo "$CMD" | grep -qE "${WORD}(grep|egrep|fgrep|rg|ag)[[:space:]]"; then
+    echo "$CMD" | grep -qE "${WORD}(grep|egrep|fgrep|rg|ag)([[:space:]]+-[A-Za-z]*[clLq][A-Za-z]*)+([[:space:]]|\$)" || return 0
+  fi
+  # Read redirection into a var/echo: `x=$(<foo.spec.ts)` or `< foo.spec.ts`.
+  # PAYLOAD_ARTIFACT_RE has top-level `|`, so it MUST be grouped when
+  # concatenated after a prefix — otherwise a bare `test-results`
+  # alternative would match unanchored (a real bug that denied `ls
+  # test-results/`).
+  echo "$CMD" | grep -qE '\$\([[:space:]]*<[[:space:]]*[^)]*('"$PAYLOAD_ARTIFACT_RE"')' && return 0
+  echo "$CMD" | grep -qE '(^|[[:space:]])<[[:space:]]*[^[:space:];|&]*('"$PAYLOAD_ARTIFACT_RE"')' && return 0
+  return 1
 }
 
 # Orchestrator-flavoured browser check: a playwright-cli invocation that
@@ -315,18 +355,62 @@ exercises_ui_inspection() {
   return 0
 }
 
-# App-surface fetch: curl/wget pulling a page or API-response BODY into
-# the executing window. Bounded probes stay allowed: curl -I/--head,
-# body discarded to /dev/null, wget --spider, wget-to-file (no stdout).
+# mutate_targets_all_scratch — 0 iff every path-shaped operand of a
+# filesystem-mutator command is under a scratch prefix (/tmp, /dev,
+# $TMPDIR). Flags and the mutator word itself are ignored. A command with
+# no path operands (rare) is treated as non-scratch (deny).
+mutate_targets_all_scratch() {
+  local tmp="${TMPDIR:-/tmp}"   # ${TMPDIR:-} — never trip set -u on unset
+  local first_seg mutator rest tok
+  first_seg=$(printf '%s' "$CMD" | sed -E 's/[;&|].*$//')
+  mutator=$(printf '%s' "$first_seg" | sed -E 's/^[[:space:]]*((command|env|sudo|time|nice|xargs)[[:space:]]+)*(rm|mv|cp|touch|mkdir|ln|chmod|chown|truncate).*$/\3/')
+  rest=$(printf '%s' "$first_seg" | sed -E 's/^[[:space:]]*((command|env|sudo|time|nice|xargs)[[:space:]]+)*(rm|mv|cp|touch|mkdir|ln|chmod|chown|truncate)[[:space:]]*//')
+  # Collect non-flag path operands.
+  local operands="" n=0
+  for tok in $rest; do
+    case "$tok" in -*) continue ;; esac
+    operands="$operands $tok"; n=$((n + 1))
+  done
+  [ "$n" -eq 0 ] && return 1
+  is_scratch() {
+    case "$1" in
+      /tmp/*|/tmp|/dev/*|/dev/null|"$tmp"/*|'$TMPDIR'/*|'${TMPDIR}'/*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  case "$mutator" in
+    cp|mv|ln)
+      # Write target is the LAST operand; earlier operands are sources (reads).
+      local last=""; for tok in $operands; do last="$tok"; done
+      is_scratch "$last" ;;
+    *)
+      # rm/touch/mkdir/chmod/chown/truncate — every operand is a target.
+      for tok in $operands; do is_scratch "$tok" || return 1; done
+      return 0 ;;
+  esac
+}
+
+# App-response fetch: curl/wget that returns a BODY into the executing
+# window. The class is "no application/API bodies in the orchestrator" —
+# distinguishing app hosts from package registries heuristically is
+# unreliable (B3: `curl 0.0.0.0:3000` and LAN IPs slipped a host allowlist;
+# F1: a registry allowlist would still deny nothing useful), so the rule is
+# host-agnostic: any body-returning curl/wget is app-fetch. Bounded probes
+# stay allowed — anchored to the curl/wget SEGMENT (before the first pipe)
+# so a downstream `grep -I` can't disarm the exemption (B4).
 exercises_app_fetch() {
-  local url_re='https?://|localhost|127\.0\.0\.1'
-  if echo "$CMD" | grep -qE "${WORD}curl[[:space:]]" && echo "$CMD" | grep -qE "$url_re"; then
-    echo "$CMD" | grep -qE '(^|[[:space:]])(-[a-zA-Z]*I[a-zA-Z]*|--head)([[:space:]]|$)' && return 1
-    echo "$CMD" | grep -qE '(-o|--output)[[:space:]]+/dev/null' && return 1
+  local seg
+  if echo "$CMD" | grep -qE "${WORD}curl([[:space:]]|\$)"; then
+    seg=$(printf '%s' "$CMD" | sed -E 's/\|.*$//')
+    echo "$seg" | grep -qE '(^|[[:space:]])(-[A-Za-z]*I[A-Za-z]*|--head)([[:space:]]|$)' && return 1
+    echo "$seg" | grep -qE '(-o|--output)[[:space:]]+/dev/null' && return 1
     return 0
   fi
-  if echo "$CMD" | grep -qE "${WORD}wget[[:space:]]" && echo "$CMD" | grep -qE "$url_re"; then
-    echo "$CMD" | grep -qE '(-qO-|-O[[:space:]]*-([[:space:]]|$)|--output-document=-)' && return 0
+  if echo "$CMD" | grep -qE "${WORD}wget([[:space:]]|\$)"; then
+    seg=$(printf '%s' "$CMD" | sed -E 's/\|.*$//')
+    # Only the stdout forms ingest into the window; default wget writes a
+    # file in cwd (a disk write, not window ingestion — not this class).
+    echo "$seg" | grep -qE '(-qO-|-O[[:space:]]*-([[:space:]]|$)|--output-document=[[:space:]]*-([[:space:]]|$))' && return 0
     return 1
   fi
   return 1
@@ -343,7 +427,10 @@ if [ -z "$AGENT_ID" ]; then
   # quiet sessions in achilles projects stay untouched.
   pipeline_live || exit 0
 
-  if exercises_payload_ingest; then
+  # C1: drive enforcement off the DECLARED denied set (role map), same as
+  # the subagent branch — so adding/removing an orchestrator class in
+  # lib/agent-role-privileges.sh can't silently fork from what's enforced.
+  if denied_has payload-ingest && exercises_payload_ingest; then
     emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'payload-ingest' capability.
 
 Command: $CMD_PREVIEW
@@ -359,7 +446,7 @@ $(cite '§"Privilege classes" — the payload-ingest class (the context-leak cla
     exit 0
   fi
 
-  if exercises_ui_inspection; then
+  if denied_has browser && exercises_ui_inspection; then
     emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'browser' capability.
 
 Command: $CMD_PREVIEW
@@ -380,18 +467,19 @@ $(cite '§"Privilege classes" — the browser class (UI inspection/discovery is 
     exit 0
   fi
 
-  if exercises_app_fetch; then
+  if denied_has app-fetch && exercises_app_fetch; then
     emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'app-fetch' capability.
 
 Command: $CMD_PREVIEW
 
-Fetching application pages or API-response bodies into the orchestrator window is UI/API discovery by another route — the body is discovery payload, same as a DOM snapshot. The orchestrator's window must stay clean of app content.
+Fetching a response body into the orchestrator window is discovery/ingestion by another route — the body is payload, same as a DOM snapshot. The orchestrator's window must stay clean of fetched content while a pipeline is live; this applies to any body-returning curl/wget, not just the app under test (distinguishing app from registry by host is unreliable, so the rule is host-agnostic).
 
 Do this instead:
   - Dispatch phase1-<entry>: (discovery), stage2-<scenario>: (inspection), or a contract-testing subagent — it fetches in ITS context and returns a structured summary.
   - Liveness/health checks stay allowed in bounded form: curl -I <url>, curl --head <url>, or curl -o /dev/null -w '%{http_code}' <url>.
+  - Genuinely need a file on disk? wget <url> (writes to cwd, no window ingestion) is allowed.
 
-$(cite '§"Privilege classes" — the app-fetch class (application bodies are discovery payload)')"
+$(cite '§"Privilege classes" — the app-fetch class (response bodies are payload)')"
     exit 0
   fi
   exit 0
@@ -402,12 +490,12 @@ CLAIMED_SLUG=$(apt_extract_slug "$CMD")
 apt_resolve_actor "$PARENT_ID" "$CLAIMED_SLUG"
 [ -n "$ACTOR_DENIED" ] || exit 0
 
-if denied_has browser && exercises_browser; then
+if denied_has browser && exercises_ui_inspection; then
   emit_deny "[BLOCKED] Privilege violation: role '${ACTOR_ROLE}' lacks the 'browser' capability.
 
 Command: $CMD_PREVIEW
 
-This role's contract is text-only work — no browser session is opened for it (cleanup consolidates the ledger; phase4-prioritise-author writes prioritisation from section returns). A playwright-cli invocation from this context indicates scope drift beyond the dispatch brief.
+This role's contract is text-only work — no browser session is opened for it (cleanup consolidates the ledger; phase4-prioritise-author writes prioritisation from section returns). A playwright-cli invocation that opens/drives a session indicates scope drift beyond the dispatch brief. (The session-agnostic maintenance subcommands — close-all, kill-all, list, install-browser — stay allowed, matching the orchestrator.)
 
 Do this instead: finish the text deliverable from the inputs in the brief. If live-DOM evidence is genuinely missing, report the gap in the structured return so the orchestrator dispatches a browser-privileged role (composer/probe/section agent).
 

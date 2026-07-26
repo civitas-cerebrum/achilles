@@ -47,13 +47,23 @@ apt_load_live() {
 
 # apt_extract_slug <command>
 #
-# Prints the first `-s=<slug>` / `-s <slug>` session slug in <command>,
-# or nothing.
+# Prints the `-s=<slug>` / `-s <slug>` playwright-cli session slug in
+# <command>, or nothing.
+#
+# The slug is ONLY honoured when <command> actually invokes playwright-cli
+# — the flag is that tool's session selector, and reading it from anywhere
+# else lets arbitrary command text drive role resolution (e.g. a
+# `git commit -m "...-s=composer-x..."` message would otherwise register
+# as a composer role claim). Gating on a real invocation confines the slug
+# signal to genuine browser sessions, whose prefix the isolation guard
+# already shape-checks.
 apt_extract_slug() {
+  local cmd="$1"
+  echo "$cmd" | grep -qE '(^|[;&|(][[:space:]]*|[[:space:]])(npx[[:space:]]+([^;|&]*[[:space:]])?|bunx[[:space:]]+|pnpm[[:space:]]+exec[[:space:]]+|yarn[[:space:]]+exec[[:space:]]+)?playwright-cli([[:space:]]|$)' || return 0
   local slug
-  slug=$(echo "$1" | grep -oE -- '-s=[A-Za-z0-9_.-]+' | head -1 | sed 's/^-s=//' || true)
+  slug=$(echo "$cmd" | grep -oE -- '-s=[A-Za-z0-9_.-]+' | head -1 | sed 's/^-s=//' || true)
   if [ -z "$slug" ]; then
-    slug=$(echo "$1" | grep -oE -- '-s[[:space:]]+[A-Za-z0-9_.-]+' | head -1 | sed -E 's/^-s[[:space:]]+//' || true)
+    slug=$(echo "$cmd" | grep -oE -- '-s[[:space:]]+[A-Za-z0-9_.-]+' | head -1 | sed -E 's/^-s[[:space:]]+//' || true)
   fi
   [ -n "$slug" ] && printf '%s' "$slug"
   return 0

@@ -244,3 +244,59 @@ rm -f "$LEDGER"
 assert_allow "$H" "$(payload tool_name=Bash command='curl -s https://app.example.com/checkout' cwd="$TMPPG")" \
   "orchestrator curl, NO pipeline → allow (not policed)"
 rm -f "$TBL" "$LEDGER"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: review-hardening — expanded payload-dump detectors"
+echo '{"currentPhase": 5}' > "$LEDGER"; rm -f "$TBL"
+assert_deny "$H" "$(payload tool_name=Bash command='grep . tests/e2e/journeys/checkout.spec.ts' cwd="$TMPPG")" \
+  "orchestrator grep-content of spec → deny" "payload-ingest"
+assert_deny "$H" "$(payload tool_name=Bash command='awk "{print}" tests/e2e/journeys/checkout.spec.ts' cwd="$TMPPG")" \
+  "orchestrator awk dump → deny" "payload-ingest"
+assert_deny "$H" "$(payload tool_name=Bash command='sudo cat tests/e2e/journeys/checkout.spec.ts' cwd="$TMPPG")" \
+  "orchestrator sudo-wrapped cat → deny" "payload-ingest"
+assert_deny "$H" "$(payload tool_name=Bash command='find test-results -name "*.json" | xargs cat' cwd="$TMPPG")" \
+  "orchestrator find|xargs cat of results → deny" "payload-ingest"
+assert_allow "$H" "$(payload tool_name=Bash command='grep -c test tests/e2e/journeys/checkout.spec.ts' cwd="$TMPPG")" \
+  "orchestrator grep -c (count) → allow"
+assert_allow "$H" "$(payload tool_name=Bash command='ls test-results/' cwd="$TMPPG")" \
+  "orchestrator ls artifact dir → allow (regression: unanchored alternation)"
+
+section "privilege-guard: review-hardening — browser detector wrapper forms"
+assert_deny "$H" "$(payload tool_name=Bash command='command playwright-cli -s=phase1-x open https://x' cwd="$TMPPG")" \
+  "orchestrator command-wrapped playwright-cli → deny" "'browser'"
+assert_deny "$H" "$(payload tool_name=Bash command='(playwright-cli -s=phase1-x open https://x)' cwd="$TMPPG")" \
+  "orchestrator subshell playwright-cli → deny" "'browser'"
+assert_deny "$H" "$(payload tool_name=Bash command='npx -y playwright-cli -s=phase1-x nav' cwd="$TMPPG")" \
+  "orchestrator npx -y playwright-cli → deny" "'browser'"
+
+section "privilege-guard: review-hardening — app-fetch host-agnostic + anchored probe"
+assert_deny "$H" "$(payload tool_name=Bash command='curl 0.0.0.0:3000/api/users' cwd="$TMPPG")" \
+  "orchestrator curl 0.0.0.0 body → deny" "'app-fetch'"
+assert_deny "$H" "$(payload tool_name=Bash command='curl 192.168.1.9/api' cwd="$TMPPG")" \
+  "orchestrator curl LAN-IP body → deny" "'app-fetch'"
+assert_deny "$H" "$(payload tool_name=Bash command='curl http://localhost:3000/x | grep -I foo' cwd="$TMPPG")" \
+  "orchestrator curl body piped to grep -I → deny (probe exemption anchored)" "'app-fetch'"
+assert_allow "$H" "$(payload tool_name=Bash command='curl -I https://app.example.com' cwd="$TMPPG")" \
+  "orchestrator curl -I header probe → allow"
+assert_allow "$H" "$(payload tool_name=Bash command='wget https://app.example.com/asset.png' cwd="$TMPPG")" \
+  "orchestrator wget-to-file (no window ingestion) → allow"
+
+section "privilege-guard: review-hardening — verifier scratch writes honored (F2)"
+seed_table workflow-reviewer
+assert_allow "$H" "$(payload tool_name=Bash command='mkdir -p /tmp/wf-work' cwd="$TMPPG" agent_id=sub_v)" \
+  "verifier mkdir /tmp → allow (scratch)"
+assert_allow "$H" "$(payload tool_name=Bash command='cp tests/e2e/docs/x.md /tmp/note' cwd="$TMPPG" agent_id=sub_v)" \
+  "verifier cp to /tmp (source is a read) → allow"
+assert_deny "$H" "$(payload tool_name=Bash command='cp a tests/e2e/y' cwd="$TMPPG" agent_id=sub_v)" \
+  "verifier cp to project dest → deny" "'mutate'"
+assert_deny "$H" "$(payload tool_name=Bash command='rm /tmp/a tests/keep' cwd="$TMPPG" agent_id=sub_v)" \
+  "verifier rm mixed scratch+project → deny" "'mutate'"
+
+section "privilege-guard: review-hardening — cleanup role may run maintenance subcommands (F3)"
+seed_table cleanup
+assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli close-all' cwd="$TMPPG" agent_id=sub_cl2)" \
+  "cleanup close-all (session-agnostic) → allow"
+assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=cleanup-x open https://x' cwd="$TMPPG" agent_id=sub_cl2)" \
+  "cleanup opening a session → deny" "'browser'"
+
+rm -f "$TBL" "$LEDGER"
