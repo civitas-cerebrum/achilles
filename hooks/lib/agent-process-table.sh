@@ -87,14 +87,27 @@ apt_resolve_actor() {
     fi
   fi
 
-  # (2) Role claim via the -s=<slug> session flag.
+  # (2) Role claim via the -s=<slug> session flag — VERIFIED against the
+  # process table: with live entries present, a claim is accepted only
+  # when some live process actually holds the claimed role. An
+  # unverified claim would let a context pick a laxer role (or, in
+  # user-exec mode, a laxer uid) by slug alone; the dispatch-time table
+  # is the ground truth, the slug is only a tie-breaker within it. With
+  # an empty table there is no better signal, so the claim stands.
   if [ -n "$claimed_slug" ]; then
     local slug_role
     if slug_role=$(resolve_privilege_role "$claimed_slug"); then
-      ACTOR_ROLE="$slug_role"
-      ACTOR_DENIED=$(role_denied_classes "$slug_role")
-      ACTOR_EXACT=1
-      return 0
+      local claim_ok=1
+      if [ "${APT_LIVE_COUNT:-0}" -gt 0 ]; then
+        echo "$APT_LIVE" | "$JQ" -e --arg r "$slug_role" \
+          '[.[].role] | index($r) != null' >/dev/null 2>&1 || claim_ok=0
+      fi
+      if [ "$claim_ok" = "1" ]; then
+        ACTOR_ROLE="$slug_role"
+        ACTOR_DENIED=$(role_denied_classes "$slug_role")
+        ACTOR_EXACT=1
+        return 0
+      fi
     fi
   fi
 

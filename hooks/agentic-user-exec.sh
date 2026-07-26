@@ -104,6 +104,12 @@ PARENT_ID=$(echo "$INPUT" | "$JQ" -r '.parent_tool_use_id // empty' 2>/dev/null 
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 REPO_ROOT=$(cd "$GUARD_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
 
+# Project scoping: role-user execution only applies in achilles projects.
+# shellcheck source=lib/achilles-project-gate.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-project-gate.sh"
+achilles_hooks_active "$REPO_ROOT" || exit 0
+
 apt_load_live "$REPO_ROOT"
 apt_resolve_actor "$PARENT_ID" "$(apt_extract_slug "$CMD")"
 

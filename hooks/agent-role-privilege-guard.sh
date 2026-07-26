@@ -4,11 +4,21 @@
 #                                 role does not hold.
 #
 # Hook    : PreToolUse:Bash  (command-class enforcement)
-#           PreToolUse:Agent (nested-dispatch enforcement)
+#           PreToolUse:Agent (role-required + nested-dispatch enforcement)
+#           PreToolUse:Read  (orchestrator payload-ingest, Read vector)
 # Mode    : DENY (privilege violation) / silent allow (everything else)
+# Scope   : achilles projects only (lib/achilles-project-gate.sh) — inert
+#           in every other repo even though installed globally.
 # State   : reads <project>/.achilles/.agent-process-table.json
 #           (written by agentic-process-registrar.sh; never writes it)
 # Env     : AGENT_ROLE_PRIVILEGE_GUARD=off → disable (calibration escape hatch)
+#           AGENTIC_OS_ROLE_REQUIRED=off   → allow role-less dispatches
+#                                            during live pipelines
+#
+# Every deny ends with a transcript-aware methodology citation
+# (lib/methodology-citation.sh): if the executing context never loaded
+# the agentic-OS spec, the deny instructs a Read of it as the mandatory
+# next step; if it did, the deny points back at the section to re-apply.
 #
 # Model
 # -----
@@ -94,16 +104,27 @@ fi
 # shellcheck source=lib/agent-process-table.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/agent-process-table.sh"
+# shellcheck source=lib/achilles-project-gate.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-project-gate.sh"
+# shellcheck source=lib/methodology-citation.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/methodology-citation.sh"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
-case "$TOOL_NAME" in Bash|Agent) ;; *) exit 0 ;; esac
+case "$TOOL_NAME" in Bash|Agent|Read) ;; *) exit 0 ;; esac
 
 AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
 PARENT_ID=$(echo "$INPUT" | "$JQ" -r '.parent_tool_use_id // empty' 2>/dev/null || echo "")
+TRANSCRIPT_PATH=$(echo "$INPUT" | "$JQ" -r '.transcript_path // empty' 2>/dev/null || echo "")
 
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 REPO_ROOT=$(cd "$GUARD_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+
+# Project scoping: the achilles methodology is enforced only in achilles
+# projects — everywhere else this hook is inert.
+achilles_hooks_active "$REPO_ROOT" || exit 0
 
 # Live process-table slice (shared load + resolution — lib/agent-process-table.sh).
 apt_load_live "$REPO_ROOT"
@@ -124,15 +145,61 @@ denied_has() {
   case " $ACTOR_DENIED " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
+# cite <section-hint> — transcript-aware methodology citation appended to
+# every deny (lib/methodology-citation.sh): instructs a Read of the spec
+# when the transcript shows it was never loaded, a re-apply otherwise.
+cite() {
+  methodology_block "$TRANSCRIPT_PATH" "$DOC_REF" "$1"
+}
+
+# pipeline_live — 0 iff an achilles pipeline is actually running here
+# (live process-table entries or a pipeline ledger on disk). Orchestrator
+# policing is scoped to live pipelines only.
+pipeline_live() {
+  [ "$APT_LIVE_COUNT" -gt 0 ] && return 0
+  local f
+  for f in \
+    "$REPO_ROOT/tests/e2e/docs/onboarding-status.json" \
+    "$REPO_ROOT/tests/e2e/docs/coverage-expansion-state.json" \
+    "$REPO_ROOT/tests/perf/docs/perf-onboarding-status.json"; do
+    [ -f "$f" ] && return 0
+  done
+  return 1
+}
+
 # ============================================================================
-# PreToolUse:Agent — nested-dispatch enforcement (process-creation privilege)
+# PreToolUse:Agent — process-creation enforcement
 # ============================================================================
 if [ "$TOOL_NAME" = "Agent" ]; then
-  # Orchestrator dispatches are process creation by the session owner —
-  # always allowed here (ordering/shape gates live in other hooks).
-  [ -n "$AGENT_ID" ] || exit 0
-
   DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
+
+  if [ -z "$AGENT_ID" ]; then
+    # Orchestrator dispatch — process creation by the session owner.
+    # While a pipeline is live, every process must be created under a
+    # role user: a role-less (unconfined) dispatch would run with no
+    # privilege set, no return schema, and no slug convention — outside
+    # the OS entirely. Ordering/shape gates for role-prefixed dispatches
+    # live in the other Agent hooks.
+    [ "${AGENTIC_OS_ROLE_REQUIRED:-on}" = "off" ] && exit 0
+    pipeline_live || exit 0
+    DESC_TRIMMED=$(echo "$DESCRIPTION" | sed -E 's/^[[:space:]]+//')
+    if ! resolve_privilege_role "$DESC_TRIMMED" >/dev/null; then
+      emit_deny "[BLOCKED] Role-less subagent dispatch while a pipeline is live.
+
+Attempted dispatch: \"${DESCRIPTION:0:120}\"
+
+Every process created during an achilles run must be assigned a role user via its description prefix — the role fixes its privilege set (lib/agent-role-privileges.sh), its return schema, and its playwright-cli session slug. A free-form dispatch would execute UNCONFINED alongside privileged pipeline work.
+
+Do this instead — prefix the description with the role that matches the work:
+  composer-<j-slug>: | reviewer-<j-slug>: | probe-<j-slug>: | workflow-reviewer-<scope>: | phase-validator-<N>: | process-validator-<scope>: | phase1-<entry>: | phase4-cycle-<N>-<section>: | stage2-<scenario>: | cleanup-<scope>: | companion-<task>: | fd-<failure>: | load-run-<pass>:
+
+$(cite '§"Roles" (the description-prefix vocabulary) and §"The model" (dispatch = process creation under a role user)')"
+      exit 0
+    fi
+    exit 0
+  fi
+
+  # Subagent context: nested-dispatch enforcement.
   apt_resolve_actor "$PARENT_ID" ""
   if denied_has dispatch; then
     emit_deny "[BLOCKED] Privilege violation: role '${ACTOR_ROLE}' lacks the 'dispatch' capability.
@@ -146,7 +213,34 @@ Do this instead:
   2. Put the follow-up need in the structured return (canonical schema — schemas/subagent-returns/).
   3. The orchestrator dispatches the next process with a fresh isolated context.
 
-Reference: ${DOC_REF} §\"dispatch\"."
+$(cite '§"Privilege classes" — the dispatch class (single-level fan-out)')"
+    exit 0
+  fi
+  exit 0
+fi
+
+# ============================================================================
+# PreToolUse:Read — orchestrator payload-ingest enforcement (Read vector)
+# ============================================================================
+if [ "$TOOL_NAME" = "Read" ]; then
+  # Subagents read their own slices by contract — the Read vector is
+  # gated for the ORCHESTRATOR only, and only while a pipeline is live.
+  [ -z "$AGENT_ID" ] || exit 0
+  pipeline_live || exit 0
+  FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // ""' 2>/dev/null || echo "")
+  [ -n "$FILE_PATH" ] || exit 0
+  if echo "$FILE_PATH" | grep -qE '\.spec\.(ts|js|mjs|tsx)$|/\.subagent-returns/|/\.playwright-cli/|/test-results/|/playwright-report/|trace\.zip$|\.har$'; then
+    emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'payload-ingest' capability (Read vector).
+
+File: ${FILE_PATH}
+
+Reading this payload artifact pulls subagent-context content (test source / spill returns / traces / run reports) into the ORCHESTRATOR window — the same leak the Bash-dump denial closes, through the Read tool instead. The isolation contract's single sanctioned bounded Read is one journey's pass-4 section of the adversarial-findings ledger — which this path is not.
+
+Do this instead:
+  - Dispatch a role-prefixed subagent whose brief points at this file; it reads in ITS context and returns a structured summary.
+  - Need existence/size/counts? ls, find, wc -l, grep -c, grep -l, stat.
+
+$(cite '§"Privilege classes" — the payload-ingest class (the context-leak class, Bash and Read vectors)')"
     exit 0
   fi
   exit 0
@@ -219,16 +313,8 @@ if [ -z "$AGENT_ID" ]; then
   ACTOR_DENIED=$(role_denied_classes orchestrator)
 
   # Only police the orchestrator while a pipeline is actually live —
-  # ordinary dev sessions in non-achilles projects stay untouched.
-  PIPELINE_LIVE=0
-  [ "$APT_LIVE_COUNT" -gt 0 ] && PIPELINE_LIVE=1
-  for f in \
-    "$REPO_ROOT/tests/e2e/docs/onboarding-status.json" \
-    "$REPO_ROOT/tests/e2e/docs/coverage-expansion-state.json" \
-    "$REPO_ROOT/tests/perf/docs/perf-onboarding-status.json"; do
-    [ -f "$f" ] && PIPELINE_LIVE=1
-  done
-  [ "$PIPELINE_LIVE" -eq 1 ] || exit 0
+  # quiet sessions in achilles projects stay untouched.
+  pipeline_live || exit 0
 
   if exercises_payload_ingest; then
     emit_deny "[BLOCKED] Privilege violation: role 'orchestrator' lacks the 'payload-ingest' capability.
@@ -242,7 +328,7 @@ Do this instead:
   - Need existence/size/counts? Metadata reads are allowed: ls, find, wc -l, grep -c, grep -l, stat.
   - Need one journey's ledger section (the single sanctioned exception)? Use the Read tool on that bounded slice, not a Bash dump.
 
-Reference: ${DOC_REF} §\"payload-ingest\"; skills/coverage-expansion/references/subagent-isolation.md."
+$(cite '§"Privilege classes" — the payload-ingest class (the context-leak class)') Also: skills/coverage-expansion/references/subagent-isolation.md."
     exit 0
   fi
   exit 0
@@ -262,7 +348,7 @@ This role's contract is text-only work — no browser session is opened for it (
 
 Do this instead: finish the text deliverable from the inputs in the brief. If live-DOM evidence is genuinely missing, report the gap in the structured return so the orchestrator dispatches a browser-privileged role (composer/probe/section agent).
 
-Reference: ${DOC_REF} §\"browser\"."
+$(cite '§"Privilege classes" — the browser class (text-only role contracts)')"
   exit 0
 fi
 
@@ -275,7 +361,7 @@ No subagent role publishes to a remote. Pushing is a session-owner action taken 
 
 Do this instead: commit locally if your role's contract calls for it, and note readiness-to-push in the structured return.
 
-Reference: ${DOC_REF} §\"remote-push\"."
+$(cite '§"Privilege classes" — the remote-push class')"
   exit 0
 fi
 
@@ -291,7 +377,7 @@ Do this instead:
   - Scratch space is allowed: write under /tmp or \$TMPDIR if you need a workfile.
   - Report defects in the structured return; the orchestrator routes fixes to a mutate-privileged role.
 
-Reference: ${DOC_REF} §\"mutate\"."
+$(cite '§"Privilege classes" — the mutate class (read-only verifier roles)')"
   exit 0
 fi
 

@@ -111,3 +111,18 @@ section "user-exec: AGENTIC_OS_USER_MODE=off disables rewriting"
 seed_one composer
 OFF_OUT=$(printf '%s' "$(payload tool_name=Bash command='ls' cwd="$TMPUX" agent_id=sub_c parent_tool_use_id=toolu_composer)" | AGENTIC_OS_MARKER="$MARKER" AGENTIC_OS_USER_MODE=off bash "$H" 2>/dev/null)
 assert_eq "$OFF_OUT" "" "user mode off → silent allow despite marker + exact role"
+
+section "user-exec: slug claim must be verified against the live table"
+# Only reviewer-inloop live: a composer slug claim is rejected by the
+# shared resolution lib, the single live role wins, and the rewrite
+# targets achl-reviewer — a subagent cannot pick a laxer uid by slug.
+seed_one reviewer-inloop
+assert_rewrite "$(payload tool_name=Bash command='npx playwright-cli -s=composer-j-x-1-c1 open https://x' cwd="$TMPUX" agent_id=sub_s)" \
+  "composer slug claim, reviewer live → rewrites to achl-reviewer (table wins)" "achl-reviewer" "playwright-cli"
+
+section "user-exec: non-achilles project → inert"
+PLAINUX=$(mktemp -d)
+( cd "$PLAINUX" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+PLAIN_OUT=$(printf '%s' "$(payload tool_name=Bash command='npx playwright-cli -s=composer-j-x-1-c1 open https://x' cwd="$PLAINUX" agent_id=sub_c)" | AGENTIC_OS_MARKER="$MARKER" bash "$H" 2>/dev/null)
+assert_eq "$PLAIN_OUT" "" "plain repo → no rewrite despite marker + slug"
+rm -rf "$PLAINUX"

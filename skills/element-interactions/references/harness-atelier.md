@@ -3,7 +3,9 @@
 **Status:** authoritative spec for the harness-atelier telemetry + visualizer pair.
 **Scope:** what is recorded, the event schema, the leak channels, the metrics the report computes, and how to run the visualizer.
 
-harness-atelier is the observability companion to the agentic-OS role-privilege harness ([`agentic-os-roles.md`](agentic-os-roles.md)): the privilege hooks *enforce* the context-isolation contract; atelier *measures* it. It visualizes how much context each agent and subagent uses, how context transfers between them, and — when the contract is violated — where exactly the leak happened, down to the telemetry line.
+harness-atelier is a **general-purpose harness observability utility** — built alongside the agentic-OS role-privilege harness but not tied to it. It visualizes how much context each agent and subagent uses, how context transfers between them, which skills consume the context, how the session unfolds over time, and — when an isolation contract is violated — where exactly the leak happened, down to the telemetry line.
+
+Use it with achilles (where the privilege hooks *enforce* the isolation contract and atelier *measures* it — see [`agentic-os-roles.md`](agentic-os-roles.md)), with any other Claude Code experiment (drop a `.atelier` marker file at the repo root to opt in — the collector needs nothing else), or with any other coding agent that emits the JSONL event schema below (point the CLI at its log with `--telemetry <file>`). The event schema is the integration contract; nothing in the collector's output or the visualizer's aggregation assumes achilles.
 
 ---
 
@@ -11,8 +13,8 @@ harness-atelier is the observability companion to the agentic-OS role-privilege 
 
 | Piece | What it does |
 |---|---|
-| [`../../../hooks/atelier-telemetry-collector.sh`](../../../hooks/atelier-telemetry-collector.sh) | Pure observer hook (`PreToolUse:Agent`, `PostToolUse:Agent`, `PostToolUse:Bash`; never blocks, best-effort writes). Appends one JSON line per context transfer to `<project>/.achilles/atelier-telemetry.jsonl`. Off switch: `ATELIER_TELEMETRY=off`. |
-| [`../../../scripts/atelier/harness-atelier.mjs`](../../../scripts/atelier/harness-atelier.mjs) | Zero-dependency Node CLI (`npm run atelier`, or `node scripts/atelier/harness-atelier.mjs [--project <dir>] [--out <file>] [--json]`). Aggregates the telemetry (plus `schema-guard-log.jsonl` and the agentic-OS process table) into a self-contained HTML report at `<project>/.achilles/harness-atelier.html`; `--json` emits the aggregate for CI. |
+| [`../../../hooks/atelier-telemetry-collector.sh`](../../../hooks/atelier-telemetry-collector.sh) | Pure observer hook (`PreToolUse:Agent`, `PostToolUse:Agent`, `PostToolUse:Bash`, `PostToolUse:Read\|Write\|Edit\|Grep\|Glob\|Skill\|WebFetch\|WebSearch`; never blocks, best-effort writes). Appends one JSON line per context transfer to `<project>/.achilles/atelier-telemetry.jsonl`. Opt-in per project: achilles project, `.atelier` marker file, or `ATELIER_TELEMETRY=on`; off switch: `ATELIER_TELEMETRY=off`. |
+| [`../../../scripts/atelier/harness-atelier.mjs`](../../../scripts/atelier/harness-atelier.mjs) | Zero-dependency Node CLI (`npm run atelier`, or `node scripts/atelier/harness-atelier.mjs [--project <dir>] [--out <file>] [--telemetry <jsonl>] [--json]`). Aggregates the telemetry (plus `schema-guard-log.jsonl` and the agentic-OS process table when present) into a self-contained HTML report at `<project>/.achilles/harness-atelier.html`; `--json` emits the aggregate for CI; `--telemetry` points at any agent's log, making the CLI harness-agnostic. |
 
 ## What gets recorded
 
@@ -21,6 +23,10 @@ Every event carries `ts`, `event`, `actor` (`orchestrator` or the subagent's `ag
 - **`dispatch`** (`PreToolUse:Agent`) — context flowing **down**: `tool_use_id`, `dispatch_role` (from the description prefix), `brief_bytes` (prompt + description size), truncated `description`. A dispatch issued from inside a subagent context records that agent as the actor — nested fan-out is visible, not just denied.
 - **`return`** (`PostToolUse:Agent`) — context flowing **up**: `return_bytes` (the payload landing in the orchestrator window) and, when the return violates "structured summary only", a `leak` object.
 - **`command`** (`PostToolUse:Bash`) — per-context activity: `bytes_out` (stdout ingested by the executing context), `command_head`, and for orchestrator-context payload dumps a `leak` object.
+- **`skill`** (`PostToolUse:Skill`) — a Skill invocation: `skill` name and `bytes_out` (the instruction content it injected). Skill events open a **segment** for their actor: every later byte-bearing event by the same actor attributes to that skill until the next skill event — this is how "context consumed by which skill / stage" is computed, with no harness-specific knowledge.
+- **`tool`** (`PostToolUse` on the generic matchers) — context ingestion by any other tool (Read/Grep/Glob/WebFetch/…): `tool`, `bytes_in`, `bytes_out`.
+
+This five-event schema is the **integration contract**: any coding agent (Claude Code or otherwise) that writes these JSON lines can be visualized by the CLI via `--telemetry` — the collector hook is just the Claude Code adapter.
 
 ## Leak channels
 
@@ -34,11 +40,15 @@ Each leak in the report's **leak panel** cites its channel, actor, role, evidenc
 
 ## What the report shows
 
-- **Summary tiles** — dispatches, total brief bytes ↓, total return bytes ↑, median return/brief ratio, orchestrator Bash ingest volume, leak count.
+- **Summary tiles** — session span, dispatches, total brief bytes ↓, total return bytes ↑, median return/brief ratio, orchestrator Bash ingest volume, leak count.
 - **Context-transfer map** — SVG flow: orchestrator on the left, one node per agent on the right; down-edges sized by brief bytes, up-edges by return bytes; leaking returns render red.
 - **Agents table** — per dispatch: role, brief ↓, return ↑, compression ratio, leak flag.
 - **Execution contexts table** — per actor: command count and stdout bytes ingested.
-- **Return-schema validity** — per-role valid/invalid counts joined from `.achilles/schema-guard-log.jsonl` (the schema guard's calibration log).
+- **Context by skill** — per skill: invocations, injected bytes (the skill's own instruction content), attributed bytes (everything its segment then consumed — briefs, returns, command stdout, tool ingestion), dispatches initiated.
+- **Context impact by role (pipeline stage)** — per dispatch role: dispatches, brief ↓ / return ↑ totals, compression ratio, leak count. For a pipeline harness the roles are the stages (composer/reviewer/probe map to passes), so this is the per-stage context-impact view.
+- **Tool mix** — bytes ingested per tool (Read vs Grep vs WebFetch …), the "what is actually filling the window" breakdown.
+- **Session** — start → end timestamps and duration, in the header and tiles.
+- **Return-schema validity** — per-role valid/invalid counts joined from `.achilles/schema-guard-log.jsonl` when present (achilles enrichment; absent for other harnesses, and the report degrades gracefully).
 
 ## Reading the metrics
 

@@ -7,6 +7,9 @@ H="$HOOK_DIR/atelier-telemetry-collector.sh"
 TMPAT=$(mktemp -d)
 trap 'rm -rf "$TMPAT"' EXIT
 ( cd "$TMPAT" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+# Opt in via the GENERIC marker (not the achilles markers) — atelier is a
+# general utility; any Claude Code experiment can `touch .atelier`.
+touch "$TMPAT/.atelier"
 LOG="$TMPAT/.achilles/atelier-telemetry.jsonl"
 
 last_line() { tail -1 "$LOG" 2>/dev/null; }
@@ -81,3 +84,31 @@ COUNT_BEFORE=$(wc -l < "$LOG")
 OFF_OUT=$(printf '%s' "$(payload tool_name=Bash hook_event_name=PostToolUse command='ls' stdout='x' cwd="$TMPAT")" | ATELIER_TELEMETRY=off bash "$H" 2>/dev/null)
 assert_eq "$OFF_OUT" "" "ATELIER_TELEMETRY=off → silent allow"
 assert_eq "$(wc -l < "$LOG")" "$COUNT_BEFORE" "off switch writes nothing"
+
+section "atelier-collector: skill events segment context consumption"
+P=$(payload tool_name=Skill hook_event_name=PostToolUse skill='journey-mapping' response_text='...skill instructions loaded into context...' cwd="$TMPAT")
+assert_allow "$H" "$P" "Skill invocation → silent allow"
+assert_eq "$(last_line | "$JQ" -r '.event')" "skill" "event = skill"
+assert_eq "$(last_line | "$JQ" -r '.skill')" "journey-mapping" "skill name recorded"
+SKB=$(last_line | "$JQ" -r '.bytes_out')
+TESTS_RUN=$((TESTS_RUN+1))
+if [ "$SKB" -gt 0 ] 2>/dev/null; then TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} skill bytes_out recorded ($SKB)"; else TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} skill bytes_out missing"; fi
+
+section "atelier-collector: generic tool events record context ingestion"
+P=$(payload tool_name=Read hook_event_name=PostToolUse file_path='/x/src/app.ts' response_text='file content pulled into the window' cwd="$TMPAT")
+assert_allow "$H" "$P" "Read → silent allow"
+assert_eq "$(last_line | "$JQ" -r '.event')" "tool" "event = tool"
+assert_eq "$(last_line | "$JQ" -r '.tool')" "Read" "tool name recorded"
+TESTS_RUN=$((TESTS_RUN+1))
+[ "$(last_line | "$JQ" -r '.bytes_out')" -gt 0 ] 2>/dev/null && { TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} tool bytes_out recorded"; } || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} tool bytes_out missing"; }
+
+section "atelier-collector: not opted in → inert (general-utility scoping)"
+PLAINAT=$(mktemp -d)
+( cd "$PLAINAT" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+assert_allow "$H" "$(payload tool_name=Bash hook_event_name=PostToolUse command='ls' stdout='x' cwd="$PLAINAT")" "plain repo, no marker → silent allow"
+TESTS_RUN=$((TESTS_RUN+1))
+[ ! -d "$PLAINAT/.achilles" ] && { TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} no telemetry written without opt-in"; } || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} telemetry written without opt-in"; }
+FORCED=$(printf '%s' "$(payload tool_name=Bash hook_event_name=PostToolUse command='ls' stdout='x' cwd="$PLAINAT")" | ATELIER_TELEMETRY=on bash "$H" 2>/dev/null)
+TESTS_RUN=$((TESTS_RUN+1))
+if [ -z "$FORCED" ] && [ -f "$PLAINAT/.achilles/atelier-telemetry.jsonl" ]; then TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} ATELIER_TELEMETRY=on forces collection anywhere"; else TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} forced collection failed"; fi
+rm -rf "$PLAINAT"

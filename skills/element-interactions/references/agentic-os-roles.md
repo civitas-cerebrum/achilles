@@ -13,11 +13,11 @@ The harness treats the agentic run as an operating system:
 
 | OS concept | Harness realisation |
 |---|---|
-| Process creation | An `Agent` dispatch. The orchestrator is the only context privileged to create processes (single-level fan-out). |
+| Process creation | An `Agent` dispatch. The orchestrator is the only context privileged to create processes (single-level fan-out), and while a pipeline is live every process it creates must be assigned a role via the description prefix — role-less dispatches are denied (escape hatch: `AGENTIC_OS_ROLE_REQUIRED=off`). |
 | User / login name | The dispatch description's role prefix (`composer-`, `reviewer-`, `probe-`, `workflow-reviewer-`, …). |
 | passwd + sudoers | [`../../../hooks/lib/agent-role-privileges.sh`](../../../hooks/lib/agent-role-privileges.sh) — the single source of truth mapping role → denied privilege classes. |
 | Process table | `<project>/.achilles/.agent-process-table.json`, written by [`../../../hooks/agentic-process-registrar.sh`](../../../hooks/agentic-process-registrar.sh) on every dispatch (30-minute TTL; hook-authored state — direct writes are denied). |
-| Kernel capability check | [`../../../hooks/agent-role-privilege-guard.sh`](../../../hooks/agent-role-privilege-guard.sh) on `PreToolUse:Bash` and `PreToolUse:Agent` — denies command classes the executing context's role lacks. |
+| Kernel capability check | [`../../../hooks/agent-role-privilege-guard.sh`](../../../hooks/agent-role-privilege-guard.sh) on `PreToolUse:Bash`, `PreToolUse:Agent`, and `PreToolUse:Read` — denies command classes the executing context's role lacks; every deny ends with a transcript-aware methodology citation (see §"Deny messages teach the methodology"). |
 | Ring boundary | The `agent_id` field on hook payloads: tool calls from dispatched subagents carry a non-empty `agent_id`; the orchestrator's carry none. |
 | setuid / privilege drop | [`../../../hooks/agentic-user-exec.sh`](../../../hooks/agentic-user-exec.sh) — when the role users are provisioned, subagent Bash commands are re-executed under the role-bound `achl-*` OS user (see §"OS-user execution mode"). |
 | useradd / account provisioning | [`../../../scripts/agentic-os/provision-role-users.sh`](../../../scripts/agentic-os/provision-role-users.sh) — operator-run; creates the role users, tier groups, sudoers drop-in, project ACLs, and the enablement marker. |
@@ -28,13 +28,13 @@ A subagent's privilege set is fixed at dispatch time by its role and cannot be r
 
 | Class | What it gates | Who loses it |
 |---|---|---|
-| `payload-ingest` | Bash dumps (`cat`, `head`, `tail`, `less`, `more`, `nl`, `strings`, `base64`, `xxd`, `od`) of subagent payload artifacts: `*.spec.ts` test source, `tests/e2e/docs/.subagent-returns/` spill files, `.playwright-cli/` traces, `test-results/`, `playwright-report/`, HAR/trace archives. | **orchestrator** |
+| `payload-ingest` | Ingestion of subagent payload artifacts into the orchestrator window, on BOTH vectors: Bash dumps (`cat`, `head`, `tail`, `less`, `more`, `nl`, `strings`, `base64`, `xxd`, `od`) and the `Read` tool. Payload artifacts: `*.spec.ts` test source, `tests/e2e/docs/.subagent-returns/` spill files, `.playwright-cli/` traces, `test-results/`, `playwright-report/`, HAR/trace archives. The single sanctioned bounded Read — one journey's pass-4 section of the adversarial-findings ledger — is not in the artifact set and stays allowed. | **orchestrator** |
 | `mutate` | Write-shaped Bash: `git commit`, `rm`/`mv`/`cp`/`touch`/`mkdir`/`ln`/`chmod`/`chown`/`truncate`, in-place editors (`sed -i`, `perl -i`), package installs, `tee`/redirection into non-scratch targets (`/dev/*`, `/tmp/*`, `$TMPDIR` stay allowed). | reviewer-inloop, workflow-reviewer, perf-reviewer, phase-validator, process-validator |
 | `browser` | `playwright-cli` invocations. | cleanup, phase4-prioritise-author (text-only contracts) |
 | `dispatch` | Nested `Agent` dispatch from inside a subagent context. | every known role |
 | `remote-push` | `git push`. | every known role |
 
-`payload-ingest` is the context-leak class: it is how subagent payload content would flow **upward** into the orchestrator window, violating the "never hold subagent payload content" rule. Metadata reads (`ls`, `find`, `wc`, `grep -c`, `grep -l`, `stat`) are always allowed, and the class is enforced only while a pipeline is live (live process-table entries, or an onboarding / coverage-expansion / perf ledger on disk) so ordinary dev sessions are untouched. The `Read` tool is not gated by this class — the single sanctioned bounded read (one journey's pass-4 ledger section) goes through `Read`, never a Bash dump.
+`payload-ingest` is the context-leak class: it is how subagent payload content would flow **upward** into the orchestrator window, violating the "never hold subagent payload content" rule. Metadata reads (`ls`, `find`, `wc`, `grep -c`, `grep -l`, `stat`) are always allowed, and the class is enforced only while a pipeline is live (live process-table entries, or an onboarding / coverage-expansion / perf ledger on disk) so quiet sessions are untouched. Subagent `Read`s are never gated — subagents read their own slices by contract.
 
 ## Roles
 
@@ -64,7 +64,7 @@ Free-form dispatches outside the methodology's role vocabulary register as `unco
 The guard resolves the executing role in this order:
 
 1. **`parent_tool_use_id` → process table** (exact; emitted by some harness builds).
-2. **`-s=<slug>` role claim** — the playwright-cli session slug carries the same role prefix as the dispatch description ([`playwright-cli-protocol.md`](playwright-cli-protocol.md) §3.1; the 1:1 mapping is enforced by `playwright-cli-isolation-guard.sh`).
+2. **`-s=<slug>` role claim, VERIFIED** — the playwright-cli session slug carries the same role prefix as the dispatch description ([`playwright-cli-protocol.md`](playwright-cli-protocol.md) §3.1; the 1:1 mapping is enforced by `playwright-cli-isolation-guard.sh`). With live table entries present, a claim is accepted only when some live process actually holds the claimed role — the dispatch-time table is ground truth and a slug cannot select a laxer role (or, in user-exec mode, a laxer uid) than anything actually dispatched. With an empty table the claim stands (no better signal).
 3. **Single live role class** in the process table → that role.
 4. **Multiple live role classes** → intersection: a class is denied only if every live process denies it (sound under ambiguity — never stricter than the weakest live process).
 5. **Empty/absent table** → unconfined (fail-open).
@@ -94,8 +94,17 @@ This creates, idempotently:
 
 `deprovision` reverses the accounts/sudoers/marker; `status` reports the current roster. On non-Linux hosts (or before provisioning) the mode is inert and the hook layer remains the enforcement floor.
 
+## Project scoping
+
+The agentic-OS hooks are installed globally (`~/.claude/hooks`) but enforced **only in achilles projects** — `lib/achilles-project-gate.sh` recognizes a project by the installed package (`node_modules/@civitas-cerebrum/achilles`), a `package.json` dependency on `@civitas-cerebrum/achilles` / `@civitas-cerebrum/element-interactions`, or the pipeline surfaces (`tests/e2e/docs`, `tests/perf/docs`, `.achilles`). In every other repo the registrar, the privilege guard, and the user-exec rewriter are inert: no denials, no `.achilles/` state, no role-user rewrites. Within an achilles project, orchestrator policing is additionally scoped to LIVE pipelines (ledger on disk or live process-table entries).
+
+## Deny messages teach the methodology
+
+Every deny this guard emits ends with a transcript-aware citation (`lib/methodology-citation.sh`): when the executing context's transcript shows no trace of this spec, the deny names Reading it as the MANDATORY NEXT STEP, with the section that specifies the violated rule; when the spec was already loaded, the deny switches to a re-apply pointer. Enforceability is two-tier: for hard rules the Read is directive (the denied action stays denied — reading is how the agent finds the conforming path, not an unlock), while gate-shaped rules can hard-enforce the preread via the transcript signal, as `journey-mapping-skill-preread-gate.sh` already does.
+
 ## Escape hatches
 
 - `AGENT_ROLE_PRIVILEGE_GUARD=off` disables the privilege guard (calibration / operator override).
+- `AGENTIC_OS_ROLE_REQUIRED=off` re-allows role-less dispatches during live pipelines.
 - `AGENTIC_OS_USER_MODE=off` disables the role-user rewrite; deprovisioning (or deleting the marker) disables it host-wide.
 - The registrar has no off switch — it never blocks.

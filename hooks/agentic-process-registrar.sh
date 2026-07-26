@@ -69,6 +69,14 @@ DENIED=$(role_denied_classes "$ROLE")
 
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 REPO_ROOT=$(cd "$GUARD_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+
+# Project scoping: register processes only in achilles projects — no
+# .achilles/ pollution in unrelated repos.
+# shellcheck source=lib/achilles-project-gate.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-project-gate.sh"
+achilles_hooks_active "$REPO_ROOT" || exit 0
+
 TABLE_DIR="$REPO_ROOT/.achilles"
 TABLE_FILE="$TABLE_DIR/.agent-process-table.json"
 

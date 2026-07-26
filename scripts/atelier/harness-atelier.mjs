@@ -33,13 +33,17 @@ import { join, dirname, resolve } from 'node:path';
 const args = process.argv.slice(2);
 let project = process.cwd();
 let outFile = null;
+let telemetryFile = null;
 let asJson = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--project') project = resolve(args[++i] ?? '.');
   else if (args[i] === '--out') outFile = resolve(args[++i] ?? '');
+  else if (args[i] === '--telemetry') telemetryFile = resolve(args[++i] ?? '');
   else if (args[i] === '--json') asJson = true;
   else if (args[i] === '--help' || args[i] === '-h') {
-    console.log('usage: harness-atelier.mjs [--project <dir>] [--out <file>] [--json]');
+    console.log('usage: harness-atelier.mjs [--project <dir>] [--out <file>] [--telemetry <jsonl>] [--json]');
+    console.log('harness-atelier is harness-agnostic: any agent that emits the documented');
+    console.log('JSONL event schema can be visualized — point --telemetry at its log.');
     process.exit(0);
   } else {
     console.error(`unknown argument: ${args[i]}`);
@@ -48,7 +52,7 @@ for (let i = 0; i < args.length; i++) {
 }
 if (!outFile) outFile = join(project, '.achilles', 'harness-atelier.html');
 
-const TELEMETRY = join(project, '.achilles', 'atelier-telemetry.jsonl');
+const TELEMETRY = telemetryFile ?? join(project, '.achilles', 'atelier-telemetry.jsonl');
 const SCHEMA_LOG = join(project, '.achilles', 'schema-guard-log.jsonl');
 const PROCESS_TABLE = join(project, '.achilles', '.agent-process-table.json');
 
@@ -91,7 +95,26 @@ function context(actor, role) {
 const leaks = [];
 let nestedDispatches = 0;
 
+// Skill segments: a `skill` event marks the start of a segment for its
+// actor; every later byte-bearing event by the same actor attributes to
+// that skill until the next skill event. This is the "context consumed
+// by which skill / stage" view, harness-agnostic.
+const skills = new Map();
+function skill(name) {
+  if (!skills.has(name)) skills.set(name, { skill: name, invocations: 0, injected_bytes: 0, attributed_bytes: 0, dispatches: 0 });
+  return skills.get(name);
+}
+const activeSkill = new Map(); // actor → skill name
+const tools = new Map();       // tool  → {calls, bytes_out}
+const tsList = [];
+
+function attribute(actor, bytes) {
+  const name = activeSkill.get(actor);
+  if (name && bytes > 0) skill(name).attributed_bytes += bytes;
+}
+
 for (const ev of events) {
+  if (ev.ts) { const t = Date.parse(ev.ts); if (!Number.isNaN(t)) tsList.push(t); }
   if (ev.event === 'dispatch') {
     const a = agent(ev.tool_use_id || `dispatch@${ev.line}`);
     a.role = ev.dispatch_role || a.role;
@@ -110,7 +133,27 @@ for (const ev of events) {
     const c = context(ev.actor || 'orchestrator', ev.role);
     c.commands++;
     c.bytes_out += ev.bytes_out || 0;
+    attribute(ev.actor || 'orchestrator', ev.bytes_out || 0);
+  } else if (ev.event === 'skill') {
+    const name = ev.skill || '(unnamed)';
+    const sk = skill(name);
+    sk.invocations++;
+    sk.injected_bytes += ev.bytes_out || 0;
+    activeSkill.set(ev.actor || 'orchestrator', name);
+  } else if (ev.event === 'tool') {
+    const t = ev.tool || '(tool)';
+    if (!tools.has(t)) tools.set(t, { tool: t, calls: 0, bytes_out: 0 });
+    tools.get(t).calls++;
+    tools.get(t).bytes_out += ev.bytes_out || 0;
+    attribute(ev.actor || 'orchestrator', ev.bytes_out || 0);
   }
+  if (ev.event === 'dispatch') {
+    const actor = ev.actor || 'orchestrator';
+    attribute(actor, ev.brief_bytes || 0);
+    const name = activeSkill.get(actor);
+    if (name) skill(name).dispatches++;
+  }
+  if (ev.event === 'return') attribute(ev.actor || 'orchestrator', ev.return_bytes || 0);
   if (ev.leak) {
     leaks.push({ line: ev.line, ts: ev.ts, event: ev.event, actor: ev.actor,
       role: ev.role, channel: ev.leak.channel, evidence: ev.leak.evidence,
@@ -124,6 +167,24 @@ const totalBrief = agentList.reduce((s, a) => s + a.brief_bytes, 0);
 const totalReturn = agentList.reduce((s, a) => s + a.return_bytes, 0);
 const ratios = paired.map(a => a.return_bytes / a.brief_bytes).sort((x, y) => x - y);
 const medianRatio = ratios.length ? ratios[Math.floor(ratios.length / 2)] : null;
+
+// Context impact by role — for a pipeline harness the roles ARE the
+// stages (composer/reviewer/probe/... map to pipeline passes), so this
+// doubles as the per-stage context-impact view.
+const byRole = new Map();
+for (const a of agentList) {
+  if (!byRole.has(a.role)) byRole.set(a.role, { role: a.role, dispatches: 0, brief_bytes: 0, return_bytes: 0, leaks: 0 });
+  const r = byRole.get(a.role);
+  r.dispatches++;
+  r.brief_bytes += a.brief_bytes;
+  r.return_bytes += a.return_bytes;
+  if (a.leak) r.leaks++;
+}
+
+// Session timing.
+const sessionStart = tsList.length ? new Date(Math.min(...tsList)).toISOString() : null;
+const sessionEnd = tsList.length ? new Date(Math.max(...tsList)).toISOString() : null;
+const sessionSeconds = tsList.length ? Math.round((Math.max(...tsList) - Math.min(...tsList)) / 1000) : 0;
 
 const schemaByRole = new Map();
 for (const s of schemaLog) {
@@ -153,6 +214,10 @@ const summary = {
   median_return_to_brief_ratio: medianRatio,
   leaks: leaks.length,
   leak_channels: leaks.reduce((m, l) => ((m[l.channel] = (m[l.channel] || 0) + 1), m), {}),
+  session: { start: sessionStart, end: sessionEnd, duration_seconds: sessionSeconds },
+  skills: [...skills.values()],
+  roles: [...byRole.values()],
+  tools: [...tools.values()],
   schema_validity: [...schemaByRole.values()],
   process_table_entries: Object.keys(processTable).length,
   agents_detail: agentList,
@@ -197,7 +262,10 @@ flowAgents.forEach((a, i) => {
 });
 svg += '</svg>';
 
+const dur = sessionSeconds >= 3600 ? `${Math.floor(sessionSeconds / 3600)}h ${Math.floor((sessionSeconds % 3600) / 60)}m`
+  : sessionSeconds >= 60 ? `${Math.floor(sessionSeconds / 60)}m ${sessionSeconds % 60}s` : `${sessionSeconds}s`;
 const tiles = [
+  ['session span', tsList.length ? dur : '—'],
   ['agents dispatched', String(summary.dispatches)],
   ['brief bytes ↓', kb(totalBrief)],
   ['return bytes ↑', kb(totalReturn)],
@@ -214,6 +282,19 @@ const agentRows = agentList.map(a => `<tr${a.leak ? ' class="leakrow"' : ''}>` +
 
 const ctxRows = [...contexts.values()].map(c => `<tr><td><code>${esc(c.actor)}</code></td>` +
   `<td><code>${esc(c.role)}</code></td><td class="num">${c.commands}</td><td class="num">${esc(kb(c.bytes_out))}</td></tr>`).join('');
+
+const skillRows = [...skills.values()].sort((a, b) => (b.injected_bytes + b.attributed_bytes) - (a.injected_bytes + a.attributed_bytes))
+  .map(sk => `<tr><td><code>${esc(sk.skill)}</code></td><td class="num">${sk.invocations}</td>` +
+    `<td class="num">${esc(kb(sk.injected_bytes))}</td><td class="num">${esc(kb(sk.attributed_bytes))}</td>` +
+    `<td class="num">${sk.dispatches}</td></tr>`).join('');
+
+const roleRows = [...byRole.values()].sort((a, b) => b.brief_bytes - a.brief_bytes)
+  .map(r => `<tr${r.leaks ? ' class="leakrow"' : ''}><td><code>${esc(r.role)}</code></td><td class="num">${r.dispatches}</td>` +
+    `<td class="num">${esc(kb(r.brief_bytes))}</td><td class="num">${esc(kb(r.return_bytes))}</td>` +
+    `<td class="num">${r.brief_bytes ? (r.return_bytes / r.brief_bytes).toFixed(2) : '—'}</td><td class="num">${r.leaks}</td></tr>`).join('');
+
+const toolRows = [...tools.values()].sort((a, b) => b.bytes_out - a.bytes_out)
+  .map(t => `<tr><td><code>${esc(t.tool)}</code></td><td class="num">${t.calls}</td><td class="num">${esc(kb(t.bytes_out))}</td></tr>`).join('');
 
 const leakItems = leaks.map(l => `<li><span class="pill">${esc(l.channel)}</span> ` +
   `<strong>${esc(l.event)}</strong> by <code>${esc(l.actor)}</code> (role <code>${esc(l.role)}</code>) — ${esc(l.evidence)}<br>` +
@@ -252,7 +333,7 @@ const html = `<!doctype html>
   li { margin-bottom: .55rem; }
   .empty { opacity: .6; font-style: italic; }
 </style>
-<h1>harness-atelier <small>${esc(project)} · ${esc(new Date().toISOString())}</small></h1>
+<h1>harness-atelier <small>${esc(project)}${sessionStart ? ` · session ${esc(sessionStart)} → ${esc(sessionEnd)}` : ''}</small></h1>
 <div class="tiles">${tiles}</div>
 <h2>Context-transfer map</h2>
 ${flowAgents.length ? svg : '<p class="empty">no dispatches recorded yet — run the harness with the atelier collector installed.</p>'}
@@ -260,6 +341,12 @@ ${flowAgents.length ? svg : '<p class="empty">no dispatches recorded yet — run
 ${agentRows ? `<table><tr><th>role</th><th>dispatch</th><th class="num">brief ↓</th><th class="num">return ↑</th><th class="num">ratio</th><th>leak</th></tr>${agentRows}</table>` : '<p class="empty">none recorded.</p>'}
 <h2>Execution contexts — Bash activity</h2>
 ${ctxRows ? `<table><tr><th>context</th><th>role</th><th class="num">commands</th><th class="num">stdout bytes ingested</th></tr>${ctxRows}</table>` : '<p class="empty">none recorded.</p>'}
+<h2>Context by skill</h2>
+${skillRows ? `<table><tr><th>skill</th><th class="num">invocations</th><th class="num">injected bytes</th><th class="num">attributed bytes</th><th class="num">dispatches</th></tr>${skillRows}</table>` : '<p class="empty">no skill events recorded — the collector tags Skill-tool invocations automatically.</p>'}
+<h2>Context impact by role (pipeline stage)</h2>
+${roleRows ? `<table><tr><th>role / stage</th><th class="num">dispatches</th><th class="num">brief ↓</th><th class="num">return ↑</th><th class="num">ratio</th><th class="num">leaks</th></tr>${roleRows}</table>` : '<p class="empty">none recorded.</p>'}
+<h2>Tool mix — context ingestion by tool</h2>
+${toolRows ? `<table><tr><th>tool</th><th class="num">calls</th><th class="num">bytes ingested</th></tr>${toolRows}</table>` : '<p class="empty">no generic tool events recorded.</p>'}
 <h2>Leak panel — where exactly</h2>
 ${leakItems ? `<ol>${leakItems}</ol>` : '<p class="empty">no leaks detected. The orchestrator window stayed clean.</p>'}
 <h2>Return-schema validity</h2>

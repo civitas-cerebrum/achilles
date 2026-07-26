@@ -139,3 +139,71 @@ seed_table workflow-reviewer
 OFF_OUT=$(printf '%s' "$(payload tool_name=Bash command='rm -rf tests/e2e/journeys' cwd="$TMPPG" agent_id=sub_y)" | AGENT_ROLE_PRIVILEGE_GUARD=off bash "$H" 2>/dev/null)
 assert_eq "$OFF_OUT" "" "guard off → silent allow on an otherwise-denied command"
 rm -f "$TBL" "$LEDGER"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: role-less dispatch blocked while a pipeline is live"
+echo '{"currentPhase": 5}' > "$LEDGER"
+rm -f "$TBL"
+assert_deny "$H" "$(payload tool_name=Agent description='Explore the auth flows and report back' cwd="$TMPPG")" \
+  "orchestrator role-less dispatch, pipeline live → deny" "Role-less subagent dispatch"
+assert_deny "$H" "$(payload tool_name=Agent description='Explore the auth flows and report back' cwd="$TMPPG")" \
+  "deny instructs reading the methodology" "MANDATORY NEXT STEP"
+assert_allow "$H" "$(payload tool_name=Agent description='probe-j-auth-4: adversarial probe of auth' cwd="$TMPPG")" \
+  "role-prefixed dispatch, pipeline live → allow"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase5: verify pass records' cwd="$TMPPG")" \
+  "approver-prefixed dispatch, pipeline live → allow"
+rm -f "$LEDGER"
+assert_allow "$H" "$(payload tool_name=Agent description='Explore the auth flows and report back' cwd="$TMPPG")" \
+  "role-less dispatch, NO pipeline → allow (not policed)"
+echo '{"currentPhase": 5}' > "$LEDGER"
+OFF_ROLE=$(printf '%s' "$(payload tool_name=Agent description='Explore the auth flows' cwd="$TMPPG")" | AGENTIC_OS_ROLE_REQUIRED=off bash "$H" 2>/dev/null)
+assert_eq "$OFF_ROLE" "" "AGENTIC_OS_ROLE_REQUIRED=off → role-less dispatch allowed"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: orchestrator payload-ingest — Read vector"
+assert_deny "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/journeys/checkout.spec.ts" cwd="$TMPPG")" \
+  "orchestrator Read of spec source → deny" "Read vector"
+assert_deny "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/docs/.subagent-returns/probe-j-x.md" cwd="$TMPPG")" \
+  "orchestrator Read of spill return → deny" "payload-ingest"
+assert_allow "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/docs/adversarial-findings.md" cwd="$TMPPG")" \
+  "orchestrator Read of findings ledger (sanctioned bounded read) → allow"
+assert_allow "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/docs/journey-map.md" cwd="$TMPPG")" \
+  "orchestrator Read of journey map → allow"
+assert_allow "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/journeys/checkout.spec.ts" cwd="$TMPPG" agent_id=sub_r)" \
+  "subagent Read of spec (own slice) → allow"
+rm -f "$LEDGER"
+assert_allow "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/journeys/checkout.spec.ts" cwd="$TMPPG")" \
+  "orchestrator Read of spec, NO pipeline → allow"
+echo '{"currentPhase": 5}' > "$LEDGER"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: transcript-aware methodology citation"
+TRANS_READ=$(mktemp)
+echo '{"type":"tool_use","name":"Read","input":{"file_path":"skills/element-interactions/references/agentic-os-roles.md"}}' > "$TRANS_READ"
+assert_deny "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/journeys/checkout.spec.ts" cwd="$TMPPG" transcript_path="$TRANS_READ")" \
+  "doc already in transcript → re-apply wording" "already loaded"
+TRANS_EMPTY=$(mktemp)
+echo '{"type":"user"}' > "$TRANS_EMPTY"
+assert_deny "$H" "$(payload tool_name=Read file_path="$TMPPG/tests/e2e/journeys/checkout.spec.ts" cwd="$TMPPG" transcript_path="$TRANS_EMPTY")" \
+  "doc absent from transcript → mandatory Read instruction" "MANDATORY NEXT STEP"
+rm -f "$TRANS_READ" "$TRANS_EMPTY"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: slug claims are verified against the live table"
+seed_table composer
+assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=cleanup-ledger-x open https://x' cwd="$TMPPG" agent_id=sub_z)" \
+  "cleanup slug claim with only composer live → claim rejected, resolves composer (browser ok)"
+seed_table composer cleanup
+assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=cleanup-ledger-x open https://x' cwd="$TMPPG" agent_id=sub_z)" \
+  "cleanup slug claim with cleanup live → claim verified → browser deny" "'browser'"
+
+# ---------------------------------------------------------------------------
+section "privilege-guard: non-achilles project → inert"
+PLAINPG=$(mktemp -d)
+( cd "$PLAINPG" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+assert_allow "$H" "$(payload tool_name=Bash command='cat src/app.spec.ts' cwd="$PLAINPG")" \
+  "plain repo: spec dump → allow (achilles not present)"
+assert_allow "$H" "$(payload tool_name=Agent description='helper: free-form' cwd="$PLAINPG" agent_id=sub_q)" \
+  "plain repo: nested free-form dispatch → allow"
+rm -rf "$PLAINPG"
+rm -f "$TBL" "$LEDGER"

@@ -6,9 +6,17 @@
 # Hook    : PreToolUse:Agent   (dispatch  — context DOWN into a subagent)
 #           PostToolUse:Agent  (return    — context UP into the orchestrator)
 #           PostToolUse:Bash   (command   — per-context activity + ingest leaks)
+#           PostToolUse:Read|Write|Edit|Grep|Glob|Skill|WebFetch|WebSearch
+#                              (tool/skill — generic context ingestion)
 # Mode    : silent allow (pure observer, never blocks, best-effort writes)
+# Scope   : harness-atelier is a GENERAL utility, not achilles-only.
+#           Collection is on in any project that opts in — an achilles
+#           project (lib/achilles-project-gate.sh), a `.atelier` marker
+#           file at the repo root (any Claude Code experiment), or
+#           ATELIER_TELEMETRY=on forced via env. Everywhere else: inert.
 # State   : appends JSONL to <project>/.achilles/atelier-telemetry.jsonl
 # Env     : ATELIER_TELEMETRY=off → disable collection
+#           ATELIER_TELEMETRY=on  → collect regardless of project markers
 #
 # Why
 # ---
@@ -30,6 +38,14 @@
 #              leak set when the return violates "structured summary
 #              only": oversized, or carrying a pasted source block —
 #              context leaking UP into the orchestrator window.
+#   skill    — {skill, bytes_out} — a Skill invocation and the bytes of
+#              instruction content it injected into the executing
+#              context. The visualizer segments context consumption by
+#              skill from these markers.
+#   tool     — {tool, bytes_in, bytes_out} — generic context ingestion
+#              for non-Agent/non-Bash tools (Read/Grep/WebFetch/...):
+#              bytes_out is what landed in the executing context's
+#              window.
 #   command  — {role, tool, bytes_out, leak?, command_head}
 #              bytes_out = stdout returned into the executing context.
 #              leak set for orchestrator commands with payload-ingest
@@ -76,6 +92,16 @@ PARENT_ID=$(echo "$INPUT" | "$JQ" -r '.parent_tool_use_id // empty' 2>/dev/null 
 
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 REPO_ROOT=$(cd "$GUARD_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+
+# Opt-in scope: achilles project, a generic `.atelier` marker (any Claude
+# Code experiment), or forced on via env. Inert everywhere else.
+# shellcheck source=lib/achilles-project-gate.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-project-gate.sh"
+if [ "${ATELIER_TELEMETRY:-auto}" != "on" ]; then
+  achilles_hooks_active "$REPO_ROOT" || [ -e "$REPO_ROOT/.atelier" ] || exit 0
+fi
+
 LOG_DIR="$REPO_ROOT/.achilles"
 LOG_FILE="$LOG_DIR/atelier-telemetry.jsonl"
 
@@ -211,6 +237,36 @@ case "$TOOL_NAME:$EVENT_NAME" in
         tool:"Bash", bytes_out:$out, command_head:$head}
        + (if $lc != "" then {leak:{channel:$lc, evidence:$le}} else {} end)' \
       2>/dev/null || echo "")
+    [ -n "$LINE" ] && emit "$LINE"
+    ;;
+
+  # ==========================================================================
+  *:PostToolUse)
+    # Generic context-ingestion event for every other matched tool
+    # (Read/Write/Edit/Grep/Glob/Skill/WebFetch/WebSearch). bytes_out is
+    # what the tool put into the executing context's window; a Skill
+    # invocation is additionally recorded as a skill-segment marker the
+    # visualizer uses to attribute subsequent consumption per skill.
+    BYTES_IN=$(echo "$INPUT" | "$JQ" -r '(.tool_input // {}) | tostring | length' 2>/dev/null || echo 0)
+    BYTES_OUT=$(echo "$INPUT" | "$JQ" -r '(.tool_response // "") | tostring | length' 2>/dev/null || echo 0)
+    CLAIMED_SLUG=""
+    actor_fields
+    if [ "$TOOL_NAME" = "Skill" ]; then
+      SKILL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_input.skill // .tool_input.command // ""' 2>/dev/null || echo "")
+      LINE=$("$JQ" -nc \
+        --arg ts "$TS" --arg actor "$ACTOR" --arg role "$ROLE" \
+        --arg skill "$SKILL_NAME" \
+        --argjson bin "${BYTES_IN:-0}" --argjson bout "${BYTES_OUT:-0}" \
+        '{ts:$ts, event:"skill", actor:$actor, role:$role,
+          skill:$skill, bytes_in:$bin, bytes_out:$bout}' 2>/dev/null || echo "")
+    else
+      LINE=$("$JQ" -nc \
+        --arg ts "$TS" --arg actor "$ACTOR" --arg role "$ROLE" \
+        --arg tool "$TOOL_NAME" \
+        --argjson bin "${BYTES_IN:-0}" --argjson bout "${BYTES_OUT:-0}" \
+        '{ts:$ts, event:"tool", actor:$actor, role:$role,
+          tool:$tool, bytes_in:$bin, bytes_out:$bout}' 2>/dev/null || echo "")
+    fi
     [ -n "$LINE" ] && emit "$LINE"
     ;;
 

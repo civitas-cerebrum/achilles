@@ -153,6 +153,9 @@ const HOOK_MANIFEST = [
   { file: 'agentic-process-registrar.sh',         event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
   { file: 'agent-role-privilege-guard.sh',        event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
   { file: 'agent-role-privilege-guard.sh',        event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
+  // Read vector of the payload-ingest class: orchestrator Reads of
+  // payload artifacts are the same leak as Bash dumps, via the Read tool.
+  { file: 'agent-role-privilege-guard.sh',        event: 'PreToolUse', matcher: 'Read',        timeout: 5 },
   // Agentic-OS user mode: when the operator has provisioned the achl-*
   // role users (scripts/agentic-os/provision-role-users.sh), rewrite
   // subagent Bash commands to execute under the role-bound OS user —
@@ -167,6 +170,7 @@ const HOOK_MANIFEST = [
   { file: 'atelier-telemetry-collector.sh',       event: 'PreToolUse',  matcher: 'Agent',      timeout: 5 },
   { file: 'atelier-telemetry-collector.sh',       event: 'PostToolUse', matcher: 'Agent',      timeout: 5 },
   { file: 'atelier-telemetry-collector.sh',       event: 'PostToolUse', matcher: 'Bash',       timeout: 5 },
+  { file: 'atelier-telemetry-collector.sh',       event: 'PostToolUse', matcher: 'Read|Write|Edit|Grep|Glob|Skill|WebFetch|WebSearch', timeout: 5 },
   // Reviewer brief integrity: deny workflow-reviewer-* dispatches whose
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.

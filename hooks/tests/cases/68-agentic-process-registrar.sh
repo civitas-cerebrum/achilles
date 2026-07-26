@@ -9,6 +9,9 @@ H="$HOOK_DIR/agentic-process-registrar.sh"
 TMPOS=$(mktemp -d)
 trap 'rm -rf "$TMPOS"' EXIT
 ( cd "$TMPOS" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+# Qualify as an achilles project (project-scope gate) — the docs dir is
+# one of the recognized markers and survives the .achilles resets below.
+mkdir -p "$TMPOS/tests/e2e/docs"
 TBL="$TMPOS/.achilles/.agent-process-table.json"
 
 section "process-registrar: tool-name filtering"
@@ -66,3 +69,13 @@ P=$(payload tool_name=Agent description='reviewer-j-checkout-1-c1: review the co
 P=$(echo "$P" | "$JQ" -c '. + {tool_use_id: "toolu_rev_001"}')
 assert_allow "$H" "$P" "dispatch over malformed table → silent allow"
 assert_eq "$("$JQ" -r '.toolu_rev_001.role // "MISSING"' "$TBL" 2>/dev/null)" "reviewer-inloop" "table rebuilt with reviewer-inloop entry"
+
+section "process-registrar: non-achilles project → inert (project-scope gate)"
+PLAIN=$(mktemp -d)
+( cd "$PLAIN" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+P=$(payload tool_name=Agent description='composer-j-x-1-c1: compose' cwd="$PLAIN")
+P=$(echo "$P" | "$JQ" -c '. + {tool_use_id: "toolu_plain"}')
+assert_allow "$H" "$P" "dispatch in a plain repo → silent allow"
+TESTS_RUN=$((TESTS_RUN+1))
+[ ! -d "$PLAIN/.achilles" ] && { TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} no .achilles pollution outside achilles projects"; } || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} .achilles created in a non-achilles project"; }
+rm -rf "$PLAIN"
