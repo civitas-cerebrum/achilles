@@ -8,7 +8,7 @@ if [ -z "$NODE_BIN" ]; then
   section "atelier-report-renderer: skipped (node not on PATH)"
 else
 
-RENDERER="$HOOK_DIR/../scripts/atelier/harness-atelier.mjs"
+RENDERER="$HOOK_DIR/../atelier/harness-atelier.mjs"
 TMPAR=$(mktemp -d)
 trap 'rm -rf "$TMPAR"' EXIT
 ( cd "$TMPAR" && git init -q ) >/dev/null 2>&1

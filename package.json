@@ -6,10 +6,11 @@
     "postinstall": "node scripts/postinstall.js",
     "build:validator": "node scripts/build-validator.mjs",
     "test:hooks": "npm run build:validator && hooks/tests/run.sh",
+    "test:atelier": "node atelier/test/run.mjs",
     "sync-hooks": "node scripts/sync-hooks.js",
-    "atelier": "node scripts/atelier/harness-atelier.mjs",
+    "atelier": "node atelier/harness-atelier.mjs",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
-    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && npm run test:hooks"
+    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && npm run test:hooks && npm run test:atelier"
   },
   "files": [
     "hooks",
@@ -17,7 +18,7 @@
     "schemas",
     "scripts/postinstall.js",
     "scripts/agentic-os",
-    "scripts/atelier"
+    "atelier"
   ],
   "devDependencies": {
     "@types/node": "^20.0.0",

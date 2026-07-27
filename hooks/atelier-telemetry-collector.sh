@@ -26,7 +26,7 @@
 # much return came back up, what each context pulled in through Bash, and
 # where payload content crossed a boundary it shouldn't have. This
 # collector records exactly that, one JSON line per transfer, so
-# `npm run atelier` (scripts/atelier/harness-atelier.mjs) can render the
+# `npm run atelier` (atelier/harness-atelier.mjs) can render the
 # context-flow map, per-agent context use, compression ratios, and the
 # leak panel that points at the precise event where a leak happened.
 #
@@ -67,7 +67,7 @@
 # failure must never affect the tool call being observed.
 #
 # Pairs with:
-#   scripts/atelier/harness-atelier.mjs   (the visualizer this feeds)
+#   atelier/harness-atelier.mjs           (the visualizer this feeds)
 #   hooks/agentic-process-registrar.sh    (role vocabulary via shared lib)
 #
 # Canonical reference

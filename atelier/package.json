@@ -1,0 +1,26 @@
+{
+  "name": "harness-atelier",
+  "version": "0.1.0",
+  "description": "Context-flow observability for agentic harnesses — visualize agent/subagent context use, context transfers, and leaks from a five-event JSONL telemetry log.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./harness-atelier.mjs",
+  "bin": {
+    "harness-atelier": "./harness-atelier.mjs"
+  },
+  "scripts": {
+    "report": "node harness-atelier.mjs",
+    "test": "node test/run.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "agents",
+    "observability",
+    "context-engineering",
+    "claude-code",
+    "telemetry",
+    "visualization"
+  ]
+}

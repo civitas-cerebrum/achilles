@@ -166,7 +166,7 @@ const HOOK_MANIFEST = [
   // every context transfer — dispatch briefs down, subagent returns up,
   // per-context Bash ingest, leak events — into
   // <project>/.achilles/atelier-telemetry.jsonl for the visualizer
-  // (`npm run atelier` → scripts/atelier/harness-atelier.mjs).
+  // (`npm run atelier` → atelier/harness-atelier.mjs).
   { file: 'atelier-telemetry-collector.sh',       event: 'PreToolUse',  matcher: 'Agent',      timeout: 5 },
   { file: 'atelier-telemetry-collector.sh',       event: 'PostToolUse', matcher: 'Agent',      timeout: 5 },
   { file: 'atelier-telemetry-collector.sh',       event: 'PostToolUse', matcher: 'Bash',       timeout: 5 },

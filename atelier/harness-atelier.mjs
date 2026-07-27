@@ -17,12 +17,15 @@
 //     validity, orchestrator ingest volume
 //
 // Zero dependencies. Usage:
-//   node scripts/atelier/harness-atelier.mjs [--project <dir>] [--out <file>] [--json]
+//   node atelier/harness-atelier.mjs [--project <dir>] [--out <file>] [--json]
 //
 // --json prints the aggregate to stdout (CI / assertions) and skips HTML.
 //
-// Canonical reference:
-//   skills/element-interactions/references/harness-atelier.md
+// harness-atelier is designed as a standalone tool — this directory is
+// repo-shaped (own README, package.json, LICENSE, tests) so it can be
+// severed into its own repository unchanged. Canonical docs: README.md
+// in this directory; the Achilles-side spec is
+// skills/element-interactions/references/harness-atelier.md.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';

@@ -1,8 +1,11 @@
 #!/bin/bash
-# Tests for scripts/atelier/harness-atelier.mjs — the harness-atelier
+# Tests for atelier/harness-atelier.mjs — the harness-atelier
 # visualizer. Feeds a fixture telemetry log and asserts the --json
 # aggregate (metrics, leak pointers) and the HTML report artifacts.
-ATELIER="$HOOK_DIR/../scripts/atelier/harness-atelier.mjs"
+# (The atelier directory is repo-shaped and also carries its own
+# standalone suite — atelier/test/run.mjs; this case is the Achilles-side
+# integration guarantee.)
+ATELIER="$HOOK_DIR/../atelier/harness-atelier.mjs"
 NODE_BIN="$(command -v node || true)"
 if [ -z "$NODE_BIN" ]; then
   section "harness-atelier: skipped (node not on PATH)"

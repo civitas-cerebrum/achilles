@@ -27,13 +27,14 @@
 # regression section — session-over-session drift with zero extra steps.
 #
 # Renderer resolution (first hit wins): $ATELIER_RENDERER, the repo's own
-# scripts/atelier/harness-atelier.mjs, then the installed package copy
-# under node_modules/@civitas-cerebrum/*/scripts/atelier/. No renderer or
+# atelier/harness-atelier.mjs, then installed package copies (the achilles
+# package under node_modules/@civitas-cerebrum/*, or the standalone
+# harness-atelier package once severed into its own repo). No renderer or
 # no node on PATH → silent no-op; a failed render never affects the Stop.
 #
 # Pairs with:
 #   hooks/atelier-telemetry-collector.sh  (writes the telemetry this renders)
-#   scripts/atelier/harness-atelier.mjs   (the visualizer)
+#   atelier/harness-atelier.mjs           (the visualizer)
 #
 # Canonical reference
 # -------------------
@@ -65,9 +66,10 @@ NODE_BIN=$(command -v node || true)
 
 RENDERER=""
 for CAND in "${ATELIER_RENDERER:-}" \
-  "$REPO_ROOT/scripts/atelier/harness-atelier.mjs" \
-  "$REPO_ROOT/node_modules/@civitas-cerebrum/achilles/scripts/atelier/harness-atelier.mjs" \
-  "$REPO_ROOT/node_modules/@civitas-cerebrum/element-interactions/scripts/atelier/harness-atelier.mjs"; do
+  "$REPO_ROOT/atelier/harness-atelier.mjs" \
+  "$REPO_ROOT/node_modules/@civitas-cerebrum/achilles/atelier/harness-atelier.mjs" \
+  "$REPO_ROOT/node_modules/@civitas-cerebrum/element-interactions/atelier/harness-atelier.mjs" \
+  "$REPO_ROOT/node_modules/harness-atelier/harness-atelier.mjs"; do
   [ -n "$CAND" ] && [ -f "$CAND" ] && { RENDERER="$CAND"; break; }
 done
 [ -n "$RENDERER" ] || exit 0
