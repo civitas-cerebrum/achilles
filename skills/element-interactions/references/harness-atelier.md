@@ -14,7 +14,8 @@ Use it with achilles (where the privilege hooks *enforce* the isolation contract
 | Piece | What it does |
 |---|---|
 | [`../../../hooks/atelier-telemetry-collector.sh`](../../../hooks/atelier-telemetry-collector.sh) | Pure observer hook (`PreToolUse:Agent`, `PostToolUse:Agent`, `PostToolUse:Bash`, `PostToolUse:Read\|Write\|Edit\|Grep\|Glob\|Skill\|WebFetch\|WebSearch`; never blocks, best-effort writes). Appends one JSON line per context transfer to `<project>/.achilles/atelier-telemetry.jsonl`. Opt-in per project: achilles project, `.atelier` marker file, or `ATELIER_TELEMETRY=on`; off switch: `ATELIER_TELEMETRY=off`. |
-| [`../../../scripts/atelier/harness-atelier.mjs`](../../../scripts/atelier/harness-atelier.mjs) | Zero-dependency Node CLI (`npm run atelier`, or `node scripts/atelier/harness-atelier.mjs [--project <dir>] [--out <file>] [--telemetry <jsonl>] [--json]`). Aggregates the telemetry (plus `schema-guard-log.jsonl` and the agentic-OS process table when present) into a self-contained HTML report at `<project>/.achilles/harness-atelier.html`; `--json` emits the aggregate for CI; `--telemetry` points at any agent's log, making the CLI harness-agnostic. |
+| [`../../../scripts/atelier/harness-atelier.mjs`](../../../scripts/atelier/harness-atelier.mjs) | Zero-dependency Node CLI (`npm run atelier`, or `node scripts/atelier/harness-atelier.mjs [--project <dir>] [--out <file>] [--telemetry <jsonl>] [--baseline <json>] [--json]`). Aggregates the telemetry (plus `schema-guard-log.jsonl` and the agentic-OS process table when present) into a self-contained HTML report at `<project>/.achilles/harness-atelier.html`; `--json` emits the aggregate for CI; `--telemetry` points at any agent's log, making the CLI harness-agnostic; `--baseline` diffs against a prior `--json` aggregate (see "Baseline diffing"). |
+| [`../../../hooks/atelier-report-renderer.sh`](../../../hooks/atelier-report-renderer.sh) | `Stop` hook (silent observer, never blocks). Auto-renders the report at session end whenever the telemetry log exists and is newer than the report — the report is always fresh with no manual step. Automatically passes `--baseline` when `.achilles/atelier-baseline.json` is pinned. Off switch: `ATELIER_AUTORENDER=off`; `ATELIER_RENDERER=<path>` overrides visualizer resolution. |
 
 ## What gets recorded
 
@@ -57,9 +58,19 @@ Each leak in the report's **leak panel** cites its channel, actor, role, evidenc
 
 A healthy harness shows: **small up-edges relative to the work done** (returns are summaries — the median return/brief ratio stays low), **near-zero orchestrator Bash ingest** while a pipeline is live, an **empty leak panel**, and **high per-role schema validity**. A fat red up-edge or a `bash-ingest` entry is the exact dispatch/command to fix — tighten that role's brief template, return schema, or privilege set and re-run.
 
+## Baseline diffing
+
+`--baseline <file>` takes a **prior `--json` aggregate** and adds a regression comparison — `baseline_comparison` in the JSON output and a "vs baseline" section in the report. Metrics where lower is better (`leaks`, `leaked_bytes`, `leak_waste_share`, `orchestrator_bash_ingest_bytes`, `median_return_to_brief_ratio`) are flagged **regressed** when they grow and **improved** when they shrink; volume metrics (`orchestrator_window_bytes`, `total_brief_bytes`, `total_return_bytes`, `dispatches`) are reported as context only, since they move with the amount of work done. `baseline_comparison.regressions` lists the regressed metric names — a CI job can assert it is empty. An unreadable baseline file is a hard error (exit 1), never a silent skip.
+
+Pin a baseline after a known-good run:
+
+```sh
+npm run atelier -- --json > .achilles/atelier-baseline.json
+```
+
 ## Effectiveness workflow
 
 1. Run the harness normally (collector records passively).
-2. `npm run atelier` → open `.achilles/harness-atelier.html`.
-3. For each leak-panel entry, open the cited telemetry line, identify the dispatch or command, and fix the contract at the source (brief template, return schema, role privileges).
-4. Re-run and compare tiles — leak count and ingest volume are the regression signal; `--json` output makes them CI-assertable.
+2. Open `.achilles/harness-atelier.html` — the Stop hook keeps it fresh automatically (`npm run atelier` re-renders on demand).
+3. For each leak-panel entry, open the cited telemetry line, identify the dispatch or command, and apply the entry's remediation at the source (brief template, return schema, role privileges).
+4. Pin a baseline (`npm run atelier -- --json > .achilles/atelier-baseline.json`), re-run, and read the "vs baseline" section — `regressions` empty is the pass signal, and `--json` makes it CI-assertable.

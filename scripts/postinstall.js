@@ -245,6 +245,13 @@ const HOOK_MANIFEST = [
   // tests/perf/docs/perf-onboarding-status.json exists (perf projects only).
   // NO-OP on non-perf projects; never interferes with run-summary-writer.sh.
   { file: 'perf-summary-writer.sh',                      event: 'Stop', matcher: null,                 timeout: 15 },
+  // harness-atelier — Stop-time auto-render: re-renders
+  // <project>/.achilles/harness-atelier.html whenever the telemetry log
+  // exists and is newer than the report, so the report is always fresh at
+  // session end; includes the vs-baseline regression section when a pinned
+  // aggregate exists at .achilles/atelier-baseline.json. NO-OP everywhere
+  // else; never blocks.
+  { file: 'atelier-report-renderer.sh',                  event: 'Stop', matcher: null,                 timeout: 15 },
 ];
 
 function copyHookFile(hookSrc, hookDest) {

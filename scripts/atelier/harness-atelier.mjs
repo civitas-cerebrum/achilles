@@ -34,16 +34,20 @@ const args = process.argv.slice(2);
 let project = process.cwd();
 let outFile = null;
 let telemetryFile = null;
+let baselineFile = null;
 let asJson = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--project') project = resolve(args[++i] ?? '.');
   else if (args[i] === '--out') outFile = resolve(args[++i] ?? '');
   else if (args[i] === '--telemetry') telemetryFile = resolve(args[++i] ?? '');
+  else if (args[i] === '--baseline') baselineFile = resolve(args[++i] ?? '');
   else if (args[i] === '--json') asJson = true;
   else if (args[i] === '--help' || args[i] === '-h') {
-    console.log('usage: harness-atelier.mjs [--project <dir>] [--out <file>] [--telemetry <jsonl>] [--json]');
+    console.log('usage: harness-atelier.mjs [--project <dir>] [--out <file>] [--telemetry <jsonl>] [--baseline <json>] [--json]');
     console.log('harness-atelier is harness-agnostic: any agent that emits the documented');
     console.log('JSONL event schema can be visualized — point --telemetry at its log.');
+    console.log('--baseline takes a prior --json aggregate and reports per-metric deltas');
+    console.log('and regressions (leaks, leaked size, waste share, ingest, ratio).');
     process.exit(0);
   } else {
     console.error(`unknown argument: ${args[i]}`);
@@ -296,6 +300,46 @@ const summary = {
   leaks_detail: leaks,
 };
 
+// Baseline diff: compare this run against a prior --json aggregate so a
+// harness change has a regression signal, not just a snapshot. Metrics
+// marked 'lower' regress when they grow; 'info' metrics are context
+// (window/brief/return volume moves with the amount of work done, so a
+// change there is not a verdict by itself).
+if (baselineFile) {
+  let baseline = null;
+  try {
+    baseline = JSON.parse(readFileSync(baselineFile, 'utf8'));
+  } catch (e) {
+    console.error(`harness-atelier: cannot read baseline ${baselineFile}: ${e.message}`);
+    process.exit(1);
+  }
+  const BASELINE_METRICS = [
+    ['leaks', 'lower'],
+    ['leaked_bytes', 'lower'],
+    ['leak_waste_share', 'lower'],
+    ['orchestrator_bash_ingest_bytes', 'lower'],
+    ['median_return_to_brief_ratio', 'lower'],
+    ['orchestrator_window_bytes', 'info'],
+    ['total_brief_bytes', 'info'],
+    ['total_return_bytes', 'info'],
+    ['dispatches', 'info'],
+  ];
+  const metrics = BASELINE_METRICS.map(([metric, direction]) => {
+    const before = typeof baseline[metric] === 'number' ? baseline[metric] : null;
+    const after = typeof summary[metric] === 'number' ? summary[metric] : null;
+    const delta = before != null && after != null ? after - before : null;
+    const regressed = direction === 'lower' && delta != null && delta > 0;
+    return { metric, direction, before, after, delta, regressed };
+  });
+  summary.baseline_comparison = {
+    baseline_file: baselineFile,
+    metrics,
+    regressions: metrics.filter(m => m.regressed).map(m => m.metric),
+  };
+} else {
+  summary.baseline_comparison = null;
+}
+
 if (asJson) {
   console.log(JSON.stringify(summary, null, 2));
   process.exit(0);
@@ -408,6 +452,27 @@ const skippedNote = telemetrySkipped
   ? `<p class="warn">⚠ ${telemetrySkipped} malformed telemetry line(s) skipped — every count below is an undercount until the log is repaired.</p>`
   : '';
 
+// vs-baseline section (only when --baseline was given).
+const fmtMetric = (metric, v) => v == null ? '—'
+  : metric.endsWith('_bytes') ? fmtTok(v)
+  : metric === 'leak_waste_share' ? `${(v * 100).toFixed(1)}%`
+  : metric === 'median_return_to_brief_ratio' ? v.toFixed(2)
+  : String(v);
+let baselineSection = '';
+if (summary.baseline_comparison) {
+  const bc = summary.baseline_comparison;
+  const rows = bc.metrics.map(m => `<tr${m.regressed ? ' class="leakrow"' : ''}>` +
+    `<td><code>${esc(m.metric)}</code></td>` +
+    `<td class="num">${esc(fmtMetric(m.metric, m.before))}</td>` +
+    `<td class="num">${esc(fmtMetric(m.metric, m.after))}</td>` +
+    `<td class="num">${m.delta == null ? '—' : (m.delta > 0 ? '+' : '') + esc(fmtMetric(m.metric, m.delta))}</td>` +
+    `<td>${m.regressed ? '<span class="pill">regressed</span>'
+      : m.direction === 'lower' && m.delta != null && m.delta < 0 ? '<span class="good">improved</span>' : ''}</td></tr>`).join('');
+  baselineSection = `<h2>vs baseline</h2>
+<p class="note">baseline: ${esc(bc.baseline_file)} · ${bc.regressions.length ? `<span class="warn">${bc.regressions.length} regression(s): ${esc(bc.regressions.join(', '))}</span>` : 'no regressions'}</p>
+<table><tr><th>metric</th><th class="num">baseline</th><th class="num">this run</th><th class="num">delta</th><th>verdict</th></tr>${rows}</table>`;
+}
+
 const schemaRows = [...schemaByRole.values()].map(s => {
   const total = s.valid + s.invalid;
   return `<tr><td><code>${esc(s.role)}</code></td><td class="num">${s.valid}</td><td class="num">${s.invalid}</td>` +
@@ -441,6 +506,7 @@ const html = `<!doctype html>
   .fix { display: block; opacity: .8; font-size: .78rem; margin-top: .15rem; }
   .note { opacity: .65; font-size: .8rem; }
   .warn { color: #d33; font-weight: 600; }
+  .good { color: #2a8f4a; font-weight: 600; }
   li { margin-bottom: .55rem; }
   .empty { opacity: .6; font-style: italic; }
 </style>
@@ -448,6 +514,7 @@ const html = `<!doctype html>
 <p class="note">sizes are recorded as character counts and shown as estimated tokens (chars ÷ ${CHARS_PER_TOKEN}) — tokens are the unit that actually bounds an agent's window; hover any size for the raw chars.</p>
 ${skippedNote}
 <div class="tiles">${tiles}</div>
+${baselineSection}
 <h2>Context budget &amp; waste</h2>
 <div class="tiles">${budgetTiles}</div>
 <table><tr><th>orchestrator window source</th><th class="num">size</th><th class="num">share</th></tr>${budgetRows}</table>

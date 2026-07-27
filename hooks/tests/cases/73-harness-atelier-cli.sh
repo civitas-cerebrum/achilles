@@ -87,6 +87,35 @@ assert_eq "$(echo "$JSON_OUT" | "$JQ" -r '.roles[] | select(.role=="composer") |
 assert_eq "$(echo "$JSON_OUT" | "$JQ" -r '.tools[] | select(.tool=="Read") | .bytes_out')" "1500" "tool-mix Read bytes"
 assert_eq "$(echo "$JSON_OUT" | "$JQ" -r '.session.duration_seconds')" "1800" "session span computed (09:58 → 10:28 = 30m)"
 
+section "harness-atelier: --baseline regression diff"
+BASE_JSON="$TMPHA/baseline.json"
+printf '%s' "$JSON_OUT" > "$BASE_JSON"
+SAME_OUT=$("$NODE_BIN" "$ATELIER" --project "$TMPHA" --json --baseline "$BASE_JSON" 2>&1)
+SAME_EC=$?
+assert_eq "$SAME_EC" "0" "--baseline run exits 0"
+assert_eq "$(echo "$SAME_OUT" | "$JQ" -r '.baseline_comparison.regressions | length')" "0" "identical run vs its own baseline → no regressions"
+# A fresh bash-ingest leak appears → leaks / leaked_bytes / waste share /
+# orchestrator ingest all regress against the pinned baseline.
+cp "$TMPHA/.achilles/atelier-telemetry.jsonl" "$TMPHA/.achilles/telemetry.orig"
+printf '%s\n' '{"ts":"2026-07-26T10:40:00Z","event":"command","actor":"orchestrator","role":"orchestrator","tool":"Bash","bytes_out":4096,"command_head":"cat tests/e2e/journeys/login.spec.ts","leak":{"channel":"bash-ingest","evidence":"payload dump executed in orchestrator context: cat tests/e2e/journeys/login.spec.ts"}}' >> "$TMPHA/.achilles/atelier-telemetry.jsonl"
+REG_OUT=$("$NODE_BIN" "$ATELIER" --project "$TMPHA" --json --baseline "$BASE_JSON" 2>&1)
+assert_eq "$(echo "$REG_OUT" | "$JQ" -r '.baseline_comparison.regressions | index("leaks") != null')" "true" "new leak → leaks flagged as regression"
+assert_eq "$(echo "$REG_OUT" | "$JQ" -r '.baseline_comparison.metrics[] | select(.metric=="leaked_bytes") | .delta')" "4096" "leaked_bytes delta = the new dump's size"
+assert_eq "$(echo "$REG_OUT" | "$JQ" -r '.baseline_comparison.metrics[] | select(.metric=="orchestrator_bash_ingest_bytes") | .regressed')" "true" "orchestrator ingest growth flagged"
+assert_eq "$(echo "$REG_OUT" | "$JQ" -r '.baseline_comparison.metrics[] | select(.metric=="dispatches") | .regressed')" "false" "info metric (dispatches) never regresses"
+"$NODE_BIN" "$ATELIER" --project "$TMPHA" --baseline "$BASE_JSON" --out "$TMPHA/baseline-report.html" >/dev/null 2>&1
+for sub in "vs baseline" "regressed" "leaked_bytes"; do
+  TESTS_RUN=$((TESTS_RUN+1))
+  if grep -qF -- "$sub" "$TMPHA/baseline-report.html" 2>/dev/null; then
+    TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} baseline report contains '$sub'"
+  else
+    TESTS_FAILED=$((TESTS_FAILED+1)); FAIL_DETAILS+=("baseline report missing '$sub'"); echo "${CLR_FAIL}  ✗${CLR_RST} baseline report missing '$sub'"
+  fi
+done
+mv "$TMPHA/.achilles/telemetry.orig" "$TMPHA/.achilles/atelier-telemetry.jsonl"
+BAD_OUT=$("$NODE_BIN" "$ATELIER" --project "$TMPHA" --json --baseline "$TMPHA/nonexistent-baseline.json" 2>&1)
+assert_eq "$?" "1" "unreadable baseline → hard error (exit 1), never a silent skip"
+
 section "harness-atelier: --telemetry points at any agent's log (harness-agnostic)"
 ALT=$(mktemp -d)
 printf '%s\n' '{"ts":"2026-07-26T12:00:00Z","event":"dispatch","actor":"orchestrator","role":"orchestrator","tool_use_id":"t1","dispatch_role":"unconfined","brief_bytes":100,"description":"other-agent worker"}' > "$ALT/custom.jsonl"
