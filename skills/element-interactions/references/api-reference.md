@@ -43,7 +43,7 @@ export { expect };
 | `interactions` | `ElementInteractions` | Raw interactions API for custom locators |
 | `contextStore` | `ContextStore` | Shared in-memory key-value store for passing data between steps within a test |
 
-> **Version gate — `interceptionRetry` (0.4.0+).** This package's pinned dep is `^0.3.7`. On **0.3.x** the `interceptionRetry` opt-out shown above is **not available** and the report-visible `interception-fallback` test annotation is **not emitted** — both are no-ops on the current dep. The DOM-click fallback itself behaves the same; what changes at 0.4.0 is the *opt-out* and the *annotation*. Do not teach `interceptionRetry: false` as a currently-callable knob until the dep is bumped — verify the installed version before relying on it.
+> **`interceptionRetry` — available as of 0.3.7 (the current pinned dep).** The `interceptionRetry` opt-out shown above and the report-visible `interception-fallback` test annotation both ship in `@civitas-cerebrum/element-interactions@0.3.7` (`BaseFixture` / `Steps` / `ElementInteractions` accept `interceptionRetry`; the fallback logs a warning and pushes the annotation). The default is `true`: an intercepted click silently falls back to a dispatched DOM `'click'` — which can **mask** a stuck modal or cookie wall that should have failed the click. **For bug-discovery and adversarial suites, set `interceptionRetry: false`** so an interception rethrows and fails the test instead of being papered over; treat any `interception-fallback` annotation in a report as a suspected app bug to investigate, not noise.
 
 `baseFixture` attaches a full-page `failure-screenshot` to the HTML report on every failed test automatically.
 
@@ -158,13 +158,13 @@ import { DropdownSelectType, ListedElementMatch, VerifyListedOptions, GetListedD
 await steps.navigateTo('/path');
 await steps.navigateTo('/search', { query: { q: 'hello', page: '2' } });   // appends ?q=hello&page=2
 await steps.navigateTo('/path', { waitUntil: 'domcontentloaded' });        // 0.3.7+ — SPA-safe; default is 'load'
-const res = await steps.navigateTo('/missing-route');                      // 0.4.0+ — returns Response | null
+const res = await steps.navigateTo('/missing-route');                      // 0.3.8+ — returns Response | null
 expect(res?.status()).toBe(404);                                           // assert 404/redirect contracts (no raw page.goto)
 await steps.refresh();
 await steps.backOrForward('back'); // or 'forward'
 await steps.setViewport(1280, 720);
 
-// Standalone lifecycle wait — after an action that does NOT navigate.   (0.4.0+)
+// Standalone lifecycle wait — after an action that does NOT navigate.   (0.3.8+)
 // state: 'load' | 'domcontentloaded' | 'networkidle' (the LoadState type).
 await steps.waitForLoadState('domcontentloaded');
 await steps.waitForLoadState('networkidle', { timeout: 10000 });
@@ -231,7 +231,7 @@ await steps.dragAndDrop('elementName', 'PageName', { xOffset: 100, yOffset: 0 })
 await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { target: otherLocatorOrElement });
 ```
 
-**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. On **0.4.0+** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — recommended for adversarial/bug-discovery suites where a stuck modal or cookie wall should fail the click. On **0.3.x (current pinned dep)** the fallback still happens but the annotation and the `interceptionRetry` opt-out are not available — see the version gate under [Setup — Fixtures](#setup--fixtures).
+**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. As of **0.3.7 (the current pinned dep)** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — **recommended for adversarial/bug-discovery suites** where a stuck modal or cookie wall should fail the click rather than be clicked through. See [Setup — Fixtures](#setup--fixtures).
 
 ### Data Extraction
 
@@ -241,7 +241,7 @@ const href = await steps.getAttribute('elementName', 'PageName', 'href');
 const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
-const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.4.0+)
+const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.3.8+)
 const outer = await steps.getHtml('elementName', 'PageName', { outer: true }); // outerHTML (incl. the tag)
 
 // Bulk extraction
@@ -254,11 +254,11 @@ const allHrefs = await steps.getAll('links', 'PageName', { extractAttribute: 'hr
 const theme = await steps.getLocalStorage('theme');           // string | null
 const cart  = await steps.getSessionStorage('cart.count');    // string | null
 
-// Enumerate all keys — e.g. to discover a runtime-derived key.   (0.4.0+)
+// Enumerate all keys — e.g. to discover a runtime-derived key.   (0.3.8+)
 const lsKeys = await steps.getLocalStorageKeys();             // string[]
 const ssKeys = await steps.getSessionStorageKeys();           // string[]
 
-// Page-level text (document.body.innerText) — companion to getPageHtml.   (0.4.0+)
+// Page-level text (document.body.innerText) — companion to getPageHtml.   (0.3.8+)
 // For 404-body / page-copy assertions without page.locator('body').innerText().
 const bodyText = await steps.getPageText();                   // string
 
@@ -274,7 +274,7 @@ await steps.removeSessionStorage('cart.count');
 await steps.clearLocalStorage();                  // empty the whole store
 await steps.clearSessionStorage();
 
-// Window-level JS state — controlled access by dotted path (no raw page.evaluate).  (0.4.0+)
+// Window-level JS state — controlled access by dotted path (no raw page.evaluate).  (0.3.8+)
 const fired = await steps.getWindowProperty('__XSS_FIRED');   // read; undefined if absent
 await steps.setWindowProperty('__test.flag', true);           // set (creates intermediate objects)
 // verifyWindowProperty — retrying; one matcher of equals|contains|matches|present|truthy|
@@ -308,7 +308,7 @@ await steps.verifyImages('elementName', 'PageName', true, { verifyDecoded: true 
 await steps.verifyUrlContains('/dashboard');
 await steps.verifyTabCount(2);
 
-// Page-level text — document scope, web-first (string | RegExp).   (0.4.0+)
+// Page-level text — document scope, web-first (string | RegExp).   (0.3.8+)
 // For 404-body / page-copy / "no <script>" checks without page.locator('body').innerText().
 await steps.verifyPageContainsText('Wishlist');
 await steps.verifyPageContainsText(/404|niet gevonden/i);
@@ -536,11 +536,10 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 
 ### Waiting
 
-> **Version gate — `waitForState` semantics (0.3.x vs 0.4.0).** This package's pinned dep is `^0.3.7`. On **0.3.x (current dep)** `waitForState` resolves `false` on timeout and **MUST NOT be used as an assertion** — a soft probe that returns `false` is silently ignored. Always follow a `waitForState` with an explicit `verify*` (e.g. `verifyState('elementName', 'PageName', 'visible')`) so a missed wait fails the test. The `{ optional: true }` / `{ timeout }` option bags shown below, and the throw-on-timeout behaviour, are **0.4.0+** and are no-ops on 0.3.x. Treat the throwing form as forward-looking until the dep is bumped.
+> **`waitForState` semantics — throwing as of 0.3.7 (the current pinned dep).** `waitForState` throws on timeout and returns `Promise<boolean>` (`true` = state reached). Use `{ optional: true }` to keep the soft-probe behavior — the call then resolves `false` on timeout instead of rejecting; follow a non-optional wait with an explicit `verify*` only if you want a more specific failure message.
 
 ```ts
-// waitForState THROWS on timeout as of 0.4.0 and returns Promise<boolean>.
-// On 0.3.x (current dep) it resolves false on timeout — never an assertion; follow with verify*.
+// waitForState THROWS on timeout (0.3.7+) and returns Promise<boolean>.
 await steps.waitForState('elementName', 'PageName');                        // default: 'visible'; throws on timeout
 await steps.waitForState('elementName', 'PageName', 'hidden');              // also: 'attached', 'detached'
 // Soft probe: { optional: true } resolves false on timeout instead of throwing.
@@ -633,12 +632,12 @@ await steps.on('productCards', 'CollectionsPage').random().click({ withoutScroll
 await steps.on('productCards', 'CollectionsPage').nth(2).click();
 await steps.on('categories', 'HomePage').byText('Buttons').click();
 await steps.on('items', 'ListPage').byAttribute('data-status', 'active').click();
-// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (0.4.0+)
+// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (0.3.8+)
 // Selects the visible one and proceeds (throws if none visible) — unlike ifVisible()
 // which SKIPS when hidden. Replaces getByRole(...).filter({ visible: true }).first().
 await steps.on('accordionTrigger', 'ProductPage').visible().click();
 
-// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.4.0+)
+// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.3.8+)
 // Closes scoped getByRole counts and page.locator(parent).getByText/.locator(child) compositions.
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button').count.toBe(2);
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /voorkeuren|manage/i }).count.toBe(0);
@@ -853,7 +852,7 @@ await steps.cleanEmails(); // delete all
 
 Filter types: `SUBJECT`, `FROM`, `TO`, `CONTENT` (body text/HTML), `SINCE` (Date).
 
-## Session-aware HTTP Requests  (0.4.0+)
+## Session-aware HTTP Requests  (0.3.8+)
 
 Browser-context HTTP, backed by Playwright's `page.request` — **shares the browser
 context's cookies/session**. The right tool for authenticated redirect / protected-route
