@@ -35,7 +35,7 @@ speedup:             ~2x     (ideal: 4.00x)
 
 ### 2.1 Package install — automatic
 
-`@playwright/cli` is a **hard `dependencies` entry** of `@civitas-cerebrum/element-interactions`. After `npm install @civitas-cerebrum/element-interactions`, the CLI binary is reachable via `npx playwright-cli ...` immediately — no extra `npm install -D @playwright/cli` step. The postinstall script confirms reachability and prints the version.
+`@playwright/cli` is a **hard `dependencies` entry** of `@civitas-cerebrum/achilles`. After `npm install @civitas-cerebrum/achilles`, the CLI binary is reachable via `npx playwright-cli ...` immediately — no extra `npm install -D @playwright/cli` step. The postinstall script confirms reachability and prints the version.
 
 If `npx --no-install playwright-cli --version` ever returns non-zero in a project where this package is installed, treat it as a corrupted install (consumer's `node_modules` is incomplete). The fix is `npm install`, not a separate dep add.
 
@@ -279,7 +279,7 @@ The orchestrator picks the slug per the convention in §3.1 and substitutes it.
 
 ## 10. Out-of-scope / known constraints
 
-- **`@playwright/cli` is alpha (v0.1.x as of 2026-05-01).** It is shipped as a hard `dependencies` entry of `@civitas-cerebrum/element-interactions`, pinned to a specific patch version (currently `0.1.10`). When the CLI ships a breaking change, this package's pin is bumped on the same release that absorbs the change — consumers never have to think about CLI versions. The pin tightens (caret → exact) precisely *because* it's alpha; let it become `^X.Y.Z` only after 1.0.
+- **`@playwright/cli` is alpha (v0.1.x as of 2026-05-01).** It is shipped as a hard `dependencies` entry of `@civitas-cerebrum/achilles`, pinned to a specific patch version (currently `0.1.17`). When the CLI ships a breaking change, this package's pin is bumped on the same release that absorbs the change — consumers never have to think about CLI versions. The pin tightens (caret → exact) precisely *because* it's alpha; let it become `^X.Y.Z` only after 1.0.
 - **Adopting Playwright's `init-agents --loop claude` planner/generator/healer agents** is out of scope for this protocol — those overlap with `journey-mapping`, `test-composer`, and `failure-diagnosis` and need a separate architectural discussion.
 - **`playwright-cli attach --cdp=...`** (attach mode) is **not** isolated when sessions share a CDP endpoint — only `open` mode gives per-session browser-process isolation. Attach mode is fine for single-failure debug sessions in `failure-diagnosis` but must not be used by parallel-dispatch skills.
 - **Persistent profiles (`--persistent`).** Use only when a brief explicitly requires it (e.g. testing extension state). Default to in-memory user-data dirs so concurrent runs don't trample each other.
