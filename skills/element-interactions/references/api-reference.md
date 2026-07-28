@@ -218,6 +218,16 @@ await steps.typeSequentially('elementName', 'PageName', 'text', 50); // optional
 await steps.uploadFile('elementName', 'PageName', 'path/to/file.pdf');
 await steps.setSliderValue('elementName', 'PageName', 75);
 await steps.pressKey('Enter');                                 // 'Escape', 'Tab', 'Control+A', etc.
+await steps.pressKeys(['Control', 'A']);                       // 0.3.8+ — multi-key chord, joined with '+'; throws on []
+
+// dispatchEvent — synthetic DOM event, no actionability checks (0.3.8+)
+// LAST RESORT: reach for this only when a real interaction cannot express the case.
+// The element only needs to be attached, not visible or enabled.
+await steps.dispatchEvent('elementName', 'PageName', 'click');
+await steps.dispatchEvent('elementName', 'PageName', 'input', { bubbles: true });
+await steps.dispatchEvent('elementName', 'PageName', 'change');
+await steps.dispatchEvent('elementName', 'PageName', 'focus');
+await steps.dispatchEvent('elementName', 'PageName', 'keydown', { key: 'Enter', bubbles: true });
 
 // Dropdowns
 const val = await steps.selectDropdown('elementName', 'PageName');                                              // random (default)
@@ -233,6 +243,16 @@ await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { 
 
 **Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. As of **0.3.7 (the current pinned dep)** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — **recommended for adversarial/bug-discovery suites** where a stuck modal or cookie wall should fail the click rather than be clicked through. See [Setup — Fixtures](#setup--fixtures).
 
+**`dispatchEvent` — when to use it and when not to (0.3.8+).** `dispatchEvent(elementName, pageName, type, eventInit?)` fires a synthetic DOM event directly on the element, bypassing all Playwright actionability checks (visibility, enabled state, scrolling into view). Use it **only** in situations where a real interaction cannot express the case:
+- **Custom events** the app dispatches or listens for (e.g. `'app:cart-updated'`).
+- **`input` / `change` on widgets** that intercept pointer events and ignore synthetic typing, preventing `fill()` from triggering their handlers.
+- **`focus` / `blur`** to drive validation logic without a real tab sequence.
+- **`keydown` / `keyup` / `keypress`** with a specific `key` payload on a focusable element (e.g. `{ key: 'Escape', bubbles: true }` to close a modal via keyboard).
+
+The optional `eventInit` object is passed as the second argument to `new Event(type, eventInit)` / `new KeyboardEvent(type, eventInit)` — any property accepted by the relevant DOM event constructor works. Always set `bubbles: true` when the handler lives on an ancestor element.
+
+**Prefer `click()` / `fill()` / `pressKey()` for real user input.** `dispatchEvent` skips actionability, so a misspelled element name or an off-screen element will not be caught. It also skips Playwright's retry-on-intercept logic — if you're trying to click an element that is behind an overlay, `click()` (which retries and can fall back to a dispatched click automatically) is the right call, not `dispatchEvent`.
+
 ### Data Extraction
 
 ```ts
@@ -241,6 +261,7 @@ const href = await steps.getAttribute('elementName', 'PageName', 'href');
 const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
+const box = await steps.getBoundingBox('elementName', 'PageName');  // 0.3.8+ — { x, y, width, height } | null (null when not rendered)
 const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.3.8+)
 const outer = await steps.getHtml('elementName', 'PageName', { outer: true }); // outerHTML (incl. the tag)
 
@@ -552,6 +573,23 @@ await steps.waitForNetworkIdle({ timeout: 10000, optional: true });        // 0.
 await steps.waitForResponse('/api/data', async () => {
   await steps.click('submitButton', 'PageName');
 });
+```
+
+### Timing / pacing (0.3.8+)
+
+> **Reach for `waitForState` / `waitForUrl` / web-first assertions first.** `pace` is *deliberate* timing — settling a debounce, spacing rapid-fire actions — NOT a substitute for waiting on a condition. A `pace` standing in for a missing wait is a flake waiting to happen.
+
+```ts
+await steps.pace(120);                                // deliberate pause (ms); throws on negative/non-finite
+
+// repeat: run an action N times with the zero-based index, collect each result;
+// intervalMs paces BETWEEN iterations (never before the first or after the last).
+const codes = await steps.repeat(
+  (i) => steps.requestGet(`/p/${i}`).then(r => r.status),
+  3,
+  { intervalMs: 100 },
+);                                                    // => [200, 200, 200]
+await steps.repeat((i) => steps.clickNth('swatch', 'PDP', i), 3);  // throws on a non-integer / negative count
 ```
 
 ### Composite / Workflow
