@@ -196,12 +196,24 @@ augmentation.
    Spec files themselves live at `tests/e2e/<journey>.spec.ts` (root of
    `tests/e2e/`, no `specs/` subdirectory).
 3. Add `tests/e2e/.gitignore` entries for `playwright-report/`,
-   `test-results/`, `.last-run.json`.
-4. Commit as `chore: scaffold e2e suite`.
+   `test-results/`, `.last-run.json`, `bug-evidence/` (the stable
+   bug-evidence home used by `self-repair` — binary media, gitignored
+   by default; teams that want evidence in VCS remove the entry
+   deliberately).
+4. Add `"test:repair": "achilles-self-repair"` to the project's
+   `package.json` scripts — the `self-repair` entrypoint's script-mode
+   front door (`npm run test:repair`, served by this package's
+   `bin/self-repair.mjs`). When the project later gains suite-scoped run
+   scripts (`test:e2e:<flow>`), per-flow repair presets are derived from
+   them autonomously — `achilles-self-repair --init-scripts`, or the
+   `self-repair` skill applies the same derivation on first activation
+   (see `skills/self-repair/SKILL.md` §"Per-flow repair presets").
+5. Commit as `chore: scaffold e2e suite`.
 
 **Exit criteria.**
 - `npx playwright test --list` lists zero specs without error.
 - The four scaffold files exist on disk.
+- `package.json` scripts include `test:repair`.
 
 Load `element-interactions` (Stage 1) for the exact file shapes.
 

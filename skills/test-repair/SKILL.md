@@ -238,6 +238,7 @@ These are the non-negotiables that every cluster decision must respect. Together
 | `failure-diagnosis` | **Called per cluster in Stage 4.** The atomic heal-or-classify unit. Its contract is unchanged for all its other callers — this skill is an additional caller, not a replacement. |
 | `test-composer` | **Called only in operator-approved whole-test rewrite (heal type g).** Not invoked for normal heals. |
 | `bug-discovery` | Separate concern. This skill reports bugs it finds incidentally; it does not probe for new ones. `bug-discovery` may auto-escalate TO this skill if its adversarial run produces a batch of failures. |
+| `self-repair` | Sibling entrypoint: fan-out-first (one worker per red spec file, runs unattended via `achilles-self-repair` / `npm run test:repair`) where this skill is cluster-first (in-session, shared-root-cause batching). This skill's Bug-vs-Heal Discipline is normative for `self-repair` workers. Quarantine-ledger release (Stage 5.5) remains exclusively this skill's job — `self-repair` workers may add entries, never release them. |
 | `journey-mapping` | Not called directly. When `test-composer` is invoked for a (g) rewrite, that chain may reach `journey-mapping` — but test-repair does not re-map. |
 | `element-interactions` | Uses the Steps API to execute tests. No direct skill-level interaction. |
 | `onboarding` | Out of scope; assumes a scaffolded project exists. If the project isn't onboarded, this skill reports that and stops. |

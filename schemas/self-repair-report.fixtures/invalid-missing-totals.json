@@ -1,0 +1,20 @@
+{
+  "version": "self-repair-report/v1",
+  "run-id": "2026-08-05_12-30-00",
+  "mode": "cron",
+  "started-at": "2026-08-05T12:30:00.000Z",
+  "finished-at": "2026-08-05T13:05:41.000Z",
+  "scope": { "files": 1, "tests": 1 },
+  "baseline": { "runs": 0 },
+  "rounds": 1,
+  "files": [
+    {
+      "file": "tests/e2e/checkout.spec.ts",
+      "status": "explained",
+      "tests": [
+        { "title": "completes checkout", "baseline-pattern": "deterministic-fail", "outcome": "deleted" }
+      ]
+    }
+  ],
+  "artifacts": {}
+}

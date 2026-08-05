@@ -1,0 +1,18 @@
+# Invalid on three counts:
+#   1. tests[0].outcome uses a value outside the enum ("skipped" — silent
+#      skips are exactly what the methodology forbids).
+#   2. tests[1] claims outcome: healed but omits the required fix +
+#      stability-runs proof.
+#   3. tests[2] claims outcome: app-bug but omits the required bug-report.
+handover:
+  role: repair-worker-tests-e2e-checkout-spec-ts
+  status: completed
+  next-action: deregister
+file: tests/e2e/checkout.spec.ts
+tests:
+  - title: completes checkout with saved card
+    outcome: skipped
+  - title: shows order confirmation number
+    outcome: healed
+  - title: rejects expired card with inline error
+    outcome: app-bug

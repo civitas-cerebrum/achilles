@@ -40,6 +40,7 @@ Once the run starts, the agent owns the lifecycle. No incremental confirmation p
 | **Database testing** | Persistence-layer verification: query/assert SQL state, transactions, and DB-as-oracle for UI/API mutations. Extends contract-testing and test-composer. |
 | **Failure diagnosis** | When a test fails in any mode, runs evidence-based triage — screenshot analysis, DOM inspection, root-cause hypothesis — then either fixes the test autonomously or flags an app bug with the evidence to back it. |
 | **Suite repair** | When many tests fail at once (suite rot, app drift), batch-clusters failures by shared root cause and heals them per cluster instead of one-by-one — far faster than per-test diagnosis at scale. |
+| **Self repair** | Autonomous per-file repair, runnable hands-off from a script (`npm run test:repair` → the `achilles-self-repair` bin) or interactively. Baselines the suite, separates flake from deterministic failures, spawns one repair worker per red spec file, verifies heals with suite-order re-runs, and writes an audit-grade session report — every test ends green or explained (app-bug report with evidence, quarantine, or operator-pending). Per-flow presets are derived autonomously from the project's own suite scripts (`test:e2e:regression` → `test:repair:regression`) via `achilles-self-repair --init-scripts`. |
 | **Companion mode** | Single-task evidence-first verification for daily QA. Runs one focused check against the live app and produces a bundle of per-step screenshots, video, Playwright trace, HAR, console log, and a summary — the artifact a developer reads, not a durable suite test. |
 | **Test catalogue** | Stakeholder-facing PDF answering *"what scenarios are we running, and why?"* — A4-landscape, organised by portal and priority, with skipped-with-reason transparency. |
 | **Work summary deck** | Branded HTML deck summarising the QA work delivered, exportable to PDF for managers, product owners, and clients. |
@@ -82,6 +83,7 @@ Inside the package:
 | `hooks/` | Harness hooks that enforce contract discipline at the tool boundary — phase-ordering, dispatch-shape validation, return-schema validation, ledger integrity, parent-only-orchestrator policies, playwright-cli session isolation | Claude Code (registered in `~/.claude/settings.json` by postinstall) |
 | `schemas/` | JSON Schemas for subagent return shapes + the onboarding-status ledger; fixtures for both the valid and invalid cases | Subagent return validators + reviewer subagents |
 | `scripts/` | `postinstall.js` is the only script shipped in the tarball (skill+hook copy + chromium fetch); the lint/build/sync scripts live in the repo only — `compile-schemas.mjs` + `validate-schema-fixtures.mjs` (schemas:lint), `build-validator.mjs` (regenerates the bundled validator), `lint-doc-drift.mjs` (doc-surface drift), `sync-hooks.js` (dev convenience) | npm install, CI |
+| `bin/` | `self-repair.mjs` — the `achilles-self-repair` CLI driver behind `npm run test:repair`: baselines the suite, classifies flake vs deterministic failures, spawns one Claude Code worker subprocess per red spec file, verifies heals, writes the session report | You (or your CI), via `npm run test:repair` |
 
 ---
 
@@ -100,6 +102,7 @@ Other entry phrases that route to the right subskill:
 > *"increase coverage."*
 > *"find bugs."*
 > *"repair the suite."*
+> *"self repair."* — or hands-off from a terminal: `npm run test:repair`
 > *"verify the checkout flow with evidence."*
 
 See [`skills/onboarding/SKILL.md`](skills/onboarding/SKILL.md) for the full eight-phase contract.
