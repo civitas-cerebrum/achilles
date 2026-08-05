@@ -42,6 +42,12 @@ Usage: achilles-self-repair [options] [playwright-filter...]
 Positional args are passed to \`playwright test\` as test filters, scoping
 the baseline (and therefore the repair) to matching spec files.
 
+Modes:
+  (default)             Run the repair pipeline
+  --init-scripts        Scan package.json for suite-scoped Playwright run
+                        scripts and generate one test:repair:<flow> preset per
+                        flow (idempotent; never overwrites existing scripts)
+
 Options:
   --baseline-runs <n>   Full-suite baseline runs used to classify flake (default 3)
   --verify-runs <n>     Post-repair verification runs, suite order (default 3)
@@ -51,6 +57,8 @@ Options:
   --model <name>        Model passed to claude workers (default: claude default)
   --claude-bin <path>   Claude Code binary (default: claude)
   --project <name>      Playwright --project value, passed through
+  --grep <re>           Playwright --grep value, passed through
+  --grep-invert <re>    Playwright --grep-invert value, passed through
   --keep-permissions    Run workers WITHOUT --dangerously-skip-permissions
                         (workers will stall on permission prompts; only useful
                         with a pre-approved settings allowlist)
@@ -69,8 +77,11 @@ function parseArgs(argv) {
     model: null,
     claudeBin: 'claude',
     project: null,
+    grep: null,
+    grepInvert: null,
     skipPermissions: true,
     dryRun: false,
+    initScripts: false,
     json: false,
     filters: [],
   };
@@ -92,8 +103,11 @@ function parseArgs(argv) {
       case '--model': opts.model = argv[++i]; break;
       case '--claude-bin': opts.claudeBin = argv[++i]; break;
       case '--project': opts.project = argv[++i]; break;
+      case '--grep': opts.grep = argv[++i]; break;
+      case '--grep-invert': opts.grepInvert = argv[++i]; break;
       case '--keep-permissions': opts.skipPermissions = false; break;
       case '--dry-run': opts.dryRun = true; break;
+      case '--init-scripts': opts.initScripts = true; break;
       case '--json': opts.json = true; break;
       case '-h':
       case '--help':
@@ -156,6 +170,8 @@ function runPlaywright(label, jsonOut, extraArgs, opts) {
   return new Promise((resolvePromise) => {
     const args = ['playwright', 'test', ...opts.filters, ...extraArgs];
     if (opts.project) args.push(`--project=${opts.project}`);
+    if (opts.grep) args.push('--grep', opts.grep);
+    if (opts.grepInvert) args.push('--grep-invert', opts.grepInvert);
     const child = spawn('npx', args, {
       cwd: process.cwd(),
       env: {
@@ -523,11 +539,105 @@ function renderMarkdown(r) {
 }
 
 // ---------------------------------------------------------------------------
+// --init-scripts — derive test:repair:<flow> presets from package.json
+// ---------------------------------------------------------------------------
+// For every suite-scoped Playwright run script (test:e2e:regression,
+// test:e2e:smoke:desktop, …) generate the matching repair preset with the
+// same env prefix, path filters, --project, and --grep/--grep-invert scope.
+// Idempotent: existing test:repair* scripts are never overwritten.
+
+// Tokenize a shell command respecting single/double quotes (enough for the
+// npm-script shapes this targets; command substitution is not supported and
+// such scripts are skipped by the caller's safety checks).
+function shellTokens(cmd) {
+  const tokens = [];
+  const re = /'([^']*)'|"([^"]*)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(cmd)) !== null) tokens.push(m[1] ?? m[2] ?? m[3]);
+  return tokens;
+}
+
+function deriveRepairScript(cmd) {
+  // Must invoke `playwright test` with the default config, non-interactively.
+  if (!/\bplaywright\s+test\b/.test(cmd)) return null;
+  if (/--config[= ]|--ui\b|--headed\b|&&|\|\||\$\(|`/.test(cmd)) return null;
+
+  const tokens = shellTokens(cmd);
+  const pwIdx = tokens.findIndex((t, i) => t === 'playwright' && tokens[i + 1] === 'test');
+  if (pwIdx === -1) return null;
+
+  // Env prefix: leading VAR=VALUE assignments (verbatim — ${…:-default}
+  // shell expansions stay intact).
+  const envPrefix = [];
+  for (const t of tokens) {
+    if (/^[A-Z_][A-Z0-9_]*=/.test(t)) envPrefix.push(t);
+    else break;
+  }
+
+  // Keep only the scope-defining args after `playwright test`.
+  const kept = [];
+  const rest = tokens.slice(pwIdx + 2);
+  for (let i = 0; i < rest.length; i++) {
+    const t = rest[i];
+    if (t === '--grep' || t === '--grep-invert') {
+      kept.push(t, JSON.stringify(rest[++i] ?? ''));
+    } else if (t.startsWith('--grep=') || t.startsWith('--grep-invert=')) {
+      const [flag, ...v] = t.split('=');
+      kept.push(flag, JSON.stringify(v.join('=')));
+    } else if (t.startsWith('--project')) {
+      kept.push(t.includes('=') ? t : `${t}=${rest[++i] ?? ''}`);
+    } else if (t.startsWith('-')) {
+      return null; // unknown flag — safer to skip than mistranslate
+    } else {
+      kept.push(t); // positional path filter
+    }
+  }
+
+  return [...envPrefix, 'achilles-self-repair', ...kept].join(' ');
+}
+
+function initScripts() {
+  const pkgPath = resolve(process.cwd(), 'package.json');
+  if (!existsSync(pkgPath)) fail('no package.json in the current directory');
+  const raw = readFileSync(pkgPath, 'utf8');
+  const pkg = JSON.parse(raw);
+  pkg.scripts ??= {};
+
+  const added = [];
+  const skipped = [];
+  for (const [name, cmd] of Object.entries({ ...pkg.scripts })) {
+    if (name.startsWith('test:repair')) continue;
+    const derived = deriveRepairScript(cmd);
+    if (!derived) continue;
+    // test:e2e:regression:desktop → test:repair:regression:desktop;
+    // a bare runner script (test:e2e, e2e) → test:repair.
+    const flow = name.replace(/^(test:)?(e2e|playwright)(:|$)/, '').replace(/^:+|:+$/g, '');
+    const target = flow ? `test:repair:${flow}` : 'test:repair';
+    if (pkg.scripts[target]) {
+      skipped.push(`${target} (exists)`);
+      continue;
+    }
+    pkg.scripts[target] = derived;
+    added.push(target);
+  }
+
+  if (added.length) {
+    const trailing = raw.endsWith('\n') ? '\n' : '';
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + trailing);
+  }
+  for (const t of added) console.log(`[self-repair] init-scripts added: ${t} = ${pkg.scripts[t]}`);
+  for (const s of skipped) console.log(`[self-repair] init-scripts skipped: ${s}`);
+  if (!added.length && !skipped.length) console.log('[self-repair] init-scripts: no suite-scoped playwright scripts found');
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
 // Main pipeline
 // ---------------------------------------------------------------------------
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.initScripts) initScripts();
   state.json = opts.json;
 
   const runId = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);

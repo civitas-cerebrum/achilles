@@ -162,6 +162,44 @@ unresolved tests remain, `1` = driver error.
 
 ---
 
+## Per-flow repair presets (`test:repair:<flow>`)
+
+Consumers scope their suites through `package.json` run scripts
+(`test:e2e:regression`, `test:e2e:smoke:desktop`, …). Self-repair mirrors
+that surface autonomously: every suite-scoped Playwright run script gets a
+matching repair preset, so repairing one flow is
+`npm run test:repair:<flow>` — no hand-written scoping.
+
+**Derivation rules** (implemented by `achilles-self-repair --init-scripts`;
+the interactive orchestrator applies the same rules with Write/Edit):
+
+1. A script qualifies when it invokes `playwright test` with the default
+   config, non-interactively. Scripts using `--config=…`, `--ui`,
+   `--headed`, shell chaining (`&&`, `||`), or command substitution are
+   skipped — perf configs and interactive runners are not repair targets.
+2. The preset preserves the script's scope verbatim: leading `VAR=VALUE`
+   env prefixes (including `${VAR:-default}` shell expansions), positional
+   path filters, `--project`, `--grep`, `--grep-invert`. Any other flag
+   disqualifies the script (skipping beats mistranslating).
+3. Naming strips the runner prefix: `test:e2e:regression:desktop` →
+   `test:repair:regression:desktop`; a bare runner script (`test:e2e`) →
+   `test:repair`.
+4. **Idempotent, never destructive:** existing `test:repair*` scripts are
+   never overwritten; re-running only adds what's missing and reports
+   what it skipped.
+
+**When presets are (re)generated:**
+
+- **Onboarding Phase 1 scaffold** — seeds `test:repair` (the suite may not
+  have per-flow scripts yet).
+- **First self-repair activation in a project** (either mode) — run the
+  derivation before Stage 1 and announce additions with a
+  `[self-repair] stage=init-scripts added: <name>` line per preset.
+- **On demand** — `npx achilles-self-repair --init-scripts` after new suite
+  scripts are added.
+
+---
+
 ## Prerequisites
 
 - The project is scaffolded (Playwright config + specs exist). If not,
@@ -184,7 +222,7 @@ unresolved tests remain, `1` = driver error.
 | `test-repair` | Sibling entrypoint (cluster-first, in-session). Its Bug-vs-Heal Discipline is normative here. Prefer it when one shared root cause dominates. |
 | `bug-discovery` | Separate concern — self-repair reports bugs it encounters, it does not probe for new ones. |
 | `element-interactions` | Workers use the Steps API + page repository when healing selectors. |
-| `onboarding` | Phase 1 scaffold wires `"test:repair": "achilles-self-repair"` into the consumer's `package.json`. |
+| `onboarding` | Phase 1 scaffold wires `"test:repair": "achilles-self-repair"` into the consumer's `package.json`; per-flow presets are derived from suite scripts via `--init-scripts` (see "Per-flow repair presets"). |
 | `work-summary-deck` | May consume `report.json` as input data for a stakeholder deck. |
 
 ---

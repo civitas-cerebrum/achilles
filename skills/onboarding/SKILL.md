@@ -200,7 +200,11 @@ augmentation.
 4. Add `"test:repair": "achilles-self-repair"` to the project's
    `package.json` scripts — the `self-repair` entrypoint's script-mode
    front door (`npm run test:repair`, served by this package's
-   `bin/self-repair.mjs`).
+   `bin/self-repair.mjs`). When the project later gains suite-scoped run
+   scripts (`test:e2e:<flow>`), per-flow repair presets are derived from
+   them autonomously — `achilles-self-repair --init-scripts`, or the
+   `self-repair` skill applies the same derivation on first activation
+   (see `skills/self-repair/SKILL.md` §"Per-flow repair presets").
 5. Commit as `chore: scaffold e2e suite`.
 
 **Exit criteria.**
