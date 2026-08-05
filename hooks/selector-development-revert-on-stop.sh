@@ -14,8 +14,14 @@
 
 set -euo pipefail
 
-# Stop hooks may receive a payload but we don't need any tool fields. Discard stdin.
-cat >/dev/null
+# Stop hooks receive a payload; we only need the session-identity fields
+# for the session-scope gate below.
+INPUT=$(cat 2>/dev/null || echo "{}")
+
+# Session-scope gate: this hook applies only to achilles-activated
+# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+achilles_require_active "$INPUT"
 
 ws="${WORKSPACE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")}"
 state_dir="$ws/tests/e2e/.selector-development"

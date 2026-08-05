@@ -122,6 +122,17 @@ function installCivitasSkills() {
 // public-dependency cleanup — they encoded project-specific policy
 // inappropriate for a generic test-automation framework.
 const HOOK_MANIFEST = [
+  // Session-scope watcher — records the moment the achilles protocol
+  // activates in a session (achilles Skill invocation, role-prefixed
+  // dispatch, typed /<skill> command). Every guard below silent-allows in
+  // sessions without that activation (see hooks/lib/achilles-activation.sh),
+  // so plain dev sessions never feel the guardrails. OBSERVE-mode: never
+  // denies. The guards re-check the same signatures inline, so ordering
+  // relative to them is not a correctness dependency.
+  { file: 'achilles-protocol-activation-watcher.sh', event: 'PreToolUse',       matcher: 'Skill', timeout: 5 },
+  { file: 'achilles-protocol-activation-watcher.sh', event: 'PreToolUse',       matcher: 'Agent', timeout: 5 },
+  { file: 'achilles-protocol-activation-watcher.sh', event: 'UserPromptSubmit', matcher: null,    timeout: 5 },
+
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   { file: 'commit-message-gate.sh',               event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },

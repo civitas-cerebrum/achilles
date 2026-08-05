@@ -164,6 +164,11 @@ step_predecessor() {
 # ---------------------------------------------------------------------------
 
 INPUT=$(cat)
+
+# Session-scope gate: this hook applies only to achilles-activated
+# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+achilles_require_active "$INPUT"
 EVENT_NAME=$(echo "$INPUT" | "$JQ" -r '.hook_event_name // ""')
 TOOL_NAME=$(echo "$INPUT"  | "$JQ" -r '.tool_name // empty')
 
