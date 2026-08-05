@@ -125,6 +125,9 @@ const HOOK_MANIFEST = [
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   { file: 'commit-message-gate.sh',               event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
+  // Companion to commit-message-gate: the same AI-attribution rule applied to
+  // `gh pr create|edit`, the description surface that never passes through git.
+  { file: 'pr-attribution-gate.sh',               event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   // Out-of-band mutation guard: Bash writes to pipeline-state artifacts
   // (ledger, journey map, approver registry, findings, hook install) are
   // denied — Write/Edit are the only sanctioned mutation paths, because
