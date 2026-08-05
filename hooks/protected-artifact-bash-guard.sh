@@ -49,17 +49,25 @@ fi
 
 INPUT=$(cat)
 
-# Session-scope gate: this hook applies only to achilles-activated
-# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
-achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 [ "$TOOL_NAME" = "Bash" ] || exit 0
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "")
 [ -n "$CMD" ] || exit 0
 
+# Session-scope gate: this guard applies only to achilles-activated
+# sessions (lib/achilles-activation.sh) — EXCEPT for commands touching the
+# session-activation state dir itself (.claude/achilles). That dir is the
+# root of trust for every gate in the suite, so its protection is
+# unconditional: an inactive session must not be able to strip another
+# session's activation marker, and an active session must not deactivate
+# itself by deleting its own.
+if ! echo "$CMD" | grep -qE '\.claude/achilles'; then
+  achilles_require_active "$INPUT"
+fi
+
 # Protected artifact patterns (extended regex).
-PROTECTED='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/hooks|\.claude/settings(\.local)?\.json'
+PROTECTED='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/achilles|\.claude/hooks|\.claude/settings(\.local)?\.json'
 
 echo "$CMD" | grep -qE "$PROTECTED" || exit 0
 
@@ -152,7 +160,7 @@ Fix:
 
 $(no_skip_messaging_block)"
 
-"$JQ" -n --arg r "$REASON" '{
+"$JQ" -n --arg r "$REASON$(achilles_scope_notice)" '{
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

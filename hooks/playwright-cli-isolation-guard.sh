@@ -126,7 +126,7 @@ fi
 SLUG_PREFIX_REGEX='^(phase1|phase2|phase4|stage2|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*'
 
 emit_deny() {
-  "$JQ" -n --arg r "$1" '{
+  "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",

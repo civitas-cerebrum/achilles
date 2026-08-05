@@ -141,6 +141,7 @@ fi
   --arg desc "$DESCRIPTION" \
   --arg path "$SCHEMA_PATH" \
   --arg fname "$SCHEMA_FILENAME" \
+  --arg notice "$(achilles_scope_notice)" \
   '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
@@ -154,7 +155,7 @@ fi
         "\"" + $fname + "\" or the relative path \"" + $path + "\" anywhere in the prompt.\n" +
         "\n" +
         "Pairs with the PostToolUse subagent-return-schema-guard, which validates the " +
-        "actual return against this same schema."
+        "actual return against this same schema." + $notice
       )
     }
   }'

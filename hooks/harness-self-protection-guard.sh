@@ -58,10 +58,7 @@ JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 
 INPUT=$(cat)
 
-# Session-scope gate: this hook applies only to achilles-activated
-# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
-achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 
@@ -73,7 +70,16 @@ FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/nul
 NORM="/${FILE_PATH#/}"
 
 case "$NORM" in
-  */.claude/hooks/*|*/.claude/settings.json|*/.claude/settings.local.json) ;;
+  # Session-activation state: protected UNCONDITIONALLY (no session-scope
+  # gate) — the marker dir is the root of trust for every other gate, so
+  # even an inactive session may not Write/Edit it.
+  */.claude/achilles/*) ;;
+  */.claude/hooks/*|*/.claude/settings.json|*/.claude/settings.local.json)
+    # Session-scope gate: this surface is protected only in
+    # achilles-activated sessions; plain dev sessions manage their own
+    # hooks/settings freely (lib/achilles-activation.sh).
+    achilles_require_active "$INPUT"
+    ;;
   *) exit 0 ;;
 esac
 
@@ -81,20 +87,23 @@ esac
 
 File: ${FILE_PATH}
 
-This path is an installed harness hook or settings file under .claude/.
-Editing the INSTALLED copy directly drifts it from the repo source and is
-silently overwritten on the next install — and a writable hook surface
-lets any gate in the suite be disabled.
+This path is an installed harness hook, a settings file, or the achilles
+session-activation state under .claude/. Editing an INSTALLED hook copy
+directly drifts it from the repo source and is silently overwritten on
+the next install — and a writable hook/state surface lets any gate in
+the suite be disabled.
 
 Fix: change the hook in the REPO (edit hooks/<file>.sh in
 @civitas-cerebrum/achilles), then run \`npm run sync-hooks\` (or reinstall)
 to propagate the change to ~/.claude/hooks/. To change harness settings,
 edit them in your own terminal — settings.json is operator-owned state,
-not an agent Write target.
+not an agent Write target. The session-activation state
+(~/.claude/achilles/) is hook-authored only: it retires itself when the
+pipeline completes, or dies with the session.
 
 Project-local .claude/skills/* writes are NOT gated by this guard.
 
-See: skills/element-interactions/references/harness-hooks.md" '{
+See: skills/element-interactions/references/harness-hooks.md$(achilles_scope_notice)" '{
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

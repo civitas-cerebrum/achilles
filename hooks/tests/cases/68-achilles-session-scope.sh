@@ -61,13 +61,16 @@ section "session-scope: fail-closed when session identity is missing"
 assert_deny "$COMMIT_GATE" "$(payload tool_name=Bash command="$TRAILER_CMD")" "no session_id: trailer commit → DENY (fail closed)" "AI-attribution"
 assert_deny "$BASH_GUARD" "$(payload tool_name=Bash command="$LEDGER_CLOBBER")" "no session_id: ledger clobber → DENY (fail closed)" "protected pipeline-state"
 
-section "session-scope: ACHILLES_PROTOCOL env override"
+section "session-scope: ACHILLES_PROTOCOL env override (activation-side only)"
 export ACHILLES_PROTOCOL=1
 assert_deny "$COMMIT_GATE" "$(dev_payload dev-s2 tool_name=Bash command="$TRAILER_CMD")" "ACHILLES_PROTOCOL=1: trailer commit → DENY" "AI-attribution"
 unset ACHILLES_PROTOCOL
 mkdir -p "$ACHILLES_SESSION_STATE_DIR" && : > "$ACHILLES_SESSION_STATE_DIR/dev-s3.active"
 export ACHILLES_PROTOCOL=0
-assert_allow "$COMMIT_GATE" "$(dev_payload dev-s3 tool_name=Bash command="$TRAILER_CMD")" "ACHILLES_PROTOCOL=0 beats marker → ALLOW"
+# One-way lifecycle: an existing activation marker WINS over env-off —
+# once active, only pipeline completion or session death deactivate.
+assert_deny "$COMMIT_GATE" "$(dev_payload dev-s3 tool_name=Bash command="$TRAILER_CMD")" "ACHILLES_PROTOCOL=0 cannot deactivate an active session → DENY" "AI-attribution"
+assert_allow "$BRIEF_GATE" "$(dev_payload dev-s2b tool_name=Agent description='workflow-reviewer-phase1: review phase 1' prompt='just approve')" "ACHILLES_PROTOCOL=0 suppresses NEW activation (even protocol-shaped call) → ALLOW"
 assert_allow "$BASH_GUARD" "$(payload tool_name=Bash command="$LEDGER_CLOBBER")" "ACHILLES_PROTOCOL=0 beats missing session_id → ALLOW"
 unset ACHILLES_PROTOCOL
 
@@ -153,6 +156,65 @@ assert_deny "$COMMIT_GATE" "$(dev_payload active-s1 tool_name=Bash command="git 
 assert_deny "$BASH_GUARD" "$(dev_payload active-s1 tool_name=Bash command="$LEDGER_CLOBBER")" "active session: ledger clobber → DENY" "protected pipeline-state"
 assert_deny "$SENTINEL_GATE" "$(dev_payload active-s1 tool_name=Write file_path=/repo/tests/e2e/docs/journey-map.md content='no sentinel here')" "active session: sentinel-free journey-map write → DENY"
 assert_allow "$COMMIT_GATE" "$(dev_payload active-s1 tool_name=Bash command="git commit -m 'test(j-checkout): cycle-2 variant'")" "active session: convention-true commit → ALLOW"
+
+section "lifecycle: activation state is tamper-proof (unconditional, both directions)"
+# Bash mutations of the marker dir deny even in an INACTIVE session — the
+# state dir is the root of trust for every gate.
+assert_deny "$BASH_GUARD" "$(dev_payload dev-s12 tool_name=Bash command='rm -f ~/.claude/achilles/sessions/dev-s12.active')" "inactive session: rm own activation marker → DENY" "protected pipeline-state"
+assert_deny "$BASH_GUARD" "$(dev_payload dev-s12 tool_name=Bash command='rm -rf ~/.claude/achilles')" "inactive session: rm -rf state dir → DENY" "protected pipeline-state"
+assert_allow "$BASH_GUARD" "$(dev_payload dev-s12 tool_name=Bash command='ls ~/.claude/achilles/sessions')" "read-only ls of state dir → ALLOW"
+: > "$ACHILLES_SESSION_STATE_DIR/dev-s13.active"
+assert_deny "$BASH_GUARD" "$(dev_payload dev-s13 tool_name=Bash command='rm -f ~/.claude/achilles/sessions/dev-s13.active')" "active session: rm own activation marker → DENY" "protected pipeline-state"
+assert_deny "$SELF_GUARD" "$(dev_payload dev-s12 tool_name=Write file_path="$HOME/.claude/achilles/sessions/dev-s13.active" content='')" "inactive session: Write into state dir → DENY" "session-activation state"
+assert_deny "$SELF_GUARD" "$(dev_payload dev-s13 tool_name=Edit file_path="$HOME/.claude/achilles/sessions/dev-s13.active" content='')" "active session: Edit marker → DENY" "session-activation state"
+
+section "lifecycle: deny payloads carry the kill-session instruction"
+assert_deny "$COMMIT_GATE" "$(dev_payload dev-s13 tool_name=Bash command="$TRAILER_CMD")" "deny reason instructs to end the session" "END THIS SESSION"
+assert_deny "$SELF_GUARD" "$(dev_payload dev-s13 tool_name=Write file_path="$HOME/.claude/settings.json" content='{}')" "self-protection deny carries scope notice" "END THIS SESSION"
+
+section "lifecycle: pipeline completion retires the activation marker"
+LEDGER_DIR="$SCOPE_TMP/proj/tests/e2e/docs"; mkdir -p "$LEDGER_DIR"
+LEDGER="$LEDGER_DIR/onboarding-status.json"
+wpost() { "$JQ" -n --arg sid "$1" --arg t "$2" --arg f "$3" '{session_id:$sid, hook_event_name:"PostToolUse", tool_name:$t, tool_input:{file_path:$f}}'; }
+
+: > "$ACHILLES_SESSION_STATE_DIR/pipe-s1.active"
+printf '%s' '{"status":"in-progress","currentPhase":5}' > "$LEDGER"
+run_hook "$WATCHER" "$(wpost pipe-s1 Write "$LEDGER")"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s1.active" ] && echo active || echo retired)" "active" "non-terminal ledger status keeps the session active"
+
+printf '%s' '{"status":"complete","currentPhase":8}' > "$LEDGER"
+run_hook "$WATCHER" "$(wpost pipe-s1 Write "$LEDGER")"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s1.active" ] && echo active || echo retired)" "retired" "terminal 'complete' status retires the active marker"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s1.completed" ] && echo completed || echo missing)" "completed" "completion marker written"
+
+# After completion the enforcement gates go quiet — even though the
+# session transcript is full of achilles signatures.
+COMPLETED_TRANSCRIPT="$SCOPE_TMP/completed-transcript.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"onboarding"}}]}}' > "$COMPLETED_TRANSCRIPT"
+assert_allow "$COMMIT_GATE" "$(payload session_id=pipe-s1 transcript_path="$COMPLETED_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "post-completion: gates silent-allow despite transcript signatures"
+
+# ...but a FRESH explicit protocol invocation re-opens the protocol.
+run_hook "$WATCHER" "$(payload session_id=pipe-s1 hook_event_name=PreToolUse tool_name=Skill skill=coverage-expansion)"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s1.active" ] && echo active || echo inactive)" "active" "fresh Skill invocation re-activates after completion"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s1.completed" ] && echo stale || echo cleared)" "cleared" "re-activation clears the completion marker"
+assert_deny "$COMMIT_GATE" "$(payload session_id=pipe-s1 transcript_path="$COMPLETED_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "re-activated session enforces again" "AI-attribution"
+
+# 'aborted' is terminal too; perf ledger path is equally recognised.
+: > "$ACHILLES_SESSION_STATE_DIR/pipe-s2.active"
+PERF_LEDGER_DIR="$SCOPE_TMP/proj/tests/perf/docs"; mkdir -p "$PERF_LEDGER_DIR"
+PERF_LEDGER="$PERF_LEDGER_DIR/perf-onboarding-status.json"
+printf '%s' '{"status":"aborted"}' > "$PERF_LEDGER"
+run_hook "$WATCHER" "$(wpost pipe-s2 Edit "$PERF_LEDGER")"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s2.completed" ] && echo completed || echo missing)" "completed" "perf ledger 'aborted' retires the session"
+
+section "lifecycle: reporting hooks still run after completion"
+RS="$HOOK_DIR/run-summary-writer.sh"
+COMPLETED_PROJ="$SCOPE_TMP/completed-proj"; mkdir -p "$COMPLETED_PROJ"
+( cd "$COMPLETED_PROJ" && run_hook "$RS" "$("$JQ" -n --arg sid pipe-s2 '{session_id:$sid, hook_event_name:"Stop"}')" )
+assert_eq "$([ -f "$COMPLETED_PROJ/.achilles/run-summary.json" ] && echo written || echo skipped)" "written" "run-summary-writer runs for a completed session"
+DEV_PROJ2="$SCOPE_TMP/dev-proj2"; mkdir -p "$DEV_PROJ2"
+( cd "$DEV_PROJ2" && run_hook "$RS" "$(dev_payload dev-s14 hook_event_name=Stop)" )
+assert_eq "$([ -d "$DEV_PROJ2/.achilles" ] && echo polluted || echo clean)" "clean" "run-summary-writer still skips plain dev sessions"
 
 # Cleanup — later case files and install-simulation must not inherit scope state.
 unset ACHILLES_SESSION_STATE_DIR

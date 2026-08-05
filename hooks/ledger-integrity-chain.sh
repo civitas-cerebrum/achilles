@@ -44,7 +44,7 @@ EVENT=$(echo "$INPUT" | "$JQ" -r '.hook_event_name // empty' 2>/dev/null || echo
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 
 emit_deny() {
-  "$JQ" -n --arg r "$1" '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$r}}'
+  "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$r}}'
 }
 
 # Deny any direct Write/Edit to the sidecar itself (only this hook's Post

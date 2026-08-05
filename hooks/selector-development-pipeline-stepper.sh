@@ -54,7 +54,7 @@ fi
 # ---------------------------------------------------------------------------
 
 emit_deny() {
-  "$JQ" -n --arg r "$1" '{
+  "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",

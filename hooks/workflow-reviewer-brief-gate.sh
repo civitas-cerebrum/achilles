@@ -96,7 +96,7 @@ fi
 PROMPT=$(echo "$INPUT" | "$JQ" -r '.tool_input.prompt // ""' 2>/dev/null || echo "")
 
 emit_deny() {
-  "$JQ" -n --arg r "$1" '{
+  "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
