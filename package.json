@@ -10,7 +10,11 @@
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
     "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && npm run test:hooks"
   },
+  "bin": {
+    "achilles-self-repair": "bin/self-repair.mjs"
+  },
   "files": [
+    "bin",
     "hooks",
     "skills",
     "schemas",

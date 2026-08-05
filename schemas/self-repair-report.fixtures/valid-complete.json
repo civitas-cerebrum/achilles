@@ -1,0 +1,79 @@
+{
+  "version": "self-repair-report/v1",
+  "run-id": "2026-08-05_12-30-00",
+  "mode": "script",
+  "started-at": "2026-08-05T12:30:00.000Z",
+  "finished-at": "2026-08-05T13:05:41.000Z",
+  "scope": { "files": 3, "tests": 7 },
+  "baseline": { "runs": 3 },
+  "verify-runs": 3,
+  "rounds": 1,
+  "totals": {
+    "already-green": 4,
+    "healed": 1,
+    "app-bugs": 1,
+    "quarantined": 1,
+    "operator-pending": 0,
+    "unresolved": 0
+  },
+  "files": [
+    {
+      "file": "tests/e2e/checkout.spec.ts",
+      "status": "explained",
+      "tests": [
+        {
+          "title": "completes checkout with saved card",
+          "baseline-pattern": "deterministic-fail",
+          "outcome": "healed",
+          "root-cause": "selector drift — submit-btn renamed to place-order-btn",
+          "fix": "updated CheckoutPage.submit-button in page-repository.json",
+          "bug-report": null,
+          "notes": null
+        },
+        {
+          "title": "rejects expired card with inline error",
+          "baseline-pattern": "deterministic-fail",
+          "outcome": "app-bug",
+          "root-cause": "app returns 500 instead of inline validation",
+          "fix": null,
+          "bug-report": {
+            "summary": "POST /api/checkout 500s on expired card; UI shows blank error region",
+            "evidence": [".achilles/self-repair/2026-08-05_12-30-00/workers/checkout-expired-card.png"]
+          },
+          "notes": null
+        }
+      ]
+    },
+    {
+      "file": "tests/e2e/search.spec.ts",
+      "status": "explained",
+      "tests": [
+        {
+          "title": "search suggestions appear within 300ms",
+          "baseline-pattern": "flaky-chaotic",
+          "outcome": "quarantined",
+          "root-cause": "intermittent suggestion-panel race; resisted two heal strategies",
+          "fix": null,
+          "bug-report": null,
+          "notes": "tagged @flaky, ledger entry appended"
+        }
+      ]
+    },
+    {
+      "file": "tests/e2e/login.spec.ts",
+      "status": "green",
+      "tests": [
+        { "title": "logs in with valid credentials", "baseline-pattern": "green", "outcome": "already-green" },
+        { "title": "rejects wrong password", "baseline-pattern": "green", "outcome": "already-green" },
+        { "title": "locks after five attempts", "baseline-pattern": "green", "outcome": "already-green" },
+        { "title": "resets password via email", "baseline-pattern": "green", "outcome": "already-green" }
+      ]
+    }
+  ],
+  "observations": ["checkout specs share a seeded cart fixture; consider per-test isolation"],
+  "artifacts": {
+    "run-dir": ".achilles/self-repair/2026-08-05_12-30-00",
+    "events-ndjson": ".achilles/self-repair/2026-08-05_12-30-00/events.ndjson",
+    "workers-dir": ".achilles/self-repair/2026-08-05_12-30-00/workers"
+  }
+}

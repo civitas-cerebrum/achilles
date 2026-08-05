@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/self-repair-report.schema.json",
+  "title": "Self-repair session report (v1)",
+  "description": "Final report written by a self-repair run at .achilles/self-repair/<run-id>/report.json — by bin/self-repair.mjs in script mode, or by the orchestrator in interactive mode. report.md is the human rendering of this same data.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["version", "run-id", "mode", "started-at", "finished-at", "scope", "baseline", "rounds", "totals", "files", "artifacts"],
+  "properties": {
+    "version": { "const": "self-repair-report/v1" },
+    "run-id": { "type": "string", "minLength": 1 },
+    "mode": { "enum": ["script", "interactive"] },
+    "started-at": { "type": "string", "format": "date-time" },
+    "finished-at": { "type": "string", "format": "date-time" },
+    "scope": {
+      "type": "object",
+      "required": ["files", "tests"],
+      "properties": {
+        "files": { "type": "integer", "minimum": 0 },
+        "tests": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["runs"],
+      "properties": { "runs": { "type": "integer", "minimum": 1 } }
+    },
+    "verify-runs": { "type": "integer", "minimum": 0 },
+    "rounds": { "type": "integer", "minimum": 0 },
+    "totals": {
+      "type": "object",
+      "required": ["already-green", "healed", "app-bugs", "quarantined", "operator-pending", "unresolved"],
+      "properties": {
+        "already-green": { "type": "integer", "minimum": 0 },
+        "healed": { "type": "integer", "minimum": 0 },
+        "app-bugs": { "type": "integer", "minimum": 0 },
+        "quarantined": { "type": "integer", "minimum": 0 },
+        "operator-pending": { "type": "integer", "minimum": 0 },
+        "unresolved": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "status", "tests"],
+        "properties": {
+          "file": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["green", "healed", "explained", "unresolved"] },
+          "tests": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["title", "baseline-pattern", "outcome"],
+              "properties": {
+                "title": { "type": "string", "minLength": 1 },
+                "baseline-pattern": { "enum": ["green", "deterministic-fail", "flaky-consistent", "flaky-chaotic"] },
+                "outcome": { "enum": ["already-green", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"] },
+                "root-cause": { "type": ["string", "null"] },
+                "fix": { "type": ["string", "null"] },
+                "bug-report": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "summary": { "type": "string" },
+                    "evidence": { "type": "array", "items": { "type": "string" } }
+                  }
+                },
+                "notes": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "observations": { "type": "array", "items": { "type": "string" } },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Relative paths to the run's artifacts (events NDJSON, worker transcripts/reports, logs)."
+    }
+  }
+}

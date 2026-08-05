@@ -1,0 +1,42 @@
+handover:
+  role: repair-worker-tests-e2e-checkout-spec-ts
+  cycle: 1
+  status: completed
+  next-action: deregister; report written to .achilles/self-repair/run/workers/checkout.report.json
+file: tests/e2e/checkout.spec.ts
+tests:
+  - title: completes checkout with saved card
+    outcome: healed
+    baseline-pattern: deterministic-fail
+    root-cause: selector drift — `submit-btn` renamed to `place-order-btn` in the app
+    fix: updated CheckoutPage.submit-button entry in page-repository.json
+    stability-runs:
+      passed: 5
+      total: 5
+  - title: rejects expired card with inline error
+    outcome: app-bug
+    baseline-pattern: deterministic-fail
+    root-cause: app returns 500 on expired-card submission instead of inline validation
+    bug-report:
+      summary: POST /api/checkout 500s on expired card; UI shows blank error region
+      evidence:
+        - .achilles/self-repair/run/workers/checkout-expired-card.png
+        - .achilles/self-repair/run/workers/checkout-expired-card.trace.zip
+stage-log:
+  - stage: diagnosing
+    test: completes checkout with saved card
+    detail: screenshot shows button present under new test id
+  - stage: fixing
+    test: completes checkout with saved card
+    detail: page-repository entry updated
+  - stage: verifying
+    test: completes checkout with saved card
+    detail: 5/5 stability runs green
+  - stage: classifying
+    test: rejects expired card with inline error
+    detail: wrong-UI evidence — classified app-bug, test untouched
+  - stage: done
+    detail: report written
+observations:
+  - checkout specs share a seeded cart fixture; consider per-test isolation
+summary: 1 healed (selector drift), 1 app bug reported with evidence.

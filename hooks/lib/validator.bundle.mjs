@@ -15429,6 +15429,119 @@ var probe_schema_default = {
   ]
 };
 
+// schemas/subagent-returns/repair-worker.schema.json
+var repair_worker_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://civitas-cerebrum.github.io/element-interactions/schemas/subagent-returns/repair-worker.schema.json",
+  title: "Repair-worker (self-repair) return",
+  description: "Return shape for a self-repair worker scoped to one spec file. Serves both fronts of the self-repair entrypoint: the Agent-subagent return in interactive mode, and the JSON report a `claude -p` worker subprocess writes to disk in script mode (the CLI driver validates it with this same schema).",
+  type: "object",
+  additionalProperties: true,
+  required: ["handover", "file", "tests"],
+  properties: {
+    handover: {
+      allOf: [
+        { $ref: "handover.schema.json" },
+        {
+          type: "object",
+          properties: {
+            status: { enum: ["completed", "blocked"] }
+          }
+        }
+      ]
+    },
+    file: {
+      type: "string",
+      minLength: 1,
+      description: "The one spec file this worker was scoped to."
+    },
+    tests: {
+      type: "array",
+      minItems: 1,
+      description: "One entry per test the worker was briefed on. No silent drops \u2014 every briefed test must appear.",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["title", "outcome"],
+        properties: {
+          title: { type: "string", minLength: 1 },
+          outcome: {
+            enum: ["already-green", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"]
+          },
+          "baseline-pattern": {
+            enum: ["green", "deterministic-fail", "flaky-consistent", "flaky-chaotic"]
+          },
+          "root-cause": { type: "string" },
+          fix: { type: "string", description: "What was changed (selector, wait, state isolation) when outcome is healed." },
+          "stability-runs": {
+            type: "object",
+            required: ["passed", "total"],
+            properties: {
+              passed: { type: "integer", minimum: 0 },
+              total: { type: "integer", minimum: 1 }
+            }
+          },
+          "bug-report": {
+            type: "object",
+            required: ["summary"],
+            properties: {
+              summary: { type: "string", minLength: 1 },
+              evidence: {
+                type: "array",
+                items: { type: "string" },
+                description: "Paths to screenshots / traces / videos backing the app-bug classification."
+              }
+            }
+          },
+          notes: { type: "string" }
+        },
+        allOf: [
+          {
+            if: { type: "object", required: ["outcome"], properties: { outcome: { const: "healed" } } },
+            then: {
+              type: "object",
+              required: ["fix", "stability-runs"],
+              properties: {
+                fix: { type: "string" },
+                "stability-runs": { type: "object" }
+              }
+            }
+          },
+          {
+            if: { type: "object", required: ["outcome"], properties: { outcome: { const: "app-bug" } } },
+            then: {
+              type: "object",
+              required: ["bug-report"],
+              properties: {
+                "bug-report": { type: "object" }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "stage-log": {
+      type: "array",
+      description: "Per-stage progress announcements \u2014 the structured mirror of the worker's `[self-repair:worker] stage=\u2026` lines.",
+      items: {
+        type: "object",
+        required: ["stage"],
+        properties: {
+          stage: { enum: ["diagnosing", "fixing", "verifying", "classifying", "done"] },
+          test: { type: "string" },
+          detail: { type: "string" }
+        }
+      }
+    },
+    observations: {
+      type: "array",
+      items: { type: "string" },
+      description: "Anything worth surfacing in the session report that isn't a per-test outcome (systemic debt, shared-fixture smells, app oddities)."
+    },
+    summary: { type: "string" }
+  }
+};
+
 // schemas/subagent-returns/reviewer-inloop.schema.json
 var reviewer_inloop_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -16295,6 +16408,7 @@ var SCHEMAS = {
   "phase-validator": phase_validator_schema_default,
   "phase4-prioritise-author": phase4_prioritise_author_schema_default,
   "probe": probe_schema_default,
+  "repair-worker": repair_worker_schema_default,
   "reviewer-inloop": reviewer_inloop_schema_default,
   "section-agent": section_agent_schema_default,
   "workflow-reviewer": workflow_reviewer_schema_default,

@@ -197,11 +197,16 @@ augmentation.
    `tests/e2e/`, no `specs/` subdirectory).
 3. Add `tests/e2e/.gitignore` entries for `playwright-report/`,
    `test-results/`, `.last-run.json`.
-4. Commit as `chore: scaffold e2e suite`.
+4. Add `"test:repair": "achilles-self-repair"` to the project's
+   `package.json` scripts — the `self-repair` entrypoint's script-mode
+   front door (`npm run test:repair`, served by this package's
+   `bin/self-repair.mjs`).
+5. Commit as `chore: scaffold e2e suite`.
 
 **Exit criteria.**
 - `npx playwright test --list` lists zero specs without error.
 - The four scaffold files exist on disk.
+- `package.json` scripts include `test:repair`.
 
 Load `element-interactions` (Stage 1) for the exact file shapes.
 
