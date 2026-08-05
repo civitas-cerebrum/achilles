@@ -49,6 +49,11 @@ if [ -z "$JQ" ]; then
 fi
 
 input=$(cat)
+
+# Session-scope gate: this hook applies only to achilles-activated
+# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+achilles_require_active "$input"
 tool_name=$(echo "$input" | "$JQ" -r '.tool_name // empty')
 file_path=$(echo "$input" | "$JQ" -r '.tool_input.file_path // empty')
 

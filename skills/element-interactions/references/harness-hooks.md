@@ -6,6 +6,14 @@ Skills that cite a hook should link this index once per skill rather than re-inl
 
 Orchestrator-mode and cascade-routing concerns previously enforced by this package now live in external automated CLI drivers. This index documents only the hooks element-interactions still ships.
 
+## Session-scoped activation
+
+Every hook below applies **only to sessions where the achilles protocol is active**. The hooks are installed globally (`~/.claude/settings.json`), but a plain development session — one that never invokes an achilles skill, dispatches a protocol-role subagent, or types an achilles `/<skill>` command — passes through every gate untouched: no commit-grammar enforcement, no protected-artifact denies, no `.achilles/` summary artifacts. The shared detection logic lives in [`hooks/lib/achilles-activation.sh`](../../../hooks/lib/achilles-activation.sh); activation signals are (in order) the `ACHILLES_PROTOCOL` env override (`0` = hard off, `1` = force on), the per-session marker written by the activation watcher, a protocol-shaped current tool call, and a transcript signature (achilles Skill invocation, typed `/<skill>` command, or Read of an achilles `SKILL.md`). Payloads without a `session_id` are treated as active (fail closed): a real harness always supplies one, so only synthetic invocations hit that branch. Sessions activate at the first achilles signal and stay active for their lifetime.
+
+### Skill / Agent / UserPromptSubmit
+
+- **[achilles-protocol-activation-watcher](../../../hooks/achilles-protocol-activation-watcher.sh)** — `PreToolUse:Skill`, `PreToolUse:Agent`, `UserPromptSubmit`. OBSERVE-mode (never denies, never emits output). Writes the per-session activation marker (`~/.claude/achilles/sessions/<session_id>.active`) the moment an achilles Skill is invoked, a distinctly-achilles role-prefixed subagent is dispatched (`workflow-reviewer-`, `perf-reviewer-`, `phase-validator-`, `phase4-*`, `composer-`, `probe-`, `process-validator-`, `contribution-handover-` — generic-sounding prefixes like `cleanup-` deliberately excluded), or the user types an achilles `/<skill>` command. Prunes markers older than 7 days. The enforcement gates re-check the same signatures inline via the shared lib, so this hook is a cache writer, not a correctness dependency — hook-ordering races cannot open a gap. [escape hatch: n/a (never denies); `ACHILLES_PROTOCOL=0` suppresses marking]
+
 ## PreToolUse
 
 ### Edit / Write

@@ -19,6 +19,15 @@ JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 [ -n "$JQ" ] || { printf '{}\n'; exit 0; }
 
+INPUT=$(cat 2>/dev/null || echo "{}")
+
+# Session-scope gate: this hook applies only to achilles-activated
+# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
+# Also prevents .achilles/ run-summary artifacts appearing in projects
+# whose sessions never ran the methodology.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+achilles_require_active "$INPUT"
+
 ROOT="${PWD}"
 DOCS="$ROOT/tests/e2e/docs"
 out="$ROOT/.achilles/run-summary.json"
