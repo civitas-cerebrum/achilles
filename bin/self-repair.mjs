@@ -256,6 +256,23 @@ function collectResults(reportPath) {
   return out;
 }
 
+// Top-level runner errors from a Playwright JSON report (config/webServer/
+// filter failures live here, not in any suite).
+function runnerErrors(reportPath) {
+  if (!existsSync(reportPath)) return [];
+  try {
+    const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+    return (report.errors ?? []).map((e) =>
+      (e.message ?? '')
+        .replace(/\[[0-9;]*m/g, '')
+        .split('\n')[0]
+        .slice(0, 200),
+    );
+  } catch {
+    return [];
+  }
+}
+
 function errorSignature(result) {
   const raw = result?.error?.message ?? result?.errors?.[0]?.message ?? '';
   return raw
@@ -706,9 +723,21 @@ async function main() {
   {
     log('baseline', `discovery run 1/${opts.baselineRuns} starting (full scope, suite timeouts)`);
     const jsonOut = join(state.runDir, 'baseline-1.json');
-    await runPlaywright('baseline-1', jsonOut, ['--reporter=json'], opts);
+    const exitCode = await runPlaywright('baseline-1', jsonOut, ['--reporter=json'], opts);
     const results = collectResults(jsonOut);
     if (!results) fail('discovery run produced no JSON report — is this a Playwright project?');
+    // Zero tests is never "green" — it means the run never happened:
+    // webServer failed to start, a filter matched nothing, a config
+    // error. Surface Playwright's own error instead of a false pass.
+    if (results.length === 0) {
+      const errs = runnerErrors(jsonOut);
+      fail(
+        `discovery run executed 0 tests (playwright exit ${exitCode}). ` +
+          (errs[0] ? `Playwright reported: ${errs[0]} ` : '') +
+          `See ${relative(process.cwd(), join(state.runDir, 'baseline-1.out.log'))}. ` +
+          'Common causes: the config\'s webServer failed to start (set PLAYWRIGHT_TEST_BASE_URL to target a running app), or the given filters matched no spec files.',
+      );
+    }
     const failed = results.filter((r) => r.status !== 'passed' && r.status !== 'skipped').length;
     log('baseline', `discovery run 1/${opts.baselineRuns} done: ${results.length} tests, ${failed} failing`);
     runs.push(results);
@@ -806,9 +835,19 @@ async function main() {
       log('verify', `run ${i}/${opts.verifyRuns} over ${filesToVerify.length} file(s)`);
       const jsonOut = join(state.runDir, `verify-r${round}-${i}.json`);
       const verifyOpts = { ...opts, filters: filesToVerify };
-      await runPlaywright(`verify-r${round}-${i}`, jsonOut, ['--reporter=json'], verifyOpts);
+      const exitCode = await runPlaywright(`verify-r${round}-${i}`, jsonOut, ['--reporter=json'], verifyOpts);
       const results = collectResults(jsonOut);
-      if (results) verifyRunsResults.push(results);
+      if (results && results.length > 0) {
+        verifyRunsResults.push(results);
+      } else {
+        const errs = runnerErrors(jsonOut);
+        log('verify', `run ${i}/${opts.verifyRuns} executed 0 tests (exit ${exitCode})${errs[0] ? ` — ${errs[0]}` : ''} — excluded from verification`);
+      }
+    }
+    // A verification round with no usable runs proves nothing — failing
+    // loudly beats declaring the heals verified on zero evidence.
+    if (verifyRunsResults.length === 0) {
+      fail(`verification round ${round} executed 0 tests across all ${opts.verifyRuns} runs — cannot confirm heals. See ${relative(process.cwd(), state.runDir)}/verify-r${round}-*.out.log`);
     }
     verifyByTest = classify(verifyRunsResults);
 
