@@ -1,13 +1,25 @@
 #!/bin/bash
-# achilles-protocol-activation-watcher.sh — marks the session as
-# protocol-active the moment achilles methodology enters the conversation.
+# achilles-protocol-activation-watcher.sh — owns the session-scope
+# lifecycle: marks the session protocol-active the moment achilles
+# methodology enters the conversation, and retires the marker when the
+# pipeline reaches a terminal status.
 #
 # Hook    : PreToolUse:Skill, PreToolUse:Agent, UserPromptSubmit
+#           PostToolUse:Write|Edit (pipeline-completion detection)
 # Mode    : OBSERVE (never denies, never emits output)
-# State   : writes $ACHILLES_SESSION_STATE_DIR/<session_id>.active
-#           (default ~/.claude/achilles/sessions/)
-# Env     : ACHILLES_PROTOCOL=0 disables marking (hard off)
+# State   : writes $ACHILLES_SESSION_STATE_DIR/<session_id>.active /
+#           .completed (default ~/.claude/achilles/sessions/)
+# Env     : ACHILLES_PROTOCOL=0 disables marking (activation suppression)
 #           ACHILLES_SESSION_STATE_DIR overrides the marker directory
+#
+# Lifecycle: activation is ONE-WAY for the session. The only deactivation
+# paths are (a) this watcher observing a sanctioned ledger write that
+# lands a terminal pipeline status ("complete" / "aborted") on
+# onboarding-status.json / perf-onboarding-status.json — PostToolUse, so
+# the write already passed every ledger gate — or (b) the user
+# terminating the Claude session. There is no mid-session off switch;
+# deny messages across the suite point agents and users to those two
+# exits.
 #
 # Why
 # ---
@@ -52,6 +64,34 @@ SESSION_ID=$(printf '%s' "$INPUT" | "$JQ" -r '.session_id // empty' 2>/dev/null 
 
 EVENT=$(printf '%s' "$INPUT" | "$JQ" -r '.hook_event_name // empty' 2>/dev/null || echo "")
 TOOL_NAME=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
+
+# ── Pipeline-completion detection (PostToolUse:Write|Edit) ──
+# A sanctioned Write/Edit that lands a terminal status on a pipeline
+# ledger retires the session's activation marker. PostToolUse: the write
+# has already cleared the ledger write-gate + integrity chain, so the
+# on-disk state is authoritative. Enforcement gates go quiet from the
+# next tool call; summary/cleanup hooks keep running via the .completed
+# marker (achilles_require_active_or_completed).
+if [ "$EVENT" = "PostToolUse" ]; then
+  case "$TOOL_NAME" in
+    Write|Edit)
+      FILE_PATH=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
+      case "$FILE_PATH" in
+        */onboarding-status.json|onboarding-status.json|*/perf-onboarding-status.json|perf-onboarding-status.json)
+          if [ -f "$FILE_PATH" ]; then
+            LEDGER_STATUS=$("$JQ" -r '.status // empty' "$FILE_PATH" 2>/dev/null || echo "")
+            case "$LEDGER_STATUS" in
+              complete|aborted)
+                achilles_mark_session_completed "$SESSION_ID" "$(basename "$FILE_PATH"):${LEDGER_STATUS}"
+                ;;
+            esac
+          fi
+          ;;
+      esac
+      ;;
+  esac
+  exit 0
+fi
 
 MATCHED=0
 

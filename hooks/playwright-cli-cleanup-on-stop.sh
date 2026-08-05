@@ -58,9 +58,10 @@ JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 INPUT=$(cat 2>/dev/null || echo "{}")
 
 # Session-scope gate: this hook applies only to achilles-activated
-# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
+# sessions OR sessions whose pipeline just completed (reporting/cleanup
+# must cover the final state); plain dev sessions silent-allow.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
-achilles_require_active "$INPUT"
+achilles_require_active_or_completed "$INPUT"
 CWD=""
 if [ -n "$JQ" ]; then
   CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // ""' 2>/dev/null || echo "")

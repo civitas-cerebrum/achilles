@@ -119,7 +119,7 @@ CYCLE_STATE_PATH="$PROJECT_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 # `hookSpecificOutput.permissionDecision` (PreToolUse contract).
 emit_deny() {
   local reason="$1"
-  "$JQ" -n --arg r "$reason" '{
+  "$JQ" -n --arg r "$reason$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",

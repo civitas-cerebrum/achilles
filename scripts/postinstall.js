@@ -132,6 +132,9 @@ const HOOK_MANIFEST = [
   { file: 'achilles-protocol-activation-watcher.sh', event: 'PreToolUse',       matcher: 'Skill', timeout: 5 },
   { file: 'achilles-protocol-activation-watcher.sh', event: 'PreToolUse',       matcher: 'Agent', timeout: 5 },
   { file: 'achilles-protocol-activation-watcher.sh', event: 'UserPromptSubmit', matcher: null,    timeout: 5 },
+  // Completion detection: a sanctioned ledger write landing a terminal
+  // status ("complete"/"aborted") retires the session's activation marker.
+  { file: 'achilles-protocol-activation-watcher.sh', event: 'PostToolUse',      matcher: 'Write|Edit', timeout: 5 },
 
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },

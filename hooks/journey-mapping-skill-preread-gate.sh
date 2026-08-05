@@ -203,7 +203,7 @@ See: skills/onboarding/SKILL.md §\"Phase 4 — Journey mapping\""
     ;;
 esac
 
-"$JQ" -n --arg r "$REASON" '{
+"$JQ" -n --arg r "$REASON$(achilles_scope_notice)" '{
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

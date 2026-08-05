@@ -105,14 +105,12 @@ fi
 # Missing the frontend marker is a hard block — the pipeline literally
 # has no source to write a selector into. DENY.
 if [ "$fe_present" -eq 0 ]; then
-  cat <<EOF
-{
-  "hookSpecificOutput": {
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "selector-development-activation-gate: frontend source not present (no framework dep in package.json under ${ws}). selector-development requires a frontend project to add inert selectors to. If this consumer doesn't use selector-development, disable the hook with CIVITAS_DISABLE_SELECTOR_DEVELOPMENT=1."
-  }
-}
-EOF
+  "$JQ" -n --arg r "selector-development-activation-gate: frontend source not present (no framework dep in package.json under ${ws}). selector-development requires a frontend project to add inert selectors to. If this consumer doesn't use selector-development, disable the hook with CIVITAS_DISABLE_SELECTOR_DEVELOPMENT=1.$(achilles_scope_notice)" '{
+    "hookSpecificOutput": {
+      "permissionDecision": "deny",
+      "permissionDecisionReason": $r
+    }
+  }'
   exit 0
 fi
 

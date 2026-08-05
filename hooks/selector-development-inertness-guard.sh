@@ -145,6 +145,6 @@ fi
 
 suffix="The only allowed edit is appending exactly one ${convention} attribute (kebab-case value) to one opening tag, with no other byte changes."
 echo "$result" | "$JQ" -c \
-  --arg sfx "$suffix" \
+  --arg sfx "$suffix$(achilles_scope_notice)" \
   '{hookSpecificOutput:{permissionDecision:"deny",permissionDecisionReason:("selector-development-inertness-guard: " + .reason + ". " + (.detail // "") + ". " + $sfx)}}'
 exit 0

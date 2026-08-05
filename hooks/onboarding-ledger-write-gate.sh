@@ -118,7 +118,7 @@ PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
 emit_deny() {
   local reason="$1"
-  "$JQ" -n --arg r "$reason" '{
+  "$JQ" -n --arg r "$reason$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
