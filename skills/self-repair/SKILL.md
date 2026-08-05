@@ -24,7 +24,9 @@ One pipeline, two front doors:
 | **Script** | `npm run test:repair` → `achilles-self-repair` (`bin/self-repair.mjs`) | One `claude -p` subprocess per red spec file | Timestamped `[self-repair]` stage lines on stdout + `driver.log` + `events.ndjson` + per-worker `stream-json` transcripts |
 | **Interactive** | User asks for self repair in a Claude Code session | One Agent-tool subagent per red spec file (`repair-worker-<file-slug>:` dispatch) | The orchestrator emits the same `[self-repair]` stage lines in chat; workers report per-stage via `stage-log` in their schema-validated returns |
 
-Both modes execute the same stages against the same worker contract
+Both modes follow the same baseline structure (discovery run + focused
+failure reruns — see Stage 1) and execute the same stages against the same
+worker contract
 (`schemas/subagent-returns/repair-worker.schema.json`) and write the same
 run-dir artifacts under `.achilles/self-repair/<run-id>/`, ending with
 `report.md` + `report.json`
@@ -43,17 +45,71 @@ this skill too, not restated here).
 
 ## Pipeline
 
-### Stage 1 — Baseline
+### Stage 1 — Baseline: discovery run + focused failure reruns
 
-Run the suite N× (default 3 — the minimum floor to distinguish
-deterministic from flaky) with a JSON reporter per run:
+Detect first, analyse before fixing. N baseline runs total (default 3 —
+the minimum floor to distinguish deterministic from flaky), but only the
+first covers the full scope:
 
-```bash
-PLAYWRIGHT_JSON_OUTPUT_NAME=.achilles/self-repair/<run-id>/baseline-<i>.json \
-  npx playwright test --reporter=json
-```
+1. **Discovery run** (1 of N) — full scope, the suite's own timeouts,
+   JSON reporter:
 
-Announce each run: `[self-repair] stage=baseline run <i>/<N> done: <T> tests, <F> failing`.
+   ```bash
+   PLAYWRIGHT_JSON_OUTPUT_NAME=.achilles/self-repair/<run-id>/baseline-1.json \
+     npx playwright test --reporter=json
+   ```
+
+   Its red files define the failure-rerun scope. Discovery green → skip
+   the reruns and report.
+
+2. **Failure reruns** (2..N of N) — scoped to the red files only, with
+   `--trace on` (workers start from real evidence, not a bare error
+   line) and the **analysis timeout cap** (default 60s per test,
+   `--timeout-cap`, 0 disables):
+
+   ```bash
+   PLAYWRIGHT_JSON_OUTPUT_NAME=.achilles/self-repair/<run-id>/baseline-<i>.json \
+     npx playwright test <red-files> --reporter=json --trace on --timeout 60000
+   ```
+
+**Why these standards are universal.** A deterministically broken test is
+the slowest thing in any suite — it burns every assertion timeout in full
+on every run (observed: a broken logout test at 73s vs a 13s suite
+median). Scoping reruns to red files makes baseline cost scale with
+failure count, not suite size; the timeout cap bounds the burn on any
+suite regardless of how generous its production timeouts are. The cap
+applies ONLY to analysis reruns — discovery and verification always run
+with the suite's own timeouts, because a heal is only proven under real
+conditions, and a cap on discovery could misclassify legitimately slow
+tests app-wide.
+
+**Incident-shape spacing.** A 3/3-red baseline captured in one tight
+window can be a time-varying app incident, not a deterministic failure
+(observed live: a logout journey read 3/3 red during a bad window and
+passed minutes later). When runs are fast or the failure smells
+infrastructural, space the failure reruns with `--rerun-delay <s>`; the
+classification only hardens to `deterministic-fail` legitimately when
+failures span the spacing. Workers must still attempt an out-of-harness
+reproduction before healing (failure-diagnosis discipline).
+
+**Focus-mode trade-off (explicit).** A flaky test that happens to pass
+the single discovery run escapes the failure reruns and is classified
+green this session — focus mode optimises for detecting and analysing
+*observed* failures cheaply, not for exhaustive flake hunting. Two
+recovery paths exist by construction: the suite-order verification runs
+re-expose late flake in red files, and any test that fails a future
+discovery run enters that session's reruns. When the goal is a thorough
+flake sweep rather than repair of known failures, use
+`--baseline-mode full`.
+
+**Escape hatch.** Suites with cross-file state coupling (a red file's
+failure depends on state left by earlier green files) also need
+`--baseline-mode full`: every run covers the full scope with suite
+timeouts — the original 3× behaviour. `fullyParallel` suites with
+isolated files (the framework's own scaffold default) are safe in
+`focus` mode.
+
+Announce each run: `[self-repair] stage=baseline run <i>/<N> done: <T> tests, <F> failing` (the discovery run and each failure rerun get one line; delays are announced).
 
 ### Stage 2 — Classify
 
@@ -80,7 +136,10 @@ schema path `schemas/subagent-returns/repair-worker.schema.json` — the
 prefixes that omit the citation. The brief carries:
 
 1. The single spec file in scope (the worker must not touch other spec files).
-2. The per-test baseline evidence: pattern + per-run outcomes + first error line.
+2. The per-test baseline evidence: pattern + per-run outcomes + first error
+   line — plus, in focus mode, the failure-rerun traces already on disk
+   (`test-results/<test-slug>/trace.zip`), so analysis starts from recorded
+   evidence instead of a fresh reproduction run.
 3. The methodology instruction: load `failure-diagnosis` via the Skill tool
    for each failing test; heal test-side causes (selector drift, waits,
    state isolation); prove every heal with 5 consecutive passing runs of the
@@ -159,6 +218,32 @@ unresolved tests remain, `1` = driver error.
   cross-session state, written per `failure-diagnosis` heal (f). Ledger
   review/release remains `test-repair` Stage 5.5's job — self-repair
   workers may add entries, never release them.
+
+---
+
+## Universal applicability (assumptions inventory)
+
+Achilles targets any Playwright-tested UI application. Self-repair's only
+assumptions, kept deliberately minimal:
+
+- **A Playwright project in cwd** — `npx playwright test` resolves the
+  locally installed runner regardless of package manager (npm, pnpm, yarn);
+  the JSON reporter is forced per-run via `PLAYWRIGHT_JSON_OUTPUT_NAME`, so
+  the suite's own reporter config never matters.
+- **The default config** — flows using `--config=…` (perf configs, custom
+  harnesses) are out of scope for repair and excluded by preset derivation.
+- **Run artifacts under `.achilles/`** — outside Playwright's `outputDir`
+  (which Playwright wipes at run start) and gitignored by the scaffold.
+- **File-isolated specs for focus mode** — the scaffold's `fullyParallel`
+  default guarantees this; suites with cross-file state coupling use
+  `--baseline-mode full` (documented escape hatch, Stage 1).
+- **No app-specific knowledge** — selectors come from the project's own
+  page repository; timeouts, projects, and viewports come from the
+  project's own config; the repair standards (timeout cap, failure-rerun
+  scoping, incident spacing) are ratios and structure, not app constants.
+
+Anything beyond this list is a methodology bug — report it against the
+package rather than special-casing a project.
 
 ---
 

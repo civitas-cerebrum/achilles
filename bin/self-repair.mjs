@@ -49,7 +49,24 @@ Modes:
                         flow (idempotent; never overwrites existing scripts)
 
 Options:
-  --baseline-runs <n>   Full-suite baseline runs used to classify flake (default 3)
+  --baseline-runs <n>   Baseline runs used to classify flake (default 3)
+  --baseline-mode <m>   focus (default) — run 1 covers the full scope, runs
+                        2..N are FAILURE RERUNS scoped to the red files only,
+                        with --trace on and the analysis timeout cap; cost
+                        scales with failures, not suite size.
+                        full — every baseline run covers the full scope with
+                        the suite's own timeouts (for suites with cross-file
+                        state coupling).
+  --timeout-cap <s>     Per-test timeout cap applied to failure reruns
+                        (default 60; 0 disables). Analysis runs only need the
+                        failure signature, not full-length timeout burn.
+                        Discovery and verification runs always use the
+                        suite's own timeouts — a heal is only proven under
+                        real conditions.
+  --rerun-delay <s>     Wall-clock spacing between failure reruns (default 0).
+                        Use for incident-shaped failures: a 3/3-red snapshot
+                        taken inside one tight window can be a time-varying
+                        app incident, not a deterministic failure.
   --verify-runs <n>     Post-repair verification runs, suite order (default 3)
   --concurrency <n>     Parallel claude workers (default 2)
   --max-rounds <n>      Fan-out rounds before declaring unresolved (default 2)
@@ -70,6 +87,9 @@ Options:
 function parseArgs(argv) {
   const opts = {
     baselineRuns: 3,
+    baselineMode: 'focus',
+    timeoutCapSec: 60,
+    rerunDelaySec: 0,
     verifyRuns: 3,
     concurrency: 2,
     maxRounds: 2,
@@ -96,6 +116,24 @@ function parseArgs(argv) {
     const a = argv[i];
     switch (a) {
       case '--baseline-runs': opts.baselineRuns = num(a, argv[++i]); break;
+      case '--baseline-mode': {
+        const m = argv[++i];
+        if (m !== 'focus' && m !== 'full') fail(`--baseline-mode expects focus|full, got: ${m}`);
+        opts.baselineMode = m;
+        break;
+      }
+      case '--timeout-cap': {
+        const n = Number(argv[++i]);
+        if (!Number.isInteger(n) || n < 0) fail(`--timeout-cap expects a non-negative integer, got: ${argv[i]}`);
+        opts.timeoutCapSec = n;
+        break;
+      }
+      case '--rerun-delay': {
+        const n = Number(argv[++i]);
+        if (!Number.isInteger(n) || n < 0) fail(`--rerun-delay expects a non-negative integer, got: ${argv[i]}`);
+        opts.rerunDelaySec = n;
+        break;
+      }
       case '--verify-runs': opts.verifyRuns = num(a, argv[++i]); break;
       case '--concurrency': opts.concurrency = num(a, argv[++i]); break;
       case '--max-rounds': opts.maxRounds = num(a, argv[++i]); break;
@@ -479,7 +517,12 @@ function buildReport(runId, opts, byTest, workerReports, verifyByTest, rounds, s
     'started-at': startedAt,
     'finished-at': new Date().toISOString(),
     scope: { files: files.size, tests: all.length },
-    baseline: { runs: opts.baselineRuns },
+    baseline: {
+      runs: opts.baselineRuns,
+      mode: opts.baselineMode,
+      'timeout-cap-seconds': opts.baselineMode === 'focus' ? opts.timeoutCapSec : 0,
+      'rerun-delay-seconds': opts.rerunDelaySec,
+    },
     'verify-runs': opts.verifyRuns,
     rounds,
     totals,
@@ -649,17 +692,58 @@ async function main() {
     options: { ...opts },
   });
 
-  // Stage 1 — baseline
+  // Stage 1 — baseline: discovery run + focused failure reruns.
+  //
+  // Detect first, analyse before fixing: run 1 covers the full scope and
+  // finds the red set; runs 2..N (focus mode) re-run ONLY the red files —
+  // with --trace on so workers start from real evidence, with the analysis
+  // timeout cap so broken tests don't burn full-length timeouts, and with
+  // optional wall-clock spacing so an app incident isn't misread as a
+  // deterministic failure. Cost scales with failures, not suite size.
   const runs = [];
-  for (let i = 1; i <= opts.baselineRuns; i++) {
-    log('baseline', `run ${i}/${opts.baselineRuns} starting`);
-    const jsonOut = join(state.runDir, `baseline-${i}.json`);
-    await runPlaywright(`baseline-${i}`, jsonOut, ['--reporter=json'], opts);
+  {
+    log('baseline', `discovery run 1/${opts.baselineRuns} starting (full scope, suite timeouts)`);
+    const jsonOut = join(state.runDir, 'baseline-1.json');
+    await runPlaywright('baseline-1', jsonOut, ['--reporter=json'], opts);
     const results = collectResults(jsonOut);
-    if (!results) fail(`baseline run ${i} produced no JSON report — is this a Playwright project?`);
+    if (!results) fail('discovery run produced no JSON report — is this a Playwright project?');
     const failed = results.filter((r) => r.status !== 'passed' && r.status !== 'skipped').length;
-    log('baseline', `run ${i}/${opts.baselineRuns} done: ${results.length} tests, ${failed} failing`);
+    log('baseline', `discovery run 1/${opts.baselineRuns} done: ${results.length} tests, ${failed} failing`);
     runs.push(results);
+  }
+  const redAfterDiscovery = redFiles(classify(runs));
+  if (redAfterDiscovery.size > 0) {
+    const focus = opts.baselineMode === 'focus';
+    const rerunFilters = focus ? [...redAfterDiscovery.keys()] : opts.filters;
+    const capMs = focus && opts.timeoutCapSec > 0 ? opts.timeoutCapSec * 1000 : 0;
+    const rerunArgs = ['--reporter=json'];
+    if (focus) rerunArgs.push('--trace', 'on');
+    if (capMs) rerunArgs.push('--timeout', String(capMs));
+    for (let i = 2; i <= opts.baselineRuns; i++) {
+      if (opts.rerunDelaySec > 0) {
+        log('baseline', `waiting ${opts.rerunDelaySec}s before failure rerun ${i} (incident-shape spacing)`);
+        await new Promise((r) => setTimeout(r, opts.rerunDelaySec * 1000));
+      }
+      log(
+        'baseline',
+        focus
+          ? `failure rerun ${i}/${opts.baselineRuns}: ${redAfterDiscovery.size} red file(s), trace on` +
+              (capMs ? `, timeout cap ${opts.timeoutCapSec}s` : '')
+          : `full baseline run ${i}/${opts.baselineRuns} starting`,
+      );
+      const jsonOut = join(state.runDir, `baseline-${i}.json`);
+      await runPlaywright(`baseline-${i}`, jsonOut, rerunArgs, { ...opts, filters: rerunFilters });
+      const results = collectResults(jsonOut);
+      if (!results) {
+        log('baseline', `run ${i} produced no JSON report — skipping its outcomes`);
+        continue;
+      }
+      const failed = results.filter((r) => r.status !== 'passed' && r.status !== 'skipped').length;
+      log('baseline', `run ${i}/${opts.baselineRuns} done: ${results.length} tests, ${failed} failing`);
+      runs.push(results);
+    }
+  } else {
+    log('baseline', 'discovery run green — skipping failure reruns');
   }
 
   // Stage 2 — classify
