@@ -163,12 +163,16 @@ watchable, and findable long after run dirs rotate:
 
 - **Bundle contents:** failure screenshot, error context / trace, the
   failing run's video, AND a **slow-motion screen recording of a
-  reproduction run** — re-run the failing test with the browser's
-  `launchOptions.slowMo` engaged (≥500ms per action; prefer the
-  consumer's existing hook when one exists, e.g. an `E2E_SLOWMO=<ms>`
-  env var) so the recording is watchable by a human at review speed.
-  Real-time videos of an automated run are too fast to follow; slow-mo
-  is what makes the recording usable as bug-report evidence.
+  reproduction run**. The slow-down happens at the source — the
+  browser's `launchOptions.slowMo` paces the actions themselves, so the
+  native real-time recording is watchable with no post-processing.
+  Standard: **`slowMo` ≥ 1500ms per action**; if individual actions
+  still blur together for the flow under test, raise it until they
+  don't. Prefer the consumer's existing hook when one exists (e.g. an
+  `E2E_SLOWMO=<ms>` env var). 500ms proved too fast to track individual
+  actions in review. For action-by-action stepping beyond any video,
+  the captured `trace.zip` opened with `npx playwright show-trace` is
+  the engineer's artifact; the recording is for humans and bug tickets.
 - **Canonical location:** `<e2e-root>/bug-evidence/<TEST-ID>/<UTC-timestamp>-<label>/`
   (e.g. `bug-evidence/TC_REG_MOB_ACCT_010/20260805T133000Z-slowmo-repro/`).
   Copy evidence there IMMEDIATELY on capture: Playwright reuses per-test
