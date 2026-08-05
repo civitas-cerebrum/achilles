@@ -196,7 +196,10 @@ augmentation.
    Spec files themselves live at `tests/e2e/<journey>.spec.ts` (root of
    `tests/e2e/`, no `specs/` subdirectory).
 3. Add `tests/e2e/.gitignore` entries for `playwright-report/`,
-   `test-results/`, `.last-run.json`.
+   `test-results/`, `.last-run.json`, `bug-evidence/` (the stable
+   bug-evidence home used by `self-repair` — binary media, gitignored
+   by default; teams that want evidence in VCS remove the entry
+   deliberately).
 4. Add `"test:repair": "achilles-self-repair"` to the project's
    `package.json` scripts — the `self-repair` entrypoint's script-mode
    front door (`npm run test:repair`, served by this package's

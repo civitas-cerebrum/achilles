@@ -57,7 +57,7 @@
               "evidence": {
                 "type": "array",
                 "items": { "type": "string" },
-                "description": "Paths to screenshots / traces / videos backing the app-bug classification."
+                "description": "Paths to the evidence bundle backing the app-bug classification — failure screenshot, error context/trace, failing-run video, and a slow-motion reproduction recording. Paths point at the stable <e2e-root>/bug-evidence/<TEST-ID>/ copies, never at reusable test-results/ dirs."
               }
             }
           },

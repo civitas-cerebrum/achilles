@@ -153,6 +153,37 @@ prefixes that omit the citation. The brief carries:
 5. The return contract: every briefed test appears in `tests[]` with an
    outcome of `already-green | healed | app-bug | quarantined |
    operator-pending | unresolved` — no silent drops, no `.skip()`.
+6. The bug-evidence contract (below): app-bug outcomes require the full
+   evidence bundle — including a slow-motion screen recording of a
+   reproduction — copied to `bug-evidence/` before the worker returns.
+
+**Bug-evidence standard (app-bug outcomes).** An app bug leaves the repair
+session as a report other people act on — its evidence must be complete,
+watchable, and findable long after run dirs rotate:
+
+- **Bundle contents:** failure screenshot, error context / trace, the
+  failing run's video, AND a **slow-motion screen recording of a
+  reproduction run** — re-run the failing test with the browser's
+  `launchOptions.slowMo` engaged (≥500ms per action; prefer the
+  consumer's existing hook when one exists, e.g. an `E2E_SLOWMO=<ms>`
+  env var) so the recording is watchable by a human at review speed.
+  Real-time videos of an automated run are too fast to follow; slow-mo
+  is what makes the recording usable as bug-report evidence.
+- **Canonical location:** `<e2e-root>/bug-evidence/<TEST-ID>/<UTC-timestamp>-<label>/`
+  (e.g. `bug-evidence/TC_REG_MOB_ACCT_010/20260805T133000Z-slowmo-repro/`).
+  Copy evidence there IMMEDIATELY on capture: Playwright reuses per-test
+  `test-results/` directories, so a later rerun silently overwrites
+  failure artifacts, and run dirs under `.achilles/` rotate per session.
+  `bug-report.evidence` paths in the worker return MUST point at the
+  `bug-evidence/` copies, never at `test-results/`. The scaffold
+  gitignores `bug-evidence/` alongside `test-results/` (binary media);
+  teams that want evidence in VCS remove the ignore deliberately.
+- **Intermittent bugs:** reproduce in a loop (bounded attempts — default
+  12 — announced per attempt) until the recording is captured. If the
+  window stays healthy, record the attempt count + window in the report
+  and either schedule a recording monitor or hand the loop command to
+  the operator; the app-bug classification stands on the already-captured
+  evidence, but say explicitly that the slow-mo recording is pending.
 
 In script mode the CLI driver builds the equivalent brief and the worker
 writes the same shape to
