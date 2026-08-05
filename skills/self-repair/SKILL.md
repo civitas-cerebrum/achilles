@@ -140,14 +140,20 @@ prefixes that omit the citation. The brief carries:
    line — plus, in focus mode, the failure-rerun traces already on disk
    (`test-results/<test-slug>/trace.zip`), so analysis starts from recorded
    evidence instead of a fresh reproduction run.
-3. The methodology instruction: load `failure-diagnosis` via the Skill tool
-   for each failing test; heal test-side causes (selector drift, waits,
-   state isolation); prove every heal with 5 consecutive passing runs of the
-   file; classify wrong-UI evidence as **app-bug with evidence, test
-   unmodified**; quarantine irreducible flake; return semantic changes
-   (assertion re-baselining, flow drift) as **operator-pending**, unapplied.
+3. The pipeline contract: follow the staged worker pipeline in
+   [`references/worker-pipeline.md`](references/worker-pipeline.md) —
+   `reproduce → evidence-analysis → context-probe → experiment →
+   understand → fix → verify → done`, with the **understand gate**
+   one-way: no fix attempt before expected-vs-actual behaviour and the
+   causal chain are established and written (report + knowledge
+   write-back to `app-context.md`). `failure-diagnosis` (loaded via the
+   Skill tool) supplies the techniques inside the stages; the pipeline
+   supplies the order and the gates. Bug-vs-heal discipline applies
+   unchanged: app bugs exit with evidence and an unmodified test;
+   semantic changes exit operator-pending; irreducible flake is
+   quarantined.
 4. The per-stage reporting contract: emit
-   `[self-repair:worker] stage=<diagnosing|fixing|verifying|classifying|done> file=<f> detail=<note>`
+   `[self-repair:worker] stage=<reproduce|evidence-analysis|context-probe|experiment|understand|fix|verify|done> file=<f> detail=<note>`
    at every stage transition, and mirror those transitions into the
    `stage-log` array of the return.
 5. The return contract: every briefed test appears in `tests[]` with an
@@ -352,9 +358,15 @@ the interactive orchestrator applies the same rules with Write/Edit):
 A self-repair session is complete when:
 
 1. Every test in scope is `already-green`, `healed` (verified in suite
-   order), `app-bug` (with evidence, test unmodified), `quarantined` (with
-   ledger entry), `operator-pending` (with the proposed change described),
-   or `unresolved` (explicitly counted — never silent).
+   order), `app-bug` (HIGH confidence — expected behaviour, actual
+   behaviour, and causal mechanism stated; evidence complete; test
+   unmodified), `quarantined` (with ledger entry), `operator-pending`
+   (with the proposed change and its stage-5 understanding attached), or
+   `unresolved` (probe budget exhausted, exclusion list recorded — never
+   silent).
+1a. Every non-green test's `stage-log` shows the pipeline order held —
+   in particular, an `understand` entry precedes any `fix` entry, and
+   behavioural discoveries were written back to `app-context.md`.
 2. `report.md` + `report.json` exist under
    `.achilles/self-repair/<run-id>/` and the JSON validates against
    `schemas/self-repair-report.schema.json`.

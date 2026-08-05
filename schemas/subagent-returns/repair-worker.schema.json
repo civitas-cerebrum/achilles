@@ -49,11 +49,18 @@
               "total": { "type": "integer", "minimum": 1 }
             }
           },
+          "understanding": {
+            "type": "string",
+            "description": "Stage-5 understanding: the causal chain established by the experiment stage, in one or a few sentences. Recommended for every non-green outcome."
+          },
           "bug-report": {
             "type": "object",
-            "required": ["summary"],
+            "required": ["summary", "expected-behaviour", "actual-behaviour"],
             "properties": {
               "summary": { "type": "string", "minLength": 1 },
+              "expected-behaviour": { "type": "string", "minLength": 1, "description": "What the journey should do at the failure point." },
+              "actual-behaviour": { "type": "string", "minLength": 1, "description": "What the app demonstrably does, per the evidence." },
+              "confidence": { "enum": ["high", "medium", "low"], "description": "App-bug outcomes require high — mechanism demonstrated and test-side causes excluded by experiment." },
               "evidence": {
                 "type": "array",
                 "items": { "type": "string" },
@@ -95,7 +102,7 @@
         "type": "object",
         "required": ["stage"],
         "properties": {
-          "stage": { "enum": ["diagnosing", "fixing", "verifying", "classifying", "done"] },
+          "stage": { "enum": ["reproduce", "evidence-analysis", "context-probe", "experiment", "understand", "fix", "verify", "done"] },
           "test": { "type": "string" },
           "detail": { "type": "string" }
         }
