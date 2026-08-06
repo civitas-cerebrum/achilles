@@ -21,6 +21,7 @@ Produce all four. A run that stops after evidence is half a deliverable.
 2. **A diff review** — findings ranked by severity, each one a sentinel candidate.
 3. **An evidence bundle** — via `companion-mode`, verdict grounded in the ACs.
 4. **Durable tests** — regression cover in the suite, plus one sentinel per confirmed defect.
+5. **A negative-control result** — proof the tests fail where the fix is absent (§8). Without it you have tests that pass, not tests that discriminate.
 
 ## Phases
 
@@ -96,6 +97,50 @@ test.beforeEach(async ({ steps }, testInfo) => {
 
 The `TODO` is not optional. A permanent silent skip is worse than no test.
 
+## 8. Prove the tests discriminate the fix — the negative control
+
+A green suite on the feature branch proves the assertions pass *where the feature exists*. It does not prove they would fail where it doesn't. Those are different claims, and only the second one makes the suite regression cover.
+
+**Run the suite against an environment without the fix — usually production before the PR ships — and require it to FAIL.**
+
+A gated suite will skip there, which proves only that the gate works. So give the gate an explicit off switch and use it:
+
+```ts
+const FEATURE_GATE_DISABLED = process.env.E2E_FEATURE_GATE === 'off'
+test.skip(!present && !FEATURE_GATE_DISABLED, 'Not deployed on this environment yet.')
+```
+
+Read the result per test, not in aggregate. Three outcomes, three meanings:
+
+| Outcome without the fix | Meaning |
+|---|---|
+| **Fails** | The test discriminates the feature. This is what you want from AC cover. |
+| **Passes** | Either it is close-regression cover of *pre-existing* behaviour (correct — filter drawers and sort controls should pass on both), or it asserts nothing the feature changed and is worthless as AC cover. Decide which; do not assume the charitable reading. |
+| **Skips** | You forgot the off switch. The run told you nothing. |
+
+**`test.fail()` sentinels cannot pass this control**, and it is worth knowing why before it confuses you: on an environment without the feature they fail because the element is *missing*, not because the defect is *present* — and `test.fail()` reports that as passed. A sentinel is indistinguishable between "bug reproduced" and "feature absent". The feature gate is what keeps that harmless; nothing else does.
+
+## 9. Live observation — watch it, don't just assert it
+
+Assertions confirm what you thought to ask. Watching the page reveals what you didn't. Before trusting a green suite, drive the flow once by hand — screenshot **and** probe state after **every** action, not just at the end.
+
+Step in increments small enough to catch transitions, and capture both a screenshot and a state dump at each step:
+
+```
+y=0     header=40,143   pcp=631,712   pos=static  inert=1  stuckMarker=0
+y=400   header=0,103    pcp=231,312   pos=static  inert=1  stuckMarker=0
+y=560   header=0,103    pcp=71,152    pos=static  inert=1  stuckMarker=1   ← defect window opens
+y=1200  header=0,103    pcp=-569,-488 pos=static  inert=0  stuckMarker=1   ← merge completes
+```
+
+That trace located a defect window no assertion had bounded: between y≈560 and y≈700 the row reports itself stuck while still `static` **and still half-visible under the header** — so a user can click a pill that is about to report the wrong telemetry. A pass/fail test would never have surfaced the *width* of that window.
+
+**Live comparison.** Where the change is visual, drive the same URL and the same scroll positions on the environment *with* the fix and the one *without*, and diff the screenshots. Differences you cannot explain are findings.
+
+**Assert a control element, always.** A live probe that reports "the feature's selectors are absent" is ambiguous: the feature may be missing, or *the page may never have loaded*. Bot protection, an auth wall or a CDN challenge all render a page where every product selector is absent — and it looks exactly like a shipped-but-disabled feature.
+
+Include one element in every probe that must exist on **any** build of the page (a header, a footer, `<main>`). If the control is missing too, you are not looking at the app and every conclusion from that probe is void. Note also that a suite reaching production via an allowlisted header (`x-e2e-test`) proves nothing about whether an *ad-hoc* browser can — the CLI session gets challenged where the suite sails through.
+
 ## "Show me" — demonstration runs
 
 **When the user says "show me", "let me see it", "watch it run", "demo this", or anything of that shape, they are not asking for a pass/fail summary. They are asking to watch.** Deliver a run that is:
@@ -138,6 +183,8 @@ Each of these cost a failed run or a wrong conclusion in practice.
 | **Blocked postinstall scripts** | pnpm blocks dependency build scripts by default and only prints a warning. A package whose binary is fetched in `postinstall` resolves to a path that does not exist, failing at call time, not install time. | Read the "Ignored build scripts" warning. Add the package to `pnpm.onlyBuiltDependencies`, or run its installer directly. |
 | **Bare `spec.ts` is not collected** | Playwright's default `testMatch` (`**/*.@(spec\|test).ts`) requires a prefix before `.spec` — a file literally named `spec.ts` matches nothing and the run reports "No tests found". | Set `testMatch: 'spec.ts'` in the bundle-local config, or prefix the filename. |
 | **HTML report nested in `outputDir`** | The HTML reporter wipes its folder before writing and refuses to start when it sits inside the test output folder. | Point `outputFolder` outside `outputDir`. |
+| **Bot protection reads as "feature absent"** | An ad-hoc browser hitting production gets a CDN challenge page. Every feature selector is absent, so the probe looks like a clean "not deployed yet" — while you are actually looking at a block page. | Probe a control element that exists on any build (header/footer/`<main>`). Control missing ⇒ conclusion void. See §9. |
+| **Green on the branch mistaken for regression cover** | The suite passes where the feature exists, and nobody checks it fails where it doesn't. Assertions that key off something unrelated to the change pass in both places. | Run the negative control (§8) and read it per test. |
 
 ## Framework gaps
 
