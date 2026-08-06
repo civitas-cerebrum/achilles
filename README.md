@@ -71,6 +71,20 @@ So after one `npm install`, restart Claude Code and you're ready to drive.
 - `CIVITAS_SKIP_HOOK_INSTALL=1` — skip the hook registration in `~/.claude/settings.json` (enterprise-managed settings).
 - `CIVITAS_SKIP_JQ_INSTALL=1` — skip the bundled jq fetch (rely on system jq on PATH).
 
+### Optional: mp4 recordings
+
+Playwright records **webm**, and the ffmpeg it bundles is decode-only — no mp4 muxer, no h264. Skills that hand a human a video (`ticket-driven-testing`'s "show me" runs, `self-repair`'s bug recordings) emit mp4 when an encoder is available and fall back to webm with an explicit notice when one is not.
+
+`ffmpeg-static` is declared as an **optional peer dependency**, so it is *not* installed by default — it is a ~43MB binary most runs never need. Add it only if you want mp4:
+
+```bash
+npm install --save-dev ffmpeg-static
+```
+
+No system install and no Homebrew required; it ships a full static build with libx264. A system `ffmpeg` on `PATH` works too and is used as a fallback.
+
+> **pnpm users:** pnpm blocks dependency build scripts by default, and `ffmpeg-static` downloads its binary in `postinstall`. If transcoding fails with `ENOENT`, add it to `pnpm.onlyBuiltDependencies` in your root `package.json` and reinstall.
+
 ---
 
 ## What you get

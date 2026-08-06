@@ -1,0 +1,158 @@
+---
+name: ticket-driven-testing
+description: Use when a ticket from an issue tracker (Linear, Jira) is the unit of QA work — a QA ticket paired to a dev ticket, a PR awaiting QA sign-off, a "test this feature" request naming an issue key, or any ask to verify acceptance criteria against a branch that is not yet merged. Also use when asked to automate the tests for a ticket, produce evidence for a ticket, or QA a feature branch.
+---
+
+# Ticket-Driven Testing
+
+## Overview
+
+A ticket is not a test plan. It is a claim about behaviour, a branch that allegedly implements it, and a set of acceptance criteria someone will sign off against. This skill turns that into: verified evidence, durable regression tests, and sentinel tests for every defect found.
+
+**Core principle: read the diff before you touch the app.** The code tells you which acceptance criteria are structurally guaranteed, which are merely probable, and where the defects are. Testing blind wastes the run and produces assertions that pass for the wrong reason.
+
+**REQUIRED SUB-SKILL:** the evidence run itself is `companion-mode`. This skill wraps it with the ticket, branch, and diff context that companion-mode's Phase 1 assumes you already have.
+
+## The Contract
+
+Produce all four. A run that stops after evidence is half a deliverable.
+
+1. **A ticket brief** — acceptance criteria, the dev branch, the PR and its review state.
+2. **A diff review** — findings ranked by severity, each one a sentinel candidate.
+3. **An evidence bundle** — via `companion-mode`, verdict grounded in the ACs.
+4. **Durable tests** — regression cover in the suite, plus one sentinel per confirmed defect.
+
+## Phases
+
+### 1. Ticket intake
+
+Read the QA ticket **and its parent**. QA tickets carry the test scope; parent dev tickets carry the acceptance criteria, the Figma links, and the implementation notes. Neither alone is enough.
+
+Extract: the ACs verbatim, the branch name (trackers usually expose a `gitBranchName`), and the PR (usually a ticket attachment).
+
+### 2. PR state — a first-class QA signal
+
+Check reviews and their timestamps against commit timestamps.
+
+An **unresolved `CHANGES_REQUESTED`** on a ticket sitting in QA Testing is a finding in itself. A later commit may look like the fix, but "plausibly addressed" is not "re-approved" — report the gap rather than assuming it closed. Conversely, an automated reviewer's comment may already be fixed by a later commit; verify against the current code before repeating it as a defect.
+
+### 3. Isolate the branch in a worktree
+
+```bash
+git worktree add ../<repo>-<ticket> origin/<feature-branch>
+```
+
+**Never switch the shared checkout.** Another session, another agent, or a running dev server may depend on the current branch. A worktree costs nothing and cannot disturb them.
+
+### 4. Review the diff
+
+Read every changed file. For each AC, decide what would actually prove it:
+
+- **Structural guarantees beat visual ones.** "Only one sticky bar" is proven by an element computing `position: static` at that breakpoint — it *cannot* pin. A screenshot only shows it *did not* pin this time.
+- **Find the load-bearing attributes.** `data-*` hooks, `inert`, `aria-*`, state-marker classes. These are the stable selectors, and they usually already exist — check before proposing a source change.
+- **Note what the diff deletes.** Removed feature flags, removed route mappings, removed components each imply a regression surface.
+
+Record findings now, with severity. They become sentinels in phase 7.
+
+### 5. Reach the environment
+
+Feature branches deploy to preview URLs that are usually **protection-gated**. Symptom: `curl` returns HTTP 200 with a provider login page, not your app.
+
+- Put the bypass token in a gitignored env file. Verify the gitignore pattern actually covers it.
+- **Do not set the suite's base-URL variable in a shared env file** — it silently retargets every other suite. Pass it per command.
+- For a CLI browser session, providers usually accept the token as a query parameter that sets a bypass cookie for the session.
+
+### 6. Discovery, then evidence
+
+Probe the live page for the geometry and state the ACs talk about — computed `position`, element rects, CSS custom properties, which elements sit near the viewport top, counts of duplicated nodes. One well-designed probe returning JSON beats a dozen snapshots.
+
+Then run `companion-mode` for the evidence bundle.
+
+### 7. Durable tests and sentinels
+
+Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
+
+For each confirmed defect, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug — which is the signal to delete it.
+
+```ts
+test('TC_...[SENTINEL <TICKET>-D1]: <correct behaviour>', async ({ steps }) => {
+  test.fail(true, 'Known defect: <what is wrong>. Delete this sentinel once fixed.')
+  await steps.verifyCount('stateMarker', 'SomePage', { exactly: 0 })
+})
+```
+
+**Pick a durable observable.** A sentinel is worthless if the app erases its own evidence — see the session-storage trap below.
+
+If the suite runs against an environment where the feature is not deployed yet, gate it:
+
+```ts
+test.beforeEach(async ({ steps }, testInfo) => {
+  const present = await steps.isVisible('featureRoot', 'SomePage', { timeout: 5000 })
+  testInfo.annotations.push({ type: 'feature-gate', description: `present: ${present}` })
+  test.skip(!present, 'Not deployed here yet.')
+  // TODO(<TICKET>): delete this guard once shipped — after that, absence IS the regression.
+})
+```
+
+The `TODO` is not optional. A permanent silent skip is worse than no test.
+
+## "Show me" — demonstration runs
+
+**When the user says "show me", "let me see it", "watch it run", "demo this", or anything of that shape, they are not asking for a pass/fail summary. They are asking to watch.** Deliver a run that is:
+
+- **headed** — a real browser window,
+- **born slow** — `launchOptions.slowMo` ≥ **1500ms** per action, so the native real-time recording is watchable as-is. Prefer the project's existing hook (`E2E_SLOWMO=<ms>`) where it has one. Same standard `self-repair` applies to bug recordings; 500ms proved too fast to track individual actions.
+- **recorded** — video always on, and **serial** (`workers: 1`), because parallel workers open several windows at once and produce interleaved footage nobody can follow,
+- **retry-free** — a retry overwrites the recording of the attempt they watched.
+
+Give this its own Playwright config rather than flag-patching the CI one. `slowMo` multiplies every action's wall time, so CI-tuned timeouts fire spuriously; the demo config needs its own generous timeouts and would be actively harmful if it leaked into CI.
+
+**Never slow footage down afterwards.** The slow-down happens at the source — pacing the actions treats the cause, time-stretching the video treats the symptom. If actions still blur, raise `slowMo` and re-record.
+
+**Container format is a separate concern from pacing.** Transcoding webm → mp4 changes container and codec, not timing, so it does not conflict with the born-slow rule. Playwright records **webm**; most humans, trackers and chat clients want **mp4**, and the ffmpeg Playwright bundles is decode-only (no mp4 muxer, no h264). Resolve an encoder in this order:
+
+1. the **`ffmpeg-static` optional dependency** — a full static build with libx264, no system install required,
+2. an `ffmpeg` on `PATH`,
+3. neither → keep the webm and **say so explicitly**. Never silently ship a format the user did not ask for.
+
+```
+-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart
+```
+
+`yuv420p` is what makes it play in QuickTime and preview in Slack; `+faststart` lets it stream before it has finished downloading.
+
+Collect recordings into a timestamped directory named after the tests, not Playwright's per-test uuid folders, and gitignore that directory — demonstration footage is not a repo artifact.
+
+## Traps
+
+Each of these cost a failed run or a wrong conclusion in practice.
+
+| Trap | What happens | Fix |
+|---|---|---|
+| **Suite's default viewport** | ACs are signed off at one size; the project's device preset is another. Behaviour genuinely differs. | Pin the viewport explicitly in `beforeEach`. Cover the other size as its own test. |
+| **Late-hydrating components** | Client-rendered regions (search/results grids) are absent when your first assertion runs; your feature gate checked an SSR'd element and passed. | `waitForState` on the client-rendered container before asserting against it. |
+| **Self-consuming observables** | A sentinel watches a session-storage flag; the destination page's effect reads and deletes it before you assert. Test passes, bug is live. | Assert a state that persists — a DOM state marker at the source, not a message in flight. |
+| **Assumed default states** | You click a toggle expecting it to open; it was already open, so you closed it. | Read the initial state, assert the round-trip, don't assume a starting position. |
+| **Unredacted HAR** | Your bypass token appears in the request headers of every entry — hundreds of copies inside a bundle you are about to commit. | Redact by header name and strip response bodies. This also shrinks the HAR by ~20×. |
+| **Bundle size** | Trace + video + HAR + an HTML report that duplicates all three easily exceeds 200MB. | Promote trace/video to the bundle root, drop the duplicate report, slim the HAR. Decide deliberately whether the directory is committed or gitignored. |
+| **Blocked postinstall scripts** | pnpm blocks dependency build scripts by default and only prints a warning. A package whose binary is fetched in `postinstall` resolves to a path that does not exist, failing at call time, not install time. | Read the "Ignored build scripts" warning. Add the package to `pnpm.onlyBuiltDependencies`, or run its installer directly. |
+| **Bare `spec.ts` is not collected** | Playwright's default `testMatch` (`**/*.@(spec\|test).ts`) requires a prefix before `.spec` — a file literally named `spec.ts` matches nothing and the run reports "No tests found". | Set `testMatch: 'spec.ts'` in the bundle-local config, or prefix the filename. |
+| **HTML report nested in `outputDir`** | The HTML reporter wipes its folder before writing and refuses to start when it sits inside the test output folder. | Point `outputFolder` outside `outputDir`. |
+
+## Framework gaps
+
+When an assertion has no API surface, do **not** silently drop to raw driver calls. Assert the strongest expressible proxy, capture the rest as screenshots, and record the gap.
+
+Known gap: **document-level geometry.** "No horizontal clipping" is `documentElement.scrollWidth > clientWidth`, and step-based frameworks generally have no element-free assertion for it. Proxy: assert every control stays present and reachable at each width, and let the per-width screenshots carry the visual proof.
+
+**REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-element-interactions`.
+
+## Reporting
+
+Report defects the diff review found even when every AC passes — they are the value a human reviewer could not get from a green suite. Separate them clearly from AC verdicts: **"all three ACs pass, and here are four defects"** is a coherent and common outcome.
+
+Never silently upgrade a defect into an AC failure, or silently drop one because the ACs passed.
+
+## Status
+
+**This skill has not been subagent-tested against baseline scenarios**, contrary to `superpowers:writing-skills`' Iron Law — it was authored under an explicit instruction not to dispatch subagents. Its content is derived from one complete real run (Linear PEDX-10619 / PR #4552) rather than from observed agent failures. Treat the Traps table as verified (each entry is a failure that actually occurred) and the phase structure as unverified. Run baseline pressure scenarios before relying on it broadly.
