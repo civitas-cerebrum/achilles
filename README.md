@@ -71,19 +71,25 @@ So after one `npm install`, restart Claude Code and you're ready to drive.
 - `CIVITAS_SKIP_HOOK_INSTALL=1` — skip the hook registration in `~/.claude/settings.json` (enterprise-managed settings).
 - `CIVITAS_SKIP_JQ_INSTALL=1` — skip the bundled jq fetch (rely on system jq on PATH).
 
-### Optional: mp4 recordings
+### `achilles-show` — watch a test run, and get a video
 
-Playwright records **webm**, and the ffmpeg it bundles is decode-only — no mp4 muxer, no h264. Skills that hand a human a video (`ticket-driven-testing`'s "show me" runs, `self-repair`'s bug recordings) emit mp4 when an encoder is available and fall back to webm with an explicit notice when one is not.
-
-`ffmpeg-static` is declared as an **optional peer dependency**, so it is *not* installed by default — it is a ~43MB binary most runs never need. Add it only if you want mp4:
+A green checkmark does not show *what* a test did. For QA review, sign-off, or handing evidence to a developer, the footage is the deliverable.
 
 ```bash
-npm install --save-dev ffmpeg-static
+npx achilles-show tests/regression/checkout.spec.ts
+npx achilles-show --grep "TC_042"
+E2E_VIEWPORTS=mobile npx achilles-show tests/regression_mobile
 ```
 
-No system install and no Homebrew required; it ships a full static build with libx264. A system `ffmpeg` on `PATH` works too and is used as a fallback.
+Every argument is forwarded to `playwright test`, so the usual filters work. Recordings land in `show-recordings/<timestamp>/`, named after the test, as **mp4**.
 
-> **pnpm users:** pnpm blocks dependency build scripts by default, and `ffmpeg-static` downloads its binary in `postinstall`. If transcoding fails with `ENOENT`, add it to `pnpm.onlyBuiltDependencies` in your root `package.json` and reinstall.
+**No config file to write.** It derives a run from the `playwright.config.*` you already have and overrides only what makes a run watchable — headed, `slowMo` ≥ 1500ms, `video`/`trace` on, `workers: 1`, `retries: 0`, generous timeouts. Your own config is never modified. Point it elsewhere with `ACHILLES_SHOW_CONFIG=<path>`.
+
+Each override earns its place: **`workers: 1`** because parallel workers open several windows at once and produce interleaved footage nobody can follow; **`retries: 0`** because a retry overwrites the recording you just watched; **long timeouts** because `slowMo` multiplies every action's wall time, so CI-tuned timeouts fire spuriously. Recordings are paced **at the source** so the native footage needs no post-processing — never slow a video down afterwards.
+
+`E2E_SLOWMO=<ms>` overrides the pacing (default 1500; 500 proved too fast to track individual actions).
+
+> **mp4 encoding.** Playwright records **webm** and bundles a *decode-only* ffmpeg — no mp4 muxer, no h264 — so it cannot transcode. `ffmpeg-static` is an **optional dependency**: the package is tiny, and its ~43MB binary arrives via a postinstall that pnpm and friends block by default, so `achilles-show` fetches it on first use. A system `ffmpeg` on `PATH` is used as a fallback. With neither, the webm is kept and the run says so explicitly rather than silently shipping the wrong format.
 
 ---
 

@@ -150,23 +150,23 @@ Include one element in every probe that must exist on **any** build of the page 
 - **recorded** — video always on, and **serial** (`workers: 1`), because parallel workers open several windows at once and produce interleaved footage nobody can follow,
 - **retry-free** — a retry overwrites the recording of the attempt they watched.
 
-Give this its own Playwright config rather than flag-patching the CI one. `slowMo` multiplies every action's wall time, so CI-tuned timeouts fire spuriously; the demo config needs its own generous timeouts and would be actively harmful if it leaked into CI.
+**Use the shipped runner — do not hand-write this per project:**
+
+```bash
+npx achilles-show <path|--grep …>        # every arg forwards to `playwright test`
+```
+
+`achilles-show` derives a run from the project's existing `playwright.config.*`, applying exactly the overrides above, and writes mp4s to `show-recordings/<timestamp>/`. Nothing in the project's own config changes, and there is no second config to maintain or drift.
+
+Never flag-patch the CI config to achieve this by hand. `slowMo` multiplies every action's wall time, so CI-tuned timeouts fire spuriously; demo settings leaking into CI are actively harmful.
 
 **Never slow footage down afterwards.** The slow-down happens at the source — pacing the actions treats the cause, time-stretching the video treats the symptom. If actions still blur, raise `slowMo` and re-record.
 
-**Container format is a separate concern from pacing.** Transcoding webm → mp4 changes container and codec, not timing, so it does not conflict with the born-slow rule. Playwright records **webm**; most humans, trackers and chat clients want **mp4**, and the ffmpeg Playwright bundles is decode-only (no mp4 muxer, no h264). Resolve an encoder in this order:
+**Container format is a separate concern from pacing.** Transcoding webm → mp4 changes container and codec, not timing, so it does not conflict with the born-slow rule. `achilles-show` handles this: it resolves `ffmpeg-static` → `ffmpeg` on `PATH` → keeps the webm and says so explicitly. Never silently ship a format the user did not ask for.
 
-1. the **`ffmpeg-static` optional dependency** — a full static build with libx264, no system install required,
-2. an `ffmpeg` on `PATH`,
-3. neither → keep the webm and **say so explicitly**. Never silently ship a format the user did not ask for.
+Gitignore `show-recordings/` — demonstration footage is not a repo artifact.
 
-```
--c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart
-```
-
-`yuv420p` is what makes it play in QuickTime and preview in Slack; `+faststart` lets it stream before it has finished downloading.
-
-Collect recordings into a timestamped directory named after the tests, not Playwright's per-test uuid folders, and gitignore that directory — demonstration footage is not a repo artifact.
+**If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-element-interactions`.
 
 ## Traps
 
