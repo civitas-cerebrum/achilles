@@ -26,14 +26,15 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 6  Probe live, then run companion-mode     → evidence bundle
 7  Write durable tests + a sentinel per defect
 8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
+8b DISPATCH THE ADVERSARIAL REVIEW         → 4 subagents attack the tests; you do not self-assess
 9  Report: AC verdicts and defects, separately
 ```
 
-Step 8 is the one that gets dropped. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
+Step 8 is the one that gets dropped, and instructions have repeatedly failed to stop that — which is why 8b delegates it rather than reminding you. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
 
 ## The Contract
 
-Produce all four. A run that stops after evidence is half a deliverable.
+Produce all five. A run that stops after evidence is half a deliverable.
 
 1. **A ticket brief** — acceptance criteria, the dev branch, the PR and its review state.
 2. **A diff review** — findings ranked by severity, each one a sentinel candidate.
@@ -169,6 +170,47 @@ Read the result per test, not in aggregate. Three outcomes, three meanings:
 | **Skips** | You forgot the off switch. The run told you nothing. |
 
 **`test.fail()` sentinels cannot pass this control**, and it is worth knowing why before it confuses you: on an environment without the feature they fail because the element is *missing*, not because the defect is *present* — and `test.fail()` reports that as passed. A sentinel is indistinguishable between "bug reproduced" and "feature absent". The feature gate is what keeps that harmless; nothing else does.
+
+#### 8b. Dispatch the adversarial test review
+
+Do not self-assess your own tests. **Dispatch subagents whose mission is to attack them.** Baseline testing established why: an agent that has just written a suite reliably skips checking whether it can fail — three separate instruction-level fixes failed to change that. Delegation works where instruction did not, because the reviewer never wrote the tests and has nothing else on its list.
+
+Dispatch these **four in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
+
+| Mission | Question it must answer | Required output |
+|---|---|---|
+| `probe-mutation` | For each AC, what concrete one-line change to the app would break it — and does any test catch it? **Make the change, run the suite, revert.** | Per mutation: the diff hunk, and `caught` / `survived` |
+| `probe-coverage` | Which AC clauses and which hunks of the diff have **no** assertion pointing at them? | Gap list keyed to AC text and `file:line` |
+| `probe-assertions` | Does each assertion prove a structural guarantee, or did it observe one passing render? | Per assertion: `structural` / `incidental`, with the reason |
+| `probe-value` | Is each test **worth keeping** — does it protect behaviour a user would notice losing, at a maintenance cost the risk justifies? | Per test: `keep` / `merge` / `delete`, with the reason |
+
+**On `probe-value` specifically.** The other three ask whether a test *works*; this one asks whether it should *exist*. A test can catch its mutation and still be a liability. The four verdicts it hunts for:
+
+- **Redundant** — another test already fails for the same cause. The second one adds run time and a second thing to update, not a second signal.
+- **Testing the framework** — asserting that the router routes or the component library renders. That is someone else's test suite.
+- **Cost exceeds risk** — a slow, fragile, environment-sensitive test guarding something trivial or cosmetic. Every future failure of it will be triaged, and most will be noise.
+- **Unfalsifiable in practice** — technically green, but it would pass in nearly every world, including broken ones. `probe-mutation` catches the strong form; this catches the weak form the mutation happened not to touch.
+
+Bias it toward **`merge` over `delete`**, and require evidence for either — name the test that already covers it, or the specific reason the risk does not warrant the cost. Deleting cover is the one recommendation here that can lose information permanently, so an unevidenced `delete` is a rejected finding. Coverage counts are not the goal: twelve tests where six would do is worse than six, because the six carry the same signal and half the maintenance.
+
+**Non-negotiables for these dispatches:**
+
+- **They must execute, not just read.** The most dangerous defect found in the run this skill came from was a sentinel that *passed while the bug was live* — the destination page consumed the session-storage flag it asserted on before the assertion ran. No amount of reading would have caught that; running it did.
+- **Silence is not a pass.** A reviewer that reports nothing is indistinguishable from a lazy one. Require the shape: findings, **or** an explicit *"I attempted these N mutations and the suite caught all N"* with the list. An empty return is a failed dispatch, not a clean bill of health.
+- **A surviving mutation is a finding, not a suggestion.** It means a stated AC has no test that can fail for it. Fix the test before reporting the verdict.
+
+Write the outcome to `.achilles/adversarial-verification/<ticket-key>.json`:
+
+```json
+{
+  "ticket": "<KEY>", "ranAt": "<ISO-8601>",
+  "negativeControl": { "environment": "<url>", "failed": 5, "passed": 1, "skipped": 0 },
+  "mutations": [{ "ac": "AC-2", "hunk": "…", "caught": true }],
+  "coverageGaps": [], "incidentalAssertions": [], "lowValueTests": []
+}
+```
+
+That receipt is what the harness gate looks for — see `harness-hooks.md`. Writing it by hand without running the probes defeats the only mechanism that catches this failure, and the failure it catches is *your own*.
 
 ### 9. Live observation — watch it, don't just assert it
 
