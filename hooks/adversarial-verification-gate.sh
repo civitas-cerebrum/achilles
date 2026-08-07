@@ -18,19 +18,25 @@
 #
 # Why this exists
 # ---------------
-# Baseline testing of the ticket-driven-testing skill found that an agent
-# which has just written a test suite reliably SKIPS checking whether that
-# suite can fail. Three instruction-level fixes were attempted — a prose
-# sign-off gate, a structural heading fix, an explicit numbered template —
-# and all three failed: the agent produced an otherwise excellent plan and
-# omitted the negative control every time. An agent with NO skill at all
-# named it first, unprompted.
+# Baseline testing of the ticket-driven-testing skill found that an early
+# draft omitted this check every time: an agent that had just written a
+# suite produced an otherwise excellent plan and never asked whether the
+# suite could fail. An agent with NO skill at all named that check first,
+# unprompted — so the draft was worse than nothing on this dimension.
 #
-# The conclusion is that this cannot be fixed by asking. The skill now
-# DELEGATES the check to adversarial subagents (ticket-driven-testing §8b),
-# and this gate makes the delegation load-bearing: the receipt those
-# subagents write is what unlocks sign-off. Instruction failed; structure
-# is the fallback.
+# The skill was revised and now does fire the check (see its §"Baseline
+# testing"). This gate is therefore DEFENCE IN DEPTH, not the sole
+# mechanism, and the honest reason it still earns its place is:
+#
+#   1. Instructions are advisory; a gate is not. A skill can be skimmed,
+#      truncated, or superseded by a user instruction. This cannot.
+#   2. It is independent of skill delivery. The bug that hid the draft's
+#      failure for five test runs was a skill that never reached the agent
+#      at all — same filename, different file. A gate keyed on the ACTION
+#      does not care whether any skill loaded.
+#
+# Deliberately NOT claimed: that instruction-level guidance does not work.
+# It does. This is a second line, not a replacement.
 #
 # What counts as a receipt
 # ------------------------

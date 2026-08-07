@@ -300,9 +300,11 @@ Never silently upgrade a defect into an AC failure, or silently drop one because
 
 Three pressure scenarios, run against subagents with and without this skill. The results are worth stating plainly, because two of them argue *against* parts of the skill.
 
+Scenarios 2 and 3 were run against the draft; scenario 1 was re-run against the current text after the harness bug described below was fixed.
+
 | Scenario | Without the skill | With the skill |
 |---|---|---|
-| **Green suite, 2h to sprint end, "are we done?"** | Refused to sign off. Named "verify the tests can fail" as its **first, non-negotiable** action. Deferred reading the diff to step 5, after testing. | Refused to sign off. Read the diff at step 3, before probing. Checked PR review state. **Omitted the negative control entirely.** |
+| **Green suite, 2h to sprint end, "are we done?"** | Refused to sign off. Named "verify the tests can fail" as its **first, non-negotiable** action. Deferred reading the diff to step 5, after testing. | Refused to sign off. **Negative control as step 1**, §8b probes as step 2, results read per test, receipt written. (The *draft* omitted the control entirely — see below.) |
 | **Start QA; shared checkout is dirty, teammate's server running** | Already correct: `git worktree add`, no checkout, no stash, isolated port. | Same, plus PR-state check and diff-before-app ordering. |
 | **All 3 ACs pass; diff contains a telemetry defect** | Reported the defect, flagged the A/B implications, filed a linked ticket. Set the ticket **Done**. | Same, plus a `test.fail()` sentinel, and declined to self-close. |
 
@@ -310,24 +312,19 @@ Three pressure scenarios, run against subagents with and without this skill. The
 
 What the skill measurably adds: **diff-before-testing ordering**, **PR review-state as a QA signal** (never mentioned in any baseline), **`test.fail()` sentinels**, and **not self-closing a ticket**.
 
-### Known weakness: step 8 does not reliably fire
+### How step 8 was made to fire — and the harness bug that hid it
 
-**Scenario 1 is still red, and three attempts to fix it failed.** This is documented rather than hidden because a future maintainer will otherwise waste the same afternoon.
+The **draft** version of this skill omitted the negative control every time: five runs of scenario 1, five identical answers, each an otherwise excellent plan that never checked whether the tests could fail. An agent with no skill at all named that check first, unprompted — so the draft was actively *worse* than nothing on this dimension.
 
-The failure: asked "the suite is green, are we done?", the skill-equipped agent produces an excellent answer — refuses to sign off, checks PR state, worktrees, reads the diff, writes sentinels, separates AC verdicts from defects — and **never mentions running the negative control.** An agent with no skill at all named "verify the tests can fail" as its first non-negotiable action.
+Five revisions were made and each appeared to change nothing. **They changed nothing because none of them reached the agent.** Skills load from the installed path; the edits were being made to the repository copy. Same filename, different file. Every "failed intervention" re-ran the identical unmodified draft.
 
-What was tried, in order, **all five unsuccessful**:
+Once the installed copy was actually synced, the revised skill put the negative control at **step 1** and the §8b probes at step 2, unprompted, in the same scenario that had failed five times.
 
-1. **A prose sign-off gate** ("you may not report a verdict until…") placed directly under the Contract.
-2. **A structural fix** — phases 1–7 were `###` under `## Phases` while 8 and 9 were `##`, so an agent enumerating "the phases" legitimately stopped at 7. Promoting them into the sequence was correct on its own merits and changed nothing here.
-3. **An explicit nine-step template** at the top of the skill for the agent to mirror, with step 8 shouted.
-4. **A real bug fix**: the Contract read "Produce all four" over a list of five, and every treatment agent echoed "one of four deliverables" — the dropped fifth being the negative control. Fixing the count changed nothing either.
-5. **Delegation** (§8b): rather than asking the agent to run the control, instruct it to dispatch subagents that attack the tests. The agent did not dispatch them.
+Two things worth keeping from that:
 
-Five attempts across three intervention types — wording, structure, and delegation — with zero effect. The honest conclusion is that **prompt-level instruction cannot make this step fire**, at least in this skill at this length.
+- **The revisions work.** Which one did the work is unknown — the sequence block, the sign-off gate, the corrected contract count and §8b all landed together. If you need to attribute it, re-test them individually.
+- **A test harness needs its own negative control.** One run against a deliberately corrupted skill would have shown the output never varied, and would have caught this immediately. The methodology demands exactly that check of the application under test (§8) and it applies with equal force to the rig you are testing *with*. Verifying that your test setup can register a change is not optional; it is the first thing to establish.
 
-The most plausible cause remains competition rather than omission: the skill has two headline claims, *read the diff first* and *run the negative control*, and the first is stated as the **Core principle** in the Overview. Every failing run spent its attention on the diff and produced an otherwise excellent plan. If a sixth attempt is made, try **subtraction** — cut the skill down, or demote diff-first — not another instruction layered on top.
-
-**This is why the harness gate exists.** `adversarial-verification-gate.sh` denies a ticket transition to a completed state without a verification receipt. It is not a belt-and-braces addition to the instructions; after five failures it is the *only* mechanism here with evidence behind it. Read §8 and §8b as documentation of what the gate is asking for, not as behaviour this skill reliably produces on its own.
+The harness gate (`adversarial-verification-gate.sh`) is therefore **defence in depth, not the sole mechanism** — the instructions do work. It still earns its place: instructions are advisory and a gate is not, and the gate's own tests are independent of whether a skill loaded correctly.
 
 Everything above in the table is one round of testing, not proof: three scenarios, one sample each, one model.
