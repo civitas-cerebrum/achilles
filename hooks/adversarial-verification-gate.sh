@@ -30,10 +30,12 @@
 #
 #   1. Instructions are advisory; a gate is not. A skill can be skimmed,
 #      truncated, or superseded by a user instruction. This cannot.
-#   2. It is independent of skill delivery. The bug that hid the draft's
-#      failure for five test runs was a skill that never reached the agent
-#      at all — same filename, different file. A gate keyed on the ACTION
-#      does not care whether any skill loaded.
+#   2. It is independent of the skill's CONTENTS. A gate keyed on the action
+#      does not care what the skill said, or whether the installed copy
+#      matched the repository copy — a desync that once hid a draft's failure
+#      for five test runs. It is NOT independent of whether an achilles skill
+#      was invoked at all: this hook is session-scoped like every other, and
+#      silent-allows in a session that never activated the protocol.
 #
 # Deliberately NOT claimed: that instruction-level guidance does not work.
 # It does. This is a second line, not a replacement.
@@ -43,13 +45,18 @@
 # .achilles/adversarial-verification/<ticket>.json, containing at minimum a
 # `negativeControl` object. It must be NEWER than the newest spec file in
 # the workspace — a receipt from before the tests were last edited proves
-# nothing about the tests as they now stand. That staleness check is the
-# point: without it, one receipt would unlock every future sign-off.
+# nothing about the tests as they now stand. The receipt must ALSO carry the
+# ticket key in its filename: without that, any receipt unlocked any ticket,
+# which was a real defect found by adversarial review of this gate.
 #
 # Deliberately NOT enforced here: whether the receipt's contents are
 # honest. A hook cannot tell a real probe run from a fabricated JSON file.
 # This gate raises the cost of skipping from "forget" to "actively write a
-# false artifact", which is the most a harness can do.
+# false artifact". That is NOT the ceiling for a harness — this repo already
+# ships a stronger pattern (hook-authored, hash-chained artifacts on the
+# protected list, per ledger-integrity-chain.sh). The receipt should move to
+# that pattern; until it does, the honest description is "raises the cost",
+# not "prevents".
 
 set -euo pipefail
 
@@ -104,22 +111,44 @@ fi
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 RECEIPT_DIR="$WORKSPACE_ROOT/.achilles/adversarial-verification"
 
-newest_receipt() {
+# The ticket being signed off. Without this the gate cannot tell whose receipt it is looking at —
+# an earlier version accepted ANY receipt for ANY ticket, which made it worthless the moment a
+# second ticket was worked in the same repo.
+TICKET_KEY="$(printf '%s' "$ARGS" | "$JQ" -r '(.id // .issue // .issueId // .issueIdOrKey // .key // empty) | tostring' 2>/dev/null || true)"
+
+# The receipt must belong to THIS ticket. Match on the tracker key (ABC-450) found anywhere in the
+# filename, case-insensitively, so both "ABC-450.json" and "abc-450-run2.json" count.
+receipt_for_ticket() {
   [ -d "$RECEIPT_DIR" ] || return 1
-  find "$RECEIPT_DIR" -maxdepth 1 -name '*.json' -type f 2>/dev/null |
-    while read -r f; do
-      "$JQ" -e 'has("negativeControl")' "$f" >/dev/null 2>&1 && echo "$f"
-    done | head -1
+  [ -n "$TICKET_KEY" ] || return 1
+  local key_lc
+  key_lc="$(printf '%s' "$TICKET_KEY" | tr '[:upper:]' '[:lower:]')"
+  local best="" f base
+  # Newest first, genuinely: ls -t, not directory order.
+  for f in $(ls -t "$RECEIPT_DIR"/*.json 2>/dev/null); do
+    base="$(basename "$f" | tr '[:upper:]' '[:lower:]')"
+    case "$base" in
+      *"$key_lc"*)
+        "$JQ" -e 'has("negativeControl")' "$f" >/dev/null 2>&1 && { best="$f"; break; } ;;
+    esac
+  done
+  [ -n "$best" ] && echo "$best"
 }
 
-RECEIPT="$(newest_receipt || true)"
+RECEIPT="$(receipt_for_ticket || true)"
 
-# A receipt older than the newest spec describes tests that no longer exist
-# in that form.
+# A receipt older than the newest spec describes tests that no longer exist in that form.
+#
+# The scan is bounded and prunes node_modules DURING the walk, not after: this hook runs with a
+# 10s budget and an unpruned walk of a monorepo blows it, which fails OPEN. Sorting by mtime is
+# done by `ls -t` over the pruned set rather than by truncating the walk, so the genuinely-newest
+# spec cannot be excluded by directory order.
 STALE=0
 if [ -n "$RECEIPT" ]; then
-  NEWEST_SPEC="$(find "$WORKSPACE_ROOT" -name '*.spec.ts' -o -name '*.spec.js' -o -name '*.test.ts' 2>/dev/null |
-    grep -v node_modules | head -400 | xargs ls -t 2>/dev/null | head -1 || true)"
+  NEWEST_SPEC="$(find "$WORKSPACE_ROOT" \
+      \( -name node_modules -o -name .git -o -name dist -o -name build \) -prune -o \
+      -type f \( -name '*.spec.*' -o -name '*.test.*' \) -print 2>/dev/null |
+    head -2000 | tr '\n' '\0' | xargs -0 ls -t 2>/dev/null | head -1 || true)"
   if [ -n "$NEWEST_SPEC" ] && [ "$NEWEST_SPEC" -nt "$RECEIPT" ]; then STALE=1; fi
 fi
 
@@ -136,9 +165,9 @@ GUIDANCE="Run ticket-driven-testing §8 and §8b before signing off:
   §8   the negative control — run the suite against an environment WITHOUT
        the fix and require it to FAIL. A suite nobody has seen fail is not
        regression cover.
-  §8b  dispatch probe-mutation, probe-coverage and probe-assertions in
-       parallel. Do not self-assess tests you wrote; baseline testing shows
-       that check gets skipped, which is why it is delegated.
+  §8b  dispatch probe-mutation, probe-coverage, probe-assertions and
+       probe-value in parallel. Do not self-assess tests you wrote — a
+       reviewer with no stake in them is the point.
 
 Then write .achilles/adversarial-verification/<ticket>.json with at least a
 negativeControl object.

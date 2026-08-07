@@ -152,8 +152,8 @@ const HOOK_MANIFEST = [
   // No QA sign-off without an adversarial review of the tests. Gates the two
   // tracker actions that constitute sign-off — a transition to a completed
   // state (DENY) and a verdict-shaped comment (WARN) — on a receipt written by
-  // ticket-driven-testing §8/§8b. Exists because instruction-level fixes for
-  // that skipped step demonstrably failed; see the hook header.
+  // ticket-driven-testing §8/§8b. Defence in depth, not a replacement for the
+  // skill's own instructions; see the hook header.
   { file: 'adversarial-verification-gate.sh',     event: 'PreToolUse', matcher: 'mcp__.*',     timeout: 10 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every

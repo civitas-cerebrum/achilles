@@ -11,10 +11,12 @@ H="$HOOK_DIR/adversarial-verification-gate.sh"
 
 # Tracker payloads carry fields the shared payload() helper does not model
 # (state, body), so build them directly.
+# Payloads carry a ticket id: the gate binds a receipt to the ticket being signed off, so a
+# payload with no identifiable key cannot be verified and is denied by design (pinned below).
 tracker() {
-  local tool="$1" key="$2" val="$3"
-  "$JQ" -nc --arg t "$tool" --arg k "$key" --arg v "$val" \
-    '{tool_name: $t, tool_input: {($k): $v}}'
+  local tool="$1" key="$2" val="$3" id="${4:-ABC-1}"
+  "$JQ" -nc --arg t "$tool" --arg k "$key" --arg v "$val" --arg id "$id" \
+    '{tool_name: $t, tool_input: {($k): $v, id: $id}}'
 }
 
 # Isolated workspace per phase: a git repo with one spec, so the gate's
@@ -81,6 +83,14 @@ printf '%s' '{"ticket":"ABC-1","mutations":[]}' \
   > "$WS/.achilles/adversarial-verification/ABC-1.json"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "receipt without negativeControl → DENY" "No adversarial-verification receipt"
+
+section "adversarial-gate: a receipt belongs to ONE ticket"
+printf '%s' '{"ticket":"ABC-1","negativeControl":{"failed":5}}' \
+  > "$WS/.achilles/adversarial-verification/ABC-1.json"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done OTHER-99)" \
+  "another ticket's receipt does NOT unlock this one" "No adversarial-verification receipt"
+assert_deny "$H" "$("$JQ" -nc '{tool_name:"mcp__linear__save_issue", tool_input:{state:"Done"}}')" \
+  "payload with no ticket key → DENY (cannot verify whose receipt)"
 
 section "adversarial-gate: escape hatches"
 CIVITAS_DISABLE_ADVERSARIAL_GATE=1 \

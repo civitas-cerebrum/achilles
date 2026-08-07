@@ -30,7 +30,7 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 9  Report: AC verdicts and defects, separately
 ```
 
-Step 8 is the one that gets dropped, and instructions have repeatedly failed to stop that — which is why 8b delegates it rather than reminding you. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
+Step 8 is the one that gets dropped — an early draft of this skill omitted it 5/5 while an agent with no skill at all named it first. 8b delegates the check as well, so it does not rest on memory alone. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
 
 ## The Contract
 
@@ -46,7 +46,7 @@ Produce all five. A run that stops after evidence is half a deliverable.
 
 **You may not report a QA verdict until you have run the negative control (§8) and can state its result.**
 
-This is the one step baseline testing showed agents reliably skip. Asked "are we done, the suite is green?", an agent following this skill listed six sensible next actions and omitted the negative control entirely — while an agent with no skill at all reached for it unprompted. Having the section is not enough; it has to be a gate.
+An early DRAFT of this skill omitted this step every time it was tested, while an agent with no skill at all reached for it unprompted. The current text fires it (3/3), but it remains the step most worth gating.
 
 So, before writing any verdict, answer these three in the report:
 
@@ -173,7 +173,7 @@ Read the result per test, not in aggregate. Three outcomes, three meanings:
 
 #### 8b. Dispatch the adversarial test review
 
-Do not self-assess your own tests. **Dispatch subagents whose mission is to attack them.** Baseline testing established why: an agent that has just written a suite reliably skips checking whether it can fail — three separate instruction-level fixes failed to change that. Delegation works where instruction did not, because the reviewer never wrote the tests and has nothing else on its list.
+Do not self-assess your own tests. **Dispatch subagents whose mission is to attack them.** The rationale is separation of duties, not a measured effect: a reviewer that did not write the tests has no stake in their looking good. NOT claimed: that delegation outperforms instruction. Delegation was never run as its own arm, so there is no evidence either way.
 
 Dispatch these **four in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
 
@@ -193,9 +193,24 @@ Dispatch these **four in parallel**, scoped to the diff and the ACs. Anything ou
 
 Bias it toward **`merge` over `delete`**, and require evidence for either — name the test that already covers it, or the specific reason the risk does not warrant the cost. Deleting cover is the one recommendation here that can lose information permanently, so an unevidenced `delete` is a rejected finding. Coverage counts are not the goal: twelve tests where six would do is worse than six, because the six carry the same signal and half the maintenance.
 
+**The dispatch will be DENIED unless you cite the return schema.** `probe-` is a schema-mapped role: `subagent-schema-preread-gate.sh` blocks any `probe-*` dispatch whose brief does not name `schemas/subagent-returns/probe.schema.json`. This was found the only way it could be — by following this section and being blocked three times in a row. Use this shape:
+
+```
+Agent(description: "probe-mutation-<slug>", prompt: "
+  ADVERSARIAL REVIEW — <mission>. Your job is to find defects, not to approve.
+  Return shape: schemas/subagent-returns/probe.schema.json — return `handover`
+  plus `findings-emitted` and `summary`. Put the detail in `summary`.
+  <files to read> <the ACs> <the specific question>
+  MANDATORY: silence is a failed dispatch. Return findings, or state exactly
+  what you examined and why you found nothing. A vague approval is a failure.
+")
+```
+
 **Non-negotiables for these dispatches:**
 
 - **They must execute, not just read.** The most dangerous defect found in the run this skill came from was a sentinel that *passed while the bug was live* — the destination page consumed the session-storage flag it asserted on before the assertion ran. No amount of reading would have caught that; running it did.
+- **Mutation needs a target you can break.** Source-level mutation needs a locally runnable app. Where the suite runs against a *deployed* environment you cannot rebuild, mutate at the **browser** level instead: inject CSS/JS that re-creates the broken state the AC forbids, then check the suite goes red. Weaker in one way (it binds to behaviour, not to the source change) and stronger in another (it tests the deployed artifact). Either way, **include a no-op mutation as the harness's own control** — if the suite goes red with nothing injected, the harness is breaking the page and every other result in the run is void.
+- **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one. An env-guarded block in the `page` fixture — inert unless `E2E_MUTATION_*` is set — is enough, and costs nothing when unused. State this as a prerequisite rather than discovering it mid-probe: without it, §8b's first mission is not runnable at all on a deployed-only project.
 - **Silence is not a pass.** A reviewer that reports nothing is indistinguishable from a lazy one. Require the shape: findings, **or** an explicit *"I attempted these N mutations and the suite caught all N"* with the list. An empty return is a failed dispatch, not a clean bill of health.
 - **A surviving mutation is a finding, not a suggestion.** It means a stated AC has no test that can fail for it. Fix the test before reporting the verdict.
 
@@ -210,7 +225,7 @@ Write the outcome to `.achilles/adversarial-verification/<ticket-key>.json`:
 }
 ```
 
-That receipt is what the harness gate looks for — see `harness-hooks.md`. Writing it by hand without running the probes defeats the only mechanism that catches this failure, and the failure it catches is *your own*.
+That receipt is what the harness gate looks for — see `harness-hooks.md`. Writing it by hand without running the probes defeats the check entirely — and the failure it catches is *your own*.
 
 ### 9. Live observation — watch it, don't just assert it
 
