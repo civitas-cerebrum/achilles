@@ -147,6 +147,7 @@ if [ "$IS_TRANSITION" = "1" ]; then
   exit 0
 fi
 
-echo "[adversarial-verification-gate] WARN: posting a QA verdict with no adversarial verification. $REASON" >&2
-echo "$GUIDANCE" >&2
+"$JQ" -n --arg m "Posting a QA verdict with no adversarial verification. $REASON
+
+$GUIDANCE" '{systemMessage: $m}'
 exit 0

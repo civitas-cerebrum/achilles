@@ -316,12 +316,18 @@ What the skill measurably adds: **diff-before-testing ordering**, **PR review-st
 
 The failure: asked "the suite is green, are we done?", the skill-equipped agent produces an excellent answer — refuses to sign off, checks PR state, worktrees, reads the diff, writes sentinels, separates AC verdicts from defects — and **never mentions running the negative control.** An agent with no skill at all named "verify the tests can fail" as its first non-negotiable action.
 
-What was tried, in order, all unsuccessful:
+What was tried, in order, **all five unsuccessful**:
 
 1. **A prose sign-off gate** ("you may not report a verdict until…") placed directly under the Contract.
 2. **A structural fix** — phases 1–7 were `###` under `## Phases` while 8 and 9 were `##`, so an agent enumerating "the phases" legitimately stopped at 7. Promoting them into the sequence was correct on its own merits and changed nothing here.
 3. **An explicit nine-step template** at the top of the skill for the agent to mirror, with step 8 shouted.
+4. **A real bug fix**: the Contract read "Produce all four" over a list of five, and every treatment agent echoed "one of four deliverables" — the dropped fifth being the negative control. Fixing the count changed nothing either.
+5. **Delegation** (§8b): rather than asking the agent to run the control, instruct it to dispatch subagents that attack the tests. The agent did not dispatch them.
 
-The most likely cause is competition, not omission. This skill has two headline claims — *read the diff first* and *run the negative control* — and the first is stated as the **Core principle** in the Overview. Every failing run spent its attention budget on the diff. If a fourth attempt is made, the thing to try is probably subtraction: cut the skill down, or demote diff-first, rather than adding another instruction on top.
+Five attempts across three intervention types — wording, structure, and delegation — with zero effect. The honest conclusion is that **prompt-level instruction cannot make this step fire**, at least in this skill at this length.
 
-Treat the negative control as documentation a human should enforce in review, not as behaviour this skill currently produces. Everything above it in the table is one round of testing, not proof: three scenarios, one sample each, one model.
+The most plausible cause remains competition rather than omission: the skill has two headline claims, *read the diff first* and *run the negative control*, and the first is stated as the **Core principle** in the Overview. Every failing run spent its attention on the diff and produced an otherwise excellent plan. If a sixth attempt is made, try **subtraction** — cut the skill down, or demote diff-first — not another instruction layered on top.
+
+**This is why the harness gate exists.** `adversarial-verification-gate.sh` denies a ticket transition to a completed state without a verification receipt. It is not a belt-and-braces addition to the instructions; after five failures it is the *only* mechanism here with evidence behind it. Read §8 and §8b as documentation of what the gate is asking for, not as behaviour this skill reliably produces on its own.
+
+Everything above in the table is one round of testing, not proof: three scenarios, one sample each, one model.
