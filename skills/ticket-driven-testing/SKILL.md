@@ -300,17 +300,19 @@ Never silently upgrade a defect into an AC failure, or silently drop one because
 
 Three pressure scenarios, run against subagents with and without this skill. The results are worth stating plainly, because two of them argue *against* parts of the skill.
 
-Scenarios 2 and 3 were run against the draft; scenario 1 was re-run against the current text after the harness bug described below was fixed.
+All "with the skill" runs below are against the current text, after the harness bug described further down was fixed. Sample sizes are given because they are small.
 
 | Scenario | Without the skill | With the skill |
 |---|---|---|
-| **Green suite, 2h to sprint end, "are we done?"** | Refused to sign off. Named "verify the tests can fail" as its **first, non-negotiable** action. Deferred reading the diff to step 5, after testing. | Refused to sign off. **Negative control as step 1**, §8b probes as step 2, results read per test, receipt written. (The *draft* omitted the control entirely — see below.) |
-| **Start QA; shared checkout is dirty, teammate's server running** | Already correct: `git worktree add`, no checkout, no stash, isolated port. | Same, plus PR-state check and diff-before-app ordering. |
-| **All 3 ACs pass; diff contains a telemetry defect** | Reported the defect, flagged the A/B implications, filed a linked ticket. Set the ticket **Done**. | Same, plus a `test.fail()` sentinel, and declined to self-close. |
+| **Green suite, 2h to sprint end, "are we done?"** (n=3) | Refused to sign off. Named "verify the tests can fail" as its **first, non-negotiable** action. Deferred reading the diff to step 5, after testing. | Refused to sign off, **3/3**. Negative control as **step 1**, §8b probes step 2, results read per test, receipt written. |
+| **Start QA; shared checkout is dirty, teammate's server running** (n=1) | Already correct: `git worktree add`, no checkout, no stash, isolated port. | Same, plus PR-state check, diff-before-app ordering, the control-element probe, and passing the base URL per command rather than into a shared env file. |
+| **All 3 ACs pass; diff contains a telemetry defect** (n=1) | Reported the defect, flagged the A/B implications, filed a linked ticket. Set the ticket **Done**. | Same, plus a `test.fail()` sentinel — and **declared "negative control: NOT RUN" as an outstanding gate**, refusing to close a ticket whose suite has not been shown to discriminate the fix. |
 
-**What this actually establishes.** The competent baseline is high. Worktree isolation and reporting an out-of-scope defect are things a good agent already does — those sections codify existing practice rather than correcting a failure, and should be read as reference, not as discipline.
+**What this establishes.** The competent baseline is high. Worktree isolation and reporting an out-of-scope defect are things a good agent already does — those sections codify existing practice rather than correcting a failure, and should be read as reference, not as discipline.
 
-What the skill measurably adds: **diff-before-testing ordering**, **PR review-state as a QA signal** (never mentioned in any baseline), **`test.fail()` sentinels**, and **not self-closing a ticket**.
+What the skill measurably adds: **the negative control** (absent from the draft, present 3/3 now), **diff-before-testing ordering**, **PR review-state as a QA signal** (never mentioned in any baseline), **`test.fail()` sentinels**, and **not self-closing a ticket**.
+
+The third scenario is the strongest result: the agent did not merely remember the control, it **surfaced its absence as a blocker** and declined to close on that basis. That is the behaviour the harness gate enforces, reached from instruction alone.
 
 ### How step 8 was made to fire — and the harness bug that hid it
 
@@ -324,6 +326,8 @@ Two things worth keeping from that:
 
 - **The revisions work.** Which one did the work is unknown — the sequence block, the sign-off gate, the corrected contract count and §8b all landed together. If you need to attribute it, re-test them individually.
 - **A test harness needs its own negative control.** One run against a deliberately corrupted skill would have shown the output never varied, and would have caught this immediately. The methodology demands exactly that check of the application under test (§8) and it applies with equal force to the rig you are testing *with*. Verifying that your test setup can register a change is not optional; it is the first thing to establish.
+
+  The retraction supplied that control after the fact: draft omitted the step 5/5, corrected text includes it 3/3. Output varied with input, so the rig is now known-live. Establish that *before* interpreting a result, not after — five runs were spent on the other order.
 
 The harness gate (`adversarial-verification-gate.sh`) is therefore **defence in depth, not the sole mechanism** — the instructions do work. It still earns its place: instructions are advisory and a gate is not, and the gate's own tests are independent of whether a skill loaded correctly.
 
