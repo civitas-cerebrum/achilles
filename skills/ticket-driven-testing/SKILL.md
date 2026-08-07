@@ -135,6 +135,30 @@ test('TC_...[SENTINEL <TICKET>-D1]: <correct behaviour>', async ({ steps }) => {
 
 **Pick a durable observable.** A sentinel is worthless if the app erases its own evidence — see the session-storage trap below.
 
+**Feature gates must ask the ENVIRONMENT, never the page.** A gate that probes the feature's own
+selector and skips when it is missing cannot distinguish "not deployed yet" from "regressed" —
+they look identical. Measured: with the feature's root element hidden, a page-probing gate turned a
+total AC regression into `2 skipped` instead of `2 failed`. The gate that keeps the nightly green
+also blinds the suite to the thing it exists to catch.
+
+Have the environment declare expectation instead, and default to fail-closed:
+
+```ts
+const FEATURE_EXPECTED = (process.env.E2E_FEATURE_<TICKET> ?? 'expected') !== 'absent'
+// expected + present → run
+// expected + absent  → FAIL   ← the regression
+// absent   + absent  → skip   ← deliberate, annotated
+// absent   + present → FAIL   ← shipped where it should not have
+```
+
+The environment without the feature opts out explicitly; removing that opt-out is what arms the
+tests at release, and is a one-line change rather than an edit to every spec.
+
+**Every absence assertion needs a positive control in the same test.** `count === 0`,
+`toBeHidden` (which passes on ZERO matches) and "element not present" all pass on a 404, an
+unhydrated page, a challenge page, and an environment where the feature never existed. Assert the
+page is alive first — then absence means something.
+
 If the suite runs against an environment where the feature is not deployed yet, gate it:
 
 ```ts
@@ -209,6 +233,17 @@ Agent(description: "probe-mutation-<slug>", prompt: "
 **Non-negotiables for these dispatches:**
 
 - **They must execute, not just read.** The most dangerous defect found in the run this skill came from was a sentinel that *passed while the bug was live* — the destination page consumed the session-storage flag it asserted on before the assertion ran. No amount of reading would have caught that; running it did.
+- **Prove each mutation APPLIED.** An un-applied mutation is indistinguishable from an uncaught
+  one, and reads as a coverage hole that does not exist. This cost a false finding: a mutation was
+  reported as surviving when its injection had silently never run (a bare string passed where the
+  API wanted `{ content }`). Give every mutation a selector that must match once it is live, and
+  assert that before believing any "survived" result — the same control logic as `noop`, applied
+  per mutation instead of per run.
+- **Do not target zero survivors.** A survivor with a written, defensible reason is a decision; a
+  survivor without one is a hole. Demanding zero pushes you into asserting design tokens and other
+  over-fitted details, producing tests that fail on legitimate change. When a mutation survives for
+  a good reason, narrow the test's CLAIM rather than widening its assertion — and rename the test
+  so it no longer promises what it does not check.
 - **Mutation needs a target you can break.** Source-level mutation needs a locally runnable app. Where the suite runs against a *deployed* environment you cannot rebuild, mutate at the **browser** level instead: inject CSS/JS that re-creates the broken state the AC forbids, then check the suite goes red. Weaker in one way (it binds to behaviour, not to the source change) and stronger in another (it tests the deployed artifact). Either way, **include a no-op mutation as the harness's own control** — if the suite goes red with nothing injected, the harness is breaking the page and every other result in the run is void.
 - **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one. An env-guarded block in the `page` fixture — inert unless `E2E_MUTATION_*` is set — is enough, and costs nothing when unused. State this as a prerequisite rather than discovering it mid-probe: without it, §8b's first mission is not runnable at all on a deployed-only project.
 - **Silence is not a pass.** A reviewer that reports nothing is indistinguishable from a lazy one. Require the shape: findings, **or** an explicit *"I attempted these N mutations and the suite caught all N"* with the list. An empty return is a failed dispatch, not a clean bill of health.
