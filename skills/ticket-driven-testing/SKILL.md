@@ -13,6 +13,24 @@ A ticket is not a test plan. It is a claim about behaviour, a branch that allege
 
 **REQUIRED SUB-SKILL:** the evidence run itself is `companion-mode`. This skill wraps it with the ticket, branch, and diff context that companion-mode's Phase 1 assumes you already have.
 
+### The sequence
+
+Whenever you list what you are going to do, list these. All nine, in this order. Mark any you are skipping and say why — an omitted step is a decision, and it belongs in the report.
+
+```
+1  Read the ticket AND its parent          → ACs verbatim, branch, PR
+2  Check PR review state                   → unresolved CHANGES_REQUESTED is itself a finding
+3  Worktree the branch                     → never switch a shared checkout
+4  Read the whole diff                     → BEFORE touching the app
+5  Reach the environment                   → preview auth, bypass tokens
+6  Probe live, then run companion-mode     → evidence bundle
+7  Write durable tests + a sentinel per defect
+8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
+9  Report: AC verdicts and defects, separately
+```
+
+Step 8 is the one that gets dropped. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
+
 ## The Contract
 
 Produce all four. A run that stops after evidence is half a deliverable.
@@ -23,13 +41,43 @@ Produce all four. A run that stops after evidence is half a deliverable.
 4. **Durable tests** — regression cover in the suite, plus one sentinel per confirmed defect.
 5. **A negative-control result** — proof the tests fail where the fix is absent (§8). Without it you have tests that pass, not tests that discriminate.
 
+### The sign-off gate
+
+**You may not report a QA verdict until you have run the negative control (§8) and can state its result.**
+
+This is the one step baseline testing showed agents reliably skip. Asked "are we done, the suite is green?", an agent following this skill listed six sensible next actions and omitted the negative control entirely — while an agent with no skill at all reached for it unprompted. Having the section is not enough; it has to be a gate.
+
+So, before writing any verdict, answer these three in the report:
+
+- Did the suite run against an environment **without** the fix?
+- Which tests **failed** there, and which **passed**?
+- For each one that passed — is it close-regression cover of pre-existing behaviour (fine), or does it fail to discriminate the feature (worthless as AC cover)?
+
+"The tests are green on the branch" answers none of these. If you cannot run the control, say so explicitly in the verdict — an unverified suite reported as unverified is honest; reported as regression cover it is not.
+
 ## Phases
 
 ### 1. Ticket intake
 
-Read the QA ticket **and its parent**. QA tickets carry the test scope; parent dev tickets carry the acceptance criteria, the Figma links, and the implementation notes. Neither alone is enough.
+Read the QA ticket **and its parent**. QA tickets carry the test scope; parent dev tickets carry the acceptance criteria, the design links, and the implementation notes. Neither alone is enough.
 
-Extract: the ACs verbatim, the branch name (trackers usually expose a `gitBranchName`), and the PR (usually a ticket attachment).
+Extract four things: the **ACs verbatim**, the **branch**, the **PR**, and the **current status**.
+
+**Tracker-agnostic.** This skill needs six capabilities from whatever tracker is in play. Discover what is actually connected — an MCP server, a CLI, a REST token — and map onto it. Never hard-code one vendor's tool names into the workflow.
+
+| Capability | Linear | Jira | Fallback |
+|---|---|---|---|
+| Read a ticket | `get_issue` | `getJiraIssue` | REST / `curl` |
+| Read its parent | `parentId` on the issue | `fields.parent` | same |
+| Find the branch | `gitBranchName` field | branch in the dev-status panel, or the issue key as a branch prefix | `git branch -r \| grep -i <KEY>` |
+| Find the PR | attachments / links | remote links, or the dev-status panel | `gh pr list --search "<KEY>"` |
+| Post the report | `save_comment` | `addCommentToJiraIssue` | REST |
+| Attach evidence | `prepare_attachment_upload` → PUT → `create_attachment_from_upload` | `attachFile` | REST multipart |
+| Move status | `save_issue` with a state | `transitionJiraIssue` | REST |
+
+Two portability rules that bite in practice: **status names are per-project**, so enumerate the available states rather than assuming a "Done" exists; and **the ticket key is the only reliable join** between tracker, branch and PR — expect the branch to carry the *dev* ticket's key while you work the *QA* ticket's, and confirm rather than infer.
+
+If no tracker is reachable at all, the workflow still runs — the user pastes the ACs and the branch, and phases 2 onward are unchanged. Losing the tracker costs you intake and reporting, not the method.
 
 ### 2. PR state — a first-class QA signal
 
@@ -69,6 +117,8 @@ Probe the live page for the geometry and state the ACs talk about — computed `
 
 Then run `companion-mode` for the evidence bundle.
 
+> **Phases 1–9 are one sequence.** A run that stops at 7 has produced tests nobody has shown to discriminate the fix. 8 is not optional follow-up.
+
 ### 7. Durable tests and sentinels
 
 Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
@@ -97,7 +147,7 @@ test.beforeEach(async ({ steps }, testInfo) => {
 
 The `TODO` is not optional. A permanent silent skip is worse than no test.
 
-## 8. Prove the tests discriminate the fix — the negative control
+### 8. Prove the tests discriminate the fix — the negative control
 
 A green suite on the feature branch proves the assertions pass *where the feature exists*. It does not prove they would fail where it doesn't. Those are different claims, and only the second one makes the suite regression cover.
 
@@ -120,7 +170,7 @@ Read the result per test, not in aggregate. Three outcomes, three meanings:
 
 **`test.fail()` sentinels cannot pass this control**, and it is worth knowing why before it confuses you: on an environment without the feature they fail because the element is *missing*, not because the defect is *present* — and `test.fail()` reports that as passed. A sentinel is indistinguishable between "bug reproduced" and "feature absent". The feature gate is what keeps that harmless; nothing else does.
 
-## 9. Live observation — watch it, don't just assert it
+### 9. Live observation — watch it, don't just assert it
 
 Assertions confirm what you thought to ask. Watching the page reveals what you didn't. Before trusting a green suite, drive the flow once by hand — screenshot **and** probe state after **every** action, not just at the end.
 
@@ -204,6 +254,32 @@ Report defects the diff review found even when every AC passes — they are the 
 
 Never silently upgrade a defect into an AC failure, or silently drop one because the ACs passed.
 
-## Status
+## Baseline testing
 
-**This skill has not been subagent-tested against baseline scenarios**, contrary to `superpowers:writing-skills`' Iron Law — it was authored under an explicit instruction not to dispatch subagents. Its content is derived from one complete real run (Linear PEDX-10619 / PR #4552) rather than from observed agent failures. Treat the Traps table as verified (each entry is a failure that actually occurred) and the phase structure as unverified. Run baseline pressure scenarios before relying on it broadly.
+Three pressure scenarios, run against subagents with and without this skill. The results are worth stating plainly, because two of them argue *against* parts of the skill.
+
+| Scenario | Without the skill | With the skill |
+|---|---|---|
+| **Green suite, 2h to sprint end, "are we done?"** | Refused to sign off. Named "verify the tests can fail" as its **first, non-negotiable** action. Deferred reading the diff to step 5, after testing. | Refused to sign off. Read the diff at step 3, before probing. Checked PR review state. **Omitted the negative control entirely.** |
+| **Start QA; shared checkout is dirty, teammate's server running** | Already correct: `git worktree add`, no checkout, no stash, isolated port. | Same, plus PR-state check and diff-before-app ordering. |
+| **All 3 ACs pass; diff contains a telemetry defect** | Reported the defect, flagged the A/B implications, filed a linked ticket. Set the ticket **Done**. | Same, plus a `test.fail()` sentinel, and declined to self-close. |
+
+**What this actually establishes.** The competent baseline is high. Worktree isolation and reporting an out-of-scope defect are things a good agent already does — those sections codify existing practice rather than correcting a failure, and should be read as reference, not as discipline.
+
+What the skill measurably adds: **diff-before-testing ordering**, **PR review-state as a QA signal** (never mentioned in any baseline), **`test.fail()` sentinels**, and **not self-closing a ticket**.
+
+### Known weakness: step 8 does not reliably fire
+
+**Scenario 1 is still red, and three attempts to fix it failed.** This is documented rather than hidden because a future maintainer will otherwise waste the same afternoon.
+
+The failure: asked "the suite is green, are we done?", the skill-equipped agent produces an excellent answer — refuses to sign off, checks PR state, worktrees, reads the diff, writes sentinels, separates AC verdicts from defects — and **never mentions running the negative control.** An agent with no skill at all named "verify the tests can fail" as its first non-negotiable action.
+
+What was tried, in order, all unsuccessful:
+
+1. **A prose sign-off gate** ("you may not report a verdict until…") placed directly under the Contract.
+2. **A structural fix** — phases 1–7 were `###` under `## Phases` while 8 and 9 were `##`, so an agent enumerating "the phases" legitimately stopped at 7. Promoting them into the sequence was correct on its own merits and changed nothing here.
+3. **An explicit nine-step template** at the top of the skill for the agent to mirror, with step 8 shouted.
+
+The most likely cause is competition, not omission. This skill has two headline claims — *read the diff first* and *run the negative control* — and the first is stated as the **Core principle** in the Overview. Every failing run spent its attention budget on the diff. If a fourth attempt is made, the thing to try is probably subtraction: cut the skill down, or demote diff-first, rather than adding another instruction on top.
+
+Treat the negative control as documentation a human should enforce in review, not as behaviour this skill currently produces. Everything above it in the table is one round of testing, not proof: three scenarios, one sample each, one model.
