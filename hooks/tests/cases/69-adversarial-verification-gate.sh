@@ -92,6 +92,29 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done OTHER-99)" \
 assert_deny "$H" "$("$JQ" -nc '{tool_name:"mcp__linear__save_issue", tool_input:{state:"Done"}}')" \
   "payload with no ticket key → DENY (cannot verify whose receipt)"
 
+section "adversarial-gate: UUID ids resolve via the receipt's recorded ticket"
+# Linear's save_issue commonly carries a UUID in .id, not a human key. Matching the FILENAME alone
+# produced a permanent, unrecoverable DENY with the correct receipt on disk.
+printf '%s' '{"ticket":"e0265f67-8efb-4d41-9310-557456c73b1e","negativeControl":{"failed":5}}' \
+  > "$WS/.achilles/adversarial-verification/PEDX-1.json"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done e0265f67-8efb-4d41-9310-557456c73b1e)" \
+  "UUID id matched via receipt's recorded ticket → ALLOW"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done 99999999-0000-0000-0000-000000000000)" \
+  "unrelated UUID → DENY (cross-ticket hole stays closed)"
+
+section "adversarial-gate: key binding is EXACT, not substring"
+# Each of these was a working bypass on an ordinary, unshaped payload.
+printf '%s' '{"ticket":"ABC-15","negativeControl":{"failed":5}}' > "$WS/.achilles/adversarial-verification/ABC-15.json"
+rm -f "$WS/.achilles/adversarial-verification/ABC-1.json" "$WS/.achilles/adversarial-verification/PEDX-1.json"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done ABC-1)" \
+  "prefix collision: ABC-15's receipt must NOT sign off ABC-1"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done json)" \
+  "skeleton key 'json' matches every receipt filename → DENY"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done ---)" \
+  "degenerate key → DENY"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done ABC-15)" \
+  "exact key still ALLOWs"
+
 section "adversarial-gate: escape hatches"
 CIVITAS_DISABLE_ADVERSARIAL_GATE=1 \
   assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \

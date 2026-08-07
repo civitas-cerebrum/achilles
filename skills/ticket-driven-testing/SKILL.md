@@ -32,6 +32,30 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 
 Step 8 is the one that gets dropped — an early draft of this skill omitted it 5/5 while an agent with no skill at all named it first. 8b delegates the check as well, so it does not rest on memory alone. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
 
+## Prerequisites
+
+State these before starting; each has blocked a real run.
+
+| Need | Why | If absent |
+|---|---|---|
+| A reachable app (deployed or locally runnable) | phases 5–8 all drive a browser | the method stops at the diff review, which is still worth doing |
+| A Playwright project with a config + installed browsers | every run shells out to `playwright test` | no automation; evidence only |
+| `git` with worktree support | phase 3 | work in a clone instead, never the shared checkout |
+| A tracker, OR the ACs pasted by hand | phase 1 | paste them; phases 2–9 are unchanged |
+| `jq` on PATH | the harness gate is a shell hook and exits FATAL without it | install it, or disable the gate explicitly |
+| A subagent-capable runtime | §8b dispatches four reviewers | run the probes yourself, serially, and say so in the report |
+| **A second environment WITHOUT the fix** | §8 negative control | see §8's fallbacks — do not silently skip it |
+| An `E2E_MUTATION_CSS` / `E2E_MUTATION_INIT` hook in your page fixture | §8b mutation probe (grammar in §8b) | source-level mutation instead, if the app runs locally |
+
+**Code samples in this skill use the `@civitas-cerebrum/element-interactions` `steps` API**
+(`steps.verifyCount('el', 'Page', …)`), which needs that package's fixture and a page-repository.
+On stock Playwright the equivalent is `expect(page.locator(...))` — the method is identical, only
+the call shape differs.
+
+**Cost.** One 3-AC ticket run literally costs roughly **6+ full suite runs** (branch baseline,
+negative control, one per mutation, plus the no-op control) and **5+ agent dispatches**. At an
+8-minute suite that is ~1.5–3h wall clock. Budget it, or scope §8b to the ACs that matter.
+
 ## The Contract
 
 Produce all five. A run that stops after evidence is half a deliverable.
@@ -93,6 +117,14 @@ git worktree add ../<repo>-<ticket> origin/<feature-branch>
 ```
 
 **Never switch the shared checkout.** Another session, another agent, or a running dev server may depend on the current branch. A worktree costs nothing and cannot disturb them.
+
+Two consequences that bite later, both worth handling now:
+
+- **The verification receipt (§8b) belongs in the SESSION checkout, not the worktree.** The harness
+  gate resolves its workspace from the session's git toplevel, so a receipt written inside the
+  worktree is invisible to it — you get denied while holding the receipt.
+- **A fresh worktree re-stamps every file's mtime**, so any pre-existing receipt is instantly
+  "older than the newest spec" and treated as stale. Create the worktree first, then run §8/§8b.
 
 ### 4. Review the diff
 
@@ -159,24 +191,71 @@ tests at release, and is a one-line change rather than an edit to every spec.
 unhydrated page, a challenge page, and an environment where the feature never existed. Assert the
 page is alive first — then absence means something.
 
-If the suite runs against an environment where the feature is not deployed yet, gate it:
+If the suite runs against an environment where the feature is not deployed yet, gate it — with
+**this** implementation, not one of your own. Copy it verbatim; §8's negative control depends on
+the `GATE_OFF` escape being present.
 
 ```ts
+// ONE gate. Env-declared, fail-closed, with all four outcomes in code.
+// Ticket keys contain hyphens, which are illegal in env identifiers — normalise to underscores:
+//   ABC-450 -> E2E_FEATURE_ABC_450
+const FEATURE_ENV = 'E2E_FEATURE_ABC_450'          // <- your normalised ticket key
+const GATE_OFF = process.env.E2E_FEATURE_GATE === 'off'   // §8 negative control uses this
+// Legal values: 'expected' (default) | 'absent'. Anything else is a config error, not a silent pass.
+const raw = process.env[FEATURE_ENV] ?? 'expected'
+if (!['expected', 'absent'].includes(raw)) throw new Error(`${FEATURE_ENV} must be 'expected' or 'absent', got '${raw}'`)
+const FEATURE_EXPECTED = raw === 'expected'
+
 test.beforeEach(async ({ steps }, testInfo) => {
+  // POSITIVE CONTROL FIRST. Absence assertions below are meaningless on a dead page.
+  await steps.verifyState('pageRoot', 'SomePage', 'visible')
+
   const present = await steps.isVisible('featureRoot', 'SomePage', { timeout: 5000 })
-  testInfo.annotations.push({ type: 'feature-gate', description: `present: ${present}` })
-  test.skip(!present, 'Not deployed here yet.')
-  // TODO(<TICKET>): delete this guard once shipped — after that, absence IS the regression.
+  testInfo.annotations.push({ type: 'feature-gate', description: `expected=${FEATURE_EXPECTED} present=${present}` })
+
+  if (GATE_OFF) return                                   // §8: run regardless, expect failures
+  if (FEATURE_EXPECTED && !present) {
+    throw new Error('feature expected on this environment but absent — this IS the regression')
+  }
+  if (!FEATURE_EXPECTED && present) {
+    throw new Error('feature not expected here but rendered anyway')
+  }
+  if (!FEATURE_EXPECTED) test.skip(true, `not deployed here (${FEATURE_ENV}=absent)`)
 })
 ```
 
-The `TODO` is not optional. A permanent silent skip is worse than no test.
+| `FEATURE_EXPECTED` | feature present | outcome |
+|---|---|---|
+| true | yes | run |
+| true | **no** | **FAIL** — the regression |
+| false | no | skip, annotated |
+| false | **yes** | **FAIL** — shipped where it should not have |
+
+The environment lacking the feature sets `E2E_FEATURE_<KEY>=absent` explicitly. **Removing that one
+line is what arms the tests at release** — no spec edits.
+
+Why not probe the page and skip? Because that cannot tell "not deployed" from "regressed". Measured:
+with the feature's root element hidden, a page-probing gate turned a total AC regression into
+`2 skipped` rather than `2 failed`.
 
 ### 8. Prove the tests discriminate the fix — the negative control
 
 A green suite on the feature branch proves the assertions pass *where the feature exists*. It does not prove they would fail where it doesn't. Those are different claims, and only the second one makes the suite regression cover.
 
-**Run the suite against an environment without the fix — usually production before the PR ships — and require it to FAIL.**
+**Run the suite against an environment without the fix and require it to FAIL.**
+
+Production before the PR ships is the usual target, but it is not the only one and it is not always
+safe. In order of preference:
+
+1. **A preview of the merge-base commit** — same infrastructure, no fix. Cleanest.
+2. **A local build of `main`** — needs the app runnable locally.
+3. **Production** — only when the suite is READ-ONLY. A suite that creates orders, users or
+   records will create them in production. Check before pointing it there; this is the one step in
+   this skill that can cause real-world damage.
+4. **Feature-flag the fix off**, if it is flagged.
+
+If none is available, say so in the verdict: *"suite is green but unverified — not regression
+cover"*. That is honest. Silently skipping the control and reporting regression cover is not.
 
 A gated suite will skip there, which proves only that the gate works. So give the gate an explicit off switch and use it:
 
@@ -222,8 +301,11 @@ Bias it toward **`merge` over `delete`**, and require evidence for either — na
 ```
 Agent(description: "probe-mutation-<slug>", prompt: "
   ADVERSARIAL REVIEW — <mission>. Your job is to find defects, not to approve.
-  Return shape: schemas/subagent-returns/probe.schema.json — return `handover`
-  plus `findings-emitted` and `summary`. Put the detail in `summary`.
+  Return shape: schemas/subagent-returns/probe.schema.json. Return `handover`
+  ({role, status, next-action} — all three required), `findings-emitted`,
+  `finding-ids` (REQUIRED whenever status is "findings-emitted"), and
+  `summary`. Omitting finding-ids is the easy mistake: it is conditionally
+  required exactly when the probe succeeds in finding something.
   <files to read> <the ACs> <the specific question>
   MANDATORY: silence is a failed dispatch. Return findings, or state exactly
   what you examined and why you found nothing. A vague approval is a failure.
@@ -245,7 +327,26 @@ Agent(description: "probe-mutation-<slug>", prompt: "
   a good reason, narrow the test's CLAIM rather than widening its assertion — and rename the test
   so it no longer promises what it does not check.
 - **Mutation needs a target you can break.** Source-level mutation needs a locally runnable app. Where the suite runs against a *deployed* environment you cannot rebuild, mutate at the **browser** level instead: inject CSS/JS that re-creates the broken state the AC forbids, then check the suite goes red. Weaker in one way (it binds to behaviour, not to the source change) and stronger in another (it tests the deployed artifact). Either way, **include a no-op mutation as the harness's own control** — if the suite goes red with nothing injected, the harness is breaking the page and every other result in the run is void.
-- **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one. An env-guarded block in the `page` fixture — inert unless `E2E_MUTATION_*` is set — is enough, and costs nothing when unused. State this as a prerequisite rather than discovering it mid-probe: without it, §8b's first mission is not runnable at all on a deployed-only project.
+- **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one. Two variables, exact names and grammar:
+
+  | Variable | Contains | Applied |
+  |---|---|---|
+  | `E2E_MUTATION_CSS` | a CSS string | `page.addStyleTag({ content })` on every `load` |
+  | `E2E_MUTATION_INIT` | a JS string | `page.addInitScript({ content })` — note the object form; a bare string silently does nothing |
+
+  ```ts
+  // in your `page` fixture — inert unless the driver sets these, so it costs nothing when unused
+  if (process.env.E2E_MUTATION_INIT) await page.addInitScript({ content: process.env.E2E_MUTATION_INIT })
+  if (process.env.E2E_MUTATION_CSS) {
+    const css = process.env.E2E_MUTATION_CSS
+    page.on('load', () => { page.addStyleTag({ content: css }).catch(() => {}) })
+  }
+  ```
+
+  The `noop` control is simply both variables empty. The applied-check is a CSS selector that must
+  match once the mutation is live (e.g. `[data-x] [inert]`) — assert it before believing any
+  "survived" result. Add this hook as a **prerequisite**, not a mid-probe discovery: without it,
+  §8b's first mission is not runnable at all on a deployed-only project.
 - **Silence is not a pass.** A reviewer that reports nothing is indistinguishable from a lazy one. Require the shape: findings, **or** an explicit *"I attempted these N mutations and the suite caught all N"* with the list. An empty return is a failed dispatch, not a clean bill of health.
 - **A surviving mutation is a finding, not a suggestion.** It means a stated AC has no test that can fail for it. Fix the test before reporting the verdict.
 
@@ -260,7 +361,13 @@ Write the outcome to `.achilles/adversarial-verification/<ticket-key>.json`:
 }
 ```
 
-That receipt is what the harness gate looks for — see `harness-hooks.md`. Writing it by hand without running the probes defeats the check entirely — and the failure it catches is *your own*.
+That receipt is what the harness gate looks for. **The gate DENIES a tracker transition to a
+completed state without it**, so an adopter who has not read this section meets it as an
+unexplained denial — kill-switch `CIVITAS_DISABLE_ADVERSARIAL_GATE=1` if you need out.
+
+**Gitignore `.achilles/`.** The receipt is a local run artifact: git does not preserve mtimes, so a
+committed receipt would arrive on CI with a rewritten timestamp and defeat the staleness check
+outright. It is evidence for the run that produced it, not a shared artifact. Writing it by hand without running the probes defeats the check entirely — and the failure it catches is *your own*.
 
 ### 9. Live observation — watch it, don't just assert it
 

@@ -49,6 +49,20 @@
 # ticket key in its filename: without that, any receipt unlocked any ticket,
 # which was a real defect found by adversarial review of this gate.
 #
+# HONEST STATUS — read before relying on this. Adversarial review defeated the receipt binding
+# four ways and the staleness scan six. Exact-key matching closed the first set; the rest are
+# structural and CANNOT be patched:
+#   * the receipt lives in a directory no protected-artifact guard covers, so the agent being
+#     judged can author, post-date or delete its own acquittal (`touch -t 2030…` makes staleness
+#     permanently unfailable);
+#   * the spec scan truncates at 2000 paths in READDIR order and xargs-batches, so on a large
+#     monorepo the genuinely-newest spec can be missed;
+#   * only mcp__* tools are seen — Bash, curl and gh are ungated, and the skill itself documents
+#     them as the fallback;
+#   * the status vocabulary is six English words.
+# This is a speed bump, not a control. Making it sound needs a hook-authored, hash-chained receipt
+# on the protected list — the pattern ledger-integrity-chain.sh already implements.
+#
 # Deliberately NOT enforced here: whether the receipt's contents are
 # honest. A hook cannot tell a real probe run from a fabricated JSON file.
 # This gate raises the cost of skipping from "forget" to "actively write a
@@ -116,23 +130,42 @@ RECEIPT_DIR="$WORKSPACE_ROOT/.achilles/adversarial-verification"
 # second ticket was worked in the same repo.
 TICKET_KEY="$(printf '%s' "$ARGS" | "$JQ" -r '(.id // .issue // .issueId // .issueIdOrKey // .key // empty) | tostring' 2>/dev/null || true)"
 
-# The receipt must belong to THIS ticket. Match on the tracker key (ABC-450) found anywhere in the
-# filename, case-insensitively, so both "ABC-450.json" and "abc-450-run2.json" count.
+# The receipt must belong to THIS ticket.
+#
+# EXACT matching only. Substring matching was defeated on ordinary payloads: with ABC-15.json on
+# disk, a transition of ABC-1 was allowed (prefix collision — the normal state of every tracker),
+# and a key of "json" or "-" matched every receipt on disk.
+#
+# HONEST LIMIT, do not read this as a security boundary: the receipt is written by the same actor
+# the gate judges, in a directory no protected-artifact guard covers. Filename binding raises the
+# cost of a mistake; it does not stop a determined agent, which can author the file. Content-based
+# binding is strictly worse — a receipt that names its own scope is self-declared — so the `.ticket`
+# fallback below requires EXACT equality and exists only for trackers whose payload `.id` is a UUID.
+# Making this sound requires a hook-authored, hash-chained receipt on the protected list, the
+# pattern ledger-integrity-chain.sh already implements for other artifacts. Until then this gate is
+# a speed bump, and the docs must say so.
 receipt_for_ticket() {
   [ -d "$RECEIPT_DIR" ] || return 1
   [ -n "$TICKET_KEY" ] || return 1
-  local key_lc
+  # Reject degenerate keys outright — they only ever arise from a malformed or hostile payload.
+  case "$TICKET_KEY" in ''|'-'|'.'|json|JSON) return 1 ;; esac
+  [ "${#TICKET_KEY}" -ge 3 ] || return 1
+
+  local key_lc f base stem recorded
   key_lc="$(printf '%s' "$TICKET_KEY" | tr '[:upper:]' '[:lower:]')"
-  local best="" f base
-  # Newest first, genuinely: ls -t, not directory order.
   for f in $(ls -t "$RECEIPT_DIR"/*.json 2>/dev/null); do
+    "$JQ" -e 'has("negativeControl")' "$f" >/dev/null 2>&1 || continue
     base="$(basename "$f" | tr '[:upper:]' '[:lower:]')"
-    case "$base" in
-      *"$key_lc"*)
-        "$JQ" -e 'has("negativeControl")' "$f" >/dev/null 2>&1 && { best="$f"; break; } ;;
-    esac
+    stem="${base%.json}"
+    # Exact stem, or exact stem followed by a separator (ABC-450-run2.json), never a bare substring.
+    if [ "$stem" = "$key_lc" ] || case "$stem" in "$key_lc"[-_.]*) true ;; *) false ;; esac; then
+      echo "$f"; return 0
+    fi
+    # UUID-shaped ids never appear in filenames. Exact equality on ONE field only.
+    recorded="$("$JQ" -r '(.ticket? // "") | if type=="string" then ascii_downcase else "" end' "$f" 2>/dev/null || true)"
+    [ -n "$recorded" ] && [ "$recorded" = "$key_lc" ] && { echo "$f"; return 0; }
   done
-  [ -n "$best" ] && echo "$best"
+  return 1
 }
 
 RECEIPT="$(receipt_for_ticket || true)"
