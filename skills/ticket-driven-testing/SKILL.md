@@ -9,7 +9,24 @@ description: Use when a ticket from an issue tracker (Linear, Jira) is the unit 
 
 A ticket is not a test plan. It is a claim about behaviour, a branch that allegedly implements it, and a set of acceptance criteria someone will sign off against. This skill turns that into: verified evidence, durable regression tests, and sentinel tests for every defect found.
 
-**Core principle: read the diff before you touch the app.** The code tells you which acceptance criteria are structurally guaranteed, which are merely probable, and where the defects are. Testing blind wastes the run and produces assertions that pass for the wrong reason.
+**Core principle: build understanding by interacting, then assert what you understood.**
+
+Read the diff early — it tells you **where to look** and **what is risky**. It does not tell you
+what to assert. Those are different jobs, and conflating them is how you end up with a suite that
+asserts a class token instead of a highlight, `inert` instead of visibility, and an element's
+computed `position` instead of whether the user can see two bars.
+
+The order that works:
+
+```
+diff  →  where to look, what is risky
+live  →  what actually happens, in what sequence, at what moment
+        ↳ THIS is what you assert
+```
+
+A test written from the diff binds to the implementation of one branch. A test written from
+observed behaviour survives the implementation changing — and that matters, because the branch you
+are testing may never ship in the form you read.
 
 **REQUIRED SUB-SKILL:** the evidence run itself is `companion-mode`. This skill wraps it with the ticket, branch, and diff context that companion-mode's Phase 1 assumes you already have.
 
@@ -21,12 +38,13 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 1  Read the ticket AND its parent          → ACs verbatim, branch, PR
 2  Check PR review state                   → unresolved CHANGES_REQUESTED is itself a finding
 3  Worktree the branch                     → never switch a shared checkout
-4  Read the whole diff                     → BEFORE touching the app
+4  Read the whole diff                     → where to look; NOT what to assert
 5  Reach the environment                   → preview auth, bypass tokens
-6  Probe live, then run companion-mode     → evidence bundle
+6  Build understanding by interacting      → 6a exists → 6b drive+observe → 6c derive cases
+                                            → 6d evaluate what is undesirable
 7  Write durable tests + a sentinel per defect
 8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
-8b DISPATCH THE ADVERSARIAL REVIEW         → 4 subagents attack the tests; you do not self-assess
+8b DISPATCH THE ADVERSARIAL REVIEW         → 5 subagents attack the tests; you do not self-assess
 9  Report: AC verdicts and defects, separately
 ```
 
@@ -144,11 +162,51 @@ Feature branches deploy to preview URLs that are usually **protection-gated**. S
 - **Do not set the suite's base-URL variable in a shared env file** — it silently retargets every other suite. Pass it per command.
 - For a CLI browser session, providers usually accept the token as a query parameter that sets a bypass cookie for the session.
 
-### 6. Discovery, then evidence
+### 6. Build understanding by interacting — simplest first
 
-Probe the live page for the geometry and state the ACs talk about — computed `position`, element rects, CSS custom properties, which elements sit near the viewport top, counts of duplicated nodes. One well-designed probe returning JSON beats a dozen snapshots.
+**Do not write the acceptance-criteria tests yet.** Work up to them. Each rung earns the next, and
+a rung that surprises you is worth more than the rung that passed.
+
+**6a — Does it exist?** The smallest possible test: the thing renders, and you can click it.
+Nothing about the ACs. If this is awkward to write, the selectors are wrong and everything built on
+them will be too — find that out now, not after twelve tests.
+
+**6b — Drive it and watch.** Step through the flow in small increments with a screenshot *and* a
+state dump at every step. Small enough to catch transitions: the interesting behaviour is between
+the states, not at them. Record what you did not expect, even when it looks harmless.
+
+> Worked example: stepping a page 0 → 400 → 560 → 700 → 1200px located a window where an element
+> reported itself "stuck" while still `position: static` **and still half-visible and clickable**.
+> No assertion had bounded that window, and no amount of diff-reading would have found it — the
+> code looks correct at every line.
+
+**6c — Derive the test cases from what you observed.** Now write them, and write them against what
+a user would notice. Ask of each assertion: *if this passed but the feature were visibly broken,
+would I still be green?* If yes, you asserted the mechanism instead of the outcome.
+
+| Asserting the mechanism | Asserting the outcome |
+|---|---|
+| element has class `.is-active` | the active item is visually distinguished |
+| `inert` attribute is absent | the control is visible **and** focusable |
+| computed `position: static` | only one bar is pinned at the top |
+
+Mechanism assertions are not wrong — they are often the only *stable* form, and the strongest
+assertions in a suite are frequently structural. But a mechanism assertion is a **proxy**, and a
+proxy needs the outcome asserted alongside it at least once, or nobody ever checks the proxy still
+tracks the thing.
+
+**6d — Only now, evaluate.** With a working model of the component, judge what is *undesirable*:
+jitter, duplicated controls, focus traps, content that clips at a real breakpoint, states the
+design never anticipated. This step is why 6a–6c come first — you cannot recognise "that looks
+wrong" in a component you have only read about.
 
 Then run `companion-mode` for the evidence bundle.
+
+**Why this order.** Tests written straight from a diff bind to *that* implementation. Measured
+cost: on one run, roughly nine desktop tests bound to a structural detail (`lg:static`) that exists
+only on the feature branch — had it shipped differently, they would have needed rewriting rather
+than catching the change. Tests derived from observed behaviour survive the implementation moving
+underneath them.
 
 > **Phases 1–9 are one sequence.** A run that stops at 7 has produced tests nobody has shown to discriminate the fix. 8 is not optional follow-up.
 
@@ -278,7 +336,7 @@ Read the result per test, not in aggregate. Three outcomes, three meanings:
 
 Do not self-assess your own tests. **Dispatch subagents whose mission is to attack them.** The rationale is separation of duties, not a measured effect: a reviewer that did not write the tests has no stake in their looking good. NOT claimed: that delegation outperforms instruction. Delegation was never run as its own arm, so there is no evidence either way.
 
-Dispatch these **four in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
+Dispatch these **five in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
 
 | Mission | Question it must answer | Required output |
 |---|---|---|
@@ -286,6 +344,7 @@ Dispatch these **four in parallel**, scoped to the diff and the ACs. Anything ou
 | `probe-coverage` | Which AC clauses and which hunks of the diff have **no** assertion pointing at them? | Gap list keyed to AC text and `file:line` |
 | `probe-assertions` | Does each assertion prove a structural guarantee, or did it observe one passing render? | Per assertion: `structural` / `incidental`, with the reason |
 | `probe-value` | Is each test **worth keeping** — does it protect behaviour a user would notice losing, at a maintenance cost the risk justifies? | Per test: `keep` / `merge` / `delete`, with the reason |
+| `probe-outcome` | For each AC: is the **user-visible outcome** asserted anywhere, or only a mechanism standing in for it? Would the suite stay green with the feature visibly broken? | Per AC: `outcome-asserted` / `proxy-only`, naming the proxy |
 
 **On `probe-value` specifically.** The other three ask whether a test *works*; this one asks whether it should *exist*. A test can catch its mutation and still be a liability. The four verdicts it hunts for:
 
