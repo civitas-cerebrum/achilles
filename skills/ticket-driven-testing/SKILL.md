@@ -45,7 +45,8 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 7  Write durable tests + a sentinel per defect
 8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
 8b DISPATCH THE ADVERSARIAL REVIEW         → 5 subagents attack the tests; you do not self-assess
-9  Report: AC verdicts and defects, separately
+9  Report — then DISPATCH probe-verdict at the report itself
+                                            → §8b attacks the tests; this attacks the claims
 ```
 
 Step 8 is the one that gets dropped — an early draft of this skill omitted it 5/5 while an agent with no skill at all named it first. 8b delegates the check as well, so it does not rest on memory alone. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
@@ -505,6 +506,34 @@ When an assertion has no API surface, do **not** silently drop to raw driver cal
 Known gap: **document-level geometry.** "No horizontal clipping" is `documentElement.scrollWidth > clientWidth`, and step-based frameworks generally have no element-free assertion for it. Proxy: assert every control stays present and reachable at each width, and let the per-width screenshots carry the visual proof.
 
 **REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-element-interactions`.
+
+## 9. Report — and have the report reviewed before it ships
+
+**Dispatch one more probe at the REPORT itself, before it reaches a human.** §8b attacks the
+tests; nothing there attacks the verdict. The verdict is the artifact a person acts on, and it is
+the last place an unearned claim can hide.
+
+```
+Agent(description: "probe-verdict-<ticket>", prompt: "
+  ADVERSARIAL REVIEW — audit this QA verdict against its evidence. Find overstatement.
+  Return shape: schemas/subagent-returns/probe.schema.json (handover{role,status,next-action},
+  findings-emitted, finding-ids, summary).
+  <the draft report> <the specs> <the negative-control output> <the mutation report>
+  For EACH claim: quote it, name the evidence that would support it, and state what exists.
+  Hunt for: an AC called 'verified' where only a proxy was asserted; a suite called regression
+  cover with no negative control; sample sizes not disclosed; 'always/never/cannot' on one run;
+  a test cited as covering something it does not assert.
+  MANDATORY: silence is a failed dispatch. Return findings, or list every claim you checked.
+")
+```
+
+This exists because it was skipped and it cost something real: a shipped verdict declared two
+acceptance criteria verified when the suite asserted a *mechanism* for one (`inert`, not
+visibility) and a *tautology* for the other (a URL segment a server-side rewrite never produces).
+Both passed every test. Only an audit of the claims against the evidence found them.
+
+If the report has already been posted when a finding lands, **correct it in place and say what
+changed**. A quietly edited verdict is worse than the original error.
 
 ## Reporting
 
