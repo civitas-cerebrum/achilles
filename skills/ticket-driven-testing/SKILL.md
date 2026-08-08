@@ -45,6 +45,7 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 7  Write durable tests + a sentinel per defect
 8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
 8b DISPATCH THE ADVERSARIAL REVIEW         → 5 subagents attack the tests; you do not self-assess
+8c SCORE the testing itself (probe-rigour, 0-3 x6, blocking floor)
 9  Report — then DISPATCH probe-verdict at the report itself
                                             → §8b attacks the tests; this attacks the claims
 ```
@@ -403,9 +404,26 @@ Agent(description: "probe-mutation-<slug>", prompt: "
   }
   ```
 
-  The `noop` control is simply both variables empty. The applied-check is a CSS selector that must
-  match once the mutation is live (e.g. `[data-x] [inert]`) — assert it before believing any
-  "survived" result. Add this hook as a **prerequisite**, not a mid-probe discovery: without it,
+  The `noop` control is simply both variables empty. The applied-check is an expression evaluated
+  **in the page** once the mutation is live — a selector alone is too weak, because most mutations
+  change a computed style rather than adding a node (`getComputedStyle(el).display === 'none'`,
+  not `[data-x][hidden]`).
+
+  **Give the un-applied case its own verdict.** Do not fold it into SURVIVED: an un-applied
+  mutation is a **VOID** measurement that says nothing about coverage, and calling it a survivor
+  manufactures a coverage hole that does not exist. Three outcomes, not two:
+
+  | Suite red? | Applied? | Verdict |
+  |---|---|---|
+  | yes | — (self-evident) | CAUGHT |
+  | no | true | SURVIVED — a real finding |
+  | no | false | **VOID** — fix the injection and re-run before reading anything |
+
+  Only SURVIVED needs the check, and only then is it worth the browser launch. **Control the
+  checker itself**: run it once with no injection at all and confirm it reports `false`. A checker
+  that always returns true is a rubber stamp, and it fails in the direction that hides holes.
+  Give it the same page-level control as any other probe — if the page never rendered, the result
+  is void rather than false. Add this hook as a **prerequisite**, not a mid-probe discovery: without it,
   §8b's first mission is not runnable at all on a deployed-only project.
 - **Silence is not a pass.** A reviewer that reports nothing is indistinguishable from a lazy one. Require the shape: findings, **or** an explicit *"I attempted these N mutations and the suite caught all N"* with the list. An empty return is a failed dispatch, not a clean bill of health.
 - **A surviving mutation is a finding, not a suggestion.** It means a stated AC has no test that can fail for it. Fix the test before reporting the verdict.
@@ -428,6 +446,68 @@ unexplained denial — kill-switch `CIVITAS_DISABLE_ADVERSARIAL_GATE=1` if you n
 **Gitignore `.achilles/`.** The receipt is a local run artifact: git does not preserve mtimes, so a
 committed receipt would arrive on CI with a rewritten timestamp and defeat the staleness check
 outright. It is evidence for the run that produced it, not a shared artifact. Writing it by hand without running the probes defeats the check entirely — and the failure it catches is *your own*.
+
+#### 8c. Score the testing itself — `probe-rigour`
+
+The five probes above audit the **artifacts**: the tests, the assertions, the coverage. None of
+them audits **the testing**. A run can produce well-formed tests that catch their mutations and
+still be bad QA — because the agent never drove the feature, ran one browser and claimed three,
+or bounded nothing it reported.
+
+So dispatch a sixth reviewer whose subject is the *work*, and make it return **a score with a
+threshold**, not a findings list. A findings list has no failure state: zero findings reads as
+"nothing to fix" and six reads as "we fixed six", and neither says whether the testing was good
+enough to sign off on. A rubric with a blocking floor does.
+
+**Score each dimension 0–3. Every score MUST cite the artifact it is read from — a score with no
+citation is void and scores 0.** The reviewer is scoring what it can *see*, not what it is told.
+
+| # | Dimension | 0 — blocks sign-off | 3 |
+|---|---|---|---|
+| R1 | **Understanding** — were cases derived from driving the feature? | tests written from the diff alone; no live interaction recorded | a live trace exists, and named cases trace to things observed in it |
+| R2 | **Discrimination** — does the suite fail where the fix is absent? | never run against a build without the fix | negative control run and read *per test*, plus mutation by owner |
+| R3 | **Outcome fidelity** — is the user-visible outcome asserted? | every AC rests on a proxy/mechanism | outcome asserted directly; each surviving proxy justified in writing |
+| R4 | **Environment honesty** — do the claims match what was run? | claims cover browsers/viewports/builds never executed | every claim scoped to the matrix actually run, with the matrix stated |
+| R5 | **Defect quality** — are findings reproducible and bounded? | severities asserted; no repro; no boundary | each defect has a repro, a measured boundary, and a severity with a reason |
+| R6 | **Self-scepticism** — was the harness itself controlled? | results believed without a control | no-op control, applied-checks, and at least one earlier conclusion retracted on evidence |
+
+**Thresholds — the part that makes it a gate rather than a decoration:**
+
+- **Any dimension at 0 blocks sign-off**, whatever the total. A high total must never mask a
+  fatal hole; that is precisely how a suite with excellent assertions and no negative control gets
+  shipped as regression cover.
+- **≤ 12 / 18 → rework before reporting.** Not advice — the report does not ship.
+- **13–15 → ship with the weak dimensions named in the report.** The reader is owed them.
+- **16–18** should be *rare*. A reviewer handing out 18 is a reviewer to distrust: ask it which
+  dimension it examined *least* carefully, and re-run that one.
+
+```
+Agent(description: "probe-rigour-<ticket>", prompt: "
+  ADVERSARIAL REVIEW — score the QA WORK, not the code under test. You are not
+  checking whether the tests pass; you are judging whether the testing was done
+  properly enough to sign off on.
+  Return shape: schemas/subagent-returns/probe.schema.json (handover{role,status,
+  next-action}, findings-emitted, finding-ids, summary).
+  Score R1..R6 from the rubric, 0-3 each. For EVERY score, quote the artifact you
+  read it from — file, line, log, or run output. A score you cannot cite is 0.
+  Then state the total, the blocking dimensions, and the ONE change that would
+  raise the lowest score.
+  <the specs> <the live-observation trace> <the negative-control output>
+  <the mutation report> <the defect list> <the draft report>
+  Report the score you measured, not the score that would be encouraging. If you
+  scored everything 3, name the dimension you examined least and re-examine it.
+")
+```
+
+**Why a score and not more findings.** Findings are unranked and unbounded; six cosmetic ones read
+louder than one missing negative control. A rubric forces the reviewer to say *which axis is
+weak*, and the blocking floor makes one axis sufficient to stop the work. It also gives the human
+a number to disagree with — which is the point. A verdict nobody can argue with is a verdict
+nobody has checked.
+
+**Do not average away a zero, and do not let the author set the score.** `probe-rigour` runs on the
+same separation-of-duties basis as §8b: the agent that did the testing has a stake in it looking
+thorough.
 
 ### 9. Live observation — watch it, don't just assert it
 
