@@ -388,7 +388,20 @@ Agent(description: "probe-mutation-<slug>", prompt: "
   a good reason, narrow the test's CLAIM rather than widening its assertion — and rename the test
   so it no longer promises what it does not check.
 - **Mutation needs a target you can break.** Source-level mutation needs a locally runnable app. Where the suite runs against a *deployed* environment you cannot rebuild, mutate at the **browser** level instead: inject CSS/JS that re-creates the broken state the AC forbids, then check the suite goes red. Weaker in one way (it binds to behaviour, not to the source change) and stronger in another (it tests the deployed artifact). Either way, **include a no-op mutation as the harness's own control** — if the suite goes red with nothing injected, the harness is breaking the page and every other result in the run is void.
-- **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one. Two variables, exact names and grammar:
+**Use the shipped runner — do not hand-roll this per project:**
+
+```bash
+npx achilles-mutate                     # reads .achilles/mutations.mjs
+npx achilles-mutate --only pills-hidden # one mutation, while iterating
+```
+
+It owns the parts that drew blood here: owner-based classification, the `noop` control, the
+per-mutation applied-check, and the VOID verdict. This was a prose recipe first, and every
+subtlety in the prose was re-derived wrongly at least once — that is the evidence for shipping it
+as code. The runner refuses to start without a `noop` mutation, because without one there is no
+way to tell "the suite catches mutations" from "the harness breaks the page".
+
+- **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one — this part the runner genuinely cannot do for you. Two variables, exact names and grammar:
 
   | Variable | Contains | Applied |
   |---|---|---|

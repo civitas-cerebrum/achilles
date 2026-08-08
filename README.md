@@ -71,7 +71,37 @@ So after one `npm install`, restart Claude Code and you're ready to drive.
 - `CIVITAS_SKIP_HOOK_INSTALL=1` — skip the hook registration in `~/.claude/settings.json` (enterprise-managed settings).
 - `CIVITAS_SKIP_JQ_INSTALL=1` — skip the bundled jq fetch (rely on system jq on PATH).
 
-### `achilles-show` — watch a test run, and get a video
+### `achilles-mutate`
+
+Behavioural mutation testing: prove the suite can **fail**.
+
+```bash
+npx achilles-mutate                       # reads .achilles/mutations.mjs
+npx achilles-mutate --only pills-hidden   # one mutation, while iterating
+```
+
+A green suite proves nothing until you have watched it go red for the right reason. `achilles-mutate`
+injects the broken state an acceptance criterion forbids (CSS or an init script, applied through
+your own `page` fixture) and reports whether the suite noticed.
+
+It reports four verdicts, not two:
+
+| | meaning |
+|---|---|
+| `CAUGHT` | the test that **owns** that criterion failed |
+| `WRONG-TEST` | something failed, but not the owner — a broken shared precondition, not coverage |
+| `SURVIVED` | the mutation applied and nothing failed. A finding. |
+| `VOID` | the mutation never took effect, so the run says nothing at all |
+
+`VOID` exists because an un-applied mutation and an uncaught one both leave the suite green, and
+reading the second as a coverage hole manufactures work that isn't there. `WRONG-TEST` exists
+because a mutation "caught" by fifteen tests usually means a shared precondition broke — which
+destroys the report's ability to say *which* criterion regressed.
+
+Requires a `noop` entry (the harness's own control) and an `E2E_MUTATION_*` hook in your `page`
+fixture; the runner prints both if they're missing. See `skills/ticket-driven-testing/SKILL.md` §8b.
+
+## `achilles-show` — watch a test run, and get a video
 
 A green checkmark does not show *what* a test did. For QA review, sign-off, or handing evidence to a developer, the footage is the deliverable.
 

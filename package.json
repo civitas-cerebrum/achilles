@@ -12,7 +12,8 @@
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",
-    "achilles-show": "bin/show.mjs"
+    "achilles-show": "bin/show.mjs",
+    "achilles-mutate": "bin/mutate.mjs"
   },
   "files": [
     "bin",

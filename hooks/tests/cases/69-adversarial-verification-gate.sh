@@ -65,7 +65,7 @@ assert_allow "$H" "$(tracker mcp__linear__save_comment body 'rebased onto main, 
   "ordinary comment → ALLOW"
 
 section "adversarial-gate: a valid, fresh receipt unlocks sign-off"
-printf '%s' '{"ticket":"ABC-1","negativeControl":{"failed":5,"passed":1,"skipped":0}}' \
+printf '%s' '{"ticket":"ABC-1","negativeControl":{"failed":5,"passed":1,"skipped":0},"review":{"reviewer":"probe-rigour-x","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":13}}' \
   > "$WS/.achilles/adversarial-verification/ABC-1.json"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "receipt newer than specs → ALLOW"
@@ -85,7 +85,7 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "receipt without negativeControl → DENY" "No adversarial-verification receipt"
 
 section "adversarial-gate: a receipt belongs to ONE ticket"
-printf '%s' '{"ticket":"ABC-1","negativeControl":{"failed":5}}' \
+printf '%s' '{"ticket":"ABC-1","negativeControl":{"failed":5},"review":{"reviewer":"probe-rigour-x","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":13}}' \
   > "$WS/.achilles/adversarial-verification/ABC-1.json"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done OTHER-99)" \
   "another ticket's receipt does NOT unlock this one" "No adversarial-verification receipt"
@@ -95,7 +95,7 @@ assert_deny "$H" "$("$JQ" -nc '{tool_name:"mcp__linear__save_issue", tool_input:
 section "adversarial-gate: UUID ids resolve via the receipt's recorded ticket"
 # Linear's save_issue commonly carries a UUID in .id, not a human key. Matching the FILENAME alone
 # produced a permanent, unrecoverable DENY with the correct receipt on disk.
-printf '%s' '{"ticket":"e0265f67-8efb-4d41-9310-557456c73b1e","negativeControl":{"failed":5}}' \
+printf '%s' '{"ticket":"e0265f67-8efb-4d41-9310-557456c73b1e","negativeControl":{"failed":5},"review":{"reviewer":"probe-rigour-x","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":13}}' \
   > "$WS/.achilles/adversarial-verification/PEDX-1.json"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done e0265f67-8efb-4d41-9310-557456c73b1e)" \
   "UUID id matched via receipt's recorded ticket → ALLOW"
@@ -104,7 +104,7 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done 99999999-0000-000
 
 section "adversarial-gate: key binding is EXACT, not substring"
 # Each of these was a working bypass on an ordinary, unshaped payload.
-printf '%s' '{"ticket":"ABC-15","negativeControl":{"failed":5}}' > "$WS/.achilles/adversarial-verification/ABC-15.json"
+printf '%s' '{"ticket":"ABC-15","negativeControl":{"failed":5},"review":{"reviewer":"probe-rigour-x","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":13}}' > "$WS/.achilles/adversarial-verification/ABC-15.json"
 rm -f "$WS/.achilles/adversarial-verification/ABC-1.json" "$WS/.achilles/adversarial-verification/PEDX-1.json"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done ABC-1)" \
   "prefix collision: ABC-15's receipt must NOT sign off ABC-1"
@@ -114,6 +114,50 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done ---)" \
   "degenerate key → DENY"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done ABC-15)" \
   "exact key still ALLOWs"
+
+section "adversarial-gate: the reviewer must green-light the coverage"
+
+# A receipt says the AUTHOR ran the checks. These pin the second requirement: someone independent
+# judged the coverage adequate, having looked at the UI and not only the specs. Each case is a
+# distinct way a review can be PRESENT and still not a green light.
+mk_review() {  # $1 = the .review object
+  printf '%s' "{\"ticket\":\"ABC-1\",\"negativeControl\":{\"failed\":5},\"review\":$1}" \
+    > "$WS/.achilles/adversarial-verification/ABC-1.json"
+}
+
+mk_review '{"reviewer":"r","uiReviewed":true,"coverageSufficient":false,"scores":{"R1":3},"total":15}'
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "reviewer says coverage insufficient → DENY" "did not conclude the coverage is sufficient"
+
+# The one that matters most in practice: a reviewer who reads only specs can certify that every
+# assertion is well-formed while the feature is visibly broken in a browser.
+mk_review '{"reviewer":"r","uiReviewed":false,"coverageSufficient":true,"scores":{"R1":3},"total":15}'
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "specs-only review, UI never looked at → DENY" "did not review the UI"
+
+mk_review '{"reviewer":"","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3},"total":15}'
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "unnamed reviewer → DENY" "no reviewer is named"
+
+# A zero blocks whatever the total says. 17/18 with one dimension at 0 is exactly the shape that
+# ships a suite with excellent assertions and no negative control.
+mk_review '{"reviewer":"r","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":0,"R3":3,"R4":3,"R5":3,"R6":3},"total":17}'
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "one dimension at 0 despite a 17/18 total → DENY" "scored 0"
+
+mk_review '{"reviewer":"r","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":2,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":12}'
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "total exactly at the 12 boundary → DENY" "rework before the report ships"
+
+mk_review '{"reviewer":"r","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":13}'
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "13/18, no zeros, UI reviewed → ALLOW"
+
+# Migration: a receipt written before this requirement existed must NOT keep passing silently.
+printf '%s' '{"ticket":"ABC-1","negativeControl":{"failed":5}}' \
+  > "$WS/.achilles/adversarial-verification/ABC-1.json"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "pre-existing receipt with no review block → DENY" "No adversarial-verification receipt"
 
 section "adversarial-gate: escape hatches"
 CIVITAS_DISABLE_ADVERSARIAL_GATE=1 \

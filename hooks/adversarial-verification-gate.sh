@@ -42,8 +42,22 @@
 #
 # What counts as a receipt
 # ------------------------
-# .achilles/adversarial-verification/<ticket>.json, containing at minimum a
-# `negativeControl` object. It must be NEWER than the newest spec file in
+# .achilles/adversarial-verification/<ticket>.json, carrying BOTH a
+# `negativeControl` object (the author ran the checks) and a `review` object
+# (someone independent judged the result adequate):
+#
+#   "review": {
+#     "reviewer": "probe-rigour-<id>",   // who; empty is a denial
+#     "uiReviewed": true,                 // they looked at the UI, not only the specs
+#     "coverageSufficient": true,         // the explicit conclusion
+#     "scores": { "R1": 3, "R2": 2, ... },// any 0 blocks, whatever the total
+#     "total": 15                         // <= 12 blocks
+#   }
+#
+# The UI flag is not ceremony. A reviewer who reads only specs can certify that
+# every assertion is well-formed while the feature is visibly broken in a
+# browser — that exact gap shipped here, where two acceptance criteria were
+# declared verified on a mechanism and a tautology and every test passed. It must be NEWER than the newest spec file in
 # the workspace — a receipt from before the tests were last edited proves
 # nothing about the tests as they now stand. The receipt must ALSO carry the
 # ticket key in its filename: without that, any receipt unlocked any ticket,
@@ -57,6 +71,10 @@
 #     permanently unfailable);
 #   * the spec scan truncates at 2000 paths in READDIR order and xargs-batches, so on a large
 #     monorepo the genuinely-newest spec can be missed;
+#   * the `review` block is JSON the same agent can write. This gate enforces the SHAPE and the
+#     THRESHOLDS of a review, which is real — it cannot enforce that a reviewer ran, or that the
+#     reviewer was not the author. A PreToolUse hook has no way to attest subagent identity. Treat
+#     a passing receipt as "the author asserts a review with these scores", not "a review happened";
 #   * only mcp__* tools are seen — Bash, curl and gh are ungated, and the skill itself documents
 #     them as the fallback;
 #   * the status vocabulary is six English words.
@@ -154,7 +172,7 @@ receipt_for_ticket() {
   local key_lc f base stem recorded
   key_lc="$(printf '%s' "$TICKET_KEY" | tr '[:upper:]' '[:lower:]')"
   for f in $(ls -t "$RECEIPT_DIR"/*.json 2>/dev/null); do
-    "$JQ" -e 'has("negativeControl")' "$f" >/dev/null 2>&1 || continue
+    "$JQ" -e 'has("negativeControl") and has("review")' "$f" >/dev/null 2>&1 || continue
     base="$(basename "$f" | tr '[:upper:]' '[:lower:]')"
     stem="${base%.json}"
     # Exact stem, or exact stem followed by a separator (ABC-450-run2.json), never a bare substring.
@@ -185,9 +203,34 @@ if [ -n "$RECEIPT" ]; then
   if [ -n "$NEWEST_SPEC" ] && [ "$NEWEST_SPEC" -nt "$RECEIPT" ]; then STALE=1; fi
 fi
 
-[ -n "$RECEIPT" ] && [ "$STALE" = "0" ] && exit 0
+# A receipt proves the author ran the checks. It does not prove anyone INDEPENDENT looked at the
+# result and judged the coverage adequate — and "I verified my own work" is the failure mode this
+# whole skill exists to catch. So the receipt must carry a reviewer's explicit green light, and
+# that reviewer must have looked at the UI as well as the tests: a reviewer who only reads specs
+# can confirm the assertions are well-formed while the feature is visibly broken in the browser.
+#
+# Thresholds mirror ticket-driven-testing §8c. They are enforced here rather than trusted because
+# a score with no consequence is a decoration.
+REVIEW_PROBLEM=""
+if [ -n "$RECEIPT" ] && [ "$STALE" = "0" ]; then
+  if ! "$JQ" -e '.review.coverageSufficient == true' "$RECEIPT" >/dev/null 2>&1; then
+    REVIEW_PROBLEM="the reviewer did not conclude the coverage is sufficient (.review.coverageSufficient is not true)"
+  elif ! "$JQ" -e '.review.uiReviewed == true' "$RECEIPT" >/dev/null 2>&1; then
+    REVIEW_PROBLEM="the reviewer did not review the UI (.review.uiReviewed is not true). A specs-only review confirms the assertions are well-formed while the feature is visibly broken."
+  elif ! "$JQ" -e '(.review.reviewer // "") | type == "string" and length > 0' "$RECEIPT" >/dev/null 2>&1; then
+    REVIEW_PROBLEM="no reviewer is named (.review.reviewer is empty)"
+  elif "$JQ" -e '[.review.scores // {} | to_entries[] | select(.value == 0)] | length > 0' "$RECEIPT" >/dev/null 2>&1; then
+    REVIEW_PROBLEM="a rubric dimension scored 0: $("$JQ" -r '[.review.scores | to_entries[] | select(.value == 0) | .key] | join(", ")' "$RECEIPT" 2>/dev/null). Any 0 blocks sign-off regardless of the total."
+  elif ! "$JQ" -e '(.review.total // 0) > 12' "$RECEIPT" >/dev/null 2>&1; then
+    REVIEW_PROBLEM="the review scored $("$JQ" -r '.review.total // "nothing"' "$RECEIPT" 2>/dev/null)/18. 12 or below means rework before the report ships."
+  fi
+fi
 
-if [ "$STALE" = "1" ]; then
+[ -n "$RECEIPT" ] && [ "$STALE" = "0" ] && [ -z "$REVIEW_PROBLEM" ] && exit 0
+
+if [ -n "$REVIEW_PROBLEM" ]; then
+  REASON="A verification receipt exists, but the review did not green-light it: ${REVIEW_PROBLEM}"
+elif [ "$STALE" = "1" ]; then
   REASON="An adversarial-verification receipt exists but is OLDER than the most recently edited spec. It describes tests that have since changed, so it does not vouch for the suite as it now stands."
 else
   REASON="No adversarial-verification receipt found under .achilles/adversarial-verification/."
