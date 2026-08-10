@@ -43,12 +43,39 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Each cases file uses $HOOKS_DIR via the HOOK_DIR variable.
 HOOK_DIR="$HOOKS_DIR"
 
+# HARNESS CONTROL. The counters below only move when an assert_* helper is CALLED, so a case file
+# that dies on a typo'd helper name contributes nothing and the run still reports green. That is
+# not hypothetical: a block of seven new cases once called helpers that do not exist, every line
+# errored, and the suite printed "all 28 tests passed".
+#
+# Exit 127 is `command not found`. In a test file that means a mistyped or out-of-scope helper —
+# never a legitimate outcome — so it fails the run outright and names the file.
+HARNESS_ERRORS=()
+# Record only the CASE file, not run.sh's own `source` line — errtrace propagates the failure up
+# and the outer frame is noise that inflates the count.
+trap 'if [ $? -eq 127 ] && [ "$(basename "${BASH_SOURCE[0]}")" != "run.sh" ]; then HARNESS_ERRORS+=("$(basename "${BASH_SOURCE[0]}"):${LINENO}: command not found — a helper is mistyped or out of scope"); fi' ERR
+set -o errtrace
+
 for f in "${selected[@]}"; do
   echo
   echo "=== $(basename "$f") ==="
   # shellcheck source=/dev/null
   source "$f"
 done
+
+trap - ERR
+if [ ${#HARNESS_ERRORS[@]} -gt 0 ]; then
+  echo
+  echo "${CLR_FAIL}✖ HARNESS ERRORS — these lines never ran, so their assertions were never counted:${CLR_RST}"
+  printf '  %s\n' "${HARNESS_ERRORS[@]}"
+  echo "  A green tally below does NOT cover them."
+  # Feed the shared list, not just the counter: the summary printer reads FAIL_DETAILS, and
+  # bumping the count alone left it with failures it could not name.
+  for e in "${HARNESS_ERRORS[@]}"; do
+    FAIL_DETAILS+=("HARNESS: $e")
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  done
+fi
 
 # Install simulation — proves the gates fire from a consumer-style install
 # (HOOK_MANIFEST scripts + lib/ + bin/jq copied to a fake home, no repo

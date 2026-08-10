@@ -588,6 +588,59 @@ Gitignore `show-recordings/` — demonstration footage is not a repo artifact.
 
 **If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-element-interactions`.
 
+## Control every instrument before you read it
+
+Six separate controls appear above — the negative control, positive controls before absence
+assertions, a page-level control element, the `noop` mutation, the per-mutation applied-check, and
+a control on the applied-check itself. Every one was added *after* a specific failure. Stated
+separately they read as six rules to remember; they are one rule, and stating it as one is what
+stops the seventh instrument from producing the next phantom finding.
+
+**Any instrument whose output you will read as evidence must first be shown capable of producing
+a different output.**
+
+The failure mode is always the same shape, and it is silent by construction: an instrument that
+does not run produces no signal, and *no signal is indistinguishable from no defect*. It fails in
+the direction that looks like success — a clean report — so nothing prompts you to check.
+
+Measured, in this project alone:
+
+| Instrument | How it failed | What it produced |
+|---|---|---|
+| mutation injection | `addInitScript(str)` where the API wants `{content: str}` | a coverage hole that did not exist |
+| the applied-check built to catch that | resolved its dependency from the wrong directory | a documented survivor reported as a broken injection |
+| the hook test runner | counts assert calls; a mistyped helper increments nothing | `all 28 tests passed` while 14 lines errored |
+
+The third is the one worth dwelling on: it is the instrument that validates the other gates, it
+failed the same way, and it was found only because a test count did not move. Note also the second
+— the instrument written to enforce this exact rule broke this exact rule. Knowing the principle
+is not sufficient; the calibration has to be run.
+
+**The calibration: two points, always.** Show the instrument reports positive on a case you know
+is positive, and negative on a case you know is negative. One point proves nothing — a checker
+hard-wired to `true` passes any single positive test.
+
+```
+applied-check   → no injection must report FALSE; a known-caught mutation must report TRUE
+mutation runner → the `noop` control must be green; a known-caught mutation must go red
+a test suite    → must fail where the fix is absent (§8); must pass where it is present
+a live probe    → a control element present on ANY build must be found (§9)
+a grep/count    → run it once where you KNOW the answer is non-zero
+a test runner   → make one case fail on purpose and confirm the tally moves
+```
+
+**Three questions before believing any "nothing found":**
+
+1. Did the instrument actually run? Not "was it invoked" — did it reach the thing it measures?
+2. Has it produced a *different* answer, on a case where the answer is known?
+3. If the subject were broken, what exactly would be different in this output? If you cannot
+   name it, you have not measured anything.
+
+**Corollary: "could not measure" is never "measured nothing".** Keep the two apart in your data
+structures, not only in your prose — the collapse happens silently at the point where a `null`
+meets a boolean. §8b's UNCHECKED verdict exists because that collapse turned a tooling failure
+into a coverage claim.
+
 ## Traps
 
 Each of these cost a failed run or a wrong conclusion in practice.
