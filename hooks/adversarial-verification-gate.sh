@@ -118,13 +118,31 @@ TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 # two actions that constitute sign-off.
 IS_TRANSITION=0
 IS_COMMENT=0
+IS_PR=0
 case "$TOOL_NAME" in
   *save_issue*|*transitionJiraIssue*|*update_issue*|*editJiraIssue*) IS_TRANSITION=1 ;;
   *save_comment*|*addCommentToJiraIssue*|*create_comment*)           IS_COMMENT=1 ;;
+  # A developer-triggered run has no ticket to transition. Its sign-off boundary is opening the
+  # PR — the moment the work is presented to others as done — so that is where the same check
+  # belongs. Without this the whole entry-B path was ungated: the gate policed a surface the dev
+  # flow never touches.
+  Bash)                                                              IS_PR=1 ;;
   *) exit 0 ;;
 esac
 
 ARGS="$(printf '%s' "$INPUT" | "$JQ" -c '.tool_input // {}')"
+
+if [ "$IS_PR" = "1" ]; then
+  CMD="$(printf '%s' "$ARGS" | "$JQ" -r '.command // empty')"
+  # Only PR-publishing commands. `gh pr view/list/diff/checkout` are reads and stay silent, as do
+  # all other Bash calls — a gate that fires on ordinary shell use gets disabled the same day.
+  # `gh` must START the command or follow a shell separator. Matching the words anywhere meant
+  # `echo gh pr create` and `grep "gh pr create" .` both tripped the gate — a hook that fires when
+  # someone greps for its own trigger is the over-firing that gets hooks switched off.
+  printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*gh[[:space:]]+pr[[:space:]]+(create|ready)([[:space:]]|$)' || exit 0
+  # `--draft` is explicitly not sign-off: it is how you share work in progress.
+  printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)' && exit 0
+fi
 
 # A transition only matters when it moves the ticket to a terminal state.
 # Status vocabularies are per-project, so match on the common completed
@@ -147,6 +165,12 @@ RECEIPT_DIR="$WORKSPACE_ROOT/.achilles/adversarial-verification"
 # an earlier version accepted ANY receipt for ANY ticket, which made it worthless the moment a
 # second ticket was worked in the same repo.
 TICKET_KEY="$(printf '%s' "$ARGS" | "$JQ" -r '(.id // .issue // .issueId // .issueIdOrKey // .key // empty) | tostring' 2>/dev/null || true)"
+
+# Entry B has no ticket, so the receipt binds to the BRANCH instead — the only stable identifier
+# the work has. Same exact-match rules apply; slashes become dashes so the key is a legal stem.
+if [ "$IS_PR" = "1" ] && [ -z "$TICKET_KEY" ]; then
+  TICKET_KEY="$(git -C "$WORKSPACE_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-' || true)"
+fi
 
 # The receipt must belong to THIS ticket.
 #
@@ -236,7 +260,13 @@ else
   REASON="No adversarial-verification receipt found under .achilles/adversarial-verification/."
 fi
 
-GUIDANCE="Run ticket-driven-testing §8 and §8b before signing off:
+GUIDANCE="Run ticket-driven-testing §8 and §8b before signing off.
+
+Opening a PR IS sign-off — it presents the work to others as done. For a
+developer-triggered run the receipt binds to the branch name rather than a
+ticket key; \`gh pr create --draft\` is not gated, because sharing work in
+progress is not a claim that it is verified.
+
 
   §8   the negative control — run the suite against an environment WITHOUT
        the fix and require it to FAIL. A suite nobody has seen fail is not
@@ -252,7 +282,10 @@ If the control genuinely cannot be run here, say so IN THE VERDICT — an
 unverified suite reported as unverified is honest; reported as regression
 cover it is not. Kill-switch: CIVITAS_DISABLE_ADVERSARIAL_GATE=1."
 
-if [ "$IS_TRANSITION" = "1" ]; then
+# Publishing a PR is a terminal act in exactly the way a Done transition is: it presents the
+# work to others as finished. So it DENIES rather than advises — an entry-B run that only warned
+# here would leave the developer path with no enforcement at all.
+if [ "$IS_TRANSITION" = "1" ] || [ "$IS_PR" = "1" ]; then
   "$JQ" -n --arg r "$REASON" --arg g "$GUIDANCE" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Sign-off blocked. " + $r + "\n\n" + $g)}}'
   exit 0

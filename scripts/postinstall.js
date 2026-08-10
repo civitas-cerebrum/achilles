@@ -155,6 +155,9 @@ const HOOK_MANIFEST = [
   // ticket-driven-testing §8/§8b. Defence in depth, not a replacement for the
   // skill's own instructions; see the hook header.
   { file: 'adversarial-verification-gate.sh',     event: 'PreToolUse', matcher: 'mcp__.*',     timeout: 10 },
+  // Same gate, second surface: `gh pr create` is the sign-off boundary for a
+  // developer-triggered run, which never touches a tracker tool.
+  { file: 'adversarial-verification-gate.sh',     event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every
   // phase / pass / cycle transition through a workflow-reviewer-*

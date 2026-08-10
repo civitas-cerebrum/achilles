@@ -6,6 +6,7 @@
 //   npx achilles-mutate                          # uses .achilles/mutations.mjs
 //   npx achilles-mutate --config path/to/muts.mjs
 //   npx achilles-mutate --only pills-hidden      # one mutation, for iterating
+//   npx achilles-mutate --calibrate              # prove the applied-checks discriminate
 //
 // WHY THIS EXISTS. A green suite proves nothing until you have seen it go red
 // for the right reason. Mutation testing injects the broken state an acceptance
@@ -180,6 +181,43 @@ async function checkApplied({ css, init, appliedWhen }) {
   } finally {
     await browser.close()
   }
+}
+
+// --calibrate: prove the applied-checks can produce BOTH answers, before any of them is believed.
+//
+// This exists because the rule said "control the checker" and the tool gave you no way to do it.
+// The check is deliberately unreachable for the control mutation during a normal run (there is
+// nothing to apply), so the negative direction cannot be observed from a run log — it needs its
+// own command, and it needs to leave an artifact. A checker verified only in the positive
+// direction is indistinguishable from one hard-wired to `true`, which fails silently and in the
+// direction that hides coverage holes.
+if (argv.includes('--calibrate')) {
+  if (!process.env.PLAYWRIGHT_TEST_BASE_URL) {
+    console.error('✖ PLAYWRIGHT_TEST_BASE_URL is required.')
+    process.exit(2)
+  }
+  console.log('──── calibrating applied-checks ────')
+  console.log('Each expression must report TRUE with its mutation injected and FALSE with nothing')
+  console.log('injected. An expression that cannot report both is not measuring the mutation.\n')
+
+  let bad = 0
+  for (const m of mutations.filter((x) => x.appliedWhen)) {
+    const on = await checkApplied(m).catch((e) => ({ applied: null, reason: e.message }))
+    // Same expression, no injection. Anything other than false means the expression is reading
+    // something the mutation did not cause.
+    const off = await checkApplied({ appliedWhen: m.appliedWhen }).catch((e) => ({ applied: null, reason: e.message }))
+    const ok = on.applied === true && off.applied === false
+    if (!ok) bad++
+    console.log(`${ok ? '✓' : '✖'} ${m.id.padEnd(26)} injected=${String(on.applied).padEnd(5)} clean=${String(off.applied).padEnd(5)}${ok ? '' : `   ← ${on.applied !== true ? `injected: ${on.reason}` : `clean: ${off.reason}`}`}`)
+  }
+
+  console.log(`\n${mutations.filter((x) => x.appliedWhen).length - bad} of ${mutations.filter((x) => x.appliedWhen).length} applied-checks discriminate.`)
+  if (bad) {
+    console.log('\nA check that cannot report both answers must not be trusted:')
+    console.log('  injected!=true  → the expression does not detect its own mutation (false VOIDs).')
+    console.log('  clean!=false    → it reports true regardless, so every mutation looks applied.')
+  }
+  process.exit(bad ? 1 : 0)
 }
 
 if (!process.env.PLAYWRIGHT_TEST_BASE_URL) {

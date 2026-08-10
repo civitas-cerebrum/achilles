@@ -159,6 +159,48 @@ printf '%s' '{"ticket":"ABC-1","negativeControl":{"failed":5}}' \
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "pre-existing receipt with no review block → DENY" "No adversarial-verification receipt"
 
+section "adversarial-gate: the developer path — opening a PR is sign-off"
+
+# A dev-triggered run never touches a tracker, so the gate also watches `gh pr create`. That means
+# it now sees EVERY Bash call, which is the dangerous part: a gate that fires on ordinary shell use
+# gets switched off the same day, and then it protects nothing. These cases pin silence far harder
+# than they pin the denial.
+bash_cmd() { "$JQ" -nc --arg c "$1" '{tool_name:"Bash", tool_input:{command:$c}}'; }
+
+rm -f "$WS/.achilles/adversarial-verification"/*.json
+BR="$(git -C "$WS" rev-parse --abbrev-ref HEAD 2>/dev/null | tr '/' '-')"
+
+assert_deny "$H" "$(bash_cmd 'gh pr create --title "feat: thing" --body "done"')" \
+  "gh pr create with no receipt → DENY" "Sign-off blocked"
+
+# Sharing work in progress is not a claim that it is verified.
+assert_allow "$H" "$(bash_cmd 'gh pr create --draft --title "wip"')" \
+  "gh pr create --draft → ALLOW (not a sign-off)"
+
+# Reads, and everything else a developer types all day.
+assert_allow "$H" "$(bash_cmd 'gh pr view 42')"            "gh pr view → ALLOW"
+assert_allow "$H" "$(bash_cmd 'gh pr list')"               "gh pr list → ALLOW"
+assert_allow "$H" "$(bash_cmd 'gh pr checkout 42')"        "gh pr checkout → ALLOW"
+assert_allow "$H" "$(bash_cmd 'git status')"               "git status → ALLOW"
+assert_allow "$H" "$(bash_cmd 'npm test')"                 "npm test → ALLOW"
+assert_allow "$H" "$(bash_cmd 'ls -la')"                   "plain ls → ALLOW"
+assert_allow "$H" "$(bash_cmd 'echo gh pr create')"        "the words inside an echo → ALLOW"
+assert_allow "$H" "$(bash_cmd 'grep -r "gh pr create" .')" "the words inside a grep → ALLOW"
+
+# With a green receipt bound to the BRANCH — entry B has no ticket key to bind to.
+if [ -n "$BR" ]; then
+  printf '%s' "{\"negativeControl\":{\"failed\":5},\"review\":{\"reviewer\":\"probe-rigour-x\",\"uiReviewed\":true,\"coverageSufficient\":true,\"scores\":{\"R1\":3,\"R2\":2,\"R3\":2,\"R4\":2,\"R5\":2,\"R6\":2},\"total\":13}}" \
+    > "$WS/.achilles/adversarial-verification/${BR}.json"
+  assert_allow "$H" "$(bash_cmd 'gh pr create --title "feat: thing"')" \
+    "gh pr create with a branch-bound green receipt → ALLOW"
+
+  # The binding must be exact here too: another branch's receipt must not sign off this one.
+  mv "$WS/.achilles/adversarial-verification/${BR}.json" "$WS/.achilles/adversarial-verification/some-other-branch.json"
+  assert_deny "$H" "$(bash_cmd 'gh pr create --title "feat: thing"')" \
+    "another branch's receipt must NOT sign off this branch → DENY" "Sign-off blocked"
+  rm -f "$WS/.achilles/adversarial-verification"/*.json
+fi
+
 section "adversarial-gate: escape hatches"
 CIVITAS_DISABLE_ADVERSARIAL_GATE=1 \
   assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \

@@ -1,6 +1,6 @@
 ---
 name: ticket-driven-testing
-description: Use when a ticket from an issue tracker (Linear, Jira) is the unit of QA work — a QA ticket paired to a dev ticket, a PR awaiting QA sign-off, a "test this feature" request naming an issue key, or any ask to verify acceptance criteria against a branch that is not yet merged. Also use when asked to automate the tests for a ticket, produce evidence for a ticket, or QA a feature branch.
+description: Use when a code change is the unit of QA work — a ticket paired to a PR, a branch awaiting sign-off, OR a developer who has just finished building something and asks for it to be tested, verified, checked, covered, or QA'd. Triggers include "test this", "verify my changes work", "can you check this", "write tests for what I just built", "is this covered", "QA this before I open a PR", as well as any ask naming a tracker issue key. Covers UI verification, test automation, and adversarial review of the testing itself.
 ---
 
 # Ticket-Driven Testing
@@ -52,6 +52,91 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 
 Step 8 is the one that gets dropped — an early draft of this skill omitted it 5/5 while an agent with no skill at all named it first. 8b delegates the check as well, so it does not rest on memory alone. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
 
+## Two entry points, one method
+
+Steps 6–9 are identical either way. Only the front half differs, because only the front half
+depends on where the acceptance criteria and the environment come from.
+
+| | **A — ticket-driven** | **B — dev-triggered** |
+|---|---|---|
+| Trigger | a tracker issue, a PR awaiting sign-off | *"I've finished this, can you test it"* |
+| 1 | ticket + parent → ACs verbatim | **the change set → ACs derived and CONFIRMED (§1b)** |
+| 2 | PR review state is a QA signal | skip if no PR exists; say so |
+| 3 | worktree the branch | **§3b — uncommitted work is not in a worktree** |
+| 5 | deployed preview, bypass tokens | the dev's local server |
+| 8 | negative control: find an env without the fix | **the merge-base. The strongest form, and nearly free** |
+
+Entry B is not a lighter version. It is the same bar reached by different means — and on two
+dimensions it reaches a **higher** one, because a local checkout gives you things a deployed
+preview cannot.
+
+### 1b. Derive the ACs — then get them confirmed
+
+Entry A reads acceptance criteria. Entry B has none: the dev has a diff and an intention, and the
+intention is in their head.
+
+Do NOT proceed on ACs you invented. A suite built from assumed criteria is green against *your*
+model of the feature, and its greenness says nothing about theirs — you will have automated your
+own misunderstanding and reported it as cover.
+
+1. Read the whole diff, then write **3–6 candidate ACs** as observable, user-visible statements.
+   "Clicking Apply closes the drawer and the result count updates" — not "the `useFilters` hook
+   dispatches correctly".
+2. Put them to the dev **in one message**, numbered, and ask what is missing or wrong. One round
+   trip, not an interview.
+3. Ask the two questions the diff cannot answer: **what should NOT change** (the regression
+   surface), and **what would worry you most if it broke** (the risk ranking that decides where
+   §8b's budget goes).
+4. Record the confirmed list verbatim. From here it is Entry A: those are the ACs, and §9's report
+   is written against them.
+
+If the dev is unavailable, proceed on the derived list, **label every AC `derived, unconfirmed`
+in the report**, and never state a criterion as verified without saying whose criterion it was.
+
+### 3b. Uncommitted work defeats a worktree — check first
+
+`git worktree add` checks out a **commit**. Uncommitted changes stay in the original working tree,
+so a worktree built to isolate the dev's work can silently contain everything except their work.
+The tests then pass against the pre-change code and prove nothing. This is the entry-B version of
+the negative-control failure, and it looks identical to success.
+
+```bash
+git status --porcelain          # empty? worktree is safe — use it
+git stash list                  # work parked here is not in a worktree either
+```
+
+Three cases, and you must say which one you are in:
+
+| State | Do |
+|---|---|
+| clean | worktree normally (§3) |
+| uncommitted changes | **test in place.** Say so, and do not switch branches — the dev is still working here |
+| dev offers to commit/stash | worktree the commit, and confirm the diff you review matches what they meant to ship |
+
+### 8·B. The merge-base IS the negative control
+
+Entry A hunts for an environment without the fix and often settles for a documented fallback.
+Entry B has the ideal one locally, so there is no excuse for skipping it:
+
+```bash
+git merge-base HEAD origin/main            # the without-fix commit
+git worktree add ../nofix <that-commit>    # build and run the NEW suite against OLD code
+```
+
+The suite MUST fail there, and you must read it **per test**. Any test that passes in both places
+is not testing the change — it is testing something that was already true.
+
+This is the strongest form of §8 and it is nearly free here. **A dev-triggered run that skips the
+negative control has no excuse and should not report cover.**
+
+### Source-level mutation is available here
+
+`achilles-mutate` injects at the browser because deployed previews cannot be rebuilt. Locally you
+can edit the source, rebuild, and run — which binds the mutation to the actual change rather than
+to a behaviour that resembles it. Prefer it when the app runs locally. The rules are unchanged: a
+`noop` control, owner-based classification, and proof each mutation applied (**revert every
+mutation before moving on** — a mutation left in the tree is a defect you introduced).
+
 ## Prerequisites
 
 State these before starting; each has blocked a real run.
@@ -89,6 +174,10 @@ Produce all five. A run that stops after evidence is half a deliverable.
 ### The sign-off gate
 
 **You may not report a QA verdict until you have run the negative control (§8) and can state its result.**
+
+For entry B the sign-off boundary is **opening the PR**, not a tracker transition — that is the
+moment the work is presented to others as done. Everything the contract requires applies there
+unchanged.
 
 An early DRAFT of this skill omitted this step every time it was tested, while an agent with no skill at all reached for it unprompted. The current text fires it (3/3), but it remains the step most worth gating.
 
