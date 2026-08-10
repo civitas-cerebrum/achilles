@@ -14,7 +14,11 @@
 # State   : reads <workspace>/.achilles/adversarial-verification/*.json
 #           (no writes — this gate never authors the thing it checks)
 # Env     : WORKSPACE_ROOT (defaults to git toplevel of cwd)
-#           CIVITAS_DISABLE_ADVERSARIAL_GATE=1 disables the hook
+#           CIVITAS_DISABLE_ADVERSARIAL_GATE=1 disables the hook. Deliberately
+#           NOT repeated in the denial message: a gate that prints its own
+#           bypass at the moment of maximum frustration is a gate that lives in
+#           someone's shell profile by the end of week one. Documented here and
+#           in the skill, where it is read in a calmer moment.
 #
 # Why this exists
 # ---------------
@@ -280,7 +284,11 @@ negativeControl object.
 
 If the control genuinely cannot be run here, say so IN THE VERDICT — an
 unverified suite reported as unverified is honest; reported as regression
-cover it is not. Kill-switch: CIVITAS_DISABLE_ADVERSARIAL_GATE=1."
+cover it is not.
+
+Cannot run the control here? Say that in the verdict and scope the claim to
+what you did run. That is a legitimate outcome and it does not need the gate
+turned off — it needs the report to be accurate."
 
 # Publishing a PR is a terminal act in exactly the way a Done transition is: it presents the
 # work to others as finished. So it DENIES rather than advises — an entry-B run that only warned
