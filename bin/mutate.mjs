@@ -69,6 +69,8 @@ Create one. It exports \`specs\` (the specs to run) and \`mutations\`:
       // A selector alone is too weak: most mutations change a computed style
       // rather than adding a node.
       appliedWhen: 'getComputedStyle(document.querySelector("[data-pills]")).display==="none"',
+      // Only if the mutation is width-scoped: check it where it actually applies.
+      // checkViewport: { width: 1280, height: 900 },
     },
   ]
 
@@ -128,7 +130,7 @@ function failedTests(stdout) {
  * Only asked when a mutation SURVIVED — if a test went red the mutation self-evidently applied,
  * and a browser launch per mutation is not free.
  */
-async function checkApplied({ css, init, appliedWhen }) {
+async function checkApplied({ css, init, appliedWhen, checkViewport }) {
   if (!appliedWhen) return { applied: null, reason: 'no appliedWhen declared' }
 
   // Resolve Playwright from the PROJECT, not from this file. A bare `import('@playwright/test')`
@@ -152,7 +154,11 @@ async function checkApplied({ css, init, appliedWhen }) {
   const browser = await chromium.launch()
   try {
     const ctx = await browser.newContext({
-      viewport,
+      // A width-scoped mutation (`@media (max-width: …)`) does not apply at the run's default
+      // viewport, so a check performed there reports false for a mutation that works perfectly —
+      // and the runner would call that VOID. `checkViewport` lets the check run where the mutation
+      // is actually in scope. Found by --calibrate, before it ever produced a false verdict.
+      viewport: checkViewport || viewport,
       bypassCSP: true,
       extraHTTPHeaders: JSON.parse(process.env.E2E_MUTATION_HEADERS || '{}'),
     })

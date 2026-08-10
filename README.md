@@ -101,6 +101,16 @@ harness, not a verdict about the tests. `WRONG-TEST` exists
 because a mutation "caught" by fifteen tests usually means a shared precondition broke — which
 destroys the report's ability to say *which* criterion regressed.
 
+```bash
+npx achilles-mutate --calibrate    # prove every applied-check can report BOTH answers
+```
+
+`--calibrate` runs each mutation's applied-check twice — injected (must be `true`) and clean (must
+be `false`) — and fails on any that cannot produce both. Worth running on its own: the applied-check
+only fires when a mutation *survives*, so a check that is broken for a mutation your suite reliably
+catches is never exercised by a normal run. On its first use here it found one, a width-scoped
+mutation whose check ran at a width where the mutation does not apply.
+
 Requires a `noop` entry (the harness's own control) and an `E2E_MUTATION_*` hook in your `page`
 fixture; the runner prints both if they're missing. See `skills/ticket-driven-testing/SKILL.md` §8b.
 

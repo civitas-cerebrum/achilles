@@ -526,8 +526,19 @@ way to tell "the suite catches mutations" from "the harness breaks the page".
   **The applied-check is itself an instrument, so it needs its own control** — this is the rule
   that keeps getting missed, including by the code written to enforce the rule above it. Two
   cheap calibrations before believing any result: run it with **no injection** (must report
-  `false`) and against a **known-caught mutation** (must report `true`). A checker that always
-  returns true is a rubber stamp; one that always returns false invents holes. Give it the same
+  `false`) and with the mutation injected (must report `true`). A checker that always returns
+  true is a rubber stamp; one that always returns false invents holes. `achilles-mutate
+  --calibrate` runs both points for every mutation and exits non-zero on any that cannot produce
+  both answers.
+
+  **Run the calibration as its own command, not opportunistically.** The applied-check only fires
+  when a mutation SURVIVES, so a check that is broken for a mutation the suite reliably catches is
+  never exercised — no number of full runs will surface it. Measured: a width-scoped mutation
+  (`@media (max-width:1400px)`) had its check performed at the run's 1440 viewport, where the rule
+  does not apply. It reported false for a mutation that works. Because that mutation had been
+  caught in every run since it was written, the fault was invisible and would have surfaced only
+  on the one future run where it mattered — as a VOID verdict on a perfectly good mutation. If
+  your mutation is scoped to a width, a media query, or a state, **check it where it applies**. Give it the same
   page-level control as any other probe — if the page never rendered, the result is void rather
   than false.
 
