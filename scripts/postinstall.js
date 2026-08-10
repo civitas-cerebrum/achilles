@@ -149,6 +149,15 @@ const HOOK_MANIFEST = [
   { file: 'protected-artifact-bash-guard.sh',     event: 'PreToolUse', matcher: 'Bash',        timeout: 5 },
   { file: 'subagent-schema-preread-gate.sh',      event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
   { file: 'standard-mode-first-pass-guard.sh',    event: 'PreToolUse', matcher: 'Agent',       timeout: 10 },
+  // No QA sign-off without an adversarial review of the tests. Gates the two
+  // tracker actions that constitute sign-off — a transition to a completed
+  // state (DENY) and a verdict-shaped comment (WARN) — on a receipt written by
+  // ticket-driven-testing §8/§8b. Defence in depth, not a replacement for the
+  // skill's own instructions; see the hook header.
+  { file: 'adversarial-verification-gate.sh',     event: 'PreToolUse', matcher: 'mcp__.*',     timeout: 10 },
+  // Same gate, second surface: `gh pr create` is the sign-off boundary for a
+  // developer-triggered run, which never touches a tracker tool.
+  { file: 'adversarial-verification-gate.sh',     event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every
   // phase / pass / cycle transition through a workflow-reviewer-*

@@ -65,7 +65,10 @@ If the user's intent is durable test growth, route them to the right skill — d
 | `bug-discovery` | Adversarial probing | Findings + reproduction tests | Findings ledger |
 | `failure-diagnosis` | One failing test | Diagnosis + fix or app-bug report | Test repaired or bug filed |
 | `test-repair` | A rotted suite | Cluster-by-cluster repair to restore green | Suite-wide commits |
+| `ticket-driven-testing` | One tracker ticket + its dev branch | Ticket brief + diff review + evidence bundle + durable tests + sentinels | Bundle, suite commits, defect reports |
 | `companion-mode` (this) | **One functional task** | **Evidence bundle** | Bundle on disk; spec optional via Phase-6 graduation |
+
+**Ticket-shaped work:** when the unit of work is a tracker ticket with a dev branch awaiting QA sign-off — rather than a free-standing "verify X" request — start from `ticket-driven-testing` instead. It owns ticket intake, PR review-state checks, worktree isolation and diff review, then invokes this skill for the evidence run, then continues into durable regression tests and defect sentinels. Companion mode's Phase 1 assumes the app URL, credentials and pass criterion are already known; `ticket-driven-testing` is what establishes them from the ticket and the diff.
 
 The signal that distinguishes companion mode from Stage-3 single-scenario authoring: **the user wants an artifact a human will open** (screenshots/video/PDF), not a spec they will check in. If the user wants both, run companion mode first to produce the bundle, then offer to graduate the test into the suite.
 
