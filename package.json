@@ -1,7 +1,7 @@
 {
   "name": "@civitas-cerebrum/achilles",
   "version": "0.1.5",
-  "description": "Autonomous quality-assurance methodology — agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
+  "description": "Autonomous quality-assurance methodology \u2014 agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "build:validator": "node scripts/build-validator.mjs",
@@ -11,7 +11,9 @@
     "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && npm run test:hooks"
   },
   "bin": {
-    "achilles-self-repair": "bin/self-repair.mjs"
+    "achilles-self-repair": "bin/self-repair.mjs",
+    "achilles-show": "bin/show.mjs",
+    "achilles-mutate": "bin/mutate.mjs"
   },
   "files": [
     "bin",
@@ -38,6 +40,9 @@
     "pngjs": "^7.0.0",
     "svelte": "^5.55.9",
     "yaml": "^2.9.0"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.2.0"
   },
   "keywords": [
     "playwright",

@@ -71,6 +71,69 @@ So after one `npm install`, restart Claude Code and you're ready to drive.
 - `CIVITAS_SKIP_HOOK_INSTALL=1` — skip the hook registration in `~/.claude/settings.json` (enterprise-managed settings).
 - `CIVITAS_SKIP_JQ_INSTALL=1` — skip the bundled jq fetch (rely on system jq on PATH).
 
+### `achilles-mutate`
+
+Behavioural mutation testing: prove the suite can **fail**.
+
+```bash
+npx achilles-mutate                       # reads .achilles/mutations.mjs
+npx achilles-mutate --only pills-hidden   # one mutation, while iterating
+```
+
+A green suite proves nothing until you have watched it go red for the right reason. `achilles-mutate`
+injects the broken state an acceptance criterion forbids (CSS or an init script, applied through
+your own `page` fixture) and reports whether the suite noticed.
+
+It reports four verdicts, not two:
+
+| | meaning |
+|---|---|
+| `CAUGHT` | the test that **owns** that criterion failed |
+| `WRONG-TEST` | something failed, but not the owner — a broken shared precondition, not coverage |
+| `SURVIVED` | the mutation applied and nothing failed. A finding. |
+| `VOID` | checked, and the mutation never took effect — fix the injection |
+| `UNCHECKED` | the applied-check could not run. An infrastructure failure, not a fact about coverage |
+
+`VOID` exists because an un-applied mutation and an uncaught one both leave the suite green, and
+reading the second as a coverage hole manufactures work that isn't there. `UNCHECKED` is separate
+from it on the same principle one level up: a check that could not run is a bug report about the
+harness, not a verdict about the tests. `WRONG-TEST` exists
+because a mutation "caught" by fifteen tests usually means a shared precondition broke — which
+destroys the report's ability to say *which* criterion regressed.
+
+```bash
+npx achilles-mutate --calibrate    # prove every applied-check can report BOTH answers
+```
+
+`--calibrate` runs each mutation's applied-check twice — injected (must be `true`) and clean (must
+be `false`) — and fails on any that cannot produce both. Worth running on its own: the applied-check
+only fires when a mutation *survives*, so a check that is broken for a mutation your suite reliably
+catches is never exercised by a normal run. On its first use here it found one, a width-scoped
+mutation whose check ran at a width where the mutation does not apply.
+
+Requires a `noop` entry (the harness's own control) and an `E2E_MUTATION_*` hook in your `page`
+fixture; the runner prints both if they're missing. See `skills/ticket-driven-testing/SKILL.md` §8b.
+
+## `achilles-show` — watch a test run, and get a video
+
+A green checkmark does not show *what* a test did. For QA review, sign-off, or handing evidence to a developer, the footage is the deliverable.
+
+```bash
+npx achilles-show tests/regression/checkout.spec.ts
+npx achilles-show --grep "TC_042"
+E2E_VIEWPORTS=mobile npx achilles-show tests/regression_mobile
+```
+
+Every argument is forwarded to `playwright test`, so the usual filters work. Recordings land in `show-recordings/<timestamp>/`, named after the test, as **mp4**.
+
+**No config file to write.** It derives a run from the `playwright.config.*` you already have and overrides only what makes a run watchable — headed, `slowMo` ≥ 1500ms, `video`/`trace` on, `workers: 1`, `retries: 0`, generous timeouts. Your own config is never modified. Point it elsewhere with `ACHILLES_SHOW_CONFIG=<path>`.
+
+Each override earns its place: **`workers: 1`** because parallel workers open several windows at once and produce interleaved footage nobody can follow; **`retries: 0`** because a retry overwrites the recording you just watched; **long timeouts** because `slowMo` multiplies every action's wall time, so CI-tuned timeouts fire spuriously. Recordings are paced **at the source** so the native footage needs no post-processing — never slow a video down afterwards.
+
+`E2E_SLOWMO=<ms>` overrides the pacing (default 1500; 500 proved too fast to track individual actions).
+
+> **mp4 encoding.** Playwright records **webm** and bundles a *decode-only* ffmpeg — no mp4 muxer, no h264 — so it cannot transcode. `ffmpeg-static` is an **optional dependency**: the package is tiny, and its ~43MB binary arrives via a postinstall that pnpm and friends block by default, so `achilles-show` fetches it on first use. A system `ffmpeg` on `PATH` is used as a fallback. With neither, the webm is kept and the run says so explicitly rather than silently shipping the wrong format.
+
 ---
 
 ## What you get
