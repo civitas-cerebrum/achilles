@@ -34,6 +34,7 @@
 import { spawnSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
 const argv = process.argv.slice(2)
@@ -129,11 +130,22 @@ function failedTests(stdout) {
 async function checkApplied({ css, init, appliedWhen }) {
   if (!appliedWhen) return { applied: null, reason: 'no appliedWhen declared' }
 
+  // Resolve Playwright from the PROJECT, not from this file. A bare `import('@playwright/test')`
+  // resolves relative to the bin's own location, which is wrong whenever the package is linked,
+  // run from a sibling checkout, or hoisted differently than the consumer — and the failure is
+  // silent, degrading every applied-check to "unknown".
+  // `require`, not `import()`. @playwright/test is CJS and re-exports through a path the
+  // cjs-module-lexer cannot statically read, so dynamic import yields a namespace with NO named
+  // exports and `chromium` comes back undefined — which surfaces as a TypeError at .launch()
+  // rather than as a resolution failure, i.e. a confusing error one call too late.
   let chromium
   try {
-    ;({ chromium } = await import('@playwright/test'))
-  } catch {
-    return { applied: null, reason: '@playwright/test not resolvable from this project' }
+    const req = createRequire(path.join(process.cwd(), 'noop.js'))
+    const pw = req('@playwright/test')
+    chromium = pw?.chromium ?? pw?.default?.chromium
+    if (!chromium) throw new Error('module resolved but exports no `chromium`')
+  } catch (e) {
+    return { applied: null, reason: `@playwright/test unusable from ${process.cwd()}: ${e.message}` }
   }
 
   const browser = await chromium.launch()
@@ -196,9 +208,23 @@ for (const m of queue) {
   }
 
   results.push({ ...m, caught, failedTests: failed, applied })
-  process.stdout.write(
-    `   ${caught ? 'CAUGHT by ' + failed.join(', ') : `SURVIVED — no test failed (applied=${applied.applied}: ${applied.reason})`}\n`,
-  )
+
+  // The control is the one mutation where "nothing failed" is the GOOD outcome, so it must not
+  // print as SURVIVED — that reads as a failure and buries the line that matters. It also never
+  // runs an applied-check (there is nothing to apply), so the default reason would leak in.
+  let line
+  if (m.id === 'noop') {
+    line = caught ? `CONTROL RED — ${failed.join(', ')} (harness is breaking the page)` : 'control green — results are meaningful'
+  } else if (caught) {
+    line = `CAUGHT by ${failed.join(', ')}`
+  } else if (applied.applied === true) {
+    line = 'SURVIVED — mutation applied and no test failed'
+  } else if (applied.applied === false) {
+    line = `VOID — mutation never took effect (${applied.reason})`
+  } else {
+    line = `UNCHECKED — no test failed, and the applied-check could not run (${applied.reason})`
+  }
+  process.stdout.write(`   ${line}\n`)
 }
 
 fs.writeFileSync(path.join(OUT, 'mutation-report.json'), JSON.stringify(results, null, 2))
@@ -217,26 +243,37 @@ console.log('✓ control (noop): suite green — results are meaningful\n')
 // Three outcomes, not two. An un-applied mutation is a VOID measurement, not a survivor:
 // calling it a survivor manufactures a coverage hole that does not exist.
 const classify = (r) => {
-  if (!r.caught && r.applied?.applied !== true) return 'VOID'
-  if (!r.caught) return 'SURVIVED'
+  // Three ways a mutation can fail to be caught, and they mean different things. Collapsing the
+  // last two into one verdict is how an infrastructure failure gets read as a coverage fact —
+  // which is the same class of error VOID was introduced to prevent, so it must not be repeated
+  // one level up.
+  if (!r.caught && r.applied?.applied === false) return 'VOID'      // checked: never took effect
+  if (!r.caught && r.applied?.applied !== true) return 'UNCHECKED'  // could not check at all
+  if (!r.caught) return 'SURVIVED'                                   // checked: applied, nothing failed
   if (!r.expectedCatchers?.length) return 'CAUGHT'
   return r.expectedCatchers.some((e) => r.failedTests.some((f) => f.includes(e))) ? 'CAUGHT' : 'WRONG-TEST'
 }
 
-const survivors = [], wrongTest = [], voids = []
+const survivors = [], wrongTest = [], voids = [], unchecked = []
 for (const r of real) {
   const v = classify(r)
   if (v === 'SURVIVED') survivors.push(r)
   if (v === 'WRONG-TEST') wrongTest.push(r)
   if (v === 'VOID') voids.push(r)
-  const mark = { CAUGHT: '✓ caught  ', 'WRONG-TEST': '⚠ WRONG-TEST', VOID: '· VOID     ', SURVIVED: '✖ SURVIVED' }[v]
+  if (v === 'UNCHECKED') unchecked.push(r)
+  const mark = { CAUGHT: '✓ caught  ', 'WRONG-TEST': '⚠ WRONG-TEST', VOID: '· VOID     ', UNCHECKED: '? UNCHECKED', SURVIVED: '✖ SURVIVED' }[v]
   const shown = r.failedTests.slice(0, 4).join(', ') + (r.failedTests.length > 4 ? ` (+${r.failedTests.length - 4})` : '')
   const owner = r.expectedCatchers?.length ? `  [owner: ${r.expectedCatchers.join('/')}]` : ''
   console.log(`${mark} ${r.id.padEnd(26)} ${r.caught ? shown : '(nothing failed)'}${owner}`)
 }
 
-const ok = real.length - survivors.length - wrongTest.length - voids.length
-console.log(`\n${survivors.length} survived, ${wrongTest.length} caught by the WRONG test, ${voids.length} VOID (never applied), ${ok}/${real.length} caught by their owner.`)
+const ok = real.length - survivors.length - wrongTest.length - voids.length - unchecked.length
+console.log(`\n${survivors.length} survived, ${wrongTest.length} caught by the WRONG test, ${voids.length} VOID (never applied), ${unchecked.length} UNCHECKED, ${ok}/${real.length} caught by their owner.`)
+if (unchecked.length) {
+  console.log('\nUNCHECKED means the applied-check could not RUN — an infrastructure failure, not')
+  console.log('a fact about coverage. Do not read it as a survivor and do not read it as a void:')
+  unchecked.forEach((u) => console.log(`  ${u.id}: ${u.applied?.reason}`))
+}
 
 if (voids.length) {
   console.log('\nVOID means the mutation never took effect — it says NOTHING about coverage.')
@@ -252,4 +289,4 @@ if (survivors.length) {
   console.log('reason is a decision. Narrow the test\'s CLAIM rather than over-fitting its assertion.')
 }
 
-process.exit(survivors.length || wrongTest.length || voids.length ? 1 : 0)
+process.exit(survivors.length || wrongTest.length || voids.length || unchecked.length ? 1 : 0)

@@ -91,10 +91,13 @@ It reports four verdicts, not two:
 | `CAUGHT` | the test that **owns** that criterion failed |
 | `WRONG-TEST` | something failed, but not the owner — a broken shared precondition, not coverage |
 | `SURVIVED` | the mutation applied and nothing failed. A finding. |
-| `VOID` | the mutation never took effect, so the run says nothing at all |
+| `VOID` | checked, and the mutation never took effect — fix the injection |
+| `UNCHECKED` | the applied-check could not run. An infrastructure failure, not a fact about coverage |
 
 `VOID` exists because an un-applied mutation and an uncaught one both leave the suite green, and
-reading the second as a coverage hole manufactures work that isn't there. `WRONG-TEST` exists
+reading the second as a coverage hole manufactures work that isn't there. `UNCHECKED` is separate
+from it on the same principle one level up: a check that could not run is a bug report about the
+harness, not a verdict about the tests. `WRONG-TEST` exists
 because a mutation "caught" by fifteen tests usually means a shared precondition broke — which
 destroys the report's ability to say *which* criterion regressed.
 

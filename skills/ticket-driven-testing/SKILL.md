@@ -432,11 +432,29 @@ way to tell "the suite catches mutations" from "the harness breaks the page".
   | no | true | SURVIVED — a real finding |
   | no | false | **VOID** — fix the injection and re-run before reading anything |
 
-  Only SURVIVED needs the check, and only then is it worth the browser launch. **Control the
-  checker itself**: run it once with no injection at all and confirm it reports `false`. A checker
-  that always returns true is a rubber stamp, and it fails in the direction that hides holes.
-  Give it the same page-level control as any other probe — if the page never rendered, the result
-  is void rather than false. Add this hook as a **prerequisite**, not a mid-probe discovery: without it,
+  Only SURVIVED needs the check, and only then is it worth the browser launch.
+
+  **The applied-check is itself an instrument, so it needs its own control** — this is the rule
+  that keeps getting missed, including by the code written to enforce the rule above it. Two
+  cheap calibrations before believing any result: run it with **no injection** (must report
+  `false`) and against a **known-caught mutation** (must report `true`). A checker that always
+  returns true is a rubber stamp; one that always returns false invents holes. Give it the same
+  page-level control as any other probe — if the page never rendered, the result is void rather
+  than false.
+
+  **And keep "could not check" separate from "checked, did not apply".** Collapsing them puts an
+  infrastructure failure into a coverage verdict, which is the same error VOID exists to prevent,
+  one level up. Measured: a resolution bug made every applied-check return "unknown", the runner
+  read unknown as VOID, and a documented intentional survivor was reported as a broken injection.
+  Four outcomes, and the last one is a bug report about the harness rather than a fact about the
+  suite:
+
+  | | meaning |
+  |---|---|
+  | CAUGHT | the OWNING test failed |
+  | SURVIVED | applied, and nothing failed — a finding |
+  | VOID | checked: it never took effect. Fix the injection |
+  | UNCHECKED | the check could not run. Says nothing either way; print the reason, not a verdict | Add this hook as a **prerequisite**, not a mid-probe discovery: without it,
   §8b's first mission is not runnable at all on a deployed-only project.
 - **Silence is not a pass.** A reviewer that reports nothing is indistinguishable from a lazy one. Require the shape: findings, **or** an explicit *"I attempted these N mutations and the suite caught all N"* with the list. An empty return is a failed dispatch, not a clean bill of health.
 - **A surviving mutation is a finding, not a suggestion.** It means a stated AC has no test that can fail for it. Fix the test before reporting the verdict.
