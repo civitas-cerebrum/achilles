@@ -102,8 +102,16 @@ because a mutation "caught" by fifteen tests usually means a shared precondition
 destroys the report's ability to say *which* criterion regressed.
 
 ```bash
-npx achilles-mutate --calibrate    # prove every applied-check can report BOTH answers
+npx achilles-mutate --calibrate      # prove every applied-check can report BOTH answers
+npx achilles-mutate --repeat 3       # flake control: the owning test must fail 2 of 3
+npx achilles-mutate --concurrency 4  # mutations are independent — run them in parallel
 ```
+
+`--repeat` exists because one run per mutation means any failing test counts as CAUGHT: on a suite
+with a 1–2% flake rate that reports coverage it never measured. With `--repeat`, a mutation counts
+only if the same test fails in a majority of runs, and repeats that disagree are flagged rather
+than silently resolved. `--concurrency` matters on a slow suite — serial execution is what makes
+N mutations cost N × suite-runtime.
 
 `--calibrate` runs each mutation's applied-check twice — injected (must be `true`) and clean (must
 be `false`) — and fails on any that cannot produce both. Worth running on its own: the applied-check

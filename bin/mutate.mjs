@@ -7,6 +7,8 @@
 //   npx achilles-mutate --config path/to/muts.mjs
 //   npx achilles-mutate --only pills-hidden      # one mutation, for iterating
 //   npx achilles-mutate --calibrate              # prove the applied-checks discriminate
+//   npx achilles-mutate --repeat 3               # flake control: owner must fail 2 of 3
+//   npx achilles-mutate --concurrency 4          # run mutations in parallel
 //
 // WHY THIS EXISTS. A green suite proves nothing until you have seen it go red
 // for the right reason. Mutation testing injects the broken state an acceptance
@@ -46,6 +48,14 @@ const flag = (name, fallback) => {
 
 const CONFIG = path.resolve(flag('config', '.achilles/mutations.mjs'))
 const ONLY = flag('only', null)
+// Flake control. One run per mutation means ANY failing test counts as CAUGHT, so on a suite with
+// a realistic 1-2% flake rate a mutation pass reports coverage it did not measure — the instrument
+// rule broken inside the tool that implements it. With --repeat N a mutation is CAUGHT only if the
+// same test fails in a MAJORITY of runs, and the noop control must be green in a majority too.
+const REPEAT = Math.max(1, parseInt(flag('repeat', '1'), 10) || 1)
+// Mutations are independent runs against a deployed URL — embarrassingly parallel. Serial was
+// costing N x suite-runtime, which is what makes this unaffordable on a slow suite.
+const CONCURRENCY = Math.max(1, parseInt(flag('concurrency', '1'), 10) || 1)
 const OUT = path.resolve('.achilles/mutation-out')
 
 if (!fs.existsSync(CONFIG)) {
@@ -236,39 +246,86 @@ fs.mkdirSync(OUT, { recursive: true })
 const queue = ONLY ? mutations.filter((m) => m.id === ONLY || m.id === 'noop') : mutations
 const results = []
 
-for (const m of queue) {
-  process.stdout.write(`\n▶ ${m.id} — ${m.what || ''}\n`)
-  const run = spawnSync('npx', ['playwright', 'test', ...specs, '--reporter=json'], {
-    encoding: 'utf8',
-    maxBuffer: 128 * 1024 * 1024,
-    env: { ...process.env, E2E_MUTATION_CSS: m.css ?? '', E2E_MUTATION_INIT: m.init ?? '' },
-  })
-  const failed = failedTests(run.stdout || '')
+const runOnce = (m) =>
+  failedTests(
+    spawnSync('npx', ['playwright', 'test', ...specs, '--reporter=json'], {
+      encoding: 'utf8',
+      maxBuffer: 128 * 1024 * 1024,
+      env: { ...process.env, E2E_MUTATION_CSS: m.css ?? '', E2E_MUTATION_INIT: m.init ?? '' },
+    }).stdout || '',
+  )
+
+/** A test counts as failing only if it failed in MORE THAN HALF the repeats. */
+const majorityFailures = (passes) => {
+  const need = Math.floor(passes.length / 2) + 1
+  const tally = new Map()
+  for (const failed of passes) for (const t of new Set(failed)) tally.set(t, (tally.get(t) || 0) + 1)
+  return [...tally.entries()].filter(([, n]) => n >= need).map(([t]) => t)
+}
+
+const runMutation = async (m) => {
+  const passes = []
+  for (let i = 0; i < REPEAT; i++) passes.push(runOnce(m))
+  const failed = majorityFailures(passes)
   const caught = failed.length > 0
+  // Flake visible across repeats is worth surfacing: it is why a single-run verdict lies.
+  const unstable = REPEAT > 1 && passes.some((p) => p.length !== passes[0].length)
 
   let applied = { applied: null, reason: 'not needed — mutation was caught' }
   if (!caught && m.id !== 'noop') {
     applied = await checkApplied(m).catch((e) => ({ applied: null, reason: `check errored: ${e.message}` }))
   }
+  return { ...m, caught, failedTests: failed, applied, unstable }
+}
 
-  results.push({ ...m, caught, failedTests: failed, applied })
+/** Bounded-concurrency map. Mutations never touch each other's state, only the shared target. */
+const mapLimit = async (items, limit, fn) => {
+  const out = new Array(items.length)
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++
+        out[i] = await fn(items[i])
+      }
+    }),
+  )
+  return out
+}
 
-  // The control is the one mutation where "nothing failed" is the GOOD outcome, so it must not
-  // print as SURVIVED — that reads as a failure and buries the line that matters. It also never
-  // runs an applied-check (there is nothing to apply), so the default reason would leak in.
-  let line
-  if (m.id === 'noop') {
-    line = caught ? `CONTROL RED — ${failed.join(', ')} (harness is breaking the page)` : 'control green — results are meaningful'
-  } else if (caught) {
-    line = `CAUGHT by ${failed.join(', ')}`
-  } else if (applied.applied === true) {
-    line = 'SURVIVED — mutation applied and no test failed'
-  } else if (applied.applied === false) {
-    line = `VOID — mutation never took effect (${applied.reason})`
-  } else {
-    line = `UNCHECKED — no test failed, and the applied-check could not run (${applied.reason})`
+// The control runs FIRST and ALONE. If the harness is breaking the page, every parallel result
+// behind it is void, and there is no point spending the machine time to find that out.
+const noopEntry = queue.find((m) => m.id === 'noop')
+const rest = queue.filter((m) => m.id !== 'noop')
+
+process.stdout.write(`\n▶ noop — ${noopEntry.what || 'harness control'}\n`)
+const noopResult = await runMutation(noopEntry)
+process.stdout.write(`   ${noopResult.caught ? `CONTROL RED — ${noopResult.failedTests.join(', ')}` : 'control green — results are meaningful'}\n`)
+results.push(noopResult)
+
+if (!noopResult.caught) {
+  if (CONCURRENCY > 1) process.stdout.write(`\nRunning ${rest.length} mutations, ${CONCURRENCY} at a time${REPEAT > 1 ? `, ${REPEAT}x each` : ''}.\n`)
+  // The per-mutation verdict, live. Deleting this once already made a run go quiet between the
+  // header and the summary — and the REASON on a VOID/UNCHECKED only appears here, so losing it
+  // means losing the one line that says why a result cannot be believed.
+  const verdictLine = (r) => {
+    if (r.caught) return `CAUGHT by ${r.failedTests.join(', ')}`
+    if (r.applied?.applied === true) return 'SURVIVED — mutation applied and no test failed'
+    if (r.applied?.applied === false) return `VOID — mutation never took effect (${r.applied.reason})`
+    return `UNCHECKED — no test failed, and the applied-check could not run (${r.applied?.reason})`
   }
-  process.stdout.write(`   ${line}\n`)
+
+  const done = await mapLimit(rest, CONCURRENCY, async (m) => {
+    if (CONCURRENCY === 1) process.stdout.write(`\n▶ ${m.id} — ${m.what || ''}\n`)
+    const r = await runMutation(m)
+    const prefix = CONCURRENCY > 1 ? `   ${r.id}: ` : '   '
+    process.stdout.write(prefix + verdictLine(r) + '\n')
+    // Repeats that disagree are the whole reason --repeat exists: say so, rather than silently
+    // taking the majority and presenting it as a clean result.
+    if (r.unstable) process.stdout.write(`   ⚠ flaky across repeats — the majority verdict above hides disagreement\n`)
+    return r
+  })
+  results.push(...done)
 }
 
 fs.writeFileSync(path.join(OUT, 'mutation-report.json'), JSON.stringify(results, null, 2))
