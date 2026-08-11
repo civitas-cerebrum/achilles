@@ -43,7 +43,7 @@ export { expect };
 | `interactions` | `ElementInteractions` | Raw interactions API for custom locators |
 | `contextStore` | `ContextStore` | Shared in-memory key-value store for passing data between steps within a test |
 
-> **`interceptionRetry` — available as of 0.3.7 (the current pinned dep).** The `interceptionRetry` opt-out shown above and the report-visible `interception-fallback` test annotation both ship in `@civitas-cerebrum/element-interactions@0.3.7` (`BaseFixture` / `Steps` / `ElementInteractions` accept `interceptionRetry`; the fallback logs a warning and pushes the annotation). The default is `true`: an intercepted click silently falls back to a dispatched DOM `'click'` — which can **mask** a stuck modal or cookie wall that should have failed the click. **For bug-discovery and adversarial suites, set `interceptionRetry: false`** so an interception rethrows and fails the test instead of being papered over; treat any `interception-fallback` annotation in a report as a suspected app bug to investigate, not noise.
+> **`interceptionRetry` — available as of 0.3.7 (below the `>=0.3.8` peer floor, so always present).** The `interceptionRetry` opt-out shown above and the report-visible `interception-fallback` test annotation both ship in `@civitas-cerebrum/element-interactions@0.3.7` (`BaseFixture` / `Steps` / `ElementInteractions` accept `interceptionRetry`; the fallback logs a warning and pushes the annotation). The default is `true`: an intercepted click silently falls back to a dispatched DOM `'click'` — which can **mask** a stuck modal or cookie wall that should have failed the click. **For bug-discovery and adversarial suites, set `interceptionRetry: false`** so an interception rethrows and fails the test instead of being papered over; treat any `interception-fallback` annotation in a report as a suspected app bug to investigate, not noise.
 
 `baseFixture` attaches a full-page `failure-screenshot` to the HTML report on every failed test automatically.
 
@@ -241,7 +241,7 @@ await steps.dragAndDrop('elementName', 'PageName', { xOffset: 100, yOffset: 0 })
 await steps.dragAndDropListedElement('elementName', 'PageName', 'Item Label', { target: otherLocatorOrElement });
 ```
 
-**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. As of **0.3.7 (the current pinned dep)** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — **recommended for adversarial/bug-discovery suites** where a stuck modal or cookie wall should fail the click rather than be clicked through. See [Setup — Fixtures](#setup--fixtures).
+**Note:** `click()` automatically falls back to a dispatched DOM `'click'` event when Playwright reports pointer interception — no `{ force: true }` needed in most cases. As of **0.3.7 (below the `>=0.3.8` peer floor, so always present)** the fallback also logs a warning and pushes a report-visible `interception-fallback` test annotation naming `PageName.elementName`, and `interceptionRetry: false` on the fixture (or the `Steps` / `ElementInteractions` constructor options) rethrows the original interception error instead — **recommended for adversarial/bug-discovery suites** where a stuck modal or cookie wall should fail the click rather than be clicked through. See [Setup — Fixtures](#setup--fixtures).
 
 **`dispatchEvent` — when to use it and when not to (0.3.8+).** `dispatchEvent(elementName, pageName, type, eventInit?)` fires a synthetic DOM event directly on the element, bypassing all Playwright actionability checks (visibility, enabled state, scrolling into view). Use it **only** in situations where a real interaction cannot express the case:
 - **Custom events** the app dispatches or listens for (e.g. `'app:cart-updated'`).
@@ -557,7 +557,7 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 
 ### Waiting
 
-> **`waitForState` semantics — throwing as of 0.3.7 (the current pinned dep).** `waitForState` throws on timeout and returns `Promise<boolean>` (`true` = state reached). Use `{ optional: true }` to keep the soft-probe behavior — the call then resolves `false` on timeout instead of rejecting; follow a non-optional wait with an explicit `verify*` only if you want a more specific failure message.
+> **`waitForState` semantics — throwing as of 0.3.7 (below the `>=0.3.8` peer floor, so always present).** `waitForState` throws on timeout and returns `Promise<boolean>` (`true` = state reached). Use `{ optional: true }` to keep the soft-probe behavior — the call then resolves `false` on timeout instead of rejecting; follow a non-optional wait with an explicit `verify*` only if you want a more specific failure message.
 
 ```ts
 // waitForState THROWS on timeout (0.3.7+) and returns Promise<boolean>.

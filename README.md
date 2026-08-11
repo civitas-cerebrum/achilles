@@ -53,7 +53,7 @@ Once the run starts, the agent owns the lifecycle. No incremental confirmation p
 npm install @civitas-cerebrum/achilles
 ```
 
-That's the whole install. `@playwright/test` comes along as a transitive dependency, and `@civitas-cerebrum/element-interactions` is a **peer dependency** (`>=0.3.8 <1.0.0`) that npm installs on the same command — you don't have to add either by hand. It is a peer rather than a pinned dependency because **you own the framework version**: upgrade `element-interactions` whenever you like without waiting for an achilles release, and never end up with two copies of it in one tree.
+`@playwright/test` comes along as a transitive dependency. `@civitas-cerebrum/element-interactions` is a **peer dependency** (`>=0.3.8 <1.0.0`), so **you own the framework version** — upgrade it without waiting for an achilles release, and never end up with two copies in one tree. npm 7+ installs it on the same command; **pnpm, yarn and `--legacy-peer-deps` users should add it to their own `dependencies`.**
 
 `postinstall` does everything end-to-end on a single `npm install`:
 
