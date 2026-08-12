@@ -207,6 +207,13 @@ const HOOK_MANIFEST = [
   { file: 'journey-mapping-skill-preread-gate.sh', event: 'PreToolUse', matcher: 'Agent',      timeout: 5 },
 
   // PostToolUse — observers (record + warn)
+  // Playwright wipes its outputDir at the START of each run, so run N's
+  // traces / videos / error-context are destroyed by run N+1. This archives
+  // each run's evidence into <project>/.achilles/runs/<runId>/ (copy, never
+  // move) the moment the run command returns. Registered on Stop and
+  // SubagentStop too, as the backstop for interrupted runs whose PostToolUse
+  // never fires. Never denies; idempotent via a candidate-set fingerprint.
+  { file: 'playwright-artifact-archiver.sh',      event: 'PostToolUse', matcher: 'Bash',       timeout: 30 },
   { file: 'subagent-return-schema-guard.sh',      event: 'PostToolUse', matcher: 'Agent',      timeout: 10 },
   // Reviewer attestation integrity: WARN when a workflow-reviewer-*
   // approves without citing real on-disk file paths. PostToolUse can't
@@ -216,6 +223,9 @@ const HOOK_MANIFEST = [
 
   // SubagentStop — cleanup (async)
   { file: 'playwright-cli-cleanup-on-stop.sh',    event: 'SubagentStop', matcher: null,        timeout: 30, async: true },
+  // Interrupted-run backstop for the archiver above: a run killed mid-flight
+  // never fires PostToolUse, but its partial evidence is still evidence.
+  { file: 'playwright-artifact-archiver.sh',      event: 'SubagentStop', matcher: null,        timeout: 30 },
 
   // selector-development — activation + inertness gates (PreToolUse:Write|Edit)
   { file: 'selector-development-activation-gate.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
@@ -236,6 +246,9 @@ const HOOK_MANIFEST = [
   // tests/perf/docs/perf-onboarding-status.json exists (perf projects only).
   // NO-OP on non-perf projects; never interferes with run-summary-writer.sh.
   { file: 'perf-summary-writer.sh',                      event: 'Stop', matcher: null,                 timeout: 15 },
+  // Same backstop at orchestrator Stop — the last run of a session is the one
+  // most likely to have been interrupted.
+  { file: 'playwright-artifact-archiver.sh',             event: 'Stop', matcher: null,                 timeout: 30 },
 ];
 
 function copyHookFile(hookSrc, hookDest) {
