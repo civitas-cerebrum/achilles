@@ -1,6 +1,6 @@
 # Autonomous-mode caller contracts
 
-Canonical source for what each companion skill must pass when invoking the `element-interactions` orchestrator with `autonomousMode: true`. The orchestrator's `SKILL.md` summarises this file in the §"Autonomous-mode invocation cheat-sheet" table; full per-entry-point semantics live here so the orchestrator stays light.
+Canonical source for what each companion skill must pass when invoking the `achilles-protocol` orchestrator with `autonomousMode: true`. The orchestrator's `SKILL.md` summarises this file in the §"Autonomous-mode invocation cheat-sheet" table; full per-entry-point semantics live here so the orchestrator stays light.
 
 When you add a new caller, append a section below and add a row to the cheat-sheet in `SKILL.md`. Drift between the cheat-sheet and this file is a bug.
 
@@ -15,7 +15,7 @@ The orchestrator supports two autonomous entry points, distinguished by the `ent
 | `entry: "stage1"` (default if absent) | `onboarding` Phase 3 (incl. an external automated CLI driver driving the same pipeline) | — | Stage 1 (scenario discovery) |
 | `entry: "stage3"` | `companion-mode` Phase-6 graduation | Stages 1 + 2 | Stage 3 (write the durable spec) |
 
-> **Note — `coverage-expansion` does NOT invoke this orchestrator with `autonomousMode`.** Coverage expansion runs journey-by-journey through the `test-composer` skill (which it dispatches per journey); it does not re-enter `element-interactions` as an autonomous caller. The only two autonomous callers are the two rows above.
+> **Note — `coverage-expansion` does NOT invoke this orchestrator with `autonomousMode`.** Coverage expansion runs journey-by-journey through the `test-composer` skill (which it dispatches per journey); it does not re-enter `achilles-protocol` as an autonomous caller. The only two autonomous callers are the two rows above.
 
 ---
 

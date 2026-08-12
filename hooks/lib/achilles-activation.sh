@@ -95,11 +95,19 @@
 # achilles__current_call_signature and the `skills/<name>/SKILL.md`
 # transcript grep read it), so a name the alternation does not know is a
 # name that silently activates nothing — every guard in the suite stays
-# off, which is a fail-open. `element-interactions` is the name this
-# package ships the orchestrator under; `achilles-protocol` is the name
-# it carries on installs that have renamed it. Both are accepted so
-# neither shape fails open. Adding an alias here is not a rename: the
-# bundled skill directory remains skills/element-interactions/.
+# off, which is a fail-open.
+#
+# `achilles-protocol` is the orchestrator skill's name as of the rename
+# from `element-interactions`. `element-interactions` is retained below
+# as a backward-compat alias so installs still carrying the old skill
+# directory keep activating — do not drop it. An install that predates
+# the rename would otherwise lose every guard silently, and losing
+# guards silently is precisely the failure this alternation exists to
+# prevent.
+#
+# NOTE: `element-interactions` in this list is the OLD SKILL name, not
+# the npm package. `@civitas-cerebrum/element-interactions` is the
+# Playwright interaction library — a separate thing, not renamed.
 ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-element-interactions|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|secrets-sweep|selector-development|test-catalogue|test-composer|test-repair|work-summary-deck|workflow-reviewer'
 
 # Distinctly-achilles subagent description prefixes (backstop for briefs

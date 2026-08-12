@@ -256,7 +256,7 @@ These are the non-negotiables that every cluster decision must respect. Together
 | `bug-discovery` | Separate concern. This skill reports bugs it finds incidentally; it does not probe for new ones. `bug-discovery` may auto-escalate TO this skill if its adversarial run produces a batch of failures. |
 | `self-repair` | Sibling entrypoint: fan-out-first (one worker per red spec file, runs unattended via `achilles-self-repair` / `npm run test:repair`) where this skill is cluster-first (in-session, shared-root-cause batching). This skill's Bug-vs-Heal Discipline is normative for `self-repair` workers. Quarantine-ledger release (Stage 5.5) remains exclusively this skill's job — `self-repair` workers may add entries, never release them. |
 | `journey-mapping` | Not called directly. When `test-composer` is invoked for a (g) rewrite, that chain may reach `journey-mapping` — but test-repair does not re-map. |
-| `element-interactions` | Uses the Steps API to execute tests. No direct skill-level interaction. |
+| `achilles-protocol` | Uses the Steps API to execute tests. No direct skill-level interaction. |
 | `onboarding` | Out of scope; assumes a scaffolded project exists. If the project isn't onboarded, this skill reports that and stops. |
 | `work-summary-deck` | May consume the repair-session summary as input data for a stakeholder report. |
 
@@ -278,4 +278,4 @@ If any of these cannot be achieved, the session is NOT complete. Report the bloc
 
 ## API Reference
 
-Refer to [`../element-interactions/references/api-reference.md`](../element-interactions/references/api-reference.md) for all Steps method signatures. All Steps methods use `(elementName, pageName)` order.
+Refer to [`../achilles-protocol/references/api-reference.md`](../achilles-protocol/references/api-reference.md) for all Steps method signatures. All Steps methods use `(elementName, pageName)` order.

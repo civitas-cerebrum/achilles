@@ -1,5 +1,5 @@
 ---
-name: element-interactions
+name: achilles-protocol
 description: >
   Use this skill whenever the user mentions testing, test automation, or anything related to verifying application behavior.
   Triggers on general testing intent: "test the app", "test this", "lets test", "write tests", "add tests", "run tests",
@@ -87,7 +87,7 @@ This skill is the orchestrator for a group of testing skills. It handles Stages 
 | `database-testing` | User mentions database tests, SQL tests, verifying DB state, asserting persisted data, or any test that calls `steps.sql*` / `steps.verifySql*` | Persistence-layer verification: read contracts, CRUD round-trips, transactions, and DB-as-oracle for UI/API mutations |
 | `performance-testing` | User mentions load/stress/soak/spike/breakpoint testing, k6, p95-under-load, throughput, concurrent users, or an SLO/performance budget | k6-native performance entrypoint: scaffolds `tests/perf/lib/` helpers, composes workload-profiled scenarios with SLO thresholds as the oracle, runs them, writes `tests/perf/docs/perf-report.md`, and feeds SLO breaches into the findings ledger. Sibling of `contract-testing` / `database-testing`. See [`../performance-testing/SKILL.md`](../performance-testing/SKILL.md). |
 | `test-catalogue` | User asks for a "test catalogue", "scenario report", "client-ready catalogue", or an inventory of what the suite runs — opt-in only, never mandatory | Parses spec files + journey map, groups scenarios by app section and priority, renders a stakeholder-facing A4-landscape PDF catalogue (plus source HTML) with dedicated regression and skipped-with-reason sections |
-| `companion-mode` | User asks for ad-hoc functional verification with evidence (screenshots, video, trace) — opt-in only, never mandatory | Single-task evidence-first verification: produces an immutable bundle at `tests/e2e/evidence/<slug>-<ts>/`, then on a passed run proactively offers durable-automation graduation back into this orchestrator (Stage 3) or into the `onboarding` skill per the project's cascade-detector level. For projects with no element-interactions scaffold, the user is pointed at the `onboarding` skill (interactive) or an external automated CLI driver. Full behaviour: `skills/companion-mode/SKILL.md`. |
+| `companion-mode` | User asks for ad-hoc functional verification with evidence (screenshots, video, trace) — opt-in only, never mandatory | Single-task evidence-first verification: produces an immutable bundle at `tests/e2e/evidence/<slug>-<ts>/`, then on a passed run proactively offers durable-automation graduation back into this orchestrator (Stage 3) or into the `onboarding` skill per the project's cascade-detector level. For projects with no achilles-protocol scaffold, the user is pointed at the `onboarding` skill (interactive) or an external automated CLI driver. Full behaviour: `skills/companion-mode/SKILL.md`. |
 | `selector-development` | Stage 2 finds no stable selector AND frontend source is in the workspace; or failure-diagnosis blames a fragile selector; or user says "add stable selectors" / "audit selectors across the app" | Adds an inert `data-testid` (or detected convention) to the frontend source for the unstable element; runs typecheck + unit + e2e + visual-diff; commits selector change alongside the test |
 | `failure-diagnosis` | A test fails (any mode), **or a pipeline run went red** — "the nightly failed", "the regression failed", "CI is red", "the pipeline failed", "the workflow failed", "analyse the failures", "why did the run fail", "download the trace", "check the trace", "investigate the failure" | **Subagent-only** — never load it in this transcript. Dispatch a subagent, which loads the skill and runs the evidence-first pipeline. Two entrypoints: **L** (local artifacts on disk) and **C** (pipeline — Stage 0a pins to the run's commit + dependency versions, Stage 0b pulls the run's artifacts down with `gh`, before any hypothesis). See Rule 7 below. |
 
@@ -506,7 +506,7 @@ Only show the greeting menu if the user's message is vague or just says somethin
 - **Pipeline / CI failure** — "the nightly failed", "the nightly regression failed", "the regression failed", "CI is red", "the build is red", "the pipeline failed", "the workflow failed", "the GitHub Actions run failed", "the prod regression is failing", "analyse the failures", "why did the run fail", "what failed in CI", "look at run \<id\>", "download the trace", "get the trace from CI", "check the trace", "open the trace", "investigate the failure", "triage the CI failures" → dispatch an `fd-ci-<run-id>:` subagent that loads `failure-diagnosis` and enters at its **Stage 0a + Stage 0b** (pin to the run's commit and resolved dependency versions, then pull the run's artifacts down with `gh`). If the user did not name a run, resolve it here with `gh run list --workflow=<file-or-id> --json databaseId,conclusion,displayTitle,headSha,createdAt` and put the id and `headSha` in the brief. Do NOT open by re-running the suite locally, and do NOT answer from the CI log text — the run's own trace / DOM / console are the evidence. If the run shows ≥5 failing tests or ≥2 red spec files, the subagent's own escalation rule hands off to `test-repair` / `self-repair` after Stage 0b, so the batch pipeline starts from downloaded artifacts rather than log lines.
 - **Fix or edit a test** — Skip to Stage 3 (Fix/Edit Mode).
 - **Scale existing project** — Read existing test files and `page-repository.json` first to understand current coverage, then proceed to Stage 1 with that context.
-- **Vague or no context** — Show the greeting menu and wait. If the project has no element-interactions scaffold, point the user at the `onboarding` skill (below).
+- **Vague or no context** — Show the greeting menu and wait. If the project has no achilles-protocol scaffold, point the user at the `onboarding` skill (below).
 
 ## Onboarding a new project
 
@@ -514,7 +514,7 @@ To onboard a new project from zero, invoke the `onboarding` skill — it
 is the umbrella eight-phase methodology document and runs from an
 interactive Claude Code session. An external automated CLI driver may
 also drive the same pipeline non-interactively; either entry point
-loads this skill (`element-interactions`) for Stages 1–4 of the
+loads this skill (`achilles-protocol`) for Stages 1–4 of the
 happy-path step.
 
 ---

@@ -232,7 +232,7 @@ reviewerCycle: 2
 findings:
   - checklist-item: tests/e2e/docs/.discovery-draft.json exists
     what-missing: file is absent
-    methodology-ref: skills/onboarding/SKILL.md §"Phase 3" + element-interactions Stage 3
+    methodology-ref: skills/onboarding/SKILL.md §"Phase 3" + achilles-protocol Stage 3
     fix-instruction: dispatch composer-discovery-draft: to author the draft from the happy-path runs
 ```
 
@@ -328,7 +328,7 @@ to the user for manual triage. The pipeline `status` in the ledger
 becomes `blocked`.
 
 This mirrors the existing 3-cycle process-validator pattern in the
-package (see `skills/element-interactions/references/stages-protocol.md`).
+package (see `skills/achilles-protocol/references/stages-protocol.md`).
 
 ---
 
@@ -340,7 +340,7 @@ package (see `skills/element-interactions/references/stages-protocol.md`).
 - `skills/onboarding/SKILL.md` §"Status ledger + workflow reviewer" — orchestrator-side contract
 - `skills/coverage-expansion/SKILL.md` §"Authoritative state file" — pass-transition reviewer context
 - `skills/journey-mapping/SKILL.md` §"Iterative discovery cycles" — cycle-transition reviewer context
-- `skills/element-interactions/references/harness-hooks.md` — `onboarding-ledger-gate.sh` + `onboarding-ledger-write-gate.sh`
+- `skills/achilles-protocol/references/harness-hooks.md` — `onboarding-ledger-gate.sh` + `onboarding-ledger-write-gate.sh`
 
 ---
 

@@ -1,6 +1,6 @@
 # Stages Protocol — Element-Interactions Pipeline (Stages 1–4)
 
-**Status:** authoritative spec for the four-stage element-interactions test-authoring pipeline. Cited from `element-interactions/SKILL.md`.
+**Status:** authoritative spec for the four-stage achilles-protocol test-authoring pipeline. Cited from `achilles-protocol/SKILL.md`.
 **Scope:** Stage 1 (Scenario Discovery), Stage 2 (Element Inspection), Stage 3 (Write Automation), Stage 4a (Test Optimization), Stage 4b (API Compliance Review). For each stage: process, hard gates, output format, and skip-to-Stage-3 (fix/edit) mode.
 
 For the canonical browser-automation primitive used in Stage 2 / 3, see `playwright-cli-protocol.md`.

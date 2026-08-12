@@ -97,7 +97,7 @@ printf '%s\n' '{"type":"user","message":{"content":[{"type":"text","text":"<comm
 assert_deny "$COMMIT_GATE" "$(payload session_id=dev-s8 transcript_path="$CMD_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "transcript typed /onboarding → DENY" "AI-attribution"
 
 READ_TRANSCRIPT="$SCOPE_TMP/read-transcript.jsonl"
-printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/repo/node_modules/@civitas-cerebrum/achilles/skills/element-interactions/SKILL.md"}}]}}' > "$READ_TRANSCRIPT"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/repo/node_modules/@civitas-cerebrum/achilles/skills/achilles-protocol/SKILL.md"}}]}}' > "$READ_TRANSCRIPT"
 assert_deny "$COMMIT_GATE" "$(payload session_id=dev-s9 transcript_path="$READ_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "transcript Read of achilles SKILL.md → DENY" "AI-attribution"
 
 # Same transcript signal on a renamed install: skills/achilles-protocol/SKILL.md.
@@ -128,8 +128,8 @@ assert_allow "$COMMIT_GATE" "$(payload session_id=dev-s11 transcript_path="$NC_T
 assert_deny "$COMMIT_GATE" "$(payload session_id=dev-s11 transcript_path="$NC_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "marker (watcher path) overrides negative cache → DENY" "AI-attribution"
 
 section "activation-watcher: Skill invocations"
-assert_allow "$WATCHER" "$(payload session_id=w1 hook_event_name=PreToolUse tool_name=Skill skill=element-interactions)" "watcher: achilles skill → silent, marks"
-assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w1.active" ] && echo marked || echo unmarked)" "marked" "watcher marked session on Skill(element-interactions)"
+assert_allow "$WATCHER" "$(payload session_id=w1 hook_event_name=PreToolUse tool_name=Skill skill=element-interactions)" "watcher: legacy orchestrator alias (element-interactions) → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w1.active" ] && echo marked || echo unmarked)" "marked" "watcher marked session on Skill(element-interactions) — backward-compat alias"
 assert_allow "$WATCHER" "$(payload session_id=w2 hook_event_name=PreToolUse tool_name=Skill skill=superpowers:brainstorming)" "watcher: non-achilles skill → silent, no mark"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w2.active" ] && echo marked || echo unmarked)" "unmarked" "watcher ignored non-achilles skill"
 assert_allow "$WATCHER" "$(payload session_id=w3 hook_event_name=PreToolUse tool_name=Skill skill=achilles:secrets-sweep)" "watcher: plugin-prefixed achilles skill → silent, marks"

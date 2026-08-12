@@ -258,7 +258,7 @@ References:
   skills/failure-diagnosis/SKILL.md §\"Evidence floor — non-negotiable, both entrypoints, both conclusions\"
   skills/failure-diagnosis/SKILL.md §\"Stage 0b — Pipeline evidence retrieval\"
   skills/coverage-expansion/references/anti-rationalizations.md §\"Pattern: Diagnosis from log text alone\"
-  skills/element-interactions/references/harness-hooks.md"
+  skills/achilles-protocol/references/harness-hooks.md"
 
 "$JQ" -n --arg r "$REASON$(achilles_scope_notice)" '{
   "hookSpecificOutput": {

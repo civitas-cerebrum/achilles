@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // build-validator.mjs — generates hooks/lib/validator.bundle.mjs, a
 // dependency-free single-file validator with every schema inlined.
-// Spec: skills/element-interactions/references/harness-hooks.md
+// Spec: skills/achilles-protocol/references/harness-hooks.md
 //
 // Subcommand contract of the emitted bundle:
 //   validate <role|onboarding-status> <data-file>

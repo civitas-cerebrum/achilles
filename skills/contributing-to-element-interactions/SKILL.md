@@ -318,7 +318,7 @@ for n in 156 157; do gh issue view $n --json author -q '.number, .author.login' 
 
 **Self-reported / chore caveat.** When the contributor is also the issue author, self-attribution is still appropriate — the audit trail is the value, not the social acknowledgement. For purely-chore commits with no upstream issue, the rule does not apply.
 
-**Harness backstop.** The `PreToolUse:Bash` commit-attribution guardrail that previously surfaced missing `Reported-by:` attribution at commit time was retired in 0.3.6; the rule still applies and PR reviewers enforce it. The live `hooks/commit-message-gate.sh` checks commit-message conventions (type/scope/bypass flags) but does not check attribution trailers. (See [harness-hooks.md](../element-interactions/references/harness-hooks.md).)
+**Harness backstop.** The `PreToolUse:Bash` commit-attribution guardrail that previously surfaced missing `Reported-by:` attribution at commit time was retired in 0.3.6; the rule still applies and PR reviewers enforce it. The live `hooks/commit-message-gate.sh` checks commit-message conventions (type/scope/bypass flags) but does not check attribution trailers. (See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).)
 
 ### AI assistants don't get `Co-Authored-By:` trailers
 
@@ -743,13 +743,13 @@ async verifyLocalStoragePresent(key, options?) { ... }
 Any PR that adds a new public method to `Steps`, `ElementAction`, the matcher tree, or a new public matcher class **must** update both of:
 
 1. `README.md` — under the relevant `🛠️ API Reference: Steps` subsection (Interaction / Verification / Data Extraction / Visibility / Listed Elements / etc.). One bullet per new method, plus an inline code example block when the API has a non-obvious option shape (e.g. discriminated unions, multi-form matchers).
-2. `skills/element-interactions/references/api-reference.md` — under the matching section. The api-reference is the canonical documentation consumed by other skills (test-composer, coverage-expansion, bug-discovery), so missing entries here cause downstream agents to write tests that drop out of the framework.
+2. `skills/achilles-protocol/references/api-reference.md` — under the matching section. The api-reference is the canonical documentation consumed by other skills (test-composer, coverage-expansion, bug-discovery), so missing entries here cause downstream agents to write tests that drop out of the framework.
 
 **No "headline-worthy" exception.** The previous version of this rule allowed README updates only for headline-worthy features and produced silent doc drift — the HTML extraction surface (commit `d2f200e`) shipped without a README entry. If the change adds a method a user can call from a test, both files get an entry. The PR description should quote the new bullets verbatim so reviewers can grep them.
 
 **Internal-only changes don't trigger this rule.** Adding a method to `Verifications`, `Interactions`, or `Extractions` *without* a corresponding `Steps` / `ElementAction` / matcher-tree entry point is internal — it's reachable only from the raw escape hatch (`interactions.verify.X`). The README docs the recommended surface; raw escape-hatch methods are documented inline via JSDoc on the class.
 
-**Skill files updates** (`skills/element-interactions/SKILL.md`, `skills/contributing-to-element-interactions/SKILL.md`, etc.) are required only when the change affects a workflow stage, the contribution rules, or a hard rule. A new `verify*` method does not normally require a SKILL.md change.
+**Skill files updates** (`skills/achilles-protocol/SKILL.md`, `skills/contributing-to-element-interactions/SKILL.md`, etc.) are required only when the change affects a workflow stage, the contribution rules, or a hard rule. A new `verify*` method does not normally require a SKILL.md change.
 
 ---
 
@@ -759,7 +759,7 @@ Every PR against this repo must produce a populated `.contribution-handover.json
 
 The schema lives at `schemas/contribution-handover.schema.json`. A blank template lives at `.contribution-handover.template.json`. **Copy the template, fill it in, and run the gate at push time. The file is gitignored — DO NOT commit it.** Carrying a previous PR's handover into a new branch is the failure mode the gate exists to catch (each PR's claims must reflect that PR's actual contents, not whatever the prior handover said).
 
-The companion `PreToolUse:Bash` push/PR gate that previously intercepted `git push origin` and `gh pr create` while the handover was missing, malformed, or had unset booleans was retired in 0.3.6; the rule still applies — populate and self-validate the handover before pushing, and PR reviewers enforce it. See [harness-hooks.md](../element-interactions/references/harness-hooks.md).
+The companion `PreToolUse:Bash` push/PR gate that previously intercepted `git push origin` and `gh pr create` while the handover was missing, malformed, or had unset booleans was retired in 0.3.6; the rule still applies — populate and self-validate the handover before pushing, and PR reviewers enforce it. See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).
 
 **Why a handover, not just a checklist:**
 - Structured booleans are machine-checkable. The gate spot-verifies a subset of claims against the actual repo state (e.g. `readmeUpdated: true` is cross-checked against the README diff vs. `origin/main`).
@@ -873,9 +873,9 @@ npm run test                                 # all tests must pass
 npx test-coverage --format=github-plain     # must show 100%
 
 # 4. Update docs (Rule 19 — both files mandatory for any new public API):
-#    - skills/element-interactions/references/api-reference.md (the canonical source)
+#    - skills/achilles-protocol/references/api-reference.md (the canonical source)
 #    - README.md (the user-facing reference under "🛠️ API Reference: Steps")
-#    - skills/element-interactions/SKILL.md (only if the change affects workflow stages)
+#    - skills/achilles-protocol/SKILL.md (only if the change affects workflow stages)
 
 # 5. Bump version once, against npm-latest (Rule 15 — collision-safe across parallel PRs)
 npm version "$(npm view @civitas-cerebrum/element-interactions version | awk -F. '{print $1"."$2"."$3+1}')" --no-git-tag-version
@@ -1061,7 +1061,7 @@ When a hook needs to distinguish "was this tool call made by a legitimately-disp
 1. **PreToolUse:Agent (the dispatch-guard)** writes a registration entry to a state file (e.g. `tests/e2e/docs/.in-flight-composers.json`) when the dispatch matches a known role-prefix that produces specific tool calls (e.g. `composer-j-<slug>:` produces a `Write tests/e2e/j-<slug>.spec.ts`).
 2. **PostToolUse / PreToolUse on the produced tool call** reads the registry and gates the call: if the slug is in-flight (within a TTL window), the writer is the legitimate subagent — ALLOW. If not in-flight, it's the orchestrator absorbing — DENY with a redirect to dispatch the right subagent.
 3. **TTL / cleanup as a failsafe**: the registry uses a rolling 30-min TTL — entries that aren't deregistered explicitly (see point 4) expire on the next dispatch-guard run, so stale registrations don't accumulate when a subagent crashes or is abandoned mid-flight.
-4. **Explicit deregistration on terminal handover (the primary cleanup path).** Each subagent return is prefaced with a `handover:` envelope (`role`, `cycle`, `status`, `next-action` — schema in [`../element-interactions/references/subagent-return-schema.md`](../element-interactions/references/subagent-return-schema.md) §2.0). In this pattern, a PostToolUse:Agent consumer parses the envelope, cycle-matches against the registry entry, and **deregisters the slot immediately on terminal status** instead of waiting for TTL. Cycle-mismatch (envelope claims a different cycle than the registered dispatch) refuses to deregister and asks the orchestrator to redispatch under the correct cycle. This shorter leash matters because the orchestrator's redispatch under the same slug can race with stale handovers from a slow / auto-compacted prior cycle — the cycle-match contract pins the deregistration to one specific dispatch.
+4. **Explicit deregistration on terminal handover (the primary cleanup path).** Each subagent return is prefaced with a `handover:` envelope (`role`, `cycle`, `status`, `next-action` — schema in [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) §2.0). In this pattern, a PostToolUse:Agent consumer parses the envelope, cycle-matches against the registry entry, and **deregisters the slot immediately on terminal status** instead of waiting for TTL. Cycle-mismatch (envelope claims a different cycle than the registered dispatch) refuses to deregister and asks the orchestrator to redispatch under the correct cycle. This shorter leash matters because the orchestrator's redispatch under the same slug can race with stale handovers from a slow / auto-compacted prior cycle — the cycle-match contract pins the deregistration to one specific dispatch.
 
 The reference implementation paired a dispatch-guard registrar (registering `composer-j-*` / `composer-sj-*` / `probe-j-*` / `probe-sj-*` dispatches with a `cycle` field) with a direct-compose-block consumer (gating `tests/e2e/{j,sj}-*.spec.ts` writes against the registry) and `hooks/subagent-return-schema-guard.sh` (parses the handover envelope, cycle-matches, deregisters terminal handovers). All three registry-coupled behaviours were removed in the 0.3.6 cleanup; `subagent-return-schema-guard.sh` survives, but today it only validates returns against the role schemas via the bundled validator — it no longer parses-and-deregisters registry entries. The pattern avoids false positives that would otherwise force a WARN — the gate runs as a hard DENY because the registry mechanically distinguishes legitimate from violation, and the leash is bounded by the explicit handover instead of the looser 30-min window. (Reference implementation removed in 0.3.6; pattern documented here for future contributors.)
 
@@ -1099,7 +1099,7 @@ Three pathways depending on what you're already shipping:
 
 ### Cross-link discipline
 
-When a new entry refines an existing Stage 4 / 4a row in `failure-diagnosis/SKILL.md`, update that row to point at the new entry — short citation only (`see [\`references/niche-edge-cases.md\`](references/niche-edge-cases.md) entry (N)`), don't duplicate the entry's prose into the SKILL.md table cell. The table is the skim path; the catalogue carries the depth.
+When a new entry refines an existing Stage 4 / 4a row in `failure-diagnosis/SKILL.md`, update that row to point at the new entry — short citation only (`see [\`references/niche-edge-cases.md\`](../failure-diagnosis/references/niche-edge-cases.md) entry (N)`), don't duplicate the entry's prose into the SKILL.md table cell. The table is the skim path; the catalogue carries the depth.
 
 When a new entry is a brand-new shape with no existing Stage 4 / 4a row, leave the cross-link as `(none — new shape)`. Don't fabricate a Stage 4 row to point back at the entry; let the table remain stable until the shape is well-trodden enough to deserve a row.
 
@@ -1126,7 +1126,7 @@ const cssVar = await locator.evaluate(el => getComputedStyle(el).getPropertyValu
 
 Stop. The right path:
 
-1. **Check if the framework already supports it.** Read `skills/element-interactions/references/api-reference.md` end-to-end. The matcher tree, predicate form, `.css(prop)`, and `interactions` raw escape hatch cover most needs.
+1. **Check if the framework already supports it.** Read `skills/achilles-protocol/references/api-reference.md` end-to-end. The matcher tree, predicate form, `.css(prop)`, and `interactions` raw escape hatch cover most needs.
 
 2. **Run the duplicate-prevention checks** from the "Before filing an issue or opening a PR" hard rule above — search existing issues/PRs (open + closed) in both repos, diff local vs. `origin/main`, and confirm your pinned dependency version is the latest. A large share of "missing API" reports are already fixed on main or in a newer published version.
 
@@ -1188,7 +1188,7 @@ Before opening a PR on element-interactions:
 - [ ] Coverage 100%: `npx test-coverage --format=github-plain` shows ✅
 - [ ] No raw Playwright leak: `grep -rn "locator\.\(click\|fill\|...\)" src/ --include="*.ts"` returns zero matches in non-`Element`-impl code
 - [ ] **No version bump in this PR** (Rule 15 — versioning is release-time, not per-PR). Bump only when the user has explicitly authorised it in the conversation.
-- [ ] API reference updated (`skills/element-interactions/references/api-reference.md`) — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
+- [ ] API reference updated (`skills/achilles-protocol/references/api-reference.md`) — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
 - [ ] README updated under `🛠️ API Reference: Steps` — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
 - [ ] If adding a new method, it has a JSDoc block on the public-facing class
 - [ ] `.contribution-handover.json` populated against `schemas/contribution-handover.schema.json` — every boolean set; every `false` / `"n/a"` paired with a specific `*Reason` field (methodology rule — the harness gate that previously verified this on push / PR-create was retired in 0.3.6 for public-dep cleanliness)

@@ -65,7 +65,7 @@ If any one of those is satisfied, exit silently — Stage 2 already has a workin
 
 When both gates pass, the skill activates from any of:
 
-1. **Stage 2 inspection escalation** — `element-interactions` orchestrator reports "no stable selector available" and dispatches `selector-development` with `mode: "jit"` and the element-key/scope.
+1. **Stage 2 inspection escalation** — `achilles-protocol` orchestrator reports "no stable selector available" and dispatches `selector-development` with `mode: "jit"` and the element-key/scope.
 2. **`failure-diagnosis` escalation** — failure-diagnosis attributes a flake/break root cause to a fragile selector and dispatches `selector-development` with `mode: "jit"`.
 3. **On-demand user invocation** — the user says "add stable selectors to the cart drawer" (JIT) or "audit selectors across the app" / `mode: "audit"` (Audit).
 

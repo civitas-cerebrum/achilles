@@ -31,7 +31,7 @@ description: >
   inspection, browser-console review, root cause hypothesis, then fixes test
   issues autonomously or reports app bugs with evidence.
 
-  Auto-invoked via Skill tool from element-interactions Rule 7 (after
+  Auto-invoked via Skill tool from achilles-protocol Rule 7 (after
   the orchestrator dispatches the subagent), test-composer's stabilization
   loop, bug-discovery's adversarial probes, test-repair's per-cluster
   diagnosis, and any subagent that runs tests and observes a failure —
@@ -275,7 +275,7 @@ git show <headSha>:playwright.config.ts | grep -nE "trace:|retries:|video:|scree
 grep -nE "trace:|retries:|video:|screenshot:" playwright.config.ts   # your working tree, for the diff
 ```
 
-**When no trace exists for the failing attempt**, do not treat that as permission to diagnose from the log. Work the rest of the evidence floor — `test-failed-1.png`, `error-context.md` (which carries the full aria page snapshot at the moment of failure), `video.webm`, and the JSON reporter's `stderr` / `annotations` — and state in the report that the trace was unavailable and why. Then, separately from the diagnosis, flag the config: `trace: 'on-first-retry'` is a known evidence gap and `retain-on-failure` is this suite's documented default (see `element-interactions/SKILL.md` Rule 8). Fixing it is a follow-up item, not a substitute for this session's evidence.
+**When no trace exists for the failing attempt**, do not treat that as permission to diagnose from the log. Work the rest of the evidence floor — `test-failed-1.png`, `error-context.md` (which carries the full aria page snapshot at the moment of failure), `video.webm`, and the JSON reporter's `stderr` / `annotations` — and state in the report that the trace was unavailable and why. Then, separately from the diagnosis, flag the config: `trace: 'on-first-retry'` is a known evidence gap and `retain-on-failure` is this suite's documented default (see `achilles-protocol/SKILL.md` Rule 8). Fixing it is a follow-up item, not a substitute for this session's evidence.
 
 **7. Open the trace.** Interactive, when a human is watching:
 
@@ -366,7 +366,7 @@ A root cause proposed without the evidence floor is a guess, and Stage 4a's prec
 5. **Read the browser console** (floor #3). Note app-code errors, failed requests, CSP/blocked-resource notices, and framework warnings. Distinguish third-party noise from app-origin errors; only the latter is evidence about the app.
 6. **Read the JSON reporter's `stderr` and `annotations` for the failing result** (Stage 0b step 5). The `tester:*` step log in `stderr` is the framework's own account of what it did — including how many times a retry loop ran; an empty `annotations` array proves a fallback path did not fire.
 7. **Watch the video** when the trace is absent or the failure is motion-dependent (scroll, animation, transient overlay) — `video.webm` sits beside the screenshot in the same attempt directory.
-8. **If the evidence is still insufficient:** use `@playwright/cli` (see [`../element-interactions/references/playwright-cli-protocol.md`](../element-interactions/references/playwright-cli-protocol.md)) to navigate to the failing page URL and take a fresh snapshot — `npx playwright-cli -s=fd-<short-slug> open --browser=chromium <URL>` then `npx playwright-cli -s=fd-<short-slug> snapshot`. Inspect the DOM for the element the test was trying to interact with. For Entrypoint C, note that this is a *different environment* from the run under diagnosis; differences between the two are themselves evidence, not corrections.
+8. **If the evidence is still insufficient:** use `@playwright/cli` (see [`../achilles-protocol/references/playwright-cli-protocol.md`](../achilles-protocol/references/playwright-cli-protocol.md)) to navigate to the failing page URL and take a fresh snapshot — `npx playwright-cli -s=fd-<short-slug> open --browser=chromium <URL>` then `npx playwright-cli -s=fd-<short-slug> snapshot`. Inspect the DOM for the element the test was trying to interact with. For Entrypoint C, note that this is a *different environment* from the run under diagnosis; differences between the two are themselves evidence, not corrections.
 
 ### Stage 2 — Group Failures
 
@@ -449,7 +449,7 @@ Before finalizing your classification, run through this checklist:
 | **Environment differences** | Failure only in CI, passes locally; or vice versa | Note the environment context; check viewport size, network conditions, base URL differences. Often a test issue — add resilience |
 | **CI-only, "passes for me"** | Entrypoint C: the test passes on a local re-run. Compare the CI trace against the local run — base URL, viewport env, browser project, locale, blocked third-party scripts in the CI console, worker count, **and the dependency versions the run resolved vs. yours (Stage 0a)**. The CI trace is authoritative for what CI did. | Do NOT close as "not reproducible". Either name the environmental difference the CI trace shows, classify as a framework/dependency defect if the versions differ, or classify as flaky and follow (f) — a green local run is not evidence the CI failure was spurious |
 | **The only trace shows a clean pass** | The `trace.zip` you opened came from `-retry1/`, and under `trace: 'on-first-retry'` that is the attempt that succeeded. Check the sibling attempt-0 directory (Stage 0b step 5). | Not a classification — an evidence error. Re-read attempt 0's screenshot / `error-context.md` / video and the JSON reporter's `stderr` before classifying anything |
-| **Failure originates inside the framework** | Stack-trace frames run through `node_modules/.../element-interactions/...`; the run's resolved version is older than your local one (Stage 0a) | **Framework / dependency defect** — heal `(i)` upgrade. Not a test issue, not an app bug |
+| **Failure originates inside the framework** | Stack-trace frames run through `node_modules/.../@civitas-cerebrum/element-interactions/...`; the run's resolved version is older than your local one (Stage 0a) | **Framework / dependency defect** — heal `(i)` upgrade. Not a test issue, not an app bug |
 | **Partial page load** | Page loaded but a specific section didn't render (lazy-loaded component, conditional feature flag) | Inspect DOM for presence of the container; app bug if the component is missing from the DOM, test issue if it needs a wait |
 | **Stale browser state** | Cookies, localStorage, or cached data from a previous test contaminating the current one | Test isolation issue — test issue. Ensure tests don't depend on shared state |
 | **Navigation race** | URL shows an intermediate state; page is mid-redirect when the test tries to interact | Test issue — add `verifyUrlContains` or `waitForState` after navigation |
@@ -470,7 +470,7 @@ When to append (criteria — must hold ALL):
 
 When all three hold, follow the entry shape documented in `references/niche-edge-cases.md` §"Adding an entry" (Symptom / Why LLMs struggle / Disambiguating probe / Classification / Cross-link). Keep entries tight — one paragraph per field, not a war story.
 
-Contribution path for promoted entries: see `skills/contributing-to-element-interactions/SKILL.md` §"Contributing to the niche-edge-cases catalogue" — covers the criteria above, the entry template, and how to ship the change as part of either a normal PR or a standalone docs PR.
+Contribution path for promoted entries: see `skills/contributing-to-achilles-protocol/SKILL.md` §"Contributing to the niche-edge-cases catalogue" — covers the criteria above, the entry template, and how to ship the change as part of either a normal PR or a standalone docs PR.
 
 ### Stage 4a — Heal strategy selection
 
@@ -571,7 +571,7 @@ If triage attributes the failure to a fragile selector (text drift, position-dep
 
 ### Stage 5 — Fix and stability (test issues only)
 
-1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly — refer to [`../element-interactions/references/api-reference.md`](../element-interactions/references/api-reference.md) for all method signatures.
+1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly — refer to [`../achilles-protocol/references/api-reference.md`](../achilles-protocol/references/api-reference.md) for all method signatures.
 2. **If the fix requires new selectors:** Stage 4b has produced the proposal. For Auto strategies the update applies directly; for Propose strategies confirm with the operator first.
 3. **Run the test 3-5 times** to confirm stability. A single pass is not sufficient — flaky tests are worse than failing tests.
    ```bash
@@ -638,7 +638,7 @@ If any run in the stability check fails, the fix is incomplete. Do not commit �
 | `bug-discovery` | When adversarial tests fail | After heal + stability OR bug report → return to caller |
 | `test-repair` | Per cluster in its Stage 4 (batch repair pipeline) | Diagnose the cluster's representative, apply heal once for the whole cluster, return outcome (Healed / App bug / Operator-pending / Quarantined) |
 | `self-repair` | Per red spec file, inside each `repair-worker-*` worker | Same contract as `test-repair`, one worker per file |
-| `element-interactions` | A pipeline run went red and the user asks why (Entrypoint C) | Dispatch an `fd-ci-<run-id>:` subagent; it runs Stage 0 → Stage 0a → Stage 0b → the full pipeline and returns the diagnosis with run provenance |
+| `achilles-protocol` | A pipeline run went red and the user asks why (Entrypoint C) | Dispatch an `fd-ci-<run-id>:` subagent; it runs Stage 0 → Stage 0a → Stage 0b → the full pipeline and returns the diagnosis with run provenance |
 
 After a successful heal + stability confirmation, control returns to the calling skill.
 
@@ -664,4 +664,4 @@ The operator can override back to single-failure mode if they have a reason to k
 
 ## API Reference
 
-Refer to [`../element-interactions/references/api-reference.md`](../element-interactions/references/api-reference.md) for all method signatures, argument orders, and types. All Steps methods use `(elementName, pageName)` order.
+Refer to [`../achilles-protocol/references/api-reference.md`](../achilles-protocol/references/api-reference.md) for all method signatures, argument orders, and types. All Steps methods use `(elementName, pageName)` order.

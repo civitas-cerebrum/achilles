@@ -13,7 +13,7 @@ description: >
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
-> **Skill names: see registry.** All skill invocation strings are canonical in [`skill-registry.md`](../element-interactions/references/skill-registry.md). Never reconstruct them from memory.
+> **Skill names: see registry.** All skill invocation strings are canonical in [`skill-registry.md`](../achilles-protocol/references/skill-registry.md). Never reconstruct them from memory.
 
 # Perf-onboarding — seven-phase performance bootstrap
 

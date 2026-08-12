@@ -375,7 +375,7 @@ the interactive orchestrator applies the same rules with Write/Edit):
 | `failure-diagnosis` | Loaded by every worker for the atomic heal-or-classify work. Its contract is unchanged. |
 | `test-repair` | Sibling entrypoint (cluster-first, in-session). Its Bug-vs-Heal Discipline is normative here. Prefer it when one shared root cause dominates. |
 | `bug-discovery` | Separate concern — self-repair reports bugs it encounters, it does not probe for new ones. |
-| `element-interactions` | Workers use the Steps API + page repository when healing selectors. |
+| `achilles-protocol` | Workers use the Steps API + page repository when healing selectors. |
 | `onboarding` | Phase 1 scaffold wires `"test:repair": "achilles-self-repair"` into the consumer's `package.json`; per-flow presets are derived from suite scripts via `--init-scripts` (see "Per-flow repair presets"). |
 | `work-summary-deck` | May consume `report.json` as input data for a stakeholder deck. |
 

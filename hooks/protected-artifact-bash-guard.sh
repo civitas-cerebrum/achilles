@@ -31,7 +31,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/harness-hooks.md
+# skills/achilles-protocol/references/harness-hooks.md
 
 set -uo pipefail
 
@@ -127,7 +127,7 @@ Command: ${CMD}
 
 If this only READS the artifact, approve it. If it WRITES the artifact, cancel and use the Write/Edit tool instead (that is where the harness gates live).
 
-See: skills/element-interactions/references/harness-hooks.md" '{
+See: skills/achilles-protocol/references/harness-hooks.md" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "ask",

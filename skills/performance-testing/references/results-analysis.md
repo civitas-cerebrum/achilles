@@ -25,7 +25,7 @@ the canonical finding format (Finding-ID `<journey-slug>-perf-<nn>`), with sever
 | Soak-test latency / memory creep over time | `high` |
 
 The `scope` / `expected` / `observed` / `coverage` field mapping follows
-`../../element-interactions/references/subagent-return-schema.md`.
+`../../achilles-protocol/references/subagent-return-schema.md`.
 
 ## Regression vs baseline
 
