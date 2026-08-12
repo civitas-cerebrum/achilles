@@ -120,16 +120,29 @@
 #   an evidence bundle for a ticket nobody tested.
 # * **`gh` invocation forms.** Wrapper prefixes (`env`, `command`, `time`,
 #   `nohup`, `exec`, `eval`, `sh -c`, `bash -lc`, leading `VAR=val`
-#   assignments, an absolute or relative path to `gh`) ARE stripped and gated.
-#   Not gated: `gh` reached through an alias, a shell function, a wrapper
-#   script, `xargs`, or a heredoc. A PreToolUse hook sees a command string, not
-#   a resolved process.
+#   assignments, an absolute or relative path to `gh`, a backslash-escaped
+#   `\gh`) ARE stripped and gated, and `--draft` is recognised in both its bare
+#   and its `--draft=true` form (`--draft=false` is not a draft and does not
+#   exempt). Not gated: `gh` reached through an alias, a shell function, a
+#   wrapper script, `xargs`, or a heredoc. A PreToolUse hook sees a command
+#   string, not a resolved process.
+# * **Comment bodies are read from `.body` / `.commentBody` / `.comment` /
+#   `.text`.** A vendor that names the field something else, or sends it as a
+#   structured document rather than a string, is not classifiable and allows.
 # * **Secret detection is name-and-shape based.** Header, cookie and
 #   query-string NAMES are matched against a fixed vocabulary, and HAR request/
 #   response body text is matched for `access_token`-shaped assignments. A
 #   credential in a field named nothing like a credential is not found. High-
 #   entropy scanning is deliberately not attempted — the false-positive rate on
 #   real artifacts is what gets a gate disabled.
+# * **Multi-valued headers are scanned pair-by-pair, but only in `k=v` shape.**
+#   A `cookie` / `set-cookie` value holds many credentials at once, so each
+#   `;`-separated pair is judged on its own key and its own value — otherwise
+#   one redacted pair vouches for every live pair beside it, which is exactly
+#   the partial redaction this branch exists to catch. A credential
+#   concatenated into such a header WITHOUT a `name=` in front of it is seen
+#   only by the whole-value test, and a placeholder elsewhere in the header
+#   still launders it.
 # * **`console.log` is unstructured**, so its scan is line-and-occurrence based
 #   rather than structural. Each occurrence is checked for a redaction
 #   placeholder individually (a placeholder elsewhere on the line does not
@@ -243,15 +256,48 @@ strip_quoted() {
 # `env`, `command`, `time`, `nohup`, `exec`, `eval`, `sh -c`, `bash -lc` and
 # leading `VAR=val` assignments are how people actually script `gh` — treating
 # them as evasions to be ignored left every one of them ungated.
+#
+# The assignment arm is matched against the FIRST TOKEN ONLY, and its name part
+# must be identifier characters. An earlier version used the glob
+# `[A-Za-z_]*=*\ *`, which does not mean "starts with an assignment" — it means
+# "contains `=` with a space somewhere after it", so it matched the gh command
+# itself and peeled `gh` away word by word. `gh pr create --base=main --fill`
+# (the flag form in gh's own documentation, with any argument after it) silently
+# disabled the gate. That regression was strictly worse than the hole it was
+# written to close, because it fired on ordinary interactive use rather than on
+# opt-in scripting forms.
+#
+# EVERY arm below must consume at least one character before it `continue`s, and
+# the assignment arm strips the TOKEN rather than "up to the first space" for
+# exactly that reason: `${s#* }` on a segment with no space is a no-op, so the
+# first draft of the fix above spun forever on a bare `A=1` — an ordinary Bash
+# command, on which the gate then rendered no decision at all until the harness
+# timed it out. A hook that never returns is a hook that is off, and it takes
+# the tool call with it. PEEL_CAP is the belt to that braces: if a future arm is
+# added that can fail to consume, the loop gives up and lets the segment be
+# judged as-is instead of hanging the tool call.
+PEEL_CAP=32
 normalise_segment() {
-  local s="$1" peeled=0
-  while :; do
+  local s="$1" peeled=0 tok name i=0
+  while [ "$i" -lt "$PEEL_CAP" ]; do
+    i=$((i + 1))
     s="${s#"${s%%[![:space:]]*}"}"
     case "$s" in
-      \"*|\'*)                                   s="${s#?}"    ; peeled=1; continue ;;
+      \"*|\'*|\\*) s="${s#?}"; peeled=1; continue ;;
       env\ *|command\ *|time\ *|nohup\ *|exec\ *|eval\ *) s="${s#* }"; peeled=1; continue ;;
       sh\ *|bash\ *|zsh\ *|dash\ *)              s="${s#* }"   ; peeled=1; continue ;;
-      [A-Za-z_]*=*\ *)                           s="${s#* }"   ; peeled=1; continue ;;
+    esac
+    tok="${s%%[[:space:]]*}"
+    case "$tok" in
+      [A-Za-z_]*=*)
+        name="${tok%%=*}"
+        case "$name" in
+          *[!A-Za-z0-9_]*) ;;
+          # Strip the token itself — never "up to the first space", which does
+          # nothing when the segment IS the assignment.
+          *) s="${s#"$tok"}"; peeled=1; continue ;;
+        esac
+        ;;
     esac
     # A flag can only belong to a wrapper we already peeled (`sh -c`, `bash -lc`).
     if [ "$peeled" = "1" ]; then
@@ -282,9 +328,12 @@ if [ "$IS_PR" = "1" ]; then
   done < <(printf '%s\n' "$CMD" | tr ';&|(){}' '\n')
 
   [ -n "$GH_SEGMENT" ] || exit 0
-  # Sharing work in progress is not a claim that it is verified.
+  # Sharing work in progress is not a claim that it is verified. `--draft=true`
+  # is the same flag — pflag accepts the `=` form for booleans, and scripts that
+  # compute draftness (`--draft=$IS_DRAFT`) reach for it. `--draft=false` is NOT
+  # a draft and deliberately does not match.
   printf '%s' "$(strip_quoted "$GH_SEGMENT")" |
-    grep -qE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)' && exit 0
+    grep -qE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)|(^|[[:space:]])(--draft|-d)=(true|1|y|yes)([[:space:]]|$)' && exit 0
 fi
 
 # ─── tracker surfaces: is this actually sign-off? ───────────────────────────
@@ -302,7 +351,15 @@ if [ "$IS_TRANSITION" = "1" ]; then
 fi
 
 if [ "$IS_COMMENT" = "1" ]; then
-  BODY="$(printf '%s' "$ARGS" | "$JQ" -r '.body // empty')"
+  # Comment bodies are not called `body` everywhere. Jira's comment tool sends
+  # `.commentBody`; reading `.body` alone left BOTH branches dead on a tool this
+  # hook names in its own matcher — the same "names a tool it cannot gate"
+  # defect review already caught on the transition surface, missed one surface
+  # over. Non-string shapes are dropped rather than stringified so an ADF
+  # document object cannot match on its own field names.
+  BODY="$(printf '%s' "$ARGS" | "$JQ" -r '
+      [ .body?, .commentBody?, .comment?, .text? ]
+      | map(select(type == "string")) | join("\n")' 2>/dev/null || true)"
   printf '%s' "$BODY" | grep -qiE 'qa (test )?report|acceptance criteri|verdict|sign.?off|AC-[0-9]' || exit 0
 fi
 
@@ -450,18 +507,38 @@ scan_har() {
   # HAR is JSON, so walk it structurally. A minified HAR is ONE line, which
   # defeats any "is there a placeholder nearby" line heuristic: a single
   # redacted header would launder every live one beside it.
+  #
+  # `field_live` exists because one header can hold MANY credentials: a `cookie`
+  # / `set-cookie` value is a `;`-separated list of `k=v` pairs, so judging the
+  # whole string against the placeholder vocabulary lets one redacted pair vouch
+  # for every live pair beside it. That is the same laundering the structural
+  # walk exists to prevent, one level further in — and partial redaction is
+  # precisely the state this branch is meant to catch. So each pair is ALSO
+  # judged on its own, by its own key, against the same name vocabulary. The
+  # whole-value test is kept as the first disjunct: this is additive, it never
+  # turns an existing finding into a pass.
   names="$("$JQ" -r --arg ph "$PLACEHOLDER_RE" --arg nre "$NAME_RE" --arg bre "$BODY_RE" '
       def live: tostring | (length > 0) and (test($ph; "i") | not);
+      def field_live:
+        (tostring) as $s
+        | ($s | live)
+          or ( [ $s | split(";")[]
+                    | sub("^[[:space:]]+"; "")
+                    | select(test("="))
+                    | { k: (split("=")[0] | ascii_downcase),
+                        v: (split("=") | .[1:] | join("=")) }
+                    | select(.k | test($nre))
+                    | select(.v | live) ] | length > 0 );
       ( [ .. | objects
           | select(has("name") and has("value"))
           | select((.name | type) == "string")
           | select(.name | ascii_downcase | test($nre))
-          | select(.value | live)
+          | select(.value | field_live)
           | "field `" + (.name | ascii_downcase) + "`" ]
       + [ .. | objects | to_entries[]
           | select((.value | type) == "string")
           | select(.key | ascii_downcase | test($nre))
-          | select(.value | live)
+          | select(.value | field_live)
           | "field `" + (.key | ascii_downcase) + "`" ]
       + [ .log?.entries[]? | (.request?.postData?.text?, .response?.content?.text?)
           | select(type == "string")

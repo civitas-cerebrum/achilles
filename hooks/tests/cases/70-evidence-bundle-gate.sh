@@ -37,6 +37,31 @@ bash_cmd() {
   "$JQ" -nc --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}'
 }
 
+# A hook that never returns is a hook that is OFF — and it takes the tool call
+# with it until the harness times it out. The runner sources case files into one
+# shell, so a non-terminating hook HANGS the suite rather than failing it, which
+# is the one failure mode a pass/fail assertion cannot report. This bounds the
+# run at ~10s and calls a hang what it is.
+assert_terminates() {
+  local hook="$1" stdin="$2" name="$3" tmp n=0 p
+  TESTS_RUN=$((TESTS_RUN + 1))
+  tmp="$(mktemp)"
+  printf '%s' "$stdin" > "$tmp.in"
+  { bash "$hook" < "$tmp.in" > "$tmp" 2>/dev/null; } &
+  p=$!
+  while kill -0 "$p" 2>/dev/null && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n + 1)); done
+  if kill -0 "$p" 2>/dev/null; then
+    kill -9 "$p" 2>/dev/null
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    FAIL_DETAILS+=("${name}: hook did not terminate within 10s")
+    echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(hook did not terminate)${CLR_RST}"
+  else
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
+  fi
+  rm -f "$tmp" "$tmp.in"
+}
+
 # Isolated workspace: a git repo with a real commit (so the branch name
 # resolves) and a nested evidence directory, because bundles do not live at a
 # fixed depth — projects put them under apps/<x>/tests/evidence as readily as
@@ -407,6 +432,134 @@ printf 'Authorization: Bearer\n' > "$CLOG"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "a scheme with no value → ALLOW (nothing leaked)"
 rm -f "$CLOG"
+
+section "evidence-gate: an '=' inside a gh flag must not peel the gh away"
+# `--base=main --fill` is the form in gh's own documentation. The wrapper-prefix
+# peel was first written with the glob `[A-Za-z_]*=*\ *`, which does NOT mean
+# "starts with a VAR=val assignment" — it means "contains `=` with a space
+# somewhere after it", so it matched the gh command itself and peeled `gh` away
+# word by word. Every one of these silently disabled the gate, on ordinary
+# interactive use rather than on an opt-in scripting form.
+#
+# Both directions are pinned deliberately: the branch bundle is parked so these
+# must DENY, then restored so the SAME commands must ALLOW. A gate that is
+# simply off passes only half of this section.
+# Park / restore the entry-B branch bundle so the same command can be asserted
+# in both directions. A dot-prefixed name is invisible to the hook's `*/` globs.
+park_branch_bundle()    { mv "$EVI/feat-widget-toggle-20260812-180000" "$EVI/.parked-branch-bundle"; }
+restore_branch_bundle() { mv "$EVI/.parked-branch-bundle" "$EVI/feat-widget-toggle-20260812-180000"; }
+
+park_branch_bundle
+EQ_FORMS=(
+  'gh pr create --base=main --fill'
+  'gh pr create --title=x --body=y'
+  'gh pr create --base=main --title x'
+  'gh pr ready --repo=owner/name 12'
+  '\gh pr create --fill'
+  'GH_HOST=github.com gh pr create --base=main --fill'
+)
+for c in "${EQ_FORMS[@]}"; do
+  assert_deny "$H" "$(bash_cmd "$c")" "no branch bundle → DENY: $c" "no evidence bundle"
+done
+restore_branch_bundle
+for c in "${EQ_FORMS[@]}"; do
+  assert_allow "$H" "$(bash_cmd "$c")" "branch bundle present → ALLOW: $c"
+done
+
+section "evidence-gate: every peel arm consumes, so the hook always returns"
+# The first fix for the section above stripped "up to the first space", which is
+# a no-op on a segment that IS the assignment — `A=1` spun forever. A hook that
+# never returns renders no decision at all, so the gate is off AND the tool call
+# is stuck behind it. These bound the run rather than asserting a verdict: a
+# reintroduction fails the suite instead of hanging it.
+#
+# Two independent defences make the hang unreachable — every peel arm consumes,
+# and the loop is capped — so NEITHER is observable on its own; a mutation has
+# to remove both before these assertions have anything to report. That is the
+# point of a belt-and-braces pair, and it is stated here so a future reader does
+# not delete one of them for looking dead. Note also that only `assert_terminates`
+# is bounded: if both defences go, these report the hang and a later unbounded
+# assertion then stalls the runner.
+assert_terminates "$H" "$(bash_cmd 'A=1')" \
+  "a bare assignment segment terminates"
+assert_terminates "$H" "$(bash_cmd 'FOO=bar&&gh pr create --fill')" \
+  "an assignment glued to && terminates"
+assert_terminates "$H" "$(bash_cmd 'GH_TOKEN=x;gh pr ready 3')" \
+  "an assignment glued to ; terminates"
+assert_terminates "$H" "$(bash_cmd 'A=1 B=2 C=3 D=4 E=5')" \
+  "a run of assignments terminates"
+assert_terminates "$H" "$(bash_cmd '=')" \
+  "a lone = terminates"
+# Termination is necessary, not sufficient — the verdict still has to be right.
+park_branch_bundle
+assert_deny "$H" "$(bash_cmd 'A=1&&gh pr create --title x --body y')" \
+  "assignment glued to && is still gated" "no evidence bundle"
+restore_branch_bundle
+assert_allow "$H" "$(bash_cmd 'A=1')" \
+  "a bare assignment is not a PR publish → ALLOW"
+# Only an identifier-shaped name is an assignment. `a-b=c` is a COMMAND name to
+# a real shell (assignment names cannot contain `-`), so gh never runs and the
+# gate must not reach past it.
+park_branch_bundle
+assert_allow "$H" "$(bash_cmd 'a-b=c gh pr create --fill')" \
+  "a non-identifier name is not an assignment → ALLOW (gh never runs)"
+restore_branch_bundle
+
+section "evidence-gate: --draft is recognised in its = form, and only when true"
+assert_allow "$H" "$(bash_cmd 'gh pr create --draft=true --fill')" \
+  "--draft=true → ALLOW (pflag accepts the = form for booleans)"
+assert_allow "$H" "$(bash_cmd 'gh pr create --draft=1 --fill')" \
+  "--draft=1 → ALLOW"
+park_branch_bundle
+assert_deny "$H" "$(bash_cmd 'gh pr create --draft=false --fill')" \
+  "--draft=false is NOT a draft → DENY" "no evidence bundle"
+restore_branch_bundle
+
+section "evidence-gate: the comment surface reads more than one body field"
+# `addCommentToJiraIssue` is named in this hook's own matcher, and reading
+# `.body` alone left BOTH of its branches dead on it — the same "names a tool it
+# cannot actually gate" defect review caught on the transition surface, missed
+# one surface over.
+assert_warn "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-404", commentBody:"QA Test Report: AC-1 and AC-2 pass"}}')" \
+  "Jira commentBody verdict, no bundle → WARN" "no evidence bundle"
+assert_allow "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-404", commentBody:"rebased onto main, retriggering CI"}}')" \
+  "Jira commentBody ordinary → ALLOW"
+assert_allow "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-404", commentBody:{type:"doc", content:[]}}}')" \
+  "Jira ADF document body → ALLOW (not a string, not classifiable, not stringified)"
+assert_allow "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-1", commentBody:"QA Test Report: AC-1 pass"}}')" \
+  "Jira commentBody verdict WITH a bundle → ALLOW"
+
+section "evidence-gate: one header can hold many credentials"
+# A cookie / set-cookie value is a `;`-separated list of pairs. Judging the whole
+# string against the placeholder vocabulary let ONE redacted pair vouch for every
+# live pair beside it — the same laundering the structural walk exists to prevent,
+# one level further in. Partial redaction is precisely the state this branch is for.
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"consent=REDACTED; auth_token=LIVEcookieValue"}]}}]}}' > "$HARB"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "a redacted pair does NOT launder a live pair in the same header → DENY" "live credential"
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"set-cookie","value":"_ga=GA1.2.9; sid=REDACTED; session_token=eyJhbGciLIVE"}]}}]}}' > "$HARB"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "set-cookie with one live pair among redacted ones → DENY"
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"consent=REDACTED; auth_token=[REDACTED]"}]}}]}}' > "$HARB"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "every credential-bearing pair in the header redacted → ALLOW"
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"_ga=GA1.2.9; sessionCartId=cart-7; consent=yes"}]}}]}}' > "$HARB"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "an unredacted cookie header is still a finding on its own (whole-value test kept)"
+rm -f "$HARB"
+
+section "evidence-gate: a console log in a per-environment subdirectory is scanned"
+# The subdirectory globs on the console scan were decorative — every console
+# case landed at the bundle root, so deleting them changed nothing.
+mkdir -p "$BUN/preview"
+CSUB="$BUN/preview/console.log"
+printf 'x-deployment-protection-bypass: aB3xQ9zzSubdirValue\n' > "$CSUB"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "live credential in preview/console.log → DENY" "preview/console.log"
+printf 'x-deployment-protection-bypass: [REDACTED]\n' > "$CSUB"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "redacted preview/console.log → ALLOW"
+rm -rf "$BUN/preview"
 
 section "evidence-gate: the escape hatch is honoured"
 CIVITAS_DISABLE_EVIDENCE_GATE=1 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done ABC-404)" \
