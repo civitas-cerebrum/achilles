@@ -68,7 +68,13 @@
 #                                                                evidence, skip
 #                                                                traces/videos, WARN
 # - Older runs pruned past the retention window                → WARN (never silent)
-# - jq missing / copy error / unreadable config                → silent no-op, exit 0
+# - Copy short of what was intended (disk full, permissions)   → archive kept and
+#                                                                marked incomplete,
+#                                                                WARN, fingerprint
+#                                                                NOT stamped so the
+#                                                                next invocation
+#                                                                retries
+# - jq missing / unwritable archive root / unreadable config   → silent no-op, exit 0
 
 set -u
 
@@ -311,6 +317,25 @@ for rel in "${CANDIDATES[@]}"; do
 done
 ARCHIVED_BYTES=$(stat_pairs "$DEST/artifacts" | awk '{t+=$1} END{printf "%d", t+0}')
 case "${ARCHIVED_BYTES:-}" in ''|*[!0-9]*) ARCHIVED_BYTES=0 ;; esac
+ARCHIVED_FILES=$(find "$DEST/artifacts" -type f 2>/dev/null | wc -l | tr -d ' ')
+case "${ARCHIVED_FILES:-}" in ''|*[!0-9]*) ARCHIVED_FILES=0 ;; esac
+
+# Reconcile intended against actual. `cp` failures are tolerated (the run must
+# never fail because of us) but they must never pass for a complete archive:
+# a disk-full or permission error mid-copy would otherwise write a manifest
+# claiming mode "full" and stamp the fingerprint, permanently marking a run
+# archived whose evidence never landed — and the next run then wipes the
+# originals. When the copy is short we say so and deliberately do NOT stamp
+# the fingerprint, so the next invocation (or the Stop backstop) retries.
+N_SKIPPED_FILES=$(printf '%s' "$SKIPPED_JSON" | "$JQ" -r 'length' 2>/dev/null || echo 0)
+EXPECTED_FILES=$((CAND_FILES - ${N_SKIPPED_FILES:-0}))
+EXPECTED_BYTES=$((CAND_BYTES - SKIPPED_BYTES))
+[ "$EXPECTED_FILES" -lt 0 ] && EXPECTED_FILES=0
+[ "$EXPECTED_BYTES" -lt 0 ] && EXPECTED_BYTES=0
+INCOMPLETE=false
+if [ "$ARCHIVED_FILES" -lt "$EXPECTED_FILES" ] || [ "$ARCHIVED_BYTES" -lt "$EXPECTED_BYTES" ]; then
+  INCOMPLETE=true
+fi
 
 count_matching() { find "$DEST/artifacts" -type f -name "$1" 2>/dev/null | wc -l | tr -d ' '; }
 N_TRACES=$(count_matching '*.zip'); N_VIDEOS=$(find "$DEST/artifacts" -type f \( -name '*.webm' -o -name '*.mp4' \) 2>/dev/null | wc -l | tr -d ' ')
@@ -364,24 +389,38 @@ CMD_TRUNC="$CMD"; [ ${#CMD_TRUNC} -gt 400 ] && CMD_TRUNC="${CMD_TRUNC:0:400}..."
   --argjson traces "${N_TRACES:-0}" --argjson videos "${N_VIDEOS:-0}" \
   --argjson shots "${N_SHOTS:-0}" --argjson ctx "${N_CTX:-0}" \
   --argjson retain "$RETAIN" --argjson maxMb "$MAX_MB" \
+  --argjson archFiles "${ARCHIVED_FILES:-0}" --argjson expFiles "${EXPECTED_FILES:-0}" \
+  --argjson expBytes "${EXPECTED_BYTES:-0}" --argjson incomplete "$INCOMPLETE" \
   '{ schema: "playwright-run-archive/v1", runId: $id, timestamp: $ts, trigger: $ev,
-     command: $cmd, mode: $mode, sources: $sources,
-     counts: { candidateFiles: $candFiles, traces: $traces, videos: $videos,
+     command: $cmd, mode: $mode, incomplete: $incomplete, sources: $sources,
+     counts: { candidateFiles: $candFiles, expectedFiles: $expFiles,
+               archivedFiles: $archFiles, traces: $traces, videos: $videos,
                screenshots: $shots, errorContexts: $ctx },
-     bytes: { candidate: $candBytes, archived: $archBytes, skipped: $skipBytes },
+     bytes: { candidate: $candBytes, expected: $expBytes, archived: $archBytes,
+              skipped: $skipBytes },
      skipped: $skipped,
      retention: { keep: $retain, maxMb: $maxMb, pruned: $pruned } }' \
   > "$DEST/manifest.json" 2>/dev/null || true
 
-"$JQ" -n --arg fp "$FP" --arg id "$RUN_ID" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{fingerprint:$fp, runId:$id, timestamp:$ts}' > "$FP_FILE" 2>/dev/null || true
+# Only a reconciled archive earns the fingerprint. Leaving it unstamped costs
+# at worst a duplicate archive on the next invocation; stamping it after a
+# short copy costs the evidence itself.
+if [ "$INCOMPLETE" = "false" ]; then
+  "$JQ" -n --arg fp "$FP" --arg id "$RUN_ID" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{fingerprint:$fp, runId:$id, timestamp:$ts}' > "$FP_FILE" 2>/dev/null || true
+fi
 ln -sfn "$RUN_ID" "$RUNS_DIR/latest" 2>/dev/null || true
 
 # Nothing is ever discarded silently.
-N_SKIPPED=$(printf '%s' "$SKIPPED_JSON" | "$JQ" -r 'length' 2>/dev/null || echo 0)
+N_SKIPPED="${N_SKIPPED_FILES:-0}"
 N_PRUNED=$(printf '%s' "$PRUNED_JSON" | "$JQ" -r 'length' 2>/dev/null || echo 0)
-if [ "${N_SKIPPED:-0}" -gt 0 ] || [ "${N_PRUNED:-0}" -gt 0 ]; then
+if [ "${N_SKIPPED:-0}" -gt 0 ] || [ "${N_PRUNED:-0}" -gt 0 ] || [ "$INCOMPLETE" = "true" ]; then
   MSG="[WARN] Playwright evidence archived to .achilles/runs/$RUN_ID with omissions."
+  if [ "$INCOMPLETE" = "true" ]; then
+    MSG="$MSG
+
+INCOMPLETE: $ARCHIVED_FILES of $EXPECTED_FILES file(s) copied. Some artifacts could not be written to the archive (disk full, permissions, or an I/O error). The run was NOT marked as archived, so the next run command or Stop will retry — but the originals in the outputDir survive only until the next Playwright run starts. Copy anything you need out now."
+  fi
   if [ "${N_SKIPPED:-0}" -gt 0 ]; then
     MSG="$MSG
 

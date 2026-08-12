@@ -205,6 +205,24 @@ printf 'not a directory\n' > "$PA_BROKE/.achilles"
 assert_allow "$H" "$(pa_payload "$PA_BROKE")" "unwritable archive root → silent allow, exit 0"
 assert_eq "$([ -f "$PA_BROKE/pw-artifacts/spec-failing-test/trace.zip" ] && echo yes)" "yes" "a broken archiver leaves the consumer's artifacts alone"
 
+# A PARTIAL copy failure is the dangerous one: the archive root is writable, so
+# a manifest gets written, but one file never lands. It must not pass for a
+# complete archive, and it must not stamp the fingerprint — otherwise the run is
+# permanently marked archived and the next run wipes the originals.
+PA_PART=$(pa_mktemp); pa_project "$PA_PART"
+chmod 000 "$PA_PART/pw-artifacts/spec-failing-test/trace.zip"
+pa_fire "$PA_PART"
+PA_PART_RUN=$(pa_newest "$PA_PART")
+assert_eq "$("$JQ" -r '.incomplete' "$PA_PART_RUN/manifest.json")" "true" "a short copy is marked incomplete in the manifest"
+assert_eq "$([ "$("$JQ" -r '.counts.archivedFiles' "$PA_PART_RUN/manifest.json")" -lt "$("$JQ" -r '.counts.expectedFiles' "$PA_PART_RUN/manifest.json")" ] && echo yes)" "yes" "manifest reconciles archived against expected file counts"
+assert_eq "$(printf '%s' "$PA_OUT" | "$JQ" -r '.systemMessage' 2>/dev/null | grep -c 'INCOMPLETE')" "1" "a short copy is announced, never silent"
+assert_eq "$([ -f "$PA_PART/.achilles/runs/.last-archive.json" ] && echo yes)" "" "an incomplete archive does not stamp the fingerprint"
+assert_eq "$([ -f "$PA_PART_RUN/artifacts/pw-artifacts/spec-failing-test/error-context.md" ] && echo yes)" "yes" "the files that COULD be copied are still archived"
+chmod 644 "$PA_PART/pw-artifacts/spec-failing-test/trace.zip"
+pa_fire "$PA_PART"
+assert_eq "$(pa_runs "$PA_PART")" "2" "the unstamped fingerprint makes the next invocation retry"
+assert_eq "$("$JQ" -r '.incomplete' "$(pa_newest "$PA_PART")/manifest.json")" "false" "the retry archives completely"
+
 PA_NOPROJ=$(pa_mktemp)
 assert_allow "$H" "$(pa_payload "$PA_NOPROJ")" "project with no artifacts at all → silent allow"
 assert_allow "$H" "$(payload hook_event_name=PostToolUse tool_name=Bash cwd=/nonexistent-path-xyz command='npx playwright test')" "nonexistent cwd → silent allow"
