@@ -83,6 +83,25 @@ with the suite's own timeouts, because a heal is only proven under real
 conditions, and a cap on discovery could misclassify legitimately slow
 tests app-wide.
 
+**Pipeline-sourced runs — pull the CI evidence first.** When the session
+was triggered by a red CI run rather than a local one (interactive mode:
+the user said "the nightly failed" / "CI is red"; script mode: the driver
+was handed a run id), download the run's artifacts before the discovery
+run, following [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md)
+§"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b
+— Pipeline evidence retrieval" — do not fork the procedures here. The
+run's JSON reporter output gives the red-file set without waiting for
+discovery, and each red file's downloaded `trace.zip` /
+`test-failed-1.png` / `error-context.md` goes into that file's worker
+brief (naming which attempt each artifact came from) so the worker's
+`failure-diagnosis` evidence floor starts from the execution that
+actually failed. The run's `headSha` and the framework versions it
+resolved go into every brief too — a worker reading framework source
+from the local `node_modules` when CI resolved an older version will
+diagnose a defect that is already fixed. The local discovery run still
+happens — a red file that is green locally is a CI-only failure, which
+is a classification, not a pass.
+
 **Incident-shape spacing.** A 3/3-red baseline captured in one tight
 window can be a time-varying app incident, not a deterministic failure
 (observed live: a logout journey read 3/3 red during a bad window and

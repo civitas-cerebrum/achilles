@@ -4,7 +4,10 @@ description: >
   Use this skill to restore a rotted Playwright test suite to a stable, verified green state.
   Triggers on requests like "repair the suite", "fix my tests", "restore green", "heal the suite",
   "the tests are broken", "the suite rotted", "triage the failures", "diagnose the whole suite",
-  "my suite is flaky", "the app changed and now tests fail everywhere". Also auto-escalates from
+  "my suite is flaky", "the app changed and now tests fail everywhere", "the nightly is red across the suite",
+  "the regression pipeline is failing everywhere". When the failures come from a CI run rather than a local
+  one, the run's artifacts are pulled down first (`failure-diagnosis` Stage 0b) so clustering starts from
+  evidence, not from log lines. Also auto-escalates from
   `failure-diagnosis`, `test-composer`, or `bug-discovery` when a single run produces many failures
   (≥5 failures or ≥30% of executed tests) or when failures repeat across diagnostic attempts — batch
   clustering finds shared root causes faster than per-failure diagnosis at scale. Those callers
@@ -31,6 +34,7 @@ Batch orchestrator for repairing a rotted suite. Runs the suite, clusters failur
 - "restore green", "heal the suite", "heal my tests"
 - "the suite is broken", "the suite rotted", "my tests are broken"
 - "triage the failures", "diagnose the whole suite", "my suite is flaky"
+- "the nightly is red across the suite", "the regression pipeline is failing everywhere", "triage the CI failures" — a **pipeline-sourced** repair; see Stage 0b below, which runs before Stage 1
 
 ### Auto-escalation from other skills
 
@@ -58,7 +62,19 @@ When a failure-centric workflow is already in flight, these conditions hand off 
 
 ## The Repair Pipeline
 
-Six stages, executed in order (plus Stage 5.5, which runs whenever the quarantine ledger has open entries). Each stage's output is the next stage's input.
+Six stages, executed in order (plus Stage 5.5, which runs whenever the quarantine ledger has open entries, and Stage 0b, which runs only for pipeline-sourced repairs). Each stage's output is the next stage's input.
+
+### Stage 0b — Pipeline evidence retrieval (pipeline-sourced repairs only)
+
+When the repair was triggered by a red CI run rather than a local one, pull the run's artifacts **before** the baseline. The procedure is owned by `failure-diagnosis` — follow [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md) §"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b — Pipeline evidence retrieval" verbatim (`gh run view --json headSha` → `gh api .../artifacts` → `gh run download`), and do not restate or fork them here.
+
+What this stage buys the batch pipeline:
+
+- **The red set is known before you spend three suite runs finding it.** The run's JSON reporter output names the failing specs and their error signatures directly, which is Stage 2's clustering input.
+- **Clustering starts from evidence.** Each cluster's representative already has a trace, a failure screenshot, an `error-context.md`, and console output from the run that actually failed — so Stage 4's delegated `failure-diagnosis` call opens with its evidence floor already half-satisfied. Note which *attempt* each artifact came from; under `trace: 'on-first-retry'` the only trace belongs to the retry, which may have passed.
+- **The environment is recorded.** Base URL, browser project, viewport env, the run's `headSha`, the framework versions it resolved, and the exact `playwright test` command line come out of the failing job's log; Stage 3's targeted re-runs should mirror them or the verification proves nothing about CI. A version delta between the run and the local tree is itself a cluster — one whose heal is a dependency bump, not a spec edit.
+
+Then run Stage 1 as normal. The local baseline is still required — it is what separates "broken everywhere" from "broken only in CI", and that distinction is itself a cluster.
 
 ### Stage 1 — Baseline (3 full suite runs)
 

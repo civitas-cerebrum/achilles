@@ -10,6 +10,13 @@ description: >
   ElementInteractions, baseFixture, ContextStore, page-repository.json, or any request to write, fix, or add to a
   Playwright test in this project. Also use when asked to add entries to a page-repository JSON file, use fixtures,
   select dropdowns, verify elements, wait for states, or perform any browser interaction through this framework.
+  Also triggers on test-failure and pipeline-failure intent, local or CI: "the test failed", "debug this test",
+  "why is this failing", "the nightly failed", "the nightly regression failed", "the regression failed",
+  "CI is red", "the build is red", "the pipeline failed", "the workflow failed", "the GitHub Actions run failed",
+  "the prod regression is failing", "analyse the failures", "analyze the failures", "why did the run fail",
+  "what failed in CI", "look at run <id>", "download the trace", "get the trace from CI", "check the trace",
+  "open the trace", "investigate the failure", "triage the CI failures" — these route to a dispatched
+  failure-diagnosis subagent via this skill's routing block and Rule 7 (the skill itself is subagent-only).
   Always consult this skill before generating test code or locator JSON — do not guess API shapes or invent method
   signatures. This skill is the orchestrator (Stages 1-4 inline; Stages 5-7 dispatched). Coverage-expansion intent
   ("increase test coverage", "cover the whole app", "expand the suite") routes to coverage-expansion via this
@@ -82,6 +89,7 @@ This skill is the orchestrator for a group of testing skills. It handles Stages 
 | `test-catalogue` | User asks for a "test catalogue", "scenario report", "client-ready catalogue", or an inventory of what the suite runs — opt-in only, never mandatory | Parses spec files + journey map, groups scenarios by app section and priority, renders a stakeholder-facing A4-landscape PDF catalogue (plus source HTML) with dedicated regression and skipped-with-reason sections |
 | `companion-mode` | User asks for ad-hoc functional verification with evidence (screenshots, video, trace) — opt-in only, never mandatory | Single-task evidence-first verification: produces an immutable bundle at `tests/e2e/evidence/<slug>-<ts>/`, then on a passed run proactively offers durable-automation graduation back into this orchestrator (Stage 3) or into the `onboarding` skill per the project's cascade-detector level. For projects with no element-interactions scaffold, the user is pointed at the `onboarding` skill (interactive) or an external automated CLI driver. Full behaviour: `skills/companion-mode/SKILL.md`. |
 | `selector-development` | Stage 2 finds no stable selector AND frontend source is in the workspace; or failure-diagnosis blames a fragile selector; or user says "add stable selectors" / "audit selectors across the app" | Adds an inert `data-testid` (or detected convention) to the frontend source for the unstable element; runs typecheck + unit + e2e + visual-diff; commits selector change alongside the test |
+| `failure-diagnosis` | A test fails (any mode), **or a pipeline run went red** — "the nightly failed", "the regression failed", "CI is red", "the pipeline failed", "the workflow failed", "analyse the failures", "why did the run fail", "download the trace", "check the trace", "investigate the failure" | **Subagent-only** — never load it in this transcript. Dispatch a subagent, which loads the skill and runs the evidence-first pipeline. Two entrypoints: **L** (local artifacts on disk) and **C** (pipeline — Stage 0a pins to the run's commit + dependency versions, Stage 0b pulls the run's artifacts down with `gh`, before any hypothesis). See Rule 7 below. |
 
 When any of these conditions are met, invoke the Skill tool with the companion skill name. Do not try to handle their workflows inline — they have their own staged processes.
 
@@ -140,16 +148,23 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
 - Use `{ child: { pageName: 'PageName', elementName: 'elementName' } }` over `{ child: 'td:nth-child(2)' }`.
 - This is a preference, not a hard ban — inline selectors are acceptable when a repo entry would be overkill.
 
-### 7. When a test fails: invoke the failure-diagnosis protocol
-- The base fixture captures a `failure-screenshot` on every failure.
-- Follow the full diagnostic pipeline: collect evidence (screenshot + DOM + error context), group failures by root cause, classify (test issue vs app bug vs ambiguous), check edge cases, then fix or report.
-- Do NOT guess what went wrong from the error message alone. The screenshot tells you what actually happened.
+### 7. When a test fails — locally OR in a pipeline: dispatch the failure-diagnosis protocol
+- `failure-diagnosis` is **subagent-only**. Detect the failure here, dispatch a subagent, let the subagent load the skill. Do not inline the pipeline in this transcript.
+- **Two entrypoints.** A local failure (artifacts already in `test-results/`) enters at the skill's Stage 0. A **pipeline failure** — "the nightly failed", "the regression failed", "CI is red", "the pipeline / workflow failed", "analyse the failures", "why did the run fail", "download the trace", "investigate the failure" — enters at its **Stage 0a + Stage 0b**: pin to the run's commit and the dependency versions it resolved, then pull the run's artifacts down with `gh run view` / `gh api .../artifacts` / `gh run download`, before anything else. A pipeline failure is NOT diagnosed by re-running the suite locally; that is a different execution, on a different commit, against a different dependency tree.
+- Dispatch shape for a pipeline failure: `fd-ci-<run-id>:`, brief carrying the run id, the repo slug, the failing job name, and the branch/commit.
+- Follow the full diagnostic pipeline: collect evidence, group failures by root cause, classify (test issue vs app bug vs framework/dependency defect vs ambiguous), check edge cases, then fix or report.
+- **The evidence floor is mandatory before any root cause or repair, both entrypoints and every classification:** the **trace**, the **UI/DOM at the moment of failure**, and the **browser console**. Each gets a written observation; unavailable pieces get a named reason. It binds a "test issue" call exactly as hard as an "app bug" call.
+- Do NOT guess what went wrong from the error message alone. "It's obviously a timeout" / "the stack trace already tells me" / "the trace won't add anything" are the documented failure mode, not a shortcut. The error says where execution stopped; the trace says what the page was doing.
+- The base fixture captures a `failure-screenshot` on every failure; on disk the per-attempt file is `test-results/<sanitized-title>-<project>[-retryN]/test-failed-1.png`. Attempt directories are siblings — under `trace: 'on-first-retry'` the only trace belongs to the retry, which may have passed.
 - If the screenshot shows a selector problem, re-inspect the live DOM before changing locators.
-- A fix is not confirmed until the test passes **3-5 consecutive runs** without failure.
+- A fix is not confirmed until the test passes **3-5 consecutive runs** without failure. For a pipeline failure, local green is provisional — final confirmation is the next pipeline run.
 
 ### 8. Before modifying `playwright.config.ts`, read the existing file first
-- The scaffold writes canonical defaults: `retries`, `use.video: 'on-first-retry'`, `use.trace: 'on-first-retry'`, HTML reporter, headless.
-- Don't strip the video / trace / retries defaults without an explicit reason in the PR description — the rerun-documents-failure guarantee `failure-diagnosis` Stage 1 relies on those artefacts.
+- The scaffold writes canonical defaults: `retries`, `use.video: 'retain-on-failure'`, `use.trace: 'retain-on-failure'`, HTML reporter, headless.
+- `'retain-on-failure'` (not `'on-first-retry'`) is deliberate: it records the artefacts for every failed test on CI **and** local runs alike. `'on-first-retry'` only records when a retry happens — so with `retries: 0` a failure produces no trace at all, and with retries the trace belongs to the *retry* attempt, which on a flaky test is the one that passed.
+- Don't strip the video / trace / retries defaults without an explicit reason in the PR description — the every-failure-documents-itself guarantee `failure-diagnosis` Stage 1 relies on those artefacts.
+- **If you find a project on `trace: 'on-first-retry'`, treat it as a known evidence gap, not as a reason to skip the trace.** Diagnose from whatever the failing attempt did produce (screenshot, `error-context.md`, `video.webm`, the JSON reporter's `stderr` / `annotations`), name the gap in the report, and raise the config change as a separate follow-up. `failure-diagnosis` Stage 0b step 6 carries the full matrix.
+- The same defaults govern what CI uploads. A workflow that runs Playwright must upload `test-results/` **and** `playwright-report/` as an artifact, or every pipeline failure is undiagnosable after the runner is torn down.
 
 ### 9. Do NOT work around application bugs — report them
 - When a test fails, **classify the problem** before acting:
@@ -487,6 +502,8 @@ Only show the greeting menu if the user's message is vague or just says somethin
 - **User already described a scenario** — Skip the greeting. Go directly to Stage 1 (fast path if scenario is complete, full discovery if vague).
 - **API question** — Answer directly from the API Reference section below. No stages needed.
 - **Database / SQL intent** — phrases like "verify db state", "query the table in a test", `steps.sql*`, "check the row was inserted", "assert the order was created" → invoke `database-testing`.
+- **Local test failure** — "the test failed", "debug this test", "why is this failing", "fix this failing test" → dispatch an `fd-<test-slug>:` subagent that loads `failure-diagnosis` (Entrypoint L). Never load `failure-diagnosis` in this transcript; never diagnose inline.
+- **Pipeline / CI failure** — "the nightly failed", "the nightly regression failed", "the regression failed", "CI is red", "the build is red", "the pipeline failed", "the workflow failed", "the GitHub Actions run failed", "the prod regression is failing", "analyse the failures", "why did the run fail", "what failed in CI", "look at run \<id\>", "download the trace", "get the trace from CI", "check the trace", "open the trace", "investigate the failure", "triage the CI failures" → dispatch an `fd-ci-<run-id>:` subagent that loads `failure-diagnosis` and enters at its **Stage 0a + Stage 0b** (pin to the run's commit and resolved dependency versions, then pull the run's artifacts down with `gh`). If the user did not name a run, resolve it here with `gh run list --workflow=<file-or-id> --json databaseId,conclusion,displayTitle,headSha,createdAt` and put the id and `headSha` in the brief. Do NOT open by re-running the suite locally, and do NOT answer from the CI log text — the run's own trace / DOM / console are the evidence. If the run shows ≥5 failing tests or ≥2 red spec files, the subagent's own escalation rule hands off to `test-repair` / `self-repair` after Stage 0b, so the batch pipeline starts from downloaded artifacts rather than log lines.
 - **Fix or edit a test** — Skip to Stage 3 (Fix/Edit Mode).
 - **Scale existing project** — Read existing test files and `page-repository.json` first to understand current coverage, then proceed to Stage 1 with that context.
 - **Vague or no context** — Show the greeting menu and wait. If the project has no element-interactions scaffold, point the user at the `onboarding` skill (below).

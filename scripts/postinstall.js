@@ -202,6 +202,13 @@ const HOOK_MANIFEST = [
   // (or the dispatching brief did) before issuing writes / phase4-*
   // Agent dispatches. Together they close the orchestrator-direct
   // shortcut on Phase 4.
+  // Evidence-floor gate: in a session doing failure diagnosis, deny spec /
+  // element-repository writes when the transcript shows NO failure evidence
+  // was ever opened (no trace, no error-context.md, no failure screenshot, no
+  // video, no reporter JSON, no `gh run download` / `show-trace`). Catches the
+  // log-text-only diagnosis, which is the observed dominant failure mode of
+  // failure-diagnosis; it cannot judge whether the evidence was understood.
+  { file: 'failure-diagnosis-evidence-floor-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 5 },
   { file: 'journey-map-sentinel-gate.sh',         event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 3 },
   { file: 'journey-mapping-skill-preread-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 5 },
   { file: 'journey-mapping-skill-preread-gate.sh', event: 'PreToolUse', matcher: 'Agent',      timeout: 5 },
