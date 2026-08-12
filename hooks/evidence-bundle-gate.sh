@@ -318,7 +318,7 @@ normalise_segment() {
     i=$((i + 1))
     s="${s#"${s%%[![:space:]]*}"}"
     case "$s" in
-      \"*|\'*|\\*) s="${s#?}"; peeled=1; continue ;;
+      \"*|\'*|\\*|\`*) s="${s#?}"; peeled=1; continue ;;
       env\ *|command\ *|time\ *|nohup\ *|exec\ *|eval\ *|sudo\ *|npx\ *) s="${s#* }"; peeled=1; continue ;;
       sh\ *|bash\ *|zsh\ *|dash\ *)              s="${s#* }"   ; peeled=1; continue ;;
       */sh\ *|*/bash\ *|*/zsh\ *|*/dash\ *)      s="${s#* }"   ; peeled=1; continue ;;
@@ -331,7 +331,19 @@ normalise_segment() {
           *[!A-Za-z0-9_]*) ;;
           # Strip the token itself — never "up to the first space", which does
           # nothing when the segment IS the assignment.
-          *) s="${s#"$tok"}"; peeled=1; continue ;;
+          #
+          # Except when the VALUE opens a substitution or a quote: `OUT=`gh pr
+          # create`` has no space to stop at, so the token runs to `OUT=`gh` and
+          # stripping it swallows the backtick and the program name together.
+          # Strip just `NAME=` there and let the peel arm above take the opener.
+          # Found by the suite when the segment splitter stopped breaking on
+          # backticks — the two changes are only safe as a pair.
+          *)
+            case "${tok#*=}" in
+              \`*|\"*|\'*) s="${s#*=}" ;;
+              *)              s="${s#"$tok"}" ;;
+            esac
+            peeled=1; continue ;;
         esac
         ;;
     esac
@@ -377,7 +389,7 @@ if [ "$IS_PR" = "1" ]; then
     case "$rest" in
       pr\ create*|pr\ ready*) GH_SEGMENT="$norm"; break ;;
     esac
-  done < <(printf '%s\n' "$CMD_JOINED" | tr ';&|(){}`' '\n')
+  done < <(printf '%s\n' "$CMD_JOINED" | tr ';&|(){}' '\n')
 
   [ -n "$GH_SEGMENT" ] || exit 0
   # Sharing work in progress is not a claim that it is verified. `--draft=true`

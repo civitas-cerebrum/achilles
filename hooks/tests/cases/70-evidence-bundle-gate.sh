@@ -167,6 +167,23 @@ assert_allow "$H" "$(bash_cmd 'grep -rn "gh pr create" hooks/')" \
   "grepping for the trigger → ALLOW (a hook that fires on its own name gets disabled)"
 assert_allow "$H" "$(bash_cmd 'echo gh pr create')" \
   "echoing the trigger → ALLOW"
+# BACKTICKS: a code span in a PR body is not a command boundary.
+# The splitter used to break on ` too, to catch the command-substitution form.
+# It caught that — and also truncated the segment at the first backtick, so a
+# REAL draft PR whose body contains a markdown code span lost its --draft to the
+# split and was denied, with nothing in the message mentioning backticks. Same
+# false-deny class as --draft=True, through a different door, and it blocks the
+# very command the gate exempts on purpose. Substitution stays gated because
+# normalise_segment peels a leading backtick instead — and the assignment arm
+# had to learn about it in the same change (`OUT=`gh pr create`` has no space to
+# peel to). The two edits are only correct as a pair, which is what these three
+# cases pin.
+assert_allow "$H" "$(bash_cmd 'gh pr create --body "supersedes `gh pr view`" --draft')" \
+  "a draft PR whose body holds a code span keeps its exemption → ALLOW"
+assert_allow "$H" "$(bash_cmd 'echo "see `gh pr create` docs"')" \
+  "documenting the command inside a code span is not publishing → ALLOW"
+assert_deny "$H" "$(bash_cmd 'OUT=`gh pr create --title x`')" \
+  "assignment from command substitution still publishes → DENY" "no evidence bundle"
 assert_allow "$H" "$(bash_cmd 'echo /opt/homebrew/bin/gh pr create')" \
   "echoing a PATH-qualified trigger → ALLOW"
 
@@ -658,6 +675,22 @@ assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
 printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"set-cookie","value":"_ga=GA1.2.9; locale=en-GB; sid=[REDACTED]"}]}}]}}' > "$HARB"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "analytics and locale pairs are not credentials → ALLOW"
+# NEAR-MISS shapes, not far-side ones. The cases above prove an unrelated
+# vocabulary (`consent`, `_ga`, `locale`) is allowed; these two pin the WORD
+# BOUNDARIES around the vocabulary, which is where a name matcher actually goes
+# wrong. PAIR_RE wraps its keyword in `([A-Za-z0-9_.-]*[-_])?` and
+# `([-_][A-Za-z0-9_.-]*)?` to mirror NAME_RE's `(^|[-_])keyword([-_]|$)`, so the
+# pair vocabulary and the field vocabulary cannot drift apart. Nothing asserted
+# that mirroring: relaxing either affix to optional-anything left the gate
+# denying these two live-but-innocent pairs, and both mutants survived the suite.
+# Both are false-positive direction, which is the expensive kind — a DENY here
+# has no remedy, because there is nothing to redact.
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"mytoken=abc123def; auth=[REDACTED]"}]}}]}}' > "$HARB"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "a keyword behind a non-separator PREFIX is a different word (mytoken) → ALLOW"
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"tokenizer=xyz12345; auth=[REDACTED]"}]}}]}}' > "$HARB"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "a keyword before a non-separator SUFFIX is a different word (tokenizer) → ALLOW"
 # A raw `cookie` header string is opaque: the gate cannot see which pair is the
 # session credential, so an entirely unredacted one is a finding on its own via
 # the whole-value test. This is deliberately ASYMMETRIC with the structured
