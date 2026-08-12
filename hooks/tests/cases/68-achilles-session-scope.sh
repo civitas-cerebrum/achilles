@@ -100,6 +100,15 @@ READ_TRANSCRIPT="$SCOPE_TMP/read-transcript.jsonl"
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/repo/node_modules/@civitas-cerebrum/achilles/skills/element-interactions/SKILL.md"}}]}}' > "$READ_TRANSCRIPT"
 assert_deny "$COMMIT_GATE" "$(payload session_id=dev-s9 transcript_path="$READ_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "transcript Read of achilles SKILL.md → DENY" "AI-attribution"
 
+# Same transcript signal on a renamed install: skills/achilles-protocol/SKILL.md.
+RENAMED_READ_TRANSCRIPT="$SCOPE_TMP/renamed-read-transcript.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/repo/.claude/skills/achilles-protocol/SKILL.md"}}]}}' > "$RENAMED_READ_TRANSCRIPT"
+assert_deny "$COMMIT_GATE" "$(payload session_id=dev-s9a transcript_path="$RENAMED_READ_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "transcript Read of skills/achilles-protocol/SKILL.md → DENY" "AI-attribution"
+
+RENAMED_SKILL_TRANSCRIPT="$SCOPE_TMP/renamed-skill-transcript.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"achilles-protocol"}}]}}' > "$RENAMED_SKILL_TRANSCRIPT"
+assert_deny "$COMMIT_GATE" "$(payload session_id=dev-s9b transcript_path="$RENAMED_SKILL_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "transcript Skill(achilles-protocol) → DENY" "AI-attribution"
+
 section "session-scope: transcript scan does not false-positive on adjacent traffic"
 # dev transcript above already contains the word 'onboarding' in prose and a
 # non-achilles Skill invocation — covered by the dev-session ALLOWs. Add the
@@ -125,6 +134,16 @@ assert_allow "$WATCHER" "$(payload session_id=w2 hook_event_name=PreToolUse tool
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w2.active" ] && echo marked || echo unmarked)" "unmarked" "watcher ignored non-achilles skill"
 assert_allow "$WATCHER" "$(payload session_id=w3 hook_event_name=PreToolUse tool_name=Skill skill=achilles:secrets-sweep)" "watcher: plugin-prefixed achilles skill → silent, marks"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on prefixed skill name"
+
+# Orchestrator alias. Installs that renamed the orchestrator skill to
+# `achilles-protocol` must still activate the protocol — a name the
+# ACHILLES_SKILL_ALT alternation does not know is a name that silently
+# activates nothing, i.e. every guard in the suite stays off. Fail-open is the
+# worst direction for a guard to fail, so both names are pinned here.
+assert_allow "$WATCHER" "$(payload session_id=w3a hook_event_name=PreToolUse tool_name=Skill skill=achilles-protocol)" "watcher: renamed orchestrator (achilles-protocol) → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3a.active" ] && echo marked || echo unmarked)" "marked" "watcher marked session on Skill(achilles-protocol)"
+assert_allow "$WATCHER" "$(payload session_id=w3b hook_event_name=PreToolUse tool_name=Skill skill=achilles:achilles-protocol)" "watcher: plugin-prefixed achilles-protocol → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3b.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on prefixed achilles-protocol"
 
 section "activation-watcher: Agent dispatch prefixes"
 assert_allow "$WATCHER" "$(payload session_id=w4 hook_event_name=PreToolUse tool_name=Agent description='composer-j-login: build the variant set')" "watcher: composer- dispatch → silent, marks"
