@@ -223,6 +223,41 @@ pa_fire "$PA_PART"
 assert_eq "$(pa_runs "$PA_PART")" "2" "the unstamped fingerprint makes the next invocation retry"
 assert_eq "$("$JQ" -r '.incomplete' "$(pa_newest "$PA_PART")/manifest.json")" "false" "the retry archives completely"
 
+# ---------------------------------------------------------------------------
+section "playwright-artifact-archiver: Playwright's own retry attempts"
+# When a spec is retried, Playwright does NOT overwrite the first attempt — it
+# writes each one to its own directory (<slug>/, <slug>-retry1/, ...), all
+# inside outputDir. Every attempt is evidence: the first is usually the honest
+# failure and the retry is what passed, so a diagnosis needs both. The archiver
+# gets this right by copying the tree rather than named files, which is easy to
+# regress into "just take the primary attempt's trace.zip" — hence this case.
+PA_RETRY=$(pa_mktemp); pa_project "$PA_RETRY"
+mkdir -p "$PA_RETRY/pw-artifacts/spec-failing-test-retry1" "$PA_RETRY/pw-artifacts/spec-failing-test-retry2"
+printf 'retry1-trace\n' > "$PA_RETRY/pw-artifacts/spec-failing-test-retry1/trace.zip"
+printf '# Error context\n\n- retry1 snapshot\n' > "$PA_RETRY/pw-artifacts/spec-failing-test-retry1/error-context.md"
+printf 'retry2-trace\n' > "$PA_RETRY/pw-artifacts/spec-failing-test-retry2/trace.zip"
+pa_fire "$PA_RETRY"
+PA_RETRY_RUN=$(pa_newest "$PA_RETRY")
+assert_eq "$([ -f "$PA_RETRY_RUN/artifacts/pw-artifacts/spec-failing-test/trace.zip" ] && echo yes)" "yes" "the first attempt's trace is archived"
+assert_eq "$([ -f "$PA_RETRY_RUN/artifacts/pw-artifacts/spec-failing-test-retry1/trace.zip" ] && echo yes)" "yes" "retry1's trace is archived alongside it"
+assert_eq "$([ -f "$PA_RETRY_RUN/artifacts/pw-artifacts/spec-failing-test-retry2/trace.zip" ] && echo yes)" "yes" "retry2's trace is archived too"
+assert_eq "$([ -f "$PA_RETRY_RUN/artifacts/pw-artifacts/spec-failing-test-retry1/error-context.md" ] && echo yes)" "yes" "per-attempt error-context travels with its own attempt"
+# Attempts must stay distinguishable — a flatten that collapsed them would keep
+# the file count but lose which attempt each artifact belongs to.
+assert_eq "$(cat "$PA_RETRY_RUN/artifacts/pw-artifacts/spec-failing-test-retry1/trace.zip")" "retry1-trace" "each attempt keeps its own content, not the last writer's"
+assert_eq "$("$JQ" -r '.incomplete' "$PA_RETRY_RUN/manifest.json")" "false" "a retried run archives completely"
+
+# A retried run must never be mistaken for the earlier un-retried one: the extra
+# attempt directories change the fingerprint, so the archive is not skipped.
+PA_RETRY_FP=$(pa_mktemp); pa_project "$PA_RETRY_FP"
+pa_fire "$PA_RETRY_FP"
+assert_eq "$(pa_runs "$PA_RETRY_FP")" "1" "first run archived"
+mkdir -p "$PA_RETRY_FP/pw-artifacts/spec-failing-test-retry1"
+printf 'retry1-trace\n' > "$PA_RETRY_FP/pw-artifacts/spec-failing-test-retry1/trace.zip"
+pa_fire "$PA_RETRY_FP"
+assert_eq "$(pa_runs "$PA_RETRY_FP")" "2" "adding a retry attempt changes the fingerprint, so it is archived"
+assert_eq "$([ -f "$(pa_newest "$PA_RETRY_FP")/artifacts/pw-artifacts/spec-failing-test-retry1/trace.zip" ] && echo yes)" "yes" "the retry attempt lands in the new archive"
+
 PA_NOPROJ=$(pa_mktemp)
 assert_allow "$H" "$(pa_payload "$PA_NOPROJ")" "project with no artifacts at all → silent allow"
 assert_allow "$H" "$(payload hook_event_name=PostToolUse tool_name=Bash cwd=/nonexistent-path-xyz command='npx playwright test')" "nonexistent cwd → silent allow"
