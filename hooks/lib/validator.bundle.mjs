@@ -10970,7 +10970,12 @@ var require_fast_uri = __commonJS({
     }
     function resolve(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-      const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
+      const { parsed: baseParsed, malformedAuthorityOrPort: baseMalformed } = parseWithStatus(baseURI, schemelessOptions);
+      const { parsed: relativeParsed, malformedAuthorityOrPort: relativeMalformed } = parseWithStatus(relativeURI, schemelessOptions);
+      if (baseMalformed || relativeMalformed) {
+        throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
+      }
+      const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
@@ -11095,6 +11100,8 @@ var require_fast_uri = __commonJS({
       return uriTokens.join("");
     }
     var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
+    var AUTHORITY_PREFIX = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/;
+    var AUTHORITY_INTRODUCER_REGION = /^(?:[^#/:?]+:)?([/\\\t\n\r]*)/;
     function getParseError(parsed, matches) {
       if (matches[2] !== void 0 && parsed.path && parsed.path[0] !== "/") {
         return 'URI path must start with "/" when authority is present.';
@@ -11122,6 +11129,25 @@ var require_fast_uri = __commonJS({
           uri = options.scheme + ":" + uri;
         } else {
           uri = "//" + uri;
+        }
+      }
+      const authorityMatch = uri.match(AUTHORITY_PREFIX);
+      if (authorityMatch !== null && authorityMatch[1].indexOf("\\") !== -1) {
+        parsed.error = "URI authority must not contain a literal backslash.";
+        malformedAuthorityOrPort = true;
+      }
+      const introducerMatch = uri.match(AUTHORITY_INTRODUCER_REGION);
+      if (introducerMatch !== null) {
+        const region = introducerMatch[1];
+        const normalizedRegion = region.replace(/[\t\n\r]/g, "");
+        if (normalizedRegion.length >= 2) {
+          if (normalizedRegion.slice(0, 2) !== "//") {
+            parsed.error = parsed.error || "URI authority must not contain a literal backslash.";
+            malformedAuthorityOrPort = true;
+          } else if (region.length !== normalizedRegion.length) {
+            parsed.error = parsed.error || "URI authority introducer must not contain whitespace.";
+            malformedAuthorityOrPort = true;
+          }
         }
       }
       const matches = uri.match(URI_PARSE);
@@ -11167,7 +11193,7 @@ var require_fast_uri = __commonJS({
         if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
           if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
             try {
-              parsed.host = URL.domainToASCII(parsed.host.toLowerCase());
+              parsed.host = new URL("http://" + parsed.host).hostname;
             } catch (e) {
               parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
             }
@@ -15481,15 +15507,22 @@ var repair_worker_schema_default = {
               total: { type: "integer", minimum: 1 }
             }
           },
+          understanding: {
+            type: "string",
+            description: "Stage-5 understanding: the causal chain established by the experiment stage, in one or a few sentences. Recommended for every non-green outcome."
+          },
           "bug-report": {
             type: "object",
-            required: ["summary"],
+            required: ["summary", "expected-behaviour", "actual-behaviour"],
             properties: {
               summary: { type: "string", minLength: 1 },
+              "expected-behaviour": { type: "string", minLength: 1, description: "What the journey should do at the failure point." },
+              "actual-behaviour": { type: "string", minLength: 1, description: "What the app demonstrably does, per the evidence." },
+              confidence: { enum: ["high", "medium", "low"], description: "App-bug outcomes require high \u2014 mechanism demonstrated and test-side causes excluded by experiment." },
               evidence: {
                 type: "array",
                 items: { type: "string" },
-                description: "Paths to screenshots / traces / videos backing the app-bug classification."
+                description: "Paths to the evidence bundle backing the app-bug classification \u2014 failure screenshot, error context/trace, failing-run video, and a slow-motion reproduction recording. Paths point at the stable <e2e-root>/bug-evidence/<TEST-ID>/ copies, never at reusable test-results/ dirs."
               }
             }
           },
@@ -15527,7 +15560,7 @@ var repair_worker_schema_default = {
         type: "object",
         required: ["stage"],
         properties: {
-          stage: { enum: ["diagnosing", "fixing", "verifying", "classifying", "done"] },
+          stage: { enum: ["reproduce", "evidence-analysis", "context-probe", "experiment", "understand", "fix", "verify", "done"] },
           test: { type: "string" },
           detail: { type: "string" }
         }
