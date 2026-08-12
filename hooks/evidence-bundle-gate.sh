@@ -366,6 +366,11 @@ if [ "$IS_PR" = "1" ]; then
   CMD_JOINED="$(printf '%s' "$CMD" | sed -e :a -e '/\\$/N; s/\\\n/ /; ta')"
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
+    # The probe costs two forks per segment. A segment with no `gh` substring
+    # anywhere cannot normalise INTO one — peeling only removes prefixes — so
+    # skipping here is free correctness-wise and keeps a many-segment command
+    # from eating the budget before the HAR scan starts.
+    case "$seg" in *gh*) ;; *) continue ;; esac
     norm="$(normalise_segment "$seg")"
     # Classification runs on a normalised PROBE, never on `norm` itself: quotes
     # are removed and whitespace runs collapsed, so `"gh" pr create`,
@@ -583,12 +588,41 @@ PAIR_RE='(^|[;,[:space:]])([A-Za-z0-9_.-]*[-_])?(authorization|auth|bypass|token
 # cost changes, this number changes with it.
 MAX_HAR_BYTES=$((32 * 1024 * 1024))
 
+# ── the gate's own deadline ────────────────────────────────────────────────
+# A byte cap cannot bound TIME, which is the thing that actually kills this
+# hook. Cost per MB varies ~2x by HAR shape: body-heavy runs ~0.17s/MB, but
+# cookie-dense — the shape a credential scanner cares about, because cookies
+# are where credentials live — runs closer to 0.34s/MB. The cap was calibrated
+# on the cheap shape, so a 31.5MB cookie-dense HAR passed it and took ~10.7s.
+# The cap is also per FILE while the budget is per INVOCATION: two 18.3MB HARs
+# each pass and together take ~12s.
+#
+# Being killed is not a neutral outcome. A killed hook emits nothing, and
+# nothing is an ALLOW — the gate does not fail loudly, it evaporates, and the
+# operator sees an ordinary successful command. That is the same fail-open this
+# hook already had to fix once.
+#
+# So the gate now watches its own clock and stops on its OWN terms, turning an
+# implicit ALLOW into an explicit, actionable finding. Overridable so the
+# behaviour is testable, and derived from the registered manifest budget rather
+# than picked: two thirds leaves room for the message to be written and for a
+# slow machine to be slower than the measurement.
+HOOK_BUDGET_S="${ACHILLES_EVIDENCE_GATE_BUDGET_S:-30}"
+SCAN_DEADLINE_S=$(( HOOK_BUDGET_S * 2 / 3 ))
+
+budget_exhausted() { [ "$SECONDS" -ge "$SCAN_DEADLINE_S" ]; }
+
 file_size() { wc -c < "$1" 2>/dev/null | tr -d ' ' || echo 0; }
 
 scan_har() {
   local f="$1" label names sz
   [ -f "$f" ] || return 0
   label="${f#"$BUNDLE"/}"
+  if budget_exhausted; then
+    SECRET_FINDINGS="${SECRET_FINDINGS}  - ${label}: NOT scanned — the gate hit its own time budget first. This is reported rather than passed over: an unscanned artifact is not a verified one.
+"
+    return 0
+  fi
   sz="$(file_size "$f")"
   if [ "${sz:-0}" -gt "$MAX_HAR_BYTES" ]; then
     SECRET_FINDINGS="${SECRET_FINDINGS}  - ${label}: $((sz / 1024 / 1024))MB — too large to verify, and a HAR this size still has response bodies in it
@@ -688,7 +722,13 @@ if [ -n "$BUNDLE" ]; then
     [ -f "$f" ] && scan_har "$f"
   done
   for f in "$BUNDLE"/console.log "$BUNDLE"/*/console.log; do
-    [ -f "$f" ] && scan_text "$f"
+    [ -f "$f" ] || continue
+    if budget_exhausted; then
+      SECRET_FINDINGS="${SECRET_FINDINGS}  - ${f#"$BUNDLE"/}: NOT scanned — the gate hit its own time budget first.
+"
+      break
+    fi
+    scan_text "$f"
   done
 fi
 

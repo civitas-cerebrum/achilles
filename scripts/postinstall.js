@@ -165,8 +165,8 @@ const HOOK_MANIFEST = [
   // re-entry rule. Also denies sign-off while a captured HAR / console log in
   // the matched bundle still carries a live credential (companion-mode
   // §"Redaction"). Same two surfaces as its sibling.
-  { file: 'evidence-bundle-gate.sh',              event: 'PreToolUse', matcher: 'mcp__.*',     timeout: 10 },
-  { file: 'evidence-bundle-gate.sh',              event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
+  { file: 'evidence-bundle-gate.sh',              event: 'PreToolUse', matcher: 'mcp__.*',     timeout: 30 },
+  { file: 'evidence-bundle-gate.sh',              event: 'PreToolUse', matcher: 'Bash',        timeout: 30 },
   // Pipeline-state machine: gates Agent dispatches and Write|Edit writes
   // against the onboarding-status ledger. Together these enforce every
   // phase / pass / cycle transition through a workflow-reviewer-*

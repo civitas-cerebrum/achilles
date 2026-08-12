@@ -124,6 +124,31 @@ assert_allow "$H" "$(tracker mcp__linear__save_comment body 'rebased onto main, 
 assert_allow "$H" "$(tracker mcp__linear__save_comment body 'assigning this to the platform team')" \
   "handoff comment → ALLOW"
 
+section "evidence-gate: running out of time is a verdict, not a silent pass"
+# The hook is registered with a manifest timeout. If the harness kills it, it
+# emits nothing — and nothing is an ALLOW, so the gate does not fail loudly, it
+# evaporates. A byte cap cannot prevent that, because cost per MB swings ~2x
+# with HAR shape and the cap is per file while the budget is per invocation.
+# So the gate watches its own clock and stops on its own terms.
+#
+# Forcing the budget to 0 makes the deadline unreachable-by-construction, which
+# is the only way to observe the exhausted path deterministically without
+# fabricating a multi-second fixture.
+B_TIME="$(make_bundle abc-1-timing-20260812-150715)"
+printf '%s' '{"log":{"entries":[]}}' > "$B_TIME/network.har"
+# NOT a subshell: assert_* increments the run/fail counters, and a subshell
+# would discard them — the case would look green whatever it did.
+export ACHILLES_EVIDENCE_GATE_BUDGET_S=0
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "budget exhausted → DENY naming the unscanned artifact" "NOT scanned"
+unset ACHILLES_EVIDENCE_GATE_BUDGET_S
+# ...and the control: the SAME bundle, the same artifact, a normal budget. If
+# this allowed for any reason other than the scan completing, the case above
+# would prove nothing.
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "the same bundle within budget → ALLOW (the deadline is not always-on)"
+rm -rf "$B_TIME"
+
 section "evidence-gate: only sign-off actions are gated"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state 'In Progress')" \
   "transition to In Progress → ALLOW"
