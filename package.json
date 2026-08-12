@@ -27,11 +27,9 @@
     "esbuild": "^0.25.12",
     "typescript": "^5.0.0"
   },
-  "peerDependencies": {
-    "@civitas-cerebrum/element-interactions": ">=0.3.8 <1.0.0"
-  },
   "dependencies": {
     "@babel/parser": "^7.29.3",
+    "@civitas-cerebrum/element-interactions": ">=0.3.8 <1.0.0",
     "@playwright/cli": "0.1.17",
     "@playwright/test": "^1.62.0",
     "@vue/compiler-sfc": "^3.5.34",
