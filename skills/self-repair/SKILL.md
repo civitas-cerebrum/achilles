@@ -180,7 +180,7 @@ watchable, and findable long after run dirs rotate:
   the captured `trace.zip` opened with `npx playwright show-trace` is
   the engineer's artifact; the recording is for humans and bug tickets.
 - **Canonical location:** `<e2e-root>/bug-evidence/<TEST-ID>/<UTC-timestamp>-<label>/`
-  (e.g. `bug-evidence/TC_REG_MOB_ACCT_010/20260805T133000Z-slowmo-repro/`).
+  (e.g. `bug-evidence/TC_ACCOUNT_010/20260805T133000Z-slowmo-repro/`).
   Copy evidence there IMMEDIATELY on capture: Playwright reuses per-test
   `test-results/` directories, so a later rerun silently overwrites
   failure artifacts, and run dirs under `.achilles/` rotate per session.

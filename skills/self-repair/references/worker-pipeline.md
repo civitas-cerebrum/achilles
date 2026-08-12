@@ -189,11 +189,11 @@ truths — resolved correctly because both followed this order:
   fixes it) → understand (interception disables HTTP cache → settle
   timing shifts → click races in-flight requests; knowledge written) →
   fix (optional networkidle gate) → verify (5/5) → **healed**.
-- **Mobile:** reproduce → evidence (app actively navigates to /nl/500 —
+- **Mobile:** reproduce → evidence (app actively navigates to /500 —
   a server-rendered error page) → context-probe (selectors valid) →
   experiment (out-of-harness repro passes 3/3 incl. harness headers —
   incident-shaped, server-side) → understand (expected: signout 200 →
-  /nl/login; actual: intermittent /nl/500 during bad windows) →
+  /login; actual: intermittent /500 during bad windows) →
   **app-bug, high confidence**, test untouched, recording watcher armed.
 
 The pipeline's value is visible in the near-miss: the mobile failure
