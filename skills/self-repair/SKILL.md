@@ -179,8 +179,8 @@ watchable, and findable long after run dirs rotate:
   actions in review. For action-by-action stepping beyond any video,
   the captured `trace.zip` opened with `npx playwright show-trace` is
   the engineer's artifact; the recording is for humans and bug tickets.
-- **Canonical location:** `<e2e-root>/bug-evidence/<TEST-ID>/<UTC-timestamp>-<label>/`
-  (e.g. `bug-evidence/TC_REG_MOB_ACCT_010/20260805T133000Z-slowmo-repro/`).
+- **Canonical location:** `<e2e-root>/bug-evidence/<TEST-ID>/<compact-ISO-UTC>-<label>/`
+  — timestamp as `20260805T133000Z`, since colons are illegal in Windows paths.
   Copy evidence there IMMEDIATELY on capture: Playwright reuses per-test
   `test-results/` directories, so a later rerun silently overwrites
   failure artifacts, and run dirs under `.achilles/` rotate per session.

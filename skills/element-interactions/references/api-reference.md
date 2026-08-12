@@ -678,8 +678,8 @@ await steps.on('accordionTrigger', 'ProductPage').visible().click();
 // Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.3.8+)
 // Closes scoped getByRole counts and page.locator(parent).getByText/.locator(child) compositions.
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button').count.toBe(2);
-await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /voorkeuren|manage/i }).count.toBe(0);
-await steps.on('cartDrawer', 'CartDrawer').findByText('Je winkelwagen is leeg').verifyState('visible');
+await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /preferences|manage/i }).count.toBe(0);
+await steps.on('cartPanel', 'CartPage').findByText('Your cart is empty').verifyState('visible');
 await steps.on('panel', 'Page').findBySelector("input[name='email']").fill('a@b.com');
 
 // Conditional visibility — silently skips if element is not visible

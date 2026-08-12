@@ -96,7 +96,7 @@ section "adversarial-gate: UUID ids resolve via the receipt's recorded ticket"
 # Linear's save_issue commonly carries a UUID in .id, not a human key. Matching the FILENAME alone
 # produced a permanent, unrecoverable DENY with the correct receipt on disk.
 printf '%s' '{"ticket":"e0265f67-8efb-4d41-9310-557456c73b1e","negativeControl":{"failed":5},"review":{"reviewer":"probe-rigour-x","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":13}}' \
-  > "$WS/.achilles/adversarial-verification/PEDX-1.json"
+  > "$WS/.achilles/adversarial-verification/QRS-1.json"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done e0265f67-8efb-4d41-9310-557456c73b1e)" \
   "UUID id matched via receipt's recorded ticket → ALLOW"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done 99999999-0000-0000-0000-000000000000)" \
@@ -105,7 +105,7 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done 99999999-0000-000
 section "adversarial-gate: key binding is EXACT, not substring"
 # Each of these was a working bypass on an ordinary, unshaped payload.
 printf '%s' '{"ticket":"ABC-15","negativeControl":{"failed":5},"review":{"reviewer":"probe-rigour-x","uiReviewed":true,"coverageSufficient":true,"scores":{"R1":3,"R2":2,"R3":2,"R4":2,"R5":2,"R6":2},"total":13}}' > "$WS/.achilles/adversarial-verification/ABC-15.json"
-rm -f "$WS/.achilles/adversarial-verification/ABC-1.json" "$WS/.achilles/adversarial-verification/PEDX-1.json"
+rm -f "$WS/.achilles/adversarial-verification/ABC-1.json" "$WS/.achilles/adversarial-verification/QRS-1.json"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done ABC-1)" \
   "prefix collision: ABC-15's receipt must NOT sign off ABC-1"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done json)" \
