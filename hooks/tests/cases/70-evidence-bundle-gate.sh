@@ -51,7 +51,12 @@ assert_terminates() {
   p=$!
   while kill -0 "$p" 2>/dev/null && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n + 1)); done
   if kill -0 "$p" 2>/dev/null; then
-    kill -9 "$p" 2>/dev/null
+    # Kill the `bash <hook>` grandchild BEFORE the subshell that owns it —
+    # killing only the subshell leaves the spinning hook orphaned at 100% CPU
+    # for the rest of the run, once per hung case.
+    pkill -P "$p" 2>/dev/null || true
+    kill -9 "$p" 2>/dev/null || true
+    wait "$p" 2>/dev/null || true
     TESTS_FAILED=$((TESTS_FAILED + 1))
     FAIL_DETAILS+=("${name}: hook did not terminate within 10s")
     echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(hook did not terminate)${CLR_RST}"
@@ -294,6 +299,12 @@ assert_allow "$H" "$(tracker mcp__linear__save_issue state Done ABC-7)" \
 section "evidence-gate: entry B binds to the branch when there is no ticket"
 assert_deny "$H" "$(bash_cmd 'gh pr create --fill')" \
   "no branch bundle → DENY"
+# Saying "this ticket" to a run that has no ticket sends the reader looking for
+# a key that does not exist. The message has to name where the key came from.
+assert_deny "$H" "$(bash_cmd 'gh pr create --fill')" \
+  "the deny says the key is the BRANCH, not a ticket" "binds the bundle to the BRANCH"
+assert_deny "$H" "$(bash_cmd 'gh pr create --fill')" \
+  "the deny names the branch it looked for" "feat-widget-toggle"
 make_bundle "feat-widget-toggle-20260812-180000" >/dev/null
 assert_allow "$H" "$(bash_cmd 'gh pr create --fill')" \
   "branch-named bundle → ALLOW"
@@ -466,6 +477,75 @@ for c in "${EQ_FORMS[@]}"; do
   assert_allow "$H" "$(bash_cmd "$c")" "branch bundle present → ALLOW: $c"
 done
 
+section "evidence-gate: quoting and whitespace do not hide the command"
+# Every form below is valid shell that publishes a PR, and every one silently
+# ALLOWed. The quote arm peeled the OPENING quote only, leaving the closing one
+# glued to the token so the program name was `gh"` and matched nothing — a
+# half-handled quote arm reads as though quoting is covered, which is worse than
+# not peeling at all. The subcommand test was a literal one-space glob, so a tab,
+# a double space or a line continuation between `pr` and `create` walked past it.
+park_branch_bundle
+HIDDEN_FORMS=(
+  '"gh" pr create --fill'
+  "'gh' pr create --fill"
+  'gh pr "create" --fill'
+  "gh 'pr create' --fill"
+  'gh pr	create --fill'
+  'gh pr  create --fill'
+  'OUT=`gh pr create --fill`'
+  '/bin/sh -c "gh pr create --fill"'
+  '/bin/bash -lc "gh pr create --fill"'
+  'sudo gh pr create --fill'
+  'npx gh pr create --fill'
+)
+for c in "${HIDDEN_FORMS[@]}"; do
+  assert_deny "$H" "$(bash_cmd "$c")" "hidden form → DENY: $c" "no evidence bundle"
+done
+assert_deny "$H" "$(bash_cmd 'gh pr \
+create --fill')" "backslash-newline continuation → DENY" "no evidence bundle"
+restore_branch_bundle
+for c in "${HIDDEN_FORMS[@]}"; do
+  assert_allow "$H" "$(bash_cmd "$c")" "hidden form, bundle present → ALLOW: $c"
+done
+# The classification probe strips quotes; the --draft scan must NOT run on a
+# probe, or a `-d` mentioned inside a PR title would read as the flag and
+# disable the gate. Re-asserted here because these are the two changes that
+# could defeat each other.
+park_branch_bundle
+assert_deny "$H" "$(bash_cmd 'gh pr create --title "add -d flag support" --body x')" \
+  "quote-stripping the probe does NOT expose a quoted -d as the draft flag" "no evidence bundle"
+restore_branch_bundle
+
+section "evidence-gate: adjacent traffic that merely mentions the command"
+assert_allow "$H" "$(bash_cmd 'echo gh pr create')" \
+  "echoing the command → ALLOW"
+assert_allow "$H" "$(bash_cmd 'sudo systemctl restart nginx')" \
+  "sudo something else entirely → ALLOW"
+assert_allow "$H" "$(bash_cmd 'npx playwright test')" \
+  "npx something else entirely → ALLOW"
+assert_allow "$H" "$(bash_cmd '/bin/bash -lc "npm run build"')" \
+  "an absolute-path shell running something else → ALLOW"
+assert_allow "$H" "$(raw '{tool_name:"Bash", tool_input:"ls"}')" \
+  "tool_input is a string, not an object → ALLOW (a decision, not a set -e abort)"
+
+section "evidence-gate: --draft follows pflag's truthy vocabulary, case and all"
+# `strconv.ParseBool` accepts 1/t/T/TRUE/true/True. Denying --draft=True would
+# reproduce the exact false-deny the = form was added to fix.
+park_branch_bundle
+for f in '--draft=True' '--draft=TRUE' '--draft=T' '-d=t'; do
+  assert_allow "$H" "$(bash_cmd "gh pr create $f --fill")" \
+    "pflag truthy '$f' → ALLOW"
+done
+assert_deny "$H" "$(bash_cmd 'gh pr create --draft=False --fill')" \
+  "--draft=False is still not a draft → DENY" "no evidence bundle"
+# An unquoted `#` mid-word is literal to the shell, so stripping it context-free
+# ate the --draft that followed and denied a genuine draft PR.
+assert_allow "$H" "$(bash_cmd 'gh pr create --title issue#5 --draft')" \
+  "a # inside a word does not eat the --draft after it → ALLOW"
+assert_deny "$H" "$(bash_cmd 'gh pr create --fill # --draft')" \
+  "a # that STARTS a word is still a comment → DENY" "no evidence bundle"
+restore_branch_bundle
+
 section "evidence-gate: every peel arm consumes, so the hook always returns"
 # The first fix for the section above stripped "up to the first space", which is
 # a no-op on a segment that IS the assignment — `A=1` spun forever. A hook that
@@ -506,13 +586,24 @@ assert_allow "$H" "$(bash_cmd 'a-b=c gh pr create --fill')" \
 restore_branch_bundle
 
 section "evidence-gate: --draft is recognised in its = form, and only when true"
+# The bundle is parked for the WHOLE section on purpose. With it present these
+# would allow via the bundle rather than via the draft exemption, and deleting
+# the `=` alternation from the flag scan would leave them green — the fix would
+# have no causal cover at all. Parked, the only thing that can produce an ALLOW
+# here is the exemption itself, and the `--fill` control proves it.
+park_branch_bundle
+assert_deny "$H" "$(bash_cmd 'gh pr create --fill')" \
+  "control: same section, no draft flag → DENY" "no evidence bundle"
 assert_allow "$H" "$(bash_cmd 'gh pr create --draft=true --fill')" \
   "--draft=true → ALLOW (pflag accepts the = form for booleans)"
 assert_allow "$H" "$(bash_cmd 'gh pr create --draft=1 --fill')" \
   "--draft=1 → ALLOW"
-park_branch_bundle
+assert_allow "$H" "$(bash_cmd 'gh pr create -d=true --fill')" \
+  "-d=true → ALLOW (shorthand takes the = form too)"
 assert_deny "$H" "$(bash_cmd 'gh pr create --draft=false --fill')" \
   "--draft=false is NOT a draft → DENY" "no evidence bundle"
+assert_deny "$H" "$(bash_cmd 'gh pr create --draft=0 --fill')" \
+  "--draft=0 is NOT a draft → DENY"
 restore_branch_bundle
 
 section "evidence-gate: the comment surface reads more than one body field"
@@ -524,10 +615,24 @@ assert_warn "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", too
   "Jira commentBody verdict, no bundle → WARN" "no evidence bundle"
 assert_allow "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-404", commentBody:"rebased onto main, retriggering CI"}}')" \
   "Jira commentBody ordinary → ALLOW"
-assert_allow "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-404", commentBody:{type:"doc", content:[]}}}')" \
-  "Jira ADF document body → ALLOW (not a string, not classifiable, not stringified)"
+assert_warn "$H" "$(raw '{tool_name:"mcp__linear__save_comment", tool_input:{id:"ABC-404", comment:"QA Test Report: AC-1 and AC-2 pass"}}')" \
+  ".comment carries the verdict → WARN" "no evidence bundle"
+assert_warn "$H" "$(raw '{tool_name:"mcp__github__create_comment", tool_input:{id:"ABC-404", text:"Verdict: PASSED"}}')" \
+  ".text carries the verdict → WARN" "no evidence bundle"
+# The body must be judged on its TEXT, not on its field names. An ADF document
+# stringifies to JSON containing the word "content" and every key the tracker
+# put there — so a structured body whose visible text IS a verdict must still
+# not be classified from the wrapper. The verdict vocabulary is inside the text
+# nodes here on purpose: stringifying the object makes this WARN.
+assert_allow "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-404", commentBody:{type:"doc", version:1, content:[{type:"paragraph", content:[{type:"text", text:"QA Test Report: AC-1 and AC-2 pass, verdict PASSED"}]}]}}}')" \
+  "Jira ADF document body → ALLOW (a non-string body is not stringified)"
 assert_allow "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-1", commentBody:"QA Test Report: AC-1 pass"}}')" \
   "Jira commentBody verdict WITH a bundle → ALLOW"
+# The secret branch was dead on this tool too, not just the WARN branch.
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"authorization","value":"Bearer LIVEjiraSurfaceValue"}]}}]}}' > "$HARB"
+assert_deny "$H" "$(raw '{tool_name:"mcp__atlassian__addCommentToJiraIssue", tool_input:{issueIdOrKey:"ABC-1", commentBody:"QA Test Report: AC-1 pass"}}')" \
+  "live credential + Jira commentBody verdict → DENY (not WARN)" "live credential"
+rm -f "$HARB"
 
 section "evidence-gate: one header can hold many credentials"
 # A cookie / set-cookie value is a `;`-separated list of pairs. Judging the whole
@@ -543,9 +648,51 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
 printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"consent=REDACTED; auth_token=[REDACTED]"}]}}]}}' > "$HARB"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "every credential-bearing pair in the header redacted → ALLOW"
+# The pair scan is scoped by the SAME name vocabulary as the field scan, and that
+# scoping is what keeps it from becoming "any pair with a value". Drop the key
+# test and this denies: `consent` has nothing to redact, so a deny here has no
+# remedy but disabling the hook.
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"consent=yes; auth_token=[REDACTED]"}]}}]}}' > "$HARB"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "a live NON-credential pair beside a redacted credential → ALLOW (pair keys are vocabulary-scoped)"
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"set-cookie","value":"_ga=GA1.2.9; locale=en-GB; sid=[REDACTED]"}]}}]}}' > "$HARB"
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "analytics and locale pairs are not credentials → ALLOW"
+# A raw `cookie` header string is opaque: the gate cannot see which pair is the
+# session credential, so an entirely unredacted one is a finding on its own via
+# the whole-value test. This is deliberately ASYMMETRIC with the structured
+# `cookies:[{name,value}]` form above, where each cookie names itself and
+# `sessionCartId` is judged — and allowed — on its own name. Same identifier,
+# two shapes, two answers, on purpose: opacity is what forces the conservative
+# call, and the remedy (redact the header) costs seconds.
 printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"_ga=GA1.2.9; sessionCartId=cart-7; consent=yes"}]}}]}}' > "$HARB"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
-  "an unredacted cookie header is still a finding on its own (whole-value test kept)"
+  "a wholly unredacted cookie header is a finding (opaque string, whole-value test)"
+# A pair-level finding that names only the header is undiagnosable: the operator
+# who has already redacted `authorization` inside the cookie opens it, sees the
+# placeholder, and concludes the gate is broken — while the remedy text points
+# at the field they just fixed. A finding nobody can act on is how a gate gets
+# turned off, so the pair has to be named.
+printf '%s' '{"log":{"entries":[{"request":{"headers":[{"name":"cookie","value":"authorization=REDACTED; app_token=LIVEvalue123"}]}}]}}' > "$HARB"
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "the finding names the offending PAIR, not just the header" 'pair `app_token`'
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "the finding still names the header too" 'field `cookie`'
+rm -f "$HARB"
+
+section "evidence-gate: a HAR too large to scan in budget is a finding, not a pass"
+# The cap is derived from the hook's registered 10s PreToolUse budget and the
+# measured scan cost. Set it above that and it is unreachable: the harness kills
+# the hook, the hook emits nothing, and nothing is an ALLOW — so the very
+# largest HARs, which are by construction the ones that still carry response
+# bodies, would be exactly the ones that sail through. Sparse files: `wc -c`
+# stats rather than reads, so this costs nothing.
+dd if=/dev/zero of="$HARB" bs=1 count=0 seek=$((33 * 1024 * 1024)) 2>/dev/null
+assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "a HAR above the scan budget → DENY" "too large to verify"
+dd if=/dev/zero of="$HARB" bs=1 count=0 seek=$((1024 * 1024)) 2>/dev/null
+assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
+  "a HAR below the cap with no credential names → ALLOW"
 rm -f "$HARB"
 
 section "evidence-gate: a console log in a per-environment subdirectory is scanned"

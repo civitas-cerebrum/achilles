@@ -2,13 +2,19 @@
 # evidence-bundle-gate.sh — a QA verdict without evidence is an opinion, and a
 #                           bundle with a live credential in it is a leak.
 #
-# Hook    : PreToolUse:mcp__.*  (tracker mutation tools)
+# Hook    : PreToolUse:mcp__.*  (registered matcher; the tool-name test inside
+#                                is shape-based and does NOT require the `mcp__`
+#                                prefix, so a bare `create_comment` also matches)
 #           PreToolUse:Bash     (`gh pr create|ready` — entry B's sign-off boundary)
 # Mode    : DENY  (terminal transition / PR publish with no evidence bundle for
 #                  THIS ticket — sign-off is the moment the evidence must exist)
-#           DENY  (an unredacted secret in a captured HAR or console log, on ANY
-#                  gated surface including comments — see "Why secrets DENY
-#                  everywhere" below)
+#           DENY  (an unredacted secret in a captured HAR or console log, on every
+#                  surface this hook reaches — comments included, see "Why secrets
+#                  DENY everywhere" below. "Reaches" is the honest word: a comment
+#                  that is not verdict-shaped, and a draft PR, exit before the
+#                  bundle is ever located, so neither is scanned. A non-verdict
+#                  comment publishing a bundle path with a live token in it is a
+#                  real gap in the rationale below, not a covered case.)
 #           WARN  (verdict-shaped comment with no bundle — the report can still
 #                  be useful, it just must not read as evidence-backed)
 #           silent allow (protocol inactive; non-tracker tools; tracker reads;
@@ -121,11 +127,27 @@
 # * **`gh` invocation forms.** Wrapper prefixes (`env`, `command`, `time`,
 #   `nohup`, `exec`, `eval`, `sh -c`, `bash -lc`, leading `VAR=val`
 #   assignments, an absolute or relative path to `gh`, a backslash-escaped
-#   `\gh`) ARE stripped and gated, and `--draft` is recognised in both its bare
-#   and its `--draft=true` form (`--draft=false` is not a draft and does not
-#   exempt). Not gated: `gh` reached through an alias, a shell function, a
-#   wrapper script, `xargs`, or a heredoc. A PreToolUse hook sees a command
-#   string, not a resolved process.
+#   `\gh`, `sudo`, `npx`, `/bin/sh -c`, `/bin/bash -lc`, backticks) ARE stripped
+#   and gated, as are a quoted command name or subcommand (`"gh" pr create`,
+#   `gh pr "create"`) and any whitespace between `pr` and `create` including a
+#   backslash-newline continuation. `--draft` is recognised in its bare form and
+#   in pflag's `=` form over pflag's own truthy vocabulary, case-insensitively
+#   (`--draft=True`); `--draft=false` is not a draft and does not exempt.
+#   Not gated: `gh` reached through an alias, a shell function, a wrapper
+#   script, `xargs`, or a heredoc. A PreToolUse hook sees a command string, not
+#   a resolved process.
+# * **`PEEL_CAP` is a bypass as well as a safety net.** After 32 peels the loop
+#   gives up and judges the segment as it stands, so `eval `×40 or 33 leading
+#   assignments in front of `gh` reach the gate unclassified and allow. That is
+#   opt-in evasion rather than an ordinary form, and the alternative — an
+#   uncapped loop — is a hook that can hang, which takes the tool call with it.
+#   The cap is the cheaper failure.
+# * **A quoted MENTION of a separator plus the command denies.** `strip_quoted`
+#   runs on the matched segment, not before segmentation, so
+#   `echo "step one; gh pr create next"` splits at the `;` and denies. It cannot
+#   run earlier: blanking quoted regions first would erase the command inside
+#   `sh -c "gh pr create"`, which is a real invocation this gate must see. It
+#   fails closed, and rephrasing the echo is the remedy.
 # * **Comment bodies are read from `.body` / `.commentBody` / `.comment` /
 #   `.text`.** A vendor that names the field something else, or sends it as a
 #   structured document rather than a string, is not classifiable and allows.
@@ -142,7 +164,11 @@
 #   the partial redaction this branch exists to catch. A credential
 #   concatenated into such a header WITHOUT a `name=` in front of it is seen
 #   only by the whole-value test, and a placeholder elsewhere in the header
-#   still launders it.
+#   still launders it. The pair vocabulary is the field vocabulary, so it
+#   inherits its false positives one level down: in a PARTIALLY redacted header,
+#   `token_expiry=1699999999`, `auth_state=ok` and `XSRF-TOKEN=…` are findings.
+#   The finding names the pair, so the remedy is visible rather than mysterious;
+#   a name vocabulary cannot tell an expiry from a credential.
 # * **`console.log` is unstructured**, so its scan is line-and-occurrence based
 #   rather than structural. Each occurrence is checked for a redaction
 #   placeholder individually (a placeholder elsewhere on the line does not
@@ -242,14 +268,23 @@ case "$TOOL_NAME" in
   *) exit 0 ;;
 esac
 
-ARGS="$(printf '%s' "$INPUT" | "$JQ" -c '.tool_input // {}')"
+# Guard the TYPE, not just presence. A payload whose `tool_input` is a string
+# made every later `.command` / `.body` read a jq error, and under `set -e` that
+# killed the hook mid-way with no output — which the harness reads as an ALLOW.
+# Failing open is the right direction here, but it should be a decision, not an
+# uncaught abort.
+ARGS="$(printf '%s' "$INPUT" | "$JQ" -c 'if (.tool_input | type) == "object" then .tool_input else {} end' 2>/dev/null || echo '{}')"
 
 # ─── Bash surface: is this actually publishing a PR? ────────────────────────
 # Strip quoted strings and trailing comments before looking at flags. Scanning
 # the raw command for `-d` matched flags mentioned inside a PR title or body,
 # which silently disabled the gate on ordinary commands.
+# The `#` arm only fires at a word boundary. A shell comment must start a word;
+# `#` inside one is literal, so stripping it context-free ate the rest of the
+# line — `gh pr create --title issue#5 --draft` lost its `--draft` and denied a
+# genuine draft PR with nothing in the message to explain why.
 strip_quoted() {
-  printf '%s' "$1" | sed -E "s/'[^']*'/ /g; s/\"[^\"]*\"/ /g; s/#.*$//"
+  printf '%s' "$1" | sed -E "s/'[^']*'/ /g; s/\"[^\"]*\"/ /g; s/(^|[[:space:]])#.*$/\1/"
 }
 
 # Peel wrapper prefixes off one command segment so the real program is first.
@@ -284,8 +319,9 @@ normalise_segment() {
     s="${s#"${s%%[![:space:]]*}"}"
     case "$s" in
       \"*|\'*|\\*) s="${s#?}"; peeled=1; continue ;;
-      env\ *|command\ *|time\ *|nohup\ *|exec\ *|eval\ *) s="${s#* }"; peeled=1; continue ;;
+      env\ *|command\ *|time\ *|nohup\ *|exec\ *|eval\ *|sudo\ *|npx\ *) s="${s#* }"; peeled=1; continue ;;
       sh\ *|bash\ *|zsh\ *|dash\ *)              s="${s#* }"   ; peeled=1; continue ;;
+      */sh\ *|*/bash\ *|*/zsh\ *|*/dash\ *)      s="${s#* }"   ; peeled=1; continue ;;
     esac
     tok="${s%%[[:space:]]*}"
     case "$tok" in
@@ -312,28 +348,47 @@ GH_SEGMENT=""
 if [ "$IS_PR" = "1" ]; then
   CMD="$(printf '%s' "$ARGS" | "$JQ" -r '.command // empty')"
   [ -n "$CMD" ] || exit 0
+  # Join backslash-newline continuations before segmenting: `gh pr \` + newline +
+  # `create` is one command to the shell and was two segments to the gate, so the
+  # subcommand test never saw `pr create`.
+  CMD_JOINED="$(printf '%s' "$CMD" | sed -e :a -e '/\\$/N; s/\\\n/ /; ta')"
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
     norm="$(normalise_segment "$seg")"
-    first="${norm%%[[:space:]]*}"
+    # Classification runs on a normalised PROBE, never on `norm` itself: quotes
+    # are removed and whitespace runs collapsed, so `"gh" pr create`,
+    # `gh pr "create"`, `gh pr<TAB>create` and `gh pr  create` classify like the
+    # plain form. All are valid shell that publishes a PR, and all were silently
+    # allowed — the old code peeled a LEADING quote only, which left the closing
+    # one glued to the token so `first` was `gh"` and matched nothing. A half-
+    # handled quote arm is worse than none: it reads as though quoting is covered.
+    #
+    # GH_SEGMENT keeps the ORIGINAL text, because the --draft scan below needs
+    # `strip_quoted` to blank quoted regions — a probe with quotes already
+    # removed would let a `-d` mentioned inside a PR title read as the flag.
+    probe="$(printf '%s' "$norm" | tr -d '"'"'" | tr -s '[:space:]' ' ')"
+    first="${probe%%[[:space:]]*}"
     case "$first" in
       gh|*/gh) ;;
       *) continue ;;
     esac
-    rest="${norm#"$first"}"
+    rest="${probe#"$first"}"
     rest="${rest#"${rest%%[![:space:]]*}"}"
     case "$rest" in
       pr\ create*|pr\ ready*) GH_SEGMENT="$norm"; break ;;
     esac
-  done < <(printf '%s\n' "$CMD" | tr ';&|(){}' '\n')
+  done < <(printf '%s\n' "$CMD_JOINED" | tr ';&|(){}`' '\n')
 
   [ -n "$GH_SEGMENT" ] || exit 0
   # Sharing work in progress is not a claim that it is verified. `--draft=true`
   # is the same flag — pflag accepts the `=` form for booleans, and scripts that
-  # compute draftness (`--draft=$IS_DRAFT`) reach for it. `--draft=false` is NOT
-  # a draft and deliberately does not match.
+  # compute draftness (`--draft=$IS_DRAFT`) reach for it. The truthy vocabulary
+  # and the case-insensitivity are pflag's, not ours: `strconv.ParseBool` accepts
+  # 1/t/T/TRUE/true/True, so denying `--draft=True` would reproduce the very
+  # false-deny this arm was added to fix. `--draft=false` is NOT a draft and
+  # deliberately does not match.
   printf '%s' "$(strip_quoted "$GH_SEGMENT")" |
-    grep -qE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)|(^|[[:space:]])(--draft|-d)=(true|1|y|yes)([[:space:]]|$)' && exit 0
+    grep -qiE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)|(^|[[:space:]])(--draft|-d)=(true|t|1|y|yes)([[:space:]]|$)' && exit 0
 fi
 
 # ─── tracker surfaces: is this actually sign-off? ───────────────────────────
@@ -488,9 +543,33 @@ NAME_RE='^(cookie|set-cookie|apikey|x-apikey)$|(^|[-_])(authorization|auth|bypas
 # and turned "Bearer [REDACTED]" into a finding.
 BODY_RE='(access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|api[_-]?key|password|passwd|secret[_-]?key|private[_-]?key)"?['"'"']?[[:blank:]]*[:=][[:blank:]]*["'"'"']?[^"'"'"'[:space:],;}]{6,}'
 
+# One credential-keyed pair inside a `;`-separated multi-value header, matched in
+# ONE pass over the whole value. The keyword boundaries mirror NAME_RE's
+# `(^|[-_])keyword([-_]|$)` so the pair vocabulary and the field vocabulary do
+# not drift apart.
+#
+# This is a regex sweep rather than a split-and-test loop for a measured reason:
+# the loop form cost ~0.55s/MB against ~0.11s/MB for the whole-value scan it
+# replaced — a 5x regression that lands as an IMPLICIT ALLOW, because a hook the
+# harness kills at its timeout emits nothing and nothing is an allow. Large HARs
+# are by construction the ones that still carry response bodies, i.e. exactly
+# where the secret branch matters most, so making that branch fall off a cliff
+# earlier than the gate it replaced was strictly worse than not having it.
+PAIR_RE='(^|[;,[:space:]])([A-Za-z0-9_.-]*[-_])?(authorization|auth|bypass|token|jwt|secret|credential|password|passwd|api[-_]?key)([-_][A-Za-z0-9_.-]*)?[[:space:]]*=[^;]+'
+
 # A HAR big enough to be a parsing risk is, by construction, one that still has
 # response bodies in it — i.e. exactly the thing redaction removes.
-MAX_HAR_BYTES=$((512 * 1024 * 1024))
+#
+# The number is derived from the hook's REGISTERED BUDGET, not picked. The
+# manifest gives this hook a 10s PreToolUse timeout, and the structural scan
+# measures ~0.17s/MB, so the scan itself runs out of budget somewhere near 60MB.
+# A cap above that is unreachable: the harness kills the hook first, the hook
+# emits nothing, and nothing is an ALLOW — so the "too large to verify" finding
+# would never be seen and a 100MB HAR full of response bodies would sail
+# through. 32MB costs ~5s, leaves headroom on a slow machine, and turns that
+# silent timeout into a deny an operator can act on. If the budget or the scan
+# cost changes, this number changes with it.
+MAX_HAR_BYTES=$((32 * 1024 * 1024))
 
 file_size() { wc -c < "$1" 2>/dev/null | tr -d ' ' || echo 0; }
 
@@ -508,38 +587,43 @@ scan_har() {
   # defeats any "is there a placeholder nearby" line heuristic: a single
   # redacted header would launder every live one beside it.
   #
-  # `field_live` exists because one header can hold MANY credentials: a `cookie`
+  # `findings` exists because one header can hold MANY credentials: a `cookie`
   # / `set-cookie` value is a `;`-separated list of `k=v` pairs, so judging the
   # whole string against the placeholder vocabulary lets one redacted pair vouch
   # for every live pair beside it. That is the same laundering the structural
   # walk exists to prevent, one level further in — and partial redaction is
   # precisely the state this branch is meant to catch. So each pair is ALSO
   # judged on its own, by its own key, against the same name vocabulary. The
-  # whole-value test is kept as the first disjunct: this is additive, it never
-  # turns an existing finding into a pass.
-  names="$("$JQ" -r --arg ph "$PLACEHOLDER_RE" --arg nre "$NAME_RE" --arg bre "$BODY_RE" '
+  # whole-value test comes first: this is additive, it never turns an existing
+  # finding into a pass.
+  #
+  # A pair-level finding NAMES THE PAIR. Reporting only the header is
+  # undiagnosable: the operator who has already redacted `authorization` inside
+  # a cookie opens it, sees the placeholder, and concludes the gate is broken —
+  # and the remedy text points them at the field they already fixed. A finding
+  # nobody can act on is how a gate gets disabled.
+  names="$("$JQ" -r --arg ph "$PLACEHOLDER_RE" --arg nre "$NAME_RE" \
+                  --arg bre "$BODY_RE" --arg pre "$PAIR_RE" '
       def live: tostring | (length > 0) and (test($ph; "i") | not);
-      def field_live:
+      def findings($name):
         (tostring) as $s
-        | ($s | live)
-          or ( [ $s | split(";")[]
-                    | sub("^[[:space:]]+"; "")
-                    | select(test("="))
-                    | { k: (split("=")[0] | ascii_downcase),
-                        v: (split("=") | .[1:] | join("=")) }
-                    | select(.k | test($nre))
-                    | select(.v | live) ] | length > 0 );
+        | if ($s | live) then [ "field `" + $name + "`" ]
+          else [ $s | match($pre; "gi").string
+                    | select(test($ph; "i") | not)
+                    | (split("=")[0] | sub("^[^A-Za-z0-9_]+"; "") | ascii_downcase)
+                    | "field `" + $name + "`, pair `" + . + "`" ]
+          end;
       ( [ .. | objects
           | select(has("name") and has("value"))
           | select((.name | type) == "string")
           | select(.name | ascii_downcase | test($nre))
-          | select(.value | field_live)
-          | "field `" + (.name | ascii_downcase) + "`" ]
+          | (.name | ascii_downcase) as $n
+          | (.value | findings($n))[] ]
       + [ .. | objects | to_entries[]
           | select((.value | type) == "string")
           | select(.key | ascii_downcase | test($nre))
-          | select(.value | field_live)
-          | "field `" + (.key | ascii_downcase) + "`" ]
+          | (.key | ascii_downcase) as $k
+          | (.value | findings($k))[] ]
       + [ .log?.entries[]? | (.request?.postData?.text?, .response?.content?.text?)
           | select(type == "string")
           | [ match($bre; "ig").string ][]
@@ -641,7 +725,11 @@ ${REFS}"
   exit 0
 fi
 
-if [ -n "$TICKET_KEY" ]; then
+# Entry B has no ticket, so saying "this ticket" at it sends the reader looking
+# for a key that does not exist. Name where the key came from instead.
+if [ -n "$TICKET_KEY" ] && [ "$BRANCH_BOUND" = "1" ]; then
+  WHOSE="This is a developer-triggered run with no ticket key in the payload, so the gate binds the bundle to the BRANCH instead. No evidence bundle was found for \`${TICKET_KEY}\` (the current branch name, with slashes as dashes)."
+elif [ -n "$TICKET_KEY" ]; then
   WHOSE="No evidence bundle was found for \`${TICKET_KEY}\`."
 elif [ "$BRANCH_BOUND" = "1" ]; then
   WHOSE="No ticket key in the payload, and the branch name could not be resolved (detached HEAD, or a repo with no commits), so the gate cannot tell whose evidence it would be looking for."
