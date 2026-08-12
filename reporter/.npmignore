@@ -1,0 +1,3 @@
+# Dev-only: the reporter's own test suite and its Playwright fixture project.
+# The published tarball ships the reporter itself, nothing that exercises it.
+tests/
