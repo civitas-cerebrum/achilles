@@ -91,7 +91,7 @@ the return.
 - `npx playwright test --list` lists zero specs without error
 - `playwright.config.ts` exists with project URL + reporters
 - `tests/e2e/fixtures/`, `tests/e2e/docs/`, `tests/e2e/playwright.setup.ts` exist
-- `tests/e2e/.gitignore` covers `playwright-report/`, `test-results/`, `.last-run.json`
+- `tests/e2e/.gitignore` covers `playwright-report/`, `test-results/`, `.last-run.json`; repo-root `.gitignore` covers `.achilles/`
 
 ### Phase 2 — Groundwork (`workflow-reviewer-phase2`)
 - `tests/e2e/docs/app-context.md` exists and covers what the app is + roles + auth model + URL surface

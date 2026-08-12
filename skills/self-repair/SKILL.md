@@ -188,6 +188,10 @@ watchable, and findable long after run dirs rotate:
   `bug-evidence/` copies, never at `test-results/`. The scaffold
   gitignores `bug-evidence/` alongside `test-results/` (binary media);
   teams that want evidence in VCS remove the ignore deliberately.
+  Harness backstop: `hooks/playwright-artifact-archiver.sh` copies every
+  run's artifacts to `.achilles/runs/<runId>/`, so evidence you forgot to
+  copy stays recoverable for the last few runs. Safety net, not a
+  substitute — those run dirs rotate, `bug-evidence/` does not.
 - **Intermittent bugs:** reproduce in a loop (bounded attempts — default
   12 — announced per attempt) until the recording is captured. If the
   window stays healthy, record the attempt count + window in the report
@@ -275,6 +279,11 @@ assumptions, kept deliberately minimal:
   harnesses) are out of scope for repair and excluded by preset derivation.
 - **Run artifacts under `.achilles/`** — outside Playwright's `outputDir`
   (which Playwright wipes at run start) and gitignored by the scaffold.
+  Each run's `outputDir` + report output is archived to
+  `.achilles/runs/<runId>/` by `hooks/playwright-artifact-archiver.sh`
+  (newest 5 kept; `ACHILLES_ARTIFACT_RETAIN` / `ACHILLES_ARTIFACT_MAX_MB`
+  tune retention), so a later baseline run cannot destroy an earlier
+  failure's evidence before a worker is dispatched to diagnose it.
 - **File-isolated specs for focus mode** — the scaffold's `fullyParallel`
   default guarantees this; suites with cross-file state coupling use
   `--baseline-mode full` (documented escape hatch, Stage 1).

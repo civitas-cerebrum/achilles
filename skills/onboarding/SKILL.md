@@ -199,7 +199,9 @@ augmentation.
    `test-results/`, `.last-run.json`, `bug-evidence/` (the stable
    bug-evidence home used by `self-repair` — binary media, gitignored
    by default; teams that want evidence in VCS remove the entry
-   deliberately).
+   deliberately). Also add `.achilles/` to the **repo-root** `.gitignore`
+   — the harness writes run summaries and archived run artifacts there,
+   and `tests/e2e/.gitignore` cannot cover a repo-root directory.
 4. Add `"test:repair": "achilles-self-repair"` to the project's
    `package.json` scripts — the `self-repair` entrypoint's script-mode
    front door (`npm run test:repair`, served by this package's
