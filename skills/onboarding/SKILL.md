@@ -190,8 +190,10 @@ augmentation.
 **Steps.**
 
 1. Create `playwright.config.ts` with the project's dev-server URL,
-   the standard reporters (`html` + `json`), and a `webServer` block if
-   the suite should launch the dev server itself.
+   the standard reporters (`html` + `json` + `@civitas-cerebrum/achilles/reporter`,
+   which adds cross-run flakiness history and per-attempt failure evidence
+   under `.achilles/`), and a `webServer` block if the suite should launch
+   the dev server itself.
 2. Create `tests/e2e/fixtures/`, `tests/e2e/docs/`, and `tests/e2e/playwright.setup.ts`.
    Spec files themselves live at `tests/e2e/<journey>.spec.ts` (root of
    `tests/e2e/`, no `specs/` subdirectory).

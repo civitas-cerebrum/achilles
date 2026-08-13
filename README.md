@@ -146,6 +146,38 @@ Each override earns its place: **`workers: 1`** because parallel workers open se
 
 ---
 
+## The Achilles reporter — flakiness across runs, and the evidence to explain it
+
+A Playwright reporter that keeps a local ledger of every test's outcome, copies each failing **attempt's** evidence the moment that attempt ends, and prints an end-of-run summary that separates flaky from failed and says how often each failure has failed before.
+
+```ts
+reporter: [['list'], ['html', { open: 'never' }], ['@civitas-cerebrum/achilles/reporter']],
+```
+
+It composes — add it alongside your existing reporters, never instead of them.
+
+- **Per-attempt evidence.** Attempt 0 is usually the honest failure and the retry is what passed; both are copied into `.achilles/runs/<runId>/`, with the attempt each artifact belongs to recorded in `manifest.json`. Copies, never moves, so `show-report` and `show-trace` are unaffected.
+- **History.** `.achilles/history/tests.ndjson` accumulates one entry per test per run, so a failure arrives with `failed 6 of last 10 runs` attached instead of no context at all. Bounded and pruned on every run; a damaged ledger reads as no history and is compacted on the next run.
+- **The heel.** A test that fails in at least half of the recorded runs is marked as one — a chronic weak point reads differently from a first-time failure.
+- Never fails a run. Every filesystem and parse operation is contained; on failure it logs one line and the run reports exactly as it would have.
+
+It coordinates with `hooks/playwright-artifact-archiver.sh` rather than duplicating it: the reporter records what the run left on disk, and the hook skips any path already covered. The two are complementary — the hook is the zero-config backstop that also catches runs killed mid-flight, the reporter reads the *resolved* config (so a computed `outputDir` is no obstacle) and runs however Playwright was invoked, including from CI or an IDE.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `ACHILLES_REPORTER` | — | `off` disables the reporter entirely |
+| `ACHILLES_REPORTER_SLOWEST` | `3` | how many slow tests to name |
+| `ACHILLES_REPORTER_SLOW_MS` | `1000` | below this, the slowest section is omitted |
+| `ACHILLES_HISTORY_RUNS` | `20` | runs kept in the ledger |
+| `ACHILLES_HISTORY_DAYS` | `30` | age bound on ledger entries |
+| `ACHILLES_HISTORY_MAX_ENTRIES` | `5000` | hard ceiling on ledger size |
+| `ACHILLES_ARTIFACT_RETAIN` | `5` | archived runs kept (`0` disables archiving; shared with the archiver hook) |
+| `ACHILLES_ARTIFACT_MAX_MB` | `512` | per-run ceiling above which trace/video blobs are skipped |
+
+`NO_COLOR`, a non-TTY stdout and `TERM=dumb` all switch the summary to plain text; `FORCE_COLOR=1` overrides.
+
+---
+
 ## What you get
 
 Inside the package:
@@ -156,6 +188,7 @@ Inside the package:
 | `hooks/` | Harness hooks that enforce contract discipline at the tool boundary — phase-ordering, dispatch-shape validation, return-schema validation, ledger integrity, parent-only-orchestrator policies, playwright-cli session isolation | Claude Code (registered in `~/.claude/settings.json` by postinstall) |
 | `schemas/` | JSON Schemas for subagent return shapes + the onboarding-status ledger; fixtures for both the valid and invalid cases | Subagent return validators + reviewer subagents |
 | `scripts/` | `postinstall.js` is the only script shipped in the tarball (skill+hook copy + chromium fetch); the lint/build/sync scripts live in the repo only — `compile-schemas.mjs` + `validate-schema-fixtures.mjs` (schemas:lint), `build-validator.mjs` (regenerates the bundled validator), `lint-doc-drift.mjs` (doc-surface drift), `sync-hooks.js` (dev convenience) | npm install, CI |
+| `reporter/` | The Achilles Playwright reporter — cross-run flakiness history, per-attempt evidence copying, and the end-of-run summary | Your `playwright.config` (`reporter: [...]`) |
 | `bin/` | `self-repair.mjs` — the `achilles-self-repair` CLI driver behind `npm run test:repair`: baselines the suite, classifies flake vs deterministic failures, spawns one Claude Code worker subprocess per red spec file, verifies heals, writes the session report | You (or your CI), via `npm run test:repair` |
 
 ---
