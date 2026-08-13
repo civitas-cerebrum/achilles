@@ -282,6 +282,101 @@ pa_fire "$PA_ADJ" "npm run test:e2e"
 assert_eq "$(pa_runs "$PA_ADJ")" "1" "npm run <script> whose body is a playwright run archives"
 
 # ---------------------------------------------------------------------------
+section "playwright-artifact-archiver: coordinates with the Achilles reporter"
+# The reporter (reporter/index.js) archives each failing ATTEMPT as it happens
+# and stamps a claim into .achilles/runs/.last-archive.json describing what the
+# run left on disk. This hook must honour that claim rather than archive the
+# same evidence a second time — and must stop honouring it the instant the
+# candidate set changes, so a run the reporter was NOT wired into is still
+# archived. Both configurations are covered: hook-plus-reporter here, and
+# hook-alone by every other section in this file.
+
+# pa_claim <dir> [complete] [by] — write the claim the reporter writes, with
+# the candidate set's real file count, byte total and newest mtime.
+pa_claim() {
+  local d="$1" complete="${2:-true}" by="${3:-reporter}" listing files bytes mtime
+  if stat -f %m . >/dev/null 2>&1; then
+    listing=$(find "$d/pw-artifacts" "$d/pw-html" -type f -exec stat -f '%z %m' {} + 2>/dev/null)
+  else
+    listing=$(find "$d/pw-artifacts" "$d/pw-html" -type f -exec stat -c '%s %Y' {} + 2>/dev/null)
+  fi
+  files=$(printf '%s' "$listing" | grep -c . 2>/dev/null || echo 0)
+  bytes=$(printf '%s' "$listing" | awk '{t+=$1} END{printf "%d", t+0}')
+  mtime=$(printf '%s' "$listing" | awk '{if ($2+0 > m) m=$2+0} END{printf "%d", m+0}')
+  mkdir -p "$d/.achilles/runs"
+  "$JQ" -n --arg by "$by" --argjson complete "$complete" \
+    --argjson f "$files" --argjson b "$bytes" --argjson m "$mtime" \
+    --argjson byPath "$(pa_bypath "$d" pw-artifacts pw-html)" \
+    '{fingerprint:"reporter:20260812T000000Z", runId:"20260812T000000Z",
+      timestamp:"2026-08-12T00:00:00Z", claimedBy:$by, complete:$complete,
+      candidates:{paths:["pw-artifacts","pw-html"], files:$f, bytes:$b,
+                  newestMtime:$m, byPath:$byPath}}' \
+    > "$d/.achilles/runs/.last-archive.json"
+}
+
+# pa_bypath <dir> <rel>... — the per-path stats block the reporter records.
+pa_bypath() {
+  local d="$1"; shift
+  local out="{}" rel line
+  for rel in "$@"; do
+    if stat -f %m . >/dev/null 2>&1; then
+      line=$(find "$d/$rel" -type f -exec stat -f '%z %m' {} + 2>/dev/null)
+    else
+      line=$(find "$d/$rel" -type f -exec stat -c '%s %Y' {} + 2>/dev/null)
+    fi
+    out=$(printf '%s' "$out" | "$JQ" -c --arg p "$rel" \
+      --argjson f "$(printf '%s' "$line" | grep -c . 2>/dev/null || echo 0)" \
+      --argjson b "$(printf '%s' "$line" | awk '{t+=$1} END{printf "%d", t+0}')" \
+      --argjson m "$(printf '%s' "$line" | awk '{if ($2+0 > m) m=$2+0} END{printf "%d", m+0}')" \
+      '.[$p] = {files:$f, bytes:$b, newestMtime:$m}')
+  done
+  printf '%s' "$out"
+}
+
+PA_CLAIM=$(pa_mktemp); pa_project "$PA_CLAIM"
+pa_claim "$PA_CLAIM"
+pa_fire "$PA_CLAIM"
+assert_eq "$(pa_runs "$PA_CLAIM")" "0" "a matching reporter claim suppresses the duplicate archive"
+assert_eq "$PA_OUT" "" "and says nothing about it"
+PA_OUT=$(printf '%s' "$(payload hook_event_name=Stop cwd="$PA_CLAIM")" | bash "$H" 2>/dev/null)
+assert_eq "$(pa_runs "$PA_CLAIM")" "0" "the Stop backstop honours the claim too"
+
+# A run the reporter never saw. The claim must not suppress it.
+printf 'evidence from a run with no reporter\n' > "$PA_CLAIM/pw-artifacts/spec-failing-test/unclaimed.md"
+pa_fire "$PA_CLAIM"
+assert_eq "$(pa_runs "$PA_CLAIM")" "1" "a changed candidate set is archived despite the claim"
+assert_eq "$([ -f "$(pa_newest "$PA_CLAIM")/artifacts/pw-artifacts/spec-failing-test/unclaimed.md" ] && echo yes)" "yes" "the unclaimed evidence is what landed"
+
+# An incomplete claim is not a claim: the reporter only sets complete:true once
+# it has finished, so a partial one must never suppress the hook.
+PA_PART=$(pa_mktemp); pa_project "$PA_PART"
+pa_claim "$PA_PART" false
+pa_fire "$PA_PART"
+assert_eq "$(pa_runs "$PA_PART")" "1" "an incomplete claim does not suppress archiving"
+
+# Only the reporter may claim; an unknown producer is ignored.
+PA_FOREIGN=$(pa_mktemp); pa_project "$PA_FOREIGN"
+pa_claim "$PA_FOREIGN" true something-else
+pa_fire "$PA_FOREIGN"
+assert_eq "$(pa_runs "$PA_FOREIGN")" "1" "a claim from an unknown producer is ignored"
+
+# A claim whose numbers do not match is ignored — the byte total moved.
+PA_STALE=$(pa_mktemp); pa_project "$PA_STALE"
+pa_claim "$PA_STALE"
+printf 'x' >> "$PA_STALE/pw-artifacts/spec-failing-test/error-context.md"
+pa_fire "$PA_STALE"
+assert_eq "$(pa_runs "$PA_STALE")" "1" "a stale claim does not suppress archiving"
+
+# The hook's candidate set can exceed the claim's when the reporter saw fewer
+# paths — a partial claim covers nothing it did not record.
+PA_SUBSET=$(pa_mktemp); pa_project "$PA_SUBSET"
+pa_claim "$PA_SUBSET"
+"$JQ" 'del(.candidates.byPath["pw-html"])' "$PA_SUBSET/.achilles/runs/.last-archive.json" > "$PA_SUBSET/.claim.tmp" \
+  && mv "$PA_SUBSET/.claim.tmp" "$PA_SUBSET/.achilles/runs/.last-archive.json"
+pa_fire "$PA_SUBSET"
+assert_eq "$(pa_runs "$PA_SUBSET")" "1" "a claim missing one of the hook's candidate paths does not suppress archiving"
+
+# ---------------------------------------------------------------------------
 section "playwright-artifact-archiver: opt-out and never-deny"
 PA_OFF=$(pa_mktemp); pa_project "$PA_OFF"
 ACHILLES_ARTIFACT_RETAIN=0 pa_fire "$PA_OFF"

@@ -55,6 +55,11 @@
 # - Idempotent: a fingerprint (file count + byte total + newest mtime of the
 #   candidate set) is recorded per archive; an unchanged candidate set is a
 #   no-op, so the Stop backstop never duplicates what PostToolUse already took.
+#   The same file also carries the Achilles Playwright reporter's claim when
+#   that reporter is wired in: `claimedBy: "reporter"` plus the candidate set's
+#   file count, byte total and newest mtime. This hook honours the claim only
+#   while all three still match what is on disk, so the reporter's per-attempt
+#   archive is not duplicated and nothing the reporter did not see is skipped.
 # - Failure-tolerant: every step is guarded and the hook always exits 0. Losing
 #   a run because the archiver broke is worse than losing the archive.
 #
@@ -62,6 +67,7 @@
 # ----------------
 # - Playwright artifacts changed since the last archive        → archive (RECORD)
 # - Candidate set unchanged / absent                           → silent no-op
+# - Reporter claim matches the candidate set on disk           → silent no-op
 # - Non-Playwright Bash command                                → silent no-op
 # - ACHILLES_ARTIFACT_RETAIN=0                                 → silent no-op (opt-out)
 # - Candidate set above ACHILLES_ARTIFACT_MAX_MB               → archive small
@@ -274,6 +280,39 @@ case "$FP" in 0:0:*) exit 0 ;; esac      # candidate paths exist but hold no fil
 PREV_FP=""
 [ -f "$FP_FILE" ] && PREV_FP=$("$JQ" -r '.fingerprint // ""' "$FP_FILE" 2>/dev/null || echo "")
 [ "$FP" = "$PREV_FP" ] && exit 0
+
+# ---------------------------------------------------------------------------
+# Reporter claim. The Achilles Playwright reporter archives each failing
+# attempt as it happens and, from `onExit`, records what the run left on disk:
+# per candidate path, the file count, byte total and newest mtime in whole
+# seconds. It cannot compute the fingerprint above — that would mean
+# reimplementing this script's stat/sort/digest pipeline in another language
+# and keeping the two byte-identical — so it records the three quantities that
+# ARE reproducible across implementations, and this hook checks those.
+#
+# Per PATH, not in aggregate, because this hook's candidate set is frequently a
+# SUBSET of the reporter's: the reporter is handed the resolved config, while
+# this hook greps it, so a computed `outputDir` is invisible here and only the
+# html report is seen. The claim is honoured when every path THIS hook resolved
+# appears in the claim with numbers that still match disk. Anything the
+# reporter did not see is therefore never suppressed, and a stale or partial
+# claim costs a duplicate archive rather than lost evidence.
+# ---------------------------------------------------------------------------
+if [ -f "$FP_FILE" ]; then
+  CLAIM_BY=$("$JQ" -r '.claimedBy // ""' "$FP_FILE" 2>/dev/null || echo "")
+  CLAIM_OK=$("$JQ" -r '.complete // false' "$FP_FILE" 2>/dev/null || echo "false")
+  if [ "$CLAIM_BY" = "reporter" ] && [ "$CLAIM_OK" = "true" ]; then
+    CLAIM_COVERS=yes
+    for rel in "${CANDIDATES[@]}"; do
+      CLAIMED=$("$JQ" -r --arg p "$rel" '.candidates.byPath[$p] // empty | "\(.files) \(.bytes) \(.newestMtime)"' "$FP_FILE" 2>/dev/null || echo "")
+      [ -n "$CLAIMED" ] || { CLAIM_COVERS=no; break; }
+      CUR=$(stat_pairs "$ROOT/$rel" \
+            | awk '{n++; t+=$1; if ($2+0 > m) m=$2+0} END{printf "%d %d %d", n+0, t+0, m+0}')
+      [ "$CLAIMED" = "$CUR" ] || { CLAIM_COVERS=no; break; }
+    done
+    [ "$CLAIM_COVERS" = "yes" ] && exit 0
+  fi
+fi
 
 CAND_BYTES=${FP#*:}; CAND_BYTES=${CAND_BYTES%%:*}
 CAND_FILES=${FP%%:*}
