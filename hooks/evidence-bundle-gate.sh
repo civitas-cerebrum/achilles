@@ -206,7 +206,7 @@
 #                                       §"The Contract",
 #                                       §"The sign-off gate"
 # skills/companion-mode/SKILL.md        §"Redaction (mandatory …)"
-# skills/element-interactions/references/harness-hooks.md
+# skills/achilles-protocol/references/harness-hooks.md
 #
 # Failure → action
 # ----------------
