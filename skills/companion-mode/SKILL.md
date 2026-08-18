@@ -222,18 +222,65 @@ tests/e2e/evidence/<slug>-<YYYYMMDD-HHMMSS>/
 └── run-output/          ← raw playwright output (kept for forensic use)
 ```
 
-### Redaction (mandatory, before the bundle freezes)
+**One run per environment, one path per run.** `video.webm`, `trace.zip`
+and `network.har` are fixed names. If the same task is verified against
+more than one environment, viewport, or locale in one pass, the second
+run overwrites the first at every one of them — silently, because
+Playwright is doing exactly what it was told. Give each environment its
+own bundle, or its own named subdirectory inside the bundle
+(`preview/`, `production/`), and count the artifacts against the number
+of runs before writing the verdict. A summary that cites two runs over
+one set of files is citing evidence that no longer exists.
 
-Before Phase 5 assembles the final bundle (and before Rule 11's
-immutability kicks in), run a redaction pass over `console.log` and
-`network.har`: grep both for the four `secrets-sweep` literal classes —
-credentials, API keys, PII shapes, and tokens in `Authorization` /
-`Set-Cookie` headers — and redact matches in place. Every redaction is
-recorded in `summary.md` under a `## Redactions` section (what was
-redacted and where — named, not silent, consistent with the
-no-fabrication rule). Evidence bundles are NOT swept by onboarding
-Phase 7's `secrets-sweep`; this step is the bundle's only redaction
+### Redaction (mandatory — scoped to the artifact, not to the bundle)
+
+**Any captured `network.har` or `console.log` gets a redaction pass
+before anything else happens to it — whether or not a bundle is being
+assembled around it.** The pass is owned by whoever captured the file.
+A HAR written during an ad-hoc check, a one-off `recordHar` while
+debugging, a console dump pasted into a scratch directory: same rule,
+same moment. This scoping is deliberate and was widened after an
+unredacted deployment protection-bypass token survived a capture taken
+outside any bundle — the pass existed, but only inside a contract the
+ad-hoc path never entered.
+
+The pass: grep `console.log` and `network.har` for the four
+`secrets-sweep` literal classes — credentials, API keys, PII shapes, and
+tokens in `Authorization` / `Set-Cookie` headers, plus any
+`*-bypass` / `*-token` / `*-key` request header — and redact matches in
+place. Redact HARs **by header name across every entry**, not by
+searching for the value you happen to know: one credential appears in
+the headers of every request in the file, and hundreds of copies means
+one missed occurrence is the default outcome of a value-based sweep.
+Stripping response bodies at the same time shrinks the file by roughly
+20×.
+
+When a bundle is being assembled, run this before Phase 5 freezes it
+(and before Rule 11's immutability kicks in), and record every
+redaction in `summary.md` under a `## Redactions` section — what was
+redacted and where, named, not silent, consistent with the
+no-fabrication rule. When there is no bundle, record it wherever the
+artifact's provenance is recorded. Evidence bundles are NOT swept by
+onboarding Phase 7's `secrets-sweep`; this step is their only redaction
 pass.
+
+**Partially harness-enforced by
+[`hooks/evidence-bundle-gate.sh`](../../hooks/evidence-bundle-gate.sh).**
+It DENIES QA sign-off — on every gated surface, comments included — while
+a matched bundle's `*.har` or `console.log` still carries a live value
+under a credential-bearing field name, at the bundle root or one level
+into it. Unlike a missing bundle, an unredacted credential has no
+legitimate outcome, so that branch is not graded.
+
+Three limits, because a rule that overstates its backstop is worse than
+one with none. The gate **follows the bundle** — a capture it cannot
+find is unscanned, which is exactly why the rule above is scoped to the
+artifact and not to the gate's reach. Its detection is **name-and-shape
+based** (field names against a fixed vocabulary; HAR bodies for
+`access_token`-shaped assignments), so a credential in a field named
+nothing like one is not found. And it fires **at sign-off**, hundreds of
+tool calls after the capture. It is a last-boundary backstop. You own
+the pass.
 
 ### `summary.md` — required sections
 
