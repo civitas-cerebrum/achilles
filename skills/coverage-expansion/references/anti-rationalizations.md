@@ -310,6 +310,39 @@ The cost the orchestrator pays for the dodge:
 
 ---
 
+## Pattern: Session state mistaken for per-unit-of-work state ("the skill is already loaded")
+
+A methodology skill is invoked and followed correctly for one unit of work. The agent then moves to the NEXT unit — a second ticket, a second branch — and does not re-enter the skill, because the skill is visibly still in its transcript. It runs an ad-hoc version of the method from memory instead of the sequence, and the deliverables the sequence would have produced silently do not exist.
+
+**Symptoms:**
+- "I'm already in ticket-testing mode" / "already in companion mode"
+- "the skill is loaded, no need to re-invoke it"
+- "I've already read the methodology this session"
+- "this one is smaller — it just needs a quick confirmation"
+- "the PR is already in QA, I only need to sign it off"
+- "same project, same suite, same approach as the last one"
+- a verdict, report, or handover carrying measured numbers but naming no artifact
+
+**Reality:** Skill activation is a property of the **session**; the sequence is a property of the **unit of work**. Those come apart the moment a second unit arrives, and every intent-triggered skill re-fires on judgement alone — which is exactly the faculty a second, apparently-smaller unit erodes. Loaded ≠ performed. The tell is not in the reasoning, which reads fine; it is in the deliverables, which are missing. Re-entry is cheap: announce it in one line and restate the sequence for the new unit.
+
+**Hooks that catch this:**
+- `evidence-bundle-gate.sh` — binds `ticket-driven-testing`'s contract item 3 (the evidence bundle) to the **ticket key**, not the session, so a second ticket cannot sign off on the first ticket's bundle. DENY on terminal transition / published PR; **WARN only** on a verdict-shaped comment, which is the surface the origin failure actually used.
+- `adversarial-verification-gate.sh` — the same per-ticket binding on the §8/§8b receipt, with the same DENY/WARN split.
+- (markdown-only for the re-entry act itself) — a hook can observe that a per-unit deliverable is absent at the sign-off boundary; it cannot observe whether the sequence was re-run. The consequence is mechanically detectable; the decision is not. Both gates above are also authored by the same actor they judge, so they raise the cost of forgetting far more than the cost of faking.
+
+**Origin:** A ticket-driven QA session that ran the method properly for one ticket, then posted a tracker verdict for a second ticket with measured numbers and zero artifacts. Redone under `companion-mode`, the proper run immediately surfaced two defects the ad-hoc pass had missed — colliding artifact paths across two environments, and a live deployment protection-bypass token unredacted in the captured HARs. Codified as `ticket-driven-testing` §0.
+
+---
+
+## Pattern: `markdown-only` deferral — companion-mode per-environment artifact paths
+
+`companion-mode` §"Phase 5: Bundle" requires one bundle (or one named subdirectory) per environment when a single verification spans more than one environment, viewport, or locale — `video.webm` / `trace.zip` / `network.har` are fixed names, so a second run overwrites the first silently. No hook validates the artifact count against the number of runs a summary claims: the claim lives in prose inside `summary.md`, and parsing an English sentence for "how many runs is this asserting" is not a mechanical check.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `summary.md` shape contract (a machine-readable run list) would make the count checkable; until that exists the rule is reviewer-enforced.
+
+---
+
 ## Pattern: `markdown-only` deferral — batch-reviewer mode (cycle-1 compositional)
 
 The "Batch reviewer mode" rule lives in `skills/coverage-expansion/references/reviewer-subagent-contract.md` §"Batch reviewer mode (cycle-1 compositional only)". The structural backstop — extending the surviving `subagent-return-schema-guard.sh` to recognise the `reviewer-batch-pass-<N>:` role-prefix and the `verdicts:` array shape — remains deferred. (The companion spillover-rewrite-gate hook that would have paired with it was retired in 0.3.6 along with the broader hook cleanup.)
