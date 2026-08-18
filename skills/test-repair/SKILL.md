@@ -83,11 +83,21 @@ For every test, determine its run-pattern:
 | Pattern | Signal | What it means |
 |---|---|---|
 | **Green** | 3/3 pass | Stable — skip |
+| **Known-defect** | Any failure, test or describe tagged `@known-defect` | Intentional red guarding a *filed* defect — terminal, skip |
 | **Deterministic-fail** | 3/3 fail with same error signature | Repeatable failure — deterministic cause |
 | **Flaky-consistent** | Mixed pass/fail, same error when failing | Timing or race condition with a stable target |
 | **Flaky-chaotic** | Mixed pass/fail, different errors each run | Unclear cause — needs more data |
 
-Then cluster the non-green tests by shared signal. A few of the clusters you will commonly see:
+**`@known-defect` failures are excluded from clustering.** The tag says the
+failure is already understood and filed; a cluster, a hypothesis batch, or a
+heal attempt only re-derives a written-down conclusion and burns baseline
+runs doing it. List them in the session summary under known defects — never
+under anything awaiting a heal — and note any whose *error signature* changed,
+because a different error behind the tag is a second, unfiled problem. A
+`@known-defect` test that goes 3/3 green means the defect is fixed: say so and
+drop the tag. Contract: [`test-identity.md`](../element-interactions/references/test-identity.md) §2.
+
+Then cluster the remaining non-green tests by shared signal. A few of the clusters you will commonly see:
 
 - Same missing `page-repository.json` entry → one cluster, one fix heals many
 - Same page failing to load → one cluster, one navigation issue
@@ -129,6 +139,7 @@ For each verified cluster, invoke `failure-diagnosis` with:
 - **App bug** — evidence shows wrong UI; escalated with report. Test is NOT modified.
 - **Operator-pending** — a proposed heal (flow drift, assertion re-baseline) awaiting approval
 - **Quarantined** — flake that resisted two heal strategies; tagged `@flaky`, documented
+- **Known defect** — `@known-defect`: reported already, excluded from repair, test untouched
 
 Record each cluster's outcome. Carry forward to Stage 5.
 
@@ -174,6 +185,7 @@ Write `test-results/repair-session-<ISO-timestamp>.md` with a clear audit trail:
 - Healed (proposed, operator-approved): <count>
 - Reported bugs (NOT modified): <count>
 - Operator-pending: <count>
+- Known defects `@known-defect` (excluded from repair): <count>
 - Quarantined `@flaky`: <count>
 - Released from quarantine: <count>
 - Stale quarantine entries needing an operator decision: <count>
@@ -246,11 +258,15 @@ These are the non-negotiables that every cluster decision must respect. Together
 
 ---
 
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../element-interactions/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
 ## Success criteria
 
 A repair session is complete when:
 
-1. Every test in scope is in one of: passing stably (verified 5× in suite order), reported as app bug, operator-pending, or quarantined `@flaky` with evidence.
+1. Every test in scope is in one of: passing stably (verified 5× in suite order), reported as app bug, operator-pending, quarantined `@flaky` with evidence, or an intentional `@known-defect` red left untouched.
 2. No new failures were introduced by heals (confirmed in Stage 5).
 3. Stage 5.5 quarantine review has run when `tests/e2e/docs/flake-quarantine.md` had open entries: every entry was released with dated evidence, annotated still-flaking, or escalated after surviving 3+ sessions.
 4. The repair-session summary has been written to `test-results/repair-session-<timestamp>.md`, including the "Quarantine review (Stage 5.5)" block when the ledger had entries.

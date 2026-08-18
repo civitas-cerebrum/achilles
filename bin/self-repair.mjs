@@ -25,7 +25,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -230,13 +230,30 @@ function runPlaywright(label, jsonOut, extraArgs, opts) {
   });
 }
 
-// Flatten a Playwright JSON report into [{file, title, status, error}]
+// A test is an INTENTIONAL red when it (or an enclosing describe) carries
+// `@known-defect` — it asserts the behaviour the app should have while a
+// filed defect makes it fail today. The tag is matched the way Playwright's
+// own --grep sees it: anywhere in the title path, plus the reporter's `tags`
+// array for the `{ tag: … }` option form.
+// See skills/element-interactions/references/test-identity.md §2.
+const KNOWN_DEFECT_RE = /@known-defect\b/;
+
+function isKnownDefect(titlePath, tags) {
+  if ((tags ?? []).some((t) => KNOWN_DEFECT_RE.test(String(t)))) return true;
+  return titlePath.some((t) => KNOWN_DEFECT_RE.test(String(t ?? '')));
+}
+
+// Flatten a Playwright JSON report into
+// [{file, title, status, error, knownDefect}]
 function collectResults(reportPath) {
   if (!existsSync(reportPath)) return null;
   const report = JSON.parse(readFileSync(reportPath, 'utf8'));
   const out = [];
-  const walk = (suite, file) => {
+  const walk = (suite, file, ancestors) => {
     const f = suite.file || file;
+    // The top-level suite's title is the file path, not a describe title —
+    // excluding it keeps a tag in a *path* from being read as a test tag.
+    const path = suite.file ? ancestors : [...ancestors, suite.title ?? ''];
     for (const spec of suite.specs ?? []) {
       for (const test of spec.tests ?? []) {
         const results = test.results ?? [];
@@ -247,12 +264,13 @@ function collectResults(reportPath) {
           title: spec.title,
           status: last.status === 'passed' || anyPass ? 'passed' : (last.status ?? 'unknown'),
           error: errorSignature(last),
+          knownDefect: isKnownDefect([...path, spec.title], spec.tags ?? test.tags),
         });
       }
     }
-    for (const child of suite.suites ?? []) walk(child, f);
+    for (const child of suite.suites ?? []) walk(child, f, path);
   };
-  for (const suite of report.suites ?? []) walk(suite, suite.file);
+  for (const suite of report.suites ?? []) walk(suite, suite.file, []);
   return out;
 }
 
@@ -291,9 +309,10 @@ function classify(runs) {
   for (let i = 0; i < runs.length; i++) {
     for (const r of runs[i] ?? []) {
       const key = `${r.file}::${r.title}`;
-      if (!byTest.has(key)) byTest.set(key, { file: r.file, title: r.title, outcomes: [], errors: [] });
+      if (!byTest.has(key)) byTest.set(key, { file: r.file, title: r.title, knownDefect: false, outcomes: [], errors: [] });
       const t = byTest.get(key);
       t.outcomes[i] = r.status;
+      t.knownDefect = t.knownDefect || Boolean(r.knownDefect);
       if (r.status !== 'passed') t.errors.push(r.error);
     }
   }
@@ -303,6 +322,12 @@ function classify(runs) {
     const failures = t.outcomes.filter((o) => o && o !== 'passed' && o !== 'skipped').length;
     const ran = t.outcomes.filter((o) => o && o !== 'skipped').length;
     if (ran === 0 || failures === 0) t.pattern = 'green';
+    // An @known-defect red is a CLASSIFIED failure, not an open one: the
+    // cause is understood and filed. Rerunning it, handing it to a worker,
+    // or diagnosing it again re-derives a written-down conclusion at the
+    // cost of wall-clock and worker budget. It gets its own terminal
+    // pattern so nothing downstream mistakes it for repair work.
+    else if (t.knownDefect) t.pattern = 'known-defect';
     else if (failures === ran) t.pattern = 'deterministic-fail';
     else if (new Set(t.errors).size <= 1) t.pattern = 'flaky-consistent';
     else t.pattern = 'flaky-chaotic';
@@ -310,10 +335,12 @@ function classify(runs) {
   return byTest;
 }
 
+// The repair scope. `green` and `known-defect` are both terminal: neither
+// earns a rerun, a worker, or a verification pass.
 function redFiles(byTest) {
   const files = new Map();
   for (const t of byTest.values()) {
-    if (t.pattern === 'green') continue;
+    if (t.pattern === 'green' || t.pattern === 'known-defect') continue;
     if (!files.has(t.file)) files.set(t.file, []);
     files.get(t.file).push(t);
   }
@@ -487,6 +514,8 @@ function buildReport(runId, opts, byTest, workerReports, verifyByTest, rounds, s
     const verified = verifyByTest?.get(`${t.file}::${t.title}`);
     let outcome;
     if (t.pattern === 'green') outcome = 'already-green';
+    // Terminal before any worker/verify evidence — nothing ran for it.
+    else if (t.pattern === 'known-defect') outcome = 'known-defect';
     else if (worker && EXPLAINED.has(worker.outcome)) outcome = worker.outcome;
     else if (verified && verified.pattern === 'green') outcome = 'healed';
     else if (worker?.outcome === 'healed' && !verified) outcome = 'healed';
@@ -516,6 +545,7 @@ function buildReport(runId, opts, byTest, workerReports, verifyByTest, rounds, s
   const count = (o) => all.filter((t) => t.outcome === o).length;
   const totals = {
     'already-green': count('already-green'),
+    'known-defect': count('known-defect'),
     healed: count('healed'),
     'app-bugs': count('app-bug'),
     quarantined: count('quarantined'),
@@ -564,9 +594,9 @@ function renderMarkdown(r) {
     '',
     '## Outcome',
     '',
-    `| Already green | Healed | App bugs | Quarantined | Operator-pending | Unresolved |`,
-    `|---|---|---|---|---|---|`,
-    `| ${r.totals['already-green']} | ${r.totals.healed} | ${r.totals['app-bugs']} | ${r.totals.quarantined} | ${r.totals['operator-pending']} | ${r.totals.unresolved} |`,
+    `| Already green | Known defects | Healed | App bugs | Quarantined | Operator-pending | Unresolved |`,
+    `|---|---|---|---|---|---|---|`,
+    `| ${r.totals['already-green']} | ${r.totals['known-defect'] ?? 0} | ${r.totals.healed} | ${r.totals['app-bugs']} | ${r.totals.quarantined} | ${r.totals['operator-pending']} | ${r.totals.unresolved} |`,
     '',
     '## Per-file results',
     '',
@@ -584,6 +614,18 @@ function renderMarkdown(r) {
     }
     lines.push('');
   }
+  const known = r.files.flatMap((f) => f.tests.filter((t) => t.outcome === 'known-defect').map((t) => ({ f: f.file, t })));
+  if (known.length) {
+    lines.push(
+      '## Known defects (not repaired, not rerun)',
+      '',
+      'Tagged `@known-defect`: the failure is filed and understood, so it was excluded from the failure reruns, the worker fan-out, and the verification runs. Each one turns green unedited when its defect is fixed.',
+      '',
+    );
+    for (const { f, t } of known) lines.push(`- \`${f}\` :: ${t.title}`);
+    lines.push('');
+  }
+
   const bugs = r.files.flatMap((f) => f.tests.filter((t) => t['bug-report']).map((t) => ({ f: f.file, t })));
   if (bugs.length) {
     lines.push('## Bug reports (tests NOT modified)', '');
@@ -774,23 +816,35 @@ async function main() {
       runs.push(results);
     }
   } else {
-    log('baseline', 'discovery run green — skipping failure reruns');
+    const knownDefects = [...classify(runs).values()].filter((t) => t.pattern === 'known-defect').length;
+    log(
+      'baseline',
+      knownDefects > 0
+        ? `discovery run has no repairable failures (${knownDefects} @known-defect red${knownDefects === 1 ? '' : 's'}, excluded by contract) — skipping failure reruns`
+        : 'discovery run green — skipping failure reruns',
+    );
   }
 
   // Stage 2 — classify
   let byTest = classify(runs);
   let red = redFiles(byTest);
-  const patterns = { 'deterministic-fail': 0, 'flaky-consistent': 0, 'flaky-chaotic': 0 };
+  const patterns = { 'deterministic-fail': 0, 'flaky-consistent': 0, 'flaky-chaotic': 0, 'known-defect': 0 };
   for (const t of byTest.values()) if (t.pattern !== 'green') patterns[t.pattern]++;
   log(
     'classify',
-    `${byTest.size} tests: ${byTest.size - [...red.values()].flat().length} green, ` +
+    `${byTest.size} tests: ${byTest.size - [...red.values()].flat().length - patterns['known-defect']} green, ` +
+      `${patterns['known-defect']} known-defect (excluded from repair), ` +
       `${patterns['deterministic-fail']} deterministic, ${patterns['flaky-consistent']} flaky-consistent, ` +
       `${patterns['flaky-chaotic']} flaky-chaotic across ${red.size} red files`,
   );
 
   if (red.size === 0) {
-    log('report', 'suite already green — nothing to repair');
+    log(
+      'report',
+      patterns['known-defect'] > 0
+        ? `nothing to repair — ${patterns['known-defect']} @known-defect red${patterns['known-defect'] === 1 ? '' : 's'} excluded by contract, everything else green`
+        : 'suite already green — nothing to repair',
+    );
     const report = buildReport(runId, opts, byTest, [], null, 0, startedAt);
     writeFileSync(join(state.runDir, 'report.json'), JSON.stringify(report, null, 2));
     writeFileSync(join(state.runDir, 'report.md'), renderMarkdown(report));
@@ -872,11 +926,19 @@ async function main() {
   writeFileSync(reportMdPath, renderMarkdown(report));
   log(
     'report',
-    `written ${relative(process.cwd(), reportMdPath)} — healed=${report.totals.healed} app-bugs=${report.totals['app-bugs']} ` +
+    `written ${relative(process.cwd(), reportMdPath)} — healed=${report.totals.healed} known-defects=${report.totals['known-defect']} app-bugs=${report.totals['app-bugs']} ` +
       `quarantined=${report.totals.quarantined} operator-pending=${report.totals['operator-pending']} unresolved=${report.totals.unresolved}`,
   );
 
   process.exit(report.totals.unresolved > 0 ? 2 : 0);
 }
 
-main().catch((err) => fail(err.stack ?? String(err)));
+// Pure classification helpers, exported so the hook test-suite can pin the
+// @known-defect no-rerun contract without spawning a Playwright run.
+export { collectResults, classify, redFiles, isKnownDefect, buildReport, renderMarkdown };
+
+// Only drive the pipeline when invoked as the bin — importing this module
+// (tests, tooling) must not start a suite run.
+const invokedAsBin =
+  process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+if (invokedAsBin) main().catch((err) => fail(err.stack ?? String(err)));

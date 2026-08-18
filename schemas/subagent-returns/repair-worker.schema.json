@@ -34,7 +34,7 @@
         "properties": {
           "title": { "type": "string", "minLength": 1 },
           "outcome": {
-            "enum": ["already-green", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"]
+            "enum": ["already-green", "known-defect", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"]
           },
           "baseline-pattern": {
             "enum": ["green", "deterministic-fail", "flaky-consistent", "flaky-chaotic"]

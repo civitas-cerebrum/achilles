@@ -167,10 +167,12 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 | **e. State isolation** | **Auto** | Test passes when run alone, fails when run after specific predecessors (verified empirically) | Add fresh context / storage reset / cleanup hook; re-run in suite order |
 | **f. Flake quarantine** | **Report** | Flake persisted after two heal attempts of different strategies; root cause unclear | Tag test `@flaky`, append an entry to the quarantine ledger (see §Quarantine ledger below), add to repair summary with diagnostic notes; do NOT silently skip |
 | **g. Whole-test rewrite** | **Operator-aligned** | Flow changed so fundamentally that the scenario no longer maps to the app as-is; no incremental heal applies | Present to operator; on approval, invoke `test-composer` with journey context. Never regenerate without alignment. |
+| **h0. Known defect — no heal, no rerun** | **Report** | The test (or its describe) carries `@known-defect` and the failure signature matches the filed defect | Terminal on sight: do not reproduce, do not experiment, do not heal, do not rerun. Record it as a known defect in the summary and move on. A *different* error behind the tag is a second, unfiled problem — diagnose that one normally. A `@known-defect` test that passes means the defect is fixed: report it and drop the tag. Contract: [`test-identity.md`](../element-interactions/references/test-identity.md) §2 |
 | **h. Documented-quirk match — no heal** | **Report** | The observed failure shape exactly matches a documented quirk in `app-context.md` (configuration-dependent option subsets, redirect-vs-popup auth patterns, vendor-aliased options, etc.) **OR** matches a documented app-degradation signal (a degradation-banner copy string from `app-context.md`'s documented-banners list, the documented hanging spinner-sentinel custom element, 5xx in network capture) | Report observed-vs-documented diff; do NOT modify the test. The skip / failure is correct; the regression is in the app or in the documentation. Cross-link the relevant `app-context.md` section in the report. |
 
 **Selection rules** (apply in order, stop at first match):
 
+0. If the test carries `@known-defect` and the failure signature matches the filed defect → (h0) known defect → report; do NOT heal, do NOT rerun. This is the first check on purpose: it is the cheapest, and every step below spends evidence-gathering on a conclusion already written down.
 1. If the observed failure shape exactly matches a documented quirk or app-degradation signal recorded in Stage 0's `app-context.md` read → (h) documented-quirk match → report; do NOT heal.
 2. If screenshot shows wrong UI (500, error page, broken layout, missing-that-should-be-present component) → **app bug**, go to Stage 6. Do not heal.
 3. If page-repo lookup failed → (a) selector re-learn → proceed to Stage 4b
@@ -296,6 +298,10 @@ A fix is confirmed only when the test passes **3-5 consecutive runs** without fa
 If any run in the stability check fails, the fix is incomplete. Do not commit — re-diagnose.
 
 ---
+
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../element-interactions/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
 ## Integration
 

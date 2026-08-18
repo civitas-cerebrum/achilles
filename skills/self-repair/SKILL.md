@@ -114,14 +114,25 @@ Announce each run: `[self-repair] stage=baseline run <i>/<N> done: <T> tests, <F
 ### Stage 2 — Classify
 
 Per test, from the per-run outcome matrix (same taxonomy as `test-repair`
-Stage 2): **green** (all pass) / **deterministic-fail** (all fail, same
+Stage 2): **green** (all pass) / **known-defect** (any failure, test or
+describe tagged `@known-defect`) / **deterministic-fail** (all fail, same
 signature) / **flaky-consistent** (mixed, one signature) / **flaky-chaotic**
-(mixed, several signatures). Aggregate non-green tests into the **red-file
-set**. Log one `[self-repair] stage=classify` line with the totals and one
-per red file.
+(mixed, several signatures). Aggregate non-green, non-known-defect tests into
+the **red-file set**. Log one `[self-repair] stage=classify` line with the
+totals and one per red file.
 
-If the red-file set is empty: write the report (everything
-`already-green`) and stop.
+**`@known-defect` reds never enter the red-file set.** They are intentional
+reds guarding a *filed* defect: the classification work is done and written
+down, so a rerun, a worker, or a verification pass only re-derives it at the
+cost of wall-clock and worker budget. They are excluded from the failure
+reruns, from the fan-out, and from verification; they appear in the report
+under their own `known-defect` outcome, and they never count as `unresolved`,
+so they cannot hold the exit code red. A `@known-defect` test that *passes*
+classifies as green — the defect is fixed, which is a reportable event: say
+so, and the tag comes off. Contract: [`test-identity.md`](../element-interactions/references/test-identity.md) §2. Enforced in `bin/self-repair.mjs` (script mode); interactive mode applies the same rule by hand.
+
+If the red-file set is empty: write the report (everything `already-green`,
+plus any `known-defect`) and stop.
 
 ### Stage 3 — Fan-out (one worker per red file)
 
@@ -157,8 +168,11 @@ prefixes that omit the citation. The brief carries:
    at every stage transition, and mirror those transitions into the
    `stage-log` array of the return.
 5. The return contract: every briefed test appears in `tests[]` with an
-   outcome of `already-green | healed | app-bug | quarantined |
-   operator-pending | unresolved` — no silent drops, no `.skip()`.
+   outcome of `already-green | known-defect | healed | app-bug |
+   quarantined | operator-pending | unresolved` — no silent drops, no
+   `.skip()`. (`known-defect` is normally assigned at classification, before
+   any worker is dispatched; a worker uses it only when it discovers the tag
+   on a test the baseline could not see it on.)
 6. The bug-evidence contract (below): app-bug outcomes require the full
    evidence bundle — including a slow-motion screen recording of a
    reproduction — copied to `bug-evidence/` before the worker returns.
@@ -212,7 +226,8 @@ worker start/finish: `[self-repair] stage=fan-out worker finished file=<f> …`.
 After a round's workers finish, re-run the previously-red files ×3 in suite
 order (catches heals that break neighbours and heal-introduced flake — same
 rationale as `test-repair` Stage 5). Tests still failing **without** an
-explained classification (`app-bug` / `quarantined` / `operator-pending`)
+explained classification (`app-bug` / `quarantined` / `operator-pending` /
+`known-defect`)
 re-enter Stage 3 for another round, up to the round cap (default 2). Tests
 still red at the cap are reported `unresolved` — never silently dropped.
 
@@ -362,12 +377,17 @@ the interactive orchestrator applies the same rules with Write/Edit):
 
 ---
 
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../element-interactions/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
 ## Success criteria
 
 A self-repair session is complete when:
 
-1. Every test in scope is `already-green`, `healed` (verified in suite
-   order), `app-bug` (HIGH confidence — expected behaviour, actual
+1. Every test in scope is `already-green`, `known-defect` (tagged
+   `@known-defect`, excluded from repair by contract), `healed` (verified in
+   suite order), `app-bug` (HIGH confidence — expected behaviour, actual
    behaviour, and causal mechanism stated; evidence complete; test
    unmodified), `quarantined` (with ledger entry), `operator-pending`
    (with the proposed change and its stage-5 understanding attached), or

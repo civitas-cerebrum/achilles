@@ -163,6 +163,12 @@ Exactly one of:
   understanding attached, awaiting human judgment.
 - **`quarantined`** — irreducible flake per failure-diagnosis heal (f),
   ledger entry written.
+- **`known-defect`** — the test (or its describe) carries
+  `@known-defect`: an intentional red guarding a filed defect. Terminal on
+  sight — no reproduce, no experiment, no fix. Normally caught at
+  classification so no worker is dispatched at all; a worker that meets one
+  returns it immediately with the tag as the note. Contract:
+  [`test-identity.md`](../../element-interactions/references/test-identity.md) §2.
 - **`unresolved`** — probe budget exhausted; exclusion list and partial
   understanding recorded. Never silent.
 

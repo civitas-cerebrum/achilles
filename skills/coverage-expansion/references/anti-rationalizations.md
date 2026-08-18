@@ -328,6 +328,29 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 ---
 
+## Pattern: The test is green, so the sweep is a formality
+
+**Symptoms** (phrasings that signal this pattern):
+- "the test passes, the compliance review would be a rubber stamp"
+- "this was a bug reproduction / a heal / a ticket fix, not authoring — the sweep doesn't apply"
+- "the subagent already reviewed its own output"
+- "I'll sweep at the end of the batch" (and the batch never ends)
+- "it's one small test, the sweep is overkill"
+- "an ID is bookkeeping — the title already says what it does"
+- "this test fails on purpose, I'll just `.skip()` it so the run is green"
+- "I'll tighten the assertion so the suite goes green and file the bug separately"
+
+**Reality:** The sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds are caught — and passing is exactly the state in which all four survive unnoticed. Modes that write tests as a *means* to something else (reproducing a bug, healing a red, closing a ticket) are the ones that skip it, because their own goal reads as met the moment the test exists; and because tests are written by copying the last one, one unswept file propagates the wrong model into everything written after it. The same instinct rewrites a deliberate red into a pass: a test weakened or skipped to make a run green is a test that can no longer detect the defect it was written for. The sanctioned move is `@known-defect` plus a filed report — the red stays red, and the repair pipeline stops re-deriving it.
+
+**Hooks that catch this:**
+- `compliance-sweep-exit-gate.sh` — `Stop` + `SubagentStop`. Blocks the stop when the transcript shows a spec-file Write/Edit with no compliance sweep after it. Delegation does not release it: either the subagent swept and said so, or the orchestrator sweeps what came back.
+- `test-id-compliance-gate.sh` — `PreToolUse:Write|Edit`. Denies a spec write that adds a case with no stable test ID, or that duplicates an ID inside one file.
+- `bin/self-repair.mjs` — classifies `@known-defect` reds as terminal, so tagging one is cheaper than silencing it and the incentive points the right way.
+
+**Origin:** Codified alongside the test-identity conventions (`skills/element-interactions/references/test-identity.md`) when the sweep was made every test-developing mode's exit gate rather than the authoring pipeline's private step.
+
+---
+
 ## Adding a new pattern
 
 When a novel rationalisation framing appears that doesn't fit an existing pattern:
