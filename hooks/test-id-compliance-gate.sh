@@ -185,6 +185,8 @@ How this is supposed to be done — load the skill, don't improvise:
 ──────────────────────────
   Skill('element-interactions')  → the authoring pipeline that owns this rule;
     its Stage 4b compliance sweep (check 12) is where test identity is verified.
+    (Installs carrying the renamed orchestrator: Skill('achilles-protocol') —
+    same skill, and skills/achilles-protocol/ is where its references live.)
   skills/element-interactions/references/test-identity.md
     §1 the ID convention, its four consumers, and the stability contract
     §2 the @known-defect tag for an intentional red, and its no-rerun contract

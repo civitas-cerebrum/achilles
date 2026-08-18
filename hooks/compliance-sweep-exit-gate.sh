@@ -156,6 +156,7 @@ sweep and said so in its return, or you run it here over what it wrote.
 
 How this is supposed to be done — load the skill, don't improvise:
   Skill('element-interactions') → Stage 4b, the sweep and its checklist
+    (renamed installs: Skill('achilles-protocol') — same skill, same stage)
   skills/element-interactions/references/stages-protocol.md §"Stage 4b: API Compliance Review"
   skills/element-interactions/references/test-identity.md → check 12's conventions
   Skill('test-composer') → Step 6b, the same sweep inside a journey pass
