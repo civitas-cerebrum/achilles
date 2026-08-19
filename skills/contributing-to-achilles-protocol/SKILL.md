@@ -1,5 +1,5 @@
 ---
-name: contributing-to-element-interactions
+name: contributing-to-achilles-protocol
 subagent-only: true
 description: >
   **Subagent-only.** The full contribution methodology is too heavy to keep
@@ -172,7 +172,7 @@ The same shape applies to actions — `steps.on('btn', 'Page').click()` flows th
 - `tests/` — Playwright tests, all hitting the real Vue test app.
 - `tests/fixture/` — test fixture wiring + shared helper functions (e.g. `pageHelpers.ts`).
 - `tests/data/` — `page-repository.json` and any fixture data.
-- `skills/contributing-to-element-interactions/` — this skill (top-level so the harness auto-discovers it). Agent-facing skill files for the broader suite live under sibling directories at `skills/<skill-name>/SKILL.md`.
+- `skills/contributing-to-achilles-protocol/` — this skill (top-level so the harness auto-discovers it). Agent-facing skill files for the broader suite live under sibling directories at `skills/<skill-name>/SKILL.md`.
 
 When you add a new file:
 - New public API entrypoint? `src/steps/`.
@@ -209,7 +209,7 @@ If none of the above fit, **stop and discuss** before writing code. There's prob
 
 ### Read this skill before editing the package
 
-**Rule.** Any agent preparing to modify files inside this package's contribution surface — `src/`, `hooks/`, `skills/`, `scripts/`, `package.json`, `tsconfig*.json`, `.github/` — MUST first load this skill (`skills/contributing-to-element-interactions/SKILL.md`) in the current session. Either invoke it via the `Skill` tool or `Read` the file directly. The skill encodes the architecture, the API-vs-structural-gap distinction, the hard rules, and the design invariants every contribution must respect; an agent that hasn't loaded it is editing blind.
+**Rule.** Any agent preparing to modify files inside this package's contribution surface — `src/`, `hooks/`, `skills/`, `scripts/`, `package.json`, `tsconfig*.json`, `.github/` — MUST first load this skill (`skills/contributing-to-achilles-protocol/SKILL.md`) in the current session. Either invoke it via the `Skill` tool or `Read` the file directly. The skill encodes the architecture, the API-vs-structural-gap distinction, the hard rules, and the design invariants every contribution must respect; an agent that hasn't loaded it is editing blind.
 
 **Methodology rule** — any agent preparing to modify the package's contribution surface MUST first load this skill in the current session. The previous harness pre-read guard (which DENY'd edits when CWD was this package's repo and the skill hadn't been loaded) was retired in the 0.3.6 cleanup for public-dep cleanliness; the rule itself still applies.
 
@@ -236,7 +236,7 @@ If none of these apply because the rule is genuinely unenforceable mechanically 
 
 **Why this is non-negotiable:** every markdown-only methodology rule that survives a release is a future incident waiting to happen. The cost of writing the hook is hours; the cost of debugging a wrong-classification incident the rule was meant to prevent is days plus the operator trust the package is supposed to earn. The asymmetry is the rule.
 
-**Reference:** `skills/contributing-to-element-interactions/SKILL.md` §"Workflow: adding a harness hook" (line 803 of this file) details the hook authoring patterns, test-case expectations, and `scripts/postinstall.js` registration. Read it before authoring any SKILL.md edit so the hook is designed alongside the rule rather than retro-fitted.
+**Reference:** `skills/contributing-to-achilles-protocol/SKILL.md` §"Workflow: adding a harness hook" (line 803 of this file) details the hook authoring patterns, test-case expectations, and `scripts/postinstall.js` registration. Read it before authoring any SKILL.md edit so the hook is designed alongside the rule rather than retro-fitted.
 
 ### Before filing an issue or opening a PR — check existing work and sync status
 
@@ -749,7 +749,7 @@ Any PR that adds a new public method to `Steps`, `ElementAction`, the matcher tr
 
 **Internal-only changes don't trigger this rule.** Adding a method to `Verifications`, `Interactions`, or `Extractions` *without* a corresponding `Steps` / `ElementAction` / matcher-tree entry point is internal — it's reachable only from the raw escape hatch (`interactions.verify.X`). The README docs the recommended surface; raw escape-hatch methods are documented inline via JSDoc on the class.
 
-**Skill files updates** (`skills/achilles-protocol/SKILL.md`, `skills/contributing-to-element-interactions/SKILL.md`, etc.) are required only when the change affects a workflow stage, the contribution rules, or a hard rule. A new `verify*` method does not normally require a SKILL.md change.
+**Skill files updates** (`skills/achilles-protocol/SKILL.md`, `skills/contributing-to-achilles-protocol/SKILL.md`, etc.) are required only when the change affects a workflow stage, the contribution rules, or a hard rule. A new `verify*` method does not normally require a SKILL.md change.
 
 ---
 

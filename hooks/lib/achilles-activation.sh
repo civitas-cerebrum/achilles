@@ -108,7 +108,7 @@
 # NOTE: `element-interactions` in this list is the OLD SKILL name, not
 # the npm package. `@civitas-cerebrum/element-interactions` is the
 # Playwright interaction library — a separate thing, not renamed.
-ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-element-interactions|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|secrets-sweep|selector-development|test-catalogue|test-composer|test-repair|work-summary-deck|workflow-reviewer'
+ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-achilles-protocol|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|secrets-sweep|selector-development|test-catalogue|test-composer|test-repair|work-summary-deck|workflow-reviewer'
 
 # Distinctly-achilles subagent description prefixes (backstop for briefs
 # issued without a prior Skill call, e.g. external CLI drivers). Kept to
