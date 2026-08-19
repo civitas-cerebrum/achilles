@@ -470,7 +470,7 @@ When to append (criteria — must hold ALL):
 
 When all three hold, follow the entry shape documented in `references/niche-edge-cases.md` §"Adding an entry" (Symptom / Why LLMs struggle / Disambiguating probe / Classification / Cross-link). Keep entries tight — one paragraph per field, not a war story.
 
-Contribution path for promoted entries: see `skills/contributing-to-achilles-protocol/SKILL.md` §"Contributing to the niche-edge-cases catalogue" — covers the criteria above, the entry template, and how to ship the change as part of either a normal PR or a standalone docs PR.
+Contribution path for promoted entries: see `skills/contributing-to-element-interactions/SKILL.md` §"Contributing to the niche-edge-cases catalogue" — covers the criteria above, the entry template, and how to ship the change as part of either a normal PR or a standalone docs PR.
 
 ### Stage 4a — Heal strategy selection
 
