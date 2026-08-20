@@ -359,6 +359,20 @@ Print one short message in this order:
 
 Do not list every screenshot in the report. The bundle is the listing; the message is the pointer.
 
+### Posting to the tracker
+
+When the evidence run is tied to a ticket (the user named an issue key, or the task maps to one),
+post a **brief** comment to the tracker with inline screenshots. Follow the format in
+`ticket-driven-testing` §"Posting to the tracker":
+
+1. **What was tested** — one or two sentences.
+2. **Evidence** — screenshots uploaded and embedded inline as markdown images (not as separate
+   attachments). Use the tracker's upload API, then reference the `assetUrl` in the comment body.
+3. **Verdict** — pass / fail / pass-with-caveats, one line each.
+
+That is the entire comment. No tables, no methodology notes, no code review. The screenshots carry
+the detail.
+
 ### Next-step offer matrix
 
 The offer is **automation-first**. Failure-diagnosis remains the path on a failed run, but the durable-automation question is asked on every verdict where it makes sense.

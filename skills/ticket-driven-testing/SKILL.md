@@ -715,6 +715,139 @@ That trace located a defect window no assertion had bounded: between y≈560 and
 
 Include one element in every probe that must exist on **any** build of the page (a header, a footer, `<main>`). If the control is missing too, you are not looking at the app and every conclusion from that probe is void. Note also that a suite reaching production via an allowlisted header (`x-e2e-test`) proves nothing about whether an *ad-hoc* browser can — the CLI session gets challenged where the suite sails through.
 
+## Style-interaction verification — mock the page, test the styling
+
+When a fix is purely CSS/styling that responds to user interactions (focus rings, hover states,
+active highlights) and **real page data is unavailable** (no orders, no transactions, empty
+accounts), you cannot drive the feature end-to-end. But you can still verify the fix in the real
+CSS environment — Tailwind layers, design tokens, specificity chains, global rules — by injecting
+mock DOM and triggering the interaction programmatically.
+
+This is a **fallback**, not a substitute. The report must state that real data was unavailable and
+why. An injected element proves the CSS classes produce the right computed styles in the project's
+stylesheet; it does not prove the component renders those classes, that the layout doesn't clip the
+indicator, or that no ancestor `overflow: hidden` truncates it. Those require the real component
+with real data, and the gap belongs in the report.
+
+### When to use it
+
+- The fix changes CSS classes on a component (focus-visible, hover, active, disabled states)
+- The component needs data you cannot create (orders need payment, transactions need fulfilment)
+- You need to prove the styling works in the real CSS environment, not in isolation
+- The ticket's ACs are about computed visual properties (outline width, contrast, ring visibility)
+
+### The pattern
+
+All six steps run inside a single Playwright test via the project's CLI (`pnpm exec playwright
+test`), so `playwright.config.ts` headers, device presets, and bypass tokens all apply.
+
+**1. Navigate to the real page.** The full CSS environment must be loaded — Tailwind's generated
+stylesheet, design tokens, global rules (e.g. `.is-tabbing a:focus-visible`). Use the page where
+the component would normally appear, logged in if required.
+
+**2. Set required state classes.** Some styling depends on ancestor state classes that headless
+browsers don't trigger automatically. Inject them via `page.evaluate()`:
+
+```ts
+// The site adds .is-tabbing on first Tab keypress; headless may not fire it
+await page.evaluate(() => document.documentElement.classList.add('is-tabbing'))
+```
+
+State the injected classes in the report — they are assumptions, not observations.
+
+**3. Inject mock DOM** via `page.evaluate()` using the **exact CSS classes from the PR diff**.
+Insert into `<main>` so the element inherits the page's full cascade. Give the mock a unique `id`
+for reliable targeting:
+
+```ts
+await page.evaluate((cssClasses) => {
+  const main = document.querySelector('main')
+  if (!main) throw new Error('No <main> element found')
+  const mock = document.createElement('div')
+  mock.id = 'mock-component'
+  mock.innerHTML = `<a href="#" class="${cssClasses}" id="mock-target">
+    <span class="inline-block text-body-md-bold">Mock content</span>
+  </a>`
+  main.insertBefore(mock, main.firstChild)
+}, 'focus-visible:ring-2 focus-visible:ring-brand-blue-500 …')
+```
+
+**4. Trigger the interaction.** Use the interaction that the fix targets:
+
+| Interaction | How to trigger |
+|---|---|
+| Keyboard focus | `page.keyboard.press('Tab')` in a loop until `document.activeElement.id === target` |
+| Hover | `page.hover('#mock-target')` |
+| Active/pressed | `page.locator('#mock-target').dispatchEvent('pointerdown')` |
+| Disabled state | set `disabled` attribute or `aria-disabled` on the mock |
+
+**5. Assert computed styles.** Read the styles that the AC requires and assert on them directly:
+
+```ts
+const styles = await page.evaluate(() => {
+  const el = document.activeElement
+  if (!el) return null
+  const cs = window.getComputedStyle(el)
+  return {
+    outline: cs.outline,
+    outlineStyle: cs.outlineStyle,
+    outlineWidth: cs.outlineWidth,
+    outlineColor: cs.outlineColor,
+    outlineOffset: cs.outlineOffset,
+    boxShadow: cs.boxShadow,
+  }
+})
+
+// Assert the AC: "visible focus indicator ≥ 2px"
+const hasRing = styles.outlineStyle !== 'none' && styles.outlineWidth !== '0px'
+const hasShadow = styles.boxShadow !== 'none'
+expect(hasRing || hasShadow).toBe(true)
+```
+
+**6. Capture evidence screenshots.** Two shots — viewport for context, closeup for detail:
+
+```ts
+// Full viewport — shows the page, the mock element, and the focus state
+await page.screenshot({ path: 'test-results/evidence-viewport.png' })
+
+// Closeup — clip around the focused element with padding
+const rect = await page.evaluate(() => document.activeElement?.getBoundingClientRect())
+if (rect) {
+  const pad = 40
+  await page.screenshot({
+    path: 'test-results/evidence-closeup.png',
+    clip: { x: Math.max(0, rect.x - pad), y: Math.max(0, rect.y - pad),
+            width: rect.width + pad * 2, height: rect.height + pad * 2 },
+  })
+}
+```
+
+### What to report
+
+Follow the brief comment format from §9's "Posting to the tracker": what was tested (mention mock
+injection and which classes), evidence screenshots inline, and the verdict. Caveats (no real data,
+single browser, injected state classes) go as one-liners under the verdict — not as separate
+sections.
+
+### Negative control caveat
+
+The standard negative control (§8) — running the same test against an environment without the fix
+— may not work for style-interaction tests. CSS specificity and Tailwind's layer ordering mean
+that injecting old classes into a page does not replicate the cascade the old component experienced.
+When the negative control is not feasible via injection, state this explicitly and cite the
+ticket's own audit evidence (screenshots, screen recordings) as the pre-fix baseline.
+
+### Provenance: PEDX-10727
+
+This pattern was developed during QA verification of PEDX-10727 (focus indicator on ordered item
+names, WCAG 2.4.11). The automation accounts had no order history, and test environments lacked
+payment capabilities. A mock order link was injected with the fix's CSS classes
+(`focus-visible:ring-2 focus-visible:ring-brand-blue-500 focus-visible:ring-offset-2
+focus-visible:outline-none`), Tab-focused, and the computed outline (`rgb(51, 113, 165) solid 2px`
+with `2px` offset) was asserted and screenshotted as evidence. The approach verified the fix
+produced a WCAG-compliant focus ring in the real Tailwind CSS environment, despite having no real
+order data to render the actual component.
+
 ## "Show me" — demonstration runs
 
 **When the user says "show me", "let me see it", "watch it run", "demo this", or anything of that shape, they are not asking for a pass/fail summary. They are asking to watch.** Deliver a run that is:
@@ -859,6 +992,37 @@ changed**. A quietly edited verdict is worse than the original error.
 Report defects the diff review found even when every AC passes — they are the value a human reviewer could not get from a green suite. Separate them clearly from AC verdicts: **"all three ACs pass, and here are four defects"** is a coherent and common outcome.
 
 Never silently upgrade a defect into an AC failure, or silently drop one because the ACs passed.
+
+### Posting to the tracker
+
+The ticket comment is what the developer, the PM, and the next QA engineer will read. Keep it
+**brief** — three sections, nothing else:
+
+1. **What was tested** — one or two sentences: environment, method, browser.
+2. **Evidence** — screenshots uploaded and embedded **inline** in the comment body (not as
+   separate attachments the reader has to click through). Use the tracker's image markdown
+   (`![alt](url)`) so the images render directly in the comment.
+3. **Verdict** — pass / fail / pass-with-caveats, plus any caveats in one line each.
+
+That is the entire comment. No tables of computed CSS values, no code review notes, no
+recommendation paragraphs, no methodology explanations. The evidence screenshots carry the
+detail — that is what they are for.
+
+**Example shape:**
+
+```
+## QA — PEDX-XXXXX
+
+Tested on production (Desktop Chrome) via Playwright CLI. Mock DOM injection — no real order data available.
+
+![Focus ring on mock order link](https://uploads.linear.app/…)
+
+**PASS** — focus ring visible (2px blue outline + offset). Safari/Firefox not tested (env limitation).
+```
+
+**Upload then embed.** Use the tracker's upload API (`prepare_attachment_upload` → PUT →
+`create_attachment_from_upload` on Linear), then reference the returned `assetUrl` in the comment
+body as a markdown image. A comment without inline evidence is incomplete.
 
 ## Baseline testing
 
