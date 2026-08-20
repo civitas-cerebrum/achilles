@@ -373,6 +373,10 @@ Report design findings in the tracker comment alongside the AC results — they 
 but they are findings. A QA comment that shows a screenshot with visible padding issues and doesn't
 mention them is incomplete.
 
+When the run is wrapped by `ticket-driven-testing`, §8b dispatches `probe-visual` — a subagent
+that reviews every evidence screenshot against this checklist. The gate enforces it: sign-off is
+denied without `uiReviewed: true` in the adversarial verification receipt.
+
 ### Posting to the tracker
 
 When the evidence run is tied to a ticket (the user named an issue key, or the task maps to one),

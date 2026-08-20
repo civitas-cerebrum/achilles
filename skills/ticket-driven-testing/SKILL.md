@@ -45,7 +45,7 @@ Whenever you list what you are going to do, list these. All ten, in this order. 
                                             → 6d evaluate what is undesirable
 7  Write durable tests + a sentinel per defect
 8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
-8b DISPATCH THE ADVERSARIAL REVIEW         → 5 subagents attack the tests; you do not self-assess
+8b DISPATCH THE ADVERSARIAL REVIEW         → 6 subagents attack the tests; you do not self-assess
 8c SCORE the testing itself (probe-rigour, 0-3 x6, blocking floor)
 9  Report — then DISPATCH probe-verdict at the report itself
                                             → §8b attacks the tests; this attacks the claims
@@ -193,7 +193,7 @@ State these before starting; each has blocked a real run.
 | `git` with worktree support | phase 3 | work in a clone instead, never the shared checkout |
 | A tracker, OR the ACs pasted by hand | phase 1 | paste them; phases 2–9 are unchanged |
 | `jq` on PATH | the harness gate is a shell hook and exits FATAL without it | install it, or disable the gate explicitly |
-| A subagent-capable runtime | §8b dispatches four reviewers | run the probes yourself, serially, and say so in the report |
+| A subagent-capable runtime | §8b dispatches six reviewers | run the probes yourself, serially, and say so in the report |
 | **A second environment WITHOUT the fix** | §8 negative control | see §8's fallbacks — do not silently skip it |
 | An `E2E_MUTATION_CSS` / `E2E_MUTATION_INIT` hook in your page fixture | §8b mutation probe (grammar in §8b) | source-level mutation instead, if the app runs locally |
 
@@ -513,7 +513,7 @@ Read the result per test, not in aggregate. Three outcomes, three meanings:
 
 Do not self-assess your own tests. **Dispatch subagents whose mission is to attack them.** The rationale is separation of duties, not a measured effect: a reviewer that did not write the tests has no stake in their looking good. NOT claimed: that delegation outperforms instruction. Delegation was never run as its own arm, so there is no evidence either way.
 
-Dispatch these **five in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
+Dispatch these **six in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
 
 | Mission | Question it must answer | Required output |
 |---|---|---|
@@ -522,6 +522,7 @@ Dispatch these **five in parallel**, scoped to the diff and the ACs. Anything ou
 | `probe-assertions` | Does each assertion prove a structural guarantee, or did it observe one passing render? | Per assertion: `structural` / `incidental`, with the reason |
 | `probe-value` | Is each test **worth keeping** — does it protect behaviour a user would notice losing, at a maintenance cost the risk justifies? | Per test: `keep` / `merge` / `delete`, with the reason |
 | `probe-outcome` | For each AC: is the **user-visible outcome** asserted anywhere, or only a mechanism standing in for it? Would the suite stay green with the feature visibly broken? | Per AC: `outcome-asserted` / `proxy-only`, naming the proxy |
+| `probe-visual` | Review every evidence screenshot for design quality: padding symmetry, alignment, clipping, visual hierarchy, state-transition degradation, responsive integrity (§6e checklist). | Per screenshot: `design-defect` / `cosmetic` / `acceptable`, naming what is wrong |
 
 **On `probe-value` specifically.** The other three ask whether a test *works*; this one asks whether it should *exist*. A test can catch its mutation and still be a liability. The four verdicts it hunts for:
 
@@ -547,6 +548,49 @@ Agent(description: "probe-mutation-<slug>", prompt: "
   what you examined and why you found nothing. A vague approval is a failure.
 ")
 ```
+
+#### probe-visual — screenshot design review
+
+Unlike the other probes, `probe-visual` does not read test code — it reads the evidence
+screenshots. Its input is the screenshots directory of the evidence bundle, and its job is to
+review every image as a designer would.
+
+The brief must include:
+- The path to the screenshots directory
+- The §6e checklist items (padding/spacing symmetry, alignment, clipping/overflow, visual
+  hierarchy, state transitions, responsive integrity)
+- Instruction to compare "before" and "after" screenshots for layout degradation on state changes
+- The standard return schema citation
+
+```
+Agent(description: "probe-visual-<ticket>", prompt: "
+  ADVERSARIAL REVIEW — visual design inspection. Your job is to find design
+  defects in evidence screenshots, not to approve them.
+  Return shape: schemas/subagent-returns/probe.schema.json. Return `handover`
+  ({role, status, next-action} — all three required), `findings-emitted`,
+  `finding-ids` (REQUIRED whenever status is 'findings-emitted'), and `summary`.
+
+  Read every screenshot in <screenshots-dir>.
+  For EACH screenshot, check the §6e checklist:
+  1. Padding and spacing symmetry — are insets consistent left/right, top/bottom?
+  2. Alignment — do sibling elements (buttons, labels, icons) line up?
+  3. Clipping and overflow — is content cut off? Rounded corners correct?
+  4. Visual hierarchy — is the primary action visually dominant?
+  5. State transitions — compare before/after shots. Does layout degrade on expand, error, load?
+  6. Responsive integrity — does the layout look intentional at this viewport?
+
+  For each finding: name the screenshot, describe what is wrong, and classify as
+  'design-defect' (broken layout/padding), 'cosmetic' (minor visual inconsistency),
+  or 'acceptable' (intentional design choice).
+
+  MANDATORY: silence is a failed dispatch. If every screenshot passes inspection,
+  list each one you reviewed and what you checked. A vague 'looks fine' is a failure.
+")
+```
+
+This probe populates `uiReviewed: true` in the adversarial verification receipt. The
+`adversarial-verification-gate.sh` already enforces this field — sign-off is denied without it.
+A test suite with passing functional assertions but unreviewed screenshots cannot ship.
 
 **Non-negotiables for these dispatches:**
 
@@ -652,7 +696,8 @@ Write the outcome to `.achilles/adversarial-verification/<ticket-key>.json`:
   "ticket": "<KEY>", "ranAt": "<ISO-8601>",
   "negativeControl": { "environment": "<url>", "failed": 5, "passed": 1, "skipped": 0 },
   "mutations": [{ "ac": "AC-2", "hunk": "…", "caught": true }],
-  "coverageGaps": [], "incidentalAssertions": [], "lowValueTests": []
+  "coverageGaps": [], "incidentalAssertions": [], "lowValueTests": [],
+  "review": { "uiReviewed": true }
 }
 ```
 
@@ -660,13 +705,16 @@ That receipt is what the harness gate looks for. **The gate DENIES a tracker tra
 completed state without it**, so an adopter who has not read this section meets it as an
 unexplained denial — kill-switch `CIVITAS_DISABLE_ADVERSARIAL_GATE=1` if you need out.
 
+The gate also checks `review.uiReviewed: true` (populated by `probe-visual` — see §8b).
+Without it, sign-off is denied even when all functional probes pass.
+
 **Gitignore `.achilles/`.** The receipt is a local run artifact: git does not preserve mtimes, so a
 committed receipt would arrive on CI with a rewritten timestamp and defeat the staleness check
 outright. It is evidence for the run that produced it, not a shared artifact. Writing it by hand without running the probes defeats the check entirely — and the failure it catches is *your own*.
 
 #### 8c. Score the testing itself — `probe-rigour`
 
-The five probes above audit the **artifacts**: the tests, the assertions, the coverage. None of
+The six probes above audit the **artifacts**: the tests, the assertions, the coverage. None of
 them audits **the testing**. A run can produce well-formed tests that catch their mutations and
 still be bad QA — because the agent never drove the feature, ran one browser and claimed three,
 or bounded nothing it reported.
