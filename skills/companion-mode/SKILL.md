@@ -359,6 +359,20 @@ Print one short message in this order:
 
 Do not list every screenshot in the report. The bundle is the listing; the message is the pointer.
 
+### Visual inspection of evidence
+
+Every evidence screenshot must be reviewed for design quality, not just functional correctness.
+A screenshot that proves "the component rendered" can simultaneously show broken padding,
+misalignment, or visual inconsistency that no assertion catches.
+
+Check each screenshot for: padding/spacing symmetry, alignment of sibling elements, clipping or
+overflow, visual hierarchy, and whether state transitions (expand, error, loading) degrade the
+layout. See `ticket-driven-testing` §6e for the full checklist.
+
+Report design findings in the tracker comment alongside the AC results — they are not AC failures,
+but they are findings. A QA comment that shows a screenshot with visible padding issues and doesn't
+mention them is incomplete.
+
 ### Posting to the tracker
 
 When the evidence run is tied to a ticket (the user named an issue key, or the task maps to one),
