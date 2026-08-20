@@ -365,13 +365,16 @@ When the evidence run is tied to a ticket (the user named an issue key, or the t
 post a **brief** comment to the tracker with inline screenshots. Follow the format in
 `ticket-driven-testing` §"Posting to the tracker":
 
-1. **What was tested** — one or two sentences.
+1. **What was tested** — one or two sentences per AC.
 2. **Evidence** — screenshots uploaded and embedded inline as markdown images (not as separate
    attachments). Use the tracker's upload API, then reference the `assetUrl` in the comment body.
-3. **Verdict** — pass / fail / pass-with-caveats, one line each.
+3. **Negative control** — one or two sentences: was the suite run without the fix, and did the
+   right tests fail? If not run, say so.
+4. **Verdict** — the QA outcome and recommendation: ready to merge, needs fixes, or blocked.
+   Caveats as one-liners.
 
-That is the entire comment. No tables, no methodology notes, no code review. The screenshots carry
-the detail.
+That is the entire comment. No tables, no code review, no methodology beyond the negative control.
+The screenshots carry the detail.
 
 ### Next-step offer matrix
 

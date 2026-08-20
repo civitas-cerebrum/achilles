@@ -996,28 +996,46 @@ Never silently upgrade a defect into an AC failure, or silently drop one because
 ### Posting to the tracker
 
 The ticket comment is what the developer, the PM, and the next QA engineer will read. Keep it
-**brief** — three sections, nothing else:
+**brief** — four sections, nothing else:
 
-1. **What was tested** — one or two sentences: environment, method, browser.
+1. **What was tested** — one or two sentences per AC: what was verified, on which viewports/browsers.
 2. **Evidence** — screenshots uploaded and embedded **inline** in the comment body (not as
    separate attachments the reader has to click through). Use the tracker's image markdown
    (`![alt](url)`) so the images render directly in the comment.
-3. **Verdict** — pass / fail / pass-with-caveats, plus any caveats in one line each.
+3. **Negative control** — one or two sentences stating whether the tests were run against an
+   environment without the fix and what happened. This is not methodology — it is evidence that
+   the tests discriminate the change. If the control was not run, say so.
+4. **Verdict** — the QA outcome and what should happen next. Pass, fail, or pass-with-caveats,
+   followed by a clear recommendation: ready to merge, needs fixes, or blocked. Caveats
+   (untested browsers, environment limitations) go as one-liners under the verdict.
 
 That is the entire comment. No tables of computed CSS values, no code review notes, no
-recommendation paragraphs, no methodology explanations. The evidence screenshots carry the
-detail — that is what they are for.
+methodology explanations beyond the negative control result. The evidence screenshots carry
+the detail — that is what they are for.
 
 **Example shape:**
 
 ```
 ## QA — PEDX-XXXXX
 
-Tested on production (Desktop Chrome) via Playwright CLI. Mock DOM injection — no real order data available.
+**PR:** [#1234](https://github.com/org/repo/pull/1234) | **Date:** 2026-08-20
 
-![Focus ring on mock order link](https://uploads.linear.app/…)
+### AC1 — Error appears without size selection
 
-**PASS** — focus ring visible (2px blue outline + offset). Safari/Firefox not tested (env limitation).
+Verified on Desktop (Sheet) and Mobile (Drawer). Clicking the button without selecting a size
+shows the inline error alert.
+
+![AC1 Desktop — error alert inline](https://uploads.linear.app/…)
+![AC1 Mobile — error alert inline](https://uploads.linear.app/…)
+
+### Negative control
+
+Same checks run against production. The styling assertion fails there — button is grey, not blue —
+confirming the tests discriminate the fix.
+
+### Verdict
+
+✅ **All ACs pass.** No defects found. Ready to merge.
 ```
 
 **Upload then embed.** Use the tracker's upload API (`prepare_attachment_upload` → PUT →
