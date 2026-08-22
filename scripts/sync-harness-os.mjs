@@ -44,6 +44,7 @@ if (!SRC) {
 // Vendored surface. Directories are synced by *.json / listed-extension
 // membership from the SOURCE side (a file present upstream but missing
 // here is drift too).
+// Files copied to the same relative path in this repo.
 const FILES = [
   'hooks/harness-os-role-gate.sh',
   'hooks/lib/harness-os.sh',
@@ -51,33 +52,42 @@ const FILES = [
   'skills/harness-designer/SKILL.md',
   'skills/harness-designer/references/architecture.md',
 ];
+// Files vendored under a DIFFERENT path here — the package's own kernel
+// test files, renamed into this repo's numeric cases convention so the
+// vendored kernel gets identical adversarial + benchmark coverage under
+// `npm run test:hooks`.
+const RENAMES = [
+  ['hooks/tests/cases/02-adversarial.sh', 'hooks/tests/cases/72-harness-os-adversarial.sh'],
+  ['hooks/tests/cases/03-benchmark-registration.sh', 'hooks/tests/cases/73-harness-os-benchmark.sh'],
+];
 const DIRS = [
   { rel: 'schemas/harness-os.fixtures', ext: '.json' },
   { rel: 'skills/harness-designer/examples', ext: '.json' },
 ];
 
-const targets = [...FILES];
+const targets = FILES.map((f) => [f, f]);
+for (const [s, d] of RENAMES) targets.push([s, d]);
 for (const d of DIRS) {
   for (const f of readdirSync(join(SRC, d.rel)).filter((n) => n.endsWith(d.ext))) {
-    targets.push(join(d.rel, f));
+    targets.push([join(d.rel, f), join(d.rel, f)]);
   }
 }
 
 let drift = 0;
-for (const rel of targets) {
-  const srcPath = join(SRC, rel);
-  const dstPath = join(REPO_ROOT, rel);
+for (const [srcRel, dstRel] of targets) {
+  const srcPath = join(SRC, srcRel);
+  const dstPath = join(REPO_ROOT, dstRel);
   const srcBody = readFileSync(srcPath, 'utf8');
   const dstBody = existsSync(dstPath) ? readFileSync(dstPath, 'utf8') : null;
   if (srcBody === dstBody) continue;
   drift++;
   if (CHECK) {
-    console.error(`[sync-harness-os] DRIFT: ${rel} ${dstBody === null ? '(missing here)' : 'differs from canonical'}`);
+    console.error(`[sync-harness-os] DRIFT: ${dstRel} ${dstBody === null ? '(missing here)' : 'differs from canonical'}`);
   } else {
     mkdirSync(dirname(dstPath), { recursive: true });
     writeFileSync(dstPath, srcBody);
-    if (rel.endsWith('.sh') && !rel.includes('/lib/')) chmodSync(dstPath, 0o755);
-    console.log(`[sync-harness-os] synced ${rel}`);
+    if (dstRel.endsWith('.sh') && !dstRel.includes('/lib/')) chmodSync(dstPath, 0o755);
+    console.log(`[sync-harness-os] synced ${dstRel}`);
   }
 }
 

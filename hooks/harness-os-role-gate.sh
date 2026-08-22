@@ -139,27 +139,34 @@ SELF_PROTECT_MSG="[BLOCKED] Role '${ROLE}' attempted to modify the harness OS it
 
 ${ROLE_HEADER}
 
-The manifest and .claude/harness-os.state/ are the root of trust for every role boundary — no governed role may change them, whatever its other grants. To redesign the harness: ask the operator to relaunch with HARNESS_OS=0 (or edit the manifest outside the session), ideally via the harness-designer skill."
+The manifest, .claude/harness-os.state/, and the project's .claude/settings*/hooks (which register this kernel) are the root of trust for every role boundary — no governed role may change them, whatever its other grants. To redesign the harness: ask the operator to relaunch with HARNESS_OS=0 (or edit the manifest outside the session), ideally via the harness-designer skill."
+
+NORM_MANIFEST="$(harness_os_normalize_path "$HOS_MANIFEST")"
+NORM_STATE_DIR="$(harness_os_normalize_path "$HOS_STATE_DIR")"
 
 case "$HOS_TOOL" in
   Write|Edit|NotebookEdit)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
     if [ -n "$TARGET" ]; then
-      case "$TARGET" in
-        "$HOS_MANIFEST"|"$HOS_STATE_DIR"|"$HOS_STATE_DIR"/*) harness_os_deny "self-protect write $TARGET" "$SELF_PROTECT_MSG" ;;
+      NORM_TARGET=$(harness_os_normalize_path "$TARGET")
+      case "$NORM_TARGET" in
+        "$NORM_MANIFEST"|"$NORM_STATE_DIR"|"$NORM_STATE_DIR"/*) harness_os_deny "self-protect write $TARGET" "$SELF_PROTECT_MSG" ;;
       esac
       REL_TARGET=$(harness_os_relpath "$TARGET")
       case "$REL_TARGET" in
-        .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*) harness_os_deny "self-protect write $TARGET" "$SELF_PROTECT_MSG" ;;
+        .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*)
+          harness_os_deny "self-protect write $TARGET" "$SELF_PROTECT_MSG" ;;
       esac
     fi
     ;;
   Bash)
     CMD=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.command // empty' 2>/dev/null || echo "")
-    if printf '%s' "$CMD" | grep -Eq 'harness-os\.(json|state)'; then
-      # Write-shaped mention of the manifest/state → deny; reads pass to
-      # the normal bash axis. Quote-blind, protective direction.
-      if printf '%s' "$CMD" | grep -Eq '(^|[;&| ])(rm|mv|cp|tee|truncate|install|ln)[[:space:]]|>[[:space:]]*[^&[:space:]]|sed[[:space:]]+(-[a-zA-Z]*i)|chmod|chown' ; then
+    # Mention of the manifest/state — or of the .claude config dir that
+    # holds them — in a write-shaped command → deny. Reads pass to the
+    # normal bash axis. Quote-blind, protective direction: `rm -rf
+    # .claude` must not escape just because it never says "harness-os".
+    if printf '%s' "$CMD" | grep -Eq 'harness-os\.(json|state)|(^|[^a-zA-Z0-9_.-])\.claude([/"'"'"'[:space:]]|$)'; then
+      if printf '%s' "$CMD" | grep -Eq '(^|[;&| ])(rm|rmdir|unlink|mv|cp|tee|truncate|shred|dd|install|ln)[[:space:]]|>[[:space:]]*[^&[:space:]]|sed[[:space:]]+(-[a-zA-Z]*i)|chmod|chown' ; then
         harness_os_deny "self-protect bash" "$SELF_PROTECT_MSG"
       fi
     fi
@@ -200,10 +207,28 @@ This boundary is also your context budget — work within the granted tools, and
 fi
 
 # --- Axis 3: bash command gate ------------------------------------------
+# Bash is the widest laundering channel a role has, so this axis carries
+# most of the leak-proofing: quote-blind segmentation over EVERY command
+# separator, a built-in deny list for indirection constructs no allow
+# pattern can safely coexist with, write-target checks on redirections,
+# and a read-scope check over every token that resolves to a real file.
+# Everywhere the axis guesses, it guesses toward deny-with-guidance.
 if [ "$HOS_TOOL" = "Bash" ]; then
   CMD=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.command // empty' 2>/dev/null || echo "")
   BASH_SPEC=$(harness_os_role_field "$ROLE" '.bash')
+  BASH_UNRESTRICTED=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -r --arg r "$ROLE" '.roles[$r].bash.unrestricted // false' 2>/dev/null || echo "false")
 
+  WRITE_ALLOW=$(harness_os_role_field "$ROLE" '.write.allow')
+  WRITE_DENY=$(harness_os_role_field "$ROLE" '.write.deny')
+  READ_ALLOW=$(harness_os_role_field "$ROLE" '.read.allow')
+  READ_DENY=$(harness_os_role_field "$ROLE" '.read.deny')
+  HAS_WRITE_GRANTS=0
+  if [ "$WRITE_ALLOW" != "null" ] && [ "$(printf '%s' "$WRITE_ALLOW" | "$JQ" -r 'length' 2>/dev/null || echo 0)" != "0" ]; then
+    HAS_WRITE_GRANTS=1
+  fi
+
+  ALLOW_PATTERNS=""
+  DENY_PATTERNS=""
   if [ "$BASH_SPEC" != "null" ]; then
     # Effective allow set = expansion of named commandGroups + inline allow.
     ALLOW_PATTERNS=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -r --arg r "$ROLE" '
@@ -211,38 +236,80 @@ if [ "$HOS_TOOL" = "Bash" ]; then
         ((.roles[$r].bash.allow // [])[]) ] | .[]' 2>/dev/null || echo "")
     DENY_PATTERNS=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -r --arg r "$ROLE" '(.roles[$r].bash.deny // [])[]' 2>/dev/null || echo "")
 
-    if [ -z "$ALLOW_PATTERNS" ]; then
+    if [ -z "$ALLOW_PATTERNS" ] && [ "$BASH_UNRESTRICTED" != "true" ]; then
       harness_os_deny "bash-no-allow" "[BLOCKED] Role '${ROLE}' declares a bash section but its command groups expand to zero allow patterns (a named group may be missing from commandGroups).
 
 ${ROLE_HEADER}
 
 Fix the manifest in an operator design session — until then this role can run no Bash commands."
     fi
+  fi
 
-    # Split on && || ; | (quote-blind — protective direction: an
-    # over-split segment can only cause a deny, never an allow), strip
-    # leading env-var assignments and grouping punctuation, then require
-    # EVERY non-empty segment to match >=1 allow pattern and 0 deny
-    # patterns.
-    SEGMENTS=$(printf '%s' "$CMD" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
-    while IFS= read -r seg; do
-      seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]({]+//; s/[[:space:])}]+$//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
-      [ -n "$seg" ] || continue
+  # Mask fd-plumbing (2>&1, >/dev/null, …) BEFORE segmentation so a
+  # lone '&' separator can be split on without shredding '2>&1', and so
+  # redirect analysis below only ever sees real file targets.
+  CLEAN=$(printf '%s' "$CMD" | sed -E 's/[0-9]*>&[0-9-]+//g; s/[0-9&]*>>?[[:space:]]*\/dev\/(null|stderr|stdout|tty)//g')
 
-      # Explicit deny patterns beat the allow check — a deliberately
-      # denied shape deserves the specific message even when it also
-      # fails the allow set.
-      while IFS= read -r pat; do
-        [ -n "$pat" ] || continue
-        if printf '%s' "$seg" | grep -Eq "$pat"; then
-          harness_os_deny "bash-segment-denied" "[BLOCKED] Role '${ROLE}' is explicitly denied this command shape (segment '$seg' matches deny pattern '$pat').
+  # Split on every command separator — newline (multi-line commands
+  # arrive verbatim), && || ; | and the single '&' (background). Quote-
+  # blind: an over-split segment can only cause a deny, never an allow.
+  # Then strip leading env-var assignments and grouping punctuation and
+  # require EVERY non-empty segment to clear every check below.
+  SEGMENTS=$(printf '%s' "$CLEAN" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g' -e 's/&/\n/g')
+  while IFS= read -r seg; do
+    seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]({]+//; s/[[:space:])}]+$//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+    [ -n "$seg" ] || continue
+
+    # 3a. Built-in indirection denies. Each of these constructs lets a
+    # segment that MATCHES an allow pattern execute something that was
+    # never checked ($(…) and $VAR indirection, `| sh`, find -exec,
+    # xargs, interpreter one-liners, cd un-anchoring every relative
+    # path, brace expansion concealing a filename). No allow pattern
+    # can be safe alongside them, so they are denied for every governed
+    # role. Escape hatch: bash.unrestricted: true in the manifest
+    # (schema documents the cost).
+    if [ "$BASH_UNRESTRICTED" != "true" ]; then
+      BUILTIN_HIT=""
+      if printf '%s' "$seg" | grep -q '\$'; then BUILTIN_HIT='variable/command substitution ($…) — expansion executes or reads things no pattern checked'
+      elif printf '%s' "$seg" | grep -q '`'; then BUILTIN_HIT='backtick command substitution'
+      elif printf '%s' "$seg" | grep -Eq '<\(|>\('; then BUILTIN_HIT='process substitution <(…)/>(…)'
+      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])eval([[:space:]]|$)'; then BUILTIN_HIT='eval'
+      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])xargs([[:space:]]|$)'; then BUILTIN_HIT='xargs — arguments become an unchecked command'
+      elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_HIT='sourcing a script into the shell'
+      elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
+      elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
+      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(python[0-9.]*|node|nodejs|ruby|perl|php|deno|bun)([[:space:]][^;|&]*)?[[:space:]](-c|-e|-p|--eval|--print)([[:space:]]|$)'; then BUILTIN_HIT='interpreter one-liner (-c/-e/-p) — arbitrary code the patterns cannot see'
+      elif printf '%s' "$seg" | grep -Eq '^(cd|pushd|popd)([[:space:]]|$)'; then BUILTIN_HIT='cd/pushd/popd — un-anchors every relative path this axis checks'
+      elif printf '%s' "$seg" | grep -Eq '\{[^{}[:space:]]*,[^{}[:space:]]*\}'; then BUILTIN_HIT='brace expansion {a,b} — conceals the expanded filename from every check'
+      fi
+      if [ -n "$BUILTIN_HIT" ]; then
+        harness_os_deny "bash-builtin-deny" "[BLOCKED] Role '${ROLE}' may not run this command — the segment '$seg' uses ${BUILTIN_HIT}.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+These constructs are denied for every governed role because they let a command that matches an allow pattern do something the pattern never checked. Express the operation directly (one plain command per step, granted tools for file writes), or ask the operator — the manifest can set bash.unrestricted for a role that genuinely needs raw shell, at the cost of every bash guarantee."
+      fi
+    fi
+
+    # 3b. Explicit deny patterns beat the allow check — a deliberately
+    # denied shape deserves the specific message even when it also
+    # fails the allow set.
+    while IFS= read -r pat; do
+      [ -n "$pat" ] || continue
+      if printf '%s' "$seg" | grep -Eq "$pat"; then
+        harness_os_deny "bash-segment-denied" "[BLOCKED] Role '${ROLE}' is explicitly denied this command shape (segment '$seg' matches deny pattern '$pat').
 
 ${ROLE_HEADER}
 
 Command: ${CMD}"
-        fi
-      done <<< "$DENY_PATTERNS"
+      fi
+    done <<< "$DENY_PATTERNS"
 
+    # 3c. Allow set: every segment must be inside the role's command
+    # groups (skipped when the role has no bash section at all).
+    if [ "$BASH_SPEC" != "null" ] && [ "$BASH_UNRESTRICTED" != "true" ]; then
       SEG_OK=0
       while IFS= read -r pat; do
         [ -n "$pat" ] || continue
@@ -255,29 +322,111 @@ ${ROLE_HEADER}
 
 Command: ${CMD}
 
-Note: compound commands are checked segment-by-segment (&&, ||, ;, |) and every segment must be within the role's command groups. If this operation is part of your mandate, ask the operator to extend the role's commandGroups in the manifest; otherwise hand it back to the orchestrator."
+Note: compound commands are checked segment-by-segment (&&, ||, ;, |, &, newlines) and every segment must be within the role's command groups. If this operation is part of your mandate, ask the operator to extend the role's commandGroups in the manifest; otherwise hand it back to the orchestrator."
       fi
-    done <<< "$SEGMENTS"
-  fi
+    fi
 
-  # Built-in: a role with no write grants must not launder writes
-  # through shell redirection. Strip fd-plumbing noise (2>/dev/null,
-  # >&2, &>/dev/null) first; any remaining > / >> is write-shaped.
-  WRITE_ALLOW=$(harness_os_role_field "$ROLE" '.write.allow')
-  if [ "$WRITE_ALLOW" = "null" ] || [ "$(printf '%s' "$WRITE_ALLOW" | "$JQ" -r 'length' 2>/dev/null || echo 0)" = "0" ]; then
-    STRIPPED=$(printf '%s' "$CMD" | sed -E 's/[0-9]*>&[0-9-]+//g; s/[0-9&]*>>?[[:space:]]*\/dev\/(null|stderr|stdout)//g')
-    if printf '%s' "$STRIPPED" | grep -q '>'; then
-      harness_os_deny "bash-redirect-readonly" "[BLOCKED] Role '${ROLE}' has no write grants, but this command contains a file redirection — Bash must not become a write channel for a read-only role.
+    # 3d. Redirect / tee write targets. A '>' that survived the
+    # fd-noise mask is a real file write: a role with no write grants
+    # may not perform it at all, and a role WITH write grants may only
+    # aim it inside its write scope — bash must not launder writes past
+    # the Write/Edit axis for anyone.
+    REDIR_TARGETS=$(printf '%s' "$seg" | grep -oE '>>?[[:space:]]*[^[:space:]<>;&]+' 2>/dev/null | sed -E 's/^>>?[[:space:]]*//' || true)
+    if printf '%s' "$seg" | grep -Eq '^tee([[:space:]]|$)'; then
+      TEE_TARGETS=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' || true)
+      REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$TEE_TARGETS")
+    fi
+    while IFS= read -r target; do
+      [ -n "$target" ] || continue
+      target=$(printf '%s' "$target" | tr -d '"'"'")
+      if [ "$HAS_WRITE_GRANTS" != "1" ]; then
+        harness_os_deny "bash-redirect-readonly" "[BLOCKED] Role '${ROLE}' has no write grants, but this command contains a file redirection — Bash must not become a write channel for a read-only role.
 
 ${ROLE_HEADER}
 
 Command: ${CMD}
 
 Drop the redirection (pipe to your own context instead of a file), or hand the write to the role that owns the target path."
-    fi
-  fi
-fi
+      fi
+      REL_TARGET=$(harness_os_relpath "$target")
+      if { [ "$WRITE_DENY" != "null" ] && harness_os_path_in_scope "$REL_TARGET" "$WRITE_DENY"; } \
+         || ! harness_os_path_in_scope "$REL_TARGET" "$WRITE_ALLOW"; then
+        harness_os_deny "bash-redirect-out-of-scope $REL_TARGET" "[BLOCKED] Role '${ROLE}' may not redirect output into '$REL_TARGET' — it is outside the role's write scope.
 
+${ROLE_HEADER}
+write scope: $(printf '%s' "$WRITE_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+Command: ${CMD}
+
+Shell redirection is held to the same write scope as the Write/Edit tools."
+      fi
+    done <<< "$REDIR_TARGETS"
+
+    # 3e. Read-scope over real files. For a role with a read scope,
+    # every token that resolves (glob-aware, via compgen) to an
+    # existing file or directory must be inside read.allow ∪
+    # write.allow — otherwise `cat .env` through an allowed binary
+    # would bypass the Read axis entirely. Tokens that resolve to
+    # nothing (flags, patterns, prose) pass; the manifest itself is
+    # implicitly readable (it is the law the role is being held to).
+    if [ "$READ_ALLOW" != "null" ]; then
+      TOKCOPY=$(printf '%s' "$seg" | tr -d '"'"'" | sed -E 's/>>?/ /g')
+      TOK_N=0
+      set -f
+      for tok in $TOKCOPY; do
+        TOK_N=$((TOK_N + 1)); [ "$TOK_N" -gt 100 ] && break
+        case "$tok" in
+          -*) continue ;;              # flag/option
+          *://*) continue ;;           # URL, never a local file
+          *=*) continue ;;             # key=value argument
+        esac
+        case "$tok" in "~") tok="$HOME" ;; "~/"*) tok="$HOME/${tok#\~/}" ;; esac
+        # NB: no `--` before the pattern — `compgen -G -- x` silently
+        # matches nothing (bash quirk). Flag-shaped tokens are already
+        # skipped above, so bare -G is safe. compgen echoes a
+        # metacharacter-free pattern back even when it matches nothing,
+        # so every candidate is confirmed with a real existence test
+        # below before it can trigger a deny.
+        MATCHES=$(cd "$HOS_CWD" 2>/dev/null && compgen -G "$tok" 2>/dev/null || true)
+        [ -n "$MATCHES" ] || continue
+        while IFS= read -r m; do
+          [ -n "$m" ] || continue
+          # Confirm the candidate actually exists (resolve relative to
+          # the command's cwd) — this is what makes a non-matching
+          # literal like a URL or a bare word harmless.
+          case "$m" in
+            /*) [ -e "$m" ] || continue ;;
+            *)  [ -e "$HOS_CWD/$m" ] || continue ;;
+          esac
+          harness_os_is_manifest_path "$m" && continue
+          REL_M=$(harness_os_relpath "$m")
+          DENIED_READ=0
+          if [ "$READ_DENY" != "null" ] && harness_os_path_in_scope "$REL_M" "$READ_DENY"; then
+            DENIED_READ=1
+          elif harness_os_path_in_scope "$REL_M" "$READ_ALLOW"; then
+            continue
+          elif [ "$HAS_WRITE_GRANTS" = "1" ] && harness_os_path_in_scope "$REL_M" "$WRITE_ALLOW"; then
+            continue
+          else
+            DENIED_READ=1
+          fi
+          if [ "$DENIED_READ" = "1" ]; then
+            set +f
+            harness_os_deny "bash-read-out-of-scope $REL_M" "[BLOCKED] Role '${ROLE}' may not touch '$REL_M' via Bash — it is outside the role's read scope.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+Command: ${CMD}
+
+Bash file access is held to the same read scope as the Read tool — the scope is the role's context diet, whichever channel does the reading."
+          fi
+        done <<< "$MATCHES"
+      done
+      set +f
+    fi
+  done <<< "$SEGMENTS"
+fi
 # --- Axis 4: read scope --------------------------------------------------
 check_path_scope() {
   # check_path_scope <axis:read|write> <rel-path> <verb-for-message>
@@ -316,7 +465,12 @@ The scope is deliberate context hygiene: files outside it are another role's con
 case "$HOS_TOOL" in
   Read|NotebookRead)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
-    [ -n "$TARGET" ] && check_path_scope read "$(harness_os_relpath "$TARGET")" "read"
+    # The manifest itself is implicitly readable by every governed role —
+    # it is the law the role is being held to (writes stay locked by the
+    # self-protection axis).
+    if [ -n "$TARGET" ] && ! harness_os_is_manifest_path "$TARGET"; then
+      check_path_scope read "$(harness_os_relpath "$TARGET")" "read"
+    fi
     ;;
   Glob|Grep)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.path // empty' 2>/dev/null || echo "")
@@ -378,6 +532,20 @@ ${ROLE_HEADER}
 Add the literal line
   <<harness-os-role: ${TARGET_ROLE}>>
 to the subagent prompt (ideally the first line, followed by the role's mandate and ONLY the context its scope covers). The tag is how the kernel binds the child's tool calls to '${TARGET_ROLE}' — without it the child may fall back to the unboundAgentPolicy."
+    fi
+    # Tag purity: exactly one role's tag may appear in the prompt. A
+    # second, foreign tag would make the child's transcript ambiguous by
+    # construction, forcing every child of this dispatch to the
+    # unbound fallback — or worse, seeding a mis-binding.
+    FOREIGN_TAGS=$(printf '%s' "$PROMPT" | grep -oE "$HOS_ROLE_TAG_RE" | sort -u | grep -vF "<<harness-os-role: ${TARGET_ROLE}>>" || true)
+    if [ -n "$FOREIGN_TAGS" ]; then
+      harness_os_deny "dispatch-foreign-tag $TARGET_ROLE" "[BLOCKED] This dispatch of role '${TARGET_ROLE}' embeds binding tag(s) for a DIFFERENT role in its prompt:
+
+$(printf '%s' "$FOREIGN_TAGS" | sed 's/^/  /')
+
+${ROLE_HEADER}
+
+A dispatch prompt must carry exactly one role tag — the target's. Foreign tags poison the child's role binding. Remove them (quote a role NAME in prose if you must reference another role, never its <<harness-os-role: …>> tag form)."
     fi
   fi
 

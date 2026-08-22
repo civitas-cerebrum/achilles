@@ -207,9 +207,14 @@ harness_os_resolve_role() {
   # it). Exactly ONE distinct tag in the transcript → it is the child's
   # own transcript and the tag is its identity. Multiple distinct tags →
   # a parent-wide transcript; ambiguous, fall through.
+  # Only USER-authored transcript lines count: an agent echoing a
+  # foreign role tag in its own output must not be able to poison (or
+  # ambiguate) its binding, so assistant lines are filtered out before
+  # tag extraction.
   if [ -n "$HOS_TRANSCRIPT" ] && [ -f "$HOS_TRANSCRIPT" ]; then
     local tags
-    tags=$(grep -oE "$HOS_ROLE_TAG_RE" "$HOS_TRANSCRIPT" 2>/dev/null | sort -u || echo "")
+    tags=$(grep -E '"(type|role)"[[:space:]]*:[[:space:]]*"user"' "$HOS_TRANSCRIPT" 2>/dev/null \
+      | grep -oE "$HOS_ROLE_TAG_RE" | sort -u || echo "")
     if [ -n "$tags" ] && [ "$(printf '%s\n' "$tags" | wc -l | tr -d ' ')" = "1" ]; then
       HOS_ROLE=$(printf '%s' "$tags" | sed -E 's/^<<harness-os-role: ([a-z][a-z0-9-]*)>>$/\1/')
       if [ -n "$HOS_ROLE" ] && harness_os__role_exists "$HOS_ROLE"; then
@@ -280,17 +285,54 @@ harness_os_glob_to_ere() {
   printf '^%s$' "$g"
 }
 
-# harness_os_relpath <path> — repo-root-relativise. Paths outside the
-# root stay absolute (they then only match absolute-anchored patterns).
-harness_os_relpath() {
+# harness_os_normalize_path <path> — absolute, lexically-normalised form.
+# Relative paths resolve against HOS_CWD. `.`/`..` segments are squashed
+# BEFORE scope matching, so `src/../.claude/x` can never ride a `src/**`
+# grant. Prefers GNU `realpath -m` (also resolves symlinks in the
+# existing prefix); falls back to a pure-bash lexical normaliser.
+harness_os_normalize_path() {
   local p="$1"
+  case "$p" in
+    "~") p="$HOME" ;;
+    "~/"*) p="$HOME/${p#\~/}" ;;
+  esac
+  case "$p" in /*) : ;; *) p="${HOS_CWD%/}/$p" ;; esac
+  local rp
+  rp=$(realpath -m -- "$p" 2>/dev/null || true)
+  if [ -n "$rp" ]; then printf '%s' "$rp"; return 0; fi
+  local out=() seg joined=""
+  local IFS='/'
+  for seg in $p; do
+    case "$seg" in
+      ''|'.') ;;
+      '..') if [ ${#out[@]} -gt 0 ]; then unset "out[$((${#out[@]} - 1))]"; out=("${out[@]}"); fi ;;
+      *) out+=("$seg") ;;
+    esac
+  done
+  for seg in "${out[@]}"; do joined+="/$seg"; done
+  [ -n "$joined" ] || joined="/"
+  printf '%s' "$joined"
+}
+
+# harness_os_relpath <path> — normalise, then repo-root-relativise.
+# Paths outside the root stay absolute (they then only match
+# absolute-anchored patterns).
+harness_os_relpath() {
+  local p
+  p="$(harness_os_normalize_path "$1")"
   case "$p" in
     "$HOS_ROOT") printf '.' ; return 0 ;;
     "$HOS_ROOT"/*) p="${p#"$HOS_ROOT"/}" ;;
-    /*) : ;;
-    ./*) p="${p#./}" ;;
   esac
   printf '%s' "$p"
+}
+
+# harness_os_is_manifest_path <path> — the manifest is "the law": every
+# governed role may READ it (deny messages quote it; agents consult it
+# to understand their own boundaries). Write access stays locked by the
+# self-protection axis.
+harness_os_is_manifest_path() {
+  [ "$(harness_os_normalize_path "$1")" = "$(harness_os_normalize_path "$HOS_MANIFEST")" ]
 }
 
 # harness_os_path_in_scope <relpath> <patterns-json-array>

@@ -142,6 +142,19 @@ user on:
 
 ## Worked examples
 
+- [examples/registration-form-qa.harness-os.json](examples/registration-form-qa.harness-os.json)
+  — **the benchmark.** A complete QA harness for automating the
+  registration/submission form of the Achilles Vue test app
+  (`FormsPage`: `#name #email #gender #mobile` date `#hobbies
+  #currentAddress #city #submit`). The orchestrator dispatches; the
+  inspector probes the live form with `playwright codegen` and reads the
+  page repository; the composer writes and runs `tests/e2e/registration.spec.ts`;
+  the reviewer reads only the acceptance criteria and that spec; the
+  judge alone records the verdict in `docs/e2e-ledger.json`. Every step
+  of that workflow — and every boundary violation a drifting agent would
+  attempt — is exercised against the real kernel in
+  [`hooks/tests/cases/03-benchmark-registration.sh`](../../hooks/tests/cases/03-benchmark-registration.sh).
+  Use it as the template when onboarding any test-automation harness.
 - [examples/qa-pipeline.harness-os.json](examples/qa-pipeline.harness-os.json)
   — the canonical QA shape: the orchestrator is only responsible for
   dispatching the appropriate agents to the tasks of the workflow; the

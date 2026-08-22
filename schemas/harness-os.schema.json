@@ -80,7 +80,7 @@
             }
           },
           "bash": {
-            "description": "Bash command gate. Effective allow set = union of the named commandGroups + inline allow patterns; every command segment must match one. Absent bash with Bash tool allowed → any command.",
+            "description": "Bash command gate. Effective allow set = union of the named commandGroups + inline allow patterns; every command segment (split on &&, ||, ;, |, &, newlines) must match one. The kernel additionally denies indirection constructs ($-expansion, backticks, process substitution, eval, xargs, shells/interpreter one-liners as commands, find -exec, cd, brace expansion) for every governed role, checks redirect/tee targets against the role's write scope, and holds file-naming tokens to the role's read scope. Absent bash with Bash tool allowed → any command (built-ins still apply).",
             "type": "object",
             "additionalProperties": false,
             "properties": {
@@ -89,7 +89,12 @@
                 "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
               },
               "allow": { "$ref": "#/$defs/patternList" },
-              "deny": { "$ref": "#/$defs/patternList" }
+              "deny": { "$ref": "#/$defs/patternList" },
+              "unrestricted": {
+                "description": "DANGEROUS. true disables the kernel's built-in bash denies AND the allow-set check for this role — raw shell, with only explicit deny patterns, redirect scope checks and read-token scoping still applied. Every bash guarantee the architecture doc makes stops holding for this role. Use only for a deliberately trusted role, never to silence a deny you don't understand.",
+                "type": "boolean",
+                "default": false
+              }
             }
           },
           "read": {

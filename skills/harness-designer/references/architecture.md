@@ -228,11 +228,82 @@ commit grammar and ledger gates in an unrelated project.
   operator-run design session (`HARNESS_OS=0`) or a hand edit.
 - All state writes are atomic (`tmp` + `mv`) and TTL-pruned.
 
+## Leak-proofing the Bash channel
+
+Bash is the widest laundering channel a role has — one allowed binary
+can read, write, or execute anything if the gate only pattern-matches
+the command name. The kernel closes this with five sub-checks per
+command, run over every segment (the command is split on `&&`, `||`,
+`;`, `|`, `&`, and newlines, after fd-plumbing like `2>&1` is masked so
+a lone `&` can be split without shredding a redirect):
+
+1. **Indirection denies** — `$(…)`/`` `…` ``/`$VAR`, process
+   substitution, `eval`, `xargs`, a shell or interpreter one-liner
+   (`sh -c`, `python -c`) as the command, `find -exec`/`-delete`, `cd`
+   (which would un-anchor every relative path the gate checks), and
+   `{a,b}` brace expansion (which hides the expanded filename). Each
+   lets a segment that *matches* an allow pattern do something the
+   pattern never saw, so all are denied for governed roles. The
+   `bash.unrestricted: true` role flag waives checks 1 and 2 for a
+   deliberately-trusted role (explicit denies, redirect scope, and read
+   scope still apply); the schema documents the cost.
+2. **Allow-set** — every segment must match one of the role's command
+   groups.
+3. **Deny patterns** — explicit `bash.deny` regexes, checked with a
+   dedicated message.
+4. **Redirect/tee targets** — a `>`/`>>`/`tee` target that survives the
+   fd-mask is a real write and is held to the same `write.allow` scope
+   as the Write tool (and denied outright for a role with no write
+   grants). Bash cannot launder a write past axis 5.
+5. **Read tokens** — every token that resolves (glob-aware) to an
+   existing file/dir must be inside `read.allow ∪ write.allow`, so
+   `cat ../secrets/x` through an allowed `cat` is denied exactly as a
+   `Read` of that path would be. The manifest itself is always readable.
+
+Paths on every axis are lexically normalised (`realpath -m`, with a
+pure-bash `..`-collapsing fallback) *before* scope matching, so
+`src/../.env` cannot ride an `src/**` grant.
+
 ## False-positive direction
 
 Everywhere the kernel guesses, it guesses toward deny-with-guidance:
 quote-blind Bash segmentation, root-as-path for pathless searches,
-write-opt-in defaults, unbound → readonly. A wrongly-denied call costs
-one re-dispatch with a corrected grant; a wrongly-allowed call breaks
-the separation-of-duties story the manifest was written to buy. Every
-deny names the fix.
+write-opt-in defaults, unbound → readonly, an unrecognised construct in
+a command → deny. A wrongly-denied call costs one re-dispatch with a
+corrected grant; a wrongly-allowed call breaks the separation-of-duties
+story the manifest was written to buy. Every deny names the fix.
+
+## Known limits (honest boundaries)
+
+The kernel is a separation-of-duties and context-hygiene layer, not an
+adversarial sandbox. It governs tool calls in sessions where the hook
+is installed; it does not contain a determined operator who can edit
+files in their own terminal. Specifically:
+
+- **MCP tool arguments are not path-scoped.** The kernel gates MCP
+  tools by *name* (`tools.allow`/`deny`, e.g. `mcp__github__*`), not by
+  their per-tool arguments — a tool that writes a file takes a
+  tool-specific argument shape the kernel does not parse. The lever is
+  the tool allowlist: a role that must not write to GitHub simply is
+  not granted `mcp__github__create_or_update_file`. Grant
+  file-mutating MCP tools only to roles whose mandate covers the
+  effect.
+- **Pre-existing symlinks that escape a scope** are resolved by
+  `realpath` (so a symlink already pointing outside the scope is caught
+  at match time), but a role with write access inside its scope can
+  still create new links with granted tools; treat write scope as
+  "may create arbitrary files here", not "may only affect bytes here".
+- **`bash.unrestricted`** is a deliberate hole for a trusted role. It
+  is never the fix for a deny you did not expect — diagnose the deny
+  first.
+- **Parallel mixed-role dispatch** can leave a child *unbound* on
+  platforms exposing neither `parent_tool_use_id` nor per-child
+  transcripts (see the resolution ladder); the child then falls back to
+  `unboundAgentPolicy`. Serialise role-heterogeneous waves for hard
+  guarantees.
+
+Within that model — a cooperating-but-fallible agent that may drift,
+over-reach, or try the obvious shortcut — the six axes above are
+designed to have no silent bypass. The adversarial test suite
+(`hooks/tests/cases/02-adversarial.sh`) encodes one escape attempt per
+closed channel.
