@@ -2,6 +2,11 @@
 # harness-os-role-gate.sh — the harness OS kernel: one generic hook that
 #                           enforces every declared role's boundaries.
 #
+# CANONICAL HOME: github.com/civitas-cerebrum/harness-os
+# Copies of this file in consumer repos (e.g. achilles) are vendored
+# verbatim — edit upstream, then run the consumer's sync (for achilles:
+# npm run sync:harness-os).
+#
 # Hook    : PreToolUse:.* (all tools — the gate routes internally)
 # Mode    : DENY (fail-closed inside governed contexts; silent allow
 #           everywhere the project has not opted in)

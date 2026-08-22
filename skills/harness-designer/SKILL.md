@@ -4,14 +4,17 @@ description: >
   Onboarding flow for the harness OS — the role-based operating layer
   that turns "orchestrator dispatches, inspector inspects, only the
   judge updates the ledger" from prose into hook-enforced permissions.
-  Use this skill to design a new agent harness with the user (roles,
+  Use this skill to design an agent harness with the user (roles,
   command groups, read/write scopes, dispatch rights), generate the
   .claude/harness-os.json manifest, and validate it. Works for ANY
-  harness, not just QA pipelines. Deliberately does NOT activate the
-  achilles QA protocol.
+  agentic workflow — QA pipelines, feature development, doc
+  generation, research swarms.
 ---
 
 # Harness designer — design the OS your agents run on
+
+> Canonical home: [civitas-cerebrum/harness-os](https://github.com/civitas-cerebrum/harness-os).
+> The copy inside the achilles QA package is vendored from here verbatim.
 
 You are helping the user design an **agent harness operating system**: a
 set of named roles, each with hook-enforced permission grants. The
@@ -51,6 +54,13 @@ recorded"). From the steps, propose the role list — typical shapes:
 | reviewer | read the acceptance criteria and the deliverable — nothing else | read-only tools, two read scopes |
 | judge | the only role that updates the ledger | `Write` scoped to the ledger file |
 
+The archetypes are QA-flavoured because that is where the pattern was
+born, but they generalise: an architect is an inspector with design-doc
+write scope, a scribe is an implementer scoped to `docs/**`, a release
+gatekeeper is a judge whose ledger is the changelog. See
+[examples/feature-dev.harness-os.json](examples/feature-dev.harness-os.json)
+for a complete non-QA harness.
+
 Confirm the list with the user before going deeper. Fewer, sharper
 roles beat many fuzzy ones.
 
@@ -82,15 +92,16 @@ For each role, in this order (it mirrors the kernel's evaluation):
 
 1. Write the manifest to `<repo-root>/.claude/harness-os.json`. Start
    from [examples/qa-pipeline.harness-os.json](examples/qa-pipeline.harness-os.json)
-   when the workflow is QA-shaped; otherwise from the axes elicited
-   above.
+   or [examples/feature-dev.harness-os.json](examples/feature-dev.harness-os.json)
+   when the workflow matches; otherwise from the axes elicited above.
 2. Validate it against
-   [`schemas/harness-os.schema.json`](../../schemas/harness-os.schema.json)
-   (any JSON Schema 2020-12 validator; in this repo,
-   `node scripts/validate-schema-fixtures.mjs` shows the pattern).
-   Also check what the schema cannot: every `settings.mainSessionRole`,
-   `dispatch` entry, and `bash.groups` entry must name an existing
-   role / command group.
+   [`schemas/harness-os.schema.json`](../../schemas/harness-os.schema.json).
+   Where the standalone package is installed, `npx harness-os validate`
+   does this AND the cross-checks the schema cannot express (every
+   `settings.mainSessionRole`, `dispatch` entry, and `bash.groups`
+   entry must name an existing role / command group); otherwise run any
+   JSON Schema 2020-12 validator and check the cross-references by
+   hand.
 3. Dry-run the boundaries with the user: for each role, state two
    things it can do and two adjacent things it now cannot, and confirm
    both lists match their intent. This is the design review — the deny
@@ -129,26 +140,26 @@ user on:
   user: repeated denies on legitimate work mean a grant is too narrow;
   zero denies ever may mean a scope is too wide to be doing anything.
 
-## Worked example
+## Worked examples
 
-The user's own QA pipeline, as a complete manifest:
-[examples/qa-pipeline.harness-os.json](examples/qa-pipeline.harness-os.json).
-It encodes exactly the intent this skill exists to serve:
-
-- the orchestrator is only responsible for dispatching the appropriate
-  agents to the tasks of the workflow;
-- the inspector can only run inspection commands and read files
-  relevant to its task;
-- the reviewer can only read the acceptance criteria and the
-  deliverable;
-- the orchestrator can read the ledger, but only the judge can update
-  it.
+- [examples/qa-pipeline.harness-os.json](examples/qa-pipeline.harness-os.json)
+  — the canonical QA shape: the orchestrator is only responsible for
+  dispatching the appropriate agents to the tasks of the workflow; the
+  inspector can only run inspection commands and read files relevant to
+  its task; the reviewer can only read the acceptance criteria and the
+  deliverable; the orchestrator can read the ledger, but only the judge
+  can update it.
+- [examples/feature-dev.harness-os.json](examples/feature-dev.harness-os.json)
+  — the same kernel governing an ordinary feature-development pipeline:
+  an architect that designs but cannot implement, an implementer that
+  cannot touch the design docs it builds against, a tester that owns
+  `tests/**` but not `src/**`, and a scribe scoped to `docs/**`.
 
 ## What this skill is not
 
-- It does not activate the achilles QA protocol (deliberately excluded
-  from the activation list — designing a harness must not switch on the
-  QA methodology's commit grammar and ledger gates).
+- It is not tied to any methodology. The achilles QA package vendors it
+  and deliberately excludes it from its protocol-activation list —
+  designing a harness must not switch on someone's QA commit grammar.
 - It does not replace Claude Code's own permission system; the kernel
   is a *narrowing* layer on top of it.
 - It is not a sandbox: the kernel is a hook, so it governs tool calls

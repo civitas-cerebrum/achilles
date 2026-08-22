@@ -1,5 +1,9 @@
 # harness-os.sh — shared kernel library for the harness OS role gate.
 #
+# CANONICAL HOME: github.com/civitas-cerebrum/harness-os
+# Copies of this file in consumer repos (e.g. achilles) are vendored
+# verbatim — edit upstream, then run the consumer's sync.
+#
 # The harness OS is the generic role-based operating layer described in
 # skills/harness-designer/references/architecture.md: a consumer project
 # declares agent roles and their grants in .claude/harness-os.json, and

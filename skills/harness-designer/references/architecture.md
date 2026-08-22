@@ -1,5 +1,9 @@
 # Harness OS — Architecture
 
+> Canonical home: [civitas-cerebrum/harness-os](https://github.com/civitas-cerebrum/harness-os).
+> The copy inside the achilles QA package is vendored from here verbatim —
+> edit upstream, never the vendored copy.
+
 The harness OS is a role-based operating layer for multi-agent harnesses.
 A project declares its agent roles once, in a machine-readable manifest,
 and a single generic hook enforces every role's boundaries at tool-call
@@ -15,9 +19,9 @@ time. The design goal is twofold:
    read-scope IS its context diet.
 
 Because enforcement lives in hooks (not in prompts), the guarantees hold
-for any harness built on top — onboarding pipelines, QA fleets, doc
-generators — without per-harness hook code. The manifest is the harness;
-the hook is the kernel.
+for any harness built on top — QA fleets, feature-development pipelines,
+doc generators, research swarms — without per-harness hook code. The
+manifest is the harness; the hook is the kernel.
 
 ## The three pieces
 
@@ -27,15 +31,19 @@ the hook is the kernel.
 | Kernel hook | [`hooks/harness-os-role-gate.sh`](../../../hooks/harness-os-role-gate.sh) | PreToolUse `.*` — resolves the caller's role, enforces its grants |
 | Onboarding skill | [`skills/harness-designer/SKILL.md`](../SKILL.md) | Interviews the user, writes + validates the manifest |
 
+The standalone package adds a CLI (`npx harness-os init` to register the
+hook project-locally or globally, `npx harness-os validate` to check a
+manifest including the cross-references JSON Schema cannot express).
+
 ## The manifest
 
 Lives at `<repo-root>/.claude/harness-os.json` in the *consumer* project
 (override with `HARNESS_OS_MANIFEST` for tests). **Presence of the
 manifest is the activation signal**: no manifest → the kernel hook
-silent-allows everything, so the globally-installed hook never polices
-projects that did not opt in. `HARNESS_OS=0` in the operator's shell
-environment (set before launching the session — agents cannot alter hook
-env from inside) disables enforcement for bootstrap/redesign sessions.
+silent-allows everything, so an installed hook never polices projects
+that did not opt in. `HARNESS_OS=0` in the operator's shell environment
+(set before launching the session — agents cannot alter hook env from
+inside) disables enforcement for bootstrap/redesign sessions.
 
 ```jsonc
 {
@@ -84,7 +92,7 @@ env from inside) disables enforcement for bootstrap/redesign sessions.
 }
 ```
 
-The user's canonical examples fall straight out of the axes:
+The canonical governance patterns fall straight out of the axes:
 
 - *"Orchestrator only dispatches"* → `tools.allow` has `Agent` but no
   `Write`/`Bash`; `dispatch` lists who it may spawn.
@@ -96,6 +104,12 @@ The user's canonical examples fall straight out of the axes:
   → the ledger appears in orchestrator's `read.allow` and ONLY in
   judge's `write.allow`. A ledger is not a special-cased concept — it is
   the write-ACL pattern applied to one file.
+
+Worked manifests: [examples/qa-pipeline.harness-os.json](../examples/qa-pipeline.harness-os.json)
+(the QA shape above) and
+[examples/feature-dev.harness-os.json](../examples/feature-dev.harness-os.json)
+(architect / implementer / tester / scribe — the same kernel governing an
+ordinary feature-development pipeline, no QA methodology anywhere).
 
 ## Permission axes
 
@@ -135,7 +149,7 @@ Evaluated in this order inside the kernel; first deny wins.
 7. **Skill gate** — optional `skills.allow` patterns against the Skill
    tool's `skill` input.
 
-Deny payloads use the repo-standard
+Deny payloads use the standard Claude Code
 `hookSpecificOutput.permissionDecision: "deny"` JSON with a reason that
 names the role, the violated grant, and the sanctioned alternative —
 the deny message is part of the OS's teaching surface.
@@ -147,13 +161,10 @@ input alone. The Claude Code build gives us:
 
 - top-level (orchestrator/main-session) tool calls carry **no
   `agent_id`**; dispatched-subagent calls carry a non-empty `agent_id`
-  (+ `agent_type`) — the same discriminator
-  [`onboarding-ledger-write-gate.sh`](../../../hooks/onboarding-ledger-write-gate.sh)
-  already keys separation-of-duties on;
+  (+ `agent_type`);
 - the dispatching `Agent` call's `tool_use_id` is visible at
   PreToolUse:Agent time, but current builds do NOT echo it as
-  `parent_tool_use_id` on the child's calls (see the migration note in
-  [`hooks/workflow-approver-registry.sh`](../../../hooks/workflow-approver-registry.sh));
+  `parent_tool_use_id` on the child's calls;
 - `transcript_path` may point at the child's own transcript, which
   contains its dispatch prompt.
 
@@ -183,36 +194,39 @@ runs once per agent:
    `deny` (block with re-dispatch guidance), `readonly` (default —
    allow only `Read`/`Glob`/`Grep`/`TaskGet`/`TaskList`), or `allow`.
 
-Accepted-limitation note (same honesty bar as the approver registry):
-when different roles are dispatched in parallel AND the build supplies
-neither `parent_tool_use_id` nor per-child transcripts, step 5 cannot
-disambiguate and the fallback policy governs. Orchestrators that need
-hard guarantees under mixed parallel dispatch should serialise
-role-heterogeneous waves; same-role fan-out is always safe.
+Accepted-limitation note: when different roles are dispatched in
+parallel AND the build supplies neither `parent_tool_use_id` nor
+per-child transcripts, step 5 cannot disambiguate and the fallback
+policy governs. Orchestrators that need hard guarantees under mixed
+parallel dispatch should serialise role-heterogeneous waves; same-role
+fan-out is always safe.
 
-## Relationship to the achilles activation lib
+## Relationship to the achilles QA harness
 
-The kernel deliberately does NOT source
-[`lib/achilles-activation.sh`](../../../hooks/lib/achilles-activation.sh):
-achilles activation scopes the *methodology* gates to methodology
+[civitas-cerebrum/achilles](https://github.com/civitas-cerebrum/achilles)
+is the flagship consumer: its autonomous QA methodology vendors this
+package (kernel, schema, and this skill, synced verbatim from here) so
+QA pipelines can be described as manifests. The dependency points one
+way only — the kernel never sources achilles' session-activation lib
+([`achilles-activation.sh`](https://github.com/civitas-cerebrum/achilles/blob/main/hooks/lib/achilles-activation.sh)):
+achilles activation scopes the *QA methodology* gates to methodology
 sessions, whereas the harness OS scopes itself by manifest presence in
 the project. The two compose — an achilles pipeline can itself be
-described by a manifest — but neither depends on the other. For the same
-reason `harness-designer` is intentionally absent from
-`ACHILLES_SKILL_ALT`: invoking the designer must not switch on the QA
-methodology's commit grammar and ledger gates in an unrelated project.
+described by a manifest — but neither depends on the other, and
+`harness-designer` is intentionally absent from achilles' activation
+list so designing a harness never switches on the QA methodology's
+commit grammar and ledger gates in an unrelated project.
 
 ## State, logging, protection
 
 - State dir: `<repo-root>/.claude/harness-os.state/` —
   `dispatch-registry.json`, `agents/<agent_id>` bindings, and
-  `decision-log.jsonl` (one line per deny/ask, for calibrating
+  `decision-log.jsonl` (one line per deny, for calibrating
   over-broad grants before tightening the manifest).
 - Both the manifest and the state dir are covered by the built-in
   self-protection axis; the deny message routes changes to an
   operator-run design session (`HARNESS_OS=0`) or a hand edit.
-- All state writes are atomic (`tmp` + `mv`) and TTL-pruned, mirroring
-  the approver-registry pattern.
+- All state writes are atomic (`tmp` + `mv`) and TTL-pruned.
 
 ## False-positive direction
 
