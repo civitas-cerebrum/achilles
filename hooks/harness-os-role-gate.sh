@@ -474,6 +474,19 @@ case "$HOS_TOOL" in
     ;;
   Glob|Grep)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.path // empty' 2>/dev/null || echo "")
+    # A pattern/glob is applied UNDER the search root, so a `..` segment
+    # in it escapes the scoped path exactly as it would in a filename.
+    # Deny upward traversal in the pattern — a scoped role narrows with
+    # `path`, never by globbing out of its search root.
+    SEARCH_PAT=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.pattern // .tool_input.glob // empty' 2>/dev/null || echo "")
+    case "/$SEARCH_PAT/" in
+      */../*)
+        harness_os_deny "search-pattern-traversal" "[BLOCKED] Role '${ROLE}' used a '..' upward-traversal segment in a $HOS_TOOL pattern.
+
+${ROLE_HEADER}
+
+A pattern is applied under the search root, so '..' escapes the role's scope. Narrow the search with the 'path' argument (kept inside your read scope) instead of globbing upward." ;;
+    esac
     # No path → the search runs from the repo root; scoped roles are
     # expected to search INSIDE their scope, so root needs a root-wide
     # grant.

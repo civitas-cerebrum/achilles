@@ -153,6 +153,14 @@ assert_deny "$H" "$(payload tool_name=Read file_path="$P/.env" cwd="$P" agent_id
 assert_allow "$H" "$(payload tool_name=Read file_path="$P/docs/acceptance/feature.md" cwd="$P" agent_id=poison-1 transcript_path="$POISON")" \
   "same agent binds reviewer, reads acceptance criteria → ALLOW"
 
+# --- Leak 10b: Glob/Grep pattern traversal ------------------------------
+assert_deny "$H" "$(payload tool_name=Grep path="$P/src" pattern='../../.env' cwd="$P" $I)" \
+  "Grep with in-scope path but '..' in pattern → DENY" "upward-traversal"
+assert_deny "$H" "$(payload tool_name=Glob path="$P/src" pattern='../*.pem' cwd="$P" $I)" \
+  "Glob '..' traversal in glob pattern → DENY" "upward-traversal"
+assert_allow "$H" "$(payload tool_name=Grep path="$P/src" pattern='TODO' cwd="$P" $I)" \
+  "Grep scoped path + plain pattern → ALLOW"
+
 # --- Leak 11: dispatch tag purity ---------------------------------------
 GOOD='<<harness-os-role: inspector>>
 inspect the thing'

@@ -136,7 +136,9 @@ Evaluated in this order inside the kernel; first deny wins.
    globs (`**` crosses directories, `*` stays within one). A `Glob`/
    `Grep` call with no `path` counts as the repo root and needs a
    root-covering grant — scoped roles are expected to search inside
-   their scope. Absent `read` section → unrestricted paths.
+   their scope; a `..` segment in the search *pattern* (which is applied
+   under the path) is denied so it cannot climb out of the scoped root.
+   Absent `read` section → unrestricted paths.
 5. **Write scope** — same mechanics for `Write`/`Edit`/`NotebookEdit`
    over `write.allow`/`write.deny`. Absent `write` section → NO writes
    (write is opt-in, read is opt-out; the asymmetry is deliberate).

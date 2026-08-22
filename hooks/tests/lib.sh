@@ -258,7 +258,7 @@ payload() {
     case "$k" in
       tool_name)
         out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '. + {tool_name: $v}') ;;
-      description|prompt|command|file_path|content|old_string|new_string|skill|args|path)
+      description|prompt|command|file_path|content|old_string|new_string|skill|args|path|pattern|glob)
         out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" --arg k "$k" '.tool_input = ((.tool_input // {}) + {($k): $v})') ;;
       response_text)
         out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '.tool_response = ((.tool_response // {}) + {output: $v})') ;;
