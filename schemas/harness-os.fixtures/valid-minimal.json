@@ -1,0 +1,12 @@
+{
+  "harnessOsVersion": 1,
+  "name": "solo-writer",
+  "roles": {
+    "writer": {
+      "description": "Drafts documentation in docs/ and nothing else.",
+      "tools": { "allow": ["Read", "Glob", "Grep", "Write", "Edit"] },
+      "read": { "allow": ["docs/**", "README.md"] },
+      "write": { "allow": ["docs/**"] }
+    }
+  }
+}

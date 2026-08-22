@@ -1,0 +1,12 @@
+{
+  "harnessOsVersion": 1,
+  "name": "broken-harness",
+  "settings": {
+    "unboundAgentPolicy": "trust-everyone"
+  },
+  "roles": {
+    "inspector": {
+      "tools": { "allow": ["Bash"] }
+    }
+  }
+}

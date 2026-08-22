@@ -18,6 +18,10 @@ Every hook below applies **only to sessions where the achilles protocol is activ
 
 ## PreToolUse
 
+### All tools (harness OS)
+
+- **[harness-os-role-gate](../../../hooks/harness-os-role-gate.sh)** — `PreToolUse:.*` (every tool; the gate routes internally). **The one deliberate exception to the achilles session-scoping above**: the harness OS kernel is generic infrastructure for ANY multi-agent harness, so it is self-scoped by **manifest presence** (`<repo-root>/.claude/harness-os.json`, contract `schemas/harness-os.schema.json`) instead of by achilles activation — projects that never write a manifest never feel it. Resolves the calling context's declared role (main-session role vs dispatched subagent, via the resolution ladder in [`hooks/lib/harness-os.sh`](../../../hooks/lib/harness-os.sh): cached binding → `parent_tool_use_id` registry match → transcript `<<harness-os-role: NAME>>` tag → unambiguous registry claim → `unboundAgentPolicy`) and enforces the role's grants along six axes: self-protection of the manifest/state dir, tool allow/deny, per-segment Bash command groups (plus a built-in file-redirect deny for roles without write grants), read path scopes, write path scopes (opt-in), and dispatch rights (role-prefixed description + prompt binding tag, recorded in `.claude/harness-os.state/dispatch-registry.json`). Denies quote the role's manifest mandate and name the sanctioned alternative; every deny is appended to `.claude/harness-os.state/decision-log.jsonl` for grant calibration. Design + onboarding flow: `skills/harness-designer/`. [escape hatch: operator-only (`HARNESS_OS=0` in the operator's shell, or remove the manifest outside a governed session)]
+
 ### Edit / Write
 
 - **[selector-development-activation-gate](../../../hooks/selector-development-activation-gate.sh)** — `PreToolUse:Edit|Write` (frontend source paths only). Denies selector-development frontend edits when the workspace lacks a recognised frontend framework dep or a `tests/e2e/*.spec.ts` directory. [escape hatch: no]

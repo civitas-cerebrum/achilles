@@ -1,0 +1,156 @@
+---
+name: harness-designer
+description: >
+  Onboarding flow for the harness OS — the role-based operating layer
+  that turns "orchestrator dispatches, inspector inspects, only the
+  judge updates the ledger" from prose into hook-enforced permissions.
+  Use this skill to design a new agent harness with the user (roles,
+  command groups, read/write scopes, dispatch rights), generate the
+  .claude/harness-os.json manifest, and validate it. Works for ANY
+  harness, not just QA pipelines. Deliberately does NOT activate the
+  achilles QA protocol.
+---
+
+# Harness designer — design the OS your agents run on
+
+You are helping the user design an **agent harness operating system**: a
+set of named roles, each with hook-enforced permission grants. The
+output is a single manifest file the kernel hook
+([`hooks/harness-os-role-gate.sh`](../../hooks/harness-os-role-gate.sh))
+enforces on every tool call. Read
+[references/architecture.md](references/architecture.md) before your
+first design conversation — it defines the permission axes, the role
+resolution ladder, and the enforcement guarantees you are allowed to
+promise. Do not promise anything the architecture doc does not back.
+
+Two rules frame every conversation:
+
+1. **Least mandate.** Every role gets the smallest grant set that lets
+   it do its job. When the user is unsure, start narrow — the kernel's
+   deny messages name the missing grant, so widening later is cheap and
+   informed; narrowing later means auditing what already leaked.
+2. **Scope = context diet.** A role's read scope is not only a security
+   boundary; it is the role's context budget. Sell it that way: "the
+   reviewer that can't read the whole repo also can't waste its context
+   window on it."
+
+## The onboarding flow
+
+### Phase 1 — Understand the workflow
+
+Ask the user to walk through their workflow as steps, not roles ("first
+something inspects the failure, then something proposes a fix, then
+something reviews it against the criteria, then a verdict is
+recorded"). From the steps, propose the role list — typical shapes:
+
+| Archetype | Mandate | Typical grants |
+|---|---|---|
+| orchestrator | dispatch the appropriate agents to the tasks of a workflow; never does the work itself | `Agent` + task tools; read the ledger/workflow files; `dispatch` list |
+| inspector | run inspection commands, read files relevant to its task | `Bash` (inspection group) + read scope |
+| implementer | produce the deliverable | read + write scopes on the source tree; build/test command groups |
+| reviewer | read the acceptance criteria and the deliverable — nothing else | read-only tools, two read scopes |
+| judge | the only role that updates the ledger | `Write` scoped to the ledger file |
+
+Confirm the list with the user before going deeper. Fewer, sharper
+roles beat many fuzzy ones.
+
+### Phase 2 — Elicit the grants, one axis at a time
+
+For each role, in this order (it mirrors the kernel's evaluation):
+
+1. **Tools** — which tools does the mandate require? Offer the shortest
+   list that works; remember `write` is opt-in (no `write` section = no
+   writes) while `read` is opt-out.
+2. **Command groups** — collect the Bash commands the role legitimately
+   runs and generalise them into named `commandGroups` (POSIX ERE,
+   anchored with `^`). Groups are shared across roles — name them by
+   capability (`inspection`, `test-execution`, `build`), not by role.
+   Warn the user that compound commands are checked per segment and
+   that read-only roles get a built-in deny on file redirects.
+3. **Read scope** — the files this role's task genuinely needs. Globs
+   are repo-root-relative; `**` crosses directories. Remind them:
+   pathless `Glob`/`Grep` counts as a root-wide search and will be
+   denied for scoped roles — searches happen inside the scope.
+4. **Write scope** — usually a subtree (implementer) or a single file
+   (judge + ledger). The ledger ACL pattern: put the ledger in several
+   roles' `read.allow` and exactly one role's `write.allow`.
+5. **Dispatch** — who may this role spawn? Only orchestrator-shaped
+   roles normally hold a `dispatch` list. Presence of the list also
+   switches on the tagging discipline (below).
+
+### Phase 3 — Generate and validate the manifest
+
+1. Write the manifest to `<repo-root>/.claude/harness-os.json`. Start
+   from [examples/qa-pipeline.harness-os.json](examples/qa-pipeline.harness-os.json)
+   when the workflow is QA-shaped; otherwise from the axes elicited
+   above.
+2. Validate it against
+   [`schemas/harness-os.schema.json`](../../schemas/harness-os.schema.json)
+   (any JSON Schema 2020-12 validator; in this repo,
+   `node scripts/validate-schema-fixtures.mjs` shows the pattern).
+   Also check what the schema cannot: every `settings.mainSessionRole`,
+   `dispatch` entry, and `bash.groups` entry must name an existing
+   role / command group.
+3. Dry-run the boundaries with the user: for each role, state two
+   things it can do and two adjacent things it now cannot, and confirm
+   both lists match their intent. This is the design review — the deny
+   messages the kernel will emit quote the role `description` fields,
+   so make those descriptions precise sentences.
+
+### Phase 4 — Teach the dispatch discipline
+
+The manifest only binds subagents that are dispatched correctly. The
+orchestrator (human-written CLAUDE.md, a skill, or the main session
+itself) must dispatch every subagent as:
+
+```
+description: "<role>-<slug>: <what this task is>"
+prompt:      first line is the literal tag  <<harness-os-role: <role>>>
+             then the role's mandate, then ONLY the context its scope covers
+```
+
+The kernel denies untagged dispatches from roles holding a `dispatch`
+list, so the discipline is self-enforcing after day one. Also brief the
+user on:
+
+- **Bootstrap / redesign** — enforcement activates the moment the
+  manifest exists. Governed roles can never edit the manifest or the
+  state dir (root of trust); redesigns happen in a session launched
+  with `HARNESS_OS=0` in the operator's shell, or by hand-editing the
+  file outside a session.
+- **Parallel dispatch caveat** — when *different* roles are dispatched
+  in parallel and the platform provides neither `parent_tool_use_id`
+  nor per-child transcripts, a child may resolve as *unbound* and fall
+  back to `settings.unboundAgentPolicy` (default `readonly`).
+  Role-homogeneous fan-out is always safe; serialise mixed waves when
+  hard guarantees matter.
+- **Calibration** — `.claude/harness-os.state/decision-log.jsonl`
+  records every deny. After the first few runs, review it with the
+  user: repeated denies on legitimate work mean a grant is too narrow;
+  zero denies ever may mean a scope is too wide to be doing anything.
+
+## Worked example
+
+The user's own QA pipeline, as a complete manifest:
+[examples/qa-pipeline.harness-os.json](examples/qa-pipeline.harness-os.json).
+It encodes exactly the intent this skill exists to serve:
+
+- the orchestrator is only responsible for dispatching the appropriate
+  agents to the tasks of the workflow;
+- the inspector can only run inspection commands and read files
+  relevant to its task;
+- the reviewer can only read the acceptance criteria and the
+  deliverable;
+- the orchestrator can read the ledger, but only the judge can update
+  it.
+
+## What this skill is not
+
+- It does not activate the achilles QA protocol (deliberately excluded
+  from the activation list — designing a harness must not switch on the
+  QA methodology's commit grammar and ledger gates).
+- It does not replace Claude Code's own permission system; the kernel
+  is a *narrowing* layer on top of it.
+- It is not a sandbox: the kernel is a hook, so it governs tool calls
+  in sessions where the hooks are installed. Its guarantees are
+  separation-of-duties and context hygiene, not adversarial isolation.

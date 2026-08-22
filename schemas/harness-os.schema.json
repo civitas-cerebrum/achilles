@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-os.schema.json",
+  "title": "Harness OS role manifest",
+  "description": "Role-based operating layer for multi-agent harnesses. A project declares its agent roles and their permission grants once; hooks/harness-os-role-gate.sh enforces them at tool-call time. Presence of this manifest at <repo-root>/.claude/harness-os.json activates enforcement for the project. See skills/harness-designer/references/architecture.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["harnessOsVersion", "name", "roles"],
+  "properties": {
+    "harnessOsVersion": {
+      "description": "Manifest format version. The kernel hook refuses versions it does not know.",
+      "const": 1
+    },
+    "name": {
+      "description": "Harness name (kebab-case identifier).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string"
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mainSessionRole": {
+          "description": "Role bound to the top-level session (tool calls carrying no agent_id). Omit to leave the main session ungoverned. Must name a key of `roles`.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "unboundAgentPolicy": {
+          "description": "What the kernel does when a subagent's role cannot be resolved (mixed-role parallel dispatch on builds without parent_tool_use_id / per-child transcripts). deny = block with re-dispatch guidance; readonly = allow only Read/Glob/Grep/TaskGet/TaskList; allow = ungoverned.",
+          "type": "string",
+          "enum": ["deny", "readonly", "allow"],
+          "default": "readonly"
+        },
+        "dispatchTtlSeconds": {
+          "description": "Freshness window for dispatch-registry entries used by the registry-claim binding step.",
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400,
+          "default": 1800
+        }
+      }
+    },
+    "commandGroups": {
+      "description": "Named groups of Bash command patterns (POSIX ERE, matched against each pipeline/&&/;-segment of the command). Roles reference groups by name in bash.groups.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 }
+      }
+    },
+    "roles": {
+      "description": "Role name → grants. Role names double as dispatch-description prefixes (`<role>:` or `<role>-<slug>:`).",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description"],
+        "properties": {
+          "description": {
+            "description": "One-line mandate. Quoted verbatim in deny messages, so write it as the sentence you want an over-reaching agent to read.",
+            "type": "string",
+            "minLength": 1
+          },
+          "tools": {
+            "description": "Tool-name gate. Patterns are shell globs (e.g. mcp__github__*). deny beats allow; absent tools → all tools pass to the finer axes.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": { "$ref": "#/$defs/patternList" },
+              "deny": { "$ref": "#/$defs/patternList" }
+            }
+          },
+          "bash": {
+            "description": "Bash command gate. Effective allow set = union of the named commandGroups + inline allow patterns; every command segment must match one. Absent bash with Bash tool allowed → any command.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "groups": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+              },
+              "allow": { "$ref": "#/$defs/patternList" },
+              "deny": { "$ref": "#/$defs/patternList" }
+            }
+          },
+          "read": {
+            "description": "Read-scope globs (repo-root-relative; ** crosses directories) for Read/Glob/Grep/NotebookRead. Absent read → unrestricted paths. This is the role's context diet.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": { "$ref": "#/$defs/patternList" },
+              "deny": { "$ref": "#/$defs/patternList" }
+            }
+          },
+          "write": {
+            "description": "Write-scope globs for Write/Edit/NotebookEdit. Absent write → NO writes (write is opt-in, read is opt-out).",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": { "$ref": "#/$defs/patternList" },
+              "deny": { "$ref": "#/$defs/patternList" }
+            }
+          },
+          "dispatch": {
+            "description": "Roles this role may spawn via the Agent tool. Present → dispatch descriptions must be role-prefixed and prompts must carry the <<harness-os-role: NAME>> binding tag. Absent with Agent allowed → unrestricted dispatch.",
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+          },
+          "skills": {
+            "description": "Optional Skill-tool gate: shell-glob patterns over the invoked skill name.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": { "$ref": "#/$defs/patternList" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "patternList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}
