@@ -245,7 +245,11 @@ a lone `&` can be split without shredding a redirect):
    (which would un-anchor every relative path the gate checks), and
    `{a,b}` brace expansion (which hides the expanded filename). Each
    lets a segment that *matches* an allow pattern do something the
-   pattern never saw, so all are denied for governed roles. The
+   pattern never saw, so all are denied for governed roles. Leading
+   command-runner wrappers (`env`, `sudo`, `nohup`, `timeout N`,
+   `nice`, `time`, `exec`, …) are stripped first, so
+   `env sh -c …`/`timeout 5 python -c …`/`sudo bash` can't hide a shell
+   behind a wrapper whose own name matches an allow pattern. The
    `bash.unrestricted: true` role flag waives checks 1 and 2 for a
    deliberately-trusted role (explicit denies, redirect scope, and read
    scope still apply); the schema documents the cost.

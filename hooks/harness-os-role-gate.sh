@@ -260,6 +260,27 @@ Fix the manifest in an operator design session — until then this role can run 
     seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]({]+//; s/[[:space:])}]+$//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
     [ -n "$seg" ] || continue
 
+    # Strip leading command-runner / wrapper prefixes so the checks below
+    # see the REAL command. `env sh -c …`, `timeout 5 python -c …`,
+    # `sudo bash …`, `nohup nice cat .env` would otherwise hide a shell,
+    # an interpreter, or a file access behind a wrapper whose own name
+    # matches an allow pattern. Each iteration removes one wrapper word
+    # plus its obvious options / numeric or KEY=VAL args; the loop stops
+    # at the first non-wrapper head. Both the wrapper-stripped view (for
+    # builtin + allow + read checks) and the original segment (already
+    # checked for redirects above) are covered.
+    WRAP_RE='^(env|sudo|doas|nohup|setsid|nice|ionice|chrt|stdbuf|time|timeout|command|builtin|exec|then|else|do|watch|unbuffer)([[:space:]]|$)'
+    STRIP_GUARD=0
+    while printf '%s' "$seg" | grep -Eq "$WRAP_RE"; do
+      STRIP_GUARD=$((STRIP_GUARD + 1)); [ "$STRIP_GUARD" -gt 20 ] && break
+      # Drop the wrapper word, then any following options / numeric
+      # durations / KEY=VAL assignments that belong to it.
+      seg=$(printf '%s' "$seg" | sed -E 's/^[a-z]+[[:space:]]+//')
+      seg=$(printf '%s' "$seg" | sed -E 's/^((-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*//')
+      [ -n "$seg" ] || break
+    done
+    [ -n "$seg" ] || continue
+
     # 3a. Built-in indirection denies. Each of these constructs lets a
     # segment that MATCHES an allow pattern execute something that was
     # never checked ($(…) and $VAR indirection, `| sh`, find -exec,
