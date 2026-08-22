@@ -133,6 +133,7 @@ validateStandaloneFixtures('schemas/perf-onboarding-status.schema.json', 'schema
 validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-summary.fixtures');
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
 validateStandaloneFixtures('schemas/harness-os.schema.json', 'schemas/harness-os.fixtures');
+validateStandaloneFixtures('schemas/harness-os-bundle.schema.json', 'schemas/harness-os-bundle.fixtures');
 
 // ---------------------------------------------------------------------------
 // Onboarding-status ledger fixtures

@@ -49,8 +49,10 @@ const FILES = [
   'hooks/harness-os-role-gate.sh',
   'hooks/lib/harness-os.sh',
   'schemas/harness-os.schema.json',
+  'schemas/harness-os-bundle.schema.json',
   'skills/harness-designer/SKILL.md',
   'skills/harness-designer/references/architecture.md',
+  'skills/harness-designer/references/storage-format.md',
 ];
 // Files vendored under a DIFFERENT path here — the package's own kernel
 // test files, renamed into this repo's numeric cases convention so the
@@ -62,6 +64,7 @@ const RENAMES = [
 ];
 const DIRS = [
   { rel: 'schemas/harness-os.fixtures', ext: '.json' },
+  { rel: 'schemas/harness-os-bundle.fixtures', ext: '.json' },
   { rel: 'skills/harness-designer/examples', ext: '.json' },
 ];
 

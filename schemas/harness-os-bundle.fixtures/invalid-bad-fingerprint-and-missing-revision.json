@@ -1,0 +1,13 @@
+{
+  "kind": "harness-os-bundle",
+  "bundleVersion": 1,
+  "metadata": {
+    "name": "broken-bundle"
+  },
+  "manifest": {
+    "harnessOsVersion": 1,
+    "name": "broken-bundle",
+    "roles": {}
+  },
+  "fingerprint": "md5:deadbeef"
+}

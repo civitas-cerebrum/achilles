@@ -108,6 +108,28 @@ For each role, in this order (it mirrors the kernel's evaluation):
    messages the kernel will emit quote the role `description` fields,
    so make those descriptions precise sentences.
 
+### Phase 3b — Store it so it can be reused and swapped
+
+A designed OS is worth keeping. Once the manifest validates, capture it
+as a portable **bundle** so it can be version-pinned, shared, and swapped
+in and out of projects — see
+[references/storage-format.md](references/storage-format.md) for the full
+model. In short:
+
+```bash
+harness-os export --to-library --revision 1.0.0   # store in ~/.harness-os/library
+harness-os list                                    # what's on the shelf
+harness-os use <name>@<rev>                         # swap this project's active OS
+harness-os status                                   # active OS + drift check
+```
+
+The bundle (`.hos.json`) embeds the manifest verbatim plus an identity
+(`name@revision`) and a content fingerprint; the kernel still only reads
+the plain `.claude/harness-os.json`, so storage adds no enforcement
+surface. Teach the user that swapping OSes resets runtime state by design
+(a new role set invalidates old bindings), and that `status` flags a live
+manifest that has drifted from the stored bundle.
+
 ### Phase 4 — Teach the dispatch discipline
 
 The manifest only binds subagents that are dispatched correctly. The
