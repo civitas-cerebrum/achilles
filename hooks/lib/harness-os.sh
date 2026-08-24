@@ -44,7 +44,14 @@
 #   HARNESS_OS_MANIFEST explicit manifest path (bypasses discovery)
 #   HARNESS_OS_STATE_DIR explicit state dir
 
-HOS_ROLE_TAG_RE='<<harness-os-role: [a-z][a-z0-9-]*>>'
+# The binding tag carried by every dispatch prompt. The role name is
+# required; an optional `#NONCE` makes the binding collision-proof and
+# robust against a transcript that quotes another role's tag — the kernel
+# registers each dispatch's nonce→role at dispatch time and resolves the
+# child by the nonce in its own transcript, so mixed parallel dispatch no
+# longer degrades to the unbound fallback whenever the child has its own
+# transcript. Nonce: 4+ chars of [a-z0-9]. Both forms are accepted.
+HOS_ROLE_TAG_RE='<<harness-os-role: [a-z][a-z0-9-]*(#[a-z0-9]{4,})?>>'
 
 harness_os__jq() {
   if [ -n "${JQ:-}" ] && [ -x "${JQ:-}" ]; then printf '%s' "$JQ"; return 0; fi
@@ -139,8 +146,12 @@ harness_os__registry_claim() {
   existing=$(cat "$reg" 2>/dev/null || echo "{}")
   printf '%s' "$existing" | "$HOS_JQ" -e 'type == "object"' >/dev/null 2>&1 || return 0
 
+  # `nonce:`-prefixed entries mirror a tool_use_id entry (same role); skip
+  # them so a nonce'd dispatch is not double-counted as two in-flight
+  # dispatches, which would only ever cause a false ambiguity.
   distinct=$(printf '%s' "$existing" | "$HOS_JQ" -r --argjson now "$now" --argjson ttl "$HOS_TTL" '
     [ to_entries[]
+      | select(.key | startswith("nonce:") | not)
       | select((.value.ts // 0) >= ($now - $ttl))
       | select((.value.claimed_by // "") == "")
       | .value.role ] | unique | if length == 1 then .[0] else empty end
@@ -151,6 +162,7 @@ harness_os__registry_claim() {
   local updated
   updated=$(printf '%s' "$existing" | "$HOS_JQ" -c --argjson now "$now" --argjson ttl "$HOS_TTL" --arg who "$agent_id" '
     ( [ to_entries[]
+        | select(.key | startswith("nonce:") | not)
         | select((.value.ts // 0) >= ($now - $ttl))
         | select((.value.claimed_by // "") == "")
         | .key ] | sort_by(.) | first ) as $victim
@@ -203,21 +215,49 @@ harness_os_resolve_role() {
   fi
 
   # Rung 4 — transcript tag. Dispatch prompts carry
-  # <<harness-os-role: NAME>> (the dispatch gate denies prompts without
-  # it). Exactly ONE distinct tag in the transcript → it is the child's
-  # own transcript and the tag is its identity. Multiple distinct tags →
-  # a parent-wide transcript; ambiguous, fall through.
-  # Only USER-authored transcript lines count: an agent echoing a
-  # foreign role tag in its own output must not be able to poison (or
-  # ambiguate) its binding, so assistant lines are filtered out before
-  # tag extraction.
+  # <<harness-os-role: NAME[#NONCE]>> (the dispatch gate denies prompts
+  # without a tag). Only USER-authored transcript lines count: an agent
+  # echoing a foreign role tag in its own output must not be able to
+  # poison (or ambiguate) its binding, so assistant lines are filtered
+  # out before tag extraction.
   if [ -n "$HOS_TRANSCRIPT" ] && [ -f "$HOS_TRANSCRIPT" ]; then
-    local tags
-    tags=$(grep -E '"(type|role)"[[:space:]]*:[[:space:]]*"user"' "$HOS_TRANSCRIPT" 2>/dev/null \
-      | grep -oE "$HOS_ROLE_TAG_RE" | sort -u || echo "")
+    local user_tags nonce_roles distinct_nonce_role tags
+    user_tags=$(grep -E '"(type|role)"[[:space:]]*:[[:space:]]*"user"' "$HOS_TRANSCRIPT" 2>/dev/null \
+      | grep -oE "$HOS_ROLE_TAG_RE" || echo "")
+
+    # 4a — NONCE match (collision-proof). For every nonce-bearing tag in
+    # the child's own transcript, look up the registered nonce→role. If
+    # all resolved nonces name ONE role, that is the identity — exact
+    # even amid quoted foreign tags or parallel sibling dispatch.
+    if [ -n "$user_tags" ] && [ -f "$HOS_STATE_DIR/dispatch-registry.json" ]; then
+      local nonces n role_for
+      nonces=$(printf '%s\n' "$user_tags" | grep -oE '#[a-z0-9]{4,}>>$' | sed -E 's/^#([a-z0-9]+)>>$/\1/' | sort -u || echo "")
+      nonce_roles=""
+      while IFS= read -r n; do
+        [ -n "$n" ] || continue
+        role_for=$("$HOS_JQ" -r --arg k "nonce:$n" '.[$k].role // empty' "$HOS_STATE_DIR/dispatch-registry.json" 2>/dev/null || echo "")
+        [ -n "$role_for" ] && nonce_roles="$nonce_roles$role_for"$'\n'
+      done <<< "$nonces"
+      distinct_nonce_role=$(printf '%s' "$nonce_roles" | grep -v '^$' | sort -u || echo "")
+      if [ -n "$distinct_nonce_role" ] && [ "$(printf '%s\n' "$distinct_nonce_role" | wc -l | tr -d ' ')" = "1" ]; then
+        HOS_ROLE="$distinct_nonce_role"
+        if harness_os__role_exists "$HOS_ROLE"; then
+          harness_os__bind "$HOS_AGENT_ID" "$HOS_ROLE"
+          HOS_ROLE_STATE="governed"
+          return 0
+        fi
+        HOS_ROLE=""
+      fi
+    fi
+
+    # 4b — nonce-free fallback: exactly ONE distinct role across the
+    # transcript's user-line tags → it is the child's own transcript and
+    # that tag is its identity. Multiple distinct roles → a parent-wide
+    # transcript; ambiguous, fall through.
+    tags=$(printf '%s\n' "$user_tags" | sed -E 's/^<<harness-os-role: ([a-z][a-z0-9-]*)(#[a-z0-9]+)?>>$/\1/' | grep -v '^$' | sort -u || echo "")
     if [ -n "$tags" ] && [ "$(printf '%s\n' "$tags" | wc -l | tr -d ' ')" = "1" ]; then
-      HOS_ROLE=$(printf '%s' "$tags" | sed -E 's/^<<harness-os-role: ([a-z][a-z0-9-]*)>>$/\1/')
-      if [ -n "$HOS_ROLE" ] && harness_os__role_exists "$HOS_ROLE"; then
+      HOS_ROLE="$tags"
+      if harness_os__role_exists "$HOS_ROLE"; then
         harness_os__bind "$HOS_AGENT_ID" "$HOS_ROLE"
         HOS_ROLE_STATE="governed"
         return 0
@@ -240,10 +280,13 @@ harness_os_resolve_role() {
   return 0
 }
 
-# harness_os_register_dispatch <role> <tool_use_id>
-# Records an Agent dispatch in the registry (TTL-pruned, atomic).
+# harness_os_register_dispatch <role> <tool_use_id> [nonce]
+# Records an Agent dispatch in the registry (TTL-pruned, atomic). Keyed
+# by tool_use_id; when the dispatch prompt carried a #NONCE it is also
+# recorded under "nonce:<NONCE>" so a child can bind exactly by the nonce
+# in its own transcript (see resolve rung 4a).
 harness_os_register_dispatch() {
-  local role="$1" id="$2" reg="$HOS_STATE_DIR/dispatch-registry.json" now existing updated
+  local role="$1" id="$2" nonce="${3:-}" reg="$HOS_STATE_DIR/dispatch-registry.json" now existing updated
   [ -n "$id" ] || return 0
   mkdir -p "$HOS_STATE_DIR" 2>/dev/null || return 0
   now=$(date +%s)
@@ -253,11 +296,12 @@ harness_os_register_dispatch() {
     printf '%s' "$existing" | "$HOS_JQ" -e 'type == "object"' >/dev/null 2>&1 || existing="{}"
   fi
   updated=$(printf '%s' "$existing" | "$HOS_JQ" -c \
-    --arg id "$id" --arg role "$role" --argjson now "$now" --argjson ttl "$HOS_TTL" '
+    --arg id "$id" --arg role "$role" --arg nonce "$nonce" --argjson now "$now" --argjson ttl "$HOS_TTL" '
       . as $reg
       | reduce keys[] as $k ({};
           if ($reg[$k].ts // 0) >= ($now - $ttl) then . + { ($k): $reg[$k] } else . end)
       | . + { ($id): { role: $role, ts: $now } }
+      | if ($nonce | length) > 0 then . + { ("nonce:" + $nonce): { role: $role, ts: $now } } else . end
     ' 2>/dev/null || echo "")
   if [ -n "$updated" ]; then
     printf '%s' "$updated" > "$reg.tmp" 2>/dev/null && mv "$reg.tmp" "$reg" 2>/dev/null || rm -f "$reg.tmp" 2>/dev/null || true

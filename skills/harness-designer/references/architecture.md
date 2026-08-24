@@ -150,6 +150,10 @@ Evaluated in this order inside the kernel; first deny wins.
    unbindable. Absent `dispatch` with `Agent` allowed → unrestricted.
 7. **Skill gate** — optional `skills.allow` patterns against the Skill
    tool's `skill` input.
+8. **MCP argument scoping** — for tools named in
+   `settings.mcpPathArguments`, the declared `tool_input` fields are
+   read as paths and held to the role's read/write scopes (see Known
+   limits for what stays name-gated).
 
 Deny payloads use the standard Claude Code
 `hookSpecificOutput.permissionDecision: "deny"` JSON with a reason that
@@ -181,11 +185,20 @@ runs once per agent:
 3. **`parent_tool_use_id`** present and found in the dispatch registry →
    exact match; bind.
 4. **Transcript tag** — dispatch prompts must embed
-   `<<harness-os-role: NAME>>` (the dispatch gate denies prompts without
-   it). If the transcript at `transcript_path` contains exactly ONE
-   distinct tag, it is the child's own transcript → bind to that role.
-   Multiple distinct tags → it is a parent-wide transcript; fall
-   through.
+   `<<harness-os-role: NAME[#NONCE]>>` (the dispatch gate denies prompts
+   without a tag). Two sub-steps, strongest first:
+   - **4a — nonce match.** When the tag carries a unique `#NONCE`, the
+     dispatch gate registers `nonce → role` at dispatch time, and the
+     child binds by the nonce in its own transcript. This is exact: it
+     survives a transcript that also quotes another role's tag, and it
+     is what makes **mixed parallel dispatch unambiguous**. Always add a
+     nonce when dispatching several different roles at once.
+   - **4b — nonce-free fallback.** Otherwise, if the transcript's
+     user-authored tags name exactly ONE distinct role, that is the
+     identity. Multiple distinct roles → parent-wide transcript; fall
+     through.
+   Only user-authored transcript lines are scanned, so an agent echoing
+   a foreign tag in its own output cannot poison its binding.
 5. **Registry claim** — the dispatch registry
    (`.claude/harness-os.state/dispatch-registry.json`, written at
    PreToolUse:Agent, entries `{tool_use_id: {role, ts, claimed_by}}`,
@@ -196,12 +209,13 @@ runs once per agent:
    `deny` (block with re-dispatch guidance), `readonly` (default —
    allow only `Read`/`Glob`/`Grep`/`TaskGet`/`TaskList`), or `allow`.
 
-Accepted-limitation note: when different roles are dispatched in
-parallel AND the build supplies neither `parent_tool_use_id` nor
-per-child transcripts, step 5 cannot disambiguate and the fallback
-policy governs. Orchestrators that need hard guarantees under mixed
-parallel dispatch should serialise role-heterogeneous waves; same-role
-fan-out is always safe.
+Residual limitation: a child that has **no transcript of its own** and
+arrives while several *different* roles are in flight cannot be
+disambiguated by any rung (there is nothing left to key on), so the
+`unboundAgentPolicy` governs — protectively, `readonly` by default.
+Nonces close the common case: with a nonce in every dispatch tag, any
+child whose transcript is visible binds exactly, so mixed parallel
+dispatch is no longer a caveat. Same-role fan-out is always safe.
 
 ## Relationship to the achilles QA harness
 
@@ -250,9 +264,17 @@ a lone `&` can be split without shredding a redirect):
    `nice`, `time`, `exec`, …) are stripped first, so
    `env sh -c …`/`timeout 5 python -c …`/`sudo bash` can't hide a shell
    behind a wrapper whose own name matches an allow pattern. The
-   `bash.unrestricted: true` role flag waives checks 1 and 2 for a
-   deliberately-trusted role (explicit denies, redirect scope, and read
-   scope still apply); the schema documents the cost.
+   `bash.permit` unlocks named constructs one at a time for a role that
+   legitimately needs them (`["var-expansion"]` for a role that uses
+   `"$HOME"`), leaving every other construct and every other axis in
+   force — this is the intended answer to a legitimate deny, and it
+   exists so nobody reaches for a blanket waiver out of frustration. A
+   permitted expansion still cannot smuggle a path: an expansion inside
+   a path-shaped token is denied as *unverifiable*, since the kernel
+   cannot resolve it to check the read scope. `bash.unrestricted: true`
+   remains the nuclear option for a deliberately-trusted role (explicit
+   denies, redirect scope, and read scope still apply); the schema
+   documents the cost.
 2. **Allow-set** — every segment must match one of the role's command
    groups.
 3. **Deny patterns** — explicit `bash.deny` regexes, checked with a
@@ -286,27 +308,30 @@ adversarial sandbox. It governs tool calls in sessions where the hook
 is installed; it does not contain a determined operator who can edit
 files in their own terminal. Specifically:
 
-- **MCP tool arguments are not path-scoped.** The kernel gates MCP
-  tools by *name* (`tools.allow`/`deny`, e.g. `mcp__github__*`), not by
-  their per-tool arguments — a tool that writes a file takes a
-  tool-specific argument shape the kernel does not parse. The lever is
-  the tool allowlist: a role that must not write to GitHub simply is
-  not granted `mcp__github__create_or_update_file`. Grant
-  file-mutating MCP tools only to roles whose mandate covers the
-  effect.
+- **MCP tools are path-scoped only where the manifest says how.**
+  `settings.mcpPathArguments` maps a tool-name glob to the `tool_input`
+  fields that carry paths (dot-paths; array values checked
+  element-wise), and those paths are then held to the role's read/write
+  scopes exactly like a core tool's. A tool with **no mapping entry
+  stays gated by name alone** — so map the file-touching tools your
+  roles actually use, and grant unmapped file-mutating tools only to
+  roles whose mandate covers the effect.
 - **Pre-existing symlinks that escape a scope** are resolved by
   `realpath` (so a symlink already pointing outside the scope is caught
   at match time), but a role with write access inside its scope can
   still create new links with granted tools; treat write scope as
   "may create arbitrary files here", not "may only affect bytes here".
-- **`bash.unrestricted`** is a deliberate hole for a trusted role. It
-  is never the fix for a deny you did not expect — diagnose the deny
-  first.
-- **Parallel mixed-role dispatch** can leave a child *unbound* on
-  platforms exposing neither `parent_tool_use_id` nor per-child
-  transcripts (see the resolution ladder); the child then falls back to
-  `unboundAgentPolicy`. Serialise role-heterogeneous waves for hard
-  guarantees.
+- **`bash.unrestricted`** is a deliberate hole for a trusted role, and
+  should now be rare: `bash.permit` unlocks *one named construct* at a
+  time, which is almost always the right answer to an unexpected deny.
+  Neither is a substitute for diagnosing the deny first —
+  `harness-os explain` previews a verdict, `harness-os doctor` turns the
+  decision log into the specific grant that is too narrow.
+- **A child with no transcript of its own, arriving amid several
+  different in-flight roles**, cannot be disambiguated by any rung and
+  falls back to `unboundAgentPolicy` (protectively `readonly`). Adding a
+  `#NONCE` to every dispatch tag closes this for any child whose
+  transcript is visible; same-role fan-out is always safe.
 
 Within that model — a cooperating-but-fallible agent that may drift,
 over-reach, or try the obvious shortcut — the six axes above are

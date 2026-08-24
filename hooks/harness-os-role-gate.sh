@@ -26,20 +26,28 @@
 # (.claude/harness-os.json, schema: schemas/harness-os.schema.json),
 # resolves WHICH role the calling context is (main session vs dispatched
 # subagent — see the resolution ladder in lib/harness-os.sh), and
-# enforces the role's grants along six axes:
+# enforces the role's grants along these axes:
 #
 #   1. self-protection  — no governed context touches the manifest/state
 #   2. tool gate        — tools.deny / tools.allow (shell-glob names)
 #   3. bash gate        — every command segment must match the role's
-#                         command groups; read-only roles get a built-in
-#                         deny on file-redirect shapes
+#                         command groups; indirection constructs are
+#                         denied unless bash.permit names them; redirect
+#                         targets obey the write scope and file-naming
+#                         tokens obey the read scope
 #   4. read scope       — Read/Glob/Grep/NotebookRead path globs
 #   5. write scope      — Write/Edit/NotebookEdit path globs (opt-in)
 #   6. dispatch gate    — Agent calls: target role must be in the
 #                         caller's dispatch list, description must be
 #                         role-prefixed, prompt must carry the
-#                         <<harness-os-role: NAME>> binding tag; the
-#                         dispatch is recorded so the child can bind
+#                         <<harness-os-role: NAME[#NONCE]>> binding tag;
+#                         the dispatch (and its nonce) is recorded so the
+#                         child binds exactly, even under parallel
+#                         mixed-role dispatch
+#   7. skill gate       — optional skills.allow over the Skill tool
+#   8. MCP arg scoping  — path arguments named in
+#                         settings.mcpPathArguments obey the read/write
+#                         scopes; unmapped MCP tools stay name-gated
 #
 # The same enforcement therefore serves ANY harness a manifest can
 # describe — the manifest is the harness; this hook is the kernel.
@@ -120,7 +128,7 @@ if [ "$HOS_ROLE_STATE" = "unbound" ]; then
 
 ${MANIFEST_REF}
 
-A subagent binds to a role when its dispatch carried a role-prefixed description (\"<role>-<slug>: ...\") and the prompt embedded the binding tag <<harness-os-role: NAME>>. Resolution can still be ambiguous when DIFFERENT roles are dispatched in parallel — serialise role-heterogeneous dispatch waves, or return now and let the orchestrator re-dispatch this task with a properly tagged brief."
+A subagent binds to a role when its dispatch carried a role-prefixed description (\"<role>-<slug>: ...\") and the prompt embedded the binding tag <<harness-os-role: NAME>>. When several DIFFERENT roles are dispatched at once, give each dispatch tag a unique nonce — <<harness-os-role: NAME#a1b2c3>> — so every child binds exactly. Return now and let the orchestrator re-dispatch this task with a properly tagged brief."
 fi
 
 # ---------------------------------------------------------------------------
@@ -217,6 +225,10 @@ if [ "$HOS_TOOL" = "Bash" ]; then
   CMD=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.command // empty' 2>/dev/null || echo "")
   BASH_SPEC=$(harness_os_role_field "$ROLE" '.bash')
   BASH_UNRESTRICTED=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -r --arg r "$ROLE" '.roles[$r].bash.unrestricted // false' 2>/dev/null || echo "false")
+  # Named indirection constructs this role may use despite the built-in
+  # denies (see axis 3a). Granular by design: permitting one construct
+  # never waives the others.
+  BASH_PERMIT=$(harness_os_role_field "$ROLE" '.bash.permit')
 
   WRITE_ALLOW=$(harness_os_role_field "$ROLE" '.write.allow')
   WRITE_DENY=$(harness_os_role_field "$ROLE" '.write.deny')
@@ -285,32 +297,54 @@ Fix the manifest in an operator design session — until then this role can run 
     # segment that MATCHES an allow pattern execute something that was
     # never checked ($(…) and $VAR indirection, `| sh`, find -exec,
     # xargs, interpreter one-liners, cd un-anchoring every relative
-    # path, brace expansion concealing a filename). No allow pattern
-    # can be safe alongside them, so they are denied for every governed
-    # role. Escape hatch: bash.unrestricted: true in the manifest
-    # (schema documents the cost).
+    # path, brace expansion concealing a filename). No allow pattern can
+    # be safe alongside them, so they are denied by default for every
+    # governed role.
+    #
+    # Each construct has an ID, and a role may PERMIT specific ones via
+    # bash.permit (e.g. ["var-expansion"] for a role that legitimately
+    # needs "$HOME"). That granularity is deliberate: an all-or-nothing
+    # hatch invites a blanket waiver the first time a legitimate command
+    # is denied, which is how a guardrail dies. bash.unrestricted remains
+    # for a fully trusted role.
     if [ "$BASH_UNRESTRICTED" != "true" ]; then
       BUILTIN_HIT=""
-      if printf '%s' "$seg" | grep -q '\$'; then BUILTIN_HIT='variable/command substitution ($…) — expansion executes or reads things no pattern checked'
-      elif printf '%s' "$seg" | grep -q '`'; then BUILTIN_HIT='backtick command substitution'
-      elif printf '%s' "$seg" | grep -Eq '<\(|>\('; then BUILTIN_HIT='process substitution <(…)/>(…)'
-      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])eval([[:space:]]|$)'; then BUILTIN_HIT='eval'
-      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])xargs([[:space:]]|$)'; then BUILTIN_HIT='xargs — arguments become an unchecked command'
-      elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_HIT='sourcing a script into the shell'
-      elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
-      elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
-      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(python[0-9.]*|node|nodejs|ruby|perl|php|deno|bun)([[:space:]][^;|&]*)?[[:space:]](-c|-e|-p|--eval|--print)([[:space:]]|$)'; then BUILTIN_HIT='interpreter one-liner (-c/-e/-p) — arbitrary code the patterns cannot see'
-      elif printf '%s' "$seg" | grep -Eq '^(cd|pushd|popd)([[:space:]]|$)'; then BUILTIN_HIT='cd/pushd/popd — un-anchors every relative path this axis checks'
-      elif printf '%s' "$seg" | grep -Eq '\{[^{}[:space:]]*,[^{}[:space:]]*\}'; then BUILTIN_HIT='brace expansion {a,b} — conceals the expanded filename from every check'
+      BUILTIN_ID=""
+      if printf '%s' "$seg" | grep -q '\$'; then BUILTIN_ID='var-expansion'; BUILTIN_HIT='variable/command substitution ($…) — expansion executes or reads things no pattern checked'
+      elif printf '%s' "$seg" | grep -q '`'; then BUILTIN_ID='command-substitution'; BUILTIN_HIT='backtick command substitution'
+      elif printf '%s' "$seg" | grep -Eq '<\(|>\('; then BUILTIN_ID='process-substitution'; BUILTIN_HIT='process substitution <(…)/>(…)'
+      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])eval([[:space:]]|$)'; then BUILTIN_ID='eval'; BUILTIN_HIT='eval'
+      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])xargs([[:space:]]|$)'; then BUILTIN_ID='xargs'; BUILTIN_HIT='xargs — arguments become an unchecked command'
+      elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_ID='source'; BUILTIN_HIT='sourcing a script into the shell'
+      elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_ID='shell'; BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
+      elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_ID='find-exec'; BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
+      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(python[0-9.]*|node|nodejs|ruby|perl|php|deno|bun)([[:space:]][^;|&]*)?[[:space:]](-c|-e|-p|--eval|--print)([[:space:]]|$)'; then BUILTIN_ID='interpreter-inline'; BUILTIN_HIT='interpreter one-liner (-c/-e/-p) — arbitrary code the patterns cannot see'
+      elif printf '%s' "$seg" | grep -Eq '^(cd|pushd|popd)([[:space:]]|$)'; then BUILTIN_ID='cd'; BUILTIN_HIT='cd/pushd/popd — un-anchors every relative path this axis checks'
+      elif printf '%s' "$seg" | grep -Eq '\{[^{}[:space:]]*,[^{}[:space:]]*\}'; then BUILTIN_ID='brace-expansion'; BUILTIN_HIT='brace expansion {a,b} — conceals the expanded filename from every check'
+      fi
+      # A permitted construct is skipped — the segment still faces the
+      # allow-set, deny patterns, redirect scope and read-token checks.
+      if [ -n "$BUILTIN_ID" ] && [ "$BASH_PERMIT" != "null" ] \
+         && printf '%s' "$BASH_PERMIT" | "$JQ" -e --arg c "$BUILTIN_ID" 'index($c) != null' >/dev/null 2>&1; then
+        BUILTIN_HIT=""
       fi
       if [ -n "$BUILTIN_HIT" ]; then
-        harness_os_deny "bash-builtin-deny" "[BLOCKED] Role '${ROLE}' may not run this command — the segment '$seg' uses ${BUILTIN_HIT}.
+        harness_os_deny "bash-builtin-deny:${BUILTIN_ID}" "[BLOCKED] Role '${ROLE}' may not run this command — the segment '$seg' uses ${BUILTIN_HIT}.
 
 ${ROLE_HEADER}
 
 Command: ${CMD}
 
-These constructs are denied for every governed role because they let a command that matches an allow pattern do something the pattern never checked. Express the operation directly (one plain command per step, granted tools for file writes), or ask the operator — the manifest can set bash.unrestricted for a role that genuinely needs raw shell, at the cost of every bash guarantee."
+These constructs are denied by default because they let a command that matches an allow pattern do something the pattern never checked. Options, narrowest first:
+  1. Express the operation directly — one plain command per step, granted tools for file writes.
+  2. If this role legitimately needs this construct, the operator can permit exactly it:
+       \"bash\": { \"permit\": [\"${BUILTIN_ID}\"] }
+     Every other construct stays denied, and the allow-set, redirect-scope
+     and read-scope checks still apply to this role.
+  3. bash.unrestricted: true waives all of them — for a deliberately
+     trusted role only, never to silence a single deny.
+
+Preview the effect before you commit to it: harness-os explain --role ${ROLE} --tool Bash --command '<the command>'"
       fi
     fi
 
@@ -400,6 +434,25 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
           -*) continue ;;              # flag/option
           *://*) continue ;;           # URL, never a local file
           *=*) continue ;;             # key=value argument
+        esac
+        # An expansion inside a PATH-SHAPED token cannot be scope-checked
+        # — the kernel never expands it, so `cat $PWD/.env` would slip
+        # past this scan as an unresolvable token. Only reachable when
+        # the role permits an expansion construct (otherwise axis 3a
+        # already denied the segment); a bare `$VAR` with no separator
+        # (echo $HOME, git commit -m "$MSG") stays fine.
+        case "$tok" in
+          *'$'*/*|*/*'$'*|*'`'*/*|*/*'`'*)
+            set +f
+            harness_os_deny "bash-unverifiable-path-expansion" "[BLOCKED] Role '${ROLE}' used a shell expansion inside a path argument ('$tok'), which the kernel cannot resolve — so it cannot be checked against the role's read scope.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+
+Command: ${CMD}
+
+Write the path literally (relative to the project root) so it can be scope-checked. An expansion is permitted for this role in non-path arguments; a path built by expansion would make the read scope unenforceable."
+            ;;
         esac
         case "$tok" in "~") tok="$HOME" ;; "~/"*) tok="$HOME/${tok#\~/}" ;; esac
         # NB: no `--` before the pattern — `compgen -G -- x` silently
@@ -558,20 +611,26 @@ Dispatchable roles: ${ROLE_NAMES}
 
 Dispatch rights are part of the separation of duties — if the workflow needs a '${TARGET_ROLE}', that dispatch belongs to a role holding the grant."
     fi
-    if ! printf '%s' "$PROMPT" | grep -qF "<<harness-os-role: ${TARGET_ROLE}>>"; then
+    # The target's tag may carry an optional #NONCE — accept either form.
+    if ! printf '%s' "$PROMPT" | grep -Eq "<<harness-os-role: ${TARGET_ROLE}(#[a-z0-9]{4,})?>>"; then
       harness_os_deny "dispatch-untagged $TARGET_ROLE" "[BLOCKED] This dispatch of role '${TARGET_ROLE}' is missing the binding tag in its prompt.
 
 ${ROLE_HEADER}
 
 Add the literal line
   <<harness-os-role: ${TARGET_ROLE}>>
-to the subagent prompt (ideally the first line, followed by the role's mandate and ONLY the context its scope covers). The tag is how the kernel binds the child's tool calls to '${TARGET_ROLE}' — without it the child may fall back to the unboundAgentPolicy."
+to the subagent prompt (ideally the first line, followed by the role's mandate and ONLY the context its scope covers). The tag is how the kernel binds the child's tool calls to '${TARGET_ROLE}' — without it the child may fall back to the unboundAgentPolicy.
+
+For parallel dispatch, add a unique nonce so binding stays exact even
+when several roles run at once: <<harness-os-role: ${TARGET_ROLE}#a1b2c3>>."
     fi
-    # Tag purity: exactly one role's tag may appear in the prompt. A
-    # second, foreign tag would make the child's transcript ambiguous by
-    # construction, forcing every child of this dispatch to the
-    # unbound fallback — or worse, seeding a mis-binding.
-    FOREIGN_TAGS=$(printf '%s' "$PROMPT" | grep -oE "$HOS_ROLE_TAG_RE" | sort -u | grep -vF "<<harness-os-role: ${TARGET_ROLE}>>" || true)
+    # Tag purity: exactly one role may be tagged in the prompt (nonce
+    # ignored). A second, foreign role tag would make the child's
+    # transcript ambiguous by construction, forcing every child of this
+    # dispatch to the unbound fallback — or worse, seeding a mis-binding.
+    FOREIGN_TAGS=$(printf '%s' "$PROMPT" | grep -oE "$HOS_ROLE_TAG_RE" \
+      | sed -E 's/^<<harness-os-role: ([a-z][a-z0-9-]*)(#[a-z0-9]+)?>>$/\1/' \
+      | sort -u | grep -vxF "${TARGET_ROLE}" || true)
     if [ -n "$FOREIGN_TAGS" ]; then
       harness_os_deny "dispatch-foreign-tag $TARGET_ROLE" "[BLOCKED] This dispatch of role '${TARGET_ROLE}' embeds binding tag(s) for a DIFFERENT role in its prompt:
 
@@ -583,9 +642,12 @@ A dispatch prompt must carry exactly one role tag — the target's. Foreign tags
     fi
   fi
 
-  # Record the dispatch (also for ungoverned-dispatch-list roles and any
-  # recognised prefix) so the child can bind via the registry rung.
-  [ -n "$TARGET_ROLE" ] && harness_os_register_dispatch "$TARGET_ROLE" "$HOS_TOOL_USE_ID"
+  # Extract the target's optional nonce so the child can bind exactly by
+  # it (resolve rung 4a), then record the dispatch. Runs for
+  # ungoverned-dispatch-list roles too, so the child can still bind.
+  DISPATCH_NONCE=$(printf '%s' "$PROMPT" | grep -oE "<<harness-os-role: ${TARGET_ROLE}#[a-z0-9]{4,}>>" \
+    | head -n1 | sed -E 's/.*#([a-z0-9]+)>>$/\1/' || true)
+  [ -n "$TARGET_ROLE" ] && harness_os_register_dispatch "$TARGET_ROLE" "$HOS_TOOL_USE_ID" "$DISPATCH_NONCE"
 fi
 
 # --- Axis 7: skill gate --------------------------------------------------
@@ -600,6 +662,59 @@ ${ROLE_HEADER}
 Granted skills: $(printf '%s' "$SKILLS_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)"
     fi
   fi
+fi
+
+# --- Axis 8: MCP argument path-scoping -----------------------------------
+# Core tools name their paths in known fields (file_path, path, …), so
+# axes 4-5 can scope them. An MCP tool's argument shape is its own, so
+# the manifest teaches the kernel which arguments of which tools carry
+# paths (settings.mcpPathArguments), and those paths are then held to the
+# SAME read/write scopes as the core tools. Without a mapping entry, an
+# MCP tool remains gated by name only (axis 2) — which is why the
+# architecture doc tells you to grant file-mutating MCP tools only to
+# roles whose mandate covers the effect.
+MCP_MAP=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -c '.settings.mcpPathArguments // {}' 2>/dev/null || echo "{}")
+if [ "$MCP_MAP" != "{}" ] && [ -n "$MCP_MAP" ]; then
+  # Which mapping entries apply to this tool name (shell-glob match)?
+  MCP_FIELDS_READ=""
+  MCP_FIELDS_WRITE=""
+  while IFS= read -r pat; do
+    [ -n "$pat" ] || continue
+    # shellcheck disable=SC2254
+    case "$HOS_TOOL" in
+      $pat)
+        MCP_FIELDS_READ="$MCP_FIELDS_READ$(printf '%s' "$MCP_MAP" | "$JQ" -r --arg p "$pat" '(.[$p].read // [])[]' 2>/dev/null)"$'\n'
+        MCP_FIELDS_WRITE="$MCP_FIELDS_WRITE$(printf '%s' "$MCP_MAP" | "$JQ" -r --arg p "$pat" '(.[$p].write // [])[]' 2>/dev/null)"$'\n'
+        ;;
+    esac
+  done < <(printf '%s' "$MCP_MAP" | "$JQ" -r 'keys[]' 2>/dev/null)
+
+  # scope_mcp_field <axis:read|write> <dot-path> — pull the value(s) at
+  # tool_input.<dot-path> (array values are checked element-wise) and run
+  # each through the same scope check the core tools use.
+  scope_mcp_field() {
+    local axis="$1" field="$2" vals
+    [ -n "$field" ] || return 0
+    vals=$(printf '%s' "$INPUT" | "$JQ" -r --arg f "$field" '
+      def pick($o; $parts): reduce $parts[] as $k ($o; if . == null then null else .[$k]? end);
+      (.tool_input // {}) as $ti
+      | pick($ti; ($f | split(".")))
+      | if . == null then empty
+        elif type == "array" then .[] | select(type == "string")
+        elif type == "string" then .
+        else empty end' 2>/dev/null || echo "")
+    local v
+    while IFS= read -r v; do
+      [ -n "$v" ] || continue
+      case "$v" in *://*) continue ;; esac   # URL, not a local path
+      harness_os_is_manifest_path "$v" && [ "$axis" = "read" ] && continue
+      check_path_scope "$axis" "$(harness_os_relpath "$v")" \
+        "$([ "$axis" = "write" ] && echo "write" || echo "read") via ${HOS_TOOL}"
+    done <<< "$vals"
+  }
+
+  while IFS= read -r field; do scope_mcp_field read "$field"; done <<< "$MCP_FIELDS_READ"
+  while IFS= read -r field; do scope_mcp_field write "$field"; done <<< "$MCP_FIELDS_WRITE"
 fi
 
 exit 0

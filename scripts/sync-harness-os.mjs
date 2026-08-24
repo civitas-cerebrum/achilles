@@ -61,6 +61,9 @@ const FILES = [
 const RENAMES = [
   ['hooks/tests/cases/02-adversarial.sh', 'hooks/tests/cases/72-harness-os-adversarial.sh'],
   ['hooks/tests/cases/03-benchmark-registration.sh', 'hooks/tests/cases/73-harness-os-benchmark.sh'],
+  ['hooks/tests/cases/04-identity.sh', 'hooks/tests/cases/74-harness-os-identity.sh'],
+  ['hooks/tests/cases/05-mcp-scoping.sh', 'hooks/tests/cases/75-harness-os-mcp-scoping.sh'],
+  ['hooks/tests/cases/06-bash-permit.sh', 'hooks/tests/cases/76-harness-os-bash-permit.sh'],
 ];
 const DIRS = [
   { rel: 'schemas/harness-os.fixtures', ext: '.json' },

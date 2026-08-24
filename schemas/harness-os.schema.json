@@ -42,6 +42,27 @@
           "minimum": 60,
           "maximum": 86400,
           "default": 1800
+        },
+        "mcpPathArguments": {
+          "description": "Teaches the kernel which arguments of which MCP (or other non-core) tools name FILE PATHS, so those paths can be held to the calling role's read/write scope. Without this, MCP tools are gated by name only. Key: a shell-glob over the tool name (e.g. 'mcp__filesystem__write_file'). Value: which tool_input fields carry paths, split by the access they represent. Field names are dot-paths into tool_input (e.g. 'args.path'); a field whose value is an array is checked element-wise.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z0-9_*?.-]+$" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "read": {
+                "description": "tool_input fields naming paths the tool READS — checked against the role's read scope.",
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "write": {
+                "description": "tool_input fields naming paths the tool WRITES — checked against the role's write scope (a role with no write grants is denied outright).",
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
         }
       }
     },
@@ -90,6 +111,27 @@
               },
               "allow": { "$ref": "#/$defs/patternList" },
               "deny": { "$ref": "#/$defs/patternList" },
+              "permit": {
+                "description": "Named indirection constructs this role may use despite the kernel's built-in denies — the narrow alternative to `unrestricted`. Permitting one construct never waives the others, and the allow-set, deny patterns, redirect-scope and read-scope checks still apply. Prefer this over `unrestricted` whenever a role legitimately needs one construct (e.g. \"var-expansion\" for a role that uses \"$HOME\").",
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "var-expansion",
+                    "command-substitution",
+                    "process-substitution",
+                    "eval",
+                    "xargs",
+                    "source",
+                    "shell",
+                    "find-exec",
+                    "interpreter-inline",
+                    "cd",
+                    "brace-expansion"
+                  ]
+                }
+              },
               "unrestricted": {
                 "description": "DANGEROUS. true disables the kernel's built-in bash denies AND the allow-set check for this role — raw shell, with only explicit deny patterns, redirect scope checks and read-token scoping still applied. Every bash guarantee the architecture doc makes stops holding for this role. Use only for a deliberately trusted role, never to silence a deny you don't understand.",
                 "type": "boolean",

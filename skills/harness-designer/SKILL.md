@@ -87,6 +87,15 @@ For each role, in this order (it mirrors the kernel's evaluation):
 5. **Dispatch** — who may this role spawn? Only orchestrator-shaped
    roles normally hold a `dispatch` list. Presence of the list also
    switches on the tagging discipline (below).
+6. **MCP path arguments** — if any role uses an MCP tool that reads or
+   writes files, add it to `settings.mcpPathArguments` (tool-name glob →
+   which `tool_input` fields carry paths, split into `read`/`write`).
+   Those paths then obey the same scopes as the core tools. Map each
+   tool by the access it performs: a `*__read*` glob under `read`, a
+   `*__write*` glob under `write` — a single glob listing a field as
+   both would check a read call against the write scope. Unmapped MCP
+   tools stay gated by name only, so say so out loud when you leave one
+   unmapped.
 
 ### Phase 3 — Generate and validate the manifest
 
@@ -102,11 +111,20 @@ For each role, in this order (it mirrors the kernel's evaluation):
    entry must name an existing role / command group); otherwise run any
    JSON Schema 2020-12 validator and check the cross-references by
    hand.
-3. Dry-run the boundaries with the user: for each role, state two
-   things it can do and two adjacent things it now cannot, and confirm
-   both lists match their intent. This is the design review — the deny
-   messages the kernel will emit quote the role `description` fields,
-   so make those descriptions precise sentences.
+3. Dry-run the boundaries with the user — and do it against the real
+   kernel, not from reasoning about the manifest:
+
+   ```bash
+   harness-os explain --role reviewer --tool Read  --path docs/acceptance/x.md   # expect ALLOW
+   harness-os explain --role reviewer --tool Write --path docs/ledger.json       # expect DENY
+   harness-os explain --role inspector --tool Bash --command 'npx playwright test'
+   ```
+
+   For each role, run two calls its mandate covers and two adjacent ones
+   it must refuse, and confirm the verdicts match intent. This is the
+   design review, and it catches a too-narrow command group *before* the
+   first live run. The deny messages quote the role `description`
+   verbatim, so make those precise sentences.
 
 ### Phase 3b — Store it so it can be reused and swapped
 
@@ -138,9 +156,17 @@ itself) must dispatch every subagent as:
 
 ```
 description: "<role>-<slug>: <what this task is>"
-prompt:      first line is the literal tag  <<harness-os-role: <role>>>
+prompt:      first line is the literal tag  <<harness-os-role: <role>#<nonce>>>
              then the role's mandate, then ONLY the context its scope covers
 ```
+
+The `#<nonce>` (4+ chars of `[a-z0-9]`, unique per dispatch) is what
+makes the binding exact: the kernel registers `nonce → role` at dispatch
+and the child binds by the nonce in its own transcript, so **dispatching
+several different roles in parallel stays unambiguous**. The plain
+`<<harness-os-role: reviewer>>` form still works for a single dispatch;
+teach the nonce as the default habit anyway — it costs six characters
+and removes the only remaining identity caveat.
 
 The kernel denies untagged dispatches from roles holding a `dispatch`
 list, so the discipline is self-enforcing after day one. Also brief the
@@ -151,16 +177,19 @@ user on:
   state dir (root of trust); redesigns happen in a session launched
   with `HARNESS_OS=0` in the operator's shell, or by hand-editing the
   file outside a session.
-- **Parallel dispatch caveat** — when *different* roles are dispatched
-  in parallel and the platform provides neither `parent_tool_use_id`
-  nor per-child transcripts, a child may resolve as *unbound* and fall
-  back to `settings.unboundAgentPolicy` (default `readonly`).
-  Role-homogeneous fan-out is always safe; serialise mixed waves when
-  hard guarantees matter.
-- **Calibration** — `.claude/harness-os.state/decision-log.jsonl`
-  records every deny. After the first few runs, review it with the
-  user: repeated denies on legitimate work mean a grant is too narrow;
-  zero denies ever may mean a scope is too wide to be doing anything.
+- **Calibration is a workflow, not a chore.** Every deny lands in
+  `.claude/harness-os.state/decision-log.jsonl`, and
+  `harness-os doctor` reads it back as ranked, role-specific advice
+  ("2× composer bash-segment-not-allowed → widen this command group").
+  After the first real run, go through it with the user: repeated denies
+  on legitimate work mean a grant is too narrow; zero denies ever may
+  mean a scope is too wide to be doing anything.
+- **When a deny is legitimate, widen narrowly.** For an indirection
+  construct, `bash.permit: ["<construct>"]` unlocks exactly that one and
+  nothing else — the deny message names the construct id, and `doctor`
+  proposes the edit. Reserve `bash.unrestricted` for a role you have
+  decided to trust wholesale; never reach for it to silence a single
+  deny. Preview any widening with `harness-os explain` before editing.
 
 ## Worked examples
 
