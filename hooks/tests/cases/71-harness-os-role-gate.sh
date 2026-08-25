@@ -197,9 +197,18 @@ assert_allow "$H" "$(payload tool_name=Bash command='cat .claude/harness-os.json
 # --- Unbound subagent ----------------------------------------------------
 
 # Fresh state dir: no registry entries, no transcript → unresolvable.
+# "readonly" grants reads within the UNION of every role's read scope —
+# an unbound caller may see what some role in this OS may see, and no
+# more. It used to grant unscoped reads, which reads as far safer than it
+# was: .env and every confidential file were reachable by a caller the
+# kernel could not even identify.
 HARNESS_OS_STATE_DIR="$HOS_TMP/state-empty" \
-  assert_allow "$H" "$(payload tool_name=Read file_path="$PROJ/anything.md" cwd="$PROJ" agent_id=ghost-1)" \
-  "unbound agent under readonly policy: Read → ALLOW"
+  assert_allow "$H" "$(payload tool_name=Read file_path="$PROJ/docs/ledger.json" cwd="$PROJ" agent_id=ghost-1)" \
+  "unbound agent under readonly policy: a path some role may read → ALLOW"
+
+HARNESS_OS_STATE_DIR="$HOS_TMP/state-empty" \
+  assert_deny "$H" "$(payload tool_name=Read file_path="$PROJ/.env" cwd="$PROJ" agent_id=ghost-1)" \
+  "unbound agent under readonly policy: a path NO role may read → DENY" "outside every role's read scope"
 
 HARNESS_OS_STATE_DIR="$HOS_TMP/state-empty" \
   assert_deny "$H" "$(payload tool_name=Bash command='ls' cwd="$PROJ" agent_id=ghost-1)" \

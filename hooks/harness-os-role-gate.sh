@@ -120,7 +120,32 @@ if [ "$HOS_ROLE_STATE" = "unbound" ]; then
     allow) exit 0 ;;
     readonly)
       case "$HOS_TOOL" in
-        Read|Glob|Grep|NotebookRead|TaskGet|TaskList) exit 0 ;;
+        TaskGet|TaskList) exit 0 ;;
+        Read|Glob|Grep|NotebookRead)
+          # "readonly" used to mean UNSCOPED reads, which reads as safer
+          # than it is: an unbound agent could Read .env and every
+          # confidential file in the project, because with no role there
+          # was no scope to hold it to. A reviewer flagged the wording
+          # gap; the honest fix is to give it a scope. An unbound agent
+          # is held to the UNION of every role's read.allow — it may see
+          # what some role in this OS is allowed to see, and nothing
+          # else. Material no role may read stays unreachable to a caller
+          # the kernel could not even identify.
+          UNBOUND_SCOPE=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -c '[.roles[]?.read.allow[]?] | unique' 2>/dev/null || echo "[]")
+          if [ "$UNBOUND_SCOPE" = "[]" ] || [ "$UNBOUND_SCOPE" = "null" ]; then exit 0; fi
+          UNBOUND_TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // empty' 2>/dev/null || echo "")
+          [ -n "$UNBOUND_TARGET" ] || exit 0
+          harness_os_is_manifest_path "$UNBOUND_TARGET" && exit 0
+          UNBOUND_REL=$(harness_os_relpath "$UNBOUND_TARGET")
+          harness_os_path_in_scope "$UNBOUND_REL" "$UNBOUND_SCOPE" && exit 0
+          harness_os_deny "unbound read-out-of-scope $UNBOUND_REL" "[BLOCKED] This subagent's harness-OS role could not be resolved, and '$UNBOUND_REL' is outside every role's read scope.
+
+${MANIFEST_REF}
+
+unboundAgentPolicy is \"readonly\", which permits reading only what some role in this OS is allowed to read — not the whole project. Material no role may see stays out of reach of a caller the kernel cannot identify.
+
+Re-dispatch this task with a role-prefixed description (\"<role>-<slug>: ...\") and the binding tag <<harness-os-role: NAME#nonce>> as the first line of the prompt, and the role's own read scope applies instead."
+          ;;
       esac
       ;;
   esac
@@ -297,15 +322,43 @@ check_code_capabilities() {
   # as Node adds more. The bracket form covers computed-member access
   # (m["read"+"File"+"Sync"](…)), which concatenation folding turns into
   # m["readFileSync"](…) before this runs.
-  FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync[[:space:]]*(\(|\])|\[[[:space:]]*"[^"]*Sync"[[:space:]]*\]|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream[[:space:]]*\('
+  # Method names are matched WITHOUT requiring a following `(`. Binding
+  # the method first and calling it later — `const w = m.writeFileSync;
+  # … w(path, data)` — evaded the call-shaped pattern, and combined with
+  # a dynamic module name it was a complete bypass. A capability method
+  # named at all is the signal; you do not name writeFileSync by accident.
+  FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync\b|\[[[:space:]]*"[^"]*Sync"[[:space:]]*\]|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream\b'
   if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|path|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\(|${FS_METHODS}|readFile[[:space:]]*\(|Path[[:space:]]*\("; then
     CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
     CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system …) — code that runs commands no command group checked'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
     CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
-  elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)|${LOAD}[[:space:]]*\([[:space:]]*[a-zA-Z_$][a-zA-Z0-9_$]*[[:space:]]*[.(\[]|${LOAD}[[:space:]]*\([[:space:]]*[a-zA-Z_$][a-zA-Z0-9_$]*[[:space:]]*\)"; then
-    CAP_ID='eval'; CAP_WHAT='eval / new Function / a module name built at runtime — code the static check cannot read'
+  elif printf '%s' "$CODE_N" | grep -Eq "\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\(|\bsendBeacon[[:space:]]*\(|\bnavigator\.sendBeacon\b|\bapiRequestContext\b"; then
+    # The test framework's OWN http client is the natural exfiltration
+    # primitive in a test-authoring role: `request` is a standard
+    # Playwright fixture and `request.get(url)` reaches any host. An axis
+    # whose stated job is closing exfiltration channels cannot cover
+    # `fetch(` and miss the one the role actually has in scope.
+    CAP_ID='network'; CAP_WHAT='the test framework''s HTTP client (request.get / page.request / sendBeacon) pointed at an arbitrary host — the same exfiltration channel as fetch(), reached through a fixture'
+  elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)"; then
+    CAP_ID='eval'; CAP_WHAT='eval / new Function — code the static check cannot read'
+  elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*[^\"[:space:])]"; then
+    # INVERTED, and this is the important one. Every previous version
+    # asked "does the module name look like one of the dangerous ones?",
+    # and lost, round after round, to the next spelling: node:fs, f\x73,
+    # \146\163, String.fromCharCode(102,115), ["f","s"].join(""),
+    # ("f")+("s"). There is no end to that list, because the argument is
+    # an arbitrary expression.
+    #
+    # So the question is inverted: a module specifier that is NOT a plain
+    # quoted literal cannot be read by a static check at all, and is
+    # refused as the 'eval' capability regardless of what it evaluates
+    # to. Legitimate code names its imports; a name assembled at runtime
+    # is either an escape or a pattern that belongs behind an explicit
+    # grant. This is the one shape in the screen that does not need
+    # updating when someone invents a new way to spell "fs".
+    CAP_ID='eval'; CAP_WHAT='a module name built at runtime rather than written as a literal — the static check cannot see what it resolves to, so it cannot be scoped'
   fi
   # A file:// URL pointed at the filesystem is a read channel even with
   # no host module involved (page.goto("file:///…")).
@@ -994,9 +1047,23 @@ Command: ${CMD}
 A segment this long cannot be verified against the role's read scope, so it is refused rather than partially checked. Split the work into smaller commands naming the files you actually need."
         fi
         case "$tok" in
-          -*) continue ;;              # flag/option
           *://*) continue ;;           # URL, never a local file
-          *=*) continue ;;             # key=value argument
+          -*=*)
+            # A FLAG can carry a path in its value, and several read one:
+            # `sort --files0-from=<file>`, `grep --file=<file>`,
+            # `--config=<file>`. Skipping the whole token let those read
+            # anything. Scope-check the value instead — a value that is
+            # not an existing path (`--reporter=line`) still costs
+            # nothing, because the existence test below filters it.
+            tok="${tok#*=}"
+            [ -n "$tok" ] || continue
+            ;;
+          -*) continue ;;              # valueless flag/option
+          *=*) continue ;;             # NAME=value env assignment: the
+                                       # value is data for the command,
+                                       # not a file it opens, and
+                                       # PLAYWRIGHT_BROWSERS_PATH=/opt/…
+                                       # is ordinary setup, not a read.
         esac
         # The target of a no-op cd — or of a no-op `git -C` / `--work-tree`,
         # already validated above — is the directory this call already runs

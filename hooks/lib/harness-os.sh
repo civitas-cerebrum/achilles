@@ -356,8 +356,15 @@ harness_os_register_dispatch() {
 #   U<word>  at least one character was unquoted -> expansion applies
 # Unquoted '>' also separates words, matching the redirection split the
 # caller previously did with sed (a '>' inside quotes is just text).
+# The whole input is one record, matching harness_os_unquoted_view. With
+# awk's default newline record separator the two scanners disagreed about
+# a quoted string spanning newlines: this one reset its quote state at
+# every line, so `echo "row1\n.env\nrow3" > notes.txt` had `.env` read as
+# an unquoted operand and denied as an out-of-scope read, when bash only
+# ever writes it as text. Two parsers of the same command must not
+# disagree about where the quotes are.
 harness_os_shell_words() {
-  awk '
+  awk 'BEGIN { RS = "\034" }
   {
     s = $0; n = length(s); word = ""; inword = 0; q = ""; unq = 0
     for (i = 1; i <= n; i++) {
