@@ -570,6 +570,63 @@ A pattern is applied under the search root, so '..' escapes the role's scope. Na
   Write|Edit|NotebookEdit)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
     [ -n "$TARGET" ] && check_path_scope write "$(harness_os_relpath "$TARGET")" "write"
+
+    # --- Axis 5b: write-then-execute containment -------------------------
+    # A role that authors EXECUTABLE code holds, in effect, whatever
+    # permissions that code will have when something runs it — its own
+    # granted test command, CI, or another role. Path scopes alone are
+    # then advisory: a spec file inside tests/e2e/ can `require('fs')`
+    # and read .env, which is precisely the escape this axis closes.
+    #
+    # Rule: for a governed role, code written into an executable file
+    # type may not reach for capabilities outside its role's envelope
+    # (filesystem, process spawning, network, eval/dynamic import).
+    # Legitimate needs are declared per role:
+    #     "write": { "codeCapabilities": ["fs"] }
+    # Applies regardless of whether THIS role can execute the file —
+    # authoring code that escapes is the vector, whoever runs it.
+    if [ -n "$TARGET" ]; then
+      case "$(harness_os_relpath "$TARGET")" in
+        *.js|*.mjs|*.cjs|*.ts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb)
+          CODE=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.content // .tool_input.new_string // .tool_input.new_source // empty' 2>/dev/null || echo "")
+          if [ -n "$CODE" ]; then
+            CAPS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeCapabilities')
+            cap_permitted() {
+              [ "$CAPS_ALLOW" != "null" ] && printf '%s' "$CAPS_ALLOW" | "$JQ" -e --arg c "$1" 'index($c) != null' >/dev/null 2>&1
+            }
+            CAP_ID=""; CAP_WHAT=""
+            # Module/-import surfaces that hand code the host machine.
+            if printf '%s' "$CODE" | grep -Eq "(require\(|from )['\"](node:)?(fs|fs/promises)['\"]|import[[:space:]]+.*['\"](node:)?fs['\"]|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib)([[:space:]]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib)[[:space:]]+import"; then
+              CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / shutil) — code that can read or write any path, ignoring the role scopes'
+            elif printf '%s' "$CODE" | grep -Eq "(require\(|from )['\"](node:)?child_process['\"]|import[[:space:]]+.*['\"](node:)?child_process['\"]|^[[:space:]]*import[[:space:]]+subprocess|execSync|spawnSync|\bsubprocess\.(run|Popen|call)\(|os\.system\("; then
+              CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system) — code that runs commands no command group checked'
+            elif printf '%s' "$CODE" | grep -Eq "(require\(|from )['\"](node:)?(net|http|https|dgram|tls|dns)['\"]|import[[:space:]]+.*['\"](node:)?(net|http|https|dgram)['\"]|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)"; then
+              CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / requests) — an exfiltration channel'
+            elif printf '%s' "$CODE" | grep -Eq "\beval\(|new Function\(|\bexec\(|__import__\(|\bimport\([^)'\"]*[a-zA-Z_$][^)]*\)"; then
+              CAP_ID='eval'; CAP_WHAT='eval / new Function / dynamic import — code assembled at runtime, unreadable to any static check'
+            fi
+            if [ -n "$CAP_ID" ] && ! cap_permitted "$CAP_ID"; then
+              harness_os_deny "write-code-capability:${CAP_ID} $(harness_os_relpath "$TARGET")" "[BLOCKED] Role '${ROLE}' may not author code using ${CAP_WHAT}.
+
+${ROLE_HEADER}
+File: $(harness_os_relpath "$TARGET")
+
+Why this is gated: code you write is code something will RUN — your own test command, CI, or another role. At that moment the code holds ITS permissions, not yours, so an unrestricted \`${CAP_ID}\` capability inside a file you author silently voids every read/write scope on this role. Path scopes only bind if the code inside the path stays inside them.
+
+Options, narrowest first:
+  1. Use the framework's own API instead of reaching for the host — a
+     test should drive the app through its fixtures, not the filesystem.
+  2. If this file genuinely needs it, the operator can grant exactly
+     that capability to this role:
+       \"write\": { \"codeCapabilities\": [\"${CAP_ID}\"] }
+     Other capabilities stay denied, and every path scope still applies.
+
+Preview before committing: harness-os explain --role ${ROLE} --tool Write --path <file>"
+            fi
+          fi
+          ;;
+      esac
+    fi
     ;;
 esac
 

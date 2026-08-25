@@ -154,7 +154,16 @@
             "additionalProperties": false,
             "properties": {
               "allow": { "$ref": "#/$defs/patternList" },
-              "deny": { "$ref": "#/$defs/patternList" }
+              "deny": { "$ref": "#/$defs/patternList" },
+              "codeCapabilities": {
+                "description": "Host capabilities this role may author into EXECUTABLE files (.js/.ts/.py/.sh/…). Code a role writes is code something will run — its own test command, CI, or another role — and at that moment the code holds its own permissions, so an unrestricted capability inside an authored file voids this role's read/write scopes. The kernel therefore denies fs / process / network / eval surfaces inside authored code unless named here. Grant the narrowest set the work truly needs (a framework-driven test needs none).",
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "enum": ["fs", "process", "network", "eval"]
+                }
+              }
             }
           },
           "dispatch": {

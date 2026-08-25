@@ -84,6 +84,12 @@ For each role, in this order (it mirrors the kernel's evaluation):
 4. **Write scope** — usually a subtree (implementer) or a single file
    (judge + ledger). The ledger ACL pattern: put the ledger in several
    roles' `read.allow` and exactly one role's `write.allow`.
+   **If the role writes executable files** (specs, scripts), say so out
+   loud: code it authors is code something will run, so the kernel denies
+   filesystem / process / network / eval surfaces inside that code unless
+   you declare them (`write.codeCapabilities`). A framework-driven test
+   needs none — if the user insists a spec needs `fs`, that is a design
+   smell worth questioning before granting it.
 5. **Dispatch** — who may this role spawn? Only orchestrator-shaped
    roles normally hold a `dispatch` list. Presence of the list also
    switches on the tagging discipline (below).

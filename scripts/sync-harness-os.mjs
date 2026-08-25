@@ -64,6 +64,7 @@ const RENAMES = [
   ['hooks/tests/cases/04-identity.sh', 'hooks/tests/cases/74-harness-os-identity.sh'],
   ['hooks/tests/cases/05-mcp-scoping.sh', 'hooks/tests/cases/75-harness-os-mcp-scoping.sh'],
   ['hooks/tests/cases/06-bash-permit.sh', 'hooks/tests/cases/76-harness-os-bash-permit.sh'],
+  ['hooks/tests/cases/07-write-then-execute.sh', 'hooks/tests/cases/77-harness-os-write-then-execute.sh'],
 ];
 const DIRS = [
   { rel: 'schemas/harness-os.fixtures', ext: '.json' },

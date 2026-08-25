@@ -142,6 +142,12 @@ Evaluated in this order inside the kernel; first deny wins.
 5. **Write scope** — same mechanics for `Write`/`Edit`/`NotebookEdit`
    over `write.allow`/`write.deny`. Absent `write` section → NO writes
    (write is opt-in, read is opt-out; the asymmetry is deliberate).
+5b. **Write-then-execute containment** — code authored into an
+   executable file type (`.js/.ts/.py/.sh/…`) may not reach for host
+   capabilities — filesystem (`fs`/`os`/`shutil`), process spawning
+   (`child_process`/`subprocess`), raw network (`net`/`http`/`socket`),
+   or `eval`/dynamic import — unless the role declares them in
+   `write.codeCapabilities`. See below for why this axis exists.
 6. **Dispatch gate** (`Agent` tool) — if the caller's role carries a
    `dispatch` list, the dispatch description must start with
    `<role>:` or `<role>-<slug>:` for a role in that list, and the prompt
@@ -291,6 +297,46 @@ a lone `&` can be split without shredding a redirect):
 Paths on every axis are lexically normalised (`realpath -m`, with a
 pure-bash `..`-collapsing fallback) *before* scope matching, so
 `src/../.env` cannot ride an `src/**` grant.
+
+## Why write-then-execute containment exists
+
+This axis was not designed in the abstract — it closes an escape found by
+running the benchmark ([`hooks/tests/cases/03-benchmark-registration.sh`](../../../hooks/tests/cases/03-benchmark-registration.sh)
+against the live app). The composer role holds `write: tests/e2e/**` and
+a command group containing `npx playwright test`. Both grants are
+obviously correct in isolation. Together they are a complete bypass:
+
+```ts
+// tests/e2e/anything.spec.ts — inside the composer's write scope
+import * as fs from 'fs';
+test('x', async () => { fs.readFileSync('.env', 'utf8'); });  // then: npx playwright test
+```
+
+The kernel gates **tool calls**, not the code a granted tool call
+executes. The spec is written with an allowed tool to an allowed path,
+and run with an allowed command — every axis passes, and the role reads a
+file its read scope forbids. This was reproduced end to end: the secret
+was exfiltrated.
+
+The general principle: **a role that can author code holds, in effect,
+whatever permissions that code will have when something runs it** — its
+own test command, CI, or another role. Path scopes only bind if the code
+inside the path stays inside them. So the kernel checks authored content
+for the capability surfaces that escape the role's envelope, and a
+legitimate need is declared explicitly:
+
+```jsonc
+"write": { "allow": ["tests/**"], "codeCapabilities": ["fs"] }
+```
+
+Calibration is deliberate and tested: the benchmark's real 74-line
+framework-driven spec passes untouched, as does a spec reading
+`process.env` config or mentioning `fs` in a comment — a containment that
+blocked ordinary test authoring would be switched off within a day. The
+check is static and pattern-based, so obfuscated construction of a module
+name is not caught; it raises authoring an escape from "forget the
+boundary exists" to "deliberately smuggle it past a named gate", which is
+the honest ceiling for a static check.
 
 ## False-positive direction
 
