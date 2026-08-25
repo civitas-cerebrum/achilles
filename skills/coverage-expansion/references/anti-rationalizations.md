@@ -370,6 +370,15 @@ Two rules in `skills/ticket-driven-testing/SKILL.md` ship without harness backin
 
 ---
 
+## Pattern: `markdown-only` deferral — work-summary-deck print-safety rules
+
+`skills/work-summary-deck/SKILL.md` §"Print-safety rules" bans `box-shadow`, `opacity`, and alpha colors (rgba/hsla and `transparent` gradient stops) in generated decks, and requires the PDF to be re-exported and re-inspected after every edit round. The color bans are mechanically detectable (a grep over the written deck HTML), but no hook currently validates deck output at Write or export time; the inspection-loop rule is a process obligation a hook cannot observe.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `PreToolUse:Write` (or export-script) guard that greps `*deck*.html` for `box-shadow`, `opacity:`, `rgba(`, `hsla(`, and `transparent` gradient stops outside comments would enforce the color rules; the verification loop remains reviewer-enforced.
+
+---
+
 ## Adding a new pattern
 
 When a novel rationalisation framing appears that doesn't fit an existing pattern:
