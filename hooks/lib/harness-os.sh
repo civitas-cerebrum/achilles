@@ -112,11 +112,66 @@ harness_os_load() {
   HOS_PARENT_TOOL_USE_ID=$(printf '%s' "$HOS_INPUT" | "$HOS_JQ" -r '.parent_tool_use_id // empty' 2>/dev/null || echo "")
   HOS_TRANSCRIPT=$(printf '%s' "$HOS_INPUT" | "$HOS_JQ" -r '.transcript_path // empty' 2>/dev/null || echo "")
 
-  HOS_ROOT=$(cd "$HOS_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$HOS_CWD")
-
+  # WHERE THE MANIFEST IS, and this is the most important question in
+  # the file: every axis in this kernel is dead code the moment the
+  # answer is "nowhere". Not-found means the project never opted in,
+  # which means ALLOW — so a wrong answer here does not deny anything,
+  # it silently ungoverns everything, with no deny, no warning and no
+  # line in the decision log.
+  #
+  # It used to be a POINT LOOKUP keyed on git:
+  #
+  #     HOS_ROOT=$(cd "$HOS_CWD" && git rev-parse --show-toplevel || echo "$HOS_CWD")
+  #     HOS_MANIFEST="$HOS_ROOT/.claude/harness-os.json"
+  #
+  # which reads as "the project root", and is not. It is an assumption
+  # that repo-root equals project-root, documented nowhere as a
+  # requirement, and false for the two most ordinary ways code sits on
+  # disk. Round 27 demonstrated both against the benchmark's own
+  # manifest:
+  #
+  #   a governed project checked out inside a larger repo — git answers
+  #   with the OUTER root, the manifest is not there, and the reviewer,
+  #   a role with no write grants at all, was allowed to overwrite the
+  #   manifest itself. The root of trust, rewritable by the most
+  #   restricted role in the manifest — not by defeating a check, but by
+  #   making every check unreachable;
+  #
+  #   a non-git project with cwd one directory down — same silence.
+  #
+  # So discovery WALKS UP, the way every other tool finds its own
+  # config, and stops at the first `.claude/harness-os.json`. The
+  # directory holding it is the project root, which makes the root a
+  # consequence of where the law is rather than a guess that the law
+  # will be where git says.
+  #
+  # Round 10 swept "is this kernel applicable here?" and fixed four
+  # instances — a nonexistent cwd, a relative cwd, a missing jq, an
+  # unimplemented version. This is a fifth, and the one that needed no
+  # adversary at all: only a project that lives inside a repo.
   if [ -n "${HARNESS_OS_MANIFEST:-}" ]; then
     HOS_MANIFEST="$HARNESS_OS_MANIFEST"
+    HOS_ROOT=$(cd "$HOS_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$HOS_CWD")
   else
+    local hos_dir hos_found=""
+    hos_dir=$(cd "$HOS_CWD" 2>/dev/null && pwd -P 2>/dev/null || printf '%s' "$HOS_CWD")
+    # Bounded by construction: each step drops a path component, so the
+    # walk terminates at `/` whatever it is handed. A relative or
+    # nonexistent cwd falls through to the not-found branch, where the
+    # gate's own cwd-fault check (round 10) reports it properly.
+    case "$hos_dir" in
+      /*)
+        while [ -n "$hos_dir" ]; do
+          if [ -f "$hos_dir/.claude/harness-os.json" ]; then hos_found="$hos_dir"; break; fi
+          [ "$hos_dir" = "/" ] && break
+          hos_dir=$(dirname "$hos_dir")
+        done ;;
+    esac
+    if [ -n "$hos_found" ]; then
+      HOS_ROOT="$hos_found"
+    else
+      HOS_ROOT=$(cd "$HOS_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$HOS_CWD")
+    fi
     HOS_MANIFEST="$HOS_ROOT/.claude/harness-os.json"
   fi
   [ -f "$HOS_MANIFEST" ] || return 1
@@ -152,8 +207,28 @@ harness_os_load() {
 # Role resolution ladder
 # ---------------------------------------------------------------------------
 
+# An agent id becomes a FILENAME, and a filename is where two distinct
+# ids can become one. `tr -c` maps every unsafe character to `_`, so
+# `a/b` and `a:b` both land on `a_b` — and a binding file is what says
+# which role an agent is. Two agents sharing one file is one agent
+# inheriting the other's role.
+#
+# Not reachable today: agent ids are host-assigned and this host assigns
+# safe ones. Round 27 flagged it as a sharp edge rather than an escape,
+# and it is worth removing while it is still cheap, because the day a
+# host starts putting a `/` or a `:` in an id is not a day anyone will
+# connect to this function.
+#
+# An id that needs no substitution keeps its own name — so every binding
+# already on disk, and every test that seeds one by hand, is unchanged.
+# Only the ids that WOULD collide grow a digest of the original, which
+# is exactly the set where the collision lives.
 harness_os__sanitize_id() {
-  printf '%s' "$1" | tr -c 'a-zA-Z0-9_-' '_'
+  local raw="$1" safe
+  safe=$(printf '%s' "$raw" | tr -c 'a-zA-Z0-9_-' '_')
+  if [ "$safe" = "$raw" ]; then printf '%s' "$safe"; return 0; fi
+  printf '%s-%s' "$(printf '%s' "$safe" | cut -c1-200)" \
+    "$(printf '%s' "$raw" | cksum 2>/dev/null | cut -d' ' -f1)"
 }
 
 harness_os__binding_file() {
