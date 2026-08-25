@@ -67,14 +67,43 @@ harness_os__jq() {
 # A PRESENT but unparseable manifest is a distinct state (fail closed):
 # HOS_MANIFEST_BROKEN=1 and the function returns 0 so the gate can deny
 # mutating tools while leaving the read path open for repair.
+# harness_os__emit_fixed_deny <reason>
+# A deny that needs nothing but the shell: no jq, no manifest, no role.
+# Used for the failures that happen before this kernel can read anything,
+# where the alternative is returning "not governed" and meaning it.
+harness_os__emit_fixed_deny() {
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$1"
+  HOS_DECIDED=1
+  exit 0
+}
+
 harness_os_load() {
   HOS_INPUT="$1"
-  HOS_JQ="$(harness_os__jq)"
-  [ -n "$HOS_JQ" ] || return 1
 
+  # The operator's kill-switch outranks everything below, including the
+  # guards. Someone turning enforcement off must always be able to.
   case "${HARNESS_OS:-}" in
     0|false|off) return 1 ;;
   esac
+
+  HOS_JQ="$(harness_os__jq)"
+  if [ -z "$HOS_JQ" ]; then
+    # Returning 1 here means "this project is not governed", and for an
+    # ungoverned project that is true. But jq is how this kernel reads
+    # the payload AND the manifest, so with a manifest present the same
+    # return says "not governed" about a project that is — every role
+    # unenforced, silently, because a dependency is missing. Enforcement
+    # that can be switched off by uninstalling a tool is not enforcement.
+    # The manifest is located here by file test alone, which is all that
+    # is possible without jq and all that is needed to tell the two
+    # states apart.
+    local probe
+    probe="${HARNESS_OS_MANIFEST:-$( { git rev-parse --show-toplevel 2>/dev/null || pwd; } )/.claude/harness-os.json}"
+    if [ -f "$probe" ]; then
+      harness_os__emit_fixed_deny "[BLOCKED] harness-os cannot enforce this project: jq is not installed, and jq is how the kernel reads both the manifest and the call it is deciding about. This project HAS a role manifest, so treating the kernel as absent would leave every role unenforced without saying so. Install jq (https://jqlang.github.io/jq/), or set HARNESS_OS=0 to run this session ungoverned on purpose."
+    fi
+    return 1
+  fi
 
   HOS_TOOL=$(printf '%s' "$HOS_INPUT" | "$HOS_JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
   HOS_CWD=$(printf '%s' "$HOS_INPUT" | "$HOS_JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
@@ -100,9 +129,17 @@ harness_os_load() {
   else
     local version
     version=$(printf '%s' "$HOS_MANIFEST_JSON" | "$HOS_JQ" -r '.harnessOsVersion // empty' 2>/dev/null || echo "")
-    # Unknown future version: this kernel cannot enforce grants it does
-    # not understand — treat as inactive rather than half-enforce.
-    [ "$version" = "1" ] || return 1
+    # A version this kernel does not implement used to be treated as
+    # inactive, on the reasoning that half-enforcing grants you do not
+    # understand is worse than not enforcing them. The first half of that
+    # is right and the conclusion is not: a project that ships
+    # `harnessOsVersion: 2` to an older kernel got NO enforcement and no
+    # indication of it, which is the one outcome worse than both. Refuse
+    # instead, and name the mismatch — the operator can then upgrade or
+    # opt out deliberately.
+    if [ "$version" != "1" ]; then
+      harness_os__emit_fixed_deny "[BLOCKED] harness-os cannot enforce this project: its manifest declares a harnessOsVersion this kernel does not implement (this kernel implements version 1). Enforcing grants the kernel cannot interpret would be unsound, and ignoring them would leave every role unenforced without saying so. Upgrade the harness-os kernel to match the manifest, correct the manifest's harnessOsVersion, or set HARNESS_OS=0 to run this session ungoverned on purpose."
+    fi
   fi
 
   HOS_STATE_DIR="${HARNESS_OS_STATE_DIR:-$HOS_ROOT/.claude/harness-os.state}"
@@ -596,6 +633,10 @@ harness_os_path_in_scope() {
 harness_os_log() {
   local decision="$1" detail="$2"
   mkdir -p "$HOS_STATE_DIR" 2>/dev/null || return 0
+  # Same argv limit as the deny renderer. Here a failure only loses the
+  # audit line, but the line it loses is the one describing the call that
+  # was long enough to break it — the single entry most worth keeping.
+  [ "${#detail}" -le 4000 ] || detail="${detail:0:4000} [truncated]"
   "$HOS_JQ" -nc \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg role "${HOS_ROLE:-}" \
@@ -607,17 +648,58 @@ harness_os_log() {
     >> "$HOS_STATE_DIR/decision-log.jsonl" 2>/dev/null || true
 }
 
+# harness_os_bound_text <text>
+# Bounds a deny message to something an agent can actually read.
+#
+# A deny message quotes the thing it is refusing — a command line, a path,
+# a file's contents — so its length is set by the caller, not by us. That
+# matters twice over: an unbounded message is a channel for pushing
+# arbitrary text into the reading agent's context, and it is what made
+# the renderer below reachable as a failure. The opening line says what
+# was blocked and the closing lines say what to do instead, so it is the
+# middle that gives way. Pure parameter expansion: no process is started
+# here, at any input size.
+harness_os_bound_text() {
+  local t="$1" keep=2000
+  if [ "${#t}" -le $((keep * 2)) ]; then
+    printf '%s' "$t"
+    return 0
+  fi
+  printf '%s\n\n[... %s characters elided by harness-os ...]\n\n%s' \
+    "${t:0:keep}" "$(( ${#t} - keep * 2 ))" "${t: -keep}"
+}
+
 # harness_os_deny <short-detail-for-log> <reason>
 # Emits the repo-standard deny JSON and exits 0.
+#
+# The reason used to reach jq through argv, which put the whole decision
+# at the mercy of execve's MAX_ARG_STRLEN: pad the quoted text past
+# ~128 KB and jq never starts, no JSON is printed, and an empty stdout on
+# exit 0 is precisely how this hook says ALLOW. A deny that can be
+# switched off by making its own explanation longer is not a deny. The
+# EXIT trap does not catch it either, because nothing here exits
+# non-zero — the failure is entirely inside a successful-looking run.
+#
+# So: the reason is bounded first, then handed to jq on stdin, where no
+# such limit exists. And if jq fails regardless — missing, killed, out of
+# memory — the decision is still emitted, carried by a fixed string that
+# needs no renderer. The explanation is not the decision, and losing the
+# former must never discard the latter.
 harness_os_deny() {
+  local reason
   harness_os_log "deny" "$1"
-  "$HOS_JQ" -n --arg r "$2" '{
+  reason=$(harness_os_bound_text "$2")
+  HOS_DECIDED=1
+  if printf '%s' "$reason" | "$HOS_JQ" -Rs '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
-      "permissionDecisionReason": $r
+      "permissionDecisionReason": .
     }
-  }'
+  }' 2>/dev/null; then
+    exit 0
+  fi
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] harness-os refused this call but could not render the explanation for it. The decision stands; only the wording was lost. The recorded reason is the last deny in the decision log under the harness-os state directory."}}'
   exit 0
 }
 

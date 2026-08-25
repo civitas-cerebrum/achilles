@@ -58,23 +58,40 @@ const FILES = [
 // test files, renamed into this repo's numeric cases convention so the
 // vendored kernel gets identical adversarial + benchmark coverage under
 // `npm run test:hooks`.
-const RENAMES = [
-  ['hooks/tests/cases/02-adversarial.sh', 'hooks/tests/cases/72-harness-os-adversarial.sh'],
-  ['hooks/tests/cases/03-benchmark-registration.sh', 'hooks/tests/cases/73-harness-os-benchmark.sh'],
-  ['hooks/tests/cases/04-identity.sh', 'hooks/tests/cases/74-harness-os-identity.sh'],
-  ['hooks/tests/cases/05-mcp-scoping.sh', 'hooks/tests/cases/75-harness-os-mcp-scoping.sh'],
-  ['hooks/tests/cases/06-bash-permit.sh', 'hooks/tests/cases/76-harness-os-bash-permit.sh'],
-  ['hooks/tests/cases/07-write-then-execute.sh', 'hooks/tests/cases/77-harness-os-write-then-execute.sh'],
-  ['hooks/tests/cases/08-reviewer-round1.sh', 'hooks/tests/cases/78-harness-os-reviewer-round1.sh'],
-  ['hooks/tests/cases/09-reviewer-round2.sh', 'hooks/tests/cases/79-harness-os-reviewer-round2.sh'],
-  ['hooks/tests/cases/10-reviewer-round3.sh', 'hooks/tests/cases/80-harness-os-reviewer-round3.sh'],
-  ['hooks/tests/cases/11-reviewer-round4.sh', 'hooks/tests/cases/81-harness-os-reviewer-round4.sh'],
-  ['hooks/tests/cases/12-reviewer-round5.sh', 'hooks/tests/cases/82-harness-os-reviewer-round5.sh'],
-  ['hooks/tests/cases/13-reviewer-round6.sh', 'hooks/tests/cases/83-harness-os-reviewer-round6.sh'],
-  ['hooks/tests/cases/14-reviewer-round7.sh', 'hooks/tests/cases/84-harness-os-reviewer-round7.sh'],
-  ['hooks/tests/cases/15-reviewer-round8.sh', 'hooks/tests/cases/85-harness-os-reviewer-round8.sh'],
-  ['hooks/tests/cases/16-reviewer-round9.sh', 'hooks/tests/cases/86-harness-os-reviewer-round9.sh'],
-];
+//
+// DERIVED, not listed. This was a hand-maintained table, and a hand-
+// maintained table of "which upstream files matter" is a list that goes
+// quietly out of date: every new adversarial-review case file upstream
+// was a file this repo's vendored kernel silently stopped being tested
+// against, with nothing anywhere to say so. The numbering convention is
+// mechanical — NN-<name>.sh becomes NN+70-harness-os-<name>.sh — so it
+// is derived from the source directory, and anything that does not fit
+// the convention is named below rather than skipped.
+const CASE_OFFSET = 70;
+const CASE_EXCEPTIONS = {
+  '01-role-gate.sh': 'hooks/tests/cases/71-harness-os-role-gate.sh',
+  '03-benchmark-registration.sh': 'hooks/tests/cases/73-harness-os-benchmark.sh',
+};
+const CASES_REL = 'hooks/tests/cases';
+const RENAMES = readdirSync(join(SRC, CASES_REL))
+  .filter((n) => /^\d\d-.+\.sh$/.test(n))
+  .sort()
+  .map((n) => {
+    const src = join(CASES_REL, n);
+    if (CASE_EXCEPTIONS[n]) return [src, CASE_EXCEPTIONS[n]];
+    const m = n.match(/^(\d\d)-(.+\.sh)$/);
+    const n2 = Number(m[1]) + CASE_OFFSET;
+    // Past 99 the derived name grows a third digit and sorts before the
+    // 7x-8x block, silently reordering this repo's cases. Say so on the
+    // day it happens rather than leaving it to be noticed.
+    if (n2 > 99) {
+      console.error(`[sync-harness-os] ${n} would map to ${n2}-…, past the two-digit`);
+      console.error('  case-numbering convention. Renumber the vendored block (raise or');
+      console.error('  retire CASE_OFFSET) before adding more upstream cases.');
+      process.exit(1);
+    }
+    return [src, join(CASES_REL, `${n2}-harness-os-${m[2]}`)];
+  });
 const DIRS = [
   { rel: 'schemas/harness-os.fixtures', ext: '.json' },
   { rel: 'schemas/harness-os-bundle.fixtures', ext: '.json' },

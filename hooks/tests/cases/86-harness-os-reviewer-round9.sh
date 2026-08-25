@@ -118,5 +118,30 @@ printf 'const a = 1;\n' > "$P/tests/e2e/fresh.spec.ts"
 assert_deny "$H" "$(epay "$P/tests/e2e/fresh.spec.ts" 'const a = 1;' 'const d = require("dotenv");')" \
   "FP2 but an edit that INTRODUCES it must not blame the file" "not in this role's declared import list"
 
+# --- self-probe: a cwd that does not exist ----------------------------
+# Found by probing the crash-to-allow surface after the EXIT trap landed,
+# in the same spirit as the trap itself. Every path scope in this kernel
+# is relative to the directory the call runs in. Hand it a cwd that does
+# not exist and no relative path resolves, so the read and write axes
+# find nothing to object to — and finding nothing is how this hook says
+# allow. A scope that cannot be evaluated must be refused, not skipped.
+cwdpay() { "$JQ" -nc --arg w "$1" \
+  '{tool_name:"Write",tool_input:{file_path:"tests/e2e/x.spec.ts",content:"const a = 1;"},cwd:$w,agent_id:"composer"}'; }
+assert_deny "$H" "$(cwdpay "$R9/nope")" \
+  "self-probe a call whose cwd does not exist → DENY (no scope can be resolved)" "does not exist"
+assert_deny "$H" "$(cwdpay "")" \
+  "self-probe an empty cwd → DENY" "not an absolute path"
+# A relative cwd is the quieter half of the same fault: the scopes still
+# resolve, but against this hook process's directory instead of the
+# agent's, so every verdict downstream is about the wrong tree — and
+# nothing says so. Answering confidently about somewhere else is worse
+# than refusing.
+assert_deny "$H" "$(cwdpay "proj")" \
+  "self-probe a RELATIVE cwd → DENY rather than scope against the wrong tree" "not an absolute path"
+assert_deny "$H" "$(cwdpay "./proj")" \
+  "self-probe the './' form of a relative cwd → DENY" "not an absolute path"
+assert_allow "$H" "$(cwdpay "$P")" \
+  "self-probe calibration: the same call with a real absolute cwd → ALLOW"
+
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST
 rm -rf "$R9"

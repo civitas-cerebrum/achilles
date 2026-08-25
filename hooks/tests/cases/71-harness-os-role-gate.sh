@@ -1,5 +1,5 @@
 #!/bin/bash
-# 71-harness-os-role-gate.sh — kernel tests for the harness OS role gate.
+# 01-role-gate.sh — kernel tests for the harness OS role gate.
 #
 # Covers: activation (manifest presence / kill-switch / broken manifest),
 # main-session governance, the role-resolution ladder (registry claim,
@@ -209,6 +209,10 @@ HARNESS_OS_STATE_DIR="$HOS_TMP/state-empty" \
 HARNESS_OS_STATE_DIR="$HOS_TMP/state-empty" \
   assert_deny "$H" "$(payload tool_name=Read file_path="$PROJ/.env" cwd="$PROJ" agent_id=ghost-1)" \
   "unbound agent under readonly policy: a path NO role may read → DENY" "outside every role's read scope"
+
+HARNESS_OS_STATE_DIR="$HOS_TMP/state-empty" \
+  assert_allow "$H" "$(payload tool_name=Read file_path="$PROJ/.claude/harness-os.json" cwd="$PROJ" agent_id=ghost-1)" \
+  "unbound agent may still read the manifest it is held to → ALLOW"
 
 HARNESS_OS_STATE_DIR="$HOS_TMP/state-empty" \
   assert_deny "$H" "$(payload tool_name=Bash command='ls' cwd="$PROJ" agent_id=ghost-1)" \

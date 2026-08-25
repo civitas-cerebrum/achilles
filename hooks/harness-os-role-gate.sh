@@ -91,11 +91,43 @@ harness_os__on_exit() {
 }
 trap harness_os__on_exit EXIT
 
+INPUT=$(cat)
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found." >&2; exit 1; }
-
-INPUT=$(cat)
+if [ -z "$JQ" ]; then
+  # jq is how this kernel reads both the payload and the manifest, so
+  # without it there is no enforcing anything. What that should MEAN,
+  # though, depends on whether this project is governed at all — and the
+  # blanket `exit 1` here answered for both cases at once, wrongly in
+  # each direction. It broke every ungoverned project the hook happened
+  # to be installed over, which is how a globally-installed hook gets
+  # uninstalled; and the kill-switch could not rescue it, so the one
+  # documented way out did not work when it was most needed.
+  case "${HARNESS_OS:-}" in
+    0|false|off) exit 0 ;;
+  esac
+  # Which project this is comes from the payload's cwd, and reading the
+  # payload is the thing we cannot do. Pull that one field out with sed
+  # rather than guessing from this process's directory, which is the
+  # hook runner's and need not be the project's. If even that fails the
+  # fallback errs toward denying: an unnecessary refusal is loud, names
+  # its own remedy, and can be waved through with HARNESS_OS=0, whereas
+  # guessing "ungoverned" hands back a project with nothing enforced and
+  # no sign of it.
+  HOS_PROBE_CWD=$(printf '%s' "$INPUT" \
+    | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+  [ -n "$HOS_PROBE_CWD" ] && [ -d "$HOS_PROBE_CWD" ] || HOS_PROBE_CWD="$PWD"
+  HOS_PROBE="${HARNESS_OS_MANIFEST:-$( { cd "$HOS_PROBE_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null; } || printf '%s' "$HOS_PROBE_CWD" )/.claude/harness-os.json}"
+  if [ ! -f "$HOS_PROBE" ]; then
+    exit 0   # no manifest: this project never opted in, and jq is not its problem
+  fi
+  # A manifest IS present. Saying nothing here would leave every role in
+  # it unenforced, silently, because a dependency is missing.
+  HOS_DECIDED=1
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] harness-os cannot enforce this project: jq is not installed, and jq is how the kernel reads both the role manifest and the call it is deciding about. This project HAS a manifest, so treating the kernel as absent would leave every role unenforced without saying so. Install jq (https://jqlang.github.io/jq/), or set HARNESS_OS=0 to run this session ungoverned on purpose."}}'
+  exit 0
+fi
 
 # shellcheck source=lib/harness-os.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness-os.sh"
@@ -185,6 +217,32 @@ ROLE="$HOS_ROLE"
 ROLE_DESC=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -r --arg r "$ROLE" '.roles[$r].description // ""' 2>/dev/null || echo "")
 ROLE_HEADER="Role:     ${ROLE} — ${ROLE_DESC}
 ${MANIFEST_REF}"
+
+# Every path scope in this kernel is relative to the directory the call
+# runs in. If that directory does not exist, no relative path can be
+# resolved and no scope can be applied — and the axes then find nothing
+# to object to, which reads as permission. That is the wrong direction
+# for the same reason a `cd` elsewhere is denied: a scope you cannot
+# evaluate is not a scope you may skip.
+#
+# A RELATIVE cwd is the same problem wearing a disguise, and worse for
+# being quiet: the scopes still resolve, just against whatever directory
+# this hook process happens to be in rather than the agent's. Every
+# verdict downstream is then computed about the wrong tree — sometimes
+# denying honest work, sometimes clearing a path that was never in
+# scope, and never announcing which. Scoping that silently answers about
+# somewhere else is worse than scoping that refuses.
+case "$HOS_CWD" in
+  /*) [ -d "$HOS_CWD" ] || HOS_CWD_FAULT="does not exist" ;;
+  *)  HOS_CWD_FAULT="is not an absolute path" ;;
+esac
+if [ -n "${HOS_CWD_FAULT:-}" ]; then
+  harness_os_deny "cwd-unresolvable $HOS_CWD" "[BLOCKED] Role '${ROLE}' made a call whose working directory ('$HOS_CWD') ${HOS_CWD_FAULT}, so none of this role's path scopes can be evaluated against it.
+
+${ROLE_HEADER}
+
+Read and write scopes are relative to the directory a call runs in. Without a directory to resolve them against — or with one this kernel would have to guess at — there is nothing to compare a path to, and a scope that cannot be evaluated is refused rather than skipped."
+fi
 
 # --- Axis 1: self-protection --------------------------------------------
 # The manifest and the kernel's state dir are the root of trust; no
@@ -1288,14 +1346,44 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
           # out-of-scope read. An inspector piping the page repository
           # through `jq .` is doing the most ordinary thing its mandate
           # describes, and being refused for it.
-          __skip_next=0
+          #
+          # Which operand is the filter depends on how many operands each
+          # preceding option eats, and getting that count wrong does not
+          # fail safe here: the exemption lands on whatever token the
+          # miscount points at. `--rawfile` and `--slurpfile` take TWO
+          # operands and were counted as one, so the scan skipped the
+          # NAME, mistook the FILE for the filter, and exempted it —
+          # `jq -n --rawfile x .env '$x'` read any file on the machine
+          # with every other axis working perfectly. The filter is
+          # single-quoted, so no shell expansion happens and the
+          # var-expansion rule has nothing to catch either.
+          #
+          # Two distinctions carry the whole block, and they are separate:
+          # how many operands an option consumes, and whether any of them
+          # is a path this tool will OPEN. An option's operand is exempted
+          # only when it is provably not a path; a file operand is always
+          # left to the scope check, even when that means naming it here.
+          __skip_n=0
           for __i in "${!SEG_WORDS[@]}"; do
             [ "$__i" = "0" ] && continue
             __w="${SEG_WORDS[$__i]}"
-            if [ "$__skip_next" = "1" ]; then __skip_next=0; continue; fi
+            if [ "$__skip_n" -gt 0 ]; then __skip_n=$((__skip_n - 1)); continue; fi
             case "$__w" in
-              --arg|--argjson|--slurpfile|--rawfile|--args|--jsonargs|--indent) __skip_next=1; continue ;;
-              -f|--from-file) __skip_next=1; continue ;;   # value IS a file: stays checked
+              # NAME VALUE — two operands, neither of which jq opens.
+              --arg|--argjson)
+                TOK_SKIP="${TOK_SKIP}$((__i + 1)) $((__i + 2)) "; __skip_n=2; continue ;;
+              # NAME FILE — two operands, and the second IS a file read.
+              # Exempt the name; the file stays scope-checked.
+              --slurpfile|--rawfile)
+                TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_n=2; continue ;;
+              # One operand, not a path.
+              --indent|-L)
+                TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_n=1; continue ;;
+              # One operand which IS a file: stays checked.
+              -f|--from-file) __skip_n=1; continue ;;
+              # No operand at all — these only change how later
+              # positionals are read, and were consuming one each.
+              --args|--jsonargs) continue ;;
               -*) continue ;;
             esac
             TOK_SKIP="${TOK_SKIP}${__i} "; break
@@ -1369,12 +1457,51 @@ A segment this long cannot be verified against the role's read scope, so it is r
             tok="${tok#*=}"
             [ -n "$tok" ] || continue
             ;;
-          -*) continue ;;              # valueless flag/option
-          *=*) continue ;;             # NAME=value env assignment: the
-                                       # value is data for the command,
-                                       # not a file it opens, and
-                                       # PLAYWRIGHT_BROWSERS_PATH=/opt/…
-                                       # is ordinary setup, not a read.
+          -*)
+            # A short flag can also carry its value ATTACHED, with no `=`
+            # to mark it — and several of those values are files the
+            # command opens: `grep -f.env`, `sed -f.env`, `awk -f.env`
+            # each read that file, while `grep --file=.env` was caught
+            # by the branch above. Skipping the whole token let the
+            # attached spelling read anything.
+            #
+            # This is round 11's defect in its other form. There an
+            # exemption was aimed at a file; here a file was never
+            # presented for checking at all. Both come of reasoning
+            # about flags by shape instead of by what they open.
+            #
+            # Rather than enumerate every command's attached-value
+            # grammar — the losing game — strip the flag letter and let
+            # the existence test downstream decide. A remainder that is
+            # not a real path (`-rf`, `-m5`, `-name`) costs nothing,
+            # because nothing exists at it. The one shape that would
+            # misfire is a PATTERN carried the same way, so the handful
+            # of flags whose attached value is a pattern rather than a
+            # path are named here and left alone.
+            case "${SEG_WORDS[0]:-}:$tok" in
+              grep:-e*|egrep:-e*|fgrep:-e*|rgrep:-e*|rg:-e*|ag:-e*|ack:-e*|ripgrep:-e*) continue ;;
+              sed:-e*|awk:-v*|gawk:-v*|mawk:-v*) continue ;;
+            esac
+            case "$tok" in
+              --*) continue ;;           # long options spell values with `=`
+              -?*) tok="${tok#-?}" ;;    # short flag with an attached value
+              *) continue ;;
+            esac
+            [ -n "$tok" ] || continue
+            ;;
+          *=*)
+            # NAME=value is normally an env assignment — the value is
+            # data for the command, not a file it opens, and
+            # PLAYWRIGHT_BROWSERS_PATH=/opt/… is ordinary setup rather
+            # than a read. `dd` is the exception that matters: its
+            # operands are spelled exactly that way and two of them ARE
+            # paths, so `dd if=.env` wore the one disguise this branch
+            # waves through.
+            case "${SEG_WORDS[0]:-}:$tok" in
+              dd:if=*|dd:of=*) tok="${tok#*=}"; [ -n "$tok" ] || continue ;;
+              *) continue ;;
+            esac
+            ;;
         esac
         # The target of a no-op cd — or of a no-op `git -C` / `--work-tree`,
         # already validated above — is the directory this call already runs
@@ -1600,13 +1727,45 @@ Options:
           OLD_S=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.old_string // empty' 2>/dev/null || echo "")
           REPL_ALL=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.replace_all // false' 2>/dev/null || echo false)
           if [ -n "$OLD_S" ]; then
-            RESULT_CODE=$(OLD_S="$OLD_S" NEW_S="$CODE" ALL="$REPL_ALL" perl -0777 -e '
+            # `replace_all` rescans from the point after what it just
+            # wrote, never from the start. Restarting at zero re-finds the
+            # needle inside its own replacement whenever the new text
+            # contains the old — rename `foo` to `foobar` and the loop
+            # grows the buffer forever. That is an ordinary rename, so the
+            # hang was reachable by an agent doing nothing wrong, and a
+            # kernel that hangs has stopped being a kernel.
+            # `timeout` is belt-and-braces over the fix above, so its
+            # absence is not worth a denial.
+            HOS_TMO=""; command -v timeout >/dev/null 2>&1 && HOS_TMO="timeout 20"
+            RESULT_CODE=$(OLD_S="$OLD_S" NEW_S="$CODE" ALL="$REPL_ALL" $HOS_TMO perl -0777 -e '
               local $/; my $f = <STDIN>;
               my ($o, $n, $all) = ($ENV{OLD_S}, $ENV{NEW_S}, $ENV{ALL} eq "true");
-              if ($all) { my $i; while (($i = index($f, $o)) >= 0) { substr($f, $i, length($o)) = $n; } }
+              exit 3 unless length $o;
+              if ($all) {
+                my $pos = 0;
+                while ((my $i = index($f, $o, $pos)) >= 0) {
+                  substr($f, $i, length($o)) = $n;
+                  $pos = $i + length($n);
+                }
+              }
               else { my $i = index($f, $o); substr($f, $i, length($o)) = $n if $i >= 0; }
-              print $f;' < "$EDIT_TARGET" 2>/dev/null || printf '%s' "$CODE")
-            [ -n "$RESULT_CODE" ] || RESULT_CODE="$CODE"
+              print $f;' < "$EDIT_TARGET" 2>/dev/null)
+            if [ $? -ne 0 ]; then
+              # And when the reconstruction cannot be completed, refuse —
+              # do not fall back to screening the fragment. That fallback
+              # is round 9's F1 exactly: screening the diff after
+              # promising to screen the file lets an escape be assembled
+              # from pieces that are each innocent.
+              harness_os_deny "edit-unreconstructible $(harness_os_relpath "$EDIT_TARGET")" "[BLOCKED] Role '${ROLE}' may not Edit '$(harness_os_relpath "$EDIT_TARGET")' — the kernel could not work out what the file would become.
+
+${ROLE_HEADER}
+
+This role declares what its code may import or do, and that promise is kept by screening the file's RESULTING content, not the diff. When the result cannot be computed the edit is refused rather than half-checked, because screening the fragment alone is the blindness that screening the result exists to remove.
+
+Options:
+  1. Re-read the file and Edit against its current contents.
+  2. Author the file afresh with Write, whose whole content is screened."
+            fi
           fi
         fi
       fi
