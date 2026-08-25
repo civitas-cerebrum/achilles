@@ -2749,9 +2749,27 @@ when several roles run at once: <<harness-os-role: ${TARGET_ROLE}#a1b2c3>>."
     # ignored). A second, foreign role tag would make the child's
     # transcript ambiguous by construction, forcing every child of this
     # dispatch to the unbound fallback — or worse, seeding a mis-binding.
-    FOREIGN_TAGS=$(printf '%s' "$PROMPT" | grep -oE "$HOS_ROLE_TAG_RE" \
-      | sed -E 's/^<<harness-os-role: ([a-z][a-z0-9-]*)(#[a-z0-9]+)?>>$/\1/' \
-      | sort -u | grep -vxF "${TARGET_ROLE}" || true)
+    # A NEAR MISS IS REFUSED, not waved through. `<<harness-os-role:  judge>>`
+    # — two spaces — does not match the strict tag form, so the purity scan
+    # below never saw it and the dispatch was allowed. It binds nothing
+    # today only because the resolver is exactly as strict as this gate,
+    # and those two live in different files and run in different processes:
+    # the gate's ALLOW is sound only relative to today's resolver. Round 30
+    # could not turn it into an escape and argued it was debt anyway. It is.
+    NEAR_TAG=$(printf '%s' "$PROMPT" | harness_os_neartag)
+    if [ -n "$NEAR_TAG" ]; then
+      harness_os_deny "dispatch-malformed-tag" "[BLOCKED] This dispatch's prompt contains something shaped like a binding tag that this kernel cannot parse:
+
+  ${NEAR_TAG}
+
+${ROLE_HEADER}
+
+A binding tag is exactly \`<<harness-os-role: name>>\` or \`<<harness-os-role: name#nonce>>\` — one space after the colon, a lowercase role name, a nonce of four or more characters of [a-z0-9]. Anything else is refused rather than ignored: a tag the gate cannot read is a tag the gate cannot check, and whether it binds anything depends on a resolver this check has no way to consult.
+
+Write the tag exactly:
+  <<harness-os-role: ${TARGET_ROLE}>>"
+    fi
+    FOREIGN_TAGS=$(printf '%s' "$PROMPT" | harness_os_tag_roles | grep -vxF "${TARGET_ROLE}" || true)
     if [ -n "$FOREIGN_TAGS" ]; then
       harness_os_deny "dispatch-foreign-tag $TARGET_ROLE" "[BLOCKED] This dispatch of role '${TARGET_ROLE}' embeds binding tag(s) for a DIFFERENT role in its prompt:
 

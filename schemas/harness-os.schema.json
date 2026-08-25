@@ -36,6 +36,12 @@
           "enum": ["deny", "readonly", "allow"],
           "default": "readonly"
         },
+        "roleTagCorroboration": {
+          "description": "Whether a plain (nonce-free) <<harness-os-role: NAME>> tag on a subagent's transcript must be corroborated against the dispatches this kernel actually recorded. off (default) believes the tag on sight, which is how resolution rung 4b has always worked. auto refuses a tag naming a role that was never dispatched, but only when there are live dispatch records to check against — with none, there is nothing to corroborate and the tag stands. strict refuses any uncorroborated tag. Two reviewers argued off is the wrong default, and on the merits they are right: every other rung anchors identity to something the caller owns, while this one believes a string printed in a file. It stays the default because auto also refuses a tag-bound agent whose dispatch was never registered — a resumed session, a hand-placed tag — and that is a functional break an operator should choose. Recommended: auto for any manifest with a dispatcher.",
+          "type": "string",
+          "enum": ["off", "auto", "strict"],
+          "default": "off"
+        },
         "ambientDispatchClaim": {
           "description": "Whether an agent whose role cannot be resolved any other way may claim the single unclaimed dispatch currently in flight (resolution rung 5). OFF by default since round 29: every other rung answers 'this agent is role X' from something tied to the caller (its binding file, its own parent tool_use_id, its own transcript tag), while this one answers 'some single role is in flight, therefore you are it' — it never checks that the caller is that dispatch's child, and it persists the binding. A reviewer demonstrated an unrelated fresh agent claiming a judge that was legitimately in flight, and writing the ledger. Turn it on only on a host that supplies neither parent_tool_use_id nor per-child transcript tags, where it is the only signal available; with it off, such an agent is unbound and unboundAgentPolicy decides.",
           "type": "string",

@@ -52,6 +52,47 @@
 # longer degrades to the unbound fallback whenever the child has its own
 # transcript. Nonce: 4+ chars of [a-z0-9]. Both forms are accepted.
 HOS_ROLE_TAG_RE='<<harness-os-role: [a-z][a-z0-9-]*(#[a-z0-9]{4,})?>>'
+# Anything SHAPED like a role tag. A near miss — `<<harness-os-role:  judge>>`
+# with two spaces, a nonce too short, a stray character — does not match the
+# strict form above, so the dispatch gate's foreign-tag scan never saw it and
+# the prompt was allowed through. It is inert today for exactly one reason:
+# the resolver happens to be precisely as strict as the gate. Round 30 made
+# the argument that this is debt rather than safety, and it is right — the
+# gate's ALLOW is only sound relative to today's resolver, and the two live
+# in different files and run in different processes, which is the one shape
+# of coupling this project has been burned by four times.
+HOS_ROLE_NEARTAG_RE='<<[[:space:]]*harness-os-role[^>]*>>'
+
+# harness_os_tag_roles — read text on stdin, print the role NAME of every
+# strict role tag in it, one per line, sorted and unique.
+#
+# ONE DECISION, ONE PLACE. This extraction existed twice — in the dispatch
+# gate's tag-purity check and in resolution rung 4b — as two hand-rolled
+# copies of the same sed. They agreed, and the entire security of the bare
+# tag rests on them agreeing: the gate validates the PROMPT it can see, the
+# resolver reads the TRANSCRIPT at a different time in a different process,
+# and nothing anywhere sees both sides. Two copies that must agree, with no
+# test able to catch the day they stop, is the defect this project has
+# recorded under four different names. It is one function now.
+harness_os_tag_roles() {
+  grep -oE "$HOS_ROLE_TAG_RE" 2>/dev/null \
+    | sed -E 's/^<<harness-os-role: ([a-z][a-z0-9-]*)(#[a-z0-9]+)?>>$/\1/' \
+    | grep -v '^$' | sort -u || true
+}
+
+# harness_os_neartag — read text on stdin, print the first tag-SHAPED string
+# that the strict form does not accept, or nothing.
+harness_os_neartag() {
+  local nt_all nt_one
+  nt_all=$(grep -oE "$HOS_ROLE_NEARTAG_RE" 2>/dev/null || true)
+  [ -n "$nt_all" ] || return 0
+  while IFS= read -r nt_one; do
+    [ -n "$nt_one" ] || continue
+    printf '%s' "$nt_one" | grep -qE "^${HOS_ROLE_TAG_RE}\$" 2>/dev/null && continue
+    printf '%s' "$nt_one"
+    return 0
+  done <<< "$nt_all"
+}
 
 harness_os__jq() {
   if [ -n "${JQ:-}" ] && [ -x "${JQ:-}" ]; then printf '%s' "$JQ"; return 0; fi
@@ -381,10 +422,68 @@ harness_os_resolve_role() {
     # transcript's user-line tags → it is the child's own transcript and
     # that tag is its identity. Multiple distinct roles → a parent-wide
     # transcript; ambiguous, fall through.
-    tags=$(printf '%s\n' "$user_tags" | sed -E 's/^<<harness-os-role: ([a-z][a-z0-9-]*)(#[a-z0-9]+)?>>$/\1/' | grep -v '^$' | sort -u || echo "")
+    tags=$(printf '%s\n' "$user_tags" | harness_os_tag_roles)
     if [ -n "$tags" ] && [ "$(printf '%s\n' "$tags" | wc -l | tr -d ' ')" = "1" ]; then
       HOS_ROLE="$tags"
-      if harness_os__role_exists "$HOS_ROLE"; then
+      # CORROBORATE THE BARE TAG AGAINST WHAT WAS ACTUALLY DISPATCHED.
+      #
+      # Rungs 1-4a anchor identity to something the caller demonstrably
+      # owns: a binding recorded for this agent_id, a parent tool_use_id
+      # naming its own dispatch, a nonce this kernel itself minted and
+      # wrote to the registry. This rung anchored it to a string printed
+      # in a file, corroborated by nothing — and rounds 29 and 30
+      # independently made the same argument about it: the FORGEABLE
+      # path was the DEFAULT path, which is this project's own
+      # anti-pattern ("a gate whose failure mode is ALLOW is not a
+      # gate") pointed at identity instead of at path scope.
+      #
+      # Requiring corroboration unconditionally would break the
+      # documented plain-tag flow wherever it is legitimate, which is
+      # why round 29 left it alone and said so. The middle is sound and
+      # costs nothing: corroborate WHEN CORROBORATION IS POSSIBLE. If
+      # this session has live dispatch records the kernel knows which
+      # roles were actually summoned, and a tag naming any other role is
+      # a claim it can refuse on evidence. If there are none — no
+      # dispatcher in play, or a human driving with tags by hand —
+      # there is nothing to check against and the tag stands, exactly as
+      # before.
+      #
+      # `strict` refuses an uncorroborated tag outright; `auto` refuses
+      # only when the registry can contradict it. Either way the fall is
+      # to unbound, where unboundAgentPolicy decides — a degradation,
+      # not a break.
+      #
+      # AND THE DEFAULT IS `off`, which is a decision worth being
+      # explicit about rather than burying. Two reviewers argued the
+      # believe-on-sight default is wrong and I think they are right on
+      # the merits. I did not flip it, because `auto` refuses any
+      # tag-bound agent whose dispatch was never registered — a session
+      # resumed after the state directory was cleared, a child spawned
+      # by something that is not this gate, a tag placed by hand — and
+      # silently narrowing those into unbound is a functional break I
+      # should not choose on a user's behalf from inside a review loop.
+      # What was mine to fix was that the choice had no name and no
+      # switch. It has both now, `validate` recommends `auto` for any
+      # manifest that has a dispatcher, and the argument is recorded in
+      # docs/benchmark.md rather than settled quietly.
+      local tag_policy tag_ok tag_reg tag_now
+      tag_policy=$(printf '%s' "$HOS_MANIFEST_JSON" | "$HOS_JQ" -r '.settings.roleTagCorroboration // "off"' 2>/dev/null || echo "off")
+      if [ "$tag_policy" != "off" ]; then
+        tag_reg="$HOS_STATE_DIR/dispatch-registry.json"
+        tag_now=$(date +%s)
+        tag_ok=$(cat "$tag_reg" 2>/dev/null | "$HOS_JQ" -r --argjson now "$tag_now" --argjson ttl "$HOS_TTL" --arg r "$HOS_ROLE" '
+          [ to_entries[] | select((.value.ts // 0) >= ($now - $ttl)) ] as $live
+          | if ($live | length) == 0 then "none"
+            elif ([ $live[] | .value.role ] | index($r)) != null then "yes"
+            else "no" end
+        ' 2>/dev/null || echo "none")
+        case "$tag_ok" in
+          yes)  : ;;
+          no)   HOS_ROLE="" ;;
+          *)    [ "$tag_policy" = "strict" ] && HOS_ROLE="" ;;
+        esac
+      fi
+      if [ -n "$HOS_ROLE" ] && harness_os__role_exists "$HOS_ROLE"; then
         harness_os__bind "$HOS_AGENT_ID" "$HOS_ROLE"
         HOS_ROLE_STATE="governed"
         return 0
