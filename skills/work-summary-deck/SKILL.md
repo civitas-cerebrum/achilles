@@ -151,6 +151,50 @@ Every slide follows this pattern:
 </section>
 ```
 
+### Print-safety rules
+
+The PDF is the canonical deliverable, and PDF viewers are less forgiving than browsers. Each rule
+below prevents an artifact observed in a real deck session where every export was inspected
+page-by-page. Follow all seven; rule 1 is the one no inspection can catch.
+
+1. **Opaque colors only — no `box-shadow`, no `opacity`, no alpha channels.** `box-shadow`, any
+   `opacity` < 1, and rgba()/hsla() colors become PDF transparency groups (smask) in Chromium's
+   PDF output, and macOS Preview renders those group bounding boxes as visible grey rectangles
+   around cards and boxes. Where a tint or "ghosted" effect is wanted, **pre-blend** it: blend
+   the rgba over the background it actually sits on and hard-code the resulting solid hex — the
+   template's `--accent-*-dim` tokens are pre-blended this way. Gradient stops count too: fade
+   to the background color, never to `transparent`. This rule is **preventive**: poppler-based
+   renders (`pdftoppm`) do NOT reproduce the artifact, so the verification loop in rule 7
+   cannot catch it — it must be excluded at authoring time.
+2. **Only use font weights the family actually ships.** A `<strong>` or `font-weight` override
+   inside a single-weight display font makes Chromium synthesize bold in print, and the
+   synthesized glyph advances disagree with layout — glyphs render double-struck. Emphasize
+   with color or plain text instead.
+3. **Grid children holding code need `min-width: 0` AND `overflow: hidden`.** Pre-formatted
+   content sets a large min-content width and grid items default to `min-width: auto`, so the
+   column grows past the page edge; clamping alone just clips the longest lines. Line-wrap the
+   code to fit the column (roughly ≤60 chars for a half-width column at ~10.5px mono), and
+   check the rendered page for clipped line endings after export.
+4. **Treat a landscape page as a hard ~850px height budget.** `height: 100vh` +
+   `justify-content: center` + `overflow: hidden` makes overflow silent. After any content
+   addition, re-render and check (a) collisions with the fixed brand-mark header band and
+   (b) content touching the bottom edge. Reclaim space top-down — force the h2 to one line,
+   trim the subtitle — do not shrink body text first.
+5. **Never hand-simplify a vector mark for secondary placements.** A simplified logo path that
+   looks acceptable at 22px is visibly malformed at 84px. Inline the true asset once, wrap it
+   in `<g id="logo">`, and reuse it everywhere with `<svg viewBox="…"><use href="#logo"/></svg>`
+   — same-document references work in print.
+6. **Badges get their own line below headings.** An inline badge inside a heading that shares a
+   row with an absolutely-positioned ornament (stage numbers, slide numbers) crowds in one box
+   and wraps in another — inconsistently. A badge on its own line renders identically in every
+   box.
+7. **Verification loop: render and inspect after every export.** After every edit round —
+   not just once at the end — re-export the PDF, render its pages to images, and inspect every
+   page (at minimum every changed page) before delivering; fix and re-export until clean. This
+   catches rules 3, 4, 5 and 6. It does **not** catch rule 1 — viewer-specific transparency
+   artifacts do not reproduce in poppler renders — which is why rule 1 is enforced at
+   authoring time.
+
 ---
 
 ## Output
@@ -202,3 +246,4 @@ If the script errors (e.g. no Chromium binary, no `@playwright/test`), report th
 - **No generic content.** Every slide must reference the actual project. Don't use placeholder app names or hypothetical scenarios.
 - **Self-contained HTML.** The output file must work offline except for the Google Fonts import. All CSS is inline, all SVGs are embedded, no external dependencies.
 - **Print-ready.** Include `@page { size: landscape; margin: 0; }` and `page-break-after: always` on each slide for clean PDF export.
+- **Print-safe.** Follow §"Print-safety rules": opaque colors only (no `box-shadow`, no `opacity`, no alpha channels — pre-blend instead), shipped font weights only, `min-width: 0` on grid code columns, the ~850px height budget, `<use>`-reused vector marks, badges on their own line — and re-export + re-inspect the PDF after every edit round, not just once at the end.
