@@ -21,33 +21,126 @@
   "roles": {
     "orchestrator": {
       "description": "Dispatches the appropriate agents to the tasks of a workflow. Never does the work itself.",
-      "tools": { "allow": ["Agent", "Read", "Glob", "Grep", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"] },
-      "read": { "allow": ["docs/ledger.json", "workflows/**"] },
-      "dispatch": ["inspector", "implementer", "reviewer", "judge"]
+      "tools": {
+        "allow": [
+          "Agent",
+          "Read",
+          "Glob",
+          "Grep",
+          "TaskCreate",
+          "TaskUpdate",
+          "TaskList",
+          "TaskGet"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/ledger.json",
+          "workflows/**"
+        ]
+      },
+      "dispatch": [
+        "inspector",
+        "implementer",
+        "reviewer",
+        "judge"
+      ]
     },
     "inspector": {
       "description": "Runs inspection commands and reads files relevant to its task.",
-      "tools": { "allow": ["Bash", "Read", "Glob", "Grep"] },
-      "bash": { "groups": ["inspection"] },
-      "read": { "allow": ["src/**", "tests/**", "docs/**"] }
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection"
+        ]
+      },
+      "read": {
+        "allow": [
+          "src/**",
+          "tests/**",
+          "docs/**"
+        ]
+      }
     },
     "implementer": {
       "description": "Writes the deliverable inside the source and test trees.",
-      "tools": { "allow": ["Bash", "Read", "Glob", "Grep", "Write", "Edit"] },
-      "bash": { "groups": ["inspection", "test-execution"] },
-      "read": { "allow": ["src/**", "tests/**", "docs/acceptance/**", "package.json"] },
-      "write": { "allow": ["src/**", "tests/**"] }
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection",
+          "test-execution"
+        ]
+      },
+      "read": {
+        "allow": [
+          "src/**",
+          "tests/**",
+          "docs/acceptance/**",
+          "package.json"
+        ]
+      },
+      "write": {
+        "allow": [
+          "src/**",
+          "tests/**"
+        ],
+        "codeImports": [
+          "@playwright/test"
+        ]
+      }
     },
     "reviewer": {
       "description": "Reads acceptance criteria and the deliverable. Nothing else.",
-      "tools": { "allow": ["Read", "Glob", "Grep"] },
-      "read": { "allow": ["docs/acceptance/**", "src/**", "tests/**"] }
+      "tools": {
+        "allow": [
+          "Read",
+          "Glob",
+          "Grep"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/acceptance/**",
+          "src/**",
+          "tests/**"
+        ]
+      }
     },
     "judge": {
       "description": "The only role permitted to update the ledger.",
-      "tools": { "allow": ["Read", "Write", "Edit"] },
-      "read": { "allow": ["docs/**"] },
-      "write": { "allow": ["docs/ledger.json"] }
+      "tools": {
+        "allow": [
+          "Read",
+          "Write",
+          "Edit"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/ledger.json"
+        ]
+      }
     }
   }
 }

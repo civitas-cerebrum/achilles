@@ -1,10 +1,15 @@
 {
   "harnessOsVersion": 1,
   "name": "feature-dev",
-  "description": "Feature-development harness: architect designs, implementer builds, tester verifies, scribe documents. Same kernel as the QA shape — no QA methodology anywhere.",
+  "description": "Feature-development harness: architect designs, implementer builds, tester verifies, scribe documents. Same kernel as the QA shape \u2014 no QA methodology anywhere.",
   "settings": {
     "mainSessionRole": "lead",
-    "unboundAgentPolicy": "readonly"
+    "unboundAgentPolicy": "readonly",
+    "runtimeProfile": {
+      "extraWrite": [
+        "/tmp"
+      ]
+    }
   },
   "commandGroups": {
     "inspection": [
@@ -19,41 +24,161 @@
     "test-execution": [
       "^npm (test|run test[a-z:-]*)\\b",
       "^(npx|yarn|pnpm exec) (vitest|jest|playwright)\\b"
+    ],
+    "test-execution-profiled": [
+      "^harness-os run --role implementer -- npm (test|run test[a-z:-]*)\\b",
+      "^harness-os run --role implementer -- (npx|yarn|pnpm exec) (vitest|jest)\\b"
     ]
   },
   "roles": {
     "lead": {
       "description": "Coordinates the feature: dispatches architect, implementer, tester, and scribe. Reads the plan and status, does none of the work itself.",
-      "tools": { "allow": ["Agent", "Read", "Glob", "Grep", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"] },
-      "read": { "allow": ["docs/design/**", "docs/status.json"] },
-      "dispatch": ["architect", "implementer", "tester", "scribe"]
+      "tools": {
+        "allow": [
+          "Agent",
+          "Read",
+          "Glob",
+          "Grep",
+          "TaskCreate",
+          "TaskUpdate",
+          "TaskList",
+          "TaskGet"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/design/**",
+          "docs/status.json"
+        ]
+      },
+      "dispatch": [
+        "architect",
+        "implementer",
+        "tester",
+        "scribe"
+      ]
     },
     "architect": {
       "description": "Explores the codebase and writes the design doc. Designs, never implements.",
-      "tools": { "allow": ["Bash", "Read", "Glob", "Grep", "Write", "Edit"] },
-      "bash": { "groups": ["inspection"] },
-      "read": { "allow": ["src/**", "tests/**", "docs/**", "package.json"] },
-      "write": { "allow": ["docs/design/**"] }
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection"
+        ]
+      },
+      "read": {
+        "allow": [
+          "src/**",
+          "tests/**",
+          "docs/**",
+          "package.json"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/design/**"
+        ]
+      }
     },
     "implementer": {
       "description": "Builds the feature against the design doc. Cannot alter the design it builds against.",
-      "tools": { "allow": ["Bash", "Read", "Glob", "Grep", "Write", "Edit"] },
-      "bash": { "groups": ["inspection", "build", "test-execution"] },
-      "read": { "allow": ["src/**", "tests/**", "docs/design/**", "package.json"] },
-      "write": { "allow": ["src/**"] }
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection",
+          "build",
+          "test-execution-profiled"
+        ]
+      },
+      "read": {
+        "allow": [
+          "src/**",
+          "tests/**",
+          "docs/design/**",
+          "package.json"
+        ]
+      },
+      "write": {
+        "allow": [
+          "src/**"
+        ]
+      }
     },
     "tester": {
       "description": "Owns the test suite: writes and runs tests against the implementation. Never edits src/.",
-      "tools": { "allow": ["Bash", "Read", "Glob", "Grep", "Write", "Edit"] },
-      "bash": { "groups": ["inspection", "test-execution"] },
-      "read": { "allow": ["src/**", "tests/**", "docs/design/**"] },
-      "write": { "allow": ["tests/**"] }
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection",
+          "test-execution"
+        ]
+      },
+      "read": {
+        "allow": [
+          "src/**",
+          "tests/**",
+          "docs/design/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/**"
+        ],
+        "codeImports": [
+          "@playwright/test",
+          "vitest"
+        ]
+      }
     },
     "scribe": {
       "description": "Documents the shipped feature and updates the status file. The only role that writes docs/status.json.",
-      "tools": { "allow": ["Read", "Glob", "Grep", "Write", "Edit"] },
-      "read": { "allow": ["src/**", "docs/**"] },
-      "write": { "allow": ["docs/**"] }
+      "tools": {
+        "allow": [
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "read": {
+        "allow": [
+          "src/**",
+          "docs/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/**"
+        ]
+      }
     }
   }
 }
