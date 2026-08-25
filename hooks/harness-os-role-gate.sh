@@ -69,6 +69,28 @@
 
 set -uo pipefail
 
+# An internal error must not read as permission. `set -u` turns a typo or
+# an out-of-scope variable into an immediate exit, and an exit with no
+# JSON on stdout is how this hook says "allow" — so a bug in the kernel
+# silently disabled the kernel. Found while adding a check that referenced
+# a variable set only on the Bash path: the hook died and the call went
+# through. A gate whose failure mode is ALLOW is not a gate.
+#
+# HOS_DECIDED is set the moment a real verdict is emitted, so a normal
+# allow (which is a deliberate `exit 0` before this trap can fire) and a
+# deny are both left alone. Anything else exits non-zero with an
+# explanation, which the harness surfaces rather than treating as consent.
+HOS_DECIDED=0
+harness_os__on_exit() {
+  local code=$?
+  [ "$code" -eq 0 ] && return 0
+  [ "${HOS_DECIDED:-0}" = "1" ] && return 0
+  printf '%s\n' "[harness-os] INTERNAL ERROR: the role gate exited $code before reaching a decision." >&2
+  printf '%s\n' "[harness-os] Refusing to treat that as permission. Re-run with bash -x to see where, or set HARNESS_OS=0 to bypass the kernel deliberately." >&2
+  exit "$code"
+}
+trap harness_os__on_exit EXIT
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 [ -n "$JQ" ] || { echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found." >&2; exit 1; }
@@ -459,8 +481,28 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # await page.screenshot() })` reads nothing, and `setInputFiles` with a
   # fixture inside the read scope is the only way to test a file upload.
   # Flagging the API rather than the path made both impossible.
-  if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq "\.attach[[:space:]]*\([^)]*\bpath[[:space:]]*:|\.setInputFiles[[:space:]]*\([^)]*['\"\`](\.\./|/)"; then
-    CAP_ID='fs'; CAP_WHAT='a test-framework file API (attach({path}) / setInputFiles) naming a path directly — no host module for a scope check to see'
+  # ...and only when the path it names is OUTSIDE the read scope. A spec
+  # in tests/e2e/ referencing a fixture in a sibling tests/fixtures/ must
+  # write `../fixtures/cv.pdf`, and that resolves squarely inside a
+  # `tests/**` read scope — denying on a leading `../` refused the safe
+  # idiom while allowing the genuinely unscoped variable form. So the
+  # literal is resolved against the FILE's own directory and held to the
+  # role's read scope, which is what the rule always meant.
+  if [ -z "$CAP_ID" ]; then
+    local fw_lit fw_abs fw_rel fw_dir
+    fw_dir=$(dirname "$(harness_os_normalize_path "$target")")
+    while IFS= read -r fw_lit; do
+      [ -n "$fw_lit" ] || continue
+      case "$fw_lit" in *://*) continue ;; esac
+      case "$fw_lit" in /*) fw_abs="$fw_lit" ;; *) fw_abs="$fw_dir/$fw_lit" ;; esac
+      fw_rel=$(harness_os_relpath "$fw_abs")
+      local fw_scope; fw_scope=$(harness_os_role_field "$ROLE" ".read.allow")
+      if [ "$fw_scope" != "null" ] && harness_os_path_in_scope "$fw_rel" "$fw_scope"; then continue; fi
+      CAP_ID='fs'; CAP_WHAT="a test-framework file API naming '$fw_rel', which is outside this role's read scope — the framework opens it directly, with no host module for a scope check to see"
+      break
+    done < <(printf '%s' "$CODE_N" \
+      | grep -oE "\.attach[[:space:]]*\([^)]*\bpath[[:space:]]*:[[:space:]]*\"[^\"]+\"|\.setInputFiles[[:space:]]*\([^)]*\"[^\"]+\"" 2>/dev/null \
+      | sed -E 's/.*"([^"]+)".*/\1/')
   fi
   # An IMPORT ALLOWLIST, when the role declares one. Round 6 made the
   # argument that killed the previous design: the capability branches
@@ -503,7 +545,7 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
         harness_os_deny "write-code-import:$spec $rel" "[BLOCKED] Role '${ROLE}' may not author code importing '$spec' — it is not in this role's declared import list.
 
 ${ROLE_HEADER}
-File: $rel
+File: $rel${via}
 declared imports: $(printf '%s' "$IMPORTS_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
 
 A package name is an open set: 'dotenv' reads .env, 'glob' and 'fs-extra' wrap the filesystem, and no list of dangerous names can be finished. So this role declares what its code DOES import, and everything else is refused — the same inversion that made the builtin-module check sound.
@@ -1525,20 +1567,58 @@ A pattern is applied under the search root, so '..' escapes the role's scope. Na
     if [ -n "$TARGET" ]; then
       CODE=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.content // .tool_input.new_string // .tool_input.new_source // empty' 2>/dev/null || echo "")
       RESULT_CODE="$CODE"
-      if [ "$HOS_TOOL" = "Edit" ] && [ -f "$TARGET" ] && [ "$(wc -c <"$TARGET" 2>/dev/null || echo 0)" -le 1048576 ]; then
-        OLD_S=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.old_string // empty' 2>/dev/null || echo "")
-        REPL_ALL=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.replace_all // false' 2>/dev/null || echo false)
-        if [ -n "$OLD_S" ]; then
-          RESULT_CODE=$(OLD_S="$OLD_S" NEW_S="$CODE" ALL="$REPL_ALL" perl -0777 -e '
-            local $/; my $f = <STDIN>;
-            my ($o, $n, $all) = ($ENV{OLD_S}, $ENV{NEW_S}, $ENV{ALL} eq "true");
-            if ($all) { my $i; while (($i = index($f, $o)) >= 0) { substr($f, $i, length($o)) = $n; } }
-            else { my $i = index($f, $o); substr($f, $i, length($o)) = $n if $i >= 0; }
-            print $f;' < "$TARGET" 2>/dev/null || printf '%s' "$CODE")
-          [ -n "$RESULT_CODE" ] || RESULT_CODE="$CODE"
+      if [ "$HOS_TOOL" = "Edit" ]; then
+        # Resolve a relative file_path rather than treating it as absent —
+        # falling back on the fragment is precisely the blindness this
+        # reconstruction exists to remove.
+        EDIT_TARGET="$TARGET"
+        case "$EDIT_TARGET" in /*) : ;; *) EDIT_TARGET="${HOS_CWD%/}/$EDIT_TARGET" ;; esac
+        if [ -f "$EDIT_TARGET" ]; then
+          EDIT_SIZE=$(wc -c <"$EDIT_TARGET" 2>/dev/null || echo 0)
+          if [ "$EDIT_SIZE" -gt 4194304 ] && { [ "$(harness_os_role_field "$ROLE" '.write.codeImports')" != "null" ] \
+               || [ "$(harness_os_role_field "$ROLE" '.write.codeCapabilities')" != "null" ]; }; then
+            # FAIL CLOSED. The previous cap fell back to screening the
+            # fragment alone, which reinstated the very bypass the
+            # reconstruction was added to close: pad a file past the cap,
+            # then assemble the escape from fragments that are each
+            # innocent. Screening the diff after promising to screen the
+            # file is the one behaviour proven unsound, so a file too
+            # large to verify is refused rather than half-checked.
+            case "$(harness_os_relpath "$EDIT_TARGET")" in
+              *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1)
+                harness_os_deny "edit-too-large-to-verify $(harness_os_relpath "$EDIT_TARGET")" "[BLOCKED] Role '${ROLE}' may not Edit '$(harness_os_relpath "$EDIT_TARGET")' — at ${EDIT_SIZE} bytes it is too large for the kernel to verify what the edit makes it become.
+
+${ROLE_HEADER}
+
+An Edit is a diff, and this role declares what its code may import or do — a promise that can only be kept by screening the file's RESULTING content. Above 4 MB that reconstruction is refused rather than skipped, because screening the fragment alone is exactly the blindness the reconstruction exists to remove: an escape can be assembled from fragments that are each innocent.
+
+Options:
+  1. Split the file — an executable file this size is unusual, and a spec that big is hard to review for the same reason.
+  2. Author a fresh, smaller file with Write, whose whole content is screened." ;;
+            esac
+          fi
+          OLD_S=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.old_string // empty' 2>/dev/null || echo "")
+          REPL_ALL=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.replace_all // false' 2>/dev/null || echo false)
+          if [ -n "$OLD_S" ]; then
+            RESULT_CODE=$(OLD_S="$OLD_S" NEW_S="$CODE" ALL="$REPL_ALL" perl -0777 -e '
+              local $/; my $f = <STDIN>;
+              my ($o, $n, $all) = ($ENV{OLD_S}, $ENV{NEW_S}, $ENV{ALL} eq "true");
+              if ($all) { my $i; while (($i = index($f, $o)) >= 0) { substr($f, $i, length($o)) = $n; } }
+              else { my $i = index($f, $o); substr($f, $i, length($o)) = $n if $i >= 0; }
+              print $f;' < "$EDIT_TARGET" 2>/dev/null || printf '%s' "$CODE")
+            [ -n "$RESULT_CODE" ] || RESULT_CODE="$CODE"
+          fi
         fi
       fi
-      check_code_capabilities "$TARGET" "$RESULT_CODE"
+      # Screen the fragment first. When BOTH the fragment and the result
+      # trip, the edit introduced it and the message should say so; when
+      # only the result trips, the offending line was already in the file,
+      # and telling the agent to change what it just wrote is useless
+      # advice. The distinction costs one extra call and turns "this file
+      # is uneditable" into "this line has to go first".
+      check_code_capabilities "$TARGET" "$CODE"
+      check_code_capabilities "$TARGET" "$RESULT_CODE" "
+Note: your edit did not introduce this — the file already contains it. Removing that line is the change to make first."
     fi
     ;;
 esac
