@@ -459,6 +459,95 @@ check_code_capabilities() {
   # Same lesson as round 22 in a different dress. The rule was written
   # once per channel and the two channels disagreed about what counts as
   # code, so the stricter one referred work to the laxer one.
+  # CONFIGURATION A RUNTIME FINDS BY ITSELF — checked BEFORE the
+  # extension gate, because the whole point is that these are data
+  # extensions the gate waves through.
+  #
+  # Round 25 closed the config handed to a runner through a flag. Round
+  # 26 walked around it in one file, with no flag and no code:
+  #
+  #   tests/e2e/leak.spec.ts    import "@playwright/test"   (allow-listed)
+  #   tests/e2e/tsconfig.json   {"compilerOptions":{"paths":
+  #                               {"@playwright/test":["…/dotenv/config"]}}}
+  #   npx playwright test       (granted outright)
+  #
+  # Playwright walks up from each test file looking for a tsconfig, finds
+  # the authored one, and rewrites the specifier. `dotenv/config` reads
+  # .env. All three secrets printed. Nothing named the tsconfig, so axis
+  # 5c never saw it; it is a `.json`, so this screen never saw it; and
+  # the spec imports only a declared package, so the allowlist was
+  # satisfied.
+  #
+  # That last part is the finding, and it retires an assumption rather
+  # than adding a pattern: **`codeImports` screens the specifier as
+  # WRITTEN, and a resolution map the same role may author decides what
+  # that specifier MEANS.** A role that declares its imports and can also
+  # write a tsconfig has declared nothing at all.
+  #
+  # So the rule is derived from the role's own manifest instead of from
+  # any framework's behaviour: a role that declares what its code may
+  # import or do may not author the file that decides what its imports
+  # resolve to, or the file a granted runner loads without being told to.
+  # The operator owns those; they belong outside the role's write scope,
+  # where the run still finds them and the role cannot rewrite them.
+  #
+  # This is a table of NAMES, and a table is a floor. It is a better
+  # floor than the content tables it sits beside — these names are a
+  # closed, documented, slow-moving set per ecosystem, unlike the open
+  # set of ways to spell `require` — but `validate` says the same thing
+  # it says about every floor here, and the boundary is still
+  # `harness-os run` or splitting authoring from running.
+  if [ "$(harness_os_role_field "$ROLE" '.write.codeImports')" != "null" ] \
+     || [ "$(harness_os_role_field "$ROLE" '.write.codeCapabilities')" != "null" ]; then
+    local cfg_kind=""
+    case "${rel##*/}" in
+      tsconfig.json|tsconfig.*.json|jsconfig.json|jsconfig.*.json|deno.json|deno.jsonc|import_map.json|importmap.json|.pnp.cjs|.pnp.js)
+        cfg_kind="resolution" ;;
+      package.json|.npmrc|.yarnrc|.yarnrc.yml|.pnpmrc|bunfig.toml)
+        cfg_kind="resolution" ;;
+      .babelrc|.babelrc.*|babel.config.*|.swcrc|.browserslistrc)
+        cfg_kind="build" ;;
+      .mocharc|.mocharc.*|.nycrc|.nycrc.*|.c8rc|.c8rc.*|.taprc)
+        cfg_kind="runner" ;;
+      *.config.js|*.config.mjs|*.config.cjs|*.config.ts|*.config.mts|*.config.cts|*.config.json|*.config.yaml|*.config.yml)
+        cfg_kind="runner" ;;
+      .env|.env.*)
+        cfg_kind="environment" ;;
+    esac
+    # A package directory inside the write scope is a resolution map by
+    # another route: a module placed at `node_modules/<name>/` SHADOWS
+    # the real package, so a declared import resolves to authored code
+    # instead. The content of that code is screened like any other, but
+    # the substitution itself is the same defect as the `paths` remap —
+    # the declaration says which package, and this decides which files
+    # that package is.
+    case "/$rel" in
+      */node_modules/*) cfg_kind="resolution" ;;
+    esac
+    if [ -n "$cfg_kind" ]; then
+      local cfg_why
+      case "$cfg_kind" in
+        resolution) cfg_why="This file decides what a module specifier RESOLVES to. This role declares which packages its code may import, and a resolution map makes that declaration meaningless: an import of a declared package can be pointed at any module on disk, which is exactly how it was broken. The declaration and the map cannot both belong to the same role." ;;
+        build)      cfg_why="This file rewrites code before it runs — a transform or plugin named here executes with the runner's permissions, and nothing in the authored source shows it." ;;
+        runner)     cfg_why="A granted runner loads this file by convention, without anyone naming it on a command line, and a runner config can name a web-server command, a setup module or a reporter. Every one of those becomes a process." ;;
+        environment) cfg_why="A framework auto-loads this file into the environment of every process the run starts." ;;
+      esac
+      harness_os_deny "write-runtime-config:$cfg_kind $rel" "[BLOCKED] Role '${ROLE}' may not author '$rel' — it is $cfg_kind configuration that a runtime picks up on its own.
+
+${ROLE_HEADER}
+File: $rel${via}
+
+$cfg_why
+
+This role declares what its code may import or do, which is a statement about the artifacts it produces. Configuration a runner discovers by convention is not one of those artifacts: it is an instruction to the runner, and it is not screened by anything, because it contains no code to screen.
+
+Options, narrowest first:
+  1. Put the setting in the file the operator owns, outside this role's write scope — the run still finds it, and the role cannot rewrite it.
+  2. If this role genuinely needs its own, hand the file to the role that owns runner configuration.
+
+This is a table of names, so it is a floor rather than a boundary. The boundary is running the executor under 'harness-os run --role ${ROLE}', or splitting authoring from running into two roles: harness-os validate says which applies here."
+    fi
+  fi
   case "${rel##*/}" in
     *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1|*.awk|*.sed|*.jq) : ;;
     *.*) return 0 ;;
