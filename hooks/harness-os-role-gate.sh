@@ -700,6 +700,36 @@ Everything after an unclosed quote reads as string rather than syntax, so the ke
     # `--name-only`, `git status`, `git rev-parse`…) print no file content
     # and stay untouched — this must not become the axis that makes git
     # unusable.
+    # `harness-os run --role X` installs role X's runtime profile. A role
+    # invoking it with someone ELSE's name borrows that role's scopes —
+    # and a command group written loosely (`^harness-os run\b`) permits
+    # exactly that, which is a shape an operator will write. The kernel
+    # knows both names, so it does not need to rely on the pattern being
+    # tight: the only profile a role may install is its own.
+    if [ "${SEG_WORDS[0]:-}" = "harness-os" ] \
+       || { [ "${SEG_WORDS[0]:-}" = "npx" ] && [ "${SEG_WORDS[1]:-}" = "harness-os" ]; }; then
+      HOS_SUB=""; HOS_RUN_ROLE=""; __want_role=0
+      for __w in "${SEG_WORDS[@]}"; do
+        if [ "$__want_role" = "1" ]; then HOS_RUN_ROLE="$__w"; __want_role=0; continue; fi
+        case "$__w" in
+          --role) __want_role=1 ;;
+          --role=*) HOS_RUN_ROLE="${__w#*=}" ;;
+          run) [ -n "$HOS_SUB" ] || HOS_SUB=run ;;
+        esac
+      done
+      if [ "$HOS_SUB" = "run" ] && [ -n "$HOS_RUN_ROLE" ] && [ "$HOS_RUN_ROLE" != "$ROLE" ]; then
+        harness_os_deny "run-role-mismatch $HOS_RUN_ROLE" "[BLOCKED] Role '${ROLE}' may not run a command under role '${HOS_RUN_ROLE}'s runtime profile.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+'harness-os run --role X' installs X's path scopes as the process's permission profile. Invoking it with another role's name borrows that role's scopes — which would make the runtime profile a way around the boundary rather than part of it. A role may only install its own:
+
+  harness-os run --role ${ROLE} -- <command>"
+      fi
+    fi
+
     GIT_CONTENT=0
     GIT_ANCHOR=""
     if [ "${SEG_WORDS[0]:-}" = "git" ]; then

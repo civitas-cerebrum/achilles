@@ -126,5 +126,45 @@ const note = `see // the docs`;' composer)" \
 assert_deny "$H" "$(wpay "$P/tests/e2e/ctl.spec.ts" 'const d = require("dotenv");' composer)" \
   "FP control: the plain form is still refused → DENY" "not in this role's declared import list"
 
+# --- A role may only install its OWN runtime profile -------------------
+# `harness-os run --role X` installs X's path scopes as the process's
+# permission profile, so invoking it with another role's name borrows
+# that role's scopes — turning the runtime profile into a way AROUND the
+# boundary rather than part of it. A command group written loosely
+# (`^harness-os run\b`) permits exactly that, and that is a shape an
+# operator will write, so the kernel refuses it rather than relying on
+# the pattern being tight. Found by probing `run` after adding it.
+R7B="$R7/proj-b"
+mkdir -p "$R7B/.claude" "$R7B/tests/e2e"
+cat > "$R7B/.claude/harness-os.json" <<'JSON'
+{
+  "harnessOsVersion": 1,
+  "name": "r7b",
+  "settings": { "mainSessionRole": "composer" },
+  "commandGroups": { "t": ["^harness-os run\\b", "^npx harness-os run\\b"] },
+  "roles": {
+    "composer": { "description": "narrow", "tools": { "allow": ["Bash"] }, "bash": { "groups": ["t"] },
+                  "read": { "allow": ["tests/**"] }, "write": { "allow": ["tests/e2e/**"] } },
+    "admin":    { "description": "wide",   "tools": { "allow": ["Bash"] }, "bash": { "groups": ["t"] },
+                  "read": { "allow": ["**"] },      "write": { "allow": ["**"] } }
+  }
+}
+JSON
+HARNESS_OS_MANIFEST="$R7B/.claude/harness-os.json" assert_deny "$H" \
+  "$(payload tool_name=Bash command='harness-os run --role admin -- node x.js' cwd="$R7B" $C)" \
+  "RUN a role may not install another role's profile → DENY" "runtime profile"
+HARNESS_OS_MANIFEST="$R7B/.claude/harness-os.json" assert_deny "$H" \
+  "$(payload tool_name=Bash command='harness-os run --role=admin -- node x.js' cwd="$R7B" $C)" \
+  "RUN the attached --role=X form → DENY" "runtime profile"
+HARNESS_OS_MANIFEST="$R7B/.claude/harness-os.json" assert_deny "$H" \
+  "$(payload tool_name=Bash command='npx harness-os run --role admin -- node x.js' cwd="$R7B" $C)" \
+  "RUN through npx → DENY" "runtime profile"
+HARNESS_OS_MANIFEST="$R7B/.claude/harness-os.json" assert_allow "$H" \
+  "$(payload tool_name=Bash command='harness-os run --role composer -- node x.js' cwd="$R7B" $C)" \
+  "RUN calibration: a role installing its OWN profile → ALLOW"
+HARNESS_OS_MANIFEST="$R7B/.claude/harness-os.json" assert_allow "$H" \
+  "$(payload tool_name=Bash command='harness-os run --role composer --dry-run -- node x.js' cwd="$R7B" $C)" \
+  "RUN calibration: --dry-run on its own profile → ALLOW"
+
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST
 rm -rf "$R7"
