@@ -1061,7 +1061,8 @@ NOTE: your command group DOES grant 'git ${GIT_SUB}'. This refusal is a construc
       elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_ID='source'; BUILTIN_HIT='sourcing a script into the shell'
       elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_ID='shell'; BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
       elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_ID='find-exec'; BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
-      elif [ "$(harness_os_interpreter_inline "${SEG_WORDS[0]:-}" "$seg")" = "indirect" ]; then BUILTIN_ID='interpreter-inline'; BUILTIN_HIT='interpreter one-liner (-c/-e/-p/-m and their bundled spellings) — arbitrary code the patterns cannot see'
+      elif [ "$(harness_os_interpreter_inline "${SEG_WORDS[0]:-}" "$seg")" = "module" ]; then BUILTIN_ID='interpreter-module'; BUILTIN_HIT='running or preloading a module (-m/-M/-r) — code this kernel never sees, though the role did not author it'
+      elif [ "$(harness_os_interpreter_inline "${SEG_WORDS[0]:-}" "$seg")" = "indirect" ]; then BUILTIN_ID='interpreter-inline'; BUILTIN_HIT='interpreter one-liner (-c/-e/-p and their attached and bundled spellings, or a program on stdin) — arbitrary code the patterns cannot see'
       elif [ "$(harness_os_awk_sed_verdict "${SEG_WORDS[0]:-}" "$seg")" = "indirect" ]; then
         # awk and sed belong in this list beside `python -c`, and for the
         # same reason: they are interpreters, and their program can run a
@@ -1082,7 +1083,14 @@ NOTE: your command group DOES grant 'git ${GIT_SUB}'. This refusal is a construc
         # So inert is what must be proved, and anything else is refused
         # whatever it names. Roles that genuinely need the constructs opt
         # in through bash.permit, like every other entry here.
-        BUILTIN_ID="${SEG_WORDS[0]:-awk}-program"
+        # A stable id per LANGUAGE, not per binary name: a manifest that
+        # permits `awk-program` must keep working when the role reaches
+        # for gawk or mawk, and an operator should not have to guess
+        # which spelling their machine will use.
+        case "${SEG_WORDS[0]:-}" in
+          sed) BUILTIN_ID='sed-program' ;;
+          *)   BUILTIN_ID='awk-program' ;;
+        esac
         BUILTIN_HIT="an ${SEG_WORDS[0]:-awk} program using a construct that can run a command or open a file — its operand is an arbitrary expression, so no scan can say which"
       elif printf '%s' "$seg" | grep -Eq '^(cd|pushd|popd)([[:space:]]|$)'; then
         # `cd <dir> && <cmd>` is how agents habitually prefix a command,

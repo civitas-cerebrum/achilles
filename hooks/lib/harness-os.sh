@@ -692,50 +692,80 @@ harness_os_log() {
 # word must be the interpreter itself; wrappers that hide it (`env`,
 # `timeout`, `sh -c`) are denied by their own entries in the list.
 harness_os_interpreter_inline() {
-  local cmd="$1" seg="$2"
-  case "${cmd##*/}" in
-    python|python2|python3|python[0-9].[0-9]*|node|nodejs|ruby|perl|php|deno|bun) : ;;
+  local cmd="$1" seg="$2" base value_letters code_letters
+  base="${cmd##*/}"
+  # Each interpreter's short options fall into three kinds: booleans,
+  # options that CONSUME a value, and options whose value IS code. Only
+  # the last matters, and the three lists differ per interpreter — `-E`
+  # is code for perl and a boolean for python, so one shared letter class
+  # denies ordinary `python3 -sE script.py` while missing `perl -E`.
+  #
+  # The code letters are split in two, because the two are not the same
+  # risk and a role should not have to accept one to get the other.
+  # `-c`/`-e` run a program the AGENT wrote on the command line;
+  # `-m`/`-r` run or preload an installed module, which the agent did
+  # not author. A Python test role needs `python -m pytest` and has no
+  # business with `python -c`, and until this split permitting one meant
+  # permitting both.
+  local module_letters
+  case "$base" in
+    python|python2|python3|python[0-9].[0-9]*)
+      value_letters='cmWXQ';        code_letters='c';       module_letters='m' ;;
+    perl)
+      value_letters='eEFiIlmMDCS';  code_letters='eE';      module_letters='mM' ;;
+    ruby)
+      value_letters='eFiIrKEC';     code_letters='e';       module_letters='r' ;;
+    node|nodejs|deno|bun)
+      value_letters='epr';          code_letters='ep';      module_letters='r' ;;
+    php)
+      value_letters='rBRFEH';       code_letters='rBRFEH';  module_letters='' ;;
     *) return 0 ;;
   esac
-  # -c/-e/-E code, -m/-M module execution, -r/--require preload,
-  # -p print-eval. A cluster ending in any of them carries code.
-  if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])-([A-Za-z0-9]*[ceEmMrp]|-eval|-print|-require|-command)([[:space:]]|=|$)'; then
-    printf 'indirect'
-    return 0
-  fi
-  # And the opposite spelling: NO flag at all. Every one of these
-  # interpreters reads its program from STDIN when handed neither a code
-  # flag nor a script, so `python3 <<< 'CODE'` and `echo CODE | node`
-  # carry arbitrary code past a check that was looking for `-c`.
-  #
-  # The kernel already closes exactly this channel one list-entry above,
-  # where a bare `sh`/`bash` is refused because "its input becomes an
-  # unchecked script". The same sentence was true of these interpreters
-  # and had never been said about them — the flag-cluster fix of round 17
-  # made the check better at recognising flags, which is no help at all
-  # against a command that has none.
-  #
-  # A script OPERAND is what makes the difference: with one, the program
-  # is a file the path scopes already govern. It has to be a path that
-  # exists, or `python3 -X dev` would read its own flag value as a
-  # script and hand the stdin channel straight back.
-  local __w __informational=0 __script=0
-  for __w in $seg; do
-    case "$__w" in
-      --version|-V|--help|-h|-\?) __informational=1 ;;
-    esac
-  done
-  [ "$__informational" = "1" ] && return 0
+
+  local w rest i ch informational=0 script=0
   set -- $seg
   shift 2>/dev/null || true
-  for __w in "$@"; do
-    case "$__w" in -*) continue ;; esac
-    case "$__w" in
-      /*) [ -f "$__w" ] && __script=1 ;;
-      *)  [ -f "${HOS_CWD:-.}/$__w" ] && __script=1 ;;
+  for w in "$@"; do
+    case "$w" in
+      --version|-V|--help|-h|-\?) informational=1; continue ;;
+      --eval|--eval=*|--print|--print=*|--command|--command=*)
+        printf 'indirect'; return 0 ;;
+      --require|--require=*)
+        printf 'module'; return 0 ;;
+      --*) continue ;;
+      -) continue ;;
+      -*)
+        # Walk the cluster left to right. The first value-taking letter
+        # swallows the rest of the token, so nothing after it is a flag;
+        # if that letter is a CODE letter the interpreter is running code
+        # — whether its argument is attached (`-c'…'`) or separated
+        # (`-c '…'`). Round 19 got in through the attached spelling,
+        # which is the sixth time an exact-versus-attached distinction
+        # has defeated a check in this kernel.
+        rest="${w#-}"
+        i=0
+        while [ "$i" -lt "${#rest}" ]; do
+          ch="${rest:$i:1}"
+          case "$code_letters" in *"$ch"*) printf 'indirect'; return 0 ;; esac
+          [ -n "$module_letters" ] && case "$module_letters" in *"$ch"*) printf 'module'; return 0 ;; esac
+          case "$value_letters" in *"$ch"*) break ;; esac
+          i=$((i + 1))
+        done
+        continue ;;
+    esac
+    # A positional. It counts as the SCRIPT only if it is a real file:
+    # without that test `python3 -X dev` reads its own flag value as a
+    # script and hands the stdin channel back.
+    case "$w" in
+      /*) [ -f "$w" ] && script=1 ;;
+      *)  [ -f "${HOS_CWD:-.}/$w" ] && script=1 ;;
     esac
   done
-  [ "$__script" = "1" ] || printf 'indirect'
+  [ "$informational" = "1" ] && return 0
+  # No code flag and no script: every one of these interpreters then
+  # reads its program from STDIN. `python3 <<< 'CODE'` and a bare
+  # `python3` carry arbitrary code past a check looking for `-c`.
+  [ "$script" = "1" ] || printf 'indirect'
 }
 
 harness_os_awk_sed_verdict() {

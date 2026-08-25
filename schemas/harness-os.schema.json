@@ -149,6 +149,9 @@
                     "shell",
                     "find-exec",
                     "interpreter-inline",
+                    "interpreter-module",
+                    "awk-program",
+                    "sed-program",
                     "cd",
                     "brace-expansion",
                     "vcs-history"

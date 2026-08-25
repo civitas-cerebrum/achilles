@@ -90,9 +90,9 @@ done
 # Module execution runs code just as surely, and was never covered at
 # all — not even in the exact-token form.
 assert_deny "$H" "$(bpay 'python3 -m http.server')" \
-  "F1 python -m runs a module → DENY" "interpreter one-liner"
+  "F1 python -m runs a module → DENY" "running or preloading a module"
 assert_deny "$H" "$(bpay 'perl -MFoo::Bar -e 1')" \
-  "F1 perl -M loads and runs a module → DENY" "interpreter one-liner"
+  "F1 perl -M loads and runs a module → DENY" "running or preloading a module"
 
 # The forms that already worked must keep working.
 assert_deny "$H" "$(bpay 'perl -e '"'"'system("id")'"'"'')" \
