@@ -308,6 +308,29 @@ redirect):
    whatever produced it, also faces the self-protection axis: a role with
    *any* write grant still cannot aim one at the manifest, the state
    directory, or the kernel itself.
+4b. **Network destinations** — a role may declare `network.allow`, and
+   every URL authority in a Bash command, plus every remote `WebFetch`,
+   is parsed and held to it. Userinfo in a URL is refused for every role
+   whether or not a scope is declared, because it is the one spelling
+   that makes a URL's visible prefix differ from where it connects.
+   Destination OVERRIDES are held to the same scope — `--connect-to`,
+   `--resolve`, `-x`/`--proxy` and the `*_proxy` environment variables
+   all move the destination without changing the URL — and an option
+   file (`curl -K`) is refused outright, because a destination the
+   kernel cannot read is one it cannot check.
+
+   **Be clear about what this is not.** Those overrides are an
+   enumeration of one client's flags, and the reviewer who found them
+   was right that the next flag always arrives: a text scan of argv
+   cannot bound the connection a tool makes, only the way the request is
+   spelled. `network.allow` raises the cost of egress and makes an
+   intent explicit; it is not a boundary in the sense a firewall is. The
+   sound version is egress enforced OUTSIDE the process — a filtering
+   proxy or a network namespace pinned to the same list — and until one
+   is in place this axis is advisory for any role that can run a network
+   client, exactly as the write-then-execute screen is advisory for a
+   role that can run code.
+
 5. **Read tokens** — every token that resolves (glob-aware) to an
    existing file/dir must be inside `read.allow ∪ write.allow`, so
    `cat ../secrets/x` through an allowed `cat` is denied exactly as a

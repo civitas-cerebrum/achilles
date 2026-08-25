@@ -85,14 +85,7 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "network": {
-                "description": "Which network destinations this role may reach. A command group is a regex over argv and a URL authority is a parser problem, so a pattern that pins a URL prefix is NOT a destination boundary: a reviewer pointed `^curl … http://localhost:4173` at `http://localhost:4173@example.com/` and curl connected to example.com. Declaring this scope has every URL authority in a Bash command parsed and checked. Entries are host or host:port — a bare host permits any port, a leading *. permits subdomains, and `*` permits anything. Opt-in, like write.codeImports: absent, only the userinfo rule applies (a URL whose visible prefix differs from its destination is always refused).",
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "allow": { "type": "array", "items": { "type": "string" } }
-                }
-              },              "read": {
+              "read": {
                 "description": "tool_input fields naming paths the tool READS — checked against the role's read scope.",
                 "type": "array",
                 "items": { "type": "string", "minLength": 1 }
@@ -132,7 +125,14 @@
             "type": "string",
             "minLength": 1
           },
-          "tools": {
+          "network": {
+            "description": "Which network destinations this role may reach. A command group is a regex over argv and a URL authority is a parser problem, so a pattern that pins a URL prefix is NOT a destination boundary: a reviewer pointed `^curl … http://localhost:4173` at `http://localhost:4173@example.com/` and curl connected to example.com. Declaring this scope has every URL authority in a Bash command parsed and checked. Entries are host or host:port — a bare host permits any port, a leading *. permits subdomains, and `*` permits anything. Opt-in, like write.codeImports: absent, only the userinfo rule applies (a URL whose visible prefix differs from its destination is always refused).",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": { "type": "array", "items": { "type": "string" } }
+            }
+          },          "tools": {
             "description": "Tool-name gate. Patterns are shell globs (e.g. mcp__github__*). deny beats allow; absent tools → all tools pass to the finer axes.",
             "type": "object",
             "additionalProperties": false,

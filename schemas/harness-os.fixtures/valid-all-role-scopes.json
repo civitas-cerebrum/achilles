@@ -1,0 +1,156 @@
+{
+  "harnessOsVersion": 1,
+  "name": "valid-all-role-scopes",
+  "description": "Exercises every scope a role may declare \u2014 read, write, network, dispatch, skills, bash.permit \u2014 so a schema change that misplaces one is caught by the fixture lint rather than by a user.",
+  "settings": {
+    "mainSessionRole": "orchestrator",
+    "unboundAgentPolicy": "readonly",
+    "dispatchTtlSeconds": 1800
+  },
+  "commandGroups": {
+    "inspection": [
+      "^git (status|log|diff|show|blame)\\b",
+      "^(ls|find|wc|file|stat|du|tree)\\b",
+      "^(cat|head|tail|sort|uniq|cut|tr|grep|rg|jq)\\b",
+      "^node (--version|-v)\\b",
+      "^(npx|yarn|pnpm exec) playwright --version\\b"
+    ],
+    "form-probe": [
+      "^(npx|yarn|pnpm exec) playwright (codegen|open|show-trace)\\b"
+    ],
+    "test-execution": [
+      "^(npx|yarn|pnpm exec) playwright test\\b",
+      "^npm (test|run test[a-z:-]*)\\b"
+    ]
+  },
+  "roles": {
+    "orchestrator": {
+      "description": "Dispatches the appropriate agents to the tasks of the registration-form automation workflow. Never inspects, writes, or reviews itself.",
+      "tools": {
+        "allow": [
+          "Agent",
+          "Read",
+          "Glob",
+          "Grep",
+          "TaskCreate",
+          "TaskUpdate",
+          "TaskList",
+          "TaskGet"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/e2e-ledger.json",
+          "docs/journey-map.md",
+          "docs/acceptance/**"
+        ]
+      },
+      "dispatch": [
+        "inspector",
+        "composer",
+        "reviewer",
+        "judge"
+      ],
+      "network": {
+        "allow": [
+          "localhost:4173",
+          "*.example.com",
+          "127.0.0.1"
+        ]
+      }
+    },
+    "inspector": {
+      "description": "Probes the live registration form (codegen, trace inspection) and reads the page repository and existing specs to map its fields and validation. Runs inspection commands only; produces findings, not tests.",
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection",
+          "form-probe"
+        ]
+      },
+      "read": {
+        "allow": [
+          "tests/**",
+          "docs/**"
+        ]
+      }
+    },
+    "composer": {
+      "description": "Writes the registration-form Playwright spec against the acceptance criteria and the inspector's findings, and runs it to green. Owns tests/e2e/ only.",
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection",
+          "test-execution"
+        ]
+      },
+      "read": {
+        "allow": [
+          "tests/**",
+          "docs/acceptance/**",
+          "docs/journey-map.md",
+          "package.json",
+          "playwright.config.ts"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/**"
+        ]
+      }
+    },
+    "reviewer": {
+      "description": "Reads the acceptance criteria and the deliverable spec, and nothing else. Verifies the spec covers every criterion; records no verdict itself.",
+      "tools": {
+        "allow": [
+          "Read",
+          "Glob",
+          "Grep"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/acceptance/**",
+          "tests/e2e/**"
+        ]
+      }
+    },
+    "judge": {
+      "description": "The only role permitted to update the e2e ledger. Reads the reviewer's findings and the deliverable, then records the verdict.",
+      "tools": {
+        "allow": [
+          "Read",
+          "Write",
+          "Edit"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/e2e/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/e2e-ledger.json"
+        ]
+      }
+    }
+  }
+}

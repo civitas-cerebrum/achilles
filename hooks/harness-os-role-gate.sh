@@ -1133,6 +1133,8 @@ screen_env_assignments() {
       PYTHONSTARTUP|PYTHONPATH|PYTHONHOME|BASH_ENV|ENV|SHELLOPTS|BASHOPTS|\
       LD_PRELOAD|LD_LIBRARY_PATH|LD_AUDIT|DYLD_INSERT_LIBRARIES|DYLD_LIBRARY_PATH|\
       GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_SSH_COMMAND|GIT_EXTERNAL_DIFF|GIT_PAGER|\
+      http_proxy|https_proxy|all_proxy|ftp_proxy|no_proxy|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|FTP_PROXY|NO_PROXY|\
+      CURL_HOME|CURLOPT_PROXY|npm_config_proxy|npm_config_https_proxy|npm_config_registry|\
       JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|CLASSPATH)
         if ! { [ "$BASH_PERMIT" != "null" ] && printf '%s' "$BASH_PERMIT" | "$JQ" -e 'index("env-injection") != null' >/dev/null 2>&1; }; then
           set +f
@@ -2535,6 +2537,107 @@ The authority is parsed rather than pattern-matched, so a host that merely START
       fi
     done < <(printf '%s\n' "$seg" | tr ' \t"'"'"'`(),;' '\n\n\n\n\n\n\n\n\n')
 
+    # 3g-2. DESTINATION OVERRIDES THAT ARE NOT URLS.
+    #
+    # Round 33 built the axis above as a URL-token scanner, and round 34
+    # walked through it in one command:
+    #
+    #     curl -s http://localhost:4173 --connect-to localhost:4173:127.0.0.1:9999
+    #
+    # The URL token parses to `localhost:4173` and is in scope. The
+    # override carries the real destination as a bare `host:port` with no
+    # `://`, so the scanner never looked at it, and curl dialled
+    # 127.0.0.1:9999 — SSRF, plus the in-scope-context exfiltration round
+    # 33 had just claimed to close, in a command the kernel ALLOWED.
+    #
+    # Round 33's own stated invariant is the one to hold: does the string
+    # the kernel parses equal the host the client dials? For a client
+    # whose destination can be overridden by a flag, "the URL" is not
+    # that string. So the overrides are parsed as destinations and
+    # scope-checked like any other, and the one that moves the
+    # destination into a FILE is refused outright, because a destination
+    # the kernel cannot read is a destination it cannot check.
+    #
+    # Be honest about what this is. It is an enumeration of curl's
+    # override flags, and round 34's argument against enumerating them is
+    # correct: the next flag always arrives. The sound boundary is egress
+    # enforced outside the process — a filtering proxy or a network
+    # namespace pinned to `network.allow` — and `network.allow` is
+    # advisory until one is in place, which is what `validate` and the
+    # architecture doc now say in those words.
+    if [ "$NET_ALLOW" != "null" ]; then
+      NF_NEXT=""
+      for __i in "${!SEG_WORDS[@]}"; do
+        [ "$__i" = "0" ] && continue
+        __w="${SEG_WORDS[$__i]}"
+        NF_VAL=""
+        if [ -n "$NF_NEXT" ]; then NF_VAL="$__w"; NF_KIND="$NF_NEXT"; NF_NEXT=""
+        else
+          case "$__w" in
+            --connect-to|--resolve) NF_NEXT="map"; continue ;;
+            -x|--proxy|--preproxy|--socks4|--socks4a|--socks5|--socks5-hostname|--proxy1.0)
+              NF_NEXT="proxy"; continue ;;
+            --connect-to=*|--resolve=*) NF_VAL="${__w#*=}"; NF_KIND="map" ;;
+            --proxy=*|--preproxy=*|--socks5=*|--socks5-hostname=*) NF_VAL="${__w#*=}"; NF_KIND="proxy" ;;
+            -x?*) NF_VAL="${__w#-x}"; NF_KIND="proxy" ;;
+            -K|--config)
+              set +f
+              harness_os_deny "bash-network-config-file" "[BLOCKED] Role '${ROLE}' declares a network scope, and this command reads its options from a file, where a destination cannot be checked.
+
+${ROLE_HEADER}
+network scope: $(printf '%s' "$NET_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+
+Command: ${CMD}
+
+A curl config file may carry its own \`url =\` line, so the destination moves out of the command entirely. The kernel refuses that rather than checking a URL that is no longer the one being used. Put the request on the command line, where its destination is visible."
+              ;;
+            -K?*|--config=*)
+              set +f
+              harness_os_deny "bash-network-config-file" "[BLOCKED] Role '${ROLE}' declares a network scope, and this command reads its options from a file, where a destination cannot be checked.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+Put the request on the command line, where its destination is visible."
+              ;;
+            *) continue ;;
+          esac
+        fi
+        [ -n "$NF_VAL" ] || continue
+        # `--connect-to HOST:PORT:CONNECT-HOST:CONNECT-PORT` and
+        # `--resolve HOST:PORT:ADDRESS` both put the REAL destination
+        # last. Take the tail after the second colon-separated field, so
+        # the leading pair — which is only the request's apparent host —
+        # cannot stand in for it.
+        case "$NF_KIND" in
+          map)
+            NF_REST="${NF_VAL#*:}"; NF_REST="${NF_REST#*:}"
+            [ -n "$NF_REST" ] && [ "$NF_REST" != "$NF_VAL" ] || continue
+            NF_AUTH=$(printf '%s' "$NF_REST" | tr 'A-Z' 'a-z') ;;
+          proxy)
+            NF_AUTH=$(harness_os_url_authority "$NF_VAL")
+            [ -n "$NF_AUTH" ] || NF_AUTH=$(printf '%s' "${NF_VAL%%/*}" | tr 'A-Z' 'a-z') ;;
+          *) continue ;;
+        esac
+        [ -n "$NF_AUTH" ] || continue
+        if ! harness_os_authority_in_scope "$NF_AUTH" "$NET_ALLOW"; then
+          set +f
+          harness_os_deny "bash-network-override-out-of-scope $NF_AUTH" "[BLOCKED] Role '${ROLE}' may not connect to '$NF_AUTH' — the command overrides its destination to somewhere outside the role's network scope.
+
+${ROLE_HEADER}
+network scope: $(printf '%s' "$NET_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+
+Command: ${CMD}
+
+  the URL names:  a host inside your scope
+  the client dials: ${NF_AUTH}
+
+Flags like --connect-to, --resolve and --proxy replace the destination without changing the URL, so the address in the request is not the address on the wire. The override is held to the same scope as the URL itself."
+        fi
+      done
+    fi
+
     # 5c. A contained role may not point a run at a file it can write.
     #
     # Round 25 walked through axis 5b without writing a line of code. The
@@ -2668,7 +2771,37 @@ case "$HOS_TOOL" in
     WF_URL=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.url // .tool_input.query // empty' 2>/dev/null || echo "")
     if [ -n "$WF_URL" ]; then
       case "$WF_URL" in
-        http://*|https://*|ws://*|wss://*|ftp://*|data:*) : ;;   # genuinely remote
+        http://*|https://*|ws://*|wss://*|ftp://*|data:*)
+          # Genuinely remote — and held to the same network scope as a
+          # curl in Bash. Round 33 built that scope on the Bash channel;
+          # round 34 pointed out it stopped there, so a manifest could
+          # bound where curl connects and leave the tool whose ENTIRE JOB
+          # is fetching a URL unbounded. The comment eight lines above
+          # says the question worth asking of any check is how many
+          # channels implement it, and this check had one.
+          WF_NET=$(harness_os_role_field "$ROLE" '.network.allow')
+          WF_AUTH=$(harness_os_url_authority "$WF_URL")
+          WF_USER=$(harness_os_url_userinfo "$WF_URL")
+          if [ -n "$WF_USER" ]; then
+            harness_os_deny "webfetch-url-userinfo $WF_AUTH" "[BLOCKED] Role '${ROLE}' used a URL carrying credentials before the host, which fetches somewhere other than it appears to.
+
+${ROLE_HEADER}
+
+  written:     ${WF_URL}
+  connects to: ${WF_AUTH}
+
+Write the URL without userinfo — everything before the @ is credentials, not a hostname."
+          fi
+          if [ "$WF_NET" != "null" ] && [ -n "$WF_AUTH" ] \
+             && ! harness_os_authority_in_scope "$WF_AUTH" "$WF_NET"; then
+            harness_os_deny "webfetch-network-out-of-scope $WF_AUTH" "[BLOCKED] Role '${ROLE}' may not fetch '$WF_AUTH' — it is outside the role's network scope.
+
+${ROLE_HEADER}
+network scope: $(printf '%s' "$WF_NET" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+A fetch tool reaches the network exactly as a curl does, so it is held to the same scope. The authority is parsed rather than matched as text."
+          fi
+          ;;
         file://*)
           WF_P="${WF_URL#file://}"; [ "${WF_P#/}" = "$WF_P" ] && WF_P="/$WF_P"
           harness_os_is_manifest_path "$WF_P" || check_path_scope read "$(harness_os_relpath "$WF_P")" "read via ${HOS_TOOL}" ;;
