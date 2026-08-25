@@ -24,7 +24,7 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
 {
   "harnessOsVersion": 1,
   "name": "id",
-  "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "deny" },
+  "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "deny", "ambientDispatchClaim": "on" },
   "roles": {
     "orchestrator": { "description": "dispatch only", "tools": { "allow": ["Agent"] }, "dispatch": ["inspector", "reviewer"] },
     "inspector": { "description": "probe", "tools": { "allow": ["Read"] }, "read": { "allow": ["src/**"] } },

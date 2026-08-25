@@ -394,7 +394,42 @@ harness_os_resolve_role() {
   fi
 
   # Rung 5 — registry claim (unambiguous single-role in-flight set).
+  #
+  # OFF BY DEFAULT since round 29, and the reason is worth stating
+  # exactly, because every other rung is a different KIND of answer.
+  # Rungs 1-4 answer "this agent is role X": a binding file recorded for
+  # this agent_id, a parent tool_use_id that names this agent's own
+  # dispatch, a tag on this agent's own transcript. Rung 5 answers
+  # "some single role is in flight, therefore you are it" — an identity
+  # oracle keyed on AMBIENT state, which never checks that the caller is
+  # the child of that dispatch. And it persists the binding.
+  #
+  # Round 29 demonstrated the consequence: with a judge legitimately
+  # dispatched and in flight, an unrelated fresh agent — not the child,
+  # no parent, no tag — wrote the ledger as the judge. That is the one
+  # direction this project had not found before: a rung resolving a role
+  # MORE privileged than the caller holds.
+  #
+  # It was safe in practice only by an emergent property nobody had
+  # written down as load-bearing: registration runs in the parent's
+  # PreToolUse, before the child is spawned, so a real child always has
+  # its own entry by the time it calls. Rounds 3, 4 and 22 are all about
+  # what happens to an undocumented invariant, and a host that ever
+  # reused an agent_id or let a call precede its own registration would
+  # turn this into a live escalation with nothing to catch it.
+  #
+  # So it is opt-in. Turning it off does not break a project, it
+  # DEGRADES it: an agent that would have been guessed at is now
+  # unbound, and unboundAgentPolicy — which exists for exactly that
+  # caller — decides. That is the safe direction, and the deny an
+  # operator sees names the setting.
+  local claim_policy
+  claim_policy=$(printf '%s' "$HOS_MANIFEST_JSON" | "$HOS_JQ" -r '.settings.ambientDispatchClaim // "off"' 2>/dev/null || echo "off")
+  if [ "$claim_policy" = "on" ]; then
   HOS_ROLE=$(harness_os__registry_claim "$HOS_AGENT_ID")
+  else
+  HOS_ROLE=""
+  fi
   if [ -n "$HOS_ROLE" ] && harness_os__role_exists "$HOS_ROLE"; then
     harness_os__bind "$HOS_AGENT_ID" "$HOS_ROLE"
     HOS_ROLE_STATE="governed"

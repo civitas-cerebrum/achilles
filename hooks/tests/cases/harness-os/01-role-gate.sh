@@ -25,7 +25,7 @@ export HARNESS_OS_MANIFEST="$PROJ/.claude/harness-os.json"
 MANIFEST='{
   "harnessOsVersion": 1,
   "name": "qa-pipeline",
-  "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "readonly" },
+  "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "readonly", "ambientDispatchClaim": "on" },
   "commandGroups": {
     "inspection": ["^git (status|log|diff|show)\\b", "^(ls|find|wc|stat)\\b", "^(cat|head|tail|grep|rg|jq|sort|uniq)\\b"]
   },

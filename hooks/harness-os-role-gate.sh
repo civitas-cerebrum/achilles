@@ -2684,6 +2684,32 @@ if [ "$HOS_TOOL" = "Agent" ] || [ "$HOS_TOOL" = "Task" ]; then
     fi
   done < <(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -r '.roles | keys[]' 2>/dev/null | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
 
+  # NO DISPATCH LIST MEANS NO DISPATCH. The whole gate below used to sit
+  # inside `if [ "$DISPATCH_LIST" != "null" ]`, so a role that declared
+  # none skipped every check — target-in-list, tag-required, tag-purity —
+  # while the registration at the bottom still ran and the child still
+  # bound. A role holding Agent and nothing else could mint a child of
+  # ANY role, including the judge, with an arbitrary description and no
+  # tag at all. Round 29 demonstrated it minting a judge that then wrote
+  # the ledger.
+  #
+  # That is this kernel's own law broken in the identity stack: a gate
+  # whose failure mode is ALLOW is not a gate. Absence of a dispatch list
+  # is not "dispatch anyone unchecked", it is "this role was never given
+  # the authority to dispatch". Read scope is opt-out because reading is
+  # the default posture of an agent; handing another agent a ROLE is not.
+  if [ "$DISPATCH_LIST" = "null" ]; then
+    harness_os_deny "dispatch-undeclared" "[BLOCKED] Role '${ROLE}' may not dispatch subagents — its manifest entry declares no 'dispatch' list.
+
+${ROLE_HEADER}
+
+Dispatching is how a role hands work, and a ROLE, to another agent. A role that names no dispatchable roles has not been given that authority, so the absence is a refusal rather than a blank cheque: without it there is nothing to check the target against, and an unchecked dispatch can mint a child of any role in this manifest.
+
+The operator grants it explicitly, naming who this role may dispatch:
+  \"${ROLE}\": { \"dispatch\": [\"<role>\", \"<role>\"] }
+
+Then the target must be one of those, the description must name it, and the prompt must carry its binding tag."
+  fi
   if [ "$DISPATCH_LIST" != "null" ]; then
     ROLE_NAMES=$(printf '%s' "$DISPATCH_LIST" | "$JQ" -r 'join(", ")' 2>/dev/null || echo "")
     if [ -z "$TARGET_ROLE" ]; then
