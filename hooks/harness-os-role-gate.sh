@@ -604,21 +604,127 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # idiom while allowing the genuinely unscoped variable form. So the
   # literal is resolved against the FILE's own directory and held to the
   # role's read scope, which is what the rule always meant.
+  #
+  # INVERTED, after round 20. The screen used to extract a quoted string
+  # from the call and check that; a call whose path was a VARIABLE
+  # presented no string, so nothing was extracted and nothing objected:
+  #
+  #     const p = "../../.env";
+  #     await page.locator("#f").setInputFiles(p);
+  #
+  # read the file at runtime and handed its bytes back through the page.
+  # The concatenation spelling had been closed by folding; the variable
+  # binding had not, and the operand of a call is an arbitrary
+  # expression, so no amount of folding reaches it.
+  #
+  # This kernel had already made that argument twice — for authored
+  # module names, and for awk/sed programs — and each time the answer was
+  # to stop reading the operand and start requiring it to be provably
+  # safe. Here that means: a file-opening framework call must carry a
+  # LITERAL path that resolves inside the read scope. Anything else, of
+  # any shape, is refused, because a path built at run time cannot be
+  # scoped at author time.
+  #
+  # The method list is widened at the same time. `setInputFiles` reaches
+  # the filesystem through wrappers — element-interactions' own
+  # `uploadFile` calls it internally — and a role granted that package is
+  # expected to use them. A wrapper the kernel does not know is treated
+  # like any other unverifiable call.
   if [ -z "$CAP_ID" ]; then
-    local fw_lit fw_abs fw_rel fw_dir
+    local fw_call fw_arg fw_lit fw_abs fw_rel fw_dir fw_scope
     fw_dir=$(dirname "$(harness_os_normalize_path "$target")")
-    while IFS= read -r fw_lit; do
-      [ -n "$fw_lit" ] || continue
-      case "$fw_lit" in *://*) continue ;; esac
-      case "$fw_lit" in /*) fw_abs="$fw_lit" ;; *) fw_abs="$fw_dir/$fw_lit" ;; esac
-      fw_rel=$(harness_os_relpath "$fw_abs")
-      local fw_scope; fw_scope=$(harness_os_role_field "$ROLE" ".read.allow")
-      if [ "$fw_scope" != "null" ] && harness_os_path_in_scope "$fw_rel" "$fw_scope"; then continue; fi
-      CAP_ID='fs'; CAP_WHAT="a test-framework file API naming '$fw_rel', which is outside this role's read scope — the framework opens it directly, with no host module for a scope check to see"
-      break
+    fw_scope=$(harness_os_role_field "$ROLE" ".read.allow")
+    while IFS= read -r fw_call; do
+      [ -n "$fw_call" ] || continue
+      # The argument text: for attach({path: X}) the value after `path:`,
+      # otherwise everything inside the parens. Spaces around the colon
+      # are normalised away FIRST — a `case` pattern is a glob, where
+      # `[[:space:]]*` means one space then anything rather than zero or
+      # more spaces, so `path: s` did not match and the option name was
+      # read as the path.
+      local fw_norm
+      fw_norm=$(printf '%s' "$fw_call" | sed -E 's/[[:space:]]*:[[:space:]]*/:/g')
+      # `attach` names a file ONLY through its `path:` property —
+      # `attach("shot", { body: await page.screenshot() })` opens
+      # nothing, and reading its last argument as a path refused the
+      # commonest attachment in any Playwright suite.
+      case "$fw_norm" in
+        .attach*|.attachFile*)
+          case "$fw_norm" in *[Pp]ath:*) : ;; *) continue ;; esac ;;
+      esac
+      case "$fw_norm" in
+        *[Pp]ath:*)
+          # attach(name, { path: X }) — the value after `path:`. Spaces
+          # around the colon are normalised away first, because a `case`
+          # pattern is a glob where `[[:space:]]*` means one space then
+          # anything, not zero-or-more spaces.
+          fw_arg="${fw_norm#*[Pp]ath:}"
+          fw_arg=$(printf '%s' "$fw_arg" | sed -E 's/[,)}].*$//') ;;
+        *)
+          # setInputFiles and the upload wrappers take the path LAST:
+          # `setInputFiles(path)` from a locator, `setInputFiles(sel,
+          # path)` from the page, `uploadFile(a, b, path)` from the
+          # package. Taking the FIRST argument read the SELECTOR as the
+          # path, and a selector like "#f" resolves inside tests/** —
+          # so an out-of-scope path in the second argument was waved
+          # through by the very check that had caught it for two rounds.
+          fw_arg="${fw_norm#*(}"
+          fw_arg=$(printf '%s' "$fw_arg" | sed -E 's/\)[^)]*$//')
+          # An ARRAY names several files and the framework reads every
+          # one of them. Reducing the operand to its last comma-separated
+          # token — which is what "the path comes last" meant when only
+          # one path was in view — checked the final element and left the
+          # rest structurally invisible, so putting the secret anywhere
+          # but last walked straight through. Every element is a path,
+          # so every element is checked.
+          case "$fw_arg" in
+            *\[*\]*) fw_arg="${fw_arg#*\[}"; fw_arg="${fw_arg%%\]*}" ;;
+            *,*)       fw_arg="${fw_arg##*,}" ;;
+          esac ;;
+      esac
+      # One candidate per comma. A single path yields one; an array
+      # yields all of them, and a call is only safe when EVERY path it
+      # names is.
+      local fw_cand fw_bad=0
+      while IFS= read -r fw_cand; do
+        [ -n "$fw_cand" ] || continue
+        # Trim AFTER splitting: splitting exposes whitespace that was
+        # interior a moment ago, and a trailing space made
+        # `"../fixtures/cv.pdf" ` fail the literal test and refused an
+        # ordinary fixture reference.
+        fw_arg=$(printf '%s' "$fw_cand" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+        [ -n "$fw_arg" ] || continue
+      # A literal is a single quoted string and nothing else. Anything
+      # further — a variable, a template, a member expression, a call —
+      # is a path this kernel cannot resolve.
+      case "$fw_arg" in
+        \"*\") fw_lit="${fw_arg%\"}"; fw_lit="${fw_lit#\"}"; case "$fw_lit" in *\"*) fw_lit="" ;; esac ;;
+        \'*\') fw_lit="${fw_arg%\'}"; fw_lit="${fw_lit#\'}"; case "$fw_lit" in *\'*) fw_lit="" ;; esac ;;
+        *) fw_lit="" ;;
+      esac
+      # Being quoted is not the same as being static. A string carrying
+      # an interpolation — `${…}` in a template, or the same text in a
+      # double-quoted string that some other layer produced — names a
+      # path that does not exist until run time, and resolving it here
+      # produces a confident answer about a directory literally called
+      # `${d}`. Found while chasing why a template-literal probe passed:
+      # the backticks had been flattened to quotes before the kernel saw
+      # them, and the quoted form sailed through as a resolvable literal.
+      case "$fw_lit" in *'${'*|*'`'*) fw_lit="" ;; esac
+        if [ -z "$fw_lit" ]; then
+          CAP_ID='fs'; CAP_WHAT="a test-framework file API whose path is built at run time ('$fw_arg'), which no scope check can resolve — the framework opens it directly, with no host module for a check to see"
+          fw_bad=1; break
+        fi
+        case "$fw_lit" in *://*) continue ;; esac
+        case "$fw_lit" in /*) fw_abs="$fw_lit" ;; *) fw_abs="$fw_dir/$fw_lit" ;; esac
+        fw_rel=$(harness_os_relpath "$fw_abs")
+        if [ "$fw_scope" != "null" ] && harness_os_path_in_scope "$fw_rel" "$fw_scope"; then continue; fi
+        CAP_ID='fs'; CAP_WHAT="a test-framework file API naming '$fw_rel', which is outside this role's read scope — the framework opens it directly, with no host module for a scope check to see"
+        fw_bad=1; break
+      done <<< "$(printf '%s' "$fw_arg" | tr ',' '\n')"
+      [ "$fw_bad" = "1" ] && break
     done < <(printf '%s' "$CODE_N" \
-      | grep -oE "\.attach[[:space:]]*\([^)]*\bpath[[:space:]]*:[[:space:]]*\"[^\"]+\"|\.setInputFiles[[:space:]]*\([^)]*\"[^\"]+\"" 2>/dev/null \
-      | sed -E 's/.*"([^"]+)".*/\1/')
+      | grep -oE "\.(attach|setInputFiles|uploadFile|uploadFiles|attachFile|setFiles)[[:space:]]*\([^)]*\)?" 2>/dev/null)
   fi
   # An IMPORT ALLOWLIST, when the role declares one. Round 6 made the
   # argument that killed the previous design: the capability branches
