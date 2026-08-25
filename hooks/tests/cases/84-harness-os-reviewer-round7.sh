@@ -74,8 +74,12 @@ wpay() { "$JQ" -nc --arg f "$1" --arg c "$2" --arg a "$3" \
 assert_deny "$H" "$(wpay "$P/tests/e2e/w1.spec.ts" 'const { Worker } = require("worker_threads");
 new Worker("...", { eval: true });' composer)" \
   "F1 requiring worker_threads → DENY" "does NOT inherit the runtime permission profile"
-assert_deny "$H" "$(wpay "$P/tests/e2e/w2.spec.ts" 'new Worker(src, { eval: true });' composer)" \
-  "F1 'new Worker(' with no visible require → DENY" "worker thread"
+# ...but ONLY worker_threads. Node exposes no global Worker, so a bare
+# `new Worker(...)` in a spec is necessarily the BROWSER one, which
+# cannot touch the host at all. Round 8 pointed out that flagging it made
+# the axis unusable for any app with a web or service worker.
+assert_allow "$H" "$(wpay "$P/tests/e2e/w2.spec.ts" 'await page.evaluate(() => { const w = new Worker("/worker.js"); w.postMessage(1); });' composer)" \
+  "F1 calibration: a BROWSER worker inside page.evaluate → ALLOW"
 assert_deny "$H" "$(wpay "$P/tests/e2e/w3.spec.ts" 'import { Worker } from "worker_threads";' composer)" \
   "F1 the import form → DENY" "worker thread"
 
@@ -91,7 +95,7 @@ assert_deny "$H" "$(wpay "$P/tests/e2e/c4.spec.ts" 'const d = require //x
   "F2 a LINE comment before the argument → DENY" "not in this role's declared import list"
 # And through the other authoring channel, which round 4 opened.
 assert_deny "$H" "$(payload tool_name=Bash command='echo "const d = require/**/(\"dotenv\");" > tests/e2e/c5.spec.ts' cwd="$P" $C)" \
-  "F2 the same trick through the bash authoring route → DENY" "not in this role's declared import list"
+  "F2 the same trick through the bash authoring route → DENY" "must be written with Write or Edit"
 
 # --- FP: the screen must tell code from commentary --------------------
 assert_allow "$H" "$(wpay "$P/tests/e2e/f1.spec.ts" 'import type { Page } from "playwright-core";

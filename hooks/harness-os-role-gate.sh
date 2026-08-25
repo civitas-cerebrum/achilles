@@ -329,9 +329,10 @@ check_code_capabilities() {
       s{ ("(?:\\.|[^"\\])*")
        | (\x27(?:\\.|[^\x27\\])*\x27)
        | (`(?:\\.|[^`\\])*`)
+       | (/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\[\n])+/[gimsuyvd]*)
        | (/\*.*?\*/)
        | (//[^\n]*)
-       }{ (defined($1) || defined($2) || defined($3)) ? $& : " " }gsex;
+       }{ (defined($1) || defined($2) || defined($3) || defined($4)) ? $& : " " }gsex;
       s{\b(require|import)\s*\(\s*}{$1(}gs;
       s{\bfrom\s*(["\x27])}{from $1}gs' 2>/dev/null || printf '%s' "$code")
   # A SECOND view, stripping comment shapes unconditionally, is appended
@@ -373,20 +374,24 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # a dynamic module name it was a complete bypass. A capability method
   # named at all is the signal; you do not name writeFileSync by accident.
   FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync\b|\[[[:space:]]*"[^"]*Sync"[[:space:]]*\]|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream\b'
-  if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|path|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\(|${FS_METHODS}|readFile[[:space:]]*\(|Path[[:space:]]*\("; then
+  if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|path|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\([[:space:]]*[\"'\`]|${FS_METHODS}|readFile[[:space:]]*\(|Path[[:space:]]*\("; then
     CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
     CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system …) — code that runs commands no command group checked'
-  elif printf '%s' "$CODE_N" | grep -Eq '\bworker_threads\b|\bnew[[:space:]]+Worker[[:space:]]*\(|\bWorker[[:space:]]*\([[:space:]]*"|\bnew[[:space:]]+SharedWorker\b'; then
+  elif printf '%s' "$CODE_N" | grep -Eq '\bworker_threads\b'; then
     # A Worker thread does not inherit Node's permission-model filesystem
     # restrictions, so authoring one is authoring a way out of the very
     # profile `harness-os run` installs. It is not process spawning and
     # was on no capability list at all; a reviewer read a secret through
     # it with the runtime profile active and the static screen silent.
-    CAP_ID='process'; CAP_WHAT='a worker thread (worker_threads / new Worker) — a worker does NOT inherit the runtime permission profile, so it is a way out of the containment that profile installs'
+    # Only worker_threads. A bare `new Worker(...)` inside page.evaluate
+    # is a BROWSER worker, which cannot touch the host at all — flagging
+    # it made the axis unusable for any app that has one. Node exposes no
+    # global Worker, so a Node worker must name worker_threads to exist.
+    CAP_ID='process'; CAP_WHAT='a worker thread (worker_threads) — a worker does NOT inherit the runtime permission profile, so it is a way out of the containment that profile installs'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
     CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
-  elif printf '%s' "$CODE_N" | grep -Eq "\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\(|\bsendBeacon[[:space:]]*\(|\bnavigator\.sendBeacon\b|\bapiRequestContext\b"; then
+  elif printf '%s' "$CODE_N" | grep -Eq "\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\([[:space:]]*[\"'\`]?[a-zA-Z][a-zA-Z0-9+.-]*://|\bsendBeacon[[:space:]]*\(|\bnavigator\.sendBeacon\b"; then
     # The test framework's OWN http client is the natural exfiltration
     # primitive in a test-authoring role: `request` is a standard
     # Playwright fixture and `request.get(url)` reaches any host. An axis
@@ -450,8 +455,12 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   fi
   # Playwright's own file-attachment API reads a path the kernel never
   # sees, and the composer has it in scope by definition.
-  if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq '\.(attach|setInputFiles)[[:space:]]*\('; then
-    CAP_ID='fs'; CAP_WHAT='a test-framework file API (attach / setInputFiles) that reads a path directly — no host module for a scope check to see'
+  # ...but only when a PATH is actually named. `attach("shot", { body:
+  # await page.screenshot() })` reads nothing, and `setInputFiles` with a
+  # fixture inside the read scope is the only way to test a file upload.
+  # Flagging the API rather than the path made both impossible.
+  if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq "\.attach[[:space:]]*\([^)]*\bpath[[:space:]]*:|\.setInputFiles[[:space:]]*\([^)]*['\"\`](\.\./|/)"; then
+    CAP_ID='fs'; CAP_WHAT='a test-framework file API (attach({path}) / setInputFiles) naming a path directly — no host module for a scope check to see'
   fi
   # An IMPORT ALLOWLIST, when the role declares one. Round 6 made the
   # argument that killed the previous design: the capability branches
@@ -474,7 +483,19 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   local IMPORTS_ALLOW
   IMPORTS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeImports')
   if [ -z "$CAP_ID" ] && [ "$IMPORTS_ALLOW" != "null" ]; then
-    local spec
+    local spec CODE_IMP
+    # One more view, and it is what lets both directions be right at once.
+    # A string literal is emptied UNLESS it sits directly after `from`,
+    # `require(` or `import(` — i.e. unless it is a specifier. So the
+    # fixture `const msg = "to fix, import Button from \"@mui/material\""`
+    # becomes `const msg = ""` and names nothing, while
+    # `import {config} from "dotenv"` keeps the one string that matters.
+    # Without this, splitting statements to find Prettier-wrapped imports
+    # also found the imports written inside prose.
+    CODE_IMP=$(printf '%s' "$CODE_N" | perl -0777 -pe '
+        s{("(?:\\.|[^"\\])*")}{ my $s = $1; ($` =~ /(?:\bfrom|\brequire\s*\(|\bimport\s*\(|\bimport)\s*$/s) ? $s : q{""} }ge
+      ' 2>/dev/null || printf '%s' "$CODE_N")
+    [ -n "$CODE_IMP" ] || CODE_IMP="$CODE_N"
     while IFS= read -r spec; do
       [ -n "$spec" ] || continue
       case "$spec" in ./*|../*|/*|'') continue ;; esac   # relative/absolute: not a package
@@ -483,7 +504,7 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
 
 ${ROLE_HEADER}
 File: $rel
-declared imports: $(printf '%s' "$IMPORTS_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+declared imports: $(printf '%s' "$IMPORTS_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
 
 A package name is an open set: 'dotenv' reads .env, 'glob' and 'fs-extra' wrap the filesystem, and no list of dangerous names can be finished. So this role declares what its code DOES import, and everything else is refused — the same inversion that made the builtin-module check sound.
 
@@ -495,16 +516,24 @@ Options, narrowest first:
 
 Preview before committing: harness-os explain --role ${ROLE} --tool Write --path <file> --content '<code>'"
       fi
-    # `from "x"` is only an import when a statement said so. Matching it
-    # anywhere denied a spec for a package name inside a STRING — an
-    # error-message fixture reading `to fix, import Button from
-    # "@mui/material"` refused the whole file. And `import type` is
-    # erased at compile time: it imports nothing at run time, so holding
-    # it to a runtime import list is meaningless friction on idiomatic
-    # typed specs. Both are false positives a composer meets on day one.
-    done < <(printf '%s' "$CODE_N" | tr ';' '\n' \
+    # `from "x"` is only an import when a STATEMENT said so — matching it
+    # anywhere denied a spec for a package name inside a string literal.
+    # But anchoring that statement to the start of a LINE was wrong in
+    # the other direction, and it was a regression: Prettier's default
+    # formatting puts the specifier on a different line from its `import`
+    # keyword, and on the Bash authoring channel the statement never
+    # starts a line at all. Round 6 caught both; anchoring lost them.
+    #
+    # So statements are re-derived instead of assumed: the text is
+    # normalised to one line, then split BEFORE every `import`/`export`/
+    # `require` keyword, so each fragment begins with the keyword that
+    # owns the specifier wherever a formatter put it. `import type` is
+    # erased at compile time — it imports nothing at run time — so it is
+    # dropped rather than held to a runtime list.
+    done < <(printf '%s' "$CODE_IMP" | tr '\n' ' ' | tr ';' '\n' \
+      | sed -E 's/([^A-Za-z0-9_$])(import|export|require)([^A-Za-z0-9_$])/\1\n\2\3/g' \
       | grep -vE '^[[:space:]]*(import|export)[[:space:]]+type[[:space:]]' \
-      | grep -oE '(^|[^A-Za-z0-9_$])(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|^[[:space:]]*(import|export)[^"]*from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]*"[^"]+"' 2>/dev/null \
+      | grep -oE '(^|[^A-Za-z0-9_$])(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|^[[:space:]]*(import|export)[^";]*from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]*"[^"]+"' 2>/dev/null \
       | sed -E 's/.*"([^"]+)".*/\1/' \
       | grep -vE '^\.{1,2}/|^/' \
       | sed -E 's|^(@[^/]+/[^/]+).*|\1|; t; s|^([^/]+)/.*|\1|' | sort -u)
@@ -821,7 +850,7 @@ A role's read and write scopes are relative to the project it is governed in. Ru
           harness_os_deny "bash-read-out-of-scope $GIT_REL" "[BLOCKED] Role '${ROLE}' may not read '$GIT_REL' out of git history — it is outside the role's read scope.
 
 ${ROLE_HEADER}
-read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
 
 Command: ${CMD}
 
@@ -833,7 +862,7 @@ Git history holds a second copy of the working tree, so 'git show <rev>:<path>' 
         harness_os_deny "bash-builtin-deny:vcs-history" "[BLOCKED] Role '${ROLE}' may not run '${GIT_SUB}' without naming the paths it reads — it would print file contents from git history that no path scope can check.
 
 ${ROLE_HEADER}
-read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
 
 Command: ${CMD}
 
@@ -1085,6 +1114,52 @@ Command: ${CMD}"
       # segment: `echo '<code>' | tee spec.ts` carries the code in the
       # segment BEFORE the one naming the file, so a per-segment view
       # would see `tee spec.ts` and find nothing to object to.
+      #
+      # But for a role whose manifest DECLARES code constraints, the
+      # screen refuses this channel outright instead of trying to read it.
+      # Screening `$CMD` means matching JS patterns against SHELL syntax,
+      # and the two disagree in ways no amount of pattern work reconciles:
+      # a single backslash — `require\("fs"\)` — defeats every rule that
+      # expects a literal `(`, because the shell strips it and the file on
+      # disk is byte-identical to the denied form. A reviewer used that to
+      # turn the whole screen off at once.
+      #
+      # So the honest boundary is: if a role has declared what its code
+      # may import or do, it authors code through Write/Edit, where the
+      # CONTENT is the tool input and can actually be screened. A role
+      # that declares nothing keeps the old advisory behaviour, which is
+      # what the docs already say it is.
+      CC_IMPORTS=$(harness_os_role_field "$ROLE" '.write.codeImports')
+      CC_CAPS=$(harness_os_role_field "$ROLE" '.write.codeCapabilities')
+      if [ "$CC_IMPORTS" != "null" ] || [ "$CC_CAPS" != "null" ]; then
+        # Executable by extension, OR carrying no extension at all — a
+        # file with no suffix is exactly where a `#!/bin/sh` shebang
+        # hides, and the extension gate used to skip it entirely.
+        EXEC_TARGET=0
+        case "${target##*/}" in
+          *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1) EXEC_TARGET=1 ;;
+          *.*) EXEC_TARGET=0 ;;             # some other extension: data
+          *)   EXEC_TARGET=1 ;;             # no extension: runnable
+        esac
+        case "$EXEC_TARGET" in
+          1)
+            harness_os_deny "bash-authoring-executable $(harness_os_relpath "$target")" "[BLOCKED] Role '${ROLE}' may not author '$(harness_os_relpath "$target")' through Bash — an executable file must be written with Write or Edit.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+This role declares what its code may import or do, and that screen needs the file's CONTENT. Through Bash the kernel sees a shell command, not a file: quoting and escaping differ, and \`require\\(\"fs\"\\)\` reaches disk identical to a form the screen refuses. Rather than pretend to read it, this channel is closed for files something can run.
+
+Use the tool whose input IS the content:
+  Write  file_path: $(harness_os_relpath "$target")
+  Edit   for a change to a file that already exists
+
+Non-executable files (fixtures, notes, JSON) are unaffected."
+            ;;
+        esac
+      fi
+
       check_code_capabilities "$target" "$CMD" "
 Channel: authored via Bash (\`${SEG_WORDS[0]:-}\`) — the same screen applies to every route that puts a file on disk."
       # Root of trust first, and for EVERY write channel. The manifest is
@@ -1280,7 +1355,7 @@ A segment this long cannot be verified against the role's read scope, so it is r
             harness_os_deny "bash-unverifiable-path-expansion" "[BLOCKED] Role '${ROLE}' used a shell expansion inside a path argument ('$tok'), which the kernel cannot resolve — so it cannot be checked against the role's read scope.
 
 ${ROLE_HEADER}
-read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
 
 Command: ${CMD}
 
