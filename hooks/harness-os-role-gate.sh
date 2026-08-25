@@ -538,7 +538,13 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # by the capability name. Every way a module can be reached, including
   # the indirect ones reviewers used (module.constructor._load, the
   # constructor.constructor Function trick, process.binding).
-  LOAD='(require|import|createRequire\([^)]*\)|process\.getBuiltinModule|process\.binding|module\.constructor\._load|constructor\.constructor|Deno\.|Bun\.)'
+  # The bracket form — `globalThis["require"]("fs")`, `m["require"]` —
+  # is the same access spelled as a computed member, which concatenation
+  # folding reduces to a single literal before this runs. Round 25
+  # flagged it as a blind spot rather than a working escape (`require`
+  # is not a property of globalThis in Node, so that exact spelling
+  # throws), and it costs one alternation to close either way.
+  LOAD='(require|\[[[:space:]]*"(require|import)"[[:space:]]*\]|import|createRequire\([^)]*\)|process\.getBuiltinModule|process\.binding|module\.constructor\._load|constructor\.constructor|Deno\.|Bun\.)'
   # Filesystem work is matched by METHOD FAMILY rather than by an
   # enumerated list: any fs-shaped *Sync call, any fs.promises use, any
   # *FileSync. Enumerating method names was defeated by
@@ -610,6 +616,29 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # only the three-slash form missed the shortest spelling of it.
   if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:/'; then
     CAP_ID='fs'; CAP_WHAT='a file: URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
+  fi
+  # CONFIGURATION THAT IS A COMMAND. Round 25's finding, and the one
+  # that says the most about what this screen is: every branch above
+  # looks for CODE that reaches a host capability, and a test framework
+  # offers a first-class field whose value is a shell command in plain
+  # English:
+  #
+  #     export default { webServer: { command: "cat .env > leak.txt" } }
+  #
+  # Nothing there is code. No import, no call, no obfuscation — and
+  # `npx playwright test -c that-file` is a permitted command. The
+  # identical intent written as `execSync("cat .env")` is refused by the
+  # branch fifty lines up. Only the data spelling escaped.
+  #
+  # So a `command:`/`cmd:` key bound to a string is treated as process
+  # spawning, because that is exactly what the runtime does with it. Be
+  # honest about what this is: an enumeration, and therefore a floor
+  # rather than a boundary, exactly like the language branches below.
+  # The structural answer is in `harness-os validate`, which now names
+  # any role that both authors and runs, and in `harness-os run`.
+  if [ -z "$CAP_ID" ] \
+     && printf '%s' "$CODE_N" | grep -Eq '(^|[^A-Za-z0-9_$.])["'"'"'`]?(command|cmd)["'"'"'`]?[[:space:]]*:[[:space:]]*["'"'"'`]'; then
+    CAP_ID='process'; CAP_WHAT='a configuration key whose value is a command string (command:/cmd:) — a runtime that reads this file spawns that command through a shell, which no command group ever checked'
   fi
   # The extension gate opts .rb/.php/.lua/.ps1/.sh into this screen, and
   # until round 6 there were no patterns for any of them — so a role could
@@ -802,7 +831,51 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     [ -n "$CODE_IMP" ] || CODE_IMP="$CODE_N"
     while IFS= read -r spec; do
       [ -n "$spec" ] || continue
-      case "$spec" in ./*|../*|/*|'') continue ;; esac   # relative/absolute: not a package
+      case "$spec" in '') continue ;; esac
+      # A relative or absolute specifier is not a package, so the
+      # allowlist has nothing to say about it — but it is still a READ,
+      # and this branch used to `continue` outright. The deny message
+      # two dozen lines below has always offered "a relative import
+      # inside your write scope" as the safe alternative; nothing
+      # enforced the "inside". `import d from "../../.env"` was ALLOW,
+      # and so was pulling any importable file in the repo into the
+      # executed test context. Round 25 found the gap by reading the
+      # code's own promise back to it.
+      #
+      # So a relative specifier is resolved against the FILE's directory
+      # and held to the same scope as any other read — the identical
+      # rule the framework-file-API branch above already applies, for the
+      # identical reason: the runtime opens the path directly, with no
+      # host module for a scope check to see. Only candidates that
+      # actually EXIST can deny, which is what keeps a specifier that
+      # resolves to nothing from costing anything.
+      case "$spec" in
+        ./*|../*|/*)
+          local imp_dir imp_abs imp_rel imp_scope imp_wscope imp_ext imp_cand
+          imp_dir=$(dirname "$(harness_os_normalize_path "$target")")
+          imp_scope=$(harness_os_role_field "$ROLE" '.read.allow')
+          imp_wscope=$(harness_os_role_field "$ROLE" '.write.allow')
+          [ "$imp_scope" = "null" ] && continue
+          case "$spec" in /*) imp_abs="$spec" ;; *) imp_abs="$imp_dir/$spec" ;; esac
+          imp_abs=$(harness_os_normalize_path "$imp_abs")
+          for imp_ext in "" .ts .tsx .mts .cts .js .jsx .mjs .cjs .json .node /index.ts /index.js /index.mjs; do
+            imp_cand="${imp_abs}${imp_ext}"
+            [ -f "$imp_cand" ] || continue
+            imp_rel=$(harness_os_relpath "$imp_cand")
+            harness_os_path_in_scope "$imp_rel" "$imp_scope" && continue
+            if [ "$imp_wscope" != "null" ] && harness_os_path_in_scope "$imp_rel" "$imp_wscope"; then continue; fi
+            harness_os_deny "write-code-import-scope:$imp_rel $rel" "[BLOCKED] Role '${ROLE}' may not author code importing '$spec' — it resolves to '$imp_rel', which is outside this role's read scope.
+
+${ROLE_HEADER}
+File: $rel${via}
+read scope: $(printf '%s' "$imp_scope" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+A relative import is exempt from the package allowlist because it names no package — but it is still a read, and the runtime opens it directly with no host module for a scope check to see. It is held to the same scope as naming the file any other way.
+
+Import only paths inside this role's read scope."
+          done
+          continue ;;
+      esac
       if ! printf '%s' "$IMPORTS_ALLOW" | "$JQ" -e --arg m "$spec" 'index($m) != null' >/dev/null 2>&1; then
         harness_os_deny "write-code-import:$spec $rel" "[BLOCKED] Role '${ROLE}' may not author code importing '$spec' — it is not in this role's declared import list.
 
@@ -839,8 +912,7 @@ Preview before committing: harness-os explain --role ${ROLE} --tool Write --path
       | grep -vE '^[[:space:]]*(import|export)[[:space:]]+type[[:space:]]' \
       | grep -oE '(^|[^A-Za-z0-9_$])(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|^[[:space:]]*(import|export)[^";]*from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]*"[^"]+"' 2>/dev/null \
       | sed -E 's/.*"([^"]+)".*/\1/' \
-      | grep -vE '^\.{1,2}/|^/' \
-      | sed -E 's|^(@[^/]+/[^/]+).*|\1|; t; s|^([^/]+)/.*|\1|' | sort -u)
+      | sed -E '/^[.\/]/b; s|^(@[^/]+/[^/]+).*|\1|; t; s|^([^/]+)/.*|\1|' | sort -u)
   fi
 
   [ -n "$CAP_ID" ] || return 0
@@ -2157,6 +2229,77 @@ Your command group DOES grant '${SEG_WORDS[0]}'. This refusal is about WHERE it 
           fi
         fi
       fi
+    fi
+
+    # 5c. A contained role may not point a run at a file it can write.
+    #
+    # Round 25 walked through axis 5b without writing a line of code. The
+    # composer authored `tests/e2e/evil.config.ts` — inside its write
+    # scope — holding a framework config whose `webServer.command` is a
+    # shell command, then ran `npx playwright test -c
+    # tests/e2e/evil.config.ts`, a command its group grants outright.
+    # Playwright spawned the string through /bin/sh, the secret landed in
+    # `tests/e2e/`, which is in the composer's READ scope, and the
+    # composer read it. Every step ALLOW, no obfuscation anywhere.
+    #
+    # The capability screen now recognises a `command:` key, which closes
+    # that spelling where the file is authored. This closes the SHAPE,
+    # and it needs to: the config need not look like a config. A
+    # `.spec.ts` that default-exports a config object is a valid `-c`
+    # operand, so screening by filename misses it, and screening by
+    # content is the arms race round 25 was about.
+    #
+    # The rule is stated against the role's own grants rather than any
+    # framework's semantics. A role that declares what its code may
+    # import or do is a role whose authored files are held at arm's
+    # length, and a config file is instructions to the runtime rather
+    # than data for it. So the runtime may not be handed one from inside
+    # that role's write scope. Named test files are untouched: they
+    # arrive as POSITIONAL operands, which is the job.
+    if [ "$WRITE_ALLOW" != "null" ] \
+       && { [ "$(harness_os_role_field "$ROLE" '.write.codeImports')" != "null" ] \
+            || [ "$(harness_os_role_field "$ROLE" '.write.codeCapabilities')" != "null" ]; }; then
+      case "${SEG_WORDS[0]:-}" in
+        npx|npm|yarn|pnpm|bunx|node|nodejs|deno|bun|tsx|ts-node|playwright|vitest|jest|mocha|cypress|wdio)
+          CFG_NEXT=0
+          for __i in "${!SEG_WORDS[@]}"; do
+            [ "$__i" = "0" ] && continue
+            __w="${SEG_WORDS[$__i]}"
+            CFG_CAND=""
+            if [ "$CFG_NEXT" = "1" ]; then
+              CFG_NEXT=0
+              case "$__w" in -*) continue ;; esac
+              CFG_CAND="$__w"
+            else
+              case "$__w" in
+                -c|--config|--config-file|--global-setup|--globalSetup|--global-teardown|--globalTeardown|--setup-files|--setupFiles|--require|--import|--loader|--experimental-loader|--reporter|--preset)
+                  CFG_NEXT=1; continue ;;
+                --config=*|--config-file=*|--global-setup=*|--globalSetup=*|--global-teardown=*|--globalTeardown=*|--setup-files=*|--setupFiles=*|--require=*|--import=*|--loader=*|--experimental-loader=*|--reporter=*|--preset=*)
+                  CFG_CAND="${__w#*=}" ;;
+                -c?*) CFG_CAND="${__w#-c}" ;;
+                *) continue ;;
+              esac
+            fi
+            [ -n "$CFG_CAND" ] || continue
+            case "$CFG_CAND" in *://*|-*) continue ;; esac
+            CFG_REL=$(harness_os_relpath "$(harness_os_normalize_path "$CFG_CAND")")
+            harness_os_path_in_scope "$CFG_REL" "$WRITE_ALLOW" || continue
+            harness_os_deny "bash-self-authored-config $CFG_REL" "[BLOCKED] Role '${ROLE}' may not hand '$CFG_REL' to '${SEG_WORDS[0]}' as configuration — it is inside this role's own write scope.
+
+${ROLE_HEADER}
+write scope: $(printf '%s' "$WRITE_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+Command: ${CMD}
+
+A configuration file is instructions to the runtime, not data for it: a framework config can name a web-server command, a global setup module or a reporter, and every one of those becomes a process. This role declares what its code may import or do, so its authored files are held at arm's length — which means it may not author the file that tells the runner what to do and then hand it over.
+
+Naming test files is unaffected; they are positional operands, not configuration:
+  ${SEG_WORDS[0]} … tests/…/your.spec.ts
+
+If this role genuinely needs its own runner configuration, the operator owns that file: put it outside this role's write scope, where the run picks it up and the role cannot rewrite it."
+          done
+          ;;
+      esac
     fi
   done <<< "$SEGMENTS"
 fi
