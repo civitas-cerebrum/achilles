@@ -165,6 +165,14 @@ case "$HOS_TOOL" in
         .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*)
           harness_os_deny "self-protect write $TARGET" "$SELF_PROTECT_MSG" ;;
       esac
+      # The INSTALLED kernel is the root of trust wherever it lives. A
+      # project-local install sits in node_modules, which no self-protect
+      # list covered — a role could truncate the hook and disable every
+      # boundary on the next call.
+      case "$NORM_TARGET" in
+        */harness-os/hooks/*|*/.claude/hooks/*|*/harness-os-role-gate.sh|*/lib/harness-os.sh)
+          harness_os_deny "self-protect write kernel $TARGET" "$SELF_PROTECT_MSG" ;;
+      esac
     fi
     ;;
   Bash)
@@ -173,10 +181,19 @@ case "$HOS_TOOL" in
     # holds them — in a write-shaped command → deny. Reads pass to the
     # normal bash axis. Quote-blind, protective direction: `rm -rf
     # .claude` must not escape just because it never says "harness-os".
-    if printf '%s' "$CMD" | grep -Eq 'harness-os\.(json|state)|(^|[^a-zA-Z0-9_.-])\.claude([/"'"'"'[:space:]]|$)'; then
-      if printf '%s' "$CMD" | grep -Eq '(^|[;&| ])(rm|rmdir|unlink|mv|cp|tee|truncate|shred|dd|install|ln)[[:space:]]|>[[:space:]]*[^&[:space:]]|sed[[:space:]]+(-[a-zA-Z]*i)|chmod|chown' ; then
-        harness_os_deny "self-protect bash" "$SELF_PROTECT_MSG"
-      fi
+    # The protected path must be the TARGET of the mutation, not merely
+    # mentioned somewhere in the command. Matching any command that named
+    # `.claude` and contained a write verb anywhere blocked innocuous
+    # work like `echo see .claude/settings.json > tests/e2e/notes.txt`.
+    PROT_RE='(harness-os\.(json|state)|(^|[^a-zA-Z0-9_.-])\.claude(/|$))'
+    if printf '%s' "$CMD" | grep -Eq ">>?[[:space:]]*[^[:space:]|&;]*${PROT_RE}"; then
+      harness_os_deny "self-protect bash redirect" "$SELF_PROTECT_MSG"
+    fi
+    if printf '%s' "$CMD" | grep -Eq "(^|[;&|][[:space:]]*|[[:space:]])(rm|rmdir|unlink|mv|cp|tee|truncate|shred|dd|install|ln|chmod|chown)([[:space:]]+(-[^[:space:]]+|if=[^[:space:]]+))*[[:space:]]+[^;|&]*${PROT_RE}"; then
+      harness_os_deny "self-protect bash mutate" "$SELF_PROTECT_MSG"
+    fi
+    if printf '%s' "$CMD" | grep -Eq "sed[[:space:]]+-[a-zA-Z]*i[^;|&]*${PROT_RE}"; then
+      harness_os_deny "self-protect bash sed-i" "$SELF_PROTECT_MSG"
     fi
     ;;
 esac
@@ -269,8 +286,26 @@ Fix the manifest in an operator design session — until then this role can run 
   # require EVERY non-empty segment to clear every check below.
   SEGMENTS=$(printf '%s' "$CLEAN" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g' -e 's/&/\n/g')
   while IFS= read -r seg; do
-    seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]({]+//; s/[[:space:])}]+$//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+    # Keep the untouched segment: the normalisation below strips trailing
+    # grouping punctuation, which would silently REMOVE the closing brace
+    # of a `{a,b}` expansion and hide it from both the brace-expansion
+    # deny and the read-token scan. A reviewer read .env through exactly
+    # that gap with `cat {.env,x}`, so every check that could be fooled
+    # by the strip consults SEG_RAW instead.
+    SEG_RAW="$seg"
+    seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]({]+//; s/[[:space:])}]+$//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*[[:space:]]+)*//')
     [ -n "$seg" ] || continue
+
+    # Quote-aware views of the segment. Quoting does not change which word
+    # is the command — `"cat" x` still runs cat — so the command-name and
+    # allow-set checks keep reading the segment verbatim. It DOES decide
+    # whether a construct is syntax or text, and the expansion checks below
+    # would otherwise fire on `echo '{"a":1,"b":2}'` and stay silent on
+    # nothing at all. SEG_NOQ blanks every quoted run (what the shell still
+    # globs / brace-expands); SEG_NOSQ blanks only single-quoted runs,
+    # because $… and `…` keep expanding inside double quotes.
+    SEG_NOQ=$(printf '%s\n' "$SEG_RAW" | harness_os_unquoted_view both)
+    SEG_NOSQ=$(printf '%s\n' "$seg" | harness_os_unquoted_view single)
 
     # Strip leading command-runner / wrapper prefixes so the checks below
     # see the REAL command. `env sh -c …`, `timeout 5 python -c …`,
@@ -293,6 +328,151 @@ Fix the manifest in an operator design session — until then this role can run 
     done
     [ -n "$seg" ] || continue
 
+    # Quote-stripped word list for the segment — what the shell will treat
+    # as the command word and its operands.
+    SEG_WORDS=()
+    while IFS= read -r __w; do
+      [ -n "$__w" ] || continue
+      SEG_WORDS+=("${__w#?}")
+    done < <(printf '%s\n' "$seg" | harness_os_shell_words)
+
+    # 3a-bis. Version-control history is a second copy of the working
+    # tree, and every path scope in this kernel is expressed against the
+    # working tree. `git show HEAD:.env` reads the file out of the object
+    # store: no operand names `.env` as an existing path, so the read-token
+    # scan below never sees it, and the secret is printed. A reviewer used
+    # exactly that to defeat a read-only role's scope.
+    #
+    # So content-bearing git subcommands are held to the read scope the
+    # same way any other read is:
+    #   * a `<rev>:<path>` operand is scope-checked on its <path>;
+    #   * pathspecs after `--` are scope-checked;
+    #   * a command with no path constraint at all reads whatever the
+    #     history holds, which cannot be scope-checked, so it is denied as
+    #     the construct 'vcs-history' (permit it per role if a role's job
+    #     really is reading history wholesale).
+    # Metadata-only forms (`git log` without a patch flag, `--stat`,
+    # `--name-only`, `git status`, `git rev-parse`…) print no file content
+    # and stay untouched — this must not become the axis that makes git
+    # unusable.
+    GIT_CONTENT=0
+    GIT_ANCHOR=""
+    if [ "${SEG_WORDS[0]:-}" = "git" ]; then
+      # Find the subcommand. Global options come first, and some of them
+      # TAKE A VALUE — `git -c core.pager=cat show …` would otherwise be
+      # read as the subcommand 'core.pager=cat' and sail past this axis.
+      GIT_SUB=""
+      GIT_SKIP_NEXT=0
+      for __i in "${!SEG_WORDS[@]}"; do
+        [ "$__i" = "0" ] && continue
+        __w="${SEG_WORDS[$__i]}"
+        if [ "$GIT_SKIP_NEXT" = "1" ]; then
+          GIT_SKIP_NEXT=0
+          [ -n "$GIT_ANCHOR" ] || { case "${SEG_WORDS[$((__i - 1))]}" in -C) GIT_ANCHOR="$__w" ;; esac; }
+          continue
+        fi
+        case "$__w" in
+          -C|-c|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix|--config-env)
+            GIT_SKIP_NEXT=1; continue ;;
+          --git-dir=*) GIT_ANCHOR="${__w#*=}"; continue ;;
+          --work-tree=*) GIT_ANCHOR="${__w#*=}"; continue ;;
+          -*) continue ;;                    # valueless global option
+          *) GIT_SUB="$__w"; break ;;
+        esac
+      done
+      # -C/--git-dir/--work-tree re-anchor the repository the same way `cd`
+      # re-anchors relative paths: every scope check below assumes the
+      # project this call runs in. A no-op anchor is fine; anything else is
+      # denied for the same reason a real `cd` is.
+      if [ -n "$GIT_ANCHOR" ] && [ "$BASH_UNRESTRICTED" != "true" ]; then
+        GIT_ANCHOR_N=$(harness_os_normalize_path "$GIT_ANCHOR")
+        if [ "$GIT_ANCHOR_N" != "$(harness_os_normalize_path "$HOS_CWD")" ] \
+           && [ "$GIT_ANCHOR_N" != "$(harness_os_normalize_path "$HOS_CWD/.git")" ] \
+           && ! { [ "$BASH_PERMIT" != "null" ] && printf '%s' "$BASH_PERMIT" | "$JQ" -e 'index("cd") != null' >/dev/null 2>&1; }; then
+          harness_os_deny "bash-builtin-deny:cd" "[BLOCKED] Role '${ROLE}' pointed git at a different repository ('$GIT_ANCHOR') — that re-anchors every path this role's scopes are expressed against.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+A role's read and write scopes are relative to the project it is governed in. Run git against that project (drop -C/--git-dir/--work-tree, or point them at the current directory)."
+        fi
+      fi
+      GIT_PATCHY=0
+      case " ${SEG_WORDS[*]} " in *' -p '*|*' -u '*|*' --patch '*|*' --patch-with-stat '*) GIT_PATCHY=1 ;; esac
+      GIT_NAMESONLY=0
+      case " ${SEG_WORDS[*]} " in
+        *' --stat '*|*' --name-only '*|*' --name-status '*|*' --numstat '*|*' --shortstat '*|*' -s '*|*' --quiet '*|*' --summary '*) GIT_NAMESONLY=1 ;;
+      esac
+      case "$GIT_SUB" in
+        show|diff|cat-file|archive|grep|blame|format-patch|diff-tree|diff-index)
+          GIT_CONTENT=1 ;;
+        log|stash|whatchanged)
+          [ "$GIT_PATCHY" = "1" ] && GIT_CONTENT=1 ;;
+      esac
+      # An explicit names-only/stat request prints no file bodies.
+      [ "$GIT_NAMESONLY" = "1" ] && [ "$GIT_PATCHY" = "0" ] && GIT_CONTENT=0
+    fi
+    if [ "$GIT_CONTENT" = "1" ] && [ "$READ_ALLOW" != "null" ]; then
+      GIT_CONSTRAINED=0
+      GIT_DDASH=0
+      for __w in "${SEG_WORDS[@]:1}"; do
+        if [ "$__w" = "--" ]; then GIT_DDASH=1; continue; fi
+        GIT_PATHS=()
+        if [ "$GIT_DDASH" = "1" ]; then
+          GIT_PATHS+=("$__w")
+        else
+          case "$__w" in
+            -*) continue ;;
+            *://*) continue ;;
+            *:*) GIT_PATHS+=("${__w#*:}") ;;   # <rev>:<path> and :<path>
+            *)   # a bare operand that IS an existing path is a pathspec;
+                 # the read-token scan below scope-checks it for us.
+                 if [ -e "$HOS_CWD/$__w" ] || { case "$__w" in /*) [ -e "$__w" ] ;; *) false ;; esac; }; then
+                   GIT_CONSTRAINED=1
+                 fi
+                 continue ;;
+          esac
+        fi
+        for __p in "${GIT_PATHS[@]}"; do
+          [ -n "$__p" ] || continue
+          GIT_CONSTRAINED=1
+          harness_os_is_manifest_path "$__p" && continue
+          GIT_REL=$(harness_os_relpath "$__p")
+          if [ "$READ_DENY" != "null" ] && harness_os_path_in_scope "$GIT_REL" "$READ_DENY"; then :
+          elif harness_os_path_in_scope "$GIT_REL" "$READ_ALLOW"; then continue
+          elif [ "$HAS_WRITE_GRANTS" = "1" ] && harness_os_path_in_scope "$GIT_REL" "$WRITE_ALLOW"; then continue
+          fi
+          harness_os_deny "bash-read-out-of-scope $GIT_REL" "[BLOCKED] Role '${ROLE}' may not read '$GIT_REL' out of git history — it is outside the role's read scope.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+
+Command: ${CMD}
+
+Git history holds a second copy of the working tree, so 'git show <rev>:<path>' is a read of <path> and is scope-checked identically. The scope is the role's context diet, whichever channel does the reading."
+        done
+      done
+      if [ "$GIT_CONSTRAINED" = "0" ] && [ "$BASH_UNRESTRICTED" != "true" ] \
+         && ! { [ "$BASH_PERMIT" != "null" ] && printf '%s' "$BASH_PERMIT" | "$JQ" -e 'index("vcs-history") != null' >/dev/null 2>&1; }; then
+        harness_os_deny "bash-builtin-deny:vcs-history" "[BLOCKED] Role '${ROLE}' may not run '${GIT_SUB}' without naming the paths it reads — it would print file contents from git history that no path scope can check.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+
+Command: ${CMD}
+
+Git history is a second copy of the working tree, so an unconstrained 'git ${GIT_SUB}' reads whatever the history holds — including files this role's read scope excludes. Options, narrowest first:
+  1. Name the paths: git ${GIT_SUB} … -- <path within the read scope>
+     (or 'git show <rev>:<path>'), which is scope-checked like any read.
+  2. Ask for names, not contents: --stat / --name-only / --name-status.
+  3. If reading history wholesale really is this role's job, the operator
+     can permit exactly that construct:
+       \"bash\": { \"permit\": [\"vcs-history\"] }
+     Every other construct, and every other axis, still applies."
+      fi
+    fi
+
     # 3a. Built-in indirection denies. Each of these constructs lets a
     # segment that MATCHES an allow pattern execute something that was
     # never checked ($(…) and $VAR indirection, `| sh`, find -exec,
@@ -307,12 +487,13 @@ Fix the manifest in an operator design session — until then this role can run 
     # hatch invites a blanket waiver the first time a legitimate command
     # is denied, which is how a guardrail dies. bash.unrestricted remains
     # for a fully trusted role.
+    CD_NOOP=0
     if [ "$BASH_UNRESTRICTED" != "true" ]; then
       BUILTIN_HIT=""
       BUILTIN_ID=""
-      if printf '%s' "$seg" | grep -q '\$'; then BUILTIN_ID='var-expansion'; BUILTIN_HIT='variable/command substitution ($…) — expansion executes or reads things no pattern checked'
-      elif printf '%s' "$seg" | grep -q '`'; then BUILTIN_ID='command-substitution'; BUILTIN_HIT='backtick command substitution'
-      elif printf '%s' "$seg" | grep -Eq '<\(|>\('; then BUILTIN_ID='process-substitution'; BUILTIN_HIT='process substitution <(…)/>(…)'
+      if printf '%s' "$SEG_NOSQ" | grep -q '\$'; then BUILTIN_ID='var-expansion'; BUILTIN_HIT='variable/command substitution ($…) — expansion executes or reads things no pattern checked'
+      elif printf '%s' "$SEG_NOSQ" | grep -q '`'; then BUILTIN_ID='command-substitution'; BUILTIN_HIT='backtick command substitution'
+      elif printf '%s' "$SEG_NOQ" | grep -Eq '<\(|>\('; then BUILTIN_ID='process-substitution'; BUILTIN_HIT='process substitution <(…)/>(…)'
       elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])eval([[:space:]]|$)'; then BUILTIN_ID='eval'; BUILTIN_HIT='eval'
       elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])xargs([[:space:]]|$)'; then BUILTIN_ID='xargs'; BUILTIN_HIT='xargs — arguments become an unchecked command'
       elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_ID='source'; BUILTIN_HIT='sourcing a script into the shell'
@@ -327,15 +508,22 @@ Fix the manifest in an operator design session — until then this role can run 
         # no-op removes the single largest source of false denies with
         # zero loss of soundness — a cd anywhere ELSE would re-anchor
         # relative paths away from the checked cwd, so it stays denied.
+        # Take the cd target only from the FIRST word, and only when the
+        # segment is a bare `cd <dir>` (optionally with redirects) — the
+        # rest of the segment still faces every other check below.
         CD_TARGET=$(printf '%s' "$seg" | sed -E 's/^(cd|pushd|popd)[[:space:]]+//; s/[[:space:]].*$//' | tr -d '"'"'")
         if [ -n "$CD_TARGET" ] && [ "$(harness_os_normalize_path "$CD_TARGET")" = "$(harness_os_normalize_path "$HOS_CWD")" ]; then
-          # A no-op cd performs no action for any allow pattern to
-          # authorize and moves nothing — skip the segment outright.
-          continue
+          # A no-op cd re-anchors nothing, so it needs no allow pattern.
+          # It is NOT a free pass for the segment: `cd . > secrets` still
+          # writes a file, so only the construct + allow-set checks are
+          # waived here — the redirect and read-token analysis below runs
+          # on this segment exactly as it would on any other.
+          CD_NOOP=1
+          BUILTIN_ID=''; BUILTIN_HIT=''
         else
           BUILTIN_ID='cd'; BUILTIN_HIT='cd/pushd/popd to a different directory — it re-anchors every relative path this axis checks (a cd to the directory you are already in is allowed)'
         fi
-      elif printf '%s' "$seg" | grep -Eq '\{[^{}[:space:]]*,[^{}[:space:]]*\}'; then BUILTIN_ID='brace-expansion'; BUILTIN_HIT='brace expansion {a,b} — conceals the expanded filename from every check'
+      elif printf '%s' "$SEG_NOQ" | grep -Eq '\{[^{}[:space:]]*,[^{}[:space:]]*\}?|\{[^{}[:space:]]*\.\.[^{}[:space:]]*\}?'; then BUILTIN_ID='brace-expansion'; BUILTIN_HIT='brace expansion {a,b} or {a..z} — the shell expands it into filenames no check ever sees'
       fi
       # A permitted construct is skipped — the segment still faces the
       # allow-set, deny patterns, redirect scope and read-token checks.
@@ -378,8 +566,10 @@ Command: ${CMD}"
     done <<< "$DENY_PATTERNS"
 
     # 3c. Allow set: every segment must be inside the role's command
-    # groups (skipped when the role has no bash section at all).
-    if [ "$BASH_SPEC" != "null" ] && [ "$BASH_UNRESTRICTED" != "true" ]; then
+    # groups (skipped when the role has no bash section at all, and for a
+    # no-op cd, which executes nothing for a pattern to authorize — its
+    # redirects and file tokens are still checked below).
+    if [ "$BASH_SPEC" != "null" ] && [ "$BASH_UNRESTRICTED" != "true" ] && [ "$CD_NOOP" != "1" ]; then
       SEG_OK=0
       while IFS= read -r pat; do
         [ -n "$pat" ] || continue
@@ -396,6 +586,34 @@ Note: compound commands are checked segment-by-segment (&&, ||, ;, |, &, newline
       fi
     fi
 
+    # 3c-bis. INPUT redirection is a read channel. `cat <.env` never
+    # names .env as an argument, so the token scan below cannot see it —
+    # but the shell still opens and reads the file. Every `<` target is
+    # therefore scoped against read.allow exactly like a named file.
+    # (`<<`/`<<<` are here-docs/here-strings: their operand is inline
+    # text, not a path, so only a single `<` is treated as a file read.)
+    if [ "$READ_ALLOW" != "null" ]; then
+      IN_TARGETS=$(printf '%s' "$seg" | grep -oE '(^|[^<])<[[:space:]]*[^[:space:]<>;&|]+' 2>/dev/null \
+        | sed -E 's/^[^<]?<[[:space:]]*//' || true)
+      while IFS= read -r intarget; do
+        [ -n "$intarget" ] || continue
+        intarget=$(printf '%s' "$intarget" | tr -d '"'"'")
+        case "$intarget" in *://*) continue ;; esac
+        harness_os_is_manifest_path "$intarget" && continue
+        REL_IN=$(harness_os_relpath "$intarget")
+        if { [ "$READ_DENY" != "null" ] && harness_os_path_in_scope "$REL_IN" "$READ_DENY"; } \
+           || { ! harness_os_path_in_scope "$REL_IN" "$READ_ALLOW" \
+                && { [ "$HAS_WRITE_GRANTS" != "1" ] || ! harness_os_path_in_scope "$REL_IN" "$WRITE_ALLOW"; }; }; then
+          harness_os_deny "bash-input-redirect-out-of-scope $REL_IN" "[BLOCKED] Role '${ROLE}' may not read '$REL_IN' — this command redirects it onto a command's standard input, and input redirection is held to the same read scope as naming the file.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+Command: ${CMD}"
+        fi
+      done <<< "$IN_TARGETS"
+    fi
+
     # 3d. Redirect / tee write targets. A '>' that survived the
     # fd-noise mask is a real file write: a role with no write grants
     # may not perform it at all, and a role WITH write grants may only
@@ -406,9 +624,97 @@ Note: compound commands are checked segment-by-segment (&&, ||, ;, |, &, newline
       TEE_TARGETS=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' || true)
       REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$TEE_TARGETS")
     fi
+    # Redirection is not the only way a command writes. `cp a b`,
+    # `mv a b`, `dd of=b`, `install a b`, `sed -i f`, `truncate f`,
+    # `ln -s t l` all create or overwrite files, and a role whose command
+    # group includes any of them (ordinary for a build role) could
+    # otherwise write anywhere — a reviewer proved it by planting a new
+    # file in the kernel's own install directory. Their DESTINATION
+    # operand is held to the write scope like a redirect target.
+    # Output-FLAG operands, matched generically rather than per verb.
+    # Enumerating write verbs kept losing to the next tool: rounds 2 and 3
+    # found cp/mv/dd/install/sed -i, then `sort -o`, then
+    # `find -fprintf` — the last of which overwrote the manifest and took
+    # the kernel over. Any `-o/--output/-fprint*/-fls/--out` operand is
+    # treated as a write target regardless of which command carries it,
+    # so a new tool with the same convention is covered on arrival.
+    #
+    # `-o` is the one that cannot be matched blindly: it means "output
+    # file" to sort and the compilers, but "or" to find and "only-matching"
+    # to grep. Reading `find tests -name '*.json' -o -name '*.ts'` as a
+    # write to a file called "-name" is exactly the kind of nonsense deny
+    # that gets a gate switched off, so `-o`/`-O` count only for commands
+    # that spell output that way. The unambiguous spellings
+    # (--output, -fprintf, …) need no such list.
+    FLAG_TARGETS=""
+    __fw=0
+    for __i in "${!SEG_WORDS[@]}"; do
+      [ "$__i" = "0" ] && continue
+      __w="${SEG_WORDS[$__i]}"
+      if [ "$__fw" = "1" ]; then FLAG_TARGETS="${FLAG_TARGETS}${__w}"$'\n'; __fw=0; continue; fi
+      case "$__w" in
+        --output=*|--out=*|--output-file=*|-of=*) FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
+        --output|--out|--output-file|-of|-fprintf|-fprint|-fprint0|-fls) __fw=1 ;;
+        -o|-O)
+          # `find … -fprintf FILE FORMAT` and `sort -o FILE` both put the
+          # file first, so the next word is the target either way.
+          case "${SEG_WORDS[0]}" in
+            sort|cc|gcc|g++|clang|clang++|ld|objcopy|objdump|tar|curl|wget|ffmpeg|pandoc|openssl|tsc|esbuild|rustc|javac|go)
+              __fw=1 ;;
+          esac ;;
+        -o*|-O*)
+          case "${SEG_WORDS[0]}" in
+            cc|gcc|g++|clang|clang++|curl|wget) FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;;
+          esac ;;
+      esac
+    done
+    [ -n "$FLAG_TARGETS" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$FLAG_TARGETS")
+
+    WRITE_VERB=$(printf '%s' "$seg" | sed -E 's/^([a-z0-9_.\/-]*\/)?([a-z0-9_-]+).*/\2/')
+    case "$WRITE_VERB" in
+      cp|mv|install|rsync|ln)
+        # Destination is the last non-flag operand.
+        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' | tail -n1 || true)
+        [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
+        ;;
+      dd)
+        DEST=$(printf '%s' "$seg" | grep -oE '(^|[[:space:]])of=[^[:space:]]+' | sed -E 's/.*of=//' || true)
+        [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
+        ;;
+      truncate|shred|touch|chmod|chown)
+        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' || true)
+        [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
+        ;;
+      sed|perl|ruby)
+        # In-place editing rewrites every file operand.
+        if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])-[a-zA-Z]*i([[:space:]]|$|\.)'; then
+          DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' | tail -n +2 || true)
+          [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
+        fi
+        ;;
+    esac
     while IFS= read -r target; do
       [ -n "$target" ] || continue
       target=$(printf '%s' "$target" | tr -d '"'"'")
+      # Root of trust first, and for EVERY write channel. The manifest is
+      # read-exempt (a role may read the law it is held to), and a
+      # reviewer turned that exemption into a full takeover by writing it
+      # with `find -fprintf` — a verb no self-protection list named. Any
+      # write target that resolves to the manifest or the state dir is
+      # refused here, whatever command produced it.
+      NORM_WT="$(harness_os_normalize_path "$target")"
+      case "$NORM_WT" in
+        "$NORM_MANIFEST"|"$NORM_STATE_DIR"|"$NORM_STATE_DIR"/*)
+          harness_os_deny "self-protect bash write-target $target" "$SELF_PROTECT_MSG" ;;
+      esac
+      case "$(harness_os_relpath "$target")" in
+        .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks/*)
+          harness_os_deny "self-protect bash write-target $target" "$SELF_PROTECT_MSG" ;;
+      esac
+      case "$NORM_WT" in
+        */harness-os/hooks/*|*/.claude/hooks/*|*/harness-os-role-gate.sh|*/lib/harness-os.sh)
+          harness_os_deny "self-protect bash write-target kernel $target" "$SELF_PROTECT_MSG" ;;
+      esac
       if [ "$HAS_WRITE_GRANTS" != "1" ]; then
         harness_os_deny "bash-redirect-readonly" "[BLOCKED] Role '${ROLE}' has no write grants, but this command contains a file redirection — Bash must not become a write channel for a read-only role.
 
@@ -440,16 +746,104 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
     # nothing (flags, patterns, prose) pass; the manifest itself is
     # implicitly readable (it is the law the role is being held to).
     if [ "$READ_ALLOW" != "null" ]; then
-      TOKCOPY=$(printf '%s' "$seg" | tr -d '"'"'" | sed -E 's/>>?/ /g')
+      # Operands that are PATTERNS, not paths. `grep package.json src/` does
+      # not read package.json, and `find . -name x.json` does not either —
+      # in both the operand is a string the command matches against. Held
+      # to the read scope they produce denies an operator cannot act on
+      # (the file genuinely is out of scope; it is also genuinely not being
+      # read). Only the well-defined cases are exempted, by index, and only
+      # where the command's own grammar makes the operand a pattern.
+      TOK_SKIP=" "
+      case "${SEG_WORDS[0]:-}" in
+        grep|egrep|fgrep|rgrep|rg|ag|ack|ripgrep)
+          # -e PAT / -f FILE change the grammar: with either present there
+          # is no positional pattern, and -f's operand is a real file read.
+          __has_pat_flag=0; __skip_next=0; __pat_idx=""
+          for __i in "${!SEG_WORDS[@]}"; do
+            [ "$__i" = "0" ] && continue
+            __w="${SEG_WORDS[$__i]}"
+            if [ "$__skip_next" = "1" ]; then __skip_next=0; continue; fi
+            case "$__w" in
+              -e|--regexp) __has_pat_flag=1; TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_next=1; continue ;;
+              -f|--file)   __has_pat_flag=1; __skip_next=1; continue ;;
+              -e*|--regexp=*) __has_pat_flag=1; continue ;;
+              -f*|--file=*)   __has_pat_flag=1; continue ;;
+              -*) continue ;;
+            esac
+            [ -n "$__pat_idx" ] || __pat_idx="$__i"
+          done
+          [ "$__has_pat_flag" = "0" ] && [ -n "$__pat_idx" ] && TOK_SKIP="${TOK_SKIP}${__pat_idx} "
+          ;;
+        sed|awk|gawk|mawk)
+          # The first positional operand is the program text; the rest are
+          # input files and stay scope-checked.
+          __skip_next=0
+          for __i in "${!SEG_WORDS[@]}"; do
+            [ "$__i" = "0" ] && continue
+            __w="${SEG_WORDS[$__i]}"
+            if [ "$__skip_next" = "1" ]; then __skip_next=0; continue; fi
+            case "$__w" in
+              -e|-f|--expression|--file|-v) __skip_next=1; continue ;;
+              -*) continue ;;
+            esac
+            TOK_SKIP="${TOK_SKIP}${__i} "; break
+          done
+          ;;
+      esac
+      if [ "${SEG_WORDS[0]:-}" = "find" ]; then
+        for __i in "${!SEG_WORDS[@]}"; do
+          case "${SEG_WORDS[$__i]}" in
+            -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex|-lname|-ilname)
+              TOK_SKIP="${TOK_SKIP}$((__i + 1)) " ;;
+          esac
+        done
+      fi
+
+      # Quote-aware word split. A word the shell would glob-expand arrives
+      # as U<word> and is expanded here too; a fully quoted word arrives as
+      # Q<word> and is a LITERAL — expanding it would invent reads that
+      # cannot happen, which is exactly how `find tests -name "*.json"`
+      # came to be denied for touching package.json.
       TOK_N=0
+      TOK_IDX=-1
       set -f
-      for tok in $TOKCOPY; do
-        TOK_N=$((TOK_N + 1)); [ "$TOK_N" -gt 100 ] && break
+      while IFS= read -r TOKW; do
+        # Same producer as SEG_WORDS, so the index lines up with it — that
+        # is what lets TOK_SKIP name operands positionally.
+        TOK_IDX=$((TOK_IDX + 1))
+        [ -n "$TOKW" ] || continue
+        TOK_QUOTED=0
+        case "$TOKW" in Q*) TOK_QUOTED=1 ;; esac
+        tok="${TOKW#?}"
+        [ -n "$tok" ] || continue
+        case "$TOK_SKIP" in *" $TOK_IDX "*) continue ;; esac
+        # Fail CLOSED on an over-long segment: skipping the tail would
+        # let a padded command hide an out-of-scope path past the cap.
+        TOK_N=$((TOK_N + 1))
+        if [ "$TOK_N" -gt 400 ]; then
+          set +f
+          harness_os_deny "bash-too-many-tokens" "[BLOCKED] Role '${ROLE}' ran a command segment with more than 400 arguments, which the kernel will not scope-check exhaustively.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+A segment this long cannot be verified against the role's read scope, so it is refused rather than partially checked. Split the work into smaller commands naming the files you actually need."
+        fi
         case "$tok" in
           -*) continue ;;              # flag/option
           *://*) continue ;;           # URL, never a local file
           *=*) continue ;;             # key=value argument
         esac
+        # The target of a no-op cd — or of a no-op `git -C` / `--work-tree`,
+        # already validated above — is the directory this call already runs
+        # in. Naming it is not a read of anything new. This is deliberately
+        # narrow: a bare `.` operand to a content-reading command (grep -r
+        # foo .) is NOT exempt, because that really does read everything.
+        if { [ "$CD_NOOP" = "1" ] || [ -n "$GIT_ANCHOR" ]; } \
+           && [ "$(harness_os_normalize_path "$tok")" = "$(harness_os_normalize_path "$HOS_CWD")" ]; then
+          continue
+        fi
         # An expansion inside a PATH-SHAPED token cannot be scope-checked
         # — the kernel never expands it, so `cat $PWD/.env` would slip
         # past this scan as an unresolvable token. Only reachable when
@@ -476,7 +870,12 @@ Write the path literally (relative to the project root) so it can be scope-check
         # metacharacter-free pattern back even when it matches nothing,
         # so every candidate is confirmed with a real existence test
         # below before it can trigger a deny.
-        MATCHES=$(cd "$HOS_CWD" 2>/dev/null && compgen -G "$tok" 2>/dev/null || true)
+        if [ "$TOK_QUOTED" = "1" ]; then
+          # Quoted: no expansion. The word names itself, and only itself.
+          MATCHES="$tok"
+        else
+          MATCHES=$(cd "$HOS_CWD" 2>/dev/null && compgen -G "$tok" 2>/dev/null || true)
+        fi
         [ -n "$MATCHES" ] || continue
         while IFS= read -r m; do
           [ -n "$m" ] || continue
@@ -511,7 +910,7 @@ Command: ${CMD}
 Bash file access is held to the same read scope as the Read tool — the scope is the role's context diet, whichever channel does the reading."
           fi
         done <<< "$MATCHES"
-      done
+      done < <(printf '%s\n' "$seg" | harness_os_shell_words)
       set +f
     fi
   done <<< "$SEGMENTS"
@@ -567,9 +966,31 @@ case "$HOS_TOOL" in
     # in it escapes the scoped path exactly as it would in a filename.
     # Deny upward traversal in the pattern — a scoped role narrows with
     # `path`, never by globbing out of its search root.
-    SEARCH_PAT=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.pattern // .tool_input.glob // empty' 2>/dev/null || echo "")
-    case "/$SEARCH_PAT/" in
-      */../*)
+    # BOTH fields must be checked: a Grep can carry `pattern` (the regex)
+    # AND `glob` (the file filter), and reading only the first non-empty
+    # one left the other unchecked. An absolute or ~ pattern escapes the
+    # search root just as `..` does.
+    # Only PATH-shaped fields are traversal-checked. Grep's `pattern` is
+    # a REGEX — a legitimate search for "/etc/" or "\.\./" is not an
+    # attempt to escape the root, and blocking it was a false positive.
+    # Glob's `pattern` IS a path glob, so it is checked there.
+    if [ "$HOS_TOOL" = "Glob" ]; then
+      PATH_FIELDS=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.pattern // empty, .tool_input.glob // empty' 2>/dev/null)
+    else
+      PATH_FIELDS=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.glob // empty' 2>/dev/null)
+    fi
+    SEARCH_PAT=""
+    while IFS= read -r cand; do
+      [ -n "$cand" ] || continue
+      case "$cand" in
+        */..|*/../*|../*|..) SEARCH_PAT="$cand" ;;   # climbs out of the root
+        /*|"~"*)             SEARCH_PAT="$cand" ;;   # absolute / home — ignores the root
+      esac
+      [ -n "$SEARCH_PAT" ] && break
+    done <<< "$PATH_FIELDS"
+    case "x$SEARCH_PAT" in
+      x) : ;;
+      *)
         harness_os_deny "search-pattern-traversal" "[BLOCKED] Role '${ROLE}' used a '..' upward-traversal segment in a $HOS_TOOL pattern.
 
 ${ROLE_HEADER}
@@ -602,7 +1023,7 @@ A pattern is applied under the search root, so '..' escapes the role's scope. Na
     # authoring code that escapes is the vector, whoever runs it.
     if [ -n "$TARGET" ]; then
       case "$(harness_os_relpath "$TARGET")" in
-        *.js|*.mjs|*.cjs|*.ts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb)
+        *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1)
           CODE=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.content // .tool_input.new_string // .tool_input.new_source // empty' 2>/dev/null || echo "")
           if [ -n "$CODE" ]; then
             CAPS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeCapabilities')
@@ -610,15 +1031,49 @@ A pattern is applied under the search root, so '..' escapes the role's scope. Na
               [ "$CAPS_ALLOW" != "null" ] && printf '%s' "$CAPS_ALLOW" | "$JQ" -e --arg c "$1" 'index($c) != null' >/dev/null 2>&1
             }
             CAP_ID=""; CAP_WHAT=""
-            # Module/-import surfaces that hand code the host machine.
-            if printf '%s' "$CODE" | grep -Eq "(require\(|from )['\"](node:)?(fs|fs/promises)['\"]|import[[:space:]]+.*['\"](node:)?fs['\"]|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib)([[:space:]]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib)[[:space:]]+import"; then
-              CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / shutil) — code that can read or write any path, ignoring the role scopes'
-            elif printf '%s' "$CODE" | grep -Eq "(require\(|from )['\"](node:)?child_process['\"]|import[[:space:]]+.*['\"](node:)?child_process['\"]|^[[:space:]]*import[[:space:]]+subprocess|execSync|spawnSync|\bsubprocess\.(run|Popen|call)\(|os\.system\("; then
-              CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system) — code that runs commands no command group checked'
-            elif printf '%s' "$CODE" | grep -Eq "(require\(|from )['\"](node:)?(net|http|https|dgram|tls|dns)['\"]|import[[:space:]]+.*['\"](node:)?(net|http|https|dgram)['\"]|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)"; then
-              CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / requests) — an exfiltration channel'
-            elif printf '%s' "$CODE" | grep -Eq "\beval\(|new Function\(|\bexec\(|__import__\(|\bimport\([^)'\"]*[a-zA-Z_$][^)]*\)"; then
-              CAP_ID='eval'; CAP_WHAT='eval / new Function / dynamic import — code assembled at runtime, unreadable to any static check'
+            # Normalise the forms a module name can be written in before
+            # matching, so a synonym is not a bypass: strip whitespace
+            # around the specifier, treat backticks as quotes, and fold
+            # `node:` prefixes away. An adversarial reviewer broke the
+            # first version of this check with `await import("node:fs")`,
+            # backtick require, and string concatenation — each of those
+            # is a different SPELLING of the same capability, so the
+            # matcher works on a normalised view rather than one syntax.
+            # Decode \xNN and \uNNNN escapes BEFORE matching: a reviewer
+            # evaded the module check with require("f\x73"), which is
+            # just "fs" spelled to defeat a literal comparison.
+            CODE_N=$(printf '%s' "$CODE" \
+              | tr '\140' '"' \
+              | sed -E "s/'/\"/g; s/[[:space:]]*\+[[:space:]]*\"\"//g; s/\"[[:space:]]*\+[[:space:]]*\"//g; s/node:/ /g" \
+              | perl -pe 's/\\x\{?([0-9a-fA-F]{2})\}?/chr(hex($1))/ge; s/\\u\{?([0-9a-fA-F]{4})\}?/chr(hex($1))/ge' 2>/dev/null \
+              | sed -E "s/[[:space:]]+/ /g")
+            [ -n "$CODE_N" ] || CODE_N="$CODE"
+            # Any module-loading call at all — static import, require,
+            # dynamic import(), createRequire, or the builtin-module
+            # accessors — followed by the capability name.
+            # Every way a module can be reached, including the indirect
+            # ones a reviewer used (module.constructor._load, and the
+            # constructor.constructor Function trick).
+            LOAD='(require|import|createRequire\([^)]*\)|process\.getBuiltinModule|module\.constructor\._load|constructor\.constructor|Deno\.|Bun\.)'
+            # Filesystem work is matched by METHOD FAMILY rather than by
+            # an enumerated list: any fs-shaped *Sync call, any
+            # fs.promises use, any *FileSync. Enumerating method names
+            # was defeated by openSync/readSync/readdirSync/…; a family
+            # pattern degrades gracefully as Node adds more.
+            FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync[[:space:]]*\(|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream[[:space:]]*\('
+            if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|path|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\(|${FS_METHODS}|readFile[[:space:]]*\(|Path[[:space:]]*\("; then
+              CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
+            elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
+              CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system …) — code that runs commands no command group checked'
+            elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
+              CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
+            elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)|${LOAD}[[:space:]]*\([[:space:]]*[a-zA-Z_$][a-zA-Z0-9_$]*[[:space:]]*\)"; then
+              CAP_ID='eval'; CAP_WHAT='eval / new Function / a module name built at runtime — code the static check cannot read'
+            fi
+            # A file:// URL pointed at the filesystem is a read channel
+            # even with no host module involved (page.goto("file:///…")).
+            if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:///'; then
+              CAP_ID='fs'; CAP_WHAT='a file:// URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
             fi
             if [ -n "$CAP_ID" ] && ! cap_permitted "$CAP_ID"; then
               harness_os_deny "write-code-capability:${CAP_ID} $(harness_os_relpath "$TARGET")" "[BLOCKED] Role '${ROLE}' may not author code using ${CAP_WHAT}.
@@ -778,7 +1233,14 @@ if [ "$MCP_MAP" != "{}" ] && [ -n "$MCP_MAP" ]; then
     local v
     while IFS= read -r v; do
       [ -n "$v" ] || continue
-      case "$v" in *://*) continue ;; esac   # URL, not a local path
+      # Only a genuinely REMOTE scheme is exempt. `file://` names a local
+      # path, so it is unwrapped and scoped — skipping anything merely
+      # containing "://" let `file://secret` past the very check the
+      # manifest configured.
+      case "$v" in
+        http://*|https://*|ws://*|wss://*|ftp://*|data:*) continue ;;
+        file://*) v="${v#file://}"; [ "${v#/}" = "$v" ] && v="/$v" ;;
+      esac
       harness_os_is_manifest_path "$v" && [ "$axis" = "read" ] && continue
       check_path_scope "$axis" "$(harness_os_relpath "$v")" \
         "$([ "$axis" = "write" ] && echo "write" || echo "read") via ${HOS_TOOL}"

@@ -285,18 +285,66 @@ a lone `&` can be split without shredding a redirect):
    groups.
 3. **Deny patterns** — explicit `bash.deny` regexes, checked with a
    dedicated message.
-4. **Redirect/tee targets** — a `>`/`>>`/`tee` target that survives the
-   fd-mask is a real write and is held to the same `write.allow` scope
-   as the Write tool (and denied outright for a role with no write
-   grants). Bash cannot launder a write past axis 5.
+4. **Write targets** — anything that names a destination is held to the
+   same `write.allow` scope as the Write tool (and denied outright for a
+   role with no write grants): a `>`/`>>`/`tee` target that survives the
+   fd-mask, the destination operand of an ordinary file verb
+   (`cp`, `mv`, `dd of=`, `install`, `sed -i`, `truncate`, `ln`,
+   `rsync`), and output *flags* (`--output`, `-fprintf`, `-fls`, and
+   `-o` for the commands that spell output that way). Enumerating write
+   verbs kept losing to the next tool — three review rounds found
+   `cp`/`mv`/`sed -i`, then `sort -o`, then `find -fprintf` — so the flag
+   form is matched generically rather than per verb. Every write target,
+   whatever produced it, also faces the self-protection axis: a role with
+   *any* write grant still cannot aim one at the manifest, the state
+   directory, or the kernel itself.
 5. **Read tokens** — every token that resolves (glob-aware) to an
    existing file/dir must be inside `read.allow ∪ write.allow`, so
    `cat ../secrets/x` through an allowed `cat` is denied exactly as a
    `Read` of that path would be. The manifest itself is always readable.
+6. **Version-control history** — history is a second copy of the working
+   tree, and every scope in this kernel is written against the working
+   tree. `git show HEAD:.env` names no existing path, so axis 5 never
+   sees it; a reviewer used exactly that to read a secret past a
+   read-only role's scope. Content-bearing git subcommands are now held
+   to the read scope directly: a `<rev>:<path>` operand and any pathspec
+   after `--` are scope-checked, and a form with no path constraint at
+   all (`git log -p`, `git diff HEAD`, `git grep x`, `git archive HEAD`)
+   is denied as the construct `vcs-history`, permittable per role like
+   any other. Metadata forms — `git status`, `git log` without a patch
+   flag, `--stat`, `--name-only` — print no file bodies and are
+   untouched, and `-C`/`--git-dir`/`--work-tree` pointing at another
+   repository is refused for the same reason `cd` is.
 
 Paths on every axis are lexically normalised (`realpath -m`, with a
 pure-bash `..`-collapsing fallback) *before* scope matching, so
 `src/../.env` cannot ride an `src/**` grant.
+
+### Quoting is not decoration
+
+The kernel used to strip every quote character before scanning, which
+conflates the two things the shell keeps strictly apart: a quoted word is
+a *literal*, an unquoted one is a *pattern the shell expands*. That made
+`find tests -name "*.json"` look like a read of every JSON file in the
+project, including ones outside the role's scope — a false deny on about
+as ordinary a command as exists, and the kind that gets a gate switched
+off. Segments are now tokenised quote-aware: an unquoted word is
+glob-expanded and scope-checked, a fully quoted one is checked only
+against itself. The same distinction drives the construct checks —
+brace expansion and globbing are suppressed by either quote style,
+`$…` and `` `…` `` only by single quotes — so `echo '{"a":1,"b":2}'` is
+JSON and `cat {.env,x}` is still an escape attempt.
+
+Quoting never decides which word is the *command*, though: `"cat" .env`
+still runs cat, so the command-name and allow-set checks read the
+segment verbatim.
+
+Operands that a command's own grammar defines as patterns rather than
+paths are exempt from the read scan by position — grep's pattern (or its
+`-e` operand, but never its `-f` operand, which is a real file read),
+`sed`/`awk`'s program text, and the operand of `find -name`/`-path`/
+`-regex`. `grep package.json src/` does not read `package.json`, and a
+deny saying it does is one an operator cannot act on.
 
 ## Why write-then-execute containment exists
 
@@ -332,11 +380,27 @@ legitimate need is declared explicitly:
 Calibration is deliberate and tested: the benchmark's real 74-line
 framework-driven spec passes untouched, as does a spec reading
 `process.env` config or mentioning `fs` in a comment — a containment that
-blocked ordinary test authoring would be switched off within a day. The
-check is static and pattern-based, so obfuscated construction of a module
-name is not caught; it raises authoring an escape from "forget the
-boundary exists" to "deliberately smuggle it past a named gate", which is
-the honest ceiling for a static check.
+blocked ordinary test authoring would be switched off within a day.
+
+**What this axis is and is not.** It is a static, pattern-based check,
+and an independent adversarial reviewer broke its first version with
+`await import("node:fs")` — a synonym, not a contortion. The matcher now
+normalises quoting, `node:` prefixes and string concatenation before
+matching, and covers dynamic `import()`, `require` with any quote form,
+`process.getBuiltinModule`, python's comma/`from`-import forms, bare
+`open(`, `fetch(`, and `file://` URLs; every one of those is a regression
+test in `hooks/tests/cases/08-reviewer-round1.sh`. But a static check on
+a Turing-complete language cannot be complete, and no amount of pattern
+work will make it so.
+
+So do not read this axis as "the write-then-execute escape is closed".
+Read it as: **authoring an escape now costs deliberate obfuscation
+instead of a standard-library import**. The sound fix is structural —
+*separate the role that authors code from the role that runs it*, so no
+single mandate spans both. `harness-os validate` warns when one role
+holds both, and the designer skill teaches the split. Where the split is
+impractical, this axis is defence in depth, not a boundary you should
+stake a security claim on.
 
 ## False-positive direction
 

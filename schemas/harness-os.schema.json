@@ -128,7 +128,8 @@
                     "find-exec",
                     "interpreter-inline",
                     "cd",
-                    "brace-expansion"
+                    "brace-expansion",
+                    "vcs-history"
                   ]
                 }
               },

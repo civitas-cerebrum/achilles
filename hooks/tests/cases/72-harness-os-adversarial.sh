@@ -166,8 +166,14 @@ assert_allow "$H" "$(payload tool_name=Read file_path="$P/docs/acceptance/featur
   "same agent binds reviewer, reads acceptance criteria → ALLOW"
 
 # --- Leak 10b: Glob/Grep pattern traversal ------------------------------
-assert_deny "$H" "$(payload tool_name=Grep path="$P/src" pattern='../../.env' cwd="$P" $I)" \
-  "Grep with in-scope path but '..' in pattern → DENY" "upward-traversal"
+# For Grep the PATH-shaped field is `glob` — `pattern` is a regex, and
+# denying a regex that merely contains "../" was a false positive an
+# adversarial reviewer flagged. Glob's `pattern` IS a path glob, so it is
+# still checked there.
+assert_deny "$H" "$(payload tool_name=Grep path="$P/src" glob='../../.env' cwd="$P" $I)" \
+  "Grep with in-scope path but '..' in the glob field → DENY" "upward-traversal"
+assert_allow "$H" "$(payload tool_name=Grep path="$P/src" pattern='\.\./' cwd="$P" $I)" \
+  "Grep whose REGEX contains '../' → ALLOW (a pattern is not a path)"
 assert_deny "$H" "$(payload tool_name=Glob path="$P/src" pattern='../*.pem' cwd="$P" $I)" \
   "Glob '..' traversal in glob pattern → DENY" "upward-traversal"
 assert_allow "$H" "$(payload tool_name=Grep path="$P/src" pattern='TODO' cwd="$P" $I)" \

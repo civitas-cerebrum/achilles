@@ -222,7 +222,22 @@ harness_os_resolve_role() {
   # out before tag extraction.
   if [ -n "$HOS_TRANSCRIPT" ] && [ -f "$HOS_TRANSCRIPT" ]; then
     local user_tags nonce_roles distinct_nonce_role tags
+    # A role tag only counts when it comes from the DISPATCH PROMPT.
+    #
+    # Transcript lines of type "user" are not all operator-authored: a
+    # tool_result is delivered as a user line whose content is whatever
+    # the agent just fetched. An adversarial reviewer used exactly that
+    # to promote an unbound agent to `judge` by having it READ a file
+    # containing the literal string `<<harness-os-role: judge>>` — a
+    # string that appears in this project's own documentation, so it is
+    # plantable and guessable. Any line carrying a tool_result (or tool
+    # output/use) is therefore excluded before tags are extracted, and
+    # only the FIRST such qualifying line is considered: the dispatch
+    # brief is the child's opening turn, so later user turns cannot
+    # re-bind an agent either.
     user_tags=$(grep -E '"(type|role)"[[:space:]]*:[[:space:]]*"user"' "$HOS_TRANSCRIPT" 2>/dev/null \
+      | grep -vE '"(tool_result|tool_use|tool_output)"|"toolUseResult"' \
+      | head -n1 \
       | grep -oE "$HOS_ROLE_TAG_RE" || echo "")
 
     # 4a — NONCE match (collision-proof). For every nonce-bearing tag in
@@ -301,11 +316,94 @@ harness_os_register_dispatch() {
       | reduce keys[] as $k ({};
           if ($reg[$k].ts // 0) >= ($now - $ttl) then . + { ($k): $reg[$k] } else . end)
       | . + { ($id): { role: $role, ts: $now } }
-      | if ($nonce | length) > 0 then . + { ("nonce:" + $nonce): { role: $role, ts: $now } } else . end
+      # Nonce collision: a live nonce already bound to a DIFFERENT role
+      # must not be silently overwritten (last-writer-wins would let a
+      # reused nonce rebind a low role to a high one). Mark it poisoned
+      # instead; resolution treats a poisoned nonce as no match at all,
+      # so the child falls to the protective unbound policy.
+      | if ($nonce | length) == 0 then .
+        elif (.["nonce:" + $nonce] | type) == "object"
+             and (.["nonce:" + $nonce].role != $role)
+             and ((.["nonce:" + $nonce].ts // 0) >= ($now - $ttl))
+          then . + { ("nonce:" + $nonce): { role: "", collided: true, ts: $now } }
+        else . + { ("nonce:" + $nonce): { role: $role, ts: $now } }
+        end
     ' 2>/dev/null || echo "")
   if [ -n "$updated" ]; then
     printf '%s' "$updated" > "$reg.tmp" 2>/dev/null && mv "$reg.tmp" "$reg" 2>/dev/null || rm -f "$reg.tmp" 2>/dev/null || true
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Quote-aware shell word handling
+# ---------------------------------------------------------------------------
+# The kernel used to tokenise a command segment by deleting every quote
+# character and splitting on whitespace. That conflates two things the
+# shell keeps strictly apart: a quoted word is a LITERAL, an unquoted one
+# is a pattern the shell expands. Deleting the quotes made
+# `find tests -name "*.json"` look like a read of every .json file in the
+# project — a false deny on one of the most ordinary commands there is.
+#
+# These two helpers restore the distinction. Neither is a full shell
+# parser, and neither needs to be: both fail toward "treat it as
+# unquoted", which is the conservative direction (an unquoted word is
+# expanded and scope-checked; a quoted one is only checked literally).
+
+# harness_os_shell_words — read one segment on stdin, emit one word per
+# line prefixed with its quoting state:
+#   Q<word>  every character came from inside quotes -> the shell will
+#            NOT glob-expand it; it names exactly this literal
+#   U<word>  at least one character was unquoted -> expansion applies
+# Unquoted '>' also separates words, matching the redirection split the
+# caller previously did with sed (a '>' inside quotes is just text).
+harness_os_shell_words() {
+  awk '
+  {
+    s = $0; n = length(s); word = ""; inword = 0; q = ""; unq = 0
+    for (i = 1; i <= n; i++) {
+      c = substr(s, i, 1)
+      if (q != "") {                       # inside quotes: only the
+        if (c == q) { q = "" }             # matching quote ends them
+        else { word = word c }
+        inword = 1
+        continue
+      }
+      if (c == "\"" || c == "'"'"'") { q = c; inword = 1; continue }
+      if (c == " " || c == "\t" || c == ">") {
+        if (inword) { print (unq ? "U" : "Q") word }
+        word = ""; inword = 0; unq = 0
+        continue
+      }
+      word = word c; inword = 1; unq = 1
+    }
+    if (inword) { print (unq ? "U" : "Q") word }
+  }'
+}
+
+# harness_os_unquoted_view — read a segment on stdin, emit it with every
+# quoted region replaced by a filler character. What survives is exactly
+# the text the shell still interprets, so a construct check run against
+# this view fires on `cat {.env,x}` and stays quiet on the JSON literal
+# `echo '{"a":1,"b":2}'`. Pass 'single' to blank only single-quoted
+# regions — double quotes suppress globbing and brace expansion but NOT
+# $… or `…`, so expansion checks must still see inside them.
+harness_os_unquoted_view() {
+  awk -v mode="${1:-both}" '
+  {
+    s = $0; n = length(s); out = ""; q = ""
+    for (i = 1; i <= n; i++) {
+      c = substr(s, i, 1)
+      if (q != "") {
+        if (c == q) { q = "" ; out = out "X" }
+        else { out = out ((q == "\"" && mode == "single") ? c : "X") }
+        continue
+      }
+      if (c == "'"'"'" || (c == "\"" && mode != "single")) { q = c; out = out "X"; continue }
+      if (c == "\"" && mode == "single") { q = c; out = out "X"; continue }
+      out = out c
+    }
+    print out
+  }'
 }
 
 # ---------------------------------------------------------------------------
