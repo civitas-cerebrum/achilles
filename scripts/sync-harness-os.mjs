@@ -71,6 +71,7 @@ const RENAMES = [
   ['hooks/tests/cases/11-reviewer-round4.sh', 'hooks/tests/cases/81-harness-os-reviewer-round4.sh'],
   ['hooks/tests/cases/12-reviewer-round5.sh', 'hooks/tests/cases/82-harness-os-reviewer-round5.sh'],
   ['hooks/tests/cases/13-reviewer-round6.sh', 'hooks/tests/cases/83-harness-os-reviewer-round6.sh'],
+  ['hooks/tests/cases/14-reviewer-round7.sh', 'hooks/tests/cases/84-harness-os-reviewer-round7.sh'],
 ];
 const DIRS = [
   { rel: 'schemas/harness-os.fixtures', ext: '.json' },

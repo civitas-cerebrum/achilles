@@ -485,6 +485,24 @@ The layout rule that follows is worth stating in the manifest review:
 a workaround for a weak implementation; it is the only thing an
 allow-list permission model can act on.
 
+**Worker threads are denied by default, and that default is the axis.**
+A Worker does not inherit the permission model's filesystem
+restrictions — three lines of ordinary Node read any file on the box,
+with no child-process grant and nothing for the static screen to catch.
+A reviewer used exactly that to walk through this profile while it
+claimed to be a boundary. Node prints a `SecurityWarning` about the flag
+for this reason. `--dry-run` reports the state, `worker_threads` is a
+gated capability in the static screen so *authoring* one is refused too,
+and `settings.runtimeProfile.allowWorker: true` turns it on for a runner
+that genuinely cannot work without it — knowing what it costs.
+
+**A command the profile cannot reach is refused, not run.** The profile
+travels in `NODE_OPTIONS`, which only node reads;
+`harness-os run --role composer -- cat .env` would apply no containment
+at all while looking like it applied some. `run` refuses any command
+whose head is not a Node process. A tool that claims a boundary must
+decline the commands it cannot bound.
+
 A package-manager front-end (`npm`, `npx`, `yarn`, `pnpm`) cannot run
 anything without spawning, so the wrapper grants `--allow-child-process`
 for those and says so. Node children inherit `NODE_OPTIONS`, so the

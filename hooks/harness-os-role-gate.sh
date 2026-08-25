@@ -302,7 +302,21 @@ check_code_capabilities() {
   # and code arriving through the Bash channel is full of them
   # (`echo "import x from \"fs\""`). Fold them away first or the matcher
   # sees `from \"fs\"` and finds nothing.
+  # Strip comments FIRST. A block comment is whitespace to the parser and
+  # not to a regex, so `require/**/("dotenv")` sailed past every check
+  # that expected only spaces between the keyword and its argument — and
+  # the same blindness worked the other way, denying a spec because a
+  # COMMENT mentioned a package. Removing comments fixes both directions
+  # at once: the escape and the false positive were one bug.
+  # …and close the gap the comment left behind. Removing `//x` leaves a
+  # NEWLINE between the keyword and its argument, and the extraction
+  # greps line by line, so `require //x⏎("dotenv")` would still slip
+  # past. Pull the specifier back onto the keyword's line.
   CODE_N=$(printf '%s' "$code" \
+    | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"'"'"'\\])//[^\n]*}{$1}g;
+                      s{\b(require|import)\s*\(\s*}{$1(}gs;
+                      s{\bfrom\s*(["'"'"'])}{from $1}gs' 2>/dev/null || printf '%s' "$code")
+  CODE_N=$(printf '%s' "$CODE_N" \
     | sed -E 's/\\"/"/g; s/\\'"'"'/'"'"'/g' \
     | tr '\140' '"' \
     | sed -E "s/'/\"/g; s/[[:space:]]*\+[[:space:]]*\"\"//g; s/\"[[:space:]]*\+[[:space:]]*\"//g; s/node:/ /g" \
@@ -332,6 +346,13 @@ check_code_capabilities() {
     CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
     CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system …) — code that runs commands no command group checked'
+  elif printf '%s' "$CODE_N" | grep -Eq '\bworker_threads\b|\bnew[[:space:]]+Worker[[:space:]]*\(|\bWorker[[:space:]]*\([[:space:]]*"|\bnew[[:space:]]+SharedWorker\b'; then
+    # A Worker thread does not inherit Node's permission-model filesystem
+    # restrictions, so authoring one is authoring a way out of the very
+    # profile `harness-os run` installs. It is not process spawning and
+    # was on no capability list at all; a reviewer read a secret through
+    # it with the runtime profile active and the static screen silent.
+    CAP_ID='process'; CAP_WHAT='a worker thread (worker_threads / new Worker) — a worker does NOT inherit the runtime permission profile, so it is a way out of the containment that profile installs'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
     CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
   elif printf '%s' "$CODE_N" | grep -Eq "\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\(|\bsendBeacon[[:space:]]*\(|\bnavigator\.sendBeacon\b|\bapiRequestContext\b"; then
@@ -343,7 +364,7 @@ check_code_capabilities() {
     CAP_ID='network'; CAP_WHAT='the test framework''s HTTP client (request.get / page.request / sendBeacon) pointed at an arbitrary host — the same exfiltration channel as fetch(), reached through a fixture'
   elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)"; then
     CAP_ID='eval'; CAP_WHAT='eval / new Function — code the static check cannot read'
-  elif printf '%s' "$CODE_N" | grep -Eq '[=,:([][[:space:]]*require[[:space:]]*([];,)}]|$)'; then
+  elif printf '%s' "$CODE_N" | tr '\n' ' ' | grep -Eq '[=,:([][[:space:]]*require[[:space:]]*([];,)}]|$)'; then
     # `const r = require; r("dotenv")` — the loader reached through an
     # alias. Nothing downstream can follow the name, so neither the
     # capability branches nor the import allowlist ever see the
@@ -443,8 +464,16 @@ Options, narrowest first:
 
 Preview before committing: harness-os explain --role ${ROLE} --tool Write --path <file> --content '<code>'"
       fi
-    done < <(printf '%s' "$CODE_N" \
-      | grep -oE '(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]+"[^"]+"' 2>/dev/null \
+    # `from "x"` is only an import when a statement said so. Matching it
+    # anywhere denied a spec for a package name inside a STRING — an
+    # error-message fixture reading `to fix, import Button from
+    # "@mui/material"` refused the whole file. And `import type` is
+    # erased at compile time: it imports nothing at run time, so holding
+    # it to a runtime import list is meaningless friction on idiomatic
+    # typed specs. Both are false positives a composer meets on day one.
+    done < <(printf '%s' "$CODE_N" | tr ';' '\n' \
+      | grep -vE '^[[:space:]]*(import|export)[[:space:]]+type[[:space:]]' \
+      | grep -oE '(^|[^A-Za-z0-9_$])(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|^[[:space:]]*(import|export)[^"]*from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]*"[^"]+"' 2>/dev/null \
       | sed -E 's/.*"([^"]+)".*/\1/' \
       | grep -vE '^\.{1,2}/|^/' \
       | sed -E 's|^(@[^/]+/[^/]+).*|\1|; t; s|^([^/]+)/.*|\1|' | sort -u)
