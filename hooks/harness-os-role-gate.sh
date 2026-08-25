@@ -2466,6 +2466,75 @@ Your command group DOES grant '${SEG_WORDS[0]}'. This refusal is about WHERE it 
       fi
     fi
 
+    # 3g. NETWORK DESTINATION. The kernel models what a command reads,
+    # writes and executes, and modelled nothing at all about who it talks
+    # to — while the authored-code screen has flagged `fetch`,
+    # `request.get` and the `net`/`http` modules as an exfiltration
+    # capability since round 1. One more rule living on one channel and
+    # not on its neighbour, this time on the channel carrying the
+    # property this project advertises most: a bounded blast radius for
+    # prompt injection.
+    #
+    # Round 33 pointed the benchmark's own grant — which reads as "this
+    # role may talk to the app under test and nothing else" —
+    #
+    #     ^curl -[a-zA-Z]* http://localhost:4173\b
+    #
+    # at `http://localhost:4173@example.com/`, and curl connected to
+    # example.com. `localhost:4173` is USERINFO. The reviewer ran it and
+    # shipped an in-scope file to a listener off-box.
+    #
+    # A URL authority is a parser problem and a command group is a prefix
+    # match, so no pattern an operator can write is a destination
+    # boundary. Two rules, neither of which hunts for dangerous hosts:
+    #
+    #   userinfo in a URL is refused outright — an agent has no reason to
+    #   embed credentials in one, and it is the single spelling that
+    #   makes a URL's visible prefix differ from where it connects;
+    #
+    #   a role that declares `network.allow` has every URL authority
+    #   checked against it by PARSING rather than by matching text, which
+    #   also closes `localhost:4173.evil.com` — a different bug with the
+    #   same cause, since `\b` ends a pattern where a hostname does not.
+    #
+    # Declaring the scope is opt-in, exactly like `codeImports`, because
+    # a default of "no network" would refuse every existing manifest's
+    # health check. `validate` says so for any role that can reach the
+    # network without one.
+    NET_ALLOW=$(harness_os_role_field "$ROLE" '.network.allow')
+    while IFS= read -r NETW; do
+      [ -n "$NETW" ] || continue
+      case "$NETW" in *://*) : ;; *) continue ;; esac
+      NET_AUTH=$(harness_os_url_authority "$NETW")
+      [ -n "$NET_AUTH" ] || continue
+      NET_USER=$(harness_os_url_userinfo "$NETW")
+      if [ -n "$NET_USER" ]; then
+        set +f
+        harness_os_deny "bash-url-userinfo $NET_AUTH" "[BLOCKED] Role '${ROLE}' used a URL carrying credentials before the host, which connects somewhere other than it appears to.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+  written:     ${NETW}
+  connects to: ${NET_AUTH}
+  (everything before the @ is userinfo, not a host)
+
+A command group is a regex over argv, so a pattern pinning a URL prefix cannot be a destination boundary: the text before the @ can be made to read exactly like the host you were granted. Write the URL without userinfo. If this role genuinely needs HTTP authentication, pass it as a header or a credentials flag, where it is not pretending to be a hostname."
+      fi
+      if [ "$NET_ALLOW" != "null" ] && ! harness_os_authority_in_scope "$NET_AUTH" "$NET_ALLOW"; then
+        set +f
+        harness_os_deny "bash-network-out-of-scope $NET_AUTH" "[BLOCKED] Role '${ROLE}' may not connect to '$NET_AUTH' — it is outside the role's network scope.
+
+${ROLE_HEADER}
+network scope: $(printf '%s' "$NET_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+
+Command: ${CMD}
+
+The authority is parsed rather than pattern-matched, so a host that merely STARTS with a permitted one, or hides it in userinfo, is a different destination and is refused. Entries name a host, optionally with a port: a bare host permits any port, and a leading *. permits subdomains."
+      fi
+    done < <(printf '%s\n' "$seg" | tr ' \t"'"'"'`(),;' '\n\n\n\n\n\n\n\n\n')
+
     # 5c. A contained role may not point a run at a file it can write.
     #
     # Round 25 walked through axis 5b without writing a line of code. The

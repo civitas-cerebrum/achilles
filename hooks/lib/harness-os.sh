@@ -799,6 +799,68 @@ harness_os_glob_to_ere() {
   printf '^%s$' "$g"
 }
 
+# harness_os_url_authority <url> — print the authority a client will
+# actually connect to (host[:port], lowercased), or nothing when the
+# string is not a network URL.
+#
+# The whole point is that this is a PARSER problem and a command group is
+# a regex. Round 33 pointed a grant reading `^curl … http://localhost:4173`
+# at `http://localhost:4173@example.com/` and curl connected to
+# example.com — `localhost:4173` is USERINFO, not a host. The visible
+# prefix and the destination are different strings, which is exactly the
+# shape a prefix match cannot see.
+harness_os_url_authority() {
+  local u="$1" auth
+  case "$u" in
+    http://*|https://*|ftp://*|ftps://*|ws://*|wss://*|scp://*|sftp://*|ssh://*|telnet://*|gopher://*|ldap://*|ldaps://*|smb://*|tftp://*|dict://*|imap://*|imaps://*|smtp://*|smtps://*|pop3://*|pop3s://*|rtsp://*|mqtt://*) : ;;
+    *) return 0 ;;
+  esac
+  auth="${u#*://}"
+  # Everything after the first /, ?, or # is path/query/fragment.
+  auth="${auth%%/*}"; auth="${auth%%\?*}"; auth="${auth%%#*}"
+  # Userinfo is everything up to the LAST `@` — `a@b@c` connects to `c`.
+  case "$auth" in *@*) auth="${auth##*@}" ;; esac
+  printf '%s' "$auth" | tr 'A-Z' 'a-z'
+}
+
+# harness_os_url_userinfo <url> — print the userinfo portion, or nothing.
+# Its presence is the signal: an agent has no reason to embed credentials
+# in a URL, and it is the one spelling that makes a URL's prefix differ
+# from its destination.
+harness_os_url_userinfo() {
+  local u="$1" auth
+  case "$u" in *://*) : ;; *) return 0 ;; esac
+  auth="${u#*://}"; auth="${auth%%/*}"; auth="${auth%%\?*}"; auth="${auth%%#*}"
+  case "$auth" in *@*) printf '%s' "${auth%@*}" ;; esac
+}
+
+# harness_os_authority_in_scope <authority> <json-array> — does the
+# authority match one of the manifest's network entries? An entry with no
+# port matches any port on that host; an entry with a port must match
+# exactly. A leading `*.` matches subdomains, and nothing else does —
+# `localhost:4173` must NOT match `localhost:4173.evil.com`, which is the
+# other half of round 33.
+harness_os_authority_in_scope() {
+  local auth="$1" patterns="$2" host port entry ehost eport
+  [ -n "$auth" ] || return 1
+  host="${auth%%:*}"; port=""
+  case "$auth" in *:*) port="${auth##*:}" ;; esac
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    entry=$(printf '%s' "$entry" | tr 'A-Z' 'a-z')
+    ehost="${entry%%:*}"; eport=""
+    case "$entry" in *:*) eport="${entry##*:}" ;; esac
+    if [ -n "$eport" ] && [ "$eport" != "$port" ]; then continue; fi
+    case "$ehost" in
+      '*') return 0 ;;
+      '*.'*) case "$host" in *".${ehost#\*.}") return 0 ;; esac
+             [ "$host" = "${ehost#\*.}" ] && return 0 ;;
+      *) [ "$host" = "$ehost" ] && return 0 ;;
+    esac
+  done < <(printf '%s' "$patterns" | "$HOS_JQ" -r '.[]?' 2>/dev/null)
+  return 1
+}
+
 # harness_os_normalize_path <path> — absolute, lexically-normalised form.
 # Relative paths resolve against HOS_CWD. `.`/`..` segments are squashed
 # BEFORE scope matching, so `src/../.claude/x` can never ride a `src/**`
