@@ -1908,6 +1908,7 @@ A jq filter is exempt from the read scan because it is a program, not a path —
       # came to be denied for touching package.json.
       TOK_N=0
       TOK_IDX=-1
+      TOK_SAW_PATH=0
       set -f
       while IFS= read -r TOKW; do
         # Same producer as SEG_WORDS, so the index lines up with it — that
@@ -2059,6 +2060,11 @@ Write the path literally (relative to the project root) so it can be scope-check
             /*) [ -e "$m" ] || continue ;;
             *)  [ -e "$HOS_CWD/$m" ] || continue ;;
           esac
+          # This segment names at least one path that really exists, so
+          # it is not one of the pathless reads screened after the loop.
+          # Set before the manifest exemption: naming the manifest is
+          # still naming a path.
+          TOK_SAW_PATH=1
           harness_os_is_manifest_path "$m" && continue
           REL_M=$(harness_os_relpath "$m")
           DENIED_READ=0
@@ -2085,6 +2091,72 @@ Bash file access is held to the same read scope as the Read tool — the scope i
         done <<< "$MATCHES"
       done < <(printf '%s\n' "$seg" | harness_os_shell_words)
       set +f
+
+      # 3f. The read that names no path. `grep -r PATTERN` searches the
+      # whole tree from the cwd; so does `rg PATTERN`, a bare `find`, a
+      # bare `ls`, a bare `tree`. The scan above only sees operands, and
+      # those commands have none — so the single most ordinary thing an
+      # inspector does read every file in the project, `.env` included,
+      # while every EXPLICIT spelling of the same act was already
+      # refused:
+      #
+      #   grep -rn ADMIN_TOKEN .   -> DENY   (`.` resolves to the cwd)
+      #   grep -rn ADMIN_TOKEN     -> ALLOW  (same act, no operand)
+      #   ls .                     -> DENY
+      #   ls                       -> ALLOW
+      #   find . -name x           -> DENY
+      #   find -name x             -> ALLOW
+      #
+      # The Grep TOOL arm has held this line since round 1 — no `path`
+      # means the search runs from the root, so the root needs a
+      # root-wide grant — and the Bash channel never got the copy. Round
+      # 22's sentence on a channel round 22 did not sweep, and round
+      # 11's sentence too: two spellings of one act, one of them checked.
+      #
+      # The test is not "does this command look recursive" but "did this
+      # segment name a path at all". A command that names one is already
+      # scope-checked above, whatever it does with it; a command that
+      # names none, from the list below, reads the directory it runs in.
+      # That inverts cleanly and needs no per-flag knowledge: `ls -w 80`
+      # and `find -maxdepth 2 -name x` are caught without either flag
+      # being modelled.
+      if [ "$TOK_SAW_PATH" = "0" ]; then
+        CWD_READER=0
+        case "${SEG_WORDS[0]:-}" in
+          # Recursive by construction: no path operand means the cwd.
+          rg|ripgrep|ag|ack|ack-grep|fd|fdfind|rgrep|find|ls|dir|vdir|tree|du) CWD_READER=1 ;;
+          # The grep family reads STDIN when given no path, which is
+          # inert — unless a recursion flag makes it walk the cwd.
+          grep|egrep|fgrep)
+            for __w in "${SEG_WORDS[@]:1}"; do
+              case "$__w" in
+                --recursive|--dereference-recursive) CWD_READER=1 ;;
+                --*) : ;;
+                -*[rR]*) CWD_READER=1 ;;
+              esac
+            done ;;
+        esac
+        if [ "$CWD_READER" = "1" ]; then
+          CWD_REL=$(harness_os_relpath "$HOS_CWD")
+          [ -n "$CWD_REL" ] || CWD_REL="."
+          CWD_OK=0
+          if [ "$READ_DENY" != "null" ] && harness_os_path_in_scope "$CWD_REL" "$READ_DENY"; then CWD_OK=0
+          elif harness_os_path_in_scope "$CWD_REL" "$READ_ALLOW"; then CWD_OK=1
+          elif [ "$HAS_WRITE_GRANTS" = "1" ] && harness_os_path_in_scope "$CWD_REL" "$WRITE_ALLOW"; then CWD_OK=1
+          fi
+          if [ "$CWD_OK" = "0" ]; then
+            set +f
+            harness_os_deny "bash-pathless-read $CWD_REL" "[BLOCKED] Role '${ROLE}' ran '${SEG_WORDS[0]}' without naming a path, which reads the directory the command runs in ('$CWD_REL') — and that is outside the role's read scope.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+Command: ${CMD}
+
+Your command group DOES grant '${SEG_WORDS[0]}'. This refusal is about WHERE it reads, not whether you may run it: with no path operand it walks the whole project, so it is held to the same scope as naming that directory outright, which is refused for this role too. Name a path inside your read scope instead: $(printf '%s' "$READ_ALLOW" | "$JQ" -r '.[0] // "<a path in scope>"' 2>/dev/null)"
+          fi
+        fi
+      fi
     fi
   done <<< "$SEGMENTS"
 fi

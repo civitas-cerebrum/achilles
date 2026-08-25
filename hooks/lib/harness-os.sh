@@ -551,8 +551,34 @@ harness_os_quotes_balanced() {
 # AND everything under it; '**/x' matches x at any depth including root.
 
 harness_os_glob_to_ere() {
-  local g="$1" ph=$'\001'
-  g=$(printf '%s' "$g" | sed -e 's/[.[\]()+{}^$|\\]/\\&/g')
+  local g="$1" ph=$'\001' out="" i c
+  # Escape the regex metacharacters in the LITERAL part of the glob, so
+  # `docs/e2e-ledger.json` matches that file and not `docs/e2e-ledgerXjson`.
+  # `*` and `?` are deliberately NOT escaped — they are the glob operators
+  # the conversion below turns into character classes.
+  #
+  # This was a sed bracket expression, and it escaped NOTHING. `s/[.[\]…/`
+  # does not mean "the class containing ] "; POSIX reads it as the class
+  # `{. [ \}` followed by the literal text `()+{}^$|\]`, which never
+  # occurs — so every metacharacter in every manifest path scope was a
+  # live regex operator, silently, in the one function every path
+  # decision flows through. Round 24 found it by testing the function
+  # character by character rather than reading it.
+  #
+  # The replacement is pure bash, which is the real lesson rather than a
+  # corrected class: a bracket expression whose meaning depends on where
+  # `]` sits and how many backslashes survive three layers of quoting is
+  # a construct that can be wrong while looking right, and this one was,
+  # for twenty-three rounds. A `case` cannot be. It is also one fewer
+  # execve in the hottest function in the kernel.
+  for (( i = 0; i < ${#g}; i++ )); do
+    c="${g:i:1}"
+    case "$c" in
+      '.'|'['|']'|'('|')'|'+'|'{'|'}'|'^'|'$'|'|'|'\') out="${out}\\${c}" ;;
+      *) out="${out}${c}" ;;
+    esac
+  done
+  g="$out"
   g="${g//\*\*/$ph}"
   g="${g//\*/[^/]*}"
   g="${g//\?/[^/]}"
