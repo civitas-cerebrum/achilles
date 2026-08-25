@@ -108,6 +108,20 @@ import { test, expect } from "@playwright/test";
 test("AC-1", async ({ page }) => { await page.goto("/forms"); expect(1).toBe(1); });' composer)" \
   "FP a block comment mentioning the escape → ALLOW"
 
+# The comment strip must match STRING LITERALS FIRST, or it spans from a
+# `/*` inside one string to a `*/` inside another and swallows the code
+# between them. Found by probing the strip right after adding it — it
+# really did print the secret. This is the shape every non-parsing tool
+# gets wrong, and the fix is the ordering a lexer would use.
+assert_deny "$H" "$(wpay "$P/tests/e2e/sp.spec.ts" 'const a = "x /* y";
+const d = require("dotenv");
+const b = "z */ w";' composer)" \
+  "FP comment markers spanning two STRINGS do not hide the code between → DENY" "not in this role's declared import list"
+assert_allow "$H" "$(wpay "$P/tests/e2e/sp2.spec.ts" 'import { test } from "@playwright/test";
+const url = "http://localhost:4173/forms";
+const note = `see // the docs`;' composer)" \
+  "FP a URL and a template literal are not comments → ALLOW"
+
 # The plain forms must still deny, or the comment-stripping went too far.
 assert_deny "$H" "$(wpay "$P/tests/e2e/ctl.spec.ts" 'const d = require("dotenv");' composer)" \
   "FP control: the plain form is still refused → DENY" "not in this role's declared import list"

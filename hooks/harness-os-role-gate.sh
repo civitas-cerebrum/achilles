@@ -312,10 +312,41 @@ check_code_capabilities() {
   # NEWLINE between the keyword and its argument, and the extraction
   # greps line by line, so `require //x⏎("dotenv")` would still slip
   # past. Pull the specifier back onto the keyword's line.
-  CODE_N=$(printf '%s' "$code" \
-    | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"'"'"'\\])//[^\n]*}{$1}g;
-                      s{\b(require|import)\s*\(\s*}{$1(}gs;
-                      s{\bfrom\s*(["'"'"'])}{from $1}gs' 2>/dev/null || printf '%s' "$code")
+  # STRING LITERALS ARE MATCHED FIRST, and that ordering is the whole
+  # correctness of this pass. Stripping comments with a bare `/\*.*?\*/`
+  # spans from a `/*` inside one string to a `*/` inside another —
+  #
+  #     const a = "x /* y";
+  #     const d = require("dotenv");     <-- swallowed as "comment"
+  #     const b = "z */ w";
+  #
+  # — and the require vanishes. Found by probing this pass after adding
+  # it, and it really did print the secret. Alternating string forms
+  # BEFORE the comment forms makes a comment marker inside a literal stay
+  # literal, which is what a lexer would do. Regex literals remain
+  # ambiguous with division, as they are for every non-parsing tool.
+  CODE_N=$(printf '%s' "$code" | perl -0777 -pe '
+      s{ ("(?:\\.|[^"\\])*")
+       | (\x27(?:\\.|[^\x27\\])*\x27)
+       | (`(?:\\.|[^`\\])*`)
+       | (/\*.*?\*/)
+       | (//[^\n]*)
+       }{ (defined($1) || defined($2) || defined($3)) ? $& : " " }gsex;
+      s{\b(require|import)\s*\(\s*}{$1(}gs;
+      s{\bfrom\s*(["\x27])}{from $1}gs' 2>/dev/null || printf '%s' "$code")
+  # A SECOND view, stripping comment shapes unconditionally, is appended
+  # and screened alongside. The two views disagree on purpose, because
+  # the two authoring channels disagree: when code arrives through Bash
+  # (`echo '<code>' > spec.ts`) the outer quotes are the SHELL's, so the
+  # lexer view above treats the whole program as one JS string literal
+  # and never looks inside it. Screening the union means a pattern found
+  # in either framing fires. It cannot add a false positive that the
+  # lexer view avoids — stripping only ever removes text, and it removes
+  # it to a space, so no two fragments can fuse into a match.
+  CODE_N="$CODE_N
+$(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^\n]*}{$1}g;
+      s{\b(require|import)\s*\(\s*}{$1(}gs;
+      s{\bfrom\s*(["\x27])}{from $1}gs' 2>/dev/null || true)"
   CODE_N=$(printf '%s' "$CODE_N" \
     | sed -E 's/\\"/"/g; s/\\'"'"'/'"'"'/g' \
     | tr '\140' '"' \
