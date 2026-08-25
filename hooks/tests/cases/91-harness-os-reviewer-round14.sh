@@ -152,24 +152,24 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
 JSON
 
 assert_deny "$H" "$(bpay 'awk '"'"'BEGIN{system("cat .env")}'"'"'')" \
-  "self-probe awk system() is command execution → DENY" "start another command"
+  "self-probe awk system() is command execution → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'awk '"'"'BEGIN{"cat .env" | getline l; print l}'"'"'')" \
-  "self-probe awk command-pipe into getline → DENY" "start another command"
+  "self-probe awk command-pipe into getline → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'awk '"'"'{print | "sh"}'"'"' tests/data/page.json')" \
-  "self-probe awk pipe OUT to a command → DENY" "start another command"
+  "self-probe awk pipe OUT to a command → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'sed -n '"'"'1e cat .env'"'"' tests/data/page.json')" \
-  "self-probe sed's e command, glued to an address → DENY" "start another command"
+  "self-probe sed's e command, glued to an address → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'sed '"'"'s/a/b/e'"'"' tests/data/page.json')" \
-  "self-probe sed's s///e flag → DENY" "start another command"
+  "self-probe sed's s///e flag → DENY" "run a command or open a file"
 
 assert_deny "$H" "$(bpay 'awk '"'"'BEGIN{while((getline l < "../ledger.json")>0) print l}'"'"'')" \
-  "self-probe awk getline from out of scope → DENY" "outside this role's scopes"
+  "self-probe awk getline from out of scope → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'awk '"'"'{print > "../ledger.json"}'"'"' tests/data/page.json')" \
-  "self-probe awk print INTO an out-of-scope file → DENY" "outside this role's scopes"
+  "self-probe awk print INTO an out-of-scope file → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'sed '"'"'1r ../ledger.json'"'"' tests/data/page.json')" \
-  "self-probe sed r reading out of scope → DENY" "outside this role's scopes"
+  "self-probe sed r reading out of scope → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'sed -n '"'"'w ../ledger.json'"'"' tests/data/page.json')" \
-  "self-probe sed w writing out of scope → DENY" "outside this role's scopes"
+  "self-probe sed w writing out of scope → DENY" "run a command or open a file"
 
 # Calibration. awk and sed are bread-and-butter inspection tools; a
 # screen that refuses their ordinary use is worse than the hole it closes.
@@ -179,18 +179,21 @@ assert_allow "$H" "$(bpay 'awk -F, '"'"'{print $2}'"'"' tests/data/page.json')" 
   "self-probe calibration: awk with a field separator → ALLOW"
 assert_allow "$H" "$(bpay 'awk '"'"'/a|b/{print}'"'"' tests/data/page.json')" \
   "self-probe calibration: a regex ALTERNATION is not a command pipe → ALLOW"
-assert_allow "$H" "$(bpay 'awk '"'"'{print > "tests/out.txt"}'"'"' tests/data/page.json')" \
-  "self-probe calibration: awk writing INSIDE the write scope → ALLOW"
+# Round 16 retired this allowance. Reading the literal beside a
+# construct is exactly what indirection defeats, so the construct itself
+# is now refused and the path it names is beside the point.
+assert_deny "$H" "$(bpay 'awk '"'"'{print > "tests/out.txt"}'"'"' tests/data/page.json')" \
+  "self-probe an awk redirect is refused even INSIDE the write scope" "run a command or open a file"
 assert_allow "$H" "$(bpay 'sed '"'"'s/a/b/'"'"' tests/data/page.json')" \
   "self-probe calibration: an ordinary substitution → ALLOW"
 assert_allow "$H" "$(bpay 'sed -n '"'"'1,5p'"'"' tests/data/page.json')" \
   "self-probe calibration: an address range → ALLOW"
 assert_allow "$H" "$(bpay 'sed '"'"'/pattern/d'"'"' tests/data/page.json')" \
   "self-probe calibration: a delete command → ALLOW"
-assert_allow "$H" "$(bpay 'sed '"'"'1r tests/data/helper.jq'"'"' tests/data/page.json')" \
-  "self-probe calibration: sed r reading INSIDE the read scope → ALLOW"
-assert_allow "$H" "$(bpay 'sed -n '"'"'w tests/out.txt'"'"' tests/data/page.json')" \
-  "self-probe calibration: sed w writing INSIDE the write scope → ALLOW"
+assert_deny "$H" "$(bpay 'sed '"'"'1r tests/data/helper.jq'"'"' tests/data/page.json')" \
+  "self-probe sed r is refused even INSIDE the read scope" "run a command or open a file"
+assert_deny "$H" "$(bpay 'sed -n '"'"'w tests/out.txt'"'"' tests/data/page.json')" \
+  "self-probe sed w likewise" "run a command or open a file"
 
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST
 rm -rf "$R14"

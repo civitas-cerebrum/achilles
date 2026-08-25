@@ -648,6 +648,168 @@ harness_os_log() {
     >> "$HOS_STATE_DIR/decision-log.jsonl" 2>/dev/null || true
 }
 
+# harness_os_awk_sed_verdict <command-word> <segment-text>
+# Prints "indirect" when an awk/sed program is NOT provably inert, and
+# nothing otherwise.
+#
+# awk and sed are interpreters. Their programs can spawn processes
+# (`system()`, `cmd | getline`, `print | cmd`, sed's `e`) and open files
+# (`getline < f`, `print > f`, sed's `r`/`w`), so a role granted either
+# holds an unrestricted shell unless something says otherwise.
+#
+# The first version of this check screened for those constructs and
+# scope-checked the literal beside them, letting an in-scope path
+# through. That is unsound, and a reviewer showed it in eleven
+# characters: put the literal in a variable — `f=".env"; getline l < f`
+# — and every pattern sees nothing, because the operand of an awk
+# construct is an arbitrary expression. Round 8 had already ruled on
+# this shape: a channel that turns data into execution must be closed,
+# not pattern-matched.
+#
+# So the question is inverted here. Inert is what must be provable, and
+# anything else is refused whatever it names — which is the only form of
+# the check that indirection cannot walk around. Roles that genuinely
+# need the constructs opt in through bash.permit, like every other
+# indirection in that list.
+# harness_os_interpreter_inline <command-word> <segment-text>
+# Prints "indirect" when an interpreter is being handed code to run.
+#
+# The screen this replaces matched the code-bearing flag as an exact
+# whole-word token — `-c`, `-e`, `-p`, `--eval`. Every one of these
+# interpreters also accepts that letter BUNDLED with its other short
+# options, as a single argv token that equals none of them:
+#
+#     perl -ne 'system("cat .env")'      python3 -Ic 'print(open(".env").read())'
+#     perl -pe '…'   ruby -ne '…'        python3 -uc '…'
+#
+# so the screen saw nothing and an interpreter grant became an
+# unrestricted shell. That is the same defect as `sort -oFILE` and
+# `grep -f.env` — an exact spelling where a cluster was possible — and
+# the third axis to have had it.
+#
+# Matching is therefore on the CLUSTER: any short-option group ending in
+# a letter that means "here is code" or "load this module". The command
+# word must be the interpreter itself; wrappers that hide it (`env`,
+# `timeout`, `sh -c`) are denied by their own entries in the list.
+harness_os_interpreter_inline() {
+  local cmd="$1" seg="$2"
+  case "${cmd##*/}" in
+    python|python2|python3|python[0-9].[0-9]*|node|nodejs|ruby|perl|php|deno|bun) : ;;
+    *) return 0 ;;
+  esac
+  # -c/-e/-E code, -m/-M module execution, -r/--require preload,
+  # -p print-eval. A cluster ending in any of them carries code.
+  if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])-([A-Za-z0-9]*[ceEmMrp]|-eval|-print|-require|-command)([[:space:]]|=|$)'; then
+    printf 'indirect'
+    return 0
+  fi
+  # And the opposite spelling: NO flag at all. Every one of these
+  # interpreters reads its program from STDIN when handed neither a code
+  # flag nor a script, so `python3 <<< 'CODE'` and `echo CODE | node`
+  # carry arbitrary code past a check that was looking for `-c`.
+  #
+  # The kernel already closes exactly this channel one list-entry above,
+  # where a bare `sh`/`bash` is refused because "its input becomes an
+  # unchecked script". The same sentence was true of these interpreters
+  # and had never been said about them — the flag-cluster fix of round 17
+  # made the check better at recognising flags, which is no help at all
+  # against a command that has none.
+  #
+  # A script OPERAND is what makes the difference: with one, the program
+  # is a file the path scopes already govern. It has to be a path that
+  # exists, or `python3 -X dev` would read its own flag value as a
+  # script and hand the stdin channel straight back.
+  local __w __informational=0 __script=0
+  for __w in $seg; do
+    case "$__w" in
+      --version|-V|--help|-h|-\?) __informational=1 ;;
+    esac
+  done
+  [ "$__informational" = "1" ] && return 0
+  set -- $seg
+  shift 2>/dev/null || true
+  for __w in "$@"; do
+    case "$__w" in -*) continue ;; esac
+    case "$__w" in
+      /*) [ -f "$__w" ] && __script=1 ;;
+      *)  [ -f "${HOS_CWD:-.}/$__w" ] && __script=1 ;;
+    esac
+  done
+  [ "$__script" = "1" ] || printf 'indirect'
+}
+
+harness_os_awk_sed_verdict() {
+  local cmd="$1" seg="$2"
+  # Both gawk and GNU sed ship a `--sandbox` that disables exactly these
+  # constructs in the interpreter itself — system(), redirections and
+  # getline-from-file for gawk; `e`, `r` and `w` for sed. A program run
+  # that way is inert by construction rather than by this function's
+  # reading of it, which is a far better guarantee than any scan, so it
+  # is accepted. On a build that does not know the flag the command
+  # fails to start, so the wrong guess errs toward nothing running.
+  #
+  # Only for the implementations that HAVE it. `gawk` and GNU `sed` do;
+  # a bare `awk` could be mawk or busybox, and trusting a flag a binary
+  # may not implement is exactly the kind of unverifiable assumption
+  # this loop keeps punishing. mawk here rejects the flag outright,
+  # which is the fail-safe direction — but "the awk on this machine"
+  # is not something the kernel can check at decision time, so the
+  # guarantee is claimed only where the command word names it.
+  case "$cmd" in
+    gawk|sed)
+      case " $seg " in *" --sandbox "*|*" --sandbox="*) return 0 ;; esac ;;
+  esac
+  case "$cmd" in
+    awk|gawk|mawk|nawk|busybox)
+      # `system`, `getline`, `close` and `ENVIRON` have no inert use.
+      # A pipe or redirect is only a redirect in a print STATEMENT —
+      # elsewhere `|` is regex alternation and `>` is comparison, and
+      # denying those would refuse most ordinary awk.
+      #
+      # String and regex literals are removed FIRST, because a `}` or a
+      # `;` inside one ends the statement scan early: `print "{x}" > f`
+      # kept its redirect hidden behind the brace in its own argument.
+      AWKSEG="$seg" perl -e '
+        my $p = $ENV{AWKSEG};
+        $p =~ s{"(?:\\.|[^"\\])*"}{ }g;
+        $p =~ s{/(?:\\.|[^/\\])*/}{ }g;
+        # gawk can also load a shared library, which is strictly worse
+        # than system(): `@load`, `@include`, `extension()` and their
+        # -l/--load/-i/--include flags all reach code this kernel never
+        # sees. They read as perfectly inert to a scan looking for
+        # redirects, which is how they survived the first inversion.
+        print "indirect" if $p =~ /(^|[^a-zA-Z_])(system|getline|close|ENVIRON|extension)([^a-zA-Z_0-9]|$)/
+                         || $p =~ /\@(load|include)/
+                         || $ENV{AWKSEG} =~ /(^|\s)(-l|-i|--load|--include)(\s|=)/
+                         || $p =~ /printf?[^;}]*[|>]/;
+      ' 2>/dev/null || printf 'indirect'
+      ;;
+    sed)
+      # sed's dangerous commands are single letters, so they can only be
+      # recognised once the places a letter means itself are removed:
+      # the bodies of `s` and `y`, and `/regex/` addresses. What is left
+      # is command positions, where r/R/w/W/e/F/v name a file or run a
+      # shell. The `w` and `e` FLAGS of an s command are caught while
+      # its body is being removed.
+      SEDSEG="$seg" perl -e '
+        my $p = $ENV{SEDSEG}; my $bad = 0;
+        # Drop the command word and every -flag first. `-e` is sed`s
+        # expression flag and `e` is its shell-out command; read as one
+        # letter they are indistinguishable, and reading the flag as the
+        # command refuses `sed -e p`, which is as ordinary as sed gets.
+        $p =~ s/^\s*\S+//;
+        $p =~ s/(^|\s)--?\S+/ /g;
+        $p =~ s{([sy])(\W)((?:\\.|(?!\2).)*)\2((?:\\.|(?!\2).)*)\2([a-zA-Z0-9]*)}{
+          $bad = 1 if $1 eq "s" && $5 =~ /[we]/; " ";
+        }gex;
+        $p =~ s{/(?:\\.|[^/])*/}{ }g;
+        $bad = 1 if $p =~ /(^|[^a-zA-Z])[rRwWeFv]([^a-zA-Z]|$)/;
+        print "indirect" if $bad;
+      ' 2>/dev/null || printf 'indirect'
+      ;;
+  esac
+}
+
 # harness_os_bound_text <text>
 # Bounds a deny message to something an agent can actually read.
 #

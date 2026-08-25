@@ -1061,7 +1061,29 @@ NOTE: your command group DOES grant 'git ${GIT_SUB}'. This refusal is a construc
       elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_ID='source'; BUILTIN_HIT='sourcing a script into the shell'
       elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_ID='shell'; BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
       elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_ID='find-exec'; BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
-      elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(python[0-9.]*|node|nodejs|ruby|perl|php|deno|bun)([[:space:]][^;|&]*)?[[:space:]](-c|-e|-p|--eval|--print)([[:space:]]|$)'; then BUILTIN_ID='interpreter-inline'; BUILTIN_HIT='interpreter one-liner (-c/-e/-p) — arbitrary code the patterns cannot see'
+      elif [ "$(harness_os_interpreter_inline "${SEG_WORDS[0]:-}" "$seg")" = "indirect" ]; then BUILTIN_ID='interpreter-inline'; BUILTIN_HIT='interpreter one-liner (-c/-e/-p/-m and their bundled spellings) — arbitrary code the patterns cannot see'
+      elif [ "$(harness_os_awk_sed_verdict "${SEG_WORDS[0]:-}" "$seg")" = "indirect" ]; then
+        # awk and sed belong in this list beside `python -c`, and for the
+        # same reason: they are interpreters, and their program can run a
+        # command (`system()`, `cmd | getline`, `print | cmd`, sed's `e`)
+        # or open a file (`getline < f`, `print > f`, sed's `r`/`w`).
+        # A role granted either held an unrestricted shell while its
+        # manifest said otherwise.
+        #
+        # The first version of this screened those constructs and
+        # scope-checked the literal beside them, so an in-scope path
+        # passed. That is unsound, and a reviewer showed it in eleven
+        # characters: put the literal in a variable and every pattern
+        # sees nothing, because the operand is an arbitrary expression.
+        # Round 8 had already ruled on this exact shape — a channel that
+        # turns data into execution must be closed, not pattern-matched —
+        # and this is the second time that ruling had to be learned.
+        #
+        # So inert is what must be proved, and anything else is refused
+        # whatever it names. Roles that genuinely need the constructs opt
+        # in through bash.permit, like every other entry here.
+        BUILTIN_ID="${SEG_WORDS[0]:-awk}-program"
+        BUILTIN_HIT="an ${SEG_WORDS[0]:-awk} program using a construct that can run a command or open a file — its operand is an arbitrary expression, so no scan can say which"
       elif printf '%s' "$seg" | grep -Eq '^(cd|pushd|popd)([[:space:]]|$)'; then
         # `cd <dir> && <cmd>` is how agents habitually prefix a command,
         # and when <dir> IS the directory the call already runs in, the
@@ -1253,6 +1275,51 @@ Command: ${CMD}"
           esac ;;
       esac
     done
+    # Archive tools name their output in ways no output-flag spelling
+    # covers. `tar -cf out.tar .` clusters the `f` with the mode letter,
+    # so it matches none of the arms above; `tar cf out.tar .` drops the
+    # dash entirely; and `zip out.zip files…` puts the archive in the
+    # first positional. Each creates a file, and because that file does
+    # not exist yet the read-token scan cannot see it either — the
+    # existence test that keeps this scan quiet is exactly what hides a
+    # write.
+    #
+    # This is the flag-cluster lesson again, on a third spelling: `-cf`
+    # is `-f` with company. It is modelled per-tool because the operand's
+    # ROLE differs by mode — the archive of `tar -c` is written, the
+    # archive of `tar -x` is read — and no generic rule can tell those
+    # apart from the token alone.
+    case "${SEG_WORDS[0]:-}" in
+      tar|bsdtar|gtar)
+        __tf=0
+        for __i in "${!SEG_WORDS[@]}"; do
+          [ "$__i" = "0" ] && continue
+          __w="${SEG_WORDS[$__i]}"
+          if [ "$__tf" = "1" ]; then FLAG_TARGETS="${FLAG_TARGETS}${__w}"$'\n'; __tf=0; continue; fi
+          case "$__w" in
+            --file=*) FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
+            --file) __tf=1 ;;
+            # A cluster containing `f`, with or without the leading dash
+            # (`tar cf`, `tar -czf`). The archive follows the cluster;
+            # attached to it when more characters come after the `f`.
+            -*f|-*f*|[a-zA-Z]*f|[a-zA-Z]*f*)
+              case "$__w" in
+                -*|[a-zA-Z]*)
+                  __rest="${__w##*f}"
+                  if [ -n "$__rest" ]; then FLAG_TARGETS="${FLAG_TARGETS}${__rest}"$'\n'; else __tf=1; fi ;;
+              esac ;;
+          esac
+        done ;;
+      zip|7z|7za|zipcloak|zipnote)
+        # The first non-flag operand IS the archive it creates.
+        for __i in "${!SEG_WORDS[@]}"; do
+          [ "$__i" = "0" ] && continue
+          case "${SEG_WORDS[$__i]}" in
+            -*) continue ;;
+            *) FLAG_TARGETS="${FLAG_TARGETS}${SEG_WORDS[$__i]}"$'\n'; break ;;
+          esac
+        done ;;
+    esac
     [ -n "$FLAG_TARGETS" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$FLAG_TARGETS")
 
     WRITE_VERB=$(printf '%s' "$seg" | sed -E 's/^([a-z0-9_.\/-]*\/)?([a-z0-9_-]+).*/\2/')
@@ -1556,105 +1623,6 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
       # other read: against the cwd and against each `-L` directory, and
       # only where a candidate actually exists, which is what keeps a
       # module that resolves to nothing from costing anything.
-      # The same lesson as the jq modules above, and a much sharper case
-      # of it. An `awk` or `sed` PROGRAM is exempt from the read scan
-      # because a program is not a path — and both languages can name
-      # paths, and both can spawn processes:
-      #
-      #   awk 'BEGIN{system("cat .env")}'          runs any command
-      #   awk 'BEGIN{"cat .env"|getline l;print l}'          likewise
-      #   sed -n '1e cat .env' f                             likewise
-      #   awk 'BEGIN{while((getline l < ".env")>0) print l}'   reads
-      #   awk '{print > ".env"}' f                            writes
-      #   sed '1r .env' f                                     reads
-      #   sed -n 'w /tmp/x' f                                 writes
-      #
-      # The execution forms are not a read-scope problem at all: they
-      # defeat the COMMAND GROUPS. A role granted `awk` had an
-      # unrestricted shell, and the manifest said otherwise.
-      #
-      # Round 8 settled how to handle a channel that turns data into
-      # execution: close it rather than pattern-match around it. That
-      # ruling applied to authoring code through Bash, where the shell
-      # re-mangles the bytes and one backslash defeats every rule. Here
-      # the program arrives as a single already-unquoted word, so it can
-      # be read as reliably as a Write payload — which is the side of
-      # round 8 that IS sound. So: spawning constructs are refused
-      # outright, file constructs are refused unless the path they name
-      # is a literal inside this role's scope, and an ordinary
-      # `awk '{print $1}'` or `sed 's/a/b/'` is untouched.
-      case "${SEG_WORDS[0]:-}" in
-        awk|gawk|mawk|sed)
-          PROG_TEXT=$(printf '%s ' "${SEG_WORDS[@]}")
-          # --- spawning: no literal to check, so no way to allow it ---
-          SPAWN=""
-          case "${SEG_WORDS[0]:-}" in
-            # sed's `e` can be glued to a line address (`1e cmd`), so the
-            # character before it is any address terminator, not just a
-            # space. The `s///e` flag is spelled out for the `/`
-            # delimiter rather than with a backreference, which ERE does
-            # not have.
-            sed) printf '%s' "$PROG_TEXT" \
-                   | grep -qE '(^|[^a-zA-Z-])e([[:space:]]|$)|s/[^/]*/[^/]*/[gipIMm0-9]*e' \
-                   && SPAWN="sed's 'e' command executes the pattern space as a shell command" ;;
-            *)   printf '%s' "$PROG_TEXT" \
-                   | grep -qE 'system[[:space:]]*\(|\|[[:space:]]*getline|\|[[:space:]]*"' \
-                   && SPAWN="awk's system() and command pipes run a shell command" ;;
-          esac
-          if [ -n "$SPAWN" ]; then
-            set +f
-            harness_os_deny "bash-program-spawns ${SEG_WORDS[0]}" "[BLOCKED] Role '${ROLE}' ran a ${SEG_WORDS[0]} program that can start another command — ${SPAWN}.
-
-${ROLE_HEADER}
-
-Command: ${CMD}
-
-A program passed to ${SEG_WORDS[0]} is exempt from the path scan because a program is not a path. That exemption cannot extend to running arbitrary commands: it would make this role's command groups mean nothing, since any command at all could be reached through this one. There is no literal here to check against a scope, so the construct is refused rather than guessed at.
-
-Run the command you actually need as its own command, where the role's command groups and path scopes can both be applied to it."
-          fi
-          # --- file constructs: allowed only where the literal is in scope
-          # awk names its files as quoted strings after < > >>; sed names
-          # them bare, after an r/R/w/W command that may be glued to a
-          # line address (`1r .env`). Two grammars, two extractors.
-          case "${SEG_WORDS[0]:-}" in
-            sed) PROG_PATHS=$(printf '%s' "$PROG_TEXT" \
-                   | grep -oE '[^a-zA-Z][rRwW][[:space:]]+[^;}[:space:]]+' 2>/dev/null \
-                   | sed -E 's/^.[rRwW][[:space:]]+//' || true) ;;
-            *)   PROG_PATHS=$(printf '%s' "$PROG_TEXT" \
-                   | grep -oE '(<|>>?)[[:space:]]*"[^"]*"' 2>/dev/null \
-                   | sed -E 's/^[<>]+[[:space:]]*"//; s/"$//' || true) ;;
-          esac
-          PROG_PATHS=$(printf '%s' "$PROG_PATHS" | grep -vE '^\$|^$' || true)
-          if [ -n "$PROG_PATHS" ]; then
-            while IFS= read -r __pp; do
-              [ -n "$__pp" ] || continue
-              case "$__pp" in /*) __ppa="$__pp" ;; *) __ppa="${HOS_CWD%/}/$__pp" ;; esac
-              # Only a path that resolves somewhere real is worth a
-              # verdict; `print > $out` and friends were filtered above
-              # because a name the kernel cannot resolve is not a literal.
-              [ -e "$__ppa" ] || [ -d "$(dirname "$__ppa")" ] || continue
-              harness_os_is_manifest_path "$__ppa" && continue
-              __ppr=$(harness_os_relpath "$__ppa")
-              if [ "$READ_DENY" != "null" ] && harness_os_path_in_scope "$__ppr" "$READ_DENY"; then :
-              elif harness_os_path_in_scope "$__ppr" "$READ_ALLOW"; then continue
-              elif [ "$HAS_WRITE_GRANTS" = "1" ] && harness_os_path_in_scope "$__ppr" "$WRITE_ALLOW"; then continue
-              fi
-              set +f
-              harness_os_deny "bash-program-path-out-of-scope $__ppr" "[BLOCKED] Role '${ROLE}' ran a ${SEG_WORDS[0]} program that opens '$__ppr', which is outside this role's scopes.
-
-${ROLE_HEADER}
-read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
-
-Command: ${CMD}
-
-${SEG_WORDS[0]}'s program is exempt from the path scan because a program is not a path — but \`getline < \"file\"\`, \`print > \"file\"\`, and sed's \`r\`/\`w\` commands name files the tool really opens, so those names are held to the same scopes as any other path.
-
-Name the file as an operand, or use a shell redirection, where it is scope-checked in the ordinary way."
-            done <<< "$PROG_PATHS"
-          fi
-          ;;
-      esac
 
       case "${SEG_WORDS[0]:-}" in
         jq|gojq|jaq)
