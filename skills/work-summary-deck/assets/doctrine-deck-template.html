@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Shift-Left — Autonomous Quality Assurance</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-card: #21262d;
+    --text-bright: #e6edf3;
+    --text-muted: #7d8590;
+    --text-faint: #484f58;
+    --accent-green: #3fb950;
+    --accent-green-dim: #1c3329;
+    --accent-blue: #58a6ff;
+    --accent-blue-dim: #203043;
+    --accent-purple: #bc8cff;
+    --accent-purple-dim: #2f2c43;
+    --accent-orange: #d29922;
+    --accent-orange-dim: #322e22;
+    --accent-red: #f85149;
+    --border: #30363d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-bright);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .slide {
+    min-height: 100vh;
+    padding: 60px 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    page-break-after: always;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .slide::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--bg-primary), var(--accent-green), var(--bg-primary));
+  }
+
+  .slide-number {
+    position: absolute;
+    top: 30px; right: 40px;
+    font-size: 13px;
+    color: var(--text-faint);
+    font-weight: 500;
+    letter-spacing: 2px;
+  }
+
+  .brand-mark {
+    position: absolute;
+    top: 30px; left: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-mark .logo-rings { width: 28px; height: 28px; }
+  .brand-mark span {
+    font-size: 12px; font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  /* Title Slide */
+  .title-slide {
+    text-align: center;
+    background: radial-gradient(ellipse at 50% 30%, #111e1c 0%, var(--bg-primary) 60%), var(--bg-primary);
+  }
+
+  .title-logo { width: 120px; height: 120px; margin: 0 auto 40px; }
+
+  .title-slide h1 {
+    font-size: 52px; font-weight: 800;
+    letter-spacing: -1px; margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--text-bright) 0%, var(--accent-green) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .title-slide .subtitle { font-size: 20px; color: var(--text-muted); font-weight: 400; margin-bottom: 50px; }
+  .title-slide .tagline { font-size: 28px; font-weight: 600; color: var(--text-bright); max-width: 700px; margin: 0 auto 16px; line-height: 1.3; }
+  .title-slide .description { font-size: 16px; color: var(--text-muted); max-width: 600px; margin: 0 auto 40px; }
+
+  .title-meta {
+    display: flex; justify-content: center; gap: 30px;
+    font-size: 13px; color: var(--text-faint);
+  }
+  .title-meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* Typography */
+  h2 { font-size: 38px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px; }
+  h3 { font-size: 22px; font-weight: 600; margin-bottom: 20px; }
+  .section-subtitle { font-size: 16px; color: var(--text-muted); margin-bottom: 40px; max-width: 600px; }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 12px; }
+
+  /* Cards */
+  .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 20px; }
+  .card-grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+  }
+  .card-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; margin-bottom: 16px;
+  }
+  .card-icon.green { background: var(--accent-green-dim); }
+  .card-icon.blue { background: var(--accent-blue-dim); }
+  .card-icon.purple { background: var(--accent-purple-dim); }
+  .card-icon.orange { background: var(--accent-orange-dim); }
+  .card h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .card p { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+  /* Flow Stages */
+  .flow-stages { display: flex; gap: 0; margin: 30px 0; align-items: stretch; }
+  .flow-stage {
+    flex: 1; padding: 24px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    position: relative; text-align: center;
+  }
+  .flow-stage:first-child { border-radius: 12px 0 0 12px; }
+  .flow-stage:last-child { border-radius: 0 12px 12px 0; }
+  .flow-stage .stage-num { font-size: 32px; font-weight: 800; color: #224a30; position: absolute; top: 8px; right: 12px; }
+  .flow-stage h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .flow-stage p { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+  .flow-connector { display: flex; align-items: center; color: var(--accent-green); font-size: 20px; padding: 0 2px; }
+
+  /* Architecture */
+  .arch-diagram { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 40px; margin: 20px 0; }
+  .arch-layer { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 16px; }
+  .arch-box { padding: 14px 24px; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center; min-width: 180px; border: 1px solid; }
+  .arch-box.test { background: var(--accent-green-dim); border-color: #275b35; color: var(--accent-green); }
+  .arch-box.steps { background: var(--accent-blue-dim); border-color: #31537b; color: var(--accent-blue); }
+  .arch-box.repo { background: #2d2026; border-color: #6a2f31; color: var(--accent-red); }
+  .arch-arrow { text-align: center; color: var(--text-faint); font-size: 18px; margin: 8px 0; }
+
+  /* Comparison */
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin: 20px 0; }
+  .comparison-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    min-width: 0; overflow: hidden;
+  }
+  .comparison-panel.before { border-top: 3px solid var(--accent-red); }
+  .comparison-panel.after { border-top: 3px solid var(--accent-green); }
+  .comparison-panel h4 { font-size: 14px; font-weight: 600; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px; }
+  .comparison-panel.before h4 { color: var(--accent-red); }
+  .comparison-panel.after h4 { color: var(--accent-green); }
+
+  /* Code */
+  .code-block {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.6;
+    overflow-x: auto;
+    color: var(--text-bright);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .code-block .comment { color: var(--text-faint); }
+  .code-block .keyword { color: var(--accent-purple); }
+  .code-block .string { color: var(--accent-green); }
+  .code-block .method { color: var(--accent-blue); }
+
+  /* Value List */
+  .value-list { list-style: none; margin: 20px 0; }
+  .value-list li { display: flex; align-items: flex-start; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .value-list li:last-child { border-bottom: none; }
+  .value-list .check { width: 24px; height: 24px; border-radius: 50%; background: var(--accent-green-dim); color: var(--accent-green); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+  .value-list .text h4 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+  .value-list .text p { font-size: 13px; color: var(--text-muted); }
+
+  /* Table */
+  .data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  .data-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; padding: 12px 16px; border-bottom: 2px solid var(--border); }
+  .data-table td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid var(--border); }
+  .data-table tr:last-child td { border-bottom: none; }
+
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+  .badge.green { color: var(--accent-green); background: var(--accent-green-dim); }
+  .badge.blue { color: var(--accent-blue); background: var(--accent-blue-dim); }
+  .badge.purple { color: var(--accent-purple); background: var(--accent-purple-dim); }
+  .badge.orange { color: var(--accent-orange); background: var(--accent-orange-dim); }
+  .badge.red { color: var(--accent-red); background: #2d2026; }
+
+  /* NPM badges */
+  .npm-badge { display: inline-flex; align-items: center; gap: 0; font-size: 12px; font-weight: 600; border-radius: 6px; overflow: hidden; margin: 4px 4px 4px 0; }
+  .npm-badge .pkg { background: var(--bg-card); padding: 4px 10px; color: var(--text-muted); }
+  .npm-badge .ver { background: var(--accent-green); padding: 4px 10px; color: #fff; }
+
+  @media print {
+    .slide { page-break-after: always; page-break-inside: avoid; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  @page { size: landscape; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 1 — TITLE
+     ══════════════════════════════════════════════════════ -->
+<section class="slide title-slide">
+  <div class="slide-number">01 / 10</div>
+  <svg class="title-logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="4"/>
+    <circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="4"/>
+    <text x="100" y="175" text-anchor="middle" fill="#7d8590" font-family="Inter, sans-serif" font-size="14" font-weight="600" letter-spacing="4">CIVITAS CEREBRUM</text>
+  </svg>
+  <h1>Quality, Autonomous.</h1>
+  <p class="subtitle">Agentic Shift-Left in Quality Assurance</p>
+  <p class="tagline">A doctrine for AI-driven test automation that enforces its own methodology</p>
+  <p class="description">Development is agentic. Quality assurance must be too. When features ship at agent speed, manual testing becomes the bottleneck that nullifies every upstream acceleration.</p>
+  <div class="title-meta">
+    <span>@civitas-cerebrum/achilles</span>
+    <span>|</span>
+    <span>@civitas-cerebrum/element-interactions</span>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 2 — SEPARATION OF CONCERNS
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">02 / 10</div>
+  <div class="eyebrow" style="color: var(--accent-green);">ACT I &mdash; THE FOUNDATION</div>
+  <h2>Separation of Concerns</h2>
+  <p class="section-subtitle">The Steps API removes selectors from tests. The page repository isolates them. Each layer changes independently.</p>
+
+  <div class="arch-diagram">
+    <div class="arch-layer">
+      <div class="arch-box test">Test Code<br><span style="font-size: 11px; font-weight: 400;">Business intent &mdash; what the user does</span></div>
+    </div>
+    <div class="arch-arrow">&#8595;</div>
+    <div class="arch-layer">
+      <div class="arch-box steps">Steps API<br><span style="font-size: 11px; font-weight: 400;">Interaction mechanics &mdash; how to click, wait, retry</span></div>
+    </div>
+    <div class="arch-arrow">&#8595;</div>
+    <div class="arch-layer">
+      <div class="arch-box repo">Page Repository<br><span style="font-size: 11px; font-weight: 400;">Selectors &mdash; where each element lives in the DOM</span></div>
+    </div>
+  </div>
+
+  <p style="font-size: 14px; color: var(--text-muted); text-align: center; margin-top: 16px;">When the frontend redesigns every selector, zero test files change. When the framework evolves, zero test files change.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 3 — TESTS ANYONE CAN READ
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">03 / 10</div>
+  <h2 style="font-size: 32px; margin-bottom: 8px;">Tests Anyone Can Read</h2>
+  <p class="section-subtitle" style="margin-bottom: 20px;">The Steps API is the interface between human intent and automated verification.</p>
+
+  <div class="comparison" style="margin: 10px 0;">
+    <div class="comparison-panel before" style="padding: 20px;">
+      <h4>Plain Playwright</h4>
+      <div class="code-block" style="font-size: 11.5px; line-height: 1.5; padding: 12px 16px;"><span class="keyword">const</span> nav = page.<span class="method">locator</span>(<span class="string">'[data-testid="main-nav"]'</span>)
+<span class="keyword">await</span> nav.<span class="method">first</span>().<span class="method">hover</span>()
+<span class="keyword">await</span> page.<span class="method">waitForSelector</span>(
+  <span class="string">'[data-testid="sub-items"]'</span>,
+  { state: <span class="string">'attached'</span> }
+)
+<span class="keyword">const</span> btn = page.<span class="method">locator</span>(
+  <span class="string">'[data-testid="add-to-cart"]'</span>
+)
+<span class="keyword">await</span> btn.<span class="method">scrollIntoViewIfNeeded</span>()
+<span class="keyword">await</span> btn.<span class="method">click</span>()
+<span class="keyword">await</span> <span class="method">expect</span>(
+  page.<span class="method">locator</span>(<span class="string">'[data-testid="count"]'</span>)
+).<span class="method">toHaveText</span>(<span class="string">'1'</span>)</div>
+    </div>
+    <div class="comparison-panel after" style="padding: 20px;">
+      <h4>Steps API</h4>
+      <div class="code-block" style="font-size: 11.5px; line-height: 1.5; padding: 12px 16px;"><span class="keyword">await</span> steps
+  .<span class="method">on</span>(<span class="string">'mainNav'</span>, <span class="string">'HomePage'</span>)
+  .<span class="method">first</span>().<span class="method">hover</span>()
+
+<span class="keyword">await</span> steps
+  .<span class="method">on</span>(<span class="string">'subItems'</span>, <span class="string">'HomePage'</span>)
+  .<span class="method">first</span>()
+  .<span class="method">waitForState</span>(<span class="string">'attached'</span>)
+
+<span class="keyword">await</span> steps
+  .<span class="method">on</span>(<span class="string">'addToCart'</span>, <span class="string">'ProductPage'</span>)
+  .<span class="method">click</span>()
+
+<span class="keyword">await</span> steps
+  .<span class="method">on</span>(<span class="string">'cartCount'</span>, <span class="string">'CartDrawer'</span>)
+  .<span class="method">expectText</span>(<span class="string">'1'</span>)
+
+<span class="comment">// Zero selectors. Zero log lines.</span>
+<span class="comment">// The framework handles both.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 4 — OPEN SOURCE
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">04 / 10</div>
+  <h2>Open Source</h2>
+  <p class="section-subtitle">The methodology ships inside node_modules. Version-pinned, auditable, reproducible.</p>
+
+  <ul class="value-list">
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>npm install is the entire setup</h4>
+        <p>Skills land in .claude/skills/, hooks register in settings.json, the harness is live. One command, zero configuration.</p>
+      </div>
+    </li>
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>Immutable methodology</h4>
+        <p>The version you pin is the version that runs. No wiki drift, no "we should update the testing guidelines" conversation that never happens.</p>
+      </div>
+    </li>
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>Community-auditable</h4>
+        <p>Every hook, every skill, every gate is readable source on npm and GitHub. The enforcement is transparent.</p>
+      </div>
+    </li>
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>Framework-managed stability</h4>
+        <p>Auto-wait visibility, scrollIntoView, click-interception detection with classified retry. The framework handles the fragility; tests stay clean.</p>
+      </div>
+    </li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 5 — AGENTIC SHIFT-LEFT LIFECYCLE
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">05 / 10</div>
+  <div class="eyebrow" style="color: var(--accent-blue);">ACT II &mdash; THE METHOD</div>
+  <h2>Agentic Shift-Left</h2>
+  <p class="section-subtitle">Four stages. A human starts it, agents do the heavy lifting, a human confirms the result, agents guard it going forward.</p>
+
+  <div class="flow-stages">
+    <div class="flow-stage" style="border-left: 3px solid var(--accent-green);">
+      <div class="stage-num">1</div>
+      <div class="badge green" style="margin-bottom: 8px;">HUMAN</div>
+      <h4>Triage</h4>
+      <p>CX/revenue impact assessment. What matters enough to test? The one decision the methodology refuses to automate.</p>
+    </div>
+    <div class="flow-connector">&#9654;</div>
+    <div class="flow-stage" style="border-left: 3px solid var(--accent-blue);">
+      <div class="stage-num">2</div>
+      <div class="badge blue" style="margin-bottom: 8px;">AUTONOMOUS</div>
+      <h4>Automate</h4>
+      <p>Sub-agents discover, inspect, compose, and review. Dual-stage per journey. Schema-validated returns.</p>
+    </div>
+    <div class="flow-connector">&#9654;</div>
+    <div class="flow-stage" style="border-left: 3px solid var(--accent-purple);">
+      <div class="stage-num">3</div>
+      <div class="badge purple" style="margin-bottom: 8px;">HUMAN + HARNESS</div>
+      <h4>Confirm</h4>
+      <p>Adversarial review of the tests themselves. Negative control. Hook-enforced, not advisory.</p>
+    </div>
+    <div class="flow-connector">&#9654;</div>
+    <div class="flow-stage" style="border-left: 3px solid var(--accent-orange);">
+      <div class="stage-num">4</div>
+      <div class="badge orange" style="margin-bottom: 8px;">AUTONOMOUS</div>
+      <h4>Guard / Heal</h4>
+      <p>Continuous monitoring. On failure: classify (app-bug, test-drift, flake), heal or quarantine, file evidence.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 6 — THE TESTS GET TESTED
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">06 / 10</div>
+  <h2>The Tests Get Tested</h2>
+  <p class="section-subtitle">Two harness-enforced gates that block sign-off. Not best practices — physical enforcement.</p>
+
+  <div class="card-grid">
+    <div class="card" style="border-top: 3px solid var(--accent-purple);">
+      <div class="card-icon purple">&#9878;</div>
+      <h4>Negative Control</h4>
+      <p>Every test must be proven to fail where the fix is absent. A test that passes in both states proves nothing. The harness blocks QA sign-off until negative control evidence exists.</p>
+      <div class="badge purple" style="margin-top: 12px;">HOOK-ENFORCED</div>
+    </div>
+    <div class="card" style="border-top: 3px solid var(--accent-orange);">
+      <div class="card-icon orange">&#9876;</div>
+      <h4>Adversarial Review</h4>
+      <p>Before a ticket transitions to done, adversarial probes challenge the tests: false-positive paths, weak assertions, surviving mutations. The gate blocks until the review receipt exists and is newer than the newest spec edit.</p>
+      <div class="badge orange" style="margin-top: 12px;">HOOK-ENFORCED</div>
+    </div>
+  </div>
+
+  <p style="font-size: 14px; color: var(--text-muted); margin-top: 30px; text-align: center;">The agent doesn't opt into the methodology. It has no path around it.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 7 — COMMIT OR DISCARD
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">07 / 10</div>
+  <h2>Commit or Discard</h2>
+  <p class="section-subtitle">Tests are discardable by default. Durable automation only when CX/revenue impact justifies it.</p>
+
+  <div class="comparison">
+    <div class="comparison-panel" style="border-top: 3px solid var(--accent-green);">
+      <h4 style="color: var(--accent-green);">Commit</h4>
+      <div class="code-block" style="font-family: Inter, sans-serif; font-size: 14px; line-height: 1.8;">
+<span style="color: var(--accent-green);">&#10003;</span> High CX/revenue impact
+<span style="color: var(--accent-green);">&#10003;</span> Human confirms the proposal
+<span style="color: var(--accent-green);">&#10003;</span> Test joins the permanent suite
+<span style="color: var(--accent-green);">&#10003;</span> Guarded by nightly regression
+
+<span style="color: var(--text-faint);">Login flow. Checkout. Cart.
+The flows customers use every day.</span></div>
+    </div>
+    <div class="comparison-panel" style="border-top: 3px solid var(--accent-orange);">
+      <h4 style="color: var(--accent-orange);">Discard</h4>
+      <div class="code-block" style="font-family: Inter, sans-serif; font-size: 14px; line-height: 1.8;">
+<span style="color: var(--accent-orange);">&#8226;</span> Verification still happens
+<span style="color: var(--accent-orange);">&#8226;</span> Evidence attached to ticket
+<span style="color: var(--accent-orange);">&#8226;</span> Test stays in the bundle
+<span style="color: var(--accent-orange);">&#8226;</span> Suite stays lean
+
+<span style="color: var(--text-faint);">Tooltip copy fix. Icon swap.
+Verify it, prove it, move on.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 8 — ENFORCEMENT, NOT INSTRUCTIONS
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">08 / 10</div>
+  <div class="eyebrow" style="color: var(--accent-purple);">ACT III &mdash; THE HARNESS</div>
+  <h2>Enforcement, Not Instructions</h2>
+  <p class="section-subtitle">The distinction between a methodology and a best-practices document is enforcement.</p>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Gate</th>
+        <th>Blocks</th>
+        <th>Until</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Evidence bundle</td>
+        <td>Ticket completion, PR creation</td>
+        <td>Summary + screenshots + verification artifact exist</td>
+      </tr>
+      <tr>
+        <td>Adversarial verification</td>
+        <td>Same surfaces</td>
+        <td>Review receipt exists, newer than newest spec</td>
+      </tr>
+      <tr>
+        <td>Negative control</td>
+        <td>QA sign-off</td>
+        <td>Test demonstrated to fail without the fix</td>
+      </tr>
+      <tr>
+        <td>Schema validation</td>
+        <td>Sub-agent returns</td>
+        <td>Return conforms to role's JSON Schema</td>
+      </tr>
+      <tr>
+        <td>Dual-stage review</td>
+        <td>Journey completion</td>
+        <td>Composer and reviewer are separate, isolated contexts</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="font-size: 14px; color: var(--text-muted); margin-top: 16px;">Hooks are installed by <code style="color: var(--accent-green);">npm postinstall</code> and registered in the harness config. They cannot be disabled from inside a session.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 9 — WHAT THIS ENABLES
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">09 / 10</div>
+  <h2>What This Enables</h2>
+  <p class="section-subtitle">When the foundation, the lifecycle, and the enforcement work together.</p>
+
+  <ul class="value-list">
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>One sentence drives the entire QA process</h4>
+        <p>"Verify the checkout flow with evidence." The agent maps, composes, runs, collects evidence, proves the negative control, and files the report &mdash; gated at every stage.</p>
+      </div>
+    </li>
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>Test quality is not proportional to human attention</h4>
+        <p>Adversarial review and negative control mean a test that passes sign-off has been challenged and proven. A human confirms the verdict; a human doesn't produce it.</p>
+      </div>
+    </li>
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>Suites stay healthy</h4>
+        <p>The guard/heal cycle triages failures autonomously. App bugs get evidence. Test drift gets healed. Flakes get quarantined. The suite stays green and meaningful.</p>
+      </div>
+    </li>
+    <li>
+      <div class="check">&#10003;</div>
+      <div class="text">
+        <h4>The methodology travels with the package</h4>
+        <p>npm install is the onboarding. No wiki. No "we should update the testing guidelines." The methodology is code, and code ships.</p>
+      </div>
+    </li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 10 — CLOSING
+     ══════════════════════════════════════════════════════ -->
+<section class="slide title-slide" style="background: radial-gradient(ellipse at 50% 60%, #101b1a 0%, var(--bg-primary) 60%), var(--bg-primary);">
+  <div class="brand-mark">
+    <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
+    <span>Civitas Cerebrum</span>
+  </div>
+  <div class="slide-number">10 / 10</div>
+  <svg style="width: 100px; height: 100px; margin: 0 auto 30px;" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="4"/>
+    <circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="4"/>
+  </svg>
+  <h1 style="font-size: 42px;">The methodology is code.<br>Code ships.</h1>
+  <p class="subtitle" style="margin-bottom: 40px;">npm install @civitas-cerebrum/achilles</p>
+  <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 40px;">
+    <span class="npm-badge"><span class="pkg">@civitas-cerebrum/achilles</span><span class="ver">latest</span></span>
+    <span class="npm-badge"><span class="pkg">@civitas-cerebrum/element-interactions</span><span class="ver">latest</span></span>
+  </div>
+  <div class="title-meta">
+    <span>github.com/civitas-cerebrum</span>
+    <span>|</span>
+    <span>npmjs.com/org/civitas-cerebrum</span>
+  </div>
+</section>
+
+</body>
+</html>
