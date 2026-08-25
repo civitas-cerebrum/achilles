@@ -283,27 +283,55 @@ The manifest, .claude/harness-os.state/, and the project's .claude/settings*/hoo
 NORM_MANIFEST="$(harness_os_normalize_path "$HOS_MANIFEST")"
 NORM_STATE_DIR="$(harness_os_normalize_path "$HOS_STATE_DIR")"
 
+# harness_os_self_protect <path> <log-prefix>
+# Refuses a write to the harness OS itself: the manifest, the state
+# directory, this project's .claude config and hooks, and the installed
+# kernel wherever it lives.
+#
+# ONE COPY. There were two — one for Write/Edit, one for Bash write
+# targets — and they had already drifted: the Bash copy was missing the
+# bare `.claude/hooks` entry the other had. Round 13 made this argument
+# about the read scan's positional-program exemption; it is the same
+# argument. A rule duplicated per channel is a rule that will differ per
+# channel, and the difference is discovered by a reviewer rather than by
+# its authors.
+#
+# And it is now called from THREE channels, because round 22 found the
+# third. Self-protection had been attached to tool NAMES — the
+# `Write|Edit|NotebookEdit` arm and the `Bash` arm — rather than to the
+# act of writing, so a mapped MCP write tool reached the manifest, the
+# role bindings and the hook registration untouched by any of it. The
+# axis that maps MCP path arguments held them to the role's write scope
+# and stopped there, and a config role whose scope legitimately covers
+# `.claude/**` could therefore rewrite the file that says what it may do.
+self_protect_target() {
+  local sp_path="$1" sp_prefix="${2:-self-protect write}" sp_norm sp_rel
+  [ -n "$sp_path" ] || return 0
+  sp_norm="$(harness_os_normalize_path "$sp_path")"
+  case "$sp_norm" in
+    "$NORM_MANIFEST"|"$NORM_STATE_DIR"|"$NORM_STATE_DIR"/*)
+      harness_os_deny "$sp_prefix $sp_path" "$SELF_PROTECT_MSG" ;;
+  esac
+  sp_rel="$(harness_os_relpath "$sp_path")"
+  case "$sp_rel" in
+    .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*)
+      harness_os_deny "$sp_prefix $sp_path" "$SELF_PROTECT_MSG" ;;
+  esac
+  # The INSTALLED kernel is the root of trust wherever it lives. A
+  # project-local install sits in node_modules, which no self-protect
+  # list covered — a role could truncate the hook and disable every
+  # boundary on the next call.
+  case "$sp_norm" in
+    */harness-os/hooks/*|*/.claude/hooks/*|*/harness-os-role-gate.sh|*/lib/harness-os.sh)
+      harness_os_deny "$sp_prefix kernel $sp_path" "$SELF_PROTECT_MSG" ;;
+  esac
+}
+
 case "$HOS_TOOL" in
   Write|Edit|NotebookEdit)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
     if [ -n "$TARGET" ]; then
-      NORM_TARGET=$(harness_os_normalize_path "$TARGET")
-      case "$NORM_TARGET" in
-        "$NORM_MANIFEST"|"$NORM_STATE_DIR"|"$NORM_STATE_DIR"/*) harness_os_deny "self-protect write $TARGET" "$SELF_PROTECT_MSG" ;;
-      esac
-      REL_TARGET=$(harness_os_relpath "$TARGET")
-      case "$REL_TARGET" in
-        .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*)
-          harness_os_deny "self-protect write $TARGET" "$SELF_PROTECT_MSG" ;;
-      esac
-      # The INSTALLED kernel is the root of trust wherever it lives. A
-      # project-local install sits in node_modules, which no self-protect
-      # list covered — a role could truncate the hook and disable every
-      # boundary on the next call.
-      case "$NORM_TARGET" in
-        */harness-os/hooks/*|*/.claude/hooks/*|*/harness-os-role-gate.sh|*/lib/harness-os.sh)
-          harness_os_deny "self-protect write kernel $TARGET" "$SELF_PROTECT_MSG" ;;
-      esac
+      self_protect_target "$TARGET" "self-protect write"
     fi
     ;;
   Bash)
@@ -420,9 +448,21 @@ check_code_capabilities() {
   [ -n "$target" ] || return 0
   [ -n "$code" ] || return 0
   rel=$(harness_os_relpath "$target")
-  case "$rel" in
-    *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1) : ;;
-    *) return 0 ;;
+  # A file with NO extension is runnable — that is exactly where a
+  # `#!/bin/sh` shebang hides. The Bash channel has classified it that
+  # way for several rounds, with a comment saying so, and refuses to
+  # author one through `echo … > file` precisely because only Write and
+  # Edit can screen the CONTENT. This gate skipped it, so the deny
+  # message on the Bash side was routing agents into a hole: write it
+  # with Write, where it is not screened at all.
+  #
+  # Same lesson as round 22 in a different dress. The rule was written
+  # once per channel and the two channels disagreed about what counts as
+  # code, so the stricter one referred work to the laxer one.
+  case "${rel##*/}" in
+    *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1|*.awk|*.sed|*.jq) : ;;
+    *.*) return 0 ;;
+    *) : ;;
   esac
   local CAPS_ALLOW CODE_N CAP_ID CAP_WHAT LOAD FS_METHODS
   CAPS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeCapabilities')
@@ -832,6 +872,60 @@ Preview before committing: harness-os explain --role ${ROLE} --tool Write --path
 # pattern can safely coexist with, write-target checks on redirections,
 # and a read-scope check over every token that resolves to a real file.
 # Everywhere the axis guesses, it guesses toward deny-with-guidance.
+
+# screen_env_assignments <segment>
+# Refuses a leading NAME=value whose NAME is read as OPTIONS by the
+# runtime the segment starts.
+#
+# The assignment strip is the only place in this kernel where text is
+# removed from a segment before EVERY axis runs, rather than being
+# neutralised for one specific check. The assumption underneath it —
+# that `NAME=value` is data for the command — is false for a small,
+# specific set of names, which are argv for the process:
+#
+#   NODE_OPTIONS=--require=./.env npx playwright test
+#
+# is a permitted command, and node prints the file while failing to parse
+# it. No authored file, no second step, and it worked against the
+# benchmark's real manifest with the composer's real grants. It also
+# cancels the runtime profile `harness-os run` exists to install.
+#
+# Refused rather than scope-checked, because the VALUE is an option
+# string and not a path — resolving `--require=x` as a filename would be
+# the literal-matching mistake rounds 16 and 20 each had to undo.
+#
+# ONE COPY, called from both strips. There are two — the leading strip
+# and the one inside the wrapper loop — and round 3 already had to fix
+# the same defect twice because of it. A rule duplicated per site is a
+# rule that will be applied at one site.
+screen_env_assignments() {
+  local sa_seg="$1" sa_list sa_a
+  sa_list=$(printf '%s' "$sa_seg" | sed -E 's/^[[:space:]({]+//' \
+    | grep -oE '^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*[[:space:]]+)+' 2>/dev/null || true)
+  [ -n "$sa_list" ] || return 0
+  for sa_a in $sa_list; do
+    case "${sa_a%%=*}" in
+      NODE_OPTIONS|NODE_REPL_EXTERNAL_MODULE|PERL5OPT|PERL5LIB|PERL5DB|RUBYOPT|RUBYLIB|\
+      PYTHONSTARTUP|PYTHONPATH|PYTHONHOME|BASH_ENV|ENV|SHELLOPTS|BASHOPTS|\
+      LD_PRELOAD|LD_LIBRARY_PATH|LD_AUDIT|DYLD_INSERT_LIBRARIES|DYLD_LIBRARY_PATH|\
+      GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_SSH_COMMAND|GIT_EXTERNAL_DIFF|GIT_PAGER|\
+      JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|CLASSPATH)
+        if ! { [ "$BASH_PERMIT" != "null" ] && printf '%s' "$BASH_PERMIT" | "$JQ" -e 'index("env-injection") != null' >/dev/null 2>&1; }; then
+          set +f
+          harness_os_deny "bash-env-injection ${sa_a%%=*}" "[BLOCKED] Role '${ROLE}' set '${sa_a%%=*}' in front of a command — that variable is read as OPTIONS by the runtime it starts, so it loads code the kernel's checks never see.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+A leading NAME=value is normally data for the command, and is treated as such. These few names are not: '${sa_a%%=*}' is argv for the process, and \`NODE_OPTIONS=--require=<file>\` turns any permitted node command into a loader for that file. It also cancels the runtime profile \`harness-os run\` exists to install.
+
+Run the command without it. If this role genuinely needs the variable, the operator can add 'env-injection' to its bash.permit list."
+        fi ;;
+    esac
+  done
+}
+
 if [ "$HOS_TOOL" = "Bash" ]; then
   CMD=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.command // empty' 2>/dev/null || echo "")
   BASH_SPEC=$(harness_os_role_field "$ROLE" '.bash')
@@ -914,6 +1008,27 @@ Everything after an unclosed quote reads as string rather than syntax, so the ke
     # every check below sees the segment exactly as the shell will.
     seg=$(printf '%s' "$seg" | harness_os_unsplit)
     SEG_RAW="$seg"
+    # SCREEN the leading assignments before dropping them. This strip is
+    # the only place in the kernel where text is removed from a segment
+    # before EVERY axis runs rather than being neutralised for one check,
+    # and the assumption underneath it — that `NAME=value` is data for
+    # the command — is false for a specific, small set of names. They are
+    # argv for the process the segment starts:
+    #
+    #   NODE_OPTIONS=--require=./.env npx playwright test
+    #
+    # is a permitted command, and node prints the file while failing to
+    # parse it. No authored file, no second step, and it worked against
+    # the benchmark's real manifest with the composer's real grants.
+    # `PERL5OPT`, `RUBYOPT`, `BASH_ENV`, `PYTHONSTARTUP` and `LD_PRELOAD`
+    # are the same shape for their runtimes.
+    #
+    # These are refused rather than scope-checked because their VALUE is
+    # an option string, not a path — `--require=x` is not a filename and
+    # resolving it as one would be the literal-matching mistake rounds 16
+    # and 20 both had to undo. A role that genuinely needs one opts in
+    # through bash.permit, like every other indirection construct.
+    screen_env_assignments "$seg"
     seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]({]+//; s/[[:space:])}]+$//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*[[:space:]]+)*//')
     [ -n "$seg" ] || continue
 
@@ -961,6 +1076,15 @@ Everything after an unclosed quote reads as string rather than syntax, so the ke
       # redirection eaten before any check ran. The redirect scan now
       # reads SEG_RAW instead, but the read-token scan still runs on
       # $seg — so this must not swallow syntax either.
+      # The wrapper loop strips assignments too — `env NODE_OPTIONS=… cmd`
+      # reaches this one, not the leading strip — so the same screen runs
+      # here. Round 3 had to fix the redirect-swallowing defect twice for
+      # exactly this reason.
+      # Flags first, THEN screen, then the assignments. Stripping both in
+      # one pass hid `env -i NODE_OPTIONS=… cmd` from the screen, because
+      # the anchored scan for assignments saw the `-i` and stopped.
+      seg=$(printf '%s' "$seg" | sed -E 's/^((-[^[:space:]<>|&]+|[0-9]+[smhd]?)[[:space:]]+)*//')
+      screen_env_assignments "$seg"
       seg=$(printf '%s' "$seg" | sed -E 's/^((-[^[:space:]<>|&]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*)[[:space:]]+)*//')
       [ -n "$seg" ] || break
     done
@@ -1529,19 +1653,7 @@ Channel: authored via Bash (\`${SEG_WORDS[0]:-}\`) — the same screen applies t
       # with `find -fprintf` — a verb no self-protection list named. Any
       # write target that resolves to the manifest or the state dir is
       # refused here, whatever command produced it.
-      NORM_WT="$(harness_os_normalize_path "$target")"
-      case "$NORM_WT" in
-        "$NORM_MANIFEST"|"$NORM_STATE_DIR"|"$NORM_STATE_DIR"/*)
-          harness_os_deny "self-protect bash write-target $target" "$SELF_PROTECT_MSG" ;;
-      esac
-      case "$(harness_os_relpath "$target")" in
-        .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks/*)
-          harness_os_deny "self-protect bash write-target $target" "$SELF_PROTECT_MSG" ;;
-      esac
-      case "$NORM_WT" in
-        */harness-os/hooks/*|*/.claude/hooks/*|*/harness-os-role-gate.sh|*/lib/harness-os.sh)
-          harness_os_deny "self-protect bash write-target kernel $target" "$SELF_PROTECT_MSG" ;;
-      esac
+      self_protect_target "$target" "self-protect bash write-target"
       if [ "$HAS_WRITE_GRANTS" != "1" ]; then
         harness_os_deny "bash-redirect-readonly" "[BLOCKED] Role '${ROLE}' has no write grants, but this command contains a file redirection — Bash must not become a write channel for a read-only role.
 
@@ -2021,6 +2133,31 @@ case "$HOS_TOOL" in
       check_path_scope read "$(harness_os_relpath "$TARGET")" "read"
     fi
     ;;
+  WebFetch|WebSearch)
+    # A fetch tool is a read channel whenever its URL names the local
+    # filesystem. The kernel already knew that in two other places — the
+    # code screen refuses `page.goto("file:///…")`, and the MCP axis
+    # unwraps `file://` before scoping, with a comment recording that
+    # skipping anything merely containing "://" let `file://secret` past
+    # the very check the manifest configured. Neither copy covered the
+    # tool whose entire job is fetching a URL.
+    #
+    # Found by auditing for round 22's lesson rather than by a reviewer:
+    # a rule attached to a channel exists once per channel, so the
+    # question worth asking of any check is not whether it is correct
+    # but how many channels implement it.
+    WF_URL=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.url // .tool_input.query // empty' 2>/dev/null || echo "")
+    if [ -n "$WF_URL" ]; then
+      case "$WF_URL" in
+        http://*|https://*|ws://*|wss://*|ftp://*|data:*) : ;;   # genuinely remote
+        file://*)
+          WF_P="${WF_URL#file://}"; [ "${WF_P#/}" = "$WF_P" ] && WF_P="/$WF_P"
+          harness_os_is_manifest_path "$WF_P" || check_path_scope read "$(harness_os_relpath "$WF_P")" "read via ${HOS_TOOL}" ;;
+        /*|./*|../*|~/*)
+          harness_os_is_manifest_path "$WF_URL" || check_path_scope read "$(harness_os_relpath "$WF_URL")" "read via ${HOS_TOOL}" ;;
+      esac
+    fi
+    ;;
   Glob|Grep)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.path // empty' 2>/dev/null || echo "")
     # A pattern/glob is applied UNDER the search root, so a `..` segment
@@ -2176,7 +2313,12 @@ Note: your edit did not introduce this — the file already contains it. Removin
 esac
 
 # --- Axis 6: dispatch gate + registry ------------------------------------
-if [ "$HOS_TOOL" = "Agent" ]; then
+# `Agent` and `Task` are the same operation under two names — which one
+# a host uses is the host's business, and a dispatch gate that knows only
+# one of them is a dispatch gate that a rename switches off. Same lesson
+# as the fetch arm above: the rule belongs to the operation, not to the
+# name it arrives under.
+if [ "$HOS_TOOL" = "Agent" ] || [ "$HOS_TOOL" = "Task" ]; then
   DESCRIPTION=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
   PROMPT=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.prompt // ""' 2>/dev/null || echo "")
   DISPATCH_LIST=$(harness_os_role_field "$ROLE" '.dispatch')
@@ -2317,6 +2459,29 @@ if [ "$MCP_MAP" != "{}" ] && [ -n "$MCP_MAP" ]; then
         file://*) v="${v#file://}"; [ "${v#/}" = "$v" ] && v="/$v" ;;
       esac
       harness_os_is_manifest_path "$v" && [ "$axis" = "read" ] && continue
+      # Self-protection, on the third write channel. It had been attached
+      # to tool NAMES — the Write/Edit arm and the Bash arm — rather than
+      # to the act of writing, so a mapped MCP write tool reached the
+      # manifest, the role bindings and the hook registration untouched
+      # by any of it. This axis held the path to the role's write scope
+      # and stopped there, which is not enough: a config role whose scope
+      # legitimately covers `.claude/**` could rewrite the file that says
+      # what it may do, and then everything else follows.
+      [ "$axis" = "write" ] && self_protect_target "$v" "self-protect mcp write via ${HOS_TOOL}"
+      # And the code screen, for the same reason. Round 22 moved
+      # SELF-PROTECTION off tool names and onto the act of writing, and
+      # stopped there — so a mapped MCP write remained a third authoring
+      # route with no content screen of any kind, while the Bash channel
+      # refuses to author an executable at all on the grounds that only
+      # Write and Edit can screen the content. Two channels screened the
+      # bytes; the third was told it could not author code and the third
+      # was never asked.
+      if [ "$axis" = "write" ]; then
+        MCP_CONTENT=$(printf '%s' "$INPUT" | "$JQ" -r '
+          (.tool_input // {}) | (.content // .contents // .text // .body // .data // empty)
+          | if type == "string" then . else empty end' 2>/dev/null || echo "")
+        [ -n "$MCP_CONTENT" ] && check_code_capabilities "$v" "$MCP_CONTENT"
+      fi
       check_path_scope "$axis" "$(harness_os_relpath "$v")" \
         "$([ "$axis" = "write" ] && echo "write" || echo "read") via ${HOS_TOOL}"
     done <<< "$vals"

@@ -55,43 +55,28 @@ const FILES = [
   'skills/harness-designer/references/storage-format.md',
 ];
 // Files vendored under a DIFFERENT path here — the package's own kernel
-// test files, renamed into this repo's numeric cases convention so the
-// vendored kernel gets identical adversarial + benchmark coverage under
-// `npm run test:hooks`.
+// test files, which live in their own subdirectory of this repo's cases
+// so `npm run test:hooks` gives the vendored kernel identical adversarial
+// + benchmark coverage.
 //
 // DERIVED, not listed. This was a hand-maintained table, and a hand-
 // maintained table of "which upstream files matter" is a list that goes
 // quietly out of date: every new adversarial-review case file upstream
 // was a file this repo's vendored kernel silently stopped being tested
-// against, with nothing anywhere to say so. The numbering convention is
-// mechanical — NN-<name>.sh becomes NN+70-harness-os-<name>.sh — so it
-// is derived from the source directory, and anything that does not fit
-// the convention is named below rather than skipped.
-const CASE_OFFSET = 70;
-const CASE_EXCEPTIONS = {
-  '01-role-gate.sh': 'hooks/tests/cases/71-harness-os-role-gate.sh',
-  '03-benchmark-registration.sh': 'hooks/tests/cases/73-harness-os-benchmark.sh',
-};
+// against, with nothing anywhere to say so.
+//
+// The subdirectory is the point. These files used to be renumbered into
+// the flat cases/ directory with a +70 offset, which gave the vendored
+// block twenty-nine slots before it collided with the two-digit
+// convention — a ceiling the upstream review loop was going to hit on a
+// specific, predictable day. Names now map 1:1 with upstream, there is
+// no derivation to get wrong, and there is no ceiling.
 const CASES_REL = 'hooks/tests/cases';
+const VENDORED_CASES_REL = 'hooks/tests/cases/harness-os';
 const RENAMES = readdirSync(join(SRC, CASES_REL))
   .filter((n) => /^\d\d-.+\.sh$/.test(n))
   .sort()
-  .map((n) => {
-    const src = join(CASES_REL, n);
-    if (CASE_EXCEPTIONS[n]) return [src, CASE_EXCEPTIONS[n]];
-    const m = n.match(/^(\d\d)-(.+\.sh)$/);
-    const n2 = Number(m[1]) + CASE_OFFSET;
-    // Past 99 the derived name grows a third digit and sorts before the
-    // 7x-8x block, silently reordering this repo's cases. Say so on the
-    // day it happens rather than leaving it to be noticed.
-    if (n2 > 99) {
-      console.error(`[sync-harness-os] ${n} would map to ${n2}-…, past the two-digit`);
-      console.error('  case-numbering convention. Renumber the vendored block (raise or');
-      console.error('  retire CASE_OFFSET) before adding more upstream cases.');
-      process.exit(1);
-    }
-    return [src, join(CASES_REL, `${n2}-harness-os-${m[2]}`)];
-  });
+  .map((n) => [join(CASES_REL, n), join(VENDORED_CASES_REL, n)]);
 const DIRS = [
   { rel: 'schemas/harness-os.fixtures', ext: '.json' },
   { rel: 'schemas/harness-os-bundle.fixtures', ext: '.json' },
