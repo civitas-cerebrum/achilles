@@ -424,14 +424,41 @@ backslash-escaped quoting that arrives when code is authored through
 Bash. But a static check on a Turing-complete language cannot be
 complete, and no amount of pattern work will make it so.
 
-The screen is a shared function both authoring routes run. It was wired
-only to Write/Edit until round 4, which meant
+### The Bash authoring channel is closed, not screened
+
+The screen was wired only to Write/Edit until round 4, which meant
 `echo 'require("fs")…' > tests/e2e/x.spec.ts` put the identical code on
-disk inside the role's own write scope with nothing looking at it, and
-the role's granted test command then ran it. An axis that guards one
-door and not the other guards nothing; the bash route screens the whole
-command, because `echo <code> | tee spec.ts` carries the code in the
-segment *before* the one naming the file.
+disk with nothing looking at it. Round 4 pointed the screen at the whole
+command — and round 8 showed why that could never work. Screening a
+shell command means matching JS patterns against shell syntax, and the
+two disagree in a way no pattern reconciles:
+
+```
+echo const f = require\("fs"\)\; > tests/e2e/x.spec.ts    # ALLOW
+echo "const f = require(\"fs\");"   > tests/e2e/x.spec.ts    # DENY
+```
+
+One backslash. The shell strips it, the bytes on disk are identical, and
+every rule expecting a literal `(` — `fs`, `process`, `network`, `eval`,
+the import list — misses at once.
+
+So for a role that DECLARES code constraints (`write.codeImports` or
+`write.codeCapabilities`), Bash is closed for files something can run:
+any executable extension, and any target with *no* extension, since that
+is where a `#!` shebang hides. Such a role authors code through
+Write/Edit, where the content is the tool input and can actually be read.
+Data files are untouched. A role that declares nothing keeps the
+screen-the-command behaviour, which is advisory and documented as such.
+
+This costs less than it sounds: in the benchmark's own governed run the
+composer authored its deliverable entirely through the Write tool and
+never once wrote code through Bash, so the rule would have changed
+nothing about how the work actually happened.
+
+An Edit is a diff, and the diff is not the file. Two edits whose
+fragments are each harmless compose into one that is not, so the screen
+receives the file's *resulting* content — existing bytes with the
+replacement applied literally — rather than the fragment.
 
 So do not read this axis as "the write-then-execute escape is closed".
 Read it as: **authoring an escape now costs deliberate obfuscation
