@@ -319,7 +319,22 @@ Fix the manifest in an operator design session — until then this role can run 
       elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_ID='shell'; BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
       elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_ID='find-exec'; BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
       elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(python[0-9.]*|node|nodejs|ruby|perl|php|deno|bun)([[:space:]][^;|&]*)?[[:space:]](-c|-e|-p|--eval|--print)([[:space:]]|$)'; then BUILTIN_ID='interpreter-inline'; BUILTIN_HIT='interpreter one-liner (-c/-e/-p) — arbitrary code the patterns cannot see'
-      elif printf '%s' "$seg" | grep -Eq '^(cd|pushd|popd)([[:space:]]|$)'; then BUILTIN_ID='cd'; BUILTIN_HIT='cd/pushd/popd — un-anchors every relative path this axis checks'
+      elif printf '%s' "$seg" | grep -Eq '^(cd|pushd|popd)([[:space:]]|$)'; then
+        # `cd <dir> && <cmd>` is how agents habitually prefix a command,
+        # and when <dir> IS the directory the call already runs in, the
+        # cd changes nothing: every relative path in the later segments
+        # still resolves exactly where this axis assumes. Allowing that
+        # no-op removes the single largest source of false denies with
+        # zero loss of soundness — a cd anywhere ELSE would re-anchor
+        # relative paths away from the checked cwd, so it stays denied.
+        CD_TARGET=$(printf '%s' "$seg" | sed -E 's/^(cd|pushd|popd)[[:space:]]+//; s/[[:space:]].*$//' | tr -d '"'"'")
+        if [ -n "$CD_TARGET" ] && [ "$(harness_os_normalize_path "$CD_TARGET")" = "$(harness_os_normalize_path "$HOS_CWD")" ]; then
+          # A no-op cd performs no action for any allow pattern to
+          # authorize and moves nothing — skip the segment outright.
+          continue
+        else
+          BUILTIN_ID='cd'; BUILTIN_HIT='cd/pushd/popd to a different directory — it re-anchors every relative path this axis checks (a cd to the directory you are already in is allowed)'
+        fi
       elif printf '%s' "$seg" | grep -Eq '\{[^{}[:space:]]*,[^{}[:space:]]*\}'; then BUILTIN_ID='brace-expansion'; BUILTIN_HIT='brace expansion {a,b} — conceals the expanded filename from every check'
       fi
       # A permitted construct is skipped — the segment still faces the

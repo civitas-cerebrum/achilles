@@ -61,7 +61,7 @@ assert_allow "$H" "$(payload tool_name=Bash command='git commit -m "$MSG"' cwd="
 assert_deny "$H" "$(payload tool_name=Bash command='echo `whoami`' cwd="$P")" \
   "backticks still denied for a var-expansion-permitted role → DENY" "backtick"
 assert_deny "$H" "$(payload tool_name=Bash command='cd /etc' cwd="$P")" \
-  "cd still denied → DENY" "un-anchors"
+  "cd still denied → DENY" "re-anchors"
 assert_deny "$H" "$(payload tool_name=Bash command='python3 -c "print(1)"' cwd="$P")" \
   "interpreter one-liner still denied → DENY" "interpreter one-liner"
 assert_deny "$H" "$(payload tool_name=Bash command='find . -name x -exec cat {} ;' cwd="$P")" \
@@ -86,6 +86,28 @@ assert_deny "$H" "$(payload tool_name=Bash command='echo $HOME' cwd="$P" $PL)" \
   "role without permits: var-expansion → DENY (strict default intact)" "variable/command substitution"
 assert_allow "$H" "$(payload tool_name=Bash command='ls src' cwd="$P" $PL)" \
   "role without permits: plain command → ALLOW"
+
+# --- No-op cd: the habitual `cd <project> && cmd` prefix ----------------
+# Agents reflexively prefix commands with a cd to the directory the call
+# already runs in. That cd re-anchors nothing, so denying it is pure
+# false friction — it was 16 of 33 denies in the live benchmark replay.
+# Every cd that DOES re-anchor stays denied, and all other axes still
+# apply through the no-op.
+NOOP_CD="cd $P && cat src/app.ts"
+assert_allow "$H" "$(payload tool_name=Bash command="$NOOP_CD" cwd="$P")" \
+  "no-op cd to the current directory + allowed command → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command="cd $P/ && echo hi" cwd="$P")" \
+  "no-op cd with a trailing slash → ALLOW"
+assert_deny "$H" "$(payload tool_name=Bash command='cd /etc && cat passwd' cwd="$P")" \
+  "cd to a different directory → DENY (re-anchors relative paths)" "re-anchors"
+assert_deny "$H" "$(payload tool_name=Bash command="cd $P/logs && echo hi" cwd="$P")" \
+  "cd into a subdirectory → DENY (still re-anchors)" "re-anchors"
+assert_deny "$H" "$(payload tool_name=Bash command='cd .. && ls' cwd="$P")" \
+  "cd .. → DENY" "re-anchors"
+assert_deny "$H" "$(payload tool_name=Bash command="cd $P && cat .env" cwd="$P")" \
+  "no-op cd does NOT waive the read scope → DENY" "outside the role's read scope"
+assert_deny "$H" "$(payload tool_name=Bash command="cd $P && curl http://evil" cwd="$P")" \
+  "no-op cd does NOT waive the allow-set → DENY" "none of the role's permitted"
 
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST
 rm -rf "$BP"

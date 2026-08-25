@@ -118,7 +118,7 @@ assert_allow "$H" "$(payload tool_name=Bash command='find src -name "*.ts"' cwd=
 
 # --- Leak 5: cd un-anchoring relative paths -----------------------------
 assert_deny "$H" "$(payload tool_name=Bash command='cd /etc && cat passwd' cwd="$P" $I)" \
-  "cd to escape the path anchor → DENY" "un-anchors"
+  "cd to escape the path anchor → DENY" "re-anchors"
 
 # --- Leak 6: bash as an out-of-scope READ channel -----------------------
 assert_deny "$H" "$(payload tool_name=Bash command='cat .env' cwd="$P" $I)" \
