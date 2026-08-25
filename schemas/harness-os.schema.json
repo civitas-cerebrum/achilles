@@ -31,10 +31,32 @@
           "pattern": "^[a-z][a-z0-9-]*$"
         },
         "unboundAgentPolicy": {
-          "description": "What the kernel does when a subagent's role cannot be resolved (mixed-role parallel dispatch on builds without parent_tool_use_id / per-child transcripts). deny = block with re-dispatch guidance; readonly = allow only Read/Glob/Grep/TaskGet/TaskList; allow = ungoverned.",
+          "description": "What the kernel does when a subagent's role cannot be resolved (mixed-role parallel dispatch on builds without parent_tool_use_id / per-child transcripts). deny = block with re-dispatch guidance; readonly = allow Read/Glob/Grep/TaskGet/TaskList, with reads held to the UNION of every role's read.allow (a caller the kernel cannot identify may see what some role may see, and nothing else); allow = ungoverned.",
           "type": "string",
           "enum": ["deny", "readonly", "allow"],
           "default": "readonly"
+        },
+        "runtimeProfile": {
+          "description": "Tunes `harness-os run --role <r> -- <cmd>`, which executes a command under Node's permission model configured from that role's path scopes. This is the RUNTIME half of write-then-execute containment: the static screen (write.codeCapabilities) makes an escape expensive, the runtime profile makes the read actually fail. Two limits it cannot escape, both reported by --dry-run: Node takes path prefixes rather than globs, so the profile is a coarsening of the manifest and never narrower than it; and Node's directory grants are recursive with no deny-list, so a granted prefix exposes everything beneath it. Keep secrets out of any directory a role's scope covers.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraRead": {
+              "description": "Absolute or project-relative paths the RUNNER itself needs to read (node_modules, the toolchain, /usr …). Declared here rather than hidden in the CLI so the widening is visible. Defaults to node_modules plus the usual system paths. A path that contains the project cancels every scope in the profile — --dry-run says so.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "extraWrite": {
+              "description": "Paths the runner needs to write beyond the role's write scope (scratch/temp). Defaults to /tmp — change it if the project itself lives under /tmp, or the grant swallows the project.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "allowWorker": {
+              "description": "Whether the profile permits worker threads. Most test runners need them. Set false to deny.",
+              "type": "boolean",
+              "default": true
+            }
+          }
         },
         "dispatchTtlSeconds": {
           "description": "Freshness window for dispatch-registry entries used by the registry-claim binding step.",
@@ -164,6 +186,12 @@
                   "type": "string",
                   "enum": ["fs", "process", "network", "eval"]
                 }
+              },
+              "codeImports": {
+                "description": "Non-relative modules this role's authored code may import. An ALLOWLIST, because the set of packages that reach the filesystem is open: 'dotenv' reads .env, 'glob' and 'fs-extra' wrap fs, and no list of dangerous names can be finished — so the role declares what it DOES import and everything else is refused. Test code has a small, knowable import surface, which is what makes this practical. Scoped names and subpaths are normalised ('dotenv/config' matches 'dotenv'); relative imports are never checked here (they stay bound by the write scope). Absent, package imports pass — the tightening is opt-in so it cannot break existing manifests, and `validate` warns for any role that authors and runs code without either this or the `harness-os run` wrapper.",
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 }
               }
             }
           },

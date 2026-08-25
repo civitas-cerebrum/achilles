@@ -435,12 +435,63 @@ segment *before* the one naming the file.
 
 So do not read this axis as "the write-then-execute escape is closed".
 Read it as: **authoring an escape now costs deliberate obfuscation
-instead of a standard-library import**. The sound fix is structural —
-*separate the role that authors code from the role that runs it*, so no
-single mandate spans both. `harness-os validate` warns when one role
-holds both, and the designer skill teaches the split. Where the split is
-impractical, this axis is defence in depth, not a boundary you should
-stake a security claim on.
+instead of a standard-library import**.
+
+One shape in the screen does not have that weakness, and it is the one
+worth copying. Every earlier version asked *"does this module name look
+dangerous?"* and lost, round after round, to the next spelling —
+`node:fs`, `f\x73`, `\146\163`, `String.fromCharCode(102,115)`,
+`["f","s"].join("")`, `("f")+("s")`. The check now asks the complement:
+a module specifier that is **not a plain quoted literal** is refused as
+the `eval` capability, whatever it evaluates to. Legitimate code names
+its imports. That question needs no update when someone invents a new
+spelling, and inverting a losing enumeration is usually available.
+
+### The runtime half
+
+The structural fix is *separate the role that authors code from the role
+that runs it*, so no single mandate spans both; `harness-os validate`
+warns when one role holds both, and the designer skill teaches the split.
+
+Where the split is impractical, `harness-os run` is the second half of
+the answer:
+
+```bash
+harness-os run --role composer -- npm test
+```
+
+It execs the command under Node's permission model, configured from that
+role's own path scopes. Code the role authored then cannot read outside
+the role's read scope *even when the static screen has no pattern for its
+spelling* — the runtime refuses. The command group can require the
+wrapper (`^harness-os run --role composer -- npm test`), so the role
+cannot reach the executor un-profiled.
+
+`--dry-run` prints the profile and, more importantly, its two limits:
+
+- **It is a coarsening.** Node takes path prefixes, not globs, so
+  `tests/**/*.spec.ts` becomes `tests`. The runtime grant is never
+  *narrower* than the manifest and is often wider. The kernel's own
+  checks remain the precise boundary; this is defence beneath them.
+- **Directory grants are recursive and there is no deny-list.** A
+  profile cannot express "the project except `.env`" — granting a
+  prefix grants everything under it. `--dry-run` names every
+  sensitive-looking file the profile would expose, and calls out any
+  runner path that *contains* the project, because such a path cancels
+  every scope in the profile.
+
+The layout rule that follows is worth stating in the manifest review:
+**keep secrets out of any directory a role's scope covers.** That is not
+a workaround for a weak implementation; it is the only thing an
+allow-list permission model can act on.
+
+A package-manager front-end (`npm`, `npx`, `yarn`, `pnpm`) cannot run
+anything without spawning, so the wrapper grants `--allow-child-process`
+for those and says so. Node children inherit `NODE_OPTIONS`, so the
+filesystem scoping keeps holding down the whole node process tree; what
+the flag costs is that the command may start a *non-node* binary the
+permission model cannot reach into. Invoking the runner directly
+(`harness-os run --role r -- node <script>`) avoids that.
 
 ## False-positive direction
 

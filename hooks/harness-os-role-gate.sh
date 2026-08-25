@@ -362,9 +362,85 @@ check_code_capabilities() {
   fi
   # A file:// URL pointed at the filesystem is a read channel even with
   # no host module involved (page.goto("file:///…")).
-  if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:///'; then
-    CAP_ID='fs'; CAP_WHAT='a file:// URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
+  # `file:/x` is normalised to `file:///x` by every browser, so matching
+  # only the three-slash form missed the shortest spelling of it.
+  if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:/'; then
+    CAP_ID='fs'; CAP_WHAT='a file: URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
   fi
+  # The extension gate opts .rb/.php/.lua/.ps1/.sh into this screen, and
+  # until round 6 there were no patterns for any of them — so a role could
+  # author a Ruby one-liner that read anything. These are the file and
+  # process primitives of each language. Like every enumeration here it is
+  # a floor, not a boundary; the boundary is `harness-os run`.
+  if [ -z "$CAP_ID" ]; then
+    if printf '%s' "$CODE_N" | grep -Eq '\b(File|IO)\.(read|write|open|binread|binwrite|readlines|foreach)\b|\bDir\.(glob|entries|children)\b|\bFileUtils\b'; then
+      CAP_ID='fs'; CAP_WHAT='Ruby filesystem access (File/IO/Dir/FileUtils) — code that can read or write any path, ignoring the role scopes'
+    elif printf '%s' "$CODE_N" | grep -Eq '\b(file_get_contents|file_put_contents|fopen|readfile|fread|fwrite|scandir|glob)[[:space:]]*\('; then
+      CAP_ID='fs'; CAP_WHAT='PHP filesystem access (file_get_contents / fopen / readfile …) — code that can read or write any path, ignoring the role scopes'
+    elif printf '%s' "$CODE_N" | grep -Eq '\bio\.(open|lines|input|output)[[:space:]]*\(|\bloadfile[[:space:]]*\(|\bdofile[[:space:]]*\('; then
+      CAP_ID='fs'; CAP_WHAT='Lua filesystem access (io.open / io.lines / loadfile) — code that can read or write any path, ignoring the role scopes'
+    elif printf '%s' "$CODE_N" | grep -Eq '\bGet-Content\b|\bSet-Content\b|\bOut-File\b|\bAdd-Content\b|\[IO\.File\]|\[System\.IO\.File\]'; then
+      CAP_ID='fs'; CAP_WHAT='PowerShell filesystem access (Get-Content / Set-Content / [IO.File]) — code that can read or write any path, ignoring the role scopes'
+    elif printf '%s' "$CODE_N" | grep -Eq '\b(codecs|fileinput|tempfile|pathlib)\.(open|input|Path|NamedTemporaryFile)|__builtins__(\.|\[)|\bgetattr[[:space:]]*\([[:space:]]*__'; then
+      CAP_ID='fs'; CAP_WHAT='Python filesystem access reached indirectly (codecs / fileinput / __builtins__) — code that can read or write any path, ignoring the role scopes'
+    elif printf '%s' "$CODE_N" | grep -Eq '\b(system|exec|popen|backticks|Open3)[[:space:]]*\(|`[^`]*`|\bshell_exec[[:space:]]*\(|\bproc_open[[:space:]]*\(|\bos\.execute[[:space:]]*\(|\bStart-Process\b|\bInvoke-Expression\b'; then
+      CAP_ID='process'; CAP_WHAT='process spawning in a non-JS language (system / exec / backticks / Invoke-Expression) — code that runs commands no command group checked'
+    fi
+  fi
+  # Playwright's own file-attachment API reads a path the kernel never
+  # sees, and the composer has it in scope by definition.
+  if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq '\.(attach|setInputFiles)[[:space:]]*\('; then
+    CAP_ID='fs'; CAP_WHAT='a test-framework file API (attach / setInputFiles) that reads a path directly — no host module for a scope check to see'
+  fi
+  # An IMPORT ALLOWLIST, when the role declares one. Round 6 made the
+  # argument that killed the previous design: the capability branches
+  # above recognise dangerous BUILTINS, but `require("dotenv").config()`
+  # reads .env with a plain literal specifier and a package name no list
+  # can enumerate — nor can `glob`, `fs-extra`, `shelljs`, or the next
+  # one published. The set of packages that touch the filesystem is open.
+  #
+  # So the same inversion that fixed the builtin check applies here: a
+  # role may declare exactly which non-relative modules its authored code
+  # imports, and anything else is refused. Test code has a small, knowable
+  # import surface, which is what makes the allowlist practical.
+  #
+  # Absent, package imports pass — declaring it is opt-in, because
+  # denying `@playwright/test` by default would break every existing
+  # manifest. `validate` warns for any role that authors code and can run
+  # it without either this list or the `harness-os run` wrapper, and the
+  # architecture doc is explicit that the screen is advisory until one of
+  # those is in place.
+  local IMPORTS_ALLOW
+  IMPORTS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeImports')
+  if [ -z "$CAP_ID" ] && [ "$IMPORTS_ALLOW" != "null" ]; then
+    local spec
+    while IFS= read -r spec; do
+      [ -n "$spec" ] || continue
+      case "$spec" in ./*|../*|/*|'') continue ;; esac   # relative/absolute: not a package
+      if ! printf '%s' "$IMPORTS_ALLOW" | "$JQ" -e --arg m "$spec" 'index($m) != null' >/dev/null 2>&1; then
+        harness_os_deny "write-code-import:$spec $rel" "[BLOCKED] Role '${ROLE}' may not author code importing '$spec' — it is not in this role's declared import list.
+
+${ROLE_HEADER}
+File: $rel
+declared imports: $(printf '%s' "$IMPORTS_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
+
+A package name is an open set: 'dotenv' reads .env, 'glob' and 'fs-extra' wrap the filesystem, and no list of dangerous names can be finished. So this role declares what its code DOES import, and everything else is refused — the same inversion that made the builtin-module check sound.
+
+Options, narrowest first:
+  1. Use a module already declared, or a relative import inside your write scope.
+  2. If this role's work genuinely needs it, the operator can add it:
+       \"write\": { \"codeImports\": [\"$spec\"] }
+     Every other package stays denied.
+
+Preview before committing: harness-os explain --role ${ROLE} --tool Write --path <file> --content '<code>'"
+      fi
+    done < <(printf '%s' "$CODE_N" \
+      | grep -oE '(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]+"[^"]+"' 2>/dev/null \
+      | sed -E 's/.*"([^"]+)".*/\1/' \
+      | grep -vE '^\.{1,2}/|^/' \
+      | sed -E 's|^(@[^/]+/[^/]+).*|\1|; t; s|^([^/]+)/.*|\1|' | sort -u)
+  fi
+
   [ -n "$CAP_ID" ] || return 0
   if [ "$CAPS_ALLOW" != "null" ] && printf '%s' "$CAPS_ALLOW" | "$JQ" -e --arg c "$CAP_ID" 'index($c) != null' >/dev/null 2>&1; then
     return 0
@@ -662,7 +738,7 @@ read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(\", \")' 2>/dev/null)
 
 Command: ${CMD}
 
-Git history is a second copy of the working tree, so an unconstrained 'git ${GIT_SUB}' reads whatever the history holds — including files this role's read scope excludes. Options, narrowest first:
+NOTE: your command group DOES grant 'git ${GIT_SUB}'. This refusal is a construct deny that overrides it, not a missing grant — so adding another command pattern will not help. Git history is a second copy of the working tree, so an unconstrained 'git ${GIT_SUB}' reads whatever the history holds — including files this role's read scope excludes. Options, narrowest first:
   1. Name the paths: git ${GIT_SUB} … -- <path within the read scope>
      (or 'git show <rev>:<path>'), which is scope-checked like any read.
   2. Ask for names, not contents: --stat / --name-only / --name-status.
@@ -989,6 +1065,25 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
             [ -n "$__pat_idx" ] || __pat_idx="$__i"
           done
           [ "$__has_pat_flag" = "0" ] && [ -n "$__pat_idx" ] && TOK_SKIP="${TOK_SKIP}${__pat_idx} "
+          ;;
+        jq|yq|gojq|jaq)
+          # jq's first operand is a FILTER, and the commonest filter of
+          # all is `.` — which resolves to the cwd and was denied as an
+          # out-of-scope read. An inspector piping the page repository
+          # through `jq .` is doing the most ordinary thing its mandate
+          # describes, and being refused for it.
+          __skip_next=0
+          for __i in "${!SEG_WORDS[@]}"; do
+            [ "$__i" = "0" ] && continue
+            __w="${SEG_WORDS[$__i]}"
+            if [ "$__skip_next" = "1" ]; then __skip_next=0; continue; fi
+            case "$__w" in
+              --arg|--argjson|--slurpfile|--rawfile|--args|--jsonargs|--indent) __skip_next=1; continue ;;
+              -f|--from-file) __skip_next=1; continue ;;   # value IS a file: stays checked
+              -*) continue ;;
+            esac
+            TOK_SKIP="${TOK_SKIP}${__i} "; break
+          done
           ;;
         sed|awk|gawk|mawk)
           # The first positional operand is the program text; the rest are
