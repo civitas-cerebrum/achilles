@@ -1392,17 +1392,34 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
         sed|awk|gawk|mawk)
           # The first positional operand is the program text; the rest are
           # input files and stay scope-checked.
-          __skip_next=0
+          #
+          # Unless a flag already supplied the program. `sed -e p .env`
+          # and `awk -f prog.awk .env` carry the program in the FLAG,
+          # which makes the first positional an input FILE — and
+          # exempting it unconditionally handed the exemption to exactly
+          # the file the scope exists to cover. grep's block has guarded
+          # this case since round 4 with __has_pat_flag; sed and awk sat
+          # beside it for eleven rounds without the same guard. When a
+          # program flag is present there is no positional program, so
+          # nothing here is exempt.
+          #
+          # `-v`/`--assign` is the one that must NOT set the guard: it
+          # carries a variable binding, and the program is still the
+          # first positional after it.
+          __has_prog_flag=0; __skip_next=0; __prog_idx=""
           for __i in "${!SEG_WORDS[@]}"; do
             [ "$__i" = "0" ] && continue
             __w="${SEG_WORDS[$__i]}"
             if [ "$__skip_next" = "1" ]; then __skip_next=0; continue; fi
             case "$__w" in
-              -e|-f|--expression|--file|-v) __skip_next=1; continue ;;
+              -e|-f|--expression|--file) __has_prog_flag=1; __skip_next=1; continue ;;
+              -e*|-f*|--expression=*|--file=*) __has_prog_flag=1; continue ;;
+              -v|--assign) __skip_next=1; continue ;;
               -*) continue ;;
             esac
-            TOK_SKIP="${TOK_SKIP}${__i} "; break
+            [ -n "$__prog_idx" ] || __prog_idx="$__i"
           done
+          [ "$__has_prog_flag" = "0" ] && [ -n "$__prog_idx" ] && TOK_SKIP="${TOK_SKIP}${__prog_idx} "
           ;;
       esac
       if [ "${SEG_WORDS[0]:-}" = "find" ]; then
@@ -1499,10 +1516,22 @@ A segment this long cannot be verified against the role's read scope, so it is r
             # waves through.
             case "${SEG_WORDS[0]:-}:$tok" in
               dd:if=*|dd:of=*) tok="${tok#*=}"; [ -n "$tok" ] || continue ;;
+              # `NAME=@PATH` is a file reference wearing the assignment's
+              # clothes — curl's `-F field=@file` uploads that file. The
+              # `@` is what distinguishes it from a value.
+              *=@?*) tok="${tok#*=}" ;;
               *) continue ;;
             esac
             ;;
         esac
+        # `@PATH` is the conventional "read this file here" spelling —
+        # curl's `-d @file` / `--data-binary @file`, and the response-file
+        # form several other tools take. Nothing is literally named
+        # `@.env`, so the existence test below waved the token through as
+        # harmless while curl opened the path and posted its contents.
+        # De-sugared last, so it applies however the token arrived: bare,
+        # attached to a short flag, or after an `=`.
+        case "$tok" in @?*) tok="${tok#@}" ;; esac
         # The target of a no-op cd — or of a no-op `git -C` / `--work-tree`,
         # already validated above — is the directory this call already runs
         # in. Naming it is not a read of anything new. This is deliberately
