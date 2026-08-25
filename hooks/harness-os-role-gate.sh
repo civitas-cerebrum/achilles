@@ -145,8 +145,34 @@ if [ "${HOS_MANIFEST_BROKEN:-0}" = "1" ]; then
     Read|Glob|Grep|NotebookRead|TaskGet|TaskList) exit 0 ;;
     Write|Edit)
       # Permit repairing the manifest itself; deny other writes.
+      #
+      # But never from a ROLE-BOUND agent. "The manifest is broken" is a
+      # state an agent can cause, not only one it can find: round 15
+      # corrupted the manifest through a write channel this kernel did
+      # not model, then walked through this very branch to install a
+      # manifest granting itself everything — from a role holding
+      # neither write grants nor the Write tool. Repair was the last step
+      # of a privilege escalation, not a favour to an operator.
+      #
+      # An agent carrying a binding has a role because somebody decided
+      # what it may do. Losing the file that records that decision must
+      # not promote it. The operator, and an unbound main session, can
+      # still repair; a dispatched subagent is told to hand it back.
       FILE_PATH=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
-      [ "$FILE_PATH" = "$HOS_MANIFEST" ] && exit 0
+      if [ "$FILE_PATH" = "$HOS_MANIFEST" ]; then
+        HOS_REPAIR_BOUND=0
+        if [ -n "${HOS_AGENT_ID:-}" ] && [ -f "$(harness_os__binding_file "$HOS_AGENT_ID")" ]; then
+          HOS_REPAIR_BOUND=1
+        fi
+        if [ "$HOS_REPAIR_BOUND" = "0" ]; then exit 0; fi
+        harness_os_deny "broken-manifest-repair-by-bound-agent" "[BLOCKED] The harness OS manifest is not valid JSON, and this call comes from an agent bound to a role — so it may not be the one to rewrite it.
+
+${MANIFEST_REF}
+
+The manifest is the record of what each role may do. An agent that HAS a role has one because somebody decided what it may do, and losing that file must not be a way to decide differently. A broken manifest is also a state an agent can cause, so repairing it from inside a bound role would turn any write channel into a way to grant itself anything.
+
+Hand this back to the orchestrator or the operator, who can repair the manifest outside a bound role — or disable the kernel deliberately with HARNESS_OS=0."
+      fi
       ;;
   esac
   harness_os_deny "broken-manifest tool=$HOS_TOOL" "[BLOCKED] The harness OS manifest exists but is not valid JSON, so no role's grants can be verified.
@@ -299,6 +325,38 @@ case "$HOS_TOOL" in
     fi
     if printf '%s' "$CMD" | grep -Eq "sed[[:space:]]+-[a-zA-Z]*i[^;|&]*${PROT_RE}"; then
       harness_os_deny "self-protect bash sed-i" "$SELF_PROTECT_MSG"
+    fi
+    # A protected path carried by a FLAG is a write until shown
+    # otherwise. Round 15 overwrote the manifest with `curl -D <path>`,
+    # and "which flags write?" has now been answered wrongly four times
+    # — cp/mv/dd, then `sort -o`, then `find -fprintf`, then curl's
+    # eight. Each answer was a longer list, and the next tool kept
+    # arriving.
+    #
+    # For the three paths that must never be written, the question is
+    # therefore inverted: a flag operand naming one of them is refused
+    # unless the flag is a known READER, so an unmodelled write flag
+    # fails closed on arrival instead of on the round that finds it.
+    # This is safe to be strict about because the blast radius is a
+    # command that names the manifest, the state directory or the kernel
+    # as a flag operand — which no ordinary work does, and which the
+    # readers below cover when it does.
+    PROT_HITS=$(printf '%s' "$CMD" \
+      | grep -oE "(^|[[:space:]])--?[a-zA-Z0-9][^[:space:]=]*([[:space:]]+|=)[^[:space:];|&]*${PROT_RE}" 2>/dev/null || true)
+    if [ -n "$PROT_HITS" ]; then
+      while IFS= read -r __hit; do
+        [ -n "$__hit" ] || continue
+        __flag=$(printf '%s' "$__hit" | sed -E 's/^[[:space:]]*//; s/[[:space:]=].*$//')
+        case "$__flag" in
+          # Flags whose operand a tool READS. The manifest is readable by
+          # design — it is the law each role is held to.
+          -f|--file|--from-file|-K|--config|--rawfile|--slurpfile|-L|\
+          -T|--upload-file|-e|--regexp|--exclude-from|--include-from|\
+          --files0-from|-a|--arg-file|--input-file)
+            continue ;;
+        esac
+        harness_os_deny "self-protect bash flag-operand $__flag" "$SELF_PROTECT_MSG"
+      done <<< "$PROT_HITS"
     fi
     ;;
 esac
@@ -1160,6 +1218,23 @@ Command: ${CMD}"
       case "$__w" in
         --output=*|--out=*|--output-file=*|-of=*) FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
         --output|--out|--output-file|-of|-fprintf|-fprint|-fprint0|-fls) __fw=1 ;;
+        # `curl` writes files through eight more flags than `-o`, and none
+        # of them is a `>` redirect or a mutate verb, so the destination
+        # reached neither this table nor the self-protection axis. A
+        # read-only role wrote anywhere with `curl … -D <path>` — and
+        # aimed at the manifest, that is the root of trust overwritten by
+        # a role holding no write grant at all. These spellings are
+        # unambiguous across tools, so they need no command list.
+        --dump-header=*|--trace=*|--trace-ascii=*|--cookie-jar=*|--etag-save=*|--stderr=*|--output-dir=*|--append-output=*)
+          FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
+        --dump-header|--trace|--trace-ascii|--cookie-jar|--etag-save|--stderr|--output-dir|--append-output)
+          __fw=1 ;;
+        -D|-c)
+          # Ambiguous elsewhere (`-c` counts for grep, `-D` defines for
+          # the compilers), so these two are curl's alone.
+          case "${SEG_WORDS[0]}" in curl) __fw=1 ;; esac ;;
+        -D?*|-c?*)
+          case "${SEG_WORDS[0]}" in curl) FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;; esac ;;
         -o|-O)
           # `find … -fprintf FILE FORMAT` and `sort -o FILE` both put the
           # file first, so the next word is the target either way.
@@ -1168,8 +1243,13 @@ Command: ${CMD}"
               __fw=1 ;;
           esac ;;
         -o*|-O*)
+          # The attached spelling has to carry the SAME command list as
+          # the separated one, or `sort -opackage.json` writes where
+          # `sort -o package.json` is refused — the split that round 12
+          # found on the read side, here on the write side.
           case "${SEG_WORDS[0]}" in
-            cc|gcc|g++|clang|clang++|curl|wget) FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;;
+            sort|cc|gcc|g++|clang|clang++|ld|objcopy|objdump|tar|curl|wget|ffmpeg|pandoc|openssl|tsc|esbuild|rustc|javac|go)
+              FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;;
           esac ;;
       esac
     done
@@ -1399,8 +1479,21 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
               --slurpfile|--rawfile)
                 TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_n=2; continue ;;
               # One operand, not a path.
-              --indent|-L)
+              --indent)
                 TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_n=1; continue ;;
+              # One operand which IS a path: consumed, so it is never
+              # mistaken for the filter, but NOT exempted.
+              #
+              # `-L` sat in the line above for being "not a path", and it
+              # is jq's library search path — `jq -L docs 'import
+              # "e2e-ledger" as $d; $d'` reads docs/e2e-ledger.json. The
+              # module name lives in the filter, which is exempt too, so
+              # neither the directory nor the file resolved from it ever
+              # reached the scope check. Removing `-L` from the exempt
+              # group is not enough on its own: it must still consume its
+              # operand, or the directory becomes the first positional
+              # and is exempted as the filter instead.
+              -L) __skip_n=1; continue ;;
               # One operand which IS a file, and which supplies the
               # FILTER — so it stays scope-checked, and there is no
               # positional filter left to exempt.
@@ -1450,6 +1543,161 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
       # from the read scan. A program flag means there is no positional
       # program, and every positional is an input file.
       [ "$__has_prog_flag" = "0" ] && [ -n "$__prog_idx" ] && TOK_SKIP="${TOK_SKIP}${__prog_idx} "
+
+      # An exempted program can still NAME a file, and then the exemption
+      # is carrying the read. jq's `import "docs/e2e-ledger" as $d` loads
+      # docs/e2e-ledger.json from inside the filter — the one operand this
+      # block deliberately exempts — so the path never reached the scan at
+      # all, with or without a `-L` directory to search. Round 14 found
+      # the `-L` half of this; the module literal is the other half, and
+      # it needs no flag whatsoever.
+      #
+      # So the module names are resolved here and scope-checked like any
+      # other read: against the cwd and against each `-L` directory, and
+      # only where a candidate actually exists, which is what keeps a
+      # module that resolves to nothing from costing anything.
+      # The same lesson as the jq modules above, and a much sharper case
+      # of it. An `awk` or `sed` PROGRAM is exempt from the read scan
+      # because a program is not a path — and both languages can name
+      # paths, and both can spawn processes:
+      #
+      #   awk 'BEGIN{system("cat .env")}'          runs any command
+      #   awk 'BEGIN{"cat .env"|getline l;print l}'          likewise
+      #   sed -n '1e cat .env' f                             likewise
+      #   awk 'BEGIN{while((getline l < ".env")>0) print l}'   reads
+      #   awk '{print > ".env"}' f                            writes
+      #   sed '1r .env' f                                     reads
+      #   sed -n 'w /tmp/x' f                                 writes
+      #
+      # The execution forms are not a read-scope problem at all: they
+      # defeat the COMMAND GROUPS. A role granted `awk` had an
+      # unrestricted shell, and the manifest said otherwise.
+      #
+      # Round 8 settled how to handle a channel that turns data into
+      # execution: close it rather than pattern-match around it. That
+      # ruling applied to authoring code through Bash, where the shell
+      # re-mangles the bytes and one backslash defeats every rule. Here
+      # the program arrives as a single already-unquoted word, so it can
+      # be read as reliably as a Write payload — which is the side of
+      # round 8 that IS sound. So: spawning constructs are refused
+      # outright, file constructs are refused unless the path they name
+      # is a literal inside this role's scope, and an ordinary
+      # `awk '{print $1}'` or `sed 's/a/b/'` is untouched.
+      case "${SEG_WORDS[0]:-}" in
+        awk|gawk|mawk|sed)
+          PROG_TEXT=$(printf '%s ' "${SEG_WORDS[@]}")
+          # --- spawning: no literal to check, so no way to allow it ---
+          SPAWN=""
+          case "${SEG_WORDS[0]:-}" in
+            # sed's `e` can be glued to a line address (`1e cmd`), so the
+            # character before it is any address terminator, not just a
+            # space. The `s///e` flag is spelled out for the `/`
+            # delimiter rather than with a backreference, which ERE does
+            # not have.
+            sed) printf '%s' "$PROG_TEXT" \
+                   | grep -qE '(^|[^a-zA-Z-])e([[:space:]]|$)|s/[^/]*/[^/]*/[gipIMm0-9]*e' \
+                   && SPAWN="sed's 'e' command executes the pattern space as a shell command" ;;
+            *)   printf '%s' "$PROG_TEXT" \
+                   | grep -qE 'system[[:space:]]*\(|\|[[:space:]]*getline|\|[[:space:]]*"' \
+                   && SPAWN="awk's system() and command pipes run a shell command" ;;
+          esac
+          if [ -n "$SPAWN" ]; then
+            set +f
+            harness_os_deny "bash-program-spawns ${SEG_WORDS[0]}" "[BLOCKED] Role '${ROLE}' ran a ${SEG_WORDS[0]} program that can start another command — ${SPAWN}.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+A program passed to ${SEG_WORDS[0]} is exempt from the path scan because a program is not a path. That exemption cannot extend to running arbitrary commands: it would make this role's command groups mean nothing, since any command at all could be reached through this one. There is no literal here to check against a scope, so the construct is refused rather than guessed at.
+
+Run the command you actually need as its own command, where the role's command groups and path scopes can both be applied to it."
+          fi
+          # --- file constructs: allowed only where the literal is in scope
+          # awk names its files as quoted strings after < > >>; sed names
+          # them bare, after an r/R/w/W command that may be glued to a
+          # line address (`1r .env`). Two grammars, two extractors.
+          case "${SEG_WORDS[0]:-}" in
+            sed) PROG_PATHS=$(printf '%s' "$PROG_TEXT" \
+                   | grep -oE '[^a-zA-Z][rRwW][[:space:]]+[^;}[:space:]]+' 2>/dev/null \
+                   | sed -E 's/^.[rRwW][[:space:]]+//' || true) ;;
+            *)   PROG_PATHS=$(printf '%s' "$PROG_TEXT" \
+                   | grep -oE '(<|>>?)[[:space:]]*"[^"]*"' 2>/dev/null \
+                   | sed -E 's/^[<>]+[[:space:]]*"//; s/"$//' || true) ;;
+          esac
+          PROG_PATHS=$(printf '%s' "$PROG_PATHS" | grep -vE '^\$|^$' || true)
+          if [ -n "$PROG_PATHS" ]; then
+            while IFS= read -r __pp; do
+              [ -n "$__pp" ] || continue
+              case "$__pp" in /*) __ppa="$__pp" ;; *) __ppa="${HOS_CWD%/}/$__pp" ;; esac
+              # Only a path that resolves somewhere real is worth a
+              # verdict; `print > $out` and friends were filtered above
+              # because a name the kernel cannot resolve is not a literal.
+              [ -e "$__ppa" ] || [ -d "$(dirname "$__ppa")" ] || continue
+              harness_os_is_manifest_path "$__ppa" && continue
+              __ppr=$(harness_os_relpath "$__ppa")
+              if [ "$READ_DENY" != "null" ] && harness_os_path_in_scope "$__ppr" "$READ_DENY"; then :
+              elif harness_os_path_in_scope "$__ppr" "$READ_ALLOW"; then continue
+              elif [ "$HAS_WRITE_GRANTS" = "1" ] && harness_os_path_in_scope "$__ppr" "$WRITE_ALLOW"; then continue
+              fi
+              set +f
+              harness_os_deny "bash-program-path-out-of-scope $__ppr" "[BLOCKED] Role '${ROLE}' ran a ${SEG_WORDS[0]} program that opens '$__ppr', which is outside this role's scopes.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+Command: ${CMD}
+
+${SEG_WORDS[0]}'s program is exempt from the path scan because a program is not a path — but \`getline < \"file\"\`, \`print > \"file\"\`, and sed's \`r\`/\`w\` commands name files the tool really opens, so those names are held to the same scopes as any other path.
+
+Name the file as an operand, or use a shell redirection, where it is scope-checked in the ordinary way."
+            done <<< "$PROG_PATHS"
+          fi
+          ;;
+      esac
+
+      case "${SEG_WORDS[0]:-}" in
+        jq|gojq|jaq)
+          JQ_MODS=$(printf '%s\n' "${SEG_WORDS[@]}" \
+            | grep -oE '(import|include)[[:space:]]*"[^"]*"' 2>/dev/null \
+            | sed 's/.*"\([^"]*\)"/\1/' || true)
+          if [ -n "$JQ_MODS" ]; then
+            JQ_BASES=("$HOS_CWD")
+            __skip_next=0
+            for __i in "${!SEG_WORDS[@]}"; do
+              [ "$__i" = "0" ] && continue
+              __w="${SEG_WORDS[$__i]}"
+              if [ "$__skip_next" = "1" ]; then __skip_next=0; JQ_BASES+=("$__w"); continue; fi
+              case "$__w" in -L) __skip_next=1 ;; -L?*) JQ_BASES+=("${__w#-L}") ;; esac
+            done
+            while IFS= read -r __mod; do
+              [ -n "$__mod" ] || continue
+              for __b in "${JQ_BASES[@]}"; do
+                case "$__b" in /*) : ;; *) __b="${HOS_CWD%/}/$__b" ;; esac
+                for __ext in .jq .json ""; do
+                  __cand="$__b/$__mod$__ext"
+                  [ -f "$__cand" ] || continue
+                  harness_os_is_manifest_path "$__cand" && continue
+                  __rel=$(harness_os_relpath "$__cand")
+                  if [ "$READ_DENY" != "null" ] && harness_os_path_in_scope "$__rel" "$READ_DENY"; then :
+                  elif harness_os_path_in_scope "$__rel" "$READ_ALLOW"; then continue
+                  elif [ "$HAS_WRITE_GRANTS" = "1" ] && harness_os_path_in_scope "$__rel" "$WRITE_ALLOW"; then continue
+                  fi
+                  set +f
+                  harness_os_deny "bash-jq-module-out-of-scope $__rel" "[BLOCKED] Role '${ROLE}' may not import '$__mod' — it resolves to '$__rel', which is outside the role's read scope.
+
+${ROLE_HEADER}
+read scope: $(printf '%s' "$READ_ALLOW" | "$JQ" -r 'join(", ")' 2>/dev/null)
+
+Command: ${CMD}
+
+A jq filter is exempt from the read scan because it is a program, not a path — but \`import\`/\`include\` inside one names a file that jq really opens, so the module is scope-checked like any other read. Import only modules inside this role's read scope."
+                done
+              done
+            done <<< "$JQ_MODS"
+          fi
+          ;;
+      esac
       if [ "${SEG_WORDS[0]:-}" = "find" ]; then
         for __i in "${!SEG_WORDS[@]}"; do
           case "${SEG_WORDS[$__i]}" in
@@ -1548,6 +1796,12 @@ A segment this long cannot be verified against the role's read scope, so it is r
               # clothes — curl's `-F field=@file` uploads that file. The
               # `@` is what distinguishes it from a value.
               *=@?*) tok="${tok#*=}" ;;
+              # And `NAME=<PATH` is the same thing with curl's other
+              # spelling: `-F 'x=<.env'` sends the file's CONTENTS as the
+              # field value. Quoted, so the `<` is not a shell redirect
+              # and never reached the redirect masking that would have
+              # caught it.
+              *=\<?*) tok="${tok#*=<}"; [ -n "$tok" ] || continue ;;
               *) continue ;;
             esac
             ;;
