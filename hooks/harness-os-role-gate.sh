@@ -568,6 +568,8 @@ check_code_capabilities() {
         cfg_kind="resolution" ;;
       .babelrc|.babelrc.*|babel.config.*|.swcrc|.browserslistrc)
         cfg_kind="build" ;;
+      Makefile|makefile|GNUmakefile|*.mk|Rakefile|Justfile|justfile|Taskfile.yml|Taskfile.yaml|CMakeLists.txt|build.gradle|build.gradle.kts|pom.xml)
+        cfg_kind="build" ;;
       .mocharc|.mocharc.*|.nycrc|.nycrc.*|.c8rc|.c8rc.*|.taprc)
         cfg_kind="runner" ;;
       *.config.js|*.config.mjs|*.config.cjs|*.config.ts|*.config.mts|*.config.cts|*.config.json|*.config.yaml|*.config.yml)
@@ -1568,6 +1570,42 @@ NOTE: your command group DOES grant 'git ${GIT_SUB}'. This refusal is a construc
           BUILTIN_ID='cd'; BUILTIN_HIT='cd/pushd/popd to a different directory — it re-anchors every relative path this axis checks (a cd to the directory you are already in is allowed)'
         fi
       elif printf '%s' "$SEG_NOQ" | grep -Eq '\{[^{}[:space:]]*,[^{}[:space:]]*\}?|\{[^{}[:space:]]*\.\.[^{}[:space:]]*\}?'; then BUILTIN_ID='brace-expansion'; BUILTIN_HIT='brace expansion {a,b} or {a..z} — the shell expands it into filenames no check ever sees'
+      # A DEPENDENCY-INSTALL OR BUILD VERB IS AN INTERPRETER WEARING A
+      # BUILD HAT, and round 31 is the round that noticed nobody had said
+      # so. It found the escape in a manifest this project SHIPS — the
+      # `feature-dev` template's implementer, whose `build` group grants
+      # `npm install`:
+      #
+      #   Write src/evil/package.json   {"scripts":{"postinstall":"node p.js"}}
+      #   Write src/evil/p.js           reads ../../.env, writes /tmp
+      #   Bash  npm install ./src/evil
+      #
+      # Three ordinary grants, every step ALLOW, and the role's read and
+      # write scopes are both gone. Nothing here defeats a check: the
+      # package manager runs the DEPENDENCY's lifecycle script, so the
+      # authored-code screen has nothing to screen (the file imports
+      # nothing) and no path scope ever sees the read.
+      #
+      # This project already learned, on the interpreter axis in rounds 8
+      # and 16, that a channel which turns data into execution must be
+      # CLOSED rather than pattern-matched. `npm install`, `pip install`,
+      # `make`, `gradle` are that same channel; the lesson migrated
+      # across grep, sed, awk and jq and never reached the package
+      # managers, because they look like build tooling instead of like an
+      # interpreter. A command group is a regex over argv: it can say how
+      # a command is SPELLED and knows nothing about what it is CAPABLE
+      # of, so `^npm .*install\b` reads as narrow and is not.
+      #
+      # Note this one cannot be fixed by routing it through
+      # `harness-os run` either — npm needs --allow-child-process, and a
+      # postinstall that shells out leaves the permission model entirely.
+      # Permitting it is a real decision, so it is spelled as one.
+      elif printf '%s' "$SEG_NOQ" | grep -Eq '^[[:space:]]*(npm|pnpm|yarn|bun)[[:space:]]+(i|in|install|ci|add|update|upgrade|link|rebuild|exec[[:space:]]+--package)\b'; then
+        BUILTIN_ID='dependency-install'; BUILTIN_HIT='a package-manager install verb — it executes the lifecycle scripts of whatever it installs, which is arbitrary code no path scope and no authored-code screen ever sees'
+      elif printf '%s' "$SEG_NOQ" | grep -Eq '^[[:space:]]*(pip|pip3|python[0-9.]*[[:space:]]+-m[[:space:]]+pip|gem|cargo|go|composer|bundle|apt|apt-get|apk|brew|dnf|yum|nix-env)[[:space:]]+(install|add|require|get)\b'; then
+        BUILTIN_ID='dependency-install'; BUILTIN_HIT='a package-manager install verb — it executes setup code from whatever it installs, which is arbitrary code no path scope and no authored-code screen ever sees'
+      elif printf '%s' "$SEG_NOQ" | grep -Eq '^[[:space:]]*(make|gmake|gradle|gradlew|\./gradlew|mvn|ant|rake|just|task|cmake)\b'; then
+        BUILTIN_ID='build-recipe'; BUILTIN_HIT='a build-recipe runner — it executes commands from a Makefile or build script, so what it runs is decided by a file rather than by this command'
       fi
       # A permitted construct is skipped — the segment still faces the
       # allow-set, deny patterns, redirect scope and read-token checks.

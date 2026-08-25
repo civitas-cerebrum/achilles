@@ -164,6 +164,8 @@
                     "interpreter-module",
                     "awk-program",
                     "sed-program",
+                    "dependency-install",
+                    "build-recipe",
                     "cd",
                     "brace-expansion",
                     "vcs-history"

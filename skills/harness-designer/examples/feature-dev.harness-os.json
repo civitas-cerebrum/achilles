@@ -18,7 +18,7 @@
       "^(cat|head|tail|sort|uniq|cut|tr|grep|rg|jq)\\b"
     ],
     "build": [
-      "^npm (run build|run lint|run typecheck|ci|install)\\b",
+      "^npm (run build|run lint|run typecheck)\\b",
       "^(npx|yarn|pnpm) (tsc|eslint|prettier)\\b"
     ],
     "test-execution": [
@@ -28,6 +28,9 @@
     "test-execution-profiled": [
       "^harness-os run --role implementer -- npm (test|run test[a-z:-]*)\\b",
       "^harness-os run --role implementer -- (npx|yarn|pnpm exec) (vitest|jest)\\b"
+    ],
+    "dependency-install": [
+      "^npm (ci|install)\\b"
     ]
   },
   "roles": {
@@ -119,6 +122,28 @@
       "write": {
         "allow": [
           "src/**"
+        ]
+      }
+    },
+    "installer": {
+      "description": "Installs dependencies and nothing else. Exists so that no role which reads source or authors code also holds an arbitrary-code channel.",
+      "tools": {
+        "allow": [
+          "Bash"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "dependency-install"
+        ],
+        "permit": [
+          "dependency-install"
+        ]
+      },
+      "read": {
+        "allow": [
+          "package.json",
+          "package-lock.json"
         ]
       }
     },

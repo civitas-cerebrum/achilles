@@ -14,7 +14,7 @@
       "^(cat|head|tail|sort|uniq|cut|tr|grep|rg|jq)\\b"
     ],
     "test-execution": [
-      "^(npx|yarn|pnpm exec) playwright\\b",
+      "^(npx|yarn|pnpm exec) playwright test\\b",
       "^npm (test|run test[a-z:-]*)\\b"
     ]
   },
