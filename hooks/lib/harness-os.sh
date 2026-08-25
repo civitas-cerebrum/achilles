@@ -362,6 +362,15 @@ harness_os_shell_words() {
     s = $0; n = length(s); word = ""; inword = 0; q = ""; unq = 0
     for (i = 1; i <= n; i++) {
       c = substr(s, i, 1)
+      # An escaped character is literal — the backslash goes away and the
+      # character joins the word without making it expandable. `cat \*`
+      # names a file called *, and `cat a\ b` is ONE operand.
+      if (c == "\\" && q != "'"'"'" && i < n) {
+        word = word substr(s, i + 1, 1)
+        inword = 1
+        i++
+        continue
+      }
       if (q != "") {                       # inside quotes: only the
         if (c == q) { q = "" }             # matching quote ends them
         else { word = word c }
@@ -410,6 +419,34 @@ harness_os_unquoted_view() {
     s = $0; n = length(s); out = ""; q = ""
     for (i = 1; i <= n; i++) {
       c = substr(s, i, 1)
+      # A backslash escapes the next character everywhere except inside
+      # single quotes, where bash does no escaping at all. The escaped
+      # character is literal TEXT and can never be syntax — not a quote,
+      # not a separator, not a redirect. Missing this was an escape of my
+      # own making: `echo \" ; cat .env` reads as an opening quote to a
+      # naive scanner, which then swallows the `;` and hides `cat .env`
+      # inside a string bash never saw. It also over-split `"a\" ; b"`,
+      # where the escaped quote does NOT end the string.
+      if (c == "\\" && q != "'"'"'" && i < n) {
+        e = substr(s, i + 1, 1)
+        if (mode == "split") {
+          # Must round-trip byte-exactly: keep the backslash, and hold
+          # only a separator that the escape has disarmed.
+          out = out c
+          if (e == ";") out = out "\002"
+          else if (e == "|") out = out "\003"
+          else if (e == "&") out = out "\004"
+          else if (e == "\n") out = out "\005"
+          else out = out e
+        } else if (mode == "redir") {
+          out = out "\001"
+          out = out ((e == "<" || e == ">") ? "\001" : e)
+        } else {
+          out = out "XX"
+        }
+        i++
+        continue
+      }
       if (q != "") {
         if (c == q) { q = "" ; out = out ((mode == "redir" || mode == "split") ? c : "X") }
         else if (mode == "redir") { out = out ((c == "<" || c == ">") ? "\001" : c) }
@@ -438,6 +475,28 @@ harness_os_unquoted_view() {
 # 'split' put in, so a segment carries its original text verbatim.
 harness_os_unsplit() {
   tr '\002\003\004\005' ';|&\n'
+}
+
+# harness_os_quotes_balanced — 0 when every quote in the input on stdin
+# is closed. An unterminated quote means the scanner's idea of what is
+# text and what is syntax has diverged from any shell's, and everything
+# after the stray quote reads as inert string. bash refuses such a
+# command outright ("unexpected EOF while looking for matching") so
+# nothing is lost by refusing it here too — and resting on "the shell
+# will error anyway" is exactly the assumption that becomes an escape
+# the day the runtime differs.
+harness_os_quotes_balanced() {
+  awk 'BEGIN { RS = "\034"; ORS = "" }
+  {
+    s = $0; n = length(s); q = ""
+    for (i = 1; i <= n; i++) {
+      c = substr(s, i, 1)
+      if (c == "\\" && q != "'"'"'" && i < n) { i++; continue }
+      if (q != "") { if (c == q) q = ""; continue }
+      if (c == "'"'"'" || c == "\"") q = c
+    }
+    exit (q == "" ? 0 : 1)
+  }'
 }
 
 # ---------------------------------------------------------------------------

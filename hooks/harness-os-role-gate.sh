@@ -397,6 +397,19 @@ Fix the manifest in an operator design session — until then this role can run 
   # shell does not treat it as one — so neither does this. Placeholders
   # carry the quoted separators through the split and are restored after,
   # leaving each segment byte-identical to what the shell will run.
+  # An unterminated quote makes every check below read the tail of the
+  # command as inert string. bash refuses such a command outright, so
+  # refusing it here costs nothing and removes the need to rely on that.
+  if ! printf '%s' "$CMD" | harness_os_quotes_balanced; then
+    harness_os_deny "bash-unbalanced-quotes" "[BLOCKED] Role '${ROLE}' sent a command with an unterminated quote, which cannot be checked.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+Everything after an unclosed quote reads as string rather than syntax, so the kernel cannot tell which parts are commands and which are text. A shell would refuse this command too. Close the quote and send it again."
+  fi
+
   SEGMENTS=$(printf '%s' "$CLEAN" | harness_os_unquoted_view split \
     | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g' -e 's/&/\n/g')
   while IFS= read -r seg; do

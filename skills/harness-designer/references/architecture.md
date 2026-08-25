@@ -124,8 +124,8 @@ Evaluated in this order inside the kernel; first deny wins.
    against the tool name, e.g. `mcp__github__*`). Absent `tools` →
    all tools pass to the finer axes.
 3. **Bash command gate** — the command is split on `&&`, `||`, `;`, `|`
-   (quote-blind, protective direction) and EVERY segment must match at
-   least one allow regex (union of the role's `bash.groups` expansion +
+   (quote-aware: a separator inside quotes is not a separator) and EVERY
+   segment must match at least one allow regex (union of the role's `bash.groups` expansion +
    `bash.allow`) and no deny regex. A role with no `write` grants also
    gets a built-in deny on file-redirect shapes (`>`/`>>` after
    stripping `2>/dev/null`-style fd noise) — Bash must not launder
@@ -254,10 +254,11 @@ commit grammar and ledger gates in an unrelated project.
 
 Bash is the widest laundering channel a role has — one allowed binary
 can read, write, or execute anything if the gate only pattern-matches
-the command name. The kernel closes this with five sub-checks per
+the command name. The kernel closes this with six sub-checks per
 command, run over every segment (the command is split on `&&`, `||`,
-`;`, `|`, `&`, and newlines, after fd-plumbing like `2>&1` is masked so
-a lone `&` can be split without shredding a redirect):
+`;`, `|`, `&`, and newlines — quote-aware, and after fd-plumbing like
+`2>&1` is masked so a lone `&` can be split without shredding a
+redirect):
 
 1. **Indirection denies** — `$(…)`/`` `…` ``/`$VAR`, process
    substitution, `eval`, `xargs`, a shell or interpreter one-liner
@@ -335,6 +336,33 @@ brace expansion and globbing are suppressed by either quote style,
 `$…` and `` `…` `` only by single quotes — so `echo '{"a":1,"b":2}'` is
 JSON and `cat {.env,x}` is still an escape attempt.
 
+Segmentation is quote-aware for the same reason. It was quote-blind on
+the argument that over-splitting can only cause a deny, never an allow —
+true, and also unusable: `echo "await steps.click('x');" >> spec.ts`
+split mid-string, and the fragment `" >> spec.ts` matched no command
+pattern, so writing most lines of JavaScript through Bash was refused
+with a message about command patterns. A separator inside quotes is not a
+separator, so it no longer splits; placeholders carry it through and are
+restored after, leaving each segment byte-identical to what the shell
+will run.
+
+Redirection is read from a quote-masked view of the **un-stripped**
+segment. Both halves earned their place. Un-stripped, because the
+assignment and wrapper strips consume a `NAME=value` run and
+`env X=1<.env cat` hides an entire redirection inside one — a reviewer
+used exactly that to read a secret, write outside every scope, and
+overwrite the kernel itself from a role with no write grants at all.
+Quote-masked, because `grep '=>' spec.ts` is not a redirection, and a
+gate that denies the arrow operator is a gate nobody keeps switched on.
+
+A backslash escapes the next character everywhere except inside single
+quotes, and the scanner honours that before anything else. `\"` is a
+literal quote and does not open a string; missing that hid `cat .env`
+after a `;` the scanner believed was inside quotes. An unterminated
+quote is refused outright: everything after it reads as inert string, so
+the scanner's idea of what is syntax has diverged from any shell's — and
+a shell refuses such a command anyway.
+
 Quoting never decides which word is the *command*, though: `"cat" .env`
 still runs cat, so the command-name and allow-set checks read the
 segment verbatim.
@@ -389,9 +417,21 @@ normalises quoting, `node:` prefixes and string concatenation before
 matching, and covers dynamic `import()`, `require` with any quote form,
 `process.getBuiltinModule`, python's comma/`from`-import forms, bare
 `open(`, `fetch(`, and `file://` URLs; every one of those is a regression
-test in `hooks/tests/cases/08-reviewer-round1.sh`. But a static check on
-a Turing-complete language cannot be complete, and no amount of pattern
-work will make it so.
+test in `hooks/tests/cases/08-reviewer-round1.sh`. Later rounds added
+octal escapes, `String.fromCharCode` module names, computed-member method
+access (`m["read"+"File"+"Sync"](…)`), `process.binding`, and the
+backslash-escaped quoting that arrives when code is authored through
+Bash. But a static check on a Turing-complete language cannot be
+complete, and no amount of pattern work will make it so.
+
+The screen is a shared function both authoring routes run. It was wired
+only to Write/Edit until round 4, which meant
+`echo 'require("fs")…' > tests/e2e/x.spec.ts` put the identical code on
+disk inside the role's own write scope with nothing looking at it, and
+the role's granted test command then ran it. An axis that guards one
+door and not the other guards nothing; the bash route screens the whole
+command, because `echo <code> | tee spec.ts` carries the code in the
+segment *before* the one naming the file.
 
 So do not read this axis as "the write-then-execute escape is closed".
 Read it as: **authoring an escape now costs deliberate obfuscation
@@ -405,11 +445,24 @@ stake a security claim on.
 ## False-positive direction
 
 Everywhere the kernel guesses, it guesses toward deny-with-guidance:
-quote-blind Bash segmentation, root-as-path for pathless searches,
-write-opt-in defaults, unbound → readonly, an unrecognised construct in
-a command → deny. A wrongly-denied call costs one re-dispatch with a
+root-as-path for pathless searches, write-opt-in defaults, unbound →
+readonly, an unrecognised construct in a command → deny, an unterminated
+quote → deny. A wrongly-denied call costs one re-dispatch with a
 corrected grant; a wrongly-allowed call breaks the separation-of-duties
 story the manifest was written to buy. Every deny names the fix.
+
+That direction is a tiebreaker, not a licence. Guessing toward deny is
+free only where the guess is rare; where it fires on ordinary correct
+work it stops being conservative and becomes the reason the gate gets
+switched off, and a gate that is off enforces nothing. Four adversarial
+rounds produced escapes and false positives in roughly equal number, and
+the false positives were the more dangerous half: `find tests -name
+"*.json"` read as a scope violation, `grep '=>' spec.ts` read as a write,
+`grep package.json src/` read as a read of a file it only searches *for*.
+Each was fixed by teaching the kernel the relevant grammar — quoting,
+escaping, which operands a command treats as patterns — rather than by
+widening a scope. When a deny cannot be explained to the person who
+wrote the manifest, it is a bug on this axis, not a boundary.
 
 ## Known limits (honest boundaries)
 

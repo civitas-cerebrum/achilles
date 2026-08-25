@@ -154,6 +154,34 @@ assert_deny "$H" "$(payload tool_name=Bash command='cat tests/a.txt | cat .env' 
 assert_deny "$H" "$(payload tool_name=Bash command='cat tests/a.txt & cat .env' cwd="$P" $I)" \
   "SEG a background '&' still splits → DENY" "read scope"
 
+# Backslash escaping — found by probing the quote-aware split before the
+# next reviewer saw it, and it was an escape of my own making. A
+# backslash escapes the next character everywhere except inside single
+# quotes, so `\"` is a literal quote and does NOT open a string. A naive
+# scanner thinks it does, swallows the following `;`, and hides a whole
+# command inside a string bash never saw. Verified end to end: the
+# command really did print the secret.
+assert_deny "$H" "$(payload tool_name=Bash command='echo \" ; cat .env' cwd="$P" $I)" \
+  "SEG an escaped quote does not open a string → the ';' still splits → DENY" "read scope"
+assert_allow "$H" "$(payload tool_name=Bash command='echo \" ; cat tests/a.txt' cwd="$P" $I)" \
+  "SEG calibration: same shape, in-scope read → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='echo "a\" ; cat tests/a.txt"' cwd="$P" $I)" \
+  "SEG an escaped quote INSIDE a string does not end it → one command → ALLOW"
+assert_deny "$H" "$(payload tool_name=Bash command='cat \.env' cwd="$P" $I)" \
+  "SEG an escaped path character is still that path → DENY" "read scope"
+assert_deny "$H" "$(payload tool_name=Bash command='echo x \> tests/e2e/a.txt; cat .env' cwd="$P" $C)" \
+  "SEG an escaped '>' is not a redirect, and the live ';' still splits → DENY" "read scope"
+
+# An UNTERMINATED quote makes the whole tail read as inert string. A
+# shell refuses such a command, so refusing it here costs nothing — and
+# not resting on "the shell will error anyway" is the point.
+assert_deny "$H" "$(payload tool_name=Bash command='echo "unterminated ; cat .env' cwd="$P" $I)" \
+  "SEG an unterminated double quote → DENY" "unterminated quote"
+assert_deny "$H" "$(payload tool_name=Bash command="echo 'unterminated ; cat .env" cwd="$P" $I)" \
+  "SEG an unterminated single quote → DENY" "unterminated quote"
+assert_allow "$H" "$(payload tool_name=Bash command='echo "balanced" ; cat tests/a.txt' cwd="$P" $I)" \
+  "SEG calibration: balanced quotes → ALLOW"
+
 # --- N2: the bash authoring route is screened too -----------------------
 assert_deny "$H" "$(payload tool_name=Bash command='echo "require(\"fs\").readFileSync(\".env\");" > tests/e2e/evil.spec.ts' cwd="$P" $C)" \
   "N2 code authored via bash redirect, INSIDE the write scope → DENY" "filesystem access"
