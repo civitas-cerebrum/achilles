@@ -1508,9 +1508,37 @@ A pattern is applied under the search root, so '..' escapes the role's scope. Na
 
     # Axis 5b — the shared screen defined above. The bash write channel
     # runs the identical check, so neither authoring route is the soft one.
+    #
+    # For an Edit the tool input is a DIFF, and screening the diff is not
+    # screening the file. Two edits whose fragments are each harmless
+    # compose into one that is not:
+    #
+    #     'const x = 1;'  ->  'const d = reqA;'      (allowed: no match)
+    #     'A;'            ->  'uire("dotenv"); …'    (allowed: no match)
+    #     on disk:            const d = require("dotenv"); …
+    #
+    # Verified end to end before fixing — the assembled file read the
+    # secret. So the screen is given the file's RESULTING content:
+    # existing bytes with the replacement applied. The replacement is
+    # literal (index-based), never a regex, so no metacharacter in
+    # old_string can change what is matched.
     if [ -n "$TARGET" ]; then
       CODE=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.content // .tool_input.new_string // .tool_input.new_source // empty' 2>/dev/null || echo "")
-      check_code_capabilities "$TARGET" "$CODE"
+      RESULT_CODE="$CODE"
+      if [ "$HOS_TOOL" = "Edit" ] && [ -f "$TARGET" ] && [ "$(wc -c <"$TARGET" 2>/dev/null || echo 0)" -le 1048576 ]; then
+        OLD_S=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.old_string // empty' 2>/dev/null || echo "")
+        REPL_ALL=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.replace_all // false' 2>/dev/null || echo false)
+        if [ -n "$OLD_S" ]; then
+          RESULT_CODE=$(OLD_S="$OLD_S" NEW_S="$CODE" ALL="$REPL_ALL" perl -0777 -e '
+            local $/; my $f = <STDIN>;
+            my ($o, $n, $all) = ($ENV{OLD_S}, $ENV{NEW_S}, $ENV{ALL} eq "true");
+            if ($all) { my $i; while (($i = index($f, $o)) >= 0) { substr($f, $i, length($o)) = $n; } }
+            else { my $i = index($f, $o); substr($f, $i, length($o)) = $n if $i >= 0; }
+            print $f;' < "$TARGET" 2>/dev/null || printf '%s' "$CODE")
+          [ -n "$RESULT_CODE" ] || RESULT_CODE="$CODE"
+        fi
+      fi
+      check_code_capabilities "$TARGET" "$RESULT_CODE"
     fi
     ;;
 esac
