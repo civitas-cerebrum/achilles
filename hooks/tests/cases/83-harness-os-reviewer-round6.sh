@@ -114,6 +114,34 @@ import { helper } from "./helper";' composer)" \
 assert_allow "$H" "$(wpay "$P/tests/e2e/e.spec.ts" 'const d = require("dotenv");' loose)" \
   "N1 a role that declares NO list is unchanged (opt-in) → ALLOW"
 
+# --- N1a: the loader reached through an alias --------------------------
+# Found by probing the import allowlist before the next reviewer saw it.
+# `const r = require; r("dotenv")` defeats BOTH the capability branches
+# and the allowlist, because nothing downstream can follow the name to
+# see what it loads. Verified semantically: it really did print the
+# secret. Same shape as a capability method bound before use.
+assert_deny "$H" "$(wpay "$P/tests/e2e/al.spec.ts" 'const r = require;
+r("dotenv").config();' composer)" \
+  "N1a 'const r = require' — the loader bound to a name → DENY" "bound to a name"
+assert_deny "$H" "$(wpay "$P/tests/e2e/al2.spec.ts" 'globalThis.R = require;' composer)" \
+  "N1a assigned onto a global → DENY" "bound to a name"
+assert_deny "$H" "$(wpay "$P/tests/e2e/al3.spec.ts" 'const o = { load: require };' composer)" \
+  "N1a stashed in an object property → DENY" "bound to a name"
+assert_deny "$H" "$(wpay "$P/tests/e2e/al4.spec.ts" 'register(require);' composer)" \
+  "N1a passed as an argument → DENY" "bound to a name"
+
+# The check is bounded to VALUE position, because prose is full of the
+# word. A gate that denies a spec for its comments is a gate people edit
+# around.
+assert_allow "$H" "$(wpay "$P/tests/e2e/al5.spec.ts" '// this test requires a logged-in user
+import { test } from "@playwright/test";' composer)" \
+  "N1a calibration: \"requires a logged-in user\" in a comment → ALLOW"
+assert_allow "$H" "$(wpay "$P/tests/e2e/al6.spec.ts" '// we deliberately do not require anything here
+import { test } from "@playwright/test";' composer)" \
+  "N1a calibration: \"do not require anything\" in a comment → ALLOW"
+assert_allow "$H" "$(wpay "$P/tests/e2e/al7.spec.ts" 'const helper = require("./helper");' composer)" \
+  "N1a calibration: an ordinary relative require CALL → ALLOW"
+
 # --- N1b: the non-JS languages the extension gate had opted in --------
 assert_deny "$H" "$(wpay "$P/tests/e2e/r.rb" 'puts File.read("../../.env")' composer)" \
   "N1b Ruby File.read → DENY" "Ruby filesystem access"

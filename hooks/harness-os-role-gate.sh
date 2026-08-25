@@ -343,6 +343,15 @@ check_code_capabilities() {
     CAP_ID='network'; CAP_WHAT='the test framework''s HTTP client (request.get / page.request / sendBeacon) pointed at an arbitrary host — the same exfiltration channel as fetch(), reached through a fixture'
   elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)"; then
     CAP_ID='eval'; CAP_WHAT='eval / new Function — code the static check cannot read'
+  elif printf '%s' "$CODE_N" | grep -Eq '[=,:([][[:space:]]*require[[:space:]]*([];,)}]|$)'; then
+    # `const r = require; r("dotenv")` — the loader reached through an
+    # alias. Nothing downstream can follow the name, so neither the
+    # capability branches nor the import allowlist ever see the
+    # specifier. Same shape as a capability method bound before use, and
+    # found by probing this axis rather than by waiting for the next
+    # reviewer. `createRequire` is excluded by the leading boundary; a
+    # real call is excluded because it IS followed by '('.
+    CAP_ID='eval'; CAP_WHAT='the module loader bound to a name (`const r = require`) rather than called — the static check cannot follow an alias to see what it loads'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*[^\"[:space:])]"; then
     # INVERTED, and this is the important one. Every previous version
     # asked "does the module name look like one of the dangerous ones?",
