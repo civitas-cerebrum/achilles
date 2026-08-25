@@ -1320,25 +1320,47 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
       # read). Only the well-defined cases are exempted, by index, and only
       # where the command's own grammar makes the operand a pattern.
       TOK_SKIP=" "
+      #
+      # ONE DECISION, ONE PLACE. Several commands take a program as their
+      # first positional operand — grep a pattern, sed and awk a script,
+      # jq a filter — and that operand must be exempt from the read scan
+      # or the commonest invocation of each is denied for a `.` or a
+      # `*.json` it never opens.
+      #
+      # The same defect then found each of them in turn: when a FLAG
+      # supplies that program (`grep -e`, `sed -e p`, `jq -f prog.jq`)
+      # there is no positional program, and the first positional is an
+      # INPUT FILE — so exempting it unconditionally handed the exemption
+      # to exactly the file the scope exists to cover. grep was fixed in
+      # round 4, sed and awk in round 12, jq in round 13. Three blocks,
+      # twenty lines apart, the same bug found three times by three
+      # different reviewers.
+      #
+      # So the blocks below no longer decide. Each one only REPORTS two
+      # things — whether a flag supplied the program (__has_prog_flag),
+      # and which operand is the positional program if there is one
+      # (__prog_idx) — and the single line after the `esac` makes the
+      # exemption. A block added later cannot forget the guard, because
+      # forgetting it is no longer possible: it does not write that line.
+      __has_prog_flag=0; __prog_idx=""
       case "${SEG_WORDS[0]:-}" in
         grep|egrep|fgrep|rgrep|rg|ag|ack|ripgrep)
           # -e PAT / -f FILE change the grammar: with either present there
           # is no positional pattern, and -f's operand is a real file read.
-          __has_pat_flag=0; __skip_next=0; __pat_idx=""
+          __skip_next=0
           for __i in "${!SEG_WORDS[@]}"; do
             [ "$__i" = "0" ] && continue
             __w="${SEG_WORDS[$__i]}"
             if [ "$__skip_next" = "1" ]; then __skip_next=0; continue; fi
             case "$__w" in
-              -e|--regexp) __has_pat_flag=1; TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_next=1; continue ;;
-              -f|--file)   __has_pat_flag=1; __skip_next=1; continue ;;
-              -e*|--regexp=*) __has_pat_flag=1; continue ;;
-              -f*|--file=*)   __has_pat_flag=1; continue ;;
+              -e|--regexp) __has_prog_flag=1; TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_next=1; continue ;;
+              -f|--file)   __has_prog_flag=1; __skip_next=1; continue ;;
+              -e*|--regexp=*) __has_prog_flag=1; continue ;;
+              -f*|--file=*)   __has_prog_flag=1; continue ;;
               -*) continue ;;
             esac
-            [ -n "$__pat_idx" ] || __pat_idx="$__i"
+            [ -n "$__prog_idx" ] || __prog_idx="$__i"
           done
-          [ "$__has_pat_flag" = "0" ] && [ -n "$__pat_idx" ] && TOK_SKIP="${TOK_SKIP}${__pat_idx} "
           ;;
         jq|yq|gojq|jaq)
           # jq's first operand is a FILTER, and the commonest filter of
@@ -1379,14 +1401,17 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
               # One operand, not a path.
               --indent|-L)
                 TOK_SKIP="${TOK_SKIP}$((__i + 1)) "; __skip_n=1; continue ;;
-              # One operand which IS a file: stays checked.
-              -f|--from-file) __skip_n=1; continue ;;
+              # One operand which IS a file, and which supplies the
+              # FILTER — so it stays scope-checked, and there is no
+              # positional filter left to exempt.
+              -f|--from-file) __has_prog_flag=1; __skip_n=1; continue ;;
+              -f*|--from-file=*) __has_prog_flag=1; continue ;;
               # No operand at all — these only change how later
               # positionals are read, and were consuming one each.
               --args|--jsonargs) continue ;;
               -*) continue ;;
             esac
-            TOK_SKIP="${TOK_SKIP}${__i} "; break
+            [ -n "$__prog_idx" ] || __prog_idx="$__i"
           done
           ;;
         sed|awk|gawk|mawk)
@@ -1406,7 +1431,7 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
           # `-v`/`--assign` is the one that must NOT set the guard: it
           # carries a variable binding, and the program is still the
           # first positional after it.
-          __has_prog_flag=0; __skip_next=0; __prog_idx=""
+          __skip_next=0
           for __i in "${!SEG_WORDS[@]}"; do
             [ "$__i" = "0" ] && continue
             __w="${SEG_WORDS[$__i]}"
@@ -1419,9 +1444,12 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
             esac
             [ -n "$__prog_idx" ] || __prog_idx="$__i"
           done
-          [ "$__has_prog_flag" = "0" ] && [ -n "$__prog_idx" ] && TOK_SKIP="${TOK_SKIP}${__prog_idx} "
           ;;
       esac
+      # THE decision — the only place any of the blocks above is exempted
+      # from the read scan. A program flag means there is no positional
+      # program, and every positional is an input file.
+      [ "$__has_prog_flag" = "0" ] && [ -n "$__prog_idx" ] && TOK_SKIP="${TOK_SKIP}${__prog_idx} "
       if [ "${SEG_WORDS[0]:-}" = "find" ]; then
         for __i in "${!SEG_WORDS[@]}"; do
           case "${SEG_WORDS[$__i]}" in
