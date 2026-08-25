@@ -1755,21 +1755,54 @@ Command: ${CMD}"
           case "${SEG_WORDS[0]}" in curl) __fw=1 ;; esac ;;
         -D?*|-c?*)
           case "${SEG_WORDS[0]}" in curl) FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;; esac ;;
+        # Playwright's own file-writing flags. `codegen`/`open` are a
+        # browser driver, not a test runner: `--save-har`, `--save-storage`
+        # and `--save-trace` each write a path, and a HAR of a
+        # `file:///…/.env` navigation contains the file. Round 32 used
+        # exactly that to give a role with NO write grants both an
+        # out-of-scope write and a secret read in one granted command.
+        # Unambiguous spellings, so no command list.
+        --save-har=*|--save-storage=*|--save-trace=*|--save-har-glob=*)
+          FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
+        --save-har|--save-storage|--save-trace)
+          __fw=1 ;;
         -o|-O)
-          # `find … -fprintf FILE FORMAT` and `sort -o FILE` both put the
-          # file first, so the next word is the target either way.
-          case "${SEG_WORDS[0]}" in
-            sort|cc|gcc|g++|clang|clang++|ld|objcopy|objdump|tar|curl|wget|ffmpeg|pandoc|openssl|tsc|esbuild|rustc|javac|go)
-              __fw=1 ;;
+          # INVERTED after round 32. This was a list of commands whose
+          # `-o` names a file, and playwright was not on it, so
+          # `playwright codegen -o docs/x.js` wrote where
+          # `--output docs/x.js` was refused — the same command, the same
+          # file, two spellings, one checked. Enumerating the tools whose
+          # `-o` is an output was always going to lose to the next tool,
+          # and architecture.md already said the generic spellings need
+          # no list. It says it about this one now too.
+          #
+          # So the list is the other way round: `-o` takes a path UNLESS
+          # the command is one of the few where it means something else
+          # — grep's only-matching, find's OR. Everything unknown is
+          # treated as a write, which is the safe direction, and the
+          # scope check below is what decides whether it matters.
+          case "$__w:${SEG_WORDS[0]}" in
+            # `-O` is an OUTPUT for a couple of downloaders and an
+            # OPTIMISATION level for every interpreter and compiler
+            # (`python -OO`, `cc -O2`), so it keeps a list where `-o`
+            # loses one. Inverting the wrong one of the two turns
+            # `python3 -OO script.py` into a write of a file called `O`.
+            -O:wget|-O:curl|-O:aria2c) __fw=1 ;;
+            -O:*) : ;;
+            *:grep|*:egrep|*:fgrep|*:rgrep|*:rg|*:ag|*:ack|*:ack-grep|*:find|*:nm|*:ps|*:du|*:df|*:stty|*:sox) : ;;
+            *) __fw=1 ;;
           esac ;;
         -o*|-O*)
-          # The attached spelling has to carry the SAME command list as
-          # the separated one, or `sort -opackage.json` writes where
-          # `sort -o package.json` is refused — the split that round 12
-          # found on the read side, here on the write side.
-          case "${SEG_WORDS[0]}" in
-            sort|cc|gcc|g++|clang|clang++|ld|objcopy|objdump|tar|curl|wget|ffmpeg|pandoc|openssl|tsc|esbuild|rustc|javac|go)
-              FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;;
+          # The attached spelling carries the SAME rule as the separated
+          # one, or `sort -opackage.json` writes where `sort -o
+          # package.json` is refused — round 12's split, on the write
+          # side. A remainder that is not a path costs nothing: the
+          # existence and scope checks downstream decide.
+          case "$__w:${SEG_WORDS[0]}" in
+            -O*:wget|-O*:curl|-O*:aria2c) FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;;
+            -O*:*) : ;;
+            *:grep|*:egrep|*:fgrep|*:rgrep|*:rg|*:ag|*:ack|*:ack-grep|*:find|*:nm|*:ps|*:du|*:df|*:stty|*:sox) : ;;
+            *) FLAG_TARGETS="${FLAG_TARGETS}${__w#-?}"$'\n' ;;
           esac ;;
       esac
     done
@@ -2194,7 +2227,21 @@ Command: ${CMD}
 A segment this long cannot be verified against the role's read scope, so it is refused rather than partially checked. Split the work into smaller commands naming the files you actually need."
         fi
         case "$tok" in
-          *://*) continue ;;           # URL, never a local file
+          file://*)
+            # A `file://` URL is a PATH wearing a URL's clothes, and this
+            # scan used to skip it with every other scheme. Round 32 fed
+            # one to `playwright open` and read a file no scope allowed:
+            # the browser opens the path directly, and nothing on the
+            # command line looked like a path. The WebFetch axis has
+            # unwrapped this since round 22 — one more channel that had
+            # the rule and one that did not.
+            tok="${tok#file://}"
+            tok="${tok#localhost}"
+            case "$tok" in /*) : ;; *) tok="/$tok" ;; esac
+            tok="${tok%%\?*}"; tok="${tok%%#*}"
+            [ -n "$tok" ] || continue
+            ;;
+          *://*) continue ;;           # any other scheme: never a local file
           -*=*)
             # A FLAG can carry a path in its value, and several read one:
             # `sort --files0-from=<file>`, `grep --file=<file>`,

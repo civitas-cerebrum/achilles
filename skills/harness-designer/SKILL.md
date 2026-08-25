@@ -77,6 +77,18 @@ For each role, in this order (it mirrors the kernel's evaluation):
    capability (`inspection`, `test-execution`, `build`), not by role.
    Warn the user that compound commands are checked per segment and
    that read-only roles get a built-in deny on file redirects.
+
+   And say the harder half out loud, because a redirect is not the only
+   way a command writes: **ask what each granted verb can DO, not how it
+   is spelled.** A command group is a regex over argv. `npm install`
+   runs the lifecycle scripts of whatever it installs; `playwright
+   codegen` drives a browser and writes traces, HARs and generated
+   scripts wherever it is pointed; `make` runs whatever a Makefile says.
+   The kernel refuses install and build-recipe verbs unless the role
+   opts in, and holds every output flag and `file://` operand to the
+   role's scopes — but a group named `form-probe` or `build` reads as
+   narrow while granting a general-purpose tool, and that is the shape
+   two review rounds broke this project's own shipped templates on.
 3. **Read scope** — the files this role's task genuinely needs. Globs
    are repo-root-relative; `**` crosses directories. Remind them:
    pathless `Glob`/`Grep` counts as a root-wide search and will be

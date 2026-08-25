@@ -291,11 +291,20 @@ redirect):
    role with no write grants): a `>`/`>>`/`tee` target that survives the
    fd-mask, the destination operand of an ordinary file verb
    (`cp`, `mv`, `dd of=`, `install`, `sed -i`, `truncate`, `ln`,
-   `rsync`), and output *flags* (`--output`, `-fprintf`, `-fls`, and
-   `-o` for the commands that spell output that way). Enumerating write
-   verbs kept losing to the next tool — three review rounds found
-   `cp`/`mv`/`sed -i`, then `sort -o`, then `find -fprintf` — so the flag
-   form is matched generically rather than per verb. Every write target,
+   `rsync`), and output *flags* (`--output`, `-fprintf`, `-fls`, `--save-har`
+   and friends, and a bare `-o`). Enumerating write verbs kept losing to
+   the next tool — three review rounds found `cp`/`mv`/`sed -i`, then
+   `sort -o`, then `find -fprintf` — so the flag form is matched
+   generically rather than per verb.
+
+   That claim was not true of `-o` until round 32, and the gap is worth
+   keeping visible: `-o` carried a LIST of commands whose `-o` names a
+   file, playwright was not on it, and `playwright codegen -o docs/x.js`
+   wrote where `--output docs/x.js` was refused — the same command, the
+   same file, two spellings, one checked. The list is inverted now: `-o`
+   takes a path unless the command is one of the few where it means
+   something else (grep's only-matching, find's OR), so an unknown tool
+   is treated as writing rather than as safe. Every write target,
    whatever produced it, also faces the self-protection axis: a role with
    *any* write grant still cannot aim one at the manifest, the state
    directory, or the kernel itself.

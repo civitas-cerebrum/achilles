@@ -23,7 +23,7 @@
     ],
     "test-execution": [
       "^npm (test|run test[a-z:-]*)\\b",
-      "^(npx|yarn|pnpm exec) (vitest|jest|playwright)\\b"
+      "^(npx|yarn|pnpm exec) (vitest|jest|playwright test)\\b"
     ],
     "test-execution-profiled": [
       "^harness-os run --role implementer -- npm (test|run test[a-z:-]*)\\b",
