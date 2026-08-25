@@ -137,6 +137,36 @@ harness_os_load "$INPUT" || exit 0   # project has not opted in — silent allow
 MANIFEST_REF="Manifest: ${HOS_MANIFEST}
 Docs:     skills/harness-designer/references/architecture.md"
 
+# search_pattern_offender — ONE DECISION, ONE PLACE, for the question
+# "does this Glob/Grep pattern climb out of the search root?". Sets
+# SEARCH_PAT to the first offending pattern field, or empty.
+#
+# It was written once, inside the GOVERNED Glob|Grep arm, and the
+# unbound arm — a second channel doing the same job for callers the
+# kernel could not identify — never got a copy. That is round 22's
+# sentence for the fourth time, so this is a function now and both arms
+# call it. Each renders its own deny, because the two audiences differ.
+search_pattern_offender() {
+  local sp_fields sp_cand
+  SEARCH_PAT=""
+  # Glob's `pattern` IS a path glob, so it counts there; for Grep the
+  # pattern is a regex over CONTENT and only `glob` names paths.
+  if [ "$HOS_TOOL" = "Glob" ]; then
+    sp_fields=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.pattern // empty, .tool_input.glob // empty' 2>/dev/null)
+  else
+    sp_fields=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.glob // empty' 2>/dev/null)
+  fi
+  while IFS= read -r sp_cand; do
+    [ -n "$sp_cand" ] || continue
+    case "$sp_cand" in
+      */..|*/../*|../*|..) SEARCH_PAT="$sp_cand" ;;   # climbs out of the root
+      /*|"~"*)             SEARCH_PAT="$sp_cand" ;;   # absolute / home — ignores the root
+    esac
+    [ -n "$SEARCH_PAT" ] && break
+  done <<< "$sp_fields"
+}
+
+
 # ---------------------------------------------------------------------------
 # Broken manifest — fail closed on mutation, open on inspection/repair.
 # ---------------------------------------------------------------------------
@@ -214,7 +244,38 @@ if [ "$HOS_ROLE_STATE" = "unbound" ]; then
           UNBOUND_SCOPE=$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -c '[.roles[]?.read.allow[]?] | unique' 2>/dev/null || echo "[]")
           if [ "$UNBOUND_SCOPE" = "[]" ] || [ "$UNBOUND_SCOPE" = "null" ]; then exit 0; fi
           UNBOUND_TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // empty' 2>/dev/null || echo "")
-          [ -n "$UNBOUND_TARGET" ] || exit 0
+          # A SEARCH THAT NAMES NO PATH RUNS FROM THE ROOT, and this
+          # branch used to `exit 0` on it — no path field, nothing to
+          # check, ALLOW. So `Grep pattern:"SMTP_PASSWORD"` with no
+          # `path` returned the line out of .env to a caller the kernel
+          # could not identify, while the identical call WITH
+          # `path:".env"` was correctly denied. The union scope was
+          # enforced only when a path happened to be present.
+          #
+          # Round 28 found it and it refutes round 27's own closing note
+          # in this document, which judged the union scope "bounded away
+          # from the planted secrets". That was true of the path-bearing
+          # channel only.
+          #
+          # The rule "no path means the root, so scope-check the root"
+          # is the governed arm's, held since round 1, and round 24 put
+          # it on the Bash channel too. This is the third channel, and
+          # the fourth time this project has written the same sentence:
+          # a rule attached to a channel exists once per channel. The
+          # branch whose entire job is to be a floor under callers that
+          # could not be identified was the one still answering "no
+          # modelled field, therefore allow".
+          [ -n "$UNBOUND_TARGET" ] || UNBOUND_TARGET="$HOS_ROOT"
+          # ...and a pattern that climbs out of the root evades the check
+          # on the root itself, which the governed twin has always known.
+          search_pattern_offender
+          if [ -n "$SEARCH_PAT" ]; then
+            harness_os_deny "unbound search-pattern-traversal" "[BLOCKED] This subagent's harness-OS role could not be resolved, and its $HOS_TOOL pattern ('$SEARCH_PAT') climbs out of the project root.
+
+${MANIFEST_REF}
+
+unboundAgentPolicy is \"readonly\", which permits reading only what some role in this OS may read. A pattern is applied under the search root, so one that escapes upward is not a search of anything this OS has a scope for."
+          fi
           harness_os_is_manifest_path "$UNBOUND_TARGET" && exit 0
           UNBOUND_REL=$(harness_os_relpath "$UNBOUND_TARGET")
           harness_os_path_in_scope "$UNBOUND_REL" "$UNBOUND_SCOPE" && exit 0
@@ -2475,21 +2536,7 @@ case "$HOS_TOOL" in
     # Only PATH-shaped fields are traversal-checked. Grep's `pattern` is
     # a REGEX — a legitimate search for "/etc/" or "\.\./" is not an
     # attempt to escape the root, and blocking it was a false positive.
-    # Glob's `pattern` IS a path glob, so it is checked there.
-    if [ "$HOS_TOOL" = "Glob" ]; then
-      PATH_FIELDS=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.pattern // empty, .tool_input.glob // empty' 2>/dev/null)
-    else
-      PATH_FIELDS=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.glob // empty' 2>/dev/null)
-    fi
-    SEARCH_PAT=""
-    while IFS= read -r cand; do
-      [ -n "$cand" ] || continue
-      case "$cand" in
-        */..|*/../*|../*|..) SEARCH_PAT="$cand" ;;   # climbs out of the root
-        /*|"~"*)             SEARCH_PAT="$cand" ;;   # absolute / home — ignores the root
-      esac
-      [ -n "$SEARCH_PAT" ] && break
-    done <<< "$PATH_FIELDS"
+    search_pattern_offender
     case "x$SEARCH_PAT" in
       x) : ;;
       *)
