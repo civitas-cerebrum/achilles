@@ -231,6 +231,109 @@ Granted tools: ${ALLOWED_LIST}
 This boundary is also your context budget — work within the granted tools, and hand anything outside them back to the orchestrator for the role whose mandate covers it."
 fi
 
+# --- Axis 5b: write-then-execute containment -----------------------------
+# A role that authors EXECUTABLE code holds, in effect, whatever
+# permissions that code will have when something runs it — its own
+# granted test command, CI, or another role. Path scopes alone are then
+# advisory: a spec file inside tests/e2e/ can `require('fs')` and read
+# .env, which is precisely the escape this axis closes.
+#
+# Rule: for a governed role, code written into an executable file type
+# may not reach for capabilities outside its role's envelope (filesystem,
+# process spawning, network, eval/dynamic import). Legitimate needs are
+# declared per role: "write": { "codeCapabilities": ["fs"] }. Applies
+# regardless of whether THIS role can execute the file — authoring code
+# that escapes is the vector, whoever runs it.
+#
+# It is a function, and it is defined here, because it must run on EVERY
+# channel that authors a file. Round 4 found it wired only to
+# Write/Edit/NotebookEdit: `echo 'require("fs")…' > tests/e2e/x.spec.ts`
+# put the identical code on disk inside the role's own write scope with
+# no screen at all, and the granted `npx playwright test` then ran it.
+#
+#   check_code_capabilities <target-path> <code-text> <channel-hint>
+check_code_capabilities() {
+  local target="$1" code="$2" via="${3:-}" rel
+  [ -n "$target" ] || return 0
+  [ -n "$code" ] || return 0
+  rel=$(harness_os_relpath "$target")
+  case "$rel" in
+    *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1) : ;;
+    *) return 0 ;;
+  esac
+  local CAPS_ALLOW CODE_N CAP_ID CAP_WHAT LOAD FS_METHODS
+  CAPS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeCapabilities')
+  CAP_ID=""; CAP_WHAT=""
+  # Normalise the forms a module name can be written in before matching,
+  # so a synonym is not a bypass: strip whitespace around the specifier,
+  # treat backticks as quotes, fold `node:` prefixes away, and decode
+  # escapes. Reviewers broke earlier versions with await import("node:fs"),
+  # backtick require, concatenation, require("f\x73") and octal
+  # require("\146\163") — each is a different SPELLING of one capability,
+  # so the matcher works on a normalised view rather than one syntax.
+  # String.fromCharCode(...) is folded to a bare quote pair so a name
+  # assembled from code points still reads as a runtime-built module.
+  # A backslash before a quote is an escape in both shell and JS source,
+  # and code arriving through the Bash channel is full of them
+  # (`echo "import x from \"fs\""`). Fold them away first or the matcher
+  # sees `from \"fs\"` and finds nothing.
+  CODE_N=$(printf '%s' "$code" \
+    | sed -E 's/\\"/"/g; s/\\'"'"'/'"'"'/g' \
+    | tr '\140' '"' \
+    | sed -E "s/'/\"/g; s/[[:space:]]*\+[[:space:]]*\"\"//g; s/\"[[:space:]]*\+[[:space:]]*\"//g; s/node:/ /g" \
+    | perl -pe 's/\\x\{?([0-9a-fA-F]{2})\}?/chr(hex($1))/ge; s/\\u\{?([0-9a-fA-F]{4})\}?/chr(hex($1))/ge; s/\\([0-7]{1,3})/chr(oct($1))/ge' 2>/dev/null \
+    | sed -E "s/[[:space:]]+/ /g")
+  [ -n "$CODE_N" ] || CODE_N="$code"
+  # Any module-loading call at all — static import, require, dynamic
+  # import(), createRequire, or the builtin-module accessors — followed
+  # by the capability name. Every way a module can be reached, including
+  # the indirect ones reviewers used (module.constructor._load, the
+  # constructor.constructor Function trick, process.binding).
+  LOAD='(require|import|createRequire\([^)]*\)|process\.getBuiltinModule|process\.binding|module\.constructor\._load|constructor\.constructor|Deno\.|Bun\.)'
+  # Filesystem work is matched by METHOD FAMILY rather than by an
+  # enumerated list: any fs-shaped *Sync call, any fs.promises use, any
+  # *FileSync. Enumerating method names was defeated by
+  # openSync/readSync/readdirSync/…; a family pattern degrades gracefully
+  # as Node adds more. The bracket form covers computed-member access
+  # (m["read"+"File"+"Sync"](…)), which concatenation folding turns into
+  # m["readFileSync"](…) before this runs.
+  FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync[[:space:]]*(\(|\])|\[[[:space:]]*"[^"]*Sync"[[:space:]]*\]|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream[[:space:]]*\('
+  if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|path|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\(|${FS_METHODS}|readFile[[:space:]]*\(|Path[[:space:]]*\("; then
+    CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
+  elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
+    CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system …) — code that runs commands no command group checked'
+  elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
+    CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
+  elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)|${LOAD}[[:space:]]*\([[:space:]]*[a-zA-Z_$][a-zA-Z0-9_$]*[[:space:]]*[.(\[]|${LOAD}[[:space:]]*\([[:space:]]*[a-zA-Z_$][a-zA-Z0-9_$]*[[:space:]]*\)"; then
+    CAP_ID='eval'; CAP_WHAT='eval / new Function / a module name built at runtime — code the static check cannot read'
+  fi
+  # A file:// URL pointed at the filesystem is a read channel even with
+  # no host module involved (page.goto("file:///…")).
+  if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:///'; then
+    CAP_ID='fs'; CAP_WHAT='a file:// URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
+  fi
+  [ -n "$CAP_ID" ] || return 0
+  if [ "$CAPS_ALLOW" != "null" ] && printf '%s' "$CAPS_ALLOW" | "$JQ" -e --arg c "$CAP_ID" 'index($c) != null' >/dev/null 2>&1; then
+    return 0
+  fi
+  harness_os_deny "write-code-capability:${CAP_ID} $rel" "[BLOCKED] Role '${ROLE}' may not author code using ${CAP_WHAT}.
+
+${ROLE_HEADER}
+File: $rel${via}
+
+Why this is gated: code you write is code something will RUN — your own test command, CI, or another role. At that moment the code holds ITS permissions, not yours, so an unrestricted \`${CAP_ID}\` capability inside a file you author silently voids every read/write scope on this role. Path scopes only bind if the code inside the path stays inside them.
+
+Options, narrowest first:
+  1. Use the framework's own API instead of reaching for the host — a
+     test should drive the app through its fixtures, not the filesystem.
+  2. If this file genuinely needs it, the operator can grant exactly
+     that capability to this role:
+       \"write\": { \"codeCapabilities\": [\"${CAP_ID}\"] }
+     Other capabilities stay denied, and every path scope still applies.
+
+Preview before committing: harness-os explain --role ${ROLE} --tool Write --path <file>"
+}
+
 # --- Axis 3: bash command gate ------------------------------------------
 # Bash is the widest laundering channel a role has, so this axis carries
 # most of the leak-proofing: quote-blind segmentation over EVERY command
@@ -280,11 +383,22 @@ Fix the manifest in an operator design session — until then this role can run 
   CLEAN=$(printf '%s' "$CMD" | sed -E 's/[0-9]*>&[0-9-]+//g; s/[0-9&]*>>?[[:space:]]*\/dev\/(null|stderr|stdout|tty)//g')
 
   # Split on every command separator — newline (multi-line commands
-  # arrive verbatim), && || ; | and the single '&' (background). Quote-
-  # blind: an over-split segment can only cause a deny, never an allow.
-  # Then strip leading env-var assignments and grouping punctuation and
+  # arrive verbatim), && || ; | and the single '&' (background). Then
+  # strip leading env-var assignments and grouping punctuation and
   # require EVERY non-empty segment to clear every check below.
-  SEGMENTS=$(printf '%s' "$CLEAN" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g' -e 's/&/\n/g')
+  #
+  # The split is quote-AWARE. It used to be quote-blind on the reasoning
+  # that over-splitting can only cause a deny, never an allow — safe in
+  # the direction that matters. It is safe, and it was also unusable:
+  # `echo "await steps.click('x');" >> spec.ts` splits mid-string and the
+  # fragment `" >> spec.ts` matches no command pattern, so writing most
+  # lines of JavaScript through Bash was refused with a message about
+  # command patterns. A separator inside quotes is not a separator — the
+  # shell does not treat it as one — so neither does this. Placeholders
+  # carry the quoted separators through the split and are restored after,
+  # leaving each segment byte-identical to what the shell will run.
+  SEGMENTS=$(printf '%s' "$CLEAN" | harness_os_unquoted_view split \
+    | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g' -e 's/&/\n/g')
   while IFS= read -r seg; do
     # Keep the untouched segment: the normalisation below strips trailing
     # grouping punctuation, which would silently REMOVE the closing brace
@@ -292,6 +406,9 @@ Fix the manifest in an operator design session — until then this role can run 
     # deny and the read-token scan. A reviewer read .env through exactly
     # that gap with `cat {.env,x}`, so every check that could be fooled
     # by the strip consults SEG_RAW instead.
+    # Restore the separators that were placeheld through the split, so
+    # every check below sees the segment exactly as the shell will.
+    seg=$(printf '%s' "$seg" | harness_os_unsplit)
     SEG_RAW="$seg"
     seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]({]+//; s/[[:space:])}]+$//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*[[:space:]]+)*//')
     [ -n "$seg" ] || continue
@@ -306,6 +423,17 @@ Fix the manifest in an operator design session — until then this role can run 
     # because $… and `…` keep expanding inside double quotes.
     SEG_NOQ=$(printf '%s\n' "$SEG_RAW" | harness_os_unquoted_view both)
     SEG_NOSQ=$(printf '%s\n' "$seg" | harness_os_unquoted_view single)
+    # Redirection is read from the UN-STRIPPED segment, quote-masked.
+    # Both halves of that matter, and each was a real escape:
+    #   * un-stripped, because the assignment and wrapper strips above
+    #     consume a `NAME=value` run — and `env X=1<.env cat` hides a
+    #     whole redirection inside one. A reviewer used that to read a
+    #     secret, write outside every scope, and overwrite the kernel
+    #     itself, from a role with no write grants at all.
+    #   * quote-masked, because `grep '=>' spec.ts` is not a redirection,
+    #     and denying it (or `grep '<input>' page.json`) is the kind of
+    #     nonsense that gets a gate switched off.
+    SEG_REDIR=$(printf '%s\n' "$SEG_RAW" | harness_os_unquoted_view redir)
 
     # Strip leading command-runner / wrapper prefixes so the checks below
     # see the REAL command. `env sh -c …`, `timeout 5 python -c …`,
@@ -323,7 +451,13 @@ Fix the manifest in an operator design session — until then this role can run 
       # Drop the wrapper word, then any following options / numeric
       # durations / KEY=VAL assignments that belong to it.
       seg=$(printf '%s' "$seg" | sed -E 's/^[a-z]+[[:space:]]+//')
-      seg=$(printf '%s' "$seg" | sed -E 's/^((-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*//')
+      # Every alternative here stops at a redirection character. The twin
+      # of this pattern at the top of the loop was hardened in round 3 and
+      # this one was missed, so `env X=1<.env cat` still had its whole
+      # redirection eaten before any check ran. The redirect scan now
+      # reads SEG_RAW instead, but the read-token scan still runs on
+      # $seg — so this must not swallow syntax either.
+      seg=$(printf '%s' "$seg" | sed -E 's/^((-[^[:space:]<>|&]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*)[[:space:]]+)*//')
       [ -n "$seg" ] || break
     done
     [ -n "$seg" ] || continue
@@ -593,11 +727,12 @@ Note: compound commands are checked segment-by-segment (&&, ||, ;, |, &, newline
     # (`<<`/`<<<` are here-docs/here-strings: their operand is inline
     # text, not a path, so only a single `<` is treated as a file read.)
     if [ "$READ_ALLOW" != "null" ]; then
-      IN_TARGETS=$(printf '%s' "$seg" | grep -oE '(^|[^<])<[[:space:]]*[^[:space:]<>;&|]+' 2>/dev/null \
+      IN_TARGETS=$(printf '%s' "$SEG_REDIR" | grep -oE '(^|[^<])<[[:space:]]*[^[:space:]<>;&|]+' 2>/dev/null \
         | sed -E 's/^[^<]?<[[:space:]]*//' || true)
       while IFS= read -r intarget; do
         [ -n "$intarget" ] || continue
-        intarget=$(printf '%s' "$intarget" | tr -d '"'"'")
+        intarget=$(printf '%s' "$intarget" | tr -d '"'"'" | tr -d '\001')
+        [ -n "$intarget" ] || continue
         case "$intarget" in *://*) continue ;; esac
         harness_os_is_manifest_path "$intarget" && continue
         REL_IN=$(harness_os_relpath "$intarget")
@@ -619,9 +754,9 @@ Command: ${CMD}"
     # may not perform it at all, and a role WITH write grants may only
     # aim it inside its write scope — bash must not launder writes past
     # the Write/Edit axis for anyone.
-    REDIR_TARGETS=$(printf '%s' "$seg" | grep -oE '>>?[[:space:]]*[^[:space:]<>;&]+' 2>/dev/null | sed -E 's/^>>?[[:space:]]*//' || true)
-    if printf '%s' "$seg" | grep -Eq '^tee([[:space:]]|$)'; then
-      TEE_TARGETS=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' || true)
+    REDIR_TARGETS=$(printf '%s' "$SEG_REDIR" | grep -oE '>>?[[:space:]]*[^[:space:]<>;&]+' 2>/dev/null | sed -E 's/^>>?[[:space:]]*//' || true)
+    if [ "${SEG_WORDS[0]:-}" = "tee" ]; then
+      TEE_TARGETS=$(printf '%s\n' "${SEG_WORDS[@]:1}" | grep -vE '^-' || true)
       REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$TEE_TARGETS")
     fi
     # Redirection is not the only way a command writes. `cp a b`,
@@ -695,7 +830,22 @@ Command: ${CMD}"
     esac
     while IFS= read -r target; do
       [ -n "$target" ] || continue
-      target=$(printf '%s' "$target" | tr -d '"'"'")
+      target=$(printf '%s' "$target" | tr -d '"'"'" | tr -d '\001')
+      [ -n "$target" ] || continue
+      # Axis 5b on the bash authoring route. The screen was wired only to
+      # Write/Edit, so `echo 'require("fs")…' > tests/e2e/x.spec.ts` put
+      # the identical code on disk INSIDE the role's own write scope with
+      # nothing looking at it, and the role's granted `npx playwright
+      # test` then ran it. The segment carries the content for the
+      # channels that inline it (echo/printf/cat<<EOF); the copying verbs
+      # (cp/mv) carry a path instead, and those are already bounded by the
+      # read scope — a role can only copy a file it may read.
+      # The content is screened against the WHOLE command, not just this
+      # segment: `echo '<code>' | tee spec.ts` carries the code in the
+      # segment BEFORE the one naming the file, so a per-segment view
+      # would see `tee spec.ts` and find nothing to object to.
+      check_code_capabilities "$target" "$CMD" "
+Channel: authored via Bash (\`${SEG_WORDS[0]:-}\`) — the same screen applies to every route that puts a file on disk."
       # Root of trust first, and for EVERY write channel. The manifest is
       # read-exempt (a role may read the law it is held to), and a
       # reviewer turned that exemption into a full takeover by writing it
@@ -1007,95 +1157,11 @@ A pattern is applied under the search root, so '..' escapes the role's scope. Na
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
     [ -n "$TARGET" ] && check_path_scope write "$(harness_os_relpath "$TARGET")" "write"
 
-    # --- Axis 5b: write-then-execute containment -------------------------
-    # A role that authors EXECUTABLE code holds, in effect, whatever
-    # permissions that code will have when something runs it — its own
-    # granted test command, CI, or another role. Path scopes alone are
-    # then advisory: a spec file inside tests/e2e/ can `require('fs')`
-    # and read .env, which is precisely the escape this axis closes.
-    #
-    # Rule: for a governed role, code written into an executable file
-    # type may not reach for capabilities outside its role's envelope
-    # (filesystem, process spawning, network, eval/dynamic import).
-    # Legitimate needs are declared per role:
-    #     "write": { "codeCapabilities": ["fs"] }
-    # Applies regardless of whether THIS role can execute the file —
-    # authoring code that escapes is the vector, whoever runs it.
+    # Axis 5b — the shared screen defined above. The bash write channel
+    # runs the identical check, so neither authoring route is the soft one.
     if [ -n "$TARGET" ]; then
-      case "$(harness_os_relpath "$TARGET")" in
-        *.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.tsx|*.jsx|*.py|*.rb|*.sh|*.bash|*.zsh|*.pl|*.php|*.ipynb|*.lua|*.ps1)
-          CODE=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.content // .tool_input.new_string // .tool_input.new_source // empty' 2>/dev/null || echo "")
-          if [ -n "$CODE" ]; then
-            CAPS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeCapabilities')
-            cap_permitted() {
-              [ "$CAPS_ALLOW" != "null" ] && printf '%s' "$CAPS_ALLOW" | "$JQ" -e --arg c "$1" 'index($c) != null' >/dev/null 2>&1
-            }
-            CAP_ID=""; CAP_WHAT=""
-            # Normalise the forms a module name can be written in before
-            # matching, so a synonym is not a bypass: strip whitespace
-            # around the specifier, treat backticks as quotes, and fold
-            # `node:` prefixes away. An adversarial reviewer broke the
-            # first version of this check with `await import("node:fs")`,
-            # backtick require, and string concatenation — each of those
-            # is a different SPELLING of the same capability, so the
-            # matcher works on a normalised view rather than one syntax.
-            # Decode \xNN and \uNNNN escapes BEFORE matching: a reviewer
-            # evaded the module check with require("f\x73"), which is
-            # just "fs" spelled to defeat a literal comparison.
-            CODE_N=$(printf '%s' "$CODE" \
-              | tr '\140' '"' \
-              | sed -E "s/'/\"/g; s/[[:space:]]*\+[[:space:]]*\"\"//g; s/\"[[:space:]]*\+[[:space:]]*\"//g; s/node:/ /g" \
-              | perl -pe 's/\\x\{?([0-9a-fA-F]{2})\}?/chr(hex($1))/ge; s/\\u\{?([0-9a-fA-F]{4})\}?/chr(hex($1))/ge' 2>/dev/null \
-              | sed -E "s/[[:space:]]+/ /g")
-            [ -n "$CODE_N" ] || CODE_N="$CODE"
-            # Any module-loading call at all — static import, require,
-            # dynamic import(), createRequire, or the builtin-module
-            # accessors — followed by the capability name.
-            # Every way a module can be reached, including the indirect
-            # ones a reviewer used (module.constructor._load, and the
-            # constructor.constructor Function trick).
-            LOAD='(require|import|createRequire\([^)]*\)|process\.getBuiltinModule|module\.constructor\._load|constructor\.constructor|Deno\.|Bun\.)'
-            # Filesystem work is matched by METHOD FAMILY rather than by
-            # an enumerated list: any fs-shaped *Sync call, any
-            # fs.promises use, any *FileSync. Enumerating method names
-            # was defeated by openSync/readSync/readdirSync/…; a family
-            # pattern degrades gracefully as Node adds more.
-            FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync[[:space:]]*\(|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream[[:space:]]*\('
-            if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|path|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\(|${FS_METHODS}|readFile[[:space:]]*\(|Path[[:space:]]*\("; then
-              CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
-            elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
-              CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system …) — code that runs commands no command group checked'
-            elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
-              CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
-            elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)|${LOAD}[[:space:]]*\([[:space:]]*[a-zA-Z_$][a-zA-Z0-9_$]*[[:space:]]*\)"; then
-              CAP_ID='eval'; CAP_WHAT='eval / new Function / a module name built at runtime — code the static check cannot read'
-            fi
-            # A file:// URL pointed at the filesystem is a read channel
-            # even with no host module involved (page.goto("file:///…")).
-            if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:///'; then
-              CAP_ID='fs'; CAP_WHAT='a file:// URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
-            fi
-            if [ -n "$CAP_ID" ] && ! cap_permitted "$CAP_ID"; then
-              harness_os_deny "write-code-capability:${CAP_ID} $(harness_os_relpath "$TARGET")" "[BLOCKED] Role '${ROLE}' may not author code using ${CAP_WHAT}.
-
-${ROLE_HEADER}
-File: $(harness_os_relpath "$TARGET")
-
-Why this is gated: code you write is code something will RUN — your own test command, CI, or another role. At that moment the code holds ITS permissions, not yours, so an unrestricted \`${CAP_ID}\` capability inside a file you author silently voids every read/write scope on this role. Path scopes only bind if the code inside the path stays inside them.
-
-Options, narrowest first:
-  1. Use the framework's own API instead of reaching for the host — a
-     test should drive the app through its fixtures, not the filesystem.
-  2. If this file genuinely needs it, the operator can grant exactly
-     that capability to this role:
-       \"write\": { \"codeCapabilities\": [\"${CAP_ID}\"] }
-     Other capabilities stay denied, and every path scope still applies.
-
-Preview before committing: harness-os explain --role ${ROLE} --tool Write --path <file>"
-            fi
-          fi
-          ;;
-      esac
+      CODE=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.content // .tool_input.new_string // .tool_input.new_source // empty' 2>/dev/null || echo "")
+      check_code_capabilities "$TARGET" "$CODE"
     fi
     ;;
 esac

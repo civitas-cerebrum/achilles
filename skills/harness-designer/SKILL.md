@@ -174,6 +174,23 @@ several different roles in parallel stays unambiguous**. The plain
 teach the nonce as the default habit anyway — it costs six characters
 and removes the only remaining identity caveat.
 
+Do not hand-write "the role's mandate" — generate it, so it cannot
+disagree with what the kernel actually enforces:
+
+```bash
+harness-os brief --role composer              # read it yourself
+harness-os brief --role composer --dispatch   # paste-ready, already tagged
+```
+
+`brief` renders the role's tools, read/write scopes, command patterns,
+dispatch and skill grants, and the constructs it must not attempt,
+straight from the manifest. Teach the orchestrator to open every dispatch
+with it. This is not documentation politeness: the benchmark measured
+working roles spending 15–17 tool calls discovering their own boundaries
+by hitting denies, and every one of those was context spent on the
+harness instead of on the task. A brief that is generated cannot drift
+from the boundary the way a prompt written once and copied forever does.
+
 The kernel denies untagged dispatches from roles holding a `dispatch`
 list, so the discipline is self-enforcing after day one. Also brief the
 user on:

@@ -380,30 +380,64 @@ harness_os_shell_words() {
   }'
 }
 
-# harness_os_unquoted_view — read a segment on stdin, emit it with every
-# quoted region replaced by a filler character. What survives is exactly
-# the text the shell still interprets, so a construct check run against
-# this view fires on `cat {.env,x}` and stays quiet on the JSON literal
-# `echo '{"a":1,"b":2}'`. Pass 'single' to blank only single-quoted
-# regions — double quotes suppress globbing and brace expansion but NOT
-# $… or `…`, so expansion checks must still see inside them.
+# harness_os_unquoted_view — read a segment on stdin, emit it with the
+# quoted regions neutralised. What survives is exactly the text the shell
+# still interprets, so a check run against this view fires on
+# `cat {.env,x}` and stays quiet on the JSON literal `echo '{"a":1}'`.
+# Modes:
+#   both    (default) blank every quoted run — globbing and brace
+#           expansion die inside either quote style
+#   single  blank only single-quoted runs — $… and `…` keep expanding
+#           inside double quotes, so expansion checks must see in there
+#   redir   keep every character EXCEPT that < and > inside quotes lose
+#           their meaning. Redirection is the one thing that must be read
+#           from a view where quoted text cannot pose as syntax and
+#           quoted PATHS survive: `grep '=>' f` redirects nothing, while
+#           `echo x > "docs/ledger.json"` still names its target.
+#   split   keep every character EXCEPT that the command separators
+#           ; | & and newline lose their meaning INSIDE quotes, each
+#           swapped for a distinct placeholder the caller restores after
+#           splitting. `echo "a; b"` is one command, not two, and
+#           splitting it into two produced denies on ordinary quoted text
+#           containing a semicolon — which is most lines of JavaScript.
+# The whole input is one record (RS is a byte no command contains), so a
+# quoted NEWLINE is seen by the scanner rather than being pre-split by
+# awk. That matters only for 'split', which is the mode that runs on a
+# whole multi-line command; the other modes are handed one segment.
 harness_os_unquoted_view() {
-  awk -v mode="${1:-both}" '
+  awk -v mode="${1:-both}" 'BEGIN { RS = "\034"; ORS = "" }
   {
     s = $0; n = length(s); out = ""; q = ""
     for (i = 1; i <= n; i++) {
       c = substr(s, i, 1)
       if (q != "") {
-        if (c == q) { q = "" ; out = out "X" }
+        if (c == q) { q = "" ; out = out ((mode == "redir" || mode == "split") ? c : "X") }
+        else if (mode == "redir") { out = out ((c == "<" || c == ">") ? "\001" : c) }
+        else if (mode == "split") {
+          if (c == ";") out = out "\002"
+          else if (c == "|") out = out "\003"
+          else if (c == "&") out = out "\004"
+          else if (c == "\n") out = out "\005"
+          else out = out c
+        }
         else { out = out ((q == "\"" && mode == "single") ? c : "X") }
         continue
       }
-      if (c == "'"'"'" || (c == "\"" && mode != "single")) { q = c; out = out "X"; continue }
-      if (c == "\"" && mode == "single") { q = c; out = out "X"; continue }
+      if (c == "'"'"'" || c == "\"") {
+        q = c
+        out = out ((mode == "redir" || mode == "split") ? c : "X")
+        continue
+      }
       out = out c
     }
     print out
   }'
+}
+
+# harness_os_unsplit — restore the placeholders harness_os_unquoted_view
+# 'split' put in, so a segment carries its original text verbatim.
+harness_os_unsplit() {
+  tr '\002\003\004\005' ';|&\n'
 }
 
 # ---------------------------------------------------------------------------
