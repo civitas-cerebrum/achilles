@@ -361,6 +361,15 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 ---
 
+## Pattern: `markdown-only` deferral — ticket-driven-testing §8d commit-or-discard + report contract
+
+Two rules in `skills/ticket-driven-testing/SKILL.md` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle) — but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW — a level-of-detail judgement over free prose, not a mechanical check.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `commitDecision` field (`discarded` | `proposed` | `confirmed-by:<human>`) in the §8b adversarial-verification receipt would let `adversarial-verification-gate.sh` deny a spec commit with no recorded confirmation; the report-contract rule remains reviewer-enforced.
+
+---
+
 ## Adding a new pattern
 
 When a novel rationalisation framing appears that doesn't fit an existing pattern:

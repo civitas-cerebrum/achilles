@@ -47,6 +47,7 @@ Whenever you list what you are going to do, list these. All ten, in this order. 
 8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
 8b DISPATCH THE ADVERSARIAL REVIEW         → 6 subagents attack the tests; you do not self-assess
 8c SCORE the testing itself (probe-rigour, 0-3 x6, blocking floor)
+8d COMMIT OR DISCARD                       → CX/revenue impact proposes; a human confirms; discard is the default
 9  Report — then DISPATCH probe-verdict at the report itself
                                             → §8b attacks the tests; this attacks the claims
 ```
@@ -216,7 +217,9 @@ a second ticket that reuses the first ticket's deliverables has produced none of
 3. **An evidence bundle** — via `companion-mode`, verdict grounded in the ACs. Named for this
    ticket, containing this ticket's artifacts, redacted per `companion-mode` §"Redaction". Numbers
    in a report are not evidence: evidence is what someone else can re-open and disagree with.
-4. **Durable tests** — regression cover in the suite, plus one sentinel per confirmed defect.
+4. **Verified tests** — one per AC plus one sentinel per confirmed defect, written and proven
+   against the negative control. Whether they are **committed** to the suite or **discarded**
+   into the evidence bundle is decided in §8d — and discard is the default.
 5. **A negative-control result** — proof the tests fail where the fix is absent (§8). Without it you have tests that pass, not tests that discriminate.
 
 ### The sign-off gate
@@ -390,6 +393,11 @@ underneath them.
 ### 7. Durable tests and sentinels
 
 Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
+
+**Written is not committed.** Whether these tests land in the suite or stay in the evidence
+bundle is §8d's decision, made after they have proven themselves in §8–8c — and the default is
+that they stay. Write them to committable standard either way; a test that would embarrass the
+suite proves nothing as evidence either.
 
 For each confirmed defect, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug — which is the signal to delete it.
 
@@ -774,6 +782,44 @@ nobody has checked.
 same separation-of-duties basis as §8b: the agent that did the testing has a stake in it looking
 thorough.
 
+#### 8d. Commit or discard — the CX/revenue impact gate
+
+The tests exist, they discriminate the fix (§8), and they survived the review (§8b–8c). None of
+that decides whether they belong in the suite. **Written is not committed.** A durable test is a
+permanent liability the whole team pays for — it runs on every PR, flakes on every infrastructure
+hiccup, and bills its maintenance to people who never read this ticket. Whether the scenario
+earns that is a separate judgement, and it comes *after* verification, because only a verified
+test is worth proposing at all.
+
+Analyse the tested scenario's **customer-experience and revenue impact**, then route:
+
+| Impact analysis says | Outcome |
+|---|---|
+| No significant CX or revenue impact | **DISCARD** — the default. The tests stay in the evidence bundle; nothing is committed. |
+| Significant CX and/or revenue impact | **PROPOSE** — state the impact rationale explicitly; a human confirms before anything is committed. |
+
+**Discard is the default.** The ticket's value is already banked: the change was verified, the
+evidence is on the ticket, the negative control ran. Committing the tests is a second decision
+with a different cost curve, and it needs a positive case — not the absence of an objection.
+
+**What counts as significant.** Conversion-critical paths, checkout-adjacent flows, auth and
+account access, data-loss risk — scenarios where a regression costs money or locks users out. The
+rationale must be stated, not implied: which user path, what a regression there costs, and why
+existing cover would not catch it. "It might break someday" is true of every line in the
+application and therefore justifies nothing.
+
+**High impact proposes; a human commits.** Even when the analysis clears the bar, the agent's
+output is a *proposal with the impact rationale attached* — the human (dev or QA) confirms before
+the tests land. This is the human "confirm coverage" gate of AI-enhanced shift-left: the agent is
+well placed to analyse what a scenario touches, and badly placed to own a permanent addition to
+someone else's CI bill. No confirmation, no commit; a proposal that expires unanswered is a
+discard.
+
+**Discarded is not undocumented.** A discarded suite still produces the full evidence package on
+the ticket — the companion-mode bundle, screenshots, recordings, the negative-control result, and
+the specs themselves as attachments. Discard changes where the tests live, not what the run
+proved.
+
 ### 9. Live observation — watch it, don't just assert it
 
 Assertions confirm what you thought to ask. Watching the page reveals what you didn't. Before trusting a green suite, drive the flow once by hand — screenshot **and** probe state after **every** action, not just at the end.
@@ -1121,6 +1167,27 @@ confirming the tests discriminate the fix.
 **Upload then embed.** Use the tracker's upload API (`prepare_attachment_upload` → PUT →
 `create_attachment_from_upload` on Linear), then reference the returned `assetUrl` in the comment
 body as a markdown image. A comment without inline evidence is incomplete.
+
+### One contract, every surface — PR descriptions included
+
+The format above is not tracker-specific. It is the report contract, and it binds **every surface
+this run writes for a human reader** — the ticket comment AND the description of any pull request
+the run opens (durable tests committed via §8d, or a sign-off summary posted on the dev's PR):
+
+- **What was tested** — the scenarios and behaviours covered. Never HOW: no methodology
+  narration, no step-by-step process, no framework mechanics.
+- **Findings** — defects or confirmations, one line each, separated from AC verdicts per
+  §"Reporting" above.
+- **Evidence** — screenshots / recordings linked or attached.
+- **Verdict** — pass / fail / blocked, with a one-line justification.
+
+**Brevity is a hard requirement, not a style preference.** If a section can be a bullet, it is a
+bullet. Anything about *how* the testing was performed is omitted — the reader is deciding
+whether to merge, not auditing your process. The one process fact that stays is the
+negative-control result, for the reason given above: it is evidence that the tests discriminate
+the change, not methodology. Everything else about the rig — tool mechanics, injected state,
+framework versions — lives in the evidence bundle, where the next QA engineer can find it without
+the reviewer having to scroll past it.
 
 ## Baseline testing
 
