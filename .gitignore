@@ -48,6 +48,10 @@ tests/e2e/.selector-development/
 # Harness runtime state (run summaries, schema-guard calibration log)
 .achilles/
 
+# deck-inspection-gate sentinel — transient, written by the hook after PDF export,
+# cleared by the agent after visual inspection.
+.deck-pending-inspection
+
 # Superpowers brainstorming specs & implementation plans — never commit
 docs/superpowers/
 .superpowers/

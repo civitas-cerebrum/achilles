@@ -258,6 +258,16 @@ const HOOK_MANIFEST = [
   // Same backstop at orchestrator Stop — the last run of a session is the one
   // most likely to have been interrupted.
   { file: 'playwright-artifact-archiver.sh',             event: 'Stop', matcher: null,                 timeout: 30 },
+
+  // deck-inspection-gate — forces visual PDF inspection before a deck task
+  // can be considered complete. PostToolUse:Bash detects export-pdf.js
+  // completion, renders all pages to PNG via pdftoppm, writes a sentinel,
+  // and emits a systemMessage ordering the agent to Read each page image.
+  // PreToolUse:Agent DENYs agent dispatches while the sentinel exists —
+  // the only exit is visual verification + explicit sentinel removal.
+  // No session-scope gate: deck generation can happen outside achilles sessions.
+  { file: 'deck-inspection-gate.sh',                    event: 'PostToolUse', matcher: 'Bash',         timeout: 30 },
+  { file: 'deck-inspection-gate.sh',                    event: 'PreToolUse',  matcher: 'Agent',        timeout: 5  },
 ];
 
 function copyHookFile(hookSrc, hookDest) {
