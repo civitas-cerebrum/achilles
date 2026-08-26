@@ -2699,6 +2699,83 @@ Your command group DOES grant '${SEG_WORDS[0]}'. This refusal is about WHERE it 
       fi
     fi
 
+    # 3h. THE KERNEL'S OWN CLI IS A MANIFEST-WRITE CHANNEL.
+    #
+    # Self-protection screens a command's ARGV for the protected path —
+    # redirect targets, mutate verbs, flag operands. `harness-os import
+    # <bundle> --activate` never names the manifest: the CLI writes it
+    # through its own `writeFileSync`. So the axis whose entire job is
+    # keeping the manifest immutable did not know its own tool existed.
+    #
+    # Round 42 built a bundle with `harness-os export` — which computes a
+    # VALID fingerprint, so that check is no obstacle to someone
+    # authoring the whole bundle — placed it inside a role's own write
+    # scope, and ran the import. A role scoped to `write: ["src/**"]`
+    # rewrote itself to `write: ["**"]` with `bash.unrestricted: true`.
+    # `--activate` also wipes the state directory, which the same axis
+    # lists as protected. `harness-os use <name>` is quieter still: its
+    # operand is a library NAME, so not even the read-scope check has a
+    # path to catch.
+    #
+    # This is round 15 (curl's write flags), round 31 (npm's postinstall)
+    # and round 37 (PATH) in the place where the kernel owns BOTH ends —
+    # the protected artifact and the program that writes it. The two were
+    # never connected.
+    #
+    # Refused by construction rather than by pattern: a governed role
+    # does not reconfigure the harness it is governed by. `validate`,
+    # `explain`, `status`, `doctor` and `brief` read and are untouched;
+    # `run` is the wrapper and is untouched.
+    if [ "$HOS_TOOL" = "Bash" ]; then
+      CLI_IDX=""
+      case "${SEG_WORDS[0]:-}" in
+        harness-os) CLI_IDX=1 ;;
+        npx|pnpm|yarn|bunx)
+          # Skip the wrapper's own FLAGS. `npx --yes harness-os use x`
+          # put one word between the two names and walked past a check
+          # that read index 1 — the exact-vs-attached defect this
+          # document has recorded six times, in the fix for it.
+          for __i in "${!SEG_WORDS[@]}"; do
+            [ "$__i" = "0" ] && continue
+            case "${SEG_WORDS[$__i]}" in
+              -*) continue ;;
+              exec) continue ;;
+              harness-os|@civitas-cerebrum/harness-os) CLI_IDX=$((__i + 1)); break ;;
+              *) break ;;
+            esac
+          done ;;
+        node|nodejs|bun|deno)
+          for __i in "${!SEG_WORDS[@]}"; do
+            case "${SEG_WORDS[$__i]}" in
+              *harness-os/bin/cli.mjs|*/harness-os/bin/cli.mjs|cli.mjs)
+                case "${SEG_WORDS[$__i]}" in *harness-os*) CLI_IDX=$((__i + 1)) ;; esac ;;
+            esac
+          done ;;
+      esac
+      if [ -n "$CLI_IDX" ]; then
+        CLI_SUB=""
+        for __i in "${!SEG_WORDS[@]}"; do
+          [ "$__i" -lt "$CLI_IDX" ] && continue
+          case "${SEG_WORDS[$__i]}" in -*) continue ;; esac
+          CLI_SUB="${SEG_WORDS[$__i]}"; break
+        done
+        case "$CLI_SUB" in
+          init|import|use)
+            set +f
+            harness_os_deny "self-protect harness-os-cli:${CLI_SUB}" "[BLOCKED] Role '${ROLE}' may not run 'harness-os ${CLI_SUB}' — that subcommand rewrites the manifest this role is governed by.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+Self-protection screens a command for the protected path, and this one never names it: the CLI writes '.claude/harness-os.json' itself. A governed role does not reconfigure the harness that governs it, so the subcommand is refused rather than the path — 'import --activate' also replaces the state directory, and 'use' names a library entry with no path at all.
+
+The read-only subcommands are unaffected: validate, explain, status, doctor and brief, and the 'run' wrapper. Changing the manifest is the operator's, from a session this kernel is not governing."
+            ;;
+        esac
+      fi
+    fi
+
     # 3g. NETWORK DESTINATION. The kernel models what a command reads,
     # writes and executes, and modelled nothing at all about who it talks
     # to — while the authored-code screen has flagged `fetch`,
