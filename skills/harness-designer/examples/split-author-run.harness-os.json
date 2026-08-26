@@ -1,0 +1,161 @@
+{
+  "harnessOsVersion": 1,
+  "name": "split-author-run",
+  "description": "The configuration the write-then-execute axis has been asking for since round 6, shipped as an example because four consecutive review rounds escaped through a role that held both halves. The composer AUTHORS specs and cannot run anything; the runner RUNS them and cannot author. Neither half is a write-then-execute channel, so the static screen over authored text stops being load-bearing.",
+  "settings": {
+    "mainSessionRole": "orchestrator",
+    "unboundAgentPolicy": "readonly",
+    "decisionLog": "all"
+  },
+  "commandGroups": {
+    "inspection": [
+      "^(cat|head|tail|grep|rg|jq|wc|ls|find|tree|file|stat)\\b",
+      "^git (status|log|diff|show)\\b"
+    ],
+    "test-execution": [
+      "^npx playwright test\\b"
+    ]
+  },
+  "roles": {
+    "orchestrator": {
+      "description": "Dispatches the workflow. Reads the ledger, never writes it, and touches no source.",
+      "tools": {
+        "allow": [
+          "Read",
+          "Glob",
+          "Grep",
+          "Agent",
+          "TaskGet",
+          "TaskList"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/e2e/**"
+        ]
+      },
+      "dispatch": [
+        "inspector",
+        "composer",
+        "runner",
+        "reviewer",
+        "judge"
+      ]
+    },
+    "inspector": {
+      "description": "Explores the app surface and reports findings. No write grants of any kind.",
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection"
+        ]
+      },
+      "read": {
+        "allow": [
+          "src/**",
+          "tests/**",
+          "docs/acceptance/**",
+          "package.json"
+        ]
+      }
+    },
+    "composer": {
+      "description": "AUTHORS the spec and cannot run it. No bash at all, so nothing it writes can be executed by it.",
+      "tools": {
+        "allow": [
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "read": {
+        "allow": [
+          "tests/**",
+          "docs/acceptance/**",
+          "package.json"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/**"
+        ],
+        "codeImports": [
+          "@playwright/test"
+        ]
+      }
+    },
+    "runner": {
+      "description": "RUNS the suite and cannot author. No Write, no Edit, so it cannot create the code it executes.",
+      "tools": {
+        "allow": [
+          "Bash",
+          "Read",
+          "Glob",
+          "Grep"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "inspection",
+          "test-execution"
+        ]
+      },
+      "read": {
+        "allow": [
+          "tests/**",
+          "package.json",
+          "playwright.config.ts"
+        ]
+      }
+    },
+    "reviewer": {
+      "description": "Reads the acceptance criteria and the deliverable. Nothing else, and no way to change either.",
+      "tools": {
+        "allow": [
+          "Read",
+          "Glob",
+          "Grep"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/acceptance/**",
+          "tests/e2e/**"
+        ]
+      }
+    },
+    "judge": {
+      "description": "Writes the ledger, and only the ledger. Cannot touch the work it grades.",
+      "tools": {
+        "allow": [
+          "Read",
+          "Glob",
+          "Grep",
+          "Write",
+          "Edit"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/e2e/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/e2e-ledger.json"
+        ]
+      }
+    }
+  }
+}

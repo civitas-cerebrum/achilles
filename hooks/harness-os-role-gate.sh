@@ -1191,12 +1191,22 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     # route through authored text — put it in the project's
     # `playwright.config.ts` (which this role cannot write) or split
     # authoring from running.
-    # Scoped to the write-then-execute shape — a role that authors specs
-    # AND can run them. A role that only authors is not handing anything
-    # to a browser; something else runs its output and is governed
-    # separately.
-    if [ "$(harness_os_role_field "$ROLE" '.write.allow')" != "null" ] \
-       && [ "$(harness_os_role_field "$ROLE" '.bash')" != "null" ]; then
+    # SCOPED TO ANY ROLE THAT AUTHORS, not only one that also runs. The
+    # first cut required both halves, on the round-43 reasoning that an
+    # author-only role's operator may not be able to act on the deny —
+    # and measuring the shipped split-author-run example showed why that
+    # reasoning does not transfer here. Splitting the role that writes
+    # specs from the role that runs them bounds WHO can trigger
+    # execution; it does not make authored content inert, because the
+    # runner still executes the author's file. An escape needs two roles
+    # to line up instead of one, which is worth a great deal, and is not
+    # the same as closed.
+    #
+    # And unlike an import allowlist, the deny here IS actionable by
+    # whoever hits it: the switch goes in `playwright.config.ts`, which a
+    # governed authoring role cannot write. A rule an operator can act on
+    # should not wait for the role to hold both halves.
+    if [ "$(harness_os_role_field "$ROLE" '.write.allow')" != "null" ]; then
       if printf '%s' "$CODE_N" | grep -Eq 'args[[:space:]]*:[[:space:]]*\[[^]]*--[a-z]'; then
         CAP_ID='fs'; CAP_WHAT="browser launch switches authored inline (launchOptions.args) — several of Chromium's switches name output files (--log-file=, --user-data-dir=, --disk-cache-dir=), so this is a file-writing channel underneath the framework API this screen models, and no list of switches finishes. Put the switch in playwright.config.ts, which this role may not write, or split the role that authors specs from the role that runs them"
       fi

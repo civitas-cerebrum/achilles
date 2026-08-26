@@ -145,6 +145,21 @@ assert_deny "$H" "$(spec "test.use({ launchOptions: { args: ['--user-data-dir=do
   "R48 ...and --user-data-dir → DENY" "launch switches"
 assert_deny "$H" "$(spec "test.use({ launchOptions: { args: ['--no-sandbox'] } });")" \
   "R48 ...the CHANNEL is closed, not the switch list → DENY" "launch switches"
+# SCOPED TO ANY AUTHORING ROLE, not only one that also runs. Measuring
+# the shipped split-author-run example showed why: splitting the role
+# that writes specs from the role that runs them bounds WHO can trigger
+# execution, and does not make authored content inert — the runner still
+# executes the author's file. Unlike an import allowlist, this deny is
+# actionable by whoever hits it: the switch goes in
+# playwright.config.ts, which a governed authoring role cannot write.
+AUTHOR_ONLY=$("$JQ" -nc --arg c "$PW
+test.use({ launchOptions: { args: ['--log-file=docs/e2e-ledger.json'] } });" \
+  '{tool_name:"Write",tool_input:{file_path:"tests/e2e/x.spec.ts",content:$c},cwd:"'"$P"'",agent_id:"a"}')
+printf 'author-only\n' > "$HARNESS_OS_STATE_DIR/agents/a"
+"$JQ" '.roles["author-only"] = {description:"Authors specs and cannot run them.",tools:{allow:["Write"]},read:{allow:["tests/**"]},write:{allow:["tests/e2e/**"],codeImports:["@playwright/test"]}}' \
+  "$P/.claude/harness-os.json" > "$P/.claude/tmp.json" && mv "$P/.claude/tmp.json" "$P/.claude/harness-os.json"
+assert_deny "$H" "$AUTHOR_ONLY" \
+  "R48 ...for a role that authors but cannot run, too → DENY" "launch switches"
 
 # --- 4b: executablePath names a binary to RUN --------------------------
 assert_allow "$H" "$(spec "test.use({ launchOptions: { executablePath: '/opt/pw-browsers/chromium', slowMo: 50 } });")" \
