@@ -2567,7 +2567,33 @@ NOTE: your command group DOES grant 'git ${GIT_SUB}'. This refusal is a construc
       elif printf '%s' "$seg" | grep -Eq '(^|[[:space:]])xargs([[:space:]]|$)'; then BUILTIN_ID='xargs'; BUILTIN_HIT='xargs — arguments become an unchecked command'
       elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_ID='source'; BUILTIN_HIT='sourcing a script into the shell'
       elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_ID='shell'; BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
-      elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_ID='find-exec'; BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
+      # THE COMPLETE SET OF find ACTIONS THAT RUN OR DELETE, and the
+      # word "complete" is doing work here. This listed `-exec`,
+      # `-execdir` and `-delete`, and round 53 found the two the list had
+      # never named: **`-ok` and `-okdir` are `-exec` and `-execdir`**,
+      # byte for byte, except they print a prompt and read a
+      # confirmation from stdin. Feed them a `y` and they run anything:
+      #
+      #   echo y | find tests -maxdepth 0 -ok sh -c "cat .env" \;
+      #
+      # `find` is in the DEFAULT inspection group of every manifest this
+      # package ships, and `echo`/`jq` are there too, so the confirmation
+      # comes from the same group. The bench inspector — no write grants
+      # at all — got an unrestricted shell; the composer forged the
+      # judge-only ledger; and `split-author-run`'s `runner`, the role
+      # shipped as the structural answer to write-then-execute, got a
+      # shell that both authors and runs.
+      #
+      # Unlike "which flags write?", this enumeration can be finished:
+      # GNU find's actions are `-delete -exec -execdir -fls -fprint
+      # -fprint0 -fprintf -ls -ok -okdir -print -print0 -printf -prune
+      # -quit`, and exactly five of them run a command or remove a file.
+      # The rest print, format or control the traversal; the three
+      # `-fprint*` writers are held to the write scope by the flag table.
+      # So the list below is complete against the tool's own manual
+      # rather than against what somebody remembered — which is the only
+      # kind of enumeration this project has any business shipping.
+      elif printf '%s' "$seg" | grep -Eq -- '-(exec|execdir|ok|okdir)([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_ID='find-exec'; BUILTIN_HIT='find -exec/-execdir/-ok/-okdir/-delete — executes or deletes outside the pattern check (-ok and -okdir are -exec and -execdir with a confirmation prompt, which a piped y answers)'
       # A SEARCH TOOL WITH A PREPROCESSOR IS A SEARCH TOOL THAT EXECS.
       # `rg --pre <prog>` runs <prog> on every file ripgrep is about to
       # search and reads its stdout instead of the file. Round 44 found
@@ -3076,6 +3102,23 @@ Command: ${CMD}"
       [ -n "$target" ] || continue
       target=$(printf '%s' "$target" | tr -d '"'"'" | tr -d '\001')
       [ -n "$target" ] || continue
+      # THE BIT-BUCKET IS FD PLUMBING, NOT A FILE, and only one of the
+      # two write channels had been told. The redirect masker has
+      # recognised `/dev/null` since round 2, so `ls tests/ > /dev/null`
+      # and `curl … 2>/dev/null` are ordinary. The FLAG table never
+      # learned it, so round 53 found the single most common liveness
+      # probe refused —
+      #
+      #   curl -s http://localhost:4173/ -o /dev/null
+      #
+      # — for the `inspector`, whose entire mandate is probing the app,
+      # and refused with worse advice for the composer: `/dev/null` has
+      # no extension, so it was classed as an executable file and the
+      # role was told to author it with the Write tool. Same target, two
+      # channels, one taught.
+      case "$target" in
+        /dev/null|/dev/stdout|/dev/stderr|/dev/tty|/dev/fd/*|/dev/std*) continue ;;
+      esac
       # Axis 5b on the bash authoring route. The screen was wired only to
       # Write/Edit, so `echo 'require("fs")…' > tests/e2e/x.spec.ts` put
       # the identical code on disk INSIDE the role's own write scope with
@@ -3568,6 +3611,17 @@ Write the path literally (relative to the project root) so it can be scope-check
           # Set before the manifest exemption: naming the manifest is
           # still naming a path.
           TOK_SAW_PATH=1
+          # The bit-bucket and the standard streams are FD PLUMBING, not
+          # files — the same exemption the redirect masker has had since
+          # round 2 and the write-target loop just learned. Reading
+          # `/dev/null` discloses nothing; refusing it turned the single
+          # most ordinary liveness probe, `curl -o /dev/null`, into a
+          # scope violation for the role whose whole mandate is probing.
+          # Deliberately just these: `/dev/random`, `/dev/mem` and the
+          # rest of `/dev` are real devices and stay out of scope.
+          case "$m" in
+            /dev/null|/dev/stdout|/dev/stderr|/dev/tty|/dev/fd/*|/dev/std*) continue ;;
+          esac
           harness_os_is_manifest_path "$m" && continue
           REL_M=$(harness_os_relpath "$m")
           DENIED_READ=0
