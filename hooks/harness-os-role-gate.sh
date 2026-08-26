@@ -2504,9 +2504,37 @@ Your command group DOES grant '${SEG_WORDS[0]}'. This refusal is about WHERE it 
     # health check. `validate` says so for any role that can reach the
     # network without one.
     NET_ALLOW=$(harness_os_role_field "$ROLE" '.network.allow')
-    while IFS= read -r NETW; do
+    # A URL is only a DESTINATION when something can dial it. Commands
+    # that manipulate text open no socket, and agents print URLs
+    # constantly — `echo see http://…`, `grep -n http://… file`. Denying
+    # those is the alarm fatigue this project designs against, and it
+    # was a latent false positive from round 33 that only surfaced when
+    # round 35's tests exercised an out-of-scope URL in prose.
+    #
+    # The list EXEMPTS rather than enumerates, which is the direction
+    # this kernel has settled on everywhere else: a command nobody has
+    # modelled is checked, because the unknown tool that connects is
+    # more dangerous than the unknown tool that prints.
+    case "${SEG_WORDS[0]:-}" in
+      echo|printf|cat|head|tail|grep|egrep|fgrep|rg|ag|ack|sed|awk|gawk|mawk|jq|ls|find|wc|sort|uniq|comm|diff|tr|cut|paste|tee|basename|dirname|realpath|test|true|false|expr|date|env|export|read|history)
+        NET_SKIP=1 ;;
+      *) NET_SKIP=0 ;;
+    esac
+    while [ "$NET_SKIP" = "0" ] && IFS= read -r NETW; do
       [ -n "$NETW" ] || continue
-      case "$NETW" in *://*) : ;; *) continue ;; esac
+      # A URL can arrive as a flag's VALUE (`--url=http://…`), and the
+      # scan used to look only at tokens that START with a scheme. Round
+      # 35 flagged it as not-yet-weaponisable through curl and the same
+      # parser assumption all the same; strip a leading `opt=` so the
+      # next tool that takes one is not a new finding.
+      # ...but only for a FLAG. A query string lives INSIDE a URL —
+      # `http://localhost:4173/?next=http://evil.com/` names one
+      # destination and mentions another as data — and stripping at the
+      # first `=` turned round 33's own calibration case into a deny.
+      # The flag form always starts with a dash; the query form never
+      # does.
+      case "$NETW" in -*=*://*) NETW="${NETW#*=}" ;; esac
+      harness_os_is_network_url "$NETW" || continue
       NET_AUTH=$(harness_os_url_authority "$NETW")
       [ -n "$NET_AUTH" ] || continue
       NET_USER=$(harness_os_url_userinfo "$NETW")
@@ -2565,7 +2593,7 @@ The authority is parsed rather than pattern-matched, so a host that merely START
     # namespace pinned to `network.allow` — and `network.allow` is
     # advisory until one is in place, which is what `validate` and the
     # architecture doc now say in those words.
-    if [ "$NET_ALLOW" != "null" ]; then
+    if [ "$NET_ALLOW" != "null" ] && [ "$NET_SKIP" = "0" ]; then
       NF_NEXT=""
       for __i in "${!SEG_WORDS[@]}"; do
         [ "$__i" = "0" ] && continue
@@ -2770,8 +2798,13 @@ case "$HOS_TOOL" in
     # but how many channels implement it.
     WF_URL=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.url // .tool_input.query // empty' 2>/dev/null || echo "")
     if [ -n "$WF_URL" ]; then
-      case "$WF_URL" in
-        http://*|https://*|ws://*|wss://*|ftp://*|data:*)
+      # `data:` is inline content, not a destination — no authority to
+      # check and nothing on the wire.
+      case "$WF_URL" in data:*|DATA:*|Data:*) WF_URL="" ;; esac
+      if [ -n "$WF_URL" ] && harness_os_is_network_url "$WF_URL"; then WF_KIND=remote
+      else WF_KIND=local; fi
+      case "${WF_KIND}:${WF_URL}" in
+        remote:*)
           # Genuinely remote — and held to the same network scope as a
           # curl in Bash. Round 33 built that scope on the Bash channel;
           # round 34 pointed out it stopped there, so a manifest could
@@ -2802,10 +2835,10 @@ network scope: $(printf '%s' "$WF_NET" | "$JQ" -r 'join(", ")' 2>/dev/null)
 A fetch tool reaches the network exactly as a curl does, so it is held to the same scope. The authority is parsed rather than matched as text."
           fi
           ;;
-        file://*)
-          WF_P="${WF_URL#file://}"; [ "${WF_P#/}" = "$WF_P" ] && WF_P="/$WF_P"
+        local:file://*|local:FILE://*|local:File://*)
+          WF_P="${WF_URL#*://}"; [ "${WF_P#/}" = "$WF_P" ] && WF_P="/$WF_P"
           harness_os_is_manifest_path "$WF_P" || check_path_scope read "$(harness_os_relpath "$WF_P")" "read via ${HOS_TOOL}" ;;
-        /*|./*|../*|~/*)
+        local:/*|local:./*|local:../*|local:~/*)
           harness_os_is_manifest_path "$WF_URL" || check_path_scope read "$(harness_os_relpath "$WF_URL")" "read via ${HOS_TOOL}" ;;
       esac
     fi
@@ -3136,9 +3169,14 @@ if [ "$MCP_MAP" != "{}" ] && [ -n "$MCP_MAP" ]; then
       # path, so it is unwrapped and scoped — skipping anything merely
       # containing "://" let `file://secret` past the very check the
       # manifest configured.
+      # The scheme test is the SHARED one, case-insensitive, because
+      # this list was the third lowercase copy and all three agreed on
+      # being wrong: RFC 3986 says a scheme is case-insensitive, so
+      # `HTTP://…` was a URL to every client and to none of these lists.
+      harness_os_is_network_url "$v" && continue
       case "$v" in
-        http://*|https://*|ws://*|wss://*|ftp://*|data:*) continue ;;
-        file://*) v="${v#file://}"; [ "${v#/}" = "$v" ] && v="/$v" ;;
+        data:*|DATA:*|Data:*) continue ;;
+        file://*|FILE://*|File://*) v="${v#*://}"; [ "${v#/}" = "$v" ] && v="/$v" ;;
       esac
       harness_os_is_manifest_path "$v" && [ "$axis" = "read" ] && continue
       # Self-protection, on the third write channel. It had been attached

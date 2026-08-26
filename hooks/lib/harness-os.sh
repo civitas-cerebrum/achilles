@@ -809,12 +809,34 @@ harness_os_glob_to_ere() {
 # example.com — `localhost:4173` is USERINFO, not a host. The visible
 # prefix and the destination are different strings, which is exactly the
 # shape a prefix match cannot see.
+# harness_os_is_network_url <string> — true when the string names a
+# REMOTE resource. ONE DECISION, ONE PLACE, and case-insensitively.
+#
+# This was three copies of a lowercase prefix list — here, in the
+# WebFetch arm, and in the MCP arm — and all three agreed on being
+# wrong. RFC 3986 says a scheme is case-insensitive and curl normalises
+# it before dialling, so `HTTP://evil.example/` is a URL to every client
+# and was a URL to none of these lists. Round 35 appended one to an
+# otherwise-permitted curl and shipped an in-scope file to a host the
+# manifest forbids; the identical command in lowercase was correctly
+# refused. A confident DENY for `http://` beside a silent ALLOW for
+# `HTTP://` is worse than no check, because it looks exactly like one.
+#
+# Every network fix since round 33 — userinfo, lookalike hosts, the
+# override flags, the proxy environment — sits downstream of this
+# function, so every one of them inherited the blindness. That is why
+# this is a shared predicate now rather than a fourth list.
+harness_os_is_network_url() {
+  case "$(printf '%s' "${1%%://*}" | tr 'A-Z' 'a-z')" in
+    http|https|ftp|ftps|ws|wss|scp|sftp|ssh|telnet|gopher|ldap|ldaps|smb|tftp|dict|imap|imaps|smtp|smtps|pop3|pop3s|rtsp|mqtt)
+      case "$1" in *://*) return 0 ;; *) return 1 ;; esac ;;
+    *) return 1 ;;
+  esac
+}
+
 harness_os_url_authority() {
   local u="$1" auth
-  case "$u" in
-    http://*|https://*|ftp://*|ftps://*|ws://*|wss://*|scp://*|sftp://*|ssh://*|telnet://*|gopher://*|ldap://*|ldaps://*|smb://*|tftp://*|dict://*|imap://*|imaps://*|smtp://*|smtps://*|pop3://*|pop3s://*|rtsp://*|mqtt://*) : ;;
-    *) return 0 ;;
-  esac
+  harness_os_is_network_url "$u" || return 0
   auth="${u#*://}"
   # Everything after the first /, ?, or # is path/query/fragment.
   auth="${auth%%/*}"; auth="${auth%%\?*}"; auth="${auth%%#*}"
@@ -829,6 +851,7 @@ harness_os_url_authority() {
 # from its destination.
 harness_os_url_userinfo() {
   local u="$1" auth
+  harness_os_is_network_url "$u" || return 0
   case "$u" in *://*) : ;; *) return 0 ;; esac
   auth="${u#*://}"; auth="${auth%%/*}"; auth="${auth%%\?*}"; auth="${auth%%#*}"
   case "$auth" in *@*) printf '%s' "${auth%@*}" ;; esac
