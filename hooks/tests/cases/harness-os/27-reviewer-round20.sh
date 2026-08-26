@@ -115,15 +115,30 @@ assert_deny "$H" "$(wpay 'const q = "../../.env"; await steps(page).uploadFile(q
 
 # --- calibration: the safe idiom is the common one --------------------
 # A spec in tests/e2e referencing a fixture in a sibling tests/fixtures
-# MUST write `../fixtures/…`. Round 9 already had to undo a rule that
+# ROUND 47 CORRECTED THE RESOLUTION BASE, AND SEVERAL CALIBRATIONS BELOW
+# WERE WRITTEN AGAINST THE OLD ONE. The screen used to resolve a
+# framework path literal against the SPEC FILE'S directory; Playwright
+# resolves `path:` and `setInputFiles()` against `process.cwd()`, the
+# directory the granted runner is invoked from. The spec-relative idiom
+# these cases asserted — `../fixtures/cv.pdf` from a spec in tests/e2e/
+# — raises ENOENT when executed. So the calibrations moved to the
+# spelling that actually works, root-relative, and the verdicts they
+# pin are unchanged in meaning: an in-scope fixture is allowed, an
+# out-of-scope one is not.
+#
+# The lesson is the one worth keeping: every case here asserted a
+# VERDICT, and none asserted that the path this kernel names is the path
+# the runtime opens. A fixture only tests what it uses.
+#
+# MUST name the fixture as the RUNTIME resolves it. Round 9 already had to undo a rule that
 # denied a leading `../`; inverting this screen must not re-introduce it.
-assert_allow "$H" "$(wpay 'await page.locator("#f").setInputFiles("../fixtures/cv.pdf");')" \
+assert_allow "$H" "$(wpay 'await page.locator("#f").setInputFiles("tests/fixtures/cv.pdf");')" \
   "calibration: a literal sibling fixture → ALLOW"
-assert_allow "$H" "$(wpay 'await testInfo.attach("c", { path: "../fixtures/cv.pdf" });')" \
+assert_allow "$H" "$(wpay 'await testInfo.attach("c", { path: "tests/fixtures/cv.pdf" });')" \
   "calibration: the same through attach({path}) → ALLOW"
-assert_allow "$H" "$(wpay 'await testInfo.attach("c",{path:"../fixtures/cv.pdf"});')" \
+assert_allow "$H" "$(wpay 'await testInfo.attach("c",{path:"tests/fixtures/cv.pdf"});')" \
   "calibration: and with no spaces at all → ALLOW"
-assert_allow "$H" "$(wpay 'await steps(page).find("#f").uploadFile("../fixtures/cv.pdf");')" \
+assert_allow "$H" "$(wpay 'await steps(page).find("#f").uploadFile("tests/fixtures/cv.pdf");')" \
   "calibration: the wrapper, in scope → ALLOW"
 assert_allow "$H" "$(wpay 'await testInfo.attach("shot", { body: await page.screenshot() });')" \
   "calibration: attach with a body names no file → ALLOW"
@@ -164,11 +179,11 @@ assert_deny "$H" "$(wpay 'const p="../x"; await page.locator("#f").setInputFiles
 
 # Multi-file upload is a documented feature a composer is expected to
 # use; checking every element must not make it unusable.
-assert_allow "$H" "$(wpay 'await page.locator("#f").setInputFiles(["../fixtures/cv.pdf"]);')" \
+assert_allow "$H" "$(wpay 'await page.locator("#f").setInputFiles(["tests/fixtures/cv.pdf"]);')" \
   "R21 calibration: a single-element array in scope → ALLOW"
-assert_allow "$H" "$(wpay 'await page.locator("#f").setInputFiles(["../fixtures/cv.pdf","../fixtures/b.pdf"]);')" \
+assert_allow "$H" "$(wpay 'await page.locator("#f").setInputFiles(["tests/fixtures/cv.pdf","tests/fixtures/b.pdf"]);')" \
   "R21 calibration: several files, all in scope → ALLOW"
-assert_allow "$H" "$(wpay 'await page.setInputFiles("#f", ["../fixtures/cv.pdf"]);')" \
+assert_allow "$H" "$(wpay 'await page.setInputFiles("#f", ["tests/fixtures/cv.pdf"]);')" \
   "R21 calibration: the page form with an in-scope array → ALLOW"
 
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST

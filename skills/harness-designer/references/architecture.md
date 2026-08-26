@@ -498,6 +498,28 @@ backslash-escaped quoting that arrives when code is authored through
 Bash. But a static check on a Turing-complete language cannot be
 complete, and no amount of pattern work will make it so.
 
+### A framework path resolves against the RUNNER's cwd
+
+`path:`, `setInputFiles()` and their relatives in an authored spec are
+opened by the test runner's process, so the kernel resolves them against
+the project root — the directory the granted command runs from — not
+against the spec file's own directory. Write `tests/e2e/shot.png`, not
+`shot.png`; a bare filename lands in the project root and is judged
+there, which is what the framework actually does with it.
+
+A relative **import** is the exception, and not by choice: `import
+'./helpers'` is resolved by the module loader against the importing
+file, so that one is checked against the module's directory. Two
+different bases in one screen, because the two languages genuinely
+disagree.
+
+This was wrong for four rounds, by exactly the depth of a typical write
+scope, and no test caught it because every case asserted a verdict
+rather than a resolution. `bench/resolution-base.sh` now runs Playwright
+and asserts the kernel names the path the runtime opens. **A screen that
+models another program's semantics needs a test that runs that
+program.**
+
 ### Glob's pattern is a path; Grep's is not
 
 `Glob {pattern}` with no `path` searches from the pattern's own literal

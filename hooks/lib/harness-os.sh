@@ -987,6 +987,22 @@ harness_os_is_manifest_path() {
 # 0 when relpath matches at least one glob in the JSON array.
 harness_os_path_in_scope() {
   local rel="$1" patterns="$2" glob ere
+  # A PATH IS ONE STRING; `grep` MATCHES ONE LINE AT A TIME. Every path
+  # decision in this kernel flows through here, and the match was
+  # line-oriented, so a path containing a newline was "in scope" if ANY
+  # of its lines matched:
+  #
+  #   Write "/etc/evil\ntests/e2e/ok"                       ->  ALLOW
+  #   Read  "/etc/passwd\ntests/e2e/ok"                     ->  ALLOW
+  #   judge Write "…/.claude/harness-os.json\ndocs/e2e-ledger.json" -> ALLOW
+  #
+  # Round 47 reported it as latent — the file actually opened carries the
+  # newline, so it is hard to aim — and a soundness bug in the one
+  # function every scope check calls is not something to leave standing
+  # on the strength of "hard to aim". No legitimate path in this system
+  # contains a newline, and a scope test is a whole-string question, so
+  # it is answered as one.
+  case "$rel" in *$'\n'*) return 1 ;; esac
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
     ere=$(harness_os_glob_to_ere "$glob")

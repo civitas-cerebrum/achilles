@@ -113,13 +113,25 @@ assert_deny "$H" "$(wp "$(spec 'await page.screenshot({ path: "/tmp/" + name + "
 
 # --- Calibration: producing artifacts IS the job ----------------------
 # The rule is about where the file lands, not about the API.
-assert_allow "$H" "$(wp "$(spec 'await page.screenshot({ path: "shot.png" });')")" \
+#
+# REBASED BY ROUND 47, and the change is not cosmetic. These cases were
+# written when the screen resolved a framework path against the SPEC
+# FILE'S directory, so `screenshot({ path: "shot.png" })` from a spec in
+# tests/e2e/ read as a write to tests/e2e/shot.png. Playwright resolves
+# it against `process.cwd()`, so it is a write to the PROJECT ROOT —
+# genuinely outside a `tests/e2e/**` write scope, and now refused. The
+# old base was not being generous here; it was concealing where the file
+# lands. The artifacts a composer legitimately produces are named the
+# way the runtime names them.
+assert_allow "$H" "$(wp "$(spec 'await page.screenshot({ path: "tests/e2e/shot.png" });')")" \
   "R39 calibration: a screenshot inside the write scope → ALLOW"
-assert_allow "$H" "$(wp "$(spec 'await page.screenshot({ path: "artifacts/shot.png" });')")" \
+assert_allow "$H" "$(wp "$(spec 'await page.screenshot({ path: "tests/e2e/artifacts/shot.png" });')")" \
   "R39 calibration: ...in a subdirectory of it → ALLOW"
+assert_deny "$H" "$(wp "$(spec 'await page.screenshot({ path: "shot.png" });')")" \
+  "R39 ...and a bare name lands in the PROJECT ROOT, which is not the write scope → DENY" "write scope"
 assert_allow "$H" "$(wp "$(spec 'await page.screenshot({ fullPage: true });')")" \
   "R39 calibration: a screenshot with no path writes nothing → ALLOW"
-assert_allow "$H" "$(wp "$(spec 'await test.info().attach("cv", { path: "data/cv.pdf" });')")" \
+assert_allow "$H" "$(wp "$(spec 'await test.info().attach("cv", { path: "tests/data/cv.pdf" });')")" \
   "R39 calibration: attach names a READ, and is still read-checked → ALLOW"
 assert_deny "$H" "$(wp "$(spec 'await page.locator("#f").setInputFiles("../../.env");')")" \
   "R39 calibration: the read direction still holds → DENY" "read scope"

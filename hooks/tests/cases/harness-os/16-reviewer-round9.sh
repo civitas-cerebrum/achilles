@@ -97,15 +97,30 @@ assert_allow "$H" "$(epay "$P/tests/e2e/big.txt" 'x' 'z')" \
 rm -f "$P/tests/e2e/big.spec.ts" "$P/tests/e2e/big.txt"
 
 # --- FP1: the fixture path is scope-checked, not prefix-matched --------
-assert_allow "$H" "$(wpay "$P/tests/e2e/f1.spec.ts" 'await page.setInputFiles("#cv", "../fixtures/cv.pdf");')" \
-  "FP1 a sibling fixture via '../fixtures/' resolves INTO the read scope → ALLOW"
-assert_allow "$H" "$(wpay "$P/tests/e2e/f2.spec.ts" 'await page.setInputFiles("#cv", "./fixtures/cv.pdf");')" \
+# ROUND 47 CORRECTED THE RESOLUTION BASE, AND SEVERAL CALIBRATIONS BELOW
+# WERE WRITTEN AGAINST THE OLD ONE. The screen used to resolve a
+# framework path literal against the SPEC FILE'S directory; Playwright
+# resolves `path:` and `setInputFiles()` against `process.cwd()`, the
+# directory the granted runner is invoked from. The spec-relative idiom
+# these cases asserted — `../fixtures/cv.pdf` from a spec in tests/e2e/
+# — raises ENOENT when executed. So the calibrations moved to the
+# spelling that actually works, root-relative, and the verdicts they
+# pin are unchanged in meaning: an in-scope fixture is allowed, an
+# out-of-scope one is not.
+#
+# The lesson is the one worth keeping: every case here asserted a
+# VERDICT, and none asserted that the path this kernel names is the path
+# the runtime opens. A fixture only tests what it uses.
+
+assert_allow "$H" "$(wpay "$P/tests/e2e/f1.spec.ts" 'await page.setInputFiles("#cv", "tests/fixtures/cv.pdf");')" \
+  "FP1 a fixture named the way the RUNTIME resolves it → ALLOW"
+assert_allow "$H" "$(wpay "$P/tests/e2e/f2.spec.ts" 'await page.setInputFiles("#cv", "./tests/fixtures/cv.pdf");')" \
   "FP1 the './' form → ALLOW"
 assert_deny "$H" "$(wpay "$P/tests/e2e/f3.spec.ts" 'await page.setInputFiles("#f", "../../.env");')" \
   "FP1 but a literal that resolves OUT of the scope → DENY" "outside this role's read scope"
 assert_deny "$H" "$(wpay "$P/tests/e2e/f4.spec.ts" 'await page.setInputFiles("#f", "/etc/passwd");')" \
   "FP1 an absolute path outside the scope → DENY" "outside this role's read scope"
-assert_deny "$H" "$(wpay "$P/tests/e2e/f5.spec.ts" 'await testInfo.attach("x", { path: "../../.env" });')" \
+assert_deny "$H" "$(wpay "$P/tests/e2e/f5.spec.ts" 'await testInfo.attach("x", { path: ".env" });')" \
   "FP1 attach({path}) is resolved the same way → DENY" "outside this role's read scope"
 assert_allow "$H" "$(wpay "$P/tests/e2e/f6.spec.ts" 'await testInfo.attach("shot", { body: await page.screenshot() });')" \
   "FP1 attach with a body and no path reads nothing → ALLOW"
