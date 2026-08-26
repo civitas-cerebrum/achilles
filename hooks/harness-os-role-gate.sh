@@ -573,13 +573,51 @@ case "$HOS_TOOL" in
     # shell separators; a coarse split is sound in the protective
     # direction, since a token it misreads is a token still checked.
     if [ -n "$CMD" ] && printf '%s' "$CMD" | grep -Eqi "$PROT_RE"; then
-      __psegs=$(printf '%s' "$CMD" | tr -d "\"'" | sed -E 's/[;&|]+/\n/g')
+      #
+      # THE TEXT PATTERN IS A PREFILTER; THE VERDICT IS BY RESOLUTION.
+      # The first cut of this scan denied on the pattern itself, and the
+      # benchmark replay caught what that costs: `.claude` appears in
+      # paths that have nothing to do with this project's law —
+      # `/root/.claude/projects/…` is Claude Code's own state directory,
+      # and a role reading one was suddenly told it had "attempted to
+      # modify the harness OS itself". The verdict was right by accident
+      # (those commands were denied on another axis) and the reason was
+      # a lie, which is the shape that teaches an operator to widen a
+      # grant that was never the problem.
+      #
+      # So each candidate token goes to `self_protect_target`, the same
+      # function the Write, Edit and MCP channels use: it normalises the
+      # path and compares it against THIS project's manifest, state dir
+      # and installed kernel. One rule, four channels, decided where the
+      # path actually lands rather than where it looks like it lands.
+      #
+      # LINE CONTINUATIONS ARE JOINED FIRST, because the shell joins
+      # them and this scan must see what the shell will run. Probing
+      # this rule an hour after writing it found the bypass: a trailing
+      # backslash-newline put the protected operand on a line of its
+      # own, which arrived here as a ONE-WORD segment, and a one-word
+      # segment was skipped as having no operands to check —
+      #
+      #     uniq docs/acceptance/registration.md \
+      #     .claude/harness-os.json                     ->  ALLOW
+      #
+      # — which is the same command as the denied one, spelled the way
+      # anyone writes a long command line. Two spellings of one act, one
+      # checked, in the fix for two spellings of one act.
+      __psegs=$(printf '%s' "$CMD" | tr -d "\"'" | sed -E ':a;/\\$/{N;s/\\\n//;ba}' | sed -E 's/[;&|]+/\n/g')
       while IFS= read -r __pseg; do
         [ -n "$__pseg" ] || continue
         # shellcheck disable=SC2206
         __pwords=( $__pseg )
-        [ "${#__pwords[@]}" -gt 1 ] || continue
+        [ "${#__pwords[@]}" -ge 1 ] || continue
         __pcmd="${__pwords[0]}"
+        # A segment whose COMMAND WORD is a protected path is an attempt
+        # to execute the manifest, the state dir or the kernel. Nothing
+        # legitimate does that, and skipping it was how the continuation
+        # bypass stayed invisible.
+        if printf '%s' "$__pcmd" | grep -Eqi "$PROT_RE"; then
+          self_protect_target "$__pcmd" "self-protect bash command-word"
+        fi
         __pcmd="${__pcmd##*/}"
         case "$__pcmd" in
           # Programs with no way to write a path they are handed —
@@ -617,13 +655,11 @@ case "$HOS_TOOL" in
             case "$__tok" in
               -*)
                 __flag="${__tok%%=*}"
-                if ! prot_reader_flag "$__flag"; then
-                  harness_os_deny "self-protect bash flag-operand $__flag" "$SELF_PROTECT_MSG"
-                fi ;;
+                prot_reader_flag "$__flag" && { __prev="$__tok"; continue; }
+                self_protect_target "${__tok#*=}" "self-protect bash flag-operand $__flag" ;;
               *)
-                if ! prot_reader_flag "$__prev"; then
-                  harness_os_deny "self-protect bash operand $__pcmd" "$SELF_PROTECT_MSG"
-                fi ;;
+                prot_reader_flag "$__prev" && { __prev="$__tok"; continue; }
+                self_protect_target "$__tok" "self-protect bash operand $__pcmd" ;;
             esac
           fi
           __prev="$__tok"

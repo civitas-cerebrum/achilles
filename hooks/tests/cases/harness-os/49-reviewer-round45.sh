@@ -139,5 +139,54 @@ assert_allow "$H" "$(b 'echo see .claude/settings.json > tests/e2e/notes.txt' co
 assert_deny "$H" "$(b 'echo x > .claude/settings.json' comp)" \
   "R45 calibration: ...but the redirect itself is still refused → DENY" "harness OS itself"
 
+# --- Self-probe: the shell joins line continuations, so this must too -
+# Found by probing the rule above an hour after writing it. A trailing
+# backslash-newline put the protected operand on a line of its own,
+# which arrived at the scan as a ONE-WORD segment — and a one-word
+# segment was skipped as having no operands to check. Same command, the
+# way anyone writes a long command line: two spellings of one act, one
+# checked, inside the fix for two spellings of one act.
+assert_deny "$H" "$(b 'uniq docs/acceptance.md \
+.claude/harness-os.json')" \
+  "R45 a backslash line-continuation is joined before splitting → DENY" "harness OS itself"
+assert_deny "$H" "$(b 'uniq \
+docs/acceptance.md \
+.claude/harness-os.json')" \
+  "R45 ...however many of them there are → DENY" "harness OS itself"
+assert_deny "$H" "$(b '.claude/harness-os.json')" \
+  "R45 ...and a protected path as the COMMAND WORD is not a free pass → DENY" "harness OS itself"
+assert_allow "$H" "$(b 'cat \
+docs/acceptance.md')" \
+  "R45 calibration: a continuation naming nothing protected → ALLOW"
+
+# --- Self-probe: the pattern is a PREFILTER, the verdict is by path ---
+# The first cut denied on the text pattern itself, and the benchmark
+# replay caught the cost: `.claude` appears in paths that have nothing
+# to do with this project's law — `/root/.claude/projects/…` is Claude
+# Code's own state directory — and a role touching one was told it had
+# "attempted to modify the harness OS itself". The verdict happened to
+# be right (denied on another axis) and the REASON was a lie, which is
+# the shape that teaches an operator to widen a grant that was never
+# the problem. Each candidate token goes to self_protect_target now,
+# the same function the Write, Edit and MCP channels use: one rule,
+# four channels, decided by where the path lands.
+# A path under someone else's `.claude` that is NOT one of the protected
+# children. `settings.json` and `hooks/` under ANY `.claude` stay
+# protected on purpose — a global `~/.claude/settings.json` registers
+# hooks for every project, so writing it disables this kernel wholesale.
+# `projects/…/tool-results/…` is Claude Code's own transcript storage,
+# and it is exactly what the benchmark replay was touching.
+mkdir -p "$R45/foreign/.claude/projects/x"
+printf '{}\n' > "$R45/foreign/.claude/projects/x/tool-results"
+FOREIGN=$("$JQ" -nc --arg c "somefilter docs/acceptance.md $R45/foreign/.claude/projects/x/tool-results" \
+  '{tool_name:"Bash",tool_input:{command:$c},cwd:"'"$P"'",agent_id:"insp"}')
+assert_deny "$H" "$FOREIGN" \
+  "R45 an unrelated .claude elsewhere on disk is refused on SCOPE, not as this harness" \
+  "read scope"
+# The distinction is the whole point, so pin the reason it is NOT.
+FOREIGN_OUT=$(printf '%s' "$FOREIGN" | bash "$H" 2>/dev/null || true)
+assert_eq "$(case "$FOREIGN_OUT" in *"modify the harness OS itself"*) echo mislabelled ;; *) echo correct ;; esac)" \
+  "correct" "R45 ...and is NOT reported as modifying the harness OS"
+
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST
 rm -rf "$R45"
