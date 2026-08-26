@@ -179,6 +179,7 @@
                     "source",
                     "shell",
                     "find-exec",
+                    "search-preprocessor",
                     "interpreter-inline",
                     "interpreter-module",
                     "awk-program",

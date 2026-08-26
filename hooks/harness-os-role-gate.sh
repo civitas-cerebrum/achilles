@@ -408,6 +408,58 @@ self_protect_target() {
     .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*)
       harness_os_deny "$sp_prefix $sp_path" "$SELF_PROTECT_MSG" ;;
   esac
+
+  # SELF-PROTECTION GUARDED THE MANIFEST IT WAS TOLD ABOUT; DISCOVERY
+  # OBEYS THE NEAREST ONE TO THE CWD. Round 27 made the loader walk UP
+  # from cwd and stop at the first `.claude/harness-os.json`, on purpose,
+  # so a project nested inside a larger repo is governed by its own law.
+  # This axis kept matching the ROOT-relative literals above and the one
+  # `NORM_MANIFEST` — so `tests/e2e/.claude/harness-os.json` matched
+  # neither, and round 44 had the bench's real composer, whose write
+  # scope is `tests/e2e/**`, author a manifest granting itself
+  # `bash.unrestricted` and `read: ["**"]`. Any call rooted at or below
+  # that directory is then governed by the file the governed role wrote.
+  # A role minting its own law is the one thing this axis exists to make
+  # impossible, and it advertises exactly that: "no governed role may
+  # change it, whatever its other grants."
+  #
+  # The Bash channel had it right the whole time. Its PROT_RE matches a
+  # `.claude` segment ANYWHERE in the path, so `echo {} >
+  # tests/e2e/.claude/harness-os.json` was already refused while the
+  # identical Write was allowed. Same act, two channels, guarded on one:
+  # the copies drifted, which is the defect recorded here under four
+  # other names. This brings Write/Edit/NotebookEdit and the mapped MCP
+  # write into parity with the channel that was already strict, rather
+  # than inventing a third spelling of the rule.
+  #
+  # It is the same CHILDREN as the root-relative list above, generalised
+  # by depth — not the whole `.claude` directory. The first cut of this
+  # fix took the Bash channel's rule wholesale, and the suite caught it
+  # within the hour: round 22's `config-keeper` has `.claude/**` as its
+  # legitimate write scope, and blanketing the directory took away
+  # `.claude/notes.md`, which is simply that role's job. The Bash copy is
+  # broader because it is a text scan over a command line and cannot
+  # tell a target from a mention; a channel that receives the path as a
+  # structured field can afford to be exact, and should be. Widening a
+  # self-protection axis until it eats ordinary work is how a manifest
+  # acquires `bash.unrestricted`, which this document argues is the more
+  # dangerous half.
+  case "$sp_norm" in
+    */.claude/harness-os.json \
+    |*/.claude/harness-os.state|*/.claude/harness-os.state/* \
+    |*/.claude/settings.json|*/.claude/settings.local.json \
+    |*/.claude/hooks|*/.claude/hooks/*)
+      harness_os_deny "$sp_prefix nested-config $sp_path" "$SELF_PROTECT_MSG" ;;
+  esac
+  # A manifest filename outside any `.claude` directory is not law today
+  # — discovery only ever looks at `<dir>/.claude/harness-os.json` — but
+  # the Bash channel has refused it since round 13, no ordinary work
+  # produces one, and the cost of the two channels disagreeing again is
+  # this whole finding a second time.
+  case "${sp_norm##*/}" in
+    harness-os.json|harness-os.state)
+      harness_os_deny "$sp_prefix nested-manifest $sp_path" "$SELF_PROTECT_MSG" ;;
+  esac
   # The INSTALLED kernel is the root of trust wherever it lives. A
   # project-local install sits in node_modules, which no self-protect
   # list covered — a role could truncate the hook and disable every
@@ -1806,6 +1858,23 @@ NOTE: your command group DOES grant 'git ${GIT_SUB}'. This refusal is a construc
       elif printf '%s' "$seg" | grep -Eq '^(source[[:space:]]|\.[[:space:]])'; then BUILTIN_ID='source'; BUILTIN_HIT='sourcing a script into the shell'
       elif printf '%s' "$seg" | grep -Eq '^(ba|z|da|k|fi)?sh([[:space:]]|$)'; then BUILTIN_ID='shell'; BUILTIN_HIT='a shell as the command — its input becomes an unchecked script'
       elif printf '%s' "$seg" | grep -Eq -- '-exec(dir)?([[:space:]]|$)|-delete([[:space:]]|$)'; then BUILTIN_ID='find-exec'; BUILTIN_HIT='find -exec/-execdir/-delete — executes/deletes outside the pattern check'
+      # A SEARCH TOOL WITH A PREPROCESSOR IS A SEARCH TOOL THAT EXECS.
+      # `rg --pre <prog>` runs <prog> on every file ripgrep is about to
+      # search and reads its stdout instead of the file. Round 44 found
+      # it sitting inside the benchmark's own `inspection` group, where
+      # `rg` is granted for what it obviously is — a reader. It is
+      # `find -exec` under a different flag, and it was not on this list
+      # for the ordinary reason: the list is an enumeration, and the
+      # entry arrives on the tool author's release schedule rather than
+      # this kernel's. `--pre-glob` only narrows which files the
+      # preprocessor sees, so it is the same channel.
+      #
+      # Latent as shipped, and the reviewer said so precisely: the
+      # inspector cannot author the preprocessor and ripgrep passes it
+      # no attacker-controlled argument. Closed anyway, because "the
+      # payload half is missing" is a description of today's manifests,
+      # not of the boundary.
+      elif printf '%s' "$seg" | grep -Eq -- '(^|[[:space:]])--pre(-glob)?([[:space:]]|=)'; then BUILTIN_ID='search-preprocessor'; BUILTIN_HIT='rg --pre/--pre-glob — a preprocessor program run on every matched file, outside every pattern check'
       elif [ "$(harness_os_interpreter_inline "${SEG_WORDS[0]:-}" "$seg")" = "module" ]; then BUILTIN_ID='interpreter-module'; BUILTIN_HIT='running or preloading a module (-m/-M/-r) — code this kernel never sees, though the role did not author it'
       elif [ "$(harness_os_interpreter_inline "${SEG_WORDS[0]:-}" "$seg")" = "indirect" ]; then BUILTIN_ID='interpreter-inline'; BUILTIN_HIT='interpreter one-liner (-c/-e/-p and their attached and bundled spellings, or a program on stdin) — arbitrary code the patterns cannot see'
       elif [ "$(harness_os_awk_sed_verdict "${SEG_WORDS[0]:-}" "$seg")" = "indirect" ]; then

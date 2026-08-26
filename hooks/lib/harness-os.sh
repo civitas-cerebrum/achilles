@@ -200,14 +200,44 @@ harness_os_load() {
     # walk terminates at `/` whatever it is handed. A relative or
     # nonexistent cwd falls through to the not-found branch, where the
     # gate's own cwd-fault check (round 10) reports it properly.
+    #
+    # A BROKEN MANIFEST IS A DOWNGRADE, NOT A STOP. The walk used to
+    # halt at the first `.claude/harness-os.json` that EXISTED. A
+    # present-but-unparseable manifest is a distinct state further down:
+    # mutations fail closed, but reads stay open so the file can be
+    # repaired — sound for the case it was written for, an operator who
+    # broke their own JSON.
+    #
+    # It is not sound for a file that arrives from below. Round 44 put
+    # eight bytes of non-JSON at `tests/e2e/.claude/harness-os.json` and
+    # a call rooted there read the whole filesystem: the nearest
+    # manifest was broken, so the outer manifest — valid, and the actual
+    # law of the project — was never consulted at all. Writing that file
+    # is refused now, on every channel; this is the second half, because
+    # a repair path that only ever needs to apply to the OUTERMOST
+    # manifest should not be reachable by shadowing it.
+    #
+    # So the walk stops at the first manifest that PARSES, and remembers
+    # the first one it merely FOUND. A lone broken manifest still lands
+    # in the fail-closed repair state exactly as before — nothing outer
+    # exists to fall back to — while a broken inner one is simply
+    # ignored in favour of the law above it.
+    local hos_first=""
     case "$hos_dir" in
       /*)
         while [ -n "$hos_dir" ]; do
-          if [ -f "$hos_dir/.claude/harness-os.json" ]; then hos_found="$hos_dir"; break; fi
+          if [ -f "$hos_dir/.claude/harness-os.json" ]; then
+            [ -n "$hos_first" ] || hos_first="$hos_dir"
+            if "$HOS_JQ" -e 'type == "object" and (.roles | type == "object")' \
+                 < "$hos_dir/.claude/harness-os.json" >/dev/null 2>&1; then
+              hos_found="$hos_dir"; break
+            fi
+          fi
           [ "$hos_dir" = "/" ] && break
           hos_dir=$(dirname "$hos_dir")
         done ;;
     esac
+    [ -n "$hos_found" ] || hos_found="$hos_first"
     if [ -n "$hos_found" ]; then
       HOS_ROOT="$hos_found"
     else

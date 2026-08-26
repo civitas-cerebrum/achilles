@@ -256,6 +256,18 @@ commit grammar and ledger gates in an unrelated project.
 - Both the manifest and the state dir are covered by the built-in
   self-protection axis; the deny message routes changes to an
   operator-run design session (`HARNESS_OS=0`) or a hand edit.
+- **The axis covers every path that could BECOME law, not just the one
+  in force.** Discovery walks up from `cwd` and obeys the nearest
+  `.claude/harness-os.json`, so a role that could author one inside its
+  own write scope could mint the law that governs it. A protected child
+  of any `.claude` directory — the manifest, the state dir, `settings*.json`,
+  `hooks/` — is refused at any depth, on Write/Edit/NotebookEdit, mapped
+  MCP writes and Bash alike. Unprotected children stay writable: a
+  config role scoped to `.claude/**` keeps its job.
+- A **broken** manifest below a valid one does not unseat it. The walk
+  stops at the first manifest that parses; the broken-manifest repair
+  state (mutations closed, reads open) still applies when there is no
+  outer law to fall back to.
 - All state writes are atomic (`tmp` + `mv`) and TTL-pruned.
 
 ## Leak-proofing the Bash channel
