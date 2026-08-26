@@ -178,6 +178,11 @@
           "docs/design/**"
         ]
       },
+      "network": {
+        "allow": [
+          "localhost:5173"
+        ]
+      },
       "write": {
         "allow": [
           "tests/**"

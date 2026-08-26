@@ -10,7 +10,8 @@
   "commandGroups": {
     "inspection": [
       "^(cat|head|tail|grep|rg|jq|wc|ls|find|tree|file|stat)\\b",
-      "^git (status|log|diff|show)\\b"
+      "^git (status|log|diff|show)\\b",
+      "^curl( -[a-zA-Z]*)? http://localhost:4173\\b"
     ],
     "test-execution": [
       "^npx playwright test\\b"
@@ -65,6 +66,11 @@
           "docs/acceptance/**",
           "package.json"
         ]
+      },
+      "network": {
+        "allow": [
+          "localhost:4173"
+        ]
       }
     },
     "composer": {
@@ -83,6 +89,11 @@
           "tests/**",
           "docs/acceptance/**",
           "package.json"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost:4173"
         ]
       },
       "write": {
@@ -115,6 +126,11 @@
           "tests/**",
           "package.json",
           "playwright.config.ts"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost:4173"
         ]
       }
     },

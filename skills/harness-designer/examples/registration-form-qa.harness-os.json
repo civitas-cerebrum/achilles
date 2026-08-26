@@ -102,6 +102,11 @@
           "playwright.config.ts"
         ]
       },
+      "network": {
+        "allow": [
+          "localhost:4173"
+        ]
+      },
       "write": {
         "allow": [
           "tests/e2e/**"
