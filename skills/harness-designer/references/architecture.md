@@ -256,6 +256,17 @@ commit grammar and ledger gates in an unrelated project.
 - Both the manifest and the state dir are covered by the built-in
   self-protection axis; the deny message routes changes to an
   operator-run design session (`HARNESS_OS=0`) or a hand edit.
+- **The write-verb table is a floor, not a boundary.** `uniq` writes its
+  second positional operand, `split` writes by prefix, the compressors
+  replace theirs — all now modelled, and the next filter with an output
+  operand arrives on someone else's release schedule. Inverting this for
+  ordinary paths (every operand of an unclassifiable command is a write)
+  was implemented and measured at 45 false positives across the kernel's
+  own suite, which is the failure that ends in `bash.unrestricted`. So
+  the enumeration stays and `harness-os validate` reports which command
+  words a role's groups admit that the kernel cannot classify. Read the
+  warning as: *this group may be a write channel and the regex will not
+  show you.*
 - **An OPERAND naming a protected path is a write unless proven
   otherwise** — flag or positional, one rule. Enumerating which verbs
   write has lost five times (curl's write flags, `sort -o`, `find
@@ -486,6 +497,16 @@ access (`m["read"+"File"+"Sync"](…)`), `process.binding`, and the
 backslash-escaped quoting that arrives when code is authored through
 Bash. But a static check on a Turing-complete language cannot be
 complete, and no amount of pattern work will make it so.
+
+### Glob's pattern is a path; Grep's is not
+
+`Glob {pattern}` with no `path` searches from the pattern's own literal
+prefix, so `tests/e2e/**` is scoped to `tests/e2e` and needs no `path`
+argument. A pattern with no literal prefix (`**/*.ts`) still means the
+whole tree and needs a tree-wide grant. `Grep`'s `pattern` is a regex
+over CONTENT and says nothing about where to look, so a Grep with no
+`path` is a root search however its pattern is written; narrow it with
+`path`.
 
 ### The Bash authoring channel is closed, not screened
 

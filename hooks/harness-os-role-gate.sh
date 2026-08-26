@@ -395,6 +395,32 @@ NORM_STATE_DIR="$(harness_os_normalize_path "$HOS_STATE_DIR")"
 # axis that maps MCP path arguments held them to the role's write scope
 # and stopped there, and a config role whose scope legitimately covers
 # `.claude/**` could therefore rewrite the file that says what it may do.
+# prot_reader_command <command-word> — true when the program cannot write
+# a path it is handed: not by an operand, not by a flag.
+#
+# THIS LIST IS THE EXEMPTION SIDE OF AN INVERSION, so being absent from
+# it is the safe state and being on it is the claim that needs
+# defending. `echo`/`printf`/`:` are here because their operands are
+# TEXT and never paths — round 2 fixed `echo see .claude/settings.json >
+# tests/e2e/notes.txt` as a false positive once already. `sort` is here
+# because its writing form is the flag `-o`, which the mutate scan
+# refuses separately.
+#
+# Who is NOT here matters more: `uniq` (second operand is output),
+# `tee` and `split` (operands are output), `csplit` (writes by prefix),
+# `gzip`/`gunzip` (replace their operand), `curl` and `wget`.
+prot_reader_command() {
+  case "${1##*/}" in
+    echo|printf|:|true|false|test|expr|\
+    cat|head|tail|grep|egrep|fgrep|rg|ag|ack|jq|yq|wc|nl|od|xxd|hexdump|\
+    file|stat|realpath|readlink|dirname|basename|ls|du|less|more|column|\
+    cmp|diff|comm|md5sum|sha1sum|sha256sum|sha512sum|cksum|b2sum|sum|\
+    strings|tac|rev|fold|expand|unexpand|pr|base64|base32|iconv|\
+    zcat|bzcat|xzcat|cut|paste|sort|git) return 0 ;;
+  esac
+  return 1
+}
+
 # prot_reader_flag <token> — true when the token is a FLAG whose operand
 # the tool only ever READS. The manifest is readable by design: it is the
 # law each role is held to, so naming it after one of these is ordinary.
@@ -619,30 +645,7 @@ case "$HOS_TOOL" in
           self_protect_target "$__pcmd" "self-protect bash command-word"
         fi
         __pcmd="${__pcmd##*/}"
-        case "$__pcmd" in
-          # Programs with no way to write a path they are handed —
-          # neither by operand nor by flag. `echo`/`printf`/`:` are here
-          # because their operands are TEXT, never paths at all: round 2
-          # fixed `echo see .claude/settings.json > tests/e2e/notes.txt`
-          # as a false positive once already, and a rule that reads every
-          # operand as a path re-opens it. The redirect scan above still
-          # decides where their output lands.
-          #
-          # Note who is NOT here: `uniq`
-          # (second operand is output), `tee` and `split` (operands are
-          # output), `csplit` (writes by prefix), `curl` and `wget`
-          # (round 15). `sort` IS here: its writing form is the flag
-          # `-o`, which the mutate scan above already refuses, and
-          # refusing `sort .claude/…` outright would be a false positive
-          # with no attack behind it.
-          echo|printf|:|true|false|test|expr|\
-          cat|head|tail|grep|egrep|fgrep|rg|ag|ack|jq|yq|wc|nl|od|xxd|hexdump|\
-          file|stat|realpath|readlink|dirname|basename|ls|du|less|more|column|\
-          cmp|diff|comm|md5sum|sha1sum|sha256sum|sha512sum|cksum|b2sum|sum|\
-          strings|tac|rev|fold|expand|unexpand|pr|base64|base32|iconv|\
-          zcat|bzcat|xzcat|cut|paste|sort|git)
-            continue ;;
-        esac
+        prot_reader_command "$__pcmd" && continue
         # READER FLAGS, both spellings. `--file=.claude/x` carries the
         # path in the same token; `--file .claude/x` carries it in the
         # next one. Checking only the attached form is the exact-vs-
@@ -2263,6 +2266,45 @@ Command: ${CMD}"
           FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
         --save-har|--save-storage|--save-trace)
           __fw=1 ;;
+        -O|-[a-zA-Z]*O*)
+          # `-O` IS A CLUSTER LETTER, AND IT NAMES ITS TARGET
+          # IMPLICITLY. The two arms below key on `-O` and `-O<attached>`
+          # — they see the flag alone and the flag with a value glued to
+          # it, and never `-sO`, `-LO`, `-kO`, `-sSLO`. Round 46 measured
+          # the gap against the bench's own inspector, whose granted
+          # pattern is `^curl -[a-zA-Z]* http://localhost:4173\b` — a
+          # CLUSTER of letters followed by the URL, so the escaping
+          # spelling is precisely the one the manifest invites:
+          #
+          #     curl -OL http://…/app.js   ->  DENY
+          #     curl -sO http://…/app.js   ->  ALLOW, app.js created
+          #
+          # A role with no write grants writing a file of its chosen name
+          # into the project root. Seventh appearance of exact-vs-
+          # attached, and the first where the flag takes NO operand: curl
+          # derives the filename from the URL, so the "flag target" the
+          # arms below compute is the URL itself, a string that resolves
+          # to no path at all. Derived here the way curl derives it.
+          #
+          # curl and wget are NOT the same flag. curl's `-O` takes no
+          # operand and derives the name from the URL; wget's `-O` takes
+          # a filename. Lumping them would either miss curl's target or
+          # eat wget's next word, so they are split here rather than
+          # sharing an arm because the letter looks the same.
+          case "${SEG_WORDS[0]##*/}" in
+            curl)
+              __url=""
+              for __j in "${!SEG_WORDS[@]}"; do
+                case "${SEG_WORDS[$__j]}" in *://*) __url="${SEG_WORDS[$__j]}"; break ;; esac
+              done
+              __base="${__url%%\?*}"; __base="${__base%%#*}"; __base="${__base##*/}"
+              [ -n "$__base" ] || __base="index.html"
+              FLAG_TARGETS="${FLAG_TARGETS}${__base}"$'\n' ;;
+            wget|aria2c)
+              # Only the exact spelling takes the next word; a cluster
+              # ending in O does too, and both are the same act.
+              case "$__w" in -O|-[a-zA-Z]*O) __fw=1 ;; esac ;;
+          esac ;;
         -o|-O)
           # INVERTED after round 32. This was a list of commands whose
           # `-o` names a file, and playwright was not on it, so
@@ -2372,6 +2414,54 @@ Command: ${CMD}"
           [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         fi
         ;;
+      uniq)
+        # `uniq [OPTION]... [INPUT [OUTPUT]]` — the SECOND non-flag
+        # operand is an output file. Round 45 found this and closed only
+        # the self-protection half (which fires solely when the command
+        # names the manifest, the state dir or the kernel), so the
+        # manifest was safe and every other path was not:
+        #
+        #   echo PWNED > tests/e2e/registration.spec.ts        -> DENY
+        #   echo PWNED | uniq - tests/e2e/registration.spec.ts -> ALLOW
+        #
+        # Same act, both commands in the same permitted group, from the
+        # bench's `inspector` — a role with no `write` block at all. It
+        # reached the composer's deliverable, files outside the project,
+        # and, composed with the composer's granted runner, every planted
+        # secret, because axis 5b's code screen hangs off this target
+        # list and a target never collected is never screened.
+        __uniq_seen=0
+        for __i in "${!SEG_WORDS[@]}"; do
+          [ "$__i" = "0" ] && continue
+          # A bare `-` is STDIN — an operand, not a flag. Skipping it as
+          # one shifted the count by a position and let the proven
+          # spelling, `uniq - OUT`, straight through.
+          case "${SEG_WORDS[$__i]}" in --) continue ;; -) : ;; -*) continue ;; esac
+          __uniq_seen=$((__uniq_seen + 1))
+          [ "$__uniq_seen" = "2" ] || continue
+          REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "${SEG_WORDS[$__i]}")
+          break
+        done ;;
+      split|csplit)
+        # Both write files named by a PREFIX operand, and csplit writes
+        # `xx00…` into the cwd when given none. Every non-flag operand
+        # after the input is a target.
+        __sp_seen=0
+        for __i in "${!SEG_WORDS[@]}"; do
+          [ "$__i" = "0" ] && continue
+          case "${SEG_WORDS[$__i]}" in --) continue ;; -) : ;; -*) continue ;; esac
+          __sp_seen=$((__sp_seen + 1))
+          [ "$__sp_seen" -ge 2 ] || continue
+          REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "${SEG_WORDS[$__i]}")
+        done ;;
+      gzip|gunzip|bzip2|bunzip2|xz|unxz|zstd|unzstd|compress|uncompress)
+        # These REPLACE their operands in place. Every non-flag operand
+        # is both a read and a write.
+        for __i in "${!SEG_WORDS[@]}"; do
+          [ "$__i" = "0" ] && continue
+          case "${SEG_WORDS[$__i]}" in --|-) continue ;; -*) continue ;; esac
+          REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "${SEG_WORDS[$__i]}")
+        done ;;
     esac
     while IFS= read -r target; do
       [ -n "$target" ] || continue
@@ -3441,9 +3531,43 @@ ${ROLE_HEADER}
 
 A pattern is applied under the search root, so '..' escapes the role's scope. Narrow the search with the 'path' argument (kept inside your read scope) instead of globbing upward." ;;
     esac
-    # No path → the search runs from the repo root; scoped roles are
-    # expected to search INSIDE their scope, so root needs a root-wide
-    # grant.
+    # No path → the search runs from the repo root, and a scoped role
+    # needs a root-wide grant to do that. True for Grep, whose `pattern`
+    # is a regex over CONTENT and says nothing about where to look.
+    #
+    # FALSE for Glob, and round 46 measured the cost. Glob's `pattern` IS
+    # a path glob — the check twelve lines above says so in as many
+    # words, and uses that fact for the traversal test — so a pattern
+    # with a literal prefix names its own search root:
+    #
+    #   Glob {pattern: "**/*.spec.ts", path: "tests/e2e"}  ->  ALLOW
+    #   Glob {pattern: "tests/e2e/**/*.spec.ts"}           ->  DENY
+    #
+    # The same search, and the second spelling is the one the tool's own
+    # documentation gives as its example. It misfired for EVERY
+    # read-capable role in every shipped manifest, which makes it the
+    # deny an operator meets on an ordinary Tuesday — and the obvious way
+    # out of it is `read.allow: ["**"]`, after which nothing is enforced
+    # at all. The kernel knew the field was a path and told only one of
+    # the two checks.
+    #
+    # So: take the literal prefix — everything before the first
+    # metacharacter — as the root. `**/*.ts` has none and still means the
+    # whole tree, which is exactly what it says. Traversal in the pattern
+    # was already refused above, so a prefix cannot climb out.
+    if [ -z "$TARGET" ] && [ "$HOS_TOOL" = "Glob" ]; then
+      GLOB_PAT=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.pattern // empty' 2>/dev/null || echo "")
+      case "$GLOB_PAT" in
+        ""|\**|\?*|\[*) : ;;
+        *)
+          GLOB_PREFIX="${GLOB_PAT%%[*?\[]*}"
+          GLOB_PREFIX="${GLOB_PREFIX%/}"
+          case "$GLOB_PREFIX" in
+            ""|.|..|/*) : ;;
+            */*|*) [ -n "$GLOB_PREFIX" ] && TARGET="${HOS_CWD%/}/$GLOB_PREFIX" ;;
+          esac ;;
+      esac
+    fi
     [ -n "$TARGET" ] || TARGET="$HOS_ROOT"
     check_path_scope read "$(harness_os_relpath "$TARGET")" "search"
     ;;
