@@ -521,10 +521,33 @@ harness-os run --role composer -- npm test
 
 It execs the command under Node's permission model, configured from that
 role's own path scopes. Code the role authored then cannot read outside
-the role's read scope *even when the static screen has no pattern for its
-spelling* — the runtime refuses. The command group can require the
-wrapper (`^harness-os run --role composer -- npm test`), so the role
-cannot reach the executor un-profiled.
+the role's read scope for a large class of spellings the static screen
+has no pattern for. The command group can require the wrapper
+(`^harness-os run --role composer -- npm test`), so the role cannot
+reach the executor un-profiled.
+
+**Do not read that as a backstop.** This document used to call it the
+boundary operators fall back to, and rounds 40 and 41 broke it twice in
+two days:
+
+- the shipped machinery grants included `/proc`, whose `self/root` is a
+  symlink to `/` that the permission model does not resolve — so the
+  profile denied `cwd + '/.env'` and handed over the same bytes through
+  `/proc/self/cwd/.env`;
+- `bun` and `deno` were treated as Node because they run JavaScript.
+  Neither implements `--permission`, so the profile was silently
+  ignored and an identical script that node refused printed every
+  secret on the box.
+
+Both are fixed. What they establish is what the mechanism can bear.
+Node's permission model covers the FILESYSTEM and nothing else: it has
+no network permissions at all, so a runner that may read a file may POST
+it anywhere; it does not resolve symlinks on read, so a link planted in
+a granted tree points wherever it likes; and it has no effect whatever
+unless the command really is node. It is the SOFTEST layer here, not the
+hardest — worth having as defence in depth, and not the thing to lean
+on. The layer that binds is the split: the role that authors the
+artifacts is not the role that runs them.
 
 `--dry-run` prints the profile and, more importantly, its two limits:
 
