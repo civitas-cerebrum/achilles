@@ -190,4 +190,29 @@ assert_eq "$(logcount "$SD2" allow)" "1" \
 assert_eq "$(logcount "$SD2" deny)" "1" \
   "R43 ...without losing the deny"
 
+# --- The audit line is bounded where it is WRITTEN, not where it is fed
+# Found by probing round 43's own new code before round 44 saw it. The
+# logger truncated `detail` at 4000 characters and called the line
+# bounded. JSON renders a control character as \uXXXX, so a command
+# spelled with 3900 of them produced a single 23 520-byte audit entry —
+# 183x an ordinary line, every byte of it chosen by the role being
+# audited. That matters beyond tidiness: an append larger than the
+# writer's flush buffer goes out as several write() calls, and two of
+# those interleave and destroy BOTH lines — including whichever other
+# role was logging at that moment. A cap on a renderer's INPUT is not a
+# cap on its OUTPUT.
+SD3="$R43/logstate-bound"; mkdir -p "$SD3/agents"; printf 'r\n' > "$SD3/agents/a1"
+mklog "all"
+NOISE=$(awk 'BEGIN{s="";for(i=0;i<3900;i++)s=s sprintf("%c",1);print s}')
+runlog "$SD3" "echo $NOISE"
+runlog "$SD3" 'cat tests/a.txt'
+MAXLEN=$(awk '{ if (length($0) > m) m = length($0) } END { print m+0 }' "$SD3/decision-log.jsonl")
+assert_eq "$([ "$MAXLEN" -le 3500 ] && echo bounded || echo "$MAXLEN")" "bounded" \
+  "R43 a control-character command cannot inflate its own audit line"
+BAD=0
+while IFS= read -r l; do printf '%s' "$l" | "$JQ" -e . >/dev/null 2>&1 || BAD=$((BAD+1)); done < "$SD3/decision-log.jsonl"
+assert_eq "$BAD" "0" "R43 ...and every line is still parseable JSON"
+assert_eq "$( { grep -c 'cat tests/a.txt' "$SD3/decision-log.jsonl" 2>/dev/null || true; } | head -1 )" "1" \
+  "R43 calibration: an ordinary command is still recorded in full"
+
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST

@@ -970,21 +970,51 @@ harness_os_path_in_scope() {
 # ---------------------------------------------------------------------------
 
 harness_os_log() {
-  local decision="$1" detail="$2"
+  local decision="$1" detail="$2" line
+  local LC_ALL=C
   mkdir -p "$HOS_STATE_DIR" 2>/dev/null || return 0
-  # Same argv limit as the deny renderer. Here a failure only loses the
-  # audit line, but the line it loses is the one describing the call that
-  # was long enough to break it — the single entry most worth keeping.
+
+  # A CAP ON A RENDERER'S INPUT IS NOT A CAP ON ITS OUTPUT. This used to
+  # truncate `detail` at 4 000 characters and call the line bounded. It
+  # is not: JSON renders a control character as \uXXXX, so an agent
+  # spelling its command with 3 900 of them turned one audit entry into
+  # 23 520 bytes — measured, against the real kernel, 183x an ordinary
+  # 128-byte line. Every byte of it is attacker-chosen, and `detail` is
+  # the one field an agent writes.
+  #
+  # Two consequences, and the second is the one that matters. The log
+  # bloats without limit, which is merely rude. And an append larger
+  # than the buffer the writer flushes in is issued as SEVERAL write()
+  # calls, so two of them interleave and BOTH lines are destroyed —
+  # including the line belonging to whichever other role was logging at
+  # that moment. A 24 KB line reliably shreds under concurrent appends;
+  # a sub-4 KB one does not. That makes the size of an audit record an
+  # integrity property of the audit trail, not a cosmetic one, and it
+  # puts it in reach of the role being audited.
+  #
+  # So: flatten control characters, which carry no forensic value and
+  # are the whole source of the expansion, then bound the RENDERED line
+  # and shrink until it fits. Bounding the thing that is actually
+  # written is the only version of this that is checkable.
+  detail=$(printf '%s' "$detail" | tr '\000-\037\177' '?')
   [ "${#detail}" -le 4000 ] || detail="${detail:0:4000} [truncated]"
-  "$HOS_JQ" -nc \
-    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg role "${HOS_ROLE:-}" \
-    --arg state "${HOS_ROLE_STATE:-}" \
-    --arg tool "${HOS_TOOL:-}" \
-    --arg decision "$decision" \
-    --arg detail "$detail" \
-    '{ts: $ts, role: $role, roleState: $state, tool: $tool, decision: $decision, detail: $detail}' \
-    >> "$HOS_STATE_DIR/decision-log.jsonl" 2>/dev/null || true
+  local guard=0
+  while : ; do
+    line=$("$HOS_JQ" -nc \
+      --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg role "${HOS_ROLE:-}" \
+      --arg state "${HOS_ROLE_STATE:-}" \
+      --arg tool "${HOS_TOOL:-}" \
+      --arg decision "$decision" \
+      --arg detail "$detail" \
+      '{ts: $ts, role: $role, roleState: $state, tool: $tool, decision: $decision, detail: $detail}' \
+      2>/dev/null) || return 0
+    [ "${#line}" -le 3500 ] && break
+    guard=$((guard + 1))
+    [ "$guard" -gt 12 ] && { detail="[unloggable]"; continue; }
+    detail="${detail:0:$(( ${#detail} / 2 ))} [truncated]"
+  done
+  printf '%s\n' "$line" >> "$HOS_STATE_DIR/decision-log.jsonl" 2>/dev/null || true
 }
 
 # harness_os_awk_sed_verdict <command-word> <segment-text>
