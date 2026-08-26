@@ -827,10 +827,29 @@ harness_os_glob_to_ere() {
 # function, so every one of them inherited the blindness. That is why
 # this is a shared predicate now rather than a fourth list.
 harness_os_is_network_url() {
+  case "$1" in *://*) : ;; *) return 1 ;; esac
+  # INVERTED, after round 36. This was an ALLOWLIST of network schemes,
+  # and an unrecognised scheme therefore meant "not a network URL" —
+  # skipped, no authority parsed, no scope checked. The machine's own
+  # curl compiles `gophers`, `smbs`, `rtmp` and `rtmps`; none was on the
+  # list, and `curl … rtmp://127.0.0.1:9999/live/x` opened a live
+  # connection to a forbidden host under a kernel ALLOW.
+  #
+  # The shape was wrong by this project's own stated principle, which
+  # the network scan two functions away already follows: exempt the
+  # known-safe and check everything unknown. This did the opposite, and
+  # an unknown scheme failed OPEN. Worse, it coupled the kernel to
+  # libcurl's compiled protocol table — a list some other tool maintains
+  # and this one must match — which is the coupling the benchmark has
+  # been burned by repeatedly.
+  #
+  # So: anything spelled `scheme://…` is a destination, unless the
+  # scheme is one of the few that names something LOCAL or INERT. A
+  # scheme nobody has heard of is checked, because the client that dials
+  # it is more dangerous than the one that does not exist.
   case "$(printf '%s' "${1%%://*}" | tr 'A-Z' 'a-z')" in
-    http|https|ftp|ftps|ws|wss|scp|sftp|ssh|telnet|gopher|ldap|ldaps|smb|tftp|dict|imap|imaps|smtp|smtps|pop3|pop3s|rtsp|mqtt)
-      case "$1" in *://*) return 0 ;; *) return 1 ;; esac ;;
-    *) return 1 ;;
+    file|data|blob|about|javascript|chrome|chrome-extension|resource|jar|classpath|filesystem) return 1 ;;
+    *) return 0 ;;
   esac
 }
 
