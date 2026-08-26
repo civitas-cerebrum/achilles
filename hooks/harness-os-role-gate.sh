@@ -395,15 +395,43 @@ NORM_STATE_DIR="$(harness_os_normalize_path "$HOS_STATE_DIR")"
 # axis that maps MCP path arguments held them to the role's write scope
 # and stopped there, and a config role whose scope legitimately covers
 # `.claude/**` could therefore rewrite the file that says what it may do.
+# prot_reader_flag <token> — true when the token is a FLAG whose operand
+# the tool only ever READS. The manifest is readable by design: it is the
+# law each role is held to, so naming it after one of these is ordinary.
+prot_reader_flag() {
+  case "$1" in
+    -f|--file|--from-file|-K|--config|--rawfile|--slurpfile|-L|\
+    -T|--upload-file|-e|--regexp|--exclude-from|--include-from|\
+    --files0-from|-a|--arg-file|--input-file|--manifest) return 0 ;;
+  esac
+  return 1
+}
+
 self_protect_target() {
   local sp_path="$1" sp_prefix="${2:-self-protect write}" sp_norm sp_rel
   [ -n "$sp_path" ] || return 0
   sp_norm="$(harness_os_normalize_path "$sp_path")"
+  # THE FILESYSTEM DECIDES WHAT IS THE SAME FILE, AND ON TWO OF THE THREE
+  # PLATFORMS THIS SHIPS TO IT DOES SO WITHOUT REGARD TO CASE. Every
+  # comparison below is a glob against a literal, which is case-SENSITIVE
+  # in shell. On macOS and Windows `tests/e2e/.CLAUDE/settings.json` and
+  # `tests/e2e/.claude/SETTINGS.json` open the same bytes as the file
+  # this axis exists to protect — the one carrying the hook registration
+  # — and both walked straight through. Found by probing round 44's own
+  # fix; latent on the Linux benchmark, live on a laptop.
+  #
+  # The protected NAMES are all ASCII, so folding the path for the
+  # comparison costs nothing and cannot under-match. It can over-match:
+  # on Linux a genuinely distinct `.CLAUDE/settings.json` is now refused
+  # too. That file is not law on Linux, but nothing writes it either,
+  # and this is the direction to be wrong in.
+  local sp_fold
+  sp_fold=$(printf '%s' "$sp_norm" | tr 'A-Z' 'a-z')
   case "$sp_norm" in
     "$NORM_MANIFEST"|"$NORM_STATE_DIR"|"$NORM_STATE_DIR"/*)
       harness_os_deny "$sp_prefix $sp_path" "$SELF_PROTECT_MSG" ;;
   esac
-  sp_rel="$(harness_os_relpath "$sp_path")"
+  sp_rel="$(harness_os_relpath "$sp_path" | tr 'A-Z' 'a-z')"
   case "$sp_rel" in
     .claude/harness-os.json|.claude/harness-os.state|.claude/harness-os.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*)
       harness_os_deny "$sp_prefix $sp_path" "$SELF_PROTECT_MSG" ;;
@@ -444,7 +472,7 @@ self_protect_target() {
   # self-protection axis until it eats ordinary work is how a manifest
   # acquires `bash.unrestricted`, which this document argues is the more
   # dangerous half.
-  case "$sp_norm" in
+  case "$sp_fold" in
     */.claude/harness-os.json \
     |*/.claude/harness-os.state|*/.claude/harness-os.state/* \
     |*/.claude/settings.json|*/.claude/settings.local.json \
@@ -456,7 +484,7 @@ self_protect_target() {
   # the Bash channel has refused it since round 13, no ordinary work
   # produces one, and the cost of the two channels disagreeing again is
   # this whole finding a second time.
-  case "${sp_norm##*/}" in
+  case "${sp_fold##*/}" in
     harness-os.json|harness-os.state)
       harness_os_deny "$sp_prefix nested-manifest $sp_path" "$SELF_PROTECT_MSG" ;;
   esac
@@ -464,7 +492,7 @@ self_protect_target() {
   # project-local install sits in node_modules, which no self-protect
   # list covered — a role could truncate the hook and disable every
   # boundary on the next call.
-  case "$sp_norm" in
+  case "$sp_fold" in
     */harness-os/hooks/*|*/.claude/hooks/*|*/harness-os-role-gate.sh|*/lib/harness-os.sh)
       harness_os_deny "$sp_prefix kernel $sp_path" "$SELF_PROTECT_MSG" ;;
   esac
@@ -487,47 +515,120 @@ case "$HOS_TOOL" in
     # mentioned somewhere in the command. Matching any command that named
     # `.claude` and contained a write verb anywhere blocked innocuous
     # work like `echo see .claude/settings.json > tests/e2e/notes.txt`.
-    PROT_RE='(harness-os\.(json|state)|(^|[^a-zA-Z0-9_.-])\.claude(/|$))'
-    if printf '%s' "$CMD" | grep -Eq ">>?[[:space:]]*[^[:space:]|&;]*${PROT_RE}"; then
+    # Matched case-INSENSITIVELY, for the reason self_protect_target
+    # folds its own comparisons: on macOS and Windows `.CLAUDE/` and
+    # `SETTINGS.json` name the same bytes as the protected file, and a
+    # case-sensitive regex is a spelling of the protected path that
+    # nobody checked. `-i` here can only ever protect more.
+    PROT_RE='(harness-os\.(json|state)|(^|[^a-zA-Z0-9_.-])\.claude(/|$)|(^|[^a-zA-Z0-9_.-])\.claude/(settings(\.local)?\.json|hooks)(/|$))'
+    if printf '%s' "$CMD" | grep -Eqi ">>?[[:space:]]*[^[:space:]|&;]*${PROT_RE}"; then
       harness_os_deny "self-protect bash redirect" "$SELF_PROTECT_MSG"
     fi
-    if printf '%s' "$CMD" | grep -Eq "(^|[;&|][[:space:]]*|[[:space:]])(rm|rmdir|unlink|mv|cp|tee|truncate|shred|dd|install|ln|chmod|chown)([[:space:]]+(-[^[:space:]]+|if=[^[:space:]]+))*[[:space:]]+[^;|&]*${PROT_RE}"; then
+    if printf '%s' "$CMD" | grep -Eqi "(^|[;&|][[:space:]]*|[[:space:]])(rm|rmdir|unlink|mv|cp|tee|truncate|shred|dd|install|ln|chmod|chown)([[:space:]]+(-[^[:space:]]+|if=[^[:space:]]+))*[[:space:]]+[^;|&]*${PROT_RE}"; then
       harness_os_deny "self-protect bash mutate" "$SELF_PROTECT_MSG"
     fi
-    if printf '%s' "$CMD" | grep -Eq "sed[[:space:]]+-[a-zA-Z]*i[^;|&]*${PROT_RE}"; then
+    if printf '%s' "$CMD" | grep -Eqi "sed[[:space:]]+-[a-zA-Z]*i[^;|&]*${PROT_RE}"; then
       harness_os_deny "self-protect bash sed-i" "$SELF_PROTECT_MSG"
     fi
-    # A protected path carried by a FLAG is a write until shown
+    # A protected path carried by an OPERAND is a write until shown
     # otherwise. Round 15 overwrote the manifest with `curl -D <path>`,
     # and "which flags write?" has now been answered wrongly four times
     # — cp/mv/dd, then `sort -o`, then `find -fprintf`, then curl's
     # eight. Each answer was a longer list, and the next tool kept
-    # arriving.
+    # arriving. Round 45 answered it wrongly a fifth time, and not with
+    # a flag at all:
     #
-    # For the three paths that must never be written, the question is
-    # therefore inverted: a flag operand naming one of them is refused
-    # unless the flag is a known READER, so an unmodelled write flag
-    # fails closed on arrival instead of on the round that finds it.
-    # This is safe to be strict about because the blast radius is a
-    # command that names the manifest, the state directory or the kernel
-    # as a flag operand — which no ordinary work does, and which the
-    # readers below cover when it does.
-    PROT_HITS=$(printf '%s' "$CMD" \
-      | grep -oE "(^|[[:space:]])--?[a-zA-Z0-9][^[:space:]=]*([[:space:]]+|=)[^[:space:];|&]*${PROT_RE}" 2>/dev/null || true)
-    if [ -n "$PROT_HITS" ]; then
-      while IFS= read -r __hit; do
-        [ -n "$__hit" ] || continue
-        __flag=$(printf '%s' "$__hit" | sed -E 's/^[[:space:]]*//; s/[[:space:]=].*$//')
-        case "$__flag" in
-          # Flags whose operand a tool READS. The manifest is readable by
-          # design — it is the law each role is held to.
-          -f|--file|--from-file|-K|--config|--rawfile|--slurpfile|-L|\
-          -T|--upload-file|-e|--regexp|--exclude-from|--include-from|\
-          --files0-from|-a|--arg-file|--input-file)
+    #     uniq [OPTION]... [INPUT [OUTPUT]]
+    #     uniq docs/acceptance/registration.md .claude/harness-os.json
+    #
+    # uniq's SECOND POSITIONAL operand is an output file. The whole
+    # inversion below had been applied to flags and never to bare
+    # operands, so the write-target table — a list of the verbs somebody
+    # remembered — decided this one, and it did not name `uniq`. No
+    # write check ran, and the manifest then sailed through the READ
+    # scan as an ordinary readable operand, because the manifest is
+    # read-exempt for every role by design: it is the law each role is
+    # held to. The one path the read side is told to wave through is the
+    # one path the write side must never miss. `uniq` is in the DEFAULT
+    # inspection group of every shipped manifest, and the bench's
+    # `inspector` — a role with no write grants at all — overwrote the
+    # root of trust with it.
+    #
+    # So the question is inverted for both shapes at once: an operand
+    # naming one of the protected paths is a write unless the command is
+    # a program whose operands are provably only ever read, or the flag
+    # carrying it is a known reader flag. An unmodelled output operand
+    # fails closed on arrival rather than on the round that finds it.
+    #
+    # One pass, per segment, because the command word is what decides
+    # and a command word belongs to a segment. It also fixes a false
+    # positive the whole-command version had: `head -5 .claude/…` was
+    # refused, because `-5` is not a reader FLAG — though `head` has no
+    # write flag to worry about in the first place.
+    #
+    # Tokenised here rather than reusing the segment loop's SEG_WORDS,
+    # which runs later and is skipped for a role with bash.unrestricted
+    # — self-protection is the one axis that holds whatever the role's
+    # other grants say. Quotes are stripped and the command is cut at
+    # shell separators; a coarse split is sound in the protective
+    # direction, since a token it misreads is a token still checked.
+    if [ -n "$CMD" ] && printf '%s' "$CMD" | grep -Eqi "$PROT_RE"; then
+      __psegs=$(printf '%s' "$CMD" | tr -d "\"'" | sed -E 's/[;&|]+/\n/g')
+      while IFS= read -r __pseg; do
+        [ -n "$__pseg" ] || continue
+        # shellcheck disable=SC2206
+        __pwords=( $__pseg )
+        [ "${#__pwords[@]}" -gt 1 ] || continue
+        __pcmd="${__pwords[0]}"
+        __pcmd="${__pcmd##*/}"
+        case "$__pcmd" in
+          # Programs with no way to write a path they are handed —
+          # neither by operand nor by flag. `echo`/`printf`/`:` are here
+          # because their operands are TEXT, never paths at all: round 2
+          # fixed `echo see .claude/settings.json > tests/e2e/notes.txt`
+          # as a false positive once already, and a rule that reads every
+          # operand as a path re-opens it. The redirect scan above still
+          # decides where their output lands.
+          #
+          # Note who is NOT here: `uniq`
+          # (second operand is output), `tee` and `split` (operands are
+          # output), `csplit` (writes by prefix), `curl` and `wget`
+          # (round 15). `sort` IS here: its writing form is the flag
+          # `-o`, which the mutate scan above already refuses, and
+          # refusing `sort .claude/…` outright would be a false positive
+          # with no attack behind it.
+          echo|printf|:|true|false|test|expr|\
+          cat|head|tail|grep|egrep|fgrep|rg|ag|ack|jq|yq|wc|nl|od|xxd|hexdump|\
+          file|stat|realpath|readlink|dirname|basename|ls|du|less|more|column|\
+          cmp|diff|comm|md5sum|sha1sum|sha256sum|sha512sum|cksum|b2sum|sum|\
+          strings|tac|rev|fold|expand|unexpand|pr|base64|base32|iconv|\
+          zcat|bzcat|xzcat|cut|paste|sort|git)
             continue ;;
         esac
-        harness_os_deny "self-protect bash flag-operand $__flag" "$SELF_PROTECT_MSG"
-      done <<< "$PROT_HITS"
+        # READER FLAGS, both spellings. `--file=.claude/x` carries the
+        # path in the same token; `--file .claude/x` carries it in the
+        # next one. Checking only the attached form is the exact-vs-
+        # attached defect this suite has recorded six times, so the
+        # look-back is done in the same pass rather than in a second one
+        # the first pass would have already pre-empted.
+        __prev=""
+        for __tok in "${__pwords[@]:1}"; do
+          if printf '%s' "$__tok" | grep -Eqi "$PROT_RE"; then
+            case "$__tok" in
+              -*)
+                __flag="${__tok%%=*}"
+                if ! prot_reader_flag "$__flag"; then
+                  harness_os_deny "self-protect bash flag-operand $__flag" "$SELF_PROTECT_MSG"
+                fi ;;
+              *)
+                if ! prot_reader_flag "$__prev"; then
+                  harness_os_deny "self-protect bash operand $__pcmd" "$SELF_PROTECT_MSG"
+                fi ;;
+            esac
+          fi
+          __prev="$__tok"
+        done
+      done <<< "$__psegs"
     fi
     ;;
 esac

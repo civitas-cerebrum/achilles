@@ -97,9 +97,13 @@ assert_deny "$H" "$(bpay 'awk '"'"'BEGIN{f=".env"; while((getline l<f)>0) print 
   "F1 getline from a variable path → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'awk '"'"'BEGIN{f="/tmp/x"; print "P" > f}'"'"'')" \
   "F1 print INTO a variable path → DENY" "run a command or open a file"
+# Round 45 moved this one's deny a gate EARLIER: naming the manifest as
+# an operand of a command whose operands are not provably read-only is
+# refused by self-protection before the awk screen is consulted. Denied
+# either way, and the more specific message is the better one to show.
 assert_deny "$H" "$(bpay 'awk '"'"'BEGIN{f=".claude/harness-os.json"; print "{x}" > f}'"'"'')" \
   "F1 the same, aimed at the manifest — note the brace INSIDE the string → DENY" \
-  "run a command or open a file"
+  "harness OS itself"
 assert_deny "$H" "$(bpay 'sed -n '"'"'1r.env'"'"' tests/a.txt')" \
   "F1 sed's r with no space before the filename → DENY" "run a command or open a file"
 

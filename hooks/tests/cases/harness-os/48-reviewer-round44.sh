@@ -148,5 +148,35 @@ assert_allow "$H" "$(bp 'rg SMTP tests/')" \
 assert_allow "$H" "$(bp 'rg --pretty SMTP tests/')" \
   "R44 calibration: a flag that merely STARTS with --pre → ALLOW"
 
+# --- Self-probe: the filesystem decides what is the same file ---------
+# Found by probing round 44's own fix before round 45 saw it. Every
+# comparison in this axis is a shell glob against a literal, which is
+# case-SENSITIVE. On macOS and Windows — two of the three platforms this
+# package ships to — `tests/e2e/.CLAUDE/settings.json` and
+# `tests/e2e/.claude/SETTINGS.json` open the same bytes as the file that
+# carries the hook registration, and both were allowed. The manifest
+# spellings happened to be caught by the basename rule; settings and
+# hooks had no such backstop.
+#
+# Latent on this Linux benchmark, live on a laptop. The protected names
+# are all ASCII, so the comparison folds case on every channel: it
+# cannot under-match, and where it over-matches (a genuinely distinct
+# `.CLAUDE/` on Linux) nothing writes that file anyway.
+for spec in \
+  "tests/e2e/.CLAUDE/settings.json|a nested config dir spelled in caps" \
+  "tests/e2e/.claude/SETTINGS.json|the FILE spelled in caps" \
+  "tests/e2e/.Claude/Hooks/evil.sh|a hook under a mixed-case dir" \
+  "tests/e2e/.claude/Harness-OS.State/agents/x|a forged binding in a mixed-case state dir" \
+  ".CLAUDE/settings.local.json|and the ROOT list folds too" ; do
+  path="${spec%%|*}"; label="${spec##*|}"
+  assert_deny "$H" "$(wp "$path" 'x')" "R44 $label → DENY" "harness OS itself"
+done
+assert_deny "$H" "$(bp 'echo x > tests/e2e/.CLAUDE/settings.json')" \
+  "R44 ...and the Bash channel folds case as well → DENY" "harness OS itself"
+assert_deny "$H" "$(bp 'rm -rf tests/e2e/.CLAUDE')" \
+  "R44 ...including a mutate verb against it → DENY" "harness OS itself"
+assert_allow "$H" "$(wp "tests/e2e/Notes.MD" 'Mixed case is not by itself protected.')" \
+  "R44 calibration: an ordinary mixed-case filename → ALLOW"
+
 unset HARNESS_OS_STATE_DIR
 rm -rf "$R44"

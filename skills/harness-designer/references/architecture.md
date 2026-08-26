@@ -256,6 +256,17 @@ commit grammar and ledger gates in an unrelated project.
 - Both the manifest and the state dir are covered by the built-in
   self-protection axis; the deny message routes changes to an
   operator-run design session (`HARNESS_OS=0`) or a hand edit.
+- **An OPERAND naming a protected path is a write unless proven
+  otherwise** — flag or positional, one rule. Enumerating which verbs
+  write has lost five times (curl's write flags, `sort -o`, `find
+  -fprintf`, framework output paths, and `uniq`'s second positional
+  operand, which is in the default `inspection` group of every shipped
+  manifest and let a role with no write grants overwrite the manifest).
+  So a command naming the manifest, the state dir or the installed
+  kernel is refused unless the command is one that provably cannot write
+  a path it is handed, or the flag carrying it is a known reader flag.
+  Reading the manifest stays ordinary: it is the law each role is held
+  to.
 - **The axis covers every path that could BECOME law, not just the one
   in force.** Discovery walks up from `cwd` and obeys the nearest
   `.claude/harness-os.json`, so a role that could author one inside its
