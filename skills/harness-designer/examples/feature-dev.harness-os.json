@@ -89,7 +89,8 @@
       "write": {
         "allow": [
           "docs/design/**"
-        ]
+        ],
+        "codeImports": []
       }
     },
     "implementer": {
@@ -122,6 +123,11 @@
       "write": {
         "allow": [
           "src/**"
+        ],
+        "codeImports": [
+          "node:path",
+          "node:url",
+          "zod"
         ]
       }
     },

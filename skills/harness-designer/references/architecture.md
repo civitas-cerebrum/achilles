@@ -243,8 +243,16 @@ commit grammar and ledger gates in an unrelated project.
 
 - State dir: `<repo-root>/.claude/harness-os.state/` —
   `dispatch-registry.json`, `agents/<agent_id>` bindings, and
-  `decision-log.jsonl` (one line per deny, for calibrating
+  `decision-log.jsonl` (one line per deny by default, for calibrating
   over-broad grants before tightening the manifest).
+
+  **A log of refusals evidences what was stopped, never what got
+  through.** Every escape in `docs/benchmark.md` resolved to an ALLOW,
+  and under the default not one of them would have left a line. Set
+  `settings.decisionLog: "all"` to record allows too — that is what an
+  audit needs to reconstruct what a role actually did, and it is off by
+  default only because a busy session produces a lot of lines. If the
+  verdict is the thing you are trying to make trustworthy, turn it on.
 - Both the manifest and the state dir are covered by the built-in
   self-protection axis; the deny message routes changes to an
   operator-run design session (`HARNESS_OS=0`) or a hand edit.
@@ -481,6 +489,35 @@ is where a `#!` shebang hides. Such a role authors code through
 Write/Edit, where the content is the tool input and can actually be read.
 Data files are untouched. A role that declares nothing keeps the
 screen-the-command behaviour, which is advisory and documented as such.
+
+### An omitted import list is an empty one, where the role owns both ends
+
+A role that both authors executable files **and** can run them is held
+to `write.codeImports` whether or not it wrote the field. Omitting it
+means "imports no packages", not "imports anything".
+
+This is the round-37 inversion applied to the import allowlist, and the
+reason is the same. The capability screen reads authored text for a
+fixed set of stdlib names; it cannot see what a third-party module does
+once loaded, and `import "dotenv/config"` names nothing it scans for. So
+the permissive reading of an omission handed exactly this shape to the
+one layer blind to it:
+
+```
+codeImports absent   ->   import "dotenv/config"   ->  ALLOW   (before)
+codeImports: []      ->   import "dotenv/config"   ->  DENY
+```
+
+A role that declared an EMPTY list was safer than one that declared
+nothing. **A kernel's unconfigured state for a capable role has to be
+its most restrictive, not its least.**
+
+Relative imports are unaffected — they name no package, and are held to
+the role's read scope instead. So is a role that authors but **cannot**
+run: something else executes its output, and denying it an allowlist it
+never wrote would be a false positive an operator may not be able to fix
+from a manifest they do not own. The default flips only where one role
+owns both ends.
 
 This costs less than it sounds: in the benchmark's own governed run the
 composer authored its deliverable entirely through the Write tool and

@@ -83,6 +83,28 @@ set -uo pipefail
 HOS_DECIDED=0
 harness_os__on_exit() {
   local code=$?
+  if [ "$code" -eq 0 ] && [ "${HOS_DECIDED:-0}" != "1" ]; then
+    # AN ALLOW LEAVES NO TRACE, and round 43 pointed out what that means
+    # for a system whose value proposition is a trustworthy verdict: the
+    # decision log is written from exactly one place — the deny renderer
+    # — so it records refusals and nothing else. Every SUCCESSFUL
+    # boundary breach in this document's hundred-and-twenty escapes
+    # would have been invisible in it. The log evidences what was
+    # stopped, never what got through.
+    #
+    # Logging every allow is a lot of lines for a busy session, so it is
+    # opt-in — but the opt-in belongs in the manifest and the default
+    # belongs in the docs, honestly stated, rather than in a claim that
+    # the log holds "one line per decision".
+    #
+    # Written HERE rather than at each allow, because there are a dozen
+    # `exit 0` sites and a rule attached to a site is a rule that will be
+    # applied at one site. The trap sees them all.
+    if [ "${HOS_LOG_ALLOWS:-0}" = "1" ]; then
+      harness_os_log allow "${HOS_TOOL:-?} ${HOS_ALLOW_DETAIL:-}" 2>/dev/null || true
+    fi
+    return 0
+  fi
   [ "$code" -eq 0 ] && return 0
   [ "${HOS_DECIDED:-0}" = "1" ] && return 0
   printf '%s\n' "[harness-os] INTERNAL ERROR: the role gate exited $code before reaching a decision." >&2
@@ -133,6 +155,14 @@ fi
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness-os.sh"
 
 harness_os_load "$INPUT" || exit 0   # project has not opted in — silent allow
+
+# settings.decisionLog: "denies" (default) | "all". See the exit trap.
+HOS_LOG_ALLOWS=0
+if [ "$(printf '%s' "$HOS_MANIFEST_JSON" | "$JQ" -r '.settings.decisionLog // "denies"' 2>/dev/null || echo denies)" = "all" ]; then
+  HOS_LOG_ALLOWS=1
+fi
+HOS_ALLOW_DETAIL=$(printf '%s' "$INPUT" | "$JQ" -r '
+  .tool_input.command // .tool_input.file_path // .tool_input.path // .tool_input.url // .tool_input.description // empty' 2>/dev/null || echo "")
 
 MANIFEST_REF="Manifest: ${HOS_MANIFEST}
 Docs:     skills/harness-designer/references/architecture.md"
@@ -1147,6 +1177,34 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # those is in place.
   local IMPORTS_ALLOW
   IMPORTS_ALLOW=$(harness_os_role_field "$ROLE" '.write.codeImports')
+  # AN ABSENT DECLARATION WAS THE PERMISSIVE STATE, which is the shape
+  # round 37 inverted on the environment screen and nobody carried here.
+  #
+  #   codeImports absent  ->  import "dotenv/config"   ALLOW
+  #   codeImports: []     ->  import "dotenv/config"   DENY
+  #
+  # A role that authors code and runs it, and declares neither list, was
+  # contained only by the capability screen — which reads authored text
+  # for a fixed set of stdlib names and cannot see what a third-party
+  # package does inside itself. `dotenv/config` reads .env; `execa`
+  # spawns; neither names anything the screen scans for. Round 43
+  # demonstrated both.
+  #
+  # A security kernel's UNCONFIGURED state for a capable role must be its
+  # most restrictive, not its least. So for a role that both authors
+  # executable files and can run commands — the write-then-execute shape,
+  # and the only one where this matters — a missing list reads as an
+  # EMPTY list. The operator then declares what the role's code imports,
+  # which is the declaration the axis was always asking for.
+  #
+  # A role that authors but cannot run is unchanged: something else runs
+  # its output, and holding it to an allowlist it never declared would be
+  # a deny an operator cannot act on from a manifest they may not own.
+  if [ "$IMPORTS_ALLOW" = "null" ] \
+     && [ "$(harness_os_role_field "$ROLE" '.write.allow')" != "null" ] \
+     && [ "$(harness_os_role_field "$ROLE" '.bash')" != "null" ]; then
+    IMPORTS_ALLOW='[]'
+  fi
   if [ -z "$CAP_ID" ] && [ "$IMPORTS_ALLOW" != "null" ]; then
     local spec CODE_IMP
     # One more view, and it is what lets both directions be right at once.
@@ -2999,9 +3057,12 @@ Flags like --connect-to, --resolve and --proxy replace the destination without c
     # than data for it. So the runtime may not be handed one from inside
     # that role's write scope. Named test files are untouched: they
     # arrive as POSITIONAL operands, which is the job.
-    if [ "$WRITE_ALLOW" != "null" ] \
-       && { [ "$(harness_os_role_field "$ROLE" '.write.codeImports')" != "null" ] \
-            || [ "$(harness_os_role_field "$ROLE" '.write.codeCapabilities')" != "null" ]; }; then
+    # Contained means the same thing here as in the code screen: a role
+    # that authors executable files AND can run them is held to the
+    # write-then-execute rules whether or not it declared a list. Reading
+    # the declaration directly is what let an author+run role opt out of
+    # this axis by saying nothing.
+    if [ "$WRITE_ALLOW" != "null" ] && [ "$BASH_SPEC" != "null" ]; then
       case "${SEG_WORDS[0]:-}" in
         npx|npm|yarn|pnpm|bunx|node|nodejs|deno|bun|tsx|ts-node|playwright|vitest|jest|mocha|cypress|wdio)
           CFG_NEXT=0

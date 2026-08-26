@@ -109,10 +109,19 @@ assert_allow "$H" "$(wpay "$P/tests/e2e/ok2.spec.ts" 'import { test } from "../f
 import { helper } from "./helper";' composer)" \
   "N1 relative imports are never package imports → ALLOW"
 
-# Absent, the list cannot break an existing manifest — that is why
-# `validate` warns instead, and why the runtime profile is the boundary.
-assert_allow "$H" "$(wpay "$P/tests/e2e/e.spec.ts" 'const d = require("dotenv");' loose)" \
-  "N1 a role that declares NO list is unchanged (opt-in) → ALLOW"
+# This assertion USED to read "a role that declares NO list is unchanged
+# (opt-in) → ALLOW", on the reasoning that the list must not break an
+# existing manifest. Round 43 showed what that reasoning cost: absence
+# was the permissive state, so `codeImports` omitted meant no allowlist
+# while `codeImports: []` meant a closed one — the unconfigured state of
+# a capable role was its least restrictive. Round 37 had already
+# inverted exactly that shape on the environment screen.
+#
+# The reversal is scoped to the shape where it matters: a role that
+# authors executable files AND can run them. `loose` here is that shape,
+# so a missing list now reads as an empty one.
+assert_deny "$H" "$(wpay "$P/tests/e2e/e.spec.ts" 'const d = require("dotenv");' loose)" \
+  "N1 an author+run role that declares NO list is held to an empty one → DENY" "declared import list"
 
 # --- N1a: the loader reached through an alias --------------------------
 # Found by probing the import allowlist before the next reviewer saw it.

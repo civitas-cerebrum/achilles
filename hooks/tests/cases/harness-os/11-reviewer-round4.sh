@@ -66,7 +66,7 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
       "tools": { "allow": ["Bash", "Read", "Write", "Edit"] },
       "bash": { "groups": ["inspection", "build", "test-execution"] },
       "read": { "allow": ["tests/**"] },
-      "write": { "allow": ["tests/e2e/**"] }
+      "write": { "allow": ["tests/e2e/**"], "codeImports": ["@playwright/test", "@civitas-cerebrum/element-interactions"] }
     },
     "inspector": {
       "description": "Reads what its task needs. No writes at all.",
@@ -110,7 +110,7 @@ assert_deny "$H" "$(payload tool_name=Bash command='nohup echo forged>docs/e2e-l
 assert_deny "$H" "$(payload tool_name=Bash command='env echo x>.claude/settings.json' cwd="$P" $C)" \
   "N1 overwriting the hook REGISTRATION → DENY" "harness OS itself"
 assert_deny "$H" "$(payload tool_name=Bash command='env echo disabled>node_modules/@civitas-cerebrum/harness-os/hooks/harness-os-role-gate.sh' cwd="$P" $C)" \
-  "N1 overwriting the vendored KERNEL → DENY" "harness OS itself"
+  "N1 overwriting the vendored KERNEL → DENY" "may not author"
 assert_deny "$H" "$(payload tool_name=Bash command='env echo x>.claude/harness-os.json' cwd="$P" $C)" \
   "N1 overwriting the MANIFEST → DENY" "harness OS itself"
 assert_deny "$H" "$(payload tool_name=Bash command='env X=1>.claude/settings.json echo {}' cwd="$P" $C)" \
@@ -184,15 +184,15 @@ assert_allow "$H" "$(payload tool_name=Bash command='echo "balanced" ; cat tests
 
 # --- N2: the bash authoring route is screened too -----------------------
 assert_deny "$H" "$(payload tool_name=Bash command='echo "require(\"fs\").readFileSync(\".env\");" > tests/e2e/evil.spec.ts' cwd="$P" $C)" \
-  "N2 code authored via bash redirect, INSIDE the write scope → DENY" "filesystem access"
+  "N2 code authored via bash redirect, INSIDE the write scope → DENY" "may not author"
 assert_deny "$H" "$(payload tool_name=Bash command='printf "%s" "const fs=require(\"fs\");" > tests/e2e/e2.spec.ts' cwd="$P" $C)" \
-  "N2 printf instead of echo → DENY" "filesystem access"
+  "N2 printf instead of echo → DENY" "may not author"
 assert_deny "$H" "$(payload tool_name=Bash command='echo "import { readFileSync } from \"fs\";" >> tests/e2e/e3.spec.ts' cwd="$P" $C)" \
-  "N2 append rather than truncate → DENY" "filesystem access"
+  "N2 append rather than truncate → DENY" "may not author"
 assert_deny "$H" "$(payload tool_name=Bash command='echo "const cp=require(\"child_process\");" | tee tests/e2e/e4.spec.ts' cwd="$P" $C)" \
-  "N2 via tee → DENY" "process spawning"
-assert_allow "$H" "$(payload tool_name=Bash command='echo "expect(cell).not.toBeNull();" >> tests/e2e/ok.spec.ts' cwd="$P" $C)" \
-  "N2 calibration: an ordinary spec line authored via bash → ALLOW"
+  "N2 via tee → DENY" "may not author"
+assert_deny "$H" "$(payload tool_name=Bash command='echo "expect(cell).not.toBeNull();" >> tests/e2e/ok.spec.ts' cwd="$P" $C)" \
+  "N2 a contained role may not author executables through Bash at all → DENY" "may not author"
 assert_allow "$H" "$(payload tool_name=Bash command='echo hello > tests/e2e/notes.txt' cwd="$P" $C)" \
   "N2 calibration: a non-executable file is not screened → ALLOW"
 

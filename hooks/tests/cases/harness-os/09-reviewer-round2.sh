@@ -54,7 +54,7 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
       "tools": { "allow": ["Bash", "Read", "Write", "Edit"] },
       "bash": { "groups": ["inspection", "test-execution"] },
       "read": { "allow": ["tests/**"] },
-      "write": { "allow": ["tests/e2e/**"] }
+      "write": { "allow": ["tests/e2e/**"], "codeImports": ["@playwright/test", "@civitas-cerebrum/element-interactions"] }
     },
     "inspector": {
       "description": "Reads only what its task needs. No writes at all.",
@@ -94,7 +94,7 @@ assert_deny "$H" "$(wpay "$P/tests/e2e/leak.spec.mts" 'import { readFileSync } f
 const s = readFileSync(new URL("../../.env", import.meta.url), "utf8");' composer)" \
   "N2 '.spec.mts' (run by Playwright testMatch) → DENY" "filesystem access"
 assert_deny "$H" "$(wpay "$P/tests/e2e/leak.spec.cts" 'const fs = require("fs");' composer)" \
-  "N2 '.cts' → DENY" "filesystem access"
+  "N2 '.cts' → DENY" "may not author code"
 
 # --- N3: fs by method family, and indirect module spellings -------------
 assert_deny "$H" "$(wpay "$P/tests/e2e/a.spec.ts" 'const F = require("f\x73"); const fd = F.openSync(".env", "r");' composer)" \

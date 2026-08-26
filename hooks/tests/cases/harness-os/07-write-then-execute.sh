@@ -42,7 +42,7 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
       "tools": { "allow": ["Write", "Edit", "Read", "Bash"] },
       "bash": { "groups": ["test-execution"] },
       "read": { "allow": ["tests/**"] },
-      "write": { "allow": ["tests/**"] }
+      "write": { "allow": ["tests/**"], "codeImports": ["@playwright/test", "@civitas-cerebrum/element-interactions"] }
     },
     "fixture-author": {
       "description": "Authors fixtures that legitimately read data files from disk.",
