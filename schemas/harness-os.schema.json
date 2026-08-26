@@ -152,6 +152,12 @@
               },
               "allow": { "$ref": "#/$defs/patternList" },
               "deny": { "$ref": "#/$defs/patternList" },
+              "env": {
+                "description": "Environment variable NAMES this role may set in front of a command. A leading NAME=value is stripped before every other axis runs, so the kernel refuses any name it cannot show to be inert — this list is how an operator names one deliberately. The screen used to enumerate the DANGEROUS names instead, and PATH was not among them: `PATH=/tmp/evil grep …` passed as data and the shell then resolved `grep` to an attacker binary, dissolving every axis at once.",
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+              },
               "permit": {
                 "description": "Named indirection constructs this role may use despite the kernel's built-in denies — the narrow alternative to `unrestricted`. Permitting one construct never waives the others, and the allow-set, deny patterns, redirect-scope and read-scope checks still apply. Prefer this over `unrestricted` whenever a role legitimately needs one construct (e.g. \"var-expansion\" for a role that uses \"$HOME\").",
                 "type": "array",

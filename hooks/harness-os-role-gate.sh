@@ -1104,51 +1104,98 @@ Preview before committing: harness-os explain --role ${ROLE} --tool Write --path
 # The assignment strip is the only place in this kernel where text is
 # removed from a segment before EVERY axis runs, rather than being
 # neutralised for one specific check. The assumption underneath it —
-# that `NAME=value` is data for the command — is false for a small,
-# specific set of names, which are argv for the process:
+# that `NAME=value` is data for the command — is false for names that
+# are argv for the process, or that decide which PROGRAM a command word
+# runs at all.
 #
-#   NODE_OPTIONS=--require=./.env npx playwright test
+# INVERTED, after round 37, and the inversion is the whole point.
 #
-# is a permitted command, and node prints the file while failing to parse
-# it. No authored file, no second step, and it worked against the
-# benchmark's real manifest with the composer's real grants. It also
-# cancels the runtime profile `harness-os run` exists to install.
+# This screen was a DENYLIST of names known to be dangerous. Round 23
+# built it from `NODE_OPTIONS`; round 37 broke it with the most common
+# environment variable there is:
 #
-# Refused rather than scope-checked, because the VALUE is an option
-# string and not a path — resolving `--require=x` as a filename would be
-# the literal-matching mistake rounds 16 and 20 each had to undo.
+#     PATH=/tmp/evil:/usr/bin:/bin grep -rn foo tests/
+#
+# `PATH` was not on the list, so the assignment passed the screen, was
+# stripped as data, and `grep -rn foo tests/` matched a permitted
+# pattern with an in-scope operand. At exec time the shell resolved
+# `grep` through the injected directory. The reviewer put a binary there
+# and printed all three planted secrets. One line dissolved the command
+# group, the read scope, the write scope and the network scope at once,
+# for any role holding Bash and one non-builtin command.
+#
+# Round 36 had already stated why in the abstract: an allowlist of
+# dangerous things fails open on the unknown, an exemption list of safe
+# things fails closed. This is that lesson applied to the arm that
+# guards the one place text is deleted — and `PATH` is the standing
+# proof that the dangerous names can never be enumerated, because the
+# most ordinary variable in existence is one of them.
+#
+# So a leading assignment is refused unless its NAME is provably inert:
+# on the built-in list of variables that are data for an application and
+# never resolution, loader or option config, or on the role's own
+# `bash.env` list, which is how an operator says "this one, deliberately".
 #
 # ONE COPY, called from both strips. There are two — the leading strip
 # and the one inside the wrapper loop — and round 3 already had to fix
 # the same defect twice because of it. A rule duplicated per site is a
 # rule that will be applied at one site.
 screen_env_assignments() {
-  local sa_seg="$1" sa_list sa_a
+  local sa_seg="$1" sa_list sa_a sa_name sa_why
   sa_list=$(printf '%s' "$sa_seg" | sed -E 's/^[[:space:]({]+//' \
     | grep -oE '^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*[[:space:]]+)+' 2>/dev/null || true)
   [ -n "$sa_list" ] || return 0
   for sa_a in $sa_list; do
-    case "${sa_a%%=*}" in
-      NODE_OPTIONS|NODE_REPL_EXTERNAL_MODULE|PERL5OPT|PERL5LIB|PERL5DB|RUBYOPT|RUBYLIB|\
-      PYTHONSTARTUP|PYTHONPATH|PYTHONHOME|BASH_ENV|ENV|SHELLOPTS|BASHOPTS|\
-      LD_PRELOAD|LD_LIBRARY_PATH|LD_AUDIT|DYLD_INSERT_LIBRARIES|DYLD_LIBRARY_PATH|\
-      GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_SSH_COMMAND|GIT_EXTERNAL_DIFF|GIT_PAGER|\
-      http_proxy|https_proxy|all_proxy|ftp_proxy|no_proxy|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|FTP_PROXY|NO_PROXY|\
-      CURL_HOME|CURLOPT_PROXY|npm_config_proxy|npm_config_https_proxy|npm_config_registry|\
-      JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|CLASSPATH)
-        if ! { [ "$BASH_PERMIT" != "null" ] && printf '%s' "$BASH_PERMIT" | "$JQ" -e 'index("env-injection") != null' >/dev/null 2>&1; }; then
-          set +f
-          harness_os_deny "bash-env-injection ${sa_a%%=*}" "[BLOCKED] Role '${ROLE}' set '${sa_a%%=*}' in front of a command — that variable is read as OPTIONS by the runtime it starts, so it loads code the kernel's checks never see.
+    sa_name="${sa_a%%=*}"
+    # Provably inert: the value is data an APPLICATION reads. Nothing
+    # here changes which program runs, which module loads, which host is
+    # dialled, or how the shell behaves.
+    case "$sa_name" in
+      CI|NODE_ENV|APP_ENV|RAILS_ENV|ENVIRONMENT|STAGE|\
+      TZ|LANG|LANGUAGE|LC_ALL|LC_CTYPE|LC_NUMERIC|LC_TIME|LC_COLLATE|LC_MONETARY|LC_MESSAGES|\
+      TERM|COLUMNS|LINES|FORCE_COLOR|NO_COLOR|CLICOLOR|CLICOLOR_FORCE|\
+      DEBUG|LOG_LEVEL|LOGLEVEL|VERBOSE|QUIET|SILENT|\
+      HEADLESS|HEADED|SLOWMO|WORKERS|RETRIES|SHARD|TEST_ENV|TEST_TIMEOUT|\
+      JEST_WORKER_ID|VITEST_POOL_ID|PWTEST_SKIP_TEST_OUTPUT)
+        continue ;;
+    esac
+    # ...or the operator named it for this role.
+    if [ "$BASH_ENV_ALLOW" != "null" ] \
+       && printf '%s' "$BASH_ENV_ALLOW" | "$JQ" -e --arg n "$sa_name" 'index($n) != null' >/dev/null 2>&1; then
+      continue
+    fi
+    # ...or the role opted into environment injection wholesale.
+    if [ "$BASH_PERMIT" != "null" ] \
+       && printf '%s' "$BASH_PERMIT" | "$JQ" -e 'index("env-injection") != null' >/dev/null 2>&1; then
+      continue
+    fi
+    case "$sa_name" in
+      PATH) sa_why="'PATH' decides which FILE a command word runs. Setting it in front of a permitted command means the kernel checks the name \`grep\` while the shell executes something else entirely — every axis in this manifest is written against argv, and this rebinds what argv means." ;;
+      NODE_OPTIONS|PERL5OPT|RUBYOPT|PYTHONSTARTUP|BASH_ENV|ENV|LD_PRELOAD|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS)
+        sa_why="'$sa_name' is read as OPTIONS by the runtime it starts, so it loads code the kernel's checks never see — \`NODE_OPTIONS=--require=<file>\` turns any permitted node command into a loader for that file, and it cancels the runtime profile \`harness-os run\` exists to install." ;;
+      *_PROXY|*_proxy|CURL_HOME|npm_config_*)
+        sa_why="'$sa_name' redirects where a client connects, which is the network scope's job and not this variable's." ;;
+      GIT_*) sa_why="'$sa_name' changes what git does — the config it reads, the pager or diff tool it spawns, the transport it uses — none of which is visible in the command." ;;
+      *) sa_why="The kernel cannot show that '$sa_name' is data rather than configuration for the program, the loader, the shell or the network, so it is refused rather than deleted." ;;
+    esac
+    set +f
+    harness_os_deny "bash-env-assignment $sa_name" "[BLOCKED] Role '${ROLE}' set '$sa_name' in front of a command, and the kernel cannot treat that as data.
 
 ${ROLE_HEADER}
 
 Command: ${CMD}
 
-A leading NAME=value is normally data for the command, and is treated as such. These few names are not: '${sa_a%%=*}' is argv for the process, and \`NODE_OPTIONS=--require=<file>\` turns any permitted node command into a loader for that file. It also cancels the runtime profile \`harness-os run\` exists to install.
+$sa_why
 
-Run the command without it. If this role genuinely needs the variable, the operator can add 'env-injection' to its bash.permit list."
-        fi ;;
-    esac
+A leading NAME=value is normally data for the command, and the kernel strips it before every other check — which is why the name has to be one it can show is inert. That list used to name the DANGEROUS variables and let everything else through; \`PATH\` is not an exotic name, and it was not on it.
+
+Options, narrowest first:
+  1. Run the command without the assignment.
+  2. If this role genuinely needs the variable, the operator can name it:
+       \"bash\": { \"env\": [\"$sa_name\"] }
+     Every other name stays refused.
+  3. bash.permit: [\"env-injection\"] waives the screen entirely — for a
+     deliberately trusted role, never to silence a single deny."
   done
 }
 
@@ -1160,6 +1207,10 @@ if [ "$HOS_TOOL" = "Bash" ]; then
   # denies (see axis 3a). Granular by design: permitting one construct
   # never waives the others.
   BASH_PERMIT=$(harness_os_role_field "$ROLE" '.bash.permit')
+  # Environment variable names this role may set in front of a command.
+  # The screen above refuses everything it cannot show to be inert, so
+  # this is how an operator says "this one, deliberately".
+  BASH_ENV_ALLOW=$(harness_os_role_field "$ROLE" '.bash.env')
 
   WRITE_ALLOW=$(harness_os_role_field "$ROLE" '.write.allow')
   WRITE_DENY=$(harness_os_role_field "$ROLE" '.write.deny')

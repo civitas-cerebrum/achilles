@@ -94,8 +94,16 @@ assert_deny "$H" "$(payload tool_name=Bash command='A=x>docs/e2e-ledger.json ech
   "N1 assignment redirect forging the ledger → DENY" "[BLOCKED] Role 'composer'"
 assert_deny "$H" "$(payload tool_name=Bash command='echo forged>docs/e2e-ledger.json' cwd="$P" $C)" \
   "N1 the same redirect on a PERMITTED verb still hits the write scope → DENY" "outside the role's write scope"
-assert_allow "$H" "$(payload tool_name=Bash command='FOO=bar cat tests/data/page-repository.json' cwd="$P" $I)" \
-  "N1 calibration: an ordinary leading assignment → ALLOW"
+# Round 3 established that an ordinary leading assignment must keep
+# working, and round 37 changed what "ordinary" means. The screen used
+# to name the DANGEROUS variables and let everything else through, and
+# `PATH` was not among them — so it names the INERT ones now, and a
+# variable the kernel cannot show to be data is refused. `FOO` is not a
+# name anything is known to read, so it needs saying out loud.
+assert_deny "$H" "$(payload tool_name=Bash command='FOO=bar cat tests/data/page-repository.json' cwd="$P" $I)" \
+  "N1 an unrecognised leading assignment → DENY" "in front of a command"
+assert_allow "$H" "$(payload tool_name=Bash command='CI=1 cat tests/data/page-repository.json' cwd="$P" $I)" \
+  "N1 calibration: an assignment the kernel can show is inert → ALLOW"
 
 # --- N2: output FLAGS are write channels too -----------------------------
 assert_deny "$H" "$(payload tool_name=Bash command='find tests -fprintf /tmp/pwn.txt %p' cwd="$P" $I)" \

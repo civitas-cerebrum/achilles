@@ -68,6 +68,12 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
       "read": { "allow": ["tests/**"] },
       "write": { "allow": ["tests/e2e/**"], "codeImports": ["@playwright/test"] }
     },
+    "browsers": {
+      "description": "Names the one environment variable it needs.",
+      "tools": { "allow": ["Bash"] },
+      "bash": { "groups": ["t"], "env": ["PLAYWRIGHT_BROWSERS_PATH"] },
+      "read": { "allow": ["tests/**"] }
+    },
     "trusted": {
       "description": "Explicitly opted in to environment injection.",
       "tools": { "allow": ["Bash"] },
@@ -80,6 +86,7 @@ JSON
 mkdir -p "$HARNESS_OS_STATE_DIR/agents"
 printf 'composer\n' > "$HARNESS_OS_STATE_DIR/agents/composer"
 printf 'trusted\n'  > "$HARNESS_OS_STATE_DIR/agents/trusted"
+printf 'browsers\n' > "$HARNESS_OS_STATE_DIR/agents/browsers"
 
 bp() { "$JQ" -nc --arg c "$1" --arg a "${2:-composer}" \
   '{tool_name:"Bash",tool_input:{command:$c},cwd:"'"$P"'",agent_id:$a}'; }
@@ -102,17 +109,27 @@ for spec in \
   "LD_PRELOAD=/tmp/x.so npx playwright test|LD_PRELOAD" \
   "GIT_SSH_COMMAND=id npx playwright test|GIT_SSH_COMMAND" ; do
   cmd="${spec%%|*}"; label="${spec##*|}"
-  assert_deny "$H" "$(bp "$cmd")" "F3 $label → DENY" "read as OPTIONS by the runtime"
+  assert_deny "$H" "$(bp "$cmd")" "F3 $label → DENY" "in front of a command"
 done
 
-# An ordinary leading assignment is exactly what round 3 established
-# must keep working; the point is that the value's NAME decides.
-assert_allow "$H" "$(bp 'FOO=bar npx playwright test')" \
-  "F3 calibration: an ordinary assignment → ALLOW"
+# The value's NAME decides — and round 37 inverted which way. This
+# screen listed the dangerous names and let the rest through; `PATH` was
+# not on it. It lists the INERT ones now, so a name nobody can show to
+# be data is refused, and the two cases below moved from ALLOW to DENY
+# for that reason rather than because anything about them changed.
+assert_deny "$H" "$(bp 'FOO=bar npx playwright test')" \
+  "F3 an unrecognised name is no longer waved through → DENY" "in front of a command"
 assert_allow "$H" "$(bp 'CI=1 npx playwright test')" \
-  "F3 calibration: CI=1 → ALLOW"
-assert_allow "$H" "$(bp 'PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test')" \
-  "F3 calibration: the setup this benchmark actually uses → ALLOW"
+  "F3 calibration: CI=1 is inert → ALLOW"
+# PLAYWRIGHT_BROWSERS_PATH decides which BROWSER BINARY runs, which is
+# resolution config by any honest reading — the same category as PATH.
+# It is the setup this benchmark's container uses, and it is exactly the
+# kind of variable that should have to be named out loud rather than
+# assumed harmless because it is familiar.
+assert_deny "$H" "$(bp 'PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test')" \
+  "F3 a familiar name that picks a binary is still resolution config → DENY" "in front of a command"
+assert_allow "$H" "$(bp 'PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test' browsers)" \
+  "F3 ...and a role that names it may set it → ALLOW"
 assert_allow "$H" "$(bp 'env CI=1 npx playwright test')" \
   "F3 calibration: and through the wrapper → ALLOW"
 assert_allow "$H" "$(bp 'NODE_OPTIONS=--require=./.env npx playwright test' trusted)" \
