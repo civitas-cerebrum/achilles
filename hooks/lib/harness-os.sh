@@ -1239,3 +1239,41 @@ harness_os_deny() {
 harness_os_role_field() {
   printf '%s' "$HOS_MANIFEST_JSON" | "$HOS_JQ" -c --arg r "$1" ".roles[\$r]$2 // null" 2>/dev/null || echo "null"
 }
+
+# harness_os_code_calls_in_scope <code> <network-allow-json> <method-regex>
+# — true when the role declares a network scope AND every matching call
+# in the code names a LITERAL destination inside it.
+#
+# The exfil branches in the code screen are destination-blind and total:
+# they refuse the CHANNEL, not the host. Round 38 showed what that costs
+# in both directions at once — a composer authoring
+# `request.get("http://localhost:4173/api")`, a fetch of its own in-scope
+# app, was refused as "an exfiltration channel", while a browser
+# navigation to a genuinely forbidden host went through. The check that
+# fired was the one that should not have.
+#
+# A role that declares where it may connect has said something the
+# kernel can use. One that has not, has not: absent a scope there is no
+# destination that can be shown to be permitted, so the blanket refusal
+# stands and this returns false.
+harness_os_code_calls_in_scope() {
+  local cc_code="$1" cc_scope="$2" cc_re="$3" cc_call cc_arg cc_lit cc_auth cc_seen=0
+  [ "$cc_scope" != "null" ] || return 1
+  while IFS= read -r cc_call; do
+    [ -n "$cc_call" ] || continue
+    cc_arg="${cc_call#*(}"
+    cc_arg=$(printf '%s' "$cc_arg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]*[,)].*$//')
+    case "$cc_arg" in
+      \"*\") cc_lit="${cc_arg%\"}"; cc_lit="${cc_lit#\"}" ;;
+      \'*\') cc_lit="${cc_arg%\'}"; cc_lit="${cc_lit#\'}" ;;
+      *) cc_lit="" ;;
+    esac
+    case "$cc_lit" in *'${'*|*'`'*) cc_lit="" ;; esac
+    harness_os_is_network_url "$cc_lit" || return 1
+    cc_auth=$(harness_os_url_authority "$cc_lit")
+    [ -n "$cc_auth" ] || return 1
+    harness_os_authority_in_scope "$cc_auth" "$cc_scope" || return 1
+    cc_seen=1
+  done < <(printf '%s' "$cc_code" | grep -oE "${cc_re}[[:space:]]*\([^)]*\)?" 2>/dev/null)
+  [ "$cc_seen" = "1" ]
+}

