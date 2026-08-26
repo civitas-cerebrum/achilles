@@ -1045,6 +1045,15 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # … w(path, data)` — evaded the call-shaped pattern, and combined with
   # a dynamic module name it was a complete bypass. A capability method
   # named at all is the signal; you do not name writeFileSync by accident.
+  # `path` IS NOT FILESYSTEM ACCESS, and listing it here was a false
+  # positive in two spellings at once. Node's `path` module is pure
+  # string manipulation with no I/O — it opens nothing. Worse, only the
+  # CALL forms were caught: `import path from "node:path"` passed and
+  # `require("node:path")` was refused as "filesystem access", for a role
+  # that had declared `node:path` in its own import list. Two spellings
+  # of one act, one checked, in the false-positive direction. `fs`,
+  # `fs/promises` and `os` stay; they actually reach the system.
+  #
   # `Path(` is Python's pathlib, and it was matched as a bare suffix —
   # so `fileURLToPath("…")`, the canonical ESM spelling of __dirname,
   # read as filesystem access and was refused for a role that had been
@@ -1052,7 +1061,7 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # pathlib caught and stops the check from firing on every identifier
   # that happens to END in Path.
   FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync\b|\[[[:space:]]*"[^"]*Sync"[[:space:]]*\]|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream\b'
-  if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|path|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\([[:space:]]*[\"'\`]|${FS_METHODS}|readFile[[:space:]]*\(|(^|[^A-Za-z0-9_])Path[[:space:]]*\("; then
+  if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\([[:space:]]*[\"'\`]|${FS_METHODS}|readFile[[:space:]]*\(|(^|[^A-Za-z0-9_])Path[[:space:]]*\("; then
     CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
     CAP_ID='process'; CAP_WHAT='process spawning (child_process / subprocess / os.system …) — code that runs commands no command group checked'

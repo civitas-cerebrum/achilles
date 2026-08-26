@@ -148,5 +148,22 @@ assert_deny "$H" "$(lib 'import fs from "node:fs"; export const x = fs.readFileS
 assert_deny "$H" "$(lib 'import { execa } from "execa"; export const x = execa;')" \
   "R49 calibration: an undeclared package → DENY" "declared import list"
 
+# --- Self-probe: `path` is not filesystem access ----------------------
+# Found by probing round 49's own fix before round 50 saw it. Node's
+# `path` module is pure string manipulation and opens nothing, and only
+# the CALL spellings were caught by the capability screen — so a static
+# `import path from "node:path"` passed while `require("node:path")` was
+# refused as "filesystem access", for a role that had declared
+# `node:path` in its own import list. Two spellings of one act, one
+# checked, in the false-positive direction.
+assert_allow "$H" "$(lib 'const p = require("node:path"); module.exports = p;')" \
+  "R49 require() of a DECLARED path module → ALLOW"
+assert_allow "$H" "$(lib 'const p = await import("node:path"); export const x = p;')" \
+  "R49 ...and the dynamic import spelling → ALLOW"
+assert_deny "$H" "$(lib 'const f = require("node:fs"); module.exports = f;')" \
+  "R49 calibration: fs still is filesystem access → DENY" "filesystem access"
+assert_deny "$H" "$(lib 'const o = require("os"); module.exports = o;')" \
+  "R49 calibration: and so is os → DENY" "filesystem access"
+
 unset HARNESS_OS_STATE_DIR HARNESS_OS_MANIFEST
 rm -rf "$R49"
