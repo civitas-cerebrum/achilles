@@ -498,6 +498,35 @@ backslash-escaped quoting that arrives when code is authored through
 Bash. But a static check on a Turing-complete language cannot be
 complete, and no amount of pattern work will make it so.
 
+### What the framework screen covers, and what it cannot
+
+An authored spec names files through option keys and method arguments,
+and this screen holds those to the role's scopes. It matches an option
+key by SHAPE — anything ending in `path`, `dir` or `file` — so
+`outputDir`, `tracesDir`, `snapshotDir` and keys that have not shipped
+yet are covered without a list. Direction is classified: `storageState`
+and HAR options are reads, `executablePath` is a binary to run (refused
+only when it points inside the role's own write scope, which is
+write-then-execute in one option), everything else is a write.
+
+Two things it cannot do, stated plainly because the alternative is a
+claim that would be false:
+
+- **A key whose name carries no hint is invisible to a shape rule.**
+  `storageState` opens a file and says so nowhere in its name; it is
+  matched by name, and keys like it are learned one escape at a time.
+- **Modelling a framework's API is not modelling the process it
+  launches.** `launchOptions.args` hands raw switches to the browser,
+  several of which name output files. That channel is CLOSED for a role
+  that authors and runs — not screened — because enumerating a browser's
+  switch list is a losing position. Put switches in
+  `playwright.config.ts`, which a governed authoring role cannot write.
+
+Read the whole axis the way round 6 first described it: **it makes an
+escape expensive, and the boundary is splitting the role that AUTHORS
+specs from the role that RUNS them.** `harness-os validate` says so for
+any role holding both.
+
 ### A framework path resolves against the RUNNER's cwd
 
 `path:`, `setInputFiles()` and their relatives in an authored spec are
