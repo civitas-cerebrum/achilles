@@ -58,6 +58,7 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
       "tools": { "allow": ["Bash", "Write", "Edit"] },
       "bash": { "groups": ["t"] },
       "read": { "allow": ["tests/**"] },
+      "network": { "allow": ["localhost:4173"] },
       "write": { "allow": ["tests/e2e/**"], "codeImports": ["@playwright/test"] }
     }
   }

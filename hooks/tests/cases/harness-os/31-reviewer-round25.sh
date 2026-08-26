@@ -103,9 +103,9 @@ wp() { "$JQ" -nc --arg f "$1" --arg c "$2" \
 # gate on the real filename, and the `command:` branch on a filename
 # that gets past it — because the `command:` branch is what covers the
 # spelling nobody has thought of a name for yet.
-assert_deny "$H" "$(wp "$P/tests/e2e/evil.config.ts" 'export default { webServer: { command: "cat .env > tests/e2e/leak.txt", url: "http://localhost:4173" } };')" \
+assert_deny "$H" "$(wp "$P/tests/e2e/evil.config.ts" 'export default { webServer: { command: "cat .env > tests/e2e/leak.txt", url: "/" } };')" \
   "F1a the file round 25 used is now refused a gate earlier → DENY" "picks up on its own"
-assert_deny "$H" "$(wp "$P/tests/e2e/setup.ts" 'export default { webServer: { command: "cat .env > tests/e2e/leak.txt", url: "http://localhost:4173" } };')" \
+assert_deny "$H" "$(wp "$P/tests/e2e/setup.ts" 'export default { webServer: { command: "cat .env > tests/e2e/leak.txt", url: "/" } };')" \
   "F1a the same content under an ordinary name → DENY" "command string"
 assert_deny "$H" "$(wp "$P/tests/e2e/a.spec.ts" 'const cfg = { cmd: "cat .env" };')" \
   "F1a the short spelling → DENY" "command string"

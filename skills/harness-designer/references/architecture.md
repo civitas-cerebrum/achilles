@@ -498,6 +498,29 @@ backslash-escaped quoting that arrives when code is authored through
 Bash. But a static check on a Turing-complete language cannot be
 complete, and no amount of pattern work will make it so.
 
+### The network scope is about the DESTINATION, not the sink
+
+An absolute network URL written as a whole string literal in authored
+code is held to the role's `network.allow`, whatever API receives it —
+`page.goto`, `fetch`, `new EventSource`, `new Image().src`,
+`RTCPeerConnection`'s `stun:`/`turn:` servers, or something the browser
+ships next year. Enumerating the ways a browser can dial a host is a
+losing position; asking where a connection goes is not.
+
+Consequences worth knowing:
+
+- **Relative and same-origin destinations are untouched.** They reach
+  the app under test and nothing else, so `fetch("/api")` is ordinary.
+- **A URL inside prose is documentation, not a destination.** A tracker
+  link in a test title or a comment is allowed; a string that IS a URL
+  is not.
+- **A role that authors absolute URLs must declare its app.** Without a
+  `network.allow`, no destination can be shown to be permitted.
+  `validate` warns for browser-driving roles that have not.
+- **A destination assembled at run time is invisible here.** The
+  sink-shaped screen still refuses that for the calls it knows; for a
+  sink it does not know, it is not checked. That is a real limit.
+
 ### What the framework screen covers, and what it cannot
 
 An authored spec names files through option keys and method arguments,
