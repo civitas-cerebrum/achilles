@@ -771,6 +771,91 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   if [ -z "$CAP_ID" ] && printf '%s' "$CODE_N" | grep -Eq 'file:/'; then
     CAP_ID='fs'; CAP_WHAT='a file: URL — the browser/runtime reads the path directly, with no host module for a scope check to see'
   fi
+  # THE WRITE DIRECTION OF THE SAME FAMILY.
+  #
+  # Round 38's lesson was that one call — `page.goto` — had two channels
+  # and only one was modelled. Round 39 found that shape one level up,
+  # across a whole family: the screen resolves the READ direction of
+  # framework file APIs (`setInputFiles`, `attach({path})`) against
+  # `read.allow`, and models the WRITE direction of none of them.
+  #
+  #     await page.screenshot({ path: '/tmp/o.png' })            ALLOW
+  #     await context.storageState({ path: '/tmp/o.json' })      ALLOW
+  #     await download.saveAs('docs/e2e-ledger.json')            ALLOW
+  #     await page.screenshot({ path: '.claude/harness-os.json' })  ALLOW
+  #
+  # every one of which the same role's Write tool refuses. The reviewer
+  # authored a spec inside `tests/e2e/**`, ran it with the composer's own
+  # `npx playwright test`, and put its exact chosen bytes at an arbitrary
+  # path through an in-page Blob download and `saveAs`. Arbitrary content
+  # to an arbitrary path, from a role whose only write grant is a test
+  # directory.
+  #
+  # The write direction is strictly the worse one. A read leaks; a write
+  # to `docs/e2e-ledger.json` forges the verdict this whole system exists
+  # to make trustworthy, and a write to the manifest or the hook
+  # registration disarms the kernel. The screen was spending its care on
+  # the lower-severity direction of each call.
+  #
+  # INVERTED rather than enumerated, because `screenshot`, `pdf`,
+  # `saveAs`, `storageState`, `recordHar`, `recordVideo`,
+  # `toMatchSnapshot` and the next output option have no end — the losing
+  # game this document keeps naming. A `path:` option in an authored call
+  # is a WRITE unless the method is a known READER, which is round 15's
+  # self-protection inversion applied here. The reader list is short,
+  # closed, and already written above.
+  if [ -z "$CAP_ID" ]; then
+    local wr_call wr_meth wr_arg wr_lit wr_abs wr_rel wr_dir wr_wscope
+    wr_dir=$(dirname "$(harness_os_normalize_path "$target")")
+    wr_wscope=$(harness_os_role_field "$ROLE" '.write.allow')
+    while IFS= read -r wr_call; do
+      [ -n "$wr_call" ] || continue
+      wr_meth=$(printf '%s' "$wr_call" | sed -E 's/^\.?([A-Za-z_][A-Za-z0-9_]*).*/\1/')
+      case "$wr_meth" in
+        attach|attachFile|setInputFiles|uploadFile|uploadFiles|setFiles) continue ;;
+      esac
+      case "$wr_call" in
+        *saveAs*)
+          wr_arg="${wr_call#*(}"
+          wr_arg=$(printf '%s' "$wr_arg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]*[,)].*$//') ;;
+        *)
+          case "$wr_call" in *[Pp]ath:*|*[Pp]ath\ :*) : ;; *) continue ;; esac
+          wr_arg=$(printf '%s' "$wr_call" | sed -E 's/[[:space:]]*:[[:space:]]*/:/g')
+          wr_arg="${wr_arg#*[Pp]ath:}"
+          wr_arg=$(printf '%s' "$wr_arg" | sed -E 's/[,)}].*$//; s/^[[:space:]]+//; s/[[:space:]]+$//') ;;
+      esac
+      [ -n "$wr_arg" ] || continue
+      case "$wr_arg" in
+        \"*\") wr_lit="${wr_arg%\"}"; wr_lit="${wr_lit#\"}"; case "$wr_lit" in *\"*) wr_lit="" ;; esac ;;
+        \'*\') wr_lit="${wr_arg%\'}"; wr_lit="${wr_lit#\'}"; case "$wr_lit" in *\'*) wr_lit="" ;; esac ;;
+        *) wr_lit="" ;;
+      esac
+      case "$wr_lit" in *'${'*|*'`'*) wr_lit="" ;; esac
+      if [ -z "$wr_lit" ]; then
+        CAP_ID='fs'; CAP_WHAT="a framework file API whose OUTPUT path is built at run time ('$wr_arg') — a path that does not exist until the test runs cannot be held to this role's write scope, and the framework creates the file directly with no host module for a check to see"
+        break
+      fi
+      case "$wr_lit" in *://*) continue ;; esac
+      case "$wr_lit" in /*) wr_abs="$wr_lit" ;; *) wr_abs="$wr_dir/$wr_lit" ;; esac
+      wr_rel=$(harness_os_relpath "$wr_abs")
+      # The root of trust first, on this channel too: a write aimed at
+      # the manifest, the state directory or the kernel is refused
+      # whatever the role's other grants say.
+      if harness_os_is_manifest_path "$(harness_os_normalize_path "$wr_abs")" \
+         || printf '%s' "$wr_rel" | grep -Eq '(^|/)\.claude/(harness-os\.json|settings(\.local)?\.json|hooks/)'; then
+        CAP_ID='fs'; CAP_WHAT="a framework file API aimed at '$wr_rel' — that is the harness OS itself, and no governed role may write it through any channel"
+        break
+      fi
+      if [ "$wr_wscope" = "null" ]; then
+        CAP_ID='fs'; CAP_WHAT="a framework file API that writes '$wr_rel' — this role has no write grants at all, and a file the framework creates is a write like any other"
+        break
+      fi
+      harness_os_path_in_scope "$wr_rel" "$wr_wscope" && continue
+      CAP_ID='fs'; CAP_WHAT="a framework file API that writes '$wr_rel', which is outside this role's write scope ($(printf '%s' "$wr_wscope" | "$JQ" -r 'join(", ")' 2>/dev/null)) — the file the framework creates is a write, and the Write tool refuses that same path"
+      break
+    done < <(printf '%s' "$CODE_N" \
+      | grep -oE "\.[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\([^)]*[Pp]ath[[:space:]]*:[^)]*\)?|\.saveAs[[:space:]]*\([^)]*\)?" 2>/dev/null)
+  fi
   # AUTHORED NAVIGATION, HELD TO THE NETWORK SCOPE.
   #
   # Round 33 built `network.allow` and wrote that "who a command talks to
