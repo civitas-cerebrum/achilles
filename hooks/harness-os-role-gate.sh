@@ -766,6 +766,12 @@ case "$HOS_TOOL" in
         # attached defect this suite has recorded six times, so the
         # look-back is done in the same pass rather than in a second one
         # the first pass would have already pre-empted.
+        # NOT `local` — this scan runs in the main script body, not in a
+        # function, and declaring it there printed a shell error to
+        # stderr on every governed Bash call. The verdict was unaffected,
+        # which is exactly why the benchmark replay is byte-compared:
+        # nothing else in the suite would have noticed.
+        __emb=""
         __prev=""
         for __tok in "${__pwords[@]:1}"; do
           if printf '%s' "$__tok" | grep -Eqi "$PROT_RE"; then
@@ -776,7 +782,25 @@ case "$HOS_TOOL" in
                 self_protect_target "${__tok#*=}" "self-protect bash flag-operand $__flag" ;;
               *)
                 prot_reader_flag "$__prev" && { __prev="$__tok"; continue; }
-                self_protect_target "$__tok" "self-protect bash operand $__pcmd" ;;
+                self_protect_target "$__tok" "self-protect bash operand $__pcmd"
+                # AND THE PATH MAY BE EMBEDDED IN A LARGER OPERAND. Round
+                # 52's escape rode inside curl's `--write-out` grammar —
+                # `%output{.claude/harness-os.json}PWNED` — where the
+                # token MENTIONS the manifest but does not resolve to it,
+                # so the check above saw nothing. `%output{}` itself is
+                # extracted as a write target now, and this is the
+                # backstop for the next tool with a grammar of its own:
+                # the protected-looking substring is pulled out of the
+                # token and judged on its own.
+                #
+                # Scoped to PROTECTED paths only, which is what keeps it
+                # from becoming round 2's `echo see .claude/…` false
+                # positive: readers are exempt above, and no ordinary
+                # command embeds the manifest in an argument.
+                __emb=$(printf '%s' "$__tok" \
+                  | grep -oEi "[^\"'{}(),;|&=]*${PROT_RE}[^\"'{}(),;|&]*" 2>/dev/null | head -1)
+                [ -n "$__emb" ] && [ "$__emb" != "$__tok" ] \
+                  && self_protect_target "$__emb" "self-protect bash embedded-operand $__pcmd" ;;
             esac
           fi
           __prev="$__tok"
@@ -1596,10 +1620,43 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # still refuses that for the calls it knows. That is a real limit and
   # the docs state it rather than implying the surface is closed.
   if [ -z "$CAP_ID" ]; then
-    local url_scope url_lit url_auth
+    local url_scope url_lit url_auth url_row url_ctx url_near
     url_scope=$(harness_os_role_field "$ROLE" '.network.allow')
-    while IFS= read -r url_lit; do
+    while IFS= read -r url_row; do
+      [ -n "$url_row" ] || continue
+      # A URL A TEST ASSERTS ON, OR BLOCKS, IS NOT A URL IT DIALS.
+      # Round 50 made every whole-literal URL a destination, and round 52
+      # measured what that costs on ordinary end-to-end work:
+      #
+      #   toHaveAttribute("href", "https://example.com/privacy")   DENY
+      #   page.route("https://www.google-analytics.com/**", abort) DENY
+      #   expect(await el.getAttribute("href")).toBe("https://…")  DENY
+      #
+      # The second is the sharpest: the role was refused for BLOCKING a
+      # third-party host so it is never contacted. Checking where a link
+      # points and stubbing out an analytics domain are bread-and-butter
+      # e2e work, and the only exit on offer was
+      # `codeCapabilities: ["network"]` — which round 50 itself calls the
+      # broad wrong thing, because it voids the network scope entirely.
+      #
+      # So a literal whose NEAREST preceding call is an assertion matcher
+      # or an interception API is data. This is an EXEMPTION list, which
+      # is the direction that fails closed: a call nobody named leaves
+      # the URL a destination.
+      url_ctx="${url_row%%$'\t'*}"
+      url_lit="${url_row#*$'\t'}"
       [ -n "$url_lit" ] || continue
+      url_near=$(printf '%s' "$url_ctx" \
+        | grep -oE '[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' 2>/dev/null \
+        | tail -1 | sed -E 's/[[:space:]]*\($//')
+      case "$url_near" in
+        toHaveAttribute|toHaveURL|toHaveJSProperty|toBe|toEqual|toStrictEqual|\
+        toContain|toMatch|toContainText|toHaveText|toHaveValue|\
+        route|unroute|unrouteAll|routeWebSocket|routeFromHAR|\
+        getByText|getByLabel|getByTitle|getByPlaceholder|getByAltText|fill|\
+        toHaveScreenshot|describe|it|test)
+          continue ;;
+      esac
       # NOT EVERY URL HAS A `//`. WebRTC's ICE servers are spelled
       # `stun:host:port` and `turn:host:port` — no slashes at all — so
       # the shared URL test walked straight past
@@ -1631,9 +1688,13 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     # positive this branch was fixed for. Leading and trailing space are
     # allowed inside the quotes, because `fetch(" http://evil/x".trim())`
     # is a destination with a space in front of it and nothing else.
-    done < <(printf '%s' "$CODE_N" \
-      | grep -oE '"[[:space:]]*[a-zA-Z][a-zA-Z0-9+.-]*://[^"]*"|"[[:space:]]*(stun|stuns|turn|turns):[^"]*"' 2>/dev/null \
-      | sed -E 's/^"[[:space:]]*//; s/[[:space:]]*"$//')
+    done < <(printf '%s' "$CODE_N" | perl -ne '
+      while (/"[[:space:]]*((?:[a-zA-Z][a-zA-Z0-9+.-]*:\/\/|stun:|stuns:|turn:|turns:)[^"]*)"/g) {
+        my $u = $1; my $ctx = substr($_, 0, pos($_));
+        $ctx = substr($ctx, -140) if length($ctx) > 140;
+        $ctx =~ s/[\t\n]/ /g; $u =~ s/[[:space:]]+$//;
+        print "$ctx\t$u\n";
+      }' 2>/dev/null)
   fi
   # CONFIGURATION THAT IS A COMMAND. Round 25's finding, and the one
   # that says the most about what this screen is: every branch above
@@ -2775,6 +2836,12 @@ Command: ${CMD}"
           FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
         --save-har|--save-storage|--save-trace)
           __fw=1 ;;
+        # `--libcurl <file>` makes curl write a C source file. Absent
+        # from this table it was treated as a bare READ operand, so it
+        # was "contained" only by the accident that its target is usually
+        # out of read scope — and read scope is not the write boundary.
+        --libcurl) __fw=1 ;;
+        --libcurl=*) FLAG_TARGETS="${FLAG_TARGETS}${__w#*=}"$'\n' ;;
         -O|-[a-zA-Z]*O*)
           # `-O` IS A CLUSTER LETTER, AND IT NAMES ITS TARGET
           # IMPLICITLY. The two arms below key on `-O` and `-O<attached>`
@@ -2899,6 +2966,39 @@ Command: ${CMD}"
           esac
         done ;;
     esac
+    # A WRITE CHANNEL SPELLED INSIDE ANOTHER FLAG'S VALUE. curl's
+    # `--write-out` is not a string, it is a mini-language, and one of
+    # its directives writes a file:
+    #
+    #   curl -s http://app/ -w "%output{.claude/harness-os.json}PWNED"
+    #
+    # The text after the brace is written verbatim to the named path.
+    # Round 52 used it to overwrite the manifest from the bench
+    # `inspector` — a role with no `write` block of any kind — and to
+    # forge the judge-only ledger from the composer, against every
+    # shipped manifest that grants curl. The role's own granted pattern,
+    # `^curl -[a-zA-Z]* http://localhost:4173\b`, invites the
+    # flags-after-URL spelling.
+    #
+    # This is not another missing flag. The table above maps a FLAG to an
+    # operand, and `%output{}` is neither: it is a path inside the value
+    # of a flag that is otherwise a formatting string, which the table is
+    # structurally unable to see. Round 15 predicted the shape — "which
+    # flags write? has now been answered wrongly four times" — and the
+    # answer here is not a fifth flag, it is that a flag's value can be
+    # a language.
+    #
+    # Every `%output{…}` in the command is extracted as a write target,
+    # so the ordinary write-scope and self-protection machinery decides
+    # it. `%output{>>path}` appends; the redirection marker is stripped
+    # so the path is judged, not the spelling.
+    if printf '%s' "$CMD" | grep -q '%output{'; then
+      while IFS= read -r __ot; do
+        [ -n "$__ot" ] || continue
+        __ot="${__ot#>}"; __ot="${__ot#>}"
+        [ -n "$__ot" ] && FLAG_TARGETS="${FLAG_TARGETS}${__ot}"$'\n'
+      done < <(printf '%s' "$CMD" | grep -oE '%output\{[^}]*\}' | sed -E 's/^%output\{//; s/\}$//')
+    fi
     [ -n "$FLAG_TARGETS" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$FLAG_TARGETS")
 
     WRITE_VERB=$(printf '%s' "$seg" | sed -E 's/^([a-z0-9_.\/-]*\/)?([a-z0-9_-]+).*/\2/')
