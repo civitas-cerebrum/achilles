@@ -826,6 +826,12 @@ Known gap: **document-level geometry.** "No horizontal clipping" is `documentEle
 
 **REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-achilles-protocol`.
 
+## 8c. Compliance sweep — before any verdict leaves the session
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
+A QA verdict rests on the tests that produced it. Sweeping them is part of producing the verdict, not a follow-up task.
+
 ## 9. Report — and have the report reviewed before it ships
 
 **Dispatch one more probe at the REPORT itself, before it reaches a human.** §8b attacks the

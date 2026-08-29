@@ -243,6 +243,11 @@ const HOOK_MANIFEST = [
   // never fires PostToolUse, but its partial evidence is still evidence.
   { file: 'playwright-artifact-archiver.sh',      event: 'SubagentStop', matcher: null,        timeout: 30 },
 
+  // Test identity: every test case a spec write ADDS carries a stable test
+  // ID, and no ID appears twice in one file. Scoped to added titles so a
+  // pre-convention suite stays writable (see test-identity.md §1).
+  { file: 'test-id-compliance-gate.sh',           event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+
   // selector-development — activation + inertness gates (PreToolUse:Write|Edit)
   { file: 'selector-development-activation-gate.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
   { file: 'selector-development-inertness-guard.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
@@ -252,6 +257,12 @@ const HOOK_MANIFEST = [
   { file: 'selector-development-pipeline-stepper.sh',    event: 'PostToolUse', matcher: 'Bash|Write|Edit', timeout: 10 },
 
   // selector-development — Stop-time revert WARN
+  // Stage-4b compliance sweep is every test-authoring mode's exit gate: a
+  // session (or subagent) that wrote test code and never swept is blocked at
+  // stop time. One block per stop chain — stop_hook_active releases it.
+  { file: 'compliance-sweep-exit-gate.sh',               event: 'Stop',          matcher: null,          timeout: 10 },
+  { file: 'compliance-sweep-exit-gate.sh',               event: 'SubagentStop',  matcher: null,          timeout: 10 },
+
   { file: 'selector-development-revert-on-stop.sh',      event: 'Stop', matcher: null,                 timeout: 10 },
 
   // bookhive-benchmark — writes <project>/.achilles/run-summary.json at Stop so

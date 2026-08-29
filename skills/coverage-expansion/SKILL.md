@@ -293,6 +293,10 @@ This subsection extends §"Per-pass completion criteria" (see below). A pass's c
 
 ---
 
+## Exit gate — compliance sweep, every pass
+
+**The compliance sweep is not optional, and delegation does not move it.** Every pass composes or edits test code through the subagents this skill dispatches, so every pass ends with the Stage-4b compliance sweep over what that pass touched: the composer runs it at its Step 6b and says so in its return, and a return that reports composed tests without it is an incomplete pass — re-dispatch or sweep the files here. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
 ## Dual-stage per-pass contract
 
 Every one of the 5 passes runs **per journey** as two sequential stages — Stage A (compose / probe) and Stage B (adversarial review). They alternate in a bounded 7-cycle retry loop until the journey reaches one of four terminal `review_status` values: `greenlight`, `blocked-cycle-stalled`, `blocked-cycle-exhausted`, or `blocked-dispatch-failure`. The full retry-loop pseudocode, termination conditions, the "fresh reviewer every cycle" invariant, and dual-stage-specific anti-rationalizations are specified in [`references/dual-stage-retry-loop.md`](references/dual-stage-retry-loop.md).

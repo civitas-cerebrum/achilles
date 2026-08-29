@@ -431,6 +431,10 @@ Each adversarial test follows this shape:
 
 ---
 
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
 ## Anti-Patterns
 
 - **Single-turn testing only:** A guardrail that holds on turn 1 may fail on turn 10. Every test should run at least 5 turns.
