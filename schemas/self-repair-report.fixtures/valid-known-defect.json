@@ -4,14 +4,19 @@
   "mode": "script",
   "started-at": "2026-08-18T09:14:02.000Z",
   "finished-at": "2026-08-18T09:21:37.000Z",
-  "scope": { "files": 2, "tests": 4 },
-  "baseline": { "runs": 3 },
+  "scope": {
+    "files": 3,
+    "tests": 5
+  },
+  "baseline": {
+    "runs": 3
+  },
   "verify-runs": 2,
   "rounds": 1,
   "totals": {
     "already-green": 2,
     "known-defect": 1,
-    "healed": 1,
+    "healed": 2,
     "app-bugs": 0,
     "quarantined": 0,
     "operator-pending": 0,
@@ -47,8 +52,25 @@
           "notes": null
         }
       ]
+    },
+    {
+      "file": "tests/e2e/signup/signup-duplicate-email.spec.ts",
+      "status": "healed",
+      "tests": [
+        {
+          "title": "TCSG-000110 · registering an already-used email surfaces a conflict",
+          "baseline-pattern": "known-defect-passed",
+          "outcome": "healed",
+          "root-cause": "the filed defect was fixed upstream; the @known-defect tag no longer told the truth",
+          "fix": "removed the @known-defect tag after the stability bar (3/3 targeted + 5/5 suite-order green); assertions untouched",
+          "bug-report": null,
+          "notes": "Passed despite @known-defect — an anomaly, never silently green (test-identity.md §2). Defect ticket referenced in the spec's pointer comment is ready to close."
+        }
+      ]
     }
   ],
   "observations": [],
-  "artifacts": { "run-dir": ".achilles/self-repair/2026-08-18_09-14-02" }
+  "artifacts": {
+    "run-dir": ".achilles/self-repair/2026-08-18_09-14-02"
+  }
 }

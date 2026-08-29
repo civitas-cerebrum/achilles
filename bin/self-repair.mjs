@@ -321,7 +321,16 @@ function classify(runs) {
     // fail — a fixme'd bug placeholder must not get a repair worker.
     const failures = t.outcomes.filter((o) => o && o !== 'passed' && o !== 'skipped').length;
     const ran = t.outcomes.filter((o) => o && o !== 'skipped').length;
-    if (ran === 0 || failures === 0) t.pattern = 'green';
+    const passes = t.outcomes.filter((o) => o === 'passed').length;
+    // A passing @known-defect is never silently green: the filed defect
+    // predicts red, so ANY pass is an anomaly — either the defect is
+    // actually fixed (drop the tag after the stability bar) or the pass
+    // is nondeterministic (retag @flaky). Unlike `known-defect`, this
+    // pattern is NOT terminal: it enters the repair scope with its own
+    // purpose-built worker brief.
+    // See skills/achilles-protocol/references/test-identity.md §2.
+    if (t.knownDefect && passes > 0) t.pattern = 'known-defect-passed';
+    else if (ran === 0 || failures === 0) t.pattern = 'green';
     // An @known-defect red is a CLASSIFIED failure, not an open one: the
     // cause is understood and filed. Rerunning it, handing it to a worker,
     // or diagnosing it again re-derives a written-down conclusion at the
@@ -336,7 +345,9 @@ function classify(runs) {
 }
 
 // The repair scope. `green` and `known-defect` are both terminal: neither
-// earns a rerun, a worker, or a verification pass.
+// earns a rerun, a worker, or a verification pass. `known-defect-passed`
+// is deliberately NOT excluded — a pass under @known-defect is an anomaly
+// the fan-out must resolve (drop the tag or retag @flaky; see workerBrief).
 function redFiles(byTest) {
   const files = new Map();
   for (const t of byTest.values()) {
@@ -354,29 +365,52 @@ const slug = (file) => file.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '')
 // ---------------------------------------------------------------------------
 
 function workerBrief(file, tests, reportPath, schemaPath, opts) {
-  const matrix = tests
-    .map(
-      (t) =>
-        `- "${t.title}" — pattern: ${t.pattern}; outcomes: [${t.outcomes.join(', ')}]` +
-        (t.errors[0] ? `; first error: ${t.errors[0]}` : ''),
-    )
-    .join('\n');
-  return `You are a self-repair worker for exactly one Playwright spec file. Scope: ${file}. Do not touch any other spec file.
+  // Two worker jobs share one file scope: ordinary reds go through the
+  // failure-diagnosis pipeline; `known-defect-passed` anomalies get a
+  // purpose-built stability probe instead (test-identity.md §2 — a passing
+  // @known-defect is never silently green).
+  const anomalies = tests.filter((t) => t.pattern === 'known-defect-passed');
+  const failing = tests.filter((t) => t.pattern !== 'known-defect-passed');
+  const matrixOf = (list) =>
+    list
+      .map(
+        (t) =>
+          `- "${t.title}" — pattern: ${t.pattern}; outcomes: [${t.outcomes.join(', ')}]` +
+          (t.errors[0] ? `; first error: ${t.errors[0]}` : ''),
+      )
+      .join('\n');
 
-Load the failure-diagnosis skill via the Skill tool and follow its methodology for every failing test below. Also honour the bug-vs-heal discipline from the test-repair skill: screenshot evidence of wrong UI means an app bug — report it with evidence and do NOT modify the test; mechanical heals (selector re-learning, timing hardening, state isolation) apply autonomously; semantic changes (assertion re-baselining, flow-step drift) are returned as operator-pending, not applied; irreducible flake is quarantined per the methodology, never silently skipped.
+  const sections = [
+    `You are a self-repair worker for exactly one Playwright spec file. Scope: ${file}. Do not touch any other spec file.`,
+  ];
 
-Baseline evidence (${opts.baselineRuns} runs):
-${matrix}
+  if (failing.length) {
+    sections.push(
+      `Load the failure-diagnosis skill via the Skill tool and follow its methodology for every failing test below. Also honour the bug-vs-heal discipline from the test-repair skill: screenshot evidence of wrong UI means an app bug — report it with evidence and do NOT modify the test; mechanical heals (selector re-learning, timing hardening, state isolation) apply autonomously; semantic changes (assertion re-baselining, flow-step drift) are returned as operator-pending, not applied; irreducible flake is quarantined per the methodology, never silently skipped.`,
+      `Baseline evidence (${opts.baselineRuns} runs):\n${matrixOf(failing)}`,
+      `Process per failing test — the staged worker pipeline (canonical doc: ${PKG_ROOT}/skills/self-repair/references/worker-pipeline.md; read it first). Stages, in order: (1) reproduce — controlled reproduction under --trace on, artifacts copied to bug-evidence immediately; (2) evidence-analysis — pin the failure point from screenshot/trace/error-context (the earliest diverging step, not the assertion that threw); (3) context-probe — verify every selector at and before the failure point against the live DOM, describe the surrounding UI state (overlays, loading, pending requests); (4) experiment — vary ONE factor per probe (out-of-harness run, harness factors re-added one at a time, direct component interaction, timing changes) until a factor demonstrably changes the behaviour; budget ~5 probes, then stop and record what was excluded; (5) understand — the ONE-WAY GATE: state expected behaviour, actual behaviour, and the causal chain in your report AND append a dated behavioural finding to tests/e2e/docs/app-context.md (create with a minimal header if missing; re-read before appending). Classification happens HERE: test-side cause -> fix; app-side cause -> high-confidence app-bug exit (test unmodified); no mechanism -> unresolved/operator-pending. (6) fix — minimal heal addressing the established cause only; (7) verify — 5 consecutive passing full-file runs (\`npx playwright test ${file}\`), revert on instability; (8) done. No fix before understand is logged.`,
+      `Bug-evidence contract for app-bug outcomes: assemble the full bundle — failure screenshot, error context/trace, the failing run's video, AND a slow-motion screen recording of a reproduction run. The slow-down happens at the source: re-run the failing test with the browser's launchOptions.slowMo pacing the actions themselves (>= 1500ms per action; raise it if actions still blur — the native real-time recording must be watchable with no post-processing; prefer the project's existing hook such as an E2E_SLOWMO=<ms> env var when the config supports one). Keep the trace.zip too — npx playwright show-trace is the action-by-action artifact for engineers; the recording is for humans and bug tickets. Copy every evidence file IMMEDIATELY to bug-evidence/<TEST-ID>/<UTC-timestamp>-<label>/ at the project root (Playwright reuses test-results/ dirs, so reruns silently overwrite artifacts). bug-report.evidence paths must point at the bug-evidence/ copies, never at test-results/. If the bug is intermittent, loop the recorded reproduction up to 12 attempts; if no failure occurs, state explicitly in the report that the slow-mo recording is pending a bad window and record the attempt count.`,
+    );
+  }
 
-Process per failing test — the staged worker pipeline (canonical doc: ${PKG_ROOT}/skills/self-repair/references/worker-pipeline.md; read it first). Stages, in order: (1) reproduce — controlled reproduction under --trace on, artifacts copied to bug-evidence immediately; (2) evidence-analysis — pin the failure point from screenshot/trace/error-context (the earliest diverging step, not the assertion that threw); (3) context-probe — verify every selector at and before the failure point against the live DOM, describe the surrounding UI state (overlays, loading, pending requests); (4) experiment — vary ONE factor per probe (out-of-harness run, harness factors re-added one at a time, direct component interaction, timing changes) until a factor demonstrably changes the behaviour; budget ~5 probes, then stop and record what was excluded; (5) understand — the ONE-WAY GATE: state expected behaviour, actual behaviour, and the causal chain in your report AND append a dated behavioural finding to tests/e2e/docs/app-context.md (create with a minimal header if missing; re-read before appending). Classification happens HERE: test-side cause -> fix; app-side cause -> high-confidence app-bug exit (test unmodified); no mechanism -> unresolved/operator-pending. (6) fix — minimal heal addressing the established cause only; (7) verify — 5 consecutive passing full-file runs (\`npx playwright test ${file}\`), revert on instability; (8) done. No fix before understand is logged.
+  if (anomalies.length) {
+    sections.push(
+      `${failing.length ? 'This file also carries' : 'This file carries'} ${anomalies.length} \`@known-defect\` test${anomalies.length === 1 ? '' : 's'} that PASSED in at least one baseline run. That is an anomaly, not a green: the tag asserts that a filed defect makes the test fail today, so a pass means either the defect is actually fixed or the pass is nondeterministic. A passing @known-defect is never silently green (contract: skills/achilles-protocol/references/test-identity.md §2 — under ${PKG_ROOT}). Do NOT run the failure-diagnosis pipeline for these; run the stability probe below instead.
 
-Report back at every stage by printing a single line to the user: [self-repair:worker] stage=<reproduce|evidence-analysis|context-probe|experiment|understand|fix|verify|done> file=${file} detail=<short note>. Emit one line per stage transition per test.
+Anomaly evidence (${opts.baselineRuns} runs):
+${matrixOf(anomalies)}
 
-Bug-evidence contract for app-bug outcomes: assemble the full bundle — failure screenshot, error context/trace, the failing run's video, AND a slow-motion screen recording of a reproduction run. The slow-down happens at the source: re-run the failing test with the browser's launchOptions.slowMo pacing the actions themselves (>= 1500ms per action; raise it if actions still blur — the native real-time recording must be watchable with no post-processing; prefer the project's existing hook such as an E2E_SLOWMO=<ms> env var when the config supports one). Keep the trace.zip too — npx playwright show-trace is the action-by-action artifact for engineers; the recording is for humans and bug tickets. Copy every evidence file IMMEDIATELY to bug-evidence/<TEST-ID>/<UTC-timestamp>-<label>/ at the project root (Playwright reuses test-results/ dirs, so reruns silently overwrite artifacts). bug-report.evidence paths must point at the bug-evidence/ copies, never at test-results/. If the bug is intermittent, loop the recorded reproduction up to 12 attempts; if no failure occurs, state explicitly in the report that the slow-mo recording is pending a bad window and record the attempt count.
+Process per anomalous test: (1) reproduce — run the test in isolation 3 times (\`npx playwright test ${file} --grep "<test id>"\`), then run the full file 5 times in suite order (\`npx playwright test ${file}\`) — the same two-number stability bar (3/3 targeted + 5/5 suite-order) test-repair Stage 5.5 uses to release a quarantined flake. (2a) All 8 runs green -> the defect is fixed: remove the \`@known-defect\` tag from wherever it sits (the test title, the enclosing describe title, or a \`{ tag: … }\` option) and change NOTHING else — the assertions stay untouched and the test continues as an ordinary regression guard. Report outcome "healed" with fix describing the tag drop, stability-runs {passed: 8, total: 8}, and the spec's filed-defect pointer (the ticket/report comment near the tag) in notes so the operator can close the ticket. (2b) ANY red among those runs -> the pass is nondeterministic: replace \`@known-defect\` with \`@flaky\` at the same site (the suite's quarantine tag), append an entry for the test to tests/e2e/docs/flake-quarantine.md following the failure-diagnosis quarantine-ledger template (create the file with its ledger header if missing), and report outcome "quarantined" with the per-run evidence and the original defect pointer in notes — the filed defect may still be real, but the tag no longer tells the truth about determinism. Never weaken or delete an assertion, never .skip(), and never leave \`@known-defect\` on a test that passes. Announce the probe as stage=reproduce (the runs) and stage=verify (the decision) lines.`,
+    );
+  }
 
-When finished, write your report as JSON to ${reportPath} conforming to the JSON Schema at ${schemaPath} (read the schema first). The report's handover.role must be "repair-worker-${slug(file)}". Every test from the baseline evidence must appear in the tests array with an outcome of already-green, healed, app-bug, quarantined, operator-pending, or unresolved. For app-bug outcomes include a bug-report object with a summary and evidence paths (screenshot, trace, video, slow-mo recording — under bug-evidence/). Keep stage-log entries for each stage you announced.
+  sections.push(
+    `Report back at every stage by printing a single line to the user: [self-repair:worker] stage=<reproduce|evidence-analysis|context-probe|experiment|understand|fix|verify|done> file=${file} detail=<short note>. Emit one line per stage transition per test.`,
+    `When finished, write your report as JSON to ${reportPath} conforming to the JSON Schema at ${schemaPath} (read the schema first). The report's handover.role must be "repair-worker-${slug(file)}". Every test from the baseline evidence must appear in the tests array with an outcome of already-green, healed, app-bug, quarantined, operator-pending, or unresolved. For app-bug outcomes include a bug-report object with a summary and evidence paths (screenshot, trace, video, slow-mo recording — under bug-evidence/). Keep stage-log entries for each stage you announced.`,
+    `Do not commit anything. Do not run the full suite — only this file.`,
+  );
 
-Do not commit anything. Do not run the full suite — only this file.`;
+  return sections.join('\n\n');
 }
 
 function spawnWorker(file, tests, round, opts) {
@@ -828,12 +862,13 @@ async function main() {
   // Stage 2 — classify
   let byTest = classify(runs);
   let red = redFiles(byTest);
-  const patterns = { 'deterministic-fail': 0, 'flaky-consistent': 0, 'flaky-chaotic': 0, 'known-defect': 0 };
+  const patterns = { 'deterministic-fail': 0, 'flaky-consistent': 0, 'flaky-chaotic': 0, 'known-defect': 0, 'known-defect-passed': 0 };
   for (const t of byTest.values()) if (t.pattern !== 'green') patterns[t.pattern]++;
   log(
     'classify',
     `${byTest.size} tests: ${byTest.size - [...red.values()].flat().length - patterns['known-defect']} green, ` +
       `${patterns['known-defect']} known-defect (excluded from repair), ` +
+      `${patterns['known-defect-passed']} known-defect-passed (anomaly — in repair scope; test-identity.md §2), ` +
       `${patterns['deterministic-fail']} deterministic, ${patterns['flaky-consistent']} flaky-consistent, ` +
       `${patterns['flaky-chaotic']} flaky-chaotic across ${red.size} red files`,
   );
@@ -908,7 +943,9 @@ async function main() {
     // Recompute red set: still-failing tests lacking an explained classification
     const nextRed = new Map();
     for (const t of verifyByTest.values()) {
-      if (t.pattern === 'green') continue;
+      // Same exclusion as redFiles(): an @known-defect red seen in a mixed
+      // file's verification runs is terminal by contract, never round-N work.
+      if (t.pattern === 'green' || t.pattern === 'known-defect') continue;
       const w = testOutcome(workerReports, t.file, t.title);
       if (w && EXPLAINED.has(w.outcome)) continue;
       if (!nextRed.has(t.file)) nextRed.set(t.file, []);

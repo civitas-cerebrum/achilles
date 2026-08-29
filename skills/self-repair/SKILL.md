@@ -133,11 +133,13 @@ Announce each run: `[self-repair] stage=baseline run <i>/<N> done: <T> tests, <F
 ### Stage 2 — Classify
 
 Per test, from the per-run outcome matrix (same taxonomy as `test-repair`
-Stage 2): **green** (all pass) / **known-defect** (any failure, test or
-describe tagged `@known-defect`) / **deterministic-fail** (all fail, same
-signature) / **flaky-consistent** (mixed, one signature) / **flaky-chaotic**
-(mixed, several signatures). Aggregate non-green, non-known-defect tests into
-the **red-file set**. Log one `[self-repair] stage=classify` line with the
+Stage 2): **green** (all pass) / **known-defect** (test or describe tagged
+`@known-defect`, red in every run) / **known-defect-passed** (tagged, but
+with ANY baseline pass — an anomaly, see below) / **deterministic-fail**
+(all fail, same signature) / **flaky-consistent** (mixed, one signature) /
+**flaky-chaotic** (mixed, several signatures). Aggregate non-green,
+non-known-defect tests into the **red-file set** — `known-defect-passed`
+is in scope, `known-defect` is not. Log one `[self-repair] stage=classify` line with the
 totals and one per red file.
 
 **`@known-defect` reds never enter the red-file set.** They are intentional
@@ -146,9 +148,23 @@ down, so a rerun, a worker, or a verification pass only re-derives it at the
 cost of wall-clock and worker budget. They are excluded from the failure
 reruns, from the fan-out, and from verification; they appear in the report
 under their own `known-defect` outcome, and they never count as `unresolved`,
-so they cannot hold the exit code red. A `@known-defect` test that *passes*
-classifies as green — the defect is fixed, which is a reportable event: say
-so, and the tag comes off. Contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2. Enforced in `bin/self-repair.mjs` (script mode); interactive mode applies the same rule by hand.
+so they cannot hold the exit code red.
+
+**A `@known-defect` test with any baseline pass is `known-defect-passed` —
+never silently green.** The tag predicts red, so a pass is an anomaly the
+session must resolve, not a green to tally. The pattern is non-terminal: the
+file enters the fan-out with a purpose-built stability-probe brief instead of
+the failure-diagnosis pipeline — the worker runs the two-number stability bar
+(3/3 targeted reruns + 5/5 suite-order runs, the same evidence `test-repair`
+Stage 5.5 demands to release a quarantined flake) and then either (a) all
+green → the defect is fixed: drop the `@known-defect` tag, touch nothing
+else, report `healed` and name the filed ticket for closing; or (b) any red →
+the pass is nondeterministic: retag `@known-defect` → `@flaky` at the same
+site, append the quarantine-ledger entry, report `quarantined`. Contract:
+[`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
+Enforced in `bin/self-repair.mjs` (script mode, classification pinned by
+`hooks/tests/cases/75-self-repair-known-defect.sh`); interactive mode applies
+the same rule by hand.
 
 If the red-file set is empty: write the report (everything `already-green`,
 plus any `known-defect`) and stop.

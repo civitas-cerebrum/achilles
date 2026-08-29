@@ -56,7 +56,7 @@
               "required": ["title", "baseline-pattern", "outcome"],
               "properties": {
                 "title": { "type": "string", "minLength": 1 },
-                "baseline-pattern": { "enum": ["green", "known-defect", "deterministic-fail", "flaky-consistent", "flaky-chaotic"] },
+                "baseline-pattern": { "enum": ["green", "known-defect", "known-defect-passed", "deterministic-fail", "flaky-consistent", "flaky-chaotic"] },
                 "outcome": { "enum": ["already-green", "known-defect", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"] },
                 "root-cause": { "type": ["string", "null"] },
                 "fix": { "type": ["string", "null"] },

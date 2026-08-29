@@ -63,12 +63,20 @@ Concretely, every consumer treats it as its own terminal classification, distinc
 
 | Consumer | Behaviour |
 |---|---|
-| `self-repair` (`bin/self-repair.mjs`) | Classified `known-defect` at baseline. Excluded from the red set, so no focused failure reruns, no worker dispatch, no verification runs. Reported under its own total; never counted as `unresolved`, so it cannot hold the exit code red. |
+| `self-repair` (`bin/self-repair.mjs`) | Classified `known-defect` at baseline. Excluded from the red set, so no focused failure reruns, no worker dispatch, no verification runs. Reported under its own total; never counted as `unresolved`, so it cannot hold the exit code red. A tagged test with *any* baseline pass instead classifies `known-defect-passed` — a non-terminal anomaly that ENTERS the repair scope with a purpose-built stability-probe brief (see below). |
 | `test-repair` | Excluded from the Stage-2 failure clusters. Listed in the session summary under known defects, not under anything awaiting a heal. |
 | `failure-diagnosis` | Terminal classification before any evidence gathering: a `@known-defect` red is neither a test issue to fix nor a new app bug to report. Diagnose it only when the failure *signature* has changed — a different error than the filed defect means a second, unfiled problem. |
 | `bug-discovery` | Authors the tag when a confirmed finding earns a regression guard, and links the finding. |
 | `test-catalogue` | Renders the case with the `Failing-expected` status chip, never `Active`. |
+| Achilles reporter (`reporter/index.js`) | Counts `@known-defect` tests and prints them in the end-of-run warning block; a known-defect that *passed* this run gets its own anomaly warning naming the test. |
 
-**When a `@known-defect` test goes green,** the defect is fixed. That is a reportable event, not a silent pass: surface it, drop the tag, and the test continues as an ordinary regression guard with no other edit.
+### A passing `@known-defect` is never silently green
+
+The tag predicts red, so a pass is an anomaly with exactly two honest readings — and the consumer's job is to establish which, never to fold the pass into the green count:
+
+- **The defect is actually fixed.** Prove it with the stability bar — the same two-number evidence `test-repair` Stage 5.5 demands before releasing a quarantined flake: **3/3 targeted reruns plus 5/5 suite-order runs, all green**. Then drop the tag (from the test title, the enclosing describe title, or the `{ tag: … }` option — wherever it sits), change nothing else, and surface the filed ticket for closing. The test continues as an ordinary regression guard.
+- **The pass is nondeterministic.** Any red inside that bar means the tag is lying about determinism: retag `@known-defect` → `@flaky` at the same site (the suite's quarantine tag), append a quarantine-ledger entry to `tests/e2e/docs/flake-quarantine.md` per the `failure-diagnosis` template, and carry the original defect pointer into the entry — the filed defect may still be real; what changed is that the red is no longer deterministic.
+
+`self-repair` gives the anomaly its own **non-terminal** pattern, `known-defect-passed`: unlike `known-defect`, it enters the red-file set and gets a worker brief that runs exactly this probe. The reporter surfaces the same anomaly at run end with a warning naming the test.
 
 **Distinct from `@flaky`.** `@flaky` marks an *unexplained* intermittent whose root cause resisted two heal strategies; it carries a quarantine-ledger entry and a release path (`test-repair` Stage 5.5). `@known-defect` marks a *fully explained* deterministic red whose cause lives in the application. Never use one for the other: a flake tagged `@known-defect` disappears from the repair pipeline that would eventually have fixed it.

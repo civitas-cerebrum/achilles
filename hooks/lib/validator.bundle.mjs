@@ -15492,10 +15492,10 @@ var repair_worker_schema_default = {
         properties: {
           title: { type: "string", minLength: 1 },
           outcome: {
-            enum: ["already-green", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"]
+            enum: ["already-green", "known-defect", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"]
           },
           "baseline-pattern": {
-            enum: ["green", "deterministic-fail", "flaky-consistent", "flaky-chaotic"]
+            enum: ["green", "known-defect-passed", "deterministic-fail", "flaky-consistent", "flaky-chaotic"]
           },
           "root-cause": { type: "string" },
           fix: { type: "string", description: "What was changed (selector, wait, state isolation) when outcome is healed." },

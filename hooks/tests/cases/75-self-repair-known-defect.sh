@@ -59,12 +59,13 @@ r["suites"][1]["specs"][0]["tests"][0]["results"][0] = {"status": "passed"}
 json.dump(r, open(sys.argv[2], "w"))
 EOF
 
-# probe <report-path> <expression over the classified map>
+# probe <report-path>[,<report-path>…] <expression over the classified map>
+# Each comma-separated report is one baseline run.
 probe() {
   node --input-type=module -e "
     const m = await import('file://$DRIVER');
-    const rows = m.collectResults('$1');
-    const byTest = m.classify([rows]);
+    const runs = '$1'.split(',').map((p) => m.collectResults(p));
+    const byTest = m.classify(runs);
     const red = m.redFiles(byTest);
     const pat = (t) => [...byTest.values()].find((x) => x.title.startsWith(t))?.pattern;
     const redTitles = [...red.values()].flat().map((t) => t.title).sort();
@@ -90,9 +91,22 @@ assert_eq "$(probe "$TMP_KD/report.json" "redTitles.join('|')")" \
 assert_eq "$(probe "$TMP_KD/report.json" "red.size")" "1" \
   "one red file — the @known-defect file is not scheduled"
 
-section "self-repair: a @known-defect test that goes green is green"
-assert_eq "$(probe "$TMP_KD/report-fixed.json" "pat('SGN-10')")" "green" \
-  "defect fixed → the tagged test classifies green, not known-defect"
+section "self-repair: a passing @known-defect is an anomaly, never silently green"
+# test-identity.md §2: the tag predicts red, so ANY pass classifies
+# known-defect-passed — a non-terminal pattern that enters the repair scope
+# (fixed → drop the tag after the stability bar; nondeterministic → @flaky).
+assert_eq "$(probe "$TMP_KD/report-fixed.json" "pat('SGN-10')")" "known-defect-passed" \
+  "tagged test passing every run → known-defect-passed, not green"
+assert_eq "$(probe "$TMP_KD/report.json,$TMP_KD/report-fixed.json" "pat('SGN-10')")" "known-defect-passed" \
+  "tagged test with a mixed fail/pass matrix → known-defect-passed, not known-defect"
+assert_eq "$(probe "$TMP_KD/report-fixed.json" "pat('LGN-08')")" "known-defect" \
+  "tagged test red in every run → still terminal known-defect"
+assert_eq "$(probe "$TMP_KD/report-fixed.json" "redTitles.includes('SGN-10 · a duplicate email surfaces a conflict')")" "true" \
+  "the anomaly ENTERS the red set — it gets a stability-probe worker"
+assert_eq "$(probe "$TMP_KD/report-fixed.json" "red.size")" "2" \
+  "anomaly file scheduled alongside the untagged red file; the all-red @known-defect file still is not"
+assert_eq "$(probe "$TMP_KD/report-fixed.json" "pat('LGN-01')")" "green" \
+  "an untagged pass still classifies green"
 
 section "self-repair: the report surfaces them separately"
 RENDER=$(node --input-type=module -e "
