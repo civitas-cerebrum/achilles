@@ -610,6 +610,13 @@
       </div>
 
     </div>
+
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-value grad">23</div><div class="stat-label">Agent Skills</div></div>
+        <div class="stat"><div class="stat-value grad">37</div><div class="stat-label">Harness Hooks</div></div>
+        <div class="stat"><div class="stat-value grad">13</div><div class="stat-label">JSON Schemas</div></div>
+        <div class="stat"><div class="stat-value grad">8</div><div class="stat-label">Pipeline Phases</div></div>
+      </div>
     </div>
   </div>
 </section>
@@ -683,7 +690,7 @@
       <div class="mode-card c-orange reveal">
         <div class="mode-icon c-orange">🧬</div>
         <h3 class="mode-title">Proof Toolchain</h3>
-        <p class="mode-desc"><code>achilles-mutate</code> proves the suite can fail — injecting the broken state each acceptance criterion forbids and naming the test that owns it. The Achilles reporter tracks flakiness across runs and archives per-attempt evidence. <code>achilles-show</code> turns any test into watchable mp4 footage for review and sign-off.</p>
+        <p class="mode-desc"><code>achilles-mutate</code> proves the suite can fail — injecting the broken state each acceptance criterion forbids and naming the test that owns it. The Achilles reporter tracks flakiness across runs, classifies <code>@known-defect</code> anomalies when tagged tests pass, and archives per-attempt evidence. <code>achilles-show</code> turns any test into watchable mp4 footage for review and sign-off.</p>
         <span class="mode-tag c-orange">Evidence</span>
       </div>
     </div>
@@ -757,7 +764,7 @@
     <div class="section-header centered reveal">
       <div class="section-tag">Doctrine</div>
       <h2 class="section-title">Agentic shift-left:<br /><span class="grad">shift the worker, not just the work</span></h2>
-      <p class="section-desc">Development is agentic. Quality assurance must be too. The lifecycle runs in four stages: a human decides what matters, agents do the heavy lifting, harness-gated evidence confirms the result, and agents guard it in production.</p>
+      <p class="section-desc">Development is agentic. Quality assurance must be too. The lifecycle runs in four stages: a human decides what matters, agents do the heavy lifting, harness-gated evidence confirms the result, and agents gate releases and heal the suite.</p>
     </div>
 
     <div class="phases reveal">
@@ -781,8 +788,8 @@
       </div>
       <div class="phase">
         <div class="phase-num">04 — Autonomous</div>
-        <div class="phase-name">Guard / Heal</div>
-        <div class="phase-desc">Scheduled regressions and high-frequency monitors watch production; self-repair heals drift, quarantines flakes, and files app bugs with evidence.</div>
+        <div class="phase-name">Gate / Heal</div>
+        <div class="phase-desc">Regression gates the release in the go-live pipeline; smoke runs on every PR; e2e verifies full browser journeys. Self-repair heals drift, quarantines flakes, and files app bugs with evidence.</div>
       </div>
     </div>
 
@@ -797,8 +804,8 @@
   <div class="container">
     <div class="quote-block reveal">
       <div class="quote-mark">“</div>
-      <p class="quote-text">You stay in the loop where it matters: reviewing, prioritising, deciding. Achilles handles everything else.</p>
-      <div class="quote-caption">Civitas Cerebrum · Achilles Design Principle</div>
+      <p class="quote-text">The agent doesn't opt into the methodology; it has no path around it. A hook that blocks sign-off without evidence blocks it on the ten-thousandth tool call the same way it blocks it on the first.</p>
+      <div class="quote-caption">Agentic Shift-Left Doctrine · §IV Enforcement</div>
     </div>
   </div>
 </section>
@@ -879,7 +886,7 @@
         <span class="cta-badge">MIT License</span>
         <span class="cta-badge">Built on Playwright</span>
         <span class="cta-badge">Driven by Agents</span>
-        <span class="cta-badge">20+ Agent Skills</span>
+        <span class="cta-badge">23 Agent Skills</span>
       </div>
     </div>
   </div>
