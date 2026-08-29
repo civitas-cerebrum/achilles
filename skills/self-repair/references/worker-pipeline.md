@@ -168,7 +168,7 @@ Exactly one of:
   sight — no reproduce, no experiment, no fix. Normally caught at
   classification so no worker is dispatched at all; a worker that meets one
   returns it immediately with the tag as the note. Contract:
-  [`test-identity.md`](../../element-interactions/references/test-identity.md) §2.
+  [`test-identity.md`](../../achilles-protocol/references/test-identity.md) §2.
 - **`unresolved`** — probe budget exhausted; exclusion list and partial
   understanding recorded. Never silent.
 

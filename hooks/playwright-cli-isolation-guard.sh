@@ -34,7 +34,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/playwright-cli-protocol.md §3
+# skills/achilles-protocol/references/playwright-cli-protocol.md §3
 #   (Session model, naming convention, length budget, quarantine)
 #
 # Convention (subagent description prefix ↔ CLI slug — same prefix on both ends)
@@ -117,7 +117,7 @@ if [ -z "$SLUG" ]; then
 fi
 
 # Allowed slug prefixes — must match the Agent-description role prefixes
-# (see skills/element-interactions/references/playwright-cli-protocol.md §3.1). The
+# (see skills/achilles-protocol/references/playwright-cli-protocol.md §3.1). The
 # trailing `[a-z0-9-]+` enforces a non-empty suffix so bare prefixes like
 # `phase1-` are rejected. Bare `j-`/`sj-` are NOT accepted; use the
 # role-explicit forms `composer-j-<slug>`, `reviewer-j-<slug>`,
@@ -155,7 +155,7 @@ Slug convention (must match the Agent description prefix that dispatched this su
   stage2-<scenario>                      element inspection
   cleanup-<scope>                        ledger / cleanup
 
-Why: without -s=, playwright-cli uses the shared default session — two parallel subagents fight over one browser process and isolation breaks. See element-interactions Rule 11 + playwright-cli-protocol.md §3.1."
+Why: without -s=, playwright-cli uses the shared default session — two parallel subagents fight over one browser process and isolation breaks. See achilles-protocol Rule 11 + playwright-cli-protocol.md §3.1."
   exit 0
 fi
 

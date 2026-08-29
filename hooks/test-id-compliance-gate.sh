@@ -40,9 +40,9 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/test-identity.md §"Every test case
+# skills/achilles-protocol/references/test-identity.md §"Every test case
 #   carries a stable ID"
-# skills/element-interactions/references/stages-protocol.md §"Stage 4b: API
+# skills/achilles-protocol/references/stages-protocol.md §"Stage 4b: API
 #   Compliance Review" (check 12)
 #
 # Failure → action
@@ -183,14 +183,14 @@ record the ID index (tests/e2e/docs/test-ids.md) as you go.
 ──────────────────────────
 How this is supposed to be done — load the skill, don't improvise:
 ──────────────────────────
-  Skill('element-interactions')  → the authoring pipeline that owns this rule;
+  Skill('achilles-protocol')  → the authoring pipeline that owns this rule;
     its Stage 4b compliance sweep (check 12) is where test identity is verified.
-    (Installs carrying the renamed orchestrator: Skill('achilles-protocol') —
-    same skill, and skills/achilles-protocol/ is where its references live.)
-  skills/element-interactions/references/test-identity.md
+    (Older installs carry the pre-rename name: Skill('element-interactions') —
+    same skill; skills/achilles-protocol/ is where its references live.)
+  skills/achilles-protocol/references/test-identity.md
     §1 the ID convention, its four consumers, and the stability contract
     §2 the @known-defect tag for an intentional red, and its no-rerun contract
-  skills/element-interactions/references/stages-protocol.md
+  skills/achilles-protocol/references/stages-protocol.md
     §Stage 4b: API Compliance Review — check 12, the sweep this gate backs
   Skill('bug-discovery') → §Assertion Strategy, for a reproduction test that is
     supposed to fail: it needs an ID *and* the @known-defect tag.

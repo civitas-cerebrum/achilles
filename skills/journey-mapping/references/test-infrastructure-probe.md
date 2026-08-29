@@ -21,7 +21,7 @@ The probe runs in two coordinated layers — observation during the crawl + a de
 ## Inputs
 
 - `playwright.config.ts` `baseURL` (the host being probed).
-- The `playwright-cli` session used for Phase 1 crawl. Network observations come from `playwright-cli requests` against that session; HTTP details come from `playwright-cli request <index>` / `playwright-cli response-headers <index>` / `playwright-cli response-body <index>`. See [`../../element-interactions/references/playwright-cli-protocol.md`](../../element-interactions/references/playwright-cli-protocol.md) §3 for the session model.
+- The `playwright-cli` session used for Phase 1 crawl. Network observations come from `playwright-cli requests` against that session; HTTP details come from `playwright-cli request <index>` / `playwright-cli response-headers <index>` / `playwright-cli response-body <index>`. See [`../../achilles-protocol/references/playwright-cli-protocol.md`](../../achilles-protocol/references/playwright-cli-protocol.md) §3 for the session model.
 
 ## Probe categories
 

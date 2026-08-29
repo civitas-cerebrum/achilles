@@ -68,7 +68,7 @@
 # Canonical reference
 # -------------------
 # schemas/subagent-returns/*.schema.json
-# skills/element-interactions/references/subagent-return-schema.md
+# skills/achilles-protocol/references/subagent-return-schema.md
 #
 # Failure → action
 # ----------------

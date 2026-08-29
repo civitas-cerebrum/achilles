@@ -269,7 +269,7 @@ Subagents pick categories based on the journey's flow. This is the single naming
 
 Every caller (`coverage-expansion`, `test-composer`, `bug-discovery`) MUST:
 
-1. Link to this file in its SKILL.md, using the relative path `skills/element-interactions/references/subagent-return-schema.md`.
+1. Link to this file in its SKILL.md, using the relative path `skills/achilles-protocol/references/subagent-return-schema.md`.
 2. Reference this file in every subagent dispatch brief — do not re-paste the schema into the brief.
 3. Reject subagent returns that do not conform. Either:
    - re-dispatch with a stricter brief that names the specific schema violation, or

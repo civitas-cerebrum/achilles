@@ -48,7 +48,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/harness-hooks.md
+# skills/achilles-protocol/references/harness-hooks.md
 
 set -uo pipefail
 
@@ -103,7 +103,7 @@ pipeline completes, or dies with the session.
 
 Project-local .claude/skills/* writes are NOT gated by this guard.
 
-See: skills/element-interactions/references/harness-hooks.md$(achilles_scope_notice)" '{
+See: skills/achilles-protocol/references/harness-hooks.md$(achilles_scope_notice)" '{
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

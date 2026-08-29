@@ -4,7 +4,10 @@ description: >
   Use this skill to restore a rotted Playwright test suite to a stable, verified green state.
   Triggers on requests like "repair the suite", "fix my tests", "restore green", "heal the suite",
   "the tests are broken", "the suite rotted", "triage the failures", "diagnose the whole suite",
-  "my suite is flaky", "the app changed and now tests fail everywhere". Also auto-escalates from
+  "my suite is flaky", "the app changed and now tests fail everywhere", "the nightly is red across the suite",
+  "the regression pipeline is failing everywhere". When the failures come from a CI run rather than a local
+  one, the run's artifacts are pulled down first (`failure-diagnosis` Stage 0b) so clustering starts from
+  evidence, not from log lines. Also auto-escalates from
   `failure-diagnosis`, `test-composer`, or `bug-discovery` when a single run produces many failures
   (≥5 failures or ≥30% of executed tests) or when failures repeat across diagnostic attempts — batch
   clustering finds shared root causes faster than per-failure diagnosis at scale. Those callers
@@ -31,6 +34,7 @@ Batch orchestrator for repairing a rotted suite. Runs the suite, clusters failur
 - "restore green", "heal the suite", "heal my tests"
 - "the suite is broken", "the suite rotted", "my tests are broken"
 - "triage the failures", "diagnose the whole suite", "my suite is flaky"
+- "the nightly is red across the suite", "the regression pipeline is failing everywhere", "triage the CI failures" — a **pipeline-sourced** repair; see Stage 0b below, which runs before Stage 1
 
 ### Auto-escalation from other skills
 
@@ -58,7 +62,19 @@ When a failure-centric workflow is already in flight, these conditions hand off 
 
 ## The Repair Pipeline
 
-Six stages, executed in order (plus Stage 5.5, which runs whenever the quarantine ledger has open entries). Each stage's output is the next stage's input.
+Six stages, executed in order (plus Stage 5.5, which runs whenever the quarantine ledger has open entries, and Stage 0b, which runs only for pipeline-sourced repairs). Each stage's output is the next stage's input.
+
+### Stage 0b — Pipeline evidence retrieval (pipeline-sourced repairs only)
+
+When the repair was triggered by a red CI run rather than a local one, pull the run's artifacts **before** the baseline. The procedure is owned by `failure-diagnosis` — follow [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md) §"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b — Pipeline evidence retrieval" verbatim (`gh run view --json headSha` → `gh api .../artifacts` → `gh run download`), and do not restate or fork them here.
+
+What this stage buys the batch pipeline:
+
+- **The red set is known before you spend three suite runs finding it.** The run's JSON reporter output names the failing specs and their error signatures directly, which is Stage 2's clustering input.
+- **Clustering starts from evidence.** Each cluster's representative already has a trace, a failure screenshot, an `error-context.md`, and console output from the run that actually failed — so Stage 4's delegated `failure-diagnosis` call opens with its evidence floor already half-satisfied. Note which *attempt* each artifact came from; under `trace: 'on-first-retry'` the only trace belongs to the retry, which may have passed.
+- **The environment is recorded.** Base URL, browser project, viewport env, the run's `headSha`, the framework versions it resolved, and the exact `playwright test` command line come out of the failing job's log; Stage 3's targeted re-runs should mirror them or the verification proves nothing about CI. A version delta between the run and the local tree is itself a cluster — one whose heal is a dependency bump, not a spec edit.
+
+Then run Stage 1 as normal. The local baseline is still required — it is what separates "broken everywhere" from "broken only in CI", and that distinction is itself a cluster.
 
 ### Stage 1 — Baseline (3 full suite runs)
 
@@ -95,7 +111,7 @@ runs doing it. List them in the session summary under known defects — never
 under anything awaiting a heal — and note any whose *error signature* changed,
 because a different error behind the tag is a second, unfiled problem. A
 `@known-defect` test that goes 3/3 green means the defect is fixed: say so and
-drop the tag. Contract: [`test-identity.md`](../element-interactions/references/test-identity.md) §2.
+drop the tag. Contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
 
 Then cluster the remaining non-green tests by shared signal. A few of the clusters you will commonly see:
 
@@ -252,7 +268,7 @@ These are the non-negotiables that every cluster decision must respect. Together
 | `bug-discovery` | Separate concern. This skill reports bugs it finds incidentally; it does not probe for new ones. `bug-discovery` may auto-escalate TO this skill if its adversarial run produces a batch of failures. |
 | `self-repair` | Sibling entrypoint: fan-out-first (one worker per red spec file, runs unattended via `achilles-self-repair` / `npm run test:repair`) where this skill is cluster-first (in-session, shared-root-cause batching). This skill's Bug-vs-Heal Discipline is normative for `self-repair` workers. Quarantine-ledger release (Stage 5.5) remains exclusively this skill's job — `self-repair` workers may add entries, never release them. |
 | `journey-mapping` | Not called directly. When `test-composer` is invoked for a (g) rewrite, that chain may reach `journey-mapping` — but test-repair does not re-map. |
-| `element-interactions` | Uses the Steps API to execute tests. No direct skill-level interaction. |
+| `achilles-protocol` | Uses the Steps API to execute tests. No direct skill-level interaction. |
 | `onboarding` | Out of scope; assumes a scaffolded project exists. If the project isn't onboarded, this skill reports that and stops. |
 | `work-summary-deck` | May consume the repair-session summary as input data for a stakeholder report. |
 
@@ -260,7 +276,7 @@ These are the non-negotiables that every cluster decision must respect. Together
 
 ## Exit gate — compliance sweep
 
-**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../element-interactions/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
 ## Success criteria
 
@@ -278,4 +294,4 @@ If any of these cannot be achieved, the session is NOT complete. Report the bloc
 
 ## API Reference
 
-Refer to [`../element-interactions/references/api-reference.md`](../element-interactions/references/api-reference.md) for all Steps method signatures. All Steps methods use `(elementName, pageName)` order.
+Refer to [`../achilles-protocol/references/api-reference.md`](../achilles-protocol/references/api-reference.md) for all Steps method signatures. All Steps methods use `(elementName, pageName)` order.

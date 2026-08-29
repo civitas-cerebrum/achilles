@@ -45,7 +45,7 @@
 # Canonical reference
 # -------------------
 # schemas/subagent-returns/*.schema.json  — single source of truth
-# skills/element-interactions/references/subagent-return-schema.md §4.2
+# skills/achilles-protocol/references/subagent-return-schema.md §4.2
 #
 # Failure → action
 # ----------------

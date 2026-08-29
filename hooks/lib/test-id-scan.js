@@ -6,7 +6,7 @@
 // would duplicate inside that file. Scoped to added-or-changed titles on
 // purpose: a suite that predates the convention must never block an unrelated
 // edit, so migration is incremental (see
-// skills/element-interactions/references/test-identity.md §1).
+// skills/achilles-protocol/references/test-identity.md §1).
 //
 // Usage: node test-id-scan.js <before-file> <after-file>
 //   → {"untagged":[...], "duplicates":[{"id":"LGN-04","titles":[...]}]}

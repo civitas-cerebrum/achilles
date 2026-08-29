@@ -235,7 +235,7 @@ function runPlaywright(label, jsonOut, extraArgs, opts) {
 // filed defect makes it fail today. The tag is matched the way Playwright's
 // own --grep sees it: anywhere in the title path, plus the reporter's `tags`
 // array for the `{ tag: … }` option form.
-// See skills/element-interactions/references/test-identity.md §2.
+// See skills/achilles-protocol/references/test-identity.md §2.
 const KNOWN_DEFECT_RE = /@known-defect\b/;
 
 function isKnownDefect(titlePath, tags) {

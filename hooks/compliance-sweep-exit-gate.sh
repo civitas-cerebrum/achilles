@@ -11,7 +11,7 @@
 #
 # Rule
 # ----
-# Every working mode that develops tests — authoring (element-interactions
+# Every working mode that develops tests — authoring (achilles-protocol
 # Stages 1-4), composition (test-composer), coverage expansion, bug-discovery
 # reproduction tests, ticket-driven testing, companion-mode graduation, and
 # every repair mode that edits test code (self-repair, test-repair,
@@ -40,9 +40,9 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/stages-protocol.md §"Stage 4b: API
+# skills/achilles-protocol/references/stages-protocol.md §"Stage 4b: API
 #   Compliance Review" and §"Stage 4b is every mode's exit gate"
-# skills/element-interactions/references/test-identity.md
+# skills/achilles-protocol/references/test-identity.md
 #
 # Failure → action
 # ----------------
@@ -127,7 +127,7 @@ cat >&2 <<EOF
 ──────────────────────────
 Do this instead — run the sweep now, then stop:
 ──────────────────────────
-  1. Read skills/element-interactions/references/api-reference.md (from the
+  1. Read skills/achilles-protocol/references/api-reference.md (from the
      file, not from memory) and re-read each spec you touched:
 $SPEC_FILES
   2. Run the 12 checks in stages-protocol.md §"Stage 4b: API Compliance
@@ -155,10 +155,10 @@ Delegation moves the work, not the obligation: either the subagent ran the
 sweep and said so in its return, or you run it here over what it wrote.
 
 How this is supposed to be done — load the skill, don't improvise:
-  Skill('element-interactions') → Stage 4b, the sweep and its checklist
-    (renamed installs: Skill('achilles-protocol') — same skill, same stage)
-  skills/element-interactions/references/stages-protocol.md §"Stage 4b: API Compliance Review"
-  skills/element-interactions/references/test-identity.md → check 12's conventions
+  Skill('achilles-protocol') → Stage 4b, the sweep and its checklist
+    (pre-rename installs: Skill('element-interactions') — same skill, same stage)
+  skills/achilles-protocol/references/stages-protocol.md §"Stage 4b: API Compliance Review"
+  skills/achilles-protocol/references/test-identity.md → check 12's conventions
   Skill('test-composer') → Step 6b, the same sweep inside a journey pass
 
 Kill-switch (document the authorisation): CIVITAS_DISABLE_COMPLIANCE_SWEEP_GATE=1

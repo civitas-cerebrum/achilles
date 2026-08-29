@@ -7,7 +7,7 @@
 # (collectResults → classify → redFiles) against Playwright-shaped JSON
 # reports, plus the report rendering.
 #
-# Canonical rule: skills/element-interactions/references/test-identity.md §2.
+# Canonical rule: skills/achilles-protocol/references/test-identity.md §2.
 DRIVER="$(cd "$HOOK_DIR/.." && pwd)/bin/self-repair.mjs"
 
 TMP_KD=$(mktemp -d /tmp/self-repair-known-defect-XXXXXX)

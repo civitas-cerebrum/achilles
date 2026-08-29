@@ -4,7 +4,7 @@ handover:
   status: greenlight
   next-action: record greenlight; advance to next phase
 phase: 3
-sub-skill: element-interactions
+sub-skill: achilles-protocol
 exit-criteria-checked:
   - criterion: happy-path spec exists at tests/e2e/<scenario>.spec.ts
     satisfied: true

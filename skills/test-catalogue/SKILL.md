@@ -30,7 +30,7 @@ Activation phrases:
 - "client-ready catalogue"
 - "export the scenario inventory"
 
-It does NOT activate during test writing, coverage expansion, repair, or debugging — those belong to the primary `element-interactions` stages. It is a paired document to `work-summary-deck`: the deck tells the narrative, the catalogue lists the inventory.
+It does NOT activate during test writing, coverage expansion, repair, or debugging — those belong to the primary `achilles-protocol` stages. It is a paired document to `work-summary-deck`: the deck tells the narrative, the catalogue lists the inventory.
 
 ---
 
@@ -89,7 +89,7 @@ For each extracted test:
 - If the enclosing describe starts with `sj-` → mark as `structural` (these are composed into journeys rather than being user-facing journeys themselves).
 - If the test is `test.skip` at statement position → keep the skip + capture any human-readable reason from a nearby comment on the preceding lines (best-effort).
 - If the test name carries an `@flaky` tag OR the test has an entry with `Status: quarantined` in `tests/e2e/docs/flake-quarantine.md` (when that ledger exists) → mark the status `Quarantined`. Quarantined tests must not render as Active.
-- If the test name or its enclosing describe carries a `@known-defect` tag → mark the status `Failing-expected` and, when the spec's header comment names the defect report or ticket, attach that reference. A `@known-defect` test is an intentional red guarding a filed defect ([`test-identity.md`](../element-interactions/references/test-identity.md) §2); it must never render as Active, and it is not a `test.fail` prerequisite — the tag alone is the signal.
+- If the test name or its enclosing describe carries a `@known-defect` tag → mark the status `Failing-expected` and, when the spec's header comment names the defect report or ticket, attach that reference. A `@known-defect` test is an intentional red guarding a filed defect ([`test-identity.md`](../achilles-protocol/references/test-identity.md) §2); it must never render as Active, and it is not a `test.fail` prerequisite — the tag alone is the signal.
 - If the test title begins with a test ID (`TCXX-NNNNNN`, e.g. `TCLG-000420`) → capture the ID as the row's identifier and render the remaining title as the scenario name. The ID is the stable handle a reader quotes back at the suite; a catalogue that drops it forces them to quote a whole sentence instead.
 
 Unmatched tests go into an "Unmapped" bucket in the catalogue — visible so the user sees what needs mapping.
@@ -312,7 +312,7 @@ This skill does not read `autonomousMode: true`. It is never invoked by another 
 
 ## Registry
 
-This skill is registered in `skills/element-interactions/references/skill-registry.md`:
+This skill is registered in `skills/achilles-protocol/references/skill-registry.md`:
 
 ```
 | `test-catalogue` | `test-catalogue` | — (user-invoked, on-demand) | "produce a test catalogue", "generate a scenario report", "catalogue the suite", "client-ready catalogue", "export the scenario inventory"; never auto-invoked by any other skill. |

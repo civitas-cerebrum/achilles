@@ -83,6 +83,25 @@ with the suite's own timeouts, because a heal is only proven under real
 conditions, and a cap on discovery could misclassify legitimately slow
 tests app-wide.
 
+**Pipeline-sourced runs — pull the CI evidence first.** When the session
+was triggered by a red CI run rather than a local one (interactive mode:
+the user said "the nightly failed" / "CI is red"; script mode: the driver
+was handed a run id), download the run's artifacts before the discovery
+run, following [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md)
+§"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b
+— Pipeline evidence retrieval" — do not fork the procedures here. The
+run's JSON reporter output gives the red-file set without waiting for
+discovery, and each red file's downloaded `trace.zip` /
+`test-failed-1.png` / `error-context.md` goes into that file's worker
+brief (naming which attempt each artifact came from) so the worker's
+`failure-diagnosis` evidence floor starts from the execution that
+actually failed. The run's `headSha` and the framework versions it
+resolved go into every brief too — a worker reading framework source
+from the local `node_modules` when CI resolved an older version will
+diagnose a defect that is already fixed. The local discovery run still
+happens — a red file that is green locally is a CI-only failure, which
+is a classification, not a pass.
+
 **Incident-shape spacing.** A 3/3-red baseline captured in one tight
 window can be a time-varying app incident, not a deterministic failure
 (observed live: a logout journey read 3/3 red during a bad window and
@@ -129,7 +148,7 @@ reruns, from the fan-out, and from verification; they appear in the report
 under their own `known-defect` outcome, and they never count as `unresolved`,
 so they cannot hold the exit code red. A `@known-defect` test that *passes*
 classifies as green — the defect is fixed, which is a reportable event: say
-so, and the tag comes off. Contract: [`test-identity.md`](../element-interactions/references/test-identity.md) §2. Enforced in `bin/self-repair.mjs` (script mode); interactive mode applies the same rule by hand.
+so, and the tag comes off. Contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2. Enforced in `bin/self-repair.mjs` (script mode); interactive mode applies the same rule by hand.
 
 If the red-file set is empty: write the report (everything `already-green`,
 plus any `known-defect`) and stop.
@@ -371,7 +390,7 @@ the interactive orchestrator applies the same rules with Write/Edit):
 | `failure-diagnosis` | Loaded by every worker for the atomic heal-or-classify work. Its contract is unchanged. |
 | `test-repair` | Sibling entrypoint (cluster-first, in-session). Its Bug-vs-Heal Discipline is normative here. Prefer it when one shared root cause dominates. |
 | `bug-discovery` | Separate concern — self-repair reports bugs it encounters, it does not probe for new ones. |
-| `element-interactions` | Workers use the Steps API + page repository when healing selectors. |
+| `achilles-protocol` | Workers use the Steps API + page repository when healing selectors. |
 | `onboarding` | Phase 1 scaffold wires `"test:repair": "achilles-self-repair"` into the consumer's `package.json`; per-flow presets are derived from suite scripts via `--init-scripts` (see "Per-flow repair presets"). |
 | `work-summary-deck` | May consume `report.json` as input data for a stakeholder deck. |
 
@@ -379,7 +398,7 @@ the interactive orchestrator applies the same rules with Write/Edit):
 
 ## Exit gate — compliance sweep
 
-**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../element-interactions/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
 ## Success criteria
 

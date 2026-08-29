@@ -1,6 +1,6 @@
 # Stages Protocol — Element-Interactions Pipeline (Stages 1–4)
 
-**Status:** authoritative spec for the four-stage element-interactions test-authoring pipeline. Cited from `element-interactions/SKILL.md`.
+**Status:** authoritative spec for the four-stage achilles-protocol test-authoring pipeline. Cited from `achilles-protocol/SKILL.md`.
 **Scope:** Stage 1 (Scenario Discovery), Stage 2 (Element Inspection), Stage 3 (Write Automation), Stage 4a (Test Optimization), Stage 4b (API Compliance Review). For each stage: process, hard gates, output format, and skip-to-Stage-3 (fix/edit) mode.
 
 For the canonical browser-automation primitive used in Stage 2 / 3, see `playwright-cli-protocol.md`.
@@ -217,6 +217,25 @@ For each test file, verify:
 
    Full convention, consumers, and the no-rerun contract: [`test-identity.md`](test-identity.md). Identity is harness-enforced by [`hooks/test-id-compliance-gate.sh`](../../../hooks/test-id-compliance-gate.sh), which denies a spec write that adds an untitled-by-ID case or duplicates an ID inside one file.
 
+13. **Unnecessary timeouts — strip when no performance fatigue is recorded.** If the website shows no visible or recorded signs of performance fatigue, custom timeout overrides are unnecessary padding and must be removed. The framework defaults (30 000 ms element timeout, 15 000 ms repo timeout) are deliberately generous — an explicit override is only justified when observed evidence proves the default is insufficient for a specific interaction.
+
+   **Performance-fatigue evidence** — any of these present means the timeout is justified; keep it and skip this check for that call site:
+   - Stage 3 stabilization produced timeout-class failures (`TimeoutError`, `waiting for selector … timeout …`, `exceeded … ms`) that were resolved by adding the override.
+   - `app-context.md` `## Test Infrastructure` documents slow-loading pages, heavy SPA hydration, SSR delays, or known-slow third-party widgets.
+   - The timeout has an explicit `// perf:` or `// slow:` comment explaining why it exists.
+
+   **What to strip (when no fatigue evidence):**
+   - Per-call `.timeout(ms)` overrides on `.on()` / `.expect()` matcher chains.
+   - `{ timeout: ms }` options on `waitForState`, `waitForNetworkIdle`, `waitForUrl`, `waitForLoadState`, `isVisible`, `isPresent`.
+   - Custom `timeout` in `test.describe.configure({ … timeout: X })` that exceeds the fixture-level default without justification.
+
+   **What is NOT stripped:**
+   - The fixture-level `timeout` in `baseFixture(…, { timeout: … })` — that is a project-level decision, not a per-test concern.
+   - `test.setTimeout()` calls — test-runner level, outside the Steps API scope.
+   - Any timeout with an accompanying `// perf:` or `// slow:` justification comment.
+
+   **Auto-fix:** yes. Remove the timeout argument / option-object key. If the option object becomes empty after removal (e.g. `{ timeout: 5000 }` was the only key), remove the entire options argument. Re-run the affected tests after stripping — if any test then fails with a timeout, the app *does* have performance fatigue for that interaction: revert the strip for that call and add a `// perf: <element> requires extended timeout — <observed evidence>` comment to protect it from future sweeps.
+
 ### Process
 
 1. **Read `api-reference.md`** — load the full API reference. Do not review from memory.
@@ -256,7 +275,7 @@ Or if clean:
 
 | Mode | When the sweep runs |
 |---|---|
-| `element-interactions` Stages 1-4 | Inline, after Stage 4a returns clean (the original home of the sweep). |
+| `achilles-protocol` Stages 1-4 | Inline, after Stage 4a returns clean (the original home of the sweep). |
 | `test-composer` | Step 6b, over the journey's freshly-composed variants — before the coverage gate and the return. |
 | `coverage-expansion` | Per journey per pass, through the composer it dispatches; a pass whose composer return shows no sweep is an incomplete pass. |
 | `bug-discovery` | Over every reproduction test written in the pass, including `@dom-only` ones. A reproduction test is still test code. |
