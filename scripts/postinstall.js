@@ -27,14 +27,55 @@ if (require.main === module && !packageDir.includes('node_modules')) {
 
 const homeDir = os.homedir();
 
-// Install to both project-level and user-level .claude/skills/ directories.
-// Project-level ensures the correct version is available for this project.
-// User-level ensures stale skills from older installs are overwritten,
-// preventing outdated user-level files from taking precedence.
-const destinations = [
-  path.join(projectRoot, '.claude', 'skills'),
-  path.join(homeDir, '.claude', 'skills'),
-];
+// Install scope — decided by how npm was invoked:
+//
+//   npm install -g @civitas-cerebrum/achilles
+//     → GLOBAL install. The harness (hooks + settings.json registrations +
+//       bundled jq) lands system-wide under ~/.claude/, and the methodology
+//       (skills) lands user-level under ~/.claude/skills/. There is no
+//       consumer project in a global install — projectRoot resolves to npm's
+//       own lib/ directory, which must never receive a .claude/ tree.
+//
+//   npm install @civitas-cerebrum/achilles          (no -g)
+//     → LOCAL install. The harness lands in the CURRENT PROJECT ONLY
+//       (<project>/.claude/hooks + <project>/.claude/settings.json), so the
+//       hooks exist for sessions in this project and nowhere else. The
+//       methodology is still installed system-wide as well (project +
+//       user-level skills), because skills are inert instructions — they
+//       activate only when invoked — while hooks are live processes that
+//       belong to the scope that opted in.
+//
+// Either way the hooks themselves enforce nothing outside an
+// achilles-activated session: every gate silent-allows until the achilles
+// protocol activates in the session (see hooks/lib/achilles-activation.sh).
+function isGlobalInstall() {
+  // npm exports every config flag as npm_config_*; -g sets global=true.
+  if (process.env.npm_config_global === 'true') return true;
+  if (process.env.npm_config_global === 'false') return false;
+  // Fallback for package managers that don't export the flag: a local
+  // install has a consumer project (package.json) at projectRoot; a global
+  // install's projectRoot is npm's lib/ dir, which has none.
+  return packageDir.includes('node_modules') &&
+    !fs.existsSync(path.join(projectRoot, 'package.json'));
+}
+
+const globalInstall = isGlobalInstall();
+
+// Base .claude/ directory the HARNESS (hooks + settings + jq) installs into.
+const harnessClaudeDir = globalInstall
+  ? path.join(homeDir, '.claude')
+  : path.join(projectRoot, '.claude');
+
+// Skill (methodology) destinations. Local installs write project-level (the
+// correct version for this project) AND user-level (overwrites stale skills
+// from older installs so outdated user-level files never take precedence).
+// Global installs write user-level only — projectRoot is npm's lib/ dir.
+const destinations = globalInstall
+  ? [path.join(homeDir, '.claude', 'skills')]
+  : [
+      path.join(projectRoot, '.claude', 'skills'),
+      path.join(homeDir, '.claude', 'skills'),
+    ];
 
 // Auto-discover every skill under skills/. A skill is any direct subdirectory
 // of skills/ that contains a SKILL.md at its root. This keeps installs in sync
@@ -85,8 +126,9 @@ function installCivitasSkills() {
   }
 }
 
-// Install the @civitas-cerebrum/element-interactions harness hooks into the
-// user's ~/.claude/hooks/ directory and register them in ~/.claude/settings.json.
+// Install the achilles harness hooks into <claudeDir>/hooks/ and register
+// them in <claudeDir>/settings.json — ~/.claude for a global (-g) install,
+// <project>/.claude for a local one (see the install-scope block above).
 // Markdown rules in the skills ("dispatch one journey per Agent call",
 // "use playwright-cli not the MCP browser tools", "preserve the journey-map
 // sentinel", etc.) are skippable; the harness-level hooks are not.
@@ -314,14 +356,19 @@ function registerHookInSettings(settings, entry, hookDest) {
   return true;
 }
 
-function installCivitasHooks() {
+// claudeDir — the .claude/ base the harness installs into. Defaults to the
+// user-level ~/.claude for require()-callers (scripts/sync-hooks.js, tests);
+// the postinstall runner passes harnessClaudeDir so a local (non--g) install
+// lands in <project>/.claude and a global (-g) install in ~/.claude.
+function installCivitasHooks(claudeDir) {
   if (process.env.CIVITAS_SKIP_HOOK_INSTALL === '1') {
     console.log('[civitas-cerebrum] CIVITAS_SKIP_HOOK_INSTALL=1 — harness hook install skipped.');
     return;
   }
 
-  const userHooksDir = path.join(homeDir, '.claude', 'hooks');
-  const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+  const baseDir = claudeDir || path.join(homeDir, '.claude');
+  const userHooksDir = path.join(baseDir, 'hooks');
+  const settingsPath = path.join(baseDir, 'settings.json');
   fs.mkdirSync(userHooksDir, { recursive: true });
 
   // Load current settings.json (or {} if missing). Bail out preserving the
@@ -457,7 +504,7 @@ function installCivitasHooks() {
 
   pruneRetiredHooks(userHooksDir);
 
-  console.log(`[civitas-cerebrum] Harness hooks: ${copiedCount} script${copiedCount === 1 ? '' : 's'} copied, ${registeredCount} registration${registeredCount === 1 ? '' : 's'} added (others already present). Restart Claude Code to pick them up.`);
+  console.log(`[civitas-cerebrum] Harness hooks (${baseDir === path.join(homeDir, '.claude') ? 'system-wide' : 'this project only'}): ${copiedCount} script${copiedCount === 1 ? '' : 's'} copied to ${userHooksDir}, ${registeredCount} registration${registeredCount === 1 ? '' : 's'} added to ${settingsPath} (others already present). Restart Claude Code to pick them up.`);
 }
 
 // Bundle a pinned `jq` binary alongside the harness hooks. The hooks parse
@@ -535,7 +582,9 @@ function jqVersionAtPath(jqPath) {
   }
 }
 
-async function installBundledJq() {
+// claudeDir — same contract as installCivitasHooks(): the .claude/ base the
+// jq binary lands under (<base>/hooks/bin/jq), defaulting to ~/.claude.
+async function installBundledJq(claudeDir) {
   if (process.env.CIVITAS_SKIP_JQ_INSTALL === '1') {
     console.log('[civitas-cerebrum] CIVITAS_SKIP_JQ_INSTALL=1 — bundled jq install skipped.');
     return;
@@ -548,11 +597,12 @@ async function installBundledJq() {
     return;
   }
 
-  // Bundled binary is for consumer-side hooks at ~/.claude/hooks/bin/jq.
+  // Bundled binary is for consumer-side hooks at <claudeDir>/hooks/bin/jq
+  // (hooks resolve it relative to their own location via BASH_SOURCE).
   // (The package's own dev install is short-circuited at the top of this
   // file via `if (!packageDir.includes('node_modules')) process.exit(0)`,
   // so the in-repo test suite always uses system jq via the hook fallback.)
-  const userHooksDir = path.join(homeDir, '.claude', 'hooks');
+  const userHooksDir = path.join(claudeDir || path.join(homeDir, '.claude'), 'hooks');
   const binDir       = path.join(userHooksDir, 'bin');
   const dest         = path.join(binDir, process.platform === 'win32' ? 'jq.exe' : 'jq');
 
@@ -767,12 +817,19 @@ module.exports = {
   installCivitasHooks,
   installBundledJq,
   installChromium,
+  isGlobalInstall,
+  harnessClaudeDir,
+  skillsDestinations: destinations,
 };
 
 // Full postinstall runs only when this file is invoked directly. When
 // require()'d, the caller picks which installers to run.
 if (require.main === module) {
   (async () => {
+    console.log(`[@civitas-cerebrum/achilles] ${globalInstall
+      ? 'Global install (-g): harness → ~/.claude (system-wide), methodology → user-level skills.'
+      : `Local install: harness → ${harnessClaudeDir} (this project only), methodology → project + user-level skills.`}`);
+
     try {
       installCivitasSkills();
     } catch (err) {
@@ -780,14 +837,14 @@ if (require.main === module) {
     }
 
     try {
-      await installBundledJq();
+      await installBundledJq(harnessClaudeDir);
     } catch (err) {
       console.warn(`[civitas-cerebrum] Could not install bundled jq: ${err.message}`);
       process.exitCode = 1;
     }
 
     try {
-      installCivitasHooks();
+      installCivitasHooks(harnessClaudeDir);
     } catch (err) {
       console.warn(`[civitas-cerebrum] Could not install harness hooks: ${err.message}`);
     }

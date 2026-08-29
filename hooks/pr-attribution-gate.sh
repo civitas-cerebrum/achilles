@@ -4,7 +4,8 @@
 # Hook    : PreToolUse:Bash  (filters to `gh pr create` / `gh pr edit` only)
 # Mode    : DENY (high-confidence anti-pattern) — no WARN path
 # State   : none (stateless scan of the command surface)
-# Env     : none
+# Env     : ACHILLES_PROTOCOL (via lib/achilles-activation.sh)
+# Scope   : achilles-activated sessions only — plain dev sessions silent-allow
 #
 # Rule
 # ----
@@ -75,6 +76,12 @@ emit_deny() {
 
 # --- input ---
 INPUT=$(cat)
+
+# Session-scope gate: this hook applies only to achilles-activated
+# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+achilles_require_active "$INPUT"
+
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 [ "$TOOL_NAME" != "Bash" ] && exit 0
 
