@@ -154,13 +154,16 @@ so they cannot hold the exit code red.
 never silently green.** The tag predicts red, so a pass is an anomaly the
 session must resolve, not a green to tally. The pattern is non-terminal: the
 file enters the fan-out with a purpose-built stability-probe brief instead of
-the failure-diagnosis pipeline — the worker runs the two-number stability bar
-(3/3 targeted reruns + 5/5 suite-order runs, the same evidence `test-repair`
-Stage 5.5 demands to release a quarantined flake) and then either (a) all
-green → the defect is fixed: drop the `@known-defect` tag, touch nothing
-else, report `healed` and name the filed ticket for closing; or (b) any red →
-the pass is nondeterministic: retag `@known-defect` → `@flaky` at the same
-site, append the quarantine-ledger entry, report `quarantined`. Contract:
+the failure-diagnosis pipeline — the worker runs a two-number stability bar
+adapted from `test-repair` Stage 5.5's quarantine-release bar (3/3 targeted
+isolation reruns first, then 5/5 suite-order runs; Stage 5.5 runs suite-order
+first) and then either (a) all green → the defect is fixed: drop the
+`@known-defect` tag, touch nothing else, report `healed` and name the filed
+ticket for closing; or (b) any red → the pass is nondeterministic: retag
+`@known-defect` → `@flaky`, append the quarantine-ledger entry, report
+`quarantined`. Either way the tag is edited only at a site scoping solely the
+anomalous test — a shared describe/file tag site is re-scoped onto the
+individual tests first, so still-red siblings keep `@known-defect`. Contract:
 [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
 Enforced in `bin/self-repair.mjs` (script mode, classification pinned by
 `hooks/tests/cases/75-self-repair-known-defect.sh`); interactive mode applies

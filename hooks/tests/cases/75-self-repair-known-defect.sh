@@ -125,3 +125,44 @@ assert_eq "$(echo "$RENDER" | grep -c 'Known defects (not repaired, not rerun)')
   "report.md carries a known-defects section"
 assert_eq "$(echo "$RENDER" | grep -c '| 1 | 1 | 0 | 0 | 0 | 0 | 0 |')" "1" \
   "the outcome table carries the known-defect column"
+
+section "self-repair: the anomaly worker brief carries the stability probe and the tag-site guard"
+# brief <tests-json> <expression over the composed brief string>
+brief() {
+  node --input-type=module -e "
+    const m = await import('file://$DRIVER');
+    const b = m.workerBrief('tests/e2e/signup/signup.spec.ts', $1,
+      '/tmp/r.json', '/tmp/s.json', { baselineRuns: 3 });
+    process.stdout.write(String($2));
+  " 2>/dev/null
+}
+ANOMALY_ONLY="[{ title: 'SGN-10 · a duplicate email surfaces a conflict', pattern: 'known-defect-passed', outcomes: ['passed'], errors: [] }]"
+MIXED="[{ title: 'SGN-10 · a duplicate email surfaces a conflict', pattern: 'known-defect-passed', outcomes: ['passed'], errors: [] }, { title: 'SGN-11 · weak password rejected', pattern: 'deterministic-fail', outcomes: ['failed'], errors: ['boom'] }]"
+
+assert_eq "$(brief "$ANOMALY_ONLY" "b.includes('TAG-SITE GUARD')")" "true" \
+  "anomaly brief carries the tag-site guard"
+assert_eq "$(brief "$ANOMALY_ONLY" "b.includes('do NOT strip or replace it there — re-scope first')")" "true" \
+  "shared describe/file tag sites must be re-scoped, never stripped, while siblings are still red"
+assert_eq "$(brief "$ANOMALY_ONLY" "b.includes('each still-red sibling keeps') && b.includes('@known-defect')")" "true" \
+  "re-scoping keeps @known-defect on the still-red siblings"
+assert_eq "$(brief "$ANOMALY_ONLY" "b.includes('adapted from the one test-repair Stage 5.5 uses')")" "true" \
+  "the probe bar is named as adapted from Stage 5.5, not the same bar"
+assert_eq "$(brief "$ANOMALY_ONLY" "b.includes('Load the failure-diagnosis skill')")" "false" \
+  "an anomaly-only file gets the probe brief, not the repair pipeline"
+assert_eq "$(brief "$MIXED" "b.includes('Load the failure-diagnosis skill') && b.includes('TAG-SITE GUARD')")" "true" \
+  "a mixed file gets both the repair pipeline and the anomaly probe"
+
+section "self-repair: verify identity survives the tag edit (normalised-title fallback)"
+# Dropping @known-defect (or retagging @flaky) renames a title-keyed test;
+# normalizeTitle is what testOutcome/findVerified use to re-attach evidence.
+assert_eq "$(node --input-type=module -e "
+  const m = await import('file://$DRIVER');
+  const pre = 'SGN-10 · a duplicate email surfaces a conflict @known-defect';
+  const post = 'SGN-10 · a duplicate email surfaces a conflict';
+  const retagged = 'SGN-10 · a duplicate email surfaces a conflict @flaky';
+  process.stdout.write(String(
+    m.normalizeTitle(pre) === m.normalizeTitle(post) &&
+    m.normalizeTitle(retagged) === m.normalizeTitle(post) &&
+    m.normalizeTitle('untouched title') === 'untouched title'));
+" 2>/dev/null)" "true" \
+  "baseline, tag-dropped and retagged titles normalise to the same identity"

@@ -94,7 +94,13 @@ function render(model, opts) {
   // never silently green.
   const warnings = [];
   if (counts.knownDefect) {
-    warnings.push(`${c('yellow', `⚠ known defects: ${counts.knownDefect}`)}${c('dim', ' (red by design — each maps to a filed ticket)')}`);
+    // "(red by design)" is only honest when every tagged test was red this
+    // run; when some passed, say so and point at the anomaly lines below.
+    const passedCount = (model.knownDefectPassed || []).length;
+    const gloss = passedCount > 0
+      ? ` (${passedCount} passed this run — see below)`
+      : ' (red by design — each maps to a filed ticket)';
+    warnings.push(`${c('yellow', `⚠ known defects: ${counts.knownDefect}`)}${c('dim', gloss)}`);
   }
   if (counts.flaky) {
     warnings.push(`${c('yellow', `⚠ flaky: ${counts.flaky}`)}${c('dim', ' (passed only on retry — the failing attempts are listed below)')}`);

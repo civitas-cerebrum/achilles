@@ -400,7 +400,7 @@ function workerBrief(file, tests, reportPath, schemaPath, opts) {
 Anomaly evidence (${opts.baselineRuns} runs):
 ${matrixOf(anomalies)}
 
-Process per anomalous test: (1) reproduce — run the test in isolation 3 times (\`npx playwright test ${file} --grep "<test id>"\`), then run the full file 5 times in suite order (\`npx playwright test ${file}\`) — the same two-number stability bar (3/3 targeted + 5/5 suite-order) test-repair Stage 5.5 uses to release a quarantined flake. (2a) All 8 runs green -> the defect is fixed: remove the \`@known-defect\` tag from wherever it sits (the test title, the enclosing describe title, or a \`{ tag: … }\` option) and change NOTHING else — the assertions stay untouched and the test continues as an ordinary regression guard. Report outcome "healed" with fix describing the tag drop, stability-runs {passed: 8, total: 8}, and the spec's filed-defect pointer (the ticket/report comment near the tag) in notes so the operator can close the ticket. (2b) ANY red among those runs -> the pass is nondeterministic: replace \`@known-defect\` with \`@flaky\` at the same site (the suite's quarantine tag), append an entry for the test to tests/e2e/docs/flake-quarantine.md following the failure-diagnosis quarantine-ledger template (create the file with its ledger header if missing), and report outcome "quarantined" with the per-run evidence and the original defect pointer in notes — the filed defect may still be real, but the tag no longer tells the truth about determinism. Never weaken or delete an assertion, never .skip(), and never leave \`@known-defect\` on a test that passes. Announce the probe as stage=reproduce (the runs) and stage=verify (the decision) lines.`,
+Process per anomalous test: (1) reproduce — run the test in isolation 3 times (\`npx playwright test ${file} --grep "<test id>"\`), then run the full file 5 times in suite order (\`npx playwright test ${file}\`) — a two-number stability bar adapted from the one test-repair Stage 5.5 uses to release a quarantined flake (Stage 5.5 runs suite-order first; here the 3 targeted isolation runs come first to reproduce the anomaly cheaply, then the 5 suite-order runs confirm under real conditions). (2) TAG-SITE GUARD — before any tag edit, check WHERE \`@known-defect\` sits: drop or replace it ONLY at a site that scopes solely the anomalous test. If it sits on an enclosing describe title or a describe-level \`{ tag: … }\` option shared with sibling tests that are still red, do NOT strip or replace it there — re-scope first: move the tag down onto the individual tests (each still-red sibling keeps \`@known-defect\` and its defect pointer; the anomalous test alone gets its resolution below), then proceed. Stripping a shared site turns the siblings' filed reds into ordinary failures next session; retagging a shared site marks deterministic filed defects \`@flaky\`. (2a) All 8 runs green -> the defect is fixed: remove the \`@known-defect\` tag at the anomalous test's own site (its title, its own \`{ tag: … }\` option, or the enclosing describe only when every test under it is anomalous-green) and change NOTHING else — the assertions stay untouched and the test continues as an ordinary regression guard. Report outcome "healed" with fix describing the tag drop, stability-runs {passed: 8, total: 8}, and the spec's filed-defect pointer (the ticket/report comment near the tag) in notes so the operator can close the ticket. (2b) ANY red among those runs -> the pass is nondeterministic: replace \`@known-defect\` with \`@flaky\` at the anomalous test's own site per the tag-site guard (the suite's quarantine tag), append an entry for the test to tests/e2e/docs/flake-quarantine.md following the failure-diagnosis quarantine-ledger template (create the file with its ledger header if missing), and report outcome "quarantined" with the per-run evidence and the original defect pointer in notes — the filed defect may still be real, but the tag no longer tells the truth about determinism. Never weaken or delete an assertion, never .skip(), and never leave \`@known-defect\` on a test that passes. Announce the probe as stage=reproduce (the runs) and stage=verify (the decision) lines.`,
     );
   }
 
@@ -529,13 +529,36 @@ function validateWorkerReport(data) {
 // Report
 // ---------------------------------------------------------------------------
 
+// A worker resolving a known-defect-passed anomaly edits the very token the
+// suite keys tests on: dropping `@known-defect` from a title (or swapping it
+// for `@flaky`) renames the test, so verify-round results and worker rows
+// land under the new title while the baseline row keeps the old one. Compare
+// titles with those tokens stripped so the evidence still attaches.
+// See skills/achilles-protocol/references/test-identity.md §2.
+const normalizeTitle = (title) =>
+  String(title).replace(/@known-defect\b|@flaky\b/g, '').replace(/\s+/g, ' ').trim();
+
 function testOutcome(workerReports, file, title) {
+  const want = normalizeTitle(title);
   for (const w of workerReports) {
     if (w.file !== file || !w.report) continue;
-    const t = (w.report.tests ?? []).find((x) => x.title === title);
+    const tests = w.report.tests ?? [];
+    const t = tests.find((x) => x.title === title) ?? tests.find((x) => normalizeTitle(x.title) === want);
     if (t) return t;
   }
   return null;
+}
+
+// Verify lookup with the same normalised-title fallback as testOutcome.
+function findVerified(verifyByTest, file, title) {
+  if (!verifyByTest) return undefined;
+  const direct = verifyByTest.get(`${file}::${title}`);
+  if (direct) return direct;
+  const want = normalizeTitle(title);
+  for (const v of verifyByTest.values()) {
+    if (v.file === file && normalizeTitle(v.title) === want) return v;
+  }
+  return undefined;
 }
 
 const EXPLAINED = new Set(['app-bug', 'quarantined', 'operator-pending']);
@@ -545,7 +568,7 @@ function buildReport(runId, opts, byTest, workerReports, verifyByTest, rounds, s
   for (const t of byTest.values()) {
     if (!files.has(t.file)) files.set(t.file, []);
     const worker = testOutcome(workerReports, t.file, t.title);
-    const verified = verifyByTest?.get(`${t.file}::${t.title}`);
+    const verified = findVerified(verifyByTest, t.file, t.title);
     let outcome;
     if (t.pattern === 'green') outcome = 'already-green';
     // Terminal before any worker/verify evidence — nothing ran for it.
@@ -972,7 +995,7 @@ async function main() {
 
 // Pure classification helpers, exported so the hook test-suite can pin the
 // @known-defect no-rerun contract without spawning a Playwright run.
-export { collectResults, classify, redFiles, isKnownDefect, buildReport, renderMarkdown };
+export { collectResults, classify, redFiles, isKnownDefect, buildReport, renderMarkdown, workerBrief, normalizeTitle };
 
 // Only drive the pipeline when invoked as the bin — importing this module
 // (tests, tooling) must not start a suite run.

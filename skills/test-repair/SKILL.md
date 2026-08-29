@@ -110,8 +110,10 @@ heal attempt only re-derives a written-down conclusion and burns baseline
 runs doing it. List them in the session summary under known defects — never
 under anything awaiting a heal — and note any whose *error signature* changed,
 because a different error behind the tag is a second, unfiled problem. A
-`@known-defect` test that goes 3/3 green means the defect is fixed: say so and
-drop the tag. Contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
+`@known-defect` test that passes is an anomaly, never a silent green: prove
+the fix with the two-number stability bar (3/3 targeted + 5/5 suite-order,
+all green) and drop the tag — or, on any red inside that bar, retag `@flaky`
+with a quarantine-ledger entry. Contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
 
 Then cluster the remaining non-green tests by shared signal. A few of the clusters you will commonly see:
 

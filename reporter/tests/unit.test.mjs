@@ -379,6 +379,9 @@ test('a known-defect that passed gets its own anomaly warning naming the test', 
   assert.ok(text.includes('⚠ passed despite @known-defect: tests/e2e/signup.spec.ts › SGN-10 · duplicate email @known-defect'), text);
   assert.ok(text.includes('defect fixed (drop the tag) or test flaky (retag @flaky)'), text);
   assert.ok(text.includes('test-identity.md §2'), text);
+  // The count line must not claim "red by design" while an anomaly passed.
+  assert.ok(text.includes('⚠ known defects: 1 (1 passed this run — see below)'), text);
+  assert.ok(!text.includes('red by design'), text);
 });
 
 test('no warnings at all when there is nothing to warn about', () => {
@@ -425,7 +428,8 @@ test('reporter counts known defects and warns on the one that passed', () => {
     { file: 'tests/b.spec.ts', title: 'TC-0003 · fixed defect', describes: ['Signup @known-defect'], attempts: ['passed'] },
     { file: 'tests/b.spec.ts', title: 'TC-0004 · tag-option defect', tags: ['@known-defect'], attempts: ['failed', 'passed'] },
   ]);
-  assert.ok(out.includes('⚠ known defects: 3'), out);
+  assert.ok(out.includes('⚠ known defects: 3 (2 passed this run — see below)'), out,
+    'anomalies present — the count line must not read "red by design"');
   assert.ok(out.includes('⚠ flaky: 1'), out);
   assert.ok(out.includes('⚠ passed despite @known-defect: tests/b.spec.ts › Signup @known-defect › TC-0003 · fixed defect'), out);
   assert.ok(out.includes('⚠ passed despite @known-defect: tests/b.spec.ts › TC-0004 · tag-option defect'), out,
