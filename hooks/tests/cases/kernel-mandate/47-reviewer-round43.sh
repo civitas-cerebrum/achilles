@@ -59,7 +59,7 @@ mkdir -p "$KERNEL_MANDATE_STATE_DIR/agents"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r43",
   "settings": { "mainSessionRole": "runner" },
   "commandGroups": { "run": ["^npx playwright test\\b", "^(cat|echo)\\b"] },
@@ -142,7 +142,7 @@ mklog() {  # mklog <decisionLog-or-empty>
   [ -n "${1:-}" ] && dl=', "decisionLog": "'"$1"'"'
   cat > "$LOGP/.claude/kernel-mandate.json" <<JSON
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r43log",
   "settings": { "mainSessionRole": "r"$dl },
   "commandGroups": { "i": ["^(cat|echo)\\\\b"] },

@@ -27,7 +27,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "adv",
   "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "readonly" },
   "commandGroups": {
@@ -192,7 +192,7 @@ assert_deny "$H" "$(payload tool_name=Agent description='inspector-x: inspect' p
 # --- Leak 12: unrestricted escape hatch actually opens (and is scoped) --
 cat > "$ADV/unrestricted.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "adv2",
   "settings": { "mainSessionRole": "power" },
   "roles": {

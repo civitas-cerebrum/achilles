@@ -12,7 +12,7 @@
       "const": "kernel-mandate-bundle"
     },
     "bundleVersion": {
-      "description": "Envelope format version (distinct from manifest.harnessOsVersion, which is the contract the kernel enforces). A reader refuses envelope versions it does not understand.",
+      "description": "Envelope format version (distinct from manifest.kernelMandateVersion, which is the contract the kernel enforces). A reader refuses envelope versions it does not understand.",
       "const": 1
     },
     "metadata": {

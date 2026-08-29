@@ -44,7 +44,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r19",
   "settings": { "mainSessionRole": "analyst" },
   "commandGroups": { "run": ["^python3?\\b", "^node\\b", "^perl\\b", "^ruby\\b"] },
@@ -138,7 +138,7 @@ assert_allow "$H" "$(bpay 'python3 --version')" \
 # module it did not author. They are now separate constructs.
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r19b",
   "settings": { "mainSessionRole": "plain" },
   "commandGroups": { "run": ["^python3?\\b", "^node\\b", "^perl\\b", "^ruby\\b"] },

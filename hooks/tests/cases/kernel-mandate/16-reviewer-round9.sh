@@ -54,7 +54,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r9",
   "settings": { "mainSessionRole": "composer" },
   "commandGroups": { "t": ["^npx playwright test\\b"] },

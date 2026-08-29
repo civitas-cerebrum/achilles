@@ -1,5 +1,5 @@
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "broken-harness",
   "settings": {
     "unboundAgentPolicy": "trust-everyone"

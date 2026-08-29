@@ -47,7 +47,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r14",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^jq\\b", "^cat\\b"] },
@@ -135,7 +135,7 @@ assert_allow "$H" "$(bpay 'jq -n '"'"'import "nowhere/at/all" as $x; 1'"'"'')" \
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r14b",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^awk\\b", "^sed\\b", "^grep\\b", "^cat\\b"] },

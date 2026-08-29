@@ -58,7 +58,7 @@ mkdir -p "$KERNEL_MANDATE_STATE_DIR/agents"
 write_manifest() {  # write_manifest <ambientDispatchClaim>
   cat > "$P/.claude/kernel-mandate.json" <<JSON
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r29",
   "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "deny", "ambientDispatchClaim": "$1" },
   "roles": {

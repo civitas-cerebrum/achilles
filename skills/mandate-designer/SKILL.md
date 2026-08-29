@@ -11,7 +11,7 @@ description: >
   generation, research swarms.
 ---
 
-# Harness designer — design the OS your agents run on
+# Mandate designer — design the boundaries your agents run inside
 
 > Canonical home: [civitas-cerebrum/kernel-mandate](https://github.com/civitas-cerebrum/kernel-mandate).
 > The copy inside the achilles QA package is vendored from here verbatim.
@@ -146,7 +146,7 @@ For each role, in this order (it mirrors the kernel's evaluation):
 
 ### Phase 3b — Store it so it can be reused and swapped
 
-A designed OS is worth keeping. Once the manifest validates, capture it
+A designed mandate is worth keeping. Once the manifest validates, capture it
 as a portable **bundle** so it can be version-pinned, shared, and swapped
 in and out of projects — see
 [references/storage-format.md](references/storage-format.md) for the full
@@ -155,14 +155,14 @@ model. In short:
 ```bash
 kernel-mandate export --to-library --revision 1.0.0   # store in ~/.kernel-mandate/library
 kernel-mandate list                                    # what's on the shelf
-kernel-mandate use <name>@<rev>                         # swap this project's active OS
-kernel-mandate status                                   # active OS + drift check
+kernel-mandate use <name>@<rev>                         # swap this project's active mandate
+kernel-mandate status                                   # active mandate + drift check
 ```
 
 The bundle (`.km.json`) embeds the manifest verbatim plus an identity
 (`name@revision`) and a content fingerprint; the kernel still only reads
 the plain `.claude/kernel-mandate.json`, so storage adds no enforcement
-surface. Teach the user that swapping OSes resets runtime state by design
+surface. Teach the user that swapping mandates resets runtime state by design
 (a new role set invalidates old bindings), and that `status` flags a live
 manifest that has drifted from the stored bundle.
 
@@ -246,6 +246,66 @@ user on:
   implies is worth agreeing out loud — **keep secrets out of any
   directory a role's scope covers**, because an allow-list permission
   model has no deny-list to fix it with.
+
+## If you are an AGENT, not a person running a design session
+
+Two situations, and they call for opposite behaviour.
+
+### You joined a project that is already governed
+
+Orient before you act. Three commands, in order:
+
+```bash
+kernel-mandate status                 # is enforcement actually ON? which mandate is live?
+kernel-mandate brief --role <yours>   # your scopes, command patterns, and what you must not attempt
+kernel-mandate explain --role <yours> --tool Bash --command '<the thing you were about to run>'
+```
+
+`status` is the one people skip and the one that matters: a hook can be
+*registered* while the package is absent, in which case `.claude/settings.json`
+says the project is governed and nothing is being enforced. It says so
+out loud rather than letting you believe otherwise.
+
+Then read your denies as information, not obstacles. Each one names the
+missing grant and the narrowest widening that would fix it. If a deny is
+wrong, say so to the operator with the exact command and the exact
+message — do not route around it, and never reach for `bash.unrestricted`
+to silence one. **You cannot edit the mandate that governs you**, by
+design; a redesign happens in a session the operator launches with
+`KERNEL_MANDATE=0`.
+
+### You have finished work in a project that is NOT governed, and a mandate would help
+
+You are the wrong party to install one. The roles encode somebody's
+intent about separation of duties, and a mandate an agent writes for
+itself is a mandate it could have written to suit itself. So **draft,
+and hand it over**:
+
+1. Write the candidate manifest anywhere EXCEPT `.claude/kernel-mandate.json`
+   — `/tmp/mandate-draft.json` is fine. Base it on what the work actually
+   did: the files each step read, the commands it ran, who checked whose
+   output.
+2. Review it mechanically and show the operator the output:
+
+   ```bash
+   kernel-mandate propose /tmp/mandate-draft.json
+   ```
+
+   `propose` validates the draft, renders what each role could actually
+   do, diffs it against any live mandate, and reports the two structural
+   risks no schema can express: a role that both **authors and runs**
+   code, and a role that **writes what another role reads**. It writes
+   nothing — deliberately. It refuses to be pointed at the live manifest.
+3. Dry-run the boundaries you are least sure of with `explain`, and put
+   those verdicts in front of the operator too.
+4. **Stop.** Applying it is `init`, `import --activate`, or a copy — all
+   things a person does knowingly.
+
+The two risks `propose` reports are not lint. Every escape in rounds
+45–50 of the review log was a role that authored code and ran it, and
+round 51's was a graded role writing into its grader's read scope. If
+your draft has either, say which and why you think it is acceptable —
+that sentence is the design decision, and it belongs to the operator.
 
 ## Worked examples
 

@@ -32,7 +32,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "wx",
   "settings": { "mainSessionRole": "composer" },
   "commandGroups": { "test-execution": ["^(npx|yarn|pnpm exec) playwright test\\b", "^npm test\\b"] },

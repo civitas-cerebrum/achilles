@@ -1,5 +1,5 @@
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "feature-dev",
   "description": "Feature-development harness: architect designs, implementer builds, tester verifies, scribe documents. Same kernel as the QA shape — no QA methodology anywhere.",
   "settings": {

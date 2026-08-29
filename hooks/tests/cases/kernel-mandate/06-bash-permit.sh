@@ -26,7 +26,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "permit",
   "settings": { "mainSessionRole": "dev" },
   "commandGroups": { "basic": ["^(ls|cat|echo|git|grep|find)\\b"] },

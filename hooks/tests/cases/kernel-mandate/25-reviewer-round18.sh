@@ -43,7 +43,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r18",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^python3?\\b", "^node\\b", "^perl\\b", "^ruby\\b", "^echo\\b"] },

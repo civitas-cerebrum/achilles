@@ -1,5 +1,5 @@
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "valid-all-role-scopes",
   "description": "Exercises every scope a role may declare \u2014 read, write, network, dispatch, skills, bash.permit \u2014 so a schema change that misplaces one is caught by the fixture lint rather than by a user.",
   "settings": {

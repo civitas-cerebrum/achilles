@@ -1,5 +1,5 @@
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "split-author-run",
   "description": "The configuration the write-then-execute axis has been asking for since round 6, shipped as an example because four consecutive review rounds escaped through a role that held both halves. The composer AUTHORS specs and cannot run anything; the runner RUNS them and cannot author. Neither half is a write-then-execute channel, so the static screen over authored text stops being load-bearing.",
   "settings": {

@@ -51,7 +51,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r11",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^jq\\b", "^cat\\b", "^ls\\b"] },
@@ -128,7 +128,7 @@ assert_deny "$H" "$(bpay "jq -f ../outside.txt tests/e2e/x.json")" \
 # for the file's contents.
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r11b",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^grep\\b", "^sed\\b", "^awk\\b", "^dd\\b", "^cat\\b"] },

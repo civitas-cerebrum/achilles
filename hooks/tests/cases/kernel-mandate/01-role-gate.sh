@@ -23,7 +23,7 @@ export KERNEL_MANDATE_STATE_DIR="$KM_TMP/state"
 export KERNEL_MANDATE_MANIFEST="$PROJ/.claude/kernel-mandate.json"
 
 MANIFEST='{
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "qa-pipeline",
   "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "readonly", "ambientDispatchClaim": "on" },
   "commandGroups": {

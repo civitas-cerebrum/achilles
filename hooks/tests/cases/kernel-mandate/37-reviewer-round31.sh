@@ -57,7 +57,7 @@ mkdir -p "$KERNEL_MANDATE_STATE_DIR/agents"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r31",
   "settings": { "mainSessionRole": "implementer" },
   "commandGroups": {
@@ -144,7 +144,7 @@ CONTAINED="$R31/proj2"
 mkdir -p "$CONTAINED/.claude" "$CONTAINED/src"
 cat > "$CONTAINED/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r31b",
   "settings": { "mainSessionRole": "coder" },
   "commandGroups": { "b": ["^npm run build\\b"] },

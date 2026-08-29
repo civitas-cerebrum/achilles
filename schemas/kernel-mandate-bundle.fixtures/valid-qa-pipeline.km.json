@@ -16,7 +16,7 @@
     ]
   },
   "manifest": {
-    "harnessOsVersion": 1,
+    "kernelMandateVersion": 1,
     "name": "qa-pipeline",
     "description": "Reference QA harness: orchestrator dispatches, inspector inspects, implementer builds, reviewer reads criteria + deliverable, judge alone updates the ledger.",
     "settings": {

@@ -50,7 +50,7 @@ printf 'reviewer\n'  > "$KERNEL_MANDATE_STATE_DIR/agents/rev"
 printf 'inspector\n' > "$KERNEL_MANDATE_STATE_DIR/agents/insp"
 
 MANIFEST_BODY='{
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r27",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "i": ["^(ls|cat|grep|echo)\\b"] },
@@ -136,7 +136,7 @@ assert_allow "$H" "$(rp "$R27/ungoverned/secret.txt" "$UNGOV")" \
 NEST="$PLAIN/tests/nested"
 mkdir -p "$NEST/.claude" "$NEST/tests"
 printf '%s\n' '{
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r27-nested",
   "settings": { "mainSessionRole": "reviewer" },
   "roles": {

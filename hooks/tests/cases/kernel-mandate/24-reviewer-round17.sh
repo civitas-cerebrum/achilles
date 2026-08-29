@@ -43,7 +43,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r17",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^perl\\b", "^ruby\\b", "^python3?\\b", "^node\\b", "^cat\\b"] },
@@ -141,7 +141,7 @@ assert_deny "$H" "$(bpay 'python3 -uc '"'"'print(1)'"'"'')" \
 # operand's role depends on the mode — `tar -c`'s archive is written,
 # `tar -x`'s is read — and no rule can tell those apart from the token.
 ARCH='{
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r17b",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^tar\\b", "^zip\\b", "^cat\\b"] },

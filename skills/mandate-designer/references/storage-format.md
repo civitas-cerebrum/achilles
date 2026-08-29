@@ -51,7 +51,7 @@ Schema: [`schemas/kernel-mandate-bundle.schema.json`](../../../schemas/kernel-ma
 - **`name@revision`** is the identity. Together they form the library
   key (`registration-form-qa@1.2.0.km.json`) and make swaps and
   rollbacks unambiguous. `bundleVersion` (the envelope format) is
-  distinct from `manifest.harnessOsVersion` (the contract the kernel
+  distinct from `manifest.kernelMandateVersion` (the contract the kernel
   enforces).
 - **`fingerprint`** is `sha256:` + the hex SHA-256 of the manifest
   canonicalised as JSON with all object keys sorted recursively and no
@@ -60,24 +60,24 @@ Schema: [`schemas/kernel-mandate-bundle.schema.json`](../../../schemas/kernel-ma
   longer matches its embedded manifest is refused on import, and (b) a
   drift signal — `status` compares it against the live manifest.
 - **`manifest`** is embedded verbatim, so a bundle is fully
-  self-contained: one file carries the whole OS.
+  self-contained: one file carries the whole mandate.
 
 A **directory-form** bundle (`<name>@<rev>/`) may additionally ship
 companion `assets` — per-role brief templates the orchestrator pastes
 into dispatch prompts, a README — declared in the envelope's optional
-`assets` map. The kernel never reads them; they travel with the OS for
+`assets` map. The kernel never reads them; they travel with the mandate for
 the humans and orchestrators who operate it.
 
 ## The library (swap store)
 
 `~/.kernel-mandate/library/` (override with `$KERNEL_MANDATE_HOME`) holds bundles
-by `<name>@<revision>.km.json`. It is the shared shelf you `use` OSes
+by `<name>@<revision>.km.json`. It is the shared shelf you `use` mandates
 from — machine-wide, not per project. Keeping several revisions of the
 same name side by side is exactly what enables rollback.
 
 ## The lock (per-project provenance)
 
-Importing an OS writes `<repo>/.claude/kernel-mandate.lock.json`:
+Importing a mandate writes `<repo>/.claude/kernel-mandate.lock.json`:
 
 ```jsonc
 {
@@ -91,28 +91,28 @@ Importing an OS writes `<repo>/.claude/kernel-mandate.lock.json`:
 }
 ```
 
-It records which stored OS the live manifest came from. That is what lets
+It records which stored mandate the live manifest came from. That is what lets
 `status` say "you are running `registration-form-qa@1.2.0`, and the live
 manifest still matches it" — or warn that it has drifted.
 
 ## CLI workflow
 
 ```bash
-# capture the OS you designed into the library
+# capture the mandate you designed into the library
 kernel-mandate export --to-library --revision 1.0.0 --notes "first cut"
 
 # see what's on the shelf (★ marks the one active here)
 kernel-mandate list
 
-# swap this project to a stored OS (resets runtime state for the new roles)
+# swap this project to a stored mandate (resets runtime state for the new roles)
 kernel-mandate use registration-form-qa@1.0.0
 kernel-mandate use feature-dev --keep-state     # keep bindings if roles overlap
 
-# share one OS as a single file
+# share one mandate as a single file
 kernel-mandate export --out ./registration-form-qa.km.json
 #   → teammate: kernel-mandate import ./registration-form-qa.km.json --activate
 
-# is the live manifest still the OS I installed?
+# is the live manifest still the mandate I installed?
 kernel-mandate status
 ```
 
@@ -120,7 +120,7 @@ kernel-mandate status
 
 - **`use <name[@rev]>`** verifies the bundle's fingerprint, writes its
   manifest to `.claude/kernel-mandate.json`, updates the lock, and (by
-  default) clears `.claude/kernel-mandate.state/` — a different OS has
+  default) clears `.claude/kernel-mandate.state/` — a different mandate has
   different roles, so cached bindings from the old one are stale.
   `--keep-state` preserves them when the role sets overlap.
 - **No `@rev`** → the highest revision in the library wins, so
@@ -129,7 +129,7 @@ kernel-mandate status
 - **Drift** is a first-class concept: edit the live manifest in place and
   `status` flags it against the lock's fingerprint, prompting you to
   either re-export (capture the change as a new revision) or re-apply the
-  stored OS (discard the edit). Storage never silently diverges from what
+  stored mandate (discard the edit). Storage never silently diverges from what
   is running.
 - **Tamper refusal**: a bundle whose recorded `fingerprint` no longer
   matches its embedded manifest is rejected on import/use — a hand-edited
@@ -138,9 +138,9 @@ kernel-mandate status
 ## Design intent
 
 Ease of storage = one self-contained, schema-validated, fingerprinted
-file per OS. Swappability = a machine-wide library keyed by
-`name@revision`, a per-project lock that always knows which OS is live,
+file per mandate. Swappability = a machine-wide library keyed by
+`name@revision`, a per-project lock that always knows which mandate is live,
 and a `use` that swaps atomically and resets the state that would
 otherwise leak between role sets. The enforcement kernel stays a plain
-manifest reader throughout, so none of this widens what a running OS can
+manifest reader throughout, so none of this widens what a running mandate can
 do.

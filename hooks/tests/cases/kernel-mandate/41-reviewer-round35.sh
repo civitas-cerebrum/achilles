@@ -49,7 +49,7 @@ mkdir -p "$KERNEL_MANDATE_STATE_DIR/agents"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r35",
   "settings": {
     "mainSessionRole": "scoped",

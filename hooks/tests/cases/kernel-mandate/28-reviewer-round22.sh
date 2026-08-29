@@ -41,7 +41,7 @@ unset KERNEL_MANDATE_STATE_DIR   # exercise the DEFAULT state-dir location
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r22",
   "settings": {
     "mainSessionRole": "orchestrator",
@@ -123,7 +123,7 @@ printf 'SECRET=hunter2\n' > "$FP/.env"
 printf 'x\n' > "$FP/tests/a.txt"
 cat > "$FP/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r22b",
   "settings": { "mainSessionRole": "fetcher" },
   "commandGroups": { "g": ["^cat\\b"] },

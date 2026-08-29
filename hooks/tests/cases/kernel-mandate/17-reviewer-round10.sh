@@ -61,7 +61,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r10",
   "settings": { "mainSessionRole": "composer" },
   "commandGroups": { "t": ["^npx playwright test\\b", "^echo\\b"] },
@@ -215,15 +215,15 @@ assert_eq "$(nojq_run "$GOV" KERNEL_MANDATE=0 KERNEL_MANDATE_MANIFEST="$P/.claud
   "self-probe calibration: the kill-switch still wins when jq is missing"
 
 # A manifest version this kernel does not implement was treated as
-# "inactive" — so shipping harnessOsVersion: 2 to an older kernel bought
+# "inactive" — so shipping kernelMandateVersion: 2 to an older kernel bought
 # no enforcement and no warning, the one outcome worse than either.
 V2="$R10/v2"; mkdir -p "$V2/.claude"
-"$JQ" '.harnessOsVersion = 2' "$P/.claude/kernel-mandate.json" > "$V2/.claude/kernel-mandate.json"
+"$JQ" '.kernelMandateVersion = 2' "$P/.claude/kernel-mandate.json" > "$V2/.claude/kernel-mandate.json"
 OUT=$(printf '%s' "$("$JQ" -nc '{tool_name:"Bash",tool_input:{command:"cat .env"},cwd:"'"$V2"'",agent_id:"composer"}')" \
   | KERNEL_MANDATE_MANIFEST="$V2/.claude/kernel-mandate.json" bash "$H" 2>/dev/null)
 assert_eq "$(printf '%s' "$OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecision // "ALLOW"' 2>/dev/null || echo ALLOW)" \
   "deny" "self-probe a manifest version this kernel cannot implement → DENY, not silently unenforced"
-assert_eq "$(has "$OUT" "harnessOsVersion")" "yes" \
+assert_eq "$(has "$OUT" "kernelMandateVersion")" "yes" \
   "self-probe and it names the mismatch rather than failing vaguely"
 
 unset KERNEL_MANDATE_STATE_DIR KERNEL_MANDATE_MANIFEST

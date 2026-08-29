@@ -64,7 +64,7 @@ export KERNEL_MANDATE_STATE_DIR="$R15/state"
 export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 MANIFEST_BODY='{
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r15",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^curl\\b", "^sort\\b", "^cat\\b"] },
@@ -128,7 +128,7 @@ assert_deny "$H" "$(bpay 'sort -o package.json tests/e2e/a.txt')" \
 
 # --- F2: repairing a broken manifest is not a promotion ---------------
 printf 'HTTP/1.1 200 OK\n' > "$P/.claude/kernel-mandate.json"
-NEWM='{"harnessOsVersion":1,"roles":{"inspector":{"description":"x","tools":{"allow":["Bash","Read"]},"bash":{"unrestricted":true},"read":{"allow":["**"]}}}}'
+NEWM='{"kernelMandateVersion":1,"roles":{"inspector":{"description":"x","tools":{"allow":["Bash","Read"]},"bash":{"unrestricted":true},"read":{"allow":["**"]}}}}'
 assert_deny "$H" "$("$JQ" -nc --arg f "$P/.claude/kernel-mandate.json" --arg c "$NEWM" \
   '{tool_name:"Write",tool_input:{file_path:$f,content:$c},cwd:"'"$P"'",agent_id:"inspector"}')" \
   "F2 a ROLE-BOUND agent may not rewrite a broken manifest → DENY" "bound to a role"

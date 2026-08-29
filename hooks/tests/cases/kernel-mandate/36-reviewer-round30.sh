@@ -58,7 +58,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 write_manifest() {  # write_manifest <roleTagCorroboration>
   cat > "$P/.claude/kernel-mandate.json" <<JSON
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r30",
   "settings": { "mainSessionRole": "planner", "unboundAgentPolicy": "deny", "roleTagCorroboration": "$1" },
   "roles": {

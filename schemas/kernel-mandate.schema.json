@@ -5,9 +5,9 @@
   "description": "Role-based operating layer for multi-agent harnesses. A project declares its agent roles and their permission grants once; hooks/kernel-mandate-role-gate.sh enforces them at tool-call time. Presence of this manifest at <repo-root>/.claude/kernel-mandate.json activates enforcement for the project. See skills/mandate-designer/references/architecture.md.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["harnessOsVersion", "name", "roles"],
+  "required": ["kernelMandateVersion", "name", "roles"],
   "properties": {
-    "harnessOsVersion": {
+    "kernelMandateVersion": {
       "description": "Manifest format version. The kernel hook refuses versions it does not know.",
       "const": 1
     },

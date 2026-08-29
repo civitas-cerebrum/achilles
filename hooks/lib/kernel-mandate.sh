@@ -254,17 +254,17 @@ kernel_mandate_load() {
     KM_MANIFEST_JSON="{}"
   else
     local version
-    version=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r '.harnessOsVersion // empty' 2>/dev/null || echo "")
+    version=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r '.kernelMandateVersion // empty' 2>/dev/null || echo "")
     # A version this kernel does not implement used to be treated as
     # inactive, on the reasoning that half-enforcing grants you do not
     # understand is worse than not enforcing them. The first half of that
     # is right and the conclusion is not: a project that ships
-    # `harnessOsVersion: 2` to an older kernel got NO enforcement and no
+    # `kernelMandateVersion: 2` to an older kernel got NO enforcement and no
     # indication of it, which is the one outcome worse than both. Refuse
     # instead, and name the mismatch — the operator can then upgrade or
     # opt out deliberately.
     if [ "$version" != "1" ]; then
-      kernel_mandate__emit_fixed_deny "[BLOCKED] kernel-mandate cannot enforce this project: its manifest declares a harnessOsVersion this kernel does not implement (this kernel implements version 1). Enforcing grants the kernel cannot interpret would be unsound, and ignoring them would leave every role unenforced without saying so. Upgrade the kernel-mandate kernel to match the manifest, correct the manifest's harnessOsVersion, or set KERNEL_MANDATE=0 to run this session ungoverned on purpose."
+      kernel_mandate__emit_fixed_deny "[BLOCKED] kernel-mandate cannot enforce this project: its manifest declares a kernelMandateVersion this kernel does not implement (this kernel implements version 1). Enforcing grants the kernel cannot interpret would be unsound, and ignoring them would leave every role unenforced without saying so. Upgrade the kernel-mandate kernel to match the manifest, correct the manifest's kernelMandateVersion, or set KERNEL_MANDATE=0 to run this session ungoverned on purpose."
     fi
   fi
 

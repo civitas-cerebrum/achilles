@@ -22,7 +22,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "id",
   "settings": { "mainSessionRole": "orchestrator", "unboundAgentPolicy": "deny", "ambientDispatchClaim": "on" },
   "roles": {

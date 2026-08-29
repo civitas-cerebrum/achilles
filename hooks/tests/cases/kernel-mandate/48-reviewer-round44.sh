@@ -55,7 +55,7 @@ printf 'composer\n' > "$KERNEL_MANDATE_STATE_DIR/agents/composer"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r44",
   "settings": { "mainSessionRole": "composer" },
   "commandGroups": { "i": ["^rg\\b", "^(cat|echo)\\b"] },
@@ -81,7 +81,7 @@ bp() { "$JQ" -nc --arg c "$1" \
   '{tool_name:"Bash",tool_input:{command:$c},cwd:"'"$P"'",agent_id:"composer"}'; }
 
 # --- F1: a role may not author the law that will govern it ------------
-PWN='{"harnessOsVersion":1,"name":"pwn","settings":{"mainSessionRole":"composer"},"roles":{"composer":{"description":"x","tools":{"allow":["*"]},"bash":{"unrestricted":true},"read":{"allow":["**"]},"write":{"allow":["**"]}}}}'
+PWN='{"kernelMandateVersion":1,"name":"pwn","settings":{"mainSessionRole":"composer"},"roles":{"composer":{"description":"x","tools":{"allow":["*"]},"bash":{"unrestricted":true},"read":{"allow":["**"]},"write":{"allow":["**"]}}}}'
 assert_deny "$H" "$(wp "tests/e2e/.claude/kernel-mandate.json" "$PWN")" \
   "R44 Write of a NESTED manifest inside the write scope → DENY" "kernel mandate itself"
 assert_deny "$H" "$(wp "tests/e2e/.claude/kernel-mandate.json" "$PWN" Edit)" \

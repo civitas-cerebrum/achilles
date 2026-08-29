@@ -57,7 +57,7 @@ mkdir -p "$KERNEL_MANDATE_STATE_DIR/agents"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r28",
   "settings": { "mainSessionRole": "inspector", "unboundAgentPolicy": "readonly" },
   "roles": {

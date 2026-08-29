@@ -5,7 +5,7 @@
     "name": "broken-bundle"
   },
   "manifest": {
-    "harnessOsVersion": 1,
+    "kernelMandateVersion": 1,
     "name": "broken-bundle",
     "roles": {}
   },

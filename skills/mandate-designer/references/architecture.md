@@ -47,7 +47,7 @@ inside) disables enforcement for bootstrap/redesign sessions.
 
 ```jsonc
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "qa-pipeline",
   "settings": {
     "mainSessionRole": "orchestrator",   // omit → main session ungoverned
@@ -164,7 +164,7 @@ Evaluated in this order inside the kernel; first deny wins.
 Deny payloads use the standard Claude Code
 `hookSpecificOutput.permissionDecision: "deny"` JSON with a reason that
 names the role, the violated grant, and the sanctioned alternative —
-the deny message is part of the OS's teaching surface.
+the deny message is part of the kernel's teaching surface.
 
 ## Role resolution (the kernel's hardest problem)
 

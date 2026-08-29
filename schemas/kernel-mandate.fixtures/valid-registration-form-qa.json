@@ -1,5 +1,5 @@
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "registration-form-qa",
   "description": "Benchmark harness: automate the registration/submission form of the Achilles Vue test app (civitas-cerebrum.github.io/vue-test-app, FormsPage: #name #email #gender #mobile date #hobbies #currentAddress #city #submit). Orchestrator dispatches; inspector probes the live form; composer writes and runs the Playwright spec; reviewer checks it against the acceptance criteria; judge alone records the verdict in the ledger.",
   "settings": {

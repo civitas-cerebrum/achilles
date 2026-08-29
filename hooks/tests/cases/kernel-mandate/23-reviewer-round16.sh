@@ -59,7 +59,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r16",
   "settings": { "mainSessionRole": "inspector" },
   "commandGroups": { "inspect": ["^awk\\b", "^sed\\b", "^grep\\b", "^cat\\b"] },

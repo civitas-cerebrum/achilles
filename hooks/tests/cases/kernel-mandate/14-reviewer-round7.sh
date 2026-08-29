@@ -48,7 +48,7 @@ export KERNEL_MANDATE_MANIFEST="$P/.claude/kernel-mandate.json"
 
 cat > "$P/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r7",
   "settings": { "mainSessionRole": "composer" },
   "commandGroups": { "t": ["^(echo|printf|cat)\\b", "^node tests/"] },
@@ -143,7 +143,7 @@ R7B="$R7/proj-b"
 mkdir -p "$R7B/.claude" "$R7B/tests/e2e"
 cat > "$R7B/.claude/kernel-mandate.json" <<'JSON'
 {
-  "harnessOsVersion": 1,
+  "kernelMandateVersion": 1,
   "name": "r7b",
   "settings": { "mainSessionRole": "composer" },
   "commandGroups": { "t": ["^kernel-mandate run\\b", "^npx kernel-mandate run\\b"] },
