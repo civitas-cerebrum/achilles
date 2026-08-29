@@ -1,7 +1,7 @@
 {
   "name": "@civitas-cerebrum/achilles",
   "version": "0.1.8",
-  "description": "Autonomous quality-assurance methodology — agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
+  "description": "Autonomous quality-assurance methodology \u2014 agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "build:validator": "node scripts/build-validator.mjs",
@@ -75,7 +75,8 @@
     "url": "git+https://github.com/civitas-cerebrum/achilles.git"
   },
   "overrides": {
-    "nodemailer": "^9.0.1"
+    "nodemailer": "^9.0.1",
+    "html-to-text": "10.0.1"
   },
   "author": "Umut Ay Bora",
   "license": "MIT"
