@@ -51,8 +51,11 @@ One row per shared composing concern. "Canonical home" is where the full rule te
 | Smoke-vs-e2e depth doctrine | §5 of this file |
 | Stage 4c composition-judge loop | §4 of this file |
 | Orchestrator dispatch discipline (specialist task families) | §6 of this file (precedent: `../../coverage-expansion/SKILL.md` §"Orchestrator context budget" → "Hard rules — kernel-resident") |
-| Test-identity conventions (test IDs on every case; `@known-defect` rerun exemption) | **in flight — PR #72** (`references/test-identity.md` once merged); do not restate here until it lands |
-| Style-interaction verification + commit-or-discard gate | **in flight — PR #73** (`ticket-driven-testing` additions); do not restate here until it lands |
+| Test-identity conventions (test IDs on every case; `@known-defect` intentional reds — no heal, no rerun, passed = anomaly) | [`test-identity.md`](test-identity.md) (§1 stable IDs; §2 `@known-defect`) |
+| Style-interaction verification (mock-DOM styling tests as a documented fallback) | `../../ticket-driven-testing/SKILL.md` §"Style-interaction verification — mock the page, test the styling" |
+| Commit-or-discard gate (CX/revenue impact) + brief-report contract | `../../ticket-driven-testing/SKILL.md` §8d "Commit or discard — the CX/revenue impact gate" |
+| Deck print-safety rules | `../../work-summary-deck/SKILL.md` §"Print-safety rules" |
+| Stage-4b compliance sweep as every mode's exit gate | [`stages-protocol.md`](stages-protocol.md) §"Stage 4b is every mode's exit gate" (harness-backed by `hooks/compliance-sweep-exit-gate.sh`) |
 
 ## §3 Contradiction resolutions (normative record)
 
@@ -115,7 +118,7 @@ Two spec depths, chosen per test by what the test is *about*:
 
 - **e2e spec — the journey IS the subject.** Walk the journey through the UI end-to-end; no state-injection shortcuts on the path under test. A journey's full UI walk is the subject of **exactly one** e2e test.
 - **smoke / derivative spec — a surface is the subject.** Reach the target view via API / state injection (`test-optimization.md` §4's two-of-two gate; `setAuthCookie` / seed helpers), and put UI assertions ONLY on the surface under test. Everything upstream of the subject is setup, and setup goes through the fastest safe channel.
-- **Auth:** session/cookie injection everywhere **except** the tests whose subject IS login/signup — those keep the UI walk.
+- **Auth:** session/cookie injection everywhere **except** the tests whose subject IS login/signup — those keep the UI walk. Authentication is a *precondition*, not a step of the journeys it unlocks, so injecting it does not breach the e2e no-shortcut rule (the gate-first regression/smoke/e2e architecture this section instantiates is defined in `../../../docs/agentic-shift-left.md` §"Stage 4 — Guard / Heal").
 - **Organisation:** specs are organised by user journey (one spec file per journey / feature area holding its scenarios); suites split e2e vs smoke so the depth choice is visible in the tree. Derivatives shortcut; the one e2e walk does not.
 
 Rationale: duplicated UI walks multiply run time and flake surface without multiplying signal — the walk is already locked by its one e2e test; derivatives re-walking it re-test the walk, not their own subject.
@@ -131,7 +134,7 @@ The specialist task families of this suite each run as **dedicated subagent disp
 | Coverage-expansion passes | (orchestrated; per-journey work via `composer-*` / `probe-*` / `reviewer-*`) | `../../coverage-expansion/SKILL.md` |
 | Journey mapping | `phase4-cycle-<N>:` sections; `phase4-prioritise-author` | `../../journey-mapping/SKILL.md` |
 | Adversarial probing / bug discovery | `probe-j-<slug>-<pass>:` / `probe-*:` | `../../bug-discovery/SKILL.md`; `../../coverage-expansion/references/adversarial-subagent-contract.md` |
-| Failure diagnosis | `fd-<scope>` sessions (subagent-only skill; `fd-ci-<run-id>:` pipeline entrypoint in flight — PR #71) | `../../failure-diagnosis/SKILL.md` |
+| Failure diagnosis | `fd-<scope>` sessions; `fd-ci-<run-id>:` pipeline entrypoint (subagent-only skill) | `../../failure-diagnosis/SKILL.md` |
 | Repair workers | `repair-worker-<file-slug>:` | `../../self-repair/references/worker-pipeline.md` |
 | Composition judging (Stage 4c) | `composition-judge-<scope>:` | §4 of this file |
 | Workflow / phase review | `workflow-reviewer-*:` / `phase-validator-*:` | `../../workflow-reviewer/SKILL.md` |

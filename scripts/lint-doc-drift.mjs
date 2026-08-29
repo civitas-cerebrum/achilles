@@ -275,7 +275,7 @@ function checkHookReferences() {
       }
     }
 
-    const emits = /permissionDecision|"decision"\s*:\s*"block"|systemMessage/.test(code);
+    const emits = /permissionDecision|"decision"\s*:\s*"block"|systemMessage|^exit 2$/m.test(code);
     if (!emits) continue;
     emitters++;
 

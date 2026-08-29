@@ -404,11 +404,13 @@ For each confirmed defect, write a **sentinel**: assert the *correct* behaviour 
 **Scope of the `test.fail()` licence.** This section is the ONE sanctioned use of `test.fail()` in the whole suite: a defect sentinel **tied to a tracked ticket**, with a removed-when-fixed lifecycle (the "flips loud → delete" mechanism above IS the lifecycle). Where no ticket owns the marker it is banned — coverage-expansion and its adversarial passes never commit `test.fail()`; their suspected bugs stay ledger-only (see `coverage-expansion/SKILL.md` §"Non-goals"; resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.2).
 
 ```ts
-test('TC_...[SENTINEL <TICKET>-D1]: <correct behaviour>', async ({ steps }) => {
+test('TCSG-000110 · [SENTINEL <TICKET>-D1] <correct behaviour> @known-defect', async ({ steps }) => {
   test.fail(true, 'Known defect: <what is wrong>. Delete this sentinel once fixed.')
   await steps.verifyCount('stateMarker', 'SomePage', { exactly: 0 })
 })
 ```
+
+Sentinels carry the `@known-defect` tag (canonical: `../achilles-protocol/references/test-identity.md` §2) so `self-repair` / `test-repair` / `failure-diagnosis` exempt them from heal and rerun cycles — the tag marks the intentional relationship to a filed defect; `test.fail()` only inverts the reporting. The title's leading test ID follows `test-identity.md` §1.
 
 **Pick a durable observable.** A sentinel is worthless if the app erases its own evidence — see the session-storage trap below.
 

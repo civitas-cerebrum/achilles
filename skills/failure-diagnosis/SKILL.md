@@ -591,7 +591,7 @@ Present the bug report to the user with this structure:
 
 > **Application Bug Report**
 >
-> **Test:** `tests/example.spec.ts` — TC_001: Login flow
+> **Test:** `tests/example.spec.ts` — TC-0001 · Login flow
 > **Step:** "Verify dashboard loads after login"
 >
 > **Expected:** Dashboard page loads with welcome message and user stats
