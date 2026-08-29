@@ -361,6 +361,35 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 ---
 
+## Pattern: Diagnosis from log text alone (evidence floor skipped)
+
+The diagnoser reads the terminal error, the CI job log, or the stack trace, recognises a familiar-looking error string, and ships a root cause — or a heal — without ever opening the trace, looking at the UI/DOM state at the moment of failure, or reading the browser console. The pipeline-failure variant is worse: the run's artifacts are never downloaded at all, and the "diagnosis" is a paraphrase of the log line. Two sub-shapes travel with it: reading the *retry* attempt's trace (which passed) and concluding "not reproducible", and reading framework source from the local `node_modules` rather than the version CI actually resolved.
+
+**Symptoms:**
+- "the error message is obvious — it's a timeout on \<element\>"
+- "it's clearly a timeout, the trace won't add anything"
+- "I can tell from the stack trace exactly which locator failed"
+- "the call log already shows the resolved element, so I've effectively seen the DOM"
+- "`strict mode violation` is self-explanatory"
+- "opening the trace is expensive / needs a browser / it's a 30MB zip"
+- "downloading the CI artifact is slow, I'll just re-run it locally"
+- "I'll form the hypothesis first and only check the trace if it doesn't hold"
+- "three tests failed the same way, one log line covers all three"
+- "this is the same error I diagnosed earlier in the session"
+- "the trace shows a clean 2.1s pass — cannot reproduce" (that was the retry, not the failing attempt)
+- "I read the framework's source, so I know what it does" (from the local tree, not the version the run resolved)
+
+**Reality:** the error message says *where execution stopped*; the trace says *what the page was doing*. They are different questions, which is why the trace exists. One `Timeout … waiting for element to be visible, enabled and stable` is emitted identically by an intercepting overlay, a sticky consent banner, a never-settling animation, a mid-flight client navigation, a 500 behind a skeleton, a framework-side retry defect, and a genuinely absent element — seven different classifications, seven different heals. Recognising the error *shape* from a previous diagnosis is precisely the condition under which the previous session's answer gets stapled to a different root cause. Cost is not a defence: `unzip` + `jq` reads a trace headlessly in seconds and the screencast frames are readable images. For a pipeline failure, a local re-run is a *different execution* on a different commit and a different dependency tree — it cannot answer why that run failed. The evidence floor (trace + UI/DOM at failure + browser console, each with a written observation, gaps named with reasons) is a precondition of **every** classification — test issue as much as app bug — not a nice-to-have; every heal downstream of a skipped floor inherits the guess.
+
+**Hooks that catch this:**
+- [`failure-diagnosis-evidence-floor-gate.sh`](../../../hooks/failure-diagnosis-evidence-floor-gate.sh) — `PreToolUse:Write|Edit`. In a session where the `failure-diagnosis` skill is loaded (or an `fd-*` / `repair-worker-*` role is in play), denies writes to a spec file or the element repository when the transcript shows no evidence access at all — no Read of a trace / `error-context.md` / failure screenshot / video / JSON reporter output, and no `show-trace` / `unzip … trace.zip` / `gh run download` / `show-report` Bash call. Escape hatch: `FD_EVIDENCE_FLOOR_GATE=off`.
+
+**Residual (markdown-only):** the hook proves evidence was *accessed*, not that it was *understood* — an agent that opens a trace and then ignores it still passes. Nor can it read the written observation for each floor item, or tell attempt 0's trace from the retry's. Those remain enforced by the skill text and by reviewers.
+
+**Origin:** observed live across three independent diagnosis sessions — one classified three CI regression failures from `gh run view --log-failed` output alone and never downloaded the run artifacts; two others independently reached a wrong root cause by reading framework source from a local tree one patch version ahead of the version CI resolved. Codified as `failure-diagnosis` §"Evidence floor — non-negotiable, both entrypoints, both conclusions", §"Stage 0a — Pin to the run's commit and dependency tree", and §"Stage 0b — Pipeline evidence retrieval".
+
+---
+
 ## Adding a new pattern
 
 When a novel rationalisation framing appears that doesn't fit an existing pattern:

@@ -22,7 +22,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/harness-hooks.md
+# skills/achilles-protocol/references/harness-hooks.md
 
 set -uo pipefail
 

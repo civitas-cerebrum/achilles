@@ -1,7 +1,7 @@
 # Test Optimization Protocol
 
 > Single source of truth for Stage 4a (test optimization). Loaded on demand by:
-> - `element-interactions` orchestrator's **Stage 4a**.
+> - `achilles-protocol` orchestrator's **Stage 4a**.
 > - `test-composer`'s **Step 6a**.
 >
 > Do not read this file from memory. Always load it before applying its rules.

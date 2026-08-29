@@ -9,7 +9,7 @@ description: >
   "manual test assistance", "help me check that <feature> still works", "show me proof that X
   works", "capture screenshots while you do this", "run a quick verification with proof". Use
   for single-task functional verification with evidence output. Do NOT use to grow a durable
-  test suite (that is Stages 1-4 of `element-interactions`), to expand coverage iteratively
+  test suite (that is Stages 1-4 of `achilles-protocol`), to expand coverage iteratively
   (that is `coverage-expansion`), to compose a journey portfolio (that is `test-composer`), to
   hunt bugs adversarially (that is `bug-discovery`), to repair a rotted suite (that is
   `test-repair`), or to diagnose a single failing test (that is `failure-diagnosis`).
@@ -20,7 +20,7 @@ description: >
 
 # Companion Mode — Evidence-First Single-Task Verification
 
-> **Skill names: see `../element-interactions/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
+> **Skill names: see `../achilles-protocol/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
 
 A daily QA-companion entry mode: take one focused functional verification task, run it against the live app, and produce a complete evidence bundle (per-step screenshots, video, Playwright trace, HAR, console log, summary) the QA engineer can hand to a developer, attach to a ticket, or hold next to a manual checklist. Optimized for low-friction entry — no `journey-map.md` required, no committed spec required, no five-pass pipeline.
 
@@ -42,7 +42,7 @@ This skill is **opt-in only**. It activates when the user asks for evidence-firs
 
 It does NOT activate from:
 
-- "Write a test for the checkout flow" → that is `element-interactions` Stages 1–4.
+- "Write a test for the checkout flow" → that is `achilles-protocol` Stages 1–4.
 - "Cover this journey" → `test-composer`.
 - "Increase coverage" → `coverage-expansion`.
 - "Find bugs in this app" → `bug-discovery`.
@@ -58,7 +58,7 @@ If the user's intent is durable test growth, route them to the right skill — d
 
 | Skill | Scope | Output | Persistence |
 |---|---|---|---|
-| `element-interactions` Stage 3 | One scenario, durable | `tests/<spec>.spec.ts` | Committed to suite |
+| `achilles-protocol` Stage 3 | One scenario, durable | `tests/<spec>.spec.ts` | Committed to suite |
 | `onboarding` | Whole app from zero | Install + scaffold + happy path + journey map + 5 coverage passes + 2 bug hunts + secrets sweep + summary deck | Fully committed pipeline |
 | `test-composer` | One journey, full variant set | Many spec files for that journey | Committed |
 | `coverage-expansion` | Whole app, iterative | Suite-wide growth across passes | Committed |
@@ -76,7 +76,7 @@ The signal that distinguishes companion mode from Stage-3 single-scenario author
 
 ## Prerequisites
 
-- **`@playwright/cli`** — needed for live discovery of the page when the user provides only a URL or a vague task. Ships as a hard dependency of `@civitas-cerebrum/achilles`, so it is always reachable via `npx playwright-cli` after `npm install`. The first `... open` call may need a one-shot browser fetch (`npx playwright-cli install-browser chromium`) on a fresh machine. If the live app is unreachable from this environment, the user must supply a complete step list and any required selectors. See [`../element-interactions/references/playwright-cli-protocol.md`](../element-interactions/references/playwright-cli-protocol.md).
+- **`@playwright/cli`** — needed for live discovery of the page when the user provides only a URL or a vague task. Ships as a hard dependency of `@civitas-cerebrum/achilles`, so it is always reachable via `npx playwright-cli` after `npm install`. The first `... open` call may need a one-shot browser fetch (`npx playwright-cli install-browser chromium`) on a fresh machine. If the live app is unreachable from this environment, the user must supply a complete step list and any required selectors. See [`../achilles-protocol/references/playwright-cli-protocol.md`](../achilles-protocol/references/playwright-cli-protocol.md).
 - **App URL + task** — one URL or pre-authenticated state, one one-sentence task description. Credentials if the flow requires login. No `journey-map.md` needed.
 - **`page-repository.json`** — used opportunistically. If the page exists in the repo, reuse the entries; if not, propose new ones inline (gated like Stage 2 unless `autonomousMode: true`).
 - **Write access to `tests/e2e/evidence/`** — the bundle output directory. Created on first use.
@@ -168,7 +168,7 @@ Write **one** spec file under `tests/e2e/evidence/<slug>-<ts>/spec.ts` (the bund
 
 ### Selector handling
 
-- If a needed selector is missing from `page-repository.json`, present the proposed entry to the user and wait for approval (per Rule 2 of `element-interactions`). The only exception is `autonomousMode: true`, identical to the orchestrator's autonomous-mode contract.
+- If a needed selector is missing from `page-repository.json`, present the proposed entry to the user and wait for approval (per Rule 2 of `achilles-protocol`). The only exception is `autonomousMode: true`, identical to the orchestrator's autonomous-mode contract.
 - The proposed entry is added to the project's `page-repository.json` only if the user accepts; otherwise it lives inline in the bundle's spec.
 
 ---
@@ -342,7 +342,7 @@ Companion mode does not stop at the bundle. The deliverable is the evidence; the
 
 ### Setup detection (run before printing the report)
 
-Run the canonical cascade detector in [`../element-interactions/references/cascade-detector.md`](../element-interactions/references/cascade-detector.md). It returns one of `A | B | C | None`. The detector's table and per-caller response matrix live there — do **not** re-paste the table here, and do not infer the levels from local memory. If the reference says Level D exists and this skill's offer matrix doesn't enumerate it, that's a bug in this skill, not the reference.
+Run the canonical cascade detector in [`../achilles-protocol/references/cascade-detector.md`](../achilles-protocol/references/cascade-detector.md). It returns one of `A | B | C | None`. The detector's table and per-caller response matrix live there — do **not** re-paste the table here, and do not infer the levels from local memory. If the reference says Level D exists and this skill's offer matrix doesn't enumerate it, that's a bug in this skill, not the reference.
 
 After running the detector, also check whether `tests/e2e/docs/coverage-expansion-state.json` exists. The cascade detector itself doesn't read that file — it answers "is this project onboarded?", not "is a pipeline mid-flight?" — but companion-mode does treat the state file as a Phase-6 advisory (see "Mid-pipeline advisory" below).
 
@@ -367,7 +367,7 @@ The offer is **automation-first**. Failure-diagnosis remains the path on a faile
 
 | Setup state | Offer (verbatim shape) |
 |---|---|
-| **None** (fully onboarded) | *"This task is now captured as evidence. Want me to **automate it into the durable suite**? I'll hand the task description, pass criterion, and selectors to `element-interactions` Stage 3 and let it author the durable test properly. (yes / no)"* |
+| **None** (fully onboarded) | *"This task is now captured as evidence. Want me to **automate it into the durable suite**? I'll hand the task description, pass criterion, and selectors to `achilles-protocol` Stage 3 and let it author the durable test properly. (yes / no)"* |
 | **A / B / C** (not onboarded or partially onboarded) | *"This task is now captured as evidence, but this project isn't fully set up for automation yet (Level <A/B/C>: <summary>). Want me to **automate this task**? Two ways forward — pick one: (a) **Just this task** — install the framework, scaffold the minimum needed, and add this single task as a durable test; (b) **Full onboarding** — run the autonomous `onboarding` pipeline (scaffold → happy path → journey mapping → coverage expansion → bug hunts → secrets sweep → summary deck). Or `no` to leave it as evidence-only."* |
 
 #### Verdict: FAILED
@@ -385,14 +385,14 @@ The offer is **automation-first**. Failure-diagnosis remains the path on a faile
 ### Acting on the user's answer
 
 **Passed × None × "yes":**
-1. Invoke `element-interactions` with the documented Phase-6-graduation autonomous-mode args from the orchestrator's autonomous-mode cheat-sheet: `autonomousMode: true, entry: "stage3", bundlePath: "<absolute-path-to-bundle>"`. The bundle's `summary.md` holds the verbatim task description, pass criterion, and app URL; the bundle's `spec.ts` holds the already-discovered selectors. The orchestrator reads these from the bundle — companion-mode does not paste them into args.
+1. Invoke `achilles-protocol` with the documented Phase-6-graduation autonomous-mode args from the orchestrator's autonomous-mode cheat-sheet: `autonomousMode: true, entry: "stage3", bundlePath: "<absolute-path-to-bundle>"`. The bundle's `summary.md` holds the verbatim task description, pass criterion, and app URL; the bundle's `spec.ts` holds the already-discovered selectors. The orchestrator reads these from the bundle — companion-mode does not paste them into args.
 2. The orchestrator enters at Stage 3 (writing the durable spec), runs Stage-4 API compliance review, and commits with a message that references the bundle path ("graduated from companion-mode bundle: `<path>`").
 3. The bundle stays in `tests/e2e/evidence/` as the audit trail.
 
 **Passed × A/B/C × "(a) just this task":**
 1. Run the cascade detector's remediation steps for the matching level — installation (Level A), scaffolding (Level B), or scaffold check (Level C) — but **scoped to the minimum needed** to host one durable test. Do not run the full onboarding pipeline.
 2. Specifically: at Level A install `@civitas-cerebrum/element-interactions` and `@civitas-cerebrum/element-repository` per the README, write a minimal `playwright.config.ts`, `tests/fixtures/base.ts`, and `page-repository.json`, then proceed. At Level B, write the missing scaffold files. At Level C, no scaffolding is needed — the durable test can land without `journey-map.md` for a single-task graduation; the journey map is required by `coverage-expansion`/`test-composer`, not by Stage 3.
-3. After the minimum scaffold is in place, invoke `element-interactions` with the same Phase-6-graduation args as the fully-onboarded case: `autonomousMode: true, entry: "stage3", bundlePath: "<absolute-path>"`. The orchestrator reads the task description, pass criterion, app URL, and selectors from the bundle.
+3. After the minimum scaffold is in place, invoke `achilles-protocol` with the same Phase-6-graduation args as the fully-onboarded case: `autonomousMode: true, entry: "stage3", bundlePath: "<absolute-path>"`. The orchestrator reads the task description, pass criterion, app URL, and selectors from the bundle.
 4. Do **not** silently expand "just this task" into a full onboarding run. The user picked the narrow path explicitly.
 
 **Passed × A/B/C × "(b) full onboarding":**
@@ -450,14 +450,14 @@ companion-mode mode=live \
   build=<app-build-id>            # optional — lands on summary.md's "App build:" line
 ```
 
-Gate suspension matches the `element-interactions` autonomous-mode contract: page-repository proposals are written directly, no Phase-1 prompts are issued, the Phase-6 automation offer is suppressed (the caller's args resolve graduation explicitly via `graduate=` below). The bundle is still produced and its path is returned to the caller as the result.
+Gate suspension matches the `achilles-protocol` autonomous-mode contract: page-repository proposals are written directly, no Phase-1 prompts are issued, the Phase-6 automation offer is suppressed (the caller's args resolve graduation explicitly via `graduate=` below). The bundle is still produced and its path is returned to the caller as the result.
 
 The caller is responsible for handling the verdict — companion mode does not auto-escalate to `failure-diagnosis` even in autonomous mode, and does not silently graduate to durable automation. Graduation in autonomous mode is opt-in via an explicit arg from the caller:
 
 | Caller arg | Behaviour |
 |---|---|
 | `graduate=none` (default) | Phase 6 prints the report and ends. No handoff to Stage 3 or `onboarding`. |
-| `graduate=stage3` | After Phase 5, hand off to `element-interactions` with `autonomousMode: true, entry: "stage3", bundlePath: "<absolute>"` per the orchestrator's autonomous-mode cheat-sheet. Caller is responsible for ensuring the project is at Level None or C, OR for having already remediated A/B in its own pre-step. |
+| `graduate=stage3` | After Phase 5, hand off to `achilles-protocol` with `autonomousMode: true, entry: "stage3", bundlePath: "<absolute>"` per the orchestrator's autonomous-mode cheat-sheet. Caller is responsible for ensuring the project is at Level None or C, OR for having already remediated A/B in its own pre-step. |
 | `graduate=onboarding` | After Phase 5, hand off to `onboarding` in autonomous mode with the bundle's task as `happyPathDescription`. Companion mode does NOT decide between `stage3` and `onboarding` for the caller — the caller picks. |
 
 Inferring `graduate=` from project state is a contract violation; the explicit arg is required.
@@ -486,7 +486,7 @@ These override convenience and apply to every invocation.
 4. **Do NOT compress scope by skipping captures.** If video failed to record, that goes in the `Capture gaps` section — the answer is never "drop the video flag to make the run faster." All capture forms are part of the contract.
 5. **No raw selectors in the spec.** Same rule as Stage 3. Bundle specs are still proper Steps API tests, not throw-away `page.locator(...)` snippets.
 6. **No edits to durable knowledge files during Phases 1–5.** `journey-map.md`, `app-context.md`, `adversarial-findings.md`, the project's `playwright.config.ts`, and the project's `package.json` are read-only during companion mode's own phases. They become writable **only** during Phase 6, and only along these paths:
-   - **Receiving-skill writes (most cases):** `element-interactions` Stage 3 or `onboarding` performs the writes. Companion mode does not touch these files itself.
+   - **Receiving-skill writes (most cases):** `achilles-protocol` Stage 3 or `onboarding` performs the writes. Companion mode does not touch these files itself.
    - **Companion-mode minimum-scaffold writes (one carve-out):** when the user picks `(a) just this task` and the cascade detector returned Level A or B, companion mode itself performs the install and minimum scaffold per §"Phase-6 minimum-scaffold writes". This is the **only** case where companion mode writes outside the evidence directory, and it is bounded to exactly the files listed in that section. Anything beyond that table — touching `journey-map.md`, `adversarial-findings.md`, regenerating `app-context.md`, editing committed test specs — is a contract violation regardless of phase.
 7. **No data exfiltration of evidence.** Bundles can contain credentials in screenshots, HAR responses, console logs. Do NOT post bundle contents to chat platforms, gists, or external services unless the user has explicitly authorised both the artifact and the destination. Same constraint applies in autonomous mode — the caller's authorisation is for the run, not the upload.
 8. **Timestamp the slug.** Two runs of the same task on the same day must NOT clobber each other. The `<slug>-<YYYYMMDD-HHMMSS>` directory shape is non-negotiable. If a directory at that exact path already exists at the moment of bundle write (rare, but possible under same-second concurrent invocations), append `-<n>` starting from `-2` and try again — never overwrite an existing bundle.
@@ -503,7 +503,7 @@ These override convenience and apply to every invocation.
 | "The user just wants a quick test, I'll skip the bundle." | The bundle IS the deliverable. A test without a bundle is the wrong skill — that's Stage 3. |
 | "Video recording is heavy, I'll drop it." | Capture forms are contractual. Drop a flag and you've shipped an incomplete bundle. |
 | "I'll commit this evidence spec into `tests/` so it's reusable." | Bundle specs stay in the bundle directory. Durable suite tests are written by Stage 3 / `onboarding` after the user accepts the Phase-6 offer — not by copying the bundle file. |
-| "The page-repo proposal is small, I'll write it without asking." | Rule 2 of the `element-interactions` orchestrator (page-repository approval gate) still applies during companion-mode Phases 1–5. Approval gate or `autonomousMode: true`, no third option. |
+| "The page-repo proposal is small, I'll write it without asking." | Rule 2 of the `achilles-protocol` orchestrator (page-repository approval gate) still applies during companion-mode Phases 1–5. Approval gate or `autonomousMode: true`, no third option. |
 | "The run looked fine but the screenshots felt off — I'll mark it INCONCLUSIVE to be safe." | INCONCLUSIVE is reserved for runner-level uncertainty (crash, setup error, no assertion reached). A passed run with surprising observations is PASSED with a `Notes` entry — see §"Verdict definitions". Marking it INCONCLUSIVE silently suppresses the automation offer (Rule 10) and is a contract violation. |
 | "The user gave a third vague reply — I'll just keep clarifying." | Rule 2 caps the re-prompt loop at twice. On the third vague reply, treat the answer as `no` and end the session. An unbounded loop is the rationalization, not the discipline. |
 | "The run failed, let me hand off to `failure-diagnosis` and bring back a passing bundle." | Failure is a valid bundle. Ship it first. The Phase-6 offer is what triggers the failure-diagnosis handoff, not Phase 4. |
@@ -514,7 +514,7 @@ These override convenience and apply to every invocation.
 | "The project is partially onboarded — let me just run the full `onboarding` pipeline anyway, it's better." | The user's choice between (a) "just this task" and (b) "full onboarding" is theirs. Inferring (b) when they picked (a), or vice versa, is a contract violation. |
 | "The verdict is passed and the project is fully onboarded — I'll graduate the test silently to save a round-trip." | The Phase-6 offer is mandatory even when graduation seems obvious. The user might have run companion mode specifically because they did NOT want a durable test (e.g. evidence for a one-off ticket). Always ask. |
 | "The verdict is failed — I'll skip the offer entirely since automation can't happen yet." | Wrong shape. On failure, print the failure-diagnosis offer (the deferred-automation message), don't print nothing. The user needs to know automation is on hold pending diagnosis, not silently dropped. |
-| "User declined graduation — let me leave a TODO in the bundle to retry next session." | No. A decline is a decline. Companion mode does not pre-stage the next session's offer. The user can re-invoke companion mode or `element-interactions` themselves if they change their mind. |
+| "User declined graduation — let me leave a TODO in the bundle to retry next session." | No. A decline is a decline. Companion mode does not pre-stage the next session's offer. The user can re-invoke companion mode or `achilles-protocol` themselves if they change their mind. |
 | "The run failed — I'll offer `bug-report` right away since the screenshots show an obvious app bug." | The `bug-report` offer only comes **after** `failure-diagnosis` confirms the root cause is an app bug. Skipping `failure-diagnosis` risks filing a ticket for what is actually a selector mismatch or test setup issue. |
 | "I'll pre-fill Severity and Priority when handing off to `bug-report`." | Severity and Priority are confirmed by the user inside `bug-report`'s own engine. Companion mode passes evidence only — it does not shortcut `bug-report`'s confirmation step. |
 
@@ -522,13 +522,13 @@ These override convenience and apply to every invocation.
 
 ## Directory boundaries
 
-Permissions split into **Phases 1–5** (the evidence run itself) and **Phase 6 graduation** (writes that flow through a handoff). Companion mode never writes outside the evidence directory during Phases 1–5; during Phase 6, writes outside the evidence directory are owned by the receiving skill (`element-interactions` Stage 3 or `onboarding`), not by companion mode itself.
+Permissions split into **Phases 1–5** (the evidence run itself) and **Phase 6 graduation** (writes that flow through a handoff). Companion mode never writes outside the evidence directory during Phases 1–5; during Phase 6, writes outside the evidence directory are owned by the receiving skill (`achilles-protocol` Stage 3 or `onboarding`), not by companion mode itself.
 
 | Path | Owner | Phases 1–5 | Phase-6 graduation |
 |---|---|---|---|
 | `tests/e2e/evidence/` | companion-mode | Read + write | Read-only (bundle is frozen as audit trail) |
 | `tests/e2e/docs/journey-map.md` | `journey-mapping` | Read-only | Read-only (only `onboarding` may regenerate it) |
-| `tests/e2e/docs/app-context.md` | `element-interactions` Stage 1/2/5 | Read-only | Written by the receiving skill, not by companion mode |
+| `tests/e2e/docs/app-context.md` | `achilles-protocol` Stage 1/2/5 | Read-only | Written by the receiving skill, not by companion mode |
 | `tests/e2e/docs/adversarial-findings.md` | `bug-discovery` / `coverage-expansion` | Read-only | Read-only |
 | `tests/<spec>.spec.ts` | Stage 3 / `test-composer` | Read-only | Written by Stage 3 after handoff — companion mode does NOT copy the bundle spec into `tests/` |
 | `page-repository.json` | Stage 2 | Read; write only with approval (or `autonomousMode: true`) | Written by Stage 3 after handoff |
@@ -546,7 +546,7 @@ When the user picks "(a) just this task" at the Phase-6 offer **and** the cascad
 | **B** | Write only the missing scaffold files among `playwright.config.ts`, `tests/fixtures/base.ts`, `page-repository.json`. |
 | **C** | No scaffold writes — Stage 3 can land a durable test without `journey-map.md`. |
 
-After the Level-appropriate writes complete, companion mode invokes `element-interactions` Stage 3 with the bundle's task description, pass criterion, and selectors as inputs. From that point on, all further writes (the durable spec, page-repository updates, app-context updates, commits) are owned by Stage 3 — companion mode does not supervise.
+After the Level-appropriate writes complete, companion mode invokes `achilles-protocol` Stage 3 with the bundle's task description, pass criterion, and selectors as inputs. From that point on, all further writes (the durable spec, page-repository updates, app-context updates, commits) are owned by Stage 3 — companion mode does not supervise.
 
 A Phase-1-through-5 run that writes outside the evidence directory (excluding the gated `page-repository.json` write inside Phase 3) is a contract violation. A Phase-6 run that writes anything beyond the Level-appropriate minimum scaffold (e.g., regenerates `journey-map.md` itself, edits the receiving skill's outputs after handoff) is also a contract violation.
 
@@ -558,10 +558,10 @@ The full mechanics live in §"Phase 6: Report and automation offer". This sectio
 
 | User picks at Phase 6 | Setup state | What companion mode does | Receiving skill |
 |---|---|---|---|
-| `yes` | None (fully onboarded) | Invoke `element-interactions` with `autonomousMode: true, entry: "stage3", bundlePath: "<absolute>"` | `element-interactions` Stage 3 |
-| `(a) just this task` | A | Install framework + write minimum scaffold, then hand off | `element-interactions` Stage 3 |
-| `(a) just this task` | B | Write missing scaffold files, then hand off | `element-interactions` Stage 3 |
-| `(a) just this task` | C | No scaffold writes; hand off directly | `element-interactions` Stage 3 |
+| `yes` | None (fully onboarded) | Invoke `achilles-protocol` with `autonomousMode: true, entry: "stage3", bundlePath: "<absolute>"` | `achilles-protocol` Stage 3 |
+| `(a) just this task` | A | Install framework + write minimum scaffold, then hand off | `achilles-protocol` Stage 3 |
+| `(a) just this task` | B | Write missing scaffold files, then hand off | `achilles-protocol` Stage 3 |
+| `(a) just this task` | C | No scaffold writes; hand off directly | `achilles-protocol` Stage 3 |
 | `(b) full onboarding` | A / B / C | Hand task + pass criterion + bundle path to onboarding as `happyPathDescription` | `onboarding` |
 | `no` / no answer | Any | Leave bundle in place, end session | — |
 | FAILED verdict offer accepted | Any | Hand off to failure-diagnosis; automation question deferred | `failure-diagnosis` |
@@ -617,7 +617,7 @@ digraph companion_mode {
     "Re-prompt for clear\nanswer" [shape=box];
     "Level A/B remediation\nminimum scaffold" [shape=box];
     "Level needs scaffold?" [shape=diamond];
-    "Hand off to\nelement-interactions Stage 3" [shape=box];
+    "Hand off to\nachilles-protocol Stage 3" [shape=box];
     "Hand off to\nonboarding" [shape=box];
     "End session\n(bundle stays in place)" [shape=box];
     "Done" [shape=doublecircle];
@@ -669,11 +669,11 @@ digraph companion_mode {
     "Re-prompt for clear\nanswer" -> "User answer?";
     "yes / (a)" -> "Level needs scaffold?";
     "Level needs scaffold?" -> "Level A/B remediation\nminimum scaffold" [label="A or B"];
-    "Level needs scaffold?" -> "Hand off to\nelement-interactions Stage 3" [label="None or C"];
-    "Level A/B remediation\nminimum scaffold" -> "Hand off to\nelement-interactions Stage 3";
+    "Level needs scaffold?" -> "Hand off to\nachilles-protocol Stage 3" [label="None or C"];
+    "Level A/B remediation\nminimum scaffold" -> "Hand off to\nachilles-protocol Stage 3";
     "(b) full onboarding" -> "Hand off to\nonboarding";
     "no / declined" -> "End session\n(bundle stays in place)";
-    "Hand off to\nelement-interactions Stage 3" -> "Done";
+    "Hand off to\nachilles-protocol Stage 3" -> "Done";
     "Hand off to\nonboarding" -> "Done";
     "End session\n(bundle stays in place)" -> "Done";
 }
@@ -685,7 +685,7 @@ digraph companion_mode {
 
 - **Reads from:** `package.json` (cascade detection), `playwright.config.ts` (runner version + cascade), `tests/fixtures/base.ts` (fixture import path + cascade), `page-repository.json` (selector reuse + cascade), `tests/e2e/docs/journey-map.md` line 1 (sentinel check for Level C).
 - **Writes during Phases 1–5:** `tests/e2e/evidence/<slug>-<ts>/` (everything), and (with approval, or under `autonomousMode: true`) `page-repository.json` for new selector entries.
-- **Writes during Phase 6 (only on `(a) just this task` × Level A/B):** `package.json` + `package-lock.json` + `node_modules/` (Level A install), and the minimum scaffold among `playwright.config.ts`, `tests/fixtures/base.ts`, `page-repository.json` (Level A/B). All other Phase-6 paths perform NO writes — the receiving skill (`element-interactions` Stage 3 or `onboarding`) owns those.
+- **Writes during Phase 6 (only on `(a) just this task` × Level A/B):** `package.json` + `package-lock.json` + `node_modules/` (Level A install), and the minimum scaffold among `playwright.config.ts`, `tests/fixtures/base.ts`, `page-repository.json` (Level A/B). All other Phase-6 paths perform NO writes — the receiving skill (`achilles-protocol` Stage 3 or `onboarding`) owns those.
 - **Returns to caller (interactive):** the printed Phase-6 report plus, if a handoff was made, control transfers to the receiving skill. Companion mode does not return a structured value to an interactive user.
 - **Returns to caller (autonomousMode):** `{ status: 'passed' | 'failed' | 'inconclusive', bundlePath: '<absolute>', specPath: '<absolute>', graduated: 'none' | 'stage3' | 'onboarding' }`.
-- **Skill invocations:** never invokes another skill during Phases 1–5. Phase 6 may invoke `element-interactions` (Stage 3), `onboarding`, `failure-diagnosis`, or `bug-report` — and only one of them per session, and only with explicit user assent. `bug-report` is only offered after `failure-diagnosis` has confirmed an app bug on a FAILED run.
+- **Skill invocations:** never invokes another skill during Phases 1–5. Phase 6 may invoke `achilles-protocol` (Stage 3), `onboarding`, `failure-diagnosis`, or `bug-report` — and only one of them per session, and only with explicit user assent. `bug-report` is only offered after `failure-diagnosis` has confirmed an app bug on a FAILED run.

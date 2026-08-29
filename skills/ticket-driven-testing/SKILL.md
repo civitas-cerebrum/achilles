@@ -740,7 +740,7 @@ Never flag-patch the CI config to achieve this by hand. `slowMo` multiplies ever
 
 Gitignore `show-recordings/` — demonstration footage is not a repo artifact.
 
-**If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-element-interactions`.
+**If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-achilles-protocol`.
 
 ## Control every instrument before you read it
 
@@ -824,7 +824,7 @@ When an assertion has no API surface, do **not** silently drop to raw driver cal
 
 Known gap: **document-level geometry.** "No horizontal clipping" is `documentElement.scrollWidth > clientWidth`, and step-based frameworks generally have no element-free assertion for it. Proxy: assert every control stays present and reachable at each width, and let the per-width screenshots carry the visual proof.
 
-**REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-element-interactions`.
+**REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-achilles-protocol`.
 
 ## 9. Report — and have the report reviewed before it ships
 

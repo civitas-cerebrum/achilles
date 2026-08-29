@@ -30,7 +30,7 @@ Activation phrases:
 - "client-ready catalogue"
 - "export the scenario inventory"
 
-It does NOT activate during test writing, coverage expansion, repair, or debugging — those belong to the primary `element-interactions` stages. It is a paired document to `work-summary-deck`: the deck tells the narrative, the catalogue lists the inventory.
+It does NOT activate during test writing, coverage expansion, repair, or debugging — those belong to the primary `achilles-protocol` stages. It is a paired document to `work-summary-deck`: the deck tells the narrative, the catalogue lists the inventory.
 
 ---
 
@@ -309,7 +309,7 @@ This skill does not read `autonomousMode: true`. It is never invoked by another 
 
 ## Registry
 
-This skill is registered in `skills/element-interactions/references/skill-registry.md`:
+This skill is registered in `skills/achilles-protocol/references/skill-registry.md`:
 
 ```
 | `test-catalogue` | `test-catalogue` | — (user-invoked, on-demand) | "produce a test catalogue", "generate a scenario report", "catalogue the suite", "client-ready catalogue", "export the scenario inventory"; never auto-invoked by any other skill. |

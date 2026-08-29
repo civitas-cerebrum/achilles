@@ -33,9 +33,9 @@ through Claude Code's normal tool surface.
 
 | # | Phase | What it produces | Skill |
 |---|---|---|---|
-| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `element-interactions` (Stage 1) |
-| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `element-interactions` (Stage 2) |
-| 3 | Happy-path | One `tests/e2e/<journey>.spec.ts` per primary user flow that exercises sign-in + the critical action | `element-interactions` (Stages 3–4), `test-composer` |
+| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `achilles-protocol` (Stage 1) |
+| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `achilles-protocol` (Stage 2) |
+| 3 | Happy-path | One `tests/e2e/<journey>.spec.ts` per primary user flow that exercises sign-in + the critical action | `achilles-protocol` (Stages 3–4), `test-composer` |
 | 4 | Journey mapping | `tests/e2e/docs/journey-map.md`, `tests/e2e/docs/journey-map-coverage.md` | `journey-mapping` |
 | 5 | Coverage expansion | One `tests/e2e/<journey>.spec.ts` per priority-2/3 journey, grouped passes 2–5 with cleanup dedup | `coverage-expansion`, `test-composer` |
 | 6 | Bug discovery | Adversarial findings + regression specs that lock the failure modes | `bug-discovery` |
@@ -98,7 +98,7 @@ row's `status` becomes `blocked`. This mirrors the existing
 - `schemas/onboarding-status.schema.json` — ledger shape (v1)
 - `schemas/subagent-returns/workflow-reviewer.schema.json` — reviewer return shape
 - `skills/workflow-reviewer/SKILL.md` — reviewer methodology
-- `skills/element-interactions/references/harness-hooks.md` — both new hooks indexed
+- `skills/achilles-protocol/references/harness-hooks.md` — both new hooks indexed
 
 The ledger + reviewer layer was added because empirical observation (a
 21-journey benchmark, Run 5) demonstrated that markdown-text contract
@@ -219,7 +219,7 @@ augmentation.
 - The four scaffold files exist on disk.
 - `package.json` scripts include `test:repair`.
 
-Load `element-interactions` (Stage 1) for the exact file shapes.
+Load `achilles-protocol` (Stage 1) for the exact file shapes.
 
 ---
 
@@ -244,7 +244,7 @@ Load `element-interactions` (Stage 1) for the exact file shapes.
 **Exit criteria.**
 - The three artefacts exist and `npx playwright test --list` still works.
 
-Load `element-interactions` (Stage 2) for the page-repository schema and
+Load `achilles-protocol` (Stage 2) for the page-repository schema and
 the self-credentialing pattern.
 
 ---

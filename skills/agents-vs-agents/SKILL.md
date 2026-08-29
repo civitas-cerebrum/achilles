@@ -58,7 +58,7 @@ Judge LLM      -->  evaluates transcript, issues verdict
 
 ## Canonical return + findings
 
-A confirmed guardrail failure is a finding like any other — it joins the same dedup, severity-mapping, ledger, and reporting machinery the rest of the methodology uses. Every judge verdict of **FAIL or PARTIAL** is emitted as a canonical finding block conforming to [`../element-interactions/references/subagent-return-schema.md`](../element-interactions/references/subagent-return-schema.md) §1.
+A confirmed guardrail failure is a finding like any other — it joins the same dedup, severity-mapping, ledger, and reporting machinery the rest of the methodology uses. Every judge verdict of **FAIL or PARTIAL** is emitted as a canonical finding block conforming to [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) §1.
 
 - **Finding-return format** — `- **<FINDING-ID>** [<severity>] — <title>` with `scope` / `expected` / `observed` / `coverage` sub-bullets, exactly per §1.
 - **FINDING-ID** — `ai-<category-slug>-<nn>`. `<category-slug>` is the AI-safety probe-category slug from §3.6 of the canonical schema, mapped from the 8 categories:

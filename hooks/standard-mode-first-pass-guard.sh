@@ -239,7 +239,7 @@ front-load gate and select \`runMode: standard\` instead.
 
 See:
   - skills/coverage-expansion/SKILL.md §\"Depth mode — strict-parallel-everywhere\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
     exit 0
   fi
   if [ -z "$CURRENT_PASS" ] || [ "$CURRENT_PASS" = "1" ]; then
@@ -261,7 +261,7 @@ file shows \`currentPass >= 2\`.
 
 See:
   - skills/coverage-expansion/SKILL.md §\"Stage A per-journey dispatch is non-negotiable\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
     exit 0
   fi
 fi
@@ -300,7 +300,7 @@ file, then re-dispatch the author.
 
 See:
   - skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
     exit 0
   fi
 fi
@@ -418,7 +418,7 @@ front-load gate and select \`runMode: standard\` instead.
 
 See:
   - skills/journey-mapping/SKILL.md §\"First-cycle strict / later-cycle relaxed\" — every-cycle-strict counterpart under depth
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
         exit 0
       fi
       if [ "$CYCLE_1_DISPATCHED" -eq 0 ]; then
@@ -444,7 +444,7 @@ cycle).
 
 See:
   - skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
         exit 0
       fi
       ;;

@@ -23,7 +23,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/playwright-cli-protocol.md §3.2
+# skills/achilles-protocol/references/playwright-cli-protocol.md §3.2
 # (Quarantine on start) — same-shape close-all the parent runs at phase boundaries.
 #
 # Failure → action
