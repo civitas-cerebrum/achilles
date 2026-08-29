@@ -66,6 +66,12 @@
 
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/workflow-reviewer/SKILL.md\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 [ -n "$JQ" ] || { echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found." >&2; exit 1; }
@@ -96,7 +102,7 @@ fi
 PROMPT=$(echo "$INPUT" | "$JQ" -r '.tool_input.prompt // ""' 2>/dev/null || echo "")
 
 emit_deny() {
-  "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{
+  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",

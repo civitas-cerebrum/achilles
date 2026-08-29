@@ -64,6 +64,12 @@
 
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/journey-mapping/SKILL.md\n  skills/onboarding/SKILL.md §\"Phase 4 — Journey mapping\""
+
+
 # Bypass switch.
 if [ "${JOURNEY_MAPPING_PREREAD_GATE:-on}" = "off" ]; then
   exit 0
@@ -203,7 +209,7 @@ See: skills/onboarding/SKILL.md §\"Phase 4 — Journey mapping\""
     ;;
 esac
 
-"$JQ" -n --arg r "$REASON$(achilles_scope_notice)" '{
+"$JQ" -n --arg r "$REASON${HOOK_REFS}$(achilles_scope_notice)" '{
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

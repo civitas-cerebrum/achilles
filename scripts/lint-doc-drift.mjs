@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Four independent checks; each reports pass/fail; the process
+// describe. Five independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -9,6 +9,10 @@
 //   (3) HOOK_MANIFEST (scripts/postinstall.js)  ↔  harness-hooks.md links
 //   (4) every validated §4.4 description-prefix in subagent-return-schema.md
 //       has a matching case in hooks/lib/schema-role-map.sh
+//   (5) every deny/warn-capable hook's runtime messages carry a References:
+//       block citing >=1 resolvable skills/ (or schemas/) path — the
+//       methodology-pointer convention (contributing-to-achilles-protocol
+//       SKILL.md §"Hook error message format — repo standard")
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -231,10 +235,71 @@ function checkRoleMapCoverage() {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// Check 5 — hook runtime messages carry resolvable methodology References
+// ---------------------------------------------------------------------------
+// Convention: contributing-to-achilles-protocol/SKILL.md §"Hook error message
+// format — repo standard". Every hook that can emit a user-facing decision at
+// runtime (PreToolUse deny/ask, systemMessage warn, Stop decision:block, or a
+// strict-mode exit-2 stderr block) must end those messages with a
+// `References:` block of repo-relative canonical-rule paths. Mechanics of the
+// check: full-line comments are stripped first, so the header's
+// "Canonical reference" section can never satisfy it — the References must
+// live in the message-producing region (strings, heredocs, echo lines).
+// Every cited skills/….md or schemas/….json path (in ANY hook, emitting or
+// not) must resolve in the repo, so a skill rename cannot silently orphan a
+// hook's pointers.
+function checkHookReferences() {
+  const detail = [];
+  const hooks = readdirSync('hooks')
+    .filter((f) => f.endsWith('.sh'))
+    .map((f) => join('hooks', f));
+
+  let emitters = 0;
+  let citedPaths = 0;
+
+  for (const h of hooks) {
+    const raw = readFileSync(h, 'utf8');
+    // Strip full-line comments: the message-producing region is what remains.
+    const code = raw
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
+
+    const pathMatches = [...code.matchAll(/(?:skills|schemas)\/[A-Za-z0-9._/-]+\.(?:md|json)/g)].map((m) => m[0]);
+    for (const cited of new Set(pathMatches)) {
+      citedPaths++;
+      if (!existsSync(cited)) {
+        detail.push(`${h}: cited path does not resolve: ${cited}`);
+      }
+    }
+
+    const emits = /permissionDecision|"decision"\s*:\s*"block"|systemMessage/.test(code);
+    if (!emits) continue;
+    emitters++;
+
+    if (!/References:/.test(code)) {
+      detail.push(`${h}: emits deny/warn/block but its runtime messages have no References: block`);
+      continue;
+    }
+    if (pathMatches.length === 0) {
+      detail.push(`${h}: emits deny/warn/block but cites no skills/ or schemas/ path in its runtime messages`);
+    }
+  }
+
+  report(
+    `hook runtime messages carry resolvable methodology References (${emitters} emitting hooks, ${citedPaths} cited paths)`,
+    detail.length === 0,
+    detail,
+  );
+}
+
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
 checkRoleMapCoverage();
+checkHookReferences();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

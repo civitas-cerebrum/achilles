@@ -848,5 +848,7 @@ fi
 
 emit_warn "[WARN] Posting a QA verdict with no evidence bundle for this ticket.
 
-$BODY_MSG"
+$BODY_MSG
+
+${REFS}"
 exit 0

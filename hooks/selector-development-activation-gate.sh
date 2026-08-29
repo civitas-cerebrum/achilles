@@ -41,6 +41,12 @@
 
 set -euo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/selector-development/SKILL.md\n  skills/selector-development/references/activation-gate.md"
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 if [ -z "$JQ" ]; then
@@ -105,7 +111,7 @@ fi
 # Missing the frontend marker is a hard block — the pipeline literally
 # has no source to write a selector into. DENY.
 if [ "$fe_present" -eq 0 ]; then
-  "$JQ" -n --arg r "selector-development-activation-gate: frontend source not present (no framework dep in package.json under ${ws}). selector-development requires a frontend project to add inert selectors to. If this consumer doesn't use selector-development, disable the hook with CIVITAS_DISABLE_SELECTOR_DEVELOPMENT=1.$(achilles_scope_notice)" '{
+  "$JQ" -n --arg r "selector-development-activation-gate: frontend source not present (no framework dep in package.json under ${ws}). selector-development requires a frontend project to add inert selectors to. If this consumer doesn't use selector-development, disable the hook with CIVITAS_DISABLE_SELECTOR_DEVELOPMENT=1.${HOOK_REFS}$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "permissionDecision": "deny",
       "permissionDecisionReason": $r
@@ -118,8 +124,8 @@ fi
 # can still land the attribute; the consumer is expected to author
 # the matching test as their next step. WARN, don't DENY.
 if [ "$tests_present" -eq 0 ]; then
-  "$JQ" -n --arg ws "$ws" '{
-    "systemMessage": ("[WARN] selector-development-activation-gate: tests/e2e/*.spec.ts not yet present under " + $ws + ". The pipeline will land the inert attribute, but the matching test is the human follow-up — without it the selector has no consumer and visual-diff verification will not cover this edit. Add tests/e2e/<journey>.spec.ts that uses the new selector before commit."),
+  "$JQ" -n --arg ws "$ws" --arg refs "$HOOK_REFS" '{
+    "systemMessage": ("[WARN] selector-development-activation-gate: tests/e2e/*.spec.ts not yet present under " + $ws + ". The pipeline will land the inert attribute, but the matching test is the human follow-up — without it the selector has no consumer and visual-diff verification will not cover this edit. Add tests/e2e/<journey>.spec.ts that uses the new selector before commit." + $refs),
     "suppressOutput": false
   }'
   exit 0
