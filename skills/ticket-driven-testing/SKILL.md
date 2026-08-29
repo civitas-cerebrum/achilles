@@ -999,7 +999,7 @@ Never flag-patch the CI config to achieve this by hand. `slowMo` multiplies ever
 
 Gitignore `show-recordings/` — demonstration footage is not a repo artifact.
 
-**If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-element-interactions`.
+**If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-achilles-protocol`.
 
 ## Control every instrument before you read it
 
@@ -1083,7 +1083,13 @@ When an assertion has no API surface, do **not** silently drop to raw driver cal
 
 Known gap: **document-level geometry.** "No horizontal clipping" is `documentElement.scrollWidth > clientWidth`, and step-based frameworks generally have no element-free assertion for it. Proxy: assert every control stays present and reachable at each width, and let the per-width screenshots carry the visual proof.
 
-**REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-element-interactions`.
+**REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-achilles-protocol`.
+
+## 8c. Compliance sweep — before any verdict leaves the session
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
+A QA verdict rests on the tests that produced it. Sweeping them is part of producing the verdict, not a follow-up task.
 
 ## 9. Report — and have the report reviewed before it ships
 

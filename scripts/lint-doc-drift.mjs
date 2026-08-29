@@ -5,7 +5,7 @@
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
-//   (2) every relative .md link under skills/element-interactions/** resolves
+//   (2) every relative .md link under skills/achilles-protocol/** resolves
 //   (3) HOOK_MANIFEST (scripts/postinstall.js)  ↔  harness-hooks.md links
 //   (4) every validated §4.4 description-prefix in subagent-return-schema.md
 //       has a matching case in hooks/lib/schema-role-map.sh
@@ -18,11 +18,11 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 
 const SKILLS_DIR = 'skills';
-const EI_DIR = 'skills/element-interactions';
-const REGISTRY = 'skills/element-interactions/references/skill-registry.md';
-const HARNESS_HOOKS = 'skills/element-interactions/references/harness-hooks.md';
+const EI_DIR = 'skills/achilles-protocol';
+const REGISTRY = 'skills/achilles-protocol/references/skill-registry.md';
+const HARNESS_HOOKS = 'skills/achilles-protocol/references/harness-hooks.md';
 const POSTINSTALL = 'scripts/postinstall.js';
-const RETURN_SCHEMA = 'skills/element-interactions/references/subagent-return-schema.md';
+const RETURN_SCHEMA = 'skills/achilles-protocol/references/subagent-return-schema.md';
 const ROLE_MAP = 'hooks/lib/schema-role-map.sh';
 
 let anyFail = false;
@@ -87,7 +87,7 @@ function checkRegistryBijection() {
 }
 
 // ---------------------------------------------------------------------------
-// Check 2 — relative .md links under skills/element-interactions/** resolve
+// Check 2 — relative .md links under skills/achilles-protocol/** resolve
 // ---------------------------------------------------------------------------
 function checkRelativeLinks() {
   const detail = [];
@@ -120,7 +120,7 @@ function checkRelativeLinks() {
   }
 
   report(
-    `skills/element-interactions/** relative .md links resolve (${checked} links across ${mdFiles.length} files)`,
+    `skills/achilles-protocol/** relative .md links resolve (${checked} links across ${mdFiles.length} files)`,
     detail.length === 0,
     detail,
   );

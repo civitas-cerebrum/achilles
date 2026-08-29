@@ -22,7 +22,7 @@ The output is a single self-contained HTML file plus an auto-rendered PDF. The P
 
 ## When This Skill Activates
 
-This skill is **on-demand only**. It activates when the user asks for a report, deck, summary, or presentation of QA work. It does NOT activate during test writing, debugging, or coverage expansion — those are handled by the singularity/element-interactions skills.
+This skill is **on-demand only**. It activates when the user asks for a report, deck, summary, or presentation of QA work. It does NOT activate during test writing, debugging, or coverage expansion — those are handled by the singularity/achilles-protocol skills.
 
 ---
 

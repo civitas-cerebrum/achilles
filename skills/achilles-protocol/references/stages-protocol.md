@@ -1,6 +1,6 @@
 # Stages Protocol — Element-Interactions Pipeline (Stages 1–4)
 
-**Status:** authoritative spec for the four-stage element-interactions test-authoring pipeline. Cited from `element-interactions/SKILL.md`.
+**Status:** authoritative spec for the four-stage achilles-protocol test-authoring pipeline. Cited from `achilles-protocol/SKILL.md`.
 **Scope:** Stage 1 (Scenario Discovery), Stage 2 (Element Inspection), Stage 3 (Write Automation), Stage 4a (Test Optimization), Stage 4b (API Compliance Review). For each stage: process, hard gates, output format, and skip-to-Stage-3 (fix/edit) mode.
 
 For the canonical browser-automation primitive used in Stage 2 / 3, see `playwright-cli-protocol.md`.
@@ -211,6 +211,31 @@ For each test file, verify:
 
    When reviewing, ask: *"If the action had silently done nothing, would this assertion still pass?"* If yes, the verification is tautological — replace it with one that reflects the action's specific observable effect (navigation, text update, state-summary change, attribute flip, modal open, URL change, dependent-element reaction). Pure framework-smoke cases may fall back to a weak check but require a one-line comment justifying it. "The action didn't throw" is not a verification.
 
+12. **Every test case carries a stable test ID — and an intentional red carries `@known-defect`.** Two sub-checks:
+   - **Identity.** The title of every `test(...)` / `test.only|skip|fail|fixme(...)` begins with `TCXX-NNNNNN` (bracketed form accepted), followed by the behaviour sentence: `test('TCLG-000420 · a wrong password is rejected', …)` — `TC` plus up to three more letters of area code, a dash, and a 4-6 digit ordinal; another scheme is pinnable with `CIVITAS_TEST_ID_PATTERN`. Describe titles are exempt — the case is the unit of identity. IDs are unique within the suite and belong to the scenario, not the wording: reword freely, move files freely, never recycle a retired ID. Flag any case added in this session without one.
+   - **Intentional reds.** A test that asserts the behaviour the app *should* have while a filed defect makes it fail today carries `@known-defect` (on the title or its describe) plus a comment naming the report. Flag a red test in this session that has neither — an unexplained red is either a test issue to fix or an unfiled bug to report, and both belong in the same review. The tag is what keeps `self-repair` / `test-repair` / `failure-diagnosis` from spending reruns re-deriving a conclusion that is already written down.
+
+   Full convention, consumers, and the no-rerun contract: [`test-identity.md`](test-identity.md). Identity is harness-enforced by [`hooks/test-id-compliance-gate.sh`](../../../hooks/test-id-compliance-gate.sh), which denies a spec write that adds an untitled-by-ID case or duplicates an ID inside one file.
+
+13. **Unnecessary timeouts — strip when no performance fatigue is recorded.** If the website shows no visible or recorded signs of performance fatigue, custom timeout overrides are unnecessary padding and must be removed. The framework defaults (30 000 ms element timeout, 15 000 ms repo timeout) are deliberately generous — an explicit override is only justified when observed evidence proves the default is insufficient for a specific interaction.
+
+   **Performance-fatigue evidence** — any of these present means the timeout is justified; keep it and skip this check for that call site:
+   - Stage 3 stabilization produced timeout-class failures (`TimeoutError`, `waiting for selector … timeout …`, `exceeded … ms`) that were resolved by adding the override.
+   - `app-context.md` `## Test Infrastructure` documents slow-loading pages, heavy SPA hydration, SSR delays, or known-slow third-party widgets.
+   - The timeout has an explicit `// perf:` or `// slow:` comment explaining why it exists.
+
+   **What to strip (when no fatigue evidence):**
+   - Per-call `.timeout(ms)` overrides on `.on()` / `.expect()` matcher chains.
+   - `{ timeout: ms }` options on `waitForState`, `waitForNetworkIdle`, `waitForUrl`, `waitForLoadState`, `isVisible`, `isPresent`.
+   - Custom `timeout` in `test.describe.configure({ … timeout: X })` that exceeds the fixture-level default without justification.
+
+   **What is NOT stripped:**
+   - The fixture-level `timeout` in `baseFixture(…, { timeout: … })` — that is a project-level decision, not a per-test concern.
+   - `test.setTimeout()` calls — test-runner level, outside the Steps API scope.
+   - Any timeout with an accompanying `// perf:` or `// slow:` justification comment.
+
+   **Auto-fix:** yes. Remove the timeout argument / option-object key. If the option object becomes empty after removal (e.g. `{ timeout: 5000 }` was the only key), remove the entire options argument. Re-run the affected tests after stripping — if any test then fails with a timeout, the app *does* have performance fatigue for that interaction: revert the strip for that call and add a `// perf: <element> requires extended timeout — <observed evidence>` comment to protect it from future sweeps.
+
 ### Process
 
 1. **Read `api-reference.md`** — load the full API reference. Do not review from memory.
@@ -241,6 +266,27 @@ Or if clean:
 > Reviewed: `tests/example.spec.ts`
 >
 > All API calls match the documented signatures. No issues found.
+
+---
+
+## Stage 4b is every mode's exit gate
+
+**Rule.** Any working mode that writes or edits test code runs the Stage-4b compliance sweep over what it touched, before it returns or stops. Not only the authoring pipeline — every mode:
+
+| Mode | When the sweep runs |
+|---|---|
+| `achilles-protocol` Stages 1-4 | Inline, after Stage 4a returns clean (the original home of the sweep). |
+| `test-composer` | Step 6b, over the journey's freshly-composed variants — before the coverage gate and the return. |
+| `coverage-expansion` | Per journey per pass, through the composer it dispatches; a pass whose composer return shows no sweep is an incomplete pass. |
+| `bug-discovery` | Over every reproduction test written in the pass, including `@dom-only` ones. A reproduction test is still test code. |
+| `ticket-driven-testing` | Before the ticket's QA sign-off — the tests that back a verdict are reviewed like any others. |
+| `companion-mode` | On graduation, when the bundle's scenario becomes a durable spec. |
+| `self-repair`, `test-repair`, `failure-diagnosis` | Over every spec a heal edited. A fix that reintroduces raw Playwright or a tautological assertion is a heal that made the suite worse. |
+| `contract-testing`, `database-testing`, `agents-vs-agents` | Over the specs they add — the API surface differs, the sweep does not. |
+
+**Why it is not optional.** Modes that write tests as a *means* to something else — reproducing a bug, healing a red, closing a ticket — are exactly the ones that skip the sweep, because their own goal reads as met the moment the test exists and passes. That is where API misuse, tautological assertions, missing test IDs, and untagged intentional reds enter the suite; and because tests are written by copying the last one, a single unswept file propagates the wrong model into everything written after it.
+
+**Harness-enforced by [`hooks/compliance-sweep-exit-gate.sh`](../../../hooks/compliance-sweep-exit-gate.sh)** — `Stop` + `SubagentStop`. A session whose transcript shows a spec-file Write/Edit with no sweep after it is blocked from stopping, with the checklist in the block message. Announce the sweep with its documented output block (the **API Compliance Review** heading) so the evidence is unambiguous. Delegation moves the work, not the obligation: either the subagent swept and said so in its return, or the orchestrator sweeps what came back.
 
 ---
 

@@ -96,7 +96,7 @@ The minimum 2 (1 discovery + 1 edge-probe) is non-negotiable: even when cycle 1 
 
 ### Inputs
 
-The cycle protocol consumes `tests/e2e/docs/.discovery-draft.json` produced by `element-interactions` Stage 3 in `onboarding` Phase 3 (per `element-interactions/references/autonomous-mode-callers.md` §"Mandatory output for `onboarding` Phase 3 — discovery draft"). The draft seeds:
+The cycle protocol consumes `tests/e2e/docs/.discovery-draft.json` produced by `achilles-protocol` Stage 3 in `onboarding` Phase 3 (per `achilles-protocol/references/autonomous-mode-callers.md` §"Mandatory output for `onboarding` Phase 3 — discovery draft"). The draft seeds:
 
 - **Cycle-1 section roster** — the union of `sections-inferred[].id` and `unvisited-but-linked[].section-guess` from the draft.
 - **Credentials policy** — `handover-to-phase4.credentials-discovered` tells cycle agents whether they can self-credential to drive gated areas.
@@ -238,7 +238,7 @@ Each cycle agent receives a focused brief and returns a structured section block
 4. For each link out of the section, classify the target's section-guess (using §"Section vocabulary"). If no canonical match, propose a new section-id with rationale.
 5. For gated routes the agent cannot self-credential into, mark them in `gated-deferred-to-coverage-expansion` rather than attempting to map them.
 
-**Return shape** — full schema: `schemas/subagent-returns/section-agent.schema.json`. Every section-agent return **MUST** open with a `handover` envelope (role, cycle, status, next-action — see §2.0 of `element-interactions/references/subagent-return-schema.md`). `status` is one of `section-complete`, `section-deferred`, `blocked`. Index-level fields (`section`, `cycle`, `routes-driven`, `new-sections-discovered`, `gated-deferred-to-coverage-expansion`) inline; full flow descriptions and state-variation tables spill to `tests/e2e/docs/.subagent-returns/phase4-cycle-<N>-section-<id>.md`. JSON is preferred over YAML.
+**Return shape** — full schema: `schemas/subagent-returns/section-agent.schema.json`. Every section-agent return **MUST** open with a `handover` envelope (role, cycle, status, next-action — see §2.0 of `achilles-protocol/references/subagent-return-schema.md`). `status` is one of `section-complete`, `section-deferred`, `blocked`. Index-level fields (`section`, `cycle`, `routes-driven`, `new-sections-discovered`, `gated-deferred-to-coverage-expansion`) inline; full flow descriptions and state-variation tables spill to `tests/e2e/docs/.subagent-returns/phase4-cycle-<N>-section-<id>.md`. JSON is preferred over YAML.
 
 **Worked example — `section-complete`:**
 
@@ -382,7 +382,7 @@ If any check fails, the author returns `status: blocked` so the orchestrator can
 
 **Return shape (`phase4-prioritise-author`)** — full schema: `schemas/subagent-returns/phase4-prioritise-author.schema.json`.
 
-Every `phase4-prioritise-author:` return **MUST** open with a `handover` envelope (role, cycle, status, next-action — see §2.0 of `element-interactions/references/subagent-return-schema.md`). `status` is one of `journey-map-authored` or `blocked`. `summary` and `journey-map` are **top-level** fields — MUST NOT appear inside `handover`. JSON is preferred over YAML.
+Every `phase4-prioritise-author:` return **MUST** open with a `handover` envelope (role, cycle, status, next-action — see §2.0 of `achilles-protocol/references/subagent-return-schema.md`). `status` is one of `journey-map-authored` or `blocked`. `summary` and `journey-map` are **top-level** fields — MUST NOT appear inside `handover`. JSON is preferred over YAML.
 
 **Worked example — `journey-map-authored`:**
 
@@ -637,7 +637,7 @@ Parameter parsing: the Skill tool passes `args` as a free-form string; the skill
 
 ## Integration with Other Skills
 
-### element-interactions (main orchestrator)
+### achilles-protocol (main orchestrator)
 Journey mapping activates as a companion skill:
 - **Full pipeline:** After initial scenario (Stages 1-4), before test-composer
 - **Coverage expansion:** Before test-composer begins

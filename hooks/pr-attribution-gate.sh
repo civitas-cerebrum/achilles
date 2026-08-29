@@ -42,7 +42,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/harness-hooks.md §Bash
+# skills/achilles-protocol/references/harness-hooks.md §Bash
 #
 # Outcomes
 # --------

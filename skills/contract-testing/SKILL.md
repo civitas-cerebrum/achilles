@@ -15,7 +15,7 @@ description: >
   test", "test against the backend", "consume the API", "verify the response", "assert the JSON
   shape", "validate the API response", "lock the backend's response", "endpoint should return", and
   any mention of an HTTP verb against a project URL inside a spec context. Real routes in:
-  element-interactions' companion-skills table (which routes contract intent here), direct user
+  achilles-protocol' companion-skills table (which routes contract intent here), direct user
   intent, and test-composer's Step-3 implementation rule, which invokes this skill via the Skill
   tool whenever a variant emits `steps.api*` lines rather than treating contract shape as optional.
   Not for: pure UI flow assertions, coverage expansion at journey scope, bug hunting at the page
@@ -39,7 +39,7 @@ A structured protocol for writing **contract-style** tests against HTTP backends
 - Detecting **breaking changes** to the API surface before they reach the UI
 
 **What this skill is NOT for:**
-- **End-to-end UI flows** → use `element-interactions` / `test-composer`
+- **End-to-end UI flows** → use `achilles-protocol` / `test-composer`
 - **Deep business logic validation** of internal services → belongs in the service's own test suite
 - **True consumer-driven contract testing with brokers** (Pact, Spring Cloud Contract) → this framework doesn't produce/consume pact files. These tests are *contract-style integration tests*, not CDC-with-a-broker. Be honest with the user about this distinction if they ask.
 - **Load / performance** testing → wrong tool
@@ -67,7 +67,7 @@ If the endpoint is unreachable, stop and tell the user: *"Contract tests must hi
 
 ## 🚨 Absolute Rules
 
-1. **Always read `../element-interactions/references/api-reference.md` → "HTTP API Steps" first.** Do not invent API step signatures. Do not write `steps.apiX` calls from memory. Do NOT reach for Playwright's raw `request.newContext` / `page.request` instead — you lose multi-provider routing, auth header layering, the `tester:api` log channel, and consistency with the rest of the Steps API. If you're tempted because "it's simpler," that's the loophole; close it.
+1. **Always read `../achilles-protocol/references/api-reference.md` → "HTTP API Steps" first.** Do not invent API step signatures. Do not write `steps.apiX` calls from memory. Do NOT reach for Playwright's raw `request.newContext` / `page.request` instead — you lose multi-provider routing, auth header layering, the `tester:api` log channel, and consistency with the rest of the Steps API. If you're tempted because "it's simpler," that's the loophole; close it.
 2. **Never hardcode a base URL — and that includes env-var fallbacks.** Base URLs live on `baseFixture` options (`apiBaseUrl` / `apiProviders`), which read env vars at fixture-construction time. Writing `process.env.X ?? 'http://localhost:8080'` inside a test file is a Rule 2 violation in disguise: the fallback ships the hardcoded URL into the repo and survives missing config. Tests address paths (`/users/42`), never origins.
 3. **One contract obligation per test.** A test asserts either status, or schema, or a header contract — not a mixed bag. Red flag: a single test that checks status AND envelope fields AND `totalElements === 50` AND item shape is four obligations fused. Split it. Fused tests hide which obligation broke.
 4. **Assert shape, not values — and seeded data is still data.** Contract tests check `id: expect.any(Number)`, `title: expect.any(String)`. They do NOT check `title === 'To Kill a Mockingbird'` or `totalElements === 50` just because the seed makes it true today. The moment the seed changes — or the fixture runs against a different environment — the "contract" test fails for a data reason, not a contract reason. Values are data; shape is contract. If you find yourself writing a string literal on the right of `toBe`, stop.
@@ -383,11 +383,15 @@ If any shape was discovered rather than derived from a spec, flag it: *"This sch
 
 ---
 
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
 ## Integration with Other Skills
 
 | Skill | When it applies |
 |---|---|
-| `element-interactions` | Parent orchestrator. Routes to this skill per its companion-skills table when contract-testing intent is detected. |
+| `achilles-protocol` | Parent orchestrator. Routes to this skill per its companion-skills table when contract-testing intent is detected. |
 | `failure-diagnosis` | Invoke on an unexpected contract-test failure. Do NOT "fix" by loosening the schema — use `failure-diagnosis` to determine test issue vs. real contract drift (app bug). |
 | `test-composer` | Adjacent for UI+API hybrid journeys. If the journey under composition touches an endpoint already locked here, reuse the schema from `tests/contracts/schemas.ts`. |
 | `test-repair` | Auto-escalates here if contract tests rot in batch (e.g., backend bumped and multiple schemas drifted simultaneously). |
@@ -444,4 +448,4 @@ Orchestrators and users can invoke this skill with optional arguments. Unspecifi
 | `verifyApiHeader(res, name, expectedValue?)` | Header presence / value (case-insensitive name) |
 | `expect(res.body).toMatchObject(schema)` | Shape / schema contract |
 
-Full signatures in `../element-interactions/references/api-reference.md` → "HTTP API Steps". Read it before writing code.
+Full signatures in `../achilles-protocol/references/api-reference.md` → "HTTP API Steps". Read it before writing code.

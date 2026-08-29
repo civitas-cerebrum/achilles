@@ -103,9 +103,9 @@ Only when **all** of the above are true may the orchestrator report depth-mode c
 
 ### Whole-suite re-run gate (per-pass exit)
 
-After a pass's per-journey subagents return clean and per-pass completion criteria are satisfied, run the whole-suite re-run gate documented in `../element-interactions/references/test-optimization.md` §7.
+After a pass's per-journey subagents return clean and per-pass completion criteria are satisfied, run the whole-suite re-run gate documented in `../achilles-protocol/references/test-optimization.md` §7.
 
-**Procedure:** identical to the canonical procedure documented in `../element-interactions/references/test-optimization.md` §7. Summary:
+**Procedure:** identical to the canonical procedure documented in `../achilles-protocol/references/test-optimization.md` §7. Summary:
 
 1. From the harness root: `npx playwright test --reporter=json > .stage4a-suite.json`.
 2. Parse the JSON. Playwright's reporter writes `{ stats: { expected, unexpected, flaky, skipped, ... }, suites: [...] }`. Refuse to advance to the next pass if:
@@ -116,7 +116,7 @@ After a pass's per-journey subagents return clean and per-pass completion criter
 
 **Why it runs here:** per-journey subagent stabilization confirms each journey's tests pass in isolation, but cumulative state across the suite (DB pollution, port collisions, fixture drift, shared-resource depletion) only surfaces when the whole suite runs together. Running this gate at every pass exit catches integration-time regressions at the earliest pass that introduces them, rather than at end-of-pipeline.
 
-**Harness backstop.** The same gate is enforced at the commit boundary by a windowed `Bash`-event ratchet that blocks phase-progression commits when the recent suite-run history is red, unfilled, or stale. Window-size override available — see the hook header for specifics, and [harness-hooks.md](../../element-interactions/references/harness-hooks.md) for the index entry.
+**Harness backstop.** The same gate is enforced at the commit boundary by a windowed `Bash`-event ratchet that blocks phase-progression commits when the recent suite-run history is red, unfilled, or stale. Window-size override available — see the hook header for specifics, and [harness-hooks.md](../../achilles-protocol/references/harness-hooks.md) for the index entry.
 
 The windowed shape catches a class of failure single-shot gates miss: serial-mode flakes, click-PUT race conditions, and auth-state eviction that pass an isolated single run but fail across 3-5 reviewer-driven re-runs. A flake that passes 70% of the time can't displace a failed entry from the window — by design — so the gate can't be cleared by one lucky re-run after a real regression. Pair this with the orchestrator-side check above for end-to-end coverage: orchestrator-side fires at every pass exit; the harness ratchet fires at every commit on top of the same window.
 

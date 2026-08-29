@@ -1,8 +1,8 @@
 # Cascade Detector — Canonical Onboarding-State Probe
 
-**Status:** single source of truth for the onboarding-state cascade (Levels A / B / C / None) and the per-caller responses to each level. Cited by `element-interactions` (routing), `onboarding` (preconditions), and `companion-mode` (Phase 6 automation offer). Callers run the probe as documented here and consume the resulting level — they do NOT re-paste the detection table or infer levels from memory. Drift between callers is the bug this file exists to prevent.
+**Status:** single source of truth for the onboarding-state cascade (Levels A / B / C / None) and the per-caller responses to each level. Cited by `achilles-protocol` (routing), `onboarding` (preconditions), and `companion-mode` (Phase 6 automation offer). Callers run the probe as documented here and consume the resulting level — they do NOT re-paste the detection table or infer levels from memory. Drift between callers is the bug this file exists to prevent.
 
-The detector answers exactly one question: **"is this project onboarded for element-interactions test automation, and if not, how far did it get?"** It does NOT answer "is a pipeline mid-flight?" — callers that care about in-flight state (e.g. `companion-mode`'s mid-pipeline advisory) check `tests/e2e/docs/coverage-expansion-state.json` separately, on their own contract.
+The detector answers exactly one question: **"is this project onboarded for achilles-protocol test automation, and if not, how far did it get?"** It does NOT answer "is a pipeline mid-flight?" — callers that care about in-flight state (e.g. `companion-mode`'s mid-pipeline advisory) check `tests/e2e/docs/coverage-expansion-state.json` separately, on their own contract.
 
 ---
 
@@ -36,12 +36,12 @@ Detector use is a methodology rule — no harness hook enforces it; callers comp
 
 Each caller consumes the same level but responds on its own contract. The authoritative response text lives with the caller (paths below); this matrix is the index.
 
-### `element-interactions` (routing — vague request or no scaffold)
+### `achilles-protocol` (routing — vague request or no scaffold)
 
 | Level | Response |
 |---|---|
 | **A / B / C** | Point the user at the `onboarding` skill (interactive eight-phase pipeline); an external automated CLI driver may drive the same pipeline non-interactively. At Level C only: individual Stage 1–4 scenarios may still proceed — the journey map is required by `coverage-expansion` / `test-composer`, not by Stage 3 — but route any Stage-5 / coverage intent through `journey-mapping` first. |
-| **None** | Normal routing — Stages 1–4 inline, companion skills per the routing block in `element-interactions/SKILL.md`. |
+| **None** | Normal routing — Stages 1–4 inline, companion skills per the routing block in `achilles-protocol/SKILL.md`. |
 
 ### `onboarding` (preconditions — which phases are live)
 
@@ -58,7 +58,7 @@ Offer shapes are verbatim in `skills/companion-mode/SKILL.md` §"Next-step offer
 
 | Level | Offer | If user picks "(a) just this task" |
 |---|---|---|
-| **None** | Stage-3 graduation: invoke `element-interactions` with `autonomousMode: true, entry: "stage3", bundlePath: "<absolute>"` | n/a — the offer is a plain yes/no |
+| **None** | Stage-3 graduation: invoke `achilles-protocol` with `autonomousMode: true, entry: "stage3", bundlePath: "<absolute>"` | n/a — the offer is a plain yes/no |
 | **A** | "(a) just this task / (b) full onboarding" | Install `@civitas-cerebrum/element-interactions` + `@civitas-cerebrum/element-repository` + `@playwright/test`, write minimal `playwright.config.ts`, `tests/fixtures/base.ts`, `page-repository.json`, then hand off to Stage 3 |
 | **B** | "(a) just this task / (b) full onboarding" | Write only the missing scaffold files, then hand off to Stage 3 |
 | **C** | "(a) just this task / (b) full onboarding" | No scaffold writes — Stage 3 lands a durable test without `journey-map.md` |
