@@ -9,6 +9,24 @@
 
 const OUTCOMES = { PASSED: 'passed', FAILED: 'failed', FLAKY: 'flaky', SKIPPED: 'skipped', EXPECTED_FAILURE: 'expectedFailure' };
 
+// @known-defect detection. The canonical definition is KNOWN_DEFECT_RE in
+// bin/self-repair.mjs — the reporter is CommonJS and the driver is ESM, so
+// the regex source cannot be shared; this is a mirror, keep the two in sync.
+// Semantics match Playwright's own --grep: the tag counts anywhere in the
+// title path, plus the reporter's `tags` array for the `{ tag: … }` form.
+// See skills/achilles-protocol/references/test-identity.md §2.
+const KNOWN_DEFECT_RE = /@known-defect\b/;
+
+/**
+ * @param {string[]} titlePath  test.titlePath() (any prefix is harmless —
+ *                              no project or file name contains the tag)
+ * @param {string[]} [tags]     test.tags, when the runner provides it
+ */
+function isKnownDefect(titlePath, tags) {
+  if ((tags || []).some((t) => KNOWN_DEFECT_RE.test(String(t)))) return true;
+  return (titlePath || []).some((t) => KNOWN_DEFECT_RE.test(String(t === undefined || t === null ? '' : t)));
+}
+
 /**
  * @param {{status: string, retry: number}[]} attempts  in attempt order
  * @param {string} expectedStatus                       test.expectedStatus
@@ -127,4 +145,4 @@ function slowest(tests, limit) {
     });
 }
 
-module.exports = { OUTCOMES, classify, isFailure, isEvidenceWorthy, aggregate, isHeel, slowest, median };
+module.exports = { OUTCOMES, classify, isFailure, isEvidenceWorthy, aggregate, isHeel, slowest, median, isKnownDefect, KNOWN_DEFECT_RE };
