@@ -361,6 +361,24 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 ---
 
+## Pattern: `markdown-only` deferral — ticket-driven-testing §8d commit-or-discard + report contract
+
+Two rules in `skills/ticket-driven-testing/SKILL.md` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle) — but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW — a level-of-detail judgement over free prose, not a mechanical check.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `commitDecision` field (`discarded` | `proposed` | `confirmed-by:<human>`) in the §8b adversarial-verification receipt would let `adversarial-verification-gate.sh` deny a spec commit with no recorded confirmation; the report-contract rule remains reviewer-enforced.
+
+---
+
+## Pattern: `markdown-only` deferral — work-summary-deck print-safety rules
+
+`skills/work-summary-deck/SKILL.md` §"Print-safety rules" bans `box-shadow`, `opacity`, and alpha colors (rgba/hsla and `transparent` gradient stops) in generated decks, and requires the PDF to be re-exported and re-inspected after every edit round. The color bans are mechanically detectable (a grep over the written deck HTML), but no hook currently validates deck output at Write or export time; the inspection-loop rule is a process obligation a hook cannot observe.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `PreToolUse:Write` (or export-script) guard that greps `*deck*.html` for `box-shadow`, `opacity:`, `rgba(`, `hsla(`, and `transparent` gradient stops outside comments would enforce the color rules; the verification loop remains reviewer-enforced.
+
+---
+
 ## Pattern: The test is green, so the sweep is a formality
 
 **Symptoms** (phrasings that signal this pattern):
