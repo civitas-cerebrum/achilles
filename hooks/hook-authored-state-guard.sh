@@ -43,7 +43,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/harness-hooks.md
+# skills/achilles-protocol/references/harness-hooks.md
 # hooks/ledger-integrity-chain.sh (sibling — sidecar self-deny + chain)
 
 set -uo pipefail

@@ -501,7 +501,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
         emit_phase_deny "6" \
           "tests/e2e/docs/adversarial-findings.md exists but contains 0 per-journey section blocks (\`### j-<slug>\`). File existence alone is not bug-discovery; the ledger must record at least one probe." \
           "dispatch the bug-discovery probe subagents per journey (or the adversarial passes of coverage-expansion). Each probe appends a \`### j-<slug>\` section to the ledger as it returns." \
-          "skills/bug-discovery/SKILL.md + element-interactions/references/subagent-return-schema.md §3"
+          "skills/bug-discovery/SKILL.md + achilles-protocol/references/subagent-return-schema.md §3"
       fi
       ;;
     7)

@@ -148,5 +148,5 @@ The `coverage:` field IS the citation. The per-journey probe does NOT re-documen
 
 - `coverage-expansion/SKILL.md` §"Adversarial passes (4 and 5)" — invokes this scan as the Pass-4 prelude.
 - `adversarial-subagent-contract.md` §"Inputs" — per-journey probes get the app-wide-patterns file as Input 9 alongside the journey-specific inputs.
-- `../../element-interactions/references/subagent-return-schema.md` §1 — documents the `coverage:` field that holds the citation.
+- `../../achilles-protocol/references/subagent-return-schema.md` §1 — documents the `coverage:` field that holds the citation.
 - The empirical motivation and savings analysis for this scan are documented in the project history.

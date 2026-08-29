@@ -32,9 +32,10 @@ are testing may never ship in the form you read.
 
 ### The sequence
 
-Whenever you list what you are going to do, list these. All nine, in this order. Mark any you are skipping and say why — an omitted step is a decision, and it belongs in the report.
+Whenever you list what you are going to do, list these. All ten, in this order. Mark any you are skipping and say why — an omitted step is a decision, and it belongs in the report.
 
 ```
+0  RE-ENTER FOR THIS TICKET                 → loaded ≠ performed. One ticket, one run of 0–9
 1  Read the ticket AND its parent          → ACs verbatim, branch, PR
 2  Check PR review state                   → unresolved CHANGES_REQUESTED is itself a finding
 3  Worktree the branch                     → never switch a shared checkout
@@ -52,10 +53,54 @@ Whenever you list what you are going to do, list these. All nine, in this order.
 
 Step 8 is the one that gets dropped — an early draft of this skill omitted it 5/5 while an agent with no skill at all named it first. 8b delegates the check as well, so it does not rest on memory alone. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
 
+### 0. One ticket, one run — the skill being loaded is not the sequence being performed
+
+**Every ticket gets its own run of steps 1–9. A skill already loaded in this session does NOT
+mean the sequence has been performed for the ticket in front of you now.**
+
+Activation here is intent-triggered, so the only thing that re-fires it on the second ticket is
+your own judgement — and the second ticket is exactly where that judgement fails. The skill IS in
+your transcript. The method IS still there to read. "I'm already in ticket-testing mode" is a
+locally reasonable inference and a globally wrong one, because *mode* is a property of the
+session and *the sequence* is a property of the ticket. Those two came apart the moment the
+operator handed you a second ticket.
+
+What that costs, from the run that produced this rule: a session ran the method properly for one
+ticket, then picked up a second and ran an ad-hoc verification instead. It posted a verdict to
+the tracker with measured numbers and **zero artifacts** — no screenshots, no recording, no
+trace, no bundle. Nothing objected; the user did. When the same work was redone under
+`companion-mode`, the proper run immediately surfaced two things the ad-hoc pass had missed:
+artifact paths that collided so a second environment's run silently overwrote the first's
+video/trace/HAR, and a live deployment protection-bypass token sitting unredacted in the captured
+HARs. Neither was a subtle finding. Both were invisible without the bundle contract.
+
+Re-enter when **any** of these is true, without waiting to be asked:
+
+- a different ticket key, issue, or branch than the one you last ran the sequence for;
+- the same ticket after the branch moved (new commits, a force-push, a rebase);
+- a ticket you are picking up mid-flight from someone else's work — including one already sitting
+  in a QA column with an open PR, which is the shape that most reads as "just confirm it".
+
+Announce the re-entry in one line ("re-entering ticket-driven-testing for <key>") and restate the
+sequence for that ticket. Restating it is cheap; the cost of the wrong inference is a verdict
+with nothing behind it.
+
+**Harness-enforced by [`hooks/evidence-bundle-gate.sh`](../../hooks/evidence-bundle-gate.sh) — and
+read what it does NOT do.** The gate cannot see whether you re-ran the sequence; it can only see,
+per ticket, whether the Contract's item-3 evidence bundle exists. That check is bound to the
+ticket key rather than to the session, so a second ticket cannot ride on the first ticket's
+bundle. It **DENIES** a terminal transition or a published PR with no bundle for that ticket.
+On a verdict-shaped **comment** it only **WARNs** — which means the failure described above, where
+the artifact-free verdict was posted as a comment, would have been flagged and not blocked. The
+grading is deliberate (a bundle-less verdict has one honest form, per §"Prerequisites"), but it is
+a trade. Do not read the gate as a reason to stop watching for this yourself.
+
 ## Two entry points, one method
 
 Steps 6–9 are identical either way. Only the front half differs, because only the front half
-depends on where the acceptance criteria and the environment come from.
+depends on where the acceptance criteria and the environment come from. "Identical either way"
+means identical between the two *entry points* — not shared across *tickets*. Step 0 still
+applies: each ticket runs its own 1–9 whichever column it arrived in.
 
 | | **A — ticket-driven** | **B — dev-triggered** |
 |---|---|---|
@@ -163,17 +208,26 @@ negative control, one per mutation, plus the no-op control) and **5+ agent dispa
 
 ## The Contract
 
-Produce all five. A run that stops after evidence is half a deliverable.
+Produce all five, **for each ticket**. A run that stops after evidence is half a deliverable, and
+a second ticket that reuses the first ticket's deliverables has produced none of its own.
 
 1. **A ticket brief** — acceptance criteria, the dev branch, the PR and its review state.
 2. **A diff review** — findings ranked by severity, each one a sentinel candidate.
-3. **An evidence bundle** — via `companion-mode`, verdict grounded in the ACs.
+3. **An evidence bundle** — via `companion-mode`, verdict grounded in the ACs. Named for this
+   ticket, containing this ticket's artifacts, redacted per `companion-mode` §"Redaction". Numbers
+   in a report are not evidence: evidence is what someone else can re-open and disagree with.
 4. **Durable tests** — regression cover in the suite, plus one sentinel per confirmed defect.
 5. **A negative-control result** — proof the tests fail where the fix is absent (§8). Without it you have tests that pass, not tests that discriminate.
 
 ### The sign-off gate
 
 **You may not report a QA verdict until you have run the negative control (§8) and can state its result.**
+
+**You may not report a QA verdict for a ticket that has no evidence bundle of its own.** This is
+item 3 above, restated at the boundary where it gets skipped. If the run genuinely captured
+nothing — an unreachable app, a diff review only — say *that* in the verdict and scope the claim
+to what you actually did. An unevidenced report labelled unevidenced is honest; the same report
+labelled verified is not.
 
 For entry B the sign-off boundary is **opening the PR**, not a tracker transition — that is the
 moment the work is presented to others as done. Everything the contract requires applies there
@@ -686,7 +740,7 @@ Never flag-patch the CI config to achieve this by hand. `slowMo` multiplies ever
 
 Gitignore `show-recordings/` — demonstration footage is not a repo artifact.
 
-**If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-element-interactions`.
+**If a project needs behaviour `achilles-show` does not provide**, that is a gap in the runner, not a licence to hand-roll a per-project config. Fix it in the package — see `contributing-to-achilles-protocol`.
 
 ## Control every instrument before you read it
 
@@ -751,7 +805,8 @@ Each of these cost a failed run or a wrong conclusion in practice.
 | **Late-hydrating components** | Client-rendered regions (search/results grids) are absent when your first assertion runs; your feature gate checked an SSR'd element and passed. | `waitForState` on the client-rendered container before asserting against it. |
 | **Self-consuming observables** | A sentinel watches a session-storage flag; the destination page's effect reads and deletes it before you assert. Test passes, bug is live. | Assert a state that persists — a DOM state marker at the source, not a message in flight. |
 | **Assumed default states** | You click a toggle expecting it to open; it was already open, so you closed it. | Read the initial state, assert the round-trip, don't assume a starting position. |
-| **Unredacted HAR** | Your bypass token appears in the request headers of every entry — hundreds of copies inside a bundle you are about to commit. | Redact by header name and strip response bodies. This also shrinks the HAR by ~20×. |
+| **Unredacted HAR** | Your bypass token appears in the request headers of every entry — hundreds of copies inside a bundle you are about to commit. | Redact by header name and strip response bodies. This also shrinks the HAR by ~20×. `companion-mode` §"Redaction" makes the pass mandatory for **any** captured HAR or console log, bundle or not — an ad-hoc capture is precisely where the pass has no owner. |
+| **One ticket, two environments, one set of paths** | You verify the same ticket against two environments (preview and production, two viewports, two locales) from one output directory. `video.webm` / `trace.zip` / `network.har` are fixed names, so the second run silently overwrites the first. The report cites both; one exists, and nothing says which. | One bundle per environment, or one named subdirectory per environment inside the bundle. Count the artifacts against the number of runs you are about to claim, before writing the verdict. |
 | **Bundle size** | Trace + video + HAR + an HTML report that duplicates all three easily exceeds 200MB. | Promote trace/video to the bundle root, drop the duplicate report, slim the HAR. Decide deliberately whether the directory is committed or gitignored. |
 | **Blocked postinstall scripts** | pnpm blocks dependency build scripts by default and only prints a warning. A package whose binary is fetched in `postinstall` resolves to a path that does not exist, failing at call time, not install time. | Read the "Ignored build scripts" warning. Add the package to `pnpm.onlyBuiltDependencies`, or run its installer directly. |
 | **Bare `spec.ts` is not collected** | Playwright's default `testMatch` (`**/*.@(spec\|test).ts`) requires a prefix before `.spec` — a file literally named `spec.ts` matches nothing and the run reports "No tests found". | Set `testMatch: 'spec.ts'` in the bundle-local config, or prefix the filename. |
@@ -769,7 +824,7 @@ When an assertion has no API surface, do **not** silently drop to raw driver cal
 
 Known gap: **document-level geometry.** "No horizontal clipping" is `documentElement.scrollWidth > clientWidth`, and step-based frameworks generally have no element-free assertion for it. Proxy: assert every control stays present and reachable at each width, and let the per-width screenshots carry the visual proof.
 
-**REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-element-interactions`.
+**REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-achilles-protocol`.
 
 ## 9. Report — and have the report reviewed before it ships
 

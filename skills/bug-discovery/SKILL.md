@@ -4,7 +4,7 @@ description: >
   Use when asked to "find bugs", "break the app", "bug hunt", "quality audit", "edge case testing",
   "stress test the app", "exploratory testing", "find issues", or "bug discovery". Triggers on any
   request for systematic adversarial testing of a web application after an existing test suite passes.
-  Do NOT use for writing initial tests — that is element-interactions Stages 1-4. Do NOT use for
+  Do NOT use for writing initial tests — that is achilles-protocol Stages 1-4. Do NOT use for
   expanding coverage — one journey's variant set is test-composer; whole-app iteration is
   coverage-expansion. Do NOT use for evidence-first single-task verification — that is companion-mode.
   Do NOT use for load / performance testing — "stress test the app" here means adversarial functional
@@ -18,7 +18,7 @@ description: >
 
 # Bug Discovery — Adversarial Quality Audit
 
-> **Skill names: see `../element-interactions/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
+> **Skill names: see `../achilles-protocol/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
 
 Systematic, automated bug discovery that runs after all existing test stages are complete. The agent probes the live application for bugs across edge cases, user flows, and cross-feature interactions, then cross-references findings against accumulated context and existing tests to produce a prioritized bug report with reproduction tests.
 
@@ -28,13 +28,13 @@ Systematic, automated bug discovery that runs after all existing test stages are
 
 **Role under dual-stage (passes 4–5 of `coverage-expansion`).** When invoked as the per-journey adversarial probe subagent inside `coverage-expansion`, this skill is **Stage A** of a per-journey-per-pass dual-stage pipeline. After your probe-and-ledger work returns, a fresh staff-level-QA reviewer (Stage B, see `skills/coverage-expansion/references/reviewer-subagent-contract.md`) reads your ledger appends, your regression tests (pass 5), and the live app, then either greenlights or returns `improvements-needed`. If the reviewer flags adversarial coverage you missed (e.g., a probe category you skipped that actually lands), `coverage-expansion` re-dispatches you with those findings appended — up to 7 A↔B cycles per journey per pass. Nothing about this skill's contract changes for those invocations; the reviewer never appends to the ledger directly, only points you at gaps. Standalone invocations (outside `coverage-expansion`) are unaffected.
 
-**Pre-empting reviewer must-fix items in adversarial passes.** Skim §"Must-fix calibration" in `reviewer-subagent-contract.md` before probing — the adversarial reviewer will: (a) **cross-reference the negative-case matrix** Stage A was given against the ledger entries; any matrix entry without a corresponding ledger finding is a `matrix-missed` must-fix (this is the deterministic floor), (b) attempt 2–3 probes you didn't try and flag any that land as `adversarial-missed` must-fix, (c) require ledger entries to have well-formed `expected:` / `observed:` / `ledger-only:` / `coverage:` / `evidence:` / `fingerprint:` / `classification:` lines per the canonical schema (`../element-interactions/references/subagent-return-schema.md` §3 as extended), (d) for pass 5, require every verified boundary to have a regression test that actually locks the boundary (not a surrogate assertion). Cover EVERY matrix entry on cycle 1 (the matrix is non-negotiable); use the open-ended probe-category vocabulary breadth (`auth-tamper`, `input-tamper`, `state-skip`, `idor`, etc., per `../element-interactions/references/subagent-return-schema.md` §3.6) to extend above the matrix floor.
+**Pre-empting reviewer must-fix items in adversarial passes.** Skim §"Must-fix calibration" in `reviewer-subagent-contract.md` before probing — the adversarial reviewer will: (a) **cross-reference the negative-case matrix** Stage A was given against the ledger entries; any matrix entry without a corresponding ledger finding is a `matrix-missed` must-fix (this is the deterministic floor), (b) attempt 2–3 probes you didn't try and flag any that land as `adversarial-missed` must-fix, (c) require ledger entries to have well-formed `expected:` / `observed:` / `ledger-only:` / `coverage:` / `evidence:` / `fingerprint:` / `classification:` lines per the canonical schema (`../achilles-protocol/references/subagent-return-schema.md` §3 as extended), (d) for pass 5, require every verified boundary to have a regression test that actually locks the boundary (not a surrogate assertion). Cover EVERY matrix entry on cycle 1 (the matrix is non-negotiable); use the open-ended probe-category vocabulary breadth (`auth-tamper`, `input-tamper`, `state-skip`, `idor`, etc., per `../achilles-protocol/references/subagent-return-schema.md` §3.6) to extend above the matrix floor.
 
 ---
 
 ## Canonical return + ledger schema
 
-Every finding reported by this skill — whether returned directly to the user or appended to the adversarial-findings ledger by a `coverage-expansion` adversarial subagent — MUST conform to the canonical schema documented in [`../element-interactions/references/subagent-return-schema.md`](../element-interactions/references/subagent-return-schema.md).
+Every finding reported by this skill — whether returned directly to the user or appended to the adversarial-findings ledger by a `coverage-expansion` adversarial subagent — MUST conform to the canonical schema documented in [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md).
 
 - **Finding-return format** — every finding uses `- **<FINDING-ID>** [<severity>] — <title>` with `scope`, `expected`, `observed`, `coverage` sub-bullets.
 - **FINDING-ID** — `<journey-slug>-<pass>-<nn>` when invoked by `coverage-expansion` as a Pass-4 or Pass-5 subagent; `<journey-slug>-<nn>` for standalone invocations. No `AF-*`, `BUG-*`, `P4-*-BUG-NN`, or other legacy schemes.
@@ -191,7 +191,7 @@ Phase 7's Coverage Notes report **charter vs actuals** (budgeted vs consumed) an
 
 ## Phase 1a: Element Probing
 
-Visit every page via `playwright-cli` (open a `-s=bd-<journey-slug>` session per [`../element-interactions/references/playwright-cli-protocol.md`](../element-interactions/references/playwright-cli-protocol.md) §3) with **zero context** — do NOT read `app-context.md`, existing tests, or scenario docs. Pure adversarial exploration.
+Visit every page via `playwright-cli` (open a `-s=bd-<journey-slug>` session per [`../achilles-protocol/references/playwright-cli-protocol.md`](../achilles-protocol/references/playwright-cli-protocol.md) §3) with **zero context** — do NOT read `app-context.md`, existing tests, or scenario docs. Pure adversarial exploration.
 
 ### Probing Categories
 
@@ -328,7 +328,7 @@ Merge all findings from Phases 2, 3, and 4 into a single prioritized list.
 
 ### Severity
 
-Severity uses the **single canonical five-value enum** — `critical | high | medium | low | info` — defined once in [`../element-interactions/references/subagent-return-schema.md`](../element-interactions/references/subagent-return-schema.md) §1. This skill does not restate the enum; the table below is **report-facing decision guidance** that maps observed findings onto those canonical values. The report-facing label **"No impact (DOM-only)"** is this skill's presentation name for canonical `info`.
+Severity uses the **single canonical five-value enum** — `critical | high | medium | low | info` — defined once in [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) §1. This skill does not restate the enum; the table below is **report-facing decision guidance** that maps observed findings onto those canonical values. The report-facing label **"No impact (DOM-only)"** is this skill's presentation name for canonical `info`.
 
 | Canonical severity | Report-facing guidance | Decision criteria | Examples |
 |---|---|---|---|
