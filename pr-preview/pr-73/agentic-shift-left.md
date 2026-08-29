@@ -4,49 +4,11 @@
 
 When features ship at agent speed — scaffolded, iterated, and merged in a single session — manual testing becomes the bottleneck that nullifies every upstream acceleration. The traditional shift-left response (write tests earlier) is necessary but insufficient: it shifts the *work* left without shifting the *worker*. Agentic shift-left shifts both.
 
-This document describes the methodology implemented by [`@civitas-cerebrum/achilles`](https://www.npmjs.com/package/@civitas-cerebrum/achilles) and [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions) — two open-source npm packages that together give an AI coding agent the architectural foundation, the QA methodology, and the harness enforcement to autonomously verify a web application.
+This document describes the methodology implemented by [`@civitas-cerebrum/achilles`](https://www.npmjs.com/package/@civitas-cerebrum/achilles) and [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions) — two open-source npm packages that together give an AI coding agent the QA methodology, the architectural foundation, and the harness enforcement to autonomously verify a web application.
 
 ---
 
-## I. The Architectural Foundation
-
-### Separation of Concerns
-
-A test that hard-codes CSS selectors is a test that breaks when a class name changes. An agent that writes tests with hard-coded selectors produces a suite that rots faster than it grows.
-
-The foundation is a **three-layer separation**:
-
-| Layer | Owns | Changes when |
-|---|---|---|
-| **Test code** | Business intent — what the user does and what should happen | A requirement changes |
-| **Steps API** | Interaction mechanics — how to click, type, wait, scroll, retry | The framework evolves |
-| **Page repository** | Selectors — where each element lives in the DOM | The UI is redesigned |
-
-When a frontend redesign changes every `data-testid` in the application, zero test files change. When the framework adds a new stability mechanism, zero test files change. Each layer is the single source of truth for its concern.
-
-This separation is what makes agent-authored tests viable. The agent writes business-intent test code in plain English; the framework handles the stability engineering underneath.
-
-### Tests Anyone Can Read
-
-```
-await steps.on('addToCartButton', 'ProductPage').click()
-await steps.on('cartCount', 'CartDrawer').expectText('1')
-```
-
-The Steps API is the interface between human intent and automated verification. A product owner can read the test above and know what it checks. An agent can write it without knowing how click-interception retry works under the hood.
-
-The framework manages:
-- **Stability** — auto-wait visibility, `scrollIntoView`, click-interception detection with classified retry and `dispatchEvent` fallback
-- **Logging** — zero log lines written in project test code; the `debug` library with `tester:*` namespaces produces aligned, timestamped output automatically
-- **Selectors** — resolved at runtime from the page repository; tests never import or reference a CSS selector
-
-### Open Source
-
-Both packages are public on npm. The methodology ships inside `node_modules` — not in a wiki, not in a Confluence page, not in a prompt that drifts with every session. When you `npm install @civitas-cerebrum/achilles`, the agent picks up the skills, the hooks register themselves, and the harness is live. Version-pinned, auditable, reproducible.
-
----
-
-## II. The Agentic Shift-Left Lifecycle
+## I. The Agentic Shift-Left Lifecycle
 
 Four stages. A human starts it, agents do the heavy lifting, a human confirms the result, and agents guard it going forward.
 
@@ -102,6 +64,44 @@ The guard stage is what makes the lifecycle a loop rather than a line. Tests don
 
 ---
 
+## II. The Architectural Foundation
+
+### Separation of Concerns
+
+A test that hard-codes CSS selectors is a test that breaks when a class name changes. An agent that writes tests with hard-coded selectors produces a suite that rots faster than it grows.
+
+The foundation is a **three-layer separation**:
+
+| Layer | Owns | Changes when |
+|---|---|---|
+| **Test code** | Business intent — what the user does and what should happen | A requirement changes |
+| **Steps API** | Interaction mechanics — how to click, type, wait, scroll, retry | The framework evolves |
+| **Page repository** | Selectors — where each element lives in the DOM | The UI is redesigned |
+
+When a frontend redesign changes every `data-testid` in the application, zero test files change. When the framework adds a new stability mechanism, zero test files change. Each layer is the single source of truth for its concern.
+
+This separation is what makes agent-authored tests viable. The agent writes business-intent test code in plain English; the framework handles the stability engineering underneath.
+
+### Tests Anyone Can Read
+
+```
+await steps.on('addToCartButton', 'ProductPage').click()
+await steps.on('cartCount', 'CartDrawer').expectText('1')
+```
+
+The Steps API is the interface between human intent and automated verification. A product owner can read the test above and know what it checks. An agent can write it without knowing how click-interception retry works under the hood.
+
+The framework manages:
+- **Stability** — auto-wait visibility, `scrollIntoView`, click-interception detection with classified retry and `dispatchEvent` fallback
+- **Logging** — zero log lines written in project test code; the `debug` library with `tester:*` namespaces produces aligned, timestamped output automatically
+- **Selectors** — resolved at runtime from the page repository; tests never import or reference a CSS selector
+
+### Open Source
+
+Both packages are public on npm. The methodology ships inside `node_modules` — not in a wiki, not in a Confluence page, not in a prompt that drifts with every session. When you `npm install @civitas-cerebrum/achilles`, the agent picks up the skills, the hooks register themselves, and the harness is live. Version-pinned, auditable, reproducible.
+
+---
+
 ## III. Commit or Discard
 
 Tests are **discardable by default.**
@@ -140,7 +140,7 @@ This is what makes the methodology trustworthy at scale: the enforcement is inde
 
 ## V. What This Enables
 
-When the foundation (separation of concerns), the lifecycle (triage → automate → confirm → guard), and the enforcement (harness hooks) work together:
+When the lifecycle (triage → automate → confirm → guard), the foundation (separation of concerns), and the enforcement (harness hooks) work together:
 
 - **A single sentence drives the entire QA process.** *"Verify the checkout flow with evidence."* The agent maps the flow, composes the tests, runs them, collects evidence, proves the negative control, and files the report — gated at every stage by the harness.
 
