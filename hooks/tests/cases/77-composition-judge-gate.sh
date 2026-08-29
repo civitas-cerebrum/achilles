@@ -39,6 +39,10 @@ done
 assert_eq "$("$JQ" -r '.consecutiveNotSatisfied // 0' "$CJG_STATE/cjg-s2.json" 2>/dev/null)" "3" "three rejects recorded"
 assert_allow "$H" "$(payload session_id=cjg-s2 hook_event_name=Stop)" "Stop at the cap (3 of 3) → silent allow (escalate to operator)"
 
+section "composition-judge-gate: verdict parse anchors on the status line"
+printf '%s' "$(payload session_id=cjg-s5 tool_name=Agent description='composition-judge-j-z: judge' response_text='status: greenlight — summary: resolved everything from the prior improvements-needed cycle')" | bash "$H" >/dev/null 2>&1
+assert_eq "$("$JQ" -r '.last // ""' "$CJG_STATE/cjg-s5.json" 2>/dev/null)" "satisfied" "greenlight status line mentioning a prior improvements-needed verdict → recorded satisfied"
+
 section "composition-judge-gate: unverdicted / adjacent traffic stays silent"
 assert_allow "$H" "$(payload session_id=cjg-s3 tool_name=Agent description='composition-judge-j-y: judge' response_text='no recognisable verdict tokens here')" "unverdicted judge return → silent allow, ledger untouched"
 assert_allow "$H" "$(payload session_id=cjg-s3 hook_event_name=Stop)" "Stop with no verdict on record → silent allow"

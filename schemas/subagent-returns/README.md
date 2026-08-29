@@ -16,7 +16,7 @@ shape that validates against the JSON Schema for its role.
 All schemas reference the shared `handover.schema.json` envelope via `$ref`.
 
 The `composition-judge-<scope>:` description prefix (Stage 4c of the composing
-pipeline — `skills/element-interactions/references/test-composition-standards.md`
+pipeline — `skills/achilles-protocol/references/test-composition-standards.md`
 §4) has **no dedicated schema by design**: it reuses `reviewer-inloop.schema.json`
 (`greenlight` ⇔ SATISFIED, `improvements-needed` ⇔ NOT SATISFIED). The mapping
 lives in `hooks/lib/schema-role-map.sh`.

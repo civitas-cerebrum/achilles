@@ -204,6 +204,11 @@ augmentation.
    pipeline populates them from discovered infrastructure (see
    `achilles-protocol/references/test-optimization.md` §"Placeholder
    convention" — the protocol errors out if the markers are missing).
+   Also seed `tests/e2e/docs/test-data-plan.md` from the template in
+   `skills/test-data-conventions/SKILL.md` §"The test data plan" (header
+   + empty Dependencies/Roadmap sections) — the Stage 4c composition
+   judge checks this file at every composing exit, so the scaffold owns
+   its creation and composing sessions own keeping it current.
 3. Add `tests/e2e/.gitignore` entries for `playwright-report/`,
    `test-results/`, `.last-run.json`, `bug-evidence/` (the stable
    bug-evidence home used by `self-repair` — binary media, gitignored
@@ -223,7 +228,7 @@ augmentation.
 
 **Exit criteria.**
 - `npx playwright test --list` lists zero specs without error.
-- The four scaffold files exist on disk.
+- The scaffold files exist on disk (config, setup, fixtures tree with HELPER-SLOT-bearing `base.ts`, and the seeded `tests/e2e/docs/test-data-plan.md`).
 - `package.json` scripts include `test:repair`.
 
 Load `achilles-protocol` (Stage 1) for the exact file shapes.

@@ -9,13 +9,13 @@ description: >
   changed and the test broke", "seed the database for tests", "test accounts",
   "worker isolation", "test data plan". Auto-invoked by the composition
   standards' Stage 4c data-feasibility dimension
-  (skills/element-interactions/references/test-composition-standards.md §4,
-  dimension 4) and whenever a composing skill (element-interactions Stages 1-4,
+  (skills/achilles-protocol/references/test-composition-standards.md §4,
+  dimension 4) and whenever a composing skill (achilles-protocol Stages 1-4,
   test-composer, coverage-expansion, bug-discovery Phase 6,
   ticket-driven-testing §7, companion-mode graduation) touches an
   entity-creating flow — signup, record creation, uploads, orders, anything
   that persists tenant or user data. Do NOT use for secrets handling alone —
-  credential extraction to .env is owned by element-interactions Rule 15 and
+  credential extraction to .env is owned by achilles-protocol Rule 15 and
   the secrets-sweep skill; this skill owns the data-lifecycle doctrine around
   it.
 ---
@@ -25,9 +25,9 @@ description: >
 
 # Test Data Conventions — the data-lifecycle doctrine for composing
 
-> **Skill names: see `../element-interactions/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
+> **Skill names: see `../achilles-protocol/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
 
-Every flaky suite autopsy eventually reaches the same organ: data. Tests that pinned yesterday's content, shared one account across parallel workers, created records nothing deleted, or assumed a backend setting that flipped mid-day. This skill is the single source of truth for how tests in this suite relate to data — discovery first, then a two-strategy ladder, then the rules that keep both strategies honest. It is the standard the Stage 4c composition judge's data-feasibility dimension reviews against (see [`../element-interactions/references/test-composition-standards.md`](../element-interactions/references/test-composition-standards.md) §4).
+Every flaky suite autopsy eventually reaches the same organ: data. Tests that pinned yesterday's content, shared one account across parallel workers, created records nothing deleted, or assumed a backend setting that flipped mid-day. This skill is the single source of truth for how tests in this suite relate to data — discovery first, then a two-strategy ladder, then the rules that keep both strategies honest. It is the standard the Stage 4c composition judge's data-feasibility dimension reviews against (see [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4).
 
 Evidence lines below are stated generically — each was observed in production suites.
 
@@ -65,7 +65,7 @@ This ladder is what the Stage 4c judge's dimension 4 checks each spec against: e
 
 Under strategy (a), generation happens **inside the test body**, per attempt: `` `user-${Date.now()}-${crypto.randomUUID().slice(0, 8)}@example.test` ``. **Module-scope generation is banned** — a retry re-runs the test body but NOT the module scope, so the retried attempt reuses the first attempt's identity and collides with the half-created state it left behind. Observed in production suites: retry-only failures that vanish under `--retries=0`, caused entirely by module-scope `const email = ...`.
 
-Env-sourced **durable identities** (accounts that exist by design — an admin, a seeded catalog user) are the fixture carve-out: they live in `tests/fixtures/test-data.ts` loaded from `process.env`, per `../element-interactions/SKILL.md` Rule 15. The line is creation: if the test creates it, the test generates it per-attempt; if it exists by design, it comes from env via the fixture.
+Env-sourced **durable identities** (accounts that exist by design — an admin, a seeded catalog user) are the fixture carve-out: they live in `tests/fixtures/test-data.ts` loaded from `process.env`, per `../achilles-protocol/SKILL.md` Rule 15. The line is creation: if the test creates it, the test generates it per-attempt; if it exists by design, it comes from env via the fixture.
 
 ### 2. Never rely on current content — declare requirements, resolve at runtime
 
@@ -100,7 +100,7 @@ The cleanup contract is canonical in `../test-composer/SKILL.md` §"Tenant clean
 
 ### 6. API-first state setup for derivatives
 
-The doctrine: a test's *prerequisites* reach their target state through the fastest safe non-UI channel; only the test's *subject* runs through the UI. The mechanism is canonical in [`../element-interactions/references/test-optimization.md`](../element-interactions/references/test-optimization.md) §4 — the two-of-two gate (UI-covered elsewhere + API equivalent discovered) decides when a UI prerequisite is replaced with a helper.
+The doctrine: a test's *prerequisites* reach their target state through the fastest safe non-UI channel; only the test's *subject* runs through the UI. The mechanism is canonical in [`../achilles-protocol/references/test-optimization.md`](../achilles-protocol/references/test-optimization.md) §4 — the two-of-two gate (UI-covered elsewhere + API equivalent discovered) decides when a UI prerequisite is replaced with a helper.
 
 ### 7. Auth via session/cookie injection with worker-scoped account pools
 
@@ -108,7 +108,7 @@ Derivative tests inject session state (`setAuthCookie`-style helpers per test-op
 
 ### 8. Smoke-vs-e2e depth
 
-Which tests may inject state at all is the depth doctrine — canonical in [`../element-interactions/references/test-composition-standards.md`](../element-interactions/references/test-composition-standards.md) §5: the journey's one e2e walk stays UI-end-to-end; derivatives shortcut; auth is injected everywhere except the tests whose subject is login.
+Which tests may inject state at all is the depth doctrine — canonical in [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §5: the journey's one e2e walk stays UI-end-to-end; derivatives shortcut; auth is injected everywhere except the tests whose subject is login.
 
 ### 9. No prod pollution
 
@@ -120,7 +120,7 @@ On framework-rendered forms, a client-side mount can reset controlled inputs aft
 
 ### 11. Volatile-value assertion discipline
 
-Round-trip, delta, and shape oracles for values the app legitimately changes between runs are canonical in [`../element-interactions/references/test-optimization.md`](../element-interactions/references/test-optimization.md) §3b (the oracle audit). Under strategy (b), the round-trip oracle's "value the test itself produced" becomes "value the test itself *resolved*" — same form, resolved instead of generated.
+Round-trip, delta, and shape oracles for values the app legitimately changes between runs are canonical in [`../achilles-protocol/references/test-optimization.md`](../achilles-protocol/references/test-optimization.md) §3b (the oracle audit). Under strategy (b), the round-trip oracle's "value the test itself produced" becomes "value the test itself *resolved*" — same form, resolved instead of generated.
 
 ### 12. DATA FEASIBILITY IS A COMPOSING GATE
 
@@ -130,7 +130,7 @@ Before a scenario is written, answer: can its data be generated programmatically
 
 ## The test data plan — a per-project living document
 
-Every project using this suite maintains **`tests/e2e/docs/test-data-plan.md`** (alongside `journey-map.md` and `e2e-test-scenarios.md`). It is the durable record of where each data dependency stands and what the ideal test environment would unblock. **Composing sessions UPDATE this document when they hit a gap** — a missing seeding endpoint, a shared account, a prod-only side effect — in the same session that hit it. The Stage 4c judge's dimension 4 checks the plan exists and reflects the specs under review.
+Every project using this suite maintains **`tests/e2e/docs/test-data-plan.md`** (alongside `journey-map.md` and `e2e-test-scenarios.md`). It is the durable record of where each data dependency stands and what the ideal test environment would unblock. **Creation owner:** `onboarding`’s Phase-1 scaffold seeds it from the template below; on a project that predates that scaffold, **the first composing session creates it from the template if absent** — so the Stage 4c judge’s dimension 4 always has a file to check, and never fails a fresh project on a file no step creates. **Composing sessions UPDATE this document when they hit a gap** — a missing seeding endpoint, a shared account, a prod-only side effect — in the same session that hit it. The Stage 4c judge's dimension 4 checks the plan exists and reflects the specs under review.
 
 Three sections per data dependency / journey:
 

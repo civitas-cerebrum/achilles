@@ -41,7 +41,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/test-composition-standards.md §4
+# skills/achilles-protocol/references/test-composition-standards.md §4
 # skills/coverage-expansion/references/anti-rationalizations.md
 #   §"Pattern: Judge-loop skipping (Stage 4c self-exemption)"
 #
@@ -138,7 +138,7 @@ NOT SATISFIED the sanctioned exit is operator escalation — this gate
 allows Stop once the cap is reached.
 
 References:
-  skills/element-interactions/references/test-composition-standards.md §4
+  skills/achilles-protocol/references/test-composition-standards.md §4
   skills/coverage-expansion/references/anti-rationalizations.md §"Judge-loop skipping"
 EOF
     "$JQ" -n --arg r "$REASON" '{ "decision": "block", "reason": $r }'
@@ -173,8 +173,18 @@ RESPONSE_TEXT=$(printf '%s' "$INPUT" | "$JQ" -r '
   ] | map(select(. != null and . != "null")) | join("\n")
 ' 2>/dev/null || echo "")
 
+# Anchor the parse on the return's status line — a greenlight return that
+# MENTIONS a prior cycle's improvements-needed verdict in prose must not
+# be mis-recorded. Fall back to an anywhere-grep only when no status line
+# is present at all.
 VERDICT="unknown"
-if printf '%s' "$RESPONSE_TEXT" | grep -q 'improvements-needed'; then
+STATUS_TOKEN=$(printf '%s' "$RESPONSE_TEXT" | grep -oE '"?status"?[[:space:]]*:[[:space:]]*"?(greenlight|improvements-needed)"?' | head -1 || echo "")
+if [ -n "$STATUS_TOKEN" ]; then
+  case "$STATUS_TOKEN" in
+    *improvements-needed*) VERDICT="not-satisfied" ;;
+    *greenlight*)          VERDICT="satisfied" ;;
+  esac
+elif printf '%s' "$RESPONSE_TEXT" | grep -q 'improvements-needed'; then
   VERDICT="not-satisfied"
 elif printf '%s' "$RESPONSE_TEXT" | grep -q 'greenlight'; then
   VERDICT="satisfied"

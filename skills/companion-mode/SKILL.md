@@ -571,7 +571,7 @@ The full mechanics live in §"Phase 6: Report and automation offer". This sectio
 
 Hard invariants across all paths:
 
-- **Graduated specs pass the Stage 4c composition judge.** Every Stage-3 graduation path lands in `element-interactions` Stage 3→4, whose Stage 4c dispatches the independent `composition-judge-` review before commit (`../achilles-protocol/references/test-composition-standards.md` §4). Evidence bundles themselves are not composing exits — no judge runs on a bundle.
+- **Graduated specs pass the Stage 4c composition judge.** Every Stage-3 graduation path lands in `achilles-protocol` Stage 3→4, whose Stage 4c dispatches the independent `composition-judge-` review before commit (`../achilles-protocol/references/test-composition-standards.md` §4). Evidence bundles themselves are not composing exits — no judge runs on a bundle.
 - The bundle is **never** moved, deleted, or modified after Phase 5. It stays in `tests/e2e/evidence/<slug>-<ts>/` as the audit trail and is referenced (not copied) by the receiving skill in its commit message or report.
 - Companion mode does **not** chain handoffs. After invoking Stage 3, `onboarding`, or `bug-report`, companion mode is done.
 - Companion mode **never** performs a Phase-6 handoff without an explicit `yes / (a) / (b)` from the user. Vague replies get a clarifying re-prompt.

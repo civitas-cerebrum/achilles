@@ -76,7 +76,7 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 
    export async function freshUser(page: Page): Promise<{ email: string; password: string; userId: string }> {
      const email = `test+${Date.now()}-${Math.random().toString(36).slice(2,8)}@example.test`;
-     // Env-sourced or generated — never a hardcoded literal (element-interactions Rule 15;
+     // Env-sourced or generated — never a hardcoded literal (achilles-protocol Rule 15;
      // doctrine: test-data-conventions Rule 1).
      const password = process.env.E2E_FRESH_USER_PASSWORD ?? `Pw!${randomUUID().slice(0, 12)}`;
      const ctx = await request.newContext({ baseURL: process.env.BASE_URL ?? '«BASE_URL»' });
