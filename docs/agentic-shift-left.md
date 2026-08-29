@@ -85,16 +85,17 @@ Two mechanisms, both harness-enforced — not advisory, not "best practice," but
 
 **Adversarial review.** Before any ticket can be transitioned to a completed state, the methodology dispatches adversarial probes against the tests themselves: Do the assertions actually verify the acceptance criteria? Are there false-positive paths? Could a mutation survive? The harness gate (`adversarial-verification-gate`) blocks the transition until the review receipt exists and is newer than the most recently edited spec.
 
-The human's role at this stage is to read the adversarial findings and confirm the verdict — not to re-do the verification, but to exercise judgment on the result.
+The human's role at this stage is larger than confirming a verdict. **Coverage is a human responsibility**: the QA engineer — together with product owners and developers — owns the answer to "is every critical component of the business tested against every significant point of failure that carries CX or revenue impact?" The agent verifies what is covered and proves its tests bite; the test engineer is accountable for what *must* be covered. Reading the adversarial findings, judging the result, and closing coverage gaps the machine cannot know matter — that is the human contribution the automation cannot replace.
 
 ### Stage 4 — Guard / Heal (Autonomous)
 
-**Continuous production verification.**
+**Gated releases, layered verification.**
 
-Once tests are committed, the methodology prescribes continuous monitoring:
+Once tests are committed, the methodology prescribes a layered, gate-first test architecture:
 
-- **Regression suites** run on schedule against the live application. Failures surface immediately via alerting integrations (chat webhooks, email, SMS).
-- **Periodic monitors** run at high frequency (configurable, typically every 30–60 minutes) as a smoke check against production. These are the early-warning system — they catch deployment regressions before the nightly suite does.
+- **Regression suites** run in the go-live pipeline, during the build, against an environment that faithfully represents production **without** production connections to critical systems (production database, payment providers, live third-party integrations). A regression failure **stops the release** — regression is a gate, not an alarm. Failures additionally surface via alerting integrations (chat webhooks, email, SMS).
+- **Smoke tests** target individual features, pages, and components, and run on **every pull request**. They sit on top of the quicker, more primitive unit tests, and are free to use data mocking or consume the API directly to reach the surface under test fast — speed is their contract.
+- **E2E tests** verify complete user journeys, and every step happens in the browser: their intention is to replicate the user's experience as closely as possible, so no step of an e2e journey is shortcut through an API.
 - **Self-repair** classifies failures when they occur: is this an app bug (file evidence, leave the test alone), test drift (heal the test autonomously), or an irreducible flake (quarantine it with evidence)? Every test ends the repair cycle green or explained — never silently skipped.
 
 The guard stage is what makes the lifecycle a loop rather than a line. Tests don't just get written and forgotten; they're actively maintained by the same agents that wrote them.
@@ -157,7 +158,7 @@ The lifecycle described above works within the boundaries of the environment it 
 
 Checkout. Registration. Payment. Password reset. Account deletion. These are the flows with the highest CX/revenue impact, and they are the flows that cannot be safely automated against a production environment.
 
-The shift-left lifecycle is incomplete until a test environment exists. The guard stage monitors production; it cannot verify the flows that would damage production to test.
+The shift-left lifecycle is incomplete until a test environment exists: a faithful representation of production without production connections to the critical systems — database, payment providers, live integrations. The guard stage can gate releases with what it can safely run; it cannot verify the flows that would damage production to test.
 
 This is not a limitation of the methodology. It is a limitation of the environment. The methodology is ready. The sandbox is what's missing.
 
