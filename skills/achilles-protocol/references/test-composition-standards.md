@@ -1,7 +1,7 @@
 # Test Composition Standards — Single Source of Truth
 
 **Status:** authoritative cross-skill standard for every composing exit in the suite. Cited from `achilles-protocol/SKILL.md`, `stages-protocol.md`, `test-composer`, `coverage-expansion`, `onboarding`, `ticket-driven-testing`, `companion-mode`, `bug-discovery`, `test-repair`, and `self-repair`.
-**Scope:** (1) the citation contract that keeps composing rules single-homed, (2) the canon index mapping every shared composing rule to its one canonical home, (3) the normative record of resolved cross-skill contradictions, (4) the mandatory Stage 4c composition-judge loop, (5) the smoke-vs-e2e depth doctrine, (6) the kernel-resident invariants block citing skills mirror.
+**Scope:** (1) the citation contract that keeps composing rules single-homed, (2) the canon index mapping every shared composing rule to its one canonical home, (3) the normative record of resolved cross-skill contradictions, (4) the mandatory Stage 4c composition-judge loop, (5) the smoke-vs-e2e depth doctrine, (6) the orchestrator dispatch discipline for specialist task families, (7) the kernel-resident invariants block citing skills mirror.
 
 ---
 
@@ -50,6 +50,9 @@ One row per shared composing concern. "Canonical home" is where the full rule te
 | `test.fail()` policy (one sanctioned use — see §3.2) | `../../ticket-driven-testing/SKILL.md` §7 |
 | Smoke-vs-e2e depth doctrine | §5 of this file |
 | Stage 4c composition-judge loop | §4 of this file |
+| Orchestrator dispatch discipline (specialist task families) | §6 of this file (precedent: `../../coverage-expansion/SKILL.md` §"Two valid exits" kernel rules) |
+| Test-identity conventions (test IDs on every case; `@known-defect` rerun exemption) | **in flight — PR #72** (`references/test-identity.md` once merged); do not restate here until it lands |
+| Style-interaction verification + commit-or-discard gate | **in flight — PR #73** (`ticket-driven-testing` additions); do not restate here until it lands |
 
 ## §3 Contradiction resolutions (normative record)
 
@@ -117,7 +120,27 @@ Two spec depths, chosen per test by what the test is *about*:
 
 Rationale: duplicated UI walks multiply run time and flake surface without multiplying signal — the walk is already locked by its one e2e test; derivatives re-walking it re-test the walk, not their own subject.
 
-## §6 Kernel-resident invariants (for citing skills to mirror)
+## §6 Orchestrator dispatch discipline
+
+The specialist task families of this suite each run as **dedicated subagent dispatches** carrying a role-prefixed brief that points at the task's canonical instruction set. The orchestrator skill — whichever skill is currently routing (the top-level orchestrator, `coverage-expansion`, `onboarding`, or a caller like `ticket-driven-testing`) — **routes, gates, and integrates results; it does not carry these tasks out inline.** When an orchestrator catches itself starting one — opening a `playwright-cli` session to inspect selectors, writing a spec body, probing a boundary, judging its own composition — it stops and dispatches.
+
+| Task family | Dispatch prefix (greppable) | Canonical instruction set |
+|---|---|---|
+| UI inspection / page-repository building | `stage2-<scope>:` (crawl: `phase1-*:`) | [`stages-protocol.md`](stages-protocol.md) Stage 2; [`playwright-cli-protocol.md`](playwright-cli-protocol.md) |
+| Test composing | `composer-j-<slug>:` / `composer-sj-<slug>:` | `../../test-composer/SKILL.md` |
+| Coverage-expansion passes | (orchestrated; per-journey work via `composer-*` / `probe-*` / `reviewer-*`) | `../../coverage-expansion/SKILL.md` |
+| Journey mapping | `phase4-cycle-<N>:` sections; `phase4-prioritise-author` | `../../journey-mapping/SKILL.md` |
+| Adversarial probing / bug discovery | `probe-j-<slug>-<pass>:` / `probe-*:` | `../../bug-discovery/SKILL.md`; `../../coverage-expansion/references/adversarial-subagent-contract.md` |
+| Failure diagnosis | `fd-<scope>` sessions (subagent-only skill; `fd-ci-<run-id>:` pipeline entrypoint in flight — PR #71) | `../../failure-diagnosis/SKILL.md` |
+| Repair workers | `repair-worker-<file-slug>:` | `../../self-repair/references/worker-pipeline.md` |
+| Composition judging (Stage 4c) | `composition-judge-<scope>:` | §4 of this file |
+| Workflow / phase review | `workflow-reviewer-*:` / `phase-validator-*:` | `../../workflow-reviewer/SKILL.md` |
+
+This section cites existing precedent rather than inventing a new rule: `../../coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" ("The orchestrator does NOT compose tests directly", "does NOT run `playwright-cli` for selector inspection", "does NOT run `npx playwright test` for stabilization"), `../../coverage-expansion/references/anti-rationalizations.md` §"Pattern: Orchestrator-direct composition" (whose scope covers this full task-family list), and `failure-diagnosis`'s subagent-only convention. Why it holds: context discipline (DOM snapshots, spec source, and stabilization transcripts live in worker contexts, never the conductor's), separation of duties (an orchestrator that composes has no independent reviewer), and parallelism (absorbed work is serial by construction — if parallel dispatch feels unsafe, fix the upstream cause per `test-optimization.md` §1.A, don't absorb).
+
+**Enforcement:** markdown-only for the general rule (the in-flight-registry hooks that mechanically distinguished orchestrator from subagent writers were retired in 0.3.6; the registry entry above carries the reviewer-visible tag). Partial harness backing exists per family: `hooks/playwright-cli-isolation-guard.sh` (slug shape), `hooks/subagent-schema-preread-gate.sh` (brief must cite the role schema), `hooks/composition-judge-gate.sh` (judge-loop leash), and the `workflow-reviewer-pass<N>:` checklists (spec files cross-checked against recorded composer dispatches).
+
+## §7 Kernel-resident invariants (for citing skills to mirror)
 
 Citing skills may mirror these lines in their own `### Hard rules — kernel-resident` blocks (dual-update obligation per §1.3):
 
@@ -127,3 +150,4 @@ Citing skills may mirror these lines in their own `### Hard rules — kernel-res
 - **`test.fail()` only as a ticketed defect sentinel** (`ticket-driven-testing` §7); never in coverage/adversarial passes.
 - **One e2e walk per journey; derivatives shortcut** via API/state injection and assert only their own surface (§5).
 - **Data feasibility is a composing gate** — a scenario whose data cannot be generated, isolated, and cleaned up is blocked/flagged per `test-data-conventions`, never written against whatever is live.
+- **Specialist task families dispatch; orchestrators never absorb** (§6) — UI inspection, composing, probing, diagnosis, repair, and judging each run as role-prefixed subagent dispatches; an orchestrator catching itself starting one inline stops and dispatches.
