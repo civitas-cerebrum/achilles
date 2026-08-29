@@ -62,16 +62,6 @@ Once tests are committed, the methodology prescribes a layered, gate-first test 
 
 The guard stage is what makes the lifecycle a loop rather than a line. Tests don't just get written and forgotten; they're actively maintained by the same agents that wrote them.
 
-### Evidence in Both Directions
-
-Every verdict in the lifecycle rests on two kinds of evidence, and the harness demands both.
-
-**Positive evidence — proof the behaviour works.** Every verification produces captured artifacts: per-step screenshots, video, Playwright trace, HAR, console log. A finding with no captured evidence is capped at informational — it cannot rank as a defect. Diagnosis has a hook-enforced evidence floor: no failure may be classified from the error line alone. The trace, the UI/DOM state at the moment of failure, and the browser console must each be read — with a written observation per source — before any root cause or heal ships (`failure-diagnosis-evidence-floor-gate` denies the classification otherwise). Even absence claims need positive grounding: every "X is not shown" assertion carries a positive control in the same test proving the surface actually rendered, because a selector that matches nothing passes on a blank page too. And produced artifacts are evidence about themselves — a generated deck or report must be visually inspected before it ships (`deck-inspection-gate`), not assumed correct because the code that wrote it ran.
-
-**Negative evidence — proof the verification can fail.** A test that has never been seen to fail proves nothing; it may be green because the feature works or because the assertion is vacuous. So the methodology demands the failure be demonstrated: **negative control** runs the test where the fix is absent and requires a FAIL, read per test — passing on both sides voids the test. Adversarial probes mutate the code under test and require the suite to catch it; a surviving mutation is a coverage finding, not a shrug. Contract and performance tests carry the same discipline as deliberate-failure bite checks: mutate a response field or breach a threshold, confirm the red, revert. All of it is receipted, and the receipt is hook-enforced — `adversarial-verification-gate` blocks QA sign-off until the verification receipt exists and is newer than the most recently edited spec.
-
-One direction without the other is theatre. Positive evidence alone can dress up a test that passes vacuously; negative evidence alone proves a test can fail without proving the feature works. A verdict is only as strong as the weaker of its two directions — which is why the hooks gate on both.
-
 ---
 
 ## II. The Architectural Foundation
