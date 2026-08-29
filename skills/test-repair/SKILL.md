@@ -232,7 +232,7 @@ These are the non-negotiables that every cluster decision must respect. Together
 
 4. **5× stability validates every heal.** Applied by `failure-diagnosis` in Stage 5 of its own pipeline. If a heal destabilizes, it gets reverted — instability means the heal was incomplete.
 
-5. **Whole-test rewrites require operator alignment.** If a test no longer maps to the current app flow (scenario itself obsolete), do NOT silently regenerate. Present to the operator; on approval, invoke `test-composer` with journey context. Respect that the operator owns the scope of what's being tested.
+5. **Whole-test rewrites require operator alignment.** If a test no longer maps to the current app flow (scenario itself obsolete), do NOT silently regenerate. Present to the operator; on approval, invoke `test-composer` with journey context. Respect that the operator owns the scope of what's being tested. The rewrite is a composing exit: `test-composer`'s Step 6c composition judge applies to it (`../achilles-protocol/references/test-composition-standards.md` §4). Incremental heals do NOT trigger the judge — their gate is the stability rule above.
 
 ---
 

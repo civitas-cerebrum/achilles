@@ -361,6 +361,8 @@ Regression tests go in the project's suite, not the bundle. One test per AC, plu
 
 For each confirmed defect, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug — which is the signal to delete it.
 
+**Scope of the `test.fail()` licence.** This section is the ONE sanctioned use of `test.fail()` in the whole suite: a defect sentinel **tied to a tracked ticket**, with a removed-when-fixed lifecycle (the "flips loud → delete" mechanism above IS the lifecycle). Where no ticket owns the marker it is banned — coverage-expansion and its adversarial passes never commit `test.fail()`; their suspected bugs stay ledger-only (see `coverage-expansion/SKILL.md` §"Non-goals"; resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.2).
+
 ```ts
 test('TC_...[SENTINEL <TICKET>-D1]: <correct behaviour>', async ({ steps }) => {
   test.fail(true, 'Known defect: <what is wrong>. Delete this sentinel once fixed.')
@@ -480,6 +482,8 @@ Read the result per test, not in aggregate. Three outcomes, three meanings:
 #### 8b. Dispatch the adversarial test review
 
 Do not self-assess your own tests. **Dispatch subagents whose mission is to attack them.** The rationale is separation of duties, not a measured effect: a reviewer that did not write the tests has no stake in their looking good. NOT claimed: that delegation outperforms instruction. Delegation was never run as its own arm, so there is no evidence either way.
+
+**This §8/§8b machinery COUNTS as the Stage 4c composition-judge loop** (`../achilles-protocol/references/test-composition-standards.md` §4) — the five probe missions plus the §8 negative control are a stricter independent review than the generic judge charter, so do NOT impose a second `composition-judge-` dispatch on top of a run that executed this section. The judge's test-data feasibility dimension still applies: include `test-data-conventions` conformance (strategy ladder, per-attempt generation, cleanup, premises) in `probe-assertions`' scope.
 
 Dispatch these **five in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
 

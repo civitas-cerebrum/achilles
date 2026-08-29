@@ -1,7 +1,7 @@
 # Stages Protocol — Element-Interactions Pipeline (Stages 1–4)
 
 **Status:** authoritative spec for the four-stage achilles-protocol test-authoring pipeline. Cited from `achilles-protocol/SKILL.md`.
-**Scope:** Stage 1 (Scenario Discovery), Stage 2 (Element Inspection), Stage 3 (Write Automation), Stage 4a (Test Optimization), Stage 4b (API Compliance Review). For each stage: process, hard gates, output format, and skip-to-Stage-3 (fix/edit) mode.
+**Scope:** Stage 1 (Scenario Discovery), Stage 2 (Element Inspection), Stage 3 (Write Automation), Stage 4a (Test Optimization), Stage 4b (API Compliance Review), Stage 4c (Composition Judge). For each stage: process, hard gates, output format, and skip-to-Stage-3 (fix/edit) mode.
 
 For the canonical browser-automation primitive used in Stage 2 / 3, see `playwright-cli-protocol.md`.
 For the API surface Stage 3 writes against, see `api-reference.md`.
@@ -157,7 +157,7 @@ Show the user the exact JSON entries you want to add:
 
    Only in rare, explicitly documented cases where the action genuinely has no observable effect at any layer (e.g. a framework-level smoke exercise of an API's call shape) may you fall back to `verifyState('visible')` on the target element — and the reason must be stated in a one-line comment. Never leave a test trailing on an action.
 6. **Run the test** with `npx playwright test <test-file>`.
-7. **If the test fails:** invoke the `failure-diagnosis` protocol — collect evidence (screenshot, DOM, error context), group failures by root cause, classify (test issue vs app bug vs ambiguous), check edge cases, then fix test issues autonomously with stability validation (3-5 passing runs) or report app bugs with full evidence. If the fix requires new selectors, use `playwright-cli` to inspect the DOM, propose the new entry, and get approval before editing.
+7. **If the test fails:** invoke the `failure-diagnosis` protocol — collect evidence (screenshot, DOM, error context), group failures by root cause, classify (test issue vs app bug vs ambiguous), check edge cases, then fix test issues autonomously with stability validation (3 consecutive green for a new/edited test; 5 consecutive for a heal of a previously-flaky test) or report app bugs with full evidence. If the fix requires new selectors, use `playwright-cli` to inspect the DOM, propose the new entry, and get approval before editing.
 8. **If the test passes:** commit immediately.
 
 ### Skip-to-Stage-3 (Fix/Edit Mode)
@@ -166,9 +166,9 @@ When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `a
 
 ---
 
-## Stage 4: Post-Stabilization Review (split into 4a + 4b)
+## Stage 4: Post-Stabilization Review (split into 4a + 4b + 4c)
 
-**Stage 4a runs first, Stage 4b runs second.** Both run automatically after a test reaches passing state in Stage 3, before commit.
+**Stage 4a runs first, Stage 4b second, Stage 4c third.** All three run automatically after a test reaches passing state in Stage 3, before commit.
 
 ### Stage 4a: Test Optimization
 
@@ -205,7 +205,7 @@ For each test file, verify:
 8. **Fixture usage** — the test destructures only fixtures provided by `baseFixture` (`steps`, `repo`, `interactions`, `contextStore`, `page`) plus any custom fixtures defined in the project's `base.ts`.
 9. **Waiting methods** — correct state strings (`'visible'`, `'hidden'`, `'attached'`, `'detached'`) and correct usage of `waitForResponse` callback pattern.
 10. **Verification methods** — correct option shapes (`{ exactly }`, `{ greaterThan }`, `{ lessThan }` for `verifyCount`; `verifyText()` with no args asserts not empty). The 4-arg form `verifyText(el, page, undefined, { notEmpty: true })` and the `TextVerifyOptions.notEmpty` flag are deprecated — use `verifyText(el, page)` (or `.on(el, page).verifyText()` fluent) instead.
-11. **Every test ends with a verification — and that verification proves the action's effect, not a tautology.** Two sub-checks:
+11. **Every test ends with a verification — and that verification proves the action's effect, not a tautology.** (This checklist item is the review-side form of the canonical doctrine in Stage 3 item 5 above — that item is the canon; this one cites it.) Two sub-checks:
    - **Presence.** No test may finish on an action with no trailing assertion. If the last meaningful statement is `click`, `fill`, `drag`, `hover`, `check`, `upload`, `setSliderValue`, etc., flag it.
    - **Causal meaning.** Even with a trailing assertion, flag it if it would pass whether the action ran or not. Examples to catch: `verifyPresence('rows')` after `clickListedElement('rows', {text:'X'})` (the list was there before the click); `verifyState('visible')` on the hovered element (it was visible to be hovered); `verifyInputValue('anything')` where no causal link to the fill exists.
 
@@ -260,6 +260,19 @@ Or if clean:
 > Reviewed: `tests/example.spec.ts`
 >
 > All API calls match the documented signatures. No issues found.
+
+### Stage 4c: Composition Judge
+
+**Goal:** an independent, adversarial review of the composed tests by a subagent that is not the author. Stages 4a/4b are author-side self-review; 4c is the second reader.
+
+**This stage triggers automatically once Stage 4b returns clean, before commit.** The full charter — dispatch shape (`composition-judge-` prefix, fresh context, brief citing `schemas/subagent-returns/reviewer-inloop.schema.json`), the four review dimensions (scenario-intent coverage, oracle strength, API compliance spot-check, test-data feasibility), the SATISFIED / NOT SATISFIED verdict loop, and the 3-consecutive-NOT-SATISFIED operator-escalation bound — is canonical in [`test-composition-standards.md`](test-composition-standards.md) §4. This section is deliberately short: read the charter there; do not improvise the judge's brief from this summary.
+
+Process:
+
+1. Dispatch the judge per the charter, handing it the specs from this session, the approved scenario, the `page-repository.json` slice, and `tests/e2e/docs/test-data-plan.md`.
+2. On `SATISFIED` (`status: greenlight`): proceed to commit.
+3. On `NOT SATISFIED` (`status: improvements-needed`): fix the must-fix findings, re-run Stage 4a and 4b if code changed, then dispatch a **fresh** judge.
+4. On the 3rd consecutive `NOT SATISFIED`: stop and escalate to the operator with the accumulated must-fix lists.
 
 ---
 

@@ -388,6 +388,8 @@ Update `app-context.md` with any newly discovered pages, state variations, or qu
 
 Write a failing test for each confirmed bug.
 
+Phase 6 is a **composing exit**: before the Phase 7 report cites any reproduction spec, dispatch the Stage 4c composition judge on the specs written here per [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4 (dimension 1 maps each spec back to its finding; dimension 4 checks its data strategy against `test-data-conventions`). Reproduction tests intentionally fail against the live bug — the judge reviews composition quality, not pass status.
+
 ### File Structure
 
 ```

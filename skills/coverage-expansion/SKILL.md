@@ -146,6 +146,7 @@ This file is the orchestrator-side contract kernel. The heavy spec lives in `ref
 | [`references/reviewer-subagent-contract.md`](references/reviewer-subagent-contract.md) | Stage B contract: role, inputs, must-fix calibration, hard constraints, the 7-step process. |
 | [`references/adversarial-subagent-contract.md`](references/adversarial-subagent-contract.md) | Stage A contract for passes 4–5: probe categories, negative-case matrix, ledger append protocol, regression-test authoring rules. |
 | [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) | Canonical return + ledger schema. §1 finding-return shape; §2 return states; §2.4 reviewer-return; §3 ledger schema; §4 caller contract; §4.1 grep-based conformance check; §4.2 harness validator. |
+| [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) | Composing SSOT: canon index, contradiction-resolution record, Stage 4c composition-judge loop. This orchestrator's Stage-B reviewer (with the test-data feasibility calibration bullet in its brief) satisfies Stage 4c for dual-stage journeys — `test-composer` skips its own Step 6c under dual-stage. |
 
 ### Kernel-resident invariants — convention
 
@@ -614,6 +615,6 @@ If orchestrator context approaches a budget boundary, follow the auto-compaction
 - Composing a single journey's tests — that's `test-composer`.
 - Cross-application coverage — one invocation covers one app.
 - Running adversarial probing in breadth mode. Breadth stays one horizontal sweep; users who want adversarial coverage explicitly want standard (formerly `depth`) mode.
-- Writing regression tests for findings classified as `Suspected bugs` or `Ambiguous`. Never lock buggy behavior into a passing suite. Never use `test.fail()` markers — they rot into permanent CI noise.
+- Writing regression tests for findings classified as `Suspected bugs` or `Ambiguous`. Never lock buggy behavior into a passing suite. Never use `test.fail()` markers — they rot into permanent CI noise. (See `ticket-driven-testing` §7 for the one sanctioned exception: a defect sentinel tied to a tracked ticket with a removed-when-fixed lifecycle — no such ticket owns a coverage-pass finding, so the ban here is absolute. Resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.2.)
 - Growing the journey map during adversarial passes. Map growth is for compositional passes only.
 - Broad cross-app adversarial sweeps — that's still the job of the standalone `bug-discovery` skill. This skill's adversarial passes are strictly per-journey.

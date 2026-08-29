@@ -177,6 +177,13 @@ its heal strategies implement stage 6, its 5× stability rule is stage 7.
 Workers load it via the Skill tool as before; nothing in its contract
 changes for its other callers.
 
+One composing-exit note: a whole-test rewrite (failure-diagnosis heal
+type g, reached here via `operator-pending` → operator approval) routes
+through `test-composer`, whose Step 6c composition judge applies
+(`../../achilles-protocol/references/test-composition-standards.md`
+§4). Incremental heals stay judge-free — stage 7's stability bar is
+their gate.
+
 ## Worked example (calibration case)
 
 Two workers, same journey (logout), same 3/3-red baselines, different
