@@ -8,9 +8,9 @@
     "test:hooks": "npm run build:validator && hooks/tests/run.sh",
     "test:reporter": "node --test --test-concurrency=1 \"reporter/tests/*.test.mjs\"",
     "sync-hooks": "node scripts/sync-hooks.js",
-    "sync:harness-os": "node scripts/sync-harness-os.mjs",
+    "sync:kernel-mandate": "node scripts/sync-kernel-mandate.mjs",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
-    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && node scripts/sync-harness-os.mjs --check && npm run test:hooks && npm run test:reporter"
+    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && node scripts/sync-kernel-mandate.mjs --check && npm run test:hooks && npm run test:reporter"
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",

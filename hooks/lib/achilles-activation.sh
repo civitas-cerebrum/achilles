@@ -89,11 +89,11 @@
 # Skill names bundled by this package (skills/<name>/). Any Skill
 # invocation of one of these — bare or plugin/path-prefixed — activates
 # the protocol for the session.
-# Deliberate exclusion: harness-designer. It is GENERIC infrastructure
-# (designs a .claude/harness-os.json role manifest for any multi-agent
+# Deliberate exclusion: mandate-designer. It is GENERIC infrastructure
+# (designs a .claude/kernel-mandate.json role manifest for any multi-agent
 # harness) — invoking it must not switch on the QA methodology's commit
 # grammar / ledger gates in an unrelated project. Its enforcement hook
-# (harness-os-role-gate.sh) is self-scoped by manifest presence and does
+# (kernel-mandate-role-gate.sh) is self-scoped by manifest presence and does
 # not source this lib.
 ACHILLES_SKILL_ALT='agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-element-interactions|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|secrets-sweep|selector-development|test-catalogue|test-composer|test-repair|work-summary-deck|workflow-reviewer'
 

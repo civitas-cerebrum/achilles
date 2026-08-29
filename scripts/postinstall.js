@@ -136,14 +136,14 @@ const HOOK_MANIFEST = [
   // status ("complete"/"aborted") retires the session's activation marker.
   { file: 'achilles-protocol-activation-watcher.sh', event: 'PostToolUse',      matcher: 'Write|Edit', timeout: 5 },
 
-  // Harness OS kernel — generic role-based permission enforcement for ANY
+  // Kernel mandate kernel — generic role-based permission enforcement for ANY
   // multi-agent harness. Self-scoped by manifest presence
-  // (<repo-root>/.claude/harness-os.json), NOT by achilles activation:
+  // (<repo-root>/.claude/kernel-mandate.json), NOT by achilles activation:
   // projects that never write a manifest never feel it. Matches every tool
   // (.*) because the manifest's tool-gate axis must be able to govern
   // arbitrary tools (MCP included); the gate routes internally. See
-  // skills/harness-designer/references/architecture.md.
-  { file: 'harness-os-role-gate.sh',              event: 'PreToolUse', matcher: '.*',          timeout: 10 },
+  // skills/mandate-designer/references/architecture.md.
+  { file: 'kernel-mandate-role-gate.sh',              event: 'PreToolUse', matcher: '.*',          timeout: 10 },
 
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
