@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Achilles — Autonomous QA by Civitas Cerebrum</title>
-  <meta name="description" content="An autonomous quality assurance solution that builds, grows, and repairs your test suite — powered by Playwright and driven by agents." />
+  <meta name="description" content="An autonomous quality assurance solution that builds, grows, guards, and repairs your test suite — powered by Playwright and driven by agents." />
   <meta property="og:title" content="Achilles — Autonomous QA by Civitas Cerebrum" />
   <meta property="og:description" content="What if your full regression suite built itself overnight? Achilles turns a project with no tests into a maintained suite in one autonomous run." />
   <meta property="og:type" content="website" />
@@ -349,6 +349,7 @@
 
     .mode-title { font-family: var(--font-display); font-size: 20px; font-weight: 400; margin-bottom: 10px; letter-spacing: -0.01em; }
     .mode-desc  { font-size: 14px; color: var(--muted); line-height: 1.7; }
+    .mode-desc code { font-family: var(--mono); font-size: 0.9em; color: var(--emerald-bright); }
     .mode-tag   {
       display: inline-block; margin-top: 16px;
       font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
@@ -560,6 +561,7 @@
     <ul class="nav-links">
       <li><a href="#capabilities">Capabilities</a></li>
       <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#doctrine">Doctrine</a></li>
       <li><a href="#why">Why Achilles</a></li>
     </ul>
     <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
@@ -584,9 +586,10 @@
       </h1>
 
       <p class="hero-sub">
-        Achilles is an autonomous quality assurance solution that helps QA engineers
-        build test automation and run hands-on testing at an accelerated rate.
-        One sentence kicks off a complete eight-phase pipeline — no babysitting required.
+        Achilles is an autonomous quality assurance solution that builds, grows,
+        guards, and repairs web test suites at agent speed — and proves every
+        result with evidence. One sentence kicks off a complete eight-phase
+        pipeline — no babysitting required.
       </p>
 
       <div class="hero-actions">
@@ -645,7 +648,7 @@
       <div class="mode-card c-green reveal">
         <div class="mode-icon c-green">🔧</div>
         <h3 class="mode-title">Automated Suite Repair</h3>
-        <p class="mode-desc">Batch-clusters failures by shared root cause and heals entire clusters at once. The endless maintenance cycle, automated. Stops the slow bleed of a degrading test suite before it reaches your CI pipeline.</p>
+        <p class="mode-desc">Batch-clusters failures by shared root cause and heals entire clusters at once — or runs hands-off from a terminal: <code>npm run test:repair</code> baselines the suite, separates flake from deterministic failure, spawns one repair worker per red spec file, and ends with every test green or explained.</p>
         <span class="mode-tag c-green">Suite Repair</span>
       </div>
 
@@ -661,6 +664,27 @@
         <h3 class="mode-title">AI Safety Testing</h3>
         <p class="mode-desc">Red-team the LLM features in your app. A three-agent architecture — adversary, target, and judge — tests guardrails, prompt injection resistance, bias detection, and compliance. Produces reproducible adversarial findings.</p>
         <span class="mode-tag c-cyan">Agents vs Agents</span>
+      </div>
+
+      <div class="mode-card c-purple reveal">
+        <div class="mode-icon c-purple">🎫</div>
+        <h3 class="mode-title">Ticket-Driven Testing</h3>
+        <p class="mode-desc">The developer entry point: hand it a ticket, a PR, or "test what I just built". It reads the diff for risk, observes the live app for what to assert, proves every test can fail with a negative control, and delivers a per-ticket evidence bundle — with sign-off harness-gated on that evidence. Tests are discardable by default; durable coverage lands only on human confirmation.</p>
+        <span class="mode-tag c-purple">Shift-Left</span>
+      </div>
+
+      <div class="mode-card c-green reveal">
+        <div class="mode-icon c-green">⚡</div>
+        <h3 class="mode-title">Performance Testing</h3>
+        <p class="mode-desc">From zero load tests to a maintained k6 perf suite with SLO-gated thresholds. A dedicated perf-onboarding pipeline plus per-scenario authoring across smoke, load, stress, spike, soak, and breakpoint profiles — under the same harness discipline as the functional suite.</p>
+        <span class="mode-tag c-green">Performance</span>
+      </div>
+
+      <div class="mode-card c-orange reveal">
+        <div class="mode-icon c-orange">🧬</div>
+        <h3 class="mode-title">Proof Toolchain</h3>
+        <p class="mode-desc"><code>achilles-mutate</code> proves the suite can fail — injecting the broken state each acceptance criterion forbids and naming the test that owns it. The Achilles reporter tracks flakiness across runs and archives per-attempt evidence. <code>achilles-show</code> turns any test into watchable mp4 footage for review and sign-off.</p>
+        <span class="mode-tag c-orange">Evidence</span>
       </div>
     </div>
   </div>
@@ -727,6 +751,47 @@
   </div>
 </section>
 
+<!-- ── DOCTRINE ──────────────────────────────────────────────────────────── -->
+<section id="doctrine">
+  <div class="container">
+    <div class="section-header centered reveal">
+      <div class="section-tag">Doctrine</div>
+      <h2 class="section-title">Agentic shift-left:<br /><span class="grad">shift the worker, not just the work</span></h2>
+      <p class="section-desc">Development is agentic. Quality assurance must be too. The lifecycle runs in four stages: a human decides what matters, agents do the heavy lifting, harness-gated evidence confirms the result, and agents guard it in production.</p>
+    </div>
+
+    <div class="phases reveal">
+      <div class="phase">
+        <div class="phase-num">01 — Human</div>
+        <div class="phase-name">Triage</div>
+        <div class="phase-desc">A human makes the CX/revenue call: what matters enough to test? The one decision the methodology refuses to automate.</div>
+        <div class="phase-arrow">→</div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">02 — Autonomous</div>
+        <div class="phase-name">Automate</div>
+        <div class="phase-desc">Sub-agents discover, inspect, compose, and review — isolated contexts, schema-validated returns, independent journeys in parallel.</div>
+        <div class="phase-arrow">→</div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">03 — Human + Harness</div>
+        <div class="phase-name">Confirm</div>
+        <div class="phase-desc">The tests get tested: negative controls prove each test can fail; adversarial review challenges every assertion. Hooks block sign-off without the evidence.</div>
+        <div class="phase-arrow">→</div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">04 — Autonomous</div>
+        <div class="phase-name">Guard / Heal</div>
+        <div class="phase-desc">Scheduled regressions and high-frequency monitors watch production; self-repair heals drift, quarantines flakes, and files app bugs with evidence.</div>
+      </div>
+    </div>
+
+    <div class="reveal" style="text-align:center; margin-top: 40px;">
+      <a class="btn-secondary" href="https://github.com/civitas-cerebrum/achilles/blob/main/docs/agentic-shift-left.md" target="_blank" rel="noopener">Read the full doctrine →</a>
+    </div>
+  </div>
+</section>
+
 <!-- ── QUOTE ─────────────────────────────────────────────────────────────── -->
 <section class="quote-section">
   <div class="container">
@@ -751,7 +816,7 @@
       <div class="diff-card reveal">
         <div class="diff-icon">⚡</div>
         <h4 class="diff-title">Harness-Enforced Discipline</h4>
-        <p class="diff-desc">20+ hook scripts (23+ registered gates) sit between every tool invocation. They prevent scope compression, phase skipping, and silent scope reduction — the failure modes that plague AI-assisted testing.</p>
+        <p class="diff-desc">30+ hook scripts (40+ registered gates) sit between every tool invocation. They prevent scope compression, phase skipping, and silent scope reduction — and block sign-off until negative-control and adversarial-review evidence exists. Enforcement, not instructions.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🎯</div>
@@ -789,8 +854,9 @@
     <div class="tech-row">
       <span class="tech-pill"><span class="dot dot-purple"></span>Playwright</span>
       <span class="tech-pill"><span class="dot dot-cyan"></span>JSON Schema</span>
-      <span class="tech-pill"><span class="dot dot-green"></span>Pixelmatch</span>
-      <span class="tech-pill"><span class="dot dot-purple"></span>Babel Parser</span>
+      <span class="tech-pill"><span class="dot dot-green"></span>k6</span>
+      <span class="tech-pill"><span class="dot dot-purple"></span>Pixelmatch</span>
+      <span class="tech-pill"><span class="dot dot-cyan"></span>Babel Parser</span>
     </div>
   </div>
 </section>
@@ -813,7 +879,7 @@
         <span class="cta-badge">MIT License</span>
         <span class="cta-badge">Built on Playwright</span>
         <span class="cta-badge">Driven by Agents</span>
-        <span class="cta-badge">v0.1.0</span>
+        <span class="cta-badge">20+ Agent Skills</span>
       </div>
     </div>
   </div>
@@ -828,6 +894,7 @@
       <a href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">GitHub</a>
       <a href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">npm</a>
       <a href="https://github.com/civitas-cerebrum/achilles/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+      <a href="https://github.com/civitas-cerebrum/achilles/blob/main/docs/agentic-shift-left.md" target="_blank" rel="noopener">Doctrine</a>
     </div>
   </div>
 </footer>
