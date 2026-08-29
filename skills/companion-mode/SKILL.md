@@ -360,6 +360,41 @@ Print one short message in this order:
 
 Do not list every screenshot in the report. The bundle is the listing; the message is the pointer.
 
+### Visual inspection of evidence
+
+Every evidence screenshot must be reviewed for design quality, not just functional correctness.
+A screenshot that proves "the component rendered" can simultaneously show broken padding,
+misalignment, or visual inconsistency that no assertion catches.
+
+Check each screenshot for: padding/spacing symmetry, alignment of sibling elements, clipping or
+overflow, visual hierarchy, and whether state transitions (expand, error, loading) degrade the
+layout. See `ticket-driven-testing` §6e for the full checklist.
+
+Report design findings in the tracker comment alongside the AC results — they are not AC failures,
+but they are findings. A QA comment that shows a screenshot with visible padding issues and doesn't
+mention them is incomplete.
+
+When the run is wrapped by `ticket-driven-testing`, §8b dispatches `probe-visual` — a subagent
+that reviews every evidence screenshot against this checklist. The gate enforces it: sign-off is
+denied without `uiReviewed: true` in the adversarial verification receipt.
+
+### Posting to the tracker
+
+When the evidence run is tied to a ticket (the user named an issue key, or the task maps to one),
+post a **brief** comment to the tracker with inline screenshots. Follow the format in
+`ticket-driven-testing` §"Posting to the tracker":
+
+1. **What was tested** — one or two sentences per AC.
+2. **Evidence** — screenshots uploaded and embedded inline as markdown images (not as separate
+   attachments). Use the tracker's upload API, then reference the `assetUrl` in the comment body.
+3. **Negative control** — one or two sentences: was the suite run without the fix, and did the
+   right tests fail? If not run, say so.
+4. **Verdict** — the QA outcome and recommendation: ready to merge, needs fixes, or blocked.
+   Caveats as one-liners.
+
+That is the entire comment. No tables, no code review, no methodology beyond the negative control.
+The screenshots carry the detail.
+
 ### Next-step offer matrix
 
 The offer is **automation-first**. Failure-diagnosis remains the path on a failed run, but the durable-automation question is asked on every verdict where it makes sense.
@@ -552,6 +587,12 @@ After the Level-appropriate writes complete, companion mode invokes `achilles-pr
 A Phase-1-through-5 run that writes outside the evidence directory (excluding the gated `page-repository.json` write inside Phase 3) is a contract violation. A Phase-6 run that writes anything beyond the Level-appropriate minimum scaffold (e.g., regenerates `journey-map.md` itself, edits the receiving skill's outputs after handoff) is also a contract violation.
 
 ---
+
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
+An evidence bundle is not test code and needs no sweep; the moment a bundle graduates into a durable spec, it does.
 
 ## Graduation paths (summary)
 

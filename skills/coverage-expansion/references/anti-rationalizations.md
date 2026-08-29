@@ -364,6 +364,47 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 ---
 
+## Pattern: `markdown-only` deferral — ticket-driven-testing §8d commit-or-discard + report contract
+
+Two rules in `skills/ticket-driven-testing/SKILL.md` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle) — but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW — a level-of-detail judgement over free prose, not a mechanical check.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `commitDecision` field (`discarded` | `proposed` | `confirmed-by:<human>`) in the §8b adversarial-verification receipt would let `adversarial-verification-gate.sh` deny a spec commit with no recorded confirmation; the report-contract rule remains reviewer-enforced.
+
+---
+
+## Pattern: `markdown-only` deferral — work-summary-deck print-safety rules
+
+`skills/work-summary-deck/SKILL.md` §"Print-safety rules" bans `box-shadow`, `opacity`, and alpha colors (rgba/hsla and `transparent` gradient stops) in generated decks, and requires the PDF to be re-exported and re-inspected after every edit round. The color bans are mechanically detectable (a grep over the written deck HTML), but no hook currently validates deck output at Write or export time; the inspection-loop rule is a process obligation a hook cannot observe.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `PreToolUse:Write` (or export-script) guard that greps `*deck*.html` for `box-shadow`, `opacity:`, `rgba(`, `hsla(`, and `transparent` gradient stops outside comments would enforce the color rules; the verification loop remains reviewer-enforced.
+
+---
+
+## Pattern: The test is green, so the sweep is a formality
+
+**Symptoms** (phrasings that signal this pattern):
+- "the test passes, the compliance review would be a rubber stamp"
+- "this was a bug reproduction / a heal / a ticket fix, not authoring — the sweep doesn't apply"
+- "the subagent already reviewed its own output"
+- "I'll sweep at the end of the batch" (and the batch never ends)
+- "it's one small test, the sweep is overkill"
+- "an ID is bookkeeping — the title already says what it does"
+- "this test fails on purpose, I'll just `.skip()` it so the run is green"
+- "I'll tighten the assertion so the suite goes green and file the bug separately"
+
+**Reality:** The sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds are caught — and passing is exactly the state in which all four survive unnoticed. Modes that write tests as a *means* to something else (reproducing a bug, healing a red, closing a ticket) are the ones that skip it, because their own goal reads as met the moment the test exists; and because tests are written by copying the last one, one unswept file propagates the wrong model into everything written after it. The same instinct rewrites a deliberate red into a pass: a test weakened or skipped to make a run green is a test that can no longer detect the defect it was written for. The sanctioned move is `@known-defect` plus a filed report — the red stays red, and the repair pipeline stops re-deriving it.
+
+**Hooks that catch this:**
+- `compliance-sweep-exit-gate.sh` — `Stop` + `SubagentStop`. Blocks the stop when the transcript shows a spec-file Write/Edit with no compliance sweep after it. Delegation does not release it: either the subagent swept and said so, or the orchestrator sweeps what came back.
+- `test-id-compliance-gate.sh` — `PreToolUse:Write|Edit`. Denies a spec write that adds a case with no stable test ID, or that duplicates an ID inside one file.
+- `bin/self-repair.mjs` — classifies `@known-defect` reds as terminal, so tagging one is cheaper than silencing it and the incentive points the right way.
+
+**Origin:** Codified alongside the test-identity conventions (`skills/achilles-protocol/references/test-identity.md`) when the sweep was made every test-developing mode's exit gate rather than the authoring pipeline's private step.
+
+---
+
 ## Pattern: Diagnosis from log text alone (evidence floor skipped)
 
 The diagnoser reads the terminal error, the CI job log, or the stack trace, recognises a familiar-looking error string, and ships a root cause — or a heal — without ever opening the trace, looking at the UI/DOM state at the moment of failure, or reading the browser console. The pipeline-failure variant is worse: the run's artifacts are never downloaded at all, and the "diagnosis" is a paraphrase of the log line. Two sub-shapes travel with it: reading the *retry* attempt's trace (which passed) and concluding "not reproducible", and reading framework source from the local `node_modules` rather than the version CI actually resolved.

@@ -45,8 +45,9 @@ Whenever you list what you are going to do, list these. All ten, in this order. 
                                             → 6d evaluate what is undesirable
 7  Write durable tests + a sentinel per defect
 8  RUN THE NEGATIVE CONTROL                → the suite MUST fail where the fix is absent
-8b DISPATCH THE ADVERSARIAL REVIEW         → 5 subagents attack the tests; you do not self-assess
+8b DISPATCH THE ADVERSARIAL REVIEW         → 6 subagents attack the tests; you do not self-assess
 8c SCORE the testing itself (probe-rigour, 0-3 x6, blocking floor)
+8d COMMIT OR DISCARD                       → CX/revenue impact proposes; a human confirms; discard is the default
 9  Report — then DISPATCH probe-verdict at the report itself
                                             → §8b attacks the tests; this attacks the claims
 ```
@@ -193,7 +194,7 @@ State these before starting; each has blocked a real run.
 | `git` with worktree support | phase 3 | work in a clone instead, never the shared checkout |
 | A tracker, OR the ACs pasted by hand | phase 1 | paste them; phases 2–9 are unchanged |
 | `jq` on PATH | the harness gate is a shell hook and exits FATAL without it | install it, or disable the gate explicitly |
-| A subagent-capable runtime | §8b dispatches four reviewers | run the probes yourself, serially, and say so in the report |
+| A subagent-capable runtime | §8b dispatches six reviewers | run the probes yourself, serially, and say so in the report |
 | **A second environment WITHOUT the fix** | §8 negative control | see §8's fallbacks — do not silently skip it |
 | An `E2E_MUTATION_CSS` / `E2E_MUTATION_INIT` hook in your page fixture | §8b mutation probe (grammar in §8b) | source-level mutation instead, if the app runs locally |
 
@@ -216,7 +217,9 @@ a second ticket that reuses the first ticket's deliverables has produced none of
 3. **An evidence bundle** — via `companion-mode`, verdict grounded in the ACs. Named for this
    ticket, containing this ticket's artifacts, redacted per `companion-mode` §"Redaction". Numbers
    in a report are not evidence: evidence is what someone else can re-open and disagree with.
-4. **Durable tests** — regression cover in the suite, plus one sentinel per confirmed defect.
+4. **Verified tests** — one per AC plus one sentinel per confirmed defect, written and proven
+   against the negative control. Whether they are **committed** to the suite or **discarded**
+   into the evidence bundle is decided in §8d — and discard is the default.
 5. **A negative-control result** — proof the tests fail where the fix is absent (§8). Without it you have tests that pass, not tests that discriminate.
 
 ### The sign-off gate
@@ -347,6 +350,38 @@ wrong" in a component you have only read about.
 
 Then run `companion-mode` for the evidence bundle.
 
+**6e — Inspect every screenshot for design quality.** Evidence screenshots are not just functional
+proof — they are a visual inspection surface. After capturing them, review each one as a designer
+would. A screenshot that proves "the error alert appeared" can simultaneously reveal that the
+alert's container has broken padding.
+
+Check for:
+
+- **Padding and spacing symmetry** — are horizontal/vertical insets consistent between the left
+  and right edges? Between the top and bottom? Compare the element's spacing to its siblings and
+  to the container edges.
+- **Alignment** — do elements that should be aligned (buttons, labels, icons) actually line up?
+  Is text baseline-aligned where it should be?
+- **Clipping and overflow** — is any content cut off by a parent's `overflow: hidden`? Are
+  rounded corners rendering correctly at the edges?
+- **Visual hierarchy** — does the layout still read correctly? Is the primary action visually
+  dominant? Are secondary elements appropriately subdued?
+- **State transitions** — compare the "before" and "after" screenshots. Does the layout degrade
+  when the component changes state (expanding, showing an error, loading)?
+- **Responsive integrity** — at the tested viewport, does the layout look intentional or does it
+  look like it squeezed to fit?
+
+This step catches defects that no functional assertion will find — the test that asserts
+"the error alert is visible" passes identically whether the alert has correct padding or is
+flush against the edge. Report design findings separately from AC results: they are not AC
+failures, but they are findings that belong in the QA comment.
+
+> **Provenance — PEDX-10264:** All 3 functional ACs passed (error appears, clears, layout at
+> 375px). But the mobile screenshot showed the expanded MiniProductCard had lost its left padding
+> — content flush to the drawer edge while the right side retained a margin. No assertion caught
+> it. A human reviewing the screenshot would have seen it immediately. This step exists because
+> that run shipped "all pass" without noting a visible design inconsistency.
+
 **Why this order.** Tests written straight from a diff bind to *that* implementation. Measured
 cost: on one run, roughly nine desktop tests bound to a structural detail (`lg:static`) that exists
 only on the feature branch — had it shipped differently, they would have needed rewriting rather
@@ -358,6 +393,11 @@ underneath them.
 ### 7. Durable tests and sentinels
 
 Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
+
+**Written is not committed.** Whether these tests land in the suite or stay in the evidence
+bundle is §8d's decision, made after they have proven themselves in §8–8c — and the default is
+that they stay. Write them to committable standard either way; a test that would embarrass the
+suite proves nothing as evidence either.
 
 For each confirmed defect, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug — which is the signal to delete it.
 
@@ -483,9 +523,9 @@ Read the result per test, not in aggregate. Three outcomes, three meanings:
 
 Do not self-assess your own tests. **Dispatch subagents whose mission is to attack them.** The rationale is separation of duties, not a measured effect: a reviewer that did not write the tests has no stake in their looking good. NOT claimed: that delegation outperforms instruction. Delegation was never run as its own arm, so there is no evidence either way.
 
-**This §8/§8b machinery COUNTS as the Stage 4c composition-judge loop** (`../achilles-protocol/references/test-composition-standards.md` §4) — the five probe missions plus the §8 negative control are a stricter independent review than the generic judge charter, so do NOT impose a second `composition-judge-` dispatch on top of a run that executed this section. The judge's test-data feasibility dimension still applies: include `test-data-conventions` conformance (strategy ladder, per-attempt generation, cleanup, premises) in `probe-assertions`' scope.
+**This §8/§8b machinery COUNTS as the Stage 4c composition-judge loop** (`../achilles-protocol/references/test-composition-standards.md` §4) — the six probe missions plus the §8 negative control are a stricter independent review than the generic judge charter, so do NOT impose a second `composition-judge-` dispatch on top of a run that executed this section. The judge's test-data feasibility dimension still applies: include `test-data-conventions` conformance (strategy ladder, per-attempt generation, cleanup, premises) in `probe-assertions`' scope.
 
-Dispatch these **five in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
+Dispatch these **six in parallel**, scoped to the diff and the ACs. Anything outside those two is out of scope — an unbounded critic returns "you didn't test Safari 14 on 3G" forever.
 
 | Mission | Question it must answer | Required output |
 |---|---|---|
@@ -494,6 +534,7 @@ Dispatch these **five in parallel**, scoped to the diff and the ACs. Anything ou
 | `probe-assertions` | Does each assertion prove a structural guarantee, or did it observe one passing render? | Per assertion: `structural` / `incidental`, with the reason |
 | `probe-value` | Is each test **worth keeping** — does it protect behaviour a user would notice losing, at a maintenance cost the risk justifies? | Per test: `keep` / `merge` / `delete`, with the reason |
 | `probe-outcome` | For each AC: is the **user-visible outcome** asserted anywhere, or only a mechanism standing in for it? Would the suite stay green with the feature visibly broken? | Per AC: `outcome-asserted` / `proxy-only`, naming the proxy |
+| `probe-visual` | Review every evidence screenshot for design quality: padding symmetry, alignment, clipping, visual hierarchy, state-transition degradation, responsive integrity (§6e checklist). | Per screenshot: `design-defect` / `cosmetic` / `acceptable`, naming what is wrong |
 
 **On `probe-value` specifically.** The other three ask whether a test *works*; this one asks whether it should *exist*. A test can catch its mutation and still be a liability. The four verdicts it hunts for:
 
@@ -519,6 +560,49 @@ Agent(description: "probe-mutation-<slug>", prompt: "
   what you examined and why you found nothing. A vague approval is a failure.
 ")
 ```
+
+#### probe-visual — screenshot design review
+
+Unlike the other probes, `probe-visual` does not read test code — it reads the evidence
+screenshots. Its input is the screenshots directory of the evidence bundle, and its job is to
+review every image as a designer would.
+
+The brief must include:
+- The path to the screenshots directory
+- The §6e checklist items (padding/spacing symmetry, alignment, clipping/overflow, visual
+  hierarchy, state transitions, responsive integrity)
+- Instruction to compare "before" and "after" screenshots for layout degradation on state changes
+- The standard return schema citation
+
+```
+Agent(description: "probe-visual-<ticket>", prompt: "
+  ADVERSARIAL REVIEW — visual design inspection. Your job is to find design
+  defects in evidence screenshots, not to approve them.
+  Return shape: schemas/subagent-returns/probe.schema.json. Return `handover`
+  ({role, status, next-action} — all three required), `findings-emitted`,
+  `finding-ids` (REQUIRED whenever status is 'findings-emitted'), and `summary`.
+
+  Read every screenshot in <screenshots-dir>.
+  For EACH screenshot, check the §6e checklist:
+  1. Padding and spacing symmetry — are insets consistent left/right, top/bottom?
+  2. Alignment — do sibling elements (buttons, labels, icons) line up?
+  3. Clipping and overflow — is content cut off? Rounded corners correct?
+  4. Visual hierarchy — is the primary action visually dominant?
+  5. State transitions — compare before/after shots. Does layout degrade on expand, error, load?
+  6. Responsive integrity — does the layout look intentional at this viewport?
+
+  For each finding: name the screenshot, describe what is wrong, and classify as
+  'design-defect' (broken layout/padding), 'cosmetic' (minor visual inconsistency),
+  or 'acceptable' (intentional design choice).
+
+  MANDATORY: silence is a failed dispatch. If every screenshot passes inspection,
+  list each one you reviewed and what you checked. A vague 'looks fine' is a failure.
+")
+```
+
+This probe populates `uiReviewed: true` in the adversarial verification receipt. The
+`adversarial-verification-gate.sh` already enforces this field — sign-off is denied without it.
+A test suite with passing functional assertions but unreviewed screenshots cannot ship.
 
 **Non-negotiables for these dispatches:**
 
@@ -624,7 +708,8 @@ Write the outcome to `.achilles/adversarial-verification/<ticket-key>.json`:
   "ticket": "<KEY>", "ranAt": "<ISO-8601>",
   "negativeControl": { "environment": "<url>", "failed": 5, "passed": 1, "skipped": 0 },
   "mutations": [{ "ac": "AC-2", "hunk": "…", "caught": true }],
-  "coverageGaps": [], "incidentalAssertions": [], "lowValueTests": []
+  "coverageGaps": [], "incidentalAssertions": [], "lowValueTests": [],
+  "review": { "uiReviewed": true }
 }
 ```
 
@@ -632,13 +717,16 @@ That receipt is what the harness gate looks for. **The gate DENIES a tracker tra
 completed state without it**, so an adopter who has not read this section meets it as an
 unexplained denial — kill-switch `CIVITAS_DISABLE_ADVERSARIAL_GATE=1` if you need out.
 
+The gate also checks `review.uiReviewed: true` (populated by `probe-visual` — see §8b).
+Without it, sign-off is denied even when all functional probes pass.
+
 **Gitignore `.achilles/`.** The receipt is a local run artifact: git does not preserve mtimes, so a
 committed receipt would arrive on CI with a rewritten timestamp and defeat the staleness check
 outright. It is evidence for the run that produced it, not a shared artifact. Writing it by hand without running the probes defeats the check entirely — and the failure it catches is *your own*.
 
 #### 8c. Score the testing itself — `probe-rigour`
 
-The five probes above audit the **artifacts**: the tests, the assertions, the coverage. None of
+The six probes above audit the **artifacts**: the tests, the assertions, the coverage. None of
 them audits **the testing**. A run can produce well-formed tests that catch their mutations and
 still be bad QA — because the agent never drove the feature, ran one browser and claimed three,
 or bounded nothing it reported.
@@ -698,6 +786,44 @@ nobody has checked.
 same separation-of-duties basis as §8b: the agent that did the testing has a stake in it looking
 thorough.
 
+#### 8d. Commit or discard — the CX/revenue impact gate
+
+The tests exist, they discriminate the fix (§8), and they survived the review (§8b–8c). None of
+that decides whether they belong in the suite. **Written is not committed.** A durable test is a
+permanent liability the whole team pays for — it runs on every PR, flakes on every infrastructure
+hiccup, and bills its maintenance to people who never read this ticket. Whether the scenario
+earns that is a separate judgement, and it comes *after* verification, because only a verified
+test is worth proposing at all.
+
+Analyse the tested scenario's **customer-experience and revenue impact**, then route:
+
+| Impact analysis says | Outcome |
+|---|---|
+| No significant CX or revenue impact | **DISCARD** — the default. The tests stay in the evidence bundle; nothing is committed. |
+| Significant CX and/or revenue impact | **PROPOSE** — state the impact rationale explicitly; a human confirms before anything is committed. |
+
+**Discard is the default.** The ticket's value is already banked: the change was verified, the
+evidence is on the ticket, the negative control ran. Committing the tests is a second decision
+with a different cost curve, and it needs a positive case — not the absence of an objection.
+
+**What counts as significant.** Conversion-critical paths, checkout-adjacent flows, auth and
+account access, data-loss risk — scenarios where a regression costs money or locks users out. The
+rationale must be stated, not implied: which user path, what a regression there costs, and why
+existing cover would not catch it. "It might break someday" is true of every line in the
+application and therefore justifies nothing.
+
+**High impact proposes; a human commits.** Even when the analysis clears the bar, the agent's
+output is a *proposal with the impact rationale attached* — the human (dev or QA) confirms before
+the tests land. This is the human "confirm coverage" gate of AI-enhanced shift-left: the agent is
+well placed to analyse what a scenario touches, and badly placed to own a permanent addition to
+someone else's CI bill. No confirmation, no commit; a proposal that expires unanswered is a
+discard.
+
+**Discarded is not undocumented.** A discarded suite still produces the full evidence package on
+the ticket — the companion-mode bundle, screenshots, recordings, the negative-control result, and
+the specs themselves as attachments. Discard changes where the tests live, not what the run
+proved.
+
 ### 9. Live observation — watch it, don't just assert it
 
 Assertions confirm what you thought to ask. Watching the page reveals what you didn't. Before trusting a green suite, drive the flow once by hand — screenshot **and** probe state after **every** action, not just at the end.
@@ -718,6 +844,139 @@ That trace located a defect window no assertion had bounded: between y≈560 and
 **Assert a control element, always.** A live probe that reports "the feature's selectors are absent" is ambiguous: the feature may be missing, or *the page may never have loaded*. Bot protection, an auth wall or a CDN challenge all render a page where every product selector is absent — and it looks exactly like a shipped-but-disabled feature.
 
 Include one element in every probe that must exist on **any** build of the page (a header, a footer, `<main>`). If the control is missing too, you are not looking at the app and every conclusion from that probe is void. Note also that a suite reaching production via an allowlisted header (`x-e2e-test`) proves nothing about whether an *ad-hoc* browser can — the CLI session gets challenged where the suite sails through.
+
+## Style-interaction verification — mock the page, test the styling
+
+When a fix is purely CSS/styling that responds to user interactions (focus rings, hover states,
+active highlights) and **real page data is unavailable** (no orders, no transactions, empty
+accounts), you cannot drive the feature end-to-end. But you can still verify the fix in the real
+CSS environment — Tailwind layers, design tokens, specificity chains, global rules — by injecting
+mock DOM and triggering the interaction programmatically.
+
+This is a **fallback**, not a substitute. The report must state that real data was unavailable and
+why. An injected element proves the CSS classes produce the right computed styles in the project's
+stylesheet; it does not prove the component renders those classes, that the layout doesn't clip the
+indicator, or that no ancestor `overflow: hidden` truncates it. Those require the real component
+with real data, and the gap belongs in the report.
+
+### When to use it
+
+- The fix changes CSS classes on a component (focus-visible, hover, active, disabled states)
+- The component needs data you cannot create (orders need payment, transactions need fulfilment)
+- You need to prove the styling works in the real CSS environment, not in isolation
+- The ticket's ACs are about computed visual properties (outline width, contrast, ring visibility)
+
+### The pattern
+
+All six steps run inside a single Playwright test via the project's CLI (`pnpm exec playwright
+test`), so `playwright.config.ts` headers, device presets, and bypass tokens all apply.
+
+**1. Navigate to the real page.** The full CSS environment must be loaded — Tailwind's generated
+stylesheet, design tokens, global rules (e.g. `.is-tabbing a:focus-visible`). Use the page where
+the component would normally appear, logged in if required.
+
+**2. Set required state classes.** Some styling depends on ancestor state classes that headless
+browsers don't trigger automatically. Inject them via `page.evaluate()`:
+
+```ts
+// The site adds .is-tabbing on first Tab keypress; headless may not fire it
+await page.evaluate(() => document.documentElement.classList.add('is-tabbing'))
+```
+
+State the injected classes in the report — they are assumptions, not observations.
+
+**3. Inject mock DOM** via `page.evaluate()` using the **exact CSS classes from the PR diff**.
+Insert into `<main>` so the element inherits the page's full cascade. Give the mock a unique `id`
+for reliable targeting:
+
+```ts
+await page.evaluate((cssClasses) => {
+  const main = document.querySelector('main')
+  if (!main) throw new Error('No <main> element found')
+  const mock = document.createElement('div')
+  mock.id = 'mock-component'
+  mock.innerHTML = `<a href="#" class="${cssClasses}" id="mock-target">
+    <span class="inline-block text-body-md-bold">Mock content</span>
+  </a>`
+  main.insertBefore(mock, main.firstChild)
+}, 'focus-visible:ring-2 focus-visible:ring-brand-blue-500 …')
+```
+
+**4. Trigger the interaction.** Use the interaction that the fix targets:
+
+| Interaction | How to trigger |
+|---|---|
+| Keyboard focus | `page.keyboard.press('Tab')` in a loop until `document.activeElement.id === target` |
+| Hover | `page.hover('#mock-target')` |
+| Active/pressed | `page.locator('#mock-target').dispatchEvent('pointerdown')` |
+| Disabled state | set `disabled` attribute or `aria-disabled` on the mock |
+
+**5. Assert computed styles.** Read the styles that the AC requires and assert on them directly:
+
+```ts
+const styles = await page.evaluate(() => {
+  const el = document.activeElement
+  if (!el) return null
+  const cs = window.getComputedStyle(el)
+  return {
+    outline: cs.outline,
+    outlineStyle: cs.outlineStyle,
+    outlineWidth: cs.outlineWidth,
+    outlineColor: cs.outlineColor,
+    outlineOffset: cs.outlineOffset,
+    boxShadow: cs.boxShadow,
+  }
+})
+
+// Assert the AC: "visible focus indicator ≥ 2px"
+const hasRing = styles.outlineStyle !== 'none' && styles.outlineWidth !== '0px'
+const hasShadow = styles.boxShadow !== 'none'
+expect(hasRing || hasShadow).toBe(true)
+```
+
+**6. Capture evidence screenshots.** Two shots — viewport for context, closeup for detail:
+
+```ts
+// Full viewport — shows the page, the mock element, and the focus state
+await page.screenshot({ path: 'test-results/evidence-viewport.png' })
+
+// Closeup — clip around the focused element with padding
+const rect = await page.evaluate(() => document.activeElement?.getBoundingClientRect())
+if (rect) {
+  const pad = 40
+  await page.screenshot({
+    path: 'test-results/evidence-closeup.png',
+    clip: { x: Math.max(0, rect.x - pad), y: Math.max(0, rect.y - pad),
+            width: rect.width + pad * 2, height: rect.height + pad * 2 },
+  })
+}
+```
+
+### What to report
+
+Follow the brief comment format from §9's "Posting to the tracker": what was tested (mention mock
+injection and which classes), evidence screenshots inline, and the verdict. Caveats (no real data,
+single browser, injected state classes) go as one-liners under the verdict — not as separate
+sections.
+
+### Negative control caveat
+
+The standard negative control (§8) — running the same test against an environment without the fix
+— may not work for style-interaction tests. CSS specificity and Tailwind's layer ordering mean
+that injecting old classes into a page does not replicate the cascade the old component experienced.
+When the negative control is not feasible via injection, state this explicitly and cite the
+ticket's own audit evidence (screenshots, screen recordings) as the pre-fix baseline.
+
+### Provenance: PEDX-10727
+
+This pattern was developed during QA verification of PEDX-10727 (focus indicator on ordered item
+names, WCAG 2.4.11). The automation accounts had no order history, and test environments lacked
+payment capabilities. A mock order link was injected with the fix's CSS classes
+(`focus-visible:ring-2 focus-visible:ring-brand-blue-500 focus-visible:ring-offset-2
+focus-visible:outline-none`), Tab-focused, and the computed outline (`rgb(51, 113, 165) solid 2px`
+with `2px` offset) was asserted and screenshotted as evidence. The approach verified the fix
+produced a WCAG-compliant focus ring in the real Tailwind CSS environment, despite having no real
+order data to render the actual component.
 
 ## "Show me" — demonstration runs
 
@@ -830,6 +1089,12 @@ Known gap: **document-level geometry.** "No horizontal clipping" is `documentEle
 
 **REQUIRED SUB-SKILL:** to close a gap rather than work around it, use `contributing-to-achilles-protocol`.
 
+## 8c. Compliance sweep — before any verdict leaves the session
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
+A QA verdict rests on the tests that produced it. Sweeping them is part of producing the verdict, not a follow-up task.
+
 ## 9. Report — and have the report reviewed before it ships
 
 **Dispatch one more probe at the REPORT itself, before it reaches a human.** §8b attacks the
@@ -863,6 +1128,76 @@ changed**. A quietly edited verdict is worse than the original error.
 Report defects the diff review found even when every AC passes — they are the value a human reviewer could not get from a green suite. Separate them clearly from AC verdicts: **"all three ACs pass, and here are four defects"** is a coherent and common outcome.
 
 Never silently upgrade a defect into an AC failure, or silently drop one because the ACs passed.
+
+### Posting to the tracker
+
+The ticket comment is what the developer, the PM, and the next QA engineer will read. Keep it
+**brief** — four sections, nothing else:
+
+1. **What was tested** — one or two sentences per AC: what was verified, on which viewports/browsers.
+2. **Evidence** — screenshots uploaded and embedded **inline** in the comment body (not as
+   separate attachments the reader has to click through). Use the tracker's image markdown
+   (`![alt](url)`) so the images render directly in the comment.
+3. **Negative control** — one or two sentences stating whether the tests were run against an
+   environment without the fix and what happened. This is not methodology — it is evidence that
+   the tests discriminate the change. If the control was not run, say so.
+4. **Verdict** — the QA outcome and what should happen next. Pass, fail, or pass-with-caveats,
+   followed by a clear recommendation: ready to merge, needs fixes, or blocked. Caveats
+   (untested browsers, environment limitations) go as one-liners under the verdict.
+
+That is the entire comment. No tables of computed CSS values, no code review notes, no
+methodology explanations beyond the negative control result. The evidence screenshots carry
+the detail — that is what they are for.
+
+**Example shape:**
+
+```
+## QA — PEDX-XXXXX
+
+**PR:** [#1234](https://github.com/org/repo/pull/1234) | **Date:** 2026-08-20
+
+### AC1 — Error appears without size selection
+
+Verified on Desktop (Sheet) and Mobile (Drawer). Clicking the button without selecting a size
+shows the inline error alert.
+
+![AC1 Desktop — error alert inline](https://uploads.linear.app/…)
+![AC1 Mobile — error alert inline](https://uploads.linear.app/…)
+
+### Negative control
+
+Same checks run against production. The styling assertion fails there — button is grey, not blue —
+confirming the tests discriminate the fix.
+
+### Verdict
+
+✅ **All ACs pass.** No defects found. Ready to merge.
+```
+
+**Upload then embed.** Use the tracker's upload API (`prepare_attachment_upload` → PUT →
+`create_attachment_from_upload` on Linear), then reference the returned `assetUrl` in the comment
+body as a markdown image. A comment without inline evidence is incomplete.
+
+### One contract, every surface — PR descriptions included
+
+The format above is not tracker-specific. It is the report contract, and it binds **every surface
+this run writes for a human reader** — the ticket comment AND the description of any pull request
+the run opens (durable tests committed via §8d, or a sign-off summary posted on the dev's PR):
+
+- **What was tested** — the scenarios and behaviours covered. Never HOW: no methodology
+  narration, no step-by-step process, no framework mechanics.
+- **Findings** — defects or confirmations, one line each, separated from AC verdicts per
+  §"Reporting" above.
+- **Evidence** — screenshots / recordings linked or attached.
+- **Verdict** — pass / fail / blocked, with a one-line justification.
+
+**Brevity is a hard requirement, not a style preference.** If a section can be a bullet, it is a
+bullet. Anything about *how* the testing was performed is omitted — the reader is deciding
+whether to merge, not auditing your process. The one process fact that stays is the
+negative-control result, for the reason given above: it is evidence that the tests discriminate
+the change, not methodology. Everything else about the rig — tool mechanics, injected state,
+framework versions — lives in the evidence bundle, where the next QA engineer can find it without
+the reviewer having to scroll past it.
 
 ## Baseline testing
 

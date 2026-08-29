@@ -12,6 +12,8 @@ A new medium of quality assurance, powered by Playwright and harness engineering
 
 Achilles will drive **Claude Code** (or any LLM agent) to autonomously scaffold, map, compose, probe, and report on a web application's test surface.
 
+> **[Agentic Shift-Left: A Doctrine for Autonomous Quality Assurance](docs/agentic-shift-left.md)** — the methodology's philosophy, lifecycle, and enforcement model in one document.
+
 ---
 
 ## 🤖 Autonomous Quality Assurance

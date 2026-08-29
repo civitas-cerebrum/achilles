@@ -431,6 +431,19 @@ The `@finding` tag carries the canonical FINDING-ID (`<journey-slug>-<nn>` stand
 
 Assert the **correct** behavior so the test **fails** against the current buggy state. When the bug is fixed, the test turns green without modification.
 
+**Tag every such test `@known-defect`, and give it a test ID.** A reproduction test is a deliberate red, and nothing downstream can tell a deliberate red from a broken test by looking at it. The tag is what stops `self-repair` / `test-repair` / `failure-diagnosis` from spending reruns, workers, and diagnosis cycles re-deriving a conclusion this pass already reached and filed — and it is what keeps the red out of the `unresolved` bucket that holds a repair run's exit code open. Pair it with the `@finding` reference so the report behind the tag is one grep away, and start the title with a stable ID so the evidence bundle at `bug-evidence/<TEST-ID>/` keeps its name when the title is reworded:
+
+```ts
+test('TCBD-000412 · @bug-discovery @known-defect double-click submit creates duplicate', async ({ steps }) => {
+  // ...
+});
+```
+
+Conventions and the full no-rerun contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md).
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
+
 **If a test fails for unexpected reasons** (not the intended bug reproduction — e.g., wrong selector, navigation error, test code issue): invoke the `failure-diagnosis` protocol to diagnose and fix. The failure-diagnosis pipeline distinguishes between test issues (fix autonomously) and app bugs (report). Only use this for unintended failures — the expected failure from the bug reproduction is not a test issue.
 
 Example: double-click creates duplicates → test double-clicks and asserts `verifyCount('Page', 'records', { exactly: originalCount + 1 })`.

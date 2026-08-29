@@ -256,6 +256,11 @@ const HOOK_MANIFEST = [
   // never fires PostToolUse, but its partial evidence is still evidence.
   { file: 'playwright-artifact-archiver.sh',      event: 'SubagentStop', matcher: null,        timeout: 30 },
 
+  // Test identity: every test case a spec write ADDS carries a stable test
+  // ID, and no ID appears twice in one file. Scoped to added titles so a
+  // pre-convention suite stays writable (see test-identity.md §1).
+  { file: 'test-id-compliance-gate.sh',           event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+
   // selector-development — activation + inertness gates (PreToolUse:Write|Edit)
   { file: 'selector-development-activation-gate.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
   { file: 'selector-development-inertness-guard.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
@@ -265,6 +270,12 @@ const HOOK_MANIFEST = [
   { file: 'selector-development-pipeline-stepper.sh',    event: 'PostToolUse', matcher: 'Bash|Write|Edit', timeout: 10 },
 
   // selector-development — Stop-time revert WARN
+  // Stage-4b compliance sweep is every test-authoring mode's exit gate: a
+  // session (or subagent) that wrote test code and never swept is blocked at
+  // stop time. One block per stop chain — stop_hook_active releases it.
+  { file: 'compliance-sweep-exit-gate.sh',               event: 'Stop',          matcher: null,          timeout: 10 },
+  { file: 'compliance-sweep-exit-gate.sh',               event: 'SubagentStop',  matcher: null,          timeout: 10 },
+
   { file: 'selector-development-revert-on-stop.sh',      event: 'Stop', matcher: null,                 timeout: 10 },
   // Stage 4c leash, Stop half: blocks Stop while a composition-judge loop
   // is open on NOT SATISFIED below the cap (single-shot via stop_hook_active).
@@ -281,6 +292,16 @@ const HOOK_MANIFEST = [
   // Same backstop at orchestrator Stop — the last run of a session is the one
   // most likely to have been interrupted.
   { file: 'playwright-artifact-archiver.sh',             event: 'Stop', matcher: null,                 timeout: 30 },
+
+  // deck-inspection-gate — forces visual PDF inspection before a deck task
+  // can be considered complete. PostToolUse:Bash detects export-pdf.js
+  // completion, renders all pages to PNG via pdftoppm, writes a sentinel,
+  // and emits a systemMessage ordering the agent to Read each page image.
+  // PreToolUse:Agent DENYs agent dispatches while the sentinel exists —
+  // the only exit is visual verification + explicit sentinel removal.
+  // No session-scope gate: deck generation can happen outside achilles sessions.
+  { file: 'deck-inspection-gate.sh',                    event: 'PostToolUse', matcher: 'Bash',         timeout: 30 },
+  { file: 'deck-inspection-gate.sh',                    event: 'PreToolUse',  matcher: 'Agent',        timeout: 5  },
 ];
 
 function copyHookFile(hookSrc, hookDest) {
