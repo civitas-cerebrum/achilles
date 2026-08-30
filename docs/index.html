@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Achilles — Autonomous QA by Civitas Cerebrum</title>
-  <meta name="description" content="An autonomous quality assurance solution that builds, grows, and repairs your test suite — powered by Playwright and driven by agents." />
+  <meta name="description" content="An autonomous quality assurance solution that builds, grows, guards, and repairs your test suite — powered by Playwright and driven by agents." />
   <meta property="og:title" content="Achilles — Autonomous QA by Civitas Cerebrum" />
   <meta property="og:description" content="What if your full regression suite built itself overnight? Achilles turns a project with no tests into a maintained suite in one autonomous run." />
   <meta property="og:type" content="website" />
@@ -97,11 +97,11 @@
 
     .logo-mark {
       width: 36px; height: 36px;
-      background: linear-gradient(135deg, var(--emerald), var(--purple));
+      background: linear-gradient(135deg, #faf7ef, #e9e4d6); /* bone white */
       border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
       font-weight: 800; font-size: 16px; color: #050505;
-      box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
+      box-shadow: 0 0 12px rgba(249, 246, 238, 0.22);
     }
 
     .logo-text { font-family: var(--font-display); font-weight: 400; font-size: 18px; letter-spacing: -0.01em; color: var(--white); }
@@ -349,6 +349,7 @@
 
     .mode-title { font-family: var(--font-display); font-size: 20px; font-weight: 400; margin-bottom: 10px; letter-spacing: -0.01em; }
     .mode-desc  { font-size: 14px; color: var(--muted); line-height: 1.7; }
+    .mode-desc code { font-family: var(--mono); font-size: 0.9em; color: var(--emerald-bright); }
     .mode-tag   {
       display: inline-block; margin-top: 16px;
       font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
@@ -551,7 +552,7 @@
 <nav>
   <div class="nav-inner">
     <a class="logo" href="#">
-      <div class="logo-mark">A</div>
+      <div class="logo-mark"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><path fill="#050505" d="M23.08 19.87Q22.95 20.97 22.43 21.91Q21.92 22.85 21.09 23.54Q20.25 24.23 19.15 24.62Q18.05 25.00 16.73 25.00Q14.32 25.00 12.55 23.89Q10.78 22.77 9.82 20.80Q8.85 18.82 8.85 16.20Q8.85 14.17 9.44 12.48Q10.03 10.80 11.10 9.57Q12.17 8.34 13.64 7.67Q15.11 7.00 16.88 7.00Q18.11 7.00 18.93 7.28Q19.74 7.57 20.17 7.85Q20.60 8.14 20.67 8.14Q20.80 8.14 21.02 7.85Q21.24 7.57 21.45 7.28Q21.66 7.00 21.71 7.00Q21.75 7.00 21.78 7.03Q21.81 7.06 21.83 7.16L23.13 11.75Q23.16 11.83 23.14 11.89Q23.12 11.95 23.06 11.96Q23.00 11.97 22.94 11.93Q22.89 11.90 22.84 11.80Q22.21 10.18 21.38 9.18Q20.55 8.19 19.54 7.72Q18.53 7.26 17.37 7.26Q16.11 7.26 15.06 7.79Q14.01 8.32 13.23 9.34Q12.45 10.35 12.02 11.83Q11.60 13.30 11.60 15.21Q11.60 18.05 12.41 20.00Q13.23 21.95 14.68 22.95Q16.12 23.96 18.03 23.96Q20.00 23.96 21.28 22.84Q22.55 21.72 22.97 19.84Q22.98 19.80 23.00 19.78Q23.01 19.76 23.03 19.77Q23.07 19.77 23.08 19.80Q23.10 19.83 23.08 19.87Z"/></svg></div>
       <div>
         <div class="logo-text">Achilles</div>
         <div class="logo-sub">by Civitas Cerebrum</div>
@@ -560,6 +561,7 @@
     <ul class="nav-links">
       <li><a href="#capabilities">Capabilities</a></li>
       <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#doctrine">Doctrine</a></li>
       <li><a href="#why">Why Achilles</a></li>
     </ul>
     <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
@@ -584,9 +586,10 @@
       </h1>
 
       <p class="hero-sub">
-        Achilles is an autonomous quality assurance solution that helps QA engineers
-        build test automation and run hands-on testing at an accelerated rate.
-        One sentence kicks off a complete eight-phase pipeline — no babysitting required.
+        Achilles is an autonomous quality assurance solution that builds, grows,
+        guards, and repairs web test suites at agent speed — and proves every
+        result with evidence. One sentence kicks off a complete eight-phase
+        pipeline — no babysitting required.
       </p>
 
       <div class="hero-actions">
@@ -606,6 +609,13 @@
         <button class="copy-btn" onclick="copyInstall(this)">copy</button>
       </div>
 
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-value grad">23</div><div class="stat-label">Agent Skills</div></div>
+        <div class="stat"><div class="stat-value grad">35</div><div class="stat-label">Harness Hooks</div></div>
+        <div class="stat"><div class="stat-value grad">9</div><div class="stat-label">Working Modes</div></div>
+        <div class="stat"><div class="stat-value grad">4</div><div class="stat-label">Verification Stages</div></div>
+      </div>
+
     </div>
     </div>
   </div>
@@ -616,7 +626,7 @@
   <div class="container">
     <div class="section-header centered reveal">
       <div class="section-tag">Working Modes</div>
-      <h2 class="section-title">Everything your QA team needs,<br /><span class="grad">fully autonomous</span></h2>
+      <h2 class="section-title">Everything your QA team needs,<br /><span class="grad">one install away</span></h2>
       <p class="section-desc">Achilles routes each request to the right working mode. Give it a task in plain English; the harness takes care of the rest.</p>
     </div>
 
@@ -645,7 +655,7 @@
       <div class="mode-card c-green reveal">
         <div class="mode-icon c-green">🔧</div>
         <h3 class="mode-title">Automated Suite Repair</h3>
-        <p class="mode-desc">Batch-clusters failures by shared root cause and heals entire clusters at once. The endless maintenance cycle, automated. Stops the slow bleed of a degrading test suite before it reaches your CI pipeline.</p>
+        <p class="mode-desc">Batch-clusters failures by shared root cause and heals entire clusters at once — or runs hands-off from a terminal: <code>npm run test:repair</code> baselines the suite, separates flake from deterministic failure, spawns one repair worker per red spec file, and ends with every test green or explained.</p>
         <span class="mode-tag c-green">Suite Repair</span>
       </div>
 
@@ -661,6 +671,27 @@
         <h3 class="mode-title">AI Safety Testing</h3>
         <p class="mode-desc">Red-team the LLM features in your app. A three-agent architecture — adversary, target, and judge — tests guardrails, prompt injection resistance, bias detection, and compliance. Produces reproducible adversarial findings.</p>
         <span class="mode-tag c-cyan">Agents vs Agents</span>
+      </div>
+
+      <div class="mode-card c-purple reveal">
+        <div class="mode-icon c-purple">🎫</div>
+        <h3 class="mode-title">Ticket-Driven Testing</h3>
+        <p class="mode-desc">The entry point for developers and QA engineers alike: hand it a ticket, a PR, or "test what I just built". It reads the diff for risk, observes the live app for what to assert, proves every test can fail with a negative control, and delivers a per-ticket evidence bundle — with sign-off harness-gated on that evidence and on an adversarial review of the testing itself. Every confirmed defect gets a sentinel test.</p>
+        <span class="mode-tag c-purple">Shift-Left</span>
+      </div>
+
+      <div class="mode-card c-green reveal">
+        <div class="mode-icon c-green">🗄️</div>
+        <h3 class="mode-title">API &amp; Database Oracles</h3>
+        <p class="mode-desc">Locks the backend surface against drift — status codes, response schemas, error envelopes, critical headers — and asserts persisted state directly in SQL: row counts, cell values, transactions. Every persisted mutation is proven by an API or database oracle, because a test that only watches the UI silently passes when the write regresses.</p>
+        <span class="mode-tag c-green">Contract &amp; DB</span>
+      </div>
+
+      <div class="mode-card c-orange reveal">
+        <div class="mode-icon c-orange">🧬</div>
+        <h3 class="mode-title">Proof Toolchain</h3>
+        <p class="mode-desc"><code>achilles-mutate</code> proves the suite can fail — injecting the broken state each acceptance criterion forbids and naming the test that owns it. The Achilles reporter tracks flakiness across runs, classifies <code>@known-defect</code> anomalies when tagged tests pass, and archives per-attempt evidence. <code>achilles-show</code> turns any test into watchable mp4 footage for review and sign-off.</p>
+        <span class="mode-tag c-orange">Evidence</span>
       </div>
     </div>
   </div>
@@ -727,13 +758,54 @@
   </div>
 </section>
 
+<!-- ── DOCTRINE ──────────────────────────────────────────────────────────── -->
+<section id="doctrine">
+  <div class="container">
+    <div class="section-header centered reveal">
+      <div class="section-tag">Doctrine</div>
+      <h2 class="section-title">Agentic shift-left:<br /><span class="grad">A new era of quality assurance</span></h2>
+      <p class="section-desc">Development is agentic. Quality assurance must be too. The lifecycle runs in four stages: a human decides what matters, agents do the heavy lifting, harness-gated evidence confirms the result, and agents gate releases and heal the suite.</p>
+    </div>
+
+    <div class="phases reveal">
+      <div class="phase">
+        <div class="phase-num">01 — Human</div>
+        <div class="phase-name">Triage</div>
+        <div class="phase-desc">A human makes the CX/revenue call: what matters enough to test? The one decision the methodology refuses to automate.</div>
+        <div class="phase-arrow">→</div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">02 — Autonomous</div>
+        <div class="phase-name">Automate</div>
+        <div class="phase-desc">Sub-agents discover, inspect, compose, and review — isolated contexts, schema-validated returns, independent journeys in parallel.</div>
+        <div class="phase-arrow">→</div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">03 — Human + Harness</div>
+        <div class="phase-name">Confirm</div>
+        <div class="phase-desc">The tests get tested: negative controls prove each test can fail; adversarial review challenges every assertion. Hooks block sign-off without the evidence.</div>
+        <div class="phase-arrow">→</div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">04 — Autonomous</div>
+        <div class="phase-name">Gate / Heal</div>
+        <div class="phase-desc">Regression gates the release in the go-live pipeline; smoke runs on every PR; e2e verifies full browser journeys. Self-repair heals drift, quarantines flakes, and files app bugs with evidence.</div>
+      </div>
+    </div>
+
+    <div class="reveal" style="text-align:center; margin-top: 40px;">
+      <a class="btn-secondary" href="https://github.com/civitas-cerebrum/achilles/blob/main/docs/agentic-shift-left.md" target="_blank" rel="noopener">Read the full doctrine →</a>
+    </div>
+  </div>
+</section>
+
 <!-- ── QUOTE ─────────────────────────────────────────────────────────────── -->
 <section class="quote-section">
   <div class="container">
     <div class="quote-block reveal">
       <div class="quote-mark">“</div>
-      <p class="quote-text">You stay in the loop where it matters: reviewing, prioritising, deciding. Achilles handles everything else.</p>
-      <div class="quote-caption">Civitas Cerebrum · Achilles Design Principle</div>
+      <p class="quote-text">The agent doesn't opt into the methodology; it has no path around it. A hook that blocks sign-off without evidence blocks it on the ten-thousandth tool call the same way it blocks it on the first.</p>
+      <div class="quote-caption">Agentic Shift-Left Doctrine · §IV Enforcement</div>
     </div>
   </div>
 </section>
@@ -751,7 +823,7 @@
       <div class="diff-card reveal">
         <div class="diff-icon">⚡</div>
         <h4 class="diff-title">Harness-Enforced Discipline</h4>
-        <p class="diff-desc">20+ hook scripts (23+ registered gates) sit between every tool invocation. They prevent scope compression, phase skipping, and silent scope reduction — the failure modes that plague AI-assisted testing.</p>
+        <p class="diff-desc">30+ hook scripts (40+ registered gates) sit between every tool invocation. They prevent scope compression, phase skipping, and silent scope reduction — and block sign-off until negative-control and adversarial-review evidence exists. Enforcement, not instructions.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🎯</div>
@@ -789,8 +861,9 @@
     <div class="tech-row">
       <span class="tech-pill"><span class="dot dot-purple"></span>Playwright</span>
       <span class="tech-pill"><span class="dot dot-cyan"></span>JSON Schema</span>
-      <span class="tech-pill"><span class="dot dot-green"></span>Pixelmatch</span>
-      <span class="tech-pill"><span class="dot dot-purple"></span>Babel Parser</span>
+      <span class="tech-pill"><span class="dot dot-green"></span>k6</span>
+      <span class="tech-pill"><span class="dot dot-purple"></span>Pixelmatch</span>
+      <span class="tech-pill"><span class="dot dot-cyan"></span>Babel Parser</span>
     </div>
   </div>
 </section>
@@ -813,7 +886,7 @@
         <span class="cta-badge">MIT License</span>
         <span class="cta-badge">Built on Playwright</span>
         <span class="cta-badge">Driven by Agents</span>
-        <span class="cta-badge">v0.1.0</span>
+        <span class="cta-badge">23 Agent Skills</span>
       </div>
     </div>
   </div>
@@ -828,6 +901,7 @@
       <a href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">GitHub</a>
       <a href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">npm</a>
       <a href="https://github.com/civitas-cerebrum/achilles/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+      <a href="https://github.com/civitas-cerebrum/achilles/blob/main/docs/agentic-shift-left.md" target="_blank" rel="noopener">Doctrine</a>
     </div>
   </div>
 </footer>
