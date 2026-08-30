@@ -178,6 +178,17 @@ const HOOK_MANIFEST = [
   // dispatches so the ledger-write-gate can verify approval transitions
   // come from a registered approver context (separation of duties).
   { file: 'workflow-approver-registry.sh',        event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
+  // Stage 4c judge-loop leash: records composition-judge-* dispatches
+  // (Pre) and their verdicts (Post), and blocks Stop while a judge loop
+  // stands open on NOT SATISFIED below the 3-reject operator-escalation
+  // cap. The arming half (dispatching a judge at all) is markdown-only —
+  // see anti-rationalizations.md §"markdown-only deferral — judge-loop arming".
+  { file: 'composition-judge-gate.sh',            event: 'PreToolUse', matcher: 'Agent',       timeout: 5 },
+  // Universality guard: denies Write|Edit into this package's repo whose
+  // content matches the operator-local client-term denylist at
+  // <repo-root>/.achilles/client-terms.local.txt (gitignored — the terms
+  // ARE client references, so the list never ships). No denylist → no-op.
+  { file: 'client-term-guard.sh',                 event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
   // Reviewer brief integrity: deny workflow-reviewer-* dispatches whose
   // brief doesn't cite the ledger + a verification verb + isn't trivially
   // short. Closes the orchestrator → reviewer brief-injection surface.
@@ -231,6 +242,8 @@ const HOOK_MANIFEST = [
   // never fires. Never denies; idempotent via a candidate-set fingerprint.
   { file: 'playwright-artifact-archiver.sh',      event: 'PostToolUse', matcher: 'Bash',       timeout: 30 },
   { file: 'subagent-return-schema-guard.sh',      event: 'PostToolUse', matcher: 'Agent',      timeout: 10 },
+  // Verdict half of the Stage 4c leash (see the PreToolUse entry above).
+  { file: 'composition-judge-gate.sh',            event: 'PostToolUse', matcher: 'Agent',      timeout: 5 },
   // Reviewer attestation integrity: WARN when a workflow-reviewer-*
   // approves without citing real on-disk file paths. PostToolUse can't
   // reverse the return, but the WARN ensures the audit trail captures
@@ -264,6 +277,9 @@ const HOOK_MANIFEST = [
   { file: 'compliance-sweep-exit-gate.sh',               event: 'SubagentStop',  matcher: null,          timeout: 10 },
 
   { file: 'selector-development-revert-on-stop.sh',      event: 'Stop', matcher: null,                 timeout: 10 },
+  // Stage 4c leash, Stop half: blocks Stop while a composition-judge loop
+  // is open on NOT SATISFIED below the cap (single-shot via stop_hook_active).
+  { file: 'composition-judge-gate.sh',                   event: 'Stop', matcher: null,                 timeout: 10 },
 
   // bookhive-benchmark — writes <project>/.achilles/run-summary.json at Stop so
   // the external benchmark (Feyzabora/bookhive-benchmark) has an authoritative

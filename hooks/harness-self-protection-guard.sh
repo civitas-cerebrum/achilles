@@ -52,6 +52,12 @@
 
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/harness-hooks.md\n  skills/contributing-to-achilles-protocol/SKILL.md §\"Workflow: adding a harness hook\""
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 [ -n "$JQ" ] || { echo "[harness-self-protection-guard] FATAL: jq not found." >&2; exit 1; }
@@ -103,7 +109,7 @@ pipeline completes, or dies with the session.
 
 Project-local .claude/skills/* writes are NOT gated by this guard.
 
-See: skills/achilles-protocol/references/harness-hooks.md$(achilles_scope_notice)" '{
+See: skills/achilles-protocol/references/harness-hooks.md${HOOK_REFS}$(achilles_scope_notice)" '{
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

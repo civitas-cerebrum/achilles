@@ -62,6 +62,12 @@
 
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/workflow-reviewer/SKILL.md"
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 [ -n "$JQ" ] || { echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found." >&2; exit 1; }
@@ -98,7 +104,7 @@ case "$RESPONSE" in
 esac
 
 emit_warn() {
-  "$JQ" -n --arg m "$1" '{
+  "$JQ" -n --arg m "$1${HOOK_REFS}" '{
     "systemMessage": $m,
     "suppressOutput": false
   }'

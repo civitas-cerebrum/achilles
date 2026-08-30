@@ -751,6 +751,21 @@ Any PR that adds a new public method to `Steps`, `ElementAction`, the matcher tr
 
 **Skill files updates** (`skills/achilles-protocol/SKILL.md`, `skills/contributing-to-achilles-protocol/SKILL.md`, etc.) are required only when the change affects a workflow stage, the contribution rules, or a hard rule. A new `verify*` method does not normally require a SKILL.md change.
 
+### 20. Universality — no client references
+
+Achilles is a **universal** quality-assurance medium serving many clients for UI, API, and DB test automation. Nothing in this repository — skills, references, hooks, schemas, fixtures, examples, commit messages, PR bodies — may reference a specific client's software, brand, product names, domain copy, selectors/test IDs, ticket prefixes, or engagement details.
+
+**Findings from client work are welcome ONLY after genericisation.** Describe the MECHANISM, never the instance:
+
+- ✓ "a controlled form resets its inputs on mount, deterministically wiping the first field filled"
+- ✗ "«client»'s signup form on /«brand-page» wipes the email field" — names the client, the page, the engagement
+
+Use the suite's `«placeholder»` convention for every example value (`«BASE_URL»`, `j-<slug>`, `<resource-001>`, `PageName`/`elementName`), and state evidence generically ("observed in a production suite"). Ticket keys in examples use neutral shapes (`<TICKET>`, `ABC-450`) — never a real client tracker prefix.
+
+This applies to **every contributor and every contribution**. Reviewers MUST reject violations — there is no "it's just one product name in an example" carve-out (see `../coverage-expansion/references/anti-rationalizations.md` §"Pattern: Client-reference leakage"). A violation that reaches `main` is a leak of engagement details into a repo other clients consume; the fix is a history-scrubbing chore nobody wants.
+
+**Harness backstop:** `hooks/client-term-guard.sh` (`PreToolUse:Write|Edit`, DENY) scans writes into this repo against an **operator-local** denylist at `<repo-root>/.achilles/client-terms.local.txt` (one term per line; gitignored — the terms themselves ARE client references, so the list must never live in the repo). Each operator maintains the list for their own engagements; with no denylist file the hook is a silent no-op and the rule is reviewer-enforced. Generic leakage beyond the operator's listed vocabulary is not mechanically detectable — that residual surface is tagged in the anti-rationalizations registry entry above.
+
 ---
 
 ## 📝 Contribution Handover
@@ -1036,6 +1051,8 @@ Why this shape:
 - **Underlying concern + upstream fix.** When a violation is driven by a real concern (e.g., parallel dispatch felt unsafe due to shared-DB races), acknowledge the concern and point at the upstream fix (per-test-user pattern in test-optimization §1.A) — NOT the symptom-level workaround. Otherwise the agent re-violates as soon as the same concern recurs.
 - **References last.** Two to four canonical doc paths. Don't bury them in prose; list them.
 
+**The `References:` block is MANDATORY on every runtime deny / warn / Stop-block message — not just recommended by the template.** Every message a hook can emit at runtime (a PreToolUse `permissionDecision: deny`/`ask` reason, a `systemMessage` warn, a Stop `decision: block` reason, a strict-mode `exit 2` stderr block) MUST end with a `References:` block of 1–3 repo-relative paths naming the canonical rule(s) the hook enforces — `skills/.../<file>.md` (optionally with a §section); when the hook enforces a machine-readable schema, cite the schema file AND the skill section that mandates it. A blocked agent must learn not just what to do next but which methodology section governs the rule. The reference implementation is `hooks/composition-judge-gate.sh`'s block; the house pattern is a single `HOOK_REFS` constant defined near the top of the hook and appended by the `emit_deny` / `emit_warn` helpers (before `achilles_scope_notice`, when the hook uses it), so every emission carries the block without per-site duplication. Mechanically enforced by the hook-references check in `scripts/lint-doc-drift.mjs` (runs in `prepack`): a deny/warn-capable hook with no runtime `References:` block or a cited path that does not resolve in the repo fails the lint. Pure writer/archiver hooks that never emit a user-facing message need nothing.
+
 Examples to read: `hooks/subagent-schema-preread-gate.sh` (PreToolUse gate citing a schema) and `hooks/commit-message-gate.sh` (DENY with rich error context; Option A / Option B layout). The earlier reference implementations of the in-flight-composer registry pattern (a dispatch-guard registrar paired with a direct-compose-block consumer) were removed in the 0.3.6 cleanup; the pattern itself is documented here for future contributors.
 
 ### Hook checklist
@@ -1045,6 +1062,7 @@ When opening a PR that adds or modifies a hook:
 - [ ] Documentation header follows the unified template (Hook / Mode / State / Env / Rule / Why / Canonical reference / Failure → action).
 - [ ] `emit_deny` / `emit_warn` helpers used consistently — no inline `jq -n --arg` calls in the body.
 - [ ] Error messages follow the action-first template (headline → Do this instead → What was wrong → upstream fix → References).
+- [ ] **Every runtime deny / warn / Stop-block message ends with a `References:` block** of 1–3 repo-relative `skills/.../<file>.md` paths (plus the schema file, when the hook enforces one) naming the canonical rule — typically via a single `HOOK_REFS` constant appended in the emit helpers. `scripts/lint-doc-drift.mjs` fails the build otherwise, and also fails on cited paths that don't resolve.
 - [ ] Test cases added to `hooks/tests/cases/<NN>-<topic>.sh` covering: happy-path allow, each rule's deny/warn path, exempt cases, edge cases (empty inputs, special characters, alternate runner forms, etc.).
 - [ ] `bash hooks/tests/run.sh` reports green on the new case file plus all existing cases.
 - [ ] If the hook records state, the state-file path and shape are documented in the canonical reference.

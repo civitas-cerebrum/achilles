@@ -26,6 +26,12 @@
 
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"\n  skills/achilles-protocol/references/harness-hooks.md"
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 [ -n "$JQ" ] || { echo "[ledger-integrity-chain] FATAL: jq not found." >&2; exit 1; }
@@ -44,7 +50,7 @@ EVENT=$(echo "$INPUT" | "$JQ" -r '.hook_event_name // empty' 2>/dev/null || echo
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 
 emit_deny() {
-  "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$r}}'
+  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$r}}'
 }
 
 # Deny any direct Write/Edit to the sidecar itself (only this hook's Post

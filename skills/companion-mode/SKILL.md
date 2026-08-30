@@ -170,6 +170,7 @@ Write **one** spec file under `tests/e2e/evidence/<slug>-<ts>/spec.ts` (the bund
 
 - If a needed selector is missing from `page-repository.json`, present the proposed entry to the user and wait for approval (per Rule 2 of `achilles-protocol`). The only exception is `autonomousMode: true`, identical to the orchestrator's autonomous-mode contract.
 - The proposed entry is added to the project's `page-repository.json` only if the user accepts; otherwise it lives inline in the bundle's spec.
+- Bundle-scoped inline proposals are the suite's **one documented exception** to the durable-spec inline-selector ban — labelled citation, canonical text: `../achilles-protocol/references/test-composition-standards.md` §3.1 (they graduate to repo entries at Stage-3 graduation).
 
 ---
 
@@ -611,6 +612,7 @@ The full mechanics live in §"Phase 6: Report and automation offer". This sectio
 
 Hard invariants across all paths:
 
+- **Graduated specs pass the Stage 4c composition judge.** Every Stage-3 graduation path lands in `achilles-protocol` Stage 3→4, whose Stage 4c dispatches the independent `composition-judge-` review before commit (`../achilles-protocol/references/test-composition-standards.md` §4). Evidence bundles themselves are not composing exits — no judge runs on a bundle.
 - The bundle is **never** moved, deleted, or modified after Phase 5. It stays in `tests/e2e/evidence/<slug>-<ts>/` as the audit trail and is referenced (not copied) by the receiving skill in its commit message or report.
 - Companion mode does **not** chain handoffs. After invoking Stage 3, `onboarding`, or `bug-report`, companion mode is done.
 - Companion mode **never** performs a Phase-6 handoff without an explicit `yes / (a) / (b)` from the user. Vague replies get a clarifying re-prompt.

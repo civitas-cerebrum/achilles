@@ -484,7 +484,7 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 | **d. Assertion re-baseline** | **Propose** | Hardcoded literal no longer matches; UI state around the assertion is otherwise correct | Present old vs new value to the operator; apply on approval |
 | **e. State isolation** | **Auto** | Test passes when run alone, fails when run after specific predecessors (verified empirically) | Add fresh context / storage reset / cleanup hook; re-run in suite order |
 | **f. Flake quarantine** | **Report** | Flake persisted after two heal attempts of different strategies; root cause unclear | Tag test `@flaky`, append an entry to the quarantine ledger (see §Quarantine ledger below), add to repair summary with diagnostic notes; do NOT silently skip |
-| **g. Whole-test rewrite** | **Operator-aligned** | Flow changed so fundamentally that the scenario no longer maps to the app as-is; no incremental heal applies | Present to operator; on approval, invoke `test-composer` with journey context. Never regenerate without alignment. |
+| **g. Whole-test rewrite** | **Operator-aligned** | Flow changed so fundamentally that the scenario no longer maps to the app as-is; no incremental heal applies | Present to operator; on approval, invoke `test-composer` with journey context. Never regenerate without alignment. The rewrite exits through `test-composer` Step 6c's composition judge (`../achilles-protocol/references/test-composition-standards.md` §4). |
 | **h0. Known defect — no heal, no rerun** | **Report** | The test (or its describe) carries `@known-defect` and the failure signature matches the filed defect | Terminal on sight: do not reproduce, do not experiment, do not heal, do not rerun. Record it as a known defect in the summary and move on. A *different* error behind the tag is a second, unfiled problem — diagnose that one normally. A `@known-defect` test that passes is an anomaly, never a silent green: prove the fix with the stability bar (3/3 targeted + 5/5 suite-order green) and drop the tag — or, if any of those runs is red, the pass is nondeterministic: retag `@flaky` with a quarantine-ledger entry. Contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2 |
 | **h. Documented-quirk match — no heal** | **Report** | The observed failure shape exactly matches a documented quirk in `app-context.md` (configuration-dependent option subsets, redirect-vs-popup auth patterns, vendor-aliased options, etc.) **OR** matches a documented app-degradation signal (a degradation-banner copy string from `app-context.md`'s documented-banners list, the documented hanging spinner-sentinel custom element, 5xx in network capture) | Report observed-vs-documented diff; do NOT modify the test. The skip / failure is correct; the regression is in the app or in the documentation. Cross-link the relevant `app-context.md` section in the report. |
 | **i. Dependency / framework upgrade** | **Propose** | Stage 3 classified the failure as a **framework / dependency defect**: the failing frames run through a dependency, Stage 0a shows the run resolved an older version than one where the behaviour differs, and the spec + app are both correct | Report the version delta (run's version → target version), cite the changelog / release entry or the passing re-run on the newer version, and propose the bump — a lockfile change, not a spec change. Do NOT edit the test, the waits, or the element repository. Verification is a re-run on the bumped version, and for Entrypoint C the next pipeline run. If the defect is not yet fixed upstream, this becomes a package-level report (see `contributing-to-achilles-protocol`) — still not a test edit. |
@@ -575,9 +575,9 @@ If triage attributes the failure to a fragile selector (text drift, position-dep
 
 1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly — refer to [`../achilles-protocol/references/api-reference.md`](../achilles-protocol/references/api-reference.md) for all method signatures.
 2. **If the fix requires new selectors:** Stage 4b has produced the proposal. For Auto strategies the update applies directly; for Propose strategies confirm with the operator first.
-3. **Run the test 3-5 times** to confirm stability. A single pass is not sufficient — flaky tests are worse than failing tests.
+3. **Run the test until the stability bar is met** — 3 consecutive green for a fix to a new or edited test; 5 consecutive for a heal of a previously-flaky test (suite order for flaky heals, per `test-repair`). A single pass is not sufficient — flaky tests are worse than failing tests.
    ```bash
-   # Run the specific test file multiple times
+   # Run the specific test file repeatedly (5 shown — the flaky-heal bar; 3 suffices for a non-flaky fix)
    for i in {1..5}; do npx playwright test <test-file> --reporter=line; done
    ```
 4. **Only commit after all stability runs pass.**
@@ -591,7 +591,7 @@ Present the bug report to the user with this structure:
 
 > **Application Bug Report**
 >
-> **Test:** `tests/example.spec.ts` — TC_001: Login flow
+> **Test:** `tests/example.spec.ts` — TC-0001 · Login flow
 > **Step:** "Verify dashboard loads after login"
 >
 > **Expected:** Dashboard page loads with welcome message and user stats
@@ -619,7 +619,7 @@ Do NOT modify the test to work around the bug. Do NOT skip the test. Do NOT add 
 
 ## Stability Validation Protocol
 
-A fix is confirmed only when the test passes **3-5 consecutive runs** without failure. This catches:
+A fix is confirmed only when it meets the two-number stability bar — **3 consecutive green runs for any new or edited test; 5 consecutive green runs for a heal of a previously-flaky test** (in suite order, per `test-repair`). This section is the canonical home of the bar (resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.3). It catches:
 - Race conditions that pass 80% of the time
 - Timing-sensitive tests that work on fast machines but fail under load
 - State leakage between tests that only manifests on repeated runs

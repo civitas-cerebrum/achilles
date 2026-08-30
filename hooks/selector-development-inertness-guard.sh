@@ -33,6 +33,12 @@
 
 set -euo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/selector-development/SKILL.md\n  skills/selector-development/references/inertness-contract.md"
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 if [ -z "$JQ" ]; then
@@ -145,6 +151,6 @@ fi
 
 suffix="The only allowed edit is appending exactly one ${convention} attribute (kebab-case value) to one opening tag, with no other byte changes."
 echo "$result" | "$JQ" -c \
-  --arg sfx "$suffix$(achilles_scope_notice)" \
+  --arg sfx "$suffix${HOOK_REFS}$(achilles_scope_notice)" \
   '{hookSpecificOutput:{permissionDecision:"deny",permissionDecisionReason:("selector-development-inertness-guard: " + .reason + ". " + (.detail // "") + ". " + $sfx)}}'
 exit 0
