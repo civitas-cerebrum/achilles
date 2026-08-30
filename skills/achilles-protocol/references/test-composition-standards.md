@@ -98,7 +98,7 @@ Stages 4a (optimization) and 4b (API compliance) are author-side self-review. **
 - Verdict is **SATISFIED | NOT SATISFIED**, carried in the `reviewer-inloop` return shape (`schemas/subagent-returns/reviewer-inloop.schema.json`): `status: greenlight` ⇔ SATISFIED; `status: improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED with required changes. Returns open with the §2.0 handover envelope of [`subagent-return-schema.md`](subagent-return-schema.md). No new schema — the judge reuses the existing reviewer verdict shape.
 - On NOT SATISFIED: the **author** fixes the must-fix items, re-runs 4a and 4b if code changed, then re-dispatches a **fresh** judge.
 - **Bound: 3 consecutive NOT SATISFIED verdicts → stop and escalate to the operator** with the accumulated must-fix lists. This mirrors `workflow-reviewer`'s 3-cycle reject cap (`../../workflow-reviewer/SKILL.md` §"3-cycle reject cap"); an author↔judge loop that cannot converge in 3 cycles has a disagreement only the operator can settle.
-- Harness backstop: `hooks/composition-judge-gate.sh` records `composition-judge-` dispatches and verdicts per session and WARNs at Stop while a judge loop is open on a NOT-SATISFIED verdict below the cap. Arming the loop in the first place (dispatching the judge at all) is not mechanically detectable and stays markdown-only — tagged in `../../coverage-expansion/references/anti-rationalizations.md` §"Pattern: `markdown-only` deferral — judge-loop arming".
+- Harness backstop: `hooks/composition-judge-gate.sh` records `composition-judge-` dispatches and verdicts per session and blocks Stop (`decision: block`; single-shot via `stop_hook_active`) while a judge loop is open on a NOT-SATISFIED verdict below the cap — at the cap, Stop is allowed because operator escalation is the sanctioned exit. Arming the loop in the first place (dispatching the judge at all) is not mechanically detectable and stays markdown-only — tagged in `../../coverage-expansion/references/anti-rationalizations.md` §"Pattern: `markdown-only` deferral — judge-loop arming".
 
 ### Where Stage 4c applies
 
@@ -107,10 +107,12 @@ Stages 4a (optimization) and 4b (API compliance) are author-side self-review. **
 | `achilles-protocol` Stage 4 (interactive + autonomous) | 4c after 4a/4b, before commit — see `stages-protocol.md` §"Stage 4c" |
 | `test-composer` Step 6 | Step 6c after 6a/6b. Under `coverage-expansion` dual-stage, the Stage-B reviewer cycle satisfies 4c **provided its brief includes dimension 4** — the loop is not double-imposed |
 | `onboarding` Phase 3 exit | Each happy-path spec's composing cycle ends with 4c (via `test-composer` Step 6c) |
-| `ticket-driven-testing` §7 | Its §8/§8b adversarial machinery (five probe missions + negative control) **counts as the judge loop** — do not impose a second 4c on top; §8b's dispatch discipline is the equivalence |
+| `ticket-driven-testing` §7 | Its §8/§8b adversarial machinery (six probe missions + negative control) **counts as the judge loop** — do not impose a second 4c on top; §8b's dispatch discipline is the equivalence |
 | `companion-mode` Stage-3 graduation | Graduated specs pass through `achilles-protocol` Stage 4, which now includes 4c. Evidence bundles themselves are NOT composing exits — no judge on a bundle |
 | `bug-discovery` Phase 6 | Reproduction specs get a 4c judge before the Phase 7 report cites them |
 | `test-repair` / `self-repair` whole-rewrite heals (heal type g) | The operator-approved rewrite goes through `test-composer`, whose Step 6c applies. Incremental heals do NOT trigger 4c — their gate is the stability rule (§3.3) |
+| `contract-testing` / `database-testing` standalone runs | A standalone authoring session (direct user invocation) ends in a 4c judge dispatch after its Stage-4b exit sweep; specs authored inside a composer / ticket-driven flow are covered by that flow's judge — not double-imposed |
+| `performance-testing` / `perf-onboarding` | The perf pipeline's `perf-reviewer-*` phase gates (approve \| reject \| escalate per `schemas/subagent-returns/perf-reviewer.schema.json`) **count as the judge loop** for k6 scenario composition — do not impose a second 4c. Write-load data hygiene (`../../performance-testing/references/test-data.md` §"Write-load data hygiene") is the perf instantiation of `test-data-conventions` Rule 9 |
 
 ## §5 Smoke vs e2e depth doctrine
 

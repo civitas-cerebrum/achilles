@@ -449,7 +449,7 @@ The author of freshly-composed tests decides the mandatory Stage 4c composition 
 **Reality:** 4a/4b are author-side self-review; the judge is the second reader the author cannot be — the same separation-of-duties argument as Stage B and `ticket-driven-testing` §8b, and "obviously fine" is precisely the state self-review cannot distinguish from "looks fine to its author". Passing tests are the judge's *precondition*, not its substitute: three of its four dimensions (intent coverage, oracle strength, data feasibility) are invisible to a green run. The commit gate is judge-SATISFIED, not tests-green.
 
 **Hooks that catch this:**
-- `hooks/composition-judge-gate.sh` — records `composition-judge-` dispatches and their verdicts per session; WARNs at Stop while a judge loop stands open on a NOT-SATISFIED verdict below the 3-reject cap (abandoning an in-flight loop).
+- `hooks/composition-judge-gate.sh` — records `composition-judge-` dispatches and their verdicts per session; blocks Stop (`decision: block`, single-shot via `stop_hook_active`) while a judge loop stands open on a NOT-SATISFIED verdict below the 3-reject cap (abandoning an in-flight loop); at the cap Stop is allowed — operator escalation is the sanctioned exit.
 - `hooks/subagent-schema-preread-gate.sh` / `subagent-return-schema-guard.sh` — `composition-judge-*` is schema-mapped to `reviewer-inloop.schema.json`, so malformed judge briefs/returns are caught mechanically.
 - (markdown-only for the arming half) — see the deferral entry below: never dispatching a judge at all is not mechanically detectable.
 

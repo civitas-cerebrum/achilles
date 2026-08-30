@@ -170,7 +170,7 @@ Write **one** spec file under `tests/e2e/evidence/<slug>-<ts>/spec.ts` (the bund
 
 - If a needed selector is missing from `page-repository.json`, present the proposed entry to the user and wait for approval (per Rule 2 of `achilles-protocol`). The only exception is `autonomousMode: true`, identical to the orchestrator's autonomous-mode contract.
 - The proposed entry is added to the project's `page-repository.json` only if the user accepts; otherwise it lives inline in the bundle's spec.
-- Bundle-scoped inline proposals are the suite's **one documented exception** to the durable-spec inline-selector ban — they graduate to repo entries at Stage-3 graduation (`../achilles-protocol/references/test-composition-standards.md` §3.1).
+- Bundle-scoped inline proposals are the suite's **one documented exception** to the durable-spec inline-selector ban — labelled citation, canonical text: `../achilles-protocol/references/test-composition-standards.md` §3.1 (they graduate to repo entries at Stage-3 graduation).
 
 ---
 

@@ -112,7 +112,7 @@ Which tests may inject state at all is the depth doctrine — canonical in [`../
 
 ### 9. No prod pollution
 
-Side-effecting data operations — real emails, registrations, orders, anything that reaches third parties or humans — are **gated on a test environment**. On environments not declared test-safe (Step 0 discovery, item c), the side-effecting scenario is excluded **with a named annotation** (`test.skip(true, 'excluded: order placement is side-effecting and <env> is not a test environment')`), never run "just once to check".
+Side-effecting data operations — real emails, registrations, orders, anything that reaches third parties or humans — are **gated on a test environment**. On environments not declared test-safe (Step 0 discovery, item c), the side-effecting scenario is excluded **with a named annotation** (`test.skip(true, 'excluded: order placement is side-effecting and <env> is not a test environment')`), never run "just once to check". Load tests instantiate this rule via `performance-testing/references/test-data.md` §"Write-load data hygiene".
 
 ### 10. Hydration-safe data entry: fill → correct-ALL → verify-ALL
 

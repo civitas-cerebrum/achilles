@@ -213,7 +213,9 @@ The exact seed list comes from `app-context.md`'s `Stable seed resources`. Do no
 // before
 const email = 'new-user@test.com';
 
-// after
+// after — inside the test body, never at module scope: retries re-run the
+// body only, so a module-scope value collides with the prior attempt's
+// state (test-data-conventions Rule 1)
 const email = `new-user-${Date.now()}@test.com`;
 ```
 

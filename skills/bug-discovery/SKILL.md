@@ -403,7 +403,7 @@ tests/
 ### Test Conventions
 
 - Uses Steps API from `./fixtures/base` — same as all other tests
-- All selectors in `page-repository.json` — no inline selectors
+- All selectors in `page-repository.json` — no inline selectors (citation — canon: `../achilles-protocol/references/test-composition-standards.md` §3.1)
 - Test names describe the bug: `test('@bug-discovery double-click submit creates duplicate record')`
 - Tests grouped in `test.describe('Bug Discovery — [category]')` blocks
 - Each test has a JSDoc comment:

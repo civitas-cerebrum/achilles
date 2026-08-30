@@ -145,10 +145,10 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
 ### 5. Do NOT invent type definitions
 - If a type is missing, tell the user. Do not create `.d.ts` stubs or workarounds.
 
-### 6. Prefer element repository entries over inline selectors
-- When possible, add selectors to `page-repository.json` and reference them by name.
+### 6. Selectors live in the element repository — bundle-scoped exception only
+- Add selectors to `page-repository.json` and reference them by name.
 - Use `{ child: { pageName: 'PageName', elementName: 'elementName' } }` over `{ child: 'td:nth-child(2)' }`.
-- The rule is scope-based, not a preference: **durable suite specs — hard ban.** Every selector in a committed spec lives in `page-repository.json` (the kernel-resident rule below). The one documented exception is `companion-mode` evidence bundles, whose bundle-scoped inline proposals graduate to repo entries at Stage-3 graduation — see [`references/test-composition-standards.md`](references/test-composition-standards.md) §3.1.
+- **Durable suite specs: hard ban on inline selectors** (the kernel-resident rule below). Scope and the one documented exception (`companion-mode` bundle-scoped proposals, graduating to repo entries at Stage-3 graduation) — labelled citation, canonical text: [`references/test-composition-standards.md`](references/test-composition-standards.md) §3.1.
 
 ### 7. When a test fails — locally OR in a pipeline: dispatch the failure-diagnosis protocol
 - `failure-diagnosis` is **subagent-only**. Detect the failure here, dispatch a subagent, let the subagent load the skill. Do not inline the pipeline in this transcript.

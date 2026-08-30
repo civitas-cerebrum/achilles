@@ -68,6 +68,8 @@ The caller (user or `coverage-expansion`) passes `journey=<id>` referencing an e
    - **P1** → happy-path + error-states + edge-cases + mobile.
    - **P2** → happy-path + one error-state + one data-verification check.
    - **P3** → smoke test (loads, key elements present).
+
+   Depth per variant follows the smoke-vs-e2e doctrine — the journey's UI walk is the subject of exactly one e2e test; derivatives shortcut prerequisites via API/state injection and assert only their own surface (`../achilles-protocol/references/test-composition-standards.md` §5).
 4. List existing tests that already cover any step of this journey (from `npx playwright test --list`). These are the starting point — add variants, do not duplicate.
 
 Do NOT read other journey blocks. Do NOT hold the whole map in context. Do NOT compute cross-app priority or gap analysis — that is the caller's job.
@@ -107,7 +109,7 @@ A spec file contains exactly the tests its journey expectations and partition an
 
 **Implementation rules:**
 - Every test must use the Steps API from `./fixtures/base`
-- Every element selector goes in `page-repository.json` — no inline selectors in test code
+- Every element selector goes in `page-repository.json` — no inline selectors in test code (kernel mirror — canon: `../achilles-protocol/SKILL.md` §"Hard rules — kernel-resident"; scope + exception: `../achilles-protocol/references/test-composition-standards.md` §3.1)
 - Use `test.describe.configure({ timeout: 60_000 })` on every describe block
 - **File-level serial mode is mandatory for tenant-mutating specs — and carries a `// serial-deliberate: <reason>` comment.** If the spec issues any POST / PUT / PATCH / DELETE to a mutable endpoint, the file **must** open with `test.describe.configure({ mode: 'serial' })` at the top of the file — before any `test.describe(...)` or `test(...)` block — with a `// serial-deliberate: <reason>` comment on the line above it stating why serial is required. Stage 4a's §6 review treats that annotation as satisfying review (no `stage4a:serial-mode-review` flag — see `../achilles-protocol/references/test-optimization.md` §6; resolution record: `test-composition-standards.md` §3.4). Rationale: parallel Playwright workers sharing a credential against a single tenant produce random CSRF-token invalidations when concurrent mutating requests race against the session-bound token. Serial mode at the file level eliminates the race without capping global parallelism. Follow-up (not landed in this PR): add a lint rule or pre-commit check that rejects any spec with a mutating request that lacks the serial directive.
 
@@ -275,7 +277,7 @@ If any non-compliance is found (wrong argument order, deprecated APIs, missing o
 A lightweight self-review checklist for this journey only:
 
 - Every test uses the Steps API from `./fixtures/base` (no raw `page.locator(...)` in test files).
-- Every element selector lives in `page-repository.json` (no inline selectors in spec files).
+- Every element selector lives in `page-repository.json` — no inline selectors in spec files (citation — canon: `../achilles-protocol/references/test-composition-standards.md` §3.1).
 - Verification methods use correct option shapes (`{ exactly, greaterThan, lessThan }` for `verifyCount`; bare `verifyText()` for "not empty").
 - No use of deprecated methods or option shapes flagged in the API reference.
 - Every test ends with a verification that proves the action's effect — not a tautology.
