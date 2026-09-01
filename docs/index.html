@@ -114,6 +114,17 @@
     }
     .nav-links a:hover { color: var(--white); }
 
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+
+    .nav-doctrine {
+      color: var(--emerald-bright); border: 1px solid var(--border-glow);
+      border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600;
+      text-decoration: none; cursor: pointer;
+      background: rgba(16, 185, 129, 0.08);
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    .nav-doctrine:hover { background: rgba(16, 185, 129, 0.16); box-shadow: 0 0 12px rgba(16, 185, 129, 0.18); }
+
     .nav-cta {
       background: linear-gradient(135deg, var(--emerald-dim), var(--purple-dim));
       color: #fff; border: none; border-radius: 8px;
@@ -513,6 +524,7 @@
       .phases { grid-template-columns: repeat(2, 1fr); }
       .diffs-grid { grid-template-columns: 1fr 1fr; }
       .nav-links { display: none; }
+      .nav-doctrine { display: none; }
       .phase-arrow { display: none; }
       .phase { padding: 28px 24px; }
     }
@@ -562,7 +574,10 @@
       <li><a href="#pipeline">Pipeline</a></li>
       <li><a href="#why">Why Achilles</a></li>
     </ul>
-    <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
+    <div class="nav-actions">
+      <a class="nav-doctrine" href="agentic-qa.html">Agentic QA</a>
+      <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
+    </div>
   </div>
 </nav>
 

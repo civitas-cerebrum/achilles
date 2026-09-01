@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentic Shift-Left — Autonomous Quality Assurance Doctrine</title>
+  <meta name="description" content="A doctrine for autonomous quality assurance. When features ship at agent speed, QA must be agentic too." />
+  <meta property="og:title" content="Agentic Shift-Left — A Doctrine for Autonomous QA" />
+  <meta property="og:description" content="Development is agentic. Quality assurance must be too. The methodology behind Achilles and Element Interactions." />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#0a0a0b" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* ── Civitas Cerebrum brand palette ──────────────────────────────── */
+      --bg:           #0a0a0b;
+      --bg-deep:      #050505;
+      --bg-2:         #0f0f11;
+      --bg-card:      rgba(22, 22, 26, 0.72);
+      --border:       rgba(255, 255, 255, 0.07);
+      --border-glow:  rgba(16, 185, 129, 0.45);
+      --emerald:      #10b981;
+      --emerald-bright:#34d399;
+      --emerald-dim:  #059669;
+      --purple:       #a855f7;
+      --purple-dim:   #9333ea;
+      --white:        #f5f5f7;
+      --muted:        #8a8a96;
+      --font:        'Inter', system-ui, sans-serif;
+      --mono:        'JetBrains Mono', monospace;
+      --font-display:'Fraunces', Georgia, serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--white);
+      font-family: var(--font);
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* ── NEURAL CANVAS ─────────────────────────────────────────────────────── */
+    #neural-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 220vh;
+      z-index: 0;
+      opacity: 0.5;
+      pointer-events: none;
+      will-change: transform;
+      --parallax-y: 0px;
+      transform: translate3d(0, var(--parallax-y), 0) scale(1.2);
+    }
+
+    /* ── LAYOUT ────────────────────────────────────────────────────────────── */
+    .container { max-width: 1160px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+    section { padding: 80px 0; }
+
+    /* ── NAV ───────────────────────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(10, 10, 11, 0.82);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border);
+      transition: background 0.3s;
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-mark {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--emerald), var(--purple));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 16px; color: #050505;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
+    }
+
+    .logo-text { font-family: var(--font-display); font-weight: 400; font-size: 18px; letter-spacing: -0.01em; color: var(--white); }
+    .logo-sub  { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: -2px; }
+
+    .nav-links { display: flex; gap: 32px; list-style: none; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--white); }
+
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+
+    .nav-doctrine {
+      color: var(--emerald-bright); border: 1px solid var(--border-glow);
+      border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600;
+      text-decoration: none; cursor: pointer;
+      background: rgba(16, 185, 129, 0.14);
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    .nav-doctrine:hover { background: rgba(16, 185, 129, 0.22); box-shadow: 0 0 12px rgba(16, 185, 129, 0.18); }
+
+    .nav-cta {
+      background: linear-gradient(135deg, var(--emerald-dim), var(--purple-dim));
+      color: #fff; border: none; border-radius: 8px;
+      padding: 8px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s, box-shadow 0.2s;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.16);
+    }
+    .nav-cta:hover { opacity: 0.92; box-shadow: 0 0 16px rgba(16, 185, 129, 0.28); }
+
+    /* ── HERO ──────────────────────────────────────────────────────────────── */
+    #hero {
+      min-height: 80vh;
+      display: flex; flex-direction: column;
+      justify-content: center;
+      position: relative;
+      padding-top: 100px;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 1400px; height: 1000px;
+      background:
+        radial-gradient(ellipse 44% 50% at center,
+          rgba(16, 185, 129, 0.28) 0%,
+          rgba(16, 185, 129, 0.21) 12%,
+          rgba(16, 185, 129, 0.155) 24%,
+          rgba(16, 185, 129, 0.110) 35%,
+          rgba(16, 185, 129, 0.075) 46%,
+          rgba(16, 185, 129, 0.048) 57%,
+          rgba(16, 185, 129, 0.028) 68%,
+          rgba(16, 185, 129, 0.014) 79%,
+          rgba(16, 185, 129, 0.005) 90%,
+          transparent 100%),
+        radial-gradient(ellipse 78% 75% at center,
+          rgba(168, 85, 247, 0.08) 0%,
+          rgba(168, 85, 247, 0.05) 28%,
+          rgba(168, 85, 247, 0.025) 55%,
+          rgba(168, 85, 247, 0.010) 78%,
+          transparent 95%);
+      filter: blur(70px);
+      pointer-events: none;
+      will-change: transform;
+      z-index: -1;
+    }
+
+    .hero-content {
+      text-align: center;
+      max-width: 860px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid var(--border-glow);
+      border-radius: 100px;
+      padding: 6px 16px; margin-bottom: 40px;
+      font-size: 13px; color: var(--emerald-bright); font-weight: 500;
+      background: rgba(16, 185, 129, 0.08);
+      backdrop-filter: blur(8px);
+    }
+    .hero-badge span { width: 7px; height: 7px; background: var(--emerald); border-radius: 50%; animation: pulse 2s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+      50%       { opacity: 0.7; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    }
+
+    .hero-headline {
+      font-family: var(--font-display);
+      font-size: clamp(36px, 5vw, 64px);
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      line-height: 1.1;
+      margin-bottom: 24px;
+    }
+
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--muted); line-height: 1.7;
+      max-width: 700px; margin: 0 auto 48px;
+    }
+
+    /* ── SECTION HEADINGS ──────────────────────────────────────────────────── */
+    .section-tag {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--emerald); margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(28px, 3.5vw, 44px); font-weight: 400;
+      letter-spacing: -0.01em; line-height: 1.15; margin-bottom: 20px;
+    }
+
+    .section-desc {
+      font-size: 17px; color: var(--muted); max-width: 720px; line-height: 1.7;
+    }
+
+    .section-header { margin-bottom: 48px; }
+
+    /* ── PROSE CONTENT ─────────────────────────────────────────────────────── */
+    .prose {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    .prose p {
+      font-size: 16px; line-height: 1.8; color: rgba(245, 245, 247, 0.85);
+      margin-bottom: 20px;
+    }
+
+    .prose strong { color: var(--white); font-weight: 600; }
+
+    .prose em { color: var(--emerald-bright); font-style: italic; }
+
+    .prose h3 {
+      font-family: var(--font-display);
+      font-size: 22px; font-weight: 400;
+      letter-spacing: -0.01em;
+      margin: 48px 0 16px;
+      color: var(--white);
+    }
+
+    .prose h3:first-child { margin-top: 0; }
+
+    /* ── STAGE CARDS ───────────────────────────────────────────────────────── */
+    .stage-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      margin: 40px 0;
+    }
+
+    .stage-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      backdrop-filter: blur(12px);
+      transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+      position: relative; overflow: hidden;
+    }
+
+    .stage-card::before {
+      content: '';
+      position: absolute;
+      top: -80px; right: -80px;
+      width: 200px; height: 200px;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .stage-card:hover { transform: translateY(-4px); border-color: var(--border-glow); box-shadow: 0 8px 26px rgba(16, 185, 129, 0.12); }
+    .stage-card:hover::before { opacity: 1; }
+
+    .stage-card:nth-child(odd)::before  { background: radial-gradient(circle, rgba(16, 185, 129, 0.09) 0%, transparent 75%); }
+    .stage-card:nth-child(even)::before { background: radial-gradient(circle, rgba(168, 85, 247, 0.085) 0%, transparent 75%); }
+
+    .stage-num {
+      font-family: var(--mono); font-size: 12px; font-weight: 600;
+      color: var(--emerald); margin-bottom: 8px; opacity: 0.85;
+    }
+
+    .stage-label {
+      display: inline-block; margin-bottom: 10px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; padding: 3px 10px; border-radius: 100px;
+    }
+
+    .stage-label.human  { color: var(--purple); background: rgba(168, 85, 247, 0.12); }
+    .stage-label.auto   { color: var(--emerald-bright); background: rgba(16, 185, 129, 0.12); }
+    .stage-label.hybrid { color: #f5f5f7; background: rgba(255, 255, 255, 0.08); }
+
+    .stage-title {
+      font-family: var(--font-display); font-size: 20px; font-weight: 400;
+      margin-bottom: 10px; letter-spacing: -0.01em;
+    }
+
+    .stage-desc { font-size: 14px; color: var(--muted); line-height: 1.7; }
+
+    /* ── ROLE TABLE ────────────────────────────────────────────────────────── */
+    .doctrine-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 32px 0;
+      font-size: 14px;
+    }
+
+    .doctrine-table thead th {
+      text-align: left;
+      padding: 14px 20px;
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--emerald);
+      border-bottom: 1px solid var(--border-glow);
+      background: rgba(16, 185, 129, 0.05);
+    }
+
+    .doctrine-table tbody td {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      color: rgba(245, 245, 247, 0.85);
+      vertical-align: top;
+    }
+
+    .doctrine-table tbody td:first-child {
+      font-weight: 600; color: var(--white);
+      white-space: nowrap;
+    }
+
+    .doctrine-table tbody tr:hover td {
+      background: rgba(16, 185, 129, 0.04);
+    }
+
+    .doctrine-table-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+    }
+
+    /* ── CODE BLOCK ────────────────────────────────────────────────────────── */
+    .code-block {
+      background: rgba(16, 16, 18, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin: 32px 0;
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.8;
+      color: var(--emerald-bright);
+      overflow-x: auto;
+    }
+
+    .code-block .kw   { color: var(--purple); }
+    .code-block .str  { color: var(--emerald-bright); }
+    .code-block .fn   { color: var(--white); }
+    .code-block .cm   { color: var(--muted); }
+
+    /* ── LAYER CARDS ───────────────────────────────────────────────────────── */
+    .layer-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin: 32px 0;
+    }
+
+    .layer-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      backdrop-filter: blur(8px);
+      transition: border-color 0.3s, transform 0.3s;
+    }
+
+    .layer-card:hover { border-color: var(--border-glow); transform: translateY(-3px); }
+
+    .layer-name {
+      font-family: var(--font-display); font-size: 17px; font-weight: 400;
+      margin-bottom: 6px; letter-spacing: -0.01em; color: var(--white);
+    }
+
+    .layer-owns { font-size: 13px; color: var(--emerald-bright); margin-bottom: 8px; font-weight: 500; }
+    .layer-when { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    /* ── GATE TABLE ────────────────────────────────────────────────────────── */
+    .gate-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .gate-row > div {
+      padding: 16px 20px;
+      background: var(--bg-card);
+      font-size: 14px;
+    }
+
+    .gate-table-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+      margin: 32px 0;
+    }
+
+    .gate-header > div {
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--emerald);
+      background: rgba(16, 185, 129, 0.05) !important;
+    }
+
+    .gate-name { font-weight: 600; color: var(--white); }
+    .gate-blocks { color: rgba(245, 245, 247, 0.85); }
+    .gate-pre { color: var(--muted); }
+
+    /* ── GUARD PHASES ──────────────────────────────────────────────────────── */
+    .guard-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      margin: 32px 0;
+    }
+
+    .guard-phase {
+      background: var(--bg-card);
+      padding: 28px 24px;
+      position: relative;
+      transition: background 0.3s;
+      backdrop-filter: blur(8px);
+    }
+
+    .guard-phase:hover { background: rgba(26, 26, 32, 0.92); }
+
+    .guard-name { font-family: var(--font-display); font-size: 15px; font-weight: 400; margin-bottom: 8px; letter-spacing: -0.01em; color: var(--white); }
+    .guard-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    .guard-arrow {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      font-size: 26px; line-height: 1; font-weight: 300;
+      color: var(--emerald); opacity: 0.85; z-index: 2;
+    }
+
+    .guard-grid > .guard-phase:last-child .guard-arrow { display: none; }
+
+    /* ── QUOTE ─────────────────────────────────────────────────────────────── */
+    .quote-section { padding: 80px 0; }
+
+    .quote-block {
+      max-width: 820px; margin: 0 auto;
+      text-align: center;
+      border: 1px solid var(--border-glow);
+      border-radius: 28px;
+      padding: 56px 64px;
+      background: rgba(16, 185, 129, 0.05);
+      backdrop-filter: blur(12px);
+      position: relative;
+    }
+
+    .quote-mark {
+      font-family: var(--font-display);
+      font-size: 96px;
+      line-height: 0.8;
+      color: var(--emerald);
+      opacity: 0.5;
+      margin-bottom: -16px;
+    }
+
+    .quote-text {
+      font-size: clamp(20px, 2.5vw, 28px);
+      font-weight: 600; line-height: 1.5;
+      letter-spacing: -0.02em; margin: 24px 0;
+      color: var(--white);
+    }
+
+    .quote-caption { font-family: var(--font-display); font-size: 14px; color: var(--muted); }
+
+    /* ── BULLET LIST ───────────────────────────────────────────────────────── */
+    .prose ul {
+      list-style: none;
+      margin: 24px 0;
+      padding: 0;
+    }
+
+    .prose ul li {
+      position: relative;
+      padding-left: 24px;
+      margin-bottom: 14px;
+      font-size: 16px;
+      line-height: 1.7;
+      color: rgba(245, 245, 247, 0.85);
+    }
+
+    .prose ul li::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 10px;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--emerald);
+      opacity: 0.7;
+    }
+
+    /* ── CTA ───────────────────────────────────────────────────────────────── */
+    .cta-section {
+      padding: 100px 0;
+      text-align: center;
+      position: relative;
+    }
+
+    .cta-title { font-family: var(--font-display); font-size: clamp(32px, 4.5vw, 56px); font-weight: 400; letter-spacing: -0.01em; margin-bottom: 20px; }
+    .cta-sub   { font-size: 18px; color: var(--muted); margin-bottom: 48px; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--emerald), var(--emerald-dim));
+      color: #050505; border: none; border-radius: 12px;
+      padding: 16px 36px; font-size: 16px; font-weight: 700;
+      cursor: pointer; text-decoration: none;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.18);
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 24px rgba(16, 185, 129, 0.3); }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--white); border: 1px solid var(--border-glow);
+      border-radius: 12px; padding: 16px 36px; font-size: 16px; font-weight: 600;
+      cursor: pointer; text-decoration: none;
+      transition: background 0.2s, border-color 0.2s;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-secondary:hover { background: rgba(16, 185, 129, 0.1); border-color: var(--emerald); }
+
+    .hero-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+    /* ── FOOTER ────────────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    .footer-logo { font-family: var(--font-display); font-weight: 400; font-size: 20px; letter-spacing: -0.01em; margin-bottom: 8px; }
+    .footer-sub  { font-size: 13px; color: var(--muted); }
+    .footer-links { display: flex; gap: 24px; justify-content: center; margin-top: 16px; }
+    .footer-links a { font-size: 13px; color: var(--muted); text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--emerald); }
+
+    /* ── SCROLL ANIMATIONS ─────────────────────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.65s ease, transform 0.65s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* ── GRADIENT TEXT ─────────────────────────────────────────────────────── */
+    .grad { background: linear-gradient(135deg, var(--emerald) 0%, var(--purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+    /* ── RESPONSIVE ────────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .stage-grid { grid-template-columns: 1fr; }
+      .layer-grid { grid-template-columns: 1fr; }
+      .guard-grid { grid-template-columns: repeat(2, 1fr); }
+      .nav-links { display: none; }
+      .nav-doctrine { display: none; }
+      .gate-row { grid-template-columns: 1fr; }
+      .gate-header { display: none; }
+    }
+
+    @media (max-width: 640px) {
+      .guard-grid { grid-template-columns: 1fr; }
+      .quote-block { padding: 36px 28px; }
+      section { padding: 60px 0; }
+    }
+
+    /* ── FLOATING PARTICLES ────────────────────────────────────────────────── */
+    .particle {
+      position: fixed; border-radius: 50%;
+      pointer-events: none; z-index: 0;
+      animation: float linear infinite;
+    }
+    @keyframes float {
+      0%   { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 0.3; }
+      100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── NEURAL CANVAS ─────────────────────────────────────────────────────── -->
+<canvas id="neural-canvas"></canvas>
+
+<!-- ── NAV ──────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-inner">
+    <a class="logo" href="index.html">
+      <div class="logo-mark">A</div>
+      <div>
+        <div class="logo-text">Achilles</div>
+        <div class="logo-sub">by Civitas Cerebrum</div>
+      </div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#lifecycle">Lifecycle</a></li>
+      <li><a href="#foundation">Foundation</a></li>
+      <li><a href="#enforcement">Enforcement</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a class="nav-doctrine" href="agentic-qa.html">Agentic QA</a>
+      <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── HERO ─────────────────────────────────────────────────────────────── -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-glow"></div>
+    <div class="hero-content">
+      <div class="hero-badge"><span></span> Doctrine</div>
+      <h1 class="hero-headline">
+        Agentic <span class="grad">Shift-Left</span>
+      </h1>
+      <p class="hero-sub">
+        Development is agentic. Quality assurance must be too.<br />
+        When features ship at agent speed, manual testing becomes the bottleneck that nullifies every upstream acceleration. The traditional shift-left response shifts the <em>work</em> left without shifting the <em>worker</em>. Agentic shift-left shifts both.
+      </p>
+      <div class="hero-actions">
+        <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
+          Install Achilles
+        </a>
+        <a class="btn-secondary" href="https://www.npmjs.com/package/@civitas-cerebrum/element-interactions" target="_blank" rel="noopener">
+          Element Interactions
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── I. THE LIFECYCLE ─────────────────────────────────────────────────── -->
+<section id="lifecycle">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Stage I</div>
+      <h2 class="section-title">The Agentic Shift-Left<br /><span class="grad">Lifecycle</span></h2>
+      <p class="section-desc">Four stages. A human starts it, agents do the heavy lifting, a human confirms the result, and agents guard it going forward.</p>
+    </div>
+
+    <div class="stage-grid">
+      <div class="stage-card reveal">
+        <div class="stage-num">01</div>
+        <span class="stage-label human">Human</span>
+        <h3 class="stage-title">Triage</h3>
+        <p class="stage-desc">A human reads the ticket, the PR, or the feature brief and makes the CX/revenue call: does this change affect something a customer would notice? This is the one decision the methodology refuses to automate. An agent can assess technical risk, but the question "will a customer care?" requires business context that lives outside the codebase.</p>
+      </div>
+
+      <div class="stage-card reveal">
+        <div class="stage-num">02</div>
+        <span class="stage-label auto">Autonomous</span>
+        <h3 class="stage-title">Automate</h3>
+        <p class="stage-desc">Sub-agents own the work. The methodology decomposes test automation into roles that can be independently dispatched, each with isolated context and a schema-validated return contract. Independent journeys are dispatched in parallel; each journey runs through composer &rarr; reviewer cycles until approved.</p>
+      </div>
+
+      <div class="stage-card reveal">
+        <div class="stage-num">03</div>
+        <span class="stage-label hybrid">Human + Harness</span>
+        <h3 class="stage-title">Confirm</h3>
+        <p class="stage-desc">The tests get tested. Every test must be proven to fail where the fix is absent (negative control). Adversarial probes challenge the tests themselves. The harness blocks QA sign-off until evidence exists. Coverage is a human responsibility: the QA engineer owns what <em>must</em> be covered.</p>
+      </div>
+
+      <div class="stage-card reveal">
+        <div class="stage-num">04</div>
+        <span class="stage-label auto">Autonomous</span>
+        <h3 class="stage-title">Guard / Heal</h3>
+        <p class="stage-desc">Gated releases, layered verification. Self-repair classifies failures: app bug (leave the test alone), test drift (heal autonomously), or irreducible flake (quarantine with evidence). Every test ends the repair cycle green or explained &mdash; never silently skipped.</p>
+      </div>
+    </div>
+
+    <!-- Role table -->
+    <div class="prose reveal" style="margin-top: 48px;">
+      <h3>Automation Roles</h3>
+      <p>The Automate stage decomposes test automation into roles that can be independently dispatched:</p>
+    </div>
+    <div class="doctrine-table-wrap reveal">
+      <table class="doctrine-table">
+        <thead>
+          <tr><th>Role</th><th>Responsibility</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Discover</td><td>Crawl the application, map pages and user journeys, prioritise by business impact</td></tr>
+          <tr><td>Inspect</td><td>Drive a real browser, interact with the live DOM, understand what each element does before writing a locator</td></tr>
+          <tr><td>Compose</td><td>Write the test &mdash; happy path, error states, edge cases, mobile variants, data lifecycle. Every state-changing step verified by an API or database oracle, not a UI toast</td></tr>
+          <tr><td>Review</td><td>Fresh-context adversarial review. Composer and reviewer never share context, so the reviewer catches what the composer's familiarity blinds it to</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Guard layers -->
+    <div class="prose reveal" style="margin-top: 48px;">
+      <h3>Guard Layers</h3>
+      <p>Once tests are committed, the methodology prescribes a layered, gate-first test architecture:</p>
+    </div>
+    <div class="guard-grid reveal">
+      <div class="guard-phase">
+        <div class="guard-name">Regression</div>
+        <div class="guard-desc">Runs in the go-live pipeline. A regression failure <strong>stops the release</strong> &mdash; regression is a gate, not an alarm.</div>
+        <div class="guard-arrow">&rarr;</div>
+      </div>
+      <div class="guard-phase">
+        <div class="guard-name">Smoke</div>
+        <div class="guard-desc">Targets individual features, pages, and components. Runs on <strong>every pull request</strong>. Speed is their contract.</div>
+        <div class="guard-arrow">&rarr;</div>
+      </div>
+      <div class="guard-phase">
+        <div class="guard-name">E2E</div>
+        <div class="guard-desc">Verifies complete user journeys. Every step happens in the browser &mdash; replicating the user's experience as closely as possible.</div>
+        <div class="guard-arrow">&rarr;</div>
+      </div>
+      <div class="guard-phase">
+        <div class="guard-name">Self-Repair</div>
+        <div class="guard-desc">Classifies failures: app bug, test drift, or flake. The suite stays green and meaningful, not green and hollow.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── II. THE FOUNDATION ──────────────────────────────────────────────── -->
+<section id="foundation" style="background: var(--bg-2);">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Stage II</div>
+      <h2 class="section-title">The Architectural<br /><span class="grad">Foundation</span></h2>
+      <p class="section-desc">A test that hard-codes CSS selectors is a test that breaks when a class name changes. An agent that writes tests with hard-coded selectors produces a suite that rots faster than it grows.</p>
+    </div>
+
+    <div class="prose reveal">
+      <h3>Separation of Concerns</h3>
+      <p>The foundation is a <strong>three-layer separation</strong>. When a frontend redesign changes every <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">data-testid</code> in the application, zero test files change. Each layer is the single source of truth for its concern.</p>
+    </div>
+
+    <div class="layer-grid reveal">
+      <div class="layer-card">
+        <div class="layer-name">Test Code</div>
+        <div class="layer-owns">Owns: Business intent</div>
+        <div class="layer-when">Changes when a requirement changes</div>
+      </div>
+      <div class="layer-card">
+        <div class="layer-name">Steps API</div>
+        <div class="layer-owns">Owns: Interaction mechanics</div>
+        <div class="layer-when">Changes when the framework evolves</div>
+      </div>
+      <div class="layer-card">
+        <div class="layer-name">Page Repository</div>
+        <div class="layer-owns">Owns: Selectors</div>
+        <div class="layer-when">Changes when the UI is redesigned</div>
+      </div>
+    </div>
+
+    <div class="prose reveal">
+      <h3>Tests Anyone Can Read</h3>
+      <p>The Steps API is the interface between human intent and automated verification. A product owner can read the test and know what it checks. An agent can write it without knowing how click-interception retry works under the hood.</p>
+    </div>
+
+    <div class="code-block reveal">
+      <span class="kw">await</span> <span class="fn">steps</span>.<span class="fn">on</span>(<span class="str">'addToCartButton'</span>, <span class="str">'ProductPage'</span>).<span class="fn">click</span>()<br />
+      <span class="kw">await</span> <span class="fn">steps</span>.<span class="fn">on</span>(<span class="str">'cartCount'</span>, <span class="str">'CartDrawer'</span>).<span class="fn">expectText</span>(<span class="str">'1'</span>)
+    </div>
+
+    <div class="prose reveal">
+      <p>The framework manages <strong>stability</strong> (auto-wait visibility, scrollIntoView, click-interception detection with classified retry), <strong>logging</strong> (zero log lines in project test code), and <strong>selectors</strong> (resolved at runtime from the page repository).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── III. COMMIT OR DISCARD ───────────────────────────────────────────── -->
+<section id="commit-discard">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Stage III</div>
+      <h2 class="section-title">Commit or<br /><span class="grad">Discard</span></h2>
+      <p class="section-desc">Tests are discardable by default. The verification work always happens. But committing to the permanent suite is a separate decision with a separate gate.</p>
+    </div>
+
+    <div class="prose reveal">
+      <p>The agent proposes durable automation only when CX/revenue impact justifies permanent regression coverage. A human confirms the proposal. Without explicit confirmation, the test stays in the evidence bundle and is not committed to the repository.</p>
+      <p>This prevents suite bloat. Not every ticket deserves a permanent regression test. A login-flow change that affects every user? <strong>Commit.</strong> A tooltip copy fix? Verify it, attach the evidence, <strong>discard the test.</strong></p>
+      <p>The commit-or-discard gate is the methodology's answer to the observation that most test suites grow without bound and eventually collapse under their own maintenance weight.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── QUOTE ─────────────────────────────────────────────────────────────── -->
+<section class="quote-section">
+  <div class="container">
+    <div class="quote-block reveal">
+      <div class="quote-mark">&ldquo;</div>
+      <p class="quote-text">The agent doesn't opt into the methodology; it has no path around it.</p>
+      <div class="quote-caption">Enforcement, not instructions</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── IV. ENFORCEMENT ─────────────────────────────────────────────────── -->
+<section id="enforcement" style="background: var(--bg-2);">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Stage IV</div>
+      <h2 class="section-title">Enforcement, Not<br /><span class="grad">Instructions</span></h2>
+      <p class="section-desc">The distinction between a methodology and a best-practices document is enforcement. Every critical rule is backed by a harness hook that physically blocks the action when a precondition is not met.</p>
+    </div>
+
+    <div class="gate-table-wrap reveal">
+      <div class="gate-row gate-header">
+        <div>Gate</div>
+        <div>What It Blocks</div>
+        <div>Precondition</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">Evidence bundle</div>
+        <div class="gate-blocks">Ticket transition; non-draft PR creation</div>
+        <div class="gate-pre">Evidence bundle with summary, screenshots, and verification artifacts</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">Adversarial verification</div>
+        <div class="gate-blocks">Same surfaces as above</div>
+        <div class="gate-pre">Adversarial review receipt must exist and be newer than the newest spec edit</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">Negative control</div>
+        <div class="gate-blocks">QA sign-off</div>
+        <div class="gate-pre">Test must be demonstrated to fail without the fix</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">Schema validation</div>
+        <div class="gate-blocks">Subagent returns</div>
+        <div class="gate-pre">Every sub-agent return must conform to its role's JSON Schema</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">Dual-stage review</div>
+        <div class="gate-blocks">Journey completion</div>
+        <div class="gate-pre">Composer and reviewer must be separate dispatches with isolated context</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">PDF inspection</div>
+        <div class="gate-blocks">Agent dispatch after deck export</div>
+        <div class="gate-pre">Every page of a generated PDF must be visually inspected before delivery</div>
+      </div>
+    </div>
+
+    <div class="prose reveal">
+      <p>The hooks are installed globally by <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">npm postinstall</code> and registered in the harness configuration. They cannot be disabled from inside a session. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── V. WHAT THIS ENABLES ────────────────────────────────────────────── -->
+<section id="enables">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Stage V</div>
+      <h2 class="section-title">What This<br /><span class="grad">Enables</span></h2>
+      <p class="section-desc">When the lifecycle, the foundation, and the enforcement work together:</p>
+    </div>
+
+    <div class="prose reveal">
+      <ul>
+        <li><strong>A single sentence drives the entire QA process.</strong> "Verify the checkout flow with evidence." The agent maps the flow, composes the tests, runs them, collects evidence, proves the negative control, and files the report &mdash; gated at every stage by the harness.</li>
+        <li><strong>Test quality is not proportional to human attention.</strong> The adversarial review and negative control gates mean a test that passes sign-off has been challenged by a reviewer with fresh context and proven to fail under the right conditions.</li>
+        <li><strong>Suites stay healthy.</strong> The guard/heal cycle means test failures are triaged and resolved autonomously. App bugs get evidence. Test drift gets healed. Flakes get quarantined. The suite stays green and meaningful.</li>
+        <li><strong>The methodology travels with the package.</strong> Install the npm package; the methodology is live. No onboarding document to read, no wiki to keep current.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ── VI. THE HONEST CONSTRAINT ───────────────────────────────────────── -->
+<section id="constraint" style="background: var(--bg-2);">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Stage VI</div>
+      <h2 class="section-title">The Honest<br /><span class="grad">Constraint</span></h2>
+    </div>
+
+    <div class="prose reveal">
+      <p>The lifecycle works within the boundaries of the environment it runs against. When that environment is production &mdash; when every test hits a live database, real payment processors, and actual customer-facing state &mdash; the methodology must exclude its most critical flows.</p>
+      <p>Checkout. Registration. Payment. Password reset. Account deletion. These are the flows with the highest CX/revenue impact, and they are the flows that cannot be safely automated against a production environment.</p>
+      <p>The shift-left lifecycle is incomplete until a <strong>fully controllable test environment</strong> exists: a faithful representation of production without production connections to critical systems. Test data is a critical part of a solid automation suite, so the framework needs <strong>full control over it</strong>: the ability to programmatically generate, update, and clear the data so every run starts from a known baseline.</p>
+      <p>This is not a limitation of the methodology. It is a limitation of the environment. <strong>The methodology is ready. The sandbox is what's missing.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ───────────────────────────────────────────────────────────────── -->
+<section class="cta-section">
+  <div class="container">
+    <div class="reveal">
+      <h2 class="cta-title">Built on<br /><span class="grad">open source</span></h2>
+      <p class="cta-sub">Both packages are public on npm. The methodology ships inside node_modules &mdash; version-pinned, auditable, reproducible.</p>
+      <div class="hero-actions" style="justify-content:center">
+        <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
+          Achilles on npm
+        </a>
+        <a class="btn-secondary" href="https://www.npmjs.com/package/@civitas-cerebrum/element-interactions" target="_blank" rel="noopener">
+          Element Interactions on npm
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="container">
+    <div class="footer-logo grad">Civitas Cerebrum</div>
+    <div class="footer-sub">Achilles &mdash; Autonomous Quality Assurance for the agentic era</div>
+    <div class="footer-links">
+      <a href="index.html">Achilles</a>
+      <a href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">npm</a>
+      <a href="https://github.com/civitas-cerebrum/achilles/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ── NEURAL NETWORK CANVAS ────────────────────────────────────────────────
+(function () {
+  const canvas = document.getElementById('neural-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, nodes, animId;
+
+  const EMERALD = 'rgba(16,185,129,';
+  const PURPLE  = 'rgba(168,85,247,';
+  const NODE_COUNT = 110;
+  const CONNECT_DIST = 160;
+  const PARALLAX_FACTOR = 0.1;
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight * 2.2;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function makeNode() {
+    return {
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      r: Math.random() * 2.2 + 1.2,
+      hue: Math.random() < 0.62 ? EMERALD : PURPLE,
+    };
+  }
+
+  function init() {
+    resize();
+    nodes = Array.from({ length: NODE_COUNT }, makeNode);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        if (d < CONNECT_DIST) {
+          const alpha = (1 - d / CONNECT_DIST) * 0.35;
+          ctx.beginPath();
+          ctx.moveTo(nodes[i].x, nodes[i].y);
+          ctx.lineTo(nodes[j].x, nodes[j].y);
+          ctx.strokeStyle = nodes[i].hue + alpha + ')';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        }
+      }
+    }
+
+    nodes.forEach(n => {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = n.hue + '0.7)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = n.hue + '0.12)';
+      ctx.fill();
+    });
+
+    nodes.forEach(n => {
+      n.x += n.vx;
+      n.y += n.vy;
+      if (n.x < 0 || n.x > W) n.vx *= -1;
+      if (n.y < 0 || n.y > H) n.vy *= -1;
+    });
+
+    animId = requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', () => { resize(); });
+  window.addEventListener('scroll', () => {
+    canvas.style.setProperty('--parallax-y', `${-window.scrollY * PARALLAX_FACTOR}px`);
+  }, { passive: true });
+  init();
+  draw();
+})();
+
+// ── SCROLL REVEAL ────────────────────────────────────────────────────────
+(function () {
+  const els = document.querySelectorAll('.reveal');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (e.isIntersecting) {
+        setTimeout(() => e.target.classList.add('visible'), i * 60);
+        obs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  els.forEach(el => obs.observe(el));
+})();
+</script>
+</body>
+</html>
