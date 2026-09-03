@@ -539,20 +539,7 @@
     .grad { background: linear-gradient(135deg, var(--emerald) 0%, var(--purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 
     /* ── CALLOUT BLOCK ─────────────────────────────────────────────────────── */
-    .callout-block {
-      border-left: 3px solid var(--emerald);
-      padding: 24px 28px;
-      background: rgba(16, 185, 129, 0.05);
-      border-radius: 0 12px 12px 0;
-      margin: 32px 0;
-    }
 
-    .callout-block p {
-      font-size: 16px;
-      line-height: 1.7;
-      color: var(--white);
-      margin: 0;
-    }
 
     /* ── ALTERNATE BACKGROUND SECTIONS ────────────────────────────────────── */
     .bg-alt {
@@ -636,7 +623,6 @@
         Agentic <span class="grad">Shift-Left</span>
       </h1>
       <p class="hero-sub">
-        Development is agentic. Quality assurance must be too.<br />
         When features ship at agent speed, manual testing becomes the bottleneck that nullifies every upstream acceleration. The traditional shift-left response shifts the <em>work</em> left without shifting the <em>worker</em>. Agentic shift-left shifts both.
       </p>
       <div class="hero-actions">
@@ -686,7 +672,7 @@
         <div class="stage-num">04</div>
         <span class="stage-label auto">Autonomous</span>
         <h3 class="stage-title">Guard / Heal</h3>
-        <p class="stage-desc">Gated releases, layered verification. Self-repair classifies failures: app bug (leave the test alone), test drift (heal autonomously), or irreducible flake (quarantine with evidence). Every test ends the repair cycle green or explained &mdash; never silently skipped.</p>
+        <p class="stage-desc">Gated releases, layered verification. Self-repair classifies failures by re-running the test against the previous build: if it fails there too, it's an <strong>app bug</strong> (leave the test alone); if it passes, the test drifted (heal autonomously); if it's non-deterministic, it's a <strong>flake</strong> (quarantine with evidence). Every test ends green or explained &mdash; never silently skipped.</p>
       </div>
     </div>
 
@@ -842,47 +828,16 @@
     </div>
 
     <div class="prose reveal">
-      <p>The hooks are installed globally by <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">npm postinstall</code> and registered in the harness configuration. They cannot be disabled from inside a session. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
+      <p>The hooks are installed globally by <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
     </div>
   </div>
 </section>
 
-<!-- ── V. WHAT THIS ENABLES ────────────────────────────────────────────── -->
-<section id="enables">
-  <div class="container">
-    <div class="section-header reveal">
-      <div class="section-tag">Stage V</div>
-      <h2 class="section-title">What This<br /><span class="grad">Enables</span></h2>
-      <p class="section-desc">When the lifecycle, the foundation, and the enforcement converge, the results are measurable.</p>
-    </div>
-
-    <div class="stage-grid reveal">
-      <div class="stage-card">
-        <h3 class="stage-title">One sentence starts it all</h3>
-        <p class="stage-desc">&ldquo;Verify the checkout flow with evidence.&rdquo; The agent maps the flow, composes tests, runs them, collects evidence, proves the negative control, and files the report &mdash; gated at every stage.</p>
-      </div>
-      <div class="stage-card">
-        <h3 class="stage-title">Quality &ne; human attention</h3>
-        <p class="stage-desc">Adversarial review and negative control gates mean a test that passes sign-off has been challenged by a fresh-context reviewer and proven to fail under the right conditions.</p>
-      </div>
-      <div class="stage-card">
-        <h3 class="stage-title">Suites stay healthy</h3>
-        <p class="stage-desc">The guard/heal cycle triages failures autonomously. App bugs get evidence. Test drift gets healed. Flakes get quarantined. Green and meaningful, not green and hollow.</p>
-      </div>
-      <div class="stage-card">
-        <h3 class="stage-title">Ships with the package</h3>
-        <p class="stage-desc">Install the npm package; the methodology is live. No onboarding document to read, no wiki to keep current, no training to schedule.</p>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<!-- ── VI. THE HONEST CONSTRAINT ───────────────────────────────────────── -->
+<!-- ── V. THE HONEST CONSTRAINT ─────────────────────────────────────────── -->
 <section id="constraint">
   <div class="container">
     <div class="section-header reveal">
-      <div class="section-tag">Stage VI</div>
+      <div class="section-tag">Stage V</div>
       <h2 class="section-title">The Honest<br /><span class="grad">Constraint</span></h2>
       <p class="section-desc">A methodology must be honest about what it cannot yet do.</p>
     </div>
@@ -893,8 +848,8 @@
       <p>The shift-left lifecycle is incomplete until a <strong>fully controllable test environment</strong> exists: a faithful representation of production without production connections to critical systems. Test data is a critical part of a solid automation suite, so the framework needs <strong>full control over it</strong>: the ability to programmatically generate, update, and clear the data so every run starts from a known baseline.</p>
     </div>
 
-    <div class="callout-block reveal">
-      <p>This is not a limitation of the methodology. It is a limitation of the environment. <strong>The methodology is ready. The sandbox is what&rsquo;s missing.</strong></p>
+    <div class="prose reveal">
+      <p>The methodology covers these flows architecturally. Exercising them requires a controllable test environment &mdash; a faithful replica of production without live connections to payment processors, identity providers, or customer-facing state.</p>
     </div>
   </div>
 </section>
