@@ -623,7 +623,7 @@
         Agentic <span class="grad">Shift-Left</span>
       </h1>
       <p class="hero-sub">
-        Agents write features in minutes. They also write brittle tests, hard-code selectors that break on the next PR, and skip quality gates nobody enforces. The suite bloats, the flake rate climbs, and trust collapses.<br />
+        Every team adopting AI-assisted development hits the same wall. Agents write features in minutes. They also write brittle tests, hard-code selectors that break on the next PR, and skip quality gates nobody enforces. The suite bloats, the flake rate climbs, and trust collapses.<br />
         The traditional shift-left response shifts the <em>work</em> left without shifting the <em>worker</em>. Agentic shift-left shifts both.
       </p>
       <div class="hero-actions">
@@ -829,7 +829,23 @@
     </div>
 
     <div class="prose reveal">
-      <p>The hooks are installed globally by <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
+      <p>35 hooks ship with the package &mdash; 26 are enforcement gates. They are installed globally by <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
+    </div>
+
+    <div class="prose reveal">
+      <h3>What a gate looks like</h3>
+      <p>When the agent tries to transition a ticket without an evidence bundle:</p>
+    </div>
+    <div class="code-block reveal" style="color: var(--muted);">
+      <span style="color: #ef4444;">&#x276F; [BLOCKED]</span> Sign-off blocked &mdash; no evidence bundle for this ticket.<br />
+      <br />
+      <span style="color: var(--muted);">  hook&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; evidence-bundle-gate</span><br />
+      <span style="color: var(--muted);">  decision&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; deny</span><br />
+      <span style="color: var(--muted);">  surface&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; PreToolUse</span><br />
+      <span style="color: var(--muted);">  ticket&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; PROJ-1042</span><br />
+      <br />
+      <span style="color: var(--muted);">  The agent cannot proceed until the evidence directory</span><br />
+      <span style="color: var(--muted);">  contains a summary, screenshots, and verification artifacts.</span>
     </div>
   </div>
 </section>
@@ -884,7 +900,8 @@
 
     <div class="prose reveal">
       <p>Install the two npm packages. The harness hooks register automatically via <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">postinstall</code>. Point the page repository at your application's selectors. Write new tests through the Steps API &mdash; existing Playwright tests continue to run unchanged alongside them.</p>
-      <p>The enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
+      <p>Achilles is agent-agnostic. It works with any agent that can run npm scripts &mdash; Claude Code, Cursor, Copilot Workspace, or your own orchestrator. The enforcement layer sits below the agent: it doesn't care who wrote the test, only whether the methodology's preconditions are met.</p>
+      <p>The 26 enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
     </div>
   </div>
 </section>
