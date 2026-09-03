@@ -623,7 +623,8 @@
         Agentic <span class="grad">Shift-Left</span>
       </h1>
       <p class="hero-sub">
-        When features ship at agent speed, manual testing becomes the bottleneck that nullifies every upstream acceleration. The traditional shift-left response shifts the <em>work</em> left without shifting the <em>worker</em>. Agentic shift-left shifts both.
+        Agents write features in minutes. They also write brittle tests, hard-code selectors that break on the next PR, and skip quality gates nobody enforces. The suite bloats, the flake rate climbs, and trust collapses.<br />
+        The traditional shift-left response shifts the <em>work</em> left without shifting the <em>worker</em>. Agentic shift-left shifts both.
       </p>
       <div class="hero-actions">
         <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
@@ -846,6 +847,44 @@
       <p>The lifecycle works within the boundaries of the environment it runs against. When that environment is production &mdash; when every test hits a live database, real payment processors, and actual customer-facing state &mdash; the methodology must exclude its most critical flows.</p>
       <p>Checkout. Registration. Payment. Password reset. Account deletion. These are the flows with the highest CX/revenue impact, and they are the flows that cannot be safely automated against a production environment.</p>
       <p>The methodology covers these flows architecturally. Exercising them requires a <strong>fully controllable test environment</strong> &mdash; a faithful replica of production without live connections to payment processors, identity providers, or customer-facing state &mdash; and <strong>full control over test data</strong>: the ability to programmatically generate, seed, and clear it so every run starts from a known baseline.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── WHY NOT JUST PROMPT BETTER ───────────────────────────────────────── -->
+<section id="positioning">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">The Difference</div>
+      <h2 class="section-title">Why Not Just Prompt<br /><span class="grad">Better?</span></h2>
+      <p class="section-desc">AI test generators produce tests. Achilles enforces a methodology around them.</p>
+    </div>
+
+    <div class="stage-grid reveal">
+      <div class="stage-card">
+        <h3 class="stage-title">Prompt-driven testing</h3>
+        <p class="stage-desc">Ask your copilot to write Playwright tests. You get tests &mdash; with hard-coded selectors, no negative control, no evidence bundle, and no gate preventing a flaky test from merging. The agent follows instructions. Nothing enforces them.</p>
+      </div>
+      <div class="stage-card">
+        <h3 class="stage-title">Achilles</h3>
+        <p class="stage-desc">The agent writes tests through a three-layer architecture that isolates selectors from logic. Enforcement hooks block commits without evidence, reviews without adversarial challenge, and merges without negative control. The methodology is the codebase, not a wiki page the agent never reads.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── GETTING STARTED ─────────────────────────────────────────────────── -->
+<section id="getting-started">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Adoption</div>
+      <h2 class="section-title">Getting<br /><span class="grad">Started</span></h2>
+      <p class="section-desc">Achilles runs on Playwright. If your stack uses Playwright, integration is additive &mdash; you don't rewrite existing tests.</p>
+    </div>
+
+    <div class="prose reveal">
+      <p>Install the two npm packages. The harness hooks register automatically via <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">postinstall</code>. Point the page repository at your application's selectors. Write new tests through the Steps API &mdash; existing Playwright tests continue to run unchanged alongside them.</p>
+      <p>The enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
     </div>
   </div>
 </section>
