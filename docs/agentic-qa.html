@@ -699,7 +699,7 @@
       </div>
       <div class="guard-phase">
         <div class="guard-name">Self-Repair</div>
-        <div class="guard-desc">Classifies failures: app bug, test drift, or flake. The suite stays green and meaningful, not green and hollow.</div>
+        <div class="guard-desc">Autonomous triage &mdash; app bugs, test drift, and flakes classified and handled without human intervention.</div>
       </div>
     </div>
   </div>
@@ -791,7 +791,7 @@
     <div class="section-header reveal">
       <div class="section-tag">Stage IV</div>
       <h2 class="section-title">Enforcement, Not<br /><span class="grad">Instructions</span></h2>
-      <p class="section-desc">The distinction between a methodology and a best-practices document is enforcement. Every critical rule is backed by a harness hook that physically blocks the action when a precondition is not met.</p>
+      <p class="section-desc">The distinction between a methodology and a best-practices document is enforcement. Every critical rule is backed by a harness hook that programmatically blocks the action when a precondition is not met.</p>
     </div>
 
     <div class="gate-table-wrap reveal">
@@ -845,11 +845,7 @@
     <div class="prose reveal">
       <p>The lifecycle works within the boundaries of the environment it runs against. When that environment is production &mdash; when every test hits a live database, real payment processors, and actual customer-facing state &mdash; the methodology must exclude its most critical flows.</p>
       <p>Checkout. Registration. Payment. Password reset. Account deletion. These are the flows with the highest CX/revenue impact, and they are the flows that cannot be safely automated against a production environment.</p>
-      <p>The shift-left lifecycle is incomplete until a <strong>fully controllable test environment</strong> exists: a faithful representation of production without production connections to critical systems. Test data is a critical part of a solid automation suite, so the framework needs <strong>full control over it</strong>: the ability to programmatically generate, update, and clear the data so every run starts from a known baseline.</p>
-    </div>
-
-    <div class="prose reveal">
-      <p>The methodology covers these flows architecturally. Exercising them requires a controllable test environment &mdash; a faithful replica of production without live connections to payment processors, identity providers, or customer-facing state.</p>
+      <p>The methodology covers these flows architecturally. Exercising them requires a <strong>fully controllable test environment</strong> &mdash; a faithful replica of production without live connections to payment processors, identity providers, or customer-facing state &mdash; and <strong>full control over test data</strong>: the ability to programmatically generate, seed, and clear it so every run starts from a known baseline.</p>
     </div>
   </div>
 </section>
@@ -859,7 +855,7 @@
   <div class="container">
     <div class="reveal">
       <h2 class="cta-title">Built on<br /><span class="grad">open source</span></h2>
-      <p class="cta-sub">Both packages are public on npm. The methodology ships inside node_modules &mdash; version-pinned, auditable, reproducible.</p>
+      <p class="cta-sub">Start with the flows you can control today. Both packages are public on npm &mdash; version-pinned, auditable, reproducible.</p>
       <div class="hero-actions" style="justify-content:center">
         <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
           Achilles on npm
