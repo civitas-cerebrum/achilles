@@ -35,7 +35,7 @@
 #   KM_TOOL_USE_ID KM_PARENT_TOOL_USE_ID KM_TRANSCRIPT KM_TTL
 # Globals set by kernel_mandate_resolve_role:
 #   KM_ROLE        role name ('' when none applies)
-#   KM_ROLE_STATE  governed | ungoverned | unbound
+#   KM_ROLE_STATE  governed | ungoverned | unbound | misconfigured
 #
 # Test seams (env):
 #   KERNEL_MANDATE          0|false|off → inactive (operator kill-switch; set
@@ -362,13 +362,30 @@ kernel_mandate_resolve_role() {
   KM_ROLE_STATE="ungoverned"
 
   # Rung 1 — no agent_id: this is the top-level session.
+  #
+  # TWO FACTS, NOT ONE. This branch used to fold "declares no
+  # mainSessionRole" (ungoverned on purpose) and "names a role that does
+  # not exist" (a typo) into a single `else` that silent-allowed. One
+  # character in a role name — `orchestratorr` — bought total
+  # ungovernance: exit 0, zero bytes of stdout, no state directory, no
+  # log line, `rm -rf /` permitted. Indistinguishable, to an operator, from
+  # a project that was never governed.
+  #
+  # That was inconsistent with this kernel's own adjacent design: an
+  # UNPARSEABLE manifest fails closed. A corrupt JSON file was safer than
+  # a misspelled name. The manifest holds both facts; only one was read.
+  #
+  # A named role that does not resolve is a MISCONFIGURATION, and a
+  # misconfigured gate is not an absent gate. It fails closed and says so.
   if [ -z "$KM_AGENT_ID" ]; then
     KM_ROLE=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r '.settings.mainSessionRole // empty' 2>/dev/null || echo "")
-    if [ -n "$KM_ROLE" ] && kernel_mandate__role_exists "$KM_ROLE"; then
+    if [ -z "$KM_ROLE" ]; then
+      # Declares no main-session role: ungoverned on purpose.
+      KM_ROLE_STATE="ungoverned"
+    elif kernel_mandate__role_exists "$KM_ROLE"; then
       KM_ROLE_STATE="governed"
     else
-      KM_ROLE=""
-      KM_ROLE_STATE="ungoverned"
+      KM_ROLE_STATE="misconfigured"
     fi
     return 0
   fi

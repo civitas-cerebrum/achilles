@@ -350,6 +350,30 @@ fi
 kernel_mandate_resolve_role
 
 # ---------------------------------------------------------------------------
+# Misconfigured — settings.mainSessionRole NAMES a role, and no such role
+# exists. Not the same fact as "declares no role", and it must not share
+# that fact's silent allow: a manifest whose author meant to govern this
+# session is a manifest that governs it, or says why it cannot.
+#
+# The failure this replaces was silent in every channel an operator
+# consults: exit 0, no stdout, no state dir, and therefore no decision log
+# for `doctor` to read. `validate` names the typo, but `doctor` is the
+# command an operator actually reaches for when asking "why isn't the gate
+# firing?", and with no log there was nothing for it to say.
+# ---------------------------------------------------------------------------
+if [ "$KM_ROLE_STATE" = "misconfigured" ]; then
+  KM_BAD_ROLE=$(printf '%s' "$KM_MANIFEST_JSON" | "$JQ" -r '.settings.mainSessionRole // empty' 2>/dev/null || echo "")
+  KM_KNOWN_ROLES=$(printf '%s' "$KM_MANIFEST_JSON" | "$JQ" -r '[.roles | keys[]?] | join(", ")' 2>/dev/null || echo "")
+  kernel_mandate_deny "misconfigured-main-session-role ${KM_BAD_ROLE}" "[BLOCKED] settings.mainSessionRole is \"${KM_BAD_ROLE}\", and this mandate defines no such role.
+
+Roles defined here: ${KM_KNOWN_ROLES:-(none)}
+
+The kernel fails closed on this rather than running ungoverned, because the two are indistinguishable from the outside and only one of them is what the manifest's author asked for. A mandate that names a main-session role is a mandate that intends to govern this session.
+
+Fix the name in ${KM_MANIFEST}, or remove settings.mainSessionRole entirely to leave the top-level session ungoverned on purpose. \`kernel-mandate validate\` names this error directly."
+fi
+
+# ---------------------------------------------------------------------------
 # Ungoverned context (no manifest role applies) — the operator's design
 # surface. Silent allow.
 # ---------------------------------------------------------------------------
