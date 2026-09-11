@@ -117,9 +117,70 @@ For each role, in this order (it mirrors the kernel's evaluation):
 
 ### Phase 3 — Generate and validate the manifest
 
+Two ways to produce the manifest. Prefer the first unless you have a
+reason not to.
+
+**Derive it from a workflow table (reliable path).** The step that goes
+wrong when an agent writes a manifest by hand is turning "who does what
+with which files at each stage" into anchored regexes and glob unions
+without leaving a hole. Don't. Fill a table and let the kernel compile
+it:
+
+```jsonc
+// workflow.json — a stage×role table, not a manifest
+{
+  "name": "software-factory",
+  "mainSessionRole": "orchestrator",
+  "roles": {
+    "orchestrator": { "description": "Plans work, dispatches implementers and judges; writes only the ledger.", "agentTypes": ["orchestrator"] },
+    "implementer":  { "description": "Builds one module against its contract; runs its own unit tests.",         "agentTypes": ["implementer"] },
+    "judge":        { "description": "Reviews one module through one lens and writes a verdict.",                 "agentTypes": ["judge"] }
+  },
+  "stages": [
+    { "id": "plan",      "role": "orchestrator", "reads": ["factory/requirements.md", "factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/ledger.json", "factory/verdicts/**"], "writes": ["factory/ledger.json"], "dispatches": ["implementer", "judge"] },
+    { "id": "implement", "role": "implementer",  "reads": ["factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/modules/*/src/**"], "writes": ["factory/modules/*/src/**"], "runs": ["npm test"] },
+    { "id": "judge",     "role": "judge",        "reads": ["factory/modules/**"], "writes": ["factory/verdicts/**"] }
+  ]
+}
+```
+
+```bash
+kernel-mandate derive workflow.json --out /tmp/draft.json --fixtures /tmp/probes.sh
+```
+
+`derive` unions each role's stages, infers tools from use (reads →
+Read/Glob/Grep, writes → Write/Edit, runs → Bash, dispatches → Agent),
+anchors every `runs` command into a pattern that admits *exactly* what
+you wrote and nothing else, and emits canonical bytes — the same table
+always yields the same manifest. It writes to `--out`, never to the live
+location, and then runs the same review `propose` does. `--fixtures`
+writes a **self-contained** probe script: it builds a throwaway project,
+installs the draft, and runs the real kernel on one in-scope ALLOW and
+several out-of-scope DENY probes per role. Run it; every row should read
+as expected before anyone applies the draft. That is the onboarding
+promise — *check the boundaries by running them*, not by reading them.
+
+Note what `derive` reported as structural risks and decide them (see the
+AGENT section below): an implementer that both authors code and runs its
+tests is an author-and-run role, and any role that writes what a grader
+reads is the verdict-steering region.
+
+**Bind roles to `agent_type` where you can.** If the workflow ships agent
+definitions (`.claude/agents/implementer.md`, etc.), give each role an
+`agentTypes` list naming the definitions that are it. The host stamps
+`agent_type` on every subagent's tool calls, so identity comes from the
+host rather than from a description prefix the dispatcher types — the
+most reliable rung there is, and the one that needs no nonce protocol.
+Roles without `agentTypes` still resolve through the dispatch-tag ladder.
+A type may belong to only one role; `validate`/`derive` refuse a manifest
+that lists one twice.
+
+**Or write it by hand.**
+
 1. Write the manifest to `<repo-root>/.claude/kernel-mandate.json`. Start
-   from [examples/qa-pipeline.kernel-mandate.json](examples/qa-pipeline.kernel-mandate.json)
-   or [examples/feature-dev.kernel-mandate.json](examples/feature-dev.kernel-mandate.json)
+   from [examples/qa-pipeline.kernel-mandate.json](examples/qa-pipeline.kernel-mandate.json),
+   [examples/feature-dev.kernel-mandate.json](examples/feature-dev.kernel-mandate.json), or
+   [examples/software-factory.kernel-mandate.json](examples/software-factory.kernel-mandate.json)
    when the workflow matches; otherwise from the axes elicited above.
 2. Validate it against
    [`schemas/kernel-mandate.schema.json`](../../schemas/kernel-mandate.schema.json).

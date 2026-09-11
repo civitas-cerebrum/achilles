@@ -31,6 +31,7 @@
 #
 # Globals set by kernel_mandate_load:
 #   KM_JQ KM_INPUT KM_CWD KM_ROOT KM_MANIFEST KM_MANIFEST_JSON
+#   KM_AGENT_TYPE (host-supplied agent definition name, subagents only)
 #   KM_MANIFEST_BROKEN KM_STATE_DIR KM_TOOL KM_AGENT_ID
 #   KM_TOOL_USE_ID KM_PARENT_TOOL_USE_ID KM_TRANSCRIPT KM_TTL
 # Globals set by kernel_mandate_resolve_role:
@@ -149,6 +150,7 @@ kernel_mandate_load() {
   KM_TOOL=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
   KM_CWD=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
   KM_AGENT_ID=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
+  KM_AGENT_TYPE=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.agent_type // empty' 2>/dev/null || echo "")
   KM_TOOL_USE_ID=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.tool_use_id // empty' 2>/dev/null || echo "")
   KM_PARENT_TOOL_USE_ID=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.parent_tool_use_id // empty' 2>/dev/null || echo "")
   KM_TRANSCRIPT=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.transcript_path // empty' 2>/dev/null || echo "")
@@ -240,10 +242,43 @@ kernel_mandate_load() {
     [ -n "$km_found" ] || km_found="$km_first"
     if [ -n "$km_found" ]; then
       KM_ROOT="$km_found"
+      KM_MANIFEST="$KM_ROOT/.claude/kernel-mandate.json"
     else
+      # A GIT WORKTREE IS A SIBLING, NOT A DESCENDANT. The walk above goes
+      # UP from cwd, and a worktree at <repo>/wt-a shares history with
+      # <repo>/main without sitting under it — so a manifest the operator
+      # keeps untracked (gitignored, the ordinary way to hold a local
+      # policy file) exists in main and in no worktree. Round 57 checked
+      # a worktree out for a parallel implementer and read `.env` from it:
+      # the walk found nothing, "nothing" means "never opted in", and the
+      # kernel wrote its state directory there and governed nothing.
+      #
+      # Parallel workers in worktrees is the ordinary shape of a multi-
+      # agent build, and the checkout an implementer is handed must not
+      # be the one place the law does not reach. So: no manifest above
+      # cwd, but cwd is inside a worktree → the main worktree's manifest
+      # is the law, and this checkout's root is the base its scopes
+      # resolve against. Same manifest, applied to this tree.
+      #
+      # The fallback requires the manifest to PARSE, like the walk: a
+      # broken file in main is not a reason to quietly govern nothing.
       KM_ROOT=$(cd "$KM_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$KM_CWD")
+      KM_MANIFEST="$KM_ROOT/.claude/kernel-mandate.json"
+      local km_common km_main
+      km_common=$(cd "$KM_CWD" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null || echo "")
+      if [ -n "$km_common" ]; then
+        km_common=$(cd "$KM_CWD" 2>/dev/null && cd "$km_common" 2>/dev/null && pwd -P 2>/dev/null || echo "")
+        km_main="${km_common%/.git}"
+        if [ -n "$km_main" ] && [ "$km_main" != "$km_common" ] \
+           && [ "$km_main" != "$KM_ROOT" ] \
+           && [ -f "$km_main/.claude/kernel-mandate.json" ] \
+           && "$KM_JQ" -e 'type == "object" and (.roles | type == "object")' \
+                < "$km_main/.claude/kernel-mandate.json" >/dev/null 2>&1; then
+          KM_MANIFEST="$km_main/.claude/kernel-mandate.json"
+          KM_MANIFEST_FROM_MAIN_WORKTREE="$km_main"
+        fi
+      fi
     fi
-    KM_MANIFEST="$KM_ROOT/.claude/kernel-mandate.json"
   fi
   [ -f "$KM_MANIFEST" ] || return 1
 
@@ -400,6 +435,33 @@ kernel_mandate_resolve_role() {
       return 0
     fi
     KM_ROLE=""
+  fi
+
+  # Rung 2b — the host's own agent_type. Every subagent hook payload
+  # carries agent_type: the name of the agent DEFINITION the child was
+  # dispatched as, owned by the host, in the same payload as the
+  # agent_id already read above. Where a role declares `agentTypes`, this
+  # is the most authoritative identity there is — it needs no transcript
+  # tag, no nonce this kernel minted, no dispatch record that a cleared
+  # state directory would lose. The judge who reviewed this kernel called
+  # reading it "the single best architectural lever you have"; the field
+  # sat in the payload, unread, for 55 rounds while `explain` synthesized
+  # it into its own fixture.
+  #
+  # It sits AFTER the cached binding (that is just this rung's own prior
+  # answer, memoised) and BEFORE the prose rungs, which remain as
+  # fallback for roles that declare no types. A type resolves to at most
+  # one role — validate refuses a manifest that lists one twice — so a
+  # match is unambiguous. The binding is cached like every other rung's.
+  if [ -n "$KM_AGENT_TYPE" ]; then
+    local type_role
+    type_role=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r --arg t "$KM_AGENT_TYPE"       'first(.roles | to_entries[] | select(.value.agentTypes // [] | index($t)) | .key) // empty'       2>/dev/null || echo "")
+    if [ -n "$type_role" ] && kernel_mandate__role_exists "$type_role"; then
+      KM_ROLE="$type_role"
+      kernel_mandate__bind "$KM_AGENT_ID" "$KM_ROLE"
+      KM_ROLE_STATE="governed"
+      return 0
+    fi
   fi
 
   # Rung 3 — parent_tool_use_id → exact registry match (older builds).
@@ -1313,7 +1375,12 @@ kernel_mandate_deny() {
   local reason
   kernel_mandate_log "deny" "$1"
   reason=$(kernel_mandate_bound_text "$2")
-  KM_DECIDED=1
+  # KM_DECIDED is set AFTER the verdict is on stdout, never before. Round
+  # 56 found the window: set before emission, a fault between the flag
+  # and the printf exited 1 with the flag raised — so the exit trap stood
+  # down ("a verdict was delivered") when none had been. KM_DECIDED=1
+  # must mean exactly one thing: the JSON is written and nothing but
+  # `exit 0` remains.
   if printf '%s' "$reason" | "$KM_JQ" -Rs '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
@@ -1321,9 +1388,11 @@ kernel_mandate_deny() {
       "permissionDecisionReason": .
     }
   }' 2>/dev/null; then
+    KM_DECIDED=1
     exit 0
   fi
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] kernel-mandate refused this call but could not render the explanation for it. The decision stands; only the wording was lost. The recorded reason is the last deny in the decision log under the kernel-mandate state directory."}}'
+  KM_DECIDED=1
   exit 0
 }
 

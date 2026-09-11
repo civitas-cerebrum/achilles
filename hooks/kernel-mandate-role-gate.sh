@@ -78,8 +78,25 @@ set -uo pipefail
 #
 # KM_DECIDED is set the moment a real verdict is emitted, so a normal
 # allow (which is a deliberate `exit 0` before this trap can fire) and a
-# deny are both left alone. Anything else exits non-zero with an
-# explanation, which the harness surfaces rather than treating as consent.
+# deny are both left alone. Anything else is turned into a DENY.
+#
+# It used to `exit "$code"` with the explanation on stderr, on the theory
+# that the harness would surface a non-zero exit rather than treat it as
+# consent. Two independent reviewers ran that against the real binary:
+# Claude Code blocks on hook exit 2 only. Exit 1 — which is what `set -u`
+# produces — is a "non-blocking error": logged, shown to the model, and
+# THEN THE TOOL RUNS. One reviewer injected a single unbound variable on
+# the Bash path and watched a governed role read a canary secret from
+# outside its scope, with the refusal printed right above it. The trap
+# that was written so a kernel bug could not disable the kernel was the
+# thing that disabled it. One character from correct, as the judge said.
+#
+# So the trap now speaks the one language every tested deny speaks: the
+# deny JSON, on stdout, exit 0. Not `exit 2` — that routes stderr to the
+# model as the block reason and is a second, untested channel; this is
+# the channel the whole suite exercises. And the JSON is built with
+# printf, not jq: the thing that failed may have BEEN jq, and a trap that
+# depends on what it is recovering from is not a trap.
 KM_DECIDED=0
 kernel_mandate__on_exit() {
   local code=$?
@@ -108,8 +125,13 @@ kernel_mandate__on_exit() {
   [ "$code" -eq 0 ] && return 0
   [ "${KM_DECIDED:-0}" = "1" ] && return 0
   printf '%s\n' "[kernel-mandate] INTERNAL ERROR: the role gate exited $code before reaching a decision." >&2
-  printf '%s\n' "[kernel-mandate] Refusing to treat that as permission. Re-run with bash -x to see where, or set KERNEL_MANDATE=0 to bypass the kernel deliberately." >&2
-  exit "$code"
+  printf '%s\n' "[kernel-mandate] Refusing to treat that as permission: this call is DENIED. Re-run with bash -x to see where, or set KERNEL_MANDATE=0 in the operator's shell to bypass the kernel deliberately." >&2
+  # Best-effort record; the log function may be the thing that broke.
+  kernel_mandate_log deny "internal-error exit=$code tool=${KM_TOOL:-?}" 2>/dev/null || true
+  # $code is an integer from $?; nothing else user-controlled enters the
+  # string, so this is valid JSON without an escaper.
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] kernel-mandate hit an internal error (exit %d) before reaching a decision on this call, and a gate whose failure mode is ALLOW is not a gate — so the call is refused.\\n\\nThis is a bug in the kernel, not in the call. Re-run the hook with bash -x to locate it. An operator who needs to proceed can bypass the kernel deliberately with KERNEL_MANDATE=0 in their own shell; an agent cannot lift this from inside a governed session."}}\n' "$code"
+  exit 0
 }
 trap kernel_mandate__on_exit EXIT
 
@@ -595,9 +617,16 @@ self_protect_target() {
     "$NORM_MANIFEST"|"$NORM_STATE_DIR"|"$NORM_STATE_DIR"/*)
       kernel_mandate_deny "$sp_prefix $sp_path" "$SELF_PROTECT_MSG" ;;
   esac
+  # `.claude/agents/` and `.mcp.json` joined the set in round 57. Both are
+  # CONTROL SURFACES: an agent definition is what a role IS when identity
+  # binds to the host's agent_type, and `.mcp.json` registers tool
+  # servers. A reviewer wrote `.claude/agents/evil.md` through a broad
+  # write grant and the kernel, which refused `settings.json` on the
+  # same call, let it through — the file that redefines the judge was
+  # less protected than the file that registers the hook.
   sp_rel="$(kernel_mandate_relpath "$sp_path" | tr 'A-Z' 'a-z')"
   case "$sp_rel" in
-    .claude/kernel-mandate.json|.claude/kernel-mandate.state|.claude/kernel-mandate.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*)
+    .claude/kernel-mandate.json|.claude/kernel-mandate.state|.claude/kernel-mandate.state/*|.claude/settings.json|.claude/settings.local.json|.claude/hooks|.claude/hooks/*|.claude/agents|.claude/agents/*|.mcp.json)
       kernel_mandate_deny "$sp_prefix $sp_path" "$SELF_PROTECT_MSG" ;;
   esac
 
@@ -640,7 +669,8 @@ self_protect_target() {
     */.claude/kernel-mandate.json \
     |*/.claude/kernel-mandate.state|*/.claude/kernel-mandate.state/* \
     |*/.claude/settings.json|*/.claude/settings.local.json \
-    |*/.claude/hooks|*/.claude/hooks/*)
+    |*/.claude/hooks|*/.claude/hooks/* \
+    |*/.claude/agents|*/.claude/agents/*|*/.mcp.json)
       kernel_mandate_deny "$sp_prefix nested-config $sp_path" "$SELF_PROTECT_MSG" ;;
   esac
   # A manifest filename outside any `.claude` directory is not law today
@@ -684,7 +714,7 @@ case "$KM_TOOL" in
     # `SETTINGS.json` name the same bytes as the protected file, and a
     # case-sensitive regex is a spelling of the protected path that
     # nobody checked. `-i` here can only ever protect more.
-    PROT_RE='(kernel-mandate\.(json|state)|(^|[^a-zA-Z0-9_.-])\.claude(/|$)|(^|[^a-zA-Z0-9_.-])\.claude/(settings(\.local)?\.json|hooks)(/|$))'
+    PROT_RE='(kernel-mandate\.(json|state)|(^|[^a-zA-Z0-9_.-])\.claude(/|$)|(^|[^a-zA-Z0-9_.-])\.claude/(settings(\.local)?\.json|hooks|agents)(/|$)|(^|[^a-zA-Z0-9_.-])\.mcp\.json($|[^a-zA-Z0-9_.-]))'
     if printf '%s' "$CMD" | grep -Eqi ">>?[[:space:]]*[^[:space:]|&;]*${PROT_RE}"; then
       kernel_mandate_deny "self-protect bash redirect" "$SELF_PROTECT_MSG"
     fi
@@ -3063,6 +3093,21 @@ Command: ${CMD}"
         [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         ;;
       truncate|shred|touch|chmod|chown)
+        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' || true)
+        [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
+        ;;
+      rm|rmdir|unlink)
+        # DELETION IS A WRITE. Destroying a file's contents (shred,
+        # truncate) was routed through the write axis; unlinking the same
+        # file was not, because rm/rmdir/unlink were absent from this
+        # table. A role with zero write grants whose command group
+        # admitted rm could `rm -rf` anything inside its READ scope, and
+        # validate said OK. Self-protection listed rm|rmdir|unlink the
+        # whole time, so the kernel defended its own manifest from
+        # deletion while a project's files were not held to write scope at
+        # all. Every non-flag operand is a target; `--` and `-rf` are
+        # flags and drop out, and each survivor is checked against write
+        # scope exactly like a redirect destination.
         DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' || true)
         [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         ;;

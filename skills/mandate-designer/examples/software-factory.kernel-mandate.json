@@ -1,0 +1,180 @@
+{
+  "kernelMandateVersion": 1,
+  "name": "software-factory",
+  "settings": {
+    "unboundAgentPolicy": "readonly",
+    "roleTagCorroboration": "auto",
+    "mainSessionRole": "orchestrator"
+  },
+  "roles": {
+    "architect": {
+      "description": "Decomposes requirements into modules with contracts, API signatures, dependencies and acceptance criteria. Writes contracts and signatures; writes no source.",
+      "agentTypes": [
+        "architect"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "factory/requirements.md"
+        ]
+      },
+      "write": {
+        "allow": [
+          "factory/modules/*/api.sig",
+          "factory/modules/*/contract.md"
+        ]
+      }
+    },
+    "implementer": {
+      "description": "Builds ONE module against its contract, reading its dependencies' API signatures but never their source. Runs its own module's unit tests to prove the work is complete before handing off. Cannot touch another module or the app under test.",
+      "agentTypes": [
+        "implementer"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "factory/modules/*/api.sig",
+          "factory/modules/*/contract.md",
+          "factory/modules/*/src/**",
+          "factory/modules/*/tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "factory/modules/*/notes.md",
+          "factory/modules/*/src/**",
+          "factory/modules/*/tests/**"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "implementer-runs"
+        ]
+      }
+    },
+    "integrator": {
+      "description": "Wires green modules together and runs integration tests against their published signatures. Edits no module's source.",
+      "agentTypes": [
+        "integrator"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "factory/integration/**",
+          "factory/modules/*/api.sig",
+          "factory/modules/*/contract.md",
+          "factory/verdicts/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "factory/integration/**"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "integrator-runs"
+        ]
+      }
+    },
+    "judge": {
+      "description": "Reviews ONE module through ONE lens (modularity, test coverage, clean code, API clarity, or integration readiness) and writes a verdict citing file and line. Reads the module's contract, source, tests and evidence; may not read the implementer's own notes, and writes only into the verdicts tree.",
+      "agentTypes": [
+        "judge"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "factory/modules/*/api.sig",
+          "factory/modules/*/contract.md",
+          "factory/modules/*/evidence/**",
+          "factory/modules/*/src/**",
+          "factory/modules/*/tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "factory/verdicts/**"
+        ]
+      }
+    },
+    "orchestrator": {
+      "description": "Plans the work into modules, dispatches implementers and judges, and records progress in the ledger. Reads only high-level information — requirements, contracts, API signatures, verdicts — never source or tests. Writes nothing but the ledger and never runs code.",
+      "agentTypes": [
+        "orchestrator"
+      ],
+      "tools": {
+        "allow": [
+          "Agent",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "factory/ledger.json",
+          "factory/modules/*/api.sig",
+          "factory/modules/*/contract.md",
+          "factory/requirements.md",
+          "factory/verdicts/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "factory/ledger.json"
+        ]
+      },
+      "dispatch": [
+        "architect",
+        "implementer",
+        "integrator",
+        "judge"
+      ]
+    }
+  },
+  "commandGroups": {
+    "implementer-runs": [
+      "^npm test\\b"
+    ],
+    "integrator-runs": [
+      "^npm run test:integration\\b"
+    ]
+  }
+}
