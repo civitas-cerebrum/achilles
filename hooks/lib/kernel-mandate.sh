@@ -275,7 +275,6 @@ kernel_mandate_load() {
            && "$KM_JQ" -e 'type == "object" and (.roles | type == "object")' \
                 < "$km_main/.claude/kernel-mandate.json" >/dev/null 2>&1; then
           KM_MANIFEST="$km_main/.claude/kernel-mandate.json"
-          KM_MANIFEST_FROM_MAIN_WORKTREE="$km_main"
         fi
       fi
     fi

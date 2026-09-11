@@ -1538,7 +1538,7 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     # fixed this exact bracket-expression misreading in glob_to_ere;
     # grep is line-oriented anyway, so the class never needed a newline.
     done < <(printf '%s' "$CODE_N" \
-      | grep -oE "[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\([^;]{0,200}$KM_FILE_KEY_RE[[:space:]]*:[^,}]*|$KM_FILE_KEY_RE[[:space:]]*:[^,}]*|\.saveAs[[:space:]]*\([^,)]*|\.routeFromHAR[[:space:]]*\([^,)]*" 2>/dev/null)
+      | grep -oE "[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\([^;]{0,200}${KM_FILE_KEY_RE}[[:space:]]*:[^,}]*|${KM_FILE_KEY_RE}[[:space:]]*:[^,}]*|\.saveAs[[:space:]]*\([^,)]*|\.routeFromHAR[[:space:]]*\([^,)]*" 2>/dev/null)
   fi
   # AUTHORED NAVIGATION, HELD TO THE NETWORK SCOPE.
   #
@@ -1632,6 +1632,60 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
       fi
     done < <(printf '%s' "$CODE_N" \
       | grep -oE "\.(goto|navigateTo|navigate|open|setExtraHTTPHeaders)[[:space:]]*\([^)]*\)?|\b(request|apiRequest|context)\.(get|post|put|patch|delete|fetch|head)[[:space:]]*\([^)]*\)?" 2>/dev/null)
+  fi
+
+  # THE BARE GLOBAL NETWORK SINKS — `fetch(`, `new WebSocket(`,
+  # `new EventSource(`, `new SharedWorker(`, dynamic `import(` — as a
+  # CLASS, constructed destinations only.
+  #
+  # The dotted sinks above are anchored by their `.`; these globals were
+  # left to the whole-literal-URL branch below, which reads a LITERAL
+  # destination and is blind to a CONSTRUCTED one. So
+  # `fetch(["http","://","evil",".com"].join(""))` and
+  # `new WebSocket(atob("…"))` were ALLOW while the identical
+  # construction handed to `page.goto`, `request.post` or `require` was
+  # DENY — a rule attached to a spelling, not a capability. Round 20's
+  # inversion (prove it inert; do not guess at it) closes it: a
+  # destination that cannot be folded to a literal is refused as
+  # unverifiable. Only where a network scope is DECLARED — a role that
+  # named no destinations did not ask for them to be checked.
+  #
+  # It runs on STRING-BLANKED code, which is what keeps rounds 50–52's
+  # false positive dead: a sink named inside a UI label the role asserts
+  # on (`getByText("Click to fetch (beta)")`) or a test title
+  # (`test("regression for fetch(x) crash")`) lives INSIDE a string, so
+  # blanking string interiors erases it — while a constructed
+  # destination, which is an expression OUTSIDE any string, survives. A
+  # literal destination to these sinks blanks to `fetch("")`; that is not
+  # this branch's job — the whole-literal-URL branch below scope-checks
+  # the literal ones. Here we refuse only the construction.
+  if [ -z "$CAP_ID" ]; then
+    local g_scope g_blanked
+    g_scope=$(kernel_mandate_role_field "$ROLE" '.network.allow')
+    if [ "$g_scope" != "null" ]; then
+      # Blank the interior of '…' and "…" strings, so a sink named inside
+      # a UI label or a test title vanishes. Backtick templates need no
+      # blanking here: an argument that begins with a backtick is a
+      # literal or a template, and both are handled elsewhere (the
+      # scheme+${…} test below, and the whole-literal branch) — the
+      # grep's first-token class already excludes a leading backtick.
+      # Perl handles the escaped-quote case; a fallback to unblanked code
+      # only ever OVER-matches (a sink mentioned in a string), which the
+      # regression suite pins, so failure here cannot open a hole.
+      g_blanked=$(printf '%s' "$CODE_N" | perl -pe 's/"(?:\\.|[^"\\])*"/""/g; '"s/'(?:\\\\.|[^'\\\\])*'/''/g;" 2>/dev/null || printf '%s' "$CODE_N")
+      # A bare global sink whose first argument is an expression — a
+      # variable, an array, atob(…), or a string immediately followed by
+      # `+` (a concatenation) — is a destination built at run time.
+      if printf '%s' "$g_blanked" | grep -Eq '(^|[^.A-Za-z0-9_$])(fetch|import)\([[:space:]]*[^[:space:]"'"'"'`)]|(^|[^.A-Za-z0-9_$])new[[:space:]]+(WebSocket|EventSource|SharedWorker)\([[:space:]]*[^[:space:]"'"'"'`)]|(^|[^.A-Za-z0-9_$])(fetch|import)\([[:space:]]*("")[[:space:]]*\+|(^|[^.A-Za-z0-9_$])new[[:space:]]+(WebSocket|EventSource|SharedWorker)\([[:space:]]*("")[[:space:]]*\+'; then
+        CAP_ID='network'; CAP_WHAT="a network destination built at run time and handed to a global sink (fetch / WebSocket / EventSource / import) — a host assembled from expressions cannot be checked against this role's network scope, so it is refused as unverifiable. Write the destination as a literal, or route the connection through an API whose target this role's network.allow permits"
+      # A template literal handed to a global sink whose text begins with
+      # an absolute scheme AND carries a ${…} is a constructed ABSOLUTE
+      # destination (`fetch(\`http://\${h}/x\`)`). A relative template
+      # (`\`/api/\${id}\``) reaches the app under test and is untouched.
+      elif printf '%s' "$CODE_N" | grep -Eq '(^|[^.A-Za-z0-9_$])(fetch|import)\([[:space:]]*`[a-zA-Z][a-zA-Z0-9+.-]*://[^`]*\$\{|[^.A-Za-z0-9_$]new[[:space:]]+(WebSocket|EventSource|SharedWorker)\([[:space:]]*`[a-zA-Z][a-zA-Z0-9+.-]*://[^`]*\$\{'; then
+        CAP_ID='network'; CAP_WHAT="a network destination whose host is interpolated into a template literal (\`scheme://\${…}\`) and handed to a global sink — the host is built at run time and cannot be checked against this role's network scope, so it is refused as unverifiable"
+      fi
+    fi
   fi
 
   # AND THEN THE SAME QUESTION WITHOUT A SINK LIST AT ALL.
@@ -3652,6 +3706,7 @@ Command: ${CMD}
 Write the path literally (relative to the project root) so it can be scope-checked. An expansion is permitted for this role in non-path arguments; a path built by expansion would make the read scope unenforceable."
             ;;
         esac
+        # shellcheck disable=SC2088  # deliberately matches a LITERAL ~ token in input and expands it manually
         case "$tok" in "~") tok="$HOME" ;; "~/"*) tok="$HOME/${tok#\~/}" ;; esac
         # NB: no `--` before the pattern — `compgen -G -- x` silently
         # matches nothing (bash quirk). Flag-shaped tokens are already
