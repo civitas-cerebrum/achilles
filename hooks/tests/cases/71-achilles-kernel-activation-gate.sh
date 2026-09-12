@@ -49,6 +49,35 @@ assert_eq "$(printf '%s' "$SUPERSEDED" | grep -c "'kernel-mandate-role-gate\.sh'
   "a stale direct kernel registration is listed for pruning"
 
 # ---------------------------------------------------------------------------
+section "kernel wiring: the role ledger ships and is staged beside the mandate"
+# ---------------------------------------------------------------------------
+# A manifest is the machine's copy of the QA operating system; nobody
+# reviews an OS by reading path globs. The ledger is the human copy — the
+# ten roles, what each is REFUSED, the handovers and the review loops —
+# rendered by `kernel-mandate doc` (npm run sync:kernel-mandate, which
+# fails on drift) and staged by postinstall beside the manifest it
+# describes. These assertions are about the two properties that make it
+# worth trusting: it ships, and it claims nothing the manifest does not.
+LEDGER="$HOOK_DIR/data/achilles-qa.kernel-mandate.md"
+assert_eq "$([ -f "$LEDGER" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.kernel-mandate.md ships"
+for ROLE in orchestrator scaffolder test-composer in-flight-composer workflow-reviewer \
+            phase-validator process-validator batch-reviewer perf-reviewer selector-diff-validator; do
+  assert_eq "$(grep -c "^### \`$ROLE\`" "$LEDGER")" "1" "ledger documents the $ROLE role exactly once"
+done
+assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "10" "every role carries a refusal list — the half a manifest states only by omission"
+assert_eq "$(grep -c '^## Handover contracts' "$LEDGER")" "1" "the ledger names the handover contracts"
+assert_eq "$(grep -c '^```mermaid' "$LEDGER")" "1" "the ledger carries the workflow flowchart"
+# The approver roles hold no shell. The ledger must SAY so, in the section
+# for one of them — a ledger that quietly widens a role is worse than none.
+APPROVER_SECTION=$(awk '/^### `workflow-reviewer`/{p=1} p{print} p&&/^### `[a-z-]+`$/&&!/workflow-reviewer/{exit}' "$LEDGER")
+assert_eq "$(printf '%s' "$APPROVER_SECTION" | grep -c 'run any shell command')" "1" "the ledger states that an approver role runs nothing"
+assert_eq "$(printf '%s' "$APPROVER_SECTION" | grep -c '^- \*\*Runs\*\*')" "0" "and grants it no commands"
+# Staged by postinstall on the same never-overwrite terms as the manifest.
+assert_eq "$(grep -c "QA_LEDGER_FILE = 'achilles-qa.kernel-mandate.md'" "$POSTINSTALL")" "1" "postinstall knows the ledger file"
+assert_eq "$(awk '/function stageProjectMandate/{p=1} p{print} p&&/^}/{exit}' "$POSTINSTALL" | grep -c "kernel-mandate.md")" "1" \
+  "stageProjectMandate stages the ledger beside the manifest"
+
+# ---------------------------------------------------------------------------
 section "kernel wiring: the shipped QA mandate validates and matches its table"
 # ---------------------------------------------------------------------------
 assert_eq "$([ -f "$WORKFLOW" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.workflow.json ships"

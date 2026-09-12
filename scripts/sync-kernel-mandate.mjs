@@ -21,7 +21,8 @@
 //
 // NEVER edit the vendored files in this repo — edit upstream, then sync.
 
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, chmodSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
 const REPO_ROOT = join(dirname(new URL(import.meta.url).pathname), '..');
@@ -106,6 +107,41 @@ for (const [srcRel, dstRel] of targets) {
     writeFileSync(dstPath, srcBody);
     if (dstRel.endsWith('.sh') && !dstRel.includes('/lib/')) chmodSync(dstPath, 0o755);
     console.log(`[sync-kernel-mandate] synced ${dstRel}`);
+  }
+}
+
+// THE ROLE LEDGER IS DERIVED HERE, not hand-written. The QA mandate is a
+// machine artifact; the ledger is its human copy — the ten roles, what each
+// one is REFUSED, where work changes hands, the flowchart and the review
+// loops — and postinstall stages it beside the manifest so a project that
+// has an OS imposed on it also gets the page that explains it. Regenerating
+// it from the canonical CLI is the only way it cannot drift from the
+// manifest it claims to describe: nobody can improve it by hand, and a hand
+// edit shows up here as drift rather than surviving as fiction.
+const LEDGER_REL = 'hooks/data/achilles-qa.kernel-mandate.md';
+const MANDATE_REL = 'hooks/data/achilles-qa.kernel-mandate.json';
+const WORKFLOW_REL = 'hooks/data/achilles-qa.workflow.json';
+const kernelCli = join(SRC, 'bin/cli.mjs');
+if (existsSync(kernelCli) && existsSync(join(REPO_ROOT, MANDATE_REL))) {
+  const tmp = join(REPO_ROOT, 'hooks/data/.achilles-qa.kernel-mandate.md.tmp');
+  // Repo-RELATIVE paths, run from the repo root: the ledger names the files
+  // it was rendered from, and an absolute path would bake this machine's
+  // home directory into a committed file and fail --check everywhere else.
+  const r = spawnSync(process.execPath, [kernelCli, 'doc', MANDATE_REL,
+    '--workflow', WORKFLOW_REL, '--out', 'hooks/data/.achilles-qa.kernel-mandate.md.tmp', '--quiet'],
+  { encoding: 'utf8', cwd: REPO_ROOT });
+  if (r.status !== 0) {
+    console.error(`[sync-kernel-mandate] could not render the role ledger: ${(r.stderr || r.stdout || '').trim().slice(0, 300)}`);
+    drift++;
+  } else {
+    const fresh = readFileSync(tmp, 'utf8');
+    const have = existsSync(join(REPO_ROOT, LEDGER_REL)) ? readFileSync(join(REPO_ROOT, LEDGER_REL), 'utf8') : null;
+    rmSync(tmp, { force: true });
+    if (fresh !== have) {
+      drift++;
+      if (CHECK) console.error(`[sync-kernel-mandate] DRIFT: ${LEDGER_REL} ${have === null ? '(missing here)' : 'differs from a fresh render'}`);
+      else { writeFileSync(join(REPO_ROOT, LEDGER_REL), fresh); console.log(`[sync-kernel-mandate] rendered ${LEDGER_REL}`); }
+    }
   }
 }
 

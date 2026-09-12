@@ -223,6 +223,39 @@ that lists one twice.
    first live run. The deny messages quote the role `description`
    verbatim, so make those precise sentences.
 
+### Phase 3a — Hand the humans the ledger
+
+A manifest is the machine's copy of the operating system. Nobody reviews an
+operating system by reading JSON path globs, so every onboarding ends by
+writing the **role ledger** — the same facts as prose, a page a reviewer,
+a new joiner or the person paying for the work can actually read:
+
+```bash
+kernel-mandate doc                       # → .claude/kernel-mandate.md
+kernel-mandate doc --workflow wf.json    # richer: the stage flowchart too
+```
+
+`init` and `derive` write it for you; the command is for refreshing it
+after a hand edit. It contains:
+
+- every role, its mandate sentence, and its grants on each axis;
+- **what each role is refused** — the half a manifest states only by
+  omission, and the half a reviewer actually wants;
+- the **handover contracts**: who writes what another role reads, which is
+  where work changes hands, plus the dispatch grammar;
+- a **flowchart** of the workflow (stages when a table is available, the
+  dispatch graph otherwise);
+- the **review loops** — the cycles where work comes back for another pass;
+- what the kernel refuses for every role, and what it does not check.
+
+Two rules about it. It is DERIVED: never hand-edit it, re-run the command,
+and commit it in the same commit as the manifest so a reviewer sees both
+halves of the change. And it invents nothing: if the ledger says a role may
+not run commands, that is because the manifest grants it none.
+
+Read it aloud with the user at the end of the session. A grant nobody can
+justify in that reading is a grant to remove.
+
 ### Phase 3b — Store it so it can be reused and swapped
 
 A designed mandate is worth keeping. Once the manifest validates, capture it
