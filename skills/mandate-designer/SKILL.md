@@ -139,7 +139,7 @@ it:
   "stages": [
     { "id": "plan",      "role": "orchestrator", "reads": ["factory/requirements.md", "factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/ledger.json", "factory/verdicts/**"], "writes": ["factory/ledger.json"], "dispatches": ["implementer", "judge"] },
     { "id": "implement", "role": "implementer",  "reads": ["factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/modules/*/src/**"], "writes": ["factory/modules/*/src/**"], "runs": ["npm test"] },
-    { "id": "judge",     "role": "judge",        "reads": ["factory/modules/**"], "writes": ["factory/verdicts/**"] }
+    { "id": "judge",     "role": "judge",        "reads": ["factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/modules/*/src/**", "factory/modules/*/tests/**", "factory/modules/*/evidence/**"], "writes": ["factory/verdicts/**"] }
   ]
 }
 ```
@@ -159,6 +159,12 @@ installs the draft, and runs the real kernel on one in-scope ALLOW and
 several out-of-scope DENY probes per role. Run it; every row should read
 as expected before anyone applies the draft. That is the onboarding
 promise — *check the boundaries by running them*, not by reading them.
+
+**Enumerate, never `**`, for a grader.** The judge above reads five
+named things and NOT `factory/modules/**` — because `**` would include
+`notes.md`, the implementer's own account of its work, which is the one
+file a grader must not be steered by. A glob that is convenient for the
+author is a glob that hands the graded party a channel into the grader.
 
 Note what `derive` reported as structural risks and decide them (see the
 AGENT section below): an implementer that both authors code and runs its

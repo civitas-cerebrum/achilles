@@ -61,7 +61,8 @@
           "factory/modules/*/notes.md",
           "factory/modules/*/src/**",
           "factory/modules/*/tests/**"
-        ]
+        ],
+        "codeImports": []
       },
       "bash": {
         "groups": [
@@ -95,7 +96,8 @@
       "write": {
         "allow": [
           "factory/integration/**"
-        ]
+        ],
+        "codeImports": []
       },
       "bash": {
         "groups": [

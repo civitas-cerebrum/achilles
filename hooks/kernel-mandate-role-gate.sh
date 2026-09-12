@@ -1660,9 +1660,18 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # this branch's job — the whole-literal-URL branch below scope-checks
   # the literal ones. Here we refuse only the construction.
   if [ -z "$CAP_ID" ]; then
-    local g_scope g_blanked
-    g_scope=$(kernel_mandate_role_field "$ROLE" '.network.allow')
-    if [ "$g_scope" != "null" ]; then
+    local g_blanked
+    # NOT GATED ON A DECLARED NETWORK SCOPE — and that is a correction. The
+    # first cut ran this only where `network.allow` was set, mirroring the
+    # navigation branch's "a role that named no destinations did not ask".
+    # A judge pointed out that is backwards for THIS check: a role with no
+    # network scope is the MOST restricted one, and it is exactly the
+    # shape `derive` emits for an implementer — so the shipped factory
+    # implementer still passed `fetch('http://'+h)`. A literal off-scope
+    # URL from the same role is denied by the whole-literal branch below
+    # whether or not a scope exists; a constructed one must not be
+    # weaker than a literal one. So: any code-authoring role, always.
+    {
       # Blank the interior of '…' and "…" strings, so a sink named inside
       # a UI label or a test title vanishes. Backtick templates need no
       # blanking here: an argument that begins with a backtick is a
@@ -1685,7 +1694,7 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
       elif printf '%s' "$CODE_N" | grep -Eq '(^|[^.A-Za-z0-9_$])(fetch|import)\([[:space:]]*`[a-zA-Z][a-zA-Z0-9+.-]*://[^`]*\$\{|[^.A-Za-z0-9_$]new[[:space:]]+(WebSocket|EventSource|SharedWorker)\([[:space:]]*`[a-zA-Z][a-zA-Z0-9+.-]*://[^`]*\$\{'; then
         CAP_ID='network'; CAP_WHAT="a network destination whose host is interpolated into a template literal (\`scheme://\${…}\`) and handed to a global sink — the host is built at run time and cannot be checked against this role's network scope, so it is refused as unverifiable"
       fi
-    fi
+    }
   fi
 
   # AND THEN THE SAME QUESTION WITHOUT A SINK LIST AT ALL.
@@ -2533,6 +2542,38 @@ Command: ${CMD}
     fi
 
     GIT_CONTENT=0
+    # A PACKAGE MANAGER RE-ANCHORS TOO. git's -C/--git-dir move the
+    # repository every scope is expressed against, and the block below
+    # refuses that. npm's --prefix, -C and --userconfig (→ script-shell)
+    # move where npm reads package.json and which shell runs its scripts —
+    # the same act, and unmodelled. A judge composed two granted
+    # primitives on the shipped factory implementer: write a package.json
+    # inside its OWN write scope with "test": "cat ../../../../.env", then
+    # `npm test --prefix <that dir>`. Real npm printed the canary; the
+    # write axis saw a file in scope and the bash axis saw a permitted
+    # `npm test`. Re-anchoring flags on a package-manager segment are
+    # refused outright: a role's test command runs against the project it
+    # is governed in, not a directory of its choosing.
+    if [ "$BASH_UNRESTRICTED" != "true" ]; then
+      case "${SEG_WORDS[0]##*/}" in
+        npm|npx|pnpm|yarn|bun|bunx)
+          for __w in "${SEG_WORDS[@]:1}"; do
+            case "$__w" in
+              --prefix|--prefix=*|-C|--userconfig|--userconfig=*|--globalconfig|--globalconfig=*|\
+              --script-shell|--script-shell=*|-w|--workspace|--workspace=*|--cwd|--cwd=*|\
+              --dir|--dir=*|--modules-folder|--modules-folder=*|--cache|--cache=*)
+                kernel_mandate_deny "bash-reanchor ${SEG_WORDS[0]##*/} $__w" "[BLOCKED] Role '${ROLE}' passed '${__w}' to ${SEG_WORDS[0]##*/} — that re-anchors where the package manager reads its manifest and which shell runs its scripts, so every scope this role's command was granted against no longer applies.
+
+${ROLE_HEADER}
+
+Command: ${CMD}
+
+A package manager's --prefix / -C / --userconfig / --script-shell / --workspace move the project it acts on, exactly as git -C does. Authoring a package.json inside your own write scope and then running npm against it is running arbitrary code that no command group checked. Run the project's own scripts from the project root, or hand the task to a role that holds bash.unrestricted." ;;
+            esac
+          done ;;
+      esac
+    fi
+
     GIT_ANCHOR=""
     if [ "${SEG_WORDS[0]:-}" = "git" ]; then
       # Find the subcommand. Global options come first, and some of them
@@ -4510,6 +4551,32 @@ ${ROLE_HEADER}
 Dispatchable roles: ${ROLE_NAMES}
 
 Dispatch rights are part of the separation of duties — if the workflow needs a '${TARGET_ROLE}', that dispatch belongs to a role holding the grant."
+    fi
+    # THE HOST'S OWN TYPE FIELD, CHECKED AGAINST THE SAME LIST. The
+    # description names a role and the prompt carries its tag — both are
+    # text the DISPATCHER writes. `subagent_type` is what the host actually
+    # spawns, and rung 2b binds the child from the host's agent_type. So a
+    # planner forbidden to summon the judge could write
+    # description "implementer-x: …" + an implementer tag, pass
+    # subagent_type "judge", clear every check here, and have the host
+    # spawn a child that then bound AS THE JUDGE. A judge reproduced it
+    # live: the registry recorded "implementer" while the child ran as
+    # the judge definition. The axis existed and was not enforced against
+    # the one field the dispatcher cannot dress up. A type that resolves
+    # to a manifest role must resolve to the role the description named;
+    # a type no role declares (general-purpose) is not a claim and passes.
+    DISPATCH_TYPE=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.subagent_type // ""' 2>/dev/null || echo "")
+    if [ -n "$DISPATCH_TYPE" ]; then
+      TYPE_ROLE=$(printf '%s' "$KM_MANIFEST_JSON" | "$JQ" -r --arg t "$DISPATCH_TYPE" \
+        'first(.roles | to_entries[] | select(.value.agentTypes // [] | index($t)) | .key) // empty' 2>/dev/null || echo "")
+      if [ -n "$TYPE_ROLE" ] && [ "$TYPE_ROLE" != "$TARGET_ROLE" ]; then
+        kernel_mandate_deny "dispatch-type-mismatch $TARGET_ROLE!=$TYPE_ROLE" "[BLOCKED] This dispatch names role '${TARGET_ROLE}' in its description but asks the host for subagent_type '${DISPATCH_TYPE}', which this mandate binds to role '${TYPE_ROLE}'.
+
+${ROLE_HEADER}
+Dispatchable roles: ${ROLE_NAMES}
+
+The child the host spawns is bound by its agent_type, not by the description — so the description and the type must name the same role. Dispatch '${TYPE_ROLE}' as '${TYPE_ROLE}-<slug>: …' with its own tag (if this role may dispatch it), or use a subagent_type that belongs to '${TARGET_ROLE}'."
+      fi
     fi
     # The target's tag may carry an optional #NONCE — accept either form.
     if ! printf '%s' "$PROMPT" | grep -Eq "<<kernel-mandate-role: ${TARGET_ROLE}(#[a-z0-9]{4,})?>>"; then
