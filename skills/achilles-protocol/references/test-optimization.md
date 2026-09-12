@@ -72,10 +72,13 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 
    ```typescript
    import { request, type Page } from '@playwright/test';
+   import { randomUUID } from 'node:crypto';
 
    export async function freshUser(page: Page): Promise<{ email: string; password: string; userId: string }> {
      const email = `test+${Date.now()}-${Math.random().toString(36).slice(2,8)}@example.test`;
-     const password = 'P@ssw0rd!';
+     // Env-sourced or generated — never a hardcoded literal (achilles-protocol Rule 15;
+     // doctrine: test-data-conventions Rule 1).
+     const password = process.env.E2E_FRESH_USER_PASSWORD ?? `Pw!${randomUUID().slice(0, 12)}`;
      const ctx = await request.newContext({ baseURL: process.env.BASE_URL ?? '«BASE_URL»' });
      const res = await ctx.post('«SIGNUP_ENDPOINT»', { data: { email, password } });
      if (!res.ok()) throw new Error(`freshUser signup failed: ${res.status()}`);
@@ -210,7 +213,9 @@ The exact seed list comes from `app-context.md`'s `Stable seed resources`. Do no
 // before
 const email = 'new-user@test.com';
 
-// after
+// after — inside the test body, never at module scope: retries re-run the
+// body only, so a module-scope value collides with the prior attempt's
+// state (test-data-conventions Rule 1)
 const email = `new-user-${Date.now()}@test.com`;
 ```
 
@@ -256,6 +261,8 @@ await steps.verifyCount('rows', 'PageName', { exactly: before + 1 });
 ```
 
 **Cross-reference:** this is the authoring-time analogue of `failure-diagnosis`'s heal step (d) *assertion re-baseline* — §3b prevents the volatile assertion from being written in the first place, so the suite never reaches the re-baseline churn that (d) cleans up after.
+
+**Relationship to the oracle strength ladder:** §3b's round-trip / delta / shape oracles are **assertion forms** for volatile values *within* a rung of the L0–L3 strength ladder (canonical in `test-composer` §"Oracle strength ladder") — the ladder picks which layer confirms the effect; §3b picks the form that keeps the assertion stable at that layer. Orthogonal, per `test-composition-standards.md` §3.6.
 
 ## §4 API shortcuts for tested prerequisites
 
@@ -406,7 +413,9 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
 
   The sentinel is named `sentinel: …` so cascade-skips become diagnostic, not silent collateral damage.
 
-**Flag-only behavior:** Stage 4a does NOT silently strip `mode: 'serial'` even if the rule is violated. It does:
+**The `// serial-deliberate:` annotation satisfies review.** Tenant-mutating specs are *required* to use file-level serial mode and to carry a `// serial-deliberate: <reason>` comment above the `configure` line (per `test-composer` Step 3; resolution record in `test-composition-standards.md` §3.4). When that annotation is present with a substantive reason, §6 treats the serial mode as reviewed-and-justified: no `stage4a:serial-mode-review` flag is emitted for the file. The flag-only behaviour below applies to **unannotated** serial mode only.
+
+**Flag-only behavior:** Stage 4a does NOT silently strip `mode: 'serial'` even if the rule is violated. For unannotated serial mode it does:
 
 1. Detect the violation (no sentinel as first test, or no apparent inter-test state dependency).
 2. Append a `// stage4a:serial-mode-review` comment above the `configure` line.
@@ -417,6 +426,7 @@ The agent does not auto-flip `mode: 'serial'` to per-test isolation because doin
 **Sentinel example (compliant):**
 
 ```typescript
+// serial-deliberate: tests 2..N depend on the record test 1 creates in the shared tenant
 test.describe.configure({ mode: 'serial', timeout: 60_000 });
 
 test.describe('j-<slug> — <one-sentence journey title>', () => {

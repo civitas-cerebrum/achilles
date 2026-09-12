@@ -34,6 +34,12 @@
 # Intentional: `set -uo pipefail` without `-e`. Input-tolerant by design.
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/perf-onboarding/SKILL.md\n  skills/performance-testing/SKILL.md"
+
+
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
@@ -73,7 +79,7 @@ fi
 # ---------------------------------------------------------------------------
 emit_deny() {
   local reason="$1"
-  "$JQ" -n --arg r "$reason$(achilles_scope_notice)" '{
+  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",

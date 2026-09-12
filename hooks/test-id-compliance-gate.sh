@@ -55,6 +55,12 @@
 
 set -euo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/test-identity.md §1 \"Every test case carries a stable ID\"\n  skills/achilles-protocol/references/test-identity.md §2 \"@known-defect marks an intentional red\""
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 if [ -z "$JQ" ]; then
@@ -197,5 +203,5 @@ How this is supposed to be done — load the skill, don't improvise:
   Skill('test-catalogue') → renders the ID as the row identifier, which is what
     makes a catalogue citable."
 
-emit_deny "$reason$(achilles_scope_notice)"
+emit_deny "$reason${HOOK_REFS}$(achilles_scope_notice)"
 exit 0
