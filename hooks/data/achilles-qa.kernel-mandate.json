@@ -1,0 +1,391 @@
+{
+  "kernelMandateVersion": 1,
+  "name": "achilles-qa",
+  "settings": {
+    "unboundAgentPolicy": "readonly",
+    "roleTagCorroboration": "auto",
+    "mainSessionRole": "orchestrator"
+  },
+  "roles": {
+    "batch-reviewer": {
+      "description": "Approver: reviews a batch of composed specs and records the batch verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "batch-reviewer"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/onboarding-status.json"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "workflow-reviewer"
+        ]
+      }
+    },
+    "in-flight-composer": {
+      "description": "Same mandate as test-composer, for specs composed mid-pipeline (coverage-expansion passes, self-repair heals).",
+      "agentTypes": [
+        "in-flight-composer"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**",
+          "tests/e2e/page-repository.json"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/**"
+        ],
+        "codeImports": []
+      },
+      "bash": {
+        "groups": [
+          "in-flight-composer-runs"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "database-testing",
+          "element-interactions",
+          "selector-development",
+          "test-composer"
+        ]
+      }
+    },
+    "orchestrator": {
+      "description": "The main session driving the achilles QA pipeline: scaffolds the Playwright suite skeleton, walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. Never touches application source or secrets.",
+      "agentTypes": [
+        "orchestrator"
+      ],
+      "tools": {
+        "allow": [
+          "Agent",
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          ".achilles/**",
+          ".gitignore",
+          "README.md",
+          "docs/**",
+          "package.json",
+          "playwright.config.ts",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          ".achilles/**",
+          ".gitignore",
+          "package.json",
+          "playwright.config.ts",
+          "tests/**"
+        ],
+        "codeImports": []
+      },
+      "bash": {
+        "groups": [
+          "orchestrator-runs"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost:3000",
+          "localhost:4173"
+        ]
+      },
+      "dispatch": [
+        "batch-reviewer",
+        "in-flight-composer",
+        "perf-reviewer",
+        "phase-validator",
+        "process-validator",
+        "selector-diff-validator",
+        "test-composer",
+        "workflow-reviewer"
+      ],
+      "skills": {
+        "allow": [
+          "agents-vs-agents",
+          "bug-discovery",
+          "bug-report",
+          "companion-mode",
+          "contract-testing",
+          "contributing-to-element-interactions",
+          "coverage-expansion",
+          "database-testing",
+          "element-interactions",
+          "failure-diagnosis",
+          "journey-mapping",
+          "onboarding",
+          "perf-onboarding",
+          "performance-testing",
+          "secrets-sweep",
+          "selector-development",
+          "self-repair",
+          "test-catalogue",
+          "test-composer",
+          "test-repair",
+          "ticket-driven-testing",
+          "work-summary-deck",
+          "workflow-reviewer"
+        ]
+      }
+    },
+    "perf-reviewer": {
+      "description": "Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "perf-reviewer"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/perf/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/perf/docs/perf-onboarding-status.json"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "workflow-reviewer"
+        ]
+      }
+    },
+    "phase-validator": {
+      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. Reads only; no shell.",
+      "agentTypes": [
+        "phase-validator"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/onboarding-status.json"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "workflow-reviewer"
+        ]
+      }
+    },
+    "process-validator": {
+      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "process-validator"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/onboarding-status.json"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "workflow-reviewer"
+        ]
+      }
+    },
+    "selector-diff-validator": {
+      "description": "Read-only validator: compares selector changes across tests/** and reports. Writes nothing; no shell.",
+      "agentTypes": [
+        "selector-diff-validator"
+      ],
+      "tools": {
+        "allow": [
+          "Glob",
+          "Grep",
+          "Read"
+        ]
+      },
+      "read": {
+        "allow": [
+          "tests/**"
+        ]
+      }
+    },
+    "test-composer": {
+      "description": "Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. Reads the page repository and docs; writes nothing outside tests/e2e/**.",
+      "agentTypes": [
+        "test-composer"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**",
+          "tests/e2e/page-repository.json"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/**"
+        ],
+        "codeImports": []
+      },
+      "bash": {
+        "groups": [
+          "test-composer-runs"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "database-testing",
+          "element-interactions",
+          "selector-development",
+          "test-composer"
+        ]
+      }
+    },
+    "workflow-reviewer": {
+      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "workflow-reviewer"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/onboarding-status.json"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "workflow-reviewer"
+        ]
+      }
+    }
+  },
+  "commandGroups": {
+    "in-flight-composer-runs": [
+      "^npx playwright test\\b"
+    ],
+    "orchestrator-runs": [
+      "^npx playwright test --list\\b",
+      "^git status\\b",
+      "^git log\\b",
+      "^git diff\\b",
+      "^git add\\b",
+      "^git commit\\b",
+      "^npx playwright test\\b",
+      "^npm test\\b",
+      "^npm run test:repair\\b"
+    ],
+    "test-composer-runs": [
+      "^npx playwright test\\b"
+    ]
+  }
+}

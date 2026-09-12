@@ -136,14 +136,27 @@ const HOOK_MANIFEST = [
   // status ("complete"/"aborted") retires the session's activation marker.
   { file: 'achilles-protocol-activation-watcher.sh', event: 'PostToolUse',      matcher: 'Write|Edit', timeout: 5 },
 
-  // Kernel mandate kernel — generic role-based permission enforcement for ANY
-  // multi-agent harness. Self-scoped by manifest presence
-  // (<repo-root>/.claude/kernel-mandate.json), NOT by achilles activation:
-  // projects that never write a manifest never feel it. Matches every tool
-  // (.*) because the manifest's tool-gate axis must be able to govern
-  // arbitrary tools (MCP included); the gate routes internally. See
+  // Kernel mandate kernel, bound to the achilles protocol lifecycle. The raw
+  // kernel (kernel-mandate-role-gate.sh) is self-scoped by MANIFEST PRESENCE
+  // and would govern every session in the project from the moment a
+  // <repo-root>/.claude/kernel-mandate.json exists — and postinstall now
+  // stages one (stageProjectMandate below). Registering it directly would
+  // mean `npm i @civitas-cerebrum/achilles` silently placed every future
+  // session in that project under a mandate nobody asked for. So the
+  // registered hook is the WRAPPER: it consults the kernel only while the
+  // achilles protocol is active in the session (lib/achilles-activation.sh
+  // — an achilles Skill invocation, a typed /<skill>, or a role-prefixed
+  // dispatch) and is a silent pass-through otherwise. Authority follows
+  // protocol activation; the mandate is dormant until then and lifts when
+  // the pipeline lands a terminal ledger status or the session ends. The
+  // kernel script is still copied beside the wrapper (HOOK_COMPANIONS) —
+  // the wrapper execs it and it sources lib/kernel-mandate.sh — but is NOT
+  // registered on its own; a leftover direct registration from an earlier
+  // install is pruned (SUPERSEDED_REGISTRATIONS). Matches every tool (.*)
+  // because the manifest's tool-gate axis must be able to govern arbitrary
+  // tools (MCP included); the kernel routes internally. See
   // skills/mandate-designer/references/architecture.md.
-  { file: 'kernel-mandate-role-gate.sh',              event: 'PreToolUse', matcher: '.*',          timeout: 10 },
+  { file: 'achilles-kernel-activation-gate.sh',       event: 'PreToolUse', matcher: '.*',          timeout: 10 },
 
   // PreToolUse — guards (fail-closed)
   { file: 'playwright-cli-isolation-guard.sh',    event: 'PreToolUse', matcher: 'Bash',        timeout: 10 },
@@ -269,6 +282,32 @@ const HOOK_MANIFEST = [
   { file: 'playwright-artifact-archiver.sh',             event: 'Stop', matcher: null,                 timeout: 30 },
 ];
 
+// Scripts copied into ~/.claude/hooks/ but NEVER registered in settings.json:
+// a registered hook execs them. The kernel mandate kernel is one — the
+// achilles-kernel-activation-gate.sh wrapper (registered above) execs it
+// beside itself and only while the achilles protocol is active. Copying it
+// through HOOK_MANIFEST would also register it, and a directly-registered
+// kernel governs unconditionally.
+const HOOK_COMPANIONS = [
+  'kernel-mandate-role-gate.sh',
+];
+
+// Registrations to drop from settings.json on install even though the
+// script still exists on disk (so the dangling-file prune below cannot
+// catch them): hooks that used to be registered directly and are now
+// reached only through a wrapper. Leaving both registered would run the
+// raw kernel unconditionally AND the wrapper — the exact shape the
+// wrapper exists to prevent.
+const SUPERSEDED_REGISTRATIONS = [
+  'kernel-mandate-role-gate.sh',
+];
+
+// The achilles QA role manifest, derived from hooks/data/achilles-qa.workflow.json
+// (`kernel-mandate derive`), staged into the consumer project by
+// stageProjectMandate() and read by the kernel at
+// <project>/.claude/kernel-mandate.json.
+const QA_MANDATE_FILE = 'achilles-qa.kernel-mandate.json';
+
 function copyHookFile(hookSrc, hookDest) {
   let shouldCopy = !fs.existsSync(hookDest);
   if (!shouldCopy) {
@@ -358,6 +397,13 @@ function installCivitasHooks() {
     }
   }
 
+  // Companion scripts: copied (same mtime idempotency), never registered.
+  for (const file of HOOK_COMPANIONS) {
+    const src = path.join(packageDir, 'hooks', file);
+    if (!fs.existsSync(src)) continue;
+    if (copyHookFile(src, path.join(userHooksDir, file))) copiedCount++;
+  }
+
   // Copy hooks/lib/ helpers (e.g. selector-diff-validator, visual-diff). These
   // are required at runtime by hook scripts that shell out to node. Pattern:
   // idempotent file copy with mtime check, same as copyHookFile() above.
@@ -421,6 +467,7 @@ function installCivitasHooks() {
   // preserved. Empty matcher groups left behind are dropped.
   if (settings && settings.hooks && typeof settings.hooks === 'object') {
     const legacySet = new Set(LEGACY_EI_HOOKS);
+    const supersededSet = new Set(SUPERSEDED_REGISTRATIONS);
     for (const event of Object.keys(settings.hooks)) {
       const groups = settings.hooks[event];
       if (!Array.isArray(groups)) continue;
@@ -436,11 +483,14 @@ function installCivitasHooks() {
           const isOurs = scriptPath.startsWith(userHooksDir + path.sep);
           if (!isOurs) return true;
           const isLegacy = legacySet.has(path.basename(scriptPath));
+          // A hook now reached only through a registered wrapper: the file
+          // stays on disk (the wrapper execs it), the direct registration goes.
+          const isSuperseded = supersededSet.has(path.basename(scriptPath));
           // Drop a known-retired hook OR any registration whose target script
           // no longer exists on disk — the latter is what produces the
           // "/bin/sh: …: No such file or directory" non-blocking failures.
           const isDangling = !fs.existsSync(scriptPath);
-          if (isLegacy || isDangling) { settingsModified = true; return false; }
+          if (isLegacy || isSuperseded || isDangling) { settingsModified = true; return false; }
           return true;
         });
         if (group.hooks.length !== before) settingsModified = true;
@@ -460,6 +510,41 @@ function installCivitasHooks() {
   pruneRetiredHooks(userHooksDir);
 
   console.log(`[civitas-cerebrum] Harness hooks: ${copiedCount} script${copiedCount === 1 ? '' : 's'} copied, ${registeredCount} registration${registeredCount === 1 ? '' : 's'} added (others already present). Restart Claude Code to pick them up.`);
+}
+
+// Stage the achilles QA role manifest into the consumer project at
+// <project>/.claude/kernel-mandate.json — the path the kernel reads.
+//
+// Project-scoped and DORMANT: the kernel is reached only through
+// achilles-kernel-activation-gate.sh, which consults it while the achilles
+// protocol is active in a session and passes through otherwise. Staging the
+// file therefore changes nothing for sessions that never run QA; when one
+// does, the main session binds as the `orchestrator` role and every
+// role-prefixed subagent binds as its own.
+//
+// NEVER overwrites. A project that already holds a manifest — hand-written,
+// `kernel-mandate init`, or a previous install — keeps it, byte for byte;
+// the mandate encodes the operator's intent about separation of duties and
+// an installer has no business editing it. Writes nowhere else: the only
+// destination is inside the project. `projectDir` is a parameter so the
+// hook test suite can drive this against a temp dir instead of the real
+// consumer root.
+function stageProjectMandate(projectDir = projectRoot) {
+  if (process.env.CIVITAS_SKIP_HOOK_INSTALL === '1') {
+    // No hooks → no kernel to read it; staging would be a stray file.
+    return;
+  }
+  const src = path.join(packageDir, 'hooks', 'data', QA_MANDATE_FILE);
+  if (!fs.existsSync(src)) return;
+  const destDir = path.join(projectDir, '.claude');
+  const dest = path.join(destDir, 'kernel-mandate.json');
+  if (fs.existsSync(dest)) {
+    console.log(`[civitas-cerebrum] Role manifest already present at ${dest} — left alone (never overwritten).`);
+    return;
+  }
+  fs.mkdirSync(destDir, { recursive: true });
+  fs.copyFileSync(src, dest);
+  console.log(`[civitas-cerebrum] QA mandate staged at ${dest} — dormant until the achilles protocol activates in a session (main session then binds as \`orchestrator\`).`);
 }
 
 // Bundle a pinned `jq` binary alongside the harness hooks. The hooks parse
@@ -767,6 +852,7 @@ function pruneRetiredHooks(homeHooksDir) {
 module.exports = {
   installCivitasSkills,
   installCivitasHooks,
+  stageProjectMandate,
   installBundledJq,
   installChromium,
 };
@@ -792,6 +878,12 @@ if (require.main === module) {
       installCivitasHooks();
     } catch (err) {
       console.warn(`[civitas-cerebrum] Could not install harness hooks: ${err.message}`);
+    }
+
+    try {
+      stageProjectMandate();
+    } catch (err) {
+      console.warn(`[civitas-cerebrum] Could not stage the QA role manifest: ${err.message}`);
     }
 
     try {

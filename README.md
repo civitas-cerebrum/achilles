@@ -215,6 +215,19 @@ See [`skills/onboarding/SKILL.md`](skills/onboarding/SKILL.md) for the full eigh
 
 ---
 
+## Role kernel
+
+The harness ships a **role mandate** for the QA pipeline and enforces it with the vendored [kernel-mandate](https://github.com/civitas-cerebrum/kernel-mandate) kernel. The mandate is a stage×role table, `hooks/data/achilles-qa.workflow.json`, from which `kernel-mandate derive` produces the manifest `hooks/data/achilles-qa.kernel-mandate.json` (kept in the tree; re-derive after editing the table — the output is canonical).
+
+- **Project-scoped and dormant.** `postinstall` stages the manifest at `<your-project>/.claude/kernel-mandate.json` — only if no manifest exists there; an existing one is never overwritten. Nothing changes for sessions that never run QA: the kernel is reached only through `achilles-kernel-activation-gate.sh`, a pass-through wrapper that consults it while the achilles protocol is active in the session and does nothing otherwise.
+- **It binds when the protocol activates** — an achilles skill is invoked, `/<skill>` is typed, or a role-prefixed subagent is dispatched. From that moment the **main session is the `orchestrator`** role: the table grants it `tests/**`, `playwright.config.ts`, `.gitignore`, `package.json` and `.achilles/**` to write, the suite and `git status/log/diff/add/commit` to run, the achilles skills to invoke, and every subagent role to dispatch — and it may not read `src/**` or `.env`. Subagents bind to their own roles (`test-composer`, `workflow-reviewer`, `phase-validator`, `process-validator`, `batch-reviewer`, `perf-reviewer`, `in-flight-composer`, `selector-diff-validator`): approvers write only their ledger and have no shell; composers write only `tests/e2e/**`. Every deny names the role's mandate and the sanctioned alternative. Because the orchestrator and the composers both author code and run it, the kernel's authored-code screens apply to them as derived: files a runner loads by convention (`playwright.config.ts`, `package.json`) and package imports in authored code (`@playwright/test`) are refused until the operator declares `write.codeImports` for those roles or splits authoring from running — `kernel-mandate explain --role orchestrator --tool Write --path playwright.config.ts` shows the verdict.
+- **Deactivation is a terminal ledger write by an approver, or session end.** The write that lands `status: complete` / `aborted` on the ledger retires the session's activation marker — and with it the mandate — so it is held to the same separation of duties as an approval: it must come from a registered approver subagent, never from the orchestrator directly.
+- **Operator bypass:** `KERNEL_MANDATE=0` in the operator's shell before launching the session runs it ungoverned (design sessions, manifest edits). Agents cannot set it from inside a session.
+
+Design a different mandate with the `mandate-designer` skill; review one with `kernel-mandate propose`, dry-run a boundary with `kernel-mandate explain`.
+
+---
+
 ## Working autonomously
 
 Once kicked off, the orchestrators run end-to-end without further prompts. `onboarding` takes a fresh project from no test automation to a complete suite — install, scaffold, crawl, happy path, journey map, five priority-tiered coverage passes, two bug-hunt passes, summary deck — emitting periodic progress updates but requiring no confirmation after the initial gate. `coverage-expansion` and `bug-discovery` follow the same pattern at smaller scope. The harness hooks are the safety layer that prevent the agent from talking itself out of contract completion. The agent owns the entire lifecycle of a test suite — discovery, growth, repair, adversarial probing, reporting — and ships its work as durable artifacts rather than transient chat output.

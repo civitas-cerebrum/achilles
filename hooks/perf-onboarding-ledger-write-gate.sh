@@ -24,7 +24,9 @@
 #    perf-onboarding-status schema inlined in hooks/lib/validator.bundle.mjs.
 # 2. **No phase-skip transitions.**
 # 3. **No reviewerVerdict: approved without a handoverEnvelope.**
-# 4. **Actor-identity on approval transitions** (separation of duties).
+# 4. **Actor-identity on approval transitions** (separation of duties) —
+#    also required for a top-level `.status` → `complete` | `aborted`
+#    transition, the write that retires the session's governance.
 # 5. **Mode authorisation** (runMode/modeAuthorizer co-location).
 # 6. **Silent-allow for non-ledger writes** (only acts on perf ledger path).
 # 7. **Per-phase positive-deliverable checks** at phase → completed transitions.
@@ -184,6 +186,12 @@ pipeline_validate_transition "$TMP_PROPOSED" "$FILE_PATH" && exit 0
 # ---------------------------------------------------------------------------
 AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
 pipeline_check_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" && exit 0
+
+# Same identity requirement for the OFF-SWITCH: a top-level .status →
+# complete|aborted transition retires the session's governance (activation
+# marker + kernel role binding), so only a registered approver subagent
+# may land it (lib call).
+pipeline_check_terminal_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" && exit 0
 
 # ---------------------------------------------------------------------------
 # Mode-authorisation check.
