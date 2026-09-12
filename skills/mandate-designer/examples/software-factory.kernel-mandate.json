@@ -1,6 +1,6 @@
 {
   "kernelMandateVersion": 1,
-  "name": "software-factory",
+  "name": "software-factory-module-auth",
   "settings": {
     "unboundAgentPolicy": "readonly",
     "roleTagCorroboration": "auto",
@@ -34,7 +34,7 @@
       }
     },
     "implementer": {
-      "description": "Builds ONE module against its contract, reading its dependencies' API signatures but never their source. Runs its own module's unit tests to prove the work is complete before handing off. Cannot touch another module or the app under test.",
+      "description": "Builds ONE module — the one bound as auth — against its contract, reading its dependencies' API signatures but never their source, and runs its own module's unit tests to prove the work is complete before handing off. Cannot touch another module or the app under test.",
       "agentTypes": [
         "implementer"
       ],
@@ -51,16 +51,16 @@
       "read": {
         "allow": [
           "factory/modules/*/api.sig",
-          "factory/modules/*/contract.md",
-          "factory/modules/*/src/**",
-          "factory/modules/*/tests/**"
+          "factory/modules/auth/contract.md",
+          "factory/modules/auth/src/**",
+          "factory/modules/auth/tests/**"
         ]
       },
       "write": {
         "allow": [
-          "factory/modules/*/notes.md",
-          "factory/modules/*/src/**",
-          "factory/modules/*/tests/**"
+          "factory/modules/auth/notes.md",
+          "factory/modules/auth/src/**",
+          "factory/modules/auth/tests/**"
         ],
         "codeImports": []
       },
@@ -106,7 +106,7 @@
       }
     },
     "judge": {
-      "description": "Reviews ONE module through ONE lens (modularity, test coverage, clean code, API clarity, or integration readiness) and writes a verdict citing file and line. Reads the module's contract, source, tests and evidence; may not read the implementer's own notes, and writes only into the verdicts tree.",
+      "description": "Reviews ONE module through ONE lens (modularity, test coverage, clean code, API clarity, or integration readiness) and writes a verdict citing file and line. Reads the module's contract, source, tests and evidence; may not read the implementer's own notes; writes only into the verdicts tree.",
       "agentTypes": [
         "judge"
       ],

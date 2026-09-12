@@ -138,15 +138,27 @@ it:
   },
   "stages": [
     { "id": "plan",      "role": "orchestrator", "reads": ["factory/requirements.md", "factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/ledger.json", "factory/verdicts/**"], "writes": ["factory/ledger.json"], "dispatches": ["implementer", "judge"] },
-    { "id": "implement", "role": "implementer",  "reads": ["factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/modules/*/src/**"], "writes": ["factory/modules/*/src/**"], "runs": ["npm test"] },
+    { "id": "implement", "role": "implementer",  "reads": ["factory/modules/{module}/contract.md", "factory/modules/*/api.sig", "factory/modules/{module}/src/**"], "writes": ["factory/modules/{module}/src/**"], "runs": ["npm test"] },
     { "id": "judge",     "role": "judge",        "reads": ["factory/modules/*/contract.md", "factory/modules/*/api.sig", "factory/modules/*/src/**", "factory/modules/*/tests/**", "factory/modules/*/evidence/**"], "writes": ["factory/verdicts/**"] }
   ]
 }
 ```
 
 ```bash
-kernel-mandate derive workflow.json --out /tmp/draft.json --fixtures /tmp/probes.sh
+kernel-mandate derive workflow.json --out /tmp/draft.json --bind module=auth --fixtures /tmp/probes.sh
 ```
+
+**`{placeholder}` binds per derivation — this is how parallel workers
+get isolated.** The table above says `factory/modules/{module}/src/**`
+once. Each implementer's checkout (a git worktree, typically) derives
+its own manifest with `--bind module=<its module>`, so *its* scope names
+one module while the dependencies' signatures stay `modules/*/api.sig`.
+Without a placeholder the only way to say "my module" is
+`modules/*/src/**`, which says "every module" — an implementer under
+that glob can overwrite every sibling's source, whatever its description
+claims. A placeholder left unbound is an error, never a wildcard. The
+bound manifest is named after its binding (`software-factory-module-auth`)
+so a `status` in that worktree says which module it is.
 
 `derive` unions each role's stages, infers tools from use (reads →
 Read/Glob/Grep, writes → Write/Edit, runs → Bash, dispatches → Agent),
