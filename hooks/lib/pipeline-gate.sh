@@ -510,10 +510,89 @@ See:
   fi
 
   # Subagent context — verify the parent is in the approver registry.
+  pipeline_approver_registry_check "$FILE_PATH" "Ledger write transitions ${APPROVAL_SUMMARY} to approved"
+}
+
+# pipeline_check_terminal_sod <tmp_proposed> <file_path> <agent_id>
+# The off-switch is an approval-class write. A write that transitions the
+# top-level `.status` to a TERMINAL value ("complete" / "aborted") is what
+# retires the session's protocol activation marker (the activation watcher
+# observes it on PostToolUse) — and with the marker goes every achilles
+# gate AND the kernel-mandate role binding. Left to the orchestrator, that
+# write would let the governed party end its own governance with one
+# ledger edit, so it is held to exactly the identity the reviewerVerdict →
+# approved transitions require: a dispatched subagent context whose parent
+# is a registered, unexpired approver. Non-terminal statuses ("blocked",
+# "in-progress") and writes that leave an already-terminal status in place
+# are not transitions and pass through.
+# Returns 0 + emits deny on violation; 1 when there is no terminal
+# transition or every check passes.
+# Requires: JQ
+# Caller: on return 0 → exit 0.
+pipeline_check_terminal_sod() {
+  local TMP_PROPOSED="$1"
+  local FILE_PATH="$2"
+  local AGENT_ID="$3"
+  local NEW_STATUS PRIOR_STATUS
+  NEW_STATUS=$("$JQ" -r '.status // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+  case "$NEW_STATUS" in
+    complete|aborted) ;;
+    *) return 1 ;;
+  esac
+  PRIOR_STATUS=""
+  if [ -f "$FILE_PATH" ]; then
+    PRIOR_STATUS=$("$JQ" -r '.status // empty' "$FILE_PATH" 2>/dev/null || echo "")
+  fi
+  # Already terminal with the same value — no transition, nothing to gate.
+  [ "$PRIOR_STATUS" = "$NEW_STATUS" ] && return 1
+
+  if [ -z "$AGENT_ID" ]; then
+    pipeline_emit_deny "[BLOCKED] Ledger write transitions the top-level .status to \"${NEW_STATUS}\" (from \"${PRIOR_STATUS:-<unset>}\") but the write is coming directly from the orchestrator context (no agent_id — not a dispatched subagent).
+
+File: ${FILE_PATH}
+
+A terminal pipeline status is the session's OFF-SWITCH: the activation
+watcher retires the achilles session marker when it lands, and with the
+marker goes every achilles guardrail and the kernel-mandate role binding
+for this session. That makes it an approval-class write, held to the
+same separation of duties as a reviewerVerdict → approved transition —
+the orchestrator does the work, an approver subagent records that the
+pipeline is finished (or abandoned). The governed party does not get to
+end its own governance.
+
+Fix: dispatch the matching approver subagent (e.g. \`workflow-reviewer-final:\`
+or \`phase-validator-8:\` for the onboarding pipeline, \`perf-reviewer-final:\`
+for the perf pipeline) with a brief that cites the ledger and the terminal
+status to record, and let it author this write. The orchestrator's job
+ends at dispatch; the approver owns the terminal record.
+
+See:
+  - hooks/workflow-approver-registry.sh (PreToolUse:Agent — records approvers)
+  - hooks/achilles-protocol-activation-watcher.sh (PostToolUse — retires the marker)
+  - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\""
+    return 0
+  fi
+
+  pipeline_approver_registry_check "$FILE_PATH" "Ledger write transitions the top-level .status to \"${NEW_STATUS}\""
+}
+
+# pipeline_approver_registry_check <file_path> <lead>
+# Shared registry half of the separation-of-duties checks: the calling
+# write is already known to come from a subagent context (non-empty
+# agent_id); verify that an approver-role dispatch was recorded in the
+# registry next to the ledger and that the most recent one is unexpired.
+# <lead> is the opening clause of every deny (\"Ledger write transitions …\")
+# so each caller's message names its own transition.
+# Returns 0 + emits deny on violation; 1 when the registry checks pass.
+# Requires: JQ
+# The registry file is expected at $(dirname <file_path>)/.workflow-approvers.json
+pipeline_approver_registry_check() {
+  local FILE_PATH="$1"
+  local LEAD="$2"
   local REGISTRY_FILE
   REGISTRY_FILE="$(dirname "$FILE_PATH")/.workflow-approvers.json"
   if [ ! -f "$REGISTRY_FILE" ]; then
-    pipeline_emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from a subagent context, but no approver registry exists at:
+    pipeline_emit_deny "[BLOCKED] ${LEAD} from a subagent context, but no approver registry exists at:
 
   ${REGISTRY_FILE}
 
@@ -537,7 +616,7 @@ verdicts."
   REGISTRY_COUNT=$("$JQ" -r '[keys[]] | length' "$REGISTRY_FILE" 2>/dev/null || echo 0)
   case "$REGISTRY_COUNT" in ''|*[!0-9]*) REGISTRY_COUNT=0 ;; esac
   if [ "$REGISTRY_COUNT" -lt 1 ]; then
-    pipeline_emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved from a subagent context, but the approver registry is empty.
+    pipeline_emit_deny "[BLOCKED] ${LEAD} from a subagent context, but the approver registry is empty.
 
 File: ${FILE_PATH}
 Registry: ${REGISTRY_FILE}
@@ -565,7 +644,7 @@ this approval write."
   case "$LATEST_TS" in ''|*[!0-9]*) LATEST_TS=0 ;; esac
   REG_AGE=$((NOW - LATEST_TS))
   if [ "$REG_AGE" -gt "$TTL" ]; then
-    pipeline_emit_deny "[BLOCKED] Ledger write transitions ${APPROVAL_SUMMARY} to approved but the most recent approver registration has expired (age ${REG_AGE}s, TTL ${TTL}s).
+    pipeline_emit_deny "[BLOCKED] ${LEAD} but the most recent approver registration has expired (age ${REG_AGE}s, TTL ${TTL}s).
 
 Registry entries live for 30 minutes from dispatch. If the approver
 subagent has been running longer than that, re-dispatch a fresh

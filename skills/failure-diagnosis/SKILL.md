@@ -14,7 +14,7 @@ description: >
   Two entrypoints — a LOCAL failure (artifacts already on disk) and a
   PIPELINE failure (artifacts still inside the CI run, and the first move is
   to pull them down, not to re-run locally).
-  Activates inside subagent context (composer-/probe-/process-validator-/
+  Activates inside subagent context (test-composer-/probe-/process-validator-/
   cleanup-/repair-worker- prefixes) when a test fails during any mode
   (authoring, maintenance, test-composer, bug-discovery, self-repair), or when
   the dispatching brief says "test is failing", "debug this", "why is this

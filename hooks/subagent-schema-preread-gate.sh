@@ -12,7 +12,8 @@
 # the subagent is expected to conform to. The role→schema mapping mirrors
 # subagent-return-schema-guard.sh exactly:
 #
-#   composer-<slug>            → composer.schema.json
+#   test-composer-<slug>       → composer.schema.json
+#   composer-<slug>            → composer.schema.json  (pre-kernel spelling)
 #   reviewer-<slug>            → reviewer-inloop.schema.json
 #   probe-<slug>               → probe.schema.json
 #   phase-validator-<N>        → phase-validator.schema.json

@@ -132,6 +132,8 @@ validateStandaloneFixtures('schemas/run-summary.schema.json', 'schemas/run-summa
 validateStandaloneFixtures('schemas/perf-onboarding-status.schema.json', 'schemas/perf-onboarding-status.fixtures');
 validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-summary.fixtures');
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
+validateStandaloneFixtures('schemas/kernel-mandate.schema.json', 'schemas/kernel-mandate.fixtures');
+validateStandaloneFixtures('schemas/kernel-mandate-bundle.schema.json', 'schemas/kernel-mandate-bundle.fixtures');
 
 // ---------------------------------------------------------------------------
 // Onboarding-status ledger fixtures

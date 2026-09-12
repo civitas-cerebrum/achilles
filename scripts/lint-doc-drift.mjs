@@ -252,9 +252,17 @@ function checkRoleMapCoverage() {
 // hook's pointers.
 function checkHookReferences() {
   const detail = [];
+  // Vendored verbatim from @civitas-cerebrum/kernel-mandate by
+  // scripts/sync-kernel-mandate.mjs (--check fails CI on drift). Its deny
+  // messages cite the kernel's own docs, not this repo's methodology, and
+  // an edit here would be overwritten on the next sync — so the References
+  // convention is achilles' own hooks' to keep, and the wrapper that
+  // registers the kernel (achilles-kernel-activation-gate.sh) is held to it.
+  const VENDORED = new Set(['hooks/kernel-mandate-role-gate.sh']);
   const hooks = readdirSync('hooks')
     .filter((f) => f.endsWith('.sh'))
-    .map((f) => join('hooks', f));
+    .map((f) => join('hooks', f))
+    .filter((h) => !VENDORED.has(h));
 
   let emitters = 0;
   let citedPaths = 0;

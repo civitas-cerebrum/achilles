@@ -24,6 +24,12 @@ section "schema-preread-gate: composer with schema citation"
 assert_allow "$H" "$(payload tool_name=Agent description='composer-j-cart-1-c1' prompt='Compose. Return per schemas/subagent-returns/composer.schema.json.')" "composer + full path → ALLOW"
 assert_allow "$H" "$(payload tool_name=Agent description='composer-j-cart-1-c1' prompt='Compose. Conform to composer.schema.json.')" "composer + bare filename → ALLOW"
 
+# `test-composer-*` is the kernel-mandate spelling of the composer dispatch
+# (skills/onboarding/SKILL.md §"Dispatch grammar"); it routes to the same
+# schema as the legacy `composer-*` above.
+assert_allow "$H" "$(payload tool_name=Agent description='test-composer-j-cart: compose' prompt='Compose. Conform to composer.schema.json.')" "test-composer + citation → ALLOW"
+assert_deny "$H" "$(payload tool_name=Agent description='test-composer-j-cart: compose' prompt='Compose a checkout spec under tests/e2e/.')" "test-composer + no citation → DENY" "composer.schema.json"
+
 section "schema-preread-gate: composer without schema citation"
 assert_deny "$H" "$(payload tool_name=Agent description='composer-j-cart-1-c1' prompt='Compose a checkout spec under tests/e2e/.')" "composer + no citation → DENY" "composer.schema.json"
 assert_deny "$H" "$(payload tool_name=Agent description='composer-j-cart-1-c1' prompt='Compose using composer return shape.')" "composer + non-canonical phrasing → DENY" "composer.schema.json"

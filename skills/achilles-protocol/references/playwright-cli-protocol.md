@@ -91,7 +91,7 @@ Use `<phase>-<role>-<slug>` so `playwright-cli list` reads as a workflow summary
 | `failure-diagnosis` per-failure debug session | `fd-<short-slug>` | `fd-<short-slug>` |
 | `companion-mode` single-task verification | `companion-<task-slug>` | `companion-<task-slug>` |
 
-The `composer-` / `reviewer-` / `probe-` prefix on the CLI slug mirrors the role-explicit Agent description prefix that dispatched the subagent (`composer-j-<slug>:`, `reviewer-j-<slug>:`, `probe-j-<slug>:`) — same prefix on both ends, so `.playwright-cli/<slug>*` artifacts trace 1:1 to the dispatching subagent's role + journey. Bare `j-<slug>-...` / `sj-<slug>-...` slugs are deprecated; use the role-explicit form.
+The `composer-` / `reviewer-` / `probe-` prefix on the CLI slug mirrors the role-explicit Agent description prefix that dispatched the subagent (`test-composer-j-<slug>:`, `reviewer-j-<slug>:`, `probe-j-<slug>:`) — same role on both ends, so `.playwright-cli/<slug>*` artifacts trace 1:1 to the dispatching subagent's role + journey. The composer's slug drops the `test-` of its description prefix (the role kernel's name for the role) to stay inside the length budget below; the guard accepts `test-composer-` slugs too. Bare `j-<slug>-...` / `sj-<slug>-...` slugs are deprecated; use the role-explicit form.
 
 Slugs use ASCII, lowercase, dash-separated. Do not use `/` — match the dash-separated forms in the table above so `playwright-cli list` reads cleanly.
 
@@ -106,7 +106,7 @@ Practical guidance:
 
 If a longer slug is unavoidable, set `TMPDIR=/tmp` for the run — a shorter base path buys back a few characters — but treat that as a workaround, not a fix.
 
-**These prefixes are hook-enforced.** `playwright-cli-isolation-guard.sh` (a `PreToolUse`/`Bash` hook in `scripts/postinstall.js`'s `HOOK_MANIFEST`) inspects every `playwright-cli` invocation and **denies** any `-s=` slug that does not match `phase1-|phase2-|phase4-|stage2-|composer-|reviewer-|probe-|cleanup-|companion-|fd-` (full regex: `^(phase1|phase2|phase4|stage2|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*`). Bare `j-`/`sj-` slugs are rejected — use the role-explicit forms. Session-agnostic subcommands (`close-all`, `kill-all`, `list`, `install-browser`, …) are allowed without a slug. See [`harness-hooks.md`](harness-hooks.md) for the full hook catalogue.
+**These prefixes are hook-enforced.** `playwright-cli-isolation-guard.sh` (a `PreToolUse`/`Bash` hook in `scripts/postinstall.js`'s `HOOK_MANIFEST`) inspects every `playwright-cli` invocation and **denies** any `-s=` slug that does not match `phase1-|phase2-|phase4-|stage2-|test-composer-|composer-|reviewer-|probe-|cleanup-|companion-|fd-` (full regex: `^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*`). Bare `j-`/`sj-` slugs are rejected — use the role-explicit forms. Session-agnostic subcommands (`close-all`, `kill-all`, `list`, `install-browser`, …) are allowed without a slug. See [`harness-hooks.md`](harness-hooks.md) for the full hook catalogue.
 
 ### 3.2 Quarantine on start
 

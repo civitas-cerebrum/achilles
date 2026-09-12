@@ -1,0 +1,323 @@
+{
+  "name": "achilles-qa",
+  "mainSessionRole": "orchestrator",
+  "roles": {
+    "orchestrator": {
+      "description": "The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config \u2014 playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Never touches application source or secrets.",
+      "agentTypes": [
+        "orchestrator"
+      ]
+    },
+    "scaffolder": {
+      "description": "Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch \u2014 the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
+      "agentTypes": [
+        "scaffolder"
+      ]
+    },
+    "test-composer": {
+      "description": "Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. Reads the page repository and docs; writes nothing outside tests/e2e/**.",
+      "agentTypes": [
+        "test-composer"
+      ],
+      "codeImports": [
+        "@playwright/test",
+        "@civitas-cerebrum/element-interactions"
+      ]
+    },
+    "in-flight-composer": {
+      "description": "Same mandate as test-composer, for specs composed mid-pipeline (coverage-expansion passes, self-repair heals).",
+      "agentTypes": [
+        "in-flight-composer"
+      ],
+      "codeImports": [
+        "@playwright/test",
+        "@civitas-cerebrum/element-interactions"
+      ]
+    },
+    "workflow-reviewer": {
+      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "workflow-reviewer"
+      ]
+    },
+    "phase-validator": {
+      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. Reads only; no shell.",
+      "agentTypes": [
+        "phase-validator"
+      ]
+    },
+    "process-validator": {
+      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "process-validator"
+      ]
+    },
+    "batch-reviewer": {
+      "description": "Approver: reviews a batch of composed specs and records the batch verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "batch-reviewer"
+      ]
+    },
+    "perf-reviewer": {
+      "description": "Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "perf-reviewer"
+      ]
+    },
+    "selector-diff-validator": {
+      "description": "Read-only validator: compares selector changes across tests/** and reports. Writes nothing; no shell.",
+      "agentTypes": [
+        "selector-diff-validator"
+      ]
+    }
+  },
+  "stages": [
+    {
+      "id": "scaffold",
+      "role": "orchestrator",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        "package.json",
+        "playwright.config.ts",
+        ".gitignore",
+        "README.md",
+        ".achilles/**"
+      ],
+      "writes": [
+        "tests/**",
+        ".gitignore",
+        ".achilles/**"
+      ],
+      "runs": [
+        "npx playwright test --list",
+        "git status",
+        "git log",
+        "git diff",
+        "git add",
+        "git commit"
+      ],
+      "network": [
+        "localhost:4173",
+        "localhost:3000"
+      ],
+      "dispatches": [
+        "scaffolder"
+      ],
+      "skills": [
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "scaffold-suite",
+      "role": "scaffolder",
+      "reads": [
+        "tests/e2e/**",
+        "docs/**",
+        "package.json",
+        "playwright.config.ts",
+        ".gitignore",
+        "README.md"
+      ],
+      "writes": [
+        "playwright.config.ts",
+        "package.json",
+        ".gitignore",
+        "tests/e2e/.gitignore",
+        "tests/e2e/playwright.setup.ts",
+        "tests/e2e/fixtures/**",
+        "tests/e2e/docs/app-context.md",
+        "tests/e2e/page-repository.json"
+      ],
+      "skills": [
+        "achilles-protocol"
+      ]
+    },
+    {
+      "id": "drive-pipeline",
+      "role": "orchestrator",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        ".achilles/**"
+      ],
+      "writes": [
+        "tests/**",
+        ".achilles/**"
+      ],
+      "runs": [
+        "npx playwright test",
+        "npm test",
+        "npm run test:repair"
+      ],
+      "dispatches": [
+        "scaffolder",
+        "test-composer",
+        "in-flight-composer",
+        "workflow-reviewer",
+        "phase-validator",
+        "process-validator",
+        "batch-reviewer",
+        "perf-reviewer",
+        "selector-diff-validator"
+      ],
+      "network": [
+        "localhost:4173",
+        "localhost:3000"
+      ],
+      "skills": [
+        "agents-vs-agents",
+        "bug-discovery",
+        "bug-report",
+        "companion-mode",
+        "ticket-driven-testing",
+        "self-repair",
+        "contract-testing",
+        "contributing-to-achilles-protocol",
+        "coverage-expansion",
+        "database-testing",
+        "achilles-protocol",
+        "failure-diagnosis",
+        "journey-mapping",
+        "onboarding",
+        "perf-onboarding",
+        "performance-testing",
+        "secrets-sweep",
+        "selector-development",
+        "test-catalogue",
+        "test-composer",
+        "test-repair",
+        "work-summary-deck",
+        "workflow-reviewer",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "compose",
+      "role": "test-composer",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        "tests/e2e/page-repository.json"
+      ],
+      "writes": [
+        "tests/e2e/**"
+      ],
+      "runs": [
+        "npx playwright test"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "test-composer",
+        "achilles-protocol",
+        "database-testing",
+        "selector-development",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "compose-in-flight",
+      "role": "in-flight-composer",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        "tests/e2e/page-repository.json"
+      ],
+      "writes": [
+        "tests/e2e/**"
+      ],
+      "runs": [
+        "npx playwright test"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "test-composer",
+        "achilles-protocol",
+        "database-testing",
+        "selector-development",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "review-phase",
+      "role": "workflow-reviewer",
+      "reads": [
+        "tests/**",
+        "docs/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/onboarding-status.json"
+      ],
+      "skills": [
+        "workflow-reviewer"
+      ]
+    },
+    {
+      "id": "validate-phase",
+      "role": "phase-validator",
+      "reads": [
+        "tests/**",
+        "docs/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/onboarding-status.json"
+      ],
+      "skills": [
+        "workflow-reviewer"
+      ]
+    },
+    {
+      "id": "validate-process",
+      "role": "process-validator",
+      "reads": [
+        "tests/**",
+        "docs/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/onboarding-status.json"
+      ],
+      "skills": [
+        "workflow-reviewer"
+      ]
+    },
+    {
+      "id": "review-batch",
+      "role": "batch-reviewer",
+      "reads": [
+        "tests/**",
+        "docs/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/onboarding-status.json"
+      ],
+      "skills": [
+        "workflow-reviewer"
+      ]
+    },
+    {
+      "id": "review-perf",
+      "role": "perf-reviewer",
+      "reads": [
+        "tests/perf/**",
+        "docs/**"
+      ],
+      "writes": [
+        "tests/perf/docs/perf-onboarding-status.json"
+      ],
+      "skills": [
+        "workflow-reviewer"
+      ]
+    },
+    {
+      "id": "validate-selectors",
+      "role": "selector-diff-validator",
+      "reads": [
+        "tests/**"
+      ]
+    }
+  ]
+}

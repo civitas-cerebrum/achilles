@@ -19,7 +19,7 @@ source "$SCRIPT_DIR/lib.sh"
 # Locate test files. If an arg is given, filter by substring.
 filter="${1:-}"
 shopt -s nullglob
-case_files=("$CASES_DIR"/*.sh)
+case_files=("$CASES_DIR"/*.sh "$CASES_DIR"/*/*.sh)
 if [ "${#case_files[@]}" -eq 0 ]; then
   echo "No test files found under $CASES_DIR" >&2
   exit 1

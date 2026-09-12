@@ -89,6 +89,12 @@
 # Skill names bundled by this package (skills/<name>/). Any Skill
 # invocation of one of these — bare or plugin/path-prefixed — activates
 # the protocol for the session.
+# Deliberate exclusion: mandate-designer. It is GENERIC infrastructure
+# (designs a .claude/kernel-mandate.json role manifest for any multi-agent
+# harness) — invoking it must not switch on the QA methodology's commit
+# grammar / ledger gates in an unrelated project. Its enforcement hook
+# (kernel-mandate-role-gate.sh) is self-scoped by manifest presence and does
+# not source this lib.
 #
 # Orchestrator aliases. This alternation is the ONLY place any skill name
 # keys activation (both the Skill-name match in
@@ -117,7 +123,13 @@ ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|
 # reviewer-, fd-) are deliberately excluded: a dev's "cleanup-temp:" agent
 # must not switch the guards on. Genuine protocol runs activate via the
 # skill signals anyway.
-ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|composer-|probe-|process-validator-|contribution-handover-)'
+# `test-composer-` and `in-flight-composer-` are the kernel-mandate role
+# names for the composer dispatches (skills/onboarding/SKILL.md §"Dispatch
+# grammar"); the pre-kernel `composer-` spelling stays listed so a brief
+# written before the rename still activates. `scaffolder-` is deliberately
+# NOT listed — it is generic-sounding, and the Phase 1 dispatch always
+# follows the `onboarding` Skill call that already activated the session.
+ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|test-composer-|in-flight-composer-|composer-|probe-|process-validator-|contribution-handover-)'
 
 achilles__jq() {
   if [ -n "${JQ:-}" ] && [ -x "${JQ:-}" ]; then
