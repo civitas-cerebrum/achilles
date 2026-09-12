@@ -4,7 +4,7 @@
 **Scope:** the bounded 7-cycle Stage A↔B retry loop, termination conditions, the "fresh reviewer every cycle" invariant, and dual-stage-specific anti-rationalizations.
 
 For the per-pass dispatch pipeline that drives one cycle into this loop, see `references/depth-mode-pipeline.md` §"Per-pass pipeline".
-For the canonical Stage A and Stage B return shapes, see `../element-interactions/references/subagent-return-schema.md` §1, §2, §2.4.
+For the canonical Stage A and Stage B return shapes, see `../achilles-protocol/references/subagent-return-schema.md` §1, §2, §2.4.
 For the Stage B reviewer's brief and must-fix calibration, see `reviewer-subagent-contract.md`.
 For the adversarial Stage A contract, see `adversarial-subagent-contract.md`.
 

@@ -87,7 +87,7 @@ Use the Read tool for file checks, Bash only for directory existence:
    under the standard template (see §"readiness.md template" below).
 
 Sentinel strings are case-sensitive — copy them verbatim from
-[`skill-registry.md`](../../element-interactions/references/skill-registry.md)
+[`skill-registry.md`](../../achilles-protocol/references/skill-registry.md)
 §"Non-skill sentinel strings".
 
 ---
@@ -164,7 +164,7 @@ The reviewer checks that `readiness.md` is present and contains:
 
 ## Relationship to `cascade-detector.md`
 
-The `cascade-detector.md` (in `skills/element-interactions/references/`)
+The `cascade-detector.md` (in `skills/achilles-protocol/references/`)
 answers whether the functional e2e suite is onboarded. The
 perf-readiness-detector is a complementary probe that answers whether the
 perf pipeline has the functional artifacts it can consume. They share the
@@ -173,6 +173,6 @@ but serve different callers and different decisions.
 
 | Reference | Scope |
 |---|---|
-| [`cascade-detector.md`](../../element-interactions/references/cascade-detector.md) | Functional e2e onboarding state (Levels A/B/C/None). Callers: `element-interactions`, `onboarding`, `companion-mode`. |
+| [`cascade-detector.md`](../../achilles-protocol/references/cascade-detector.md) | Functional e2e onboarding state (Levels A/B/C/None). Callers: `achilles-protocol`, `onboarding`, `companion-mode`. |
 | [`perf-readiness-detector.md`](perf-readiness-detector.md) (this file) | Perf pipeline readiness (derive / bootstrap). Caller: `perf-onboarding` Phase 2. |
-| [`skill-registry.md`](../../element-interactions/references/skill-registry.md) | Canonical skill names, invocation strings, sentinel strings. |
+| [`skill-registry.md`](../../achilles-protocol/references/skill-registry.md) | Canonical skill names, invocation strings, sentinel strings. |

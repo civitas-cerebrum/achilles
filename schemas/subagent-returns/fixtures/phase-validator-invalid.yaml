@@ -4,5 +4,5 @@ handover:
   status: improvements-needed
   next-action: redispatch composer
 phase: 3
-sub-skill: element-interactions
+sub-skill: achilles-protocol
 summary: improvements-needed but no findings array provided

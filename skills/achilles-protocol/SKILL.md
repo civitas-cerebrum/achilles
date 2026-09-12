@@ -1,5 +1,5 @@
 ---
-name: element-interactions
+name: achilles-protocol
 description: >
   Use this skill whenever the user mentions testing, test automation, or anything related to verifying application behavior.
   Triggers on general testing intent: "test the app", "test this", "lets test", "write tests", "add tests", "run tests",
@@ -10,6 +10,13 @@ description: >
   ElementInteractions, baseFixture, ContextStore, page-repository.json, or any request to write, fix, or add to a
   Playwright test in this project. Also use when asked to add entries to a page-repository JSON file, use fixtures,
   select dropdowns, verify elements, wait for states, or perform any browser interaction through this framework.
+  Also triggers on test-failure and pipeline-failure intent, local or CI: "the test failed", "debug this test",
+  "why is this failing", "the nightly failed", "the nightly regression failed", "the regression failed",
+  "CI is red", "the build is red", "the pipeline failed", "the workflow failed", "the GitHub Actions run failed",
+  "the prod regression is failing", "analyse the failures", "analyze the failures", "why did the run fail",
+  "what failed in CI", "look at run <id>", "download the trace", "get the trace from CI", "check the trace",
+  "open the trace", "investigate the failure", "triage the CI failures" — these route to a dispatched
+  failure-diagnosis subagent via this skill's routing block and Rule 7 (the skill itself is subagent-only).
   Always consult this skill before generating test code or locator JSON — do not guess API shapes or invent method
   signatures. This skill is the orchestrator (Stages 1-4 inline; Stages 5-7 dispatched). Coverage-expansion intent
   ("increase test coverage", "cover the whole app", "expand the suite") routes to coverage-expansion via this
@@ -33,7 +40,8 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 |---|---|
 | [`references/api-reference.md`](references/api-reference.md) | The Steps API surface — what to read before writing or modifying any test. |
 | [`references/playwright-cli-protocol.md`](references/playwright-cli-protocol.md) | The canonical browser-automation primitive: session model, slug naming, snapshots, auth state, dispatch-brief template. |
-| [`references/stages-protocol.md`](references/stages-protocol.md) | Stages 1–4 protocol: scenario discovery, element inspection, write automation, post-stabilization review (4a + 4b). |
+| [`references/stages-protocol.md`](references/stages-protocol.md) | Stages 1–4 protocol: scenario discovery, element inspection, write automation, post-stabilization review (4a + 4b + 4c). |
+| [`references/test-composition-standards.md`](references/test-composition-standards.md) | Composing single source of truth: citation contract, canon index for every shared composing rule, contradiction-resolution record, the mandatory Stage 4c composition-judge loop, smoke-vs-e2e depth doctrine. |
 | [`references/subagent-return-schema.md`](references/subagent-return-schema.md) | Canonical return + ledger schema for every dispatched subagent. §4.1 grep-based conformance check; §4.2 harness validator. |
 | [`references/test-optimization.md`](references/test-optimization.md) | Stage 4a optimization checklist + the whole-suite re-run gate. |
 | [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md) | Per-caller `autonomousMode: true` contracts. |
@@ -46,7 +54,7 @@ One ladder governs every stage reference in this file and its references:
 
 | Stage | What it is | Runs |
 |---|---|---|
-| **1–4** | Scenario discovery → element inspection → write automation → 4a optimization + 4b API compliance | Inline, this skill |
+| **1–4** | Scenario discovery → element inspection → write automation → 4a optimization + 4b API compliance + 4c composition judge | Inline, this skill (4c dispatches an independent `composition-judge-` subagent — see [`references/test-composition-standards.md`](references/test-composition-standards.md) §4) |
 | **5** | Coverage expansion — journey-by-journey suite growth | Dispatched — invoke `coverage-expansion` |
 | **6** | Bug discovery — adversarial probing | Dispatched — invoke `bug-discovery` |
 | **7** | Adversarial AI testing | Dispatched — invoke `agents-vs-agents`; conditional: AI-feature apps only |
@@ -80,8 +88,10 @@ This skill is the orchestrator for a group of testing skills. It handles Stages 
 | `database-testing` | User mentions database tests, SQL tests, verifying DB state, asserting persisted data, or any test that calls `steps.sql*` / `steps.verifySql*` | Persistence-layer verification: read contracts, CRUD round-trips, transactions, and DB-as-oracle for UI/API mutations |
 | `performance-testing` | User mentions load/stress/soak/spike/breakpoint testing, k6, p95-under-load, throughput, concurrent users, or an SLO/performance budget | k6-native performance entrypoint: scaffolds `tests/perf/lib/` helpers, composes workload-profiled scenarios with SLO thresholds as the oracle, runs them, writes `tests/perf/docs/perf-report.md`, and feeds SLO breaches into the findings ledger. Sibling of `contract-testing` / `database-testing`. See [`../performance-testing/SKILL.md`](../performance-testing/SKILL.md). |
 | `test-catalogue` | User asks for a "test catalogue", "scenario report", "client-ready catalogue", or an inventory of what the suite runs — opt-in only, never mandatory | Parses spec files + journey map, groups scenarios by app section and priority, renders a stakeholder-facing A4-landscape PDF catalogue (plus source HTML) with dedicated regression and skipped-with-reason sections |
-| `companion-mode` | User asks for ad-hoc functional verification with evidence (screenshots, video, trace) — opt-in only, never mandatory | Single-task evidence-first verification: produces an immutable bundle at `tests/e2e/evidence/<slug>-<ts>/`, then on a passed run proactively offers durable-automation graduation back into this orchestrator (Stage 3) or into the `onboarding` skill per the project's cascade-detector level. For projects with no element-interactions scaffold, the user is pointed at the `onboarding` skill (interactive) or an external automated CLI driver. Full behaviour: `skills/companion-mode/SKILL.md`. |
+| `companion-mode` | User asks for ad-hoc functional verification with evidence (screenshots, video, trace) — opt-in only, never mandatory | Single-task evidence-first verification: produces an immutable bundle at `tests/e2e/evidence/<slug>-<ts>/`, then on a passed run proactively offers durable-automation graduation back into this orchestrator (Stage 3) or into the `onboarding` skill per the project's cascade-detector level. For projects with no achilles-protocol scaffold, the user is pointed at the `onboarding` skill (interactive) or an external automated CLI driver. Full behaviour: `skills/companion-mode/SKILL.md`. |
 | `selector-development` | Stage 2 finds no stable selector AND frontend source is in the workspace; or failure-diagnosis blames a fragile selector; or user says "add stable selectors" / "audit selectors across the app" | Adds an inert `data-testid` (or detected convention) to the frontend source for the unstable element; runs typecheck + unit + e2e + visual-diff; commits selector change alongside the test |
+| `failure-diagnosis` | A test fails (any mode), **or a pipeline run went red** — "the nightly failed", "the regression failed", "CI is red", "the pipeline failed", "the workflow failed", "analyse the failures", "why did the run fail", "download the trace", "check the trace", "investigate the failure" | **Subagent-only** — never load it in this transcript. Dispatch a subagent, which loads the skill and runs the evidence-first pipeline. Two entrypoints: **L** (local artifacts on disk) and **C** (pipeline — Stage 0a pins to the run's commit + dependency versions, Stage 0b pulls the run's artifacts down with `gh`, before any hypothesis). See Rule 7 below. |
+| `test-data-conventions` | Any composing work touches an entity-creating flow (signup, record creation, uploads, orders); user mentions "test data", "seed data", "data cleanup", "hardcoded data", "relies on current content"; auto-invoked by the Stage 4c composition judge's data-feasibility dimension | Data-lifecycle doctrine: discovery-first (how each dependency is served), the two-strategy decision ladder (seed-your-own vs content-resilient), per-attempt generation, cleanup-in-hooks, premise/app-state/infra taxonomy, and the per-project `tests/e2e/docs/test-data-plan.md` |
 
 When any of these conditions are met, invoke the Skill tool with the companion skill name. Do not try to handle their workflows inline — they have their own staged processes.
 
@@ -135,21 +145,28 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
 ### 5. Do NOT invent type definitions
 - If a type is missing, tell the user. Do not create `.d.ts` stubs or workarounds.
 
-### 6. Prefer element repository entries over inline selectors
-- When possible, add selectors to `page-repository.json` and reference them by name.
+### 6. Selectors live in the element repository — bundle-scoped exception only
+- Add selectors to `page-repository.json` and reference them by name.
 - Use `{ child: { pageName: 'PageName', elementName: 'elementName' } }` over `{ child: 'td:nth-child(2)' }`.
-- This is a preference, not a hard ban — inline selectors are acceptable when a repo entry would be overkill.
+- **Durable suite specs: hard ban on inline selectors** (the kernel-resident rule below). Scope and the one documented exception (`companion-mode` bundle-scoped proposals, graduating to repo entries at Stage-3 graduation) — labelled citation, canonical text: [`references/test-composition-standards.md`](references/test-composition-standards.md) §3.1.
 
-### 7. When a test fails: invoke the failure-diagnosis protocol
-- The base fixture captures a `failure-screenshot` on every failure.
-- Follow the full diagnostic pipeline: collect evidence (screenshot + DOM + error context), group failures by root cause, classify (test issue vs app bug vs ambiguous), check edge cases, then fix or report.
-- Do NOT guess what went wrong from the error message alone. The screenshot tells you what actually happened.
+### 7. When a test fails — locally OR in a pipeline: dispatch the failure-diagnosis protocol
+- `failure-diagnosis` is **subagent-only**. Detect the failure here, dispatch a subagent, let the subagent load the skill. Do not inline the pipeline in this transcript.
+- **Two entrypoints.** A local failure (artifacts already in `test-results/`) enters at the skill's Stage 0. A **pipeline failure** — "the nightly failed", "the regression failed", "CI is red", "the pipeline / workflow failed", "analyse the failures", "why did the run fail", "download the trace", "investigate the failure" — enters at its **Stage 0a + Stage 0b**: pin to the run's commit and the dependency versions it resolved, then pull the run's artifacts down with `gh run view` / `gh api .../artifacts` / `gh run download`, before anything else. A pipeline failure is NOT diagnosed by re-running the suite locally; that is a different execution, on a different commit, against a different dependency tree.
+- Dispatch shape for a pipeline failure: `fd-ci-<run-id>:`, brief carrying the run id, the repo slug, the failing job name, and the branch/commit.
+- Follow the full diagnostic pipeline: collect evidence, group failures by root cause, classify (test issue vs app bug vs framework/dependency defect vs ambiguous), check edge cases, then fix or report.
+- **The evidence floor is mandatory before any root cause or repair, both entrypoints and every classification:** the **trace**, the **UI/DOM at the moment of failure**, and the **browser console**. Each gets a written observation; unavailable pieces get a named reason. It binds a "test issue" call exactly as hard as an "app bug" call.
+- Do NOT guess what went wrong from the error message alone. "It's obviously a timeout" / "the stack trace already tells me" / "the trace won't add anything" are the documented failure mode, not a shortcut. The error says where execution stopped; the trace says what the page was doing.
+- The base fixture captures a `failure-screenshot` on every failure; on disk the per-attempt file is `test-results/<sanitized-title>-<project>[-retryN]/test-failed-1.png`. Attempt directories are siblings — under `trace: 'on-first-retry'` the only trace belongs to the retry, which may have passed.
 - If the screenshot shows a selector problem, re-inspect the live DOM before changing locators.
-- A fix is not confirmed until the test passes **3-5 consecutive runs** without failure.
+- A fix is not confirmed until it meets the stability bar: **3 consecutive green runs for any new or edited test; 5 consecutive for a heal of a previously-flaky test** (canonical: `failure-diagnosis` §"Stability Validation Protocol"). For a pipeline failure, local green is provisional — final confirmation is the next pipeline run.
 
 ### 8. Before modifying `playwright.config.ts`, read the existing file first
-- The scaffold writes canonical defaults: `retries`, `use.video: 'on-first-retry'`, `use.trace: 'on-first-retry'`, HTML reporter, headless.
-- Don't strip the video / trace / retries defaults without an explicit reason in the PR description — the rerun-documents-failure guarantee `failure-diagnosis` Stage 1 relies on those artefacts.
+- The scaffold writes canonical defaults: `retries`, `use.video: 'retain-on-failure'`, `use.trace: 'retain-on-failure'`, HTML reporter, headless.
+- `'retain-on-failure'` (not `'on-first-retry'`) is deliberate: it records the artefacts for every failed test on CI **and** local runs alike. `'on-first-retry'` only records when a retry happens — so with `retries: 0` a failure produces no trace at all, and with retries the trace belongs to the *retry* attempt, which on a flaky test is the one that passed.
+- Don't strip the video / trace / retries defaults without an explicit reason in the PR description — the every-failure-documents-itself guarantee `failure-diagnosis` Stage 1 relies on those artefacts.
+- **If you find a project on `trace: 'on-first-retry'`, treat it as a known evidence gap, not as a reason to skip the trace.** Diagnose from whatever the failing attempt did produce (screenshot, `error-context.md`, `video.webm`, the JSON reporter's `stderr` / `annotations`), name the gap in the report, and raise the config change as a separate follow-up. `failure-diagnosis` Stage 0b step 6 carries the full matrix.
+- The same defaults govern what CI uploads. A workflow that runs Playwright must upload `test-results/` **and** `playwright-report/` as an artifact, or every pipeline failure is undiagnosable after the runner is torn down.
 
 ### 9. Do NOT work around application bugs — report them
 - When a test fails, **classify the problem** before acting:
@@ -265,16 +282,18 @@ Two rules govern how test data shows up in spec files.
 - **Test-data variables SHOULD be centralised in a single class / module** — e.g. `tests/fixtures/test-data.ts` exporting a `TestData` class or namespace. Scattered top-level `const NAME = "literal"` declarations across spec files (URLs, account names, magic strings) drift across files and resist refactor. The recommended shape:
 
   ```ts
-  // tests/fixtures/test-data.ts
+  // tests/fixtures/test-data.ts — env-sourced DURABLE identities only
   export class TestData {
     static readonly BASE_URL = process.env.BASE_URL ?? "https://staging.example.com";
-    static readonly ADMIN_EMAIL = "admin+e2e@example.com";
+    static readonly ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? ""; // account that exists by design
   }
 
   // tests/login.spec.ts
   import { TestData } from "./fixtures/test-data";
   // …use TestData.BASE_URL / TestData.ADMIN_EMAIL throughout the spec…
   ```
+
+  **The fixture carve-out is scoped to durable identities** — accounts and entities that exist *by design* (an admin account, a seeded catalog user), sourced from `process.env`. Any identity a test **creates** is generated per-attempt **inside the test body** (`` `user-${Date.now()}-…` ``) — never at module scope (retries re-run the test body, not the module, so module-scope values collide with the prior attempt's state). Full data-lifecycle doctrine: the `test-data-conventions` skill.
 
 If you genuinely need a one-off literal in a spec (a hard-coded element label, a test-only string), put it inline in the assertion — the `secrets-sweep` skill's Phase-7 sweep flags top-level uppercase constant declarations; inline assertion literals inside `expect(...).toBe("literal")` or step calls are exempt.
 
@@ -331,14 +350,15 @@ You MUST create a task for each of these items and complete them in order (Stage
 6. **Stage 3: Write Automation** — write the test using the Steps API and approved selectors
 7. **Run and validate** — execute the test, inspect failures visually, iterate until passing
 8. **Stage 4a: Test Optimization** — triggers automatically each time a test passes. Load `references/test-optimization.md` and run its 7-check protocol on the new tests; apply auto-fixes; re-stabilize on regression
-9. **Stage 4b: API Compliance Review** — triggers automatically once Stage 4a returns clean. Review that test's code against the API Reference; fix any non-compliance
+9. **Stage 4b: API Compliance Review** — triggers automatically once Stage 4a returns clean. Review that test's code against the API Reference; fix any non-compliance. Includes the test-identity checks: every case carries a stable test ID, and an intentional red carries `@known-defect` (see `references/test-identity.md`)
 10. **Fix any issues found** — correct misuse from either sub-stage, re-run to confirm still passing
-11. **Commit** — commit after each passing + optimized + compliant test case
-12. **Repeat 6-11** for each additional scenario the user requests
-13. **Onboarding completion gate** — When the user signals they have no more individual scenarios, you MUST explicitly offer Stage 5 before ending the session. See the "Onboarding Completion Gate" section below. Do NOT silently stop.
-14. **Stage 5: Coverage Expansion** (on user approval at gate) — invoke the `coverage-expansion` skill for iterative journey-by-journey suite growth
-15. **Stage 6: Bug Discovery** (auto after Stage 5) — invoke the `bug-discovery` skill to actively probe for bugs
-16. **Stage 7: Adversarial AI Testing** (conditional — only when the app has AI features) — invoke the `agents-vs-agents` skill
+11. **Stage 4c: Composition Judge** — once 4a + 4b are clean, dispatch the independent `composition-judge-` subagent per [`references/test-composition-standards.md`](references/test-composition-standards.md) §4; fix must-fix findings, re-run 4a/4b if code changed, re-judge with a fresh judge (3 consecutive NOT SATISFIED → escalate to the operator)
+12. **Commit** — commit after each passing + optimized + compliant + judge-SATISFIED test case
+13. **Repeat 6-12** for each additional scenario the user requests
+14. **Onboarding completion gate** — When the user signals they have no more individual scenarios, you MUST explicitly offer Stage 5 before ending the session. See the "Onboarding Completion Gate" section below. Do NOT silently stop.
+15. **Stage 5: Coverage Expansion** (on user approval at gate) — invoke the `coverage-expansion` skill for iterative journey-by-journey suite growth
+16. **Stage 6: Bug Discovery** (auto after Stage 5) — invoke the `bug-discovery` skill to actively probe for bugs
+17. **Stage 7: Adversarial AI Testing** (conditional — only when the app has AI features) — invoke the `agents-vs-agents` skill
 
 ### Process Flow
 
@@ -389,6 +409,12 @@ digraph element_interactions {
     "Issues found in 4b?" [shape=diamond];
     "Fix API misuse,\nre-run tests" [shape=box];
     "Test still passes\nafter 4b fixes?" [shape=diamond];
+    "STAGE 4c: Composition Judge" [shape=box, style=bold];
+    "Dispatch fresh composition-judge\nsubagent (never the author)" [shape=box];
+    "Judge verdict?" [shape=diamond];
+    "3rd consecutive\nNOT SATISFIED?" [shape=diamond];
+    "Fix must-fix findings,\nre-run 4a/4b if code changed" [shape=box];
+    "Escalate to operator" [shape=box];
     "Commit" [shape=doublecircle];
 
     "Skill activated" -> "Read user message";
@@ -447,11 +473,19 @@ digraph element_interactions {
 
     "STAGE 4b: API Compliance Review" -> "Review test code\nagainst API Reference";
     "Review test code\nagainst API Reference" -> "Issues found in 4b?";
-    "Issues found in 4b?" -> "Commit this test" [label="no — compliant"];
+    "Issues found in 4b?" -> "STAGE 4c: Composition Judge" [label="no — compliant"];
     "Issues found in 4b?" -> "Fix API misuse,\nre-run tests" [label="yes"];
     "Fix API misuse,\nre-run tests" -> "Test still passes\nafter 4b fixes?";
-    "Test still passes\nafter 4b fixes?" -> "Commit this test" [label="yes"];
+    "Test still passes\nafter 4b fixes?" -> "STAGE 4c: Composition Judge" [label="yes"];
     "Test still passes\nafter 4b fixes?" -> "Inspect screenshot, fix, re-run" [label="no — regression"];
+
+    "STAGE 4c: Composition Judge" -> "Dispatch fresh composition-judge\nsubagent (never the author)";
+    "Dispatch fresh composition-judge\nsubagent (never the author)" -> "Judge verdict?";
+    "Judge verdict?" -> "Commit this test" [label="SATISFIED"];
+    "Judge verdict?" -> "3rd consecutive\nNOT SATISFIED?" [label="NOT SATISFIED"];
+    "3rd consecutive\nNOT SATISFIED?" -> "Escalate to operator" [label="yes"];
+    "3rd consecutive\nNOT SATISFIED?" -> "Fix must-fix findings,\nre-run 4a/4b if code changed" [label="no"];
+    "Fix must-fix findings,\nre-run 4a/4b if code changed" -> "Dispatch fresh composition-judge\nsubagent (never the author)";
     "Commit this test" -> "More scenarios?" [label=""];
     "More scenarios?" -> "STAGE 3: Write Automation" [label="yes — next scenario"];
     "More scenarios?" -> "Offer Stage 5\n(Coverage Expansion)" [label="no"];
@@ -487,9 +521,11 @@ Only show the greeting menu if the user's message is vague or just says somethin
 - **User already described a scenario** — Skip the greeting. Go directly to Stage 1 (fast path if scenario is complete, full discovery if vague).
 - **API question** — Answer directly from the API Reference section below. No stages needed.
 - **Database / SQL intent** — phrases like "verify db state", "query the table in a test", `steps.sql*`, "check the row was inserted", "assert the order was created" → invoke `database-testing`.
+- **Local test failure** — "the test failed", "debug this test", "why is this failing", "fix this failing test" → dispatch an `fd-<test-slug>:` subagent that loads `failure-diagnosis` (Entrypoint L). Never load `failure-diagnosis` in this transcript; never diagnose inline.
+- **Pipeline / CI failure** — "the nightly failed", "the nightly regression failed", "the regression failed", "CI is red", "the build is red", "the pipeline failed", "the workflow failed", "the GitHub Actions run failed", "the prod regression is failing", "analyse the failures", "why did the run fail", "what failed in CI", "look at run \<id\>", "download the trace", "get the trace from CI", "check the trace", "open the trace", "investigate the failure", "triage the CI failures" → dispatch an `fd-ci-<run-id>:` subagent that loads `failure-diagnosis` and enters at its **Stage 0a + Stage 0b** (pin to the run's commit and resolved dependency versions, then pull the run's artifacts down with `gh`). If the user did not name a run, resolve it here with `gh run list --workflow=<file-or-id> --json databaseId,conclusion,displayTitle,headSha,createdAt` and put the id and `headSha` in the brief. Do NOT open by re-running the suite locally, and do NOT answer from the CI log text — the run's own trace / DOM / console are the evidence. If the run shows ≥5 failing tests or ≥2 red spec files, the subagent's own escalation rule hands off to `test-repair` / `self-repair` after Stage 0b, so the batch pipeline starts from downloaded artifacts rather than log lines.
 - **Fix or edit a test** — Skip to Stage 3 (Fix/Edit Mode).
 - **Scale existing project** — Read existing test files and `page-repository.json` first to understand current coverage, then proceed to Stage 1 with that context.
-- **Vague or no context** — Show the greeting menu and wait. If the project has no element-interactions scaffold, point the user at the `onboarding` skill (below).
+- **Vague or no context** — Show the greeting menu and wait. If the project has no achilles-protocol scaffold, point the user at the `onboarding` skill (below).
 
 ## Onboarding a new project
 
@@ -497,7 +533,7 @@ To onboard a new project from zero, invoke the `onboarding` skill — it
 is the umbrella eight-phase methodology document and runs from an
 interactive Claude Code session. An external automated CLI driver may
 also drive the same pipeline non-interactively; either entry point
-loads this skill (`element-interactions`) for Stages 1–4 of the
+loads this skill (`achilles-protocol`) for Stages 1–4 of the
 happy-path step.
 
 ---
@@ -512,13 +548,15 @@ Full per-entry-point contracts live in [`references/autonomous-mode-callers.md`]
 
 ## Stages 1–4 protocol
 
-The four-stage pipeline (Stage 1 Scenario Discovery → Stage 2 Element Inspection → Stage 3 Write Automation → Stage 4a Test Optimization + Stage 4b API Compliance Review) is specified in [`references/stages-protocol.md`](references/stages-protocol.md). Read it before authoring or modifying any test under this skill.
+The four-stage pipeline (Stage 1 Scenario Discovery → Stage 2 Element Inspection → Stage 3 Write Automation → Stage 4a Test Optimization + Stage 4b API Compliance Review + Stage 4c Composition Judge) is specified in [`references/stages-protocol.md`](references/stages-protocol.md). Read it before authoring or modifying any test under this skill.
 
 ### Hard rules — kernel-resident
 
 - **Run stages in order, no skipping.** Skip-to-Stage-3 mode (Stage 3 only, scope = one named test, no new selectors) is the lone exception, narrowly scoped.
-- **Hard gates between stages.** Stage 1 → 2: scenario list + page coverage explicit. Stage 2 → 3: every selector lives in `page-repository.json`. Stage 3 → 4a: test passes 3× green in isolation. Stage 4a → 4b: optimization checklist clean. Stage 4b → done: API compliance checklist clean.
+- **Hard gates between stages.** Stage 1 → 2: scenario list + page coverage explicit. Stage 2 → 3: every selector lives in `page-repository.json`. Stage 3 → 4a: test passes 3× green in isolation. Stage 4a → 4b: optimization checklist clean. Stage 4b → 4c: API compliance checklist clean. Stage 4c → done: independent composition judge returns SATISFIED (3 consecutive NOT SATISFIED → operator). Judge charter: [`references/test-composition-standards.md`](references/test-composition-standards.md) §4.
+- **Composing rules are single-homed.** Shared composing rules live at their canon-index home ([`references/test-composition-standards.md`](references/test-composition-standards.md) §2); cite, never fork, no one-extra-clause extensions. Kernel mirrors carry the dual-update obligation.
 - **Stage 4b reviews against `references/api-reference.md` exclusively.** Raw Playwright APIs that have a Steps equivalent are rejected.
+- **Every test case carries a stable test ID, and an intentional red carries `@known-defect`.** Titles begin with `TCXX-NNNNNN` (`test('TCLG-000420 · a wrong password is rejected', …)`) — an ID belongs to the scenario and survives rewording, so targeted runs, the `bug-evidence/<TEST-ID>/` contract, and every repair or catalogue report keep pointing at the same case. A test that fails on purpose because a *filed* defect makes it fail carries `@known-defect`, which exempts it from reruns, repair workers, and diagnosis cycles — it is never weakened into passing and never silently skipped. Convention and consumers: [`references/test-identity.md`](references/test-identity.md). Identity is harness-enforced by `hooks/test-id-compliance-gate.sh`.
 - **Every test MUST end with a verification proving the action's effect.** A test that performs actions (click, fill, drag, hover, check, upload, setSliderValue, etc.) and never asserts a resulting state is not a test — it's a smoke call that only catches thrown exceptions. The final meaningful statement must be a `verify*`, a matcher-tree assertion (`.text.toBe`, `.visible.toBeTrue`, `.satisfy`, …), or a typed `expect(extractedValue)` reflecting what the action was supposed to change.
 - **Selectors are NEVER invented.** Every selector is either inspected from the live site (Stage 2) or reuses an existing entry in `page-repository.json`. Inline selectors in test code are a hard rule violation.
 - **Application bugs are reported, not worked around.** If a bug blocks the test, surface the bug — don't write a test that pretends the bug isn't there.

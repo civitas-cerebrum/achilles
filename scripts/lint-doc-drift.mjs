@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Four independent checks; each reports pass/fail; the process
+// describe. Five independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
-//   (2) every relative .md link under skills/element-interactions/** resolves
+//   (2) every relative .md link under skills/achilles-protocol/** resolves
 //   (3) HOOK_MANIFEST (scripts/postinstall.js)  ↔  harness-hooks.md links
 //   (4) every validated §4.4 description-prefix in subagent-return-schema.md
 //       has a matching case in hooks/lib/schema-role-map.sh
+//   (5) every deny/warn-capable hook's runtime messages carry a References:
+//       block citing >=1 resolvable skills/ (or schemas/) path — the
+//       methodology-pointer convention (contributing-to-achilles-protocol
+//       SKILL.md §"Hook error message format — repo standard")
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -18,11 +22,11 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 
 const SKILLS_DIR = 'skills';
-const EI_DIR = 'skills/element-interactions';
-const REGISTRY = 'skills/element-interactions/references/skill-registry.md';
-const HARNESS_HOOKS = 'skills/element-interactions/references/harness-hooks.md';
+const EI_DIR = 'skills/achilles-protocol';
+const REGISTRY = 'skills/achilles-protocol/references/skill-registry.md';
+const HARNESS_HOOKS = 'skills/achilles-protocol/references/harness-hooks.md';
 const POSTINSTALL = 'scripts/postinstall.js';
-const RETURN_SCHEMA = 'skills/element-interactions/references/subagent-return-schema.md';
+const RETURN_SCHEMA = 'skills/achilles-protocol/references/subagent-return-schema.md';
 const ROLE_MAP = 'hooks/lib/schema-role-map.sh';
 
 let anyFail = false;
@@ -87,7 +91,7 @@ function checkRegistryBijection() {
 }
 
 // ---------------------------------------------------------------------------
-// Check 2 — relative .md links under skills/element-interactions/** resolve
+// Check 2 — relative .md links under skills/achilles-protocol/** resolve
 // ---------------------------------------------------------------------------
 function checkRelativeLinks() {
   const detail = [];
@@ -120,7 +124,7 @@ function checkRelativeLinks() {
   }
 
   report(
-    `skills/element-interactions/** relative .md links resolve (${checked} links across ${mdFiles.length} files)`,
+    `skills/achilles-protocol/** relative .md links resolve (${checked} links across ${mdFiles.length} files)`,
     detail.length === 0,
     detail,
   );
@@ -231,10 +235,79 @@ function checkRoleMapCoverage() {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// Check 5 — hook runtime messages carry resolvable methodology References
+// ---------------------------------------------------------------------------
+// Convention: contributing-to-achilles-protocol/SKILL.md §"Hook error message
+// format — repo standard". Every hook that can emit a user-facing decision at
+// runtime (PreToolUse deny/ask, systemMessage warn, Stop decision:block, or a
+// strict-mode exit-2 stderr block) must end those messages with a
+// `References:` block of repo-relative canonical-rule paths. Mechanics of the
+// check: full-line comments are stripped first, so the header's
+// "Canonical reference" section can never satisfy it — the References must
+// live in the message-producing region (strings, heredocs, echo lines).
+// Every cited skills/….md or schemas/….json path (in ANY hook, emitting or
+// not) must resolve in the repo, so a skill rename cannot silently orphan a
+// hook's pointers.
+function checkHookReferences() {
+  const detail = [];
+  // Vendored verbatim from @civitas-cerebrum/kernel-mandate by
+  // scripts/sync-kernel-mandate.mjs (--check fails CI on drift). Its deny
+  // messages cite the kernel's own docs, not this repo's methodology, and
+  // an edit here would be overwritten on the next sync — so the References
+  // convention is achilles' own hooks' to keep, and the wrapper that
+  // registers the kernel (achilles-kernel-activation-gate.sh) is held to it.
+  const VENDORED = new Set(['hooks/kernel-mandate-role-gate.sh']);
+  const hooks = readdirSync('hooks')
+    .filter((f) => f.endsWith('.sh'))
+    .map((f) => join('hooks', f))
+    .filter((h) => !VENDORED.has(h));
+
+  let emitters = 0;
+  let citedPaths = 0;
+
+  for (const h of hooks) {
+    const raw = readFileSync(h, 'utf8');
+    // Strip full-line comments: the message-producing region is what remains.
+    const code = raw
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
+
+    const pathMatches = [...code.matchAll(/(?:skills|schemas)\/[A-Za-z0-9._/-]+\.(?:md|json)/g)].map((m) => m[0]);
+    for (const cited of new Set(pathMatches)) {
+      citedPaths++;
+      if (!existsSync(cited)) {
+        detail.push(`${h}: cited path does not resolve: ${cited}`);
+      }
+    }
+
+    const emits = /permissionDecision|"decision"\s*:\s*"block"|systemMessage|^exit 2$/m.test(code);
+    if (!emits) continue;
+    emitters++;
+
+    if (!/References:/.test(code)) {
+      detail.push(`${h}: emits deny/warn/block but its runtime messages have no References: block`);
+      continue;
+    }
+    if (pathMatches.length === 0) {
+      detail.push(`${h}: emits deny/warn/block but cites no skills/ or schemas/ path in its runtime messages`);
+    }
+  }
+
+  report(
+    `hook runtime messages carry resolvable methodology References (${emitters} emitting hooks, ${citedPaths} cited paths)`,
+    detail.length === 0,
+    detail,
+  );
+}
+
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
 checkRoleMapCoverage();
+checkHookReferences();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

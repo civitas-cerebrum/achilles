@@ -15,7 +15,7 @@ const path = require('node:path');
 
 const { createGuard } = require('./lib/safe');
 const { projectRoot, resolveCandidates, statCandidates } = require('./lib/paths');
-const { OUTCOMES, classify, isEvidenceWorthy, aggregate, isHeel, slowest } = require('./lib/classify');
+const { OUTCOMES, classify, isEvidenceWorthy, aggregate, isHeel, slowest, isKnownDefect } = require('./lib/classify');
 const history = require('./lib/history');
 const { RunArchive, pruneRuns, updateLatest, stampClaim } = require('./lib/archive');
 const { render, colorEnabled } = require('./lib/format');
@@ -82,6 +82,8 @@ class AchillesReporter {
           file: this.root ? path.relative(this.root, test.location.file).split(path.sep).join('/') : test.location.file,
           project: (test.parent && test.parent.project && test.parent.project()) ? test.parent.project().name : '',
           expectedStatus: test.expectedStatus,
+          // Tag or title token, same semantics as bin/self-repair.mjs.
+          knownDefect: isKnownDefect(test.titlePath(), test.tags),
           attempts: [],
           ms: 0,
         };
@@ -157,7 +159,8 @@ class AchillesReporter {
   buildModel(result) {
     const failed = [];
     const flaky = [];
-    const counts = { passed: 0, failed: 0, flaky: 0, skipped: 0 };
+    const counts = { passed: 0, failed: 0, flaky: 0, skipped: 0, knownDefect: 0 };
+    const knownDefectPassed = [];
     const all = [];
 
     for (const entry of this.tests.values()) {
@@ -171,6 +174,15 @@ class AchillesReporter {
       else if (outcome === OUTCOMES.FLAKY) counts.flaky += 1;
       else if (outcome === OUTCOMES.SKIPPED) counts.skipped += 1;
       else counts.passed += 1;
+
+      if (entry.knownDefect && outcome !== OUTCOMES.SKIPPED) {
+        counts.knownDefect += 1;
+        // The anomaly from test-identity.md §2: @known-defect predicts red,
+        // so any pass (outright, or on retry) is never silently green.
+        if (outcome === OUTCOMES.PASSED || outcome === OUTCOMES.FLAKY) {
+          knownDefectPassed.push(`${entry.file} › ${entry.title}`);
+        }
+      }
 
       const evidence = this.archive ? this.archive.evidenceFor(entry.id) : [];
       if (outcome === OUTCOMES.FAILED) {
@@ -206,6 +218,7 @@ class AchillesReporter {
       counts,
       failed,
       flaky,
+      knownDefectPassed,
       slowest: slowest(all.filter((t) => t.outcome !== OUTCOMES.SKIPPED && t.ms >= this.slowMs).map((t) => ({
         title: `${t.file} › ${t.title}`, ms: t.ms, history: t.history,
       })), this.slowestCount),

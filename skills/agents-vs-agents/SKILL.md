@@ -58,7 +58,7 @@ Judge LLM      -->  evaluates transcript, issues verdict
 
 ## Canonical return + findings
 
-A confirmed guardrail failure is a finding like any other — it joins the same dedup, severity-mapping, ledger, and reporting machinery the rest of the methodology uses. Every judge verdict of **FAIL or PARTIAL** is emitted as a canonical finding block conforming to [`../element-interactions/references/subagent-return-schema.md`](../element-interactions/references/subagent-return-schema.md) §1.
+A confirmed guardrail failure is a finding like any other — it joins the same dedup, severity-mapping, ledger, and reporting machinery the rest of the methodology uses. Every judge verdict of **FAIL or PARTIAL** is emitted as a canonical finding block conforming to [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) §1.
 
 - **Finding-return format** — `- **<FINDING-ID>** [<severity>] — <title>` with `scope` / `expected` / `observed` / `coverage` sub-bullets, exactly per §1.
 - **FINDING-ID** — `ai-<category-slug>-<nn>`. `<category-slug>` is the AI-safety probe-category slug from §3.6 of the canonical schema, mapped from the 8 categories:
@@ -430,6 +430,10 @@ Each adversarial test follows this shape:
 **Runtime:** Adversarial tests are slow — a 10-turn conversation with two LLM calls per turn takes 30-120 seconds. That slowness, plus their non-determinism, is why they are skip-by-default and on-demand only.
 
 ---
+
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
 ## Anti-Patterns
 

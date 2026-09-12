@@ -3,7 +3,7 @@
 **Status:** single source of truth for live browser automation across the `@civitas-cerebrum/element-interactions` skill suite.
 **Supersedes and forbids:** the prior `mcp__plugin_playwright_playwright__*` MCP-tool protocol. The MCP browser tools are not an acceptable fallback when the CLI is unavailable, when the harness still surfaces them in a subagent's tool list, or when a brief is unclear about which channel to use. The CLI is the only sanctioned channel for browser automation across every skill in this suite. A subagent that finds itself reaching for an MCP browser tool has a malformed dispatch brief, not a permitted alternative.
 
-Skills that need to drive a real browser — `journey-mapping`, `coverage-expansion`, `test-composer`, `bug-discovery`, `failure-diagnosis`, `companion-mode`, `element-interactions` (Stages 1–2), `onboarding` (Phases 2/3/5/6) — invoke `@playwright/cli` from the Bash tool. Sessions are isolated by design: there is no Rule-11-style prereq check, no `[mcp-isolation: serializing]` fallback, no `.mcp.json` to write.
+Skills that need to drive a real browser — `journey-mapping`, `coverage-expansion`, `test-composer`, `bug-discovery`, `failure-diagnosis`, `companion-mode`, `achilles-protocol` (Stages 1–2), `onboarding` (Phases 2/3/5/6) — invoke `@playwright/cli` from the Bash tool. Sessions are isolated by design: there is no Rule-11-style prereq check, no `[mcp-isolation: serializing]` fallback, no `.mcp.json` to write.
 
 ---
 
@@ -256,7 +256,7 @@ Do NOT call `close-all` (the parent owns that). Do NOT use `--persistent` unless
 this brief explicitly asks for it.
 
 Snapshot format and command surface: see
-`skills/element-interactions/references/playwright-cli-protocol.md` §5 / §3.
+`skills/achilles-protocol/references/playwright-cli-protocol.md` §5 / §3.
 ```
 
 The orchestrator picks the slug per the convention in §3.1 and substitutes it.

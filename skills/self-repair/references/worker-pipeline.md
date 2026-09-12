@@ -163,6 +163,12 @@ Exactly one of:
   understanding attached, awaiting human judgment.
 - **`quarantined`** — irreducible flake per failure-diagnosis heal (f),
   ledger entry written.
+- **`known-defect`** — the test (or its describe) carries
+  `@known-defect`: an intentional red guarding a filed defect. Terminal on
+  sight — no reproduce, no experiment, no fix. Normally caught at
+  classification so no worker is dispatched at all; a worker that meets one
+  returns it immediately with the tag as the note. Contract:
+  [`test-identity.md`](../../achilles-protocol/references/test-identity.md) §2.
 - **`unresolved`** — probe budget exhausted; exclusion list and partial
   understanding recorded. Never silent.
 
@@ -176,6 +182,13 @@ discipline powers stages 1–2, its edge-case catalogue informs stages 3–4,
 its heal strategies implement stage 6, its 5× stability rule is stage 7.
 Workers load it via the Skill tool as before; nothing in its contract
 changes for its other callers.
+
+One composing-exit note: a whole-test rewrite (failure-diagnosis heal
+type g, reached here via `operator-pending` → operator approval) routes
+through `test-composer`, whose Step 6c composition judge applies
+(`../../achilles-protocol/references/test-composition-standards.md`
+§4). Incremental heals stay judge-free — stage 7's stability bar is
+their gate.
 
 ## Worked example (calibration case)
 

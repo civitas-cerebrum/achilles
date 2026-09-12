@@ -31,9 +31,15 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/harness-hooks.md
+# skills/achilles-protocol/references/harness-hooks.md
 
 set -uo pipefail
+
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/harness-hooks.md §Bash\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
+
 
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
@@ -127,7 +133,7 @@ Command: ${CMD}
 
 If this only READS the artifact, approve it. If it WRITES the artifact, cancel and use the Write/Edit tool instead (that is where the harness gates live).
 
-See: skills/element-interactions/references/harness-hooks.md" '{
+See: skills/achilles-protocol/references/harness-hooks.md${HOOK_REFS}" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "ask",
@@ -160,7 +166,7 @@ Fix:
 
 $(no_skip_messaging_block)"
 
-"$JQ" -n --arg r "$REASON$(achilles_scope_notice)" '{
+"$JQ" -n --arg r "$REASON${HOOK_REFS}$(achilles_scope_notice)" '{
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",

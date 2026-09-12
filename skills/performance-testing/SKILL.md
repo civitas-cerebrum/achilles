@@ -11,14 +11,14 @@ description: >
   threshold syntax from memory; read references/k6-reference.md first. This skill owns the
   performance entrypoint; it is a sibling of contract-testing and database-testing and runs inline.
   Not for: adversarial functional edge-case probing (that is bug-discovery, even when phrased as
-  "stress test the app"); UI-flow correctness (element-interactions); API shape/contract drift
+  "stress test the app"); UI-flow correctness (achilles-protocol); API shape/contract drift
   (contract-testing). Load / throughput / latency-under-concurrency routes here; everything else routes
   to its own skill.
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents are exempt.
 
-> **Skill names: see `../element-interactions/references/skill-registry.md`.** Copy skill names verbatim.
+> **Skill names: see `../achilles-protocol/references/skill-registry.md`.** Copy skill names verbatim.
 
 # Performance Testing — k6 Load & SLO Verification
 
@@ -94,7 +94,7 @@ tests/perf/
 
 | Skill | When it applies |
 |---|---|
-| `element-interactions` | Parent orchestrator; routes here on perf intent. |
+| `achilles-protocol` | Parent orchestrator; routes here on perf intent. |
 | `journey-mapping` | Source of critical flows → workload mix (Phase 2). |
 | `contract-testing` | Source of endpoints / auth / env config (Phase 2); reuse its `baseFixture` env conventions. |
 | `bug-discovery` | Boundary, not overlap — see the router carve-out above. |

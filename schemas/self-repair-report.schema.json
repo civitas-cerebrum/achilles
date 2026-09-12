@@ -32,6 +32,7 @@
       "required": ["already-green", "healed", "app-bugs", "quarantined", "operator-pending", "unresolved"],
       "properties": {
         "already-green": { "type": "integer", "minimum": 0 },
+        "known-defect": { "type": "integer", "minimum": 0, "description": "Tests tagged @known-defect: an intentional red whose defect is filed. Excluded from reruns, worker dispatch and verification; never counted as unresolved. Optional for back-compat with v1 reports written before the tag existed." },
         "healed": { "type": "integer", "minimum": 0 },
         "app-bugs": { "type": "integer", "minimum": 0 },
         "quarantined": { "type": "integer", "minimum": 0 },
@@ -55,8 +56,8 @@
               "required": ["title", "baseline-pattern", "outcome"],
               "properties": {
                 "title": { "type": "string", "minLength": 1 },
-                "baseline-pattern": { "enum": ["green", "deterministic-fail", "flaky-consistent", "flaky-chaotic"] },
-                "outcome": { "enum": ["already-green", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"] },
+                "baseline-pattern": { "enum": ["green", "known-defect", "known-defect-passed", "deterministic-fail", "flaky-consistent", "flaky-chaotic"] },
+                "outcome": { "enum": ["already-green", "known-defect", "healed", "app-bug", "quarantined", "operator-pending", "unresolved"] },
                 "root-cause": { "type": ["string", "null"] },
                 "fix": { "type": ["string", "null"] },
                 "bug-report": {

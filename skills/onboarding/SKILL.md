@@ -33,9 +33,9 @@ through Claude Code's normal tool surface.
 
 | # | Phase | What it produces | Skill |
 |---|---|---|---|
-| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `element-interactions` (Stage 1), authored by a dispatched `scaffolder` |
-| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `element-interactions` (Stage 2), authored by a dispatched `scaffolder` |
-| 3 | Happy-path | One `tests/e2e/<journey>.spec.ts` per primary user flow that exercises sign-in + the critical action | `element-interactions` (Stages 3–4), `test-composer` |
+| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `achilles-protocol` (Stage 1), authored by a dispatched `scaffolder` |
+| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `achilles-protocol` (Stage 2), authored by a dispatched `scaffolder` |
+| 3 | Happy-path | One `tests/e2e/<journey>.spec.ts` per primary user flow that exercises sign-in + the critical action | `achilles-protocol` (Stages 3–4), `test-composer` |
 | 4 | Journey mapping | `tests/e2e/docs/journey-map.md`, `tests/e2e/docs/journey-map-coverage.md` | `journey-mapping` |
 | 5 | Coverage expansion | One `tests/e2e/<journey>.spec.ts` per priority-2/3 journey, grouped passes 2–5 with cleanup dedup | `coverage-expansion`, `test-composer` |
 | 6 | Bug discovery | Adversarial findings + regression specs that lock the failure modes | `bug-discovery` |
@@ -102,7 +102,7 @@ row's `status` becomes `blocked`. This mirrors the existing
 - `schemas/onboarding-status.schema.json` — ledger shape (v1)
 - `schemas/subagent-returns/workflow-reviewer.schema.json` — reviewer return shape
 - `skills/workflow-reviewer/SKILL.md` — reviewer methodology
-- `skills/element-interactions/references/harness-hooks.md` — both new hooks indexed
+- `skills/achilles-protocol/references/harness-hooks.md` — both new hooks indexed
 
 The ledger + reviewer layer was added because empirical observation (a
 21-journey benchmark, Run 5) demonstrated that markdown-text contract
@@ -256,7 +256,19 @@ are the orchestrator's.
    the dev server itself.
 2. Create `tests/e2e/fixtures/`, `tests/e2e/docs/`, and `tests/e2e/playwright.setup.ts`.
    Spec files themselves live at `tests/e2e/<journey>.spec.ts` (root of
-   `tests/e2e/`, no `specs/` subdirectory).
+   `tests/e2e/`, no `specs/` subdirectory). The fixtures directory's
+   `base.ts` is scaffolded **with `HELPER SLOT` comment markers** — one
+   per contracted insertion point (`resetState`, `freshUser`,
+   `setAuthCookie`, `seedCart`-style seed helpers, `dismissBanners`,
+   `beforeEach`). The slots start empty; Stage 4a of the composition
+   pipeline populates them from discovered infrastructure (see
+   `achilles-protocol/references/test-optimization.md` §"Placeholder
+   convention" — the protocol errors out if the markers are missing).
+   Also seed `tests/e2e/docs/test-data-plan.md` from the template in
+   `skills/test-data-conventions/SKILL.md` §"The test data plan" (header
+   + empty Dependencies/Roadmap sections) — the Stage 4c composition
+   judge checks this file at every composing exit, so the scaffold owns
+   its creation and composing sessions own keeping it current.
 3. Add `tests/e2e/.gitignore` entries for `playwright-report/`,
    `test-results/`, `.last-run.json`, `bug-evidence/` (the stable
    bug-evidence home used by `self-repair` — binary media, gitignored
@@ -276,10 +288,10 @@ are the orchestrator's.
 
 **Exit criteria** (checked by the orchestrator once the scaffolder returns).
 - `npx playwright test --list` lists zero specs without error.
-- The four scaffold files exist on disk.
+- The scaffold files exist on disk (config, setup, fixtures tree with HELPER-SLOT-bearing `base.ts`, and the seeded `tests/e2e/docs/test-data-plan.md`).
 - `package.json` scripts include `test:repair`.
 
-Load `element-interactions` (Stage 1) for the exact file shapes.
+Load `achilles-protocol` (Stage 1) for the exact file shapes.
 
 ---
 
@@ -320,7 +332,7 @@ The orchestrator re-runs `npx playwright test --list` after the return.
 **Exit criteria.**
 - The three artefacts exist and `npx playwright test --list` still works.
 
-Load `element-interactions` (Stage 2) for the page-repository schema and
+Load `achilles-protocol` (Stage 2) for the page-repository schema and
 the self-credentialing pattern.
 
 ---
@@ -341,7 +353,10 @@ the self-credentialing pattern.
    before declaring the cycle done — its return shape is the
    `reviewer-inloop` schema (see `schemas/subagent-returns/`). You
    don't load this reviewer as a separate skill; it is part of the
-   composer's cycle.
+   composer's cycle. The composer's Step 6c composition judge
+   (`achilles-protocol/references/test-composition-standards.md`
+   §4) is likewise part of that cycle — each happy-path spec exits
+   composing only on a judge-SATISFIED verdict.
 4. Commit each spec individually: `test(j-<journey>): happy path`.
 
 **Exit criteria.**
@@ -419,6 +434,33 @@ prioritised P0 / P1 / P2 / P3 (per `journey-mapping`'s priority framework).
 
 Load `journey-mapping` for the cycle gate, the edge-probe contract, and
 the priority-tier rubric.
+
+### Shared-resource audit
+
+Phase 4's test-infrastructure probe (dispatched by `journey-mapping`
+Phase 1 — full protocol:
+`skills/journey-mapping/references/test-infrastructure-probe.md`) returns
+a `tags:` array of **constraint tags** describing how the app's shared
+state behaves under parallel test workers. Recording those tags is the
+shared-resource audit; the orchestrator appends them verbatim to the
+`## Test Infrastructure` section of `tests/e2e/docs/app-context.md` so
+downstream consumers can read them without re-probing. The tag
+vocabulary and probing mechanics live in the probe reference — this
+section only owns where the tags land and who consumes them:
+
+- `global-reset:cross-test-race` — the discovered reset endpoint touches
+  global (non-tenanted) collections. Consumer: Stage 4a §1 picks the
+  per-test-user branch (§1.A) and **forbids** `beforeEach(reset)`.
+- `single-tenant-global-state` — assertions against global views race
+  across workers. Consumer: Stage 4a §1's overlay rewrites assertions to
+  per-user-scoped views.
+- `csrf-session-bound` — concurrent mutations against one session
+  invalidate CSRF tokens. Consumer: `test-composer` Step 3's file-level
+  serial-mode rule.
+
+Absence of a tag is itself a recorded outcome (the probe ran and found
+no constraint) — Stage 4a's branch selection depends on the difference
+between "no tag" and "not audited".
 
 ---
 

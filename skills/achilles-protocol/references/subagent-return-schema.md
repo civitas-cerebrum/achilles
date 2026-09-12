@@ -269,7 +269,7 @@ Subagents pick categories based on the journey's flow. This is the single naming
 
 Every caller (`coverage-expansion`, `test-composer`, `bug-discovery`) MUST:
 
-1. Link to this file in its SKILL.md, using the relative path `skills/element-interactions/references/subagent-return-schema.md`.
+1. Link to this file in its SKILL.md, using the relative path `skills/achilles-protocol/references/subagent-return-schema.md`.
 2. Reference this file in every subagent dispatch brief — do not re-paste the schema into the brief.
 3. Reject subagent returns that do not conform. Either:
    - re-dispatch with a stricter brief that names the specific schema violation, or
@@ -306,13 +306,14 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 |---|---|
 | `test-composer-<j-slug>:` (kernel-mandate role name; the legacy `composer-<j-slug>:` routes identically) | Stage A — `status:` enum (new-tests-landed \| covered-exhaustively \| blocked \| skipped) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
 | `reviewer-<j-slug>:` | Stage B (§2.4) — `status:` (greenlight \| improvements-needed) + journey/pass/cycle + summary on greenlight \| findings sub-list on improvements-needed |
+| `composition-judge-<scope>:` | Stage 4c composition judge (`test-composition-standards.md` §4) — reuses `reviewer-inloop.schema.json` (no dedicated schema): `status: greenlight` ⇔ SATISFIED; `status: improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED. Briefs must cite the schema path (preread gate). |
 | `probe-<j-slug>:` | Adversarial — `probes:` + `boundaries:` + `findings:` count or list |
 | `phase-validator-<N>:` | Phase-exit checkpoint (§2.5) — `status:` + `phase:` + `exit-criteria-checked:` array + `summary:` (REQUIRED on both statuses) + `findings: []` literal on greenlight \| ≥1 `pv-<phase>-<nn>` must-fix on improvements-needed |
 | `workflow-reviewer-<scope>:` | Workflow-reviewer (`workflow-reviewer.schema.json`) — `verdict:` (approve \| reject \| escalate) + cycle accounting |
 | `perf-reviewer-<scope>:` | Perf-reviewer (`perf-reviewer.schema.json`) — `verdict:` (approve \| reject \| escalate) + cycle accounting for the perf-onboarding pipeline |
 | `phase4-prioritise-author*` | Phase-4 prioritise-author (`phase4-prioritise-author.schema.json`) — convergence + authored journeys |
 | `phase4-cycle-<N>:` | Phase-4 section agent (`section-agent.schema.json`) |
-| `repair-worker-<file-slug>:` | Self-repair worker (`repair-worker.schema.json`) — `file:` + `tests[]` with per-test `outcome:` enum (already-green \| healed \| app-bug \| quarantined \| operator-pending \| unresolved), healed requires `fix` + `stability-runs`, app-bug requires `bug-report`; `stage-log[]` mirrors the worker's per-stage announcements. Same schema validates the JSON report a script-mode (`achilles-self-repair`) worker subprocess writes to disk. |
+| `repair-worker-<file-slug>:` | Self-repair worker (`repair-worker.schema.json`) — `file:` + `tests[]` with per-test `outcome:` enum (already-green \| known-defect \| healed \| app-bug \| quarantined \| operator-pending \| unresolved), healed requires `fix` + `stability-runs`, app-bug requires `bug-report`; `stage-log[]` mirrors the worker's per-stage announcements. Same schema validates the JSON report a script-mode (`achilles-self-repair`) worker subprocess writes to disk. |
 | `process-validator-` / `phase1-` / `stage2-` / `cleanup-` / `companion-` / `fd-` | Envelope-sanity only — the §2.0 handover envelope is parsed; no per-role JSON-Schema validation |
 | bare `j-` / bare `sj-` | Silent allow — free-form or unstructured returns; no validation |
 

@@ -83,10 +83,11 @@
       },
       "skills": {
         "allow": [
+          "achilles-protocol",
           "database-testing",
-          "element-interactions",
           "selector-development",
-          "test-composer"
+          "test-composer",
+          "test-data-conventions"
         ]
       }
     },
@@ -150,15 +151,15 @@
       ],
       "skills": {
         "allow": [
+          "achilles-protocol",
           "agents-vs-agents",
           "bug-discovery",
           "bug-report",
           "companion-mode",
           "contract-testing",
-          "contributing-to-element-interactions",
+          "contributing-to-achilles-protocol",
           "coverage-expansion",
           "database-testing",
-          "element-interactions",
           "failure-diagnosis",
           "journey-mapping",
           "onboarding",
@@ -169,6 +170,7 @@
           "self-repair",
           "test-catalogue",
           "test-composer",
+          "test-data-conventions",
           "test-repair",
           "ticket-driven-testing",
           "work-summary-deck",
@@ -311,7 +313,7 @@
       },
       "skills": {
         "allow": [
-          "element-interactions"
+          "achilles-protocol"
         ]
       }
     },
@@ -377,10 +379,11 @@
       },
       "skills": {
         "allow": [
+          "achilles-protocol",
           "database-testing",
-          "element-interactions",
           "selector-development",
-          "test-composer"
+          "test-composer",
+          "test-data-conventions"
         ]
       }
     },

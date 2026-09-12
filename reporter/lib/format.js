@@ -64,8 +64,9 @@ function historyLine(agg) {
 }
 
 /**
- * @param {{counts:object, failed:array, flaky:array, slowest:array,
- *          durationMs:number, evidenceDir:string|null, notes:string[]}} model
+ * @param {{counts:object, failed:array, flaky:array, knownDefectPassed:string[],
+ *          slowest:array, durationMs:number, evidenceDir:string|null,
+ *          notes:string[]}} model
  */
 function render(model, opts) {
   const o = opts || {};
@@ -85,6 +86,33 @@ function render(model, opts) {
   if (counts.skipped) tally.push(`${counts.skipped} skipped`);
   if (tally.length === 0) tally.push('no tests ran');
   out.push(`   ${tally.join(c('dim', ' · '))}${model.durationMs ? c('dim', `   in ${duration(model.durationMs)}`) : ''}`);
+
+  // Warnings: printed only when there is something to warn about — a clean
+  // run carries no warning block at all. Known defects are red by design
+  // (each maps to a filed ticket), flaky passes hide a failing attempt, and
+  // a PASS under @known-defect is the anomaly test-identity.md §2 names:
+  // never silently green.
+  const warnings = [];
+  if (counts.knownDefect) {
+    // "(red by design)" is only honest when every tagged test was red this
+    // run; when some passed, say so and point at the anomaly lines below.
+    const passedCount = (model.knownDefectPassed || []).length;
+    const gloss = passedCount > 0
+      ? ` (${passedCount} passed this run — see below)`
+      : ' (red by design — each maps to a filed ticket)';
+    warnings.push(`${c('yellow', `⚠ known defects: ${counts.knownDefect}`)}${c('dim', gloss)}`);
+  }
+  if (counts.flaky) {
+    warnings.push(`${c('yellow', `⚠ flaky: ${counts.flaky}`)}${c('dim', ' (passed only on retry — the failing attempts are listed below)')}`);
+  }
+  for (const title of model.knownDefectPassed || []) {
+    warnings.push(c('yellow', `⚠ passed despite @known-defect: ${title}`));
+    warnings.push(`  ${c('dim', 'defect fixed (drop the tag) or test flaky (retag @flaky) — see achilles-protocol/references/test-identity.md §2')}`);
+  }
+  if (warnings.length) {
+    out.push('');
+    for (const w of warnings) out.push(`   ${w}`);
+  }
 
   if (model.failed && model.failed.length) {
     out.push('');

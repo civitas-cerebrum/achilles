@@ -121,7 +121,7 @@ Each finding follows a §4.1-style block:
 
 ## 4. Response shape
 
-The validator's return shape mirrors the Stage B reviewer return defined in `subagent-return-schema.md` §2.4, adapted for manifest-scope findings. The harness return-schema guard routes `process-validator-` returns through the same field-marker check (see [harness-hooks.md](../../element-interactions/references/harness-hooks.md)).
+The validator's return shape mirrors the Stage B reviewer return defined in `subagent-return-schema.md` §2.4, adapted for manifest-scope findings. The harness return-schema guard routes `process-validator-` returns through the same field-marker check (see [harness-hooks.md](../../achilles-protocol/references/harness-hooks.md)).
 
 ### `greenlight` (no findings)
 

@@ -4,7 +4,7 @@
 **Scope:** Phase 1 (Page Discovery + Test Infrastructure probe), Phase 2 (Flow Identification), Phase 3 (Journey Prioritization), Phase 3.5 (Redundancy Revision). Per-phase process, parallel-discovery model, output formats.
 
 For Phase 4 (Journey Map document) and Phase 5 (Coverage Checkpoint), see `journey-mapping/SKILL.md` directly — those phases' outputs are tightly coupled to the SKILL.md's signature-marker and hard-gate rules.
-For the canonical browser-automation primitive used in Phase 1 discovery, see `../element-interactions/references/playwright-cli-protocol.md`.
+For the canonical browser-automation primitive used in Phase 1 discovery, see `../achilles-protocol/references/playwright-cli-protocol.md`.
 
 **Cycle strictness note.** The iterative discovery cycle protocol that drives Phases 2 / 3 / 3.5 (in both `full` and `phases-2-4` modes) honours an optional `cycle-strictness` parameter:
 - `cycle-strictness: standard` (default) — cycle 1 strict per-section parallel; cycle 2+ may be single-subagent sequential when the orchestrator chooses.
@@ -15,7 +15,7 @@ The Phase 1 parallel-discovery model below is unaffected — Phase 1 already man
 
 ## Phase 1: Page Discovery
 
-Visit every reachable page in the application via `@playwright/cli` (see [`../element-interactions/references/playwright-cli-protocol.md`](../element-interactions/references/playwright-cli-protocol.md)). Build the app context document incrementally as you go.
+Visit every reachable page in the application via `@playwright/cli` (see [`../achilles-protocol/references/playwright-cli-protocol.md`](../../achilles-protocol/references/playwright-cli-protocol.md)). Build the app context document incrementally as you go.
 
 ### Discovery Tool Rule — `playwright-cli` only
 
@@ -25,7 +25,7 @@ Page discovery **must** be performed through `@playwright/cli` from the Bash too
 - **Do not** use `fetch`/`curl`/WebFetch to scrape HTML — those bypass client-side rendering and produce a false map.
 - **Do not** substitute a headless Playwright test runner or shell scripts for the CLI. Discovery runs in a live `playwright-cli` session so snapshots, console errors, and navigation timing are observable and recordable.
 - **Every URL in the site map must have a corresponding `playwright-cli` snapshot** taken during this phase. If a page appears in the map without a CLI visit, it was guessed — remove it and visit it, or mark it gated.
-- **Do not** call the `mcp__plugin_playwright_playwright__browser_*` MCP tools, even when the harness lists them as available. They run a separate Chrome process, write to a separate `.playwright-mcp/` directory, and share no state with the CLI's session model — using them at any point in discovery (parent or subagent) silently breaks the per-session OS-isolation guarantee documented in `../element-interactions/references/playwright-cli-protocol.md`. The CLI is the only sanctioned discovery channel.
+- **Do not** call the `mcp__plugin_playwright_playwright__browser_*` MCP tools, even when the harness lists them as available. They run a separate Chrome process, write to a separate `.playwright-mcp/` directory, and share no state with the CLI's session model — using them at any point in discovery (parent or subagent) silently breaks the per-session OS-isolation guarantee documented in `../achilles-protocol/references/playwright-cli-protocol.md`. The CLI is the only sanctioned discovery channel.
 
 `@playwright/cli` ships as a hard dependency of `@civitas-cerebrum/achilles`, so it is always reachable via `npx playwright-cli` after the package is installed. If the binary is somehow unreachable, the install is corrupted — `npm install` fixes it. If the browser binary is missing on the dev machine, the first `... open` call exits with a clear error; run `npx playwright-cli install-browser chromium` once, then retry. Do not fall back to static analysis.
 
@@ -33,7 +33,7 @@ Page discovery **must** be performed through `@playwright/cli` from the Bash too
 
 1. **Start at the entry point** — usually the homepage or login page
 2. **Take a snapshot** of each page
-3. **Record to app-context.md** immediately (per Rule 9 of element-interactions):
+3. **Record to app-context.md** immediately (per Rule 9 of achilles-protocol):
    - URL pattern
    - Page purpose (one sentence)
    - Key sections visible
@@ -46,7 +46,7 @@ Page discovery **must** be performed through `@playwright/cli` from the Bash too
 
 ### Parallel discovery
 
-For apps with multiple known entry points, Phase 1 parallelizes. **Parallel is the default** whenever two or more entry points are known. There is no isolation-prerequisite check: every dispatched subagent issues `playwright-cli -s=<unique-slug> open` and gets its own OS-isolated browser process by construction (see Rule 11 in the `element-interactions` orchestrator and `references/playwright-cli-protocol.md` §1).
+For apps with multiple known entry points, Phase 1 parallelizes. **Parallel is the default** whenever two or more entry points are known. There is no isolation-prerequisite check: every dispatched subagent issues `playwright-cli -s=<unique-slug> open` and gets its own OS-isolated browser process by construction (see Rule 11 in the `achilles-protocol` orchestrator and `references/playwright-cli-protocol.md` §1).
 
 **Protocol:**
 
@@ -83,7 +83,7 @@ dispatchSubagent({
         npx playwright-cli -s=phase1-<entry-slug> close
 
     Snapshot format and command surface:
-    skills/element-interactions/references/playwright-cli-protocol.md §3 + §5.
+    skills/achilles-protocol/references/playwright-cli-protocol.md §3 + §5.
     Do NOT call close-all (the parent owns that).
   `,
 })
@@ -233,7 +233,7 @@ For every journey, count how many of the following eight factors are present. Ea
 - **Does NOT** add or remove test expectations. Expectations are priority-conditional (§"Priority Framework" coverage-expectation column); risk leaves them untouched.
 - **Backward-compatible.** A journey block with no `Risk factors:` field is `risk: baseline` and groups normally. No existing map breaks.
 
-This is a **methodology rule, not hook-enforced** — no harness hook reads or validates the `Risk factors:` field; the discipline lives in this protocol and in the consuming skills (`coverage-expansion`, `bug-discovery`). The probe categories named above are the canonical vocabulary in `../element-interactions/references/subagent-return-schema.md` §3.6.
+This is a **methodology rule, not hook-enforced** — no harness hook reads or validates the `Risk factors:` field; the discipline lives in this protocol and in the consuming skills (`coverage-expansion`, `bug-discovery`). The probe categories named above are the canonical vocabulary in `../achilles-protocol/references/subagent-return-schema.md` §3.6.
 
 ### Output
 

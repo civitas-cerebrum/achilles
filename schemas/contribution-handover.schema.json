@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://civitas-cerebrum.github.io/element-interactions/contribution-handover.schema.json",
   "title": "Contribution Handover",
-  "description": "Structured sign-off captured per-PR against @civitas-cerebrum/element-interactions. Every boolean maps to a hard rule or design rule in skills/contributing-to-element-interactions/SKILL.md. Every false / n/a value must be paired with a specific *Reason field. Methodology rule — the handover file is validated manually against this schema before git push origin / gh pr create; the harness hook that previously enforced this (contribution-handover-gate.sh) was retired in 0.3.6; the rule still applies.",
+  "description": "Structured sign-off captured per-PR against @civitas-cerebrum/element-interactions. Every boolean maps to a hard rule or design rule in skills/contributing-to-achilles-protocol/SKILL.md. Every false / n/a value must be paired with a specific *Reason field. Methodology rule — the handover file is validated manually against this schema before git push origin / gh pr create; the harness hook that previously enforced this (contribution-handover-gate.sh) was retired in 0.3.6; the rule still applies.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "pr", "preflight", "design", "tests", "build", "coverage", "docs", "version"],

@@ -14,14 +14,17 @@
     --text-bright: #e6edf3;
     --text-muted: #7d8590;
     --text-faint: #484f58;
+    /* The -dim tokens are 15% of their accent pre-blended over #161b22 (bg-secondary).
+       Solid hex on purpose: alpha colors become PDF transparency groups that some viewers
+       render as grey boxes — see SKILL.md §"Print-safety rules". */
     --accent-green: #3fb950;
-    --accent-green-dim: rgba(63, 185, 80, 0.15);
+    --accent-green-dim: #1c3329;
     --accent-blue: #58a6ff;
-    --accent-blue-dim: rgba(88, 166, 255, 0.15);
+    --accent-blue-dim: #203043;
     --accent-purple: #bc8cff;
-    --accent-purple-dim: rgba(188, 140, 255, 0.15);
+    --accent-purple-dim: #2f2c43;
     --accent-orange: #d29922;
-    --accent-orange-dim: rgba(210, 153, 34, 0.15);
+    --accent-orange-dim: #322e22;
     --accent-red: #f85149;
     --border: #30363d;
   }
@@ -55,7 +58,8 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
+    /* Opaque gradient stops — fading to transparent introduces alpha (print-unsafe). */
+    background: linear-gradient(90deg, var(--bg-primary), var(--accent-green), var(--bg-primary));
   }
 
   .slide-number {
@@ -90,7 +94,8 @@
   /* ── Title Slide ── */
   .title-slide {
     text-align: center;
-    background: radial-gradient(ellipse at 50% 30%, rgba(63, 185, 80, 0.08) 0%, transparent 60%), var(--bg-primary);
+    /* 8% of #3fb950 pre-blended over #0d1117; fades to the background, never to transparent. */
+    background: radial-gradient(ellipse at 50% 30%, #111e1c 0%, var(--bg-primary) 60%), var(--bg-primary);
   }
 
   .title-logo { width: 120px; height: 120px; margin: 0 auto 40px; }
@@ -100,6 +105,8 @@
     font-weight: 800;
     letter-spacing: -1px;
     margin-bottom: 8px;
+    /* Deliberate exception to the no-`transparent` rule: clip-text paints an OPAQUE
+       two-stop gradient through the glyph mask; the fill itself carries no color. */
     background: linear-gradient(135deg, var(--text-bright) 0%, var(--accent-green) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -188,11 +195,13 @@
   .arch-diagram { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 40px; margin: 20px 0; }
   .arch-layer { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 16px; }
   .arch-box { padding: 14px 24px; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center; min-width: 180px; border: 1px solid; }
-  .arch-box.test { background: var(--accent-green-dim); border-color: rgba(63, 185, 80, 0.3); color: var(--accent-green); }
-  .arch-box.steps { background: var(--accent-blue-dim); border-color: rgba(88, 166, 255, 0.3); color: var(--accent-blue); }
-  .arch-box.factory { background: var(--accent-purple-dim); border-color: rgba(188, 140, 255, 0.3); color: var(--accent-purple); }
-  .arch-box.platform { background: var(--accent-orange-dim); border-color: rgba(210, 153, 34, 0.3); color: var(--accent-orange); }
-  .arch-box.repo { background: rgba(248, 81, 73, 0.1); border-color: rgba(248, 81, 73, 0.3); color: var(--accent-red); }
+  /* Border colors are 30% of the accent pre-blended over each box's own -dim background
+     (backgrounds paint under borders); .repo's background is 10% #f85149 over #161b22. */
+  .arch-box.test { background: var(--accent-green-dim); border-color: #275b35; color: var(--accent-green); }
+  .arch-box.steps { background: var(--accent-blue-dim); border-color: #31537b; color: var(--accent-blue); }
+  .arch-box.factory { background: var(--accent-purple-dim); border-color: #59497b; color: var(--accent-purple); }
+  .arch-box.platform { background: var(--accent-orange-dim); border-color: #624e22; color: var(--accent-orange); }
+  .arch-box.repo { background: #2d2026; border-color: #6a2f31; color: var(--accent-red); }
   .arch-arrow { text-align: center; color: var(--text-faint); font-size: 18px; margin: 8px 0; }
 
   /* ── Flow Stages ── */
@@ -200,7 +209,8 @@
   .flow-stage { flex: 1; padding: 24px 20px; background: var(--bg-secondary); border: 1px solid var(--border); position: relative; text-align: center; }
   .flow-stage:first-child { border-radius: 12px 0 0 12px; }
   .flow-stage:last-child { border-radius: 0 12px 12px 0; }
-  .flow-stage .stage-num { font-size: 32px; font-weight: 800; color: var(--accent-green); opacity: 0.3; position: absolute; top: 8px; right: 12px; }
+  /* 30% of #3fb950 pre-blended over #161b22 — replaces `opacity: 0.3`, which is print-unsafe. */
+  .flow-stage .stage-num { font-size: 32px; font-weight: 800; color: #224a30; position: absolute; top: 8px; right: 12px; }
   .flow-stage h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .flow-stage p { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
   .flow-connector { display: flex; align-items: center; color: var(--accent-green); font-size: 20px; padding: 0 2px; }
@@ -317,7 +327,7 @@
 </section>
 
 <!-- ── CLOSING SLIDE ── -->
-<section class="slide title-slide" style="background: radial-gradient(ellipse at 50% 60%, rgba(63, 185, 80, 0.06) 0%, transparent 60%), var(--bg-primary);">
+<section class="slide title-slide" style="background: radial-gradient(ellipse at 50% 60%, #101b1a 0%, var(--bg-primary) 60%), var(--bg-primary);">
   <div class="brand-mark">
     <svg class="logo-rings" viewBox="0 0 200 200"><circle cx="85" cy="100" r="50" fill="none" stroke="#e6edf3" stroke-width="6"/><circle cx="115" cy="100" r="50" fill="none" stroke="#3fb950" stroke-width="6"/></svg>
     <span>Civitas Cerebrum</span>

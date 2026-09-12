@@ -69,7 +69,7 @@
 # Canonical reference
 # -------------------
 # schemas/subagent-returns/*.schema.json
-# skills/element-interactions/references/subagent-return-schema.md
+# skills/achilles-protocol/references/subagent-return-schema.md
 #
 # Failure → action
 # ----------------
@@ -83,6 +83,12 @@
 # this gate is checking *whether* a violation exists, so absence of
 # extractable data is itself an "allow" signal.
 set -uo pipefail
+
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/subagent-return-schema.md §4.4\n  schemas/subagent-returns/README.md"
+
 
 # Resolve jq (matches the resolution pattern used by sibling hooks).
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
@@ -142,7 +148,7 @@ fi
   --arg desc "$DESCRIPTION" \
   --arg path "$SCHEMA_PATH" \
   --arg fname "$SCHEMA_FILENAME" \
-  --arg notice "$(achilles_scope_notice)" \
+  --arg notice "${HOOK_REFS}$(achilles_scope_notice)" \
   '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",

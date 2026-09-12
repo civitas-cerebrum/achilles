@@ -1,0 +1,76 @@
+{
+  "version": "self-repair-report/v1",
+  "run-id": "2026-08-18_09-14-02",
+  "mode": "script",
+  "started-at": "2026-08-18T09:14:02.000Z",
+  "finished-at": "2026-08-18T09:21:37.000Z",
+  "scope": {
+    "files": 3,
+    "tests": 5
+  },
+  "baseline": {
+    "runs": 3
+  },
+  "verify-runs": 2,
+  "rounds": 1,
+  "totals": {
+    "already-green": 2,
+    "known-defect": 1,
+    "healed": 2,
+    "app-bugs": 0,
+    "quarantined": 0,
+    "operator-pending": 0,
+    "unresolved": 0
+  },
+  "files": [
+    {
+      "file": "tests/e2e/login/login-rate-limit.spec.ts",
+      "status": "explained",
+      "tests": [
+        {
+          "title": "TCLG-000800 · repeated failed logins are eventually throttled or locked out",
+          "baseline-pattern": "known-defect",
+          "outcome": "known-defect",
+          "root-cause": null,
+          "fix": null,
+          "bug-report": null,
+          "notes": "Tagged @known-defect — excluded from failure reruns, worker dispatch and verification. Turns green unedited when the filed defect is fixed."
+        }
+      ]
+    },
+    {
+      "file": "tests/e2e/login/login-negative.spec.ts",
+      "status": "healed",
+      "tests": [
+        {
+          "title": "TCLG-000420 · a wrong password is rejected",
+          "baseline-pattern": "deterministic-fail",
+          "outcome": "healed",
+          "root-cause": "error alert moved from an inline span to a toast",
+          "fix": "repointed LoginPage.errorAlert at the toast container",
+          "bug-report": null,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "file": "tests/e2e/signup/signup-duplicate-email.spec.ts",
+      "status": "healed",
+      "tests": [
+        {
+          "title": "TCSG-000110 · registering an already-used email surfaces a conflict",
+          "baseline-pattern": "known-defect-passed",
+          "outcome": "healed",
+          "root-cause": "the filed defect was fixed upstream; the @known-defect tag no longer told the truth",
+          "fix": "removed the @known-defect tag after the stability bar (3/3 targeted + 5/5 suite-order green); assertions untouched",
+          "bug-report": null,
+          "notes": "Passed despite @known-defect — an anomaly, never silently green (test-identity.md §2). Defect ticket referenced in the spec's pointer comment is ready to close."
+        }
+      ]
+    }
+  ],
+  "observations": [],
+  "artifacts": {
+    "run-dir": ".achilles/self-repair/2026-08-18_09-14-02"
+  }
+}

@@ -96,7 +96,7 @@ The contribution pathway depends on what you're already shipping:
 - **You hit the niche shape outside any PR** (e.g. during a normal coverage / authoring session). Open a small standalone PR titled `docs(failure-diagnosis): catalogue <shape-name> in niche-edge-cases`. Single-commit, single-file (this file). The contributing-skill `docs(...)` commit-message convention applies; no version bump (per the no-bump rule).
 - **You hit it inside a dispatched subagent** (e.g. failure-diagnosis sub-skill). The subagent surfaces the find in its return; the parent orchestrator either appends inline or opens the standalone PR above. Subagents do NOT push commits directly to this catalogue.
 
-The full criteria + ship path is also documented in `skills/contributing-to-element-interactions/SKILL.md` §"Contributing to the niche-edge-cases catalogue".
+The full criteria + ship path is also documented in `skills/contributing-to-achilles-protocol/SKILL.md` §"Contributing to the niche-edge-cases catalogue".
 
 ### Keep entries tight
 

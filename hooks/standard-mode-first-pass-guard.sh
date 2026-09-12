@@ -122,6 +122,12 @@
 # should silent-allow the dispatch rather than crash the PreToolUse pipeline.
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §\"Stage A per-journey dispatch is non-negotiable\"\n  skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\""
+
+
 # Resolve jq.
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
@@ -154,7 +160,7 @@ CYCLE_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 # Emit a DENY JSON with the supplied reason.
 emit_deny() {
   local reason="$1"
-  "$JQ" -n --arg r "$reason$(achilles_scope_notice)" '{
+  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
@@ -239,7 +245,7 @@ front-load gate and select \`runMode: standard\` instead.
 
 See:
   - skills/coverage-expansion/SKILL.md §\"Depth mode — strict-parallel-everywhere\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
     exit 0
   fi
   if [ -z "$CURRENT_PASS" ] || [ "$CURRENT_PASS" = "1" ]; then
@@ -261,7 +267,7 @@ file shows \`currentPass >= 2\`.
 
 See:
   - skills/coverage-expansion/SKILL.md §\"Stage A per-journey dispatch is non-negotiable\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
     exit 0
   fi
 fi
@@ -300,7 +306,7 @@ file, then re-dispatch the author.
 
 See:
   - skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
     exit 0
   fi
 fi
@@ -419,7 +425,7 @@ front-load gate and select \`runMode: standard\` instead.
 
 See:
   - skills/journey-mapping/SKILL.md §\"First-cycle strict / later-cycle relaxed\" — every-cycle-strict counterpart under depth
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
         exit 0
       fi
       if [ "$CYCLE_1_DISPATCHED" -eq 0 ]; then
@@ -445,7 +451,7 @@ cycle).
 
 See:
   - skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\"
-  - skills/element-interactions/references/harness-hooks.md (this hook indexed there)"
+  - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
         exit 0
       fi
       ;;

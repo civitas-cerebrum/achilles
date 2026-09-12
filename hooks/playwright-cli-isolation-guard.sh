@@ -38,7 +38,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/playwright-cli-protocol.md §3
+# skills/achilles-protocol/references/playwright-cli-protocol.md §3
 #   (Session model, naming convention, length budget, quarantine)
 #
 # Convention (subagent description prefix ↔ CLI slug — same role on both ends)
@@ -72,6 +72,12 @@
 # - Anything else                                               → silent allow
 
 set -euo pipefail
+
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/playwright-cli-protocol.md §3\n  skills/achilles-protocol/SKILL.md §11 (browser automation goes through @playwright/cli)"
+
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
@@ -123,7 +129,7 @@ if [ -z "$SLUG" ]; then
 fi
 
 # Allowed slug prefixes — must match the Agent-description role prefixes
-# (see skills/element-interactions/references/playwright-cli-protocol.md §3.1). The
+# (see skills/achilles-protocol/references/playwright-cli-protocol.md §3.1). The
 # trailing `[a-z0-9-]+` enforces a non-empty suffix so bare prefixes like
 # `phase1-` are rejected. Bare `j-`/`sj-` are NOT accepted; use the
 # role-explicit forms `composer-j-<slug>`, `reviewer-j-<slug>`,
@@ -135,7 +141,7 @@ fi
 SLUG_PREFIX_REGEX='^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*'
 
 emit_deny() {
-  "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{
+  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
@@ -164,7 +170,7 @@ Slug convention (must match the Agent description prefix that dispatched this su
   stage2-<scenario>                      element inspection
   cleanup-<scope>                        ledger / cleanup
 
-Why: without -s=, playwright-cli uses the shared default session — two parallel subagents fight over one browser process and isolation breaks. See element-interactions Rule 11 + playwright-cli-protocol.md §3.1."
+Why: without -s=, playwright-cli uses the shared default session — two parallel subagents fight over one browser process and isolation breaks. See achilles-protocol Rule 11 + playwright-cli-protocol.md §3.1."
   exit 0
 fi
 

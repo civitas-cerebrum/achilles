@@ -9,7 +9,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { classify, aggregate, isHeel, isEvidenceWorthy, slowest, median, OUTCOMES } = require('../lib/classify.js');
+const { classify, aggregate, isHeel, isEvidenceWorthy, slowest, median, OUTCOMES, isKnownDefect } = require('../lib/classify.js');
 const history = require('../lib/history.js');
 const { render, historyLine, colorEnabled, duration } = require('../lib/format.js');
 const { createGuard } = require('../lib/safe.js');
@@ -342,4 +342,104 @@ test('run ids match the shape the archiver hook prunes', () => {
   assert.ok(!isRunId('latest'));
   assert.ok(!isRunId('.last-archive.json'));
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// @known-defect: detection, counts, and the passed-despite-the-tag anomaly
+// ---------------------------------------------------------------------------
+
+test('the tag counts anywhere in the title path and in the tags array, and nowhere else', () => {
+  assert.equal(isKnownDefect(['login.spec.ts', 'Login — brute force @known-defect', 'LGN-08 · throttled']), true);
+  assert.equal(isKnownDefect(['login.spec.ts', 'LGN-08 · throttled @known-defect']), true);
+  assert.equal(isKnownDefect(['login.spec.ts', 'LGN-08 · throttled'], ['@known-defect']), true);
+  assert.equal(isKnownDefect(['login.spec.ts', 'LGN-08 · throttled'], ['@smoke']), false);
+  assert.equal(isKnownDefect(['login.spec.ts', 'LGN-08 · known-defect without the @ sigil']), false);
+  assert.equal(isKnownDefect([undefined, 'ok'], undefined), false);
+});
+
+const warnModel = (over) => ({
+  counts: { passed: 1, failed: 0, flaky: 0, skipped: 0, knownDefect: 0 },
+  failed: [], flaky: [], knownDefectPassed: [], slowest: [], durationMs: 0,
+  evidenceDir: null, notes: [], ...over,
+});
+
+test('known-defect and flaky counts print as warnings', () => {
+  const text = render(warnModel({
+    counts: { passed: 1, failed: 1, flaky: 2, skipped: 0, knownDefect: 3 },
+  }), { color: false });
+  assert.ok(text.includes('⚠ known defects: 3 (red by design — each maps to a filed ticket)'), text);
+  assert.ok(text.includes('⚠ flaky: 2'), text);
+});
+
+test('a known-defect that passed gets its own anomaly warning naming the test', () => {
+  const text = render(warnModel({
+    counts: { passed: 1, failed: 0, flaky: 0, skipped: 0, knownDefect: 1 },
+    knownDefectPassed: ['tests/e2e/signup.spec.ts › SGN-10 · duplicate email @known-defect'],
+  }), { color: false });
+  assert.ok(text.includes('⚠ passed despite @known-defect: tests/e2e/signup.spec.ts › SGN-10 · duplicate email @known-defect'), text);
+  assert.ok(text.includes('defect fixed (drop the tag) or test flaky (retag @flaky)'), text);
+  assert.ok(text.includes('test-identity.md §2'), text);
+  // The count line must not claim "red by design" while an anomaly passed.
+  assert.ok(text.includes('⚠ known defects: 1 (1 passed this run — see below)'), text);
+  assert.ok(!text.includes('red by design'), text);
+});
+
+test('no warnings at all when there is nothing to warn about', () => {
+  const text = render(warnModel({}), { color: false });
+  assert.ok(!text.includes('⚠'), text);
+});
+
+// End to end through the reporter itself: onTestEnd → buildModel → render,
+// so the counts and the anomaly are proven against the wiring, not just the
+// formatter.
+const AchillesReporter = require('../index.js');
+
+function summarize(specs) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ach-kd-'));
+  fs.mkdirSync(path.join(root, '.git'));
+  const written = [];
+  const stream = { write: (s) => written.push(s), isTTY: false, columns: 72 };
+  // retain=0: no archive — this test is about counts and warnings only.
+  const reporter = new AchillesReporter({ stream, env: { ACHILLES_ARTIFACT_RETAIN: '0' } });
+  reporter.onBegin({ configFile: path.join(root, 'playwright.config.js') }, { allTests: () => [] });
+  for (const spec of specs) {
+    const file = path.join(root, spec.file);
+    const t = {
+      id: `${spec.file}::${spec.title}`,
+      titlePath: () => ['chromium', path.basename(file), ...(spec.describes || []), spec.title],
+      location: { file },
+      parent: null,
+      expectedStatus: 'passed',
+      tags: spec.tags,
+    };
+    for (const [retry, status] of (spec.attempts || ['passed']).entries()) {
+      reporter.onTestEnd(t, { retry, status, duration: 5, attachments: [] });
+    }
+  }
+  reporter.onEnd({ status: 'passed' });
+  fs.rmSync(root, { recursive: true, force: true });
+  return written.join('');
+}
+
+test('reporter counts known defects and warns on the one that passed', () => {
+  const out = summarize([
+    { file: 'tests/a.spec.ts', title: 'TC-0001 · steady', attempts: ['passed'] },
+    { file: 'tests/a.spec.ts', title: 'TC-0002 · guarded red @known-defect', attempts: ['failed', 'failed'] },
+    { file: 'tests/b.spec.ts', title: 'TC-0003 · fixed defect', describes: ['Signup @known-defect'], attempts: ['passed'] },
+    { file: 'tests/b.spec.ts', title: 'TC-0004 · tag-option defect', tags: ['@known-defect'], attempts: ['failed', 'passed'] },
+  ]);
+  assert.ok(out.includes('⚠ known defects: 3 (2 passed this run — see below)'), out,
+    'anomalies present — the count line must not read "red by design"');
+  assert.ok(out.includes('⚠ flaky: 1'), out);
+  assert.ok(out.includes('⚠ passed despite @known-defect: tests/b.spec.ts › Signup @known-defect › TC-0003 · fixed defect'), out);
+  assert.ok(out.includes('⚠ passed despite @known-defect: tests/b.spec.ts › TC-0004 · tag-option defect'), out,
+    'a pass on retry under the tag is still a pass the defect said could not happen');
+});
+
+test('reporter prints no warning block for a clean untagged run', () => {
+  const out = summarize([
+    { file: 'tests/a.spec.ts', title: 'TC-0001 · steady', attempts: ['passed'] },
+    { file: 'tests/a.spec.ts', title: 'TC-0005 · red but honest', attempts: ['failed', 'failed'] },
+  ]);
+  assert.ok(!out.includes('⚠'), out);
 });

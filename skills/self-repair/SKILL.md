@@ -83,6 +83,25 @@ with the suite's own timeouts, because a heal is only proven under real
 conditions, and a cap on discovery could misclassify legitimately slow
 tests app-wide.
 
+**Pipeline-sourced runs — pull the CI evidence first.** When the session
+was triggered by a red CI run rather than a local one (interactive mode:
+the user said "the nightly failed" / "CI is red"; script mode: the driver
+was handed a run id), download the run's artifacts before the discovery
+run, following [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md)
+§"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b
+— Pipeline evidence retrieval" — do not fork the procedures here. The
+run's JSON reporter output gives the red-file set without waiting for
+discovery, and each red file's downloaded `trace.zip` /
+`test-failed-1.png` / `error-context.md` goes into that file's worker
+brief (naming which attempt each artifact came from) so the worker's
+`failure-diagnosis` evidence floor starts from the execution that
+actually failed. The run's `headSha` and the framework versions it
+resolved go into every brief too — a worker reading framework source
+from the local `node_modules` when CI resolved an older version will
+diagnose a defect that is already fixed. The local discovery run still
+happens — a red file that is green locally is a CI-only failure, which
+is a classification, not a pass.
+
 **Incident-shape spacing.** A 3/3-red baseline captured in one tight
 window can be a time-varying app incident, not a deterministic failure
 (observed live: a logout journey read 3/3 red during a bad window and
@@ -114,14 +133,44 @@ Announce each run: `[self-repair] stage=baseline run <i>/<N> done: <T> tests, <F
 ### Stage 2 — Classify
 
 Per test, from the per-run outcome matrix (same taxonomy as `test-repair`
-Stage 2): **green** (all pass) / **deterministic-fail** (all fail, same
-signature) / **flaky-consistent** (mixed, one signature) / **flaky-chaotic**
-(mixed, several signatures). Aggregate non-green tests into the **red-file
-set**. Log one `[self-repair] stage=classify` line with the totals and one
-per red file.
+Stage 2): **green** (all pass) / **known-defect** (test or describe tagged
+`@known-defect`, red in every run) / **known-defect-passed** (tagged, but
+with ANY baseline pass — an anomaly, see below) / **deterministic-fail**
+(all fail, same signature) / **flaky-consistent** (mixed, one signature) /
+**flaky-chaotic** (mixed, several signatures). Aggregate non-green,
+non-known-defect tests into the **red-file set** — `known-defect-passed`
+is in scope, `known-defect` is not. Log one `[self-repair] stage=classify` line with the
+totals and one per red file.
 
-If the red-file set is empty: write the report (everything
-`already-green`) and stop.
+**`@known-defect` reds never enter the red-file set.** They are intentional
+reds guarding a *filed* defect: the classification work is done and written
+down, so a rerun, a worker, or a verification pass only re-derives it at the
+cost of wall-clock and worker budget. They are excluded from the failure
+reruns, from the fan-out, and from verification; they appear in the report
+under their own `known-defect` outcome, and they never count as `unresolved`,
+so they cannot hold the exit code red.
+
+**A `@known-defect` test with any baseline pass is `known-defect-passed` —
+never silently green.** The tag predicts red, so a pass is an anomaly the
+session must resolve, not a green to tally. The pattern is non-terminal: the
+file enters the fan-out with a purpose-built stability-probe brief instead of
+the failure-diagnosis pipeline — the worker runs a two-number stability bar
+adapted from `test-repair` Stage 5.5's quarantine-release bar (3/3 targeted
+isolation reruns first, then 5/5 suite-order runs; Stage 5.5 runs suite-order
+first) and then either (a) all green → the defect is fixed: drop the
+`@known-defect` tag, touch nothing else, report `healed` and name the filed
+ticket for closing; or (b) any red → the pass is nondeterministic: retag
+`@known-defect` → `@flaky`, append the quarantine-ledger entry, report
+`quarantined`. Either way the tag is edited only at a site scoping solely the
+anomalous test — a shared describe/file tag site is re-scoped onto the
+individual tests first, so still-red siblings keep `@known-defect`. Contract:
+[`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
+Enforced in `bin/self-repair.mjs` (script mode, classification pinned by
+`hooks/tests/cases/75-self-repair-known-defect.sh`); interactive mode applies
+the same rule by hand.
+
+If the red-file set is empty: write the report (everything `already-green`,
+plus any `known-defect`) and stop.
 
 ### Stage 3 — Fan-out (one worker per red file)
 
@@ -157,8 +206,11 @@ prefixes that omit the citation. The brief carries:
    at every stage transition, and mirror those transitions into the
    `stage-log` array of the return.
 5. The return contract: every briefed test appears in `tests[]` with an
-   outcome of `already-green | healed | app-bug | quarantined |
-   operator-pending | unresolved` — no silent drops, no `.skip()`.
+   outcome of `already-green | known-defect | healed | app-bug |
+   quarantined | operator-pending | unresolved` — no silent drops, no
+   `.skip()`. (`known-defect` is normally assigned at classification, before
+   any worker is dispatched; a worker uses it only when it discovers the tag
+   on a test the baseline could not see it on.)
 6. The bug-evidence contract (below): app-bug outcomes require the full
    evidence bundle — including a slow-motion screen recording of a
    reproduction — copied to `bug-evidence/` before the worker returns.
@@ -212,7 +264,8 @@ worker start/finish: `[self-repair] stage=fan-out worker finished file=<f> …`.
 After a round's workers finish, re-run the previously-red files ×3 in suite
 order (catches heals that break neighbours and heal-introduced flake — same
 rationale as `test-repair` Stage 5). Tests still failing **without** an
-explained classification (`app-bug` / `quarantined` / `operator-pending`)
+explained classification (`app-bug` / `quarantined` / `operator-pending` /
+`known-defect`)
 re-enter Stage 3 for another round, up to the round cap (default 2). Tests
 still red at the cap are reported `unresolved` — never silently dropped.
 
@@ -356,18 +409,23 @@ the interactive orchestrator applies the same rules with Write/Edit):
 | `failure-diagnosis` | Loaded by every worker for the atomic heal-or-classify work. Its contract is unchanged. |
 | `test-repair` | Sibling entrypoint (cluster-first, in-session). Its Bug-vs-Heal Discipline is normative here. Prefer it when one shared root cause dominates. |
 | `bug-discovery` | Separate concern — self-repair reports bugs it encounters, it does not probe for new ones. |
-| `element-interactions` | Workers use the Steps API + page repository when healing selectors. |
+| `achilles-protocol` | Workers use the Steps API + page repository when healing selectors. |
 | `onboarding` | Phase 1 scaffold wires `"test:repair": "achilles-self-repair"` into the consumer's `package.json`; per-flow presets are derived from suite scripts via `--init-scripts` (see "Per-flow repair presets"). |
 | `work-summary-deck` | May consume `report.json` as input data for a stakeholder deck. |
 
 ---
 
+## Exit gate — compliance sweep
+
+**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
 ## Success criteria
 
 A self-repair session is complete when:
 
-1. Every test in scope is `already-green`, `healed` (verified in suite
-   order), `app-bug` (HIGH confidence — expected behaviour, actual
+1. Every test in scope is `already-green`, `known-defect` (tagged
+   `@known-defect`, excluded from repair by contract), `healed` (verified in
+   suite order), `app-bug` (HIGH confidence — expected behaviour, actual
    behaviour, and causal mechanism stated; evidence complete; test
    unmodified), `quarantined` (with ledger entry), `operator-pending`
    (with the proposed change and its stage-5 understanding attached), or

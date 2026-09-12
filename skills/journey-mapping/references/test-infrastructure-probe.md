@@ -18,10 +18,12 @@ The probe runs in two coordinated layers — observation during the crawl + a de
 
 **Subagent return shape:** structured Markdown matching the canonical `## Test Infrastructure` template below + a top-of-return `tags:` array carrying the constraint tags surfaced for the onboarding shared-resource audit (`global-reset:cross-test-race`, `single-tenant-global-state`, `csrf-session-bound`, etc. — see `onboarding/SKILL.md` §"Shared-resource audit").
 
+**Remit extension — data-dependency serving facts.** `test-data-conventions` Step 0 (see [`../../test-data-conventions/SKILL.md`](../../test-data-conventions/SKILL.md)) extends this probe's remit: for each data dependency the crawl surfaces, also record the **serving source** (app-owned DB / third-party search index / CMS / external API / client state), whether a **write path** exists (seeding API, DB access, UI-only, none), and the **environment class** (isolated test env / shared / production-like). These facts land in the same `## Test Infrastructure` section; composing sessions that hit an uncovered dependency probe just that dependency and append.
+
 ## Inputs
 
 - `playwright.config.ts` `baseURL` (the host being probed).
-- The `playwright-cli` session used for Phase 1 crawl. Network observations come from `playwright-cli requests` against that session; HTTP details come from `playwright-cli request <index>` / `playwright-cli response-headers <index>` / `playwright-cli response-body <index>`. See [`../../element-interactions/references/playwright-cli-protocol.md`](../../element-interactions/references/playwright-cli-protocol.md) §3 for the session model.
+- The `playwright-cli` session used for Phase 1 crawl. Network observations come from `playwright-cli requests` against that session; HTTP details come from `playwright-cli request <index>` / `playwright-cli response-headers <index>` / `playwright-cli response-body <index>`. See [`../../achilles-protocol/references/playwright-cli-protocol.md`](../../achilles-protocol/references/playwright-cli-protocol.md) §3 for the session model.
 
 ## Probe categories
 

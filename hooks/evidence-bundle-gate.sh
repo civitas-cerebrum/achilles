@@ -206,7 +206,7 @@
 #                                       §"The Contract",
 #                                       §"The sign-off gate"
 # skills/companion-mode/SKILL.md        §"Redaction (mandatory …)"
-# skills/element-interactions/references/harness-hooks.md
+# skills/achilles-protocol/references/harness-hooks.md
 #
 # Failure → action
 # ----------------
@@ -848,5 +848,7 @@ fi
 
 emit_warn "[WARN] Posting a QA verdict with no evidence bundle for this ticket.
 
-$BODY_MSG"
+$BODY_MSG
+
+${REFS}"
 exit 0

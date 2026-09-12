@@ -288,6 +288,8 @@ The orchestrator pushes past the 70% auto-compaction threshold ("one more pass b
 
 The orchestrator absorbs `test-composer-j-<slug>:` (or probe / reviewer) work into its own context — reads the journey block, drives `playwright-cli` for selector inspection itself, writes the spec inline, runs the test, commits — instead of dispatching a subagent. Often justified by a real concern (parallelism risk, shared-DB contention) that's then resolved by absorbing the work serially rather than fixing the parallelism issue.
 
+**Scope — the full specialist task-family list, not just composing.** The same pattern covers an orchestrator inlining ANY of the suite's dedicated-dispatch families: UI inspection / page-repository building (`stage2-*:` / `phase1-*:`), test composing (`composer-*:`), journey-mapping sections (`phase4-cycle-*:`), adversarial probing / bug discovery (`probe-*:`), failure diagnosis (`fd-*`, subagent-only skill), repair workers (`repair-worker-*:`), composition judging (`composition-judge-*:` — an author "judging" its own output inline is this pattern AND "Self-certifying greenlight"), and workflow review (`workflow-reviewer-*:`). The canonical statement of the discipline and the per-family prefix table is `../../achilles-protocol/references/test-composition-standards.md` §6. The rule of thumb: catching yourself STARTING one of these inline means stop and dispatch.
+
 **Symptoms:**
 - "I am the composer. For each journey I read its block from journey-map.md, drive playwright-cli myself for selector inspection, write the spec inline, run it, commit. No Agent tool calls, no test-composer-j-<slug>: subagent dispatches."
 - "earlier-turn analysis concluded that 22 parallel test-composer-j-<slug>: Agent dispatches against a shared MongoDB would race on /api/reset"
@@ -305,6 +307,7 @@ The cost the orchestrator pays for the dodge:
 
 **Hooks that catch this:**
 - Direct-compose-block rule: PostToolUse:Write|Edit on `tests/e2e/j-*.spec.ts` / `tests/e2e/sj-*.spec.ts` (incl. `-regression`) when `coverage-expansion-state.json` exists is a **hard violation** unless the writer is a legitimate composer subagent (slug in-flight from a recent `test-composer-j-<slug>:` / `probe-j-<slug>:` Agent dispatch). Orchestrator-direct writes break the dual-stage contract — see `test-optimization.md` §1.A (per-test-user pattern) for the upstream parallelism fix. (The harness in-flight-composer-registry hooks that previously enforced this were retired in 0.3.6; the rule still applies.)
+- (markdown-only for the generalised task-family scope) — mechanically distinguishing "orchestrator absorbing" from "subagent working" needs the retired in-flight-registry pattern (`contributing-to-achilles-protocol` §"Approximating `is_subagent`"); until it is revived, partial per-family backing exists via `playwright-cli-isolation-guard.sh` (slug shape), `subagent-schema-preread-gate.sh` (schema-mapped briefs), `composition-judge-gate.sh` (judge-loop leash), and the `workflow-reviewer-pass<N>:` dispatch cross-checks. Reviewer-visible note: the general rule is reviewer-enforced.
 
 **Origin:** v0.3.4 onboarding test surfaced this as a follow-on consequence of "Pre-emptive scope reduction" — the agent identified parallelism risk correctly, then absorbed the work to avoid the risk instead of fixing the risk's upstream cause. Hook + Stage 4a §1.A added in v0.3.5.
 
@@ -358,6 +361,150 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 **Tag:** `markdown-only`.
 **Deferred hook:** sentinel-validation hook for `tests/e2e/docs/app-wide-patterns.md` (the analogous sentinel-guard hook for `journey-map.md` was retired in 0.3.6; if revived, this pattern would mirror its sentinel-and-citation contract).
+
+---
+
+## Pattern: `markdown-only` deferral — ticket-driven-testing §8d commit-or-discard + report contract
+
+Two rules in `skills/ticket-driven-testing/SKILL.md` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle) — but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW — a level-of-detail judgement over free prose, not a mechanical check.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `commitDecision` field (`discarded` | `proposed` | `confirmed-by:<human>`) in the §8b adversarial-verification receipt would let `adversarial-verification-gate.sh` deny a spec commit with no recorded confirmation; the report-contract rule remains reviewer-enforced.
+
+---
+
+## Pattern: `markdown-only` deferral — work-summary-deck print-safety rules
+
+`skills/work-summary-deck/SKILL.md` §"Print-safety rules" bans `box-shadow`, `opacity`, and alpha colors (rgba/hsla and `transparent` gradient stops) in generated decks, and requires the PDF to be re-exported and re-inspected after every edit round. The color bans are mechanically detectable (a grep over the written deck HTML), but no hook currently validates deck output at Write or export time; the inspection-loop rule is a process obligation a hook cannot observe.
+
+**Tag:** `markdown-only`.
+**Deferred hook:** a `PreToolUse:Write` (or export-script) guard that greps `*deck*.html` for `box-shadow`, `opacity:`, `rgba(`, `hsla(`, and `transparent` gradient stops outside comments would enforce the color rules; the verification loop remains reviewer-enforced.
+
+---
+
+## Pattern: The test is green, so the sweep is a formality
+
+**Symptoms** (phrasings that signal this pattern):
+- "the test passes, the compliance review would be a rubber stamp"
+- "this was a bug reproduction / a heal / a ticket fix, not authoring — the sweep doesn't apply"
+- "the subagent already reviewed its own output"
+- "I'll sweep at the end of the batch" (and the batch never ends)
+- "it's one small test, the sweep is overkill"
+- "an ID is bookkeeping — the title already says what it does"
+- "this test fails on purpose, I'll just `.skip()` it so the run is green"
+- "I'll tighten the assertion so the suite goes green and file the bug separately"
+
+**Reality:** The sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds are caught — and passing is exactly the state in which all four survive unnoticed. Modes that write tests as a *means* to something else (reproducing a bug, healing a red, closing a ticket) are the ones that skip it, because their own goal reads as met the moment the test exists; and because tests are written by copying the last one, one unswept file propagates the wrong model into everything written after it. The same instinct rewrites a deliberate red into a pass: a test weakened or skipped to make a run green is a test that can no longer detect the defect it was written for. The sanctioned move is `@known-defect` plus a filed report — the red stays red, and the repair pipeline stops re-deriving it.
+
+**Hooks that catch this:**
+- `compliance-sweep-exit-gate.sh` — `Stop` + `SubagentStop`. Blocks the stop when the transcript shows a spec-file Write/Edit with no compliance sweep after it. Delegation does not release it: either the subagent swept and said so, or the orchestrator sweeps what came back.
+- `test-id-compliance-gate.sh` — `PreToolUse:Write|Edit`. Denies a spec write that adds a case with no stable test ID, or that duplicates an ID inside one file.
+- `bin/self-repair.mjs` — classifies `@known-defect` reds as terminal, so tagging one is cheaper than silencing it and the incentive points the right way.
+
+**Origin:** Codified alongside the test-identity conventions (`skills/achilles-protocol/references/test-identity.md`) when the sweep was made every test-developing mode's exit gate rather than the authoring pipeline's private step.
+
+---
+
+## Pattern: Diagnosis from log text alone (evidence floor skipped)
+
+The diagnoser reads the terminal error, the CI job log, or the stack trace, recognises a familiar-looking error string, and ships a root cause — or a heal — without ever opening the trace, looking at the UI/DOM state at the moment of failure, or reading the browser console. The pipeline-failure variant is worse: the run's artifacts are never downloaded at all, and the "diagnosis" is a paraphrase of the log line. Two sub-shapes travel with it: reading the *retry* attempt's trace (which passed) and concluding "not reproducible", and reading framework source from the local `node_modules` rather than the version CI actually resolved.
+
+**Symptoms:**
+- "the error message is obvious — it's a timeout on \<element\>"
+- "it's clearly a timeout, the trace won't add anything"
+- "I can tell from the stack trace exactly which locator failed"
+- "the call log already shows the resolved element, so I've effectively seen the DOM"
+- "`strict mode violation` is self-explanatory"
+- "opening the trace is expensive / needs a browser / it's a 30MB zip"
+- "downloading the CI artifact is slow, I'll just re-run it locally"
+- "I'll form the hypothesis first and only check the trace if it doesn't hold"
+- "three tests failed the same way, one log line covers all three"
+- "this is the same error I diagnosed earlier in the session"
+- "the trace shows a clean 2.1s pass — cannot reproduce" (that was the retry, not the failing attempt)
+- "I read the framework's source, so I know what it does" (from the local tree, not the version the run resolved)
+
+**Reality:** the error message says *where execution stopped*; the trace says *what the page was doing*. They are different questions, which is why the trace exists. One `Timeout … waiting for element to be visible, enabled and stable` is emitted identically by an intercepting overlay, a sticky consent banner, a never-settling animation, a mid-flight client navigation, a 500 behind a skeleton, a framework-side retry defect, and a genuinely absent element — seven different classifications, seven different heals. Recognising the error *shape* from a previous diagnosis is precisely the condition under which the previous session's answer gets stapled to a different root cause. Cost is not a defence: `unzip` + `jq` reads a trace headlessly in seconds and the screencast frames are readable images. For a pipeline failure, a local re-run is a *different execution* on a different commit and a different dependency tree — it cannot answer why that run failed. The evidence floor (trace + UI/DOM at failure + browser console, each with a written observation, gaps named with reasons) is a precondition of **every** classification — test issue as much as app bug — not a nice-to-have; every heal downstream of a skipped floor inherits the guess.
+
+**Hooks that catch this:**
+- [`failure-diagnosis-evidence-floor-gate.sh`](../../../hooks/failure-diagnosis-evidence-floor-gate.sh) — `PreToolUse:Write|Edit`. In a session where the `failure-diagnosis` skill is loaded (or an `fd-*` / `repair-worker-*` role is in play), denies writes to a spec file or the element repository when the transcript shows no evidence access at all — no Read of a trace / `error-context.md` / failure screenshot / video / JSON reporter output, and no `show-trace` / `unzip … trace.zip` / `gh run download` / `show-report` Bash call. Escape hatch: `FD_EVIDENCE_FLOOR_GATE=off`.
+
+**Residual (markdown-only):** the hook proves evidence was *accessed*, not that it was *understood* — an agent that opens a trace and then ignores it still passes. Nor can it read the written observation for each floor item, or tell attempt 0's trace from the retry's. Those remain enforced by the skill text and by reviewers.
+
+**Origin:** observed live across three independent diagnosis sessions — one classified three CI regression failures from `gh run view --log-failed` output alone and never downloaded the run artifacts; two others independently reached a wrong root cause by reading framework source from a local tree one patch version ahead of the version CI resolved. Codified as `failure-diagnosis` §"Evidence floor — non-negotiable, both entrypoints, both conclusions", §"Stage 0a — Pin to the run's commit and dependency tree", and §"Stage 0b — Pipeline evidence retrieval".
+
+---
+
+## Pattern: Judge-loop skipping (Stage 4c self-exemption)
+
+The author of freshly-composed tests decides the mandatory Stage 4c composition judge (`skills/achilles-protocol/references/test-composition-standards.md` §4) is unnecessary for this particular exit — the tests pass, the session is long, a second reader "adds latency without adding information".
+
+**Symptoms:**
+- "the tests obviously pass, a judge adds latency"
+- "4a and 4b were both clean — a third review is redundant"
+- "this is a trivial scenario; the judge would greenlight it anyway"
+- "I already reviewed the specs carefully myself"
+- "I'll commit now and judge in a follow-up session"
+- an author declaring SATISFIED on its own work with no `composition-judge-` dispatch in the transcript
+
+**Reality:** 4a/4b are author-side self-review; the judge is the second reader the author cannot be — the same separation-of-duties argument as Stage B and `ticket-driven-testing` §8b, and "obviously fine" is precisely the state self-review cannot distinguish from "looks fine to its author". Passing tests are the judge's *precondition*, not its substitute: three of its four dimensions (intent coverage, oracle strength, data feasibility) are invisible to a green run. The commit gate is judge-SATISFIED, not tests-green.
+
+**Hooks that catch this:**
+- `hooks/composition-judge-gate.sh` — records `composition-judge-` dispatches and their verdicts per session; blocks Stop (`decision: block`, single-shot via `stop_hook_active`) while a judge loop stands open on a NOT-SATISFIED verdict below the 3-reject cap (abandoning an in-flight loop); at the cap Stop is allowed — operator escalation is the sanctioned exit.
+- `hooks/subagent-schema-preread-gate.sh` / `subagent-return-schema-guard.sh` — `composition-judge-*` is schema-mapped to `reviewer-inloop.schema.json`, so malformed judge briefs/returns are caught mechanically.
+- (markdown-only for the arming half) — see the deferral entry below: never dispatching a judge at all is not mechanically detectable.
+
+**Origin:** designed-in with the Stage 4c contract (`test-composition-standards.md` §4) — the pattern is the composing-exit analogue of "Self-certifying greenlight" above.
+
+---
+
+## Pattern: Test-data feasibility rationalisation ("the content rarely changes")
+
+A composer pins current environment content — today's top item, the demo tenant's seeded record, the fixture's shared user — instead of running the `test-data-conventions` strategy decision ladder (seed your own data, or declare-and-resolve requirements), because the content "won't move".
+
+**Symptoms:**
+- "the content rarely changes"
+- "I'll pin today's top item — it's obviously stable"
+- "the fixture already has a user I can reuse"
+- "cleanup can be a follow-up"
+- "retry will regenerate anyway" (module-scope generation)
+- "no seeding API, so I'll just use whatever data is live"
+
+**Reality:** "rarely" is a delivery date for a false alarm. Data feasibility is a composing gate (`test-data-conventions` Rule 12): every dependency is either seeded per-attempt with hooked cleanup, or declared-and-resolved at runtime with the resolved facts as the oracle — and a dependency that can do neither blocks the scenario and lands in `tests/e2e/docs/test-data-plan.md` as a gap, never inside a fragile spec. The Stage 4c judge's dimension 4 rejects hardcoded-current-content specs as must-fix.
+
+**Hooks that catch this:**
+- (markdown-only) — distinguishing a pinned incidental literal from a legitimate assertion constant requires the scenario's intent; not mechanically detectable at the tool boundary. Judge dimension 4 and the Stage-B reviewer's test-data feasibility calibration bullet are the enforcing readers.
+
+**Origin:** production-suite failures recorded generically in `test-data-conventions` (retry-collision from module-scope identities, shared-account throttling, content-drift false alarms); codified with that skill.
+
+---
+
+## Pattern: `markdown-only` deferral — judge-loop arming
+
+Stage 4c's "dispatch a judge at every composing exit" rule (`test-composition-standards.md` §4) has a mechanically enforceable half and an unenforceable half. `hooks/composition-judge-gate.sh` covers the enforceable half: once a `composition-judge-` dispatch exists, the session's Stop is warned while the loop stands open on NOT SATISFIED below the cap. The unenforceable half is **arming**: no hook can reliably detect that "a composing session happened and never dispatched a judge" — spec-file writes also occur in repair, diagnosis, and companion-evidence contexts that legitimately never judge, and the harness cannot distinguish orchestrator from subagent writers at hook-fire time (the documented `is_subagent` gap).
+
+**Tag:** `markdown-only` (the arming half only).
+**Deferred hook:** an in-flight-registry variant (register composing dispatches at `PreToolUse:Agent`, require a matching `composition-judge-` dispatch before Stop) could close the loophole for orchestrated composing; free-form Stage-1-4 sessions would still evade it. Revisit if judge-skipping is observed in practice.
+
+---
+
+## Pattern: Client-reference leakage ("the client name makes the example clearer")
+
+A contributor to the universal achilles repo pastes engagement material — a brand or product name, a real slug or test ID, a ticket prefix, domain copy — into a skill, hook, fixture, example, commit message, or PR body, because the concrete instance feels clearer than a genericised mechanism.
+
+**Symptoms:**
+- "it's just one product name in an example"
+- "the client name makes the example clearer"
+- "this selector is from the real bug, so it's more credible"
+- "I'll genericise it later, before the PR" (it ships in the first commit and survives)
+- worked examples whose slugs, copy, or ticket keys did not come from the «placeholder» convention
+
+**Reality:** Achilles is a universal QA medium serving many clients; the repo is consumed by other engagements. Client findings are welcome ONLY after genericisation — describe the MECHANISM ("a controlled form resets its inputs on mount"), never the instance. The generic form is also the only form other consumers can use. Canonical rule: `../../contributing-to-achilles-protocol/SKILL.md` §"Universality — no client references". Reviewers reject violations; there is no one-name carve-out.
+
+**Hooks that catch this:**
+- `hooks/client-term-guard.sh` (`PreToolUse:Write|Edit`, DENY) — scans writes into this package's repo against the operator-local, gitignored denylist at `<repo-root>/.achilles/client-terms.local.txt`. The term list itself must never live in the repo (the terms ARE client references), so coverage is per-operator opt-in.
+- (markdown-only beyond the denylist) — leakage in vocabulary the operator has not listed, and in commit messages / PR bodies (which do not pass the Write|Edit boundary), is reviewer-enforced.
+
+**Origin:** codified with the universality rule; the leak vector is the worked-example paste from the engagement where a finding was made.
 
 ---
 

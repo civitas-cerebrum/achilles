@@ -95,7 +95,7 @@ The element's text content is unique within its context and is stable (not dynam
 
 ### Source 1: Stage 2 inspection escalation
 
-Triggered when the `element-interactions` Stage 2 orchestrator inspects an element and finds no stable selector by any of the three criteria above.
+Triggered when the `achilles-protocol` Stage 2 orchestrator inspects an element and finds no stable selector by any of the three criteria above.
 
 **Caller dispatch:** `mode: "jit"` with element-key and scope context
 **Gate check:** Both workspace gate and missing-selector gate must pass; if either fails, return to Stage 2 with fallback notice

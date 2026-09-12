@@ -43,7 +43,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/element-interactions/references/harness-hooks.md §"PostToolUse"
+# skills/achilles-protocol/references/harness-hooks.md §"PostToolUse"
 #
 # Non-destructive contract
 # ------------------------
@@ -473,7 +473,7 @@ Pruned $N_PRUNED older run(s) past ACHILLES_ARTIFACT_RETAIN=${RETAIN}: $(printf 
   MSG="$MSG
 
 References:
-  skills/element-interactions/references/harness-hooks.md §PostToolUse
+  skills/achilles-protocol/references/harness-hooks.md §PostToolUse
   .achilles/runs/$RUN_ID/manifest.json"
   "$JQ" -n --arg m "$MSG" '{systemMessage:$m, suppressOutput:false}' 2>/dev/null || true
 fi

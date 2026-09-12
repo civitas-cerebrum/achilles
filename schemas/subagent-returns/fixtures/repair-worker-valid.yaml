@@ -34,6 +34,19 @@ tests:
         - bug-evidence/TC_CHECKOUT_012/20260805T120000Z-worker-capture/checkout-expired-card.png
         - bug-evidence/TC_CHECKOUT_012/20260805T120000Z-worker-capture/trace.zip
         - bug-evidence/TC_CHECKOUT_012/20260805T121500Z-slowmo-repro/video.webm
+  - title: registering an already-used email surfaces a conflict
+    outcome: healed
+    baseline-pattern: known-defect-passed
+    root-cause: the filed defect was fixed upstream; the @known-defect tag no longer told the truth
+    understanding: >
+      A pass under @known-defect is an anomaly, never a silent green
+      (test-identity.md §2). The stability probe ran 3/3 targeted plus 5/5
+      suite-order green, so the defect is fixed: the tag came off and
+      nothing else changed.
+    fix: removed the @known-defect tag after the stability bar; assertions untouched
+    stability-runs:
+      passed: 8
+      total: 8
 stage-log:
   - stage: reproduce
     test: completes checkout with saved card

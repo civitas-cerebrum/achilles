@@ -39,7 +39,7 @@ Every pass in depth mode runs this pipeline; steps 4 and 7 differ between compos
 | 2 — map-growth widening | compositional | Re-read the enriched map. Promote newly-discovered branches and sub-journeys to first-class journeys where they warrant it. Re-evaluate priorities. Re-attempt any journey where pass 1 deferred stabilization or returned coverage gaps. Dispatches `test-composer` per journey. |
 | 3 — consolidation | compositional | Final sweep on the refined map. Focus on cross-journey interactions, residual gaps, data-lifecycle variants that require wiring multiple journeys together, and any journey whose map block was materially refined in pass 2. Dispatches `test-composer` per journey. |
 | 4 — adversarial probing | adversarial | One adversarial turn per journey. Dispatches a probe subagent (see `references/adversarial-subagent-contract.md`) that invokes `bug-discovery` scoped to the journey. The probe covers the full QA-engineer test matrix for the journey — a deterministic negative-case complement for every positive `Test expectations:` entry plus cross-cutting negatives (auth tamper, tenant isolation, idempotency, session boundary, input boundaries) — in addition to `bug-discovery`'s open-ended categories. Findings are appended to `tests/e2e/docs/adversarial-findings.md` — no tests are written in pass 4. |
-| 5 — adversarial consolidation | adversarial + regression | Second adversarial turn. Each subagent reads its journey's pass-4 ledger section, re-probes any negative-case-matrix entries that returned `Ambiguous`, attempts compound probes that combine matrix entries (e.g., auth-tamper × idempotency, tenant-isolation × session-boundary), and writes **passing** regression tests for every verified boundary (pass 4 + pass 5 combined) into `j-<slug>-regression.spec.ts`. Suspected bugs remain ledger-only — never committed as `test.fail()`. |
+| 5 — adversarial consolidation | adversarial + regression | Second adversarial turn. Each subagent reads its journey's pass-4 ledger section, re-probes any negative-case-matrix entries that returned `Ambiguous`, attempts compound probes that combine matrix entries (e.g., auth-tamper × idempotency, tenant-isolation × session-boundary), and writes **passing** regression tests for every verified boundary (pass 4 + pass 5 combined) into `j-<slug>-regression.spec.ts`. Suspected bugs remain ledger-only — never committed as `test.fail()` (the one sanctioned `test.fail()` use is `ticket-driven-testing` §7's ticketed defect sentinel; no ticket owns a pass finding). |
 
 After pass 5: one single-dispatch cleanup subagent dedupes the ledger. See §"Ledger dedup" below.
 
@@ -103,9 +103,9 @@ Only when **all** of the above are true may the orchestrator report depth-mode c
 
 ### Whole-suite re-run gate (per-pass exit)
 
-After a pass's per-journey subagents return clean and per-pass completion criteria are satisfied, run the whole-suite re-run gate documented in `../element-interactions/references/test-optimization.md` §7.
+After a pass's per-journey subagents return clean and per-pass completion criteria are satisfied, run the whole-suite re-run gate documented in `../achilles-protocol/references/test-optimization.md` §7.
 
-**Procedure:** identical to the canonical procedure documented in `../element-interactions/references/test-optimization.md` §7. Summary:
+**Procedure:** identical to the canonical procedure documented in `../achilles-protocol/references/test-optimization.md` §7. Summary:
 
 1. From the harness root: `npx playwright test --reporter=json > .stage4a-suite.json`.
 2. Parse the JSON. Playwright's reporter writes `{ stats: { expected, unexpected, flaky, skipped, ... }, suites: [...] }`. Refuse to advance to the next pass if:
@@ -116,7 +116,7 @@ After a pass's per-journey subagents return clean and per-pass completion criter
 
 **Why it runs here:** per-journey subagent stabilization confirms each journey's tests pass in isolation, but cumulative state across the suite (DB pollution, port collisions, fixture drift, shared-resource depletion) only surfaces when the whole suite runs together. Running this gate at every pass exit catches integration-time regressions at the earliest pass that introduces them, rather than at end-of-pipeline.
 
-**Harness backstop.** The same gate is enforced at the commit boundary by a windowed `Bash`-event ratchet that blocks phase-progression commits when the recent suite-run history is red, unfilled, or stale. Window-size override available — see the hook header for specifics, and [harness-hooks.md](../../element-interactions/references/harness-hooks.md) for the index entry.
+**Harness backstop.** The same gate is enforced at the commit boundary by a windowed `Bash`-event ratchet that blocks phase-progression commits when the recent suite-run history is red, unfilled, or stale. Window-size override available — see the hook header for specifics, and [harness-hooks.md](../../achilles-protocol/references/harness-hooks.md) for the index entry.
 
 The windowed shape catches a class of failure single-shot gates miss: serial-mode flakes, click-PUT race conditions, and auth-state eviction that pass an isolated single run but fail across 3-5 reviewer-driven re-runs. A flake that passes 70% of the time can't displace a failed entry from the window — by design — so the gate can't be cleared by one lucky re-run after a real regression. Pair this with the orchestrator-side check above for end-to-end coverage: orchestrator-side fires at every pass exit; the harness ratchet fires at every commit on top of the same window.
 

@@ -1,6 +1,6 @@
 # Input-Domain Analysis — Partitions & Boundaries
 
-**Status:** the discipline behind `test-composer` Step 3's edge-case variants (item 3 of the implementation order). Cited from Step 7's coverage matrix ("partitions covered" column) and from `database-testing` Phase 2's Edge bullet. The boundary-values probe category (`../../element-interactions/references/subagent-return-schema.md` §3.6) shares this discipline on the adversarial side.
+**Status:** the discipline behind `test-composer` Step 3's edge-case variants (item 3 of the implementation order). Cited from Step 7's coverage matrix ("partitions covered" column) and from `database-testing` Phase 2's Edge bullet. The boundary-values probe category (`../../achilles-protocol/references/subagent-return-schema.md` §3.6) shares this discipline on the adversarial side.
 **Scope:** how to turn "boundary inputs, empty or overflow data" from a vibe into a derived, auditable set. The output is a partition table; the edge-case variant set is read off the table, not improvised. This is a convention (model-compliance) — no hook checks the table; the Stage B reviewer does.
 
 ---

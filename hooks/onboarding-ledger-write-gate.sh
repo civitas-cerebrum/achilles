@@ -74,6 +74,12 @@
 
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"\n  skills/workflow-reviewer/SKILL.md\n  schemas/onboarding-status.schema.json"
+
+
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
 if [ -z "$JQ" ]; then
@@ -122,7 +128,7 @@ PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
 emit_deny() {
   local reason="$1"
-  "$JQ" -n --arg r "$reason$(achilles_scope_notice)" '{
+  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
@@ -511,7 +517,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
         emit_phase_deny "6" \
           "tests/e2e/docs/adversarial-findings.md exists but contains 0 per-journey section blocks (\`### j-<slug>\`). File existence alone is not bug-discovery; the ledger must record at least one probe." \
           "dispatch the bug-discovery probe subagents per journey (or the adversarial passes of coverage-expansion). Each probe appends a \`### j-<slug>\` section to the ledger as it returns." \
-          "skills/bug-discovery/SKILL.md + element-interactions/references/subagent-return-schema.md §3"
+          "skills/bug-discovery/SKILL.md + achilles-protocol/references/subagent-return-schema.md §3"
       fi
       ;;
     7)
