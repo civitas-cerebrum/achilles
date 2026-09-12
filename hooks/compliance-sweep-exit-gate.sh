@@ -162,5 +162,9 @@ How this is supposed to be done — load the skill, don't improvise:
   Skill('test-composer') → Step 6b, the same sweep inside a journey pass
 
 Kill-switch (document the authorisation): CIVITAS_DISABLE_COMPLIANCE_SWEEP_GATE=1
+
+References:
+  skills/achilles-protocol/references/stages-protocol.md §"Stage 4b: API Compliance Review"
+  skills/achilles-protocol/references/test-identity.md
 EOF
 exit 2

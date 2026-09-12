@@ -210,24 +210,24 @@ Write `test-results/repair-session-<ISO-timestamp>.md` with a clear audit trail:
 - Still green: <count>
 
 ## Healed (auto)
-- `tests/checkout.spec.ts::TC_004` — selector drift on `submit-btn` (renamed to `place-order-btn`); updated page-repository.json
+- `tests/checkout.spec.ts::TC-0004` — selector drift on `submit-btn` (renamed to `place-order-btn`); updated page-repository.json
 - ...
 
 ## Reported bugs
-- `tests/cart.spec.ts::TC_012` — dashboard shows 500 after successful login. Screenshot: test-results/.../screenshot.png. Reproducible via manual `playwright-cli` navigation. Test left unchanged.
+- `tests/cart.spec.ts::TC-0012` — dashboard shows 500 after successful login. Screenshot: test-results/.../screenshot.png. Reproducible via manual `playwright-cli` navigation. Test left unchanged.
 - ...
 
 ## Operator-pending
-- `tests/pricing.spec.ts::TC_003` — assertion value drifted from "Total: $42" to "Total: $45". Needs human judgment: intentional price change or cart miscalculation?
+- `tests/pricing.spec.ts::TC-0003` — assertion value drifted from "Total: $42" to "Total: $45". Needs human judgment: intentional price change or cart miscalculation?
 - ...
 
 ## Quarantined
-- `tests/flaky-thing.spec.ts::TC_007` — intermittent timeout on `result-panel`; pattern persisted after timing-hardening heal. Tagged `@flaky` pending deeper investigation.
+- `tests/flaky-thing.spec.ts::TC-0007` — intermittent timeout on `result-panel`; pattern persisted after timing-hardening heal. Tagged `@flaky` pending deeper investigation.
 
 ## Quarantine review (Stage 5.5)
-- Released: `tests/search.spec.ts::TC_009` — 3/3 baseline + 5/5 suite-order green; ledger entry flipped to `unquarantined (<date>)`, `@flaky` tag removed.
-- Still flaking: `tests/flaky-thing.spec.ts::TC_007` — failed 1/3 in baseline; dated observation appended to its ledger entry.
-- Escalated (stale, 3+ sessions): `tests/upload.spec.ts::TC_015` — operator decision needed (investigate deeper, rewrite via heal (g), or retire deliberately).
+- Released: `tests/search.spec.ts::TC-0009` — 3/3 baseline + 5/5 suite-order green; ledger entry flipped to `unquarantined (<date>)`, `@flaky` tag removed.
+- Still flaking: `tests/flaky-thing.spec.ts::TC-0007` — failed 1/3 in baseline; dated observation appended to its ledger entry.
+- Escalated (stale, 3+ sessions): `tests/upload.spec.ts::TC-0015` — operator decision needed (investigate deeper, rewrite via heal (g), or retire deliberately).
 ```
 
 Present the summary in chat with counts; link the file for the full audit trail.
@@ -246,7 +246,7 @@ These are the non-negotiables that every cluster decision must respect. Together
 
 4. **5× stability validates every heal.** Applied by `failure-diagnosis` in Stage 5 of its own pipeline. If a heal destabilizes, it gets reverted — instability means the heal was incomplete.
 
-5. **Whole-test rewrites require operator alignment.** If a test no longer maps to the current app flow (scenario itself obsolete), do NOT silently regenerate. Present to the operator; on approval, invoke `test-composer` with journey context. Respect that the operator owns the scope of what's being tested.
+5. **Whole-test rewrites require operator alignment.** If a test no longer maps to the current app flow (scenario itself obsolete), do NOT silently regenerate. Present to the operator; on approval, invoke `test-composer` with journey context. Respect that the operator owns the scope of what's being tested. The rewrite is a composing exit: `test-composer`'s Step 6c composition judge applies to it (`../achilles-protocol/references/test-composition-standards.md` §4). Incremental heals do NOT trigger the judge — their gate is the stability rule above.
 
 ---
 
