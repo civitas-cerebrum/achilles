@@ -72,7 +72,7 @@ The envelope has exactly **four** required fields — no others are allowed insi
 
 | Field | Type | Rule |
 |---|---|---|
-| `role` | string | Kebab-case slug identifying the dispatched role (e.g. `composer-j-login-flow`, `reviewer-inloop`, `probe`, `phase-validator`, `section-agent`, `phase4-prioritise-author`). |
+| `role` | string | Kebab-case slug identifying the dispatched role (e.g. `test-composer-j-login-flow`, `reviewer-inloop`, `probe`, `phase-validator`, `section-agent`, `phase4-prioritise-author`). |
 | `cycle` | integer ≥ 1 | Cycle number within the role's dispatch loop. |
 | `status` | string | Role-specific terminal-or-continuation status. Constrained by the per-role schema. |
 | `next-action` | string (non-empty) | One-line directive for the orchestrator — what should happen after this return. |
@@ -296,7 +296,7 @@ The same grep-based shape signals are enforced at the harness layer by a `PostTo
 
 ### 4.3 Harness validator — handover-envelope leash + deregistration
 
-The same return-schema guard also enforces the §2.0 handover envelope and drives the registry leash. On every `composer-` / `reviewer-` / `probe-` / `process-validator-` / `phase-validator-` return it parses the envelope, looks up the in-flight registry entry by slug, cycle-matches, and removes the slug on a terminal status (or leaves it in place for a non-terminal redispatch). Missing envelope or cycle-mismatch emits a fix-message WARN; the registry slot stays held until the TTL failsafe expires. **Deregistration itself fires regardless of validation mode** — the registry update is mechanical bookkeeping, not validation, so the leash works correctly even when envelope-validation is in WARN mode.
+The same return-schema guard also enforces the §2.0 handover envelope and drives the registry leash. On every `test-composer-` (or legacy `composer-`) / `reviewer-` / `probe-` / `process-validator-` / `phase-validator-` return it parses the envelope, looks up the in-flight registry entry by slug, cycle-matches, and removes the slug on a terminal status (or leaves it in place for a non-terminal redispatch). Missing envelope or cycle-mismatch emits a fix-message WARN; the registry slot stays held until the TTL failsafe expires. **Deregistration itself fires regardless of validation mode** — the registry update is mechanical bookkeeping, not validation, so the leash works correctly even when envelope-validation is in WARN mode.
 
 Explicit deregistration via terminal-status handover is the primary cleanup path; the registry TTL is the secondary one for crashed / abandoned dispatches that never return an envelope. (Hook index: [harness-hooks.md](harness-hooks.md).)
 
@@ -304,7 +304,7 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 
 | Description prefix | Validation target |
 |---|---|
-| `composer-<j-slug>:` | Stage A — `status:` enum (new-tests-landed \| covered-exhaustively \| blocked \| skipped) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
+| `test-composer-<j-slug>:` (kernel-mandate role name; the legacy `composer-<j-slug>:` routes identically) | Stage A — `status:` enum (new-tests-landed \| covered-exhaustively \| blocked \| skipped) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
 | `reviewer-<j-slug>:` | Stage B (§2.4) — `status:` (greenlight \| improvements-needed) + journey/pass/cycle + summary on greenlight \| findings sub-list on improvements-needed |
 | `probe-<j-slug>:` | Adversarial — `probes:` + `boundaries:` + `findings:` count or list |
 | `phase-validator-<N>:` | Phase-exit checkpoint (§2.5) — `status:` + `phase:` + `exit-criteria-checked:` array + `summary:` (REQUIRED on both statuses) + `findings: []` literal on greenlight \| ≥1 `pv-<phase>-<nn>` must-fix on improvements-needed |

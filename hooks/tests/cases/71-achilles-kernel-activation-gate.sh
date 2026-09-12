@@ -11,7 +11,13 @@
 #   - hooks/data/achilles-qa.kernel-mandate.json is a valid manifest,
 #     derived from hooks/data/achilles-qa.workflow.json, and LOADS in the
 #     vendored kernel with the intended boundaries (no role reads src/**
-#     or .env; approvers have no shell; the main session is `orchestrator`).
+#     or .env; approvers have no shell; the main session is `orchestrator`;
+#     the runner/resolution configs are the write-only scaffolder's, not
+#     the orchestrator's; composers may import exactly the test framework).
+#   - every dispatch shape the skills teach — `<role>-<slug>: …` with the
+#     `<<kernel-mandate-role: ROLE#nonce>>` tag as the brief's first line —
+#     is ALLOWED, the pre-kernel `composer-*` shape is DENIED, and the skill
+#     files still carry those literals (drift pin).
 #   - the wrapper is dormant without an achilles session marker and relays
 #     the kernel's verdict with one; KERNEL_MANDATE=0 still bypasses; a
 #     missing kernel script is a silent allow.
@@ -130,6 +136,148 @@ assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="
   "test-composer Read src/app.ts → DENY" "outside the role's read scope"
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=selector-diff-validator file_path="$KP/tests/e2e/x.ts" content='x')" \
   "selector-diff-validator Write → DENY (writes nothing)" "may not use the 'Write' tool"
+
+# ---------------------------------------------------------------------------
+section "kernel wiring: runner config is the scaffolder's; imports are the composers'"
+# ---------------------------------------------------------------------------
+# The orchestrator both authors files and runs the runner, so the kernel's
+# config screen refuses it the files a runner loads by convention. The
+# table moves playwright.config.ts / package.json (and the Phase 1-2
+# scaffold) to a write-only `scaffolder` — no shell, no dispatch — and the
+# orchestrator's description names it, so the deny says where to go.
+CFG_DENY=$(printf '%s' "$(payload tool_name=Write file_path="$KP/playwright.config.ts" content='export default {}' cwd="$KP")" | KERNEL_MANDATE_MANIFEST="$KERNEL_MANDATE_MANIFEST" KERNEL_MANDATE_STATE_DIR="$KERNEL_MANDATE_STATE_DIR" bash "$KERNEL" 2>/dev/null | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // ""')
+assert_eq "$(printf '%s' "$CFG_DENY" | grep -c "may not write 'playwright.config.ts'")" "1" \
+  "orchestrator Write playwright.config.ts → DENY (outside its write scope)"
+assert_eq "$(printf '%s' "$CFG_DENY" | grep -c 'scaffolder')" "1" \
+  "…and the reason names the scaffolder role as the author of that file"
+assert_deny "$KERNEL" "$(payload tool_name=Write file_path="$KP/package.json" content='{}' cwd="$KP")" \
+  "orchestrator Write package.json → DENY" "outside the role's write scope"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/playwright.config.ts" content='import { defineConfig } from "@playwright/test"; export default defineConfig({ reporter: [["html"], ["@civitas-cerebrum/achilles/reporter"]] });')" \
+  "scaffolder (by agent_type) Write playwright.config.ts → ALLOW"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/package.json" content='{"scripts":{"test:repair":"achilles-self-repair"}}')" \
+  "scaffolder Write package.json → ALLOW"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/tests/e2e/fixtures/auth.ts" content='import { test as base } from "@playwright/test"; export const test = base;')" \
+  "scaffolder Write tests/e2e/fixtures/auth.ts importing the framework → ALLOW (authoring half runs nothing)"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/tests/e2e/page-repository.json" content='{}')" \
+  "scaffolder Write tests/e2e/page-repository.json → ALLOW"
+assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=scaffolder command='npx playwright test --list')" \
+  "scaffolder Bash npx playwright test --list → DENY (never runs what it authored)" "may not use the 'Bash' tool"
+assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=scaffolder command='ls')" \
+  "scaffolder Bash ls → DENY (no shell at all)" "may not use the 'Bash' tool"
+assert_deny "$KERNEL" "$(sub tool_name=Agent agent_type=scaffolder description='test-composer-j-x: compose' prompt='<<kernel-mandate-role: test-composer#ab12cd>>')" \
+  "scaffolder Agent → DENY (no dispatch)" "may not use the 'Agent' tool"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/tests/e2e/login.spec.ts" content='x')" \
+  "scaffolder Write a spec → DENY (scaffold only)" "outside the role's write scope"
+
+# The composers author code AND run it, so their imports are screened
+# against write.codeImports — declared in the table as exactly the two
+# packages a spec legitimately imports (test-composer SKILL.md,
+# element-interactions SKILL.md).
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/x.spec.ts" content='import { test } from "@playwright/test";')" \
+  "test-composer Write a spec importing @playwright/test → ALLOW"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/x.spec.ts" content='import { test } from "@playwright/test"; import { ElementInteractions } from "@civitas-cerebrum/element-interactions";')" \
+  "test-composer Write a spec importing @civitas-cerebrum/element-interactions → ALLOW"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/x.spec.ts" content='import fs from "fs"')" \
+  "test-composer Write a spec importing fs → DENY" "filesystem access"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=in-flight-composer file_path="$KP/tests/e2e/x.spec.ts" content='import { test } from "@playwright/test";')" \
+  "in-flight-composer Write a spec importing @playwright/test → ALLOW"
+IMPORTS_CHECK=$("$JQ" -rn --slurpfile m "$MANDATE" '
+  ($m[0].roles) as $r |
+  [
+    (if ($r["test-composer"].write.codeImports == ["@civitas-cerebrum/element-interactions","@playwright/test"]) then "composer-imports" else "composer-imports-drift" end),
+    (if ($r["in-flight-composer"].write.codeImports == $r["test-composer"].write.codeImports) then "in-flight-same" else "in-flight-drift" end),
+    (if ($r.scaffolder.tools.allow | index("Bash") == null and index("Agent") == null) then "scaffolder-no-bash-no-agent" else "scaffolder-has-shell-or-dispatch" end),
+    (if ($r.orchestrator.write.allow | index("playwright.config.ts") == null and index("package.json") == null) then "orchestrator-no-config" else "orchestrator-writes-config" end),
+    (if ($r.orchestrator.dispatch | index("scaffolder") != null) then "orchestrator-dispatches-scaffolder" else "no-scaffolder-dispatch" end)
+  ] | join(" ")')
+assert_eq "$IMPORTS_CHECK" "composer-imports in-flight-same scaffolder-no-bash-no-agent orchestrator-no-config orchestrator-dispatches-scaffolder" \
+  "manifest: composers declare exactly the framework imports, scaffolder has no shell/dispatch, orchestrator writes no config and dispatches the scaffolder"
+
+# ---------------------------------------------------------------------------
+section "kernel wiring: dispatch grammar — every shape the skills teach binds, the old one is refused"
+# ---------------------------------------------------------------------------
+# disp <description> <tag line> [subagent_type] → an Agent payload from the
+# orchestrator whose prompt opens with the tag, as the brief templates do.
+disp() {
+  payload tool_name=Agent description="$1" prompt="$2
+Read the ledger at tests/e2e/docs/onboarding-status.json and verify the deliverables on disk." cwd="$KP" \
+    | "$JQ" -c --arg t "${3:-}" 'if $t != "" then .tool_input.subagent_type = $t else . end'
+}
+# The scaffolder shapes are read out of the onboarding skill's own fenced
+# templates (`description:` / `prompt:` lines), with <nonce> filled in —
+# so the test dispatches exactly what the skill teaches.
+ONB="$REPO_ROOT/skills/onboarding/SKILL.md"
+tmpl_desc() { grep -m1 -E "^description:[[:space:]]+$1" "$ONB" | sed -E 's/^description:[[:space:]]+//'; }
+tmpl_tag()  { grep -m1 -E "^prompt:[[:space:]]+<<kernel-mandate-role: $1#<nonce>>>" "$ONB" | sed -E 's/^prompt:[[:space:]]+//' | sed "s/<nonce>/$2/"; }
+P1_DESC=$(tmpl_desc 'scaffolder-phase1:'); P1_TAG=$(tmpl_tag scaffolder k9x2a1)
+P2_DESC=$(tmpl_desc 'scaffolder-phase2:'); P2_TAG=$(tmpl_tag scaffolder k9x2a2)
+assert_eq "$([ -n "$P1_DESC" ] && [ -n "$P1_TAG" ] && [ -n "$P2_DESC" ] && [ -n "$P2_TAG" ] && echo found || echo missing)" "found" \
+  "onboarding SKILL.md carries the scaffolder-phase1 / scaffolder-phase2 dispatch templates (description + tagged prompt)"
+assert_allow "$KERNEL" "$(disp "$P1_DESC" "$P1_TAG" scaffolder)" \
+  "onboarding Phase 1 template (from the skill text): orchestrator dispatches scaffolder-phase1 → ALLOW"
+assert_allow "$KERNEL" "$(disp "$P2_DESC" "$P2_TAG" scaffolder)" \
+  "onboarding Phase 2 template (from the skill text): orchestrator dispatches scaffolder-phase2 → ALLOW"
+# Literal copies of the other skills' dispatch shapes (the skill each
+# mirrors is named; the literals are pinned to the skill files below).
+assert_allow "$KERNEL" "$(disp 'test-composer-j-login-flow: compose the login-flow journey' '<<kernel-mandate-role: test-composer#m3n4p5>>' test-composer)" \
+  "test-composer SKILL.md / onboarding Phase 3: test-composer-j-<slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'test-composer-sj-checkout-1: cycle 1' '<<kernel-mandate-role: test-composer#m3n4p6>>' test-composer)" \
+  "coverage-expansion: test-composer-sj-<slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'test-composer-secrets-sweep: extract literals to .env' '<<kernel-mandate-role: test-composer#m3n4p7>>' test-composer)" \
+  "onboarding Phase 7 / secrets-sweep: test-composer-secrets-sweep + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'in-flight-composer-j-cart: heal the cart spec' '<<kernel-mandate-role: in-flight-composer#c1d2e3>>' in-flight-composer)" \
+  "in-flight-composer-<slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'workflow-reviewer-phase3: review Phase 3' '<<kernel-mandate-role: workflow-reviewer#q7r8s9>>' workflow-reviewer)" \
+  "workflow-reviewer SKILL.md / onboarding: workflow-reviewer-phase<N> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'workflow-reviewer-pass2: review Pass 2' '<<kernel-mandate-role: workflow-reviewer#q7r8t0>>' workflow-reviewer)" \
+  "coverage-expansion: workflow-reviewer-pass<N> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'workflow-reviewer-cycle1: review cycle 1' '<<kernel-mandate-role: workflow-reviewer#q7r8t1>>' workflow-reviewer)" \
+  "journey-mapping: workflow-reviewer-cycle<N> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'phase-validator-4: greenlight Phase 4' '<<kernel-mandate-role: phase-validator#z7a8b9>>' phase-validator)" \
+  "phase-validator-<N> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'perf-reviewer-phase1: review perf Phase 1' '<<kernel-mandate-role: perf-reviewer#t1u2v3>>' perf-reviewer)" \
+  "perf-onboarding: perf-reviewer-phase<N> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'perf-reviewer-pass-load: review the load pass' '<<kernel-mandate-role: perf-reviewer#t1u2v4>>' perf-reviewer)" \
+  "perf-onboarding: perf-reviewer-pass-<kind> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'process-validator-stage-a-wave: validate the planned wave' '<<kernel-mandate-role: process-validator#w4x5y6>>' process-validator)" \
+  "process-validator-workflow.md: process-validator-<scope> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'batch-reviewer-pass-1: cycle 1' '<<kernel-mandate-role: batch-reviewer#f4g5h6>>' batch-reviewer)" \
+  "batch-reviewer-<slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'selector-diff-validator-run1: diff the selectors' '<<kernel-mandate-role: selector-diff-validator#i7j8k9>>' selector-diff-validator)" \
+  "selector-diff-validator-<slug> + tag → ALLOW"
+# A tag without subagent_type still binds (the type is optional; when
+# present it must agree).
+assert_allow "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' '<<kernel-mandate-role: test-composer#m3n4p8>>')" \
+  "tagged dispatch without subagent_type → ALLOW"
+# Refused shapes — each deny names the fix.
+assert_deny "$KERNEL" "$(disp 'composer-j-login-flow: compose the login-flow journey' '<<kernel-mandate-role: test-composer#m3n4p9>>' test-composer)" \
+  "pre-kernel composer-j-<slug>: shape → DENY (names no manifest role)" "names no manifest role"
+assert_deny "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' 'Compose the journey.' test-composer)" \
+  "test-composer-j-<slug>: without the binding tag → DENY" "missing the binding tag"
+assert_deny "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' '<<kernel-mandate-role: test-composer#n0n1n2>>' workflow-reviewer)" \
+  "description names test-composer, subagent_type is workflow-reviewer → DENY" "subagent_type"
+# A near-miss tag (nonce under 4 chars) and a tag for another role both
+# leave the TARGET untagged, which is the check the kernel reports first.
+assert_deny "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' '<<kernel-mandate-role: test-composer#ab>>' test-composer)" \
+  "nonce shorter than 4 chars → DENY (near-miss tag binds nothing)" "missing the binding tag"
+assert_deny "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' '<<kernel-mandate-role: workflow-reviewer#n0n1n3>>' test-composer)" \
+  "tag names a different role than the description → DENY" "missing the binding tag"
+
+# Drift pin: the skills still teach exactly these literals.
+pin() { # <file> <literal> <name>
+  assert_eq "$(grep -cF -- "$2" "$REPO_ROOT/$1")" "$3" "$4"
+}
+pin skills/test-composer/SKILL.md '<<kernel-mandate-role: test-composer#<nonce>>>' 1 "test-composer SKILL.md teaches the test-composer binding tag"
+pin skills/test-composer/SKILL.md 'description: test-composer-j-<slug>: <task>' 1 "test-composer SKILL.md teaches the test-composer-j-<slug>: description"
+pin skills/workflow-reviewer/SKILL.md '<<kernel-mandate-role: workflow-reviewer#<nonce>>>' 1 "workflow-reviewer SKILL.md teaches the workflow-reviewer binding tag"
+pin skills/perf-onboarding/SKILL.md '<<kernel-mandate-role: perf-reviewer#<nonce>>>' 1 "perf-onboarding SKILL.md teaches the perf-reviewer binding tag"
+pin skills/coverage-expansion/references/process-validator-workflow.md '<<kernel-mandate-role: process-validator#<nonce>>>' 1 "process-validator-workflow.md teaches the process-validator binding tag"
+pin hooks/workflow-reviewer-brief-gate.sh '<<kernel-mandate-role: workflow-reviewer#<nonce>>>' 1 "the reviewer brief gate's fix template opens with the binding tag"
+# The old literal may survive only in the sentence that retires it (the
+# line names it "pre-kernel"); anywhere else it is a dispatch instruction
+# the kernel would refuse.
+assert_eq "$(grep -rhF -- '`composer-j-<slug>:`' "$REPO_ROOT/skills/onboarding" "$REPO_ROOT/skills/coverage-expansion" "$REPO_ROOT/skills/test-composer" "$REPO_ROOT/skills/workflow-reviewer" "$REPO_ROOT/skills/bug-discovery" "$REPO_ROOT/skills/secrets-sweep" 2>/dev/null | grep -vc 'pre-kernel' | tr -d ' ')" "0" \
+  "no dispatching skill still teaches the pre-kernel \`composer-j-<slug>:\` description (outside the sentence retiring it)"
 
 # ---------------------------------------------------------------------------
 section "wrapper: dormant without a session marker, consults the kernel with one"

@@ -33,8 +33,8 @@ through Claude Code's normal tool surface.
 
 | # | Phase | What it produces | Skill |
 |---|---|---|---|
-| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `element-interactions` (Stage 1) |
-| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `element-interactions` (Stage 2) |
+| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `element-interactions` (Stage 1), authored by a dispatched `scaffolder` |
+| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `element-interactions` (Stage 2), authored by a dispatched `scaffolder` |
 | 3 | Happy-path | One `tests/e2e/<journey>.spec.ts` per primary user flow that exercises sign-in + the critical action | `element-interactions` (Stages 3–4), `test-composer` |
 | 4 | Journey mapping | `tests/e2e/docs/journey-map.md`, `tests/e2e/docs/journey-map-coverage.md` | `journey-mapping` |
 | 5 | Coverage expansion | One `tests/e2e/<journey>.spec.ts` per priority-2/3 journey, grouped passes 2–5 with cleanup dedup | `coverage-expansion`, `test-composer` |
@@ -66,7 +66,11 @@ orchestrator only advances when the verdict is `approve`. Every
 return-schema path
 (`schemas/subagent-returns/workflow-reviewer.schema.json`) — the
 `subagent-schema-preread-gate.sh` hook denies briefs that omit the
-citation.
+citation — and, under the role kernel, MUST open with the binding tag
+`<<kernel-mandate-role: workflow-reviewer#<nonce>>>` on its first line,
+dispatched with `subagent_type: workflow-reviewer` (§"Dispatch grammar"
+below). The same holds for `phase-validator-<N>:` dispatches with the
+`phase-validator` role.
 
 The contract is harness-enforced:
 
@@ -106,6 +110,43 @@ enforcement alone permits silent scope compression: orchestrators
 could skip phases entirely, stop early, or accept subagent "complete"
 returns whose deliverables were missing. The state-machine layer
 makes those failure modes harness-denied rather than instruction-only.
+
+---
+
+## Dispatch grammar (role kernel)
+
+Every `Agent` dispatch the orchestrator issues under the achilles
+protocol is checked by the role kernel (the mandate in
+`hooks/data/achilles-qa.kernel-mandate.json`, staged into the project
+as `.claude/kernel-mandate.json` — see the README §"Role kernel"). The
+kernel resolves the target role from the description and binds the
+child through a tag in the prompt, so every dispatch has exactly this
+shape:
+
+- **`description`** — `<role>-<slug>: <task>`, where `<role>` is the
+  exact manifest role name: `scaffolder`, `test-composer`,
+  `in-flight-composer`, `workflow-reviewer`, `phase-validator`,
+  `process-validator`, `batch-reviewer`, `perf-reviewer`,
+  `selector-diff-validator`. The longest matching role name wins, so
+  `workflow-reviewer-phase3:` binds `workflow-reviewer`.
+  The pre-kernel `composer-j-<slug>:` spelling names no role and is
+  refused — the composer is dispatched as `test-composer-j-<slug>:`.
+- **`subagent_type`** — the same role name (`subagent_type:
+  test-composer`). The child binds by its agent type, and a type that
+  belongs to a different role than the description names is refused.
+- **`prompt`** — its FIRST line is the binding tag
+  `<<kernel-mandate-role: <role>#<nonce>>>`; the brief follows. The
+  orchestrator mints a fresh nonce per dispatch — 4+ lowercase
+  alphanumerics; use the last 6 chars of the current Unix timestamp in
+  base36 — and never reuses one within a phase, so parallel dispatches
+  of different roles each bind exactly. Exactly one tag per prompt:
+  quote another role's NAME in prose if you must, never its tag form.
+
+An unprefixed, untagged, or old-spelling dispatch is denied at the
+`Agent` call with the fix in the reason. The achilles hooks that key on
+description prefixes accept both `test-composer-*` and the legacy
+`composer-*` when validating history; the kernel accepts only the role
+name.
 
 ---
 
@@ -187,6 +228,25 @@ augmentation.
 
 **Goal.** Land the Playwright config and the shared file tree.
 
+**Who writes it.** Not the orchestrator. Under the role kernel
+`playwright.config.ts` and `package.json` are outside the orchestrator's
+write scope — the role that runs the runner must not author the runner's
+config — so the orchestrator dispatches the `scaffolder` role (write-only:
+no shell, no dispatch) with the exact file list, then verifies the result
+itself. The dispatch, per §"Dispatch grammar":
+
+~~~
+description:   scaffolder-phase1: land playwright.config.ts, package.json (test:repair script), .gitignore (.achilles/), tests/e2e/.gitignore, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/, tests/e2e/docs/
+subagent_type: scaffolder
+prompt:        <<kernel-mandate-role: scaffolder#<nonce>>>
+               Create exactly these files: <steps 1-4 below, verbatim, plus the
+               element-interactions Stage 1 file shapes>. Do not run anything —
+               the orchestrator runs `npx playwright test --list` after you return.
+~~~
+
+Steps 1–4 are the scaffolder's brief; step 5 and the exit-criteria check
+are the orchestrator's.
+
 **Steps.**
 
 1. Create `playwright.config.ts` with the project's dev-server URL,
@@ -214,7 +274,7 @@ augmentation.
    (see `skills/self-repair/SKILL.md` §"Per-flow repair presets").
 5. Commit as `chore: scaffold e2e suite`.
 
-**Exit criteria.**
+**Exit criteria** (checked by the orchestrator once the scaffolder returns).
 - `npx playwright test --list` lists zero specs without error.
 - The four scaffold files exist on disk.
 - `package.json` scripts include `test:repair`.
@@ -226,6 +286,22 @@ Load `element-interactions` (Stage 1) for the exact file shapes.
 ## Phase 2 — Groundwork
 
 **Goal.** Capture project context so later phases don't re-discover it.
+
+**Who writes it.** The same `scaffolder` role as Phase 1 — the three
+artefacts are in its write scope and outside the orchestrator's authored-
+code budget (`tests/e2e/fixtures/auth.ts` imports the test framework).
+The orchestrator supplies what it knows about the app (from `README.md`,
+`docs/**`, the Phase 1 config, and its walk of the running app) in the
+brief; the scaffolder turns it into the files:
+
+~~~
+description:   scaffolder-phase2: author tests/e2e/docs/app-context.md, tests/e2e/page-repository.json, tests/e2e/fixtures/auth.ts
+subagent_type: scaffolder
+prompt:        <<kernel-mandate-role: scaffolder#<nonce>>>
+               <steps 1-3 below, with the app facts and page list filled in>
+~~~
+
+The orchestrator re-runs `npx playwright test --list` after the return.
 
 **Steps.**
 
@@ -275,7 +351,10 @@ the self-credentialing pattern.
 
 Load `test-composer` for the dispatch contract; consult
 `schemas/subagent-returns/composer.schema.json` and
-`reviewer-inloop.schema.json` for return shapes.
+`reviewer-inloop.schema.json` for return shapes. Each composer is
+dispatched as `test-composer-j-<slug>: <task>` with `subagent_type:
+test-composer` and the binding tag `<<kernel-mandate-role:
+test-composer#<nonce>>>` as the brief's first line (§"Dispatch grammar").
 
 ---
 
@@ -469,7 +548,9 @@ should be portable across local / CI / staging targets.
 1. Load `secrets-sweep`. The skill defines the four literal classes
    (credentials, API keys, PII, URLs) and the extraction playbook.
    Phase 7 dispatches `secrets-sweep` with the
-   `composer-secrets-sweep:` description prefix.
+   `test-composer-secrets-sweep:` description prefix (`subagent_type:
+   test-composer`, brief tagged `<<kernel-mandate-role:
+   test-composer#<nonce>>>` — §"Dispatch grammar").
 2. Scan `tests/**/*.{ts,json}` and root `playwright*.config.ts` per
    the `secrets-sweep` skill's scope.
    *Do not* touch application source under `src/` or `app/`. Evidence

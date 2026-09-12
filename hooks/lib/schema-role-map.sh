@@ -19,7 +19,9 @@
 #
 # Behaviour:
 #   - schema-validated prefix → prints the schema role name (composer,
-#     reviewer-inloop, probe, phase-validator) and returns 0.
+#     reviewer-inloop, probe, phase-validator) and returns 0. Both the
+#     kernel-mandate spelling `test-composer-*` and the legacy
+#     `composer-*` route to the composer schema.
 #   - known prefix with no schema (process-validator-*) → prints an
 #     empty string and returns 0. The caller knows the prefix is part
 #     of the protocol but has no JSON-Schema enforcement.
@@ -39,6 +41,13 @@ resolve_schema_role() {
   case "$1" in
     perf-reviewer-*)          echo "perf-reviewer";          return 0 ;;
     workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;
+    # The kernel mandate resolves a dispatch's role from the description
+    # prefix, and the composer role is named `test-composer` there — so
+    # the canonical composer dispatch is `test-composer-j-<slug>:`. Case
+    # globs anchor at the string start, so `composer-*` does NOT cover it;
+    # it gets its own case. The pre-kernel spelling `composer-*` stays
+    # accepted below for briefs and transcripts written before the rename.
+    test-composer-*)          echo "composer";               return 0 ;;
     composer-*)               echo "composer";               return 0 ;;
     reviewer-*)               echo "reviewer-inloop";        return 0 ;;
     probe-*)                  echo "probe";                  return 0 ;;

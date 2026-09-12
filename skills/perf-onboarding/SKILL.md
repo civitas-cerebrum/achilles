@@ -41,7 +41,7 @@ mode you follow this skill body directly.
 | `performance-testing` | Companion — dispatched by Phase 3 (Scenario-model) and Phase 4 (Baseline) for per-scenario k6 script authoring. The orchestrator sets strategy and gating; the companion does scenario-level craftsmanship. |
 | `journey-mapping` | Upstream producer of `tests/e2e/docs/journey-map.md`, which the readiness detector (Phase 2) checks and Phase 3 ingests for priority-ordered scenario coverage. |
 | `contract-testing` | Optional — Phase 3 scenario modelling may inspect contract fixtures to derive realistic payload shapes for k6 scenarios. |
-| `workflow-reviewer` | Gatekeeper — dispatched as `perf-reviewer-phase<N>:` and `perf-reviewer-pass-<kind>:` at every transition. The orchestrator advances a phase only when the reviewer returns `approve`. |
+| `workflow-reviewer` | Gatekeeper — dispatched as `perf-reviewer-phase<N>:` and `perf-reviewer-pass-<kind>:` at every transition, with `subagent_type: perf-reviewer` and the binding tag `<<kernel-mandate-role: perf-reviewer#<nonce>>>` as the brief's first line (fresh nonce per dispatch — `skills/onboarding/SKILL.md` §"Dispatch grammar"). The orchestrator advances a phase only when the reviewer returns `approve`. |
 
 ---
 

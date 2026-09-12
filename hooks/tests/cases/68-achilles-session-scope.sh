@@ -129,6 +129,8 @@ assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3.active" ] && echo marked || ec
 section "activation-watcher: Agent dispatch prefixes"
 assert_allow "$WATCHER" "$(payload session_id=w4 hook_event_name=PreToolUse tool_name=Agent description='composer-j-login: build the variant set')" "watcher: composer- dispatch → silent, marks"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w4.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on composer- dispatch"
+assert_allow "$WATCHER" "$(payload session_id=w4k hook_event_name=PreToolUse tool_name=Agent description='test-composer-j-login: build the variant set')" "watcher: test-composer- dispatch (kernel-mandate spelling) → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w4k.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on test-composer- dispatch"
 assert_allow "$WATCHER" "$(payload session_id=w5 hook_event_name=PreToolUse tool_name=Agent description='cleanup-temp-files: remove build artifacts')" "watcher: generic cleanup- dispatch → no mark"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w5.active" ] && echo marked || echo unmarked)" "unmarked" "generic-sounding prefix does NOT activate"
 

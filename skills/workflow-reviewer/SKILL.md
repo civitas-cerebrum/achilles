@@ -57,7 +57,13 @@ transitions (Phase 4 inner loop).
 
 ## Inputs the reviewer receives in its brief
 
-Every dispatch brief should give the reviewer:
+The brief's FIRST line is the role kernel's binding tag —
+`<<kernel-mandate-role: workflow-reviewer#<nonce>>>` (`perf-reviewer#<nonce>`
+for the perf pipeline, `phase-validator#<nonce>` for a phase-validator) —
+and the dispatch names the same role as `subagent_type`. The orchestrator
+mints a fresh nonce per dispatch (4+ lowercase alphanumerics, never
+reused within a phase); full grammar in `skills/onboarding/SKILL.md`
+§"Dispatch grammar". Then the brief should give the reviewer:
 
 1. **The ledger** at `tests/e2e/docs/onboarding-status.json` — the
    current phase / pass / cycle row + the prior unit's row for context.
@@ -233,7 +239,7 @@ findings:
   - checklist-item: tests/e2e/docs/.discovery-draft.json exists
     what-missing: file is absent
     methodology-ref: skills/onboarding/SKILL.md §"Phase 3" + element-interactions Stage 3
-    fix-instruction: dispatch composer-discovery-draft: to author the draft from the happy-path runs
+    fix-instruction: dispatch test-composer-discovery-draft: to author the draft from the happy-path runs
 ```
 
 Escalate example (3rd consecutive reject):
@@ -251,7 +257,7 @@ findings:
   - checklist-item: every P2/P3 journey has a spec
     what-missing: 7 journeys still uncovered after two surgical-fix cycles
     methodology-ref: skills/coverage-expansion/SKILL.md §"Per-pass completion criteria"
-    fix-instruction: re-dispatch composer-j-<slug>: for each of the 7 — but this is a 3rd cycle, escalating instead
+    fix-instruction: re-dispatch test-composer-j-<slug>: for each of the 7 — but this is a 3rd cycle, escalating instead
 ```
 
 ---

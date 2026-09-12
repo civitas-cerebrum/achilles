@@ -11,7 +11,7 @@ description: >
   by dispatching a subagent.
 
   Diagnose failing Playwright tests through structured evidence-based triage.
-  Activates inside subagent context (composer-/probe-/process-validator-/
+  Activates inside subagent context (test-composer-/probe-/process-validator-/
   cleanup- prefixes) when a test fails during any mode (authoring,
   maintenance, test-composer, bug-discovery), or when the dispatching brief
   says "test is failing", "debug this", "why is this failing", "fix this test",

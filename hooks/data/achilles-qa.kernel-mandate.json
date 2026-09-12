@@ -66,7 +66,10 @@
         "allow": [
           "tests/e2e/**"
         ],
-        "codeImports": []
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
       },
       "bash": {
         "groups": [
@@ -88,7 +91,7 @@
       }
     },
     "orchestrator": {
-      "description": "The main session driving the achilles QA pipeline: scaffolds the Playwright suite skeleton, walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. Never touches application source or secrets.",
+      "description": "The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config — playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Never touches application source or secrets.",
       "agentTypes": [
         "orchestrator"
       ],
@@ -119,8 +122,6 @@
         "allow": [
           ".achilles/**",
           ".gitignore",
-          "package.json",
-          "playwright.config.ts",
           "tests/**"
         ],
         "codeImports": []
@@ -142,6 +143,7 @@
         "perf-reviewer",
         "phase-validator",
         "process-validator",
+        "scaffolder",
         "selector-diff-validator",
         "test-composer",
         "workflow-reviewer"
@@ -270,6 +272,49 @@
         ]
       }
     },
+    "scaffolder": {
+      "description": "Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch — the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
+      "agentTypes": [
+        "scaffolder"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          ".gitignore",
+          "README.md",
+          "docs/**",
+          "package.json",
+          "playwright.config.ts",
+          "tests/e2e/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          ".gitignore",
+          "package.json",
+          "playwright.config.ts",
+          "tests/e2e/.gitignore",
+          "tests/e2e/docs/app-context.md",
+          "tests/e2e/fixtures/**",
+          "tests/e2e/page-repository.json",
+          "tests/e2e/playwright.setup.ts"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "element-interactions"
+        ]
+      }
+    },
     "selector-diff-validator": {
       "description": "Read-only validator: compares selector changes across tests/** and reports. Writes nothing; no shell.",
       "agentTypes": [
@@ -315,7 +360,10 @@
         "allow": [
           "tests/e2e/**"
         ],
-        "codeImports": []
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
       },
       "bash": {
         "groups": [

@@ -14,7 +14,11 @@
 # --version / --help). The slug must:
 #   1. Begin with a recognized role prefix (composer-, reviewer-, probe-,
 #      process-validator-, phase1-, phase2-, phase4-, stage2-, cleanup-,
-#      companion-, fd-).
+#      companion-, fd-). `test-composer-` is accepted as well: it is the
+#      kernel-mandate name of the composer role and the description
+#      prefix that dispatches it (`test-composer-j-<slug>:`); the SHORT
+#      `composer-…` slug remains the documented CLI form because of the
+#      28-char socket-path cap below.
 #      phase4-c<N>-s-<section-id> covers journey-mapping iterative-cycle
 #      section agents (added in 0.3.6; cycle protocol per
 #      skills/journey-mapping/SKILL.md §"Iterative discovery cycles").
@@ -37,9 +41,11 @@
 # skills/element-interactions/references/playwright-cli-protocol.md §3
 #   (Session model, naming convention, length budget, quarantine)
 #
-# Convention (subagent description prefix ↔ CLI slug — same prefix on both ends)
+# Convention (subagent description prefix ↔ CLI slug — same role on both ends)
 # ------------------------------------------------------------------------------
-#   composer-j-<slug>:    →  composer-j-<slug>-<pass>-c<N>
+#   test-composer-j-<slug>:  →  composer-j-<slug>-<pass>-c<N>   (slug drops `test-`
+#   test-composer-sj-<slug>: →  composer-sj-<slug>-<pass>-c<N>   to fit the cap)
+#   composer-j-<slug>:    →  composer-j-<slug>-<pass>-c<N>      (pre-kernel spelling)
 #   composer-sj-<slug>:   →  composer-sj-<slug>-<pass>-c<N>
 #   reviewer-j-<slug>:    →  reviewer-j-<slug>-<pass>-c<N>
 #   reviewer-sj-<slug>:   →  reviewer-sj-<slug>-<pass>-c<N>
@@ -123,7 +129,10 @@ fi
 # role-explicit forms `composer-j-<slug>`, `reviewer-j-<slug>`,
 # `probe-j-<slug>`. Companion-mode and failure-diagnosis prefixes
 # (`companion-`, `fd-`) are also accepted — see playwright-cli-protocol.md §3.1.
-SLUG_PREFIX_REGEX='^(phase1|phase2|phase4|stage2|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*'
+# `test-composer` mirrors the kernel-mandate role name so a slug spelled
+# exactly like its dispatch description is not refused; `composer` stays
+# the short, documented form.
+SLUG_PREFIX_REGEX='^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*'
 
 emit_deny() {
   "$JQ" -n --arg r "$1$(achilles_scope_notice)" '{
@@ -194,7 +203,7 @@ Fix: prefix the slug with this subagent's role so .playwright-cli/<slug>* files 
   -s=phase1-<entry>                          Phase-1 discovery
   -s=stage2-<scenario>                       element inspection
 
-Allowed prefixes: composer- | reviewer- | probe- | phase1- | phase2- | phase4- | stage2- | cleanup- | companion- | fd-
+Allowed prefixes: composer- | test-composer- | reviewer- | probe- | phase1- | phase2- | phase4- | stage2- | cleanup- | companion- | fd-
 
 Bare \`j-\` and \`sj-\` slug prefixes are rejected — they're role-ambiguous. Use \`composer-j-<slug>\`, \`reviewer-j-<slug>\`, or \`probe-j-<slug>\` based on the dispatching subagent's role.
 

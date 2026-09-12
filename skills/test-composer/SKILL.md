@@ -28,6 +28,14 @@ Stage 5 of the element-interactions workflow as the atomic unit of coverage. Giv
 
 **Pre-empting reviewer must-fix items.** Skim §"Must-fix calibration" in `reviewer-subagent-contract.md` before composing — the reviewer will demand: (a) every `Test expectations:` item has a covering test, (b) tests use the Steps API correctly with page-repo selectors (no inline selectors), (c) file-level serial mode on tenant-mutating specs, (d) mobile variant on P0/P1 journeys, (e) test assertions match what the live DOM exposes. Meeting that bar in cycle 1 is the difference between a 1-cycle journey and a 4-cycle journey. The reviewer is not antagonistic — it is consistent, and you can know in advance what it will check.
 
+**Dispatch grammar (role kernel).** The orchestrator dispatches this skill as a `test-composer` subagent — the role kernel's name for the composer — so the dispatch is `description: test-composer-j-<slug>: <task>` (sub-journeys: `test-composer-sj-<slug>:`), `subagent_type: test-composer`, and the brief's FIRST line is the binding tag:
+
+~~~
+<<kernel-mandate-role: test-composer#<nonce>>>
+~~~
+
+The orchestrator mints a fresh nonce per dispatch (4+ lowercase alphanumerics — the last 6 chars of the current Unix timestamp in base36 — never reused within a phase). The pre-kernel `composer-j-<slug>:` spelling names no role and is refused at the `Agent` call. The `playwright-cli` session slug keeps the short `composer-j-<slug>-<pass>-c<N>` form (28-char cap) and the spill file keeps `composer-<journey>-<pass>-c<N>.md`. Full grammar: `skills/onboarding/SKILL.md` §"Dispatch grammar".
+
 ---
 
 ## When to Use
@@ -347,7 +355,7 @@ Every composer return **MUST** open with a `handover` envelope as its first key.
 
 | Field | Rule |
 |---|---|
-| `role` | Kebab-case slug, e.g. `composer-j-login-flow`. |
+| `role` | Kebab-case slug, e.g. `test-composer-j-login-flow`. |
 | `cycle` | Integer ≥ 1. The cycle number within this journey's dispatch loop. |
 | `status` | One of `new-tests-landed`, `covered-exhaustively`, `blocked`, `skipped`. |
 | `next-action` | One-line directive for the orchestrator. |
@@ -361,7 +369,7 @@ JSON is preferred over YAML. YAML's compact-mapping form silently breaks when a 
 ```json
 {
   "handover": {
-    "role": "composer-j-login-flow",
+    "role": "test-composer-j-login-flow",
     "cycle": 1,
     "status": "new-tests-landed",
     "next-action": "reviewer-inloop to review pass 1 cycle 1 for login-flow"
@@ -385,7 +393,7 @@ When the verdict is `covered-exhaustively`, the per-expectation mapping table mo
 ```json
 {
   "handover": {
-    "role": "composer-j-login-flow",
+    "role": "test-composer-j-login-flow",
     "cycle": 1,
     "status": "covered-exhaustively",
     "next-action": "reviewer-inloop to verify exhaustive coverage for login-flow pass 1"

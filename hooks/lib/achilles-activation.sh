@@ -104,7 +104,13 @@ ACHILLES_SKILL_ALT='agents-vs-agents|bug-discovery|bug-report|companion-mode|tic
 # reviewer-, fd-) are deliberately excluded: a dev's "cleanup-temp:" agent
 # must not switch the guards on. Genuine protocol runs activate via the
 # skill signals anyway.
-ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|composer-|probe-|process-validator-|contribution-handover-)'
+# `test-composer-` and `in-flight-composer-` are the kernel-mandate role
+# names for the composer dispatches (skills/onboarding/SKILL.md §"Dispatch
+# grammar"); the pre-kernel `composer-` spelling stays listed so a brief
+# written before the rename still activates. `scaffolder-` is deliberately
+# NOT listed — it is generic-sounding, and the Phase 1 dispatch always
+# follows the `onboarding` Skill call that already activated the session.
+ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|test-composer-|in-flight-composer-|composer-|probe-|process-validator-|contribution-handover-)'
 
 achilles__jq() {
   if [ -n "${JQ:-}" ] && [ -x "${JQ:-}" ]; then

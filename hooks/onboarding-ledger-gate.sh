@@ -190,7 +190,10 @@ pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" onboarding_inf
 # Phase 5 — composer-j-<slug>-<pass>-<...> or probe-j-<slug>-<pass>-<...>
 #   when currentPhase = 5. We only block when the pass number is
 #   strictly greater than the highest-substage's pass and that prior
-#   pass is unapproved.
+#   pass is unapproved. The grep below is deliberately UNANCHORED so the
+#   kernel-mandate spelling `test-composer-j-<slug>-<pass>` matches too
+#   (its tail is `composer-j-…`); the pre-kernel `composer-j-…` form is
+#   thereby still accepted as well.
 TARGET_PASS=""
 if [ "$CURRENT_PHASE" = "5" ]; then
   TARGET_PASS=$(echo "$DESCRIPTION" | grep -oE '(composer|probe)-j-[a-z0-9-]+-[1-5]' | grep -oE '[1-5]$' | head -1 || true)

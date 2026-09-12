@@ -165,7 +165,7 @@ specs created, scenarios covered, tables/relationships exercised, and any gaps (
 
 ```json
 {
-  "handover": { "role": "composer-db-orders", "cycle": 1, "status": "new-tests-landed", "next-action": "orchestrator to record DB coverage for orders" },
+  "handover": { "role": "test-composer-db-orders", "cycle": 1, "status": "new-tests-landed", "next-action": "orchestrator to record DB coverage for orders" },
   "tests-added": 6,
   "summary": "Created tests/e2e/db/orders.spec.ts — CRUD round-trip on orders, transaction commit/rollback across orders+order_items, FK join orders→users; uncovered: audit_log (no deterministic seed)."
 }
