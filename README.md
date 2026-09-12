@@ -18,7 +18,7 @@ Achilles will drive **Claude Code** (or any LLM agent) to autonomously scaffold,
 
 ## 🤖 Autonomous Quality Assurance
 
-The harness ships inside the npm package. When you install `@civitas-cerebrum/achilles`, your coding agent picks the methodology up from `node_modules` automatically — nothing extra to configure. The hooks that gate every phase, pass, and cycle transition register themselves in `~/.claude/settings.json` on postinstall. The agent doesn't *opt into* the methodology; it has no other path through the work.
+The harness ships inside the npm package. When you install `@civitas-cerebrum/achilles`, your coding agent picks the methodology up from `node_modules` automatically — nothing extra to configure. The hooks that gate every phase, pass, and cycle transition register themselves on postinstall — in `<project>/.claude/settings.json` for a local install, in `~/.claude/settings.json` for a global (`-g`) one. The agent doesn't *opt into* the methodology; it has no other path through the work.
 
 You drive it in plain English. The orchestrators detect project state and route to the right skill on their own:
 
@@ -59,12 +59,16 @@ That's the whole install. `@civitas-cerebrum/element-interactions` and `@playwri
 
 The framework is declared as a **range** (`>=0.3.8 <1.0.0`) rather than a caret pin, so a new framework release reaches you on a plain `npm update` without waiting for an achilles release. If you write specs that `import` from `@civitas-cerebrum/element-interactions` directly, add it to your own `dependencies` too: pnpm and yarn deliberately do not hoist another package's dependencies to your project root, so a package you import should be one you declare.
 
-`postinstall` does everything end-to-end on a single `npm install`:
+`postinstall` does everything end-to-end on a single `npm install`. Where the **harness** lands follows the install flag:
 
-1. Lands the agent skills into `<your-project>/.claude/skills/` and `~/.claude/skills/`.
-2. Lands the harness hooks into `~/.claude/hooks/` and registers them in `~/.claude/settings.json` (pre-existing user hooks preserved).
-3. Bundles a pinned `jq` binary at `~/.claude/hooks/bin/jq` for hook JSON parsing.
-4. Fetches the chromium headless-shell binary that the harness uses for live-DOM inspection — `@playwright/cli` is a transitive dep, and `postinstall` calls `playwright-cli install-browser chromium` for you (idempotent — no-ops when already cached).
+- **Local install** (`npm install`, no `-g`) — the harness is scoped to the current project:
+  1. Lands the agent skills into `<your-project>/.claude/skills/` and `~/.claude/skills/` (the methodology is inert instructions, so it still installs system-wide).
+  2. Lands the harness hooks into `<your-project>/.claude/hooks/` and registers them in `<your-project>/.claude/settings.json` (pre-existing hooks preserved) — sessions in other projects never see them.
+  3. Bundles a pinned `jq` binary at `<your-project>/.claude/hooks/bin/jq` for hook JSON parsing.
+  4. Fetches the chromium headless-shell binary that the harness uses for live-DOM inspection — `@playwright/cli` is a transitive dep, and `postinstall` calls `playwright-cli install-browser chromium` for you (idempotent — no-ops when already cached).
+- **Global install** (`npm install -g`) — the harness is system-wide: skills into `~/.claude/skills/`, hooks into `~/.claude/hooks/` + `~/.claude/settings.json`, jq at `~/.claude/hooks/bin/jq`, same chromium fetch.
+
+Either way, the hooks **enforce nothing outside the achilles protocol**: every gate silent-allows until a session activates the protocol (invokes an achilles skill, dispatches a protocol-role subagent, or types an achilles `/<skill>` command), and `.achilles/` run artifacts are only ever created at the project root of sessions that activated it.
 
 So after one `npm install`, restart Claude Code and you're ready to drive.
 
@@ -187,7 +191,7 @@ Inside the package:
 | Directory | What's there | Who reads it |
 |---|---|---|
 | `skills/` | 15+ Claude Code skill packs covering scaffold, journey-mapping, test-composer, bug-discovery, secrets-sweep, coverage-expansion, and the orchestrator's onboarding workflow | Claude Code (auto-discovered) |
-| `hooks/` | Harness hooks that enforce contract discipline at the tool boundary — phase-ordering, dispatch-shape validation, return-schema validation, ledger integrity, parent-only-orchestrator policies, playwright-cli session isolation | Claude Code (registered in `~/.claude/settings.json` by postinstall) |
+| `hooks/` | Harness hooks that enforce contract discipline at the tool boundary — phase-ordering, dispatch-shape validation, return-schema validation, ledger integrity, parent-only-orchestrator policies, playwright-cli session isolation | Claude Code (registered by postinstall in `<project>/.claude/settings.json`, or `~/.claude/settings.json` for `-g` installs) |
 | `schemas/` | JSON Schemas for subagent return shapes + the onboarding-status ledger; fixtures for both the valid and invalid cases | Subagent return validators + reviewer subagents |
 | `scripts/` | `postinstall.js` is the only script shipped in the tarball (skill+hook copy + chromium fetch); the lint/build/sync scripts live in the repo only — `compile-schemas.mjs` + `validate-schema-fixtures.mjs` (schemas:lint), `build-validator.mjs` (regenerates the bundled validator), `lint-doc-drift.mjs` (doc-surface drift), `sync-hooks.js` (dev convenience) | npm install, CI |
 | `reporter/` | The Achilles Playwright reporter — cross-run flakiness history, per-attempt evidence copying, and the end-of-run summary | Your `playwright.config` (`reporter: [...]`) |
