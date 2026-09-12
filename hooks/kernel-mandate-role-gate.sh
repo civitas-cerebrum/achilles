@@ -1164,7 +1164,14 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # granted `node:url` explicitly. A word boundary in front keeps
   # pathlib caught and stops the check from firing on every identifier
   # that happens to END in Path.
-  FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync\b|\[[[:space:]]*"[^"]*Sync"[[:space:]]*\]|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream\b'
+  # `process.report.writeReport(path)` writes a file at RUNTIME to any
+  # path with no fs module in sight; `process.chdir(dir)` re-anchors
+  # every relative import and path the running test resolves, which is
+  # git -C / npm --prefix one layer down. A factory judge used the first
+  # to write into the verdicts tree and the second to import a sibling
+  # module's source from an author-and-run implementer. Neither is a
+  # spelling of fs; both are the capability.
+  FS_METHODS='\b(open|read|write|append|stat|lstat|fstat|copy|rename|rm|unlink|mkdir|rmdir|readdir|realpath|access|truncate|chmod|chown|link|symlink|readlink|utimes|watch|opendir|mkdtemp|cp)[A-Za-z]*Sync\b|\[[[:space:]]*"[^"]*Sync"[[:space:]]*\]|\bfs\.promises\b|\bfsPromises\b|\bcreate(Read|Write)Stream\b|\bprocess\.report\.writeReport\b|\bprocess\.chdir\b'
   if printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(fs|fs/promises|os)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*(fs|fs/promises)[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+(os|shutil|pathlib|io|glob)([[:space:].]|$)|(^|[^a-zA-Z_.])open[[:space:]]*\([[:space:]]*[\"'\`]|${FS_METHODS}|readFile[[:space:]]*\(|(^|[^A-Za-z0-9_])Path[[:space:]]*\("; then
     CAP_ID='fs'; CAP_WHAT='filesystem access (fs / os / open / readFileSync …) — code that can read or write any path, ignoring the role scopes'
   elif printf '%s' "$CODE_N" | grep -Eq "${LOAD}[[:space:]]*\([[:space:]]*\"[[:space:]]*(child_process|node:child_process)[[:space:]]*\"|from[[:space:]]*\"[[:space:]]*child_process[[:space:]]*\"|^[[:space:]]*import[[:space:]]+(subprocess|pty|multiprocessing)([[:space:],.]|$)|^[[:space:]]*from[[:space:]]+subprocess([[:space:].]|$)|execSync|spawnSync|execFileSync|\bspawn[[:space:]]*\(|subprocess\.(run|Popen|call|check_output)|os\.(system|popen|exec|spawn)"; then
@@ -1191,6 +1198,14 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     # whose stated job is closing exfiltration channels cannot cover
     # `fetch(` and miss the one the role actually has in scope.
     CAP_ID='network'; CAP_WHAT='the test framework''s HTTP client (request.get / page.request / sendBeacon) pointed at an arbitrary host — the same exfiltration channel as fetch(), reached through a fixture'
+  elif printf '%s' "$CODE_N" | grep -Eq "\bprocess\.env[[:space:]]*[),;}]|\bprocess\.env[[:space:]]*$|\(process\.env\)|\bentries[[:space:]]*\([[:space:]]*process\.env|\bkeys[[:space:]]*\([[:space:]]*process\.env|\bstringify[[:space:]]*\([[:space:]]*process\.env|\bfor[[:space:]]*\([^)]*\bin[[:space:]]+process\.env\b"; then
+    # THE WHOLE ENVIRONMENT AS A VALUE. `process.env.APP_URL` is how a test
+    # reads its config and is fine. `process.env` handed to a call, a
+    # serializer, an iterator, or a return — the object itself, every
+    # secret the runner was started with — is an exfil primitive that
+    # names no module. A factory judge dumped it from an implementer's own
+    # test. A member read has a `.` or `[` after it and does not match.
+    CAP_ID='env'; CAP_WHAT='the entire process environment as a value (process.env handed to a call, serializer, iterator or return) — every secret the runner was started with, read at once. Read the specific variable the test needs (process.env.APP_URL)'
   elif printf '%s' "$CODE_N" | grep -Eq "\beval[[:space:]]*\(|new Function[[:space:]]*\(|__import__[[:space:]]*\(|\bimportlib\b|\bexec[[:space:]]*\(|vm\.(run|compile)"; then
     CAP_ID='eval'; CAP_WHAT='eval / new Function — code the static check cannot read'
   elif printf '%s' "$CODE_N" | tr '\n' ' ' | grep -Eq '[=,:([][[:space:]]*require[[:space:]]*([];,)}]|$)'; then
