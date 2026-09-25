@@ -90,36 +90,71 @@ export function runHook(o: { bash: string; hookPath: string; payload: unknown; t
   }
 
   return new Promise((resolve) => {
-    let stdout = '', stderr = '', timedOut = false, done = false;
-    let timer: NodeJS.Timeout;
+    let stdout = '', stderr = '', timedOut = false, done = false, exitedCode: number | null = null;
+    let overallTimer: NodeJS.Timeout;
+    let graceTimer: NodeJS.Timeout | undefined;
+    let lastResortTimer: NodeJS.Timeout | undefined;
+
+    const clearTimers = () => {
+      clearTimeout(overallTimer);
+      if (graceTimer) clearTimeout(graceTimer);
+      if (lastResortTimer) clearTimeout(lastResortTimer);
+    };
     const finish = (exitCode: number | null) => {
       if (done) return; done = true;
-      clearTimeout(timer);
+      clearTimers();
       resolve({ file, exitCode, stdout, stderr, timedOut, ms: Date.now() - started });
     };
+
     let child;
     try { child = spawn(o.bash, [o.hookPath], { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true }); }
     catch (err) { stderr = String(err); return finish(127); }
-    // detached: true makes the hook the leader of its own process group, so a timeout can SIGKILL
-    // the whole group (bash + any grandchildren it spawned, e.g. `sleep 3 &`) rather than only bash.
-    timer = setTimeout(() => {
-      timedOut = true;
+
+    // detached: true makes the hook the leader of its own process group, so a forced kill reaches
+    // the whole group (bash + any grandchildren it spawned, e.g. `sleep 3 &`), not just bash itself.
+    const killGroup = () => {
       try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { /* group already gone */ }
       try { child.kill('SIGKILL'); } catch { /* already dead */ }
-      finish(null);
+    };
+
+    overallTimer = setTimeout(() => {
+      if (done) return;
+      timedOut = true;
+      killGroup();
+      try { child.stdout.destroy(); } catch { /* already gone */ }
+      try { child.stderr.destroy(); } catch { /* already gone */ }
+      // Destroying the streams should make 'close' fire almost immediately; settle anyway if it
+      // somehow doesn't, so a stuck kernel-level pipe can never hang the bridge indefinitely.
+      lastResortTimer = setTimeout(() => finish(exitedCode), 100);
     }, o.timeoutMs);
+
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
     child.on('error', (err) => { stderr += String(err); finish(127); });
-    // Settle on 'exit', not 'close': 'close' waits for every holder of the stdio pipes, including a
-    // backgrounded grandchild the hook never waited on, which would hold the gate open for as long
-    // as that grandchild runs. Drain whatever is already buffered on the streams first.
+
+    // The hook process exiting does not mean its stdio pipes are drained — a backgrounded
+    // grandchild (e.g. `sleep 3 &`) can keep holding them open, and 'exit' can even fire before the
+    // kernel has finished delivering buffered stdout/stderr. Give the OS a short, bounded grace
+    // window to deliver 'close' (fully drained) naturally; only if that window expires — because
+    // something is still holding the pipes — do we force the issue.
     child.on('exit', (code) => {
-      let chunk: unknown;
-      try { while ((chunk = child.stdout.read()) !== null) stdout += chunk; } catch { /* stream gone */ }
-      try { while ((chunk = child.stderr.read()) !== null) stderr += chunk; } catch { /* stream gone */ }
-      finish(code);
+      exitedCode = code;
+      if (done) return;
+      const remaining = o.timeoutMs - (Date.now() - started);
+      const graceMs = Math.max(0, Math.min(250, remaining));
+      graceTimer = setTimeout(() => {
+        if (done) return;
+        killGroup();
+        try { child.stdout.destroy(); } catch { /* already gone */ }
+        try { child.stderr.destroy(); } catch { /* already gone */ }
+      }, graceMs);
     });
+
+    // 'close' fires once the process has exited AND all stdio streams are fully drained/closed — the
+    // only point at which stdout/stderr are guaranteed complete. This is the sole settlement path;
+    // the two forced-kill branches above exist only to bound how long we wait for it.
+    child.on('close', (code) => { finish(code); });
+
     child.stdin.on('error', () => {});
     child.stdin.end(payloadJson);
   });

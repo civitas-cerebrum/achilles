@@ -60,11 +60,23 @@ test('runHook pipes payload and enforces timeout', async () => {
   assert.equal(t.timedOut, true);
   assert.ok(t.ms < 800, `expected settlement within timeoutMs+500 (800ms), got ${t.ms}ms`);
 });
-test('runHook does not wait on a backgrounded grandchild (bounded by exit, not close)', async () => {
+test('runHook does not wait on a backgrounded grandchild (bounded grace after exit, then forced close)', async () => {
   const r = await runHook({ bash: 'bash', hookPath: path.join(fx, 'hooks', 'bg.sh'), payload: {}, timeoutMs: 5000, cwd: os.tmpdir(), env: process.env });
   assert.equal(r.exitCode, 0);
   assert.equal(r.timedOut, false);
   assert.ok(r.ms < 1000, `expected settlement well under the 3s backgrounded sleep, got ${r.ms}ms`);
+});
+test('runHook settles on close, never truncating a large stdout (repeated)', async () => {
+  for (let i = 0; i < 20; i++) {
+    const r = await runHook({ bash: 'bash', hookPath: path.join(fx, 'hooks', 'bigdeny.sh'), payload: {}, timeoutMs: 5000, cwd: os.tmpdir(), env: process.env });
+    assert.equal(r.exitCode, 0, `run ${i}: exitCode`);
+    assert.equal(r.timedOut, false, `run ${i}: timedOut`);
+    let parsed;
+    assert.doesNotThrow(() => { parsed = JSON.parse(r.stdout); }, `run ${i}: stdout did not parse as JSON (len ${r.stdout.length})`);
+    const reason = parsed.hookSpecificOutput.permissionDecisionReason;
+    assert.equal(reason.length, 120000, `run ${i}: reason length`);
+    assert.ok(/^x+$/.test(reason), `run ${i}: reason content`);
+  }
 });
 test('tool_call: deny with steered reason', async () => {
   const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
