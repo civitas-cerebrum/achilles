@@ -1,7 +1,7 @@
 {
   "name": "@civitas-cerebrum/achilles",
   "version": "0.1.8",
-  "description": "Autonomous quality-assurance methodology \u2014 agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
+  "description": "Autonomous quality-assurance methodology — agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "build:validator": "node scripts/build-validator.mjs",
@@ -39,6 +39,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "esbuild": "^0.25.12",
+    "typebox": "^1.3.34",
     "typescript": "^5.0.0"
   },
   "dependencies": {
