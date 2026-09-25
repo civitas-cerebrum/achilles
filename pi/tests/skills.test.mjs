@@ -1,0 +1,31 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { resolveSkill, skillRoots } from '../extensions/achilles/skills.ts';
+const fx = path.join(import.meta.dirname, 'fixtures', 'skills');
+
+test('resolves an orchestrator skill with body', () => {
+  const s = resolveSkill('orch-skill', [fx]);
+  assert.equal(s.subagentOnly, false);
+  assert.match(s.body, /Body of orch skill/);
+  assert.equal(s.file, path.join(fx, 'orch-skill', 'SKILL.md'));
+});
+test('subagent-only by flag', () => { assert.equal(resolveSkill('sub-flag', [fx]).subagentOnly, true); });
+test('subagent-only by marker', () => { assert.equal(resolveSkill('sub-marker', [fx]).subagentOnly, true); });
+test('unknown skill', () => { assert.equal(resolveSkill('nope', [fx]), undefined); });
+test('first root wins', () => {
+  const s = resolveSkill('orch-skill', ['/nonexistent', fx]);
+  assert.equal(s.dir, path.join(fx, 'orch-skill'));
+});
+test('real repo skills classify as expected', () => {
+  const repoSkills = path.resolve(import.meta.dirname, '..', '..', 'skills');
+  assert.equal(resolveSkill('onboarding', [repoSkills]).subagentOnly, false);
+  assert.equal(resolveSkill('workflow-reviewer', [repoSkills]).subagentOnly, true);
+  assert.equal(resolveSkill('failure-diagnosis', [repoSkills]).subagentOnly, true);
+  assert.equal(resolveSkill('contributing-to-achilles-protocol', [repoSkills]).subagentOnly, true);
+});
+test('skillRoots order', () => {
+  const r = skillRoots('/h');
+  assert.equal(r[0], path.join('/h', '.agents', 'skills'));
+  assert.ok(r[1].endsWith(path.join('achilles', 'skills')) || r[1].endsWith('skills'));
+});
