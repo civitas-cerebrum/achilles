@@ -64,27 +64,17 @@ run_install_simulation() {
 
   # --- Mirror the postinstall copy set ------------------------------------
   # 1. Hook scripts: exactly the HOOK_MANIFEST entries, parsed live from
-  #    postinstall.js so the sim never drifts from the real installer.
-  # Parse the literal HOOK_MANIFEST array from postinstall.js using Node so
-  # the sim never drifts from the real installer. Node is guaranteed (the
-  # suite builds the validator with it). Matches file: '...' / file: "..."
-  # entries, strips lines whose non-whitespace content starts with //, and
-  # deduplicates via Set — exactly mirroring what postinstall installs.
+  #    hooks/manifest.json so the sim never drifts from the real installer.
+  # Read hooks/manifest.json using Node so the sim never drifts from the
+  # real installer. Node is guaranteed (the suite builds the validator with
+  # it). Deduplicates via Set — exactly mirroring what postinstall installs.
   local manifest_files f
   manifest_files=$(node -e "
-    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
-    const m = s.match(/const HOOK_MANIFEST = \[([\s\S]*?)\];/);
-    if (!m) { process.exit(1); }
-    const lines = m[1].split('\n');
-    const files = [...new Set(
-      lines
-        .filter(l => !/^\s*\/\//.test(l))
-        .flatMap(l => [...l.matchAll(/file:\s*['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]))
-    )];
-    console.log(files.join('\n'));
+    const m = require('$repo_root/hooks/manifest.json');
+    console.log([...new Set(m.map(e => e.file))].join('\n'));
   " 2>/dev/null)
   if [ -z "$manifest_files" ]; then
-    sim_fail "manifest parse" "could not extract HOOK_MANIFEST file list from scripts/postinstall.js"
+    sim_fail "manifest parse" "could not extract HOOK_MANIFEST file list from hooks/manifest.json"
     return
   fi
   for f in $manifest_files; do

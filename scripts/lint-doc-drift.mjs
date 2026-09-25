@@ -6,7 +6,7 @@
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
 //   (2) every relative .md link under skills/achilles-protocol/** resolves
-//   (3) HOOK_MANIFEST (scripts/postinstall.js)  ↔  harness-hooks.md links
+//   (3) HOOK_MANIFEST (hooks/manifest.json)  ↔  harness-hooks.md links
 //   (4) every validated §4.4 description-prefix in subagent-return-schema.md
 //       has a matching case in hooks/lib/schema-role-map.sh
 //   (5) every deny/warn-capable hook's runtime messages carry a References:
@@ -25,7 +25,6 @@ const SKILLS_DIR = 'skills';
 const EI_DIR = 'skills/achilles-protocol';
 const REGISTRY = 'skills/achilles-protocol/references/skill-registry.md';
 const HARNESS_HOOKS = 'skills/achilles-protocol/references/harness-hooks.md';
-const POSTINSTALL = 'scripts/postinstall.js';
 const RETURN_SCHEMA = 'skills/achilles-protocol/references/subagent-return-schema.md';
 const ROLE_MAP = 'hooks/lib/schema-role-map.sh';
 
@@ -135,15 +134,9 @@ function checkRelativeLinks() {
 // ---------------------------------------------------------------------------
 function checkHookManifest() {
   const detail = [];
-  const post = readFileSync(POSTINSTALL, 'utf8');
 
-  // Extract the HOOK_MANIFEST array body and pull each `file: '<name>.sh'`.
-  const start = post.indexOf('const HOOK_MANIFEST = [');
-  const end = post.indexOf('];', start);
-  const body = post.slice(start, end);
-  const manifestFiles = new Set(
-    [...body.matchAll(/file:\s*'([a-z0-9-]+\.sh)'/g)].map((m) => m[1]),
-  );
+  const manifestPath = join('hooks', 'manifest.json');
+  const manifestFiles = new Set(JSON.parse(readFileSync(manifestPath, 'utf8')).map((e) => e.file));
 
   // Documented hooks = markdown links of the form (.../hooks/<file>.sh).
   // Exclude hooks/lib/* (those are library files cited in prose, not
