@@ -25,8 +25,9 @@ function setup(over = {}) {
   registerAgentTool(pi, { bridge, roots: [path.join(fx, 'skills')], stateDir: over.stateDir ?? tmp(), invocation: (args) => ({ command: process.execPath, args: [child, ...args] }), ...over });
   return { tool: pi.tools.find((t) => t.name === 'Agent'), calls };
 }
-async function run(tool, params, ctxOver = {}) {
-  const r = await withEnv({ ACHILLES_PROTOCOL: undefined, ACHILLES_PI_DEPTH: undefined, ACHILLES_PI_AGENT_TYPE: undefined },
+/** Runs the tool with a clean achilles env; keeps the transcript copy (so tests can read the child header) unless keep=false. */
+async function run(tool, params, ctxOver = {}, { keep = true } = {}) {
+  const r = await withEnv({ ACHILLES_PROTOCOL: undefined, ACHILLES_PI_DEPTH: undefined, ACHILLES_PI_AGENT_TYPE: undefined, ACHILLES_PI_KEEP_TRANSCRIPTS: keep ? '1' : undefined },
     () => tool.execute('a', params, undefined, undefined, makeFakeCtx(ctxOver)));
   if (r.details.transcriptCopy) cleanup.push(r.details.transcriptCopy);
   return r;
@@ -65,6 +66,8 @@ test('loads this extension explicitly in the child; passes -a only when the proj
   assert.ok(path.isAbsolute(ext) && ext.endsWith(path.join('pi', 'extensions', 'achilles', 'index.ts')), ext);
   assert.ok(fs.existsSync(ext));
   assert.ok(h.args.includes('-a'));
+  const tools = h.args[h.args.indexOf('--tools') + 1].split(',');
+  assert.ok(tools.includes('Skill'), 'children can load skills'); assert.ok(!tools.includes('Agent'), 'children cannot dispatch');
   assert.ok(!header(await run(tool, { description: 'd', prompt: 'p' }, { trusted: false })).args.includes('-a'));
 });
 test('ACHILLES_PI_AGENT_TYPE: subagent_type wins, else the description role prefix', async () => {
@@ -92,4 +95,12 @@ test('long prompt goes by file', async () => {
   const { tool } = setup();
   const h = header(await run(tool, { description: 'd', prompt: 'x'.repeat(100 * 1024) }));
   assert.ok(h.args.some((a) => a.startsWith('@')));
+});
+test('no transcript copy unless ACHILLES_PI_KEEP_TRANSCRIPTS=1', async () => {
+  const before = new Set(fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-agent-.*\.jsonl$/.test(f)));
+  const { tool } = setup();
+  const r = await run(tool, { description: 'd', prompt: 'p' }, {}, { keep: false });
+  assert.equal(r.details.transcriptCopy, undefined);
+  const created = fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-agent-.*\.jsonl$/.test(f) && !before.has(f));
+  assert.deepEqual(created, []);
 });

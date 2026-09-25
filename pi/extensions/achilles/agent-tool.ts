@@ -13,7 +13,9 @@ import { log } from './log.ts';
 const MODEL_FACING_CAP = 16 * 1024;
 const PROMPT_ARGV_CAP = 96 * 1024;
 const KILL_GRACE_MS = 5000;
-const CHILD_TOOLS = 'read,bash,edit,write,grep,find,ls';
+/** Like Claude Code: subagents can load skills but cannot dispatch further subagents (the depth
+ * cap stays as a backstop). The allowlist applies to extension tools too. */
+const CHILD_TOOLS = 'read,bash,edit,write,grep,find,ls,Skill';
 
 /** This extension's entry point, passed to every child with `-e` so the gates run inside it even
  * when the parent loaded the extension with `-e` rather than from settings. pi de-duplicates an
@@ -152,9 +154,9 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         }, undefined, ctx);
         log('agent_done', { description: params.description, exitCode, childSessionId, chars: lastText.length });
         if (exitCode !== 0 || !lastText) throw new Error(`Subagent "${params.description}" failed (exit ${exitCode}): ${stderr.trim().slice(-2000) || 'no output'}`);
-        // Keep a copy of the transcript for details (the temp dir is removed in finally).
+        // Opt-in copy of the transcript for details/debugging (the temp dir is removed in finally).
         let transcriptCopy: string | undefined;
-        if (transcript) { transcriptCopy = path.join(os.tmpdir(), `achilles-agent-${childSessionId || 'child'}-${Date.now()}.jsonl`); fs.copyFileSync(transcript, transcriptCopy); }
+        if (transcript && process.env.ACHILLES_PI_KEEP_TRANSCRIPTS === '1') { transcriptCopy = path.join(os.tmpdir(), `achilles-agent-${childSessionId || 'child'}-${Date.now()}.jsonl`); fs.copyFileSync(transcript, transcriptCopy); }
         return { content: [{ type: 'text', text: cap(lastText) }], details: { description: params.description, exitCode, childSessionId, text: lastText, transcriptCopy } };
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });

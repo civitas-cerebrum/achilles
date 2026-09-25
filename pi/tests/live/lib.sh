@@ -12,6 +12,7 @@ command -v pi >/dev/null || live_skip "pi not on PATH"
 curl -s --max-time 3 "$LIVE_BASE_URL/models" >/dev/null || live_skip "model endpoint $LIVE_BASE_URL unreachable"
 
 LIVE_HOME=$(mktemp -d /tmp/achilles-live-XXXXXX)
+trap '[ "${ACHILLES_PI_KEEP_LIVE:-0}" = 1 ] || rm -rf "$LIVE_HOME"' EXIT
 export HOME="$LIVE_HOME"
 export PI_CODING_AGENT_DIR="$LIVE_HOME/.pi/agent"
 export ACHILLES_PI_LOG="$LIVE_HOME/achilles-pi.log"

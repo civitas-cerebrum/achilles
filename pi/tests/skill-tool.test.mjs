@@ -28,3 +28,11 @@ test('subagent-only by marker refuses too', async () => {
 test('unknown skill throws with the known names', async () => {
   await assert.rejects(() => tool().execute('c4', { skill: 'ghost' }, undefined, undefined, makeFakeCtx()), /Unknown skill "ghost".*orch-skill/s);
 });
+test('inside a subagent (depth >= 1) a subagent-only skill returns its body', async (t) => {
+  const saved = process.env.ACHILLES_PI_DEPTH;
+  t.after(() => { if (saved === undefined) delete process.env.ACHILLES_PI_DEPTH; else process.env.ACHILLES_PI_DEPTH = saved; });
+  process.env.ACHILLES_PI_DEPTH = '1';
+  const r = await tool().execute('c5', { skill: 'sub-flag' }, undefined, undefined, makeFakeCtx());
+  assert.match(r.content[0].text, /<skill name="sub-flag"/); assert.match(r.content[0].text, /Secret body/);
+  assert.equal(r.details.refused, undefined);
+});

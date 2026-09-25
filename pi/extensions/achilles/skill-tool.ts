@@ -16,8 +16,11 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
     async execute(_id, params) {
       const s = resolveSkill(params.skill, opts.roots);
       if (!s) throw new Error(`Unknown skill "${params.skill}". Known skills: ${listSkills(opts.roots).join(', ')}`);
-      log('skill', { skill: s.name, refused: s.subagentOnly });
-      if (s.subagentOnly) {
+      // Only the orchestrator (depth 0) is refused a subagent-only skill; inside a subagent it is
+      // exactly the skill the child was dispatched to load (e.g. workflow-reviewer).
+      const refuse = s.subagentOnly && Number(process.env.ACHILLES_PI_DEPTH ?? '0') === 0;
+      log('skill', { skill: s.name, refused: refuse });
+      if (refuse) {
         return {
           content: [{ type: 'text', text: `Skill "${s.name}" is subagent-only and must not be loaded into the orchestrator. Delegate it: Agent { skill: "${s.name}", description: "<role-prefix>: <what>", prompt: "<brief>" }.` }],
           details: { skill: s.name, refused: true },
