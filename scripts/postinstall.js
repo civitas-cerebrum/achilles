@@ -725,7 +725,11 @@ function installPiHarness() {
   const settingsPath = globalInstall
     ? path.join(homeDir, '.pi', 'agent', 'settings.json')
     : path.join(projectRoot, '.pi', 'settings.json');
-  const source = globalInstall ? piPkgDir : './node_modules/@civitas-cerebrum/achilles/pi';
+  // A relative local-package source in settings.json resolves from the
+  // settings file's own directory (<project>/.pi/), not the project root —
+  // so the path climbs one level (`../node_modules/...`) to reach
+  // <project>/node_modules/... from there.
+  const source = globalInstall ? piPkgDir : '../node_modules/@civitas-cerebrum/achilles/pi';
   const changed = registerPiPackage(settingsPath, source);
   console.log(`[@civitas-cerebrum/achilles] pi detected: ${n} skills → ~/.agents/skills; extension ${changed ? 'registered in' : 'already registered in'} ${settingsPath}.`);
 }

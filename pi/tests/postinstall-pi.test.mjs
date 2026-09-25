@@ -92,3 +92,46 @@ test('installPiHarness: no pi detected → nothing written', () => {
   assert.equal(fs.existsSync(path.join(home, '.pi')), false);
   assert.equal(fs.existsSync(path.join(home, '.agents')), false);
 });
+
+// installPiHarness()'s local-install branch computes `projectRoot` from its
+// OWN __dirname (four levels up from <pkg>/scripts/postinstall.js), so
+// exercising it for real requires a postinstall.js copy that actually lives
+// at <tmp-consumer>/node_modules/@civitas-cerebrum/achilles/scripts/ — the
+// module also does a top-level `require('../hooks/manifest.json')`, so that
+// file has to exist alongside the copy too. `pi/package.json` is copied so
+// the resolved package source is a real, existing directory, matching what
+// a real `npm install` of the tarball lands on disk.
+test('installPiHarness: local install registers a package source relative to .pi/, resolvable to node_modules/', () => {
+  const consumerRoot = tmp();
+  const pkgDir = path.join(consumerRoot, 'node_modules', '@civitas-cerebrum', 'achilles');
+  fs.mkdirSync(path.join(pkgDir, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(pkgDir, 'hooks'), { recursive: true });
+  fs.mkdirSync(path.join(pkgDir, 'pi'), { recursive: true });
+  fs.copyFileSync(postPath, path.join(pkgDir, 'scripts', 'postinstall.js'));
+  fs.copyFileSync(path.join(repoRoot, 'hooks', 'manifest.json'), path.join(pkgDir, 'hooks', 'manifest.json'));
+  fs.copyFileSync(path.join(repoRoot, 'pi', 'package.json'), path.join(pkgDir, 'pi', 'package.json'));
+  fs.cpSync(path.join(repoRoot, 'skills'), path.join(pkgDir, 'skills'), { recursive: true });
+
+  const home = tmp();
+  fs.mkdirSync(path.join(home, '.pi', 'agent'), { recursive: true });
+
+  const copiedPostPath = path.join(pkgDir, 'scripts', 'postinstall.js');
+  const result = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(copiedPostPath)}).installPiHarness();`], {
+    env: { HOME: home, PATH: '/nonexistent', npm_config_global: 'false' },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+
+  const settingsPath = path.join(consumerRoot, '.pi', 'settings.json');
+  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  assert.deepEqual(settings.packages, ['../node_modules/@civitas-cerebrum/achilles/pi']);
+
+  // Mirror pi's own resolution: a project-scope relative local source
+  // resolves against <project>/.pi/ (the settings file's directory), not
+  // the project root — see docs/packages.md "Relative local paths resolve
+  // from the settings file that contains them."
+  const resolved = path.resolve(path.join(consumerRoot, '.pi'), settings.packages[0]);
+  assert.equal(resolved, path.join(pkgDir, 'pi'));
+  assert.ok(fs.statSync(resolved).isDirectory());
+  assert.ok(fs.existsSync(path.join(resolved, 'package.json')));
+});
