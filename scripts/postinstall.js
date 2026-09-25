@@ -669,6 +669,67 @@ function pruneRetiredHooks(homeHooksDir) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// pi harness (https://pi.dev). Nothing here runs unless pi is detected.
+// ---------------------------------------------------------------------------
+function detectPi(env, home) {
+  if (fs.existsSync(path.join(home, '.pi', 'agent'))) return true;
+  const exts = process.platform === 'win32' ? ['.cmd', '.exe', ''] : [''];
+  for (const dir of String(env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      try { fs.accessSync(path.join(dir, 'pi' + ext), fs.constants.X_OK); return true; } catch (_) {}
+    }
+  }
+  return false;
+}
+
+// Adds `source` to the `packages` array of a pi settings.json. Returns true
+// when the file changed. Never rewrites a file it cannot parse.
+function registerPiPackage(settingsPath, source) {
+  let settings = {};
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const raw = fs.readFileSync(settingsPath, 'utf8').trim();
+      settings = raw ? JSON.parse(raw) : {};
+    } catch (err) {
+      console.warn(`[civitas-cerebrum] Could not parse ${settingsPath} — leaving it untouched. (${err.message})`);
+      return false;
+    }
+  }
+  const pkgs = Array.isArray(settings.packages) ? settings.packages : [];
+  const present = pkgs.some(p => (typeof p === 'string' ? p : p && p.source) === source);
+  if (present) return false;
+  settings.packages = [...pkgs, source];
+  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  return true;
+}
+
+// Skills for pi go to the Agent Skills location pi reads natively.
+function installAgentSkills(home) {
+  const dest = path.join(home, '.agents', 'skills');
+  const skills = discoverSkills(skillsDir);
+  for (const skill of skills) copyDirRecursive(path.join(skillsDir, skill), path.join(dest, skill));
+  return skills.length;
+}
+
+function installPiHarness() {
+  if (!detectPi(process.env, homeDir)) return;
+  const piPkgDir = path.join(packageDir, 'pi');
+  const n = installAgentSkills(homeDir);
+  if (process.env.CIVITAS_SKIP_HOOK_INSTALL === '1') {
+    console.log(`[@civitas-cerebrum/achilles] pi detected: ${n} skills → ~/.agents/skills; package registration skipped (CIVITAS_SKIP_HOOK_INSTALL=1).`);
+    return;
+  }
+  const settingsPath = globalInstall
+    ? path.join(homeDir, '.pi', 'agent', 'settings.json')
+    : path.join(projectRoot, '.pi', 'settings.json');
+  const source = globalInstall ? piPkgDir : './node_modules/@civitas-cerebrum/achilles/pi';
+  const changed = registerPiPackage(settingsPath, source);
+  console.log(`[@civitas-cerebrum/achilles] pi detected: ${n} skills → ~/.agents/skills; extension ${changed ? 'registered in' : 'already registered in'} ${settingsPath}.`);
+}
+
 // Expose installers so scripts/sync-hooks.js (and any future dev tooling)
 // can run a subset without re-invoking the full postinstall flow.
 module.exports = {
@@ -679,6 +740,10 @@ module.exports = {
   isGlobalInstall,
   harnessClaudeDir,
   skillsDestinations: destinations,
+  detectPi,
+  registerPiPackage,
+  installAgentSkills,
+  installPiHarness,
   HOOK_MANIFEST,
 };
 
@@ -707,6 +772,12 @@ if (require.main === module) {
       installCivitasHooks(harnessClaudeDir);
     } catch (err) {
       console.warn(`[civitas-cerebrum] Could not install harness hooks: ${err.message}`);
+    }
+
+    try {
+      installPiHarness();
+    } catch (err) {
+      console.warn(`[@civitas-cerebrum/achilles] Could not install pi harness: ${err.message}`);
     }
 
     try {

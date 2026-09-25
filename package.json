@@ -7,9 +7,11 @@
     "build:validator": "node scripts/build-validator.mjs",
     "test:hooks": "npm run build:validator && hooks/tests/run.sh",
     "test:reporter": "node --test --test-concurrency=1 \"reporter/tests/*.test.mjs\"",
+    "test:pi": "node --test \"pi/tests/*.test.mjs\"",
+    "test:pi:live": "for f in pi/tests/live/*.sh; do bash \"$f\" || exit 1; done",
     "sync-hooks": "node scripts/sync-hooks.js",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
-    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && npm run test:hooks && npm run test:reporter"
+    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && npm run test:hooks && npm run test:reporter && npm run test:pi"
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",
@@ -31,7 +33,8 @@
     "skills",
     "schemas",
     "reporter",
-    "scripts/postinstall.js"
+    "scripts/postinstall.js",
+    "pi"
   ],
   "devDependencies": {
     "@types/node": "^20.0.0",

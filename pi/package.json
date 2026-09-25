@@ -1,0 +1,7 @@
+{
+  "name": "@civitas-cerebrum/achilles-pi",
+  "private": true,
+  "description": "pi harness adapter for @civitas-cerebrum/achilles — registered in pi settings by the parent package's postinstall when pi is detected.",
+  "type": "module",
+  "pi": { "extensions": ["./extensions/achilles/index.ts"] }
+}

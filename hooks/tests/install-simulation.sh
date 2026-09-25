@@ -225,6 +225,28 @@ run_install_simulation() {
     sim_pass "attestation-gate tojson assertion skipped (validator bundle 'tojson' not yet shipped — P7 dependency)"
   fi
   rm -f "$probe"
+
+  # pi detection — no pi: nothing written
+  local fake_home_nopi; fake_home_nopi=$(mktemp -d "$work/home-nopi-XXXX")
+  node -e "
+    const p = require('$repo_root/scripts/postinstall.js');
+    process.exit(p.detectPi({ PATH: '/nonexistent' }, '$fake_home_nopi') ? 1 : 0);
+  " && sim_pass "no pi → detectPi false" || sim_fail "no pi" "detectPi returned true"
+  # pi detection — fake ~/.pi/agent: settings entry + skills copy
+  local fake_home_pi; fake_home_pi=$(mktemp -d "$work/home-pi-XXXX")
+  mkdir -p "$fake_home_pi/.pi/agent"
+  node -e "
+    const p = require('$repo_root/scripts/postinstall.js');
+    if (!p.detectPi({ PATH: '/nonexistent' }, '$fake_home_pi')) process.exit(1);
+    p.registerPiPackage('$fake_home_pi/.pi/agent/settings.json', '$repo_root/pi');
+    p.installAgentSkills('$fake_home_pi');
+  " || sim_fail "pi install" "installer threw"
+  if grep -q '"'"$repo_root/pi"'"' "$fake_home_pi/.pi/agent/settings.json" 2>/dev/null \
+     && [ -f "$fake_home_pi/.agents/skills/onboarding/SKILL.md" ]; then
+    sim_pass "pi detected → package registered + skills in ~/.agents/skills"
+  else
+    sim_fail "pi install" "settings entry or skills missing"
+  fi
 }
 
 run_install_simulation
