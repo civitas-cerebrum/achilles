@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { resolveSkill, skillRoots } from '../extensions/achilles/skills.ts';
 const fx = path.join(import.meta.dirname, 'fixtures', 'skills');
@@ -23,6 +25,16 @@ test('real repo skills classify as expected', () => {
   assert.equal(resolveSkill('workflow-reviewer', [repoSkills]).subagentOnly, true);
   assert.equal(resolveSkill('failure-diagnosis', [repoSkills]).subagentOnly, true);
   assert.equal(resolveSkill('contributing-to-achilles-protocol', [repoSkills]).subagentOnly, true);
+});
+test('SKILL.md as a directory does not throw, resolves as unfound', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-test-'));
+  try {
+    fs.mkdirSync(path.join(tmp, 'weird-skill', 'SKILL.md'), { recursive: true });
+    assert.doesNotThrow(() => resolveSkill('weird-skill', [tmp]));
+    assert.equal(resolveSkill('weird-skill', [tmp]), undefined);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 test('skillRoots order', () => {
   const r = skillRoots('/h');

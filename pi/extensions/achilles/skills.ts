@@ -55,13 +55,21 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
   for (const root of roots) {
     const dir = path.join(root, name);
     const file = path.join(dir, 'SKILL.md');
-    if (!fs.existsSync(file)) continue;
-    const text = fs.readFileSync(file, 'utf8');
+    let text: string;
+    try {
+      // existsSync + readFileSync as one guarded step: a permission error, a TOCTOU race, or
+      // SKILL.md being a directory rather than a file must not throw out of resolveSkill — it
+      // would otherwise propagate through steer()'s String.replace callback and crash the
+      // whole message rewrite. Treat any failure here as "unresolved in this root".
+      if (!fs.existsSync(file)) continue;
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
     const { fm, body } = parseFrontmatter(text);
     const description = fm.description ?? '';
     const subagentOnly =
       isFlagTrue(fm['disable-model-invocation']) ||
-      isFlagTrue(fm['subagent-only']) ||
       SUBAGENT_ONLY_MARKER.test(description);
     return { name, dir, file, description, body, subagentOnly };
   }
