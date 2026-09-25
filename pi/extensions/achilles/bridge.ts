@@ -222,7 +222,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       if (e.async) { void runHook(args); continue; }
       const run = await runHook(args);
       const d = parseDecision(run, event);
-      log('hook', { event, tool: toolName, hook: e.file, exit: run.exitCode, timedOut: run.timedOut, block: d.block, ms: run.ms, depth: process.env.ACHILLES_PI_DEPTH ?? '0' });
+      log('hook', { event, tool: toolName, hook: e.file, exit: run.exitCode, timedOut: run.timedOut, block: d.block, ms: run.ms, depth: process.env.ACHILLES_PI_DEPTH ?? '0', agentType: process.env.ACHILLES_PI_AGENT_TYPE ?? undefined });
       out.push(d);
     }
     return out;
