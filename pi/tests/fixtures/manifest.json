@@ -1,0 +1,11 @@
+[
+  { "file": "record.sh",     "event": "UserPromptSubmit", "matcher": null,        "timeout": 5 },
+  { "file": "deny.sh",       "event": "PreToolUse",       "matcher": "Bash",      "timeout": 5 },
+  { "file": "allow-text.sh", "event": "PreToolUse",       "matcher": "Write|Edit","timeout": 5 },
+  { "file": "record.sh",     "event": "PreToolUse",       "matcher": "Edit",      "timeout": 5 },
+  { "file": "exit2.sh",      "event": "PreToolUse",       "matcher": "mcp__.*",   "timeout": 5 },
+  { "file": "sleep.sh",      "event": "PreToolUse",       "matcher": "Agent",     "timeout": 1 },
+  { "file": "warn.sh",       "event": "PostToolUse",      "matcher": "Bash",      "timeout": 5 },
+  { "file": "stopblock.sh",  "event": "Stop",             "matcher": null,        "timeout": 5 },
+  { "file": "record.sh",     "event": "SubagentStop",     "matcher": null,        "timeout": 5 }
+]
