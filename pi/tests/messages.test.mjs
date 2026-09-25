@@ -21,7 +21,11 @@ test('unknown skill reference is left as-is with no hint', () => {
   assert.doesNotMatch(out, /Load it|Delegate it/);
 });
 test('schemas references resolve under the package', () => {
-  const out = steer('see schemas/workflow-reviewer.schema.json', opts);
-  assert.match(out, new RegExp(path.join(pkg, 'schemas', 'workflow-reviewer.schema.json').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  const out = steer('see schemas/subagent-returns/workflow-reviewer.schema.json', opts);
+  assert.match(out, new RegExp(path.join(pkg, 'schemas', 'subagent-returns', 'workflow-reviewer.schema.json').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+test('nonexistent schema reference is left as-is', () => {
+  const out = steer('see schemas/ghost.schema.json', opts);
+  assert.match(out, /schemas\/ghost\.schema\.json/);
 });
 test('no references → unchanged', () => { assert.equal(steer('plain', opts), 'plain'); });

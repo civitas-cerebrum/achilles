@@ -15,12 +15,14 @@ export function steer(text: string, opts: { roots: string[]; packageDir: string 
     const abs = path.join(skill.dir, rel);
     return fs.existsSync(abs) ? abs : whole;
   });
-  // Unlike skill refs, a schema ref has no lookup step to gate on (no resolveSchema), so it is
-  // rewritten unconditionally: hook texts may reference a schema by its full relative path
-  // (e.g. "schemas/subagent-returns/workflow-reviewer.schema.json", which exists under
-  // packageDir today) or by a bare filename directly under schemas/; either way the caller
-  // wants the packageDir-rooted absolute path, whether or not that exact path exists on disk.
-  out = out.replace(SCHEMA_REF, (_whole, rel: string) => path.join(opts.packageDir, 'schemas', rel));
+  // Hook texts always cite real on-disk schema paths (full relative path, e.g.
+  // "schemas/subagent-returns/workflow-reviewer.schema.json"), so gate the rewrite on existence
+  // just like skill refs — a reference to a schema that doesn't exist under packageDir is left
+  // as-is rather than turned into a misleading absolute path.
+  out = out.replace(SCHEMA_REF, (whole, rel: string) => {
+    const abs = path.join(opts.packageDir, 'schemas', rel);
+    return fs.existsSync(abs) ? abs : whole;
+  });
   if (seen.size === 0) return out;
   const hints = [...seen].map(([name, sub]) => sub
     ? `Delegate it: Agent { skill: "${name}", description: "<role-prefix>: <what>", prompt: "<brief>" } — this skill is subagent-only and must not be loaded into the orchestrator.`
