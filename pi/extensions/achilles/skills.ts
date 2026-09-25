@@ -50,8 +50,34 @@ function isFlagTrue(value: string | undefined): boolean {
  */
 const SUBAGENT_ONLY_MARKER = /^>?\s*\*{0,2}Subagent-only\b/i;
 
+const SKILL_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+/** Sorted, de-duplicated names of skills (directories holding a SKILL.md) across all roots.
+ * Mirrors resolveSkill's guarded-failure discipline: an unreadable root, a root that doesn't
+ * exist, or a root that is a regular file must not throw — they are simply skipped. */
+export function listSkills(roots: string[]): string[] {
+  const names = new Set<string>();
+  for (const root of roots) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const d of entries) {
+      if (!d.isDirectory() || !SKILL_NAME_RE.test(d.name)) continue;
+      try {
+        if (fs.existsSync(path.join(root, d.name, 'SKILL.md'))) names.add(d.name);
+      } catch {
+        continue;
+      }
+    }
+  }
+  return [...names].sort();
+}
+
 export function resolveSkill(name: string, roots: string[]): SkillInfo | undefined {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) return undefined;
+  if (!SKILL_NAME_RE.test(name)) return undefined;
   for (const root of roots) {
     const dir = path.join(root, name);
     const file = path.join(dir, 'SKILL.md');

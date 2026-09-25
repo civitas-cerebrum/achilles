@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveSkill, skillRoots } from '../extensions/achilles/skills.ts';
+import { resolveSkill, skillRoots, listSkills } from '../extensions/achilles/skills.ts';
 const fx = path.join(import.meta.dirname, 'fixtures', 'skills');
 
 test('resolves an orchestrator skill with body', () => {
@@ -40,4 +40,21 @@ test('skillRoots order', () => {
   const r = skillRoots('/h');
   assert.equal(r[0], path.join('/h', '.agents', 'skills'));
   assert.ok(r[1].endsWith(path.join('achilles', 'skills')) || r[1].endsWith('skills'));
+});
+test('listSkills: fixture root returns sorted names', () => {
+  assert.deepEqual(listSkills([fx]), ['orch-skill', 'sub-flag', 'sub-marker']);
+});
+test('listSkills: nonexistent root and a root that is a regular file are skipped without throwing', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-list-test-'));
+  const fileRoot = path.join(tmp, 'not-a-dir');
+  fs.writeFileSync(fileRoot, 'not a directory');
+  try {
+    assert.doesNotThrow(() => listSkills(['/nonexistent', fileRoot, fx]));
+    assert.deepEqual(listSkills(['/nonexistent', fileRoot, fx]), ['orch-skill', 'sub-flag', 'sub-marker']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+test('listSkills: names are de-duplicated across roots', () => {
+  assert.deepEqual(listSkills([fx, fx]), ['orch-skill', 'sub-flag', 'sub-marker']);
 });
