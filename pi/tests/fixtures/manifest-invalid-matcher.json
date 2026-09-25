@@ -1,0 +1,3 @@
+[
+  { "file": "record.sh", "event": "PreToolUse", "matcher": "(", "timeout": 5 }
+]

@@ -6,6 +6,7 @@
   { "file": "exit2.sh",      "event": "PreToolUse",       "matcher": "mcp__.*",   "timeout": 5 },
   { "file": "sleep.sh",      "event": "PreToolUse",       "matcher": "Agent",     "timeout": 1 },
   { "file": "warn.sh",       "event": "PostToolUse",      "matcher": "Bash",      "timeout": 5 },
+  { "file": "fail.sh",       "event": "PostToolUse",      "matcher": "Write",     "timeout": 5 },
   { "file": "stopblock.sh",  "event": "Stop",             "matcher": null,        "timeout": 5 },
   { "file": "record.sh",     "event": "SubagentStop",     "matcher": null,        "timeout": 5 }
 ]
