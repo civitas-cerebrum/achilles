@@ -106,7 +106,9 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
       try {
         tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'achilles-agent-'));
         const sessionDir = path.join(tmp, 'session');
-        const args = ['--mode', 'json', '-p', '--session-dir', sessionDir, '--tools', CHILD_TOOLS, '-e', EXTENSION_ENTRY];
+        // --no-skills: the child's system prompt lists only the skill it was given (--skill below), not every
+        // discovered skill; the Skill tool still resolves any achilles skill from its own roots.
+        const args = ['--mode', 'json', '-p', '--session-dir', sessionDir, '--no-skills', '--tools', CHILD_TOOLS, '-e', EXTENSION_ENTRY];
         if (ctx.isProjectTrusted()) args.push('-a');
         const model = process.env.ACHILLES_PI_SUBAGENT_MODEL ?? (ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
         if (model) args.push('--model', model);

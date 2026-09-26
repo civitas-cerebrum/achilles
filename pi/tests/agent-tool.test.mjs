@@ -62,6 +62,16 @@ test('passes ACHILLES_PROTOCOL=1 only when the parent marker exists; increments 
   const { tool: t2 } = setup();
   assert.equal(header(await run(t2, { description: 'd', prompt: 'p' })).protocol, '');
 });
+test('every child runs with --no-skills; --skill <dir> only when a skill is given', async () => {
+  const { tool } = setup();
+  const plain = header(await run(tool, { description: 'd', prompt: 'p' })).args;
+  assert.ok(plain.includes('--no-skills'));
+  assert.ok(!plain.includes('--skill'));
+  const withSkill = header(await run(tool, { description: 'd', prompt: 'p', skill: 'sub-flag' })).args;
+  assert.ok(withSkill.includes('--no-skills'));
+  assert.equal(withSkill.filter((a) => a === '--skill').length, 1);
+  assert.equal(withSkill[withSkill.indexOf('--skill') + 1], path.join(fx, 'skills', 'sub-flag'));
+});
 test('loads this extension explicitly in the child; passes -a only when the project is trusted', async () => {
   const { tool } = setup();
   const h = header(await run(tool, { description: 'd', prompt: 'p' }, { trusted: true }));
