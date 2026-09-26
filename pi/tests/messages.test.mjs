@@ -116,12 +116,23 @@ test('warning: the first archiver warning reaches the model in full (<= 1,200 ch
   assert.ok(first.length <= 1200);
   assert.equal(c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110910Z'), 'systemMessage'), '[achilles] playwright-artifact-archiver.sh: repeated warning (see earlier).');
 });
+test('warning: two different schema-guard bodies (same constant first line) both reach the model in full', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const second = SCHEMA_WARN.replace('/verdict: must be string', '/handover/next-action: required property missing');
+  assert.equal(c.note('subagent-return-schema-guard.sh', SCHEMA_WARN, 'systemMessage'), SCHEMA_WARN);
+  assert.equal(c.note('subagent-return-schema-guard.sh', second, 'systemMessage'), second);
+  assert.match(c.note('subagent-return-schema-guard.sh', second, 'systemMessage'), /repeated warning/, 'the identical body still collapses');
+  // Pruned-run ids and counts differ between archiver messages; they still count as the same warning.
+  c.note('a.sh', ARCHIVER('20260926T110721Z'), 'systemMessage');
+  assert.match(c.note('a.sh', ARCHIVER('20260926T111023Z').replace('20260926T105516Z', '20260926T110433Z'), 'systemMessage'), /repeated warning/);
+});
 test('warning: a schema-guard issue list is shown on first sight', (t) => {
   t.after(verboseOff());
   const out = createMessageCompactor().note('subagent-return-schema-guard.sh', SCHEMA_WARN, 'systemMessage');
   for (const issue of ['/handover/status: must be one of', '/checklist/2/evidence: required property missing', '/verdict: must be string']) assert.ok(out.includes(issue), issue);
 });
-test('warning: a different first line is a new key; the same hook with a new first line is shown in full', (t) => {
+test('warning: a different text is a new key; the same hook with a new first line is shown in full', (t) => {
   t.after(verboseOff());
   const c = createMessageCompactor();
   c.note('g.sh', SCHEMA_WARN, 'systemMessage');

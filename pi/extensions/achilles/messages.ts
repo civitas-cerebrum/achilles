@@ -93,9 +93,12 @@ export function referencesLine(text: string): string {
   return refs.length ? `References: ${refs.join('; ')}` : '';
 }
 
-/** Key for "the same warning again": the hook plus its first line with digit runs (run ids,
- * timestamps, counts) folded, so the archiver's per-run message counts as a repeat. */
-const warnKey = (hook: string, text: string) => `${hook}\0${firstLine(text).replace(/\d+/g, '#')}`;
+/** Key for "the same warning again": the hook plus its WHOLE text, normalised so that only per-run
+ * noise differs: `.achilles/runs/<id>` masked and digit runs (timestamps, counts) folded. Hooks such as
+ * subagent-return-schema-guard use a constant first line, so a first-line key would merge different
+ * problems; a whole-text key keeps a second, different issue list visible. */
+export const warnKey = (hook: string, text: string) =>
+  `${hook}\0${text.replace(/\.achilles\/runs\/[^\s/]+/g, '.achilles/runs/<id>').replace(/\d+/g, '#').replace(/\s+/g, ' ').trim()}`;
 
 export type NoteKind = 'systemMessage' | 'additionalContext' | 'reason';
 
