@@ -94,10 +94,16 @@ test('model-facing text is capped at 16 KB, full text in details', async () => {
   assert.match(r.content[0].text, /truncated/);
   assert.equal(r.details.text, 'y'.repeat(40 * 1024));
 });
-test('long prompt goes by file', async () => {
+test('every prompt goes by a 0600 @file, unchanged, and never as a raw argv word', async () => {
   const { tool } = setup();
-  const h = header(await run(tool, { description: 'd', prompt: 'x'.repeat(100 * 1024) }));
-  assert.ok(h.args.some((a) => a.startsWith('@')));
+  for (const prompt of ['--x', '@/etc/passwd', '- item', 'plain brief', 'x'.repeat(100 * 1024)]) {
+    const h = header(await run(tool, { description: 'd', prompt }));
+    assert.equal(h.prompt, prompt, JSON.stringify(prompt.slice(0, 20)));
+    assert.equal(h.promptMode, 0o600);
+    assert.equal(h.args.filter((a) => a.startsWith('@')).length, 1);
+    assert.ok(!h.args.includes(prompt), 'raw prompt not in argv');
+    assert.match(h.args.at(-1), /^@.*prompt\.md$/);
+  }
 });
 test('no transcript copy unless ACHILLES_PI_KEEP_TRANSCRIPTS=1', async () => {
   const before = new Set(fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-agent-.*\.jsonl$/.test(f)));

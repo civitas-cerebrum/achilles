@@ -11,7 +11,6 @@ import { log } from './log.ts';
 import { shadowPath } from './transcript.ts';
 
 const MODEL_FACING_CAP = 16 * 1024;
-const PROMPT_ARGV_CAP = 96 * 1024;
 const KILL_GRACE_MS = 5000;
 /** Like Claude Code: subagents can load skills but cannot dispatch further subagents (the depth
  * cap stays as a backstop). The allowlist applies to extension tools too. */
@@ -107,9 +106,9 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         if (model) args.push('--model', model);
         if (ctx.thinkingLevel) args.push('--thinking', ctx.thinkingLevel);
         if (skillDir) args.push('--skill', skillDir);
-        if (Buffer.byteLength(params.prompt, 'utf8') > PROMPT_ARGV_CAP) {
-          const pf = path.join(tmp, 'prompt.md'); fs.writeFileSync(pf, params.prompt, { mode: 0o600 }); args.push(`@${pf}`);
-        } else args.push(params.prompt);
+        // The prompt always goes by @file: as a raw argv word, a brief starting with "--x", "@/etc/passwd"
+        // or "- item" would be parsed by pi as a flag or a file include. The file is private (0600).
+        const pf = path.join(tmp, 'prompt.md'); fs.writeFileSync(pf, params.prompt, { mode: 0o600 }); args.push(`@${pf}`);
         log('agent_spawn', { description: params.description, agentType: type, skill: params.skill, active, depth: depth + 1 });
 
         let lastText = '', stderr = '', childSessionId = '';

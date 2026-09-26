@@ -11,6 +11,9 @@ fs.writeFileSync(path.join(sd, '2026-01-01T00-00-00-000Z_child-1.jsonl'),
     depth: process.env.ACHILLES_PI_DEPTH ?? '',
     agentType: process.env.ACHILLES_PI_AGENT_TYPE ?? '',
     args,
+    // Content and mode of the @file prompt argument, read while it still exists.
+    prompt: (() => { const a = args.find((x) => x.startsWith('@')); return a ? fs.readFileSync(a.slice(1), 'utf8') : null; })(),
+    promptMode: (() => { const a = args.find((x) => x.startsWith('@')); return a ? (fs.statSync(a.slice(1)).mode & 0o777) : null; })(),
   }) + '\n');
 if (process.env.FAKE_PI_FAIL) { console.error('boom from child'); process.exit(3); }
 console.log(JSON.stringify({ type: 'session', version: 3, id: 'child-1' }));
