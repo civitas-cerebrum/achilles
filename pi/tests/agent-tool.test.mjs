@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
-import { registerAgentTool } from '../extensions/achilles/agent-tool.ts';
+import { registerAgentTool, saveFullReturn } from '../extensions/achilles/agent-tool.ts';
 const fx = path.join(import.meta.dirname, 'fixtures');
 const child = path.join(fx, 'fake-pi-child.mjs');
 const cleanup = [];
@@ -213,4 +213,23 @@ test('a failing mkdtemp still releases the concurrency slot', async () => {
     new Promise((_, rej) => setTimeout(() => rej(new Error('slot leaked: second call never started')), 5000)),
   ]);
   assert.equal(r.content[0].text, 'child says hi');
+});
+test('saved returns are pruned to the newest 20 .md files by mtime; other files are left alone', () => {
+  const cwd = tmp();
+  const dir = path.join(cwd, '.achilles', 'pi-agent-returns');
+  fs.mkdirSync(dir, { recursive: true });
+  const base = Date.now() / 1000 - 10000;
+  for (let i = 0; i < 25; i++) { const f = path.join(dir, `old-${i}.md`); fs.writeFileSync(f, String(i)); fs.utimesSync(f, base + i, base + i); }
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'keep me'); fs.utimesSync(path.join(dir, 'notes.txt'), base - 100, base - 100);
+  fs.mkdirSync(path.join(dir, 'sub.md'));
+  const rel = saveFullReturn(cwd, 'newest', 'full text');
+  assert.equal(rel, path.join('.achilles', 'pi-agent-returns', 'newest.md'));
+  const md = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && fs.statSync(path.join(dir, f)).isFile()).sort();
+  assert.equal(md.length, 20);
+  assert.ok(md.includes('newest.md'));
+  // newest.md + the 19 most recent old files (old-6 .. old-24) survive; old-0 .. old-5 are gone.
+  for (let i = 0; i < 6; i++) assert.ok(!md.includes(`old-${i}.md`), `old-${i}`);
+  for (let i = 6; i < 25; i++) assert.ok(md.includes(`old-${i}.md`), `old-${i}`);
+  assert.ok(fs.existsSync(path.join(dir, 'notes.txt')), 'non-.md files untouched');
+  assert.ok(fs.statSync(path.join(dir, 'sub.md')).isDirectory(), 'directories untouched');
 });

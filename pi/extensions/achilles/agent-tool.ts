@@ -123,6 +123,22 @@ export function leanResult(full: string, cap = resultCap()): LeanResult {
   return { text, dropped: dropped || truncated, handover: !!h, truncated };
 }
 
+export const KEEP_RETURNS = 20;
+
+/** Keep the newest KEEP_RETURNS `.md` files in `dir` by mtime (never `justWritten`); delete the rest.
+ * Only regular `.md` files directly in `dir` are touched. Best-effort: a failure is logged, not thrown. */
+export function pruneReturns(dir: string, justWritten?: string, keep = KEEP_RETURNS): void {
+  try {
+    const files = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isFile() && d.name.endsWith('.md'))
+      .map((d) => { const p = path.join(dir, d.name); return { p, m: fs.statSync(p).mtimeMs }; })
+      .sort((x, y) => y.m - x.m || (y.p === justWritten ? 1 : x.p === justWritten ? -1 : 0));
+    for (const f of files.slice(keep)) if (f.p !== justWritten) fs.rmSync(f.p, { force: true });
+  } catch (err) {
+    log('agent_return_prune_failed', { dir, error: String(err) });
+  }
+}
+
 /** Writes the full subagent return to <cwd>/.achilles/pi-agent-returns/<id>.md (dir 0700, file 0600)
  * and returns its path relative to cwd, or undefined when it could not be written. */
 export function saveFullReturn(cwd: string, id: string, text: string): string | undefined {
@@ -133,6 +149,7 @@ export function saveFullReturn(cwd: string, id: string, text: string): string | 
     const file = path.join(dir, `${safe}.md`);
     fs.writeFileSync(file, text, { mode: 0o600 });
     fs.chmodSync(file, 0o600);
+    pruneReturns(dir, file);
     return path.relative(cwd, file) || file;
   } catch (err) {
     log('agent_return_save_failed', { cwd, id, error: String(err) });
