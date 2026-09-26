@@ -92,7 +92,6 @@ export function parseDecision(run: HookRun, event: string): Decision {
   if (hso.permissionDecision === 'deny') { d.block = true; d.reason = String(hso.permissionDecisionReason ?? 'blocked by hook'); }
   else if (hso.permissionDecision === 'ask') { d.ask = true; d.reason = String(hso.permissionDecisionReason ?? 'hook asks for confirmation'); }
   else if (j.decision === 'block') { d.block = true; d.reason = String(j.reason ?? 'blocked by hook'); }
-  else if (j.continue === false) { d.block = true; d.reason = String(j.stopReason ?? 'stopped by hook'); }
   return d;
 }
 
@@ -149,6 +148,9 @@ export function runHook(o: { bash: string; hookPath: string; payload: unknown; t
       lastResortTimer = setTimeout(() => finish(exitedCode), 100);
     }, o.timeoutMs);
 
+    // Decode as UTF-8 streams so a multi-byte character split across chunks is not mangled.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
     child.on('error', (err) => { stderr += String(err); finish(127); });
@@ -179,6 +181,11 @@ export function runHook(o: { bash: string; hookPath: string; payload: unknown; t
     child.stdin.on('error', () => {});
     child.stdin.end(payloadJson);
   });
+}
+
+/** pi invokes a skill as `/skill:<name>`; Claude's hooks expect the slash command `/<name>`. */
+export function claudePrompt(text: string): string {
+  return text.replace(/^\/skill:([a-z0-9][a-z0-9-]*)(?=\s|$)/, '/$1');
 }
 
 function which(bin: string): boolean {
@@ -221,7 +228,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   async function runEvent(event: string, payload: Rec, toolName?: string, ctx?: ExtensionContext): Promise<Decision[]> {
     if (!enabled) return [];
-    const depth = Number(process.env.ACHILLES_PI_DEPTH ?? '0');
+    const depth = piDepth();
     const sessionId = ctx?.sessionManager.getSessionId();
     const common: Rec = {
       hook_event_name: event,
@@ -248,7 +255,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       if (e.async) { void runHook(args); continue; }
       const run = await runHook(args);
       const d = parseDecision(run, event);
-      log('hook', { event, tool: toolName, hook: e.file, exit: run.exitCode, timedOut: run.timedOut, block: d.block, ms: run.ms, depth: process.env.ACHILLES_PI_DEPTH ?? '0', agentType: process.env.ACHILLES_PI_AGENT_TYPE ?? undefined });
+      log('hook', { event, tool: toolName, hook: e.file, exit: run.exitCode, timedOut: run.timedOut, block: d.block, ms: run.ms, depth: String(piDepth()), agentType: process.env.ACHILLES_PI_AGENT_TYPE ?? undefined });
       out.push(d);
     }
     return out;
@@ -284,7 +291,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   pi.on('input', async (event, ctx) => guarded('input', ctx, undefined, async () => {
     stopHookActive = false;
     record(ctx, userPromptEntry(event.text));
-    const ds = await runEvent('UserPromptSubmit', { prompt: event.text }, undefined, ctx);
+    const ds = await runEvent('UserPromptSubmit', { prompt: claudePrompt(event.text) }, undefined, ctx);
     for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
     return undefined;
   }));

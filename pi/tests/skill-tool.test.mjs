@@ -36,3 +36,11 @@ test('inside a subagent (depth >= 1) a subagent-only skill returns its body', as
   assert.match(r.content[0].text, /<skill name="sub-flag"/); assert.match(r.content[0].text, /Secret body/);
   assert.equal(r.details.refused, undefined);
 });
+
+test('NaN ACHILLES_PI_DEPTH counts as the orchestrator: subagent-only is refused', async () => {
+  const prev = process.env.ACHILLES_PI_DEPTH; process.env.ACHILLES_PI_DEPTH = 'NaN';
+  try {
+    const r = await tool().execute('s', { skill: 'sub-flag' });
+    assert.equal(r.details.refused, true);
+  } finally { if (prev === undefined) delete process.env.ACHILLES_PI_DEPTH; else process.env.ACHILLES_PI_DEPTH = prev; }
+});

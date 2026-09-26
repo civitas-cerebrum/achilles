@@ -8,6 +8,7 @@ import { Type } from 'typebox';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { resolveSkill } from './skills.ts';
 import { log } from './log.ts';
+import { piDepth } from './env.ts';
 import { shadowPath } from './transcript.ts';
 
 const MODEL_FACING_CAP = 16 * 1024;
@@ -79,7 +80,7 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
       skill: Type.Optional(Type.String({ description: 'achilles skill to advertise in the subagent' })),
     }),
     async execute(_id, params, signal, onUpdate, ctx: ExtensionContext) {
-      const depth = Number(process.env.ACHILLES_PI_DEPTH ?? '0');
+      const depth = piDepth();
       if (depth >= maxDepth) throw new Error(`Agent nesting cap (${maxDepth}) reached; do this work inline instead of dispatching another subagent.`);
       let skillDir: string | undefined;
       if (params.skill) {
@@ -97,8 +98,9 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
       };
 
       await acquire();
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'achilles-agent-'));
+      let tmp: string | undefined;
       try {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'achilles-agent-'));
         const sessionDir = path.join(tmp, 'session');
         const args = ['--mode', 'json', '-p', '--session-dir', sessionDir, '--tools', CHILD_TOOLS, '-e', EXTENSION_ENTRY];
         if (ctx.isProjectTrusted()) args.push('-a');
@@ -134,6 +136,8 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
             killTimer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, KILL_GRACE_MS);
             killTimer.unref();
           };
+          child.stdout.setEncoding('utf8');
+          child.stderr.setEncoding('utf8');
           child.stdout.on('data', (d) => { buf += d; const parts = buf.split('\n'); buf = parts.pop() ?? ''; parts.forEach(line); });
           child.stderr.on('data', (d) => { stderr += d; });
           child.on('error', (e) => { stderr += String(e); resolve(127); });
@@ -154,10 +158,17 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         if (exitCode !== 0 || !lastText) throw new Error(`Subagent "${params.description}" failed (exit ${exitCode}): ${stderr.trim().slice(-2000) || 'no output'}`);
         // Opt-in copy of the transcript for details/debugging (the temp dir is removed in finally).
         let transcriptCopy: string | undefined;
-        if (transcript && process.env.ACHILLES_PI_KEEP_TRANSCRIPTS === '1') { transcriptCopy = path.join(os.tmpdir(), `achilles-agent-${childSessionId || 'child'}-${Date.now()}.jsonl`); fs.copyFileSync(transcript, transcriptCopy); }
+        if (transcript && process.env.ACHILLES_PI_KEEP_TRANSCRIPTS === '1') {
+          // A private dir of its own (not a guessable name in the shared /tmp) and a 0600 file.
+          const keepDir = fs.mkdtempSync(path.join(os.tmpdir(), 'achilles-transcript-'));
+          transcriptCopy = path.join(keepDir, `${childSessionId || 'child'}.jsonl`);
+          fs.copyFileSync(transcript, transcriptCopy);
+          fs.chmodSync(transcriptCopy, 0o600);
+        }
         return { content: [{ type: 'text', text: cap(lastText) }], details: { description: params.description, exitCode, childSessionId, text: lastText, shadowTranscript: childShadow, transcriptCopy } };
       } finally {
-        fs.rmSync(tmp, { recursive: true, force: true });
+        // release() must run even when mkdtemp or the cleanup itself throws, or the slot leaks.
+        try { if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); } catch (err) { log('agent_cleanup_failed', { tmp, error: String(err) }); }
         release();
       }
     },

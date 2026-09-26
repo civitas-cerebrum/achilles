@@ -2,6 +2,7 @@ import { Type } from 'typebox';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { resolveSkill, listSkills } from './skills.ts';
 import { log } from './log.ts';
+import { piDepth } from './env.ts';
 
 export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): void {
   pi.registerTool({
@@ -18,7 +19,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       if (!s) throw new Error(`Unknown skill "${params.skill}". Known skills: ${listSkills(opts.roots).join(', ')}`);
       // Only the orchestrator (depth 0) is refused a subagent-only skill; inside a subagent it is
       // exactly the skill the child was dispatched to load (e.g. workflow-reviewer).
-      const refuse = s.subagentOnly && Number(process.env.ACHILLES_PI_DEPTH ?? '0') === 0;
+      const refuse = s.subagentOnly && piDepth() === 0;
       log('skill', { skill: s.name, refused: refuse });
       if (refuse) {
         return {

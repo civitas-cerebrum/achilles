@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
-import { compileMatcher, parseDecision, resolveHooksDir, runHook, createBridge } from '../extensions/achilles/bridge.ts';
+import { compileMatcher, parseDecision, resolveHooksDir, runHook, createBridge, claudePrompt } from '../extensions/achilles/bridge.ts';
 
 const fx = path.join(import.meta.dirname, 'fixtures');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-'));
@@ -401,4 +401,32 @@ test('tool_result for Agent: tool_response is built from details.text (20 KB), n
   fs.rmSync(rec);
   await pi.fire('tool_result', { type: 'tool_result', toolCallId: 'ag2', toolName: 'Agent', input: {}, content: [{ type: 'text', text: 'short' }], details: undefined, isError: false }, ctx);
   assert.equal(JSON.parse(fs.readFileSync(rec, 'utf8').trim()).tool_response.output, 'short');
+});
+
+// --- folded minors --------------------------------------------------------------------------
+test('parseDecision: continue:false is not a block (only deny / decision:block / exit 2 are)', () => {
+  const d = parseDecision({ file: 'h.sh', exitCode: 0, stdout: '{"continue":false,"stopReason":"halt"}', stderr: '', timedOut: false, ms: 1 }, 'PreToolUse');
+  assert.equal(d.block, false);
+});
+test('UserPromptSubmit: a leading /skill:<name> becomes /<name>; other prompts are untouched', async (t) => {
+  assert.equal(claudePrompt('/skill:onboarding go'), '/onboarding go');
+  assert.equal(claudePrompt('/skill:onboarding'), '/onboarding');
+  assert.equal(claudePrompt('run /skill:onboarding later'), 'run /skill:onboarding later');
+  assert.equal(claudePrompt('/skill:Bad_Name x'), '/skill:Bad_Name x');
+  const rec = recordFile(t);
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  await pi.fire('input', { type: 'input', text: '/skill:journey-mapping map the app', source: 'interactive' }, ctx);
+  assert.equal(JSON.parse(fs.readFileSync(rec, 'utf8').trim()).prompt, '/journey-mapping map the app');
+});
+test('runHook decodes stdout as UTF-8 across chunk boundaries', async () => {
+  const r = await runHook({ bash: 'bash', hookPath: path.join(fx, 'hooks', 'utf8.sh'), payload: {}, timeoutMs: 10000, cwd: os.tmpdir(), env: process.env });
+  assert.equal(r.exitCode, 0);
+  assert.equal(r.stdout, '€'.repeat(150000));
+});
+test('NaN ACHILLES_PI_DEPTH is depth 0: no agent_id', async (t) => {
+  const rec = recordFile(t);
+  withEnv(t, 'ACHILLES_PI_DEPTH', 'banana');
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'n1', toolName: 'edit', input: { path: 'a.md', edits: [{ oldText: 'o', newText: 'n' }] } }, ctx);
+  assert.equal('agent_id' in JSON.parse(fs.readFileSync(rec, 'utf8').trim()), false);
 });

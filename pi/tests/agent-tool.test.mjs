@@ -29,7 +29,7 @@ function setup(over = {}) {
 async function run(tool, params, ctxOver = {}, { keep = true } = {}) {
   const r = await withEnv({ ACHILLES_PROTOCOL: undefined, ACHILLES_PI_DEPTH: undefined, ACHILLES_PI_AGENT_TYPE: undefined, ACHILLES_PI_KEEP_TRANSCRIPTS: keep ? '1' : undefined },
     () => tool.execute('a', params, undefined, undefined, makeFakeCtx(ctxOver)));
-  if (r.details.transcriptCopy) cleanup.push(r.details.transcriptCopy);
+  if (r.details.transcriptCopy) cleanup.push(path.dirname(r.details.transcriptCopy));
   return r;
 }
 const header = (r) => JSON.parse(fs.readFileSync(r.details.transcriptCopy, 'utf8').split('\n')[0]);
@@ -106,10 +106,40 @@ test('every prompt goes by a 0600 @file, unchanged, and never as a raw argv word
   }
 });
 test('no transcript copy unless ACHILLES_PI_KEEP_TRANSCRIPTS=1', async () => {
-  const before = new Set(fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-agent-.*\.jsonl$/.test(f)));
+  const before = new Set(fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-transcript-/.test(f)));
   const { tool } = setup();
   const r = await run(tool, { description: 'd', prompt: 'p' }, {}, { keep: false });
   assert.equal(r.details.transcriptCopy, undefined);
-  const created = fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-agent-.*\.jsonl$/.test(f) && !before.has(f));
+  const created = fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-transcript-/.test(f) && !before.has(f));
   assert.deepEqual(created, []);
+});
+test('the kept transcript copy lives in its own mkdtemp dir with mode 0600', async () => {
+  const { tool } = setup();
+  const r = await run(tool, { description: 'd', prompt: 'p' });
+  assert.match(path.basename(path.dirname(r.details.transcriptCopy)), /^achilles-transcript-/);
+  assert.equal(path.dirname(path.dirname(r.details.transcriptCopy)), os.tmpdir());
+  assert.equal(fs.statSync(r.details.transcriptCopy).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(path.dirname(r.details.transcriptCopy)).mode & 0o777, 0o700);
+});
+test('child stdout is decoded as UTF-8 across chunk boundaries', async () => {
+  const { tool } = setup();
+  const r = await withEnv({ FAKE_PI_UTF8: '1' }, () => run(tool, { description: 'd', prompt: 'p' }, {}, { keep: false }));
+  assert.equal(r.details.text, '€'.repeat(150000));
+});
+test('NaN ACHILLES_PI_DEPTH counts as 0: the child gets depth 1', async () => {
+  const { tool } = setup();
+  const r = await withEnv({ ACHILLES_PI_KEEP_TRANSCRIPTS: '1', ACHILLES_PI_DEPTH: 'banana', ACHILLES_PROTOCOL: undefined },
+    () => tool.execute('a', { description: 'd', prompt: 'p' }, undefined, undefined, makeFakeCtx()));
+  cleanup.push(path.dirname(r.details.transcriptCopy));
+  assert.equal(header(r).depth, '1');
+});
+test('a failing mkdtemp still releases the concurrency slot', async () => {
+  const { tool } = setup({ maxConcurrent: 1 });
+  await withEnv({ TMPDIR: '/nonexistent/achilles-no-such-dir' }, () =>
+    assert.rejects(() => tool.execute('a', { description: 'd', prompt: 'p' }, undefined, undefined, makeFakeCtx()), /ENOENT/));
+  const r = await Promise.race([
+    run(tool, { description: 'd', prompt: 'p' }, {}, { keep: false }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('slot leaked: second call never started')), 5000)),
+  ]);
+  assert.equal(r.content[0].text, 'child says hi');
 });
