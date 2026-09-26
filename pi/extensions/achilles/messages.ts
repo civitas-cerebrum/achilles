@@ -102,14 +102,19 @@ export const warnKey = (hook: string, text: string) =>
 
 const FIX_CAP = 300;
 
-/** The deny's own fix: a "Fix:" / "Fix (…):" / "Do this instead:" line and the lines under it, up to
- * the next blank line, joined onto one line and capped at 300 chars; "" when there is none. */
+/** The deny's own fix: a "Fix:" / "Fix (…):" / "Do this instead:" / "Do this instead — <what>:" line
+ * and the lines under it, up to the next blank line (box-drawing separator lines skipped), joined onto
+ * one line and capped at 300 chars; "" when there is none. */
 export function fixLines(text: string): string {
   const lines = text.split(/\r?\n/);
-  const i = lines.findIndex((l) => /^\s*(?:Fix\b[^:]{0,30}|Do this instead):/i.test(l));
+  const i = lines.findIndex((l) => /^\s*(?:Fix\b[^:\n]{0,30}|Do this instead\b[^:\n]{0,80}):/i.test(l));
   if (i < 0) return '';
   const block: string[] = [];
-  for (const l of lines.slice(i)) { if (!l.trim()) break; block.push(l.trim()); }
+  for (const l of lines.slice(i)) {
+    if (!l.trim()) break;
+    if (/^[\s─━═—-]+$/.test(l)) continue; // a "────" rule under the heading
+    block.push(l.trim().replace(/\s+/g, ' '));
+  }
   return clipTo(block.join(' '), FIX_CAP);
 }
 

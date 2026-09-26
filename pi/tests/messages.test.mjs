@@ -79,6 +79,8 @@ test('commit-message-gate citation of a subagent-only SKILL.md §section yields 
 
 // ── compaction (createMessageCompactor) ──
 import fs from 'node:fs';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { createMessageCompactor, SCOPE_POINTER, firstLine, referencesLine, fixLines } from '../extensions/achilles/messages.ts';
 const activation = fs.readFileSync(path.join(pkg, 'hooks', 'lib', 'achilles-activation.sh'), 'utf8');
 const NOTICE = activation.slice(activation.indexOf("'── achilles session-scope") + 1, activation.indexOf("not yours.)'") + 'not yours.)'.length);
@@ -198,4 +200,23 @@ test('repeat line: carries the Fix block (<= 300 chars), no doubled period, and 
   assert.ok(fixLines(long).length <= 300);
   c.deny('n.sh', '[BLOCKED] no fix here.');
   assert.equal(c.deny('n.sh', '[BLOCKED] no fix here.'), '[achilles] n.sh: same block as before — [BLOCKED] no fix here. Apply the fix from the earlier message.');
+});
+test('fixLines: the real compliance-sweep-exit-gate "Do this instead — <what>:" heading is found (hook run on a crafted blocking Stop payload)', (t) => {
+  t.after(verboseOff());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csg-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // A transcript with a spec Write and no compliance sweep after it: the gate blocks (exit 2, stderr).
+  fs.writeFileSync(path.join(dir, 't.jsonl'), JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'w1', name: 'Write', input: { file_path: path.join(dir, 'a.spec.ts'), content: 'x' } }] } }) + '\n');
+  const payload = { hook_event_name: 'Stop', session_id: 's1', transcript_path: path.join(dir, 't.jsonl'), cwd: dir, stop_hook_active: false };
+  const r = spawnSync('bash', [path.join(pkg, 'hooks', 'compliance-sweep-exit-gate.sh')], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ACHILLES_PROTOCOL: '1', ACHILLES_SESSION_STATE_DIR: path.join(dir, 'state') } });
+  assert.equal(r.status, 2, r.stderr);
+  const reason = r.stderr.trim();
+  assert.match(reason, /^Do this instead — run the sweep now, then stop:$/m);
+  const fix = fixLines(reason);
+  assert.match(fix, /^Do this instead — run the sweep now, then stop: 1\. Read skills\/achilles-protocol\/references\/api-reference\.md/);
+  assert.doesNotMatch(fix, /──/);
+  assert.ok(fix.length <= 300);
+  const c = createMessageCompactor();
+  c.deny('compliance-sweep-exit-gate.sh', reason);
+  assert.match(c.deny('compliance-sweep-exit-gate.sh', reason), /^\[achilles\] compliance-sweep-exit-gate\.sh: same block as before — \[BLOCKED\] Test code changed in this session, but the Stage-4b compliance sweep never ran\. Do this instead — run the sweep now, then stop: 1\. Read /);
 });
