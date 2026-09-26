@@ -28,7 +28,7 @@ function setup(over = {}) {
 /** Runs the tool with a clean achilles env; keeps the transcript copy (so tests can read the child header) unless keep=false. */
 async function run(tool, params, ctxOver = {}, { keep = true } = {}) {
   const r = await withEnv({ ACHILLES_PROTOCOL: undefined, ACHILLES_PI_DEPTH: undefined, ACHILLES_PI_AGENT_TYPE: undefined, ACHILLES_PI_KEEP_TRANSCRIPTS: keep ? '1' : undefined },
-    () => tool.execute('a', params, undefined, undefined, makeFakeCtx(ctxOver)));
+    () => tool.execute('a', params, undefined, undefined, makeFakeCtx({ cwd: tmp(), ...ctxOver })));
   if (r.details.transcriptCopy) cleanup.push(path.dirname(r.details.transcriptCopy));
   return r;
 }
@@ -102,12 +102,68 @@ test('depth cap', async () => {
   await withEnv({ ACHILLES_PI_DEPTH: '2' }, () =>
     assert.rejects(() => setup().tool.execute('a5', { description: 'd', prompt: 'p' }, undefined, undefined, makeFakeCtx()), /nesting/));
 });
-test('model-facing text is capped at 16 KB, full text in details', async () => {
+test('model-facing text is capped at 8 KB with a pointer to the full return; details.text is full', async () => {
+  const cwd = tmp();
   const { tool } = setup();
-  const r = await withEnv({ FAKE_PI_LONG: '1' }, () => run(tool, { description: 'd', prompt: 'p' }));
-  assert.ok(r.content[0].text.length <= 16 * 1024 + 200);
-  assert.match(r.content[0].text, /truncated/);
+  const r = await withEnv({ FAKE_PI_LONG: '1', ACHILLES_PI_AGENT_RESULT_CAP: undefined, ACHILLES_PI_VERBOSE: undefined }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+  const [body, pointer] = r.content[0].text.split('\n');
+  assert.equal(body, 'y'.repeat(8192));
+  assert.equal(pointer, `[achilles] full subagent return: ${path.join('.achilles', 'pi-agent-returns', 'child-1.md')}`);
   assert.equal(r.details.text, 'y'.repeat(40 * 1024));
+  const file = path.join(cwd, '.achilles', 'pi-agent-returns', 'child-1.md');
+  assert.equal(fs.readFileSync(file, 'utf8'), 'y'.repeat(40 * 1024));
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700);
+});
+test('ACHILLES_PI_AGENT_RESULT_CAP sets the cap in bytes', async () => {
+  const cwd = tmp();
+  const { tool } = setup();
+  const r = await withEnv({ FAKE_PI_LONG: '1', ACHILLES_PI_AGENT_RESULT_CAP: '1000' }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+  assert.equal(r.content[0].text.split('\n')[0], 'y'.repeat(1000));
+});
+const HANDOVER = { handover: { role: 'workflow-reviewer-phase2', status: 'approved', 'next-action': 'advance' }, verdict: 'approve', checklist: [{ item: 'a {b} "c"', ok: true }] };
+const pretty = JSON.stringify(HANDOVER, null, 2);
+for (const [label, text] of [
+  ['prose before the JSON', `Ledger verified. The review is complete; final return (conforming to {schema}):\n\n${pretty}`],
+  ['a ```json fence after prose', `All evidence is in.\n\n\`\`\`json\n${pretty}\n\`\`\`\n\nDone.`],
+]) {
+  test(`the handover JSON is extracted from ${label}, compact, with the full return saved`, async () => {
+    const cwd = tmp();
+    const { tool } = setup();
+    const r = await withEnv({ FAKE_PI_TEXT: text }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+    const [json, pointer, ...rest] = r.content[0].text.split('\n');
+    assert.equal(json, JSON.stringify(HANDOVER));
+    assert.deepEqual(rest, []);
+    assert.match(pointer, /^\[achilles\] full subagent return: \.achilles\/pi-agent-returns\/child-1\.md$/);
+    assert.equal(fs.readFileSync(path.join(cwd, pointer.split(': ')[1]), 'utf8'), text);
+    assert.equal(r.details.text, text);
+  });
+}
+test('a bare handover JSON is only re-serialised compactly: nothing dropped, no file, no pointer', async () => {
+  const cwd = tmp();
+  const { tool } = setup();
+  const r = await withEnv({ FAKE_PI_TEXT: `\n\n${pretty}\n` }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+  assert.equal(r.content[0].text, JSON.stringify(HANDOVER));
+  assert.ok(!fs.existsSync(path.join(cwd, '.achilles')));
+});
+test('text without a handover object passes through unchanged when under the cap', async () => {
+  const cwd = tmp();
+  const { tool } = setup();
+  const text = 'Found {"x": 1} and {"y": {"handover": "nested, not top-level"}}.';
+  const r = await withEnv({ FAKE_PI_TEXT: text }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+  assert.equal(r.content[0].text, text);
+  assert.ok(!fs.existsSync(path.join(cwd, '.achilles')));
+});
+test('ACHILLES_PI_VERBOSE=1 bypasses extraction and the 8 KB cap (legacy 16 KB cap only)', async () => {
+  const cwd = tmp();
+  const { tool } = setup();
+  const text = `Prose first.\n${pretty}`;
+  const r = await withEnv({ FAKE_PI_TEXT: text, ACHILLES_PI_VERBOSE: '1' }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+  assert.equal(r.content[0].text, text);
+  const long = await withEnv({ FAKE_PI_LONG: '1', ACHILLES_PI_VERBOSE: '1' }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+  assert.ok(long.content[0].text.startsWith('y'.repeat(16 * 1024)));
+  assert.match(long.content[0].text, /truncated/);
+  assert.ok(!fs.existsSync(path.join(cwd, '.achilles')));
 });
 test('every prompt goes by a 0600 @file, unchanged, and never as a raw argv word', async () => {
   const { tool } = setup();

@@ -11,7 +11,8 @@ import { log } from './log.ts';
 import { piDepth } from './env.ts';
 import { shadowPath } from './transcript.ts';
 
-const MODEL_FACING_CAP = 16 * 1024;
+const LEGACY_CAP = 16 * 1024;
+const DEFAULT_RESULT_CAP = 8192;
 const KILL_GRACE_MS = 5000;
 /** Like Claude Code: subagents can load skills but cannot dispatch further subagents (the depth
  * cap stays as a backstop). The allowlist applies to extension tools too. */
@@ -51,11 +52,101 @@ export function agentType(params: { description: string; subagent_type?: string 
   return (i >= 0 ? params.description.slice(0, i) : params.description).trim();
 }
 
-function cap(text: string): string {
-  if (Buffer.byteLength(text, 'utf8') <= MODEL_FACING_CAP) return text;
-  let t = text.slice(0, MODEL_FACING_CAP);
-  while (Buffer.byteLength(t, 'utf8') > MODEL_FACING_CAP) t = t.slice(0, -1);
-  return `${t}\n\n[achilles: output truncated for context; full text kept in tool details]`;
+/** The legacy model-facing cap, kept for ACHILLES_PI_VERBOSE=1 (the pre-compaction behaviour). */
+function legacyCap(text: string): string {
+  if (Buffer.byteLength(text, 'utf8') <= LEGACY_CAP) return text;
+  return `${truncateBytes(text, LEGACY_CAP)}\n\n[achilles: output truncated for context; full text kept in tool details]`;
+}
+
+function truncateBytes(text: string, max: number): string {
+  if (Buffer.byteLength(text, 'utf8') <= max) return text;
+  // Slice by bytes and drop a trailing partial UTF-8 sequence (decoded as U+FFFD).
+  return Buffer.from(text, 'utf8').subarray(0, max).toString('utf8').replace(/\uFFFD+$/, '');
+}
+
+/** ACHILLES_PI_AGENT_RESULT_CAP (bytes), default 8192; unparseable or non-positive values use the default. */
+export function resultCap(): number {
+  const n = Number(process.env.ACHILLES_PI_AGENT_RESULT_CAP);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_RESULT_CAP;
+}
+
+export const verbose = (): boolean => process.env.ACHILLES_PI_VERBOSE === '1';
+
+/** End index (exclusive) of the balanced JSON object starting at `start`, string-aware, or -1. */
+function objectEnd(text: string, start: number): number {
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
+/** The last JSON object in `text` with a top-level `handover` key (bare, fenced in ```json, or after
+ * prose), with its source span; undefined when there is none. */
+export function extractHandover(text: string): { obj: Record<string, unknown>; start: number; end: number } | undefined {
+  let found: { obj: Record<string, unknown>; start: number; end: number } | undefined;
+  let i = text.indexOf('{');
+  for (let tries = 0; i >= 0 && tries < 500; tries++) {
+    const end = objectEnd(text, i);
+    let obj: unknown;
+    // An unbalanced "{" in prose never closes from here, but a later one still may: try the next.
+    if (end > 0) { try { obj = JSON.parse(text.slice(i, end)); } catch { obj = undefined; } }
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      if (Object.prototype.hasOwnProperty.call(obj, 'handover')) found = { obj: obj as Record<string, unknown>, start: i, end };
+      i = text.indexOf('{', end); // a parsed object's nested objects are not top-level candidates
+    } else {
+      i = text.indexOf('{', i + 1);
+    }
+  }
+  return found;
+}
+
+export interface LeanResult { text: string; dropped: boolean; handover: boolean; truncated: boolean }
+
+/** The model-facing form of a subagent's final text: the handover JSON alone (compact) when there is
+ * one, capped at `cap` bytes. `dropped` says whether anything beyond whitespace was left out. */
+export function leanResult(full: string, cap = resultCap()): LeanResult {
+  const h = extractHandover(full);
+  let text = full;
+  let dropped = false;
+  if (h) {
+    text = JSON.stringify(h.obj);
+    // Only whitespace around the object (and the object's own formatting) is not a loss.
+    dropped = (full.slice(0, h.start) + full.slice(h.end)).trim() !== '';
+  }
+  const truncated = Buffer.byteLength(text, 'utf8') > cap;
+  if (truncated) text = truncateBytes(text, cap);
+  return { text, dropped: dropped || truncated, handover: !!h, truncated };
+}
+
+/** Writes the full subagent return to <cwd>/.achilles/pi-agent-returns/<id>.md (dir 0700, file 0600)
+ * and returns its path relative to cwd, or undefined when it could not be written. */
+export function saveFullReturn(cwd: string, id: string, text: string): string | undefined {
+  try {
+    const dir = path.join(cwd, '.achilles', 'pi-agent-returns');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const safe = id.replace(/[^A-Za-z0-9._-]/g, '_') || `child-${Date.now()}`;
+    const file = path.join(dir, `${safe}.md`);
+    fs.writeFileSync(file, text, { mode: 0o600 });
+    fs.chmodSync(file, 0o600);
+    return path.relative(cwd, file) || file;
+  } catch (err) {
+    log('agent_return_save_failed', { cwd, id, error: String(err) });
+    return undefined;
+  }
+}
+
+/** Model-facing content for a subagent return (see leanResult); verbose mode keeps the old behaviour. */
+export function modelFacing(full: string, cwd: string, childSessionId: string): string {
+  if (verbose()) return legacyCap(full);
+  const lean = leanResult(full);
+  if (!lean.dropped) return lean.text;
+  const rel = saveFullReturn(cwd, childSessionId || `child-${process.pid}-${Date.now()}`, full);
+  return rel ? `${lean.text}\n[achilles] full subagent return: ${rel}` : `${lean.text}\n[achilles] subagent return shortened for context; the full text is in the tool details.`;
 }
 
 export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): void {
@@ -171,7 +262,7 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
           fs.copyFileSync(transcript, transcriptCopy);
           fs.chmodSync(transcriptCopy, 0o600);
         }
-        return { content: [{ type: 'text', text: cap(lastText) }], details: { description: params.description, exitCode, childSessionId, text: lastText, shadowTranscript: childShadow, transcriptCopy } };
+        return { content: [{ type: 'text', text: modelFacing(lastText, ctx.cwd, childSessionId) }], details: { description: params.description, exitCode, childSessionId, text: lastText, shadowTranscript: childShadow, transcriptCopy } };
       } finally {
         // release() must run even when mkdtemp or the cleanup itself throws, or the slot leaks.
         try { if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); } catch (err) { log('agent_cleanup_failed', { tmp, error: String(err) }); }
