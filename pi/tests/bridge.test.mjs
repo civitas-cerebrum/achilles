@@ -750,7 +750,7 @@ test('compaction: first deny carries the scope notice, the next only the pointer
   assert.match(r2.reason, /session-scope notice applies — see the first block this session/);
   const r3 = await pi.fire('tool_call', findCall('f3'), ctx);
   assert.equal(r3.block, true);
-  assert.equal(r3.reason, '[achilles] scopedeny.sh: same block as before — [BLOCKED] second block. Apply the fix from the earlier message.');
+  assert.equal(r3.reason, '[achilles] scopedeny.sh: same block as before — [BLOCKED] second block. Fix: do the other thing.');
   await pi.fire('session_start', { type: 'session_start', reason: 'new' }, ctx);
   const r4 = await pi.fire('tool_call', findCall('f4'), ctx);
   assert.match(r4.reason, /These guardrails are bound/);
@@ -778,5 +778,18 @@ test('compaction: ACHILLES_PI_VERBOSE=1 keeps full hook text for the model', asy
   for (const id of ['v1', 'v2']) {
     assert.match((await pi.fire('tool_call', findCall(id), ctx)).reason, /These guardrails are bound/);
     assert.match(modelText(await pi.fire('tool_result', findResult(id), ctx)), /Pruned 1 older run/);
+  }
+});
+test('compaction: dedupe resets after session_compact and session_tree (the earlier full text may be gone)', async (t) => {
+  withEnv(t, 'ACHILLES_PI_VERBOSE', undefined);
+  withEnv(t, 'SCOPEDENY_LINE', 'compact me');
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  for (const ev of [{ type: 'session_compact', compactionEntry: {}, fromExtension: false }, { type: 'session_tree', newLeafId: 'b', oldLeafId: 'a' }]) {
+    await pi.fire('tool_call', findCall('c1'), ctx);
+    assert.match((await pi.fire('tool_call', findCall('c2'), ctx)).reason, /same block as before/);
+    await pi.fire(ev.type, ev, ctx);
+    const after = (await pi.fire('tool_call', findCall('c3'), ctx)).reason;
+    assert.match(after, /These guardrails are bound/, `${ev.type}: full text again`);
+    assert.doesNotMatch(after, /same block as before/);
   }
 });

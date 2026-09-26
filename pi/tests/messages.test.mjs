@@ -79,7 +79,7 @@ test('commit-message-gate citation of a subagent-only SKILL.md §section yields 
 
 // ── compaction (createMessageCompactor) ──
 import fs from 'node:fs';
-import { createMessageCompactor, SCOPE_POINTER, firstLine, referencesLine } from '../extensions/achilles/messages.ts';
+import { createMessageCompactor, SCOPE_POINTER, firstLine, referencesLine, fixLines } from '../extensions/achilles/messages.ts';
 const activation = fs.readFileSync(path.join(pkg, 'hooks', 'lib', 'achilles-activation.sh'), 'utf8');
 const NOTICE = activation.slice(activation.indexOf("'── achilles session-scope") + 1, activation.indexOf("not yours.)'") + 'not yours.)'.length);
 const deny = (line) => `[BLOCKED] ${line}\n\nFix: do the other thing.\n\nReferences:\n  skills/orch-skill/SKILL.md\n\n${NOTICE}`;
@@ -101,7 +101,7 @@ test('deny dedupe: an identical repeat collapses to one line; a new body under t
   t.after(verboseOff());
   const c = createMessageCompactor();
   c.deny('guard.sh', deny('same'));
-  assert.equal(c.deny('guard.sh', deny('same')), '[achilles] guard.sh: same block as before — [BLOCKED] same. Apply the fix from the earlier message.');
+  assert.equal(c.deny('guard.sh', deny('same')), '[achilles] guard.sh: same block as before — [BLOCKED] same. Fix: do the other thing.');
   assert.match(c.deny('other.sh', deny('same')), /Fix: do the other thing/, 'another hook is not a repeat');
   const changed = deny('same').replace('do the other thing', 'fix field runMode');
   assert.match(c.deny('guard.sh', changed), /fix field runMode/);
@@ -180,4 +180,21 @@ test('ACHILLES_PI_VERBOSE=1 passes every text through unchanged', (t) => {
     assert.equal(c.deny('g.sh', deny('x')), deny('x'));
     assert.equal(c.note('a.sh', ARCHIVER('R1'), 'systemMessage'), ARCHIVER('R1'));
   }
+});
+test('repeat line: carries the Fix block (<= 300 chars), no doubled period, and falls back without one', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const real = `[BLOCKED] Subagent return failed validation.\n\nFix:\n  - To change the artifact: use the Write or Edit tool on the file.\n  - To read it: drop the write-shaped construct.\n\nReferences:\n  skills/orch-skill/SKILL.md\n\n${NOTICE}`;
+  c.deny('g.sh', real);
+  const rep = c.deny('g.sh', real);
+  assert.equal(rep, '[achilles] g.sh: same block as before — [BLOCKED] Subagent return failed validation. Fix: - To change the artifact: use the Write or Edit tool on the file. - To read it: drop the write-shaped construct.');
+  assert.doesNotMatch(rep, /\.\./);
+  const instead = '[BLOCKED] no.\n\nDo this instead:\n  run the gate first\n\nmore';
+  c.deny('h.sh', instead);
+  assert.match(c.deny('h.sh', instead), /— \[BLOCKED\] no\. Do this instead: run the gate first$/);
+  const long = `[BLOCKED] x.\n\nFix: ${'y'.repeat(600)}`;
+  c.deny('l.sh', long);
+  assert.ok(fixLines(long).length <= 300);
+  c.deny('n.sh', '[BLOCKED] no fix here.');
+  assert.equal(c.deny('n.sh', '[BLOCKED] no fix here.'), '[achilles] n.sh: same block as before — [BLOCKED] no fix here. Apply the fix from the earlier message.');
 });

@@ -329,6 +329,11 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     log('bridge_ready', { hooksDir, hooks: manifest.length });
   }));
 
+  // pi's compaction (and moving within the session tree) can drop the earlier full message a dedupe
+  // pointer refers to, so the dedupe state starts over there too.
+  pi.on('session_compact', async (_event, ctx) => guarded('session_compact', ctx, undefined, async () => { compact.reset(); return undefined; }));
+  pi.on('session_tree', async (_event, ctx) => guarded('session_tree', ctx, undefined, async () => { compact.reset(); return undefined; }));
+
   pi.on('input', async (event, ctx) => guarded('input', ctx, undefined, async () => {
     stopHookActive = false;
     record(ctx, userPromptEntry(event.text));

@@ -100,6 +100,27 @@ export function referencesLine(text: string): string {
 export const warnKey = (hook: string, text: string) =>
   `${hook}\0${text.replace(/\.achilles\/runs\/[^\s/]+/g, '.achilles/runs/<id>').replace(/\d+/g, '#').replace(/\s+/g, ' ').trim()}`;
 
+const FIX_CAP = 300;
+
+/** The deny's own fix: a "Fix:" / "Fix (…):" / "Do this instead:" line and the lines under it, up to
+ * the next blank line, joined onto one line and capped at 300 chars; "" when there is none. */
+export function fixLines(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const i = lines.findIndex((l) => /^\s*(?:Fix\b[^:]{0,30}|Do this instead):/i.test(l));
+  if (i < 0) return '';
+  const block: string[] = [];
+  for (const l of lines.slice(i)) { if (!l.trim()) break; block.push(l.trim()); }
+  return clipTo(block.join(' '), FIX_CAP);
+}
+
+/** The one-line stand-in for an identical repeat of a block. It stays usable on its own (pi may have
+ * compacted the earlier message away): it carries the block's first line and its fix lines. */
+export function repeatBlockLine(hook: string, reason: string): string {
+  const head = firstLine(reason).replace(/[.\s]+$/, '');
+  const fix = fixLines(reason);
+  return `[achilles] ${hook}: same block as before — ${head}. ${fix ? fix : 'Apply the fix from the earlier message.'}`;
+}
+
 export type NoteKind = 'systemMessage' | 'additionalContext' | 'reason';
 
 export interface MessageCompactor {
@@ -129,7 +150,7 @@ export function createMessageCompactor(): MessageCompactor {
       // the last one under that key, so a repeat with new details (another schema error) still shows.
       const key = `${hook}\0${firstLine(reason)}`;
       const body = reason.replace(SCOPE_BLOCK, '').trim();
-      if (denies.get(key) === body) return `[achilles] ${hook}: same block as before — ${firstLine(reason)}. Apply the fix from the earlier message.`;
+      if (denies.get(key) === body) return repeatBlockLine(hook, reason);
       denies.set(key, body);
       return self.scope(reason);
     },
