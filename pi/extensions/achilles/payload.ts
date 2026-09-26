@@ -10,6 +10,13 @@ export function claudeToolName(piName: string): string {
   return CLAUDE_NAMES[piName] ?? piName;
 }
 
+/** pi's resolved absolute path for a tool's `path` argument; the raw value when it is not a string or
+ * cannot be resolved (a malformed file:// URL, which pi rejects anyway). */
+function hookPath(p: unknown, cwd: string): unknown {
+  if (typeof p !== 'string') return p;
+  try { return resolveToCwd(p, cwd); } catch { return p; }
+}
+
 function defined(obj: Rec): Rec {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 }
@@ -17,7 +24,7 @@ function defined(obj: Rec): Rec {
 export function claudeToolInput(piName: string, input: Rec, cwd: string = process.cwd()): Rec {
   // pi resolves `@x`, `~/x` and `file://x` before touching the file; hooks match the literal string,
   // so they must see the resolved absolute path (Claude always sends absolute paths).
-  const filePath = typeof input.path === 'string' ? resolveToCwd(input.path, cwd) : input.path;
+  const filePath = hookPath(input.path, cwd);
   switch (piName) {
     case 'read':
       return defined({ file_path: filePath, offset: input.offset, limit: input.limit });
@@ -48,13 +55,13 @@ export function contentText(content: Content): string {
   return content.filter((c) => c.type === 'text' && typeof c.text === 'string').map((c) => c.text as string).join('\n');
 }
 
-export function claudeToolResponse(piName: string, input: Rec, content: Content, isError: boolean, details?: unknown): Rec {
+export function claudeToolResponse(piName: string, input: Rec, content: Content, isError: boolean, details?: unknown, cwd: string = process.cwd()): Rec {
   // The Agent tool caps its model-facing content; hooks must judge the subagent's full return,
   // which the tool keeps in details.text.
   const full = piName === 'Agent' && details && typeof (details as Rec).text === 'string' ? (details as Rec).text as string : undefined;
   const text = full ?? contentText(content);
   if (piName === 'bash') return { stdout: text, stderr: '', interrupted: false };
-  if (piName === 'write') return { filePath: input.path, success: !isError };
+  if (piName === 'write') return { filePath: hookPath(input.path, cwd), success: !isError };
   return { content: text, output: text, isError };
 }
 

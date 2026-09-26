@@ -338,6 +338,14 @@ test('depth 0: read of a subagent-only SKILL.md (absolute, relative, or any file
     assert.equal(r.reason.split('\n').length, 1, 'one line');
   }
 });
+test('depth 0: a read through pi path prefixes (@relative, @absolute, file://) is blocked too', async () => {
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: path.join(fx, 'skills') }); await start(pi, ctx);
+  for (const p of ['@sub-flag/SKILL.md', `@${path.join(SUB, 'SKILL.md')}`, `file://${path.join(SUB, 'SKILL.md')}`, `file://${path.join(SUB, 'references', 'x.md')}`]) {
+    const r = await pi.fire('tool_call', readCall(p), ctx);
+    assert.equal(r?.block, true, p);
+    assert.match(r.reason, /Delegate it: Agent \{ skill: "sub-flag"/, p);
+  }
+});
 test('depth 0: an orchestrator skill read is allowed', async () => {
   const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
   assert.equal(await pi.fire('tool_call', readCall(path.join(fx, 'skills', 'orch-skill', 'SKILL.md')), ctx), undefined);
@@ -353,6 +361,11 @@ test('depth 0: bash cat/sed/head of a subagent-only skill file is blocked before
     const r = await pi.fire('tool_call', bashCall(cmd), ctx);
     assert.match(r.reason, /Delegate it: Agent \{ skill: "sub-flag"/, cmd);
     assert.doesNotMatch(r.reason, /nope/, 'guard runs before the hooks');
+  }
+  // pi-style prefixes (`@`, `file://`) are resolved like a read path.
+  for (const cmd of [`cat @${SUB}/SKILL.md`, `head "file://${SUB}/SKILL.md"`]) {
+    const r = await pi.fire('tool_call', bashCall(cmd), ctx);
+    assert.match(r.reason, /Delegate it: Agent \{ skill: "sub-flag"/, cmd);
   }
   // ls is not a reader: the guard stays out of it and the fixture Bash hook decides (it denies with "nope").
   const ls = await pi.fire('tool_call', bashCall(`ls ${SUB}`), ctx);
@@ -472,6 +485,14 @@ test('translation cache: a blocked multi-part edit leaves it empty; an allowed o
   await pi2.fire('tool_call', { type: 'tool_call', toolCallId: 'a3', toolName: 'edit', input: multi('l.json') }, ctx);
   assert.equal(b.pendingTranslations, 1);
   await pi2.fire('session_start', { type: 'session_start', reason: 'new' }, ctx);
+  assert.equal(b.pendingTranslations, 0);
+});
+test('translation cache: agent_end drops entries whose tool_result never came', async () => {
+  const dir = tmp(); fs.writeFileSync(path.join(dir, 'l.json'), '{"a":"o1","b":"o2"}');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: dir }); const b = await start(pi, ctx);
+  await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'e1', toolName: 'edit', input: multi('l.json') }, ctx);
+  assert.equal(b.pendingTranslations, 1);
+  await pi.fire('agent_end', { type: 'agent_end', messages: [] }, ctx);
   assert.equal(b.pendingTranslations, 0);
 });
 test('translation cache: skipped while the bridge is disabled', async () => {

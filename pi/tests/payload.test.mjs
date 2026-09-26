@@ -52,7 +52,7 @@ test('bash and other inputs pass through', () => {
 test('responses', () => {
   const c = [{ type: 'text', text: 'out' }];
   assert.deepEqual(claudeToolResponse('bash', {}, c, false), { stdout: 'out', stderr: '', interrupted: false });
-  assert.deepEqual(claudeToolResponse('write', { path: 'a.md' }, c, false), { filePath: 'a.md', success: true });
+  assert.deepEqual(claudeToolResponse('write', { path: '@a.md' }, c, false, undefined, '/w'), { filePath: '/w/a.md', success: true });
   assert.deepEqual(claudeToolResponse('Agent', {}, c, true), { content: 'out', output: 'out', isError: true });
   assert.equal(contentText([{ type: 'text', text: 'a' }, { type: 'image' }, { type: 'text', text: 'b' }]), 'a\nb');
 });

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listSkills, resolveSkill } from './skills.ts';
+import { resolveToCwd } from './edit-match.ts';
 
 /** A subagent-only skill's directory in one skill root. */
 export interface SubagentOnlyDir { name: string; dir: string }
@@ -24,8 +25,10 @@ function canonical(p: string): string {
 }
 
 function expand(p: string, cwd: string, home: string): string {
-  const t = p === '~' ? home : p.startsWith('~/') ? path.join(home, p.slice(2)) : p;
-  const abs = path.resolve(cwd, t);
+  // Resolve exactly as pi's read tool does (`@x`, `~/x`, `file://x`, Unicode spaces), so no path
+  // spelling pi accepts can slip past the guard.
+  let abs: string;
+  try { abs = resolveToCwd(p, cwd, home); } catch { abs = path.resolve(cwd, p); }
   // realpath the deepest existing ancestor so a symlinked root (e.g. ~/.agents/skills) still matches.
   let head = abs; const tail: string[] = [];
   while (!fs.existsSync(head) && path.dirname(head) !== head) { tail.unshift(path.basename(head)); head = path.dirname(head); }
@@ -46,7 +49,8 @@ export function subagentOnlySkillFor(p: string, dirs: SubagentOnlyDir[], cwd: st
 const READER = /(^|[\s;&|(`$])(cat|sed|head|tail|less|more|awk|bat|nl|tac)(\s|$)/;
 
 /** Path-looking words of a shell command, quotes stripped. Coarse by design: it only needs to spot
- * a file argument of a cat/sed/head-style reader. */
+ * a file argument of a cat/sed/head-style reader. Each word is then resolved like a read path
+ * (subagentOnlySkillFor → expand), so a leading `@` or `file://` is stripped too. */
 function words(command: string): string[] {
   return command.split(/[\s;&|()<>`]+/).map((w) => w.replace(/^['"]+|['"]+$/g, '')).filter((w) => w.includes('/') || w.endsWith('.md'));
 }

@@ -368,7 +368,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     // the cached translation is stale; fall back to translating against the current file.
     if (input && typeof input.new_string === 'string' && !postEditHas(String(input.file_path ?? ''), input.new_string, ctx.cwd)) input = undefined;
     input ??= claudeToolInput(event.toolName, event.input as Rec, ctx.cwd);
-    const ds = await runEvent('PostToolUse', { tool_name: name, tool_input: input, tool_response: claudeToolResponse(event.toolName, event.input as Rec, event.content as Content, event.isError, (event as { details?: unknown }).details), tool_use_id: event.toolCallId }, name, ctx);
+    const ds = await runEvent('PostToolUse', { tool_name: name, tool_input: input, tool_response: claudeToolResponse(event.toolName, event.input as Rec, event.content as Content, event.isError, (event as { details?: unknown }).details, ctx.cwd), tool_use_id: event.toolCallId }, name, ctx);
     const notes: string[] = [];
     for (const d of ds) {
       if (d.systemMessage) { notes.push(d.systemMessage); ctx.ui.notify(d.systemMessage, 'warning'); }
