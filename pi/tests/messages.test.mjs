@@ -106,15 +106,41 @@ test('deny dedupe: an identical repeat collapses to one line; a new body under t
   const changed = deny('same').replace('do the other thing', 'fix field runMode');
   assert.match(c.deny('guard.sh', changed), /fix field runMode/);
 });
-test('warning compaction: first line plus references on one line; the repeat collapses (run ids differ)', (t) => {
+/** Shape of subagent-return-schema-guard's warning in the real run: a first line, then an issue list. */
+const SCHEMA_WARN = `[WARN] Subagent return validation surfaced issues.\n\nDescription: "workflow-reviewer-phase1: gate Phase 1"\nIssues:\n  - /handover/status: must be one of approved|rejected|escalated\n  - /checklist/2/evidence: required property missing\n  - /verdict: must be string\n\nFix: correct the return and re-dispatch.\n\nReferences:\n  schemas/subagent-returns/workflow-reviewer.schema.json`;
+test('warning: the first archiver warning reaches the model in full (<= 1,200 chars); the repeat collapses (run ids differ)', (t) => {
   t.after(verboseOff());
   const c = createMessageCompactor();
+  const first = c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110721Z'), 'systemMessage');
+  assert.equal(first, ARCHIVER('20260926T110721Z'));
+  assert.ok(first.length <= 1200);
+  assert.equal(c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110910Z'), 'systemMessage'), '[achilles] playwright-artifact-archiver.sh: repeated warning (see earlier).');
+});
+test('warning: a schema-guard issue list is shown on first sight', (t) => {
+  t.after(verboseOff());
+  const out = createMessageCompactor().note('subagent-return-schema-guard.sh', SCHEMA_WARN, 'systemMessage');
+  for (const issue of ['/handover/status: must be one of', '/checklist/2/evidence: required property missing', '/verdict: must be string']) assert.ok(out.includes(issue), issue);
+});
+test('warning: a different first line is a new key; the same hook with a new first line is shown in full', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  c.note('g.sh', SCHEMA_WARN, 'systemMessage');
+  const other = SCHEMA_WARN.replace('surfaced issues', 'found a missing handover');
+  assert.equal(c.note('g.sh', other, 'systemMessage'), other);
+  assert.match(c.note('g.sh', SCHEMA_WARN, 'systemMessage'), /repeated warning/);
+});
+test('warning: over 1,200 chars is cut at a line boundary with the truncation marker', (t) => {
+  t.after(verboseOff());
+  const long = Array.from({ length: 100 }, (_, i) => `line ${i} ${'x'.repeat(30)}`).join('\n');
+  const out = createMessageCompactor().note('h.sh', long, 'systemMessage');
+  assert.ok(out.length <= 1200, String(out.length));
+  assert.ok(out.endsWith('\n… [achilles] truncated; full text in the UI/log'));
+  const kept = out.split('\n').slice(0, -1);
+  for (const l of kept) assert.match(l, /^line \d+ x{30}$/, 'whole lines only');
+});
+test('referencesLine collapses a References block onto one line', () => {
   assert.equal(firstLine(ARCHIVER('R1')), '[WARN] Playwright evidence archived to .achilles/runs/R1 with omissions.');
   assert.equal(referencesLine(ARCHIVER('R1')), 'References: skills/achilles-protocol/references/harness-hooks.md §PostToolUse; .achilles/runs/R1/manifest.json');
-  const first = c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110721Z'), 'systemMessage');
-  assert.equal(first, '[WARN] Playwright evidence archived to .achilles/runs/20260926T110721Z with omissions.\nReferences: skills/achilles-protocol/references/harness-hooks.md §PostToolUse; .achilles/runs/20260926T110721Z/manifest.json');
-  assert.ok(!first.includes('Pruned') && first.length < ARCHIVER('20260926T110721Z').length);
-  assert.equal(c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110910Z'), 'systemMessage'), '[achilles] playwright-artifact-archiver.sh: repeated warning (see earlier).');
 });
 test('additionalContext is kept (scope-compacted) up to 1000 chars on first sight', (t) => {
   t.after(verboseOff());
@@ -123,9 +149,9 @@ test('additionalContext is kept (scope-compacted) up to 1000 chars on first sigh
   const long = c.note('h2.sh', 'z'.repeat(3000), 'additionalContext');
   assert.equal(long.length, 1000); assert.match(long, /…$/);
 });
-test('first line is capped at 200 chars', (t) => {
+test('a repeat line quotes the first line capped at 200 chars', (t) => {
   t.after(verboseOff());
-  assert.equal(createMessageCompactor().note('h.sh', 'w'.repeat(500), 'reason').length, 200);
+  assert.equal(firstLine('w'.repeat(500)).length, 200);
 });
 test('reset() clears all dedupe state', (t) => {
   t.after(verboseOff());

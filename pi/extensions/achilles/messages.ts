@@ -50,14 +50,24 @@ export function steer(text: string, opts: SteerOptions): string {
 // ── Hook message compaction ──────────────────────────────────────────────────────────────────────
 // Hooks are written for Claude Code, where a repeated notice costs little. Under pi on a small local
 // model every repeat is context, so per bridge session: the session-scope notice is shown once, an
-// identical deny collapses to one line after the first, and non-blocking warnings reach the model as
-// their first line plus references (the full text still goes to the UI and the log).
+// identical deny collapses to one line after the first, and a non-blocking warning reaches the model in
+// full (capped at 1,200 chars) the first time and as one line on a repeat (the UI and log get it all).
 // ACHILLES_PI_VERBOSE=1 turns all of this off.
 
 const SCOPE_BLOCK = /── achilles session-scope ─*[\s\S]*?(?:their call, not yours\.\)|$)/;
 export const SCOPE_POINTER = '(achilles session-scope notice applies — see the first block this session.)';
 const LINE_CAP = 200;
 const CONTEXT_CAP = 1000;
+const WARNING_CAP = 1200;
+export const WARNING_TRUNCATED = '… [achilles] truncated; full text in the UI/log';
+
+/** At most `cap` chars (marker included), cut at a line boundary, with the truncation marker. */
+export function capAtLine(text: string, cap = WARNING_CAP): string {
+  if (text.length <= cap) return text;
+  const room = text.slice(0, cap - WARNING_TRUNCATED.length - 1);
+  const nl = room.lastIndexOf('\n');
+  return `${(nl > 0 ? room.slice(0, nl) : room).trimEnd()}\n${WARNING_TRUNCATED}`;
+}
 
 export const verboseMessages = (): boolean => process.env.ACHILLES_PI_VERBOSE === '1';
 
@@ -126,8 +136,8 @@ export function createMessageCompactor(): MessageCompactor {
       if (warnings.has(key)) return `[achilles] ${hook}: repeated warning (see earlier).`;
       warnings.add(key);
       if (kind === 'additionalContext') return clipTo(self.scope(text), CONTEXT_CAP);
-      const refs = referencesLine(text);
-      return refs ? `${firstLine(text)}\n${refs}` : firstLine(text);
+      // First sight: the whole warning (it steers the model, e.g. a schema guard's issue list), capped.
+      return capAtLine(self.scope(text));
     },
   };
   return self;

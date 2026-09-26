@@ -246,7 +246,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   };
   const noteText = (hook: string, text: string, kind: NoteKind) => {
     const out = compact.note(hook, text, kind);
-    if (out !== text) log('hook_text_compacted', { hook, kind, text });
+    // Non-blocking hook output always reaches the log in full, whatever the model is shown.
+    log('hook_note', { hook, kind, text, compacted: out !== text });
     return out;
   };
   /** This session's Claude-shaped shadow transcript (see transcript.ts); the hooks' transcript_path. */

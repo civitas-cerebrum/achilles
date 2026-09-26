@@ -755,14 +755,15 @@ test('compaction: first deny carries the scope notice, the next only the pointer
   const r4 = await pi.fire('tool_call', findCall('f4'), ctx);
   assert.match(r4.reason, /These guardrails are bound/);
 });
-test('compaction: the archiver warning reaches the model as first line + references, then as a one-line repeat; UI gets the full text', async (t) => {
+test('compaction: the archiver warning reaches the model in full the first time, then as a one-line repeat; UI gets the full text', async (t) => {
   withEnv(t, 'ACHILLES_PI_VERBOSE', undefined);
   const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
   const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
   withEnv(t, 'ARCHIVE_RUN', '20260926T110721Z');
   const m1 = modelText(await pi.fire('tool_result', findResult('p1'), ctx));
-  assert.match(m1, /^a\.ts\n\n\[achilles\] \[WARN\] Playwright evidence archived to \.achilles\/runs\/20260926T110721Z with omissions\.\nReferences: \S*harness-hooks\.md §PostToolUse; \.achilles\/runs\/20260926T110721Z\/manifest\.json$/);
-  assert.doesNotMatch(m1, /Pruned/);
+  assert.match(m1, /^a\.ts\n\n\[achilles\] \[WARN\] Playwright evidence archived to \.achilles\/runs\/20260926T110721Z with omissions\./);
+  assert.match(m1, /Pruned 1 older run/);
+  assert.match(m1, /harness-hooks\.md §PostToolUse\n  \.achilles\/runs\/20260926T110721Z\/manifest\.json$/);
   assert.ok(ctx.notices.some((n) => /Pruned 1 older run/.test(n.m)), 'UI gets the full text');
   assert.ok(fs.readFileSync(logFile, 'utf8').includes('Pruned 1 older run'), 'log gets the full text');
   process.env.ARCHIVE_RUN = '20260926T110910Z';
