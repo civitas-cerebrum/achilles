@@ -37,6 +37,27 @@ export function appendShadow(file: string, entry: Rec): boolean {
   }
 }
 
+/**
+ * Starts a subagent's shadow as a byte copy of its parent's, the way older Claude Code builds kept
+ * sidechain entries in the main session file: PreToolUse hooks in the child (the journey-mapping
+ * preread gate, the evidence floor's fd- dispatch signal) need the parent's history, and the child's
+ * own calls are appended after it. Only when the child shadow does not exist yet, so a re-fired
+ * session_start never re-seeds. Cost: each child holds a full copy of the parent shadow at spawn
+ * (copyFileSync, no parse), so disk use grows with parent history times dispatch count.
+ * Returns false when there was nothing to copy or the copy failed; never throws.
+ */
+export function seedShadow(file: string, parentFile: string): boolean {
+  try {
+    if (fs.existsSync(file) || !fs.existsSync(parentFile)) return false;
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.copyFileSync(parentFile, file, fs.constants.COPYFILE_EXCL);
+    fs.chmodSync(file, 0o600);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Claude records a tool call as an assistant message holding one tool_use block. `claudeInput` is the
  * caller's claudeToolInput translation, made against the right cwd before the tool runs. */
 export function toolUseEntry(piToolName: string, toolCallId: string, claudeInput: Rec): Rec {

@@ -10,7 +10,7 @@ import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth } from './env.ts';
 import { subagentOnlyDirs, blockedSkillRead, delegateInstruction, type SubagentOnlyDir } from './guard.ts';
-import { sessionStateDir, shadowPath, appendShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
+import { sessionStateDir, shadowPath, appendShadow, seedShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
 
 export interface ManifestEntry { file: string; event: string; matcher: string | null; timeout?: number; async?: boolean }
 export interface HookRun { file: string; exitCode: number | null; stdout: string; stderr: string; timedOut: boolean; ms: number }
@@ -284,6 +284,12 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   pi.on('session_start', async (_event, ctx) => guarded('session_start', ctx, undefined, async () => {
     stopHookActive = false;
     translated.clear();
+    // A subagent's shadow inherits its parent's history (transcript.ts seedShadow).
+    const parentShadow = process.env.ACHILLES_PI_PARENT_SHADOW;
+    if (piDepth() >= 1 && parentShadow) {
+      const seeded = seedShadow(shadowFor(ctx), parentShadow);
+      log('shadow_seeded', { from: parentShadow, to: shadowFor(ctx), seeded });
+    }
     // The subagent-only read guard is achilles' own policy, not a hook, so it holds even when hook
     // execution ends up disabled below.
     subOnly = subagentOnlyDirs(roots);

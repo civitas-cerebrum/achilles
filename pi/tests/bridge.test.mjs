@@ -594,3 +594,93 @@ for (const [label, mkPath] of [['@-prefixed', () => '@tests/e2e/docs/onboarding-
     assert.equal(e?.block, true, `${label} edit slipped the gate`);
   });
 }
+
+// ---- child shadow inherits the parent's history (round 4) ----
+/** Sets env vars for the rest of the test (undefined unsets), restoring them at t.after. */
+function setEnv(t, vars) {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(vars)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+}
+const shadowLines = (f) => fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const toolUses = (f) => shadowLines(f).flatMap((e) => (Array.isArray(e.message?.content) ? e.message.content : [])).filter((c) => c.type === 'tool_use');
+/** A parent (depth 0) and child (depth 1) bridge over one state dir, sharing a manifest and hooks dir. */
+async function family(t, { hooksDir = path.join(fx, 'hooks'), manifest = [{ file: 'record.sh', event: 'SubagentStop', matcher: null, timeout: 5 }], cwd = tmp() } = {}) {
+  const stateDir = tmp();
+  const o = { ...opts(), stateDir, hooksDir, manifestPath: manifestOf(manifest) };
+  setEnv(t, { ACHILLES_PI_DEPTH: undefined, ACHILLES_PI_PARENT_SHADOW: undefined, ACHILLES_PI_AGENT_TYPE: undefined });
+  const parentPi = makeFakePi(); const parentCtx = makeFakeCtx({ cwd, sessionId: 'parent-1' });
+  await start(parentPi, parentCtx, o);
+  const parentShadow = path.join(stateDir, 'pi-transcripts', 'parent-1.jsonl');
+  const spawnChild = async (agentType) => {
+    process.env.ACHILLES_PI_DEPTH = '1';
+    process.env.ACHILLES_PI_PARENT_SHADOW = parentShadow;
+    if (agentType) process.env.ACHILLES_PI_AGENT_TYPE = agentType;
+    const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd, sessionId: 'child-1' });
+    const bridge = await start(pi, ctx, o);
+    return { pi, ctx, bridge, shadow: path.join(stateDir, 'pi-transcripts', 'child-1.jsonl') };
+  };
+  return { parentPi, parentCtx, parentShadow, spawnChild, cwd };
+}
+const agentCall = (description, id = 'ag') => ({ type: 'tool_call', toolCallId: id, toolName: 'Agent', input: { description, prompt: 'brief' } });
+
+test('child shadow starts with the parent shadow, including the parent Agent tool_use; the child appends after it', async (t) => {
+  const f = await family(t);
+  await f.parentPi.fire('tool_call', readCall('/x/notes.md', 'p1'), f.parentCtx);
+  await f.parentPi.fire('tool_call', agentCall('scout: look around'), f.parentCtx);
+  const parentBytes = fs.readFileSync(f.parentShadow, 'utf8');
+  const c = await f.spawnChild('scout');
+  assert.equal(fs.readFileSync(c.shadow, 'utf8'), parentBytes, 'seeded as an exact copy');
+  assert.equal(fs.statSync(c.shadow).mode & 0o777, 0o600);
+  await c.pi.fire('tool_call', readCall('/x/child.md', 'c1'), c.ctx);
+  const names = toolUses(c.shadow).map((u) => `${u.name}:${u.input.file_path ?? u.input.description}`);
+  assert.deepEqual(names, ['Read:/x/notes.md', 'Agent:scout: look around', 'Read:/x/child.md']);
+  assert.equal(fs.readFileSync(f.parentShadow, 'utf8'), parentBytes, 'the parent shadow is untouched');
+  // A second session_start in the child does not re-seed.
+  await c.pi.fire('session_start', { type: 'session_start', reason: 'reload' }, c.ctx);
+  assert.equal(toolUses(c.shadow).length, 3);
+});
+test('SubagentStop carries agent_transcript_path (the child shadow) and transcript_path, which holds the parent history', async (t) => {
+  const rec = recordFile(t);
+  const f = await family(t);
+  await f.parentPi.fire('tool_call', agentCall('workflow-reviewer-phase1: review'), f.parentCtx);
+  const c = await f.spawnChild('workflow-reviewer-phase1');
+  await c.pi.fire('message_end', { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }, c.ctx);
+  await c.pi.fire('agent_before_settle', settleEv(), c.ctx);
+  const p = JSON.parse(fs.readFileSync(rec, 'utf8').trim().split('\n')[0]);
+  assert.equal(p.hook_event_name, 'SubagentStop');
+  assert.equal(p.agent_transcript_path, c.shadow);
+  assert.equal(p.transcript_path, c.shadow);
+  assert.equal(p.agent_id, 'child-1'); assert.equal(p.agent_type, 'workflow-reviewer-phase1');
+  assert.ok(toolUses(p.transcript_path).some((u) => u.name === 'Agent'), 'parent dispatch visible');
+});
+test('journey-mapping-skill-preread-gate (real hook): a child spill write is allowed when only the PARENT read the SKILL.md; denied when nobody did', async (t) => {
+  setEnv(t, { ACHILLES_PROTOCOL: '1', ACHILLES_SESSION_STATE_DIR: tmp() });
+  const manifest = [{ file: 'journey-mapping-skill-preread-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit|Agent', timeout: 15 }];
+  const spill = (cwd) => ({ type: 'tool_call', toolCallId: 'w', toolName: 'write', input: { path: path.join(cwd, 'tests/e2e/docs/.subagent-returns/phase4-cycle-1-section-auth.md'), content: '## auth\n' } });
+  // Parent read the skill, then dispatched the section subagent.
+  const a = await family(t, { hooksDir: path.join(REPO, 'hooks'), manifest });
+  await a.parentPi.fire('tool_call', readCall(path.join(REPO, 'skills', 'journey-mapping', 'SKILL.md'), 'p1'), a.parentCtx);
+  assert.equal(await a.parentPi.fire('tool_call', agentCall('phase4-cycle-1-section-auth: map auth'), a.parentCtx), undefined);
+  const ca = await a.spawnChild('phase4-cycle-1-section-auth');
+  assert.equal(await ca.pi.fire('tool_call', spill(a.cwd), ca.ctx), undefined);
+  // Nobody read it: the child's spill write is denied.
+  const b = await family(t, { hooksDir: path.join(REPO, 'hooks'), manifest });
+  const cb = await b.spawnChild('phase4-cycle-1-section-auth');
+  const r = await cb.pi.fire('tool_call', spill(b.cwd), cb.ctx);
+  assert.equal(r?.block, true);
+  assert.match(r.reason, /journey-mapping/);
+});
+test('failure-diagnosis-evidence-floor-gate (real hook): a child dispatched as fd- is gated on its own evidence reads', async (t) => {
+  setEnv(t, { ACHILLES_PROTOCOL: '1', ACHILLES_SESSION_STATE_DIR: tmp() });
+  const manifest = [{ file: 'failure-diagnosis-evidence-floor-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 15 }];
+  const f = await family(t, { hooksDir: path.join(REPO, 'hooks'), manifest });
+  await f.parentPi.fire('tool_call', agentCall('fd-checkout: diagnose the checkout failure'), f.parentCtx);
+  const c = await f.spawnChild('fd-checkout');
+  const spec = (id) => ({ type: 'tool_call', toolCallId: id, toolName: 'write', input: { path: path.join(f.cwd, 'tests/e2e/checkout.spec.ts'), content: 'test()' } });
+  const denied = await c.pi.fire('tool_call', spec('s1'), c.ctx);
+  assert.equal(denied?.block, true);
+  assert.match(denied.reason, /Evidence-floor violation/);
+  await c.pi.fire('tool_call', readCall(path.join(f.cwd, 'test-results/checkout-guest/error-context.md'), 'e1'), c.ctx);
+  assert.equal(await c.pi.fire('tool_call', spec('s2'), c.ctx), undefined);
+});

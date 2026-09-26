@@ -10,6 +10,7 @@ fs.writeFileSync(path.join(sd, '2026-01-01T00-00-00-000Z_child-1.jsonl'),
     protocol: process.env.ACHILLES_PROTOCOL ?? '',
     depth: process.env.ACHILLES_PI_DEPTH ?? '',
     agentType: process.env.ACHILLES_PI_AGENT_TYPE ?? '',
+    parentShadow: process.env.ACHILLES_PI_PARENT_SHADOW ?? '',
     args,
     // Content and mode of the @file prompt argument, read while it still exists.
     prompt: (() => { const a = args.find((x) => x.startsWith('@')); return a ? fs.readFileSync(a.slice(1), 'utf8') : null; })(),

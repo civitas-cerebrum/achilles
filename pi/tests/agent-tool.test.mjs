@@ -73,6 +73,11 @@ test('loads this extension explicitly in the child; passes -a only when the proj
   assert.ok(tools.includes('Skill'), 'children can load skills'); assert.ok(!tools.includes('Agent'), 'children cannot dispatch');
   assert.ok(!header(await run(tool, { description: 'd', prompt: 'p' }, { trusted: false })).args.includes('-a'));
 });
+test('ACHILLES_PI_PARENT_SHADOW: the child is told where the parent shadow lives', async () => {
+  const stateDir = tmp();
+  const { tool } = setup({ stateDir });
+  assert.equal(header(await run(tool, { description: 'd', prompt: 'p' }, { sessionId: 'parent-7' })).parentShadow, path.join(stateDir, 'pi-transcripts', 'parent-7.jsonl'));
+});
 test('ACHILLES_PI_AGENT_TYPE: subagent_type wins, else the description role prefix', async () => {
   const { tool } = setup();
   assert.equal(header(await run(tool, { description: 'scout: x', prompt: 'p', subagent_type: 'general-purpose' })).agentType, 'general-purpose');
