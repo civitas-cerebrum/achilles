@@ -47,6 +47,25 @@ export function steer(text: string, opts: SteerOptions): string {
   return `${out}\n\nUnder pi:\n  ${hints.join('\n  ')}`;
 }
 
+// ── Operator-only denies ─────────────────────────────────────────────────────────────────────────
+// Some denies can only be cleared by a person (a tampered hash chain, a deleted ledger). A small model
+// otherwise tries to work around them: it reads the hook source, recomputes the hash, or retries the
+// write through the shell. Every such deny, first or repeated, ends with one line telling it to stop.
+// The phrases are the ones hooks use when recovery is the operator's alone. Broader phrases ("in their
+// own terminal", "operator action") also appear in denies the agent CAN fix itself (the bash guard's
+// "use the Write/Edit tool", the progress-state monotonicity guard), so they do not trigger it.
+export const OPERATOR_STOP = '[achilles] Stop here: report this to the user and wait. Do not read hook sources, recompute hashes, or retry through the shell.';
+const OPERATOR_ONLY = /surface this to the user|recovery is an operator action|the agent cannot self-clear|only a person may|until the operator confirms|not an agent action/i;
+
+/** True when the deny's recovery is a human action the agent cannot take. */
+export const operatorOnly = (reason: string): boolean => OPERATOR_ONLY.test(reason);
+
+/** `text` with the stop line appended when `reason` is operator-only (and not already there). */
+export function withOperatorStop(reason: string, text: string): string {
+  if (!operatorOnly(reason) || text.trimEnd().endsWith(OPERATOR_STOP)) return text;
+  return `${text}\n${OPERATOR_STOP}`;
+}
+
 // ── Hook message compaction ──────────────────────────────────────────────────────────────────────
 // Hooks are written for Claude Code, where a repeated notice costs little. Under pi on a small local
 // model every repeat is context, so per bridge session: the session-scope notice is shown once, an

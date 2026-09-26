@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { claudeToolName, claudeToolInput, claudeToolResponse, type Content } from './payload.ts';
 import { resolveToCwd } from './edit-match.ts';
-import { steer as steerText, createMessageCompactor, WARNING_TRUNCATED, type NoteKind } from './messages.ts';
+import { steer as steerText, createMessageCompactor, withOperatorStop, operatorOnly, OPERATOR_STOP, WARNING_TRUNCATED, type NoteKind } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth } from './env.ts';
@@ -243,7 +243,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   const denyText = (hook: string, reason: string, steered = true) => {
     const out = compact.deny(hook, reason);
     if (out !== reason) log('hook_text_compacted', { hook, kind: 'deny', text: reason });
-    return steered ? steer(out) : out;
+    // The stop line goes last, after steer's "Under pi:" hints, on the first deny and every repeat.
+    return steered ? withOperatorStop(reason, steer(out)) : out;
   };
   const noteText = (hook: string, text: string, kind: NoteKind) => {
     const out = compact.note(hook, text, kind);
@@ -433,7 +434,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       else if (!d.block && d.reason) { notes.push(noteText(d.file, d.reason, 'reason')); ctx.ui.notify(d.reason, 'warning'); }
     }
     if (notes.length === 0) return undefined;
-    const joined = steer(notes.join('\n'));
+    const stop = ds.some((d) => d.block && d.reason && operatorOnly(d.reason));
+    const joined = `${steer(notes.join('\n'))}${stop ? `\n${OPERATOR_STOP}` : ''}`;
     return { content: [...event.content, { type: 'text', text: `\n${joined.startsWith('[achilles]') ? '' : '[achilles] '}${joined}` }] };
   }));
 

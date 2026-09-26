@@ -220,3 +220,31 @@ test('fixLines: the real compliance-sweep-exit-gate "Do this instead — <what>:
   c.deny('compliance-sweep-exit-gate.sh', reason);
   assert.match(c.deny('compliance-sweep-exit-gate.sh', reason), /^\[achilles\] compliance-sweep-exit-gate\.sh: same block as before — \[BLOCKED\] Test code changed in this session, but the Stage-4b compliance sweep never ran\. Do this instead — run the sweep now, then stop: 1\. Read /);
 });
+
+// ---- operator-only denies (round-1 fix 3) ----
+import { operatorOnly, withOperatorStop, OPERATOR_STOP } from '../extensions/achilles/messages.ts';
+test('operatorOnly: the hooks\' operator-recovery denies match; agent-fixable denies do not', () => {
+  const hooks = path.join(pkg, 'hooks');
+  const src = (f) => fs.readFileSync(path.join(hooks, f), 'utf8');
+  // The live texts, cut from the hook sources so a rewording there is caught here.
+  const gate = src('lib/pipeline-gate.sh');
+  const missing = gate.match(/"\[BLOCKED\] \$\{PIPELINE_MSG_LEDGER_NAME\} is missing[^"]*"/)[0];
+  const drift = gate.match(/"\[BLOCKED\] \$\{PIPELINE_MSG_LEDGER_NAME\} does not match[^"]*"/)[0];
+  const chain = src('ledger-integrity-chain.sh');
+  const mismatch = chain.match(/emit_deny "(\[BLOCKED\] \$\{CHAIN_KEY\} was mutated out of band[\s\S]*?)"\n/)[1];
+  const deleted = chain.match(/emit_deny "(\[BLOCKED\] \$\{CHAIN_KEY\} has been deleted out of band[\s\S]*?)"\n/)[1];
+  for (const t of [missing, drift, mismatch, deleted, 'only a person may clear this']) assert.ok(operatorOnly(t), t.slice(0, 80));
+  const bashGuard = src('protected-artifact-bash-guard.sh').match(/REASON="(\[BLOCKED\][\s\S]*?)\n\n\$\(no_skip/)[1];
+  const hookState = src('hook-authored-state-guard.sh');
+  const sidecar = hookState.match(/emit_deny "(\[BLOCKED\] \.ledger-integrity\.json is hook-authored state[\s\S]*?)"\n/)[1];
+  const monotonic = hookState.match(/Fix: do not remove entries[\s\S]*?not an in-band rewrite\./)[0];
+  for (const t of [bashGuard, sidecar, monotonic]) assert.equal(operatorOnly(t), false, t.slice(0, 80));
+});
+test('withOperatorStop appends the line once and leaves other text alone', () => {
+  const r = '[BLOCKED] x. Surface this to the user.';
+  const once = withOperatorStop(r, r);
+  assert.equal(once, `${r}\n${OPERATOR_STOP}`);
+  assert.equal(withOperatorStop(r, once), once);
+  assert.equal(withOperatorStop('[BLOCKED] use Edit', 'short'), 'short');
+  assert.equal(withOperatorStop(r, '[achilles] h: same block as before — x.'), `[achilles] h: same block as before — x.\n${OPERATOR_STOP}`);
+});

@@ -911,3 +911,55 @@ test('runEvent: a timed-out hook blocks its own call (fail closed) and releases 
   assert.ok(Date.now() - t0 >= 1000, 'the second call waited for the first');
   assert.deepEqual(fs.readFileSync(rec, 'utf8').trim().split('\n'), ['start next', 'end next']);
 });
+
+// ---- operator-only denies end with a stop line (round-1 fix 3) ----
+const STOP_LINE = '[achilles] Stop here: report this to the user and wait. Do not read hook sources, recompute hashes, or retry through the shell.';
+const stopCount = (s) => s.split(STOP_LINE).length - 1;
+test('real ledger-integrity-chain mismatch deny ends with the stop line, first time and on the collapsed repeat', async (t) => {
+  withEnv(t, 'ACHILLES_PROTOCOL', '1');
+  withEnv(t, 'ACHILLES_SESSION_STATE_DIR', tmp());
+  withEnv(t, 'ACHILLES_PI_VERBOSE', undefined);
+  const proj = tmp(); const docs = path.join(proj, 'tests', 'e2e', 'docs'); fs.mkdirSync(docs, { recursive: true });
+  const ledger = path.join(docs, 'onboarding-status.json');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: proj });
+  await start(pi, ctx, { ...opts(), hooksDir: path.join(REPO, 'hooks'), manifestPath: manifestOf([
+    { file: 'ledger-integrity-chain.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
+    { file: 'ledger-integrity-chain.sh', event: 'PostToolUse', matcher: 'Write|Edit', timeout: 10 },
+  ]) });
+  fs.writeFileSync(ledger, '{"phase":1}');
+  await pi.fire('tool_result', { type: 'tool_result', toolCallId: 's1', toolName: 'write', input: { path: ledger, content: '{"phase":1}' }, content: [], isError: false }, ctx);
+  fs.writeFileSync(ledger, '{"phase":99}'); // out of band
+  const write = (id) => pi.fire('tool_call', { type: 'tool_call', toolCallId: id, toolName: 'write', input: { path: ledger, content: '{"phase":2}' } }, ctx);
+  const first = await write('m1');
+  assert.equal(first?.block, true);
+  assert.match(first.reason, /was mutated out of band/);
+  assert.match(first.reason, /surface this to the user/);
+  assert.ok(first.reason.trimEnd().endsWith(STOP_LINE), first.reason.slice(-300));
+  assert.equal(stopCount(first.reason), 1);
+  const again = await write('m2');
+  assert.match(again.reason, /^\[achilles\] ledger-integrity-chain\.sh: same block as before/);
+  assert.ok(again.reason.trimEnd().endsWith(STOP_LINE), again.reason);
+  assert.equal(stopCount(again.reason), 1);
+});
+test('an agent-fixable deny that mentions "in their own terminal" (real protected-artifact-bash-guard) gets no stop line', async (t) => {
+  withEnv(t, 'ACHILLES_PROTOCOL', '1');
+  withEnv(t, 'ACHILLES_SESSION_STATE_DIR', tmp());
+  const proj = tmp();
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: proj });
+  await start(pi, ctx, { ...opts(), hooksDir: path.join(REPO, 'hooks'), manifestPath: manifestOf([{ file: 'protected-artifact-bash-guard.sh', event: 'PreToolUse', matcher: 'Bash', timeout: 10 }]) });
+  const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'bg', toolName: 'bash', input: { command: 'echo {} > tests/e2e/docs/onboarding-status.json' } }, ctx);
+  assert.equal(r?.block, true);
+  assert.match(r.reason, /in their own terminal/);
+  assert.equal(stopCount(r.reason), 0);
+});
+test('a PostToolUse operator-only block also ends with the stop line', async (t) => {
+  const hooksDir = tmp();
+  fs.writeFileSync(path.join(hooksDir, 'opblock.sh'), `#!/bin/bash\ncat >/dev/null\nprintf '%s' '{"decision":"block","reason":"[BLOCKED] ledger drifted. Surface this to the user; recovery is an operator action."}'\n`);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  await start(pi, ctx, { ...opts(), hooksDir, manifestPath: manifestOf([{ file: 'opblock.sh', event: 'PostToolUse', matcher: 'Bash', timeout: 5 }]) });
+  const r = await pi.fire('tool_result', { type: 'tool_result', toolCallId: 'pb', toolName: 'bash', input: { command: 'ls' }, content: [{ type: 'text', text: 'out' }], isError: false }, ctx);
+  const text = r.content.at(-1).text;
+  assert.match(text, /ledger drifted/);
+  assert.ok(text.trimEnd().endsWith(STOP_LINE), text);
+  assert.equal(stopCount(text), 1);
+});
