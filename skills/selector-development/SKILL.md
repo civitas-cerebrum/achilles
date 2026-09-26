@@ -10,6 +10,7 @@ description: >
   modifies structure, class, id, aria, handlers, or text — only appends one attribute. Refuses if the
   workspace doesn't contain both frontend source and tests/e2e/. Two modes: JIT (one element, default)
   and Audit (whole-app workflow, opt-in).
+pi-description: 'Add a stable data-testid to an element that has none (frontend source in this repo): “add stable selectors”, “audit selectors”.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

@@ -4,7 +4,8 @@
 // achilles descriptions are long trigger lists written for Claude Code's skill router (8k+ tokens for
 // the 24 skills), which a small local model pays for on every turn, in the orchestrator and in every
 // subagent. At before_agent_start this rewrites each achilles entry's description in the mutable
-// systemPromptOptions (pi re-renders the prompt from them) to one short line. Other skills are untouched.
+// systemPromptOptions (pi re-renders the prompt from them) to one short line: the skill's hand-written
+// `pi-description:` routing line when it has one, else the first sentence. Other skills are untouched.
 import path from 'node:path';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { listSkills, resolveSkill, PACKAGE_DIR } from './skills.ts';
@@ -48,8 +49,35 @@ export function delegateLine(name: string): string {
   return `Subagent-only — delegate with Agent { skill: "${name}" }; do not read it here.`;
 }
 
-export function compactDescription(name: string, description: string, subagentOnly: boolean, depth: number): string {
-  return subagentOnly && depth === 0 ? delegateLine(name) : firstSentence(description);
+export const PI_DESCRIPTION_CAP = 200;
+export const DISPATCHED_PREFIX = 'Your dispatched methodology — read this skill before starting: ';
+
+/** A subagent-only routing line without its delegate wording ("Subagent-only — …: delegate with
+ * Agent { … }."), leaving what the skill is for. */
+export function stripDelegate(line: string): string {
+  const t = line
+    .replace(/^Subagent-only(?: skill)?\s*[—–:-]?\s*/i, '')
+    .replace(/[\s:;,—–-]*delegate (?:it )?with Agent \{[^}]*\}[^.]*\.?/i, '')
+    .replace(/[\s;,]*do not read it here\.?/i, '')
+    .trim()
+    .replace(/[\s:;,—–-]+$/, '');
+  return t && !/[.!?]$/.test(t) ? `${t}.` : t;
+}
+
+/**
+ * The listing line for one achilles skill. `piDescription` (the skill's hand-written `pi-description:`
+ * routing line) wins over the first sentence of the Claude Code description.
+ * - depth 0, subagent-only: the routing line (it carries the delegate instruction), else the bare delegate line.
+ * - depth >= 1, subagent-only: this child was dispatched to run it, so a positive line, not a prohibition.
+ */
+export function compactDescription(name: string, description: string, subagentOnly: boolean, depth: number, piDescription?: string): string {
+  const routing = piDescription ? clip(plain(piDescription), PI_DESCRIPTION_CAP) : undefined;
+  if (subagentOnly && depth === 0) return routing ?? delegateLine(name);
+  if (subagentOnly) {
+    const what = (routing && stripDelegate(routing)) || firstSentence(description);
+    return `${DISPATCHED_PREFIX}${what}`;
+  }
+  return routing ?? firstSentence(description);
 }
 
 interface ListedSkill { name: string; description: string }
@@ -63,7 +91,7 @@ export interface PromptCompactor {
  * them are subagent-only. Results are cached per (depth, name, original description). */
 export function createPromptCompactor(root = path.join(PACKAGE_DIR, 'skills')): PromptCompactor {
   let names: Set<string> | undefined;
-  const subOnly = new Map<string, boolean>();
+  const info = new Map<string, { subagentOnly: boolean; piDescription?: string }>();
   const cache = new Map<string, string>();
   return {
     compact(skills, depth = piDepth()) {
@@ -74,8 +102,9 @@ export function createPromptCompactor(root = path.join(PACKAGE_DIR, 'skills')): 
         const key = `${depth}\0${s.name}\0${s.description}`;
         let out = cache.get(key);
         if (out === undefined) {
-          if (!subOnly.has(s.name)) subOnly.set(s.name, resolveSkill(s.name, [root])?.subagentOnly ?? false);
-          out = compactDescription(s.name, s.description, subOnly.get(s.name) ?? false, depth);
+          if (!info.has(s.name)) { const r = resolveSkill(s.name, [root]); info.set(s.name, { subagentOnly: r?.subagentOnly ?? false, piDescription: r?.piDescription }); }
+          const i = info.get(s.name)!;
+          out = compactDescription(s.name, s.description, i.subagentOnly, depth, i.piDescription);
           cache.set(key, out);
         }
         s.description = out;

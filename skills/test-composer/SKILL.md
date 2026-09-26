@@ -9,6 +9,7 @@ description: >
   iterating across an entire application — that is coverage-expansion. Do NOT use
   for writing a single test scenario — this skill composes the journey's whole
   variant set.
+pi-description: 'All test variants for ONE user journey: “write all tests for the login journey”, “compose tests for journey X”. Whole app: use coverage-expansion.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

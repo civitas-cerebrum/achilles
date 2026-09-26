@@ -21,6 +21,7 @@ description: >
   signatures. This skill is the orchestrator (Stages 1-4 inline; Stages 5-7 dispatched). Coverage-expansion intent
   ("increase test coverage", "cover the whole app", "expand the suite") routes to coverage-expansion via this
   skill's routing block — those triggers are owned there, not here.
+pi-description: 'Default entry for any e2e/Playwright testing work: “test the app”, “write tests”, “the nightly failed”, “CI is red”. Routes to the specialist skills.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

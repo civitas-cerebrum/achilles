@@ -7,6 +7,7 @@ description: >
   secrets-sweep, report) and the gate criteria between phases. Use this
   skill to run the workflow interactively in Claude Code, or invoke it
   from an external automated CLI driver for a hands-off run.
+pi-description: 'Build a brand-new e2e suite for a project with none, in 8 gated phases: “onboard this project”, “automate this app from zero”.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

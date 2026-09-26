@@ -13,6 +13,7 @@ description: >
   explicitly for high-fidelity audits).
   Triggers on "increase coverage", "expand tests", "iterative coverage",
   "deep coverage pass", and when invoked by the onboarding skill as its Phase 5.
+pi-description: 'Grow coverage across the whole mapped app, journey by journey: “increase coverage”, “expand tests”, “deep coverage pass”. One journey: use test-composer.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

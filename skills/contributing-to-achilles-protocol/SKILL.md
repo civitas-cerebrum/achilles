@@ -61,6 +61,7 @@ description: >
   issue on element-interactions", "open a PR on element-interactions", any
   of the structural / protocol-gap phrases above, or any framing that
   implies work *on the package itself* rather than *with it*.
+pi-description: 'Subagent-only — extending the framework API or skills (“missing API”, “extend the Steps API”): delegate with Agent { skill: "contributing-to-achilles-protocol" }.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

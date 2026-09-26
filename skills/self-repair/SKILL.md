@@ -11,6 +11,7 @@ description: >
   use for a single failing test — that stays with `failure-diagnosis`. Do NOT use when
   the user wants in-session cluster-first batch triage — that is `test-repair`. Do NOT
   use to find new bugs adversarially — that is `bug-discovery`.
+pi-description: 'Autonomous per-file repair of a red suite: “self repair”, “run test:repair”. In-session triage: test-repair; one failing test: failure-diagnosis.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

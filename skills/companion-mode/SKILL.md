@@ -13,6 +13,7 @@ description: >
   (that is `coverage-expansion`), to compose a journey portfolio (that is `test-composer`), to
   hunt bugs adversarially (that is `bug-discovery`), to repair a rotted suite (that is
   `test-repair`), or to diagnose a single failing test (that is `failure-diagnosis`).
+pi-description: 'One-off verification of a task with evidence (screenshots, video, trace): “verify this flow with evidence”, “show me proof X works”. Not a durable suite.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

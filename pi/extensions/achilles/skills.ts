@@ -9,6 +9,8 @@ export interface SkillInfo {
   description: string;
   body: string;
   subagentOnly: boolean;
+  /** The pi routing line (`pi-description:` frontmatter), when the skill has one. */
+  piDescription?: string;
 }
 
 /** <package>/ is three levels above this file: pi/extensions/achilles/. fileURLToPath rather than
@@ -30,6 +32,14 @@ function parseFrontmatter(text: string): { fm: Record<string, string>; body: str
     else if (key && /^\s+\S/.test(line)) fm[key] += ' ' + line.trim();
   }
   return { fm, body: m[2] };
+}
+
+/** A YAML flow scalar's value: surrounding quotes removed ('' → ' in single quotes; \" and \\ in double). */
+export function unquote(value: string): string {
+  const v = value.trim();
+  if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) return v.slice(1, -1).replace(/''/g, "'");
+  if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1).replace(/\\(["\\])/g, '$1');
+  return v;
 }
 
 /** Truthy YAML-ish flag: "true" or "yes", case-insensitive. */
@@ -97,7 +107,8 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
     const subagentOnly =
       isFlagTrue(fm['disable-model-invocation']) ||
       SUBAGENT_ONLY_MARKER.test(description);
-    return { name, dir, file, description, body, subagentOnly };
+    const piDescription = fm['pi-description'] ? unquote(fm['pi-description']) : undefined;
+    return { name, dir, file, description, body, subagentOnly, ...(piDescription ? { piDescription } : {}) };
   }
   return undefined;
 }

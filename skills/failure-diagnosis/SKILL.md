@@ -38,6 +38,7 @@ description: >
   those callers explicitly route to this skill rather than relying on
   always-load.
 subagent-only: true
+pi-description: 'Subagent-only — failing tests (“why is this failing”, “the nightly failed”, “CI is red”): delegate with Agent { skill: "failure-diagnosis" }.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

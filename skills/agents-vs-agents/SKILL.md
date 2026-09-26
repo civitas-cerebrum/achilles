@@ -8,6 +8,7 @@ description: >
   "guardrail verification", or any request to test whether an AI behaves safely, stays in scope, or
   handles adversarial inputs correctly. Also use when testing AI chatbots, content generators,
   AI-driven decision systems, or any LLM-integrated feature for safety and correctness.
+pi-description: 'Adversarial testing of an AI/LLM feature in an app: “red team the AI”, “test AI guardrails”, “prompt injection testing”, “test for bias”.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

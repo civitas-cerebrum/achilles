@@ -11,6 +11,7 @@ description: >
   probing (malformed input, state corruption, edge cases), not load; throughput /
   latency-under-concurrency / VU-ramp work routes to performance-testing, not this skill.
   Use only when the goal is to actively discover bugs.
+pi-description: 'Adversarial bug hunt once the suite passes: “find bugs”, “break the app”, “stress test the app” (functional). Not load testing (use performance-testing).'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

@@ -1,6 +1,7 @@
 ---
 name: bug-report
 description: Use when a defect, issue, or unexpected behavior is found during testing and needs to be reported in a defect tracking system (Jira). Use when asked to write, create, or file a bug ticket, defect report, or issue report.
+pi-description: 'File a found defect as a bug ticket in the tracker (Jira): “file a bug”, “write a defect report”, “create a bug ticket”.'
 ---
 
 # Bug Report

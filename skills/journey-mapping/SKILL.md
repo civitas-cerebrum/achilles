@@ -6,6 +6,7 @@ description: >
   prerequisite for coverage expansion (test-composer) and the full pipeline. Invoke when: starting a
   full E2E suite, before coverage expansion, before any major test composing activity, or when asked to
   "map the app", "discover user journeys", "map user flows", or "understand the app".
+pi-description: 'Map the pages and user journeys of an app before writing tests: “map the app”, “discover user journeys”, “map user flows”.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

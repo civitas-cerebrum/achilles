@@ -20,6 +20,7 @@ description: >
   tool whenever a variant emits `steps.api*` lines rather than treating contract shape as optional.
   Not for: pure UI flow assertions, coverage expansion at journey scope, bug hunting at the page
   level, or failing-test diagnosis — those route to their own skills.
+pi-description: 'API contract checks on backend endpoints in tests: “contract test”, “verify API shape”, “OpenAPI conformance”, any steps.api* call.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

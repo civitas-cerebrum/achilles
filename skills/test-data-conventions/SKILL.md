@@ -18,6 +18,7 @@ description: >
   credential extraction to .env is owned by achilles-protocol Rule 15 and
   the secrets-sweep skill; this skill owns the data-lifecycle doctrine around
   it.
+pi-description: 'Where test data comes from and who cleans it up: “test data strategy”, “seed data”, “hardcoded data”, “test fixtures”.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

@@ -14,6 +14,7 @@ description: >
   "stress test the app"); UI-flow correctness (achilles-protocol); API shape/contract drift
   (contract-testing). Load / throughput / latency-under-concurrency routes here; everything else routes
   to its own skill.
+pi-description: 'k6 load and perf tests: “load test”, “stress test the endpoint”, “check p95 under load”, “k6”. Functional edge cases: use bug-discovery.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents are exempt.

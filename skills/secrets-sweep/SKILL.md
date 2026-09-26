@@ -6,6 +6,7 @@ description: >
   this skill as the final guardrail before publishing a test suite or
   treating it as portable across environments. Returns conform to the
   ComposerReturn schema.
+pi-description: 'Move hardcoded credentials, keys and URLs out of a test suite into .env: “secrets sweep”, “remove hardcoded credentials”.'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
