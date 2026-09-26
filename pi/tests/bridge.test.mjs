@@ -336,3 +336,22 @@ test('depth 0: settle runs Stop, never SubagentStop', async (t) => {
   assert.match(r.entries[0].content, /finish first/);
   assert.equal(fs.existsSync(rec), false, 'no SubagentStop record');
 });
+
+// --- I6: PostToolUse sees the Agent tool's full result, not the capped content -------------------
+test('tool_result for Agent: tool_response is built from details.text (20 KB), not the capped content', async (t) => {
+  const rec = recordFile(t);
+  const dir = tmp();
+  const manifestPath = path.join(dir, 'm.json');
+  fs.writeFileSync(manifestPath, JSON.stringify([{ file: 'record.sh', event: 'PostToolUse', matcher: 'Agent', timeout: 5 }]));
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx, { ...opts(), manifestPath });
+  const full = 'r'.repeat(20 * 1024) + 'END';
+  const capped = full.slice(0, 16 * 1024) + '\n\n[achilles: output truncated for context; full text kept in tool details]';
+  await pi.fire('tool_result', { type: 'tool_result', toolCallId: 'ag1', toolName: 'Agent', input: { description: 'd', prompt: 'p' }, content: [{ type: 'text', text: capped }], details: { text: full }, isError: false }, ctx);
+  const p = JSON.parse(fs.readFileSync(rec, 'utf8').trim());
+  assert.equal(p.tool_name, 'Agent');
+  assert.equal(p.tool_response.output, full); assert.equal(p.tool_response.content, full);
+  // Without details.text it falls back to the content.
+  fs.rmSync(rec);
+  await pi.fire('tool_result', { type: 'tool_result', toolCallId: 'ag2', toolName: 'Agent', input: {}, content: [{ type: 'text', text: 'short' }], details: undefined, isError: false }, ctx);
+  assert.equal(JSON.parse(fs.readFileSync(rec, 'utf8').trim()).tool_response.output, 'short');
+});

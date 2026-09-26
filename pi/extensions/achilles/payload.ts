@@ -37,8 +37,11 @@ export function contentText(content: Content): string {
   return content.filter((c) => c.type === 'text' && typeof c.text === 'string').map((c) => c.text as string).join('\n');
 }
 
-export function claudeToolResponse(piName: string, input: Rec, content: Content, isError: boolean): Rec {
-  const text = contentText(content);
+export function claudeToolResponse(piName: string, input: Rec, content: Content, isError: boolean, details?: unknown): Rec {
+  // The Agent tool caps its model-facing content; hooks must judge the subagent's full return,
+  // which the tool keeps in details.text.
+  const full = piName === 'Agent' && details && typeof (details as Rec).text === 'string' ? (details as Rec).text as string : undefined;
+  const text = full ?? contentText(content);
   if (piName === 'bash') return { stdout: text, stderr: '', interrupted: false };
   if (piName === 'write') return { filePath: input.path, success: !isError };
   return { content: text, output: text, isError };
