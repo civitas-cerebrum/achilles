@@ -4,6 +4,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { createBridge } from './bridge.ts';
 import { registerSkillTool } from './skill-tool.ts';
 import { registerAgentTool } from './agent-tool.ts';
+import { registerPromptCompaction } from './prompt.ts';
 import { skillRoots } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth } from './env.ts';
@@ -34,4 +35,5 @@ export default function achilles(pi: ExtensionAPI): void {
   createBridge(pi);
   registerSkillTool(pi, { roots });
   registerAgentTool(pi, { roots });
+  registerPromptCompaction(pi);
 }
