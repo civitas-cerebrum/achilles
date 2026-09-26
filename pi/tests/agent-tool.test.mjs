@@ -45,9 +45,15 @@ test('runs a child, returns its final text, fires SubagentStop with a transcript
   assert.equal(r.details.childSessionId, 'child-1');
   const stop = calls.find((c) => c.event === 'SubagentStop');
   assert.ok(stop); assert.equal(stop.payload.session_id, 'child-1'); assert.equal(stop.payload.stop_hook_active, false);
-  assert.match(stop.payload.transcript_path, /child-1\.jsonl$/);
   assert.equal(stop.payload.last_assistant_message, 'child says hi');
-  assert.equal(fs.existsSync(stop.payload.transcript_path), false, 'temp session dir removed after SubagentStop');
+});
+test('the child transcript handed on is the child shadow under the shared state dir', async () => {
+  const stateDir = tmp();
+  const { tool, calls } = setup({ stateDir });
+  const r = await run(tool, { description: 'scout: x', prompt: 'do it' });
+  const want = path.join(stateDir, 'pi-transcripts', 'child-1.jsonl');
+  assert.equal(r.details.shadowTranscript, want);
+  assert.equal(calls.find((c) => c.event === 'SubagentStop').payload.transcript_path, want);
 });
 test('passes ACHILLES_PROTOCOL=1 only when the parent marker exists; increments depth; passes --skill', async () => {
   const stateDir = tmp(); fs.writeFileSync(path.join(stateDir, 'sid-1.active'), '');

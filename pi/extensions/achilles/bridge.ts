@@ -7,6 +7,7 @@ import { claudeToolName, claudeToolInput, claudeToolResponse, type Content } fro
 import { steer as steerText } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
+import { sessionStateDir, shadowPath, appendShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
 
 export interface ManifestEntry { file: string; event: string; matcher: string | null; timeout?: number; async?: boolean }
 export interface HookRun { file: string; exitCode: number | null; stdout: string; stderr: string; timedOut: boolean; ms: number }
@@ -187,6 +188,9 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   let stopHookActive = false;
 
   const steer = (t: string) => steerText(t, { roots, packageDir: PACKAGE_DIR });
+  /** This session's Claude-shaped shadow transcript (see transcript.ts); the hooks' transcript_path. */
+  const shadowFor = (ctx: ExtensionContext) => shadowPath(ctx.sessionManager.getSessionId(), opts.stateDir ?? sessionStateDir(home));
+  const record = (ctx: ExtensionContext, entry: Rec) => { if (enabled && !appendShadow(shadowFor(ctx), entry)) log('shadow_write_failed', { file: shadowFor(ctx) }); };
   const disable = (reason: string, ctx?: ExtensionContext) => {
     enabled = false;
     log('disabled', { reason });
@@ -200,7 +204,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     const common: Rec = {
       hook_event_name: event,
       session_id: sessionId,
-      ...(ctx?.sessionManager.getSessionFile() ? { transcript_path: ctx.sessionManager.getSessionFile() } : {}),
+      ...(ctx ? { transcript_path: shadowFor(ctx) } : {}),
       cwd: ctx?.cwd ?? process.cwd(),
       // Claude Code's ledger write-gates (pipeline_check_sod, e.g. hooks/lib/pipeline-gate.sh) deny
       // any reviewer-approved transition when agent_id is empty, because under Claude Code only
@@ -248,6 +252,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('input', async (event, ctx) => guarded('input', ctx, undefined, async () => {
     stopHookActive = false;
+    record(ctx, userPromptEntry(event.text));
     const ds = await runEvent('UserPromptSubmit', { prompt: event.text }, undefined, ctx);
     for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
     return undefined;
@@ -255,6 +260,9 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('tool_call', async (event, ctx) => guarded('tool_call', ctx, { block: true, reason: steer('[achilles] internal error handling tool_call; call blocked (fail closed)') }, async () => {
     const name = claudeToolName(event.toolName);
+    // Record the call first, exactly as Claude's transcript would hold it, so a PreToolUse hook that
+    // reads transcript_path sees its own call.
+    record(ctx, toolUseEntry(event.toolName, event.input as Rec, event.toolCallId));
     const ds = await runEvent('PreToolUse', { tool_name: name, tool_input: claudeToolInput(event.toolName, event.input as Rec), tool_use_id: event.toolCallId }, name, ctx);
     for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
     const blocked = ds.find((d) => d.block);
@@ -275,6 +283,12 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     }
     if (notes.length === 0) return undefined;
     return { content: [...event.content, { type: 'text', text: `\n[achilles] ${steer(notes.join('\n'))}` }] };
+  }));
+
+  pi.on('message_end', async (event, ctx) => guarded('message_end', ctx, undefined, async () => {
+    const text = assistantText(event.message);
+    if (text.trim()) record(ctx, assistantTextEntry(text));
+    return undefined;
   }));
 
   pi.on('agent_before_settle', async (event, ctx) => guarded('agent_before_settle', ctx, undefined, async () => {
