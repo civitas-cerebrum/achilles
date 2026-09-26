@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
 import { compileMatcher, parseDecision, resolveHooksDir, runHook, createBridge, claudePrompt } from '../extensions/achilles/bridge.ts';
 import { seedShadow } from '../extensions/achilles/transcript.ts';
@@ -792,4 +793,96 @@ test('compaction: dedupe resets after session_compact and session_tree (the earl
     assert.match(after, /These guardrails are bound/, `${ev.type}: full text again`);
     assert.doesNotMatch(after, /same block as before/);
   }
+});
+
+// ---- hook serialisation (round-1 fix 1) ----
+// pi runs the tool calls of one assistant message in parallel; Claude Code never runs two hooks at
+// once. The bridge queues every runEvent call so hooks that read-modify-write shared state (the
+// integrity sidecar) never interleave.
+const sha256 = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+test('real ledger-integrity-chain: concurrent PostToolUse (Write cycle state + Edit ledger) records both hashes; the next Write is allowed', async (t) => {
+  withEnv(t, 'ACHILLES_PROTOCOL', '1');
+  withEnv(t, 'ACHILLES_SESSION_STATE_DIR', tmp());
+  const proj = tmp(); const docs = path.join(proj, 'tests', 'e2e', 'docs'); fs.mkdirSync(docs, { recursive: true });
+  const cycle = path.join(docs, '.phase4-cycle-state.json');
+  const ledger = path.join(docs, 'onboarding-status.json');
+  const sidecar = path.join(docs, '.ledger-integrity.json');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: proj });
+  await start(pi, ctx, { ...opts(), hooksDir: path.join(REPO, 'hooks'), manifestPath: manifestOf([
+    { file: 'ledger-integrity-chain.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
+    { file: 'ledger-integrity-chain.sh', event: 'PostToolUse', matcher: 'Write|Edit', timeout: 10 },
+  ]) });
+  const result = (id, toolName, input) => ({ type: 'tool_result', toolCallId: id, toolName, input, content: [{ type: 'text', text: 'ok' }], isError: false });
+  // Seed both chains with one sanctioned write each, one after the other.
+  fs.writeFileSync(cycle, '{"cycle":0}');
+  await pi.fire('tool_result', result('s1', 'write', { path: cycle, content: '{"cycle":0}' }), ctx);
+  fs.writeFileSync(ledger, '{"phase":0}');
+  await pi.fire('tool_result', result('s2', 'write', { path: ledger, content: '{"phase":0}' }), ctx);
+  // Several rounds of one assistant message holding both calls: pi fires their tool_results together.
+  for (let i = 1; i <= 5; i++) {
+    fs.writeFileSync(cycle, `{"cycle":${i}}`);
+    fs.writeFileSync(ledger, `{"phase":${i}}`);
+    await Promise.all([
+      pi.fire('tool_result', result(`w${i}`, 'write', { path: cycle, content: `{"cycle":${i}}` }), ctx),
+      pi.fire('tool_result', result(`e${i}`, 'edit', { path: ledger, edits: [{ oldText: `${i - 1}`, newText: `${i}` }] }), ctx),
+    ]);
+    const chain = JSON.parse(fs.readFileSync(sidecar, 'utf8'));
+    assert.equal(chain.keyedRecords?.['.phase4-cycle-state.json']?.at(-1)?.sha256, sha256(cycle), `round ${i}: cycle-state hash recorded`);
+    assert.equal(chain.records?.at(-1)?.sha256, sha256(ledger), `round ${i}: ledger hash recorded`);
+  }
+  for (const [id, p] of [['n1', cycle], ['n2', ledger]]) {
+    const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: id, toolName: 'write', input: { path: p, content: '{}' } }, ctx);
+    assert.equal(r, undefined, `next Write to ${path.basename(p)} is allowed: ${r?.reason ?? ''}`);
+  }
+});
+test('runEvent: calls started together run their hooks one call after another, in call order', async (t) => {
+  const rec = recordFile(t);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  const b = await start(pi, ctx, { ...opts(), manifestPath: manifestOf([
+    { file: 'serial.sh', event: 'PreToolUse', matcher: 'Bash', timeout: 5 },
+    { file: 'serial.sh', event: 'PostToolUse', matcher: 'Bash', timeout: 5 },
+  ]) });
+  await Promise.all([
+    b.runEvent('PreToolUse', { tool_name: 'Bash', tool_use_id: 'a' }, 'Bash', ctx),
+    b.runEvent('PostToolUse', { tool_name: 'Bash', tool_use_id: 'b' }, 'Bash', ctx),
+    b.runEvent('PreToolUse', { tool_name: 'Bash', tool_use_id: 'c' }, 'Bash', ctx),
+  ]);
+  assert.deepEqual(fs.readFileSync(rec, 'utf8').trim().split('\n'), ['start a', 'end a', 'start b', 'end b', 'start c', 'end c']);
+});
+test('runEvent: pi-parallel tool_call handlers run their hooks serially', async (t) => {
+  const rec = recordFile(t);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  await start(pi, ctx, { ...opts(), manifestPath: manifestOf([{ file: 'serial.sh', event: 'PreToolUse', matcher: 'Bash', timeout: 5 }]) });
+  const call = (id) => pi.fire('tool_call', { type: 'tool_call', toolCallId: id, toolName: 'bash', input: { command: 'ls' } }, ctx);
+  await Promise.all([call('x'), call('y')]);
+  assert.deepEqual(fs.readFileSync(rec, 'utf8').trim().split('\n'), ['start x', 'end x', 'start y', 'end y']);
+});
+test('runEvent: a call that throws still releases the queue; the next call runs', async (t) => {
+  const rec = recordFile(t);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  const b = await start(pi, ctx, { ...opts(), manifestPath: manifestOf([{ file: 'serial.sh', event: 'PreToolUse', matcher: 'Bash', timeout: 5 }]) });
+  const bad = makeFakeCtx({ sessionManager: { getSessionId() { throw new Error('boom'); }, getSessionFile() {} } });
+  const first = b.runEvent('PreToolUse', { tool_name: 'Bash', tool_use_id: 'bad' }, 'Bash', bad);
+  const second = b.runEvent('PreToolUse', { tool_name: 'Bash', tool_use_id: 'good' }, 'Bash', ctx);
+  await assert.rejects(first, /boom/);
+  const ds = await second;
+  assert.equal(ds.length, 1);
+  assert.deepEqual(fs.readFileSync(rec, 'utf8').trim().split('\n'), ['start good', 'end good']);
+});
+test('runEvent: a timed-out hook blocks its own call (fail closed) and releases the queue for the next', async (t) => {
+  const rec = recordFile(t);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  const b = await start(pi, ctx, { ...opts(), manifestPath: manifestOf([
+    { file: 'sleep.sh', event: 'PreToolUse', matcher: 'Agent', timeout: 1 },
+    { file: 'serial.sh', event: 'PreToolUse', matcher: 'Bash', timeout: 5 },
+  ]) });
+  const t0 = Date.now();
+  const [slow, next] = await Promise.all([
+    b.runEvent('PreToolUse', { tool_name: 'Agent', tool_use_id: 'slow' }, 'Agent', ctx),
+    b.runEvent('PreToolUse', { tool_name: 'Bash', tool_use_id: 'next' }, 'Bash', ctx),
+  ]);
+  assert.equal(slow[0].block, true); assert.match(slow[0].reason, /timed out/);
+  assert.equal(next.length, 1); assert.equal(next[0].block, false);
+  assert.ok(Date.now() - t0 >= 1000, 'the second call waited for the first');
+  assert.deepEqual(fs.readFileSync(rec, 'utf8').trim().split('\n'), ['start next', 'end next']);
 });

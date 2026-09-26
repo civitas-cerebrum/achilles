@@ -259,7 +259,24 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     ctx?.ui.notify(`[achilles] hooks disabled: ${reason}`, 'warning');
   };
 
-  async function runEvent(event: string, payload: Rec, toolName?: string, ctx?: ExtensionContext): Promise<Decision[]> {
+  // pi runs the tool calls of one assistant message in parallel, so their tool_call / tool_result
+  // handlers overlap. Claude Code never runs two hook invocations at once, and hooks rely on that:
+  // ledger-integrity-chain.sh read-modify-writes one sidecar for several files, so two overlapping
+  // PostToolUse runs lose a record and the next sanctioned write is denied as an out-of-band mutation.
+  // Every runEvent call therefore waits for the previous one to finish (a promise chain, in call
+  // order). The lock is released in `finally`, so a throw or a timed-out hook never wedges the queue.
+  let hookQueue: Promise<void> = Promise.resolve();
+  function runEvent(event: string, payload: Rec, toolName?: string, ctx?: ExtensionContext): Promise<Decision[]> {
+    const prev = hookQueue;
+    let release!: () => void;
+    hookQueue = new Promise<void>((resolve) => { release = resolve; });
+    return (async () => {
+      await prev; // never rejects: every link resolves through `release`
+      try { return await runEventNow(event, payload, toolName, ctx); } finally { release(); }
+    })();
+  }
+
+  async function runEventNow(event: string, payload: Rec, toolName?: string, ctx?: ExtensionContext): Promise<Decision[]> {
     if (!enabled) return [];
     const depth = piDepth();
     const sessionId = ctx?.sessionManager.getSessionId();
