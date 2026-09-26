@@ -95,9 +95,9 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         ACHILLES_PI_DEPTH: String(depth + 1),
         ...(type ? { ACHILLES_PI_AGENT_TYPE: type } : {}),
         ...(active ? { ACHILLES_PROTOCOL: '1' } : {}),
-        // The child's shadow transcript starts as a copy of this one (see seedShadow), so hooks in the
-        // child see the parent's history, including this Agent tool_use, which the parent's bridge
-        // recorded at tool_call, before execute runs.
+        // The child's shadow transcript is seeded with this one's context signals (transcript.ts
+        // seedShadow), including this Agent tool_use, which the parent's bridge recorded at tool_call,
+        // before execute runs.
         ACHILLES_PI_PARENT_SHADOW: shadowPath(ctx.sessionManager.getSessionId(), stateDir),
       };
 

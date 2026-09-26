@@ -284,10 +284,10 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   pi.on('session_start', async (_event, ctx) => guarded('session_start', ctx, undefined, async () => {
     stopHookActive = false;
     translated.clear();
-    // A subagent's shadow inherits its parent's history (transcript.ts seedShadow).
+    // A subagent's shadow inherits its parent's context signals (transcript.ts seedShadow).
     const parentShadow = process.env.ACHILLES_PI_PARENT_SHADOW;
     if (piDepth() >= 1 && parentShadow) {
-      const seeded = seedShadow(shadowFor(ctx), parentShadow);
+      const seeded = seedShadow(shadowFor(ctx), parentShadow, opts.stateDir ?? sessionStateDir(home));
       log('shadow_seeded', { from: parentShadow, to: shadowFor(ctx), seeded });
     }
     // The subagent-only read guard is achilles' own policy, not a hook, so it holds even when hook

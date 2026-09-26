@@ -37,24 +37,49 @@ export function appendShadow(file: string, entry: Rec): boolean {
   }
 }
 
+/** Parent lines a child inherits: the context signals hooks look for across a dispatch (which skill
+ * the session loaded, which role it dispatched, what the user asked). */
+function contextSignal(entry: unknown): boolean {
+  const e = entry as { type?: unknown; message?: { content?: unknown } } | null;
+  if (!e || typeof e !== 'object') return false;
+  if (e.type === 'user') return true;
+  if (e.type !== 'assistant' || !Array.isArray(e.message?.content)) return false;
+  const blocks = e.message.content as Array<{ type?: unknown; name?: unknown; input?: { file_path?: unknown } }>;
+  return blocks.length > 0 && blocks.every((c) => c?.type === 'tool_use' && (
+    c.name === 'Skill' || c.name === 'Agent' ||
+    (c.name === 'Read' && typeof c.input?.file_path === 'string' && /\/skills\/[^/]+\/SKILL\.md$/.test(c.input.file_path))));
+}
+
 /**
- * Starts a subagent's shadow as a byte copy of its parent's, the way older Claude Code builds kept
- * sidechain entries in the main session file: PreToolUse hooks in the child (the journey-mapping
- * preread gate, the evidence floor's fd- dispatch signal) need the parent's history, and the child's
- * own calls are appended after it. Only when the child shadow does not exist yet, so a re-fired
- * session_start never re-seeds. Cost: each child holds a full copy of the parent shadow at spawn
- * (copyFileSync, no parse), so disk use grows with parent history times dispatch count.
- * Returns false when there was nothing to copy or the copy failed; never throws.
+ * Starts a subagent's shadow with its parent's CONTEXT SIGNALS only: Skill and Agent tool_uses, Reads
+ * of a skills/<name>/SKILL.md, and user prompts. PreToolUse hooks in the child need those (the
+ * journey-mapping preread gate, the evidence floor's fd- dispatch signal), but not the parent's work:
+ * a parent's evidence read must not satisfy the child's evidence floor, and a parent's spec write must
+ * not trip the compliance sweep at the child's SubagentStop. Bash, other Reads, Write, Edit and
+ * assistant text are dropped, as are malformed lines.
+ *
+ * Only when the child shadow does not exist yet (exclusive create, 0600), so a re-fired session_start
+ * never re-seeds. The parent path is accepted only when it is a regular `.jsonl` file directly inside
+ * `<stateDir>/pi-transcripts/` (it arrives through the environment). Cost: the parent shadow is read
+ * and parsed once per dispatch; the copy is small, since only signal lines are kept.
+ * Returns the number of lines written, or -1 when nothing was seeded; never throws.
  */
-export function seedShadow(file: string, parentFile: string): boolean {
+export function seedShadow(file: string, parentFile: string, stateDir: string): number {
   try {
-    if (fs.existsSync(file) || !fs.existsSync(parentFile)) return false;
+    const dir = path.resolve(stateDir, 'pi-transcripts');
+    const parent = path.resolve(parentFile);
+    if (path.dirname(parent) !== dir || !parent.endsWith('.jsonl')) return -1;
+    if (!fs.lstatSync(parent).isFile()) return -1;
+    if (fs.existsSync(file)) return -1;
+    const keep = fs.readFileSync(parent, 'utf8').split('\n').filter((line) => {
+      if (!line.trim()) return false;
+      try { return contextSignal(JSON.parse(line)); } catch { return false; }
+    });
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    fs.copyFileSync(parentFile, file, fs.constants.COPYFILE_EXCL);
-    fs.chmodSync(file, 0o600);
-    return true;
+    fs.writeFileSync(file, keep.map((l) => l + '\n').join(''), { mode: 0o600, flag: 'wx' });
+    return keep.length;
   } catch {
-    return false;
+    return -1;
   }
 }
 

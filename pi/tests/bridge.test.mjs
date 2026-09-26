@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
 import { compileMatcher, parseDecision, resolveHooksDir, runHook, createBridge, claudePrompt } from '../extensions/achilles/bridge.ts';
+import { seedShadow } from '../extensions/achilles/transcript.ts';
 
 const fx = path.join(import.meta.dirname, 'fixtures');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-'));
@@ -624,21 +625,45 @@ async function family(t, { hooksDir = path.join(fx, 'hooks'), manifest = [{ file
 }
 const agentCall = (description, id = 'ag') => ({ type: 'tool_call', toolCallId: id, toolName: 'Agent', input: { description, prompt: 'brief' } });
 
-test('child shadow starts with the parent shadow, including the parent Agent tool_use; the child appends after it', async (t) => {
+test('child shadow is seeded with the parent context signals only; the child appends after them', async (t) => {
   const f = await family(t);
-  await f.parentPi.fire('tool_call', readCall('/x/notes.md', 'p1'), f.parentCtx);
+  await f.parentPi.fire('input', { type: 'input', text: 'map the app', source: 'interactive' }, f.parentCtx);
+  await f.parentPi.fire('tool_call', { type: 'tool_call', toolCallId: 'p0', toolName: 'Skill', input: { skill: 'journey-mapping' } }, f.parentCtx);
+  await f.parentPi.fire('tool_call', readCall('/x/skills/journey-mapping/SKILL.md', 'p1'), f.parentCtx);
+  await f.parentPi.fire('tool_call', readCall('/x/test-results/a/error-context.md', 'p2'), f.parentCtx);
+  await f.parentPi.fire('tool_call', readCall('/x/skills/journey-mapping/references/deep.md', 'p3'), f.parentCtx);
+  await f.parentPi.fire('tool_call', bashCall('npx playwright test --reporter=json > test-results/results.json', 'p4'), f.parentCtx);
+  await f.parentPi.fire('tool_call', { type: 'tool_call', toolCallId: 'p5', toolName: 'write', input: { path: '/x/tests/e2e/a.spec.ts', content: 'x' } }, f.parentCtx);
+  await f.parentPi.fire('message_end', { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'parent prose' }] } }, f.parentCtx);
   await f.parentPi.fire('tool_call', agentCall('scout: look around'), f.parentCtx);
+  fs.appendFileSync(f.parentShadow, '{not json\n');
   const parentBytes = fs.readFileSync(f.parentShadow, 'utf8');
   const c = await f.spawnChild('scout');
-  assert.equal(fs.readFileSync(c.shadow, 'utf8'), parentBytes, 'seeded as an exact copy');
   assert.equal(fs.statSync(c.shadow).mode & 0o777, 0o600);
+  const seed = shadowLines(c.shadow);
+  assert.deepEqual(seed.map((e) => e.type === 'user' ? `user:${e.message.content}` : `${e.message.content[0].name}:${e.message.content[0].input.file_path ?? e.message.content[0].input.skill ?? e.message.content[0].input.description}`),
+    ['user:map the app', 'Skill:journey-mapping', 'Read:/x/skills/journey-mapping/SKILL.md', 'Agent:scout: look around']);
   await c.pi.fire('tool_call', readCall('/x/child.md', 'c1'), c.ctx);
-  const names = toolUses(c.shadow).map((u) => `${u.name}:${u.input.file_path ?? u.input.description}`);
-  assert.deepEqual(names, ['Read:/x/notes.md', 'Agent:scout: look around', 'Read:/x/child.md']);
+  assert.equal(toolUses(c.shadow).at(-1).input.file_path, '/x/child.md');
   assert.equal(fs.readFileSync(f.parentShadow, 'utf8'), parentBytes, 'the parent shadow is untouched');
   // A second session_start in the child does not re-seed.
   await c.pi.fire('session_start', { type: 'session_start', reason: 'reload' }, c.ctx);
-  assert.equal(toolUses(c.shadow).length, 3);
+  assert.equal(toolUses(c.shadow).length, 4);
+});
+test('seedShadow accepts only a regular .jsonl directly inside <stateDir>/pi-transcripts', async () => {
+  const stateDir = tmp(); const dir = path.join(stateDir, 'pi-transcripts'); fs.mkdirSync(dir);
+  const line = JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }) + '\n';
+  const good = path.join(dir, 'p.jsonl'); fs.writeFileSync(good, line);
+  const outside = path.join(tmp(), 'p.jsonl'); fs.writeFileSync(outside, line);
+  const notJsonl = path.join(dir, 'p.txt'); fs.writeFileSync(notJsonl, line);
+  const link = path.join(dir, 'l.jsonl'); fs.symlinkSync(outside, link);
+  const child = (n) => path.join(dir, `c${n}.jsonl`);
+  assert.equal(seedShadow(child(1), outside, stateDir), -1);
+  assert.equal(seedShadow(child(2), notJsonl, stateDir), -1);
+  assert.equal(seedShadow(child(3), link, stateDir), -1);
+  assert.equal(seedShadow(child(4), path.join(dir, '..', 'pi-transcripts', 'p.jsonl'), stateDir), 1);
+  assert.equal(seedShadow(child(4), good, stateDir), -1, 'never overwrites an existing child shadow');
+  assert.ok(![1, 2, 3].some((n) => fs.existsSync(child(n))));
 });
 test('SubagentStop carries agent_transcript_path (the child shadow) and transcript_path, which holds the parent history', async (t) => {
   const rec = recordFile(t);
@@ -671,10 +696,13 @@ test('journey-mapping-skill-preread-gate (real hook): a child spill write is all
   assert.equal(r?.block, true);
   assert.match(r.reason, /journey-mapping/);
 });
-test('failure-diagnosis-evidence-floor-gate (real hook): a child dispatched as fd- is gated on its own evidence reads', async (t) => {
+test('failure-diagnosis-evidence-floor-gate (real hook): a child dispatched as fd- is gated on its OWN evidence reads, not the parent\'s', async (t) => {
   setEnv(t, { ACHILLES_PROTOCOL: '1', ACHILLES_SESSION_STATE_DIR: tmp() });
   const manifest = [{ file: 'failure-diagnosis-evidence-floor-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 15 }];
   const f = await family(t, { hooksDir: path.join(REPO, 'hooks'), manifest });
+  // The parent's own evidence (a JSON reporter run and an error-context read) must not satisfy the child.
+  await f.parentPi.fire('tool_call', bashCall('npx playwright test --reporter=json > test-results/results.json', 'pe1'), f.parentCtx);
+  await f.parentPi.fire('tool_call', readCall(path.join(f.cwd, 'test-results/other/error-context.md'), 'pe2'), f.parentCtx);
   await f.parentPi.fire('tool_call', agentCall('fd-checkout: diagnose the checkout failure'), f.parentCtx);
   const c = await f.spawnChild('fd-checkout');
   const spec = (id) => ({ type: 'tool_call', toolCallId: id, toolName: 'write', input: { path: path.join(f.cwd, 'tests/e2e/checkout.spec.ts'), content: 'test()' } });
@@ -683,4 +711,20 @@ test('failure-diagnosis-evidence-floor-gate (real hook): a child dispatched as f
   assert.match(denied.reason, /Evidence-floor violation/);
   await c.pi.fire('tool_call', readCall(path.join(f.cwd, 'test-results/checkout-guest/error-context.md'), 'e1'), c.ctx);
   assert.equal(await c.pi.fire('tool_call', spec('s2'), c.ctx), undefined);
+});
+test('compliance-sweep-exit-gate (real hook): a parent spec write does not block a child with no writes at SubagentStop', async (t) => {
+  setEnv(t, { ACHILLES_PROTOCOL: '1', ACHILLES_SESSION_STATE_DIR: tmp() });
+  const manifest = [{ file: 'compliance-sweep-exit-gate.sh', event: 'SubagentStop', matcher: null, timeout: 15 }];
+  const f = await family(t, { hooksDir: path.join(REPO, 'hooks'), manifest });
+  await f.parentPi.fire('tool_call', { type: 'tool_call', toolCallId: 'pw', toolName: 'write', input: { path: path.join(f.cwd, 'tests/e2e/login/login.spec.ts'), content: 'x' } }, f.parentCtx);
+  await f.parentPi.fire('tool_call', agentCall('workflow-reviewer-phase3: review'), f.parentCtx);
+  const c = await f.spawnChild('workflow-reviewer-phase3');
+  await c.pi.fire('tool_call', readCall(path.join(f.cwd, 'tests/e2e/login/login.spec.ts'), 'cr'), c.ctx);
+  await c.pi.fire('message_end', { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'verdict: approve' }] } }, c.ctx);
+  assert.equal(await c.pi.fire('agent_before_settle', settleEv(), c.ctx), undefined);
+  // Control: the same hook still blocks a child that wrote a spec itself.
+  await c.pi.fire('tool_call', { type: 'tool_call', toolCallId: 'cw', toolName: 'write', input: { path: path.join(f.cwd, 'tests/e2e/login/other.spec.ts'), content: 'x' } }, c.ctx);
+  const r = await c.pi.fire('agent_before_settle', settleEv(), c.ctx);
+  assert.equal(r?.continue, true);
+  assert.match(r.entries[0].content, /compliance sweep never ran/);
 });
