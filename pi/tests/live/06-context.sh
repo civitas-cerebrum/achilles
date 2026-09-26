@@ -53,5 +53,6 @@ grep -qF 'delegate with Agent { skill: &quot;workflow-reviewer&quot; }.' "$REQ" 
 # The hand-written pi-description routing lines (skills/*/SKILL.md) are what the model sees.
 grep -qF '“the nightly failed”, “CI is red”): delegate with Agent { skill: &quot;failure-diagnosis&quot; }.' "$REQ" || live_fail "failure-diagnosis routing line missing from the orchestrator prompt"
 [ "$cnames" = "bug-report" ] || live_fail "child lists achilles skills beyond the passed one: $cnames"
+grep -qF 'Your dispatched methodology — read this skill before starting: File a found defect' "$REQ" || live_fail "child's skill entry is not the dispatched-methodology line"
 grep -q '"kind":"prompt_size","depth":"1".*"skills":\["bug-report"\]' "$ACHILLES_PI_LOG" || live_fail "child prompt_size log does not show only bug-report"
 live_pass "skill listing compacted (orchestrator system ${psys} chars, skills section ${psec} chars); child lists only its skill (system ${csys} chars, skills section ${csec} chars)"

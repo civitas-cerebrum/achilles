@@ -68,16 +68,17 @@ export function stripDelegate(line: string): string {
  * The listing line for one achilles skill. `piDescription` (the skill's hand-written `pi-description:`
  * routing line) wins over the first sentence of the Claude Code description.
  * - depth 0, subagent-only: the routing line (it carries the delegate instruction), else the bare delegate line.
- * - depth >= 1, subagent-only: this child was dispatched to run it, so a positive line, not a prohibition.
+ * - depth 0, other skills: the routing line, else the first sentence.
+ * - depth >= 1, any skill: this child was dispatched to run it (under --no-skills it is the only
+ *   achilles skill listed), so "Your dispatched methodology — read this skill before starting: …".
  */
 export function compactDescription(name: string, description: string, subagentOnly: boolean, depth: number, piDescription?: string): string {
   const routing = piDescription ? clip(plain(piDescription), PI_DESCRIPTION_CAP) : undefined;
-  if (subagentOnly && depth === 0) return routing ?? delegateLine(name);
-  if (subagentOnly) {
-    const what = (routing && stripDelegate(routing)) || firstSentence(description);
-    return `${DISPATCHED_PREFIX}${what}`;
-  }
-  return routing ?? firstSentence(description);
+  if (depth === 0) return subagentOnly ? routing ?? delegateLine(name) : routing ?? firstSentence(description);
+  // Inside a subagent the child runs with --no-skills, so the only achilles skill listed is the one it
+  // was dispatched with: tell it to read that skill first, whatever its class.
+  const what = (routing && stripDelegate(routing)) || firstSentence(description);
+  return `${DISPATCHED_PREFIX}${what}`;
 }
 
 interface ListedSkill { name: string; description: string }

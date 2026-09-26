@@ -94,9 +94,10 @@ test('REAL repo skills: every achilles skill has a pi-description of at most 200
   assert.match(resolveSkill('coverage-expansion', [pkgSkills]).piDescription, /test-composer/);
   assert.match(resolveSkill('self-repair', [pkgSkills]).piDescription, /test-repair.*failure-diagnosis/);
 });
-test('REAL repo skills: the whole rendered compact listing (pi\'s XML, with locations) is under 2,000 tokens', () => {
+test('REAL repo skills: the orchestrator\'s whole rendered compact listing (pi\'s XML, with locations) is under 2,000 tokens', () => {
+  // Depth 0 only: a child runs with --no-skills and lists just its dispatched skill (see the child test).
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-  for (const depth of [0, 1]) {
+  for (const depth of [0]) {
     const skills = listSkills([pkgSkills]).map((name) => ({ name, description: resolveSkill(name, [pkgSkills]).description, filePath: path.join(pkgSkills, name, 'SKILL.md') }));
     createPromptCompactor(pkgSkills).compact(skills, depth);
     // Same shape as pi's formatSkillsForPrompt (dist/core/skills.js), header included.
@@ -115,7 +116,23 @@ test('REAL repo skills: all 24 compact (names + descriptions) under 1,600 tokens
     const listing = skills.map((s) => `<name>${s.name}</name><description>${s.description}</description>`).join('\n');
     assert.ok(listing.length / 4 < 1600, `depth ${depth}: ${listing.length / 4} tokens`);
     assert.ok(listing.length < before / 4, `depth ${depth}: ${listing.length} vs ${before}`);
-    for (const s of skills) assert.ok(s.description.length <= DESCRIPTION_CAP + 20 && !/\*\*/.test(s.description) && !/^>/.test(s.description), `${s.name}: ${s.description}`);
+    const extra = depth ? DISPATCHED_PREFIX.length : 0;
+    for (const s of skills) assert.ok(s.description.length <= Math.max(DESCRIPTION_CAP, 200) + extra && !/\*\*/.test(s.description) && !/^>/.test(s.description), `${s.name}: ${s.description}`);
   }
   assert.ok(fs.existsSync(path.join(pkgSkills, 'workflow-reviewer', 'SKILL.md')));
+});
+test('depth >= 1: any dispatched achilles skill (a test-composer child) reads as the dispatched methodology', () => {
+  // What a child spawned with --no-skills --skill <test-composer> hands before_agent_start.
+  const skills = [{ name: 'test-composer', description: resolveSkill('test-composer', [pkgSkills]).description }];
+  assert.equal(createPromptCompactor(pkgSkills).compact(skills, 1), 1);
+  assert.equal(skills[0].description, `${DISPATCHED_PREFIX}${resolveSkill('test-composer', [pkgSkills]).piDescription}`);
+  assert.match(skills[0].description, /^Your dispatched methodology — read this skill before starting: All test variants for ONE user journey/);
+  // At depth 0 the same skill keeps its plain routing line.
+  const d0 = [{ name: 'test-composer', description: 'x' }];
+  createPromptCompactor(pkgSkills).compact(d0, 0);
+  assert.equal(d0[0].description, resolveSkill('test-composer', [pkgSkills]).piDescription);
+  // The fixture orchestrator-grade skill without a pi-description uses its first sentence.
+  const f = [{ name: 'orch-skill', description: LONG }];
+  createPromptCompactor(fx).compact(f, 1);
+  assert.equal(f[0].description, `${DISPATCHED_PREFIX}Use this skill when the orchestrator needs fixture work, e.g. a test.`);
 });
