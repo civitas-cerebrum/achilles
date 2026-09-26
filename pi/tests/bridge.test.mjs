@@ -263,3 +263,45 @@ test('message_end records assistant text only; user and tool-only messages add n
   const lines = fs.readFileSync(path.join(o.stateDir, 'pi-transcripts', 'sid-1.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepEqual(lines, [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }]);
 });
+
+// --- I4: the orchestrator may not read subagent-only skills --------------------------------------
+const readCall = (p, id = 'rd') => ({ type: 'tool_call', toolCallId: id, toolName: 'read', input: { path: p } });
+const bashCall = (command, id = 'bs') => ({ type: 'tool_call', toolCallId: id, toolName: 'bash', input: { command } });
+const SUB = path.join(fx, 'skills', 'sub-flag');
+test('depth 0: read of a subagent-only SKILL.md (absolute, relative, or any file under it) is blocked with the delegation line', async () => {
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: path.join(fx, 'skills') }); await start(pi, ctx);
+  for (const p of [path.join(SUB, 'SKILL.md'), 'sub-flag/SKILL.md', path.join(SUB, 'references', 'anything.md'), path.join(fx, 'skills', 'sub-marker', 'SKILL.md')]) {
+    const r = await pi.fire('tool_call', readCall(p), ctx);
+    assert.equal(r?.block, true, p);
+    assert.match(r.reason, /subagent-only skill.*Delegate it: Agent \{ skill: "sub-(flag|marker)"/, p);
+    assert.equal(r.reason.split('\n').length, 1, 'one line');
+  }
+});
+test('depth 0: an orchestrator skill read is allowed', async () => {
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  assert.equal(await pi.fire('tool_call', readCall(path.join(fx, 'skills', 'orch-skill', 'SKILL.md')), ctx), undefined);
+});
+test('depth 1: a subagent may read a subagent-only skill', async (t) => {
+  withEnv(t, 'ACHILLES_PI_DEPTH', '1');
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  assert.equal(await pi.fire('tool_call', readCall(path.join(SUB, 'SKILL.md')), ctx), undefined);
+});
+test('depth 0: bash cat/sed/head of a subagent-only skill file is blocked before hooks run; other bash is not', async () => {
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  for (const cmd of [`cat ${SUB}/SKILL.md`, `sed -n '1,40p' "${SUB}/SKILL.md"`, `head -50 ${SUB}/SKILL.md | less`]) {
+    const r = await pi.fire('tool_call', bashCall(cmd), ctx);
+    assert.match(r.reason, /Delegate it: Agent \{ skill: "sub-flag"/, cmd);
+    assert.doesNotMatch(r.reason, /nope/, 'guard runs before the hooks');
+  }
+  // ls is not a reader: the guard stays out of it and the fixture Bash hook decides (it denies with "nope").
+  const ls = await pi.fire('tool_call', bashCall(`ls ${SUB}`), ctx);
+  assert.match(ls.reason, /nope/); assert.doesNotMatch(ls.reason, /subagent-only/);
+});
+test('depth 0: every skill root is checked, not just the first match', async () => {
+  const other = tmp();
+  fs.mkdirSync(path.join(other, 'sub-flag'), { recursive: true });
+  fs.copyFileSync(path.join(SUB, 'SKILL.md'), path.join(other, 'sub-flag', 'SKILL.md'));
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx, { ...opts(), skillRoots: [path.join(fx, 'skills'), other] });
+  const r = await pi.fire('tool_call', readCall(path.join(other, 'sub-flag', 'SKILL.md')), ctx);
+  assert.equal(r?.block, true);
+});

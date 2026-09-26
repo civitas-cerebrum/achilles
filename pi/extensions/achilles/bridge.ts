@@ -8,6 +8,7 @@ import { steer as steerText } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth } from './env.ts';
+import { subagentOnlyDirs, blockedSkillRead, delegateInstruction, type SubagentOnlyDir } from './guard.ts';
 import { sessionStateDir, shadowPath, appendShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
 
 export interface ManifestEntry { file: string; event: string; matcher: string | null; timeout?: number; async?: boolean }
@@ -188,6 +189,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   let hooksDir = opts.hooksDir ?? path.join(home, '.claude', 'hooks');
   let enabled = true;
   let stopHookActive = false;
+  let subOnly: SubagentOnlyDir[] = [];
 
   const steer = (t: string) => steerText(t, { roots, packageDir: PACKAGE_DIR });
   /** This session's Claude-shaped shadow transcript (see transcript.ts); the hooks' transcript_path. */
@@ -236,6 +238,9 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('session_start', async (_event, ctx) => guarded('session_start', ctx, undefined, async () => {
     stopHookActive = false;
+    // The subagent-only read guard is achilles' own policy, not a hook, so it holds even when hook
+    // execution ends up disabled below.
+    subOnly = subagentOnlyDirs(roots);
     const manifestPath = opts.manifestPath ?? path.join(PACKAGE_DIR, 'hooks', 'manifest.json');
     let loaded: ManifestEntry[];
     try { loaded = loadManifest(manifestPath); } catch (err) { return disable(`cannot read ${manifestPath}: ${String(err)}`, ctx); }
@@ -265,6 +270,11 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     // Record the call first, exactly as Claude's transcript would hold it, so a PreToolUse hook that
     // reads transcript_path sees its own call.
     record(ctx, toolUseEntry(event.toolName, event.input as Rec, event.toolCallId));
+    // The orchestrator must delegate subagent-only skills, not read them into its own context.
+    if (piDepth() === 0) {
+      const skill = blockedSkillRead(event.toolName, event.input as Rec, subOnly, ctx.cwd, home);
+      if (skill) { log('skill_read_blocked', { skill, tool: name }); return { block: true, reason: delegateInstruction(skill) }; }
+    }
     const ds = await runEvent('PreToolUse', { tool_name: name, tool_input: claudeToolInput(event.toolName, event.input as Rec), tool_use_id: event.toolCallId }, name, ctx);
     for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
     const blocked = ds.find((d) => d.block);
