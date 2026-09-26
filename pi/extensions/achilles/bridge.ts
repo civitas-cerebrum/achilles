@@ -190,6 +190,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   let enabled = true;
   let stopHookActive = false;
   let subOnly: SubagentOnlyDir[] = [];
+  let lastAssistant = '';
 
   const steer = (t: string) => steerText(t, { roots, packageDir: PACKAGE_DIR });
   /** This session's Claude-shaped shadow transcript (see transcript.ts); the hooks' transcript_path. */
@@ -309,13 +310,20 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('message_end', async (event, ctx) => guarded('message_end', ctx, undefined, async () => {
     const text = assistantText(event.message);
-    if (text.trim()) record(ctx, assistantTextEntry(text));
+    if (text.trim()) { lastAssistant = text; record(ctx, assistantTextEntry(text)); }
     return undefined;
   }));
 
   pi.on('agent_before_settle', async (event, ctx) => guarded('agent_before_settle', ctx, undefined, async () => {
     if (event.outcome !== 'completed') return undefined;
-    const ds = await runEvent('Stop', { stop_hook_active: stopHookActive }, undefined, ctx);
+    // A child session (depth >= 1) is a subagent finishing: Claude runs SubagentStop there, not Stop,
+    // and honours its blocks the same way (the subagent keeps working).
+    const sub = piDepth() >= 1;
+    const ds = await runEvent(sub ? 'SubagentStop' : 'Stop', {
+      stop_hook_active: stopHookActive,
+      ...(lastAssistant ? { last_assistant_message: lastAssistant } : {}),
+      ...(sub ? { agent_transcript_path: shadowFor(ctx) } : {}),
+    }, undefined, ctx);
     for (const d of ds) {
       if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
       if (!d.block && d.reason) ctx.ui.notify(d.reason, 'warning');
@@ -323,7 +331,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     const blocked = ds.find((d) => d.block);
     if (!blocked) return undefined;
     stopHookActive = true;
-    return { continue: true, entries: [{ type: 'custom_message', customType: 'achilles-stop-block', content: steer(blocked.reason ?? 'stopped by achilles hook'), display: true }] };
+    return { continue: true, entries: [{ type: 'custom_message', customType: sub ? 'achilles-subagent-stop-block' : 'achilles-stop-block', content: steer(blocked.reason ?? 'stopped by achilles hook'), display: true }] };
   }));
 
   return { get enabled() { return enabled; }, disable: (r) => disable(r), runEvent, steer };

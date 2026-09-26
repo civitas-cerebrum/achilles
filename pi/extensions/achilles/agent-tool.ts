@@ -6,7 +6,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Type } from 'typebox';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
-import type { Bridge } from './bridge.ts';
 import { resolveSkill } from './skills.ts';
 import { log } from './log.ts';
 import { shadowPath } from './transcript.ts';
@@ -24,7 +23,6 @@ const CHILD_TOOLS = 'read,bash,edit,write,grep,find,ls,Skill';
 const EXTENSION_ENTRY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.ts');
 
 export interface AgentToolOptions {
-  bridge: Bridge;
   roots: string[];
   stateDir?: string;
   maxDepth?: number;
@@ -149,13 +147,10 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
           if (signal) { if (signal.aborted) kill(); else signal.addEventListener('abort', kill, { once: true }); }
         });
         const transcript = fs.existsSync(sessionDir) ? fs.readdirSync(sessionDir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(sessionDir, f))[0] : undefined;
-        // The child's bridge wrote its own Claude-shaped shadow under its own session id; that, not
-        // pi's session file, is what a hook reading the child's transcript understands.
+        // SubagentStop hooks run inside the child at its own settle (bridge.ts), with blocks honoured;
+        // nothing runs them again here. The child's bridge wrote its own Claude-shaped shadow under its
+        // own session id: that, not pi's session file, is the transcript a hook understands.
         const childShadow = childSessionId ? shadowPath(childSessionId, stateDir) : undefined;
-        await opts.bridge.runEvent('SubagentStop', {
-          session_id: childSessionId, ...(childShadow ? { transcript_path: childShadow } : {}), cwd: ctx.cwd, stop_hook_active: false,
-          ...(lastText ? { last_assistant_message: lastText } : {}),
-        }, undefined, ctx);
         log('agent_done', { description: params.description, exitCode, childSessionId, chars: lastText.length });
         if (exitCode !== 0 || !lastText) throw new Error(`Subagent "${params.description}" failed (exit ${exitCode}): ${stderr.trim().slice(-2000) || 'no output'}`);
         // Opt-in copy of the transcript for details/debugging (the temp dir is removed in finally).

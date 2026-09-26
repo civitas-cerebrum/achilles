@@ -11,7 +11,7 @@ export default function achilles(pi: ExtensionAPI): void {
     log('session_start', { reason: event.reason, cwd: ctx.cwd, sessionId: ctx.sessionManager.getSessionId(), depth: process.env.ACHILLES_PI_DEPTH ?? '0' });
   });
   const roots = skillRoots(os.homedir());
-  const bridge = createBridge(pi);
+  createBridge(pi);
   registerSkillTool(pi, { roots });
-  registerAgentTool(pi, { bridge, roots });
+  registerAgentTool(pi, { roots });
 }

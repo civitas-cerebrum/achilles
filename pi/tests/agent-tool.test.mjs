@@ -38,22 +38,19 @@ test('registers Agent with Claude fields', () => {
   const { tool } = setup();
   for (const k of ['description', 'prompt', 'subagent_type', 'skill']) assert.ok(tool.parameters.properties[k], k);
 });
-test('runs a child, returns its final text, fires SubagentStop with a transcript', async () => {
+test('runs a child and returns its final text; the parent runs no SubagentStop (the child does, at its settle)', async () => {
   const { tool, calls } = setup();
   const r = await run(tool, { description: 'scout: x', prompt: 'do it' });
   assert.equal(r.content[0].text, 'child says hi');
   assert.equal(r.details.childSessionId, 'child-1');
-  const stop = calls.find((c) => c.event === 'SubagentStop');
-  assert.ok(stop); assert.equal(stop.payload.session_id, 'child-1'); assert.equal(stop.payload.stop_hook_active, false);
-  assert.equal(stop.payload.last_assistant_message, 'child says hi');
+  assert.equal(calls.length, 0);
 });
 test('the child transcript handed on is the child shadow under the shared state dir', async () => {
   const stateDir = tmp();
-  const { tool, calls } = setup({ stateDir });
+  const { tool } = setup({ stateDir });
   const r = await run(tool, { description: 'scout: x', prompt: 'do it' });
   const want = path.join(stateDir, 'pi-transcripts', 'child-1.jsonl');
   assert.equal(r.details.shadowTranscript, want);
-  assert.equal(calls.find((c) => c.event === 'SubagentStop').payload.transcript_path, want);
 });
 test('passes ACHILLES_PROTOCOL=1 only when the parent marker exists; increments depth; passes --skill', async () => {
   const stateDir = tmp(); fs.writeFileSync(path.join(stateDir, 'sid-1.active'), '');

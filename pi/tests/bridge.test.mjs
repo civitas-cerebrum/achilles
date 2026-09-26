@@ -305,3 +305,34 @@ test('depth 0: every skill root is checked, not just the first match', async () 
   const r = await pi.fire('tool_call', readCall(path.join(other, 'sub-flag', 'SKILL.md')), ctx);
   assert.equal(r?.block, true);
 });
+
+// --- I5: a child session runs SubagentStop at settle, not Stop -----------------------------------
+const settleEv = () => ({ type: 'agent_before_settle', outcome: 'completed', entries: [], continue: false, context: {} });
+test('depth 1: settle runs SubagentStop (not Stop) with blocks honoured and the stop guard', async (t) => {
+  const rec = recordFile(t);
+  withEnv(t, 'ACHILLES_PI_DEPTH', '1');
+  withEnv(t, 'ACHILLES_PI_AGENT_TYPE', 'workflow-reviewer-phase1');
+  const o = opts();
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx, o);
+  await pi.fire('message_end', { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'verdict: approve' }] } }, ctx);
+  const r1 = await pi.fire('agent_before_settle', settleEv(), ctx);
+  assert.equal(r1.continue, true); assert.equal(r1.entries[0].type, 'custom_message');
+  assert.match(r1.entries[0].content, /subagent: finish the review first/);
+  assert.doesNotMatch(r1.entries[0].content, /finish first$/m, 'Stop hooks did not run');
+  const p = JSON.parse(fs.readFileSync(rec, 'utf8').trim().split('\n')[0]);
+  assert.equal(p.hook_event_name, 'SubagentStop');
+  assert.equal(p.stop_hook_active, false);
+  assert.equal(p.last_assistant_message, 'verdict: approve');
+  assert.equal(p.agent_id, 'sid-1'); assert.equal(p.agent_type, 'workflow-reviewer-phase1');
+  assert.equal(p.transcript_path, path.join(o.stateDir, 'pi-transcripts', 'sid-1.jsonl'));
+  // Second settle in the same chain: stop_hook_active is true, the hook allows.
+  assert.equal(await pi.fire('agent_before_settle', settleEv(), ctx), undefined);
+  assert.equal(JSON.parse(fs.readFileSync(rec, 'utf8').trim().split('\n')[1]).stop_hook_active, true);
+});
+test('depth 0: settle runs Stop, never SubagentStop', async (t) => {
+  const rec = recordFile(t);
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  const r = await pi.fire('agent_before_settle', settleEv(), ctx);
+  assert.match(r.entries[0].content, /finish first/);
+  assert.equal(fs.existsSync(rec), false, 'no SubagentStop record');
+});
