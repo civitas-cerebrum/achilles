@@ -159,7 +159,7 @@ export function createMessageCompactor(): MessageCompactor {
       const key = warnKey(hook, text);
       if (warnings.has(key)) return `[achilles] ${hook}: repeated warning (see earlier).`;
       warnings.add(key);
-      if (kind === 'additionalContext') return clipTo(self.scope(text), CONTEXT_CAP);
+      if (kind === 'additionalContext') return capAtLine(self.scope(text), CONTEXT_CAP);
       // First sight: the whole warning (it steers the model, e.g. a schema guard's issue list), capped.
       return capAtLine(self.scope(text));
     },

@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { claudeToolName, claudeToolInput, claudeToolResponse, type Content } from './payload.ts';
 import { resolveToCwd } from './edit-match.ts';
-import { steer as steerText, createMessageCompactor, type NoteKind } from './messages.ts';
+import { steer as steerText, createMessageCompactor, WARNING_TRUNCATED, type NoteKind } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth } from './env.ts';
@@ -398,7 +398,12 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     for (const d of ds) {
       // The UI always gets the full text; the model gets the compacted form (messages.ts).
       if (d.systemMessage) { notes.push(noteText(d.file, d.systemMessage, 'systemMessage')); ctx.ui.notify(d.systemMessage, 'warning'); }
-      if (d.additionalContext) notes.push(noteText(d.file, d.additionalContext, 'additionalContext'));
+      if (d.additionalContext) {
+        const shown = noteText(d.file, d.additionalContext, 'additionalContext');
+        notes.push(shown);
+        // Cut for the model: the full text goes to the UI (and the log, in noteText).
+        if (shown.endsWith(WARNING_TRUNCATED)) ctx.ui.notify(d.additionalContext, 'info');
+      }
       if (d.block && d.reason) notes.push(denyText(d.file, d.reason, false));
       else if (!d.block && d.reason) { notes.push(noteText(d.file, d.reason, 'reason')); ctx.ui.notify(d.reason, 'warning'); }
     }

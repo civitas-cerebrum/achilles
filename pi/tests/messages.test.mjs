@@ -157,8 +157,9 @@ test('additionalContext is kept (scope-compacted) up to 1000 chars on first sigh
   t.after(verboseOff());
   const c = createMessageCompactor();
   assert.equal(c.note('h.sh', 'line one\nline two', 'additionalContext'), 'line one\nline two');
-  const long = c.note('h2.sh', 'z'.repeat(3000), 'additionalContext');
-  assert.equal(long.length, 1000); assert.match(long, /…$/);
+  const long = c.note('h2.sh', Array.from({ length: 100 }, (_, i) => `ctx ${i} ${'z'.repeat(40)}`).join('\n'), 'additionalContext');
+  assert.ok(long.length <= 1000, String(long.length));
+  assert.ok(long.endsWith('\n… [achilles] truncated; full text in the UI/log'));
 });
 test('a repeat line quotes the first line capped at 200 chars', (t) => {
   t.after(verboseOff());
