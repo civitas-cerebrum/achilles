@@ -38,6 +38,53 @@ test('resolveHooksDir', () => {
   assert.equal(resolveHooksDir(proj, home, false), path.join(home, '.claude', 'hooks'));
   assert.equal(resolveHooksDir(tmp(), home, true), path.join(home, '.claude', 'hooks'));
 });
+test('resolveHooksDir walks up from a subdirectory, stopping at the first dir holding .git', () => {
+  const home = tmp(); const proj = tmp();
+  fs.mkdirSync(path.join(proj, '.claude', 'hooks'), { recursive: true });
+  fs.mkdirSync(path.join(proj, '.git'));
+  const deep = path.join(proj, 'packages', 'app', 'src'); fs.mkdirSync(deep, { recursive: true });
+  assert.equal(resolveHooksDir(deep, home, true), path.join(proj, '.claude', 'hooks'));
+  assert.equal(resolveHooksDir(deep, home, false), path.join(home, '.claude', 'hooks'));
+  // A nested repo (its own .git) with no hooks does not reach the outer project's hooks.
+  const nested = path.join(proj, 'vendor', 'lib'); fs.mkdirSync(path.join(nested, '.git'), { recursive: true });
+  assert.equal(resolveHooksDir(path.join(nested), home, true), path.join(home, '.claude', 'hooks'));
+  // The first match wins: a closer .claude/hooks shadows the outer one.
+  const inner = path.join(proj, 'packages', 'app'); fs.mkdirSync(path.join(inner, '.claude', 'hooks'), { recursive: true });
+  assert.equal(resolveHooksDir(deep, home, true), path.join(inner, '.claude', 'hooks'));
+});
+test('session_start: some manifest hooks missing → notify + log, bridge stays enabled; runEvent logs hook_missing', async (t) => {
+  const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
+  const dir = tmp(); const manifestPath = path.join(dir, 'm.json');
+  fs.writeFileSync(manifestPath, JSON.stringify([
+    { file: 'deny.sh', event: 'PreToolUse', matcher: 'Bash', timeout: 5 },
+    { file: 'ghost.sh', event: 'PreToolUse', matcher: 'Bash', timeout: 5 },
+    { file: 'ghost.sh', event: 'Stop', matcher: null, timeout: 5 },
+  ]));
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); const b = await start(pi, ctx, { ...opts(), manifestPath });
+  assert.equal(b.enabled, true);
+  assert.ok(ctx.notices.some((n) => /1 of 2 hooks are missing/.test(n.m) && /ghost\.sh/.test(n.m)));
+  const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'm1', toolName: 'bash', input: { command: 'ls' } }, ctx);
+  assert.match(r.reason, /nope/, 'present hooks still run');
+  const lines = fs.readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.ok(lines.some((l) => l.kind === 'hooks_missing' && l.missing.includes('ghost.sh') && l.total === 2));
+  assert.ok(lines.some((l) => l.kind === 'hook_missing' && l.hook === 'ghost.sh' && l.event === 'PreToolUse'));
+});
+test('session_start: all manifest hooks missing → bridge disabled with a warning', async () => {
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); const b = await start(pi, ctx, { ...opts(), hooksDir: tmp() });
+  assert.equal(b.enabled, false);
+  assert.ok(ctx.notices.some((n) => /none of the \d+ achilles hooks are installed/.test(n.m)));
+});
+test('session_start without a hooksDir option resolves it from ctx.cwd (walk-up, trusted)', async (t) => {
+  const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
+  const proj = tmp(); fs.mkdirSync(path.join(proj, '.git'));
+  const hooks = path.join(proj, '.claude', 'hooks'); fs.mkdirSync(hooks, { recursive: true });
+  for (const f of fs.readdirSync(path.join(fx, 'hooks'))) fs.copyFileSync(path.join(fx, 'hooks', f), path.join(hooks, f));
+  const sub = path.join(proj, 'src'); fs.mkdirSync(sub);
+  const o = opts(); delete o.hooksDir;
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: sub, trusted: true }); const b = await start(pi, ctx, o);
+  assert.equal(b.enabled, true);
+  assert.ok(fs.readFileSync(logFile, 'utf8').includes(`"hooksDir":${JSON.stringify(hooks)}`));
+});
 test('parseDecision', () => {
   const base = { file: 'h.sh', exitCode: 0, stdout: '', stderr: '', timedOut: false, ms: 1 };
   assert.equal(parseDecision(base, 'PreToolUse').block, false);

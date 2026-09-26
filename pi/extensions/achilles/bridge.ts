@@ -49,10 +49,27 @@ export function compileManifest(manifest: ManifestEntry[]): CompiledEntry[] {
   });
 }
 
+/** The project's hooks dir: the nearest `.claude/hooks` walking up from cwd, stopping at the
+ * filesystem root or at the first directory that contains `.git` (the repo root, inclusive). Used
+ * only when pi trusts the project; otherwise, or when none is found, `~/.claude/hooks`. */
 export function resolveHooksDir(cwd: string, home: string, trusted: boolean): string {
-  const project = path.join(cwd, '.claude', 'hooks');
-  if (trusted && fs.existsSync(project)) return project;
+  if (trusted) {
+    let dir = path.resolve(cwd);
+    for (;;) {
+      const candidate = path.join(dir, '.claude', 'hooks');
+      if (fs.existsSync(candidate)) return candidate;
+      const parent = path.dirname(dir);
+      if (fs.existsSync(path.join(dir, '.git')) || parent === dir) break;
+      dir = parent;
+    }
+  }
   return path.join(home, '.claude', 'hooks');
+}
+
+/** Distinct manifest files that are not present in hooksDir. */
+export function missingHooks(manifest: ManifestEntry[], hooksDir: string): { missing: string[]; total: number } {
+  const files = [...new Set(manifest.map((e) => e.file))];
+  return { missing: files.filter((f) => !fs.existsSync(path.join(hooksDir, f))), total: files.length };
 }
 
 function tryJson(text: string): Rec | undefined {
@@ -226,7 +243,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       if (toolName !== undefined && !match(toolName)) continue;
       if (e.matcher !== null && toolName === undefined) continue;
       const hookPath = path.join(hooksDir, e.file);
-      if (!fs.existsSync(hookPath)) continue;
+      if (!fs.existsSync(hookPath)) { log('hook_missing', { event, tool: toolName, hook: e.file, hooksDir }); continue; }
       const args = { bash, hookPath, payload: full, timeoutMs: (e.timeout ?? 10) * 1000, cwd: common.cwd as string, env: process.env };
       if (e.async) { void runHook(args); continue; }
       const run = await runHook(args);
@@ -248,6 +265,12 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     let compiledNow: CompiledEntry[];
     try { compiledNow = compileManifest(loaded); } catch (err) { return disable(String(err instanceof Error ? err.message : err), ctx); }
     if (!opts.hooksDir) hooksDir = resolveHooksDir(ctx.cwd, home, ctx.isProjectTrusted());
+    const { missing, total } = missingHooks(loaded, hooksDir);
+    if (missing.length === total && total > 0) return disable(`none of the ${total} achilles hooks are installed in ${hooksDir}; reinstall @civitas-cerebrum/achilles (its postinstall copies them there)`, ctx);
+    if (missing.length > 0) {
+      log('hooks_missing', { hooksDir, missing, total });
+      ctx.ui.notify(`[achilles] ${missing.length} of ${total} hooks are missing from ${hooksDir} and will not run: ${missing.join(', ')}. Reinstall @civitas-cerebrum/achilles to restore them.`, 'warning');
+    }
     if (!which(bash)) return disable(`bash not found (${bash}); install bash to enable the achilles gates`, ctx);
     const jqBundled = fs.existsSync(path.join(hooksDir, 'bin', 'jq'));
     if (!jqBundled && !which('jq')) return disable(`jq not found at ${path.join(hooksDir, 'bin', 'jq')} or on PATH; reinstall @civitas-cerebrum/achilles or install jq`, ctx);
