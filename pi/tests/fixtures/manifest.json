@@ -4,6 +4,7 @@
   { "file": "allow-text.sh", "event": "PreToolUse",       "matcher": "Write|Edit","timeout": 5 },
   { "file": "record.sh",     "event": "PreToolUse",       "matcher": "Edit",      "timeout": 5 },
   { "file": "exit2.sh",      "event": "PreToolUse",       "matcher": "mcp__.*",   "timeout": 5 },
+  { "file": "ask.sh",        "event": "PreToolUse",       "matcher": "Grep",      "timeout": 5 },
   { "file": "sleep.sh",      "event": "PreToolUse",       "matcher": "Agent",     "timeout": 1 },
   { "file": "warn.sh",       "event": "PostToolUse",      "matcher": "Bash",      "timeout": 5 },
   { "file": "fail.sh",       "event": "PostToolUse",      "matcher": "Write",     "timeout": 5 },

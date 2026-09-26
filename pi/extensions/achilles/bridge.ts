@@ -7,11 +7,12 @@ import { claudeToolName, claudeToolInput, claudeToolResponse, type Content } fro
 import { steer as steerText } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
+import { piDepth } from './env.ts';
 import { sessionStateDir, shadowPath, appendShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
 
 export interface ManifestEntry { file: string; event: string; matcher: string | null; timeout?: number; async?: boolean }
 export interface HookRun { file: string; exitCode: number | null; stdout: string; stderr: string; timedOut: boolean; ms: number }
-export interface Decision { file: string; block: boolean; reason?: string; systemMessage?: string; additionalContext?: string }
+export interface Decision { file: string; block: boolean; ask?: boolean; reason?: string; systemMessage?: string; additionalContext?: string }
 export interface BridgeOptions { manifestPath?: string; hooksDir?: string; home?: string; bash?: string; skillRoots?: string[]; stateDir?: string }
 export interface Bridge {
   readonly enabled: boolean;
@@ -71,6 +72,7 @@ export function parseDecision(run: HookRun, event: string): Decision {
   if (typeof j.systemMessage === 'string') d.systemMessage = j.systemMessage;
   if (typeof hso.additionalContext === 'string') d.additionalContext = hso.additionalContext;
   if (hso.permissionDecision === 'deny') { d.block = true; d.reason = String(hso.permissionDecisionReason ?? 'blocked by hook'); }
+  else if (hso.permissionDecision === 'ask') { d.ask = true; d.reason = String(hso.permissionDecisionReason ?? 'hook asks for confirmation'); }
   else if (j.decision === 'block') { d.block = true; d.reason = String(j.reason ?? 'blocked by hook'); }
   else if (j.continue === false) { d.block = true; d.reason = String(j.stopReason ?? 'stopped by hook'); }
   return d;
@@ -267,6 +269,16 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
     const blocked = ds.find((d) => d.block);
     if (blocked) return { block: true, reason: steer(blocked.reason ?? 'blocked by achilles hook') };
+    // permissionDecision "ask": Claude asks the operator. With a dialog-capable UI (and only in the
+    // orchestrator) so do we; with no UI (print/json mode, every child) nobody can answer, so block.
+    const asked = ds.find((d) => d.ask);
+    if (asked) {
+      const reason = asked.reason ?? 'achilles hook asks for confirmation';
+      const canAsk = ctx.hasUI && piDepth() === 0;
+      const approved = canAsk ? await ctx.ui.confirm(`[achilles] ${asked.file} asks for confirmation`, reason) : false;
+      log('ask', { hook: asked.file, tool: name, prompted: canAsk, approved });
+      if (!approved) return { block: true, reason: steer(reason) };
+    }
     return undefined;
   }));
 

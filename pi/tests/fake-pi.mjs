@@ -17,11 +17,16 @@ export function makeFakePi() {
 }
 export function makeFakeCtx(over = {}) {
   const notices = [];
+  const confirms = [];
   return {
     cwd: over.cwd ?? process.cwd(),
     hasUI: false, mode: 'print',
-    ui: { notify(m, t) { notices.push({ m, t }); }, setStatus() {} },
-    notices,
+    ui: {
+      notify(m, t) { notices.push({ m, t }); }, setStatus() {},
+      /** Answers with over.confirmAnswer (default false) and records every dialog. */
+      async confirm(title, message) { confirms.push({ title, message }); return over.confirmAnswer ?? false; },
+    },
+    notices, confirms,
     sessionManager: {
       getSessionId() { return over.sessionId ?? 'sid-1'; },
       getSessionFile() { return over.sessionFile; },

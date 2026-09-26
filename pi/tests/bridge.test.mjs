@@ -102,6 +102,31 @@ test('tool_call: plain text stdout allows; payload is Claude-shaped', async (t) 
   const lines = fs.readFileSync(p.transcript_path, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepEqual(lines.at(-1), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: 'a.md', old_string: 'o', new_string: 'n' } }] } });
 });
+test('parseDecision: permissionDecision ask is neither allow nor deny', () => {
+  const d = parseDecision({ file: 'h.sh', exitCode: 0, stdout: '{"hookSpecificOutput":{"permissionDecision":"ask","permissionDecisionReason":"sure?"}}', stderr: '', timedOut: false, ms: 1 }, 'PreToolUse');
+  assert.equal(d.block, false); assert.equal(d.ask, true); assert.equal(d.reason, 'sure?');
+});
+const grepCall = { type: 'tool_call', toolCallId: 'g1', toolName: 'grep', input: { pattern: 'x' } };
+test('ask: no UI (print/json mode) blocks with the steered reason and shows no dialog', async () => {
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ hasUI: false, confirmAnswer: true }); await start(pi, ctx);
+  const r = await pi.fire('tool_call', grepCall, ctx);
+  assert.equal(r.block, true); assert.match(r.reason, /\[ASK\] confirm/); assert.match(r.reason, /Load it: Skill \{ skill: "orch-skill" \}/);
+  assert.equal(ctx.confirms.length, 0);
+});
+test('ask: with UI, the operator is asked; approve allows, decline blocks with the reason', async () => {
+  const pi = makeFakePi(); const yes = makeFakeCtx({ hasUI: true, mode: 'tui', confirmAnswer: true }); await start(pi, yes);
+  assert.equal(await pi.fire('tool_call', grepCall, yes), undefined);
+  assert.equal(yes.confirms.length, 1); assert.match(yes.confirms[0].title, /ask\.sh/); assert.match(yes.confirms[0].message, /\[ASK\] confirm/);
+  const no = makeFakeCtx({ hasUI: true, mode: 'tui', confirmAnswer: false });
+  const r = await pi.fire('tool_call', grepCall, no);
+  assert.equal(r.block, true); assert.match(r.reason, /\[ASK\] confirm/); assert.equal(no.confirms.length, 1);
+});
+test('ask: a child session (depth 1) blocks without a dialog even when a UI exists', async (t) => {
+  withEnv(t, 'ACHILLES_PI_DEPTH', '1');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ hasUI: true, confirmAnswer: true }); await start(pi, ctx);
+  const r = await pi.fire('tool_call', grepCall, ctx);
+  assert.equal(r.block, true); assert.equal(ctx.confirms.length, 0);
+});
 test('tool_call: exit 2 stderr is the reason; timeout blocks', async () => {
   const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
   const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 't3', toolName: 'mcp__jira__create', input: {} }, ctx);
