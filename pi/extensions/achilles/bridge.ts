@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { claudeToolName, claudeToolInput, claudeToolResponse, type Content } from './payload.ts';
 import { resolveToCwd } from './edit-match.ts';
-import { steer as steerText } from './messages.ts';
+import { steer as steerText, createMessageCompactor, type NoteKind } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth } from './env.ts';
@@ -237,6 +237,18 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   let lastAssistant = '';
 
   const steer = (t: string) => steerText(t, { roots, packageDir: PACKAGE_DIR });
+  // Per-session dedupe of hook text on its way to the model (messages.ts); reset at session_start.
+  const compact = createMessageCompactor();
+  const denyText = (hook: string, reason: string, steered = true) => {
+    const out = compact.deny(hook, reason);
+    if (out !== reason) log('hook_text_compacted', { hook, kind: 'deny', text: reason });
+    return steered ? steer(out) : out;
+  };
+  const noteText = (hook: string, text: string, kind: NoteKind) => {
+    const out = compact.note(hook, text, kind);
+    if (out !== text) log('hook_text_compacted', { hook, kind, text });
+    return out;
+  };
   /** This session's Claude-shaped shadow transcript (see transcript.ts); the hooks' transcript_path. */
   const shadowFor = (ctx: ExtensionContext) => shadowPath(ctx.sessionManager.getSessionId(), opts.stateDir ?? sessionStateDir(home));
   const record = (ctx: ExtensionContext, entry: Rec) => { if (enabled && !appendShadow(shadowFor(ctx), entry)) log('shadow_write_failed', { file: shadowFor(ctx) }); };
@@ -283,6 +295,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('session_start', async (_event, ctx) => guarded('session_start', ctx, undefined, async () => {
     stopHookActive = false;
+    compact.reset();
     translated.clear();
     // A subagent's shadow inherits its parent's context signals (transcript.ts seedShadow).
     const parentShadow = process.env.ACHILLES_PI_PARENT_SHADOW;
@@ -347,7 +360,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       const ds = await runEvent('PreToolUse', { tool_name: name, tool_input: claudeInput, tool_use_id: event.toolCallId }, name, ctx);
       for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
       const blocked = ds.find((d) => d.block);
-      if (blocked) return { block: true, reason: steer(blocked.reason ?? 'blocked by achilles hook') };
+      if (blocked) return { block: true, reason: denyText(blocked.file, blocked.reason ?? 'blocked by achilles hook') };
       // permissionDecision "ask": Claude asks the operator. With a dialog-capable UI (and only in the
       // orchestrator) so do we; with no UI (print/json mode, every child) nobody can answer, so block.
       const asked = ds.find((d) => d.ask);
@@ -356,7 +369,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
         const canAsk = ctx.hasUI && piDepth() === 0;
         const approved = canAsk ? await ctx.ui.confirm(`[achilles] ${asked.file} asks for confirmation`, reason) : false;
         log('ask', { hook: asked.file, tool: name, prompted: canAsk, approved });
-        if (!approved) return { block: true, reason: steer(reason) };
+        if (!approved) return { block: true, reason: denyText(asked.file, reason) };
       }
       keep = true;
       return undefined;
@@ -377,13 +390,15 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     const ds = await runEvent('PostToolUse', { tool_name: name, tool_input: input, tool_response: claudeToolResponse(event.toolName, event.input as Rec, event.content as Content, event.isError, (event as { details?: unknown }).details, ctx.cwd), tool_use_id: event.toolCallId }, name, ctx);
     const notes: string[] = [];
     for (const d of ds) {
-      if (d.systemMessage) { notes.push(d.systemMessage); ctx.ui.notify(d.systemMessage, 'warning'); }
-      if (d.additionalContext) notes.push(d.additionalContext);
-      if (d.block && d.reason) notes.push(d.reason);
-      else if (!d.block && d.reason) { notes.push(d.reason); ctx.ui.notify(d.reason, 'warning'); }
+      // The UI always gets the full text; the model gets the compacted form (messages.ts).
+      if (d.systemMessage) { notes.push(noteText(d.file, d.systemMessage, 'systemMessage')); ctx.ui.notify(d.systemMessage, 'warning'); }
+      if (d.additionalContext) notes.push(noteText(d.file, d.additionalContext, 'additionalContext'));
+      if (d.block && d.reason) notes.push(denyText(d.file, d.reason, false));
+      else if (!d.block && d.reason) { notes.push(noteText(d.file, d.reason, 'reason')); ctx.ui.notify(d.reason, 'warning'); }
     }
     if (notes.length === 0) return undefined;
-    return { content: [...event.content, { type: 'text', text: `\n[achilles] ${steer(notes.join('\n'))}` }] };
+    const joined = steer(notes.join('\n'));
+    return { content: [...event.content, { type: 'text', text: `\n${joined.startsWith('[achilles]') ? '' : '[achilles] '}${joined}` }] };
   }));
 
   // A call pi never finishes (aborted run) leaves no tool_result; drop its translation when the run ends.
@@ -412,7 +427,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     const blocked = ds.find((d) => d.block);
     if (!blocked) return undefined;
     stopHookActive = true;
-    return { continue: true, entries: [{ type: 'custom_message', customType: sub ? 'achilles-subagent-stop-block' : 'achilles-stop-block', content: steer(blocked.reason ?? 'stopped by achilles hook'), display: true }] };
+    return { continue: true, entries: [{ type: 'custom_message', customType: sub ? 'achilles-subagent-stop-block' : 'achilles-stop-block', content: denyText(blocked.file, blocked.reason ?? 'stopped by achilles hook'), display: true }] };
   }));
 
   return { get enabled() { return enabled; }, get pendingTranslations() { return translated.size; }, disable: (r) => disable(r), runEvent, steer };

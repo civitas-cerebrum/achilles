@@ -76,3 +76,71 @@ test('commit-message-gate citation of a subagent-only SKILL.md §section yields 
   }
   assert.match(steer(text, { roots: realRoots, packageDir: pkg, depth: 0 }), /  skills\/contributing-to-achilles-protocol\/SKILL\.md §/);
 });
+
+// ── compaction (createMessageCompactor) ──
+import fs from 'node:fs';
+import { createMessageCompactor, SCOPE_POINTER, firstLine, referencesLine } from '../extensions/achilles/messages.ts';
+const activation = fs.readFileSync(path.join(pkg, 'hooks', 'lib', 'achilles-activation.sh'), 'utf8');
+const NOTICE = activation.slice(activation.indexOf("'── achilles session-scope") + 1, activation.indexOf("not yours.)'") + 'not yours.)'.length);
+const deny = (line) => `[BLOCKED] ${line}\n\nFix: do the other thing.\n\nReferences:\n  skills/orch-skill/SKILL.md\n\n${NOTICE}`;
+/** Copied from a real lets-code onboarding run (playwright-artifact-archiver PostToolUse systemMessage). */
+const ARCHIVER = (run) => `[WARN] Playwright evidence archived to .achilles/runs/${run} with omissions.\n\nPruned 1 older run(s) past ACHILLES_ARTIFACT_RETAIN=5: 20260926T105516Z. Raise ACHILLES_ARTIFACT_RETAIN to keep more.\n\nReferences:\n  skills/achilles-protocol/references/harness-hooks.md §PostToolUse\n  .achilles/runs/${run}/manifest.json`;
+const verboseOff = () => { const p = process.env.ACHILLES_PI_VERBOSE; delete process.env.ACHILLES_PI_VERBOSE; return () => { if (p !== undefined) process.env.ACHILLES_PI_VERBOSE = p; }; };
+
+test('scope notice: the first deny carries it, the second only the one-line pointer', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const a = c.deny('guard.sh', deny('one'));
+  assert.ok(a.includes(NOTICE));
+  const b = c.deny('guard.sh', deny('two'));
+  assert.ok(!b.includes('These guardrails are bound'));
+  assert.ok(b.endsWith(SCOPE_POINTER));
+  assert.match(b, /^\[BLOCKED\] two\n\nFix: do the other thing\./);
+});
+test('deny dedupe: an identical repeat collapses to one line; a new body under the same first line does not', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  c.deny('guard.sh', deny('same'));
+  assert.equal(c.deny('guard.sh', deny('same')), '[achilles] guard.sh: same block as before — [BLOCKED] same. Apply the fix from the earlier message.');
+  assert.match(c.deny('other.sh', deny('same')), /Fix: do the other thing/, 'another hook is not a repeat');
+  const changed = deny('same').replace('do the other thing', 'fix field runMode');
+  assert.match(c.deny('guard.sh', changed), /fix field runMode/);
+});
+test('warning compaction: first line plus references on one line; the repeat collapses (run ids differ)', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  assert.equal(firstLine(ARCHIVER('R1')), '[WARN] Playwright evidence archived to .achilles/runs/R1 with omissions.');
+  assert.equal(referencesLine(ARCHIVER('R1')), 'References: skills/achilles-protocol/references/harness-hooks.md §PostToolUse; .achilles/runs/R1/manifest.json');
+  const first = c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110721Z'), 'systemMessage');
+  assert.equal(first, '[WARN] Playwright evidence archived to .achilles/runs/20260926T110721Z with omissions.\nReferences: skills/achilles-protocol/references/harness-hooks.md §PostToolUse; .achilles/runs/20260926T110721Z/manifest.json');
+  assert.ok(!first.includes('Pruned') && first.length < ARCHIVER('20260926T110721Z').length);
+  assert.equal(c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110910Z'), 'systemMessage'), '[achilles] playwright-artifact-archiver.sh: repeated warning (see earlier).');
+});
+test('additionalContext is kept (scope-compacted) up to 1000 chars on first sight', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  assert.equal(c.note('h.sh', 'line one\nline two', 'additionalContext'), 'line one\nline two');
+  const long = c.note('h2.sh', 'z'.repeat(3000), 'additionalContext');
+  assert.equal(long.length, 1000); assert.match(long, /…$/);
+});
+test('first line is capped at 200 chars', (t) => {
+  t.after(verboseOff());
+  assert.equal(createMessageCompactor().note('h.sh', 'w'.repeat(500), 'reason').length, 200);
+});
+test('reset() clears all dedupe state', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  c.deny('g.sh', deny('x')); c.note('a.sh', ARCHIVER('R1'), 'systemMessage');
+  c.reset();
+  assert.ok(c.deny('g.sh', deny('x')).includes(NOTICE));
+  assert.match(c.note('a.sh', ARCHIVER('R2'), 'systemMessage'), /^\[WARN\]/);
+});
+test('ACHILLES_PI_VERBOSE=1 passes every text through unchanged', (t) => {
+  const prev = process.env.ACHILLES_PI_VERBOSE; process.env.ACHILLES_PI_VERBOSE = '1';
+  t.after(() => { if (prev === undefined) delete process.env.ACHILLES_PI_VERBOSE; else process.env.ACHILLES_PI_VERBOSE = prev; });
+  const c = createMessageCompactor();
+  for (let i = 0; i < 2; i++) {
+    assert.equal(c.deny('g.sh', deny('x')), deny('x'));
+    assert.equal(c.note('a.sh', ARCHIVER('R1'), 'systemMessage'), ARCHIVER('R1'));
+  }
+});

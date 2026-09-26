@@ -11,5 +11,7 @@
   {"file": "stopblock.sh", "event": "Stop", "matcher": null, "timeout": 5},
   {"file": "record.sh", "event": "SubagentStop", "matcher": null, "timeout": 5},
   {"file": "substopblock.sh", "event": "SubagentStop", "matcher": null, "timeout": 5},
-  {"file": "record.sh", "event": "PostToolUse", "matcher": "Edit", "timeout": 5}
+  {"file": "record.sh", "event": "PostToolUse", "matcher": "Edit", "timeout": 5},
+  {"file": "scopedeny.sh", "event": "PreToolUse", "matcher": "Glob", "timeout": 5},
+  {"file": "archive.sh", "event": "PostToolUse", "matcher": "Glob", "timeout": 5}
 ]

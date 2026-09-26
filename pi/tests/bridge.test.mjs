@@ -23,7 +23,7 @@ function recordFile(t) {
 // Sets process.env[key] for this test and restores the previous value (or deletes it) afterward.
 function withEnv(t, key, value) {
   const prev = process.env[key];
-  process.env[key] = value;
+  if (value === undefined) delete process.env[key]; else process.env[key] = value;
   t.after(() => { if (prev === undefined) delete process.env[key]; else process.env[key] = prev; });
 }
 
@@ -535,6 +535,9 @@ test('client-term-guard (real hook): a two-part edit that adds no term is allowe
 });
 test('onboarding-ledger-write-gate (real hook): a two-part ledger edit is synthesised and reaches schema validation', async (t) => {
   withEnv(t, 'ACHILLES_PROTOCOL', '1');
+  // The three edits hit the same schema error; this test reads the gate's full text each time, so it
+  // turns off the repeat-deny compaction (messages.ts), which would collapse the repeats to one line.
+  withEnv(t, 'ACHILLES_PI_VERBOSE', '1');
   withEnv(t, 'ACHILLES_SESSION_STATE_DIR', tmp());
   const proj = tmp(); const docs = path.join(proj, 'tests', 'e2e', 'docs'); fs.mkdirSync(docs, { recursive: true });
   const ledger = path.join(docs, 'onboarding-status.json');
@@ -727,4 +730,52 @@ test('compliance-sweep-exit-gate (real hook): a parent spec write does not block
   const r = await c.pi.fire('agent_before_settle', settleEv(), c.ctx);
   assert.equal(r?.continue, true);
   assert.match(r.entries[0].content, /compliance sweep never ran/);
+});
+
+// ── hook message compaction through the bridge (fixtures scopedeny.sh / archive.sh on pi's find → Glob) ──
+const findCall = (id) => ({ type: 'tool_call', toolCallId: id, toolName: 'find', input: { pattern: '*.ts' } });
+const findResult = (id) => ({ type: 'tool_result', toolCallId: id, toolName: 'find', input: { pattern: '*.ts' }, content: [{ type: 'text', text: 'a.ts' }], isError: false });
+const modelText = (r) => r.content.map((c) => c.text).join('\n');
+test('compaction: first deny carries the scope notice, the next only the pointer; identical repeat is one line; session_start resets', async (t) => {
+  withEnv(t, 'ACHILLES_PI_VERBOSE', undefined);
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); const o = opts(); await start(pi, ctx, o);
+  withEnv(t, 'SCOPEDENY_LINE', 'first block');
+  const r1 = await pi.fire('tool_call', findCall('f1'), ctx);
+  assert.equal(r1.block, true);
+  assert.match(r1.reason, /── achilles session-scope[\s\S]*not yours\.\)/);
+  process.env.SCOPEDENY_LINE = 'second block';
+  const r2 = await pi.fire('tool_call', findCall('f2'), ctx);
+  assert.match(r2.reason, /^\[BLOCKED\] second block/);
+  assert.doesNotMatch(r2.reason, /These guardrails are bound/);
+  assert.match(r2.reason, /session-scope notice applies — see the first block this session/);
+  const r3 = await pi.fire('tool_call', findCall('f3'), ctx);
+  assert.equal(r3.block, true);
+  assert.equal(r3.reason, '[achilles] scopedeny.sh: same block as before — [BLOCKED] second block. Apply the fix from the earlier message.');
+  await pi.fire('session_start', { type: 'session_start', reason: 'new' }, ctx);
+  const r4 = await pi.fire('tool_call', findCall('f4'), ctx);
+  assert.match(r4.reason, /These guardrails are bound/);
+});
+test('compaction: the archiver warning reaches the model as first line + references, then as a one-line repeat; UI gets the full text', async (t) => {
+  withEnv(t, 'ACHILLES_PI_VERBOSE', undefined);
+  const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  withEnv(t, 'ARCHIVE_RUN', '20260926T110721Z');
+  const m1 = modelText(await pi.fire('tool_result', findResult('p1'), ctx));
+  assert.match(m1, /^a\.ts\n\n\[achilles\] \[WARN\] Playwright evidence archived to \.achilles\/runs\/20260926T110721Z with omissions\.\nReferences: \S*harness-hooks\.md §PostToolUse; \.achilles\/runs\/20260926T110721Z\/manifest\.json$/);
+  assert.doesNotMatch(m1, /Pruned/);
+  assert.ok(ctx.notices.some((n) => /Pruned 1 older run/.test(n.m)), 'UI gets the full text');
+  assert.ok(fs.readFileSync(logFile, 'utf8').includes('Pruned 1 older run'), 'log gets the full text');
+  process.env.ARCHIVE_RUN = '20260926T110910Z';
+  const m2 = modelText(await pi.fire('tool_result', findResult('p2'), ctx));
+  assert.equal(m2, 'a.ts\n\n[achilles] archive.sh: repeated warning (see earlier).');
+  await pi.fire('session_start', { type: 'session_start', reason: 'new' }, ctx);
+  assert.match(modelText(await pi.fire('tool_result', findResult('p3'), ctx)), /\[WARN\] Playwright evidence archived/);
+});
+test('compaction: ACHILLES_PI_VERBOSE=1 keeps full hook text for the model', async (t) => {
+  withEnv(t, 'ACHILLES_PI_VERBOSE', '1');
+  const pi = makeFakePi(); const ctx = makeFakeCtx(); await start(pi, ctx);
+  for (const id of ['v1', 'v2']) {
+    assert.match((await pi.fire('tool_call', findCall(id), ctx)).reason, /These guardrails are bound/);
+    assert.match(modelText(await pi.fire('tool_result', findResult(id), ctx)), /Pruned 1 older run/);
+  }
 });

@@ -46,3 +46,89 @@ export function steer(text: string, opts: SteerOptions): string {
     : `Load it: Skill { skill: "${name}" }`);
   return `${out}\n\nUnder pi:\n  ${hints.join('\n  ')}`;
 }
+
+// ── Hook message compaction ──────────────────────────────────────────────────────────────────────
+// Hooks are written for Claude Code, where a repeated notice costs little. Under pi on a small local
+// model every repeat is context, so per bridge session: the session-scope notice is shown once, an
+// identical deny collapses to one line after the first, and non-blocking warnings reach the model as
+// their first line plus references (the full text still goes to the UI and the log).
+// ACHILLES_PI_VERBOSE=1 turns all of this off.
+
+const SCOPE_BLOCK = /── achilles session-scope ─*[\s\S]*?(?:their call, not yours\.\)|$)/;
+export const SCOPE_POINTER = '(achilles session-scope notice applies — see the first block this session.)';
+const LINE_CAP = 200;
+const CONTEXT_CAP = 1000;
+
+export const verboseMessages = (): boolean => process.env.ACHILLES_PI_VERBOSE === '1';
+
+function clipTo(text: string, cap: number): string {
+  return text.length <= cap ? text : `${text.slice(0, cap - 1).trimEnd()}…`;
+}
+
+/** First non-empty line, trimmed, at most 200 chars. */
+export function firstLine(text: string): string {
+  return clipTo((text.split(/\r?\n/).find((l) => l.trim()) ?? '').trim(), LINE_CAP);
+}
+
+/** The `References:` block's entries collapsed onto one line ("References: a; b"), or "". */
+export function referencesLine(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const i = lines.findIndex((l) => /^\s*References:\s*$/.test(l));
+  if (i < 0) {
+    const inline = lines.find((l) => /^\s*References?:\s*\S/.test(l));
+    return inline ? inline.trim() : '';
+  }
+  const refs: string[] = [];
+  for (const l of lines.slice(i + 1)) { if (!l.trim()) break; refs.push(l.trim()); }
+  return refs.length ? `References: ${refs.join('; ')}` : '';
+}
+
+/** Key for "the same warning again": the hook plus its first line with digit runs (run ids,
+ * timestamps, counts) folded, so the archiver's per-run message counts as a repeat. */
+const warnKey = (hook: string, text: string) => `${hook}\0${firstLine(text).replace(/\d+/g, '#')}`;
+
+export type NoteKind = 'systemMessage' | 'additionalContext' | 'reason';
+
+export interface MessageCompactor {
+  reset(): void;
+  /** The session-scope notice kept the first time, a one-line pointer afterwards. */
+  scope(text: string): string;
+  /** A blocking reason (deny, PostToolUse/Stop block): full the first time per (hook, first line). */
+  deny(hook: string, reason: string): string;
+  /** Non-blocking hook output that reaches the model. */
+  note(hook: string, text: string, kind: NoteKind): string;
+}
+
+export function createMessageCompactor(): MessageCompactor {
+  let scopeSeen = false;
+  const denies = new Map<string, string>();
+  const warnings = new Set<string>();
+  const self: MessageCompactor = {
+    reset() { scopeSeen = false; denies.clear(); warnings.clear(); },
+    scope(text) {
+      if (verboseMessages() || !SCOPE_BLOCK.test(text)) return text;
+      if (!scopeSeen) { scopeSeen = true; return text; }
+      return text.replace(SCOPE_BLOCK, SCOPE_POINTER);
+    },
+    deny(hook, reason) {
+      if (verboseMessages()) return reason;
+      // Keyed by (hook, first line); collapsed only when the body (scope notice aside) is identical to
+      // the last one under that key, so a repeat with new details (another schema error) still shows.
+      const key = `${hook}\0${firstLine(reason)}`;
+      const body = reason.replace(SCOPE_BLOCK, '').trim();
+      if (denies.get(key) === body) return `[achilles] ${hook}: same block as before — ${firstLine(reason)}. Apply the fix from the earlier message.`;
+      denies.set(key, body);
+      return self.scope(reason);
+    },
+    note(hook, text, kind) {
+      if (verboseMessages()) return text;
+      const key = warnKey(hook, text);
+      if (warnings.has(key)) return `[achilles] ${hook}: repeated warning (see earlier).`;
+      warnings.add(key);
+      if (kind === 'additionalContext') return clipTo(self.scope(text), CONTEXT_CAP);
+      const refs = referencesLine(text);
+      return refs ? `${firstLine(text)}\n${refs}` : firstLine(text);
+    },
+  };
+  return self;
+}

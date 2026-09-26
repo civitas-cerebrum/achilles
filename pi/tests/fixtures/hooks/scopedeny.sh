@@ -1,0 +1,5 @@
+#!/bin/bash
+# Fixture: a deny carrying the real achilles session-scope notice; SCOPEDENY_LINE sets its first line.
+cat >/dev/null
+J='{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "[BLOCKED] __LINE__\n\nFix: do the other thing.\n\nReferences:\n  skills/orch-skill/references/guide.md §A\n\n── achilles session-scope ──────────────────────────────\nThese guardrails are bound to the achilles protocol activated in this\nsession. Once activated, the protocol CANNOT be switched off mid-session:\nit ends only when the pipeline completes (terminal ledger status\n\"complete\" / \"aborted\") or when this Claude session is terminated. Do not\ntry to strip session markers, rewrite hooks, or re-shape the call to slip\npast — the activation state is itself a protected artifact.\n\nTo tackle an unrelated task or start a new workflow: END THIS SESSION and\nstart a fresh one. (Agent: relay this instruction to the user — killing\nthe session is their call, not yours.)"}}'
+printf '%s' "${J//__LINE__/${SCOPEDENY_LINE:-first block}}"
