@@ -235,6 +235,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   const translated = new Map<string, Rec>();
   let subOnly: SubagentOnlyDir[] = [];
   let lastAssistant = '';
+  let subagentWarned = false;
 
   const steer = (t: string) => steerText(t, { roots, packageDir: PACKAGE_DIR });
   // Per-session dedupe of hook text on its way to the model (messages.ts); reset at session_start.
@@ -339,7 +340,14 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     if (!which(bash)) return disable(`bash not found (${bash}); install bash to enable the achilles gates`, ctx);
     const jqBundled = fs.existsSync(path.join(hooksDir, 'bin', 'jq'));
     if (!jqBundled && !which('jq')) return disable(`jq not found at ${path.join(hooksDir, 'bin', 'jq')} or on PATH; reinstall @civitas-cerebrum/achilles or install jq`, ctx);
-    if (pi.getAllTools().some((t) => t.name === 'subagent')) return disable('another subagent extension (pi-code or similar) is loaded and already runs the settings.json hooks; achilles hook execution is off to avoid running every gate twice', ctx);
+    // Enforcement is on unless the operator turns it off explicitly. A tool name is no evidence that
+    // another extension really runs these hooks, so a `subagent` tool only earns a warning.
+    if (process.env.ACHILLES_PI_HOOKS === 'off') return disable('ACHILLES_PI_HOOKS=off is set; achilles runs none of its hooks this session', ctx);
+    if (!subagentWarned && pi.getAllTools().some((t) => t.name === 'subagent')) {
+      subagentWarned = true;
+      log('subagent_tool_present', {});
+      ctx.ui.notify('[achilles] a `subagent` tool is loaded: another extension (pi-code or similar) may also run the settings.json hooks, so some gates could run twice. achilles hooks stay ON; set ACHILLES_PI_HOOKS=off to disable achilles\' copy.', 'warning');
+    }
     manifest = loaded;
     compiled = compiledNow;
     enabled = true;

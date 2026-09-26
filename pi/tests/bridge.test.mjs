@@ -233,11 +233,36 @@ test('input runs UserPromptSubmit with prompt', async (t) => {
   await pi.fire('input', { type: 'input', text: 'hello', source: 'interactive' }, ctx);
   assert.equal(JSON.parse(fs.readFileSync(rec, 'utf8').trim()).prompt, 'hello');
 });
-test('pi-code conflict disables hooks with a warning', async () => {
+test('a `subagent` tool does not disable hooks: warn once, enforcement stays on', async (t) => {
+  withEnv(t, 'ACHILLES_PI_HOOKS', undefined);
   const pi = makeFakePi(); pi.registerTool({ name: 'subagent' }); const ctx = makeFakeCtx();
   const b = await start(pi, ctx);
-  assert.equal(b.enabled, false); assert.ok(ctx.notices.some((n) => /subagent/.test(n.m)));
-  assert.equal(await pi.fire('tool_call', { type: 'tool_call', toolCallId: 't6', toolName: 'bash', input: { command: 'ls' } }, ctx), undefined);
+  assert.equal(b.enabled, true);
+  const warns = ctx.notices.filter((n) => /subagent/.test(n.m));
+  assert.equal(warns.length, 1); assert.equal(warns[0].t, 'warning');
+  assert.match(warns[0].m, /may also run the settings\.json hooks/); assert.match(warns[0].m, /ACHILLES_PI_HOOKS=off/);
+  const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 't6', toolName: 'bash', input: { command: 'ls' } }, ctx);
+  assert.equal(r?.block, true); assert.match(r.reason, /nope/);
+  // A second session in the same process does not repeat the warning.
+  await pi.fire('session_start', { type: 'session_start', reason: 'new' }, ctx);
+  assert.equal(ctx.notices.filter((n) => /subagent/.test(n.m)).length, 1);
+  assert.equal(b.enabled, true);
+});
+test('ACHILLES_PI_HOOKS=off disables hook execution with a logged warning', async (t) => {
+  const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
+  withEnv(t, 'ACHILLES_PI_HOOKS', 'off');
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  const b = await start(pi, ctx);
+  assert.equal(b.enabled, false);
+  assert.ok(ctx.notices.some((n) => n.t === 'warning' && /hooks disabled: ACHILLES_PI_HOOKS=off/.test(n.m)));
+  assert.ok(fs.readFileSync(logFile, 'utf8').split('\n').some((l) => l && JSON.parse(l).kind === 'disabled' && /ACHILLES_PI_HOOKS=off/.test(JSON.parse(l).reason)));
+  assert.equal(await pi.fire('tool_call', { type: 'tool_call', toolCallId: 't7', toolName: 'bash', input: { command: 'ls' } }, ctx), undefined);
+});
+test('ACHILLES_PI_HOOKS set to anything but off keeps hooks on', async (t) => {
+  withEnv(t, 'ACHILLES_PI_HOOKS', 'on');
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  const b = await start(pi, ctx);
+  assert.equal(b.enabled, true);
 });
 test('missing bash disables hooks with a warning', async () => {
   const pi = makeFakePi(); const ctx = makeFakeCtx();
