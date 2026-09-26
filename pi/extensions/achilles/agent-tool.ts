@@ -205,6 +205,7 @@ export const KEEP_RETURNS = 20;
  * Only regular `.md` files directly in `dir` are touched. Best-effort: a failure is logged, not thrown. */
 export function pruneReturns(dir: string, justWritten?: string, keep = KEEP_RETURNS): void {
   try {
+    if (!realDir(dir)) { log('agent_return_prune_refused', { dir, reason: 'not a real directory (symlink?)' }); return; }
     const files = fs.readdirSync(dir, { withFileTypes: true })
       .filter((d) => d.isFile() && d.name.endsWith('.md'))
       .map((d) => { const p = path.join(dir, d.name); return { p, m: fs.statSync(p).mtimeMs }; })
@@ -215,12 +216,26 @@ export function pruneReturns(dir: string, justWritten?: string, keep = KEEP_RETU
   }
 }
 
+function isSymlink(p: string): boolean {
+  try { return fs.lstatSync(p).isSymbolicLink(); } catch { return false; }
+}
+
+/** True when `p` exists and is a directory itself, not a symlink to one (lstat). */
+function realDir(p: string): boolean {
+  try { return fs.lstatSync(p).isDirectory(); } catch { return false; }
+}
+
 /** Writes the full subagent return to <cwd>/.achilles/pi-agent-returns/<id>.md (dir 0700, file 0600)
  * and returns its path relative to cwd, or undefined when it could not be written. */
 export function saveFullReturn(cwd: string, id: string, text: string): string | undefined {
   try {
-    const dir = path.join(cwd, '.achilles', 'pi-agent-returns');
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // Refuse a symlinked .achilles or pi-agent-returns: writing and pruning must stay inside the project.
+    const parent = path.join(cwd, '.achilles');
+    const dir = path.join(parent, 'pi-agent-returns');
+    for (const d of [parent, dir]) {
+      if (!fs.existsSync(d) && !isSymlink(d)) fs.mkdirSync(d, { mode: 0o700 });
+      if (!realDir(d)) { log('agent_return_save_refused', { dir: d, reason: 'not a real directory (symlink?)' }); return undefined; }
+    }
     const safe = id.replace(/[^A-Za-z0-9._-]/g, '_') || `child-${Date.now()}`;
     const file = path.join(dir, `${safe}.md`);
     fs.writeFileSync(file, text, { mode: 0o600 });

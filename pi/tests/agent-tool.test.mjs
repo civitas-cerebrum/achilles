@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
-import { registerAgentTool, saveFullReturn, leanResult, shrinkJson } from '../extensions/achilles/agent-tool.ts';
+import { registerAgentTool, saveFullReturn, leanResult, shrinkJson, pruneReturns } from '../extensions/achilles/agent-tool.ts';
 const fx = path.join(import.meta.dirname, 'fixtures');
 const child = path.join(fx, 'fake-pi-child.mjs');
 const cleanup = [];
@@ -264,4 +264,21 @@ test('plain text over the cap is cut at a line boundary', () => {
   assert.ok(Buffer.byteLength(l.text) <= 2000);
   assert.ok(text.startsWith(l.text) && text[l.text.length] === '\n');
   assert.equal(l.cutChars, text.length - l.text.length);
+});
+test('saveFullReturn refuses a symlinked .achilles or pi-agent-returns (nothing written, nothing pruned)', () => {
+  for (const which of ['.achilles', 'pi-agent-returns']) {
+    const cwd = tmp(); const elsewhere = tmp();
+    for (let i = 0; i < 25; i++) fs.writeFileSync(path.join(elsewhere, `victim-${i}.md`), 'x');
+    if (which === '.achilles') fs.symlinkSync(elsewhere, path.join(cwd, '.achilles'));
+    else { fs.mkdirSync(path.join(cwd, '.achilles')); fs.symlinkSync(elsewhere, path.join(cwd, '.achilles', 'pi-agent-returns')); }
+    assert.equal(saveFullReturn(cwd, 'new', 'text'), undefined, which);
+    assert.equal(fs.readdirSync(elsewhere).length, 25, `${which}: target untouched`);
+  }
+});
+test('pruneReturns refuses a symlinked directory', () => {
+  const real = tmp(); const link = path.join(tmp(), 'link');
+  for (let i = 0; i < 25; i++) fs.writeFileSync(path.join(real, `f-${i}.md`), 'x');
+  fs.symlinkSync(real, link);
+  pruneReturns(link);
+  assert.equal(fs.readdirSync(real).length, 25);
 });
