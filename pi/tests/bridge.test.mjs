@@ -133,6 +133,20 @@ test('tool_call: deny with steered reason', async () => {
   assert.match(r.reason, /Load it: Skill \{ skill: "orch-skill" \}/);
   assert.match(r.reason, new RegExp(path.join(fx, 'skills', 'orch-skill', 'SKILL.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
+test('multi-part edit reaches hooks as one whole-file Edit, before and after the file changes', async (t) => {
+  const rec = recordFile(t);
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'ledger.json'), '{"a":"o1","b":"o2"}');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: dir }); await start(pi, ctx);
+  const input = { path: 'ledger.json', edits: [{ oldText: '"o1"', newText: '"n1"' }, { oldText: '"o2"', newText: '"n2"' }] };
+  assert.equal(await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'm1', toolName: 'edit', input }, ctx), undefined);
+  fs.writeFileSync(path.join(dir, 'ledger.json'), '{"a":"n1","b":"n2"}'); // pi applies the edit
+  await pi.fire('tool_result', { type: 'tool_result', toolCallId: 'm1', toolName: 'edit', input, content: [{ type: 'text', text: 'ok' }], isError: false }, ctx);
+  const [pre, post] = fs.readFileSync(rec, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const expected = { file_path: 'ledger.json', old_string: '{"a":"o1","b":"o2"}', new_string: '{"a":"n1","b":"n2"}' };
+  assert.equal(pre.hook_event_name, 'PreToolUse'); assert.deepEqual(pre.tool_input, expected);
+  assert.equal(post.hook_event_name, 'PostToolUse'); assert.deepEqual(post.tool_input, expected);
+});
 test('tool_call: plain text stdout allows; payload is Claude-shaped', async (t) => {
   const rec = recordFile(t);
   const o = opts();

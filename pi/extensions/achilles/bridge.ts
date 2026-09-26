@@ -213,6 +213,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   let hooksDir = opts.hooksDir ?? path.join(home, '.claude', 'hooks');
   let enabled = true;
   let stopHookActive = false;
+  // Claude-shaped tool input per in-flight tool call, set at tool_call and consumed at tool_result.
+  const translated = new Map<string, Rec>();
   let subOnly: SubagentOnlyDir[] = [];
   let lastAssistant = '';
 
@@ -298,15 +300,19 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('tool_call', async (event, ctx) => guarded('tool_call', ctx, { block: true, reason: steer('[achilles] internal error handling tool_call; call blocked (fail closed)') }, async () => {
     const name = claudeToolName(event.toolName);
+    // Translate once, against the file as it is before the tool runs; PostToolUse reuses it because a
+    // multi-part edit can only be reconstructed from the pre-edit file.
+    const claudeInput = claudeToolInput(event.toolName, event.input as Rec, ctx.cwd);
+    translated.set(event.toolCallId, claudeInput);
     // Record the call first, exactly as Claude's transcript would hold it, so a PreToolUse hook that
     // reads transcript_path sees its own call.
-    record(ctx, toolUseEntry(event.toolName, event.input as Rec, event.toolCallId));
+    record(ctx, toolUseEntry(event.toolName, event.input as Rec, event.toolCallId, claudeInput));
     // The orchestrator must delegate subagent-only skills, not read them into its own context.
     if (piDepth() === 0) {
       const skill = blockedSkillRead(event.toolName, event.input as Rec, subOnly, ctx.cwd, home);
       if (skill) { log('skill_read_blocked', { skill, tool: name }); return { block: true, reason: delegateInstruction(skill) }; }
     }
-    const ds = await runEvent('PreToolUse', { tool_name: name, tool_input: claudeToolInput(event.toolName, event.input as Rec), tool_use_id: event.toolCallId }, name, ctx);
+    const ds = await runEvent('PreToolUse', { tool_name: name, tool_input: claudeInput, tool_use_id: event.toolCallId }, name, ctx);
     for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
     const blocked = ds.find((d) => d.block);
     if (blocked) return { block: true, reason: steer(blocked.reason ?? 'blocked by achilles hook') };
@@ -325,7 +331,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('tool_result', async (event, ctx) => guarded('tool_result', ctx, undefined, async () => {
     const name = claudeToolName(event.toolName);
-    const input = claudeToolInput(event.toolName, event.input as Rec);
+    const input = translated.get(event.toolCallId) ?? claudeToolInput(event.toolName, event.input as Rec, ctx.cwd);
+    translated.delete(event.toolCallId);
     const ds = await runEvent('PostToolUse', { tool_name: name, tool_input: input, tool_response: claudeToolResponse(event.toolName, event.input as Rec, event.content as Content, event.isError, (event as { details?: unknown }).details), tool_use_id: event.toolCallId }, name, ctx);
     const notes: string[] = [];
     for (const d of ds) {

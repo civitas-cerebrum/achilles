@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { claudeToolName, claudeToolInput, claudeToolResponse, contentText } from '../extensions/achilles/payload.ts';
 
 test('names translate; custom names pass through', () => {
@@ -17,12 +20,24 @@ test('edit with one edit', () => {
   assert.deepEqual(claudeToolInput('edit', { path: 'a.md', edits: [{ oldText: 'o', newText: 'n' }] }),
     { file_path: 'a.md', old_string: 'o', new_string: 'n' });
 });
-test('edit with multiple edits', () => {
-  const r = claudeToolInput('edit', { path: 'a.md', edits: [{ oldText: 'o1', newText: 'n1' }, { oldText: 'o2', newText: 'n2' }] });
-  assert.equal(r.file_path, 'a.md');
-  assert.equal(r.old_string, 'o1\no2');
-  assert.equal(r.new_string, 'n1\nn2');
-  assert.deepEqual(r.edits, [{ old_string: 'o1', new_string: 'n1' }, { old_string: 'o2', new_string: 'n2' }]);
+test('edit with multiple edits becomes one whole-file Edit against the current file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'payload-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'a.md'), 'alpha o1 beta o2 gamma');
+    const r = claudeToolInput('edit', { path: 'a.md', edits: [{ oldText: 'o2', newText: 'n2' }, { oldText: 'o1', newText: 'n1' }] }, dir);
+    assert.deepEqual(r, { file_path: 'a.md', old_string: 'alpha o1 beta o2 gamma', new_string: 'alpha n1 beta n2 gamma' });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('multi-edit falls back to joined strings when an edit cannot apply', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'payload-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'a.md'), 'x o1 o1 y');
+    const r = claudeToolInput('edit', { path: 'a.md', edits: [{ oldText: 'o1', newText: 'n1' }, { oldText: 'zz', newText: 'n2' }] }, dir);
+    assert.equal(r.old_string, 'o1\nzz');
+    assert.equal(r.new_string, 'n1\nn2');
+    const missing = claudeToolInput('edit', { path: 'nope.md', edits: [{ oldText: 'a', newText: 'b' }, { oldText: 'c', newText: 'd' }] }, dir);
+    assert.equal(missing.old_string, 'a\nc');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 test('bash and other inputs pass through', () => {
   assert.deepEqual(claudeToolInput('bash', { command: 'ls' }), { command: 'ls' });

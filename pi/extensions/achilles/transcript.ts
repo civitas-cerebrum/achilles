@@ -38,10 +38,10 @@ export function appendShadow(file: string, entry: Rec): boolean {
 }
 
 /** Claude records a tool call as an assistant message holding one tool_use block. */
-export function toolUseEntry(piToolName: string, input: Rec, toolCallId: string): Rec {
+export function toolUseEntry(piToolName: string, input: Rec, toolCallId: string, claudeInput: Rec = claudeToolInput(piToolName, input)): Rec {
   return {
     type: 'assistant',
-    message: { role: 'assistant', content: [{ type: 'tool_use', id: toolCallId, name: claudeToolName(piToolName), input: claudeToolInput(piToolName, input) }] },
+    message: { role: 'assistant', content: [{ type: 'tool_use', id: toolCallId, name: claudeToolName(piToolName), input: claudeInput }] },
   };
 }
 
