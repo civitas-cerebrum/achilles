@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
-import { registerAgentTool, saveFullReturn } from '../extensions/achilles/agent-tool.ts';
+import { registerAgentTool, saveFullReturn, leanResult, shrinkJson } from '../extensions/achilles/agent-tool.ts';
 const fx = path.join(import.meta.dirname, 'fixtures');
 const child = path.join(fx, 'fake-pi-child.mjs');
 const cleanup = [];
@@ -108,7 +108,7 @@ test('model-facing text is capped at 8 KB with a pointer to the full return; det
   const r = await withEnv({ FAKE_PI_LONG: '1', ACHILLES_PI_AGENT_RESULT_CAP: undefined, ACHILLES_PI_VERBOSE: undefined }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
   const [body, pointer] = r.content[0].text.split('\n');
   assert.equal(body, 'y'.repeat(8192));
-  assert.equal(pointer, `[achilles] full subagent return: ${path.join('.achilles', 'pi-agent-returns', 'child-1.md')}`);
+  assert.equal(pointer, `[achilles] full subagent return: ${path.join('.achilles', 'pi-agent-returns', 'child-1.md')} (last ${32 * 1024} chars cut)`);
   assert.equal(r.details.text, 'y'.repeat(40 * 1024));
   const file = path.join(cwd, '.achilles', 'pi-agent-returns', 'child-1.md');
   assert.equal(fs.readFileSync(file, 'utf8'), 'y'.repeat(40 * 1024));
@@ -134,8 +134,8 @@ for (const [label, text] of [
     const [json, pointer, ...rest] = r.content[0].text.split('\n');
     assert.equal(json, JSON.stringify(HANDOVER));
     assert.deepEqual(rest, []);
-    assert.match(pointer, /^\[achilles\] full subagent return: \.achilles\/pi-agent-returns\/child-1\.md$/);
-    assert.equal(fs.readFileSync(path.join(cwd, pointer.split(': ')[1]), 'utf8'), text);
+    assert.match(pointer, /^\[achilles\] full subagent return: \.achilles\/pi-agent-returns\/child-1\.md \(\d+ chars of prose around the handover omitted\)$/);
+    assert.equal(fs.readFileSync(path.join(cwd, pointer.split(': ')[1].split(' (')[0]), 'utf8'), text);
     assert.equal(r.details.text, text);
   });
 }
@@ -232,4 +232,36 @@ test('saved returns are pruned to the newest 20 .md files by mtime; other files 
   for (let i = 6; i < 25; i++) assert.ok(md.includes(`old-${i}.md`), `old-${i}`);
   assert.ok(fs.existsSync(path.join(dir, 'notes.txt')), 'non-.md files untouched');
   assert.ok(fs.statSync(path.join(dir, 'sub.md')).isDirectory(), 'directories untouched');
+});
+test('an over-cap handover stays valid JSON: top-level scalars kept, the longest values shortened, the pointer says so', async () => {
+  const big = { handover: { role: 'workflow-reviewer-phase3', status: 'approved', 'next-action': 'advance to Phase 4' }, verdict: 'approve', phase: 3,
+    summary: 's'.repeat(6000), checklist: Array.from({ length: 60 }, (_, i) => ({ item: `criterion ${i}`, evidence: 'e'.repeat(200), satisfied: true })) };
+  const l = leanResult(`Review done.\n${JSON.stringify(big, null, 2)}`, 4096);
+  assert.ok(Buffer.byteLength(l.text) <= 4096, String(Buffer.byteLength(l.text)));
+  const parsed = JSON.parse(l.text);
+  assert.deepEqual(parsed.handover, big.handover);
+  assert.equal(parsed.verdict, 'approve'); assert.equal(parsed.phase, 3);
+  assert.match(parsed.summary, /…\[truncated\]$/);
+  assert.match(parsed.checklist.at(-1), /^…\[\d+ more items omitted\]$/);
+  assert.ok(l.shortened > 0 && l.proseChars === 'Review done.'.length);
+  const cwd = tmp();
+  const { tool } = setup();
+  const r = await withEnv({ FAKE_PI_TEXT: `Review done.\n${JSON.stringify(big, null, 2)}`, ACHILLES_PI_AGENT_RESULT_CAP: '4096' }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
+  const [json, pointer] = r.content[0].text.split('\n');
+  JSON.parse(json);
+  assert.match(pointer, /\(12 chars of prose around the handover omitted; \d+ long values in the handover shortened\)$/);
+});
+test('shrinkJson: a fitting object is untouched; repeated array shrinking keeps one omitted-count marker', () => {
+  assert.deepEqual(shrinkJson({ a: 1 }, 100), { json: '{"a":1}', shortened: 0 });
+  const { json } = shrinkJson({ handover: {}, list: Array.from({ length: 200 }, (_, i) => i) }, 60);
+  const list = JSON.parse(json).list;
+  assert.equal(list.filter((x) => typeof x === 'string').length, 1);
+  assert.equal(list.length - 1 + Number(/\d+/.exec(list.at(-1))[0]), 200);
+});
+test('plain text over the cap is cut at a line boundary', () => {
+  const text = Array.from({ length: 400 }, (_, i) => `line ${i} ${'z'.repeat(40)}`).join('\n');
+  const l = leanResult(text, 2000);
+  assert.ok(Buffer.byteLength(l.text) <= 2000);
+  assert.ok(text.startsWith(l.text) && text[l.text.length] === '\n');
+  assert.equal(l.cutChars, text.length - l.text.length);
 });

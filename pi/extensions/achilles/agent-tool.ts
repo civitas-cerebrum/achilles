@@ -105,22 +105,98 @@ export function extractHandover(text: string): { obj: Record<string, unknown>; s
   return found;
 }
 
-export interface LeanResult { text: string; dropped: boolean; handover: boolean; truncated: boolean }
+export interface LeanResult {
+  text: string;
+  dropped: boolean;
+  handover: boolean;
+  truncated: boolean;
+  /** Chars of prose (or fences) around the handover object that were left out. */
+  proseChars: number;
+  /** Long string / array values shortened inside the handover JSON to fit the cap. */
+  shortened: number;
+  /** Chars of plain (non-handover) text cut from the end. */
+  cutChars: number;
+}
+
+const bytes = (t: string) => Buffer.byteLength(t, 'utf8');
+/** Top-level scalars up to this size (verdict, status, phase, …) are never shortened. */
+const KEEP_SCALAR = 200;
+
+type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
+
+/**
+ * Shrink `obj` until its compact JSON fits `cap` bytes, keeping it valid JSON: repeatedly halve the
+ * largest string or array value (by serialised size) anywhere in the tree, except short top-level
+ * scalars. A shortened string ends in "…[truncated]"; a shortened array ends with a
+ * "…[N more items omitted]" entry. Returns the JSON and how many values were shortened.
+ */
+export function shrinkJson(obj: Record<string, unknown>, cap: number): { json: string; shortened: number } {
+  const root = JSON.parse(JSON.stringify(obj)) as { [k: string]: Json };
+  let json = JSON.stringify(root);
+  let shortened = 0;
+  for (let round = 0; bytes(json) > cap && round < 2000; round++) {
+    // Find the largest shrinkable value.
+    let best: { parent: Json[] | { [k: string]: Json }; key: string | number; size: number } | undefined;
+    const visit = (parent: Json[] | { [k: string]: Json }, key: string | number, v: Json, top: boolean) => {
+      if (typeof v === 'string' || Array.isArray(v)) {
+        const size = JSON.stringify(v).length;
+        const protectedScalar = top && typeof v === 'string' && v.length <= KEEP_SCALAR;
+        const shrinkable = typeof v === 'string' ? v.length > 24 : v.length > 1;
+        if (!protectedScalar && shrinkable && (!best || size > best.size)) best = { parent, key, size };
+      }
+      if (Array.isArray(v)) v.forEach((x, i) => visit(v, i, x, false));
+      else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) visit(v, k, x, false);
+    };
+    for (const [k, v] of Object.entries(root)) visit(root, k, v, true);
+    if (!best) break;
+    const { parent, key } = best as { parent: Record<string | number, Json>; key: string | number };
+    const v = parent[key];
+    if (typeof v === 'string') {
+      const base = v.replace(/…\[truncated\]$/, '');
+      parent[key] = `${base.slice(0, Math.max(12, Math.floor(base.length / 2)))}…[truncated]`;
+    } else if (Array.isArray(v)) {
+      const marker = v.length && typeof v[v.length - 1] === 'string' && /^…\[(\d+) more items omitted\]$/.exec(v[v.length - 1] as string);
+      const already = marker ? Number(marker[1]) : 0;
+      const items = marker ? v.slice(0, -1) : v;
+      const keep = Math.max(1, Math.floor(items.length / 2));
+      parent[key] = [...items.slice(0, keep), `…[${already + items.length - keep} more items omitted]`];
+    }
+    shortened++;
+    json = JSON.stringify(root);
+  }
+  return { json, shortened };
+}
+
+/** Plain text cut to `cap` bytes at the last line boundary (or the last whole character). */
+function cutText(text: string, cap: number): string {
+  if (bytes(text) <= cap) return text;
+  const head = Buffer.from(text, 'utf8').subarray(0, cap).toString('utf8').replace(/\uFFFD+$/, '');
+  const nl = head.lastIndexOf('\n');
+  return nl > cap / 2 ? head.slice(0, nl) : head;
+}
 
 /** The model-facing form of a subagent's final text: the handover JSON alone (compact) when there is
- * one, capped at `cap` bytes. `dropped` says whether anything beyond whitespace was left out. */
+ * one, shrunk as valid JSON to `cap` bytes; other text is cut at a line boundary. */
 export function leanResult(full: string, cap = resultCap()): LeanResult {
   const h = extractHandover(full);
-  let text = full;
-  let dropped = false;
   if (h) {
-    text = JSON.stringify(h.obj);
     // Only whitespace around the object (and the object's own formatting) is not a loss.
-    dropped = (full.slice(0, h.start) + full.slice(h.end)).trim() !== '';
+    const proseChars = (full.slice(0, h.start) + full.slice(h.end)).trim().length;
+    const { json, shortened } = shrinkJson(h.obj, cap);
+    return { text: json, dropped: proseChars > 0 || shortened > 0, handover: true, truncated: shortened > 0, proseChars, shortened, cutChars: 0 };
   }
-  const truncated = Buffer.byteLength(text, 'utf8') > cap;
-  if (truncated) text = truncateBytes(text, cap);
-  return { text, dropped: dropped || truncated, handover: !!h, truncated };
+  const text = cutText(full, cap);
+  const cutChars = full.length - text.length;
+  return { text, dropped: cutChars > 0, handover: false, truncated: cutChars > 0, proseChars: 0, shortened: 0, cutChars };
+}
+
+/** What a lean result left out, for the pointer line. */
+export function omittedNote(l: LeanResult): string {
+  const parts: string[] = [];
+  if (l.proseChars) parts.push(`${l.proseChars} chars of prose around the handover omitted`);
+  if (l.shortened) parts.push(`${l.shortened} long value${l.shortened === 1 ? '' : 's'} in the handover shortened`);
+  if (l.cutChars) parts.push(`last ${l.cutChars} chars cut`);
+  return parts.join('; ');
 }
 
 export const KEEP_RETURNS = 20;
@@ -163,7 +239,10 @@ export function modelFacing(full: string, cwd: string, childSessionId: string): 
   const lean = leanResult(full);
   if (!lean.dropped) return lean.text;
   const rel = saveFullReturn(cwd, childSessionId || `child-${process.pid}-${Date.now()}`, full);
-  return rel ? `${lean.text}\n[achilles] full subagent return: ${rel}` : `${lean.text}\n[achilles] subagent return shortened for context; the full text is in the tool details.`;
+  const what = omittedNote(lean);
+  return rel
+    ? `${lean.text}\n[achilles] full subagent return: ${rel} (${what})`
+    : `${lean.text}\n[achilles] subagent return shortened for context (${what}); the full text is in the tool details.`;
 }
 
 export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): void {
