@@ -45,11 +45,13 @@ child=$(grep '^child' <<<"$report" | head -1)
 read -r _ psys psec pnames <<<"$parent"
 read -r _ csys csec cnames <<<"$child"
 [ "$(tr ',' '\n' <<<"$pnames" | grep -c .)" -eq 24 ] || live_fail "orchestrator does not list the 24 achilles skills: $pnames"
-# Budget: the compact form is ~7.7k chars for 24 entries (pi's per-entry XML and <location> path alone are
-# ~4.4k of that); the uncompacted listing is ~32k. See the context report for why this is not 7,000.
+# Budget: the compact form is ~8k chars for 24 entries; pi's fixed per-skill markup (XML tags and the
+# <location> path) is ~4.4k of that. The uncompacted listing is ~32k.
 [ "$psec" -lt 8000 ] || live_fail "orchestrator skills section is $psec chars (want < 8000)"
 # pi XML-escapes skill descriptions, so the quotes reach the model as &quot;.
-grep -qF 'Subagent-only — delegate with Agent { skill: &quot;workflow-reviewer&quot; }; do not read it here.' "$REQ" || live_fail "subagent-only delegate line missing from the orchestrator prompt"
+grep -qF 'delegate with Agent { skill: &quot;workflow-reviewer&quot; }.' "$REQ" || live_fail "subagent-only delegate line missing from the orchestrator prompt"
+# The hand-written pi-description routing lines (skills/*/SKILL.md) are what the model sees.
+grep -qF '“the nightly failed”, “CI is red”): delegate with Agent { skill: &quot;failure-diagnosis&quot; }.' "$REQ" || live_fail "failure-diagnosis routing line missing from the orchestrator prompt"
 [ "$cnames" = "bug-report" ] || live_fail "child lists achilles skills beyond the passed one: $cnames"
 grep -q '"kind":"prompt_size","depth":"1".*"skills":\["bug-report"\]' "$ACHILLES_PI_LOG" || live_fail "child prompt_size log does not show only bug-report"
 live_pass "skill listing compacted (orchestrator system ${psys} chars, skills section ${psec} chars); child lists only its skill (system ${csys} chars, skills section ${csec} chars)"
