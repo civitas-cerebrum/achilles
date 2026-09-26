@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { shadowPath, appendShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText, sessionStateDir } from '../extensions/achilles/transcript.ts';
+import { claudeToolInput } from '../extensions/achilles/payload.ts';
 import { runHook, parseDecision } from '../extensions/achilles/bridge.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..', '..');
@@ -20,7 +21,7 @@ function session(id = 'sess-1') {
   let n = 0;
   return {
     id, stateDir, file,
-    tool(piName, input) { assert.ok(appendShadow(file, toolUseEntry(piName, input, `tc-${++n}`))); },
+    tool(piName, input) { assert.ok(appendShadow(file, toolUseEntry(piName, `tc-${++n}`, claudeToolInput(piName, input)))); },
     say(text) { assert.ok(appendShadow(file, assistantTextEntry(text))); },
     user(text) { assert.ok(appendShadow(file, userPromptEntry(text))); },
   };
@@ -51,9 +52,9 @@ test('sessionStateDir: ACHILLES_SESSION_STATE_DIR wins, else ~/.claude/achilles/
   } finally { if (prev === undefined) delete process.env.ACHILLES_SESSION_STATE_DIR; else process.env.ACHILLES_SESSION_STATE_DIR = prev; }
 });
 test('entries are Claude-shaped', () => {
-  assert.deepEqual(toolUseEntry('read', { path: '/p/SKILL.md' }, 't1'),
+  assert.deepEqual(toolUseEntry('read', 't1', claudeToolInput('read', { path: '/p/SKILL.md' })),
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/p/SKILL.md' } }] } });
-  assert.deepEqual(toolUseEntry('Skill', { skill: 'journey-mapping' }, 't2').message.content[0], { type: 'tool_use', id: 't2', name: 'Skill', input: { skill: 'journey-mapping' } });
+  assert.deepEqual(toolUseEntry('Skill', 't2', { skill: 'journey-mapping' }).message.content[0], { type: 'tool_use', id: 't2', name: 'Skill', input: { skill: 'journey-mapping' } });
   assert.deepEqual(assistantTextEntry('hi'), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] } });
   // User prompts carry string content, like Claude's, so hooks scanning content[] never read them as model text.
   assert.deepEqual(userPromptEntry('do it'), { type: 'user', message: { role: 'user', content: 'do it' } });

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { claudeToolName, claudeToolInput } from './payload.ts';
+import { claudeToolName } from './payload.ts';
 
 /**
  * Claude-shaped shadow transcript.
@@ -37,8 +37,9 @@ export function appendShadow(file: string, entry: Rec): boolean {
   }
 }
 
-/** Claude records a tool call as an assistant message holding one tool_use block. */
-export function toolUseEntry(piToolName: string, input: Rec, toolCallId: string, claudeInput: Rec = claudeToolInput(piToolName, input)): Rec {
+/** Claude records a tool call as an assistant message holding one tool_use block. `claudeInput` is the
+ * caller's claudeToolInput translation, made against the right cwd before the tool runs. */
+export function toolUseEntry(piToolName: string, toolCallId: string, claudeInput: Rec): Rec {
   return {
     type: 'assistant',
     message: { role: 'assistant', content: [{ type: 'tool_use', id: toolCallId, name: claudeToolName(piToolName), input: claudeInput }] },

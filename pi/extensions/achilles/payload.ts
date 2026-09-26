@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import path from 'node:path';
+import { applyPiEdits, minimalSpan, resolveToCwd } from './edit-match.ts';
 
 export type Content = Array<{ type: string; text?: string }>;
 type Rec = Record<string, unknown>;
@@ -23,11 +23,13 @@ export function claudeToolInput(piName: string, input: Rec, cwd: string = proces
     case 'edit': {
       const edits = Array.isArray(input.edits) ? (input.edits as Array<{ oldText?: unknown; newText?: unknown }>) : [];
       const mapped = edits.map((e) => ({ old_string: String(e.oldText ?? ''), new_string: String(e.newText ?? '') }));
+      // Hooks understand one old_string/new_string pair matched against the file's raw bytes. Compute
+      // what pi will actually write (fuzzy matching, CRLF, BOM, several disjoint edits) and present
+      // the smallest whole-line span of the file that changes, so content gates judge the real edit.
+      const exact = wholeFileEdit(String(input.path ?? ''), mapped, cwd);
+      if (exact) return { file_path: input.path, ...exact };
+      // pi rejects this edit (it fails the call); hand hooks the model's own text.
       if (mapped.length === 1) return { file_path: input.path, old_string: mapped[0].old_string, new_string: mapped[0].new_string };
-      // Hooks understand one old_string/new_string pair. Present several disjoint replacements as the one
-      // equivalent whole-file Edit, so content-validating gates judge the real end state.
-      const whole = wholeFileEdit(String(input.path ?? ''), mapped, cwd);
-      if (whole) return { file_path: input.path, ...whole };
       return {
         file_path: input.path,
         old_string: mapped.map((e) => e.old_string).join('\n'),
@@ -53,21 +55,22 @@ export function claudeToolResponse(piName: string, input: Rec, content: Content,
   return { content: text, output: text, isError };
 }
 
-/** Apply pi's disjoint replacements (each must occur exactly once in the original) by position.
- *  Returns undefined when the file cannot be read or any replacement cannot apply; pi rejects that edit too. */
-function wholeFileEdit(filePath: string, edits: Array<{ old_string: string; new_string: string }>, cwd: string): { old_string: string; new_string: string } | undefined {
+/**
+ * The Claude-shaped old_string/new_string for a pi edit, or undefined when pi would reject the edit
+ * (unreadable file, empty oldText, text not found, duplicate, overlap, no change).
+ * A single edit that already matches the raw file exactly once, and whose replacement is exactly
+ * what pi writes, is passed through unchanged; everything else becomes the minimal covering span.
+ */
+export function wholeFileEdit(filePath: string, edits: Array<{ old_string: string; new_string: string }>, cwd: string): { old_string: string; new_string: string } | undefined {
   let original: string;
-  try { original = fs.readFileSync(path.resolve(cwd, filePath), 'utf8'); } catch { return undefined; }
-  const spans: Array<{ at: number; e: { old_string: string; new_string: string } }> = [];
-  for (const e of edits) {
-    if (!e.old_string) return undefined;
-    const at = original.indexOf(e.old_string);
-    if (at < 0 || original.indexOf(e.old_string, at + 1) >= 0) return undefined;
-    spans.push({ at, e });
+  try { original = fs.readFileSync(resolveToCwd(filePath, cwd), 'utf8'); } catch { return undefined; }
+  let result: string;
+  try { result = applyPiEdits(original, edits.map((e) => ({ oldText: e.old_string, newText: e.new_string })), filePath); } catch { return undefined; }
+  if (result === original) return undefined;
+  if (edits.length === 1) {
+    const [{ old_string, new_string }] = edits;
+    const at = original.indexOf(old_string);
+    if (at >= 0 && original.indexOf(old_string, at + 1) < 0 && original.slice(0, at) + new_string + original.slice(at + old_string.length) === result) return { old_string, new_string };
   }
-  spans.sort((a, b) => a.at - b.at);
-  for (let i = 1; i < spans.length; i++) if (spans[i].at < spans[i - 1].at + spans[i - 1].e.old_string.length) return undefined;
-  let out = original;
-  for (const { at, e } of [...spans].reverse()) out = out.slice(0, at) + e.new_string + out.slice(at + e.old_string.length);
-  return { old_string: original, new_string: out };
+  return minimalSpan(original, result);
 }

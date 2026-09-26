@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { claudeToolName, claudeToolInput, claudeToolResponse, type Content } from './payload.ts';
+import { resolveToCwd } from './edit-match.ts';
 import { steer as steerText } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
@@ -17,6 +18,8 @@ export interface Decision { file: string; block: boolean; ask?: boolean; reason?
 export interface BridgeOptions { manifestPath?: string; hooksDir?: string; home?: string; bash?: string; skillRoots?: string[]; stateDir?: string }
 export interface Bridge {
   readonly enabled: boolean;
+  /** Tool calls whose pre-edit translation is held for PostToolUse (for tests). */
+  readonly pendingTranslations: number;
   disable(reason: string): void;
   runEvent(event: string, payload: Record<string, unknown>, toolName?: string, ctx?: ExtensionContext): Promise<Decision[]>;
   steer(text: string): string;
@@ -188,6 +191,20 @@ export function claudePrompt(text: string): string {
   return text.replace(/^\/skill:([a-z0-9][a-z0-9-]*)(?=\s|$)/, '/$1');
 }
 
+/** True when the translation depends on the file as it was before the tool ran: several edits, or a
+ * single edit whose Claude form differs from the model's text (CRLF, fuzzy match, BOM). */
+function preEditDependent(piName: string, input: Rec, claudeInput: Rec): boolean {
+  if (piName !== 'edit') return false;
+  const edits = Array.isArray(input.edits) ? (input.edits as Array<{ oldText?: unknown; newText?: unknown }>) : [];
+  if (edits.length > 1) return true;
+  return edits.length === 1 && (claudeInput.old_string !== String(edits[0].oldText ?? '') || claudeInput.new_string !== String(edits[0].newText ?? ''));
+}
+
+/** Whether the file now contains `text`; an unreadable file counts as not containing it. */
+function postEditHas(filePath: string, text: string, cwd: string): boolean {
+  try { return fs.readFileSync(resolveToCwd(filePath, cwd), 'utf8').includes(text); } catch { return false; }
+}
+
 function which(bin: string): boolean {
   return spawnSync(bin, ['--version'], { stdio: 'ignore' }).error === undefined;
 }
@@ -213,7 +230,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   let hooksDir = opts.hooksDir ?? path.join(home, '.claude', 'hooks');
   let enabled = true;
   let stopHookActive = false;
-  // Claude-shaped tool input per in-flight tool call, set at tool_call and consumed at tool_result.
+  // Claude-shaped tool input per in-flight tool call whose translation depends on the pre-edit file,
+  // set at tool_call (only when the call is allowed) and consumed at tool_result.
   const translated = new Map<string, Rec>();
   let subOnly: SubagentOnlyDir[] = [];
   let lastAssistant = '';
@@ -265,6 +283,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('session_start', async (_event, ctx) => guarded('session_start', ctx, undefined, async () => {
     stopHookActive = false;
+    translated.clear();
     // The subagent-only read guard is achilles' own policy, not a hook, so it holds even when hook
     // execution ends up disabled below.
     subOnly = subagentOnlyDirs(roots);
@@ -300,39 +319,55 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
 
   pi.on('tool_call', async (event, ctx) => guarded('tool_call', ctx, { block: true, reason: steer('[achilles] internal error handling tool_call; call blocked (fail closed)') }, async () => {
     const name = claudeToolName(event.toolName);
-    // Translate once, against the file as it is before the tool runs; PostToolUse reuses it because a
-    // multi-part edit can only be reconstructed from the pre-edit file.
-    const claudeInput = claudeToolInput(event.toolName, event.input as Rec, ctx.cwd);
-    translated.set(event.toolCallId, claudeInput);
-    // Record the call first, exactly as Claude's transcript would hold it, so a PreToolUse hook that
-    // reads transcript_path sees its own call.
-    record(ctx, toolUseEntry(event.toolName, event.input as Rec, event.toolCallId, claudeInput));
-    // The orchestrator must delegate subagent-only skills, not read them into its own context.
-    if (piDepth() === 0) {
-      const skill = blockedSkillRead(event.toolName, event.input as Rec, subOnly, ctx.cwd, home);
-      if (skill) { log('skill_read_blocked', { skill, tool: name }); return { block: true, reason: delegateInstruction(skill) }; }
+    // The cache entry survives only when the call is allowed to run; every blocked or failed path drops it.
+    let keep = false;
+    let claudeInput: Rec = {};
+    try {
+      if (enabled) {
+        // Translate once, against the file as it is before the tool runs. A multi-part or normalised
+        // edit can only be reconstructed from the pre-edit file, so PostToolUse reuses it.
+        claudeInput = claudeToolInput(event.toolName, event.input as Rec, ctx.cwd);
+        if (preEditDependent(event.toolName, event.input as Rec, claudeInput)) translated.set(event.toolCallId, claudeInput);
+        // Record the call first, exactly as Claude's transcript would hold it, so a PreToolUse hook that
+        // reads transcript_path sees its own call.
+        record(ctx, toolUseEntry(event.toolName, event.toolCallId, claudeInput));
+      }
+      // The orchestrator must delegate subagent-only skills, not read them into its own context.
+      if (piDepth() === 0) {
+        const skill = blockedSkillRead(event.toolName, event.input as Rec, subOnly, ctx.cwd, home);
+        if (skill) { log('skill_read_blocked', { skill, tool: name }); return { block: true, reason: delegateInstruction(skill) }; }
+      }
+      if (!enabled) return undefined;
+      const ds = await runEvent('PreToolUse', { tool_name: name, tool_input: claudeInput, tool_use_id: event.toolCallId }, name, ctx);
+      for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
+      const blocked = ds.find((d) => d.block);
+      if (blocked) return { block: true, reason: steer(blocked.reason ?? 'blocked by achilles hook') };
+      // permissionDecision "ask": Claude asks the operator. With a dialog-capable UI (and only in the
+      // orchestrator) so do we; with no UI (print/json mode, every child) nobody can answer, so block.
+      const asked = ds.find((d) => d.ask);
+      if (asked) {
+        const reason = asked.reason ?? 'achilles hook asks for confirmation';
+        const canAsk = ctx.hasUI && piDepth() === 0;
+        const approved = canAsk ? await ctx.ui.confirm(`[achilles] ${asked.file} asks for confirmation`, reason) : false;
+        log('ask', { hook: asked.file, tool: name, prompted: canAsk, approved });
+        if (!approved) return { block: true, reason: steer(reason) };
+      }
+      keep = true;
+      return undefined;
+    } finally {
+      if (!keep) translated.delete(event.toolCallId);
     }
-    const ds = await runEvent('PreToolUse', { tool_name: name, tool_input: claudeInput, tool_use_id: event.toolCallId }, name, ctx);
-    for (const d of ds) if (d.systemMessage) ctx.ui.notify(d.systemMessage, 'warning');
-    const blocked = ds.find((d) => d.block);
-    if (blocked) return { block: true, reason: steer(blocked.reason ?? 'blocked by achilles hook') };
-    // permissionDecision "ask": Claude asks the operator. With a dialog-capable UI (and only in the
-    // orchestrator) so do we; with no UI (print/json mode, every child) nobody can answer, so block.
-    const asked = ds.find((d) => d.ask);
-    if (asked) {
-      const reason = asked.reason ?? 'achilles hook asks for confirmation';
-      const canAsk = ctx.hasUI && piDepth() === 0;
-      const approved = canAsk ? await ctx.ui.confirm(`[achilles] ${asked.file} asks for confirmation`, reason) : false;
-      log('ask', { hook: asked.file, tool: name, prompted: canAsk, approved });
-      if (!approved) return { block: true, reason: steer(reason) };
-    }
-    return undefined;
   }));
 
   pi.on('tool_result', async (event, ctx) => guarded('tool_result', ctx, undefined, async () => {
     const name = claudeToolName(event.toolName);
-    const input = translated.get(event.toolCallId) ?? claudeToolInput(event.toolName, event.input as Rec, ctx.cwd);
+    let input = translated.get(event.toolCallId);
     translated.delete(event.toolCallId);
+    // Parallel edits to the same file: pi serialises them per file, so an edit translated at tool_call
+    // may have run against a file another call changed first. If its new text is not in the file now,
+    // the cached translation is stale; fall back to translating against the current file.
+    if (input && typeof input.new_string === 'string' && !postEditHas(String(input.file_path ?? ''), input.new_string, ctx.cwd)) input = undefined;
+    input ??= claudeToolInput(event.toolName, event.input as Rec, ctx.cwd);
     const ds = await runEvent('PostToolUse', { tool_name: name, tool_input: input, tool_response: claudeToolResponse(event.toolName, event.input as Rec, event.content as Content, event.isError, (event as { details?: unknown }).details), tool_use_id: event.toolCallId }, name, ctx);
     const notes: string[] = [];
     for (const d of ds) {
@@ -371,5 +406,5 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     return { continue: true, entries: [{ type: 'custom_message', customType: sub ? 'achilles-subagent-stop-block' : 'achilles-stop-block', content: steer(blocked.reason ?? 'stopped by achilles hook'), display: true }] };
   }));
 
-  return { get enabled() { return enabled; }, disable: (r) => disable(r), runEvent, steer };
+  return { get enabled() { return enabled; }, get pendingTranslations() { return translated.size; }, disable: (r) => disable(r), runEvent, steer };
 }

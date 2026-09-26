@@ -444,3 +444,100 @@ test('NaN ACHILLES_PI_DEPTH is depth 0: no agent_id', async (t) => {
   await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'n1', toolName: 'edit', input: { path: 'a.md', edits: [{ oldText: 'o', newText: 'n' }] } }, ctx);
   assert.equal('agent_id' in JSON.parse(fs.readFileSync(rec, 'utf8').trim()), false);
 });
+
+// ---- multi-part edit translation cache (I3) ----
+const REPO = path.resolve(import.meta.dirname, '..', '..');
+function manifestOf(entries) { const p = path.join(tmp(), 'm.json'); fs.writeFileSync(p, JSON.stringify(entries)); return p; }
+const multi = (p) => ({ path: p, edits: [{ oldText: '"o1"', newText: '"n1"' }, { oldText: '"o2"', newText: '"n2"' }] });
+
+test('translation cache: a blocked multi-part edit leaves it empty; an allowed one is consumed at tool_result', async () => {
+  const dir = tmp(); fs.writeFileSync(path.join(dir, 'l.json'), '{"a":"o1","b":"o2"}');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: dir });
+  const denying = await start(pi, ctx, { ...opts(), manifestPath: manifestOf([{ file: 'deny.sh', event: 'PreToolUse', matcher: 'Edit', timeout: 5 }]) });
+  const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'b1', toolName: 'edit', input: multi('l.json') }, ctx);
+  assert.equal(r.block, true);
+  assert.equal(denying.pendingTranslations, 0);
+
+  const pi2 = makeFakePi(); const b = await start(pi2, ctx);
+  assert.equal(await pi2.fire('tool_call', { type: 'tool_call', toolCallId: 'a1', toolName: 'edit', input: multi('l.json') }, ctx), undefined);
+  assert.equal(b.pendingTranslations, 1);
+  // A single exact edit does not depend on the pre-edit file and is not cached.
+  await pi2.fire('tool_call', { type: 'tool_call', toolCallId: 'a2', toolName: 'edit', input: { path: 'l.json', edits: [{ oldText: '"o1"', newText: '"x"' }] } }, ctx);
+  assert.equal(b.pendingTranslations, 1);
+  fs.writeFileSync(path.join(dir, 'l.json'), '{"a":"n1","b":"n2"}');
+  await pi2.fire('tool_result', { type: 'tool_result', toolCallId: 'a1', toolName: 'edit', input: multi('l.json'), content: [], isError: false }, ctx);
+  assert.equal(b.pendingTranslations, 0);
+  // A call that never reaches tool_result is dropped at the next session_start.
+  fs.writeFileSync(path.join(dir, 'l.json'), '{"a":"o1","b":"o2"}');
+  await pi2.fire('tool_call', { type: 'tool_call', toolCallId: 'a3', toolName: 'edit', input: multi('l.json') }, ctx);
+  assert.equal(b.pendingTranslations, 1);
+  await pi2.fire('session_start', { type: 'session_start', reason: 'new' }, ctx);
+  assert.equal(b.pendingTranslations, 0);
+});
+test('translation cache: skipped while the bridge is disabled', async () => {
+  const dir = tmp(); fs.writeFileSync(path.join(dir, 'l.json'), '{"a":"o1","b":"o2"}');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: dir });
+  const b = await start(pi, ctx, { ...opts(), hooksDir: tmp() });
+  assert.equal(b.enabled, false);
+  assert.equal(await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'd1', toolName: 'edit', input: multi('l.json') }, ctx), undefined);
+  assert.equal(b.pendingTranslations, 0);
+});
+test('translation cache: a stale entry (another edit changed the file first) is recomputed at tool_result', async (t) => {
+  const rec = recordFile(t);
+  const dir = tmp(); fs.writeFileSync(path.join(dir, 'l.json'), '{"a":"o1","b":"o2"}');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: dir }); const b = await start(pi, ctx);
+  await pi.fire('tool_call', { type: 'tool_call', toolCallId: 's1', toolName: 'edit', input: multi('l.json') }, ctx);
+  fs.writeFileSync(path.join(dir, 'l.json'), '{"a":"zz","b":"zz"}'); // what landed is not what s1 was translated to
+  await pi.fire('tool_result', { type: 'tool_result', toolCallId: 's1', toolName: 'edit', input: multi('l.json'), content: [], isError: true }, ctx);
+  assert.equal(b.pendingTranslations, 0);
+  const [pre, post] = fs.readFileSync(rec, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(pre.tool_input.new_string, '{"a":"n1","b":"n2"}');
+  assert.equal(post.tool_input.old_string, '"o1"\n"o2"', 'recomputed against the current file');
+});
+test('client-term-guard (real hook): a two-part edit that adds no term is allowed although the file already holds one', async () => {
+  const proj = tmp();
+  fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: '@civitas-cerebrum/achilles' }));
+  fs.mkdirSync(path.join(proj, '.achilles'));
+  fs.writeFileSync(path.join(proj, '.achilles', 'client-terms.local.txt'), 'acmecorp\n');
+  fs.mkdirSync(path.join(proj, 'docs'));
+  const file = path.join(proj, 'docs', 'x.md');
+  fs.writeFileSync(file, 'intro\nlegacy note: acmecorp\n\nsection one\nk1 value\n\nsection two\nk2 value\n');
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: proj });
+  await start(pi, ctx, { ...opts(), hooksDir: path.join(REPO, 'hooks'), manifestPath: manifestOf([{ file: 'client-term-guard.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 }]) });
+  const clean = { path: file, edits: [{ oldText: 'k1 value', newText: 'K1 value' }, { oldText: 'k2 value', newText: 'K2 value' }] };
+  assert.equal(await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'c1', toolName: 'edit', input: clean }, ctx), undefined);
+  // Control: adding the term is still denied.
+  const dirty = { path: file, edits: [{ oldText: 'k1 value', newText: 'acmecorp value' }, { oldText: 'k2 value', newText: 'K2 value' }] };
+  const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'c2', toolName: 'edit', input: dirty }, ctx);
+  assert.equal(r?.block, true); assert.match(r.reason, /acmecorp/);
+});
+test('onboarding-ledger-write-gate (real hook): a two-part ledger edit is synthesised and reaches schema validation', async (t) => {
+  withEnv(t, 'ACHILLES_PROTOCOL', '1');
+  withEnv(t, 'ACHILLES_SESSION_STATE_DIR', tmp());
+  const proj = tmp(); const docs = path.join(proj, 'tests', 'e2e', 'docs'); fs.mkdirSync(docs, { recursive: true });
+  const ledger = path.join(docs, 'onboarding-status.json');
+  fs.copyFileSync(path.join(REPO, 'schemas', 'onboarding-status.fixtures', 'valid-mid-phase5.json'), ledger);
+  const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: proj });
+  await start(pi, ctx, { ...opts(), hooksDir: path.join(REPO, 'hooks'), manifestPath: manifestOf([{ file: 'onboarding-ledger-write-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 30 }]) });
+  // Two parts, far apart; the second makes runMode an invalid enum value so the schema must reject it.
+  const input = { path: 'tests/e2e/docs/onboarding-status.json', edits: [
+    { oldText: '"runMode": "depth"', newText: '"runMode": "yolo"' },
+    { oldText: '"approvedDeviations": []', newText: '"approvedDeviations": [ ]' },
+  ] };
+  const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'g1', toolName: 'edit', input }, ctx);
+  assert.equal(r?.block, true);
+  assert.doesNotMatch(r.reason, /REPLACE_FAIL|could not be synthesised/);
+  assert.match(r.reason, /runMode/);
+  // The same ledger with CRLF endings and a multi-line part: pi matches it LF-normalised, so the bridge
+  // must hand the gate an old_string that exists in the raw CRLF bytes.
+  // (No final newline: the gate's $(...) strips only the trailing LF, and a stray CR fails its JSON parse.)
+  fs.writeFileSync(ledger, fs.readFileSync(ledger, 'utf8').trimEnd().replace(/\n/g, '\r\n'));
+  const crlf = { path: 'tests/e2e/docs/onboarding-status.json', edits: [
+    { oldText: '"schemaVersion": 1,\n  "pipelineVersion": "0.4.0",\n  "runMode": "depth",', newText: '"schemaVersion": 1,\n  "pipelineVersion": "0.4.0",\n  "runMode": "yolo",' },
+    { oldText: '"approvedDeviations": []', newText: '"approvedDeviations": [ ]' },
+  ] };
+  const r2 = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'g2', toolName: 'edit', input: crlf }, ctx);
+  assert.equal(r2?.block, true);
+  assert.doesNotMatch(r2.reason, /REPLACE_FAIL|could not be synthesised/);
+  assert.match(r2.reason, /runMode/);
+});
