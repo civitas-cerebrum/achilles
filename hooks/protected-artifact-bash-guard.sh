@@ -12,8 +12,10 @@
 # Every Write|Edit gate (ledger write-gate, sentinel gate, integrity chain)
 # inspects ONLY the Write/Edit tools. A `cat > onboarding-status.json` from
 # Bash sidesteps them all. This guard closes the obvious shell vectors:
-# redirection, file-management commands, in-place editors, and interpreter
-# one-liners that mention a protected artifact.
+# redirection, file-management commands, in-place editors, interpreter
+# one-liners, and interpreters fed their program from stdin (heredoc,
+# herestring, pipe, `-`) or a script file, when the command mentions a
+# protected artifact.
 #
 # Known limit (by design): Bash filtering cannot be airtight — the agent
 # shares the hook's privileges, and arbitrarily-encoded writes exist. The
@@ -24,7 +26,12 @@
 # interpreter one-liner (-c/-e) co-occurring with a protected name anywhere
 # in the command is denied — even when the verb targets an unrelated path
 # (e.g. `rm /tmp/junk && cat <ledger>` denies, as does `cp <ledger> /tmp`).
-# The deny text names the sanctioned alternative.
+# The same holds for an interpreter whose program the guard cannot see: a
+# script file (`python3 validate.py <ledger>`, `node x.mjs && cat <ledger>`)
+# or a program piped in is denied even when it only reads. A heredoc or
+# herestring program IS visible, so it is classified like a one-liner
+# (read-shape allows; write-shape or no recognizable token denies). The
+# deny text names the sanctioned alternative.
 #
 # settings.local.json: coverage is a deliberate superset of spec §A3's
 # settings.json — local overrides carry the same mutation risk.
@@ -124,9 +131,81 @@ if [ "$INTERP_ANY_HIT" != "0" ]; then
   fi
 fi
 
+# 5. Interpreters that take their program from stdin or a script file.
+#    Rule 4 only sees -c/-e one-liners. `python3 - <<'EOF' … json.dump(…)`
+#    feeds the program on stdin and slipped past it (a real bypass), as does
+#    `python3 fix.py <ledger>`. Each simple command is scanned for an
+#    interpreter (python*, node, perl, ruby, php, deno, bun, and the shells
+#    bash/sh/zsh/dash/ksh) at command position (after env assignments and
+#    sudo/env/exec/command/time/nice/nohup/timeout), then its arguments:
+#      - a heredoc/herestring (`<<`, `<<<`) into a NON-shell interpreter:
+#        the program is inline, so it is classified like a one-liner —
+#        write-shape → deny, read-shape → allow, neither → deny (fail
+#        closed). A shell's heredoc body is ordinary shell and rules 1-4
+#        already scan it, so it adds nothing here.
+#      - `-`, `< file`, or no program argument at all (so it reads a pipe
+#        or stdin): the program is not visible → deny.
+#      - a script-file argument (`python3 x.py`, `deno run x.ts`): the
+#        program is not visible → deny.
+#      - a one-liner / module / info flag (-c -e -E -p -r -m --eval --print
+#        --version -V --help -h, `deno eval`): not this rule's business.
+#    The scan is word-based, not a shell parser: quotes are not honoured,
+#    so it errs toward seeing more interpreter invocations, never fewer.
+INTERP_PROG_HIT=0
+INTERP_INLINE=0
+INTERP_NAME_RE='^(python[0-9.]*|node|nodejs|perl|ruby|php|deno|bun|bash|sh|zsh|dash|ksh)$'
+# One word per token; every command separator (; && || | & ( ) ` newline)
+# becomes a standalone ";". fd duplications (2>&1, >&2) are dropped first so
+# their "&" does not split a command.
+INTERP_WORDS=$(printf '%s' "$CMD" | tr '\n' ';' | sed -E 's/[0-9]*[<>]&[0-9-]*/ /g; s/(\|\||&&|\|&|[;|&()`])/ ; /g')
+interp_state=start   # start | args | stdin | done
+interp_name=""
+interp_end_segment() {
+  # An interpreter left waiting for its program (no script argument) reads it
+  # from stdin: a pipe, a redirect, or `-`.
+  case "$interp_state" in args|stdin) INTERP_PROG_HIT=1 ;; esac
+  interp_state=start; interp_name=""
+}
+# shellcheck disable=SC2086
+set -f   # no globbing while word-splitting the command
+for w in $INTERP_WORDS; do
+  if [ "$w" = ";" ]; then interp_end_segment; continue; fi
+  case "$interp_state" in
+    start)
+      case "$w" in
+        *=*|sudo|env|exec|command|time|nice|nohup|timeout|-*) continue ;;
+      esac
+      [[ "$w" =~ ^[0-9.]+[smhd]?$ ]] && continue   # timeout's duration
+      if [[ "${w##*/}" =~ $INTERP_NAME_RE ]]; then interp_name="${w##*/}"; interp_state=args; else interp_state=done; fi ;;
+    args|stdin)
+      case "$w" in
+        '<<'*|'-<<'*)
+          case "$interp_name" in bash|sh|zsh|dash|ksh) ;; *) INTERP_INLINE=1 ;; esac
+          interp_state=done ;;
+        '<'*) INTERP_PROG_HIT=1; interp_state=done ;;
+        '>'*|[0-9]'>'*) ;;
+        -) interp_state=stdin ;;
+        -c|-e|-E|-p|-r|-m|-[A-Za-z]*[ce]|--eval|--eval=*|--print|--print=*|--version|-V|--help|-h|eval)
+          [ "$interp_state" = args ] && interp_state=done ;;
+        -*) ;;
+        run) [ "$interp_name" = deno ] || [ "$interp_name" = bun ] || { INTERP_PROG_HIT=1; interp_state=done; } ;;
+        *) [ "$interp_state" = args ] && { INTERP_PROG_HIT=1; interp_state=done; } ;;
+      esac ;;
+  esac
+done
+set +f
+interp_end_segment
+if [ "$INTERP_INLINE" = "1" ]; then
+  if echo "$CMD" | grep -qE "$WRITE_SHAPE_RE"; then
+    INTERP_PROG_HIT=1
+  elif ! echo "$CMD" | grep -qE "$READ_SHAPE_RE"; then
+    INTERP_PROG_HIT=1   # inline program with no recognizable read/write token — fail closed
+  fi
+fi
+
 # Ambiguous interpreter one-liner (protected path mentioned, but no
 # recognizable read or write token) → ask the operator rather than deny.
-if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ] && [ "$INTERP_AMBIG_HIT" = "1" ]; then
+if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ] && [ "$INTERP_PROG_HIT" = "0" ] && [ "$INTERP_AMBIG_HIT" = "1" ]; then
   "$JQ" -n --arg r "[ASK] This Bash command runs an interpreter one-liner that mentions a protected pipeline-state artifact, but the harness cannot tell whether it reads or writes it.
 
 Command: ${CMD}
@@ -143,7 +222,7 @@ See: skills/achilles-protocol/references/harness-hooks.md${HOOK_REFS}" '{
   exit 0
 fi
 
-if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ]; then
+if [ "$REDIR_HIT" = "0" ] && [ "$MUTATE_HIT" = "0" ] && [ "$INPLACE_HIT" = "0" ] && [ "$DD_HIT" = "0" ] && [ "$INTERP_WRITE_HIT" = "0" ] && [ "$INTERP_PROG_HIT" = "0" ]; then
   exit 0   # read-only access to a protected artifact
 fi
 
