@@ -200,6 +200,11 @@ function unique(hay: string, needle: string): boolean {
  * The smallest whole-line span of `before` that, replaced, yields `after`, and whose text occurs
  * exactly once in `before`: trim the common prefix and suffix, widen to line boundaries, then widen
  * one line each way until the span is unique (capped at the whole file).
+ *
+ * Hooks read old_string/new_string with `$(jq -r ...)`, which strips trailing newlines, so a line
+ * span's final newline is dropped from both strings when both end in one, and uniqueness is judged
+ * on what the hooks will actually see: `"status": "pending"\n` is unique, but its stripped form is a
+ * prefix of `"status": "pending",` elsewhere.
  */
 export function minimalSpan(before: string, after: string): { old_string: string; new_string: string } {
   let pre = 0;
@@ -209,12 +214,20 @@ export function minimalSpan(before: string, after: string): { old_string: string
   while (suf < max - pre && before[before.length - 1 - suf] === after[after.length - 1 - suf]) suf++;
   const lineStart = (i: number) => (i <= 0 ? 0 : before.lastIndexOf('\n', i - 1) + 1);
   const lineEnd = (i: number) => (i <= 0 || before[i - 1] === '\n' ? i : before.indexOf('\n', i) + 1 || before.length);
+  // The strings a hook sees for the line span [start, end): common trailing newlines dropped.
+  const view = (start: number, end: number) => {
+    let e = end;
+    let a = after.length - (before.length - end);
+    while (e > start && before[e - 1] === '\n' && a > start && after[a - 1] === '\n') { e--; a--; }
+    return { old_string: before.slice(start, e), new_string: after.slice(start, a) };
+  };
+  const ok = (v: { old_string: string; new_string: string }) =>
+    unique(before, v.old_string) && !v.old_string.endsWith('\n') && !v.new_string.endsWith('\n');
   let start = lineStart(pre);
   let end = lineEnd(before.length - suf);
-  while (!unique(before, before.slice(start, end)) && (start > 0 || end < before.length)) {
+  while (!ok(view(start, end)) && (start > 0 || end < before.length)) {
     if (start > 0) start = lineStart(start - 1);
     if (end < before.length) end = before.indexOf('\n', end) + 1 || before.length;
   }
-  const tail = before.length - end;
-  return { old_string: before.slice(start, end), new_string: after.slice(start, after.length - tail) };
+  return view(start, end);
 }

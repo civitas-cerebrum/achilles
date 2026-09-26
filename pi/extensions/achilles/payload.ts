@@ -15,11 +15,14 @@ function defined(obj: Rec): Rec {
 }
 
 export function claudeToolInput(piName: string, input: Rec, cwd: string = process.cwd()): Rec {
+  // pi resolves `@x`, `~/x` and `file://x` before touching the file; hooks match the literal string,
+  // so they must see the resolved absolute path (Claude always sends absolute paths).
+  const filePath = typeof input.path === 'string' ? resolveToCwd(input.path, cwd) : input.path;
   switch (piName) {
     case 'read':
-      return defined({ file_path: input.path, offset: input.offset, limit: input.limit });
+      return defined({ file_path: filePath, offset: input.offset, limit: input.limit });
     case 'write':
-      return { file_path: input.path, content: input.content };
+      return { file_path: filePath, content: input.content };
     case 'edit': {
       const edits = Array.isArray(input.edits) ? (input.edits as Array<{ oldText?: unknown; newText?: unknown }>) : [];
       const mapped = edits.map((e) => ({ old_string: String(e.oldText ?? ''), new_string: String(e.newText ?? '') }));
@@ -27,11 +30,11 @@ export function claudeToolInput(piName: string, input: Rec, cwd: string = proces
       // what pi will actually write (fuzzy matching, CRLF, BOM, several disjoint edits) and present
       // the smallest whole-line span of the file that changes, so content gates judge the real edit.
       const exact = wholeFileEdit(String(input.path ?? ''), mapped, cwd);
-      if (exact) return { file_path: input.path, ...exact };
+      if (exact) return { file_path: filePath, ...exact };
       // pi rejects this edit (it fails the call); hand hooks the model's own text.
-      if (mapped.length === 1) return { file_path: input.path, old_string: mapped[0].old_string, new_string: mapped[0].new_string };
+      if (mapped.length === 1) return { file_path: filePath, old_string: mapped[0].old_string, new_string: mapped[0].new_string };
       return {
-        file_path: input.path,
+        file_path: filePath,
         old_string: mapped.map((e) => e.old_string).join('\n'),
         new_string: mapped.map((e) => e.new_string).join('\n'),
       };

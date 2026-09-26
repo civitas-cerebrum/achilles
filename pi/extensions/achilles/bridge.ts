@@ -380,6 +380,9 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     return { content: [...event.content, { type: 'text', text: `\n[achilles] ${steer(notes.join('\n'))}` }] };
   }));
 
+  // A call pi never finishes (aborted run) leaves no tool_result; drop its translation when the run ends.
+  pi.on('agent_end', async (_event, ctx) => guarded('agent_end', ctx, undefined, async () => { translated.clear(); return undefined; }));
+
   pi.on('message_end', async (event, ctx) => guarded('message_end', ctx, undefined, async () => {
     const text = assistantText(event.message);
     if (text.trim()) { lastAssistant = text; record(ctx, assistantTextEntry(text)); }

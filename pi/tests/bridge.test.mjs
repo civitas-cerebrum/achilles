@@ -143,7 +143,7 @@ test('multi-part edit reaches hooks as one whole-file Edit, before and after the
   fs.writeFileSync(path.join(dir, 'ledger.json'), '{"a":"n1","b":"n2"}'); // pi applies the edit
   await pi.fire('tool_result', { type: 'tool_result', toolCallId: 'm1', toolName: 'edit', input, content: [{ type: 'text', text: 'ok' }], isError: false }, ctx);
   const [pre, post] = fs.readFileSync(rec, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  const expected = { file_path: 'ledger.json', old_string: '{"a":"o1","b":"o2"}', new_string: '{"a":"n1","b":"n2"}' };
+  const expected = { file_path: path.join(dir, 'ledger.json'), old_string: '{"a":"o1","b":"o2"}', new_string: '{"a":"n1","b":"n2"}' };
   assert.equal(pre.hook_event_name, 'PreToolUse'); assert.deepEqual(pre.tool_input, expected);
   assert.equal(post.hook_event_name, 'PostToolUse'); assert.deepEqual(post.tool_input, expected);
 });
@@ -155,13 +155,13 @@ test('tool_call: plain text stdout allows; payload is Claude-shaped', async (t) 
   assert.equal(r, undefined);
   const p = JSON.parse(fs.readFileSync(rec, 'utf8').trim());
   assert.equal(p.hook_event_name, 'PreToolUse'); assert.equal(p.tool_name, 'Edit');
-  assert.deepEqual(p.tool_input, { file_path: 'a.md', old_string: 'o', new_string: 'n' });
+  assert.deepEqual(p.tool_input, { file_path: path.join(ctx.cwd, 'a.md'), old_string: 'o', new_string: 'n' });
   assert.equal(p.session_id, 'sid-1'); assert.equal(p.cwd, ctx.cwd); assert.equal(p.tool_use_id, 't2');
   // transcript_path is the Claude-shaped shadow, not pi's own session file.
   assert.equal(p.transcript_path, path.join(o.stateDir, 'pi-transcripts', 'sid-1.jsonl'));
   // The call was recorded before the hook ran, exactly as Claude records it.
   const lines = fs.readFileSync(p.transcript_path, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepEqual(lines.at(-1), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: 'a.md', old_string: 'o', new_string: 'n' } }] } });
+  assert.deepEqual(lines.at(-1), { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'Edit', input: { file_path: path.join(ctx.cwd, 'a.md'), old_string: 'o', new_string: 'n' } }] } });
 });
 test('parseDecision: permissionDecision ask is neither allow nor deny', () => {
   const d = parseDecision({ file: 'h.sh', exitCode: 0, stdout: '{"hookSpecificOutput":{"permissionDecision":"ask","permissionDecisionReason":"sure?"}}', stderr: '', timedOut: false, ms: 1 }, 'PreToolUse');
@@ -540,4 +540,36 @@ test('onboarding-ledger-write-gate (real hook): a two-part ledger edit is synthe
   assert.equal(r2?.block, true);
   assert.doesNotMatch(r2.reason, /REPLACE_FAIL|could not be synthesised/);
   assert.match(r2.reason, /runMode/);
+  // Hooks read old_string through $(...), which strips trailing newlines. A ledger whose phases end in
+  // "status" puts `"status": "pending"` (last element) right below `"status": "pending",` lines; the
+  // span must stay unique after stripping, or the gate fails with REPLACE_FAIL: matched 2 times.
+  const fresh = JSON.parse(fs.readFileSync(path.join(REPO, 'schemas', 'onboarding-status.fixtures', 'valid-fresh-run.json'), 'utf8'));
+  fresh.phases = fresh.phases.map(({ status, ...rest }) => ({ ...rest, status }));
+  fs.writeFileSync(ledger, JSON.stringify(fresh, null, 2) + '\n');
+  const tail = { path: 'tests/e2e/docs/onboarding-status.json', edits: [
+    { oldText: '"pending"\n    }\n  ]', newText: '"skipped"\n    }\n  ]' },
+    { oldText: '"schemaVersion": 1', newText: '"schemaVersion": 1' },
+  ] };
+  const r3 = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'g3', toolName: 'edit', input: tail }, ctx);
+  assert.doesNotMatch(r3?.reason ?? '', /REPLACE_FAIL|could not be synthesised/);
 });
+
+// pi resolves `@x` and `~/x` before writing; path-matched gates must see the resolved path.
+for (const [label, mkPath] of [['@-prefixed', () => '@tests/e2e/docs/onboarding-status.json'], ['~-prefixed', (home) => '~/proj/tests/e2e/docs/onboarding-status.json']]) {
+  test(`onboarding-ledger-write-gate (real hook): a ${label} Write or Edit of a broken ledger is denied`, async (t) => {
+    withEnv(t, 'ACHILLES_PROTOCOL', '1');
+    withEnv(t, 'ACHILLES_SESSION_STATE_DIR', tmp());
+    const home = tmp(); withEnv(t, 'HOME', home);
+    const proj = path.join(home, 'proj'); fs.mkdirSync(path.join(proj, 'tests', 'e2e', 'docs'), { recursive: true });
+    const pi = makeFakePi(); const ctx = makeFakeCtx({ cwd: proj });
+    await start(pi, ctx, { ...opts(), hooksDir: path.join(REPO, 'hooks'), manifestPath: manifestOf([{ file: 'onboarding-ledger-write-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit', timeout: 30 }]) });
+    const r = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'w1', toolName: 'write', input: { path: mkPath(home), content: 'not json' } }, ctx);
+    assert.equal(r?.block, true, `${label} path slipped the gate`);
+    assert.match(r.reason, /onboarding-status\.json/);
+    // An Edit is where a literal prefix really bites: the gate synthesises from the existing file, and
+    // `[ -f "~/…" ]` / `[ -f "@…" ]` is false, so an unresolved path is silently allowed.
+    fs.copyFileSync(path.join(REPO, 'schemas', 'onboarding-status.fixtures', 'valid-fresh-run.json'), path.join(proj, 'tests', 'e2e', 'docs', 'onboarding-status.json'));
+    const e = await pi.fire('tool_call', { type: 'tool_call', toolCallId: 'w2', toolName: 'edit', input: { path: mkPath(home), edits: [{ oldText: '"schemaVersion": 1', newText: '"schemaVersion": 1 not json' }] } }, ctx);
+    assert.equal(e?.block, true, `${label} edit slipped the gate`);
+  });
+}
