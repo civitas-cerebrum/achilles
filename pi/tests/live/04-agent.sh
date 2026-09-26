@@ -5,8 +5,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 out=$(live_pi "$LIVE_PROJECT" 'Use the Agent tool once with description "scout: greet" and prompt "Run the bash command `echo hi` and then reply with exactly the word OK". Then report the tool result verbatim.')
 end=$(echo "$out" | grep '"type":"tool_execution_end"' | grep '"toolName":"Agent"' | head -1)
 [ -n "$end" ] || live_fail "model did not call Agent: $(echo "$out" | tail -3 | cut -c1-300)"
-echo "$end" | grep -q '"isError":false' || live_fail "Agent call errored: ${end:0:400}"
-echo "$end" | grep -q 'OK' || live_fail "child text missing: ${end:0:300}"
+grep -q '"isError":false' <<<"$end" || live_fail "Agent call errored: ${end:0:400}"
+grep -q 'OK' <<<"$end" || live_fail "child text missing: ${end:0:300}"
 grep -q '"kind":"session_start".*"depth":"1"' "$ACHILLES_PI_LOG" || live_fail "extension did not load inside the child"
 grep -q '"kind":"hook".*"tool":"Bash".*"depth":"1"' "$ACHILLES_PI_LOG" || live_fail "PreToolUse hooks did not run inside the child"
 grep '"kind":"hook"' "$ACHILLES_PI_LOG" | grep '"depth":"1"' | grep -q '"agentType":"scout"' || live_fail "child hooks did not see agent_type scout"
