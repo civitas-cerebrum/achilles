@@ -49,6 +49,27 @@ test('registerPiPackage: preserves existing entries and object-form sources', ()
   const s = JSON.parse(fs.readFileSync(sp, 'utf8'));
   assert.equal(s.theme, 'dark'); assert.equal(s.packages.length, 2);
 });
+test('registerPiPackage: replaces stale achilles pi entries (string or {source}, any separator) and keeps the others', () => {
+  const dir = tmp(); const sp = path.join(dir, 'settings.json');
+  const rel = '../node_modules/@civitas-cerebrum/achilles/pi';
+  fs.writeFileSync(sp, JSON.stringify({ packages: [
+    'npm:other',
+    '/home/u/.nvm/lib/node_modules/@civitas-cerebrum/achilles/pi/',
+    { source: 'C:\\Users\\u\\node_modules\\@civitas-cerebrum\\achilles\\pi', skills: [] },
+    { source: '/x/not-achilles/pi' },
+    '/y/@civitas-cerebrum/achilles/pi-extras',
+  ] }));
+  assert.equal(post.registerPiPackage(sp, rel), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(sp, 'utf8')).packages, ['npm:other', rel, { source: '/x/not-achilles/pi' }, '/y/@civitas-cerebrum/achilles/pi-extras']);
+  assert.equal(post.registerPiPackage(sp, rel), false, 'idempotent');
+});
+test('registerPiPackage: an exact entry is kept in its own form; other copies are dropped', () => {
+  const dir = tmp(); const sp = path.join(dir, 'settings.json');
+  const rel = '../node_modules/@civitas-cerebrum/achilles/pi';
+  fs.writeFileSync(sp, JSON.stringify({ packages: ['/old/node_modules/@civitas-cerebrum/achilles/pi', { source: rel, extensions: ['x'] }, rel] }));
+  assert.equal(post.registerPiPackage(sp, rel), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(sp, 'utf8')).packages, [{ source: rel, extensions: ['x'] }]);
+});
 test('registerPiPackage: leaves malformed settings untouched', () => {
   const dir = tmp(); const sp = path.join(dir, 'settings.json');
   fs.writeFileSync(sp, '{ not json');

@@ -698,9 +698,25 @@ function registerPiPackage(settingsPath, source) {
     }
   }
   const pkgs = Array.isArray(settings.packages) ? settings.packages : [];
-  const present = pkgs.some(p => (typeof p === 'string' ? p : p && p.source) === source);
-  if (present) return false;
-  settings.packages = [...pkgs, source];
+  // Any entry (string or {source}) pointing at an achilles pi package — e.g. an older absolute path
+  // from a global install next to this project's relative one — is the same extension loaded twice.
+  // Keep one entry: the first that already names `source` exactly (in whatever form the user left it),
+  // else `source` itself in the place of the first stale entry.
+  const srcOf = (p) => (typeof p === 'string' ? p : p && typeof p.source === 'string' ? p.source : undefined);
+  const norm = (s) => path.posix.normalize(s.replace(/\\/g, '/')).replace(/\/+$/, '');
+  const ours = (p) => { const s = srcOf(p); return s !== undefined && (s === source || /(^|\/)@civitas-cerebrum\/achilles\/pi$/.test(norm(s))); };
+  const next = [];
+  let placed = false;
+  for (const p of pkgs) {
+    if (!ours(p)) { next.push(p); continue; }
+    if (placed) continue;
+    const exact = pkgs.find((q) => srcOf(q) === source);
+    next.push(exact !== undefined ? exact : source);
+    placed = true;
+  }
+  if (!placed) next.push(source);
+  if (JSON.stringify(next) === JSON.stringify(pkgs)) return false;
+  settings.packages = next;
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
   return true;
