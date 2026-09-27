@@ -243,6 +243,23 @@ export function parentOf(sections: SkillSection[], s: SkillSection): SkillSectio
   return undefined;
 }
 
+/** The immediate subsections of `s` — the nested sections whose nearest enclosing section is `s`. A
+ * skill may skip a heading level (`## ` straight to `#### `), so this is "whose parent is s" rather
+ * than "one level below s". */
+export function childrenOf(sections: SkillSection[], s: SkillSection): SkillSection[] {
+  return subsectionsOf(sections, s).filter((o) => parentOf(sections, o) === s);
+}
+
+/** The shortest `section` query that resolves back to `s`: its heading alone when that is
+ * unambiguous, else `"<parent> > <heading>"`. Round 3's rule for the ambiguity reply — only offer a
+ * move the model can actually make — applies to every address a reply prints, so this verifies the
+ * short form against findSection before offering it rather than assuming it is unique. */
+export function addressOf(sections: SkillSection[], s: SkillSection): string {
+  if (findSection(sections, s.heading).section === s) return s.heading;
+  const p = parentOf(sections, s);
+  return p ? `${p.heading} > ${s.heading}` : s.heading;
+}
+
 /** The `## `-level table of contents, with each section's size and whether it is required reading. */
 export function tableOfContents(sections: SkillSection[], skill: string): string {
   const top = sections.filter((s) => s.level === 2);

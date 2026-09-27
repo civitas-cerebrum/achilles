@@ -24,6 +24,11 @@ export const fullBelow = (): number => (piDepth() === 0 ? skillFullBelow() : ski
 /** ACHILLES_PI_SKILL_HEAD_MAX (chars, default 6000): the target size of a sectioned skill's map. */
 export const skillHeadMax = (): number => positiveInt('ACHILLES_PI_SKILL_HEAD_MAX', 6000);
 
+/** ACHILLES_PI_SECTION_MAX (chars, default 12000): a fetched section over this comes back as its own
+ * prose plus a table of contents of its subsections, so no single fetch is enormous. A section with
+ * no subsections, and an always-required rule block, are returned whole however big they are. */
+export const sectionMax = (): number => positiveInt('ACHILLES_PI_SECTION_MAX', 12000);
+
 /** ACHILLES_PI_REF_MAX (bytes, default 8000): a skill reference whose on-disk size exceeds this earns
  * a steer note. It is compared against a stat size, so the unit is bytes, not chars. */
 export const refMax = (): number => positiveInt('ACHILLES_PI_REF_MAX', 8000);

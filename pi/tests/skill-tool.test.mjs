@@ -139,14 +139,18 @@ test("journey-mapping's map carries the cycle protocol the preread gate assumes 
 });
 
 test('a section fetch returns that section only, in full, with its subsections', async () => {
-  const r = await call({ skill: 'coverage-expansion', section: 'five-pass pipeline' });
+  // A section under ACHILLES_PI_SECTION_MAX arrives entire, subsections included, and stops at the
+  // next `## ` — the oversized case is bounded instead (see round 4, item 3, below).
+  const r = await call({ skill: 'coverage-expansion', section: 'Orchestrator context budget' });
   const text = r.content[0].text;
+  const all = parseSections(bodyOf('coverage-expansion'));
+  const sec = all.find((x) => x.heading === 'Orchestrator context budget');
   assert.equal(r.details.view, 'section');
-  assert.match(r.details.section, /^Standard mode — five-pass pipeline/);
-  assert.ok(text.length > 5000, `section is ${text.length} chars`);
-  assert.match(text, /^<skill name="coverage-expansion"[^>]*view="section">\n## Standard mode/);
-  // Bounded by the next `## `: the following top-level section is not in it.
-  assert.doesNotMatch(text, /\n## Breadth mode/);
+  assert.equal(r.details.bounded, false);
+  assert.ok(sec.text.length > 1000 && sec.text.length <= 12000, `fixture assumption: ${sec.text.length}`);
+  assert.ok(subsectionsOf(all, sec).length > 0, 'fixture assumption: it nests');
+  assert.ok(text.includes(sec.text), 'the section did not come back whole');
+  assert.match(text, /^<skill name="coverage-expansion"[^>]*view="section">\n## Orchestrator context budget/);
   assert.doesNotMatch(text, /Sections — fetch one with Skill/);
 });
 
@@ -422,4 +426,142 @@ test('parseSections ignores headings inside fenced code blocks', () => {
 
 test('findSection on an empty query yields no section and no candidates', () => {
   assert.deepEqual(findSection(parseSections(bodyOf('onboarding')), '   '), { candidates: [] });
+});
+
+// ── Round 4, item 3: no single fetch is enormous ─────────────────────────────────────────────────
+// journey-mapping's discovery-cycles section is 37,222 chars — 69% of the skill in one fetch — and
+// failure-diagnosis's pipeline is 51,651. Over ACHILLES_PI_SECTION_MAX a splittable section comes back
+// as its own prose plus a listing of its subsections. A rule block and a childless section do not
+// split: a part of a rule block reads as a different rule, and there is nothing to split a leaf into.
+import { sectionView } from '../extensions/achilles/skill-tool.ts';
+import { childrenOf, addressOf } from '../extensions/achilles/skills.ts';
+
+const secOf = (skill, pred) => parseSections(bodyOf(skill)).find(pred);
+
+test("journey-mapping's discovery-cycles section comes back bounded, naming every subsection", async () => {
+  const all = parseSections(bodyOf('journey-mapping'));
+  const sec = all.find((x) => x.heading.startsWith('Iterative discovery cycles'));
+  assert.ok(sec.text.length > 30000, `fixture assumption: ${sec.text.length}`);
+  const r = await call({ skill: 'journey-mapping', section: 'Iterative discovery cycles' });
+  const text = r.content[0].text;
+  assert.equal(r.details.view, 'section');
+  assert.equal(r.details.bounded, true);
+  assert.equal(r.details.sectionChars, sec.text.length);
+  assert.ok(text.length < 12000, `bounded reply is ${text.length} chars`);
+  assert.ok(text.length < sec.text.length / 3, `${text.length} of ${sec.text.length}`);
+  // Its own prose is there; the subsection bodies are not.
+  assert.ok(text.includes(sec.ownText), 'the section lost its own prose');
+  const kids = childrenOf(all, sec);
+  assert.ok(kids.length >= 10, `${kids.length} children`);
+  for (const k of kids) assert.ok(text.includes(`(${k.text.length} chars)`) && text.includes(addressOf(all, k)), `missing child "${k.heading}"`);
+  // And it never claims to be the whole section.
+  assert.match(text, /NOT the whole section/);
+  assert.match(text, /Fetch each one you need before you act on it/);
+});
+
+test('every subsection a bounded reply names resolves to exactly that subsection', async () => {
+  const all = parseSections(bodyOf('journey-mapping'));
+  const sec = all.find((x) => x.heading.startsWith('Iterative discovery cycles'));
+  const offered = [...(await call({ skill: 'journey-mapping', section: 'Iterative discovery cycles' })).content[0].text
+    .matchAll(/^\s*\d+\. "([^"]+)" \(\d+ chars\)/gm)].map((m) => m[1]);
+  assert.equal(offered.length, childrenOf(all, sec).length);
+  for (const q of offered) {
+    const one = await call({ skill: 'journey-mapping', section: q });
+    assert.equal(one.details.view, 'section', `"${q}" did not resolve`);
+    const want = childrenOf(all, sec).find((k) => k.heading === one.details.section);
+    assert.ok(want, `"${q}" resolved to "${one.details.section}", not a child of the section`);
+    assert.equal(one.details.sectionChars, want.text.length);
+  }
+});
+
+test('fetching one named subsection returns just it, not its parent', async () => {
+  const r = await call({ skill: 'journey-mapping', section: 'Cycle protocol' });
+  const sec = secOf('journey-mapping', (x) => x.heading === 'Cycle protocol');
+  assert.equal(r.details.view, 'section');
+  assert.equal(r.details.bounded, false);
+  assert.ok(r.content[0].text.includes(sec.text));
+  assert.doesNotMatch(r.content[0].text, /^## Iterative discovery cycles/m);
+});
+
+test('an always-required rule block over the budget is returned WHOLE, never split', async () => {
+  // achilles-protocol's `## 🚨 ABSOLUTE RULES` is 290 chars of own text over ~22k of rules in 17
+  // subsections, none of whose headings match REQUIRED_HEADING. Splitting it is round 3's Critical.
+  const sec = secOf('achilles-protocol', (x) => /ABSOLUTE RULES/.test(x.heading));
+  assert.ok(sec.required && sec.text.length > 12000 && sec.ownText.length < 500, `fixture assumption: ${sec.text.length}/${sec.ownText.length}`);
+  const r = await call({ skill: 'achilles-protocol', section: 'ABSOLUTE RULES' });
+  assert.equal(r.details.bounded, false);
+  assert.ok(r.content[0].text.includes(sec.text), 'the rule block was not returned whole');
+  assert.match(r.content[0].text, /always-required rule block: it is returned whole rather than split/);
+  assert.doesNotMatch(r.content[0].text, /NOT the whole section/);
+});
+
+test('a large childless section comes back whole, with a note saying why', async () => {
+  const all = parseSections(bodyOf('onboarding'));
+  const leaf = all.find((x) => x.level === 2 && !x.required && !childrenOf(all, x).length && x.text.length > 600);
+  assert.ok(leaf, 'fixture assumption: onboarding has a childless `## ` section');
+  const r = await call({ skill: 'onboarding', section: leaf.heading }, { ACHILLES_PI_SECTION_MAX: '200' });
+  assert.equal(r.details.bounded, false);
+  assert.ok(r.content[0].text.includes(leaf.text), 'a childless section was not returned whole');
+  assert.match(r.content[0].text, /no subsections to split into, so it is returned whole rather than truncated/);
+});
+
+test('the boundary is exclusive: at exactly ACHILLES_PI_SECTION_MAX a section is still whole', () => {
+  const all = parseSections(bodyOf('journey-mapping'));
+  const sec = all.find((x) => x.heading.startsWith('Iterative discovery cycles'));
+  const at = sectionView('journey-mapping', sec, all, sec.text.length);
+  assert.equal(at.bounded, false);
+  assert.equal(at.text, sec.text);
+  const over = sectionView('journey-mapping', sec, all, sec.text.length - 1);
+  assert.equal(over.bounded, true);
+});
+
+test('a required subsection of a split section is marked AND repeated under the fetch-first header', () => {
+  const all = parseSections(bodyOf('coverage-expansion'));
+  const sec = all.find((x) => x.heading.startsWith('Standard mode'));
+  const kernel = childrenOf(all, sec).find((k) => k.required);
+  assert.ok(kernel && kernel.text.length > 5000, 'fixture assumption: a required child');
+  const v = sectionView('coverage-expansion', sec, all, 12000);
+  assert.equal(v.bounded, true);
+  assert.match(v.text, new RegExp(`"[^"]*${kernel.heading}" \\(${kernel.text.length} chars\\) \\[required reading\\]`));
+  assert.ok(v.text.includes(PENDING_HEADER), 'a required subsection was dropped without a fetch-first line');
+  assert.ok(v.text.includes(`${kernel.heading} (${kernel.text.length} chars)`));
+});
+
+test('ACHILLES_PI_SECTION_MAX moves the section budget, and ACHILLES_PI_VERBOSE=1 is unaffected', async () => {
+  const loose = await call({ skill: 'journey-mapping', section: 'Iterative discovery cycles' }, { ACHILLES_PI_SECTION_MAX: '200000' });
+  assert.equal(loose.details.bounded, false);
+  const verbose = await call({ skill: 'journey-mapping', section: 'Iterative discovery cycles' }, { ACHILLES_PI_VERBOSE: '1' });
+  assert.equal(verbose.details.view, 'full');
+});
+
+test('no fetch of any section of any real skill exceeds the budget unless it is a rule block or a leaf', () => {
+  const offenders = [];
+  for (const name of listSkills([realRoot])) {
+    const body = resolveSkill(name, [realRoot]).body.trim();
+    const all = parseSections(body);
+    for (const sec of all) {
+      const v = sectionView(name, sec, all, 12000);
+      if (v.text.length <= 12000) continue;
+      // Only two exemptions, and both must be visible in the reply.
+      if (sec.required) { assert.match(v.text, /returned whole rather than split/); continue; }
+      if (!childrenOf(all, sec).length) { assert.match(v.text, /returned whole rather than truncated/); continue; }
+      offenders.push(`${name} §"${sec.heading}" ${v.text.length} chars`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('the largest bounded fetch across the suite is far below the largest raw section', () => {
+  let worstRaw = 0, worstServed = 0;
+  for (const name of listSkills([realRoot])) {
+    const body = resolveSkill(name, [realRoot]).body.trim();
+    const all = parseSections(body);
+    for (const sec of all) {
+      worstRaw = Math.max(worstRaw, sec.text.length);
+      worstServed = Math.max(worstServed, sectionView(name, sec, all, 12000).text.length);
+    }
+  }
+  assert.ok(worstRaw > 50000, `fixture assumption: ${worstRaw}`);
+  // The worst served fetch is achilles-protocol's ABSOLUTE RULES, returned whole on purpose.
+  assert.ok(worstServed < worstRaw / 2, `worst served ${worstServed} vs worst raw ${worstRaw}`);
 });

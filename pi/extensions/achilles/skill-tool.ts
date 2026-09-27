@@ -1,8 +1,8 @@
 import { Type } from 'typebox';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { resolveSkill, listSkills, parseSections, findSection, parentOf, subsectionsOf, skillPreamble, tableOfContents, type SkillSection } from './skills.ts';
+import { resolveSkill, listSkills, parseSections, findSection, parentOf, childrenOf, addressOf, subsectionsOf, skillPreamble, tableOfContents, type SkillSection } from './skills.ts';
 import { log } from './log.ts';
-import { fullBelow, piDepth, piVerbose, skillHeadMax } from './env.ts';
+import { fullBelow, piDepth, piVerbose, sectionMax, skillHeadMax } from './env.ts';
 
 const wrap = (name: string, path: string, text: string, view?: string) =>
   `<skill name="${name}" path="${path}"${view ? ` view="${view}"` : ''}>\n${text.trim()}\n</skill>`;
@@ -79,6 +79,63 @@ export function capTableOfContents(toc: string, room: number, skill: string): st
 }
 
 /**
+ * A fetched section, bounded. One fetch could still be enormous: journey-mapping's discovery-cycles
+ * section is 37,222 chars — 69% of the whole skill — and failure-diagnosis's pipeline is 51,651. Over
+ * ACHILLES_PI_SECTION_MAX a section comes back as its own prose plus a table of contents of its
+ * immediate subsections, each addressed the way round 3's ambiguity reply addresses a candidate, so
+ * the printed move resolves on the retry.
+ *
+ * TWO kinds of section are never split, and the reply says which case it is rather than truncating:
+ *  - one with no subsections, because there is nothing to split into and cutting prose mid-sentence
+ *    is how a rule becomes a different rule;
+ *  - an ALWAYS-REQUIRED rule block, because splitting one is exactly the fault round 3 fixed twice.
+ *    achilles-protocol's `## 🚨 ABSOLUTE RULES` carries 290 chars of own text over 22,283 chars of
+ *    rules held in 17 subsections, none of whose headings match REQUIRED_HEADING; a bounded view of it
+ *    would read as the complete rule set while containing none of the rules. The model asked for the
+ *    rules, so it gets the rules.
+ *
+ * A required subsection of a split section is BOTH marked in the listing and repeated under the
+ * fetch-before-you-act header, the same contract the map uses for a required block that did not fit.
+ */
+export function sectionView(
+  skill: string,
+  s: SkillSection,
+  sections: SkillSection[],
+  max = sectionMax(),
+): { text: string; bounded: boolean } {
+  const kids = childrenOf(sections, s);
+  if (s.text.length <= max) return { text: s.text, bounded: false };
+  if (s.required) {
+    return { text: `${s.text}
+
+[achilles] this section is ${s.text.length} chars, over the ${max}-char section budget, and it is an always-required rule block: it is returned whole rather than split, because a part of a rule block reads as a different rule.`, bounded: false };
+  }
+  if (!kids.length) {
+    return { text: `${s.text}
+
+[achilles] this section is ${s.text.length} chars, over the ${max}-char section budget, but it has no subsections to split into, so it is returned whole rather than truncated.`, bounded: false };
+  }
+  const req = subsectionsOf(sections, s).filter((x) => x.required);
+  // Each line prints the query that fetches that subsection, verified against findSection, not its
+  // bare heading: several skills repeat a subsection heading, and a listing that offers a name which
+  // resolves to a sibling is worse than no listing.
+  const listing = kids.map((k, i) => {
+    const nestedReq = subsectionsOf(sections, k).some((x) => x.required);
+    const mark = k.required || nestedReq ? ' [required reading]' : '';
+    return `${String(i + 1).padStart(2)}. "${addressOf(sections, k)}" (${k.text.length} chars)${mark}`;
+  });
+  const parts = [
+    s.ownText,
+    `[achilles] NOT the whole section. "${s.heading}" is ${s.text.length} chars, over the ${max}-char section budget (ACHILLES_PI_SECTION_MAX); its own text is above and its ${kids.length} subsection${kids.length === 1 ? '' : 's'} ${kids.length === 1 ? 'is' : 'are'} listed below, not included. Fetch each one you need before you act on it.`,
+    `Subsections — fetch one with Skill { skill: "${skill}", section: "<one of the quoted names below, verbatim>" }:\n${listing.join('\n')}`,
+  ];
+  if (req.length) {
+    parts.push(`${PENDING_HEADER}\n${req.map((x) => `  - ${'#'.repeat(x.level)} ${x.heading} (${x.text.length} chars) — Skill { skill: "${skill}", section: "${addressOf(sections, x)}" }`).join('\n')}`);
+  }
+  return { text: parts.join('\n\n'), bounded: true };
+}
+
+/**
  * The response when `section` matches nothing or several headings: the map plus the candidates, each
  * written in a form that resolves on the retry. Five coverage-expansion subsections share the heading
  * `Hard rules — kernel-resident`, so "ask for the heading exactly" was not a move the model could
@@ -135,10 +192,14 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
         const all = parseSections(body);
         const { section, candidates } = findSection(all, params.section);
         if (section) {
-          log('skill', { skill: s.name, section: params.section, matched: section.heading, candidates: 0, chars: section.text.length, view: 'section' });
+          // Over ACHILLES_PI_SECTION_MAX a splittable section arrives as its own prose plus a listing
+          // of its subsections, so one fetch is never 37k chars; a rule block and a childless section
+          // still arrive whole (see sectionView).
+          const view = sectionView(s.name, section, all);
+          log('skill', { skill: s.name, section: params.section, matched: section.heading, candidates: 0, chars: view.text.length, sectionChars: section.text.length, bounded: view.bounded, view: 'section' });
           return {
-            content: [{ type: 'text', text: wrap(s.name, s.file, section.text, 'section') + args }],
-            details: { skill: s.name, path: s.file, view: 'section', section: section.heading, candidates: [], chars: section.text.length },
+            content: [{ type: 'text', text: wrap(s.name, s.file, view.text, 'section') + args }],
+            details: { skill: s.name, path: s.file, view: 'section', section: section.heading, candidates: [], chars: view.text.length, sectionChars: section.text.length, bounded: view.bounded },
           };
         }
         // No unique match. For a skill small enough to return whole, the whole body IS the answer and
