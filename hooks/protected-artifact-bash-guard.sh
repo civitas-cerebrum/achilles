@@ -35,7 +35,15 @@
 # False-positive tradeoff (accepted): within a simple command, any mutate
 # verb (cp/mv/rm/tee/…) or interpreter one-liner (-c/-e) co-occurring with a
 # protected name is denied even when the verb targets an unrelated path
-# (`cp <ledger> /tmp` denies; so does `rm /tmp/junk <ledger>`). The same
+# (`cp <ledger> /tmp` denies; so does `rm /tmp/junk <ledger>`). The verb is
+# matched as a WHOLE WORD but not at command position — `xargs rm` and
+# `find … -exec rm {}` are the shapes the rule exists for — so a bare verb
+# name used as an argument (`grep -rn cp <ledger>`) over-denies, while a path
+# that merely contains one (`/tmp/rm-old`, `x.tee`) does not. Both forms of
+# the command, as written and with the quotes stripped, are checked, so a
+# shell wrapper cannot hide the verb (`bash -c "rm <ledger>"`); the cost is
+# that grepping a protected file for the literal text of a verb over-denies
+# too. Option words (`-i`, `of=`) are matched as options, never substrings. The same
 # holds for an interpreter whose program the guard cannot see: a script file
 # (`python3 validate.py <ledger>`) or a program piped in is denied even when
 # it only reads. A heredoc or herestring program IS visible, so it is
@@ -257,6 +265,9 @@ has_read_shape() {
   echo "$SEG_NQ" | grep -qE "$READ_SHAPE_RE"
 }
 
+# In-place-edit option words for sed/perl/yq (see rule 3 below).
+INPLACE_RE="(^|[;&|[:space:]])(sed|perl|yq)[[:space:]]+([^;|&]*[[:space:]])?(-[a-zA-Z]*i([[:space:]=.'\"]|$)|--in-place([[:space:]=]|$))"
+
 REDIR_HIT=0
 MUTATE_HIT=0
 INPLACE_HIT=0
@@ -267,19 +278,40 @@ INTERP_PROG_HIT=0
 
 # Rules 1-3 + dd, per SIMPLE COMMAND: each needs the protected path in the very
 # command that carries the write shape.
+# True when either form of the current segment matches $1 (see seg_matches below).
+seg_matches() {
+  echo "$SEG_RAW" | grep -qE "$1" && return 0
+  echo "$SEG_RAW_NQ" | grep -qE "$1"
+}
 for seg in "${SEGMENTS[@]}"; do
   seg=${seg#"$PIPE_MARK"}
   echo "$seg" | grep -qE "$PROTECTED" || continue
+  # Both forms, as in rules 4-5: a quote is not a shield. `bash -c "rm <ledger>"`
+  # and `bash -c "sed -i … <ledger>"` used to pass, because the opening quote is
+  # not one of the word-boundary characters these patterns anchor on.
+  SEG_RAW=$seg
+  SEG_RAW_NQ=${seg//\"/ }
+  SEG_RAW_NQ=${SEG_RAW_NQ//\'/ }
 
   # 1. Redirection targeting a protected path (including >| clobber redirect).
-  echo "$seg" | grep -qE ">>?\|?[[:space:]]*[^[:space:];|&]*(${PROTECTED})" && REDIR_HIT=1
+  seg_matches ">>?\|?[[:space:]]*[^[:space:];|&]*(${PROTECTED})" && REDIR_HIT=1
 
   # 2. Mutation commands co-occurring with a protected name in this command.
-  echo "$seg" | grep -qE "(^|[;&|[:space:]])(tee|cp|mv|rm|install|ln|truncate|sponge|shred)([[:space:]]|$)" && MUTATE_HIT=1
+  #    The verb has to be a whole word, so `/tmp/rm-old` and `x.tee` do not match;
+  #    it is NOT required to be at command position, because `xargs rm` and
+  #    `find … -exec rm {}` are the shapes this rule exists for.
+  seg_matches "(^|[;&|[:space:]])(tee|cp|mv|rm|install|ln|truncate|sponge|shred)([[:space:]]|$)" && MUTATE_HIT=1
 
   # 3. In-place editors (sed, perl, yq -i). Note: jq has no -i flag; redirects already cover jq writes.
-  echo "$seg" | grep -qE "(^|[;&|[:space:]])(sed|perl|yq)[[:space:]][^;|&]*-i" && INPLACE_HIT=1
-  echo "$seg" | grep -qE "(^|[;&|[:space:]])dd[[:space:]][^;|&]*of=" && DD_HIT=1
+  #    `-i` is matched as an OPTION WORD, never as a substring: the old
+  #    `[^;|&]*-i` fired on the `-i` inside a FILENAME, so `sed -n '80,160p'
+  #    .claude/hooks/playwright-cli-isolation-guard.sh` — a read of a hook, which
+  #    is exactly what a model does to understand a rule — was denied. The option
+  #    must start at a word boundary and end at one: `-i`, `-i.bak`, `-i ''`, a
+  #    bundled `-ni`/`-pi`, `--in-place`, `--in-place=bak`.
+  seg_matches "$INPLACE_RE" && INPLACE_HIT=1
+  # `of=` likewise has to start a word, so `--prof=…` is not a dd output file.
+  seg_matches "(^|[;&|[:space:]])dd[[:space:]][^;|&]*[[:space:]]of=" && DD_HIT=1
 done
 
 # 4. Interpreter one-liners (-c/-e) mentioning a protected path.

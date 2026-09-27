@@ -232,3 +232,33 @@ assert_allow "$HOOK" "$(bash_payload 'grep -c FINDING tests/e2e/docs/adversarial
 # would be COMMAND SUBSTITUTION (an earlier revision really did run python3 and
 # node while rendering this message). Pin the literal text.
 assert_deny "$HOOK" "$(bash_payload 'rm -f tests/e2e/docs/onboarding-status.json')" "deny text keeps its inline-interpreter bullet verbatim" "program inline ('python3 -c"
+
+section "protected-artifact-bash-guard: -i is an in-place OPTION, not a substring"
+# Real false positive from the live run: the `-i` inside the FILENAME
+# playwright-cli-isolation-guard.sh matched `[^;|&]*-i`, so a model reading a
+# hook to understand a rule was denied — the behaviour that pushes a model
+# toward shell workarounds.
+assert_allow "$HOOK" "$(bash_payload "cd /tmp/app && sed -n '80,160p' .claude/hooks/playwright-cli-isolation-guard.sh")" "sed -n of a hook whose name contains -i (real false positive)"
+assert_allow "$HOOK" "$(bash_payload "sed -n '1,40p' tests/e2e/docs/.ledger-integrity.json")" "sed -n range read of the integrity sidecar"
+assert_allow "$HOOK" "$(bash_payload "sed -n '/currentPhase/p' tests/e2e/docs/journey-map.md")" "sed -n pattern print of the journey map"
+assert_allow "$HOOK" "$(bash_payload 'grep -n foo tests/e2e/docs/onboarding-status.json')" "grep -n of the ledger (unchanged)"
+assert_allow "$HOOK" "$(bash_payload "sed -e 's/a/b/' tests/e2e/docs/journey-map.md > /tmp/out.md")" "sed -e (no -i) writing to /tmp"
+assert_deny "$HOOK" "$(bash_payload "sed -i 's/a/b/' tests/e2e/docs/onboarding-status.json")" "sed -i on the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload "sed --in-place=bak 's/a/b/' tests/e2e/docs/onboarding-status.json")" "sed --in-place=bak on the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload "sed -i.bak 's/a/b/' tests/e2e/docs/journey-map.md")" "sed -i.bak on the journey map" "protected"
+assert_deny "$HOOK" "$(bash_payload "sed -ni 'p' tests/e2e/docs/onboarding-status.json")" "bundled sed -ni on the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload "perl -pi -e 's/a/b/' tests/e2e/docs/onboarding-status.json")" "perl -pi -e on the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload "perl -i.orig -pe 's/a/b/' tests/e2e/docs/onboarding-status.json")" "perl -i.orig on the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload "yq -i '.a=1' tests/e2e/docs/onboarding-status.json")" "yq -i on the ledger" "protected"
+# `of=` has to start a word too, so --prof= is not a dd output file.
+assert_allow "$HOOK" "$(bash_payload 'dd if=tests/e2e/docs/onboarding-status.json --prof=y count=1')" "dd reading the ledger with a --prof= flag"
+assert_deny "$HOOK" "$(bash_payload 'dd if=/tmp/x of=tests/e2e/docs/onboarding-status.json')" "dd of= the ledger" "protected"
+
+section "protected-artifact-bash-guard: a quote is not a shield for the mutate rules"
+# Found while fixing the above: the word-boundary anchors never matched after an
+# opening quote, so a shell wrapper hid the verb entirely.
+assert_deny "$HOOK" "$(bash_payload 'bash -c "rm tests/e2e/docs/onboarding-status.json"')" "bash -c wrapping rm of the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload 'sh -c "mv /tmp/x tests/e2e/docs/onboarding-status.json"')" "sh -c wrapping mv onto the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload 'bash -c "sed -i s/a/b/ tests/e2e/docs/onboarding-status.json"')" "bash -c wrapping sed -i on the ledger" "protected"
+assert_allow "$HOOK" "$(bash_payload 'bash -c "jq .currentPhase tests/e2e/docs/onboarding-status.json"')" "bash -c wrapping a jq read still allows"
+assert_allow "$HOOK" "$(bash_payload 'sh -c "cat tests/e2e/docs/journey-map.md"')" "sh -c wrapping a cat still allows"
