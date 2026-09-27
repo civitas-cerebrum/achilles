@@ -667,3 +667,155 @@ test('a mid-size skill returned whole to a child still gets told where to start'
   assert.equal(r.details.startSection, 'The Repair Pipeline');
   assert.match(r.content[0].text, /your dispatch named §"The Repair Pipeline" as your starting point/);
 });
+
+// ── Round 5 item 1: a skill whose rules live under a neutral heading ─────────────────────────────
+// `SkillSection.required` is decided by the heading TEXT. 14 of the 24 skills match no required
+// heading, so their map was a lead + a preamble + a table of contents and not one binding rule —
+// ticket-driven-testing (85,462 chars, mapped to 933) hid "**You may not report a QA verdict until
+// you have run the negative control (§8)**" from every child dispatched with it.
+import { RULE_TEXT_TIERS, matchesTier, inferredRuleSections } from '../extensions/achilles/skills.ts';
+import { DECLARED_HEADER, inferredHeader, INFERRED_PENDING_NOTE } from '../extensions/achilles/skill-tool.ts';
+
+const INFERRED_MARK = /rules stated in this skill's TEXT \(INFERRED from (prohibition|obligation) wording/;
+/** Whether `map` carries `s` as rule text in full, or names it on the fetch-before-you-act list. */
+function carriesRule(map, s) {
+  return map.includes(s.ownText) || map.includes(`  - ${'#'.repeat(s.level)} ${s.heading} (${s.text.length} chars)`);
+}
+function everyRealSkill() {
+  return listSkills([realRoot]).map((name) => {
+    const body = resolveSkill(name, [realRoot]).body.trim();
+    return { name, body, sections: parseSections(body), ...skillMap(name, body, 6000) };
+  });
+}
+
+// The invariant the brief asks for, over the real tree rather than a fixture: a future skill edit
+// that buries its rules under a neutral heading, or drops the wording this infers them from, fails.
+test('every real skill map ends up with at least one binding rule, inlined or named', () => {
+  const all = everyRealSkill();
+  assert.equal(all.length, 24, `${all.length} skills`);
+  let inferredCount = 0;
+  for (const { name, sections, text } of all) {
+    const declared = sections.filter((s) => s.required);
+    const blocks = declared.length ? declared : inferredRuleSections(sections).sections;
+    assert.ok(blocks.length > 0, `${name}: no rule block at all — its map is a table of contents`);
+    for (const s of blocks) assert.ok(carriesRule(text, s), `${name}: rule block "${s.heading}" neither inlined nor named`);
+    if (!declared.length) {
+      inferredCount++;
+      assert.match(text, INFERRED_MARK, `${name}: inferred rules must be labelled as inferred`);
+    }
+  }
+  // 14 of 24 had zero declared rule blocks when this was measured; the point of the fallback.
+  assert.equal(inferredCount, 14, `${inferredCount} skills fall back to the content signal`);
+});
+
+test('the sign-off gate prohibition reaches a child dispatched with ticket-driven-testing', async () => {
+  const r = await call({ skill: 'ticket-driven-testing' }, { ACHILLES_PI_DEPTH: '1' });
+  assert.equal(r.details.view, 'map');
+  assert.ok(r.details.chars <= 6000, `${r.details.chars}`);
+  const text = r.content[0].text;
+  assert.match(text, /\*\*You may not report a QA verdict until you have run the negative control \(§8\)/);
+  assert.match(text, /\*\*You may not report a QA verdict for a ticket that has no evidence bundle of its own\.\*\*/);
+  assert.match(text, /Do NOT proceed on ACs you invented/);
+  assert.match(text, INFERRED_MARK);
+  // Before this round the same call returned 933 chars of title + headings.
+  assert.ok(r.details.chars > 3000, `${r.details.chars} — the map is still a bare table of contents`);
+});
+
+test('a declared required heading outranks rule wording in the text', () => {
+  for (const { name, sections, text } of everyRealSkill()) {
+    if (!sections.some((s) => s.required)) continue;
+    // The declared marker appears when a block fits; when none does, the pending list carries them.
+    assert.ok(text.includes(DECLARED_HEADER) || text.includes(PENDING_HEADER), `${name}: no rule marker at all`);
+    assert.doesNotMatch(text, INFERRED_MARK, `${name}: a skill with a required heading must not infer`);
+    assert.ok(!text.includes(INFERRED_PENDING_NOTE), `${name}: inferred caveat on a declared pending list`);
+    assert.deepEqual(inferredRuleSections(sections), { sections: [] }, `${name}: inference must stand down`);
+  }
+});
+
+// Case-sensitivity is load-bearing, and it is per alternative rather than per regex.
+test('case-INSENSITIVE "must not" is rejected: it describes the system under test, not the agent', () => {
+  const [prohibition] = RULE_TEXT_TIERS;
+  assert.equal(matchesTier(prohibition, '- Category 3: Must not diagnose, recommend medications, interpret lab results'), false);
+  assert.equal(matchesTier(prohibition, '- Category 7: Case-specific information must not leak across sessions'), false);
+  assert.equal(matchesTier(prohibition, 'it MUST NOT appear inside `handover`'), true);
+  // The real consequence: agents-vs-agents' four domain tables stay out of its map.
+  const body = bodyOf('agents-vs-agents');
+  const { text } = skillMap('agents-vs-agents', body, 6000);
+  assert.ok(!text.includes('Must not diagnose'), 'a constraint on the target AI is not a rule for the agent');
+  assert.ok(!text.includes('Must not facilitate academic dishonesty'));
+  // It still gets a rule, from the weaker tier.
+  assert.match(text, /INFERRED from obligation wording/);
+  assert.match(text, /the compliance sweep is not optional/);
+});
+
+test('"may never ship" is a description, "must never claim" is a prohibition', () => {
+  const [prohibition] = RULE_TEXT_TIERS;
+  assert.equal(matchesTier(prohibition, 'the code you are testing may never ship in the form you read.'), false);
+  assert.equal(matchesTier(prohibition, 'a finding that might never ship'), false);
+  assert.equal(matchesTier(prohibition, '### What static mode must never claim'), true);
+  assert.equal(matchesTier(prohibition, 'never skip a stage'), true);
+  // ticket-driven-testing §Overview matched only on that description; it must not take the budget.
+  const { text } = skillMap('ticket-driven-testing', bodyOf('ticket-driven-testing'), 6000);
+  assert.ok(!text.includes('may never ship in the form you read'), '§Overview is not a rule block');
+});
+
+test('"do not proceed" is matched whatever its case, because every real instance is sentence-initial', () => {
+  const [prohibition] = RULE_TEXT_TIERS;
+  for (const s of ['Do not proceed to Stage 6 until every heal is verified.', 'Do NOT proceed on ACs you invented.', 'do not proceed'])
+    assert.equal(matchesTier(prohibition, s), true, s);
+  // test-repair states its only rule that way; a cased pattern would have found nothing.
+  assert.match(skillMap('test-repair', bodyOf('test-repair'), 6000).text, /Do not proceed to Stage 6/);
+});
+
+test('the tiers are ranked: a prohibition in a skill suppresses its weaker obligation wording', () => {
+  const body = [
+    '# Fixture', '', '## Prose', '', 'Something MUST happen here.', '',
+    '## Rules', '', '**You may not ship without the control.**', '',
+    '## More prose', '', 'The brief MUST cite the schema.', '',
+  ].join('\n');
+  const sections = parseSections(body);
+  const { tier, sections: hits } = inferredRuleSections(sections);
+  assert.equal(tier.label, 'prohibition');
+  assert.deepEqual(hits.map((s) => s.heading), ['Rules']);
+  // Drop the prohibition and the obligation tier takes over.
+  const weaker = inferredRuleSections(parseSections(body.replace('**You may not ship without the control.**', 'Nothing binding here.')));
+  assert.equal(weaker.tier.label, 'obligation');
+  assert.deepEqual(weaker.sections.map((s) => s.heading), ['Prose', 'More prose']);
+});
+
+test('a fallback block never pushes a map past headMax, and the table of contents is what gets cut', () => {
+  const body = bodyOf('ticket-driven-testing');
+  const full = skillMap('ticket-driven-testing', body, 6000);
+  assert.ok(full.text.length <= 6000, `${full.text.length}`);
+  assert.match(full.text, /Sections — fetch one with Skill/);
+  for (const max of [6000, 4000, 2500, 1500, 900]) {
+    const { text } = skillMap('ticket-driven-testing', body, max);
+    assert.ok(text.length <= max || max < 900, `headMax ${max} gave ${text.length} chars`);
+    // Whatever the budget, the prohibition is still reachable: inlined, or named to fetch.
+    const gate = parseSections(body).find((s) => s.heading === 'The sign-off gate');
+    assert.ok(text.includes(gate.ownText) || text.includes(`- ### ${gate.heading} (${gate.text.length} chars)`), `headMax ${max} lost the gate`);
+  }
+  // At a budget that fits nothing, the TOC collapses to the ask-by-number pointer and the rules stay.
+  const tight = skillMap('ticket-driven-testing', body, 900).text;
+  assert.match(tight, /more sections not listed — ask by number/);
+  assert.match(tight, /The sign-off gate/);
+});
+
+test('an inferred pending list says it is inferred, and PENDING_HEADER stays one contract', () => {
+  const { text } = skillMap('bug-discovery', bodyOf('bug-discovery'), 6000);
+  assert.ok(text.includes(PENDING_HEADER), 'the fetch-first header is the same at every level');
+  assert.ok(text.includes(INFERRED_PENDING_NOTE));
+  assert.match(text, new RegExp(`${inferredHeader(RULE_TEXT_TIERS[0]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+});
+
+test('the content signal never fires for a skill returned whole and never changes a section fetch', async () => {
+  // performance-testing has a required heading and is under every threshold: unchanged either way.
+  const whole = await call({ skill: 'performance-testing' });
+  assert.equal(whole.details.view, 'full');
+  assert.doesNotMatch(whole.content[0].text, INFERRED_MARK);
+  // A section fetch of an inferred rule block is an ordinary fetch: no marker, no pending list.
+  const sec = await call({ skill: 'ticket-driven-testing', section: 'The sign-off gate' });
+  assert.equal(sec.details.view, 'section');
+  assert.doesNotMatch(sec.content[0].text, INFERRED_MARK);
+  assert.match(sec.content[0].text, /You may not report a QA verdict/);
+});

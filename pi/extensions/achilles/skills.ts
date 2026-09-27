@@ -130,6 +130,56 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
  * hooks/journey-mapping-skill-preread-gate.sh treats a bare `Skill{journey-mapping}` as proof of. */
 export const REQUIRED_HEADING = /ABSOLUTE RULE|Absolute Rules|non-negotiable|No-skip contract|read this before|STOP AND READ|must read|Hard rules|kernel-resident/i;
 
+/**
+ * CONTENT signal for a binding rule, used ONLY as a fallback for a skill in which NO heading matched
+ * REQUIRED_HEADING. `SkillSection.required` is decided by the heading TEXT, which is a proxy: 14 of
+ * the 24 skills declare no required heading at all, so their map used to be a lead, a preamble and a
+ * table of contents — not one binding rule. ticket-driven-testing is the worst case: 85,462 chars
+ * whose `### The sign-off gate` carries "**You may not report a QA verdict until you have run the
+ * negative control (§8)**", and a dispatched child never saw it.
+ *
+ * Two tiers, tried in order, and the FIRST tier that hits anything in a skill wins — the same ranking
+ * as heading-beats-content, one level down. A skill that states a prohibition is not also searched for
+ * the weaker obligation vocabulary, because `\bMUST\b` alone matches 7 sections of bug-discovery and
+ * would bury the two that actually forbid something.
+ *
+ * Case matters, and the cased/anycase split is per alternative, measured rather than assumed:
+ *  - `MUST NOT` screaming is always a directive to the reader. Case-INSENSITIVE `must not` is not:
+ *    agents-vs-agents §Healthcare's "Category 3: Must not diagnose, recommend medications..." is a
+ *    constraint on the system under test, and matching it would put four domain tables in four maps.
+ *  - `do not proceed` is the opposite: every real instance is sentence-initial ("Do not proceed to
+ *    Stage 6...", "Do NOT proceed on ACs you invented"), so a cased pattern would match none of them,
+ *    and the phrase has no descriptive reading in this corpus. It is matched case-insensitively.
+ *  - `never ship|report|claim|skip` needs the modal guard: ticket-driven-testing §Overview's "the code
+ *    you are testing may never ship in the form you read" is a description, while "what static mode
+ *    must never claim" is a prohibition. `may|might|could never` is epistemic, `must never` is binding.
+ */
+export interface RuleTextTier {
+  /** How the map names the tier, so a model can tell an inferred block from a declared one. */
+  label: string;
+  /** Case-sensitive alternatives, then case-insensitive ones. A hit in either is a hit. */
+  cased: RegExp;
+  anycase: RegExp;
+}
+
+export const RULE_TEXT_TIERS: readonly RuleTextTier[] = [
+  {
+    label: 'prohibition',
+    cased: /\bYou may not\b|\bMUST NOT\b|(?<!\b(?:may|might|could) )\bnever (?:report|ship|claim|skip)\b|\bnon-negotiable\b/,
+    anycase: /\bdo not proceed\b/i,
+  },
+  {
+    label: 'obligation',
+    cased: /\bMUST\b|\*\*Never\b|\bmay not (?:be|start)\b/,
+    anycase: /\bis not optional\b|\bcannot be skipped\b/i,
+  },
+];
+
+/** Whether `text` carries this tier's rule wording. */
+export function matchesTier(tier: RuleTextTier, text: string): boolean {
+  return tier.cased.test(text) || tier.anycase.test(text);
+}
+
 export interface SkillSection {
   /** Heading text, hashes and surrounding whitespace removed. */
   heading: string;
@@ -180,6 +230,24 @@ export function parseSections(body: string): SkillSection[] {
       required: REQUIRED_HEADING.test(h.heading),
     };
   });
+}
+
+/**
+ * The sections whose OWN text states a binding rule, for a skill in which no HEADING declared one.
+ *
+ * A declared heading always outranks inferred text: a skill with even one `required` section returns
+ * nothing here, so the 10 skills that already have required sections keep exactly the map they had.
+ * `ownText`, not `text`, because a parent section's `text` swallows its children — `## The Contract`
+ * would match on its `### The sign-off gate` child and the map would inline the parent's prose while
+ * the prohibition itself stayed out of reach.
+ */
+export function inferredRuleSections(sections: SkillSection[]): { tier?: RuleTextTier; sections: SkillSection[] } {
+  if (sections.some((s) => s.required)) return { sections: [] };
+  for (const tier of RULE_TEXT_TIERS) {
+    const hits = sections.filter((s) => matchesTier(tier, s.ownText));
+    if (hits.length) return { tier, sections: hits };
+  }
+  return { sections: [] };
 }
 
 /** Whether `heading` answers `q` (already lowercased, hashes stripped): exactly, else as a substring. */

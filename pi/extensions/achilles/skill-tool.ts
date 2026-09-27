@@ -1,6 +1,6 @@
 import { Type } from 'typebox';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { resolveSkill, listSkills, parseSections, findSection, parentOf, childrenOf, addressOf, subsectionsOf, skillPreamble, tableOfContents, type SkillSection } from './skills.ts';
+import { resolveSkill, listSkills, parseSections, findSection, parentOf, childrenOf, addressOf, subsectionsOf, inferredRuleSections, skillPreamble, tableOfContents, type RuleTextTier, type SkillSection } from './skills.ts';
 import { log } from './log.ts';
 import { fullBelow, piDepth, piVerbose, sectionMax, skillHeadMax } from './env.ts';
 
@@ -16,6 +16,17 @@ function continuesNote(skill: string, s: SkillSection, subs: number): string {
 
 export const PENDING_HEADER = '── required, not included in full here: fetch each before you act ──';
 
+export const DECLARED_HEADER = '── always required ──';
+
+/** The same marker for a block the map found by its WORDING rather than by its heading. It says so:
+ * a model must be able to tell a rule the skill declared required from one this adapter inferred. */
+export function inferredHeader(tier: RuleTextTier): string {
+  return `── rules stated in this skill's TEXT (INFERRED from ${tier.label} wording — no heading of this skill declares a required block) ──`;
+}
+
+/** The same caveat on the fetch-before-you-act list, which is otherwise byte-identical either way. */
+export const INFERRED_PENDING_NOTE = '  (inferred from rule wording in the section text, not from a heading that declares it required)';
+
 /** A required block's line in the pending list; `partial` when its own rules are inlined above. */
 function pendingLine(s: SkillSection, partial: boolean): string {
   return `  - ${'#'.repeat(s.level)} ${s.heading} (${s.text.length} chars)${partial ? ' — its own rules are inlined above; its subsections are not' : ''}`;
@@ -27,16 +38,28 @@ function pendingLine(s: SkillSection, partial: boolean): string {
  * so one that does not fit is listed as mandatory reading to fetch instead, and one whose rules live
  * in subsections is BOTH inlined and listed, so an inlined stub can never pass for the whole block.
  * The table of contents absorbs the hard cap: it is the only part the budget may cut.
+ *
+ * When the skill declares NO required heading, the rule blocks come from the content signal instead
+ * (inferredRuleSections) and the map says so. Same machinery, same budget, same fetch-before-you-act
+ * contract — only the marker changes, because an inferred rule is a weaker claim than a declared one.
  */
 export function skillMap(name: string, body: string, headMax = skillHeadMax()): { text: string; sections: SkillSection[] } {
   const sections = parseSections(body);
   const preamble = skillPreamble(body);
   const lead = `[achilles] Map of a ${body.trim().length}-char skill: its opening, the rules that always apply, and its sections. Fetch a section with Skill { skill: "${name}", section: "<heading>" } before acting on it.`;
   const parts = [lead, preamble];
-  let used = lead.length + preamble.length + tableOfContents(sections, name).length + 200; // 200: the joins and the two markers below
+  // A heading that declares itself required outranks rule wording found in the text: only a skill
+  // with NO required heading falls back to the content signal, so the 10 skills that have one keep
+  // exactly the map they had. See inferredRuleSections for why the proxy needed a fallback at all.
+  const declared = sections.filter((x) => x.required);
+  const inferred = declared.length ? { sections: [] as SkillSection[] } : inferredRuleSections(sections);
+  const blocks = declared.length ? declared : inferred.sections;
+  const blockHeader = inferred.tier ? inferredHeader(inferred.tier) : DECLARED_HEADER;
+  let used = lead.length + preamble.length + tableOfContents(sections, name).length
+    + blockHeader.length + PENDING_HEADER.length + (inferred.tier ? INFERRED_PENDING_NOTE.length : 0) + 80; // 80: the joins
   const included: string[] = [];
   const pending: Array<{ s: SkillSection; partial: boolean }> = [];
-  for (const s of sections.filter((x) => x.required)) {
+  for (const s of blocks) {
     // ownText, not text: a required `## ` heading's nested subsections are sections of their own and
     // are fetched by name; the required block is the rule text the heading itself carries.
     const subs = subsectionsOf(sections, s).length;
@@ -48,8 +71,8 @@ export function skillMap(name: string, body: string, headMax = skillHeadMax()): 
       if (subs) { pending.push({ s, partial: true }); used += pendingLine(s, true).length; }
     } else { pending.push({ s, partial: false }); used += pendingLine(s, false).length; }
   }
-  if (included.length) parts.push(`── always required ──\n${included.join('\n\n')}`);
-  if (pending.length) parts.push(`${PENDING_HEADER}\n${pending.map((p) => pendingLine(p.s, p.partial)).join('\n')}`);
+  if (included.length) parts.push(`${blockHeader}\n${included.join('\n\n')}`);
+  if (pending.length) parts.push(`${PENDING_HEADER}${inferred.tier ? `\n${INFERRED_PENDING_NOTE}` : ''}\n${pending.map((p) => pendingLine(p.s, p.partial)).join('\n')}`);
   // Hard cap: whatever room the rule blocks left goes to the table of contents, and it is cut to fit.
   const room = headMax - (parts.join('\n\n').length + 2);
   parts.push(capTableOfContents(tableOfContents(sections, name), room, name));
