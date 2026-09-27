@@ -87,6 +87,12 @@ function ambiguous(name: string, body: string, query: string, candidates: SkillS
   return `${head}\n\n${skillMap(name, body).text}`;
 }
 
+/** Why a `section` argument did not narrow the response, for a skill returned whole anyway. */
+function droppedSectionNote(query: string, candidates: number, chars: number): string {
+  const why = candidates ? `matches ${candidates} headings` : 'matches no heading';
+  return `[achilles] section "${query}" ${why} of this skill; it is ${chars} chars, so here it is whole. Fetch one section by its exact heading, or as "<parent> > <child>".`;
+}
+
 export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): void {
   pi.registerTool({
     name: 'Skill',
@@ -113,22 +119,45 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       }
       const body = s.body.trim();
       const args = params.args ? `\n\nUser request: ${params.args}` : '';
+      // An explicit `section` is honoured at ANY depth and at any body size: asking for one section
+      // can only narrow what comes back, and a child on a small model that asks for
+      // achilles-protocol §subagent-return-schema must not be handed the whole 57k body instead.
+      // ACHILLES_PI_VERBOSE=1 stays the one bypass — it turns every context compaction off — and the
+      // response says so rather than dropping the argument in silence.
+      if (params.section && !piVerbose()) {
+        const all = parseSections(body);
+        const { section, candidates } = findSection(all, params.section);
+        if (section) {
+          log('skill', { skill: s.name, section: params.section, matched: section.heading, candidates: 0, chars: section.text.length, view: 'section' });
+          return {
+            content: [{ type: 'text', text: wrap(s.name, s.file, section.text, 'section') + args }],
+            details: { skill: s.name, path: s.file, view: 'section', section: section.heading, candidates: [], chars: section.text.length },
+          };
+        }
+        // No unique match. For a skill small enough to return whole, the whole body IS the answer and
+        // a map of it would be the bigger surprise — so it comes back full, with the miss named.
+        if (body.length < skillFullBelow()) {
+          const text = `${body}\n\n${droppedSectionNote(params.section, candidates.length, body.length)}`;
+          log('skill', { skill: s.name, section: params.section, candidates: candidates.length, chars: body.length, view: 'full' });
+          return {
+            content: [{ type: 'text', text: wrap(s.name, s.file, text) + args }],
+            details: { skill: s.name, path: s.file, view: 'full', candidates: candidates.map((c) => c.heading), chars: body.length, sectionDropped: params.section },
+          };
+        }
+        const text = ambiguous(s.name, body, params.section, candidates, all);
+        log('skill', { skill: s.name, section: params.section, candidates: candidates.length, chars: text.length, view: 'map' });
+        return {
+          content: [{ type: 'text', text: wrap(s.name, s.file, text, 'map') + args }],
+          details: { skill: s.name, path: s.file, view: 'map', candidates: candidates.map((c) => c.heading), chars: text.length },
+        };
+      }
       // A child holds only its own skill, so it gets the whole body; so does a small skill, and so
       // does every call under ACHILLES_PI_VERBOSE=1 (it turns every context compaction off).
       const sectioned = piDepth() === 0 && !piVerbose() && body.length >= skillFullBelow();
       if (!sectioned) {
-        log('skill', { skill: s.name, chars: body.length, view: 'full' });
-        return { content: [{ type: 'text', text: wrap(s.name, s.file, body) + args }], details: { skill: s.name, path: s.file, view: 'full', chars: body.length } };
-      }
-      if (params.section) {
-        const all = parseSections(body);
-        const { section, candidates } = findSection(all, params.section);
-        const text = section ? section.text : ambiguous(s.name, body, params.section, candidates, all);
-        log('skill', { skill: s.name, section: params.section, matched: section?.heading, candidates: candidates.length, chars: text.length, view: 'section' });
-        return {
-          content: [{ type: 'text', text: wrap(s.name, s.file, text, section ? 'section' : 'map') + args }],
-          details: { skill: s.name, path: s.file, view: section ? 'section' : 'map', section: section?.heading, candidates: candidates.map((c) => c.heading), chars: text.length },
-        };
+        const note = params.section ? `\n\n[achilles] section "${params.section}" not applied: ACHILLES_PI_VERBOSE=1 returns every skill whole.` : '';
+        log('skill', { skill: s.name, chars: body.length, view: 'full', ...(params.section ? { sectionDropped: params.section } : {}) });
+        return { content: [{ type: 'text', text: wrap(s.name, s.file, body + note) + args }], details: { skill: s.name, path: s.file, view: 'full', chars: body.length, ...(params.section ? { sectionDropped: params.section } : {}) } };
       }
       const { text, sections } = skillMap(s.name, body);
       log('skill', { skill: s.name, chars: text.length, bodyChars: body.length, sections: sections.length, view: 'map' });

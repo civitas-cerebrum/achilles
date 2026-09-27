@@ -283,6 +283,47 @@ test('every real skill that maps stays within ACHILLES_PI_SKILL_HEAD_MAX', () =>
   for (const { name, text } of maps) assert.ok(text.length <= 6000, `${name} map is ${text.length} chars`);
 });
 
+// ── I4: an explicit `section` is honoured at any depth and any size ─────────────────────────────
+test('a subagent asking for one section gets that section, not the whole body', async () => {
+  const r = await call({ skill: 'coverage-expansion', section: 'No-skip contract' }, { ACHILLES_PI_DEPTH: '1' });
+  assert.equal(r.details.view, 'section');
+  assert.equal(r.details.section, 'No-skip contract');
+  const whole = bodyOf('coverage-expansion');
+  assert.ok(r.content[0].text.length < whole.length / 5, `${r.content[0].text.length} of ${whole.length}`);
+  assert.doesNotMatch(r.content[0].text, /\n## Breadth mode/);
+  // The live-04 case: a child asking achilles-protocol for the return schema instead of the body.
+  const p = await call({ skill: 'achilles-protocol', section: 'subagent return + ledger schema' }, { ACHILLES_PI_DEPTH: '2' });
+  assert.equal(p.details.view, 'section');
+  assert.ok(p.details.chars < bodyOf('achilles-protocol').length / 2, `${p.details.chars}`);
+  // A section that names nothing gives a child the map, not 57k of body.
+  const miss = await call({ skill: 'achilles-protocol', section: 'subagent-return-schema' }, { ACHILLES_PI_DEPTH: '1' });
+  assert.equal(miss.details.view, 'map');
+  assert.ok(miss.details.chars <= 6000, `${miss.details.chars}`);
+});
+
+test('a sub-threshold skill honours a section too', async () => {
+  const r = await call({ skill: 'secrets-sweep', section: 'Return shape' });
+  assert.equal(r.details.view, 'section');
+  assert.equal(r.details.section, 'Return shape');
+  assert.ok(r.details.chars < bodyOf('secrets-sweep').length, 'a section can only reduce');
+});
+
+// ── M4: a dropped `section` argument is named, never silently ignored ────────────────────────────
+test('an unmatched section on a sub-threshold skill returns the body whole and says the section was dropped', async () => {
+  const r = await call({ skill: 'secrets-sweep', section: 'no such heading' });
+  assert.equal(r.details.view, 'full');
+  assert.equal(r.details.sectionDropped, 'no such heading');
+  assert.ok(r.content[0].text.includes(bodyOf('secrets-sweep')));
+  assert.match(r.content[0].text, /section "no such heading" matches no heading of this skill; it is \d+ chars, so here it is whole/);
+});
+
+test('ACHILLES_PI_VERBOSE=1 keeps the whole body and says the section was not applied', async () => {
+  const r = await call({ skill: 'coverage-expansion', section: 'No-skip contract' }, { ACHILLES_PI_VERBOSE: '1' });
+  assert.equal(r.details.view, 'full');
+  assert.equal(r.details.sectionDropped, 'No-skip contract');
+  assert.match(r.content[0].text, /not applied: ACHILLES_PI_VERBOSE=1 returns every skill whole/);
+});
+
 test('parseSections ignores headings inside fenced code blocks', () => {
   const secs = parseSections('# T\n\nintro\n\n## Real\n\n```md\n## Fake heading\n```\n\n## Second\n');
   assert.deepEqual(secs.map((s) => s.heading), ['Real', 'Second']);
