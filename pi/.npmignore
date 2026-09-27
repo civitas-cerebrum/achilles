@@ -1,0 +1,6 @@
+# Dev-only test harness — not included in the published tarball (same convention as
+# hooks/.npmignore; the root .npmignore explains why a sub-directory needs its own).
+# pi/tests also imports repo-only files (scripts/lint-doc-drift.mjs), so publishing it
+# would ship imports that cannot resolve from inside node_modules.
+tests/
+tests/**

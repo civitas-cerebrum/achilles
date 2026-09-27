@@ -471,3 +471,58 @@ test('subagent_type, not just the description prefix, drives the derivation', as
   const r = await run(tool, { description: 'review this pass', prompt: 'go', subagent_type: 'workflow-reviewer-pass3', skill: 'workflow-reviewer' });
   assert.equal(header(r).startSection, 'Per coverage-expansion pass (`workflow-reviewer-pass<N>`)');
 });
+
+// ── Round 6 item 2: the role-derivation convention, enumerated from the skills themselves ─────────
+import { listSkills, parseSections } from '../extensions/achilles/skills.ts';
+import { ROLE_HEADING_PINS } from '../../scripts/lint-doc-drift.mjs';
+
+/** The role stems the harness validates, read out of the shell file both hooks source. */
+function roleStemsFromShell() {
+  const sh = fs.readFileSync(path.join(realSkills, '..', 'hooks', 'lib', 'schema-role-map.sh'), 'utf8');
+  const stems = [];
+  for (const m of sh.matchAll(/^\s*([a-z0-9-]+\*(?:\|[a-z0-9-]+\*)*)\)/gm))
+    for (const g of m[1].split('|')) stems.push(g.replace(/\*$/, ''));
+  return stems;
+}
+
+/** A role token as a heading PRINTS it (`workflow-reviewer-pass<N>`) turned back into a role a
+ * dispatch could actually carry (`workflow-reviewer-pass1`) — the inverse of roleForms' generalisation. */
+const instantiate = (token) => token.replace(/:$/, '').replace(/<N>/g, '1').replace(/<[^>]*>/g, 'x');
+
+/** Every (skill, heading, role token) the methodology prints, the convention's own enumeration.
+ * A token containing `*` is a family banner ("(`perf-reviewer-*`)"), not a role a dispatch carries. */
+function roleHeadings() {
+  const stems = roleStemsFromShell();
+  const out = [];
+  for (const name of listSkills([realSkills])) {
+    const body = realBody(name).trim();
+    for (const s of parseSections(body)) {
+      for (const m of s.heading.matchAll(/`([^`]+)`/g)) {
+        const token = m[1];
+        if (token.includes('*') || !stems.some((st) => token.startsWith(st))) continue;
+        out.push({ skill: name, body, heading: s.heading, token, role: instantiate(token) });
+      }
+    }
+  }
+  return out;
+}
+
+test('every role token a skill heading prints is derivable, and derives that very heading', () => {
+  const all = roleHeadings();
+  // Not 6 (the brief's 14-role probe) and not 8 (round 5's 25 hand-written roles): those were
+  // samples of the role space. Enumerated from the headings that declare a role contract, the real
+  // set is 21 — and every one of them resolves.
+  assert.equal(all.length, 21, all.map((x) => `${x.skill} ${x.token}`).join('\n'));
+  for (const { skill, body, heading, token, role } of all) {
+    assert.equal(roleSection(body, role), heading, `${skill}: role "${role}" (printed as \`${token}\`) does not derive its own heading`);
+  }
+  assert.deepEqual(
+    [...new Set(all.map((x) => x.skill))].sort(),
+    ['journey-mapping', 'ticket-driven-testing', 'workflow-reviewer'],
+  );
+});
+
+test("the lint's pin is exactly this enumeration, so a rename fails in both places", () => {
+  const mine = roleHeadings().map((x) => [x.skill, x.token]).sort();
+  assert.deepEqual([...ROLE_HEADING_PINS].sort(), mine);
+});
