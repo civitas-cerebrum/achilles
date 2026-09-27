@@ -13,6 +13,14 @@ function positiveInt(name: string, fallback: number): number {
 /** ACHILLES_PI_SKILL_FULL_BELOW (chars, default 12000): a skill body under this is returned whole. */
 export const skillFullBelow = (): number => positiveInt('ACHILLES_PI_SKILL_FULL_BELOW', 12000);
 
+/** ACHILLES_PI_SKILL_CHILD_FULL_BELOW (chars, default 24000): the same threshold for a subagent.
+ * A child's window holds only its own skill, so it can afford a more generous whole-body budget than
+ * the orchestrator and a mid-size skill still arrives entire; above this it gets the same map. */
+export const skillChildFullBelow = (): number => positiveInt('ACHILLES_PI_SKILL_CHILD_FULL_BELOW', 24000);
+
+/** The whole-body threshold in force at the current depth: the orchestrator's, or a child's. */
+export const fullBelow = (): number => (piDepth() === 0 ? skillFullBelow() : skillChildFullBelow());
+
 /** ACHILLES_PI_SKILL_HEAD_MAX (chars, default 6000): the target size of a sectioned skill's map. */
 export const skillHeadMax = (): number => positiveInt('ACHILLES_PI_SKILL_HEAD_MAX', 6000);
 

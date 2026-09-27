@@ -2,7 +2,7 @@ import { Type } from 'typebox';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { resolveSkill, listSkills, parseSections, findSection, parentOf, subsectionsOf, skillPreamble, tableOfContents, type SkillSection } from './skills.ts';
 import { log } from './log.ts';
-import { piDepth, piVerbose, skillFullBelow, skillHeadMax } from './env.ts';
+import { fullBelow, piDepth, piVerbose, skillHeadMax } from './env.ts';
 
 const wrap = (name: string, path: string, text: string, view?: string) =>
   `<skill name="${name}" path="${path}"${view ? ` view="${view}"` : ''}>\n${text.trim()}\n</skill>`;
@@ -143,7 +143,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
         }
         // No unique match. For a skill small enough to return whole, the whole body IS the answer and
         // a map of it would be the bigger surprise — so it comes back full, with the miss named.
-        if (body.length < skillFullBelow()) {
+        if (body.length < fullBelow()) {
           const text = `${body}\n\n${droppedSectionNote(params.section, candidates.length, body.length)}`;
           log('skill', { skill: s.name, section: params.section, candidates: candidates.length, chars: body.length, view: 'full' });
           return {
@@ -158,9 +158,12 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
           details: { skill: s.name, path: s.file, view: 'map', candidates: candidates.map((c) => c.heading), chars: text.length },
         };
       }
-      // A child holds only its own skill, so it gets the whole body; so does a small skill, and so
-      // does every call under ACHILLES_PI_VERBOSE=1 (it turns every context compaction off).
-      const sectioned = piDepth() === 0 && !piVerbose() && body.length >= skillFullBelow();
+      // A child is dispatched for one job and holds only its own skill, so it gets a more generous
+      // whole-body budget (ACHILLES_PI_SKILL_CHILD_FULL_BELOW) than the orchestrator — but not an
+      // unbounded one: on a 32k-context model the six heaviest skills are 54k-89k chars (~13-22k
+      // tokens) and would leave almost nothing for the work, so above that threshold a child gets the
+      // same map, required rule blocks and all. ACHILLES_PI_VERBOSE=1 still returns every body whole.
+      const sectioned = !piVerbose() && body.length >= fullBelow();
       if (!sectioned) {
         const note = params.section ? `\n\n[achilles] section "${params.section}" not applied: ACHILLES_PI_VERBOSE=1 returns every skill whole.` : '';
         log('skill', { skill: s.name, chars: body.length, view: 'full', ...(params.section ? { sectionDropped: params.section } : {}) });

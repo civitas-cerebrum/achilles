@@ -226,10 +226,66 @@ test('ACHILLES_PI_SKILL_FULL_BELOW moves the threshold', async () => {
   assert.equal(big.details.view, 'full');
 });
 
-test('inside a subagent (depth >= 1) a heavy skill returns its whole body', async () => {
-  const r = await call({ skill: 'coverage-expansion' }, { ACHILLES_PI_DEPTH: '1' });
+// ── Round 4, item 1: a child's dispatched skill is mapped too when its body is large ─────────────
+// Round 2 bounded the orchestrator only. A subagent on a 32k-context model that is handed
+// coverage-expansion's 89k-char body (~22k tokens) has almost no window left for the work, so above
+// ACHILLES_PI_SKILL_CHILD_FULL_BELOW a child gets the same map — required rule blocks and all.
+const CHILD_HEAVY = [
+  'contributing-to-achilles-protocol', 'coverage-expansion', 'ticket-driven-testing',
+  'failure-diagnosis', 'companion-mode', 'journey-mapping',
+];
+
+for (const name of CHILD_HEAVY) {
+  test(`${name}: a depth-1 no-section response is a map under ACHILLES_PI_SKILL_HEAD_MAX`, async () => {
+    const r = await call({ skill: name }, { ACHILLES_PI_DEPTH: '1' });
+    const text = r.content[0].text;
+    assert.equal(r.details.view, 'map', `${name} is not mapped at depth 1`);
+    assert.ok(text.length <= 6000, `${name} depth-1 reply is ${text.length} chars`);
+    assert.ok(!text.includes(bodyOf(name)), `${name} depth-1 reply still carries the whole body`);
+    // Every always-required block is either inlined whole or on the fetch-before-you-act list — the
+    // depth-0 contract, unchanged at depth 1. A partial rule block never passes for a complete one.
+    const required = parseSections(bodyOf(name)).filter((x) => x.required);
+    for (const sec of required) {
+      assert.ok(text.includes(sec.heading), `${name} depth-1 map omits required heading "${sec.heading}"`);
+      const inlinedWhole = text.includes(sec.text);
+      const listed = text.includes(`  - ${'#'.repeat(sec.level)} ${sec.heading} (${sec.text.length} chars)`);
+      assert.ok(inlinedWhole || listed, `${name}: required "${sec.heading}" is neither whole nor listed`);
+      if (listed) assert.match(text, /required, not included in full here: fetch each before you act/);
+    }
+    assert.match(text, new RegExp(`Skill \\{ skill: "${name}", section: "<heading>" \\}`));
+  });
+}
+
+test('a mid-size skill still arrives whole at depth 1, while depth 0 maps it', async () => {
+  const body = bodyOf('test-repair');
+  assert.ok(body.length > 20000 && body.length < 24000, `fixture assumption: ${body.length} chars`);
+  const child = await call({ skill: 'test-repair' }, { ACHILLES_PI_DEPTH: '1' });
+  assert.equal(child.details.view, 'full');
+  assert.ok(child.content[0].text.includes(body));
+  const orch = await call({ skill: 'test-repair' });
+  assert.equal(orch.details.view, 'map');
+});
+
+test('ACHILLES_PI_SKILL_CHILD_FULL_BELOW moves the child threshold and not the orchestrator\'s', async () => {
+  const whole = await call({ skill: 'coverage-expansion' }, { ACHILLES_PI_DEPTH: '1', ACHILLES_PI_SKILL_CHILD_FULL_BELOW: '200000' });
+  assert.equal(whole.details.view, 'full');
+  const mapped = await call({ skill: 'test-repair' }, { ACHILLES_PI_DEPTH: '1', ACHILLES_PI_SKILL_CHILD_FULL_BELOW: '1000' });
+  assert.equal(mapped.details.view, 'map');
+  // The orchestrator keeps its own, tighter threshold: the child knob does not loosen depth 0.
+  const orch = await call({ skill: 'coverage-expansion' }, { ACHILLES_PI_SKILL_CHILD_FULL_BELOW: '200000' });
+  assert.equal(orch.details.view, 'map');
+});
+
+test('ACHILLES_PI_VERBOSE=1 bypasses child sectioning too', async () => {
+  const r = await call({ skill: 'coverage-expansion' }, { ACHILLES_PI_DEPTH: '1', ACHILLES_PI_VERBOSE: '1' });
   assert.equal(r.details.view, 'full');
   assert.ok(r.content[0].text.includes(bodyOf('coverage-expansion')));
+});
+
+test('a subagent-only skill is mapped at depth 1, not refused and not dumped whole', async () => {
+  const r = await call({ skill: 'contributing-to-achilles-protocol' }, { ACHILLES_PI_DEPTH: '1' });
+  assert.equal(r.details.refused, undefined);
+  assert.equal(r.details.view, 'map');
 });
 
 test('ACHILLES_PI_VERBOSE=1 bypasses sectioning at depth 0', async () => {
