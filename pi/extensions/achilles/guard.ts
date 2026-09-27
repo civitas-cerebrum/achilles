@@ -67,3 +67,60 @@ export function blockedSkillRead(toolName: string, input: Record<string, unknown
 export function delegateInstruction(name: string): string {
   return `[achilles] "${name}" is a subagent-only skill; the orchestrator must not read its files. Delegate it: Agent { skill: "${name}", description: "<role-prefix>: <what>", prompt: "<brief>" }.`;
 }
+
+// ── Large reference reads ────────────────────────────────────────────────────────────────────────
+// The heavy methodology text is not only in SKILL.md: a skill's references/*.md run to 46-53k chars
+// (api-reference, depth-mode-pipeline, anti-rationalizations). An orchestrator that reads one has
+// spent a third of a 32k window on text it needed for one dispatch. The read is never blocked — the
+// orchestrator sometimes does need a passage — but the result carries a note steering the next one.
+
+/** A skill's `references/` directory. */
+export interface ReferenceDir { skill: string; dir: string }
+
+/** Every skill's `references/` directory across all roots (subagent-only skills excluded: reading
+ * anything of theirs is already blocked, so their references never reach a result). */
+export function referenceDirs(roots: string[]): ReferenceDir[] {
+  const out: ReferenceDir[] = [];
+  for (const name of listSkills(roots)) {
+    for (const root of roots) {
+      const s = resolveSkill(name, [root]);
+      if (!s || s.subagentOnly) continue;
+      const dir = path.join(s.dir, 'references');
+      try { if (fs.lstatSync(dir).isDirectory()) out.push({ skill: name, dir: canonical(dir) }); } catch { /* no references/ */ }
+    }
+  }
+  return out;
+}
+
+export interface LargeRef { path: string; chars: number; skill: string }
+
+/** The skill reference a read targets when it is bigger than `max` chars; undefined otherwise.
+ * Reuses the reader detection of blockedSkillRead, so `cat`/`sed`/`head` on one counts too. */
+export function largeReferenceRead(
+  toolName: string,
+  input: Record<string, unknown>,
+  refs: ReferenceDir[],
+  cwd: string,
+  home = os.homedir(),
+  max = 8000,
+): LargeRef | undefined {
+  if (refs.length === 0) return undefined;
+  const candidates = toolName === 'read' && typeof input.path === 'string' ? [input.path]
+    : toolName === 'bash' && typeof input.command === 'string' && READER.test(input.command) ? words(input.command)
+    : [];
+  for (const c of candidates) {
+    const file = expand(c, cwd, home);
+    const hit = refs.find((r) => inside(file, r.dir));
+    if (!hit) continue;
+    try {
+      const st = fs.statSync(file);
+      if (st.isFile() && st.size > max) return { path: file, chars: st.size, skill: hit.skill };
+    } catch { /* unreadable: nothing to steer about */ }
+  }
+  return undefined;
+}
+
+/** The steer note appended to a large reference's result (the content still comes back in full). */
+export function referenceNote(ref: LargeRef): string {
+  return `[achilles] ${ref.path} is ${ref.chars} chars. At depth 0 prefer delegating work that needs it: Agent { skill: "${ref.skill}", description: "<role-prefix>: <what>", prompt: "<brief>" }. To read it here anyway, ask for the part you need.`;
+}

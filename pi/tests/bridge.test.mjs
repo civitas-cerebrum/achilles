@@ -407,6 +407,85 @@ test('depth 0: every skill root is checked, not just the first match', async () 
   assert.equal(r?.block, true);
 });
 
+// --- round 2: large skill references earn a steer note, never a block ----------------------------
+/** A skill root holding one orchestrator skill with a big and a small reference, plus a big file
+ * outside references/. Returns { root, big, small, outside }. */
+function refRoot() {
+  const root = tmp();
+  const dir = path.join(root, 'ref-skill');
+  fs.mkdirSync(path.join(dir, 'references'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: ref-skill\ndescription: A fixture skill with references.\n---\n# Ref\nBody.\n');
+  const big = path.join(dir, 'references', 'api-reference.md');
+  const small = path.join(dir, 'references', 'small.md');
+  const outside = path.join(dir, 'notes.md');
+  fs.writeFileSync(big, `# Api\n${'x'.repeat(9000)}`);
+  fs.writeFileSync(small, `# Small\n${'x'.repeat(100)}`);
+  fs.writeFileSync(outside, `# Notes\n${'x'.repeat(9000)}`);
+  return { root, big, small, outside };
+}
+const resultCall = (over) => ({ type: 'tool_result', toolCallId: 'r1', content: [{ type: 'text', text: 'file body' }], isError: false, ...over });
+async function refStart(t, root, env = {}) {
+  for (const [k, v] of Object.entries(env)) withEnv(t, k, v);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  await start(pi, ctx, { ...opts(), skillRoots: [root] });
+  return { pi, ctx };
+}
+test('depth 0: a read of a large skill reference comes back whole with one steer note', async (t) => {
+  const { root, big } = refRoot();
+  const { pi, ctx } = await refStart(t, root);
+  const r = await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx);
+  const text = r.content.map((c) => c.text).join('\n');
+  assert.match(text, /^file body/, 'the content still comes back');
+  assert.ok(text.includes(`[achilles] ${big} is 9006 chars.`), text);
+  assert.match(text, /At depth 0 prefer delegating work that needs it: Agent \{ skill: "ref-skill", description: "<role-prefix>: <what>", prompt: "<brief>" \}\. To read it here anyway, ask for the part you need\./);
+});
+test('the steer note is shown once per path per session', async (t) => {
+  const { root, big } = refRoot();
+  const { pi, ctx } = await refStart(t, root);
+  assert.ok(await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx));
+  assert.equal(await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx), undefined);
+  // session_start clears the record, so a fresh session steers again.
+  await pi.fire('session_start', { type: 'session_start', reason: 'startup' }, ctx);
+  assert.ok(await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx));
+});
+test('a small reference, a file outside references/, and a non-achilles file get no note', async (t) => {
+  const { root, small, outside } = refRoot();
+  const { pi, ctx } = await refStart(t, root);
+  for (const p of [small, outside, path.join(tmp(), 'elsewhere.md')]) {
+    assert.equal(await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: p } }), ctx), undefined, p);
+  }
+});
+test('a child (depth >= 1) gets no steer note: the reference is why it was dispatched', async (t) => {
+  const { root, big } = refRoot();
+  const { pi, ctx } = await refStart(t, root, { ACHILLES_PI_DEPTH: '1' });
+  assert.equal(await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx), undefined);
+});
+test('a bash reader of a large reference is steered too; a non-reader is not', async (t) => {
+  const { root, big } = refRoot();
+  const { pi, ctx } = await refStart(t, root);
+  const r = await pi.fire('tool_result', resultCall({ toolName: 'bash', input: { command: `sed -n '1,200p' ${big}` }, content: [{ type: 'text', text: 'out' }] }), ctx);
+  const text = r.content.map((c) => c.text).join('\n');
+  assert.match(text, /is 9006 chars/);
+  // warn.sh (PostToolUse:Bash) also fires here: the hook note and the steer note coexist.
+  assert.match(text, /careful/);
+  const none = await pi.fire('tool_result', resultCall({ toolName: 'bash', input: { command: `wc -c ${big}` }, content: [{ type: 'text', text: 'out' }] }), ctx);
+  assert.doesNotMatch(none.content.map((c) => c.text).join('\n'), /prefer delegating/);
+});
+test('ACHILLES_PI_REF_MAX sets the size that earns a note', async (t) => {
+  const { root, small } = refRoot();
+  const { pi, ctx } = await refStart(t, root, { ACHILLES_PI_REF_MAX: '50' });
+  const r = await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: small } }), ctx);
+  assert.match(r.content.map((c) => c.text).join('\n'), /is 108 chars/);
+});
+test('the steer note is logged with its path, size and skill', async (t) => {
+  const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
+  const { root, big } = refRoot();
+  const { pi, ctx } = await refStart(t, root);
+  await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx);
+  const entry = fs.readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).find((e) => e.kind === 'ref_steer');
+  assert.deepEqual({ path: entry.path, chars: entry.chars, skill: entry.skill }, { path: big, chars: 9006, skill: 'ref-skill' });
+});
+
 // --- I5: a child session runs SubagentStop at settle, not Stop -----------------------------------
 const settleEv = () => ({ type: 'agent_before_settle', outcome: 'completed', entries: [], continue: false, context: {} });
 test('depth 1: settle runs SubagentStop (not Stop) with blocks honoured and the stop guard', async (t) => {

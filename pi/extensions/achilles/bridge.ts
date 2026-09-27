@@ -8,8 +8,8 @@ import { resolveToCwd } from './edit-match.ts';
 import { steer as steerText, createMessageCompactor, withOperatorStop, operatorOnly, OPERATOR_STOP, WARNING_TRUNCATED, type NoteKind } from './messages.ts';
 import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
-import { piDepth } from './env.ts';
-import { subagentOnlyDirs, blockedSkillRead, delegateInstruction, type SubagentOnlyDir } from './guard.ts';
+import { piDepth, refMax } from './env.ts';
+import { subagentOnlyDirs, blockedSkillRead, delegateInstruction, referenceDirs, largeReferenceRead, referenceNote, type SubagentOnlyDir, type ReferenceDir } from './guard.ts';
 import { sessionStateDir, shadowPath, appendShadow, seedShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
 
 export interface ManifestEntry { file: string; event: string; matcher: string | null; timeout?: number; async?: boolean }
@@ -234,6 +234,9 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   // set at tool_call (only when the call is allowed) and consumed at tool_result.
   const translated = new Map<string, Rec>();
   let subOnly: SubagentOnlyDir[] = [];
+  let refDirs: ReferenceDir[] = [];
+  // Paths already steered about this session: the note is a nudge, not a drumbeat.
+  const refNoted = new Set<string>();
   let lastAssistant = '';
   let subagentWarned = false;
 
@@ -332,6 +335,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     // The subagent-only read guard is achilles' own policy, not a hook, so it holds even when hook
     // execution ends up disabled below.
     subOnly = subagentOnlyDirs(roots);
+    refDirs = referenceDirs(roots);
+    refNoted.clear();
     const manifestPath = opts.manifestPath ?? path.join(PACKAGE_DIR, 'hooks', 'manifest.json');
     let loaded: ManifestEntry[];
     try { loaded = loadManifest(manifestPath); } catch (err) { return disable(`cannot read ${manifestPath}: ${String(err)}`, ctx); }
@@ -438,6 +443,16 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       }
       if (d.block && d.reason) notes.push(denyText(d.file, d.reason, false));
       else if (!d.block && d.reason) { notes.push(noteText(d.file, d.reason, 'reason')); ctx.ui.notify(d.reason, 'warning'); }
+    }
+    // A big skill reference read at depth 0: the content comes back whole, with one note steering the
+    // next such read towards a dispatch. Once per path per session (see refNoted).
+    if (piDepth() === 0) {
+      const ref = largeReferenceRead(event.toolName, event.input as Rec, refDirs, ctx.cwd, home, refMax());
+      if (ref && !refNoted.has(ref.path)) {
+        refNoted.add(ref.path);
+        log('ref_steer', { path: ref.path, chars: ref.chars, skill: ref.skill });
+        notes.push(referenceNote(ref));
+      }
     }
     if (notes.length === 0) return undefined;
     const stop = ds.some((d) => d.block && d.reason && operatorOnly(d.reason));
