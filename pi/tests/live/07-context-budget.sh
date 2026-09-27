@@ -3,7 +3,8 @@
 # chars, naming the always-required sections); a `section` fetch of a section over
 # ACHILLES_PI_SECTION_MAX returns its own prose plus a listing of its subsections rather than 19,721
 # chars in one go; a fetch of an always-required rule block still returns it WHOLE; and the same map,
-# not the 89k body, is what a depth-1 child receives.
+# not the 89k body, is what a REAL nested child receives (dispatched through the Agent tool, measured
+# in the shared log by the depth each Skill load happened at).
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # The tool result as the model saw it: the text of the Skill tool_execution_end event, JSON-decoded.
@@ -62,16 +63,36 @@ grep -qF 'returned whole rather than split' <<<"$rules" || live_fail "the rule b
 grep -qF 'Stage A per-journey dispatch is non-negotiable' <<<"$rules" || live_fail "the rule block lost its subsections"
 grep -qF 'NOT the whole section' <<<"$rules" && live_fail "a whole rule block was labelled incomplete"
 
-# Same bound for a subagent: at depth 1 the child gets the map, not 89k chars of body.
+# Same bound for a subagent — and asserted by NESTING A REAL CHILD, not by setting ACHILLES_PI_DEPTH=1
+# on an orchestrator-shaped session (round 4 simulated it; that was concern 5 of its report). The
+# orchestrator dispatches through the Agent tool, agent-tool.ts spawns a real `pi` child, and the
+# child's own Skill call is what is measured. Measured cost on the local 27B: 19 s for this turn (two
+# model turns, parent then child) — inside the live budget, so there is no reason to simulate it.
+#
+# The role prefix is "scout:" on purpose: a schema-validated prefix (probe-, composer-, reviewer-, …)
+# is blocked by subagent-schema-preread-gate.sh until the orchestrator has read the return schema,
+# which is a different check's business and would make this one assert the wrong thing.
+#
+# The child's map is not in this process's event stream (a child's events are consumed by the parent),
+# so the evidence is the shared $ACHILLES_PI_LOG, where every Skill load records the depth it happened
+# at. That is also the only thing that distinguishes the two maps: they are byte-identical by design.
 OUT4="$LIVE_HOME/07-child.jsonl"
-ACHILLES_PI_DEPTH=1 live_pi "$LIVE_PROJECT" 'Call the Skill tool with skill "coverage-expansion" and no section. Then reply with exactly the word DONE. Do not follow the skill instructions.' > "$OUT4"
-grep -q '"toolName":"Skill"' "$OUT4" || live_fail "child did not call Skill: $(tail -3 "$OUT4" | cut -c1-300)"
-child=$(skill_result "$OUT4")
-[ -n "$child" ] || live_fail "no child Skill tool result recorded"
-cchars=${#child}
-[ "$cchars" -lt 6000 ] || live_fail "the depth-1 coverage-expansion load is $cchars chars (want < 6000)"
-grep -qF 'view="map"' <<<"$child" || live_fail "the child did not get a map"
-grep -qF 'Slug-length constraint' <<<"$child" && live_fail "the full skill body leaked into the child's map"
-grep -qF 'Two valid exits' <<<"$child" || live_fail "the child's map omits the always-required section"
+live_pi "$LIVE_PROJECT" 'Use the Agent tool once with description "scout: check the skill load", skill "coverage-expansion", and prompt "Call the Skill tool with skill coverage-expansion and no section. Then reply with exactly the word DONE." Then reply with exactly the word DONE.' > "$OUT4"
+grep -q '"toolName":"Agent"' "$OUT4" || live_fail "model did not dispatch a child: $(tail -3 "$OUT4" | cut -c1-300)"
+grep -q '"kind":"agent_spawn".*"skill":"coverage-expansion".*"depth":1' "$ACHILLES_PI_LOG" || live_fail "no child was spawned with the skill"
+grep -q '"kind":"session_start".*"depth":"1"' "$ACHILLES_PI_LOG" || live_fail "the extension did not load inside the child"
+childline=$(grep '"kind":"skill","depth":1' "$ACHILLES_PI_LOG" | grep '"view":"map"' | head -1)
+[ -n "$childline" ] || live_fail "the real child did not receive a map: $(grep '"kind":"skill"' "$ACHILLES_PI_LOG" | tail -3)"
+json_num() { node -e 'process.stdout.write(String(JSON.parse(process.argv[1])[process.argv[2]] ?? ""))' "$1" "$2"; }
+cchars=$(json_num "$childline" chars)
+[ -n "$cchars" ] && [ "$cchars" -lt 6000 ] || live_fail "the child's coverage-expansion load is $cchars chars (want < 6000)"
+[ "$(json_num "$childline" bodyChars)" = "89400" ] || live_fail "the child was not mapped from the whole 89,400-char body: $childline"
+# Change 1 of round 4 in one line: the child's map IS the orchestrator's map, byte for byte.
+orchline=$(grep '"kind":"skill","depth":0' "$ACHILLES_PI_LOG" | grep '"view":"map"' | head -1)
+[ -n "$orchline" ] || live_fail "no orchestrator map recorded to compare against"
+ochars=$(json_num "$orchline" chars)
+[ "$cchars" = "$ochars" ] || live_fail "the child's map ($cchars chars) is not the orchestrator's ($ochars)"
+# Nothing of the body reached it: 89,400 chars cannot hide inside $cchars.
+grep '"kind":"skill","depth":1' "$ACHILLES_PI_LOG" | grep -q '"view":"full"' && live_fail "a depth-1 load came back whole"
 
-live_pass "coverage-expansion map ${chars} chars (body ~89k), five-pass split to ${schars}, rule block whole at ${rchars}, child map ${cchars}"
+live_pass "coverage-expansion map ${chars} chars (body ~89k), five-pass split to ${schars}, rule block whole at ${rchars}, REAL nested child map ${cchars} == orchestrator ${ochars}"

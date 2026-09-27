@@ -4,6 +4,11 @@ import { resolveSkill, listSkills, parseSections, findSection, parentOf, childre
 import { log } from './log.ts';
 import { fullBelow, piDepth, piVerbose, sectionMax, skillHeadMax } from './env.ts';
 
+/** Every Skill load, tagged with the nesting depth it happened at. Live check 07 reads this to tell a
+ * real subagent's map from the orchestrator's: the two are byte-identical by design, so the depth is
+ * the only thing in the record that says which process produced it. */
+function logSkill(data: Record<string, unknown>): void { log('skill', { depth: piDepth(), ...data }); }
+
 const wrap = (name: string, path: string, text: string, view?: string) =>
   `<skill name="${name}" path="${path}"${view ? ` view="${view}"` : ''}>\n${text.trim()}\n</skill>`;
 
@@ -268,7 +273,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       // exactly the skill the child was dispatched to load (e.g. workflow-reviewer).
       const refuse = s.subagentOnly && piDepth() === 0;
       if (refuse) {
-        log('skill', { skill: s.name, refused: true });
+        logSkill({ skill: s.name, refused: true });
         return {
           content: [{ type: 'text', text: `Skill "${s.name}" is subagent-only and must not be loaded into the orchestrator. Delegate it: Agent { skill: "${s.name}", description: "<role-prefix>: <what>", prompt: "<brief>" }.` }],
           details: { skill: s.name, refused: true },
@@ -289,7 +294,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
           // of its subsections, so one fetch is never 37k chars; a rule block and a childless section
           // still arrive whole (see sectionView).
           const view = sectionView(s.name, section, all);
-          log('skill', { skill: s.name, section: params.section, matched: section.heading, candidates: 0, chars: view.text.length, sectionChars: section.text.length, bounded: view.bounded, view: 'section' });
+          logSkill({ skill: s.name, section: params.section, matched: section.heading, candidates: 0, chars: view.text.length, sectionChars: section.text.length, bounded: view.bounded, view: 'section' });
           return {
             content: [{ type: 'text', text: wrap(s.name, s.file, view.text, 'section') + args }],
             details: { skill: s.name, path: s.file, view: 'section', section: section.heading, candidates: [], chars: view.text.length, sectionChars: section.text.length, bounded: view.bounded },
@@ -299,14 +304,14 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
         // a map of it would be the bigger surprise — so it comes back full, with the miss named.
         if (body.length < fullBelow()) {
           const text = `${body}\n\n${droppedSectionNote(params.section, candidates.length, body.length)}`;
-          log('skill', { skill: s.name, section: params.section, candidates: candidates.length, chars: body.length, view: 'full' });
+          logSkill({ skill: s.name, section: params.section, candidates: candidates.length, chars: body.length, view: 'full' });
           return {
             content: [{ type: 'text', text: wrap(s.name, s.file, text) + args }],
             details: { skill: s.name, path: s.file, view: 'full', candidates: candidates.map((c) => c.heading), chars: body.length, sectionDropped: params.section },
           };
         }
         const text = ambiguous(s.name, body, params.section, candidates, all);
-        log('skill', { skill: s.name, section: params.section, candidates: candidates.length, chars: text.length, view: 'map' });
+        logSkill({ skill: s.name, section: params.section, candidates: candidates.length, chars: text.length, view: 'map' });
         return {
           content: [{ type: 'text', text: wrap(s.name, s.file, text, 'map') + args }],
           details: { skill: s.name, path: s.file, view: 'map', candidates: candidates.map((c) => c.heading), chars: text.length },
@@ -327,7 +332,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       const already = piVerbose() ? undefined : sentSize(mem, key, ctx?.sessionManager?.getSessionId?.());
       if (already !== undefined) {
         const text = repeatPointer(s.name, already, !sectioned, start);
-        log('skill', { skill: s.name, chars: text.length, sentChars: already, view: 'pointer', repeat: true, of: sectioned ? 'map' : 'full' });
+        logSkill({ skill: s.name, chars: text.length, sentChars: already, view: 'pointer', repeat: true, of: sectioned ? 'map' : 'full' });
         return {
           content: [{ type: 'text', text: wrap(s.name, s.file, text, 'pointer') + args }],
           details: { skill: s.name, path: s.file, view: 'pointer', repeat: true, of: sectioned ? 'map' : 'full', chars: text.length, sentChars: already },
@@ -338,7 +343,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
         // The whole body already holds the dispatch's section, so all that is owed is the pointer.
         const where = start ? `\n\n[achilles] your dispatch named §"${start}" as your starting point in this skill.` : '';
         if (!piVerbose()) recordSent(mem, key, body.length);
-        log('skill', { skill: s.name, chars: body.length, view: 'full', ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) });
+        logSkill({ skill: s.name, chars: body.length, view: 'full', ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) });
         return { content: [{ type: 'text', text: wrap(s.name, s.file, body + note + where) + args }], details: { skill: s.name, path: s.file, view: 'full', chars: body.length, ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) } };
       }
       const { text, sections } = skillMap(s.name, body);
@@ -359,7 +364,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
         }
       }
       recordSent(mem, key, full.length);
-      log('skill', { skill: s.name, chars: full.length, bodyChars: body.length, sections: sections.length, view: 'map', ...(start ? { startSection: start, startResolved: started ?? null } : {}) });
+      logSkill({ skill: s.name, chars: full.length, bodyChars: body.length, sections: sections.length, view: 'map', ...(start ? { startSection: start, startResolved: started ?? null } : {}) });
       return {
         content: [{ type: 'text', text: wrap(s.name, s.file, full, 'map') + args }],
         details: { skill: s.name, path: s.file, view: 'map', chars: full.length, bodyChars: body.length, sections: sections.filter((x) => x.level === 2).map((x) => x.heading), ...(start ? { startSection: start, startResolved: started ?? null } : {}) },
