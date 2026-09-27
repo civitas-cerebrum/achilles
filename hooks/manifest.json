@@ -24,6 +24,12 @@
     "timeout": 5
   },
   {
+    "file": "achilles-kernel-activation-gate.sh",
+    "event": "PreToolUse",
+    "matcher": ".*",
+    "timeout": 10
+  },
+  {
     "file": "playwright-cli-isolation-guard.sh",
     "event": "PreToolUse",
     "matcher": "Bash",

@@ -170,10 +170,10 @@ const HOOK_MANIFEST = require('../hooks/manifest.json');
 
 // Scripts copied into ~/.claude/hooks/ but NEVER registered in settings.json:
 // a registered hook execs them. The kernel mandate kernel is one — the
-// achilles-kernel-activation-gate.sh wrapper (registered above) execs it
-// beside itself and only while the achilles protocol is active. Copying it
-// through HOOK_MANIFEST would also register it, and a directly-registered
-// kernel governs unconditionally.
+// achilles-kernel-activation-gate.sh wrapper (registered in
+// hooks/manifest.json) execs it beside itself and only while the achilles
+// protocol is active. Copying it through HOOK_MANIFEST would also register
+// it, and a directly-registered kernel governs unconditionally.
 const HOOK_COMPANIONS = [
   'kernel-mandate-role-gate.sh',
 ];
