@@ -191,3 +191,44 @@ import json, sys
 sys.stdout.write('patching')
 json.dump({}, open('tests/e2e/docs/onboarding-status.json','w'))
 EOF")" "stdout sink does not launder a json.dump write" "protected"
+
+section "protected-artifact-bash-guard: write shape must sit in the SAME simple command"
+# All four from a fresh 8-phase onboarding run (579 replayed bash commands).
+# A read-only ledger inspection that ends in an unrelated temp cleanup is not a
+# ledger mutation: the mutate verb and the protected path are different commands.
+assert_allow "$HOOK" "$(bash_payload "jq -r '.currentPhase' tests/e2e/docs/onboarding-status.json && rm -f /tmp/v")" "ledger read && rm -f /tmp/v (real false positive 1)"
+assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json && rm -f /tmp/scratch')" "cat ledger && rm -f /tmp/scratch (real false positive 1)"
+FRESH_NODE_E=$(cat <<'CMDEOF'
+cd /tmp/app && node -e "
+const l = require('./tests/e2e/docs/onboarding-status.json');
+const p4 = l.phases[3];
+console.log('currentPhase:', l.currentPhase, '| status:', l.status);
+console.log('phase4.status:', p4.status, '| findings:', p4.reviewerFindings.length);
+" && rm /tmp/verify-cart-c2.js /tmp/verify-cart-c2-a.js
+CMDEOF
+)
+assert_allow "$HOOK" "$(bash_payload "$FRESH_NODE_E")" "multi-line read-only node -e && rm of temp scripts (real false positive 2)"
+FRESH_HEREDOC=$(cat <<'CMDEOF'
+cd /tmp/app && python3 - <<'PYEOF'
+import json
+p='tests/e2e/docs/onboarding-status.json'
+l=json.load(open(p))
+l['currentPhase']=4
+json.dump(l, open(p,'w'), indent=2)
+PYEOF
+CMDEOF
+)
+assert_deny "$HOOK" "$(bash_payload "$FRESH_HEREDOC")" "heredoc ledger write behind cd && (the one correct deny in the run)" "protected"
+# The mutate verb still denies when it targets the artifact itself.
+assert_deny "$HOOK" "$(bash_payload 'rm -f tests/e2e/docs/onboarding-status.json && echo done')" "rm -f of the ledger, same command"
+assert_deny "$HOOK" "$(bash_payload 'ls /tmp && mv /tmp/forged.json tests/e2e/docs/onboarding-status.json')" "mv onto the ledger in the second command"
+assert_deny "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json && rm -f $(jq -r .path tests/e2e/docs/onboarding-status.json)')" "rm of a path from a \$( … ) substitution over the ledger"
+# A pipeline is one scope: the program feeding the interpreter's stdin counts.
+assert_deny "$HOOK" "$(bash_payload "printf '%s' \"open('tests/e2e/docs/onboarding-status.json','a')\" | python3")" "pipeline still correlates program and interpreter"
+assert_allow "$HOOK" "$(bash_payload 'node scripts/report.mjs && jq .currentPhase tests/e2e/docs/onboarding-status.json')" "unrelated node script && ledger read (former accepted over-deny)"
+assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/journey-map.md; rm -f /tmp/tmp.md')" "; separator: journey-map read then temp cleanup"
+assert_allow "$HOOK" "$(bash_payload 'grep -c FINDING tests/e2e/docs/adversarial-findings.md || rm -f /tmp/out')" "|| separator: findings read or temp cleanup"
+# The deny text is built inside a double-quoted bash string, so a backtick in it
+# would be COMMAND SUBSTITUTION (an earlier revision really did run python3 and
+# node while rendering this message). Pin the literal text.
+assert_deny "$HOOK" "$(bash_payload 'rm -f tests/e2e/docs/onboarding-status.json')" "deny text keeps its inline-interpreter bullet verbatim" "program inline ('python3 -c"
