@@ -407,6 +407,42 @@ test('depth 0: every skill root is checked, not just the first match', async () 
   assert.equal(r?.block, true);
 });
 
+// --- round 2: shadow transcripts are pruned at the orchestrator's session start -------------------
+/** A state dir pre-filled with `n` shadow transcripts, oldest first. */
+function filledState(n) {
+  const stateDir = tmp();
+  const dir = path.join(stateDir, 'pi-transcripts');
+  fs.mkdirSync(dir, { recursive: true });
+  for (let i = 0; i < n; i++) { const f = path.join(dir, `old-${i}.jsonl`); fs.writeFileSync(f, '{}\n'); fs.utimesSync(f, 1, 1000 + i); }
+  return { stateDir, dir };
+}
+test('session_start at depth 0 prunes the shadow transcripts and logs it', async (t) => {
+  const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
+  const { stateDir, dir } = filledState(45);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  await start(pi, ctx, { ...opts(), stateDir });
+  assert.equal(fs.readdirSync(dir).length, 40);
+  const entry = fs.readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).find((e) => e.kind === 'shadow_pruned');
+  assert.deepEqual({ removed: entry.removed, kept: entry.kept }, { removed: 5, kept: 40 });
+});
+test('a child session_start (depth >= 1) prunes nothing: its siblings are still running', async (t) => {
+  withEnv(t, 'ACHILLES_PI_DEPTH', '1');
+  const { stateDir, dir } = filledState(45);
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  await start(pi, ctx, { ...opts(), stateDir });
+  assert.equal(fs.readdirSync(dir).length, 45);
+});
+test("the session's own shadow survives a prune even when it is the oldest file", async () => {
+  const { stateDir, dir } = filledState(45);
+  const own = path.join(dir, 'sid-1.jsonl');
+  fs.writeFileSync(own, '{}\n'); fs.utimesSync(own, 1, 1); // older than every old-*
+  const pi = makeFakePi(); const ctx = makeFakeCtx();
+  await start(pi, ctx, { ...opts(), stateDir });
+  assert.ok(fs.existsSync(own));
+  // 46 files, 40 kept: the 6 oldest are candidates, and the spared own shadow leaves 41.
+  assert.equal(fs.readdirSync(dir).length, 41);
+});
+
 // --- round 2: large skill references earn a steer note, never a block ----------------------------
 /** A skill root holding one orchestrator skill with a big and a small reference, plus a big file
  * outside references/. Returns { root, big, small, outside }. */

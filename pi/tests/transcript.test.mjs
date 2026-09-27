@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { shadowPath, appendShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText, sessionStateDir } from '../extensions/achilles/transcript.ts';
+import { shadowPath, appendShadow, pruneShadows, KEEP_SHADOWS, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText, sessionStateDir } from '../extensions/achilles/transcript.ts';
 import { claudeToolInput } from '../extensions/achilles/payload.ts';
 import { runHook, parseDecision } from '../extensions/achilles/bridge.ts';
 
@@ -181,4 +181,64 @@ test('evidence floor: no fd context (composer) → allow', async () => {
   s.tool('Skill', { skill: 'test-composer' });
   s.tool('Agent', { description: 'composer-j-login:', prompt: 'compose the login journey' });
   assert.equal((await floor(s)).decision.block, false);
+});
+
+// ── round 2: shadow transcripts are pruned ───────────────────────────────────────────────────────
+/** A state dir holding `n` shadows (oldest first by mtime), named s0..s<n-1>. */
+function shadowDir(n) {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shadows-'));
+  const dir = path.join(stateDir, 'pi-transcripts');
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (let i = 0; i < n; i++) {
+    const f = path.join(dir, `s${i}.jsonl`);
+    fs.writeFileSync(f, '{"type":"user"}\n');
+    fs.utimesSync(f, 1, 1000 + i); // s0 oldest, s<n-1> newest
+  }
+  return { stateDir, dir };
+}
+const names = (dir) => fs.readdirSync(dir).sort();
+
+test('pruneShadows keeps the newest 40 shadows and removes the rest', () => {
+  const { stateDir, dir } = shadowDir(50);
+  assert.equal(pruneShadows(stateDir), 10);
+  assert.equal(fs.readdirSync(dir).length, KEEP_SHADOWS);
+  assert.ok(!fs.existsSync(path.join(dir, 's9.jsonl')), 'the 10 oldest are gone');
+  assert.ok(fs.existsSync(path.join(dir, 's10.jsonl')) && fs.existsSync(path.join(dir, 's49.jsonl')));
+  // Idempotent: a second run has nothing left to do.
+  assert.equal(pruneShadows(stateDir), 0);
+});
+test('pruneShadows spares a live session\'s shadow and the file it is told to keep', () => {
+  const { stateDir, dir } = shadowDir(50);
+  fs.writeFileSync(path.join(stateDir, 's0.active'), ''); // the live-session marker
+  assert.equal(pruneShadows(stateDir, path.join(dir, 's1.jsonl')), 8);
+  assert.ok(fs.existsSync(path.join(dir, 's0.jsonl')), 'live session kept');
+  assert.ok(fs.existsSync(path.join(dir, 's1.jsonl')), 'keepFile kept');
+  assert.ok(!fs.existsSync(path.join(dir, 's2.jsonl')));
+});
+test('pruneShadows touches nothing else in the state dir and leaves non-jsonl files alone', () => {
+  const { stateDir, dir } = shadowDir(45);
+  fs.writeFileSync(path.join(stateDir, 'sid.active'), '');
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'x');
+  fs.mkdirSync(path.join(dir, 'sub'));
+  pruneShadows(stateDir);
+  assert.ok(fs.existsSync(path.join(stateDir, 'sid.active')));
+  assert.ok(fs.existsSync(path.join(dir, 'notes.txt')));
+  assert.ok(fs.existsSync(path.join(dir, 'sub')));
+  assert.equal(names(dir).filter((n) => n.endsWith('.jsonl')).length, KEEP_SHADOWS);
+});
+test('pruneShadows on a missing or symlinked pi-transcripts does nothing and never throws', () => {
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'shadows-'));
+  assert.equal(pruneShadows(empty), -1);
+  const { dir } = shadowDir(50);
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'shadows-'));
+  fs.symlinkSync(dir, path.join(other, 'pi-transcripts'));
+  assert.equal(pruneShadows(other), -1);
+  assert.equal(fs.readdirSync(dir).length, 50, 'the symlink target is untouched');
+});
+test('a keep of 0 is honoured, and under the keep count nothing is removed', () => {
+  const a = shadowDir(3);
+  assert.equal(pruneShadows(a.stateDir, undefined, 10), 0);
+  const b = shadowDir(3);
+  assert.equal(pruneShadows(b.stateDir, undefined, 1), 2);
+  assert.deepEqual(names(b.dir), ['s2.jsonl']);
 });

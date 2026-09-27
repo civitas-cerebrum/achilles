@@ -121,3 +121,45 @@ export function assistantText(message: unknown): string {
     .map((c) => c.text as string)
     .join('\n');
 }
+
+/** Shadow transcripts kept by pruneShadows. One 8-phase run left 23 files and 2.5 MB behind. */
+export const KEEP_SHADOWS = 40;
+
+/** True when `p` exists and is a directory itself, not a symlink to one. */
+function realDir(p: string): boolean {
+  try { return fs.lstatSync(p).isDirectory(); } catch { return false; }
+}
+
+/**
+ * Prunes `<stateDir>/pi-transcripts`: keeps the newest `keep` `.jsonl` shadows by mtime, plus `keepFile`
+ * and any shadow whose session is still live (an `<id>.active` marker in `stateDir`, the same marker
+ * hooks/lib/achilles-activation.sh writes). Nothing else in the state dir is touched, and a symlinked
+ * pi-transcripts is refused so pruning cannot reach outside it. Every dispatch leaves one shadow behind
+ * and they hold prompts and tool inputs, so an unbounded directory is both clutter and exposure.
+ * Returns the number of files removed, or -1 when it could not run; never throws.
+ */
+export function pruneShadows(stateDir: string, keepFile?: string, keep = KEEP_SHADOWS): number {
+  const dir = path.join(stateDir, 'pi-transcripts');
+  if (!realDir(dir)) return -1;
+  try {
+    const live = new Set<string>();
+    try {
+      for (const name of fs.readdirSync(stateDir)) {
+        if (name.endsWith('.active')) live.add(`${name.slice(0, -'.active'.length)}.jsonl`);
+      }
+    } catch { /* no markers readable: mtime order alone decides */ }
+    const files = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isFile() && d.name.endsWith('.jsonl'))
+      .map((d) => { const p = path.join(dir, d.name); return { p, name: d.name, m: fs.statSync(p).mtimeMs }; })
+      .sort((x, y) => y.m - x.m);
+    let removed = 0;
+    for (const f of files.slice(keep)) {
+      if (f.p === keepFile || live.has(f.name)) continue;
+      fs.rmSync(f.p, { force: true });
+      removed++;
+    }
+    return removed;
+  } catch {
+    return -1;
+  }
+}

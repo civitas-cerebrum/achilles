@@ -10,7 +10,7 @@ import { skillRoots, PACKAGE_DIR } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth, refMax } from './env.ts';
 import { subagentOnlyDirs, blockedSkillRead, delegateInstruction, referenceDirs, largeReferenceRead, referenceNote, type SubagentOnlyDir, type ReferenceDir } from './guard.ts';
-import { sessionStateDir, shadowPath, appendShadow, seedShadow, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
+import { sessionStateDir, shadowPath, appendShadow, seedShadow, pruneShadows, KEEP_SHADOWS, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText } from './transcript.ts';
 
 export interface ManifestEntry { file: string; event: string; matcher: string | null; timeout?: number; async?: boolean }
 export interface HookRun { file: string; exitCode: number | null; stdout: string; stderr: string; timedOut: boolean; ms: number }
@@ -331,6 +331,14 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
     if (piDepth() >= 1 && parentShadow) {
       const seeded = seedShadow(shadowFor(ctx), parentShadow, opts.stateDir ?? sessionStateDir(home));
       log('shadow_seeded', { from: parentShadow, to: shadowFor(ctx), seeded });
+    }
+    // Nothing else prunes the shadow transcripts: one 8-phase run left 23 files and 2.5 MB of prompts
+    // and tool inputs behind. The orchestrator's session start is the moment to tidy up; a child's is
+    // not, since its siblings' shadows are still in use.
+    if (piDepth() === 0) {
+      const stateDir = opts.stateDir ?? sessionStateDir(home);
+      const removed = pruneShadows(stateDir, shadowFor(ctx));
+      if (removed > 0) log('shadow_pruned', { dir: path.join(stateDir, 'pi-transcripts'), removed, kept: KEEP_SHADOWS });
     }
     // The subagent-only read guard is achilles' own policy, not a hook, so it holds even when hook
     // execution ends up disabled below.
