@@ -75,6 +75,13 @@ export function withOperatorStop(reason: string, text: string): string {
 
 const SCOPE_BLOCK = /── achilles session-scope ─*[\s\S]*?(?:their call, not yours\.\)|$)/;
 export const SCOPE_POINTER = '(achilles session-scope notice applies — see the first block this session.)';
+// hooks/lib/no-skip-messaging.sh rides on most onboarding-pipeline warnings and denies: ~900 fixed
+// chars of contract text, unchanged every time. Measured: 12 of 17 Agent returns in one run drew a
+// warning carrying it. The first sighting steers; later ones are a pointer, like the scope notice.
+// The tail is bounded: a text that merely mentions the contract in passing and carries no closing
+// Reference line within 2,000 chars does not match at all, rather than having its end swallowed.
+const NO_SKIP_BLOCK = /(?:[─━═]{3,}\r?\n)?[^\n]*(?:No-skip|no-skip messaging|onboarding contract)[^\n]*\r?\n[\s\S]{0,2000}?(?:Reference: skills\/onboarding\/SKILL\.md[^\n]*|$)/;
+export const NO_SKIP_POINTER = '(achilles no-skip onboarding contract applies — see the first block this session.)';
 const LINE_CAP = 200;
 const CONTEXT_CAP = 1000;
 const WARNING_CAP = 1200;
@@ -145,6 +152,32 @@ export function repeatBlockLine(hook: string, reason: string): string {
   return `[achilles] ${hook}: same block as before — ${head}. ${fix ? fix : 'Apply the fix from the earlier message.'}`;
 }
 
+/** Hooks whose warning body is a fixed shape around a variable issue list: a repeat is worth one line.
+ * subagent-return-schema-guard.sh is the only one in the manifest today (9 of 17 Agent returns in one
+ * measured run drew a PARSE_FAIL/SCHEMA_FAIL warning; the orchestrator acted on none of them). */
+const SHAPED_WARN_HOOK = /subagent-return-schema(?:-return)?-guard/;
+
+/** The role a schema-guard warning names ("Role:        reviewer"), or '?'. */
+export function warnRole(text: string): string {
+  const m = /^\s*Role:\s*(\S.*?)\s*$/m.exec(text) ?? /^\s*Description:\s*"?([^"\n]+)"?\s*$/m.exec(text);
+  return m ? clipTo(m[1].trim(), LINE_CAP) : '?';
+}
+
+/** The first concrete error a schema-guard warning reports: a PARSE_FAIL / SCHEMA_FAIL line, an
+ * instance-path line, or the first bullet of its issue list; '' when it names none. */
+export function firstError(text: string): string {
+  const m = /^\s*((?:PARSE_FAIL|SCHEMA_FAIL):.*)$/m.exec(text)
+    ?? /^\s*-\s*(\/\S+.*)$/m.exec(text)
+    ?? /^\s*-\s*(\S.*)$/m.exec(text);
+  return m ? clipTo(m[1].trim(), LINE_CAP) : '';
+}
+
+/** The one-line stand-in for a second and later warning from a shaped-warning hook. */
+export function shapedWarnLine(hook: string, text: string): string {
+  const err = firstError(text);
+  return `[achilles] ${hook}: ${warnRole(text)} return failed validation again${err ? ` — ${err}` : ''}. Same return-shape rules as the first warning this session; the full text is in the UI/log.`;
+}
+
 export type NoteKind = 'systemMessage' | 'additionalContext' | 'reason';
 
 export interface MessageCompactor {
@@ -159,21 +192,31 @@ export interface MessageCompactor {
 
 export function createMessageCompactor(): MessageCompactor {
   let scopeSeen = false;
+  let noSkipSeen = false;
   const denies = new Map<string, string>();
   const warnings = new Set<string>();
+  const shapedSeen = new Set<string>();
   const self: MessageCompactor = {
-    reset() { scopeSeen = false; denies.clear(); warnings.clear(); },
+    reset() { scopeSeen = false; noSkipSeen = false; denies.clear(); warnings.clear(); shapedSeen.clear(); },
     scope(text) {
-      if (verboseMessages() || !SCOPE_BLOCK.test(text)) return text;
-      if (!scopeSeen) { scopeSeen = true; return text; }
-      return text.replace(SCOPE_BLOCK, SCOPE_POINTER);
+      if (verboseMessages()) return text;
+      let out = text;
+      if (SCOPE_BLOCK.test(out)) {
+        if (scopeSeen) out = out.replace(SCOPE_BLOCK, SCOPE_POINTER);
+        else scopeSeen = true;
+      }
+      if (NO_SKIP_BLOCK.test(out)) {
+        if (noSkipSeen) out = out.replace(NO_SKIP_BLOCK, NO_SKIP_POINTER);
+        else noSkipSeen = true;
+      }
+      return out;
     },
     deny(hook, reason) {
       if (verboseMessages()) return reason;
-      // Keyed by (hook, first line); collapsed only when the body (scope notice aside) is identical to
-      // the last one under that key, so a repeat with new details (another schema error) still shows.
+      // Keyed by (hook, first line); collapsed only when the body (the fixed blocks aside) is identical
+      // to the last one under that key, so a repeat with new details (another schema error) still shows.
       const key = `${hook}\0${firstLine(reason)}`;
-      const body = reason.replace(SCOPE_BLOCK, '').trim();
+      const body = reason.replace(SCOPE_BLOCK, '').replace(NO_SKIP_BLOCK, '').trim();
       if (denies.get(key) === body) return repeatBlockLine(hook, reason);
       denies.set(key, body);
       return self.scope(reason);
@@ -183,6 +226,12 @@ export function createMessageCompactor(): MessageCompactor {
       const key = warnKey(hook, text);
       if (warnings.has(key)) return `[achilles] ${hook}: repeated warning (see earlier).`;
       warnings.add(key);
+      // A shaped-warning hook (the schema guard) says the same thing every time around a different
+      // issue list: the first one carries the rules, later ones carry the role and the first error.
+      if (SHAPED_WARN_HOOK.test(hook)) {
+        if (shapedSeen.has(hook)) return shapedWarnLine(hook, text);
+        shapedSeen.add(hook);
+      }
       if (kind === 'additionalContext') return capAtLine(self.scope(text), CONTEXT_CAP);
       // First sight: the whole warning (it steers the model, e.g. a schema guard's issue list), capped.
       return capAtLine(self.scope(text));

@@ -81,7 +81,7 @@ test('commit-message-gate citation of a subagent-only SKILL.md §section yields 
 import fs from 'node:fs';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { createMessageCompactor, SCOPE_POINTER, firstLine, referencesLine, fixLines } from '../extensions/achilles/messages.ts';
+import { createMessageCompactor, SCOPE_POINTER, NO_SKIP_POINTER, firstLine, referencesLine, fixLines, warnRole, firstError, shapedWarnLine } from '../extensions/achilles/messages.ts';
 const activation = fs.readFileSync(path.join(pkg, 'hooks', 'lib', 'achilles-activation.sh'), 'utf8');
 const NOTICE = activation.slice(activation.indexOf("'── achilles session-scope") + 1, activation.indexOf("not yours.)'") + 'not yours.)'.length);
 const deny = (line) => `[BLOCKED] ${line}\n\nFix: do the other thing.\n\nReferences:\n  skills/orch-skill/SKILL.md\n\n${NOTICE}`;
@@ -118,12 +118,13 @@ test('warning: the first archiver warning reaches the model in full (<= 1,200 ch
   assert.ok(first.length <= 1200);
   assert.equal(c.note('playwright-artifact-archiver.sh', ARCHIVER('20260926T110910Z'), 'systemMessage'), '[achilles] playwright-artifact-archiver.sh: repeated warning (see earlier).');
 });
-test('warning: two different schema-guard bodies (same constant first line) both reach the model in full', (t) => {
+test('warning: the first schema-guard body reaches the model in full; a second, different one is one line', (t) => {
   t.after(verboseOff());
   const c = createMessageCompactor();
   const second = SCHEMA_WARN.replace('/verdict: must be string', '/handover/next-action: required property missing');
   assert.equal(c.note('subagent-return-schema-guard.sh', SCHEMA_WARN, 'systemMessage'), SCHEMA_WARN);
-  assert.equal(c.note('subagent-return-schema-guard.sh', second, 'systemMessage'), second);
+  const line = c.note('subagent-return-schema-guard.sh', second, 'systemMessage');
+  assert.equal(line, '[achilles] subagent-return-schema-guard.sh: workflow-reviewer-phase1: gate Phase 1 return failed validation again — /handover/status: must be one of approved|rejected|escalated. Same return-shape rules as the first warning this session; the full text is in the UI/log.');
   assert.match(c.note('subagent-return-schema-guard.sh', second, 'systemMessage'), /repeated warning/, 'the identical body still collapses');
   // Pruned-run ids and counts differ between archiver messages; they still count as the same warning.
   c.note('a.sh', ARCHIVER('20260926T110721Z'), 'systemMessage');
@@ -247,4 +248,90 @@ test('withOperatorStop appends the line once and leaves other text alone', () =>
   assert.equal(withOperatorStop(r, once), once);
   assert.equal(withOperatorStop('[BLOCKED] use Edit', 'short'), 'short');
   assert.equal(withOperatorStop(r, '[achilles] h: same block as before — x.'), `[achilles] h: same block as before — x.\n${OPERATOR_STOP}`);
+});
+
+// ── round 2: the no-skip contract block and the shaped schema-guard warning ───────────────────────
+/** The canonical block, read from the hook library that every pipeline hook interpolates. */
+const NO_SKIP = spawnSync('bash', ['-c', `source ${path.join(pkg, 'hooks', 'lib', 'no-skip-messaging.sh')}; no_skip_messaging_block`], { encoding: 'utf8' }).stdout.trimEnd();
+/** A schema-guard warning shaped exactly as hooks/subagent-return-schema-guard.sh emits it. */
+const GUARD_WARN = (err) => `[WARN] Subagent return validation surfaced issues.
+
+Description: "workflow-reviewer-phase5: gate Phase 5"
+Role:        workflow-reviewer
+
+Schema validation errors (schemas/subagent-returns/workflow-reviewer.schema.json):
+${err}
+
+References:
+  schemas/subagent-returns/README.md
+${NO_SKIP}`;
+
+test('the no-skip block is real and large enough to be worth stripping', () => {
+  assert.ok(NO_SKIP.includes('Pipeline phases cannot be skipped'));
+  assert.ok(NO_SKIP.length > 800, `${NO_SKIP.length} chars`);
+});
+test('no-skip block: the first sighting keeps it in full, a later different warning gets the pointer', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const first = c.note('onboarding-ledger-write-gate.sh', `[WARN] phase 5 not recorded.\n\nReferences:\n  skills/onboarding/SKILL.md\n${NO_SKIP}`, 'systemMessage');
+  assert.ok(first.includes('Pipeline phases cannot be skipped'), first);
+  const second = c.note('standard-mode-first-pass-guard.sh', `[WARN] pass 2 grouped without permission.\n\nReferences:\n  skills/coverage-expansion/SKILL.md\n${NO_SKIP}`, 'systemMessage');
+  assert.ok(!second.includes('Pipeline phases cannot be skipped'));
+  assert.ok(second.includes(NO_SKIP_POINTER), second);
+  assert.match(second, /^\[WARN\] pass 2 grouped without permission\./);
+});
+test('no-skip block: a deny carries it once too, then the pointer', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const a = c.deny('guard.sh', `[BLOCKED] one\n\nFix: do it right.\n${NO_SKIP}`);
+  assert.ok(a.includes('Pipeline phases cannot be skipped'));
+  const b = c.deny('guard.sh', `[BLOCKED] two\n\nFix: do it right.\n${NO_SKIP}`);
+  assert.ok(!b.includes('Pipeline phases cannot be skipped'));
+  assert.ok(b.includes(NO_SKIP_POINTER));
+  // The dedupe key ignores the block: two denies that differ only in it still collapse as repeats.
+  const c2 = createMessageCompactor();
+  c2.deny('g.sh', `[BLOCKED] same\n\nFix: f.\n${NO_SKIP}`);
+  assert.match(c2.deny('g.sh', '[BLOCKED] same\n\nFix: f.'), /same block as before/);
+});
+test('text that only mentions the contract in passing, with no closing Reference line, is left alone', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const mention = '[WARN] a.\n\nThis is the onboarding contract in passing.\nKeep this tail.\n' + 'x'.repeat(2500) + '\nAnd this one.';
+  c.note('h.sh', `[WARN] first\n${NO_SKIP}`, 'systemMessage');
+  const out = c.note('h.sh', mention, 'systemMessage');
+  assert.ok(out.includes('Keep this tail.'));
+  assert.ok(!out.includes(NO_SKIP_POINTER));
+});
+test('schema-guard: the second and later warnings collapse to role + first error', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const full = c.note('subagent-return-schema-guard.sh', GUARD_WARN('PARSE_FAIL: Unexpected token `\u0060` in JSON at position 0'), 'systemMessage');
+  assert.match(full, /^\[WARN\] Subagent return validation surfaced issues\./);
+  assert.ok(full.includes('PARSE_FAIL'), 'the first sighting carries the detail');
+  const next = c.note('subagent-return-schema-guard.sh', GUARD_WARN('SCHEMA_FAIL: /handover must have required property \'next-action\''), 'systemMessage');
+  assert.equal(next.split('\n').length, 1, next);
+  assert.ok(next.includes('workflow-reviewer return failed validation again'));
+  assert.ok(next.includes("SCHEMA_FAIL: /handover must have required property 'next-action'"));
+  assert.ok(next.length < 300, `${next.length} chars`);
+  // Another hook's warnings are untouched by the schema guard's sighting.
+  assert.match(c.note('other.sh', '[WARN] different hook.\n\nDetails here.', 'systemMessage'), /Details here/);
+});
+test('schema-guard helpers: role and first error come out of the real warning shape', () => {
+  assert.equal(warnRole(GUARD_WARN('SCHEMA_FAIL: /verdict must be string')), 'workflow-reviewer');
+  assert.equal(firstError(GUARD_WARN('SCHEMA_FAIL: /verdict must be string')), 'SCHEMA_FAIL: /verdict must be string');
+  // A warning with an issue-bullet list instead of validator lines.
+  assert.equal(firstError(SCHEMA_WARN), '/handover/status: must be one of approved|rejected|escalated');
+  assert.equal(warnRole(SCHEMA_WARN), 'workflow-reviewer-phase1: gate Phase 1');
+  assert.equal(warnRole('[WARN] nothing to name here.'), '?');
+  assert.equal(firstError('[WARN] nothing to name here.'), '');
+  assert.match(shapedWarnLine('g.sh', '[WARN] nothing to name here.'), /^\[achilles\] g\.sh: \? return failed validation again\. Same return-shape rules/);
+});
+test('ACHILLES_PI_VERBOSE=1 keeps the no-skip block and the full schema-guard body', (t) => {
+  const prev = process.env.ACHILLES_PI_VERBOSE;
+  process.env.ACHILLES_PI_VERBOSE = '1';
+  t.after(() => { if (prev === undefined) delete process.env.ACHILLES_PI_VERBOSE; else process.env.ACHILLES_PI_VERBOSE = prev; });
+  const c = createMessageCompactor();
+  const w = GUARD_WARN('SCHEMA_FAIL: /verdict must be string');
+  assert.equal(c.note('subagent-return-schema-guard.sh', w, 'systemMessage'), w);
+  assert.equal(c.note('subagent-return-schema-guard.sh', GUARD_WARN('SCHEMA_FAIL: /phase must be integer'), 'systemMessage'), GUARD_WARN('SCHEMA_FAIL: /phase must be integer'));
 });

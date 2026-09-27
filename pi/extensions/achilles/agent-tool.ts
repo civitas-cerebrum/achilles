@@ -21,6 +21,11 @@ const KILL_GRACE_MS = 5000;
  * cap stays as a backstop). The allowlist applies to extension tools too. */
 const CHILD_TOOLS = 'read,bash,edit,write,grep,find,ls,Skill';
 
+/** Appended to every child brief. Children wrapped their handover JSON in ```json fences plus prose,
+ * which is what the return-schema guard reported as PARSE_FAIL (9 of 17 Agent returns in one measured
+ * run) — and prose around the object is the part the orchestrator's result drops anyway. */
+export const BARE_HANDOVER_LINE = 'Return the bare handover JSON as your final message: no code fence, no prose before or after.';
+
 /** This extension's entry point, passed to every child with `-e` so the gates run inside it even
  * when the parent loaded the extension with `-e` rather than from settings. pi de-duplicates an
  * extension that is both in settings and passed with `-e` (verified: one session_start per process). */
@@ -339,7 +344,9 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         if (skillDir) args.push('--skill', skillDir);
         // The prompt always goes by @file: as a raw argv word, a brief starting with "--x", "@/etc/passwd"
         // or "- item" would be parsed by pi as a flag or a file include. The file is private (0600).
-        const pf = path.join(tmp, 'prompt.md'); fs.writeFileSync(pf, params.prompt, { mode: 0o600 }); args.push(`@${pf}`);
+        const pf = path.join(tmp, 'prompt.md');
+        fs.writeFileSync(pf, `${params.prompt.trimEnd()}\n\n${BARE_HANDOVER_LINE}\n`, { mode: 0o600 });
+        args.push(`@${pf}`);
         log('agent_spawn', { description: params.description, agentType: type, skill: params.skill, active, depth: depth + 1 });
 
         let lastText = '', stderr = '', childSessionId = '';
