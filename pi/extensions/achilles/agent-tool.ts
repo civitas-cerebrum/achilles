@@ -21,15 +21,40 @@ const KILL_GRACE_MS = 5000;
  * cap stays as a backstop). The allowlist applies to extension tools too. */
 const CHILD_TOOLS = 'read,bash,edit,write,grep,find,ls,Skill';
 
-/** Appended to every child brief. Children wrapped their handover JSON in ```json fences plus prose,
- * which is what the return-schema guard reported as PARSE_FAIL (9 of 17 Agent returns in one measured
- * run) — and prose around the object is the part the orchestrator's result drops anyway.
+/** Appended to a child brief whose ROLE owes a handover. Children wrapped their handover JSON in
+ * ```json fences plus prose, which is what the return-schema guard reported as PARSE_FAIL (9 of 17
+ * Agent returns in one measured run) — and prose around the object is the part the orchestrator's
+ * result drops anyway.
  *
- * It is worded as a formatting rule, conditional on there being a handover: an unconditional "return
- * the bare handover JSON" made a child whose brief had nothing to hand over (live check 04: "run echo
- * hi and reply OK") go looking for the return schema — it loaded achilles-protocol, fetched sections
- * and read subagent-return-schema.md instead of finishing. */
-export const BARE_HANDOVER_LINE = 'Formatting: if your final message is a handover JSON, return it bare — no code fence, no prose before or after.';
+ * It is unconditional on purpose. A conditional wording ("if your final message is a handover JSON")
+ * releases exactly the children that caused the PARSE_FAILs: one writing prose that CONTAINS a fenced
+ * handover reads the antecedent as false. What must be conditional is WHICH children get the line —
+ * see handoverLine(). An unconditional line sent to a child with nothing to hand over (live check 04:
+ * "run echo hi and reply OK") made it go hunting for the return schema instead of finishing. */
+export const BARE_HANDOVER_LINE = 'Return the bare handover JSON as your final message: no code fence, no prose before or after.';
+
+/**
+ * Role prefixes whose returns the schema guard validates — the mirror of resolve_schema_role in
+ * hooks/lib/schema-role-map.sh, restricted to the cases that yield a non-empty schema role. A prefix
+ * that maps to "" there (process-validator-, phase1-, stage2-, cleanup-, companion-, fd-) takes the
+ * envelope-sanity path only and is NOT owed a handover object, and an unknown prefix owes nothing at
+ * all. pi/tests/agent-tool.test.mjs sources the shell file and fails if this list drifts from it.
+ */
+export const SCHEMA_VALIDATED_ROLES = [
+  'perf-reviewer-', 'workflow-reviewer-', 'composer-', 'reviewer-', 'composition-judge-',
+  'probe-', 'repair-worker-', 'phase-validator-', 'phase4-prioritise-author', 'phase4-cycle-',
+] as const;
+
+/** True when a dispatch role's return is schema-validated, so the child owes a bare handover JSON. */
+export function owesHandover(role: string): boolean {
+  const r = role.trim();
+  return SCHEMA_VALIDATED_ROLES.some((p) => r.startsWith(p));
+}
+
+/** The formatting line for a child brief: the imperative for a role that owes a handover, else "". */
+export function handoverLine(role: string): string {
+  return owesHandover(role) ? BARE_HANDOVER_LINE : '';
+}
 
 /** This extension's entry point, passed to every child with `-e` so the gates run inside it even
  * when the parent loaded the extension with `-e` rather than from settings. pi de-duplicates an
@@ -350,7 +375,10 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         // The prompt always goes by @file: as a raw argv word, a brief starting with "--x", "@/etc/passwd"
         // or "- item" would be parsed by pi as a flag or a file include. The file is private (0600).
         const pf = path.join(tmp, 'prompt.md');
-        fs.writeFileSync(pf, `${params.prompt.trimEnd()}\n\n${BARE_HANDOVER_LINE}\n`, { mode: 0o600 });
+        // The handover imperative goes only to a role the schema guard validates: a child with nothing
+        // to hand over must not be sent looking for a return schema (live check 04).
+        const fmt = handoverLine(type);
+        fs.writeFileSync(pf, `${params.prompt.trimEnd()}${fmt ? `\n\n${fmt}` : ''}\n`, { mode: 0o600 });
         args.push(`@${pf}`);
         log('agent_spawn', { description: params.description, agentType: type, skill: params.skill, active, depth: depth + 1 });
 

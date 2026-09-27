@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
-import { registerAgentTool, saveFullReturn, leanResult, shrinkJson, pruneReturns, resultCap, PROTECTED_KEYS, BARE_HANDOVER_LINE } from '../extensions/achilles/agent-tool.ts';
+import { registerAgentTool, saveFullReturn, leanResult, shrinkJson, pruneReturns, resultCap, PROTECTED_KEYS, BARE_HANDOVER_LINE, SCHEMA_VALIDATED_ROLES, owesHandover } from '../extensions/achilles/agent-tool.ts';
 const fx = path.join(import.meta.dirname, 'fixtures');
 const child = path.join(fx, 'fake-pi-child.mjs');
 const cleanup = [];
@@ -165,17 +165,54 @@ test('ACHILLES_PI_VERBOSE=1 bypasses extraction and the 8 KB cap (legacy 16 KB c
   assert.match(long.content[0].text, /truncated/);
   assert.ok(!fs.existsSync(path.join(cwd, '.achilles')));
 });
-test('every prompt goes by a 0600 @file, with the bare-handover line appended, and never as a raw argv word', async () => {
+test('every prompt goes by a 0600 @file and never as a raw argv word', async () => {
   const { tool } = setup();
   for (const prompt of ['--x', '@/etc/passwd', '- item', 'plain brief', 'x'.repeat(100 * 1024)]) {
-    const h = header(await run(tool, { description: 'd', prompt }));
+    const h = header(await run(tool, { description: `composer-a: ${prompt.slice(0, 5)}`, prompt }));
     assert.equal(h.prompt, `${prompt}\n\n${BARE_HANDOVER_LINE}\n`, JSON.stringify(prompt.slice(0, 20)));
-    assert.equal(BARE_HANDOVER_LINE, 'Formatting: if your final message is a handover JSON, return it bare — no code fence, no prose before or after.');
+    assert.equal(BARE_HANDOVER_LINE, 'Return the bare handover JSON as your final message: no code fence, no prose before or after.');
     assert.equal(h.promptMode, 0o600);
     assert.equal(h.args.filter((a) => a.startsWith('@')).length, 1);
     assert.ok(!h.args.includes(prompt), 'raw prompt not in argv');
     assert.match(h.args.at(-1), /^@.*prompt\.md$/);
   }
+});
+
+// ── I6: the handover imperative is bound to the dispatch role, not to the child's self-assessment ──
+test('the handover line goes to a schema-validated role and to nobody else', async () => {
+  const { tool } = setup();
+  const owed = header(await run(tool, { description: 'workflow-reviewer-phase1: check', prompt: 'brief' }));
+  assert.equal(owed.prompt, `brief\n\n${BARE_HANDOVER_LINE}\n`);
+  // live check 04 dispatched `description: "d"` with nothing to hand over; it must get no line.
+  const bare = header(await run(tool, { description: 'd', prompt: 'brief' }));
+  assert.equal(bare.prompt, 'brief\n');
+  // A known prefix that maps to "" in schema-role-map.sh takes the envelope path only: no line.
+  for (const d of ['process-validator-x: y', 'cleanup-1: y', 'companion-a: y', 'fd-3: y', 'phase1-scaffold: y', 'stage2-x: y'])
+    assert.equal(header(await run(tool, { description: d, prompt: 'brief' })).prompt, 'brief\n', d);
+  // subagent_type wins over the description prefix, the way agentType resolves it.
+  const typed = header(await run(tool, { description: 'anything at all', subagent_type: 'probe-3', prompt: 'brief' }));
+  assert.equal(typed.prompt, `brief\n\n${BARE_HANDOVER_LINE}\n`);
+});
+
+test('the pi-side validated-role list covers every schema-validated prefix in schema-role-map.sh', () => {
+  const sh = fs.readFileSync(path.join(import.meta.dirname, '..', '..', 'hooks', 'lib', 'schema-role-map.sh'), 'utf8');
+  const body = sh.slice(sh.indexOf('resolve_schema_role()'), sh.indexOf('esac', sh.indexOf('resolve_schema_role()')));
+  const cases = [...body.matchAll(/^[ \t]+([a-z0-9*|_-]+)\)\s*(?:\r?\n\s*)?echo\s+"([^"]*)"/gm)]
+    .flatMap(([, pats, role]) => pats.split('|').map((p) => ({ pat: p.trim(), role })))
+    .filter(({ pat }) => pat !== '*');
+  assert.ok(cases.length >= 16, `parsed only ${cases.length} cases`);
+  const validated = cases.filter((c) => c.role).map((c) => c.pat);
+  const unvalidated = cases.filter((c) => !c.role).map((c) => c.pat);
+  assert.equal(validated.length, 10, validated.join(','));
+  // Every validated prefix is owed a handover, by a sample role built from its glob.
+  for (const pat of validated) {
+    const sample = `${pat.replace(/\*$/, '')}sample`;
+    assert.ok(owesHandover(sample), `pi side does not owe a handover for ${pat}`);
+    assert.ok(SCHEMA_VALIDATED_ROLES.some((p) => pat.replace(/\*$/, '') === p || pat.replace(/\*$/, '') === p.replace(/-$/, '')), `${pat} is not mirrored verbatim`);
+  }
+  // And no prefix that maps to "" there is owed one here.
+  for (const pat of unvalidated) assert.ok(!owesHandover(`${pat.replace(/\*$/, '')}sample`), `${pat} must not be owed a handover`);
+  assert.equal(SCHEMA_VALIDATED_ROLES.length, validated.length);
 });
 test('no transcript copy unless ACHILLES_PI_KEEP_TRANSCRIPTS=1', async () => {
   const before = new Set(fs.readdirSync(os.tmpdir()).filter((f) => /^achilles-transcript-/.test(f)));
