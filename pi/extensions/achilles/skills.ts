@@ -112,3 +112,113 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
   }
   return undefined;
 }
+
+// ── Section-addressable skill bodies ─────────────────────────────────────────────────────────────
+// A large skill costs the orchestrator its whole body (coverage-expansion is 89k chars, ~23k tokens)
+// for work that usually needs one section. Every large skill is written as 13-21 `## ` sections, so
+// at depth 0 the Skill tool returns a MAP of the skill — preamble, the always-required rule blocks,
+// and a table of contents — and the model fetches a section by name. A subagent (depth >= 1) is
+// dispatched for one job and its window holds only its own skill, so it still gets the whole body.
+
+/** A heading matching this is ALWAYS-REQUIRED: its text is in the map whatever the size costs, or,
+ * when it does not fit the map budget, it is listed as mandatory reading the model must fetch. */
+export const REQUIRED_HEADING = /ABSOLUTE RULE|Absolute Rules|non-negotiable|No-skip contract|read this before|STOP AND READ|must read/i;
+
+export interface SkillSection {
+  /** Heading text, hashes and surrounding whitespace removed. */
+  heading: string;
+  /** 2 for `## `, 3 for `### `, … */
+  level: number;
+  /** Heading line plus everything under it up to the next heading of the same or a higher level. */
+  text: string;
+  /** Heading line plus its own prose only, up to the next heading of ANY level. */
+  ownText: string;
+  required: boolean;
+}
+
+interface Head { line: number; level: number; heading: string }
+
+/** Headings (`## ` … `###### `) of `body`, skipping fenced code blocks: several skills embed a
+ * document template whose `## ` lines are sample output, not sections of the skill. */
+function headings(lines: string[]): Head[] {
+  const out: Head[] = [];
+  let fence = false;
+  lines.forEach((l, line) => {
+    if (/^\s{0,3}(```|~~~)/.test(l)) { fence = !fence; return; }
+    if (fence) return;
+    const m = /^(#{2,6})\s+(\S.*?)\s*$/.exec(l);
+    if (m) out.push({ line, level: m[1].length, heading: m[2] });
+  });
+  return out;
+}
+
+/** Everything before the first `## `, trimmed (the skill's title and its opening paragraphs). */
+export function skillPreamble(body: string): string {
+  const lines = body.split('\n');
+  const first = headings(lines).find((h) => h.level === 2);
+  return lines.slice(0, first ? first.line : lines.length).join('\n').trim();
+}
+
+/** Every heading of `body` as a section, in document order (all levels, nested ones included). */
+export function parseSections(body: string): SkillSection[] {
+  const lines = body.split('\n');
+  const heads = headings(lines);
+  return heads.map((h, i) => {
+    const next = heads.slice(i + 1).find((o) => o.level <= h.level);
+    const anyNext = heads[i + 1];
+    return {
+      heading: h.heading,
+      level: h.level,
+      text: lines.slice(h.line, next ? next.line : lines.length).join('\n').trim(),
+      ownText: lines.slice(h.line, anyNext ? anyNext.line : lines.length).join('\n').trim(),
+      required: REQUIRED_HEADING.test(h.heading),
+    };
+  });
+}
+
+/** The section a `section` argument asks for: a table-of-contents number, else an exact heading match
+ * (case-insensitive), else a unique case-insensitive substring match. Several matches return the
+ * candidates instead of guessing — a small model fetching the wrong rule block is worse than a retry. */
+export function findSection(sections: SkillSection[], query: string): { section?: SkillSection; candidates: SkillSection[] } {
+  const q = query.trim().toLowerCase().replace(/^#+\s*/, '');
+  if (!q) return { candidates: [] };
+  // The map numbers the `## ` sections, so "15" is a legitimate way to ask for the 15th.
+  if (/^\d{1,3}$/.test(q)) {
+    const top = sections.filter((s) => s.level === 2);
+    const nth = top[Number(q) - 1];
+    if (nth) return { section: nth, candidates: [] };
+  }
+  const exact = sections.filter((s) => s.heading.toLowerCase() === q);
+  if (exact.length === 1) return { section: exact[0], candidates: [] };
+  const hits = exact.length > 1 ? exact : sections.filter((s) => s.heading.toLowerCase().includes(q));
+  if (hits.length === 1) return { section: hits[0], candidates: [] };
+  return { candidates: hits };
+}
+
+/** The nearest enclosing section of `s` (the heading above it at a lower level), if any. Several
+ * skills repeat a subsection heading ("Hard rules — kernel-resident"), so a candidate is only
+ * identifiable through its parent. */
+export function parentOf(sections: SkillSection[], s: SkillSection): SkillSection | undefined {
+  for (let i = sections.indexOf(s) - 1; i >= 0; i--) if (sections[i].level < s.level) return sections[i];
+  return undefined;
+}
+
+/** The `## `-level table of contents, with each section's size and whether it is required reading. */
+export function tableOfContents(sections: SkillSection[], skill: string): string {
+  const top = sections.filter((s) => s.level === 2);
+  const lines = top.map((s, i) => {
+    const nested = sections.filter((o) => o.required && o.level > 2 && sectionOwns(sections, s, o));
+    const mark = s.required || nested.length ? ' [required reading]' : '';
+    return `${String(i + 1).padStart(2)}. ${s.heading} (${s.text.length} chars)${mark}`;
+  });
+  return `Sections — fetch one with Skill { skill: "${skill}", section: "<heading>" }:\n${lines.join('\n')}`;
+}
+
+/** Whether `child` falls inside `parent`'s span (both from the same parseSections result). */
+function sectionOwns(sections: SkillSection[], parent: SkillSection, child: SkillSection): boolean {
+  const i = sections.indexOf(parent);
+  const j = sections.indexOf(child);
+  if (i < 0 || j <= i) return false;
+  for (let k = i + 1; k < j; k++) if (sections[k].level <= parent.level) return false;
+  return true;
+}
