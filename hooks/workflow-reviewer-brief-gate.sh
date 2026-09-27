@@ -170,6 +170,7 @@ enough context to actually evaluate) defeats the protocol.
 Fix: rewrite the brief to include the missing elements above. The brief
 should structurally read:
 
+  <<kernel-mandate-role: workflow-reviewer#<nonce>>>
   You are workflow-reviewer-<phase|pass|cycle><N>.
   Read the ledger at tests/e2e/docs/onboarding-status.json and verify
   the phases[<N>].handoverEnvelope + .deliverables against the exit
@@ -177,6 +178,11 @@ should structurally read:
   Return shape: workflow-reviewer.schema.json.
   Emit verdict: approve only after on-disk verification.
   Findings or attestation per the schema.
+
+(The first line is the role kernel's binding tag — a fresh nonce of 4+
+lowercase alphanumerics per dispatch, never reused within a phase; see
+skills/onboarding/SKILL.md §\"Dispatch grammar\". Dispatch with
+subagent_type: workflow-reviewer.)
 
 Bypass: \`WORKFLOW_REVIEWER_BRIEF_GATE=off\` in the environment when
 re-dispatching with a known-good brief (audit the use).

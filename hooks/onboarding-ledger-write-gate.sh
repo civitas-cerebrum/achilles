@@ -42,7 +42,11 @@
 #    `workflow-reviewer-*` / `phase-validator-*` dispatches (tracked by
 #    workflow-approver-registry.sh) can record approvals. This is the
 #    separation-of-duties gate: the orchestrator does the work, an
-#    approver subagent records the verdict.
+#    approver subagent records the verdict. The same identity is required
+#    for a top-level `.status` → `complete` | `aborted` transition: that
+#    write retires the session's activation marker (and with it every
+#    achilles gate and the kernel-mandate role binding), so the
+#    orchestrator may not land its own off-switch.
 # 5. **Mode authorisation.** Any write that sets or changes `runMode`
 #    (the coverage-expansion mode — `standard` vs `depth`) MUST also
 #    include a non-empty `modeAuthorizer` field capturing the user's
@@ -240,6 +244,12 @@ pipeline_validate_transition "$TMP_PROPOSED" "$FILE_PATH" && exit 0
 # ---------------------------------------------------------------------------
 AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
 pipeline_check_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" && exit 0
+
+# Same identity requirement for the OFF-SWITCH: a top-level .status →
+# complete|aborted transition retires the session's governance (activation
+# marker + kernel role binding), so only a registered approver subagent
+# may land it (lib call).
+pipeline_check_terminal_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" && exit 0
 
 # ---------------------------------------------------------------------------
 # Mode-authorisation check (lib call) — runMode/modeAuthorizer co-location.

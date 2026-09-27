@@ -235,6 +235,55 @@ assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$
 rm -f "$LEDGER_PATH" "$REGISTRY"
 
 # ---------------------------------------------------------------------------
+section "ledger-write-gate: terminal .status is an approval-class write (the off-switch)"
+# A write landing top-level status complete|aborted is what the activation
+# watcher keys on to retire the session marker — and with the marker goes
+# every achilles gate and the kernel-mandate role binding. So it is held to
+# the same identity as an approval: subagent context + registered approver.
+# The orchestrator (no agent_id) may not end its own governance.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+rm -f "$REGISTRY"
+TERMINAL_COMPLETE=$(echo "$VALID_FRESH" | "$JQ" '.status = "complete"')
+TERMINAL_ABORTED=$(echo "$VALID_FRESH" | "$JQ" '.status = "aborted"')
+
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")" \
+  "Orchestrator direct write status → complete → DENY" "OFF-SWITCH"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")" \
+  "…the deny says why (approval-class write)" "approval-class write"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_ABORTED")" \
+  "Orchestrator direct write status → aborted → DENY" "OFF-SWITCH"
+
+# Subagent context without a registry → DENY (same registry rules as approvals).
+P_T_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")
+P_T_NOREG=$(echo "$P_T_NOREG" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type: "general-purpose"}')
+assert_deny "$H" "$P_T_NOREG" "Subagent status → complete but no registry → DENY" "no approver registry exists"
+
+# Registered, unexpired approver → the existing behaviour (ALLOW).
+NOW=$(date +%s)
+printf '{"toolu_final":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$NOW" > "$REGISTRY"
+P_T_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")
+P_T_OK=$(echo "$P_T_OK" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type: "general-purpose"}')
+assert_allow "$H" "$P_T_OK" "Registered approver subagent status → complete → ALLOW"
+P_T_AB=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_ABORTED")
+P_T_AB=$(echo "$P_T_AB" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type: "general-purpose"}')
+assert_allow "$H" "$P_T_AB" "Registered approver subagent status → aborted → ALLOW"
+
+# Expired registration → DENY, as for approvals.
+printf '{"toolu_stale":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$((NOW - 3600))" > "$REGISTRY"
+assert_deny "$H" "$P_T_OK" "Expired approver registration for status → complete → DENY" "has expired"
+rm -f "$REGISTRY"
+
+# Non-terminal statuses and non-transitions are not gated.
+NON_TERMINAL=$(echo "$VALID_FRESH" | "$JQ" '.status = "blocked"')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$NON_TERMINAL")" \
+  "Orchestrator status → blocked (non-terminal) → ALLOW"
+printf '%s' "$TERMINAL_COMPLETE" > "$LEDGER_PATH"
+SAME_TERMINAL=$(echo "$TERMINAL_COMPLETE" | "$JQ" '.phases[0].deliverables = ["playwright.config.ts"]')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$SAME_TERMINAL")" \
+  "Orchestrator write leaving an already-terminal status in place (no transition) → ALLOW"
+
+rm -f "$LEDGER_PATH" "$REGISTRY"
+
 section "ledger-write-gate: mode-authorisation"
 # `runMode` is required by the schema; this gate forces it to be set
 # WITH an audit-trail `modeAuthorizer` field naming the user's explicit

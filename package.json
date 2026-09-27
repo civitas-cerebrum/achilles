@@ -10,8 +10,9 @@
     "test:pi": "node --test \"pi/tests/*.test.mjs\"",
     "test:pi:live": "for f in pi/tests/live/*.sh; do bash \"$f\" || exit 1; done",
     "sync-hooks": "node scripts/sync-hooks.js",
+    "sync:kernel-mandate": "node scripts/sync-kernel-mandate.mjs",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
-    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && npm run test:hooks && npm run test:reporter && npm run test:pi"
+    "prepack": "npm run schemas:lint && node scripts/lint-doc-drift.mjs && node scripts/sync-kernel-mandate.mjs --check && npm run test:hooks && npm run test:reporter && npm run test:pi"
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",

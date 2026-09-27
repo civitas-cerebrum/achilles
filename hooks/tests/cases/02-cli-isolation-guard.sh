@@ -6,6 +6,7 @@ assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=compo
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=reviewer-j-checkout-1-c1 open --browser=chromium http://app')" "reviewer-j- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=probe-j-checkout-4 open --browser=chromium http://app')" "probe-j- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=composer-sj-pay-1-c1 open --browser=chromium http://app')" "composer-sj- slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=test-composer-j-x-1-c1 open --browser=chromium http://app')" "test-composer-j- slug (kernel-mandate role spelling) → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=phase1-root open --browser=chromium http://app')" "phase1- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=phase2-mkt open --browser=chromium http://app')" "phase2- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=stage2-cart-form open --browser=chromium http://app')" "stage2- slug → ALLOW"

@@ -27,7 +27,8 @@
 # No node_modules or repo-root resolution required at hook runtime.
 #
 # Schema coverage:
-#   composer-<slug>            → schemas/subagent-returns/composer.schema.json
+#   test-composer-<slug>       → schemas/subagent-returns/composer.schema.json
+#   composer-<slug>            → schemas/subagent-returns/composer.schema.json  (pre-kernel spelling)
 #   reviewer-<slug>            → schemas/subagent-returns/reviewer-inloop.schema.json
 #   probe-<slug>               → schemas/subagent-returns/probe.schema.json
 #   phase-validator-<N>        → schemas/subagent-returns/phase-validator.schema.json
