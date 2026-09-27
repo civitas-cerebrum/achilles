@@ -25,8 +25,8 @@
 #   1. The "Pipeline phases cannot be skipped" headline.
 #   2. The legitimate early-stop sentinel path.
 #   3. The framings-not-authorisation reminder.
-#   4. The pointer to skills/onboarding/SKILL.md §"Hard rules — kernel-
-#      resident".
+#   4. The pointer to skills/onboarding/SKILL.md §"Status ledger +
+#      workflow reviewer".
 #
 # Hooks consume it by interpolating the function output into their
 # existing deny/warn payload (typically just before the References
@@ -36,7 +36,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/onboarding/SKILL.md §"Hard rules — kernel-resident"
+# skills/onboarding/SKILL.md §"Status ledger + workflow reviewer"
 #
 # Usage
 # -----
@@ -77,7 +77,7 @@ cannot be skipped under any other framing.
 The legitimate early-stop path:
   mkdir -p .claude && touch .claude/onboarding-stop-authorized
 
-Reference: skills/onboarding/SKILL.md §"Hard rules — kernel-resident"
+Reference: skills/onboarding/SKILL.md §"Status ledger + workflow reviewer"
 NO_SKIP_BLOCK_EOF
 }
 
