@@ -458,7 +458,7 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       const ref = largeReferenceRead(event.toolName, event.input as Rec, refDirs, ctx.cwd, home, refMax());
       if (ref && !refNoted.has(ref.path)) {
         refNoted.add(ref.path);
-        log('ref_steer', { path: ref.path, chars: ref.chars, skill: ref.skill });
+        log('ref_steer', { path: ref.path, bytes: ref.bytes, skill: ref.skill });
         notes.push(referenceNote(ref));
       }
     }

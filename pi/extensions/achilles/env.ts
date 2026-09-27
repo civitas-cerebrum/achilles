@@ -16,7 +16,8 @@ export const skillFullBelow = (): number => positiveInt('ACHILLES_PI_SKILL_FULL_
 /** ACHILLES_PI_SKILL_HEAD_MAX (chars, default 6000): the target size of a sectioned skill's map. */
 export const skillHeadMax = (): number => positiveInt('ACHILLES_PI_SKILL_HEAD_MAX', 6000);
 
-/** ACHILLES_PI_REF_MAX (chars, default 8000): a skill reference bigger than this earns a steer note. */
+/** ACHILLES_PI_REF_MAX (bytes, default 8000): a skill reference whose on-disk size exceeds this earns
+ * a steer note. It is compared against a stat size, so the unit is bytes, not chars. */
 export const refMax = (): number => positiveInt('ACHILLES_PI_REF_MAX', 8000);
 
 /** True when ACHILLES_PI_VERBOSE=1 turns every context compaction off. */

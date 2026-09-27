@@ -472,7 +472,7 @@ test('depth 0: a read of a large skill reference comes back whole with one steer
   const r = await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx);
   const text = r.content.map((c) => c.text).join('\n');
   assert.match(text, /^file body/, 'the content still comes back');
-  assert.ok(text.includes(`[achilles] ${big} is 9006 chars.`), text);
+  assert.ok(text.includes(`[achilles] ${big} is 9006 bytes.`), text);
   assert.match(text, /At depth 0 prefer delegating work that needs it: Agent \{ skill: "ref-skill", description: "<role-prefix>: <what>", prompt: "<brief>" \}\. To read it here anyway, ask for the part you need\./);
 });
 test('the steer note is shown once per path per session', async (t) => {
@@ -501,7 +501,7 @@ test('a bash reader of a large reference is steered too; a non-reader is not', a
   const { pi, ctx } = await refStart(t, root);
   const r = await pi.fire('tool_result', resultCall({ toolName: 'bash', input: { command: `sed -n '1,200p' ${big}` }, content: [{ type: 'text', text: 'out' }] }), ctx);
   const text = r.content.map((c) => c.text).join('\n');
-  assert.match(text, /is 9006 chars/);
+  assert.match(text, /is 9006 bytes/);
   // warn.sh (PostToolUse:Bash) also fires here: the hook note and the steer note coexist.
   assert.match(text, /careful/);
   const none = await pi.fire('tool_result', resultCall({ toolName: 'bash', input: { command: `wc -c ${big}` }, content: [{ type: 'text', text: 'out' }] }), ctx);
@@ -511,7 +511,7 @@ test('ACHILLES_PI_REF_MAX sets the size that earns a note', async (t) => {
   const { root, small } = refRoot();
   const { pi, ctx } = await refStart(t, root, { ACHILLES_PI_REF_MAX: '50' });
   const r = await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: small } }), ctx);
-  assert.match(r.content.map((c) => c.text).join('\n'), /is 108 chars/);
+  assert.match(r.content.map((c) => c.text).join('\n'), /is 108 bytes/);
 });
 test('the steer note is logged with its path, size and skill', async (t) => {
   const logFile = path.join(tmp(), 'log.jsonl'); withEnv(t, 'ACHILLES_PI_LOG', logFile);
@@ -519,7 +519,7 @@ test('the steer note is logged with its path, size and skill', async (t) => {
   const { pi, ctx } = await refStart(t, root);
   await pi.fire('tool_result', resultCall({ toolName: 'read', input: { path: big } }), ctx);
   const entry = fs.readFileSync(logFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).find((e) => e.kind === 'ref_steer');
-  assert.deepEqual({ path: entry.path, chars: entry.chars, skill: entry.skill }, { path: big, chars: 9006, skill: 'ref-skill' });
+  assert.deepEqual({ path: entry.path, bytes: entry.bytes, skill: entry.skill }, { path: big, bytes: 9006, skill: 'ref-skill' });
 });
 
 // --- I5: a child session runs SubagentStop at settle, not Stop -----------------------------------

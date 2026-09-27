@@ -92,7 +92,8 @@ export function referenceDirs(roots: string[]): ReferenceDir[] {
   return out;
 }
 
-export interface LargeRef { path: string; chars: number; skill: string }
+/** `bytes`, not chars: it is a stat size, and ACHILLES_PI_REF_MAX is compared against it. */
+export interface LargeRef { path: string; bytes: number; skill: string }
 
 /** The skill reference a read targets when it is bigger than `max` chars; undefined otherwise.
  * Reuses the reader detection of blockedSkillRead, so `cat`/`sed`/`head` on one counts too. */
@@ -114,7 +115,7 @@ export function largeReferenceRead(
     if (!hit) continue;
     try {
       const st = fs.statSync(file);
-      if (st.isFile() && st.size > max) return { path: file, chars: st.size, skill: hit.skill };
+      if (st.isFile() && st.size > max) return { path: file, bytes: st.size, skill: hit.skill };
     } catch { /* unreadable: nothing to steer about */ }
   }
   return undefined;
@@ -122,5 +123,5 @@ export function largeReferenceRead(
 
 /** The steer note appended to a large reference's result (the content still comes back in full). */
 export function referenceNote(ref: LargeRef): string {
-  return `[achilles] ${ref.path} is ${ref.chars} chars. At depth 0 prefer delegating work that needs it: Agent { skill: "${ref.skill}", description: "<role-prefix>: <what>", prompt: "<brief>" }. To read it here anyway, ask for the part you need.`;
+  return `[achilles] ${ref.path} is ${ref.bytes} bytes. At depth 0 prefer delegating work that needs it: Agent { skill: "${ref.skill}", description: "<role-prefix>: <what>", prompt: "<brief>" }. To read it here anyway, ask for the part you need.`;
 }

@@ -250,7 +250,7 @@ export function leanResult(full: string, cap = resultCap()): LeanResult {
 export function omittedNote(l: LeanResult): string {
   const parts: string[] = [];
   if (l.proseChars) parts.push(`${l.proseChars} chars of prose around the handover omitted`);
-  if (l.shortened) parts.push(`${l.shortened} long value${l.shortened === 1 ? '' : 's'} in the handover shortened`);
+  if (l.shortened) parts.push(`${l.shortened} long value${l.shortened === 1 ? '' : 's'} in the return shortened`);
   if (l.cutChars) parts.push(`last ${l.cutChars} chars cut`);
   return parts.join('; ');
 }

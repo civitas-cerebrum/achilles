@@ -287,7 +287,7 @@ test('an over-cap handover stays valid JSON: top-level scalars kept, the longest
   const r = await withEnv({ FAKE_PI_TEXT: `Review done.\n${JSON.stringify(big, null, 2)}`, ACHILLES_PI_AGENT_RESULT_CAP: '4096' }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
   const [json, pointer] = r.content[0].text.split('\n');
   JSON.parse(json);
-  assert.match(pointer, /\(12 chars of prose around the handover omitted; \d+ long values in the handover shortened\)$/);
+  assert.match(pointer, /\(12 chars of prose around the handover omitted; \d+ long values in the return shortened\)$/);
 });
 test('shrinkJson: a fitting object is untouched; repeated array shrinking keeps one omitted-count marker', () => {
   assert.deepEqual(shrinkJson({ a: 1 }, 100), { json: '{"a":1}', shortened: 0 });
