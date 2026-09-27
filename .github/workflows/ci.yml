@@ -1,9 +1,10 @@
 name: ✅ CI
 
 # Runs the package's own gates on every PR and on every push to main:
-# schema lint, the full hook-test suite, and the doc-drift lint. These are
-# the same checks publish.yml runs before publishing — running them here
-# catches regressions at PR time instead of at release time.
+# schema lint, the full hook-test suite, the pi adapter suite, and the
+# doc-drift lint. These are the same checks publish.yml runs before
+# publishing — running them here catches regressions at PR time instead of
+# at release time.
 
 on:
   pull_request:
@@ -40,6 +41,11 @@ jobs:
 
       - name: 🧪  Hook tests
         run: npm run test:hooks
+
+      # The pi adapter's own suite. Two parity checks against an installed pi
+      # binary skip here (pi is not on PATH in CI) — everything else runs.
+      - name: 🧩  pi adapter tests
+        run: npm run test:pi
 
       - name: 📐  Doc-drift lint
         run: node scripts/lint-doc-drift.mjs
