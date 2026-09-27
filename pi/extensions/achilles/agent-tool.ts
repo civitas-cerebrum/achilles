@@ -23,8 +23,13 @@ const CHILD_TOOLS = 'read,bash,edit,write,grep,find,ls,Skill';
 
 /** Appended to every child brief. Children wrapped their handover JSON in ```json fences plus prose,
  * which is what the return-schema guard reported as PARSE_FAIL (9 of 17 Agent returns in one measured
- * run) — and prose around the object is the part the orchestrator's result drops anyway. */
-export const BARE_HANDOVER_LINE = 'Return the bare handover JSON as your final message: no code fence, no prose before or after.';
+ * run) — and prose around the object is the part the orchestrator's result drops anyway.
+ *
+ * It is worded as a formatting rule, conditional on there being a handover: an unconditional "return
+ * the bare handover JSON" made a child whose brief had nothing to hand over (live check 04: "run echo
+ * hi and reply OK") go looking for the return schema — it loaded achilles-protocol, fetched sections
+ * and read subagent-return-schema.md instead of finishing. */
+export const BARE_HANDOVER_LINE = 'Formatting: if your final message is a handover JSON, return it bare — no code fence, no prose before or after.';
 
 /** This extension's entry point, passed to every child with `-e` so the gates run inside it even
  * when the parent loaded the extension with `-e` rather than from settings. pi de-duplicates an

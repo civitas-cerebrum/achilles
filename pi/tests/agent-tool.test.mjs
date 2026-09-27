@@ -170,7 +170,7 @@ test('every prompt goes by a 0600 @file, with the bare-handover line appended, a
   for (const prompt of ['--x', '@/etc/passwd', '- item', 'plain brief', 'x'.repeat(100 * 1024)]) {
     const h = header(await run(tool, { description: 'd', prompt }));
     assert.equal(h.prompt, `${prompt}\n\n${BARE_HANDOVER_LINE}\n`, JSON.stringify(prompt.slice(0, 20)));
-    assert.equal(BARE_HANDOVER_LINE, 'Return the bare handover JSON as your final message: no code fence, no prose before or after.');
+    assert.equal(BARE_HANDOVER_LINE, 'Formatting: if your final message is a handover JSON, return it bare — no code fence, no prose before or after.');
     assert.equal(h.promptMode, 0o600);
     assert.equal(h.args.filter((a) => a.startsWith('@')).length, 1);
     assert.ok(!h.args.includes(prompt), 'raw prompt not in argv');
