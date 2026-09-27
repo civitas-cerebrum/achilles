@@ -267,6 +267,8 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
   // PostToolUse runs lose a record and the next sanctioned write is denied as an out-of-band mutation.
   // Every runEvent call therefore waits for the previous one to finish (a promise chain, in call
   // order). The lock is released in `finally`, so a throw or a timed-out hook never wedges the queue.
+  // A hung hook does hold the queue for its whole timeout (runHook bounds that), so parallel calls
+  // behind it wait: fail-closed serialisation is the deliberate tradeoff against a corrupted ledger.
   let hookQueue: Promise<void> = Promise.resolve();
   function runEvent(event: string, payload: Rec, toolName?: string, ctx?: ExtensionContext): Promise<Decision[]> {
     const prev = hookQueue;
@@ -304,6 +306,10 @@ export function createBridge(pi: ExtensionAPI, opts: BridgeOptions = {}): Bridge
       const hookPath = path.join(hooksDir, e.file);
       if (!fs.existsSync(hookPath)) { log('hook_missing', { event, tool: toolName, hook: e.file, hooksDir }); continue; }
       const args = { bash, hookPath, payload: full, timeoutMs: (e.timeout ?? 10) * 1000, cwd: common.cwd as string, env: process.env };
+      // async hooks are fire-and-forget by design (nothing waits for their output), so they are
+      // EXEMPT from the queue above: routing them through it would let a slow reporting hook delay
+      // the blocking gates behind it. An async hook must therefore not read-modify-write state any
+      // other hook touches — today only playwright-cli-cleanup-on-stop is async, and it writes none.
       if (e.async) { void runHook(args); continue; }
       const run = await runHook(args);
       const d = parseDecision(run, event);

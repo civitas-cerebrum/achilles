@@ -129,3 +129,65 @@ assert_deny "$HOOK" "$(bash_payload "bash <<'EOF'
 echo '{}' > tests/e2e/docs/onboarding-status.json
 EOF")" "bash heredoc whose body redirects into the ledger (body is scanned)" "protected"
 assert_allow "$HOOK" "$(bash_payload 'python3 /tmp/report.py > /tmp/out.txt')" "python3 script with no protected artifact mentioned"
+
+section "protected-artifact-bash-guard: shell wrappers do not launder an interpreter"
+# `bash -c "<cmd>"` hid the inner interpreter from the scan (quotes defeated the
+# word anchor, and -c ended it). The wrapped command is now a fresh segment.
+assert_deny "$HOOK" "$(bash_payload "bash -c \"python3 - <<'EOF'
+import json
+json.dump({}, open('tests/e2e/docs/onboarding-status.json','w'))
+EOF\"")" "bash -c wrapping a heredoc write to the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload 'sh -c "python3 /tmp/w.py tests/e2e/docs/onboarding-status.json"')" "sh -c wrapping a python3 script file on the ledger" "protected"
+# Exact command text (nested quoting), kept in a variable for legibility.
+WRAP_HERESTRING=$(cat <<'CMDEOF'
+bash -lc "python3 - <<< \"open('tests/e2e/docs/onboarding-status.json','w')\""
+CMDEOF
+)
+assert_deny "$HOOK" "$(bash_payload "$WRAP_HERESTRING")" "bash -lc wrapping a herestring write" "protected"
+WRAP_NODE_E=$(cat <<'CMDEOF'
+bash -c "node -e \"require('fs').writeFileSync('tests/e2e/docs/.phase4-cycle-state.json','{}')\""
+CMDEOF
+)
+assert_deny "$HOOK" "$(bash_payload "$WRAP_NODE_E")" "bash -c wrapping a node -e write" "protected"
+assert_deny "$HOOK" "$(bash_payload 'bash -c "python3 - tests/e2e/docs/onboarding-status.json" < /tmp/w.py')" "bash -c wrapping python3 - fed from a file" "protected"
+# Adjacent allows: the same wrappers around reads must still pass.
+assert_allow "$HOOK" "$(bash_payload 'sh -c "jq .currentPhase tests/e2e/docs/onboarding-status.json"')" "sh -c wrapping a jq read"
+WRAP_READ=$(cat <<'CMDEOF'
+bash -lc "python3 -c \"import json; print(json.load(open('tests/e2e/docs/onboarding-status.json')))\""
+CMDEOF
+)
+assert_allow "$HOOK" "$(bash_payload "$WRAP_READ")" "bash -lc wrapping a read-only python3 -c"
+
+section "protected-artifact-bash-guard: a sanctioned helper's script path is not a ledger write"
+# selector-development SKILL.md step 7; selector-development-pipeline-stepper.sh
+# advances ONLY on `node .../visual-diff.js`. Rule 5 must not reach it: its
+# script path holds `.claude/hooks`, which is protected as CODE, not as a
+# read-modify-write ledger (PROTECTED_LEDGERS).
+assert_allow "$HOOK" "$(bash_payload 'node .claude/hooks/lib/visual-diff.js before/nav.png after/nav.png')" "node .claude/hooks/lib/visual-diff.js (selector pipeline step 7)"
+assert_allow "$HOOK" "$(bash_payload 'node node_modules/@civitas-cerebrum/achilles/hooks/lib/visual-diff.js before/nav.png after/nav.png')" "node_modules spelling of visual-diff.js"
+assert_allow "$HOOK" "$(bash_payload 'node .claude/hooks/lib/visual-diff.js --threshold 0.01 a.png b.png')" "visual-diff.js with flags"
+# Writing INTO the hook install is still denied — by the redirect/mutate rules.
+assert_deny "$HOOK" "$(bash_payload 'echo x > .claude/hooks/lib/visual-diff.js')" "redirect into the hook install still denied" "protected"
+
+section "protected-artifact-bash-guard: printing what was read is not a write"
+# WRITE_SHAPE_RE's `\.write\(` matched stdout sinks, so a read-only probe that
+# printed its result was denied. Sinks are neutralised before the write test.
+assert_allow "$HOOK" "$(bash_payload "python3 - <<'EOF'
+import json, sys
+d = json.load(open('tests/e2e/docs/onboarding-status.json'))
+sys.stdout.write(str(d['currentPhase']))
+EOF")" "python3 heredoc: json.load then sys.stdout.write"
+assert_allow "$HOOK" "$(bash_payload 'node -e "const fs=require(\"fs\"); process.stdout.write(fs.readFileSync(\"tests/e2e/docs/onboarding-status.json\",\"utf8\"))"')" "node -e: readFileSync then process.stdout.write"
+assert_allow "$HOOK" "$(bash_payload "python3 -c \"import json,sys; sys.stderr.write(json.load(open('tests/e2e/docs/.phase4-cycle-state.json'))['cycle'])\"")" "python3 -c: json.load then sys.stderr.write"
+assert_allow "$HOOK" "$(bash_payload 'node -e "console.error(require(\"tests/e2e/docs/coverage-expansion-state.json\").pass)"')" "node -e: require read then console.error"
+# A sink alone, with nothing read, is still unclassifiable → fail closed.
+assert_deny "$HOOK" "$(bash_payload "python3 - <<'EOF'
+import sys
+sys.stdout.write('tests/e2e/docs/onboarding-status.json')
+EOF")" "heredoc with only a stdout sink and no read → deny (fail closed)" "protected"
+# A real write next to a sink is still a write.
+assert_deny "$HOOK" "$(bash_payload "python3 - <<'EOF'
+import json, sys
+sys.stdout.write('patching')
+json.dump({}, open('tests/e2e/docs/onboarding-status.json','w'))
+EOF")" "stdout sink does not launder a json.dump write" "protected"

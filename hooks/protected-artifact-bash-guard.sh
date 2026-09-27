@@ -30,7 +30,13 @@
 # script file (`python3 validate.py <ledger>`, `node x.mjs && cat <ledger>`)
 # or a program piped in is denied even when it only reads. A heredoc or
 # herestring program IS visible, so it is classified like a one-liner
-# (read-shape allows; write-shape or no recognizable token denies). The
+# (read-shape allows; write-shape or no recognizable token denies). That
+# rule covers the read-modify-write artifacts only (PROTECTED_LEDGERS): a
+# sanctioned helper's script path under `.claude/hooks` (the selector
+# pipeline's `node …/visual-diff.js`) is not a ledger mutation, and denying
+# it would dead-end a documented workflow step. Rule 5 also matches whole
+# commands, so an interpreter co-occurring with a ledger name in one command
+# line is denied even when another part of the line owns the mention. The
 # deny text names the sanctioned alternative.
 #
 # settings.local.json: coverage is a deliberate superset of spec §A3's
@@ -82,7 +88,47 @@ fi
 # Protected artifact patterns (extended regex).
 PROTECTED='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/achilles|\.claude/hooks|\.claude/settings(\.local)?\.json'
 
+# The subset rule 5 (interpreters whose program is not a one-liner) applies to:
+# the read-modify-write pipeline-state artifacts only. The code/config members
+# of PROTECTED (`.claude/hooks`, `.claude/settings*.json`, `.claude/achilles`)
+# are deliberately excluded: those paths appear as the SCRIPT PATH of sanctioned
+# helpers — `node .claude/hooks/lib/visual-diff.js a.png b.png` is step 7 of
+# skills/selector-development/SKILL.md, and the pipeline stepper advances only
+# on it. Denying that dead-ends a documented workflow with no escape hatch.
+# Writes to those paths stay covered by rules 1-4 and, for Write|Edit, by
+# harness-self-protection-guard.sh.
+PROTECTED_LEDGERS='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md'
+
 echo "$CMD" | grep -qE "$PROTECTED" || exit 0
+
+# A quote-stripped copy (idiom: commit-message-gate.sh). `bash -c "python3 …"`
+# hides the inner interpreter from both rule 4's `(^|[;&|[:space:]])` anchor and
+# rule 5's word scan; with the quotes gone, the wrapped command is plain words.
+CMD_NO_QUOTES=${CMD//\"/ }
+CMD_NO_QUOTES=${CMD_NO_QUOTES//\'/ }
+
+# Write-shape detection must not fire on an output SINK: `sys.stdout.write(…)`
+# and `process.stdout.write(…)` are how a read-only probe PRINTS what it read,
+# and `\.write\(` matched them. Neutralise the sinks first, then test.
+strip_sinks() {
+  printf '%s' "$1" | sed -E 's/(sys|os|process)\.(stdout|stderr)\.write\(/PRINT(/g; s/(STDOUT|STDERR|\$stdout|\$stderr)\.write\(/PRINT(/g; s/console\.(log|error|warn|info)\(/PRINT(/g'
+}
+CMD_NO_SINKS=$(strip_sinks "$CMD")
+CMD_NQ_NO_SINKS=$(strip_sinks "$CMD_NO_QUOTES")
+
+# Write shape is looked for in BOTH forms. The quoted form carries the mode
+# quote `open(f,'w')`; in the quote-stripped form that quote is a space, so the
+# stripped form is matched with one extra alternative for a bare mode token.
+# (WRITE_SHAPE_RE / WRITE_SHAPE_NQ_RE are defined with rule 4 below; this
+# function is only ever called after that point.)
+has_write_shape() {
+  echo "$CMD_NO_SINKS" | grep -qE "$WRITE_SHAPE_RE" && return 0
+  echo "$CMD_NQ_NO_SINKS" | grep -qE "$WRITE_SHAPE_NQ_RE" && return 0
+  return 1
+}
+has_read_shape() {
+  echo "$CMD_NO_QUOTES" | grep -qE "$READ_SHAPE_RE"
+}
 
 # 1. Redirection targeting a protected path (including >| clobber redirect).
 REDIR_HIT=$(echo "$CMD" | grep -cE ">>?\|?[[:space:]]*[^[:space:];|&]*(${PROTECTED})" || true)
@@ -105,7 +151,7 @@ DD_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])dd[[:space:]][^;|&]*of=" || t
 #      - INTERP_AMBIG_HIT: interpreter one-liner with NO recognizable
 #        read/write token → permissionDecision "ask" (can't classify it;
 #        defer to the operator rather than deny a possibly-read).
-INTERP_ANY_HIT=$(echo "$CMD" | grep -cE "(^|[;&|[:space:]])(python3?|node|ruby|perl)[[:space:]][^;|&]*-[ce]([[:space:]]|$)" || true)
+INTERP_ANY_HIT=$(echo "$CMD_NO_QUOTES" | grep -cE "(^|[;&|[:space:]])(python3?|node|ruby|perl)[[:space:]][^;|&]*-[ce]([[:space:]]|$)" || true)
 
 # Write-shape tokens: open(…, 'w'/'a'/'x'), .write(), .write_text(),
 # json.dump(), fs.write/append/rm/unlink/rename, writeFileSync,
@@ -118,13 +164,16 @@ WRITE_SHAPE_RE="open\\([^)]*,[[:space:]]*[\"'][wax]|\\.write\\(|\\.write_text\\(
 # require() that also writes still carries a write-shape, which is classified
 # first (above), so this can never launder a write into an allow.
 READ_SHAPE_RE="open\\(|readFileSync|readFile\\(|json\\.load|\\.read\\(|\\.read_text\\(|File\\.read|require\\(|cat\\("
+# The quote-stripped variant: `open(f,'w')` reads as `open( f , w )` once the
+# quotes become spaces, so a bare mode token counts as a write there.
+WRITE_SHAPE_NQ_RE="${WRITE_SHAPE_RE}|open\\([^)]*,[[:space:]]+[wax][[:space:]]*\\)"
 
 INTERP_WRITE_HIT=0
 INTERP_AMBIG_HIT=0
 if [ "$INTERP_ANY_HIT" != "0" ]; then
-  if echo "$CMD" | grep -qE "$WRITE_SHAPE_RE"; then
+  if has_write_shape; then
     INTERP_WRITE_HIT=1
-  elif echo "$CMD" | grep -qE "$READ_SHAPE_RE"; then
+  elif has_read_shape; then
     INTERP_WRITE_HIT=0   # recognizably read-only — allow
   else
     INTERP_AMBIG_HIT=1   # no recognizable read/write token — ask
@@ -149,15 +198,18 @@ fi
 #        program is not visible → deny.
 #      - a one-liner / module / info flag (-c -e -E -p -r -m --eval --print
 #        --version -V --help -h, `deno eval`): not this rule's business.
-#    The scan is word-based, not a shell parser: quotes are not honoured,
-#    so it errs toward seeing more interpreter invocations, never fewer.
+#    A shell's -c/-lc/-ic carries a COMMAND, so the scan restarts at command
+#    position there and `bash -c "python3 …"` is seen through.
+#    The scan is word-based, not a shell parser: quotes are stripped rather
+#    than honoured, so it errs toward seeing more interpreter invocations,
+#    never fewer. It applies to PROTECTED_LEDGERS only (see above).
 INTERP_PROG_HIT=0
 INTERP_INLINE=0
 INTERP_NAME_RE='^(python[0-9.]*|node|nodejs|perl|ruby|php|deno|bun|bash|sh|zsh|dash|ksh)$'
 # One word per token; every command separator (; && || | & ( ) ` newline)
 # becomes a standalone ";". fd duplications (2>&1, >&2) are dropped first so
 # their "&" does not split a command.
-INTERP_WORDS=$(printf '%s' "$CMD" | tr '\n' ';' | sed -E 's/[0-9]*[<>]&[0-9-]*/ /g; s/(\|\||&&|\|&|[;|&()`])/ ; /g')
+INTERP_WORDS=$(printf '%s' "$CMD_NO_QUOTES" | tr '\n' ';' | sed -E 's/[0-9]*[<>]&[0-9-]*/ /g; s/(\|\||&&|\|&|[;|&()`])/ ; /g')
 interp_state=start   # start | args | stdin | done
 interp_name=""
 interp_end_segment() {
@@ -185,8 +237,13 @@ for w in $INTERP_WORDS; do
         '<'*) INTERP_PROG_HIT=1; interp_state=done ;;
         '>'*|[0-9]'>'*) ;;
         -) interp_state=stdin ;;
-        -c|-e|-E|-p|-r|-m|-[A-Za-z]*[ce]|--eval|--eval=*|--print|--print=*|--version|-V|--help|-h|eval)
-          [ "$interp_state" = args ] && interp_state=done ;;
+        -c|-lc|-ic|-lic|-cl|-e|-E|-p|-r|-m|-[A-Za-z]*[ce]|--eval|--eval=*|--print|--print=*|--version|-V|--help|-h|eval)
+          # A shell's -c/-lc/-ic takes a COMMAND, not a program to classify: rescan
+          # from command position so `bash -c "python3 - <<EOF …"` is seen.
+          case "$interp_name" in
+            bash|sh|zsh|dash|ksh) interp_state=start; interp_name="" ;;
+            *) [ "$interp_state" = args ] && interp_state=done ;;
+          esac ;;
         -*) ;;
         run) [ "$interp_name" = deno ] || [ "$interp_name" = bun ] || { INTERP_PROG_HIT=1; interp_state=done; } ;;
         *) [ "$interp_state" = args ] && { INTERP_PROG_HIT=1; interp_state=done; } ;;
@@ -196,12 +253,15 @@ done
 set +f
 interp_end_segment
 if [ "$INTERP_INLINE" = "1" ]; then
-  if echo "$CMD" | grep -qE "$WRITE_SHAPE_RE"; then
+  if has_write_shape; then
     INTERP_PROG_HIT=1
-  elif ! echo "$CMD" | grep -qE "$READ_SHAPE_RE"; then
+  elif ! has_read_shape; then
     INTERP_PROG_HIT=1   # inline program with no recognizable read/write token — fail closed
   fi
 fi
+# Scoped to the read-modify-write artifacts: a sanctioned helper's script path
+# under .claude/hooks is not a ledger mutation (see PROTECTED_LEDGERS above).
+echo "$CMD" | grep -qE "$PROTECTED_LEDGERS" || INTERP_PROG_HIT=0
 
 # Ambiguous interpreter one-liner (protected path mentioned, but no
 # recognizable read or write token) → ask the operator rather than deny.
@@ -240,6 +300,10 @@ Fix:
   - To change the artifact: use the Write or Edit tool on the file.
   - To read it: drop the write-shaped construct (redirect into /tmp, not
     into the artifact; copy FROM it is blocked too — use cat/jq to read).
+  - To run an interpreter that only READS a protected artifact: pass the
+    program inline (`python3 -c …`, `node -e …`, or a heredoc) so the
+    harness can see it is a read. A program it cannot see — a script file,
+    a pipe into the interpreter, `python3 -` — is denied on principle.
   - Deleting a pipeline-state artifact is an operator decision: ask the
     user to remove it in their own terminal if a reset is intended.
 
