@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Five independent checks; each reports pass/fail; the process
+// describe. Six independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -13,6 +13,12 @@
 //       block citing >=1 resolvable skills/ (or schemas/) path — the
 //       methodology-pointer convention (contributing-to-achilles-protocol
 //       SKILL.md §"Hook error message format — repo standard")
+//   (6) every `skills/<name>/<file>.md §"<heading>"` section citation
+//       emitted anywhere under hooks/ (including hooks/lib/) names a
+//       heading that actually exists in the cited file — check 5 resolves
+//       the PATH half of a citation; this resolves the §SECTION half, so a
+//       heading rename (or a heading that never existed) can't silently
+//       orphan a hook's pointer the way check 5 alone would miss.
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -288,11 +294,128 @@ function checkHookReferences() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Check 6 — hook §SECTION citations resolve to a real heading
+// ---------------------------------------------------------------------------
+// Companion to check 5: a `skills/<name>/<file>.md §"<heading>"` citation
+// can have a resolvable PATH while the §SECTION half points at a heading
+// that was renamed or never existed (the no-skip-messaging.sh bug this
+// check was added to catch: it cited skills/onboarding/SKILL.md
+// §"Hard rules — kernel-resident", a heading that file never had).
+//
+// Mechanics: walk every hooks/**/*.sh file (hooks/tests/** excluded — those
+// are test cases, not runtime hook messages), strip full-line comments (the
+// message-producing region convention from check 5), then scan the
+// remaining text for `skills/<name>/<file>.md` path mentions. For each
+// path mention, look at the text between it and the NEXT "*.md"-looking
+// mention (a bare filename.md counts too, even without a skills/ prefix —
+// it still marks "this citation's path has ended," so a heading just past
+// it doesn't get mis-attributed to the earlier, unrelated skills/ path) for
+// one or more `§"<heading>"` citations (quoted headings only — bare `§4.4`
+// / `§Bash`-style citations aren't section-heading citations and are out of
+// scope here).
+//
+// A citation resolves if the target file has a markdown heading (`#`..`######`)
+// whose text, tokenized to bare lowercase words (punctuation, backticks,
+// and numbering all treated as separators), contains the citation's token
+// sequence as a contiguous run. That tolerates the two conventions already
+// in wide use across this repo: citing only a heading's core phrase while
+// dropping a leading label/number ("20. Universality — ..." cited as
+// "Universality — ...") or a trailing parenthetical ("Two valid exits —
+// read this before anything else" cited as "Two valid exits"), on top of
+// the case-insensitivity and trailing-period tolerance the task asked for
+// (both fall out of the same tokenization for free).
+function checkHookSectionReferences() {
+  const detail = [];
+  const files = walk('hooks', (f) => f.endsWith('.sh') && !f.startsWith(join('hooks', 'tests') + '/'));
+
+  const pathRe = /skills\/[A-Za-z0-9._/-]+\.md/g;
+  const anyMdRe = /\b[A-Za-z0-9._-]+\.md\b/g;
+  const headingRe = /§\s*\\?"([^"]*?)\\?"/g;
+  const headingCache = new Map(); // path -> array of raw heading lines
+
+  function tokenize(s) {
+    return s
+      .toLowerCase()
+      .replace(/`/g, '')
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean);
+  }
+
+  function headingsFor(path) {
+    if (headingCache.has(path)) return headingCache.get(path);
+    let headings = [];
+    if (existsSync(path)) {
+      const text = readFileSync(path, 'utf8');
+      headings = [...text.matchAll(/^#{1,6}\s*(.+)$/gm)].map((m) => m[1]);
+    }
+    headingCache.set(path, headings);
+    return headings;
+  }
+
+  let citations = 0;
+
+  for (const file of files) {
+    const rawFull = readFileSync(file, 'utf8');
+    const code = rawFull
+      .split('\n')
+      .map((l) => (/^\s*#/.test(l) ? '' : l))
+      .join('\n');
+
+    const paths = [...code.matchAll(pathRe)].map((m) => ({ idx: m.index, val: m[0] }));
+    if (paths.length === 0) continue;
+    const anyMdEnds = [...code.matchAll(anyMdRe)].map((m) => m.index + m[0].length);
+
+    for (let i = 0; i < paths.length; i++) {
+      const p = paths[i];
+      const pathEnd = p.idx + p.val.length;
+      const nextPathIdx = i + 1 < paths.length ? paths[i + 1].idx : code.length;
+      const nextMdEnd = anyMdEnds.find((end) => end > pathEnd);
+      const boundedByAnyMd = nextMdEnd !== undefined ? nextMdEnd - p.val.length : code.length;
+      const windowEnd = Math.min(nextPathIdx, Math.max(pathEnd, boundedByAnyMd), pathEnd + 600);
+      const segment = code.slice(pathEnd, windowEnd);
+
+      headingRe.lastIndex = 0;
+      let hm;
+      while ((hm = headingRe.exec(segment)) !== null) {
+        const citedHeading = hm[1].trim();
+        if (!citedHeading) continue;
+        citations++;
+        if (!existsSync(p.val)) continue; // check 5 already reports the dead path
+
+        const headings = headingsFor(p.val);
+        const citTokens = tokenize(citedHeading);
+        const resolved =
+          citTokens.length > 0 &&
+          headings.some((h) => {
+            const hTokens = tokenize(h);
+            for (let start = 0; start + citTokens.length <= hTokens.length; start++) {
+              if (citTokens.every((t, k) => hTokens[start + k] === t)) return true;
+            }
+            return false;
+          });
+
+        if (!resolved) {
+          const lineNo = rawFull.slice(0, pathEnd + hm.index).split('\n').length;
+          detail.push(`${file}:${lineNo}: unresolved section citation: ${p.val} §"${citedHeading}"`);
+        }
+      }
+    }
+  }
+
+  report(
+    `hook §SECTION citations resolve to a real heading (${citations} citations checked)`,
+    detail.length === 0,
+    detail,
+  );
+}
+
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
 checkRoleMapCoverage();
 checkHookReferences();
+checkHookSectionReferences();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');
