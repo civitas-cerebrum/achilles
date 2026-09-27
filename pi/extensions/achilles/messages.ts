@@ -83,6 +83,9 @@ export const SCOPE_POINTER = '(achilles session-scope notice applies — see the
 // `Fix:` line and `References:` block replaced by the pointer instead.
 const NO_SKIP_BLOCK = /(?:[─━═]{3,}\r?\n)?[^\n]*(?:No-skip|no-skip messaging|onboarding contract)[^\n]*\r?\n[\s\S]{0,2000}?Reference: skills\/onboarding\/SKILL\.md[^\n]*/;
 export const NO_SKIP_POINTER = '(achilles no-skip onboarding contract applies — see the first block this session.)';
+/** The stand-in used when the block has NOT been delivered whole yet and the cap leaves no room for it:
+ * it cannot point at an earlier block that the model never received, so it carries the contract itself. */
+export const NO_SKIP_SUMMARY = '[achilles] No-skip onboarding contract: the pipeline runs to full greenlight (phases 1-7) or to an explicit user-authorised early stop (`mkdir -p .claude && touch .claude/onboarding-stop-authorized`). No other framing authorises a skip. Full text: skills/onboarding/SKILL.md.';
 const LINE_CAP = 200;
 const CONTEXT_CAP = 1000;
 const WARNING_CAP = 1200;
@@ -183,8 +186,10 @@ export type NoteKind = 'systemMessage' | 'additionalContext' | 'reason';
 
 export interface MessageCompactor {
   reset(): void;
-  /** The session-scope notice kept the first time, a one-line pointer afterwards. */
-  scope(text: string): string;
+  /** The session-scope notice kept the first time, a one-line pointer afterwards. `cap` is the number
+   * of chars the caller will actually pass on: a block that would not survive it whole is replaced
+   * rather than cut, and is not marked as seen. */
+  scope(text: string, cap?: number): string;
   /** A blocking reason (deny, PostToolUse/Stop block): full the first time per (hook, first line). */
   deny(hook: string, reason: string): string;
   /** Non-blocking hook output that reaches the model. */
@@ -199,7 +204,7 @@ export function createMessageCompactor(): MessageCompactor {
   const shapedSeen = new Set<string>();
   const self: MessageCompactor = {
     reset() { scopeSeen = false; noSkipSeen = false; denies.clear(); warnings.clear(); shapedSeen.clear(); },
-    scope(text) {
+    scope(text, cap = Infinity) {
       if (verboseMessages()) return text;
       let out = text;
       if (SCOPE_BLOCK.test(out)) {
@@ -208,7 +213,14 @@ export function createMessageCompactor(): MessageCompactor {
       }
       if (NO_SKIP_BLOCK.test(out)) {
         if (noSkipSeen) out = out.replace(NO_SKIP_BLOCK, NO_SKIP_POINTER);
-        else noSkipSeen = true;
+        else if (out.length > cap) {
+          // First sighting, but the caller's cap would cut the ~900-char block MID-BLOCK: measured, the
+          // first schema-guard warning arrived at 1,139 chars ending inside the contract text. Swap it
+          // for the self-contained summary so the room goes to the hook's own detail, and leave it
+          // UNSEEN — a later, smaller message can still deliver the block whole, and no pointer claims
+          // the model has already read something it has not.
+          out = out.replace(NO_SKIP_BLOCK, NO_SKIP_SUMMARY);
+        } else noSkipSeen = true;
       }
       return out;
     },
@@ -237,9 +249,9 @@ export function createMessageCompactor(): MessageCompactor {
         if (shapedSeen.has(shapedKey)) return shapedWarnLine(hook, text);
         shapedSeen.add(shapedKey);
       }
-      if (kind === 'additionalContext') return capAtLine(self.scope(text), CONTEXT_CAP);
+      if (kind === 'additionalContext') return capAtLine(self.scope(text, CONTEXT_CAP), CONTEXT_CAP);
       // First sight: the whole warning (it steers the model, e.g. a schema guard's issue list), capped.
-      return capAtLine(self.scope(text));
+      return capAtLine(self.scope(text, WARNING_CAP));
     },
   };
   return self;

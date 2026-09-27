@@ -81,7 +81,7 @@ test('commit-message-gate citation of a subagent-only SKILL.md §section yields 
 import fs from 'node:fs';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { createMessageCompactor, SCOPE_POINTER, NO_SKIP_POINTER, firstLine, referencesLine, fixLines, warnRole, firstError, shapedWarnLine } from '../extensions/achilles/messages.ts';
+import { createMessageCompactor, SCOPE_POINTER, NO_SKIP_POINTER, NO_SKIP_SUMMARY, WARNING_TRUNCATED, firstLine, referencesLine, fixLines, warnRole, firstError, shapedWarnLine } from '../extensions/achilles/messages.ts';
 const activation = fs.readFileSync(path.join(pkg, 'hooks', 'lib', 'achilles-activation.sh'), 'utf8');
 const NOTICE = activation.slice(activation.indexOf("'── achilles session-scope") + 1, activation.indexOf("not yours.)'") + 'not yours.)'.length);
 const deny = (line) => `[BLOCKED] ${line}\n\nFix: do the other thing.\n\nReferences:\n  skills/orch-skill/SKILL.md\n\n${NOTICE}`;
@@ -315,6 +315,47 @@ test('a short deny that mentions the onboarding contract keeps its Fix and Refer
   assert.ok(out.includes('schemas/subagent-returns/README.md'));
   assert.ok(!out.includes(NO_SKIP_POINTER));
 });
+// ── I3: the no-skip stripping is cap-aware, not sighting-aware ───────────────────────────────────
+test('a first sighting that would be cut mid-block gets the self-contained summary and stays unseen', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const big = GUARD_WARN([
+    "SCHEMA_FAIL: /handover must have required property 'next-action'",
+    'SCHEMA_FAIL: /handover/status must be one of approve|reject|escalate',
+    'SCHEMA_FAIL: /handover/phase must be integer',
+    'SCHEMA_FAIL: /handover/evidence must be array',
+  ].join('\n'));
+  assert.ok(big.length > 1200, `${big.length} chars`);
+  const out = c.note('subagent-return-schema-guard.sh', big, 'systemMessage');
+  assert.ok(out.length <= 1200, `${out.length} chars`);
+  // No half-delivered contract text, and no pointer claiming an earlier block.
+  assert.ok(!out.includes('Pipeline phases cannot be skipped'), out);
+  assert.ok(!out.includes(NO_SKIP_POINTER), out);
+  assert.ok(out.includes(NO_SKIP_SUMMARY), out);
+  // The room freed goes to the hook's own detail: all four errors survive.
+  for (const e of ['next-action', 'approve|reject|escalate', 'must be integer', 'must be array']) assert.ok(out.includes(e), e);
+  assert.ok(!out.includes(WARNING_TRUNCATED), 'nothing needed truncating any more');
+  // Unseen: a later message small enough to carry the block whole still does.
+  const later = c.note('onboarding-ledger-write-gate.sh', `[WARN] phase 5 not recorded.\n${NO_SKIP}`, 'systemMessage');
+  assert.ok(later.includes('Pipeline phases cannot be skipped'), later);
+  // NOW it is seen, so the next one points back.
+  assert.ok(c.note('other.sh', `[WARN] different.\n${NO_SKIP}`, 'systemMessage').includes(NO_SKIP_POINTER));
+});
+
+test('additionalContext uses its own 1,000-char cap for the same decision', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const text = `[WARN] ${'d'.repeat(60)}\n${NO_SKIP}`;
+  assert.ok(text.length > 1000 && text.length < 1200, `${text.length} chars`);
+  const out = c.note('h.sh', text, 'additionalContext');
+  assert.ok(out.includes(NO_SKIP_SUMMARY), out);
+  assert.ok(!out.includes('Pipeline phases cannot be skipped'));
+  // A deny is not capped, so it still carries the block whole and marks it seen.
+  const d = c.deny('g.sh', `[BLOCKED] x\n\nFix: y.\n${NO_SKIP}`);
+  assert.ok(d.includes('Pipeline phases cannot be skipped'));
+  assert.ok(c.deny('g2.sh', `[BLOCKED] z\n\nFix: y.\n${NO_SKIP}`).includes(NO_SKIP_POINTER));
+});
+
 test('schema-guard: the second and later warnings collapse to role + first error', (t) => {
   t.after(verboseOff());
   const c = createMessageCompactor();
