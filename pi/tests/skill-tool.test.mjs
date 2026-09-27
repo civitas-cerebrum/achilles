@@ -565,3 +565,105 @@ test('the largest bounded fetch across the suite is far below the largest raw se
   // The worst served fetch is achilles-protocol's ABSOLUTE RULES, returned whole on purpose.
   assert.ok(worstServed < worstRaw / 2, `worst served ${worstServed} vs worst raw ${worstRaw}`);
 });
+
+// ── Round 4, item 2: the dispatch's start section arrives WITH the map, never instead of it ──────
+import { startSection, START_HEADER } from '../extensions/achilles/skill-tool.ts';
+const asChild = (section, skill = undefined) => ({
+  ACHILLES_PI_DEPTH: '1',
+  ACHILLES_PI_SKILL_SECTION: section,
+  ...(skill === undefined ? {} : { ACHILLES_PI_SKILL_SECTION_FOR: skill }),
+});
+
+test("a child's bare Skill call returns the map plus the section its dispatch named", async () => {
+  const all = parseSections(bodyOf('coverage-expansion'));
+  const want = all.find((x) => x.heading === 'No-skip contract');
+  const r = await call({ skill: 'coverage-expansion' }, asChild('No-skip contract', 'coverage-expansion'));
+  const text = r.content[0].text;
+  assert.equal(r.details.view, 'map');
+  assert.equal(r.details.startSection, 'No-skip contract');
+  assert.equal(r.details.startResolved, 'No-skip contract');
+  assert.ok(text.includes(START_HEADER), 'the start section is not marked');
+  assert.ok(text.includes(want.text), 'the start section text is missing');
+  // The map is still whole in front of it: the start section adds, it does not replace.
+  assert.match(text, /Sections — fetch one with Skill/);
+  assert.ok(text.length < bodyOf('coverage-expansion').length / 4, `${text.length} chars`);
+});
+
+test('the start section does not suppress the always-required blocks', async () => {
+  const r = await call({ skill: 'journey-mapping' }, asChild('Document Structure', 'journey-mapping'));
+  const text = r.content[0].text;
+  const kernel = parseSections(bodyOf('journey-mapping')).find((x) => /Hard rules — kernel-resident/.test(x.heading));
+  assert.ok(text.includes(kernel.ownText), 'the kernel rules vanished behind the start section');
+  for (const sec of parseSections(bodyOf('journey-mapping')).filter((x) => x.required)) {
+    assert.ok(text.includes(sec.heading), `required "${sec.heading}" is gone`);
+  }
+});
+
+test('a start section that is itself oversized arrives bounded, not whole', async () => {
+  const r = await call({ skill: 'journey-mapping' }, asChild('Iterative discovery cycles', 'journey-mapping'));
+  const sec = parseSections(bodyOf('journey-mapping')).find((x) => x.heading.startsWith('Iterative discovery cycles'));
+  assert.equal(r.details.startResolved, sec.heading);
+  assert.ok(!r.content[0].text.includes(sec.text), 'the 37k section came through whole');
+  assert.match(r.content[0].text, /NOT the whole section/);
+  assert.ok(r.content[0].text.length < 20000, `${r.content[0].text.length} chars`);
+});
+
+test('an unknown start section gives the map plus the pick-one line — never a throw', async () => {
+  const r = await call({ skill: 'coverage-expansion' }, asChild('no such chapter', 'coverage-expansion'));
+  assert.equal(r.details.view, 'map');
+  assert.equal(r.details.startResolved, null);
+  assert.match(r.content[0].text, /no section of "coverage-expansion" matches "no such chapter"/);
+  assert.match(r.content[0].text, /Sections — fetch one with Skill/);
+  assert.ok(!r.content[0].text.includes(START_HEADER));
+});
+
+test('an ambiguous start section gives the map plus the candidates, each resolvable', async () => {
+  const r = await call({ skill: 'coverage-expansion' }, asChild('Hard rules', 'coverage-expansion'));
+  assert.equal(r.details.startResolved, null);
+  assert.match(r.content[0].text, /matches \d+ headings/);
+  const offered = [...r.content[0].text.matchAll(/section: "([^"]+ > Hard rules[^"]*)" \}/g)].map((m) => m[1]);
+  assert.ok(offered.length >= 5, `${offered.length} candidates`);
+  for (const q of offered) assert.equal((await call({ skill: 'coverage-expansion', section: q })).details.view, 'section', q);
+});
+
+test('startSection is ignored at depth 0 and when it names another skill', () => {
+  const saved = { ...process.env };
+  try {
+    process.env.ACHILLES_PI_SKILL_SECTION = 'Phases';
+    delete process.env.ACHILLES_PI_SKILL_SECTION_FOR;
+    delete process.env.ACHILLES_PI_DEPTH;
+    assert.equal(startSection('coverage-expansion'), undefined, 'honoured at depth 0');
+    process.env.ACHILLES_PI_DEPTH = '1';
+    assert.equal(startSection('coverage-expansion'), 'Phases');
+    process.env.ACHILLES_PI_SKILL_SECTION_FOR = 'ticket-driven-testing';
+    assert.equal(startSection('coverage-expansion'), undefined, 'applied to the wrong skill');
+    assert.equal(startSection('ticket-driven-testing'), 'Phases');
+    process.env.ACHILLES_PI_SKILL_SECTION = '   ';
+    assert.equal(startSection('ticket-driven-testing'), undefined, 'blank honoured');
+  } finally {
+    for (const k of ['ACHILLES_PI_SKILL_SECTION', 'ACHILLES_PI_SKILL_SECTION_FOR', 'ACHILLES_PI_DEPTH']) {
+      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    }
+  }
+});
+
+test('the orchestrator ignores a stray ACHILLES_PI_SKILL_SECTION in its own environment', async () => {
+  const r = await call({ skill: 'coverage-expansion' }, { ACHILLES_PI_SKILL_SECTION: 'No-skip contract', ACHILLES_PI_DEPTH: undefined });
+  assert.equal(r.details.view, 'map');
+  assert.equal(r.details.startSection, undefined);
+  assert.ok(!r.content[0].text.includes(START_HEADER));
+});
+
+test('an explicit section argument still wins over the dispatch default', async () => {
+  const r = await call({ skill: 'coverage-expansion', section: 'Progress output' }, asChild('No-skip contract', 'coverage-expansion'));
+  assert.equal(r.details.view, 'section');
+  assert.equal(r.details.section, 'Progress output');
+  assert.ok(!r.content[0].text.includes(START_HEADER));
+});
+
+test('a mid-size skill returned whole to a child still gets told where to start', async () => {
+  const r = await call({ skill: 'test-repair' }, asChild('The Repair Pipeline', 'test-repair'));
+  assert.equal(r.details.view, 'full');
+  assert.equal(r.details.startSection, 'The Repair Pipeline');
+  assert.match(r.content[0].text, /your dispatch named §"The Repair Pipeline" as your starting point/);
+});

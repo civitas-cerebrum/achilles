@@ -141,15 +141,33 @@ export function sectionView(
  * `Hard rules — kernel-resident`, so "ask for the heading exactly" was not a move the model could
  * make; `"<parent> > <child>"` is, and findSection accepts it.
  */
-function ambiguous(name: string, body: string, query: string, candidates: SkillSection[], sections: SkillSection[]): string {
+function sectionMiss(name: string, query: string, candidates: SkillSection[], sections: SkillSection[]): string {
   const where = (c: SkillSection) => { const p = parentOf(sections, c); return p ? `"${p.heading} > ${c.heading}"` : `"${c.heading}"`; };
-  const head = candidates.length
+  return candidates.length
     ? `[achilles] section "${query}" matches ${candidates.length} headings. Ask for one of these exactly, as written:\n${candidates
         .map((c) => `  - Skill { skill: "${name}", section: ${where(c)} }  (${c.text.length} chars)`)
         .join('\n')}`
     : `[achilles] no section of "${name}" matches "${query}". Pick one from the list below, by heading, by number, or as "<parent> > <child>".`;
-  return `${head}\n\n${skillMap(name, body).text}`;
 }
+
+function ambiguous(name: string, body: string, query: string, candidates: SkillSection[], sections: SkillSection[]): string {
+  return `${sectionMiss(name, query, candidates, sections)}\n\n${skillMap(name, body).text}`;
+}
+
+/**
+ * The section a dispatching `Agent { skill, section }` call told this child to start from, when it
+ * named one for THIS skill. Only a child reads it: a start section is a dispatch instruction, and the
+ * orchestrator's own environment may carry the variable when it is itself somebody's subagent.
+ */
+export function startSection(skill: string): string | undefined {
+  if (piDepth() === 0) return undefined;
+  const want = process.env.ACHILLES_PI_SKILL_SECTION?.trim();
+  if (!want) return undefined;
+  const forSkill = process.env.ACHILLES_PI_SKILL_SECTION_FOR?.trim();
+  return forSkill && forSkill !== skill ? undefined : want;
+}
+
+export const START_HEADER = '── the section your dispatch named — start here ──';
 
 /** Why a `section` argument did not narrow the response, for a skill returned whole anyway. */
 function droppedSectionNote(query: string, candidates: number, chars: number): string {
@@ -225,16 +243,35 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       // tokens) and would leave almost nothing for the work, so above that threshold a child gets the
       // same map, required rule blocks and all. ACHILLES_PI_VERBOSE=1 still returns every body whole.
       const sectioned = !piVerbose() && body.length >= fullBelow();
+      const start = startSection(s.name);
       if (!sectioned) {
         const note = params.section ? `\n\n[achilles] section "${params.section}" not applied: ACHILLES_PI_VERBOSE=1 returns every skill whole.` : '';
-        log('skill', { skill: s.name, chars: body.length, view: 'full', ...(params.section ? { sectionDropped: params.section } : {}) });
-        return { content: [{ type: 'text', text: wrap(s.name, s.file, body + note) + args }], details: { skill: s.name, path: s.file, view: 'full', chars: body.length, ...(params.section ? { sectionDropped: params.section } : {}) } };
+        // The whole body already holds the dispatch's section, so all that is owed is the pointer.
+        const where = start ? `\n\n[achilles] your dispatch named §"${start}" as your starting point in this skill.` : '';
+        log('skill', { skill: s.name, chars: body.length, view: 'full', ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) });
+        return { content: [{ type: 'text', text: wrap(s.name, s.file, body + note + where) + args }], details: { skill: s.name, path: s.file, view: 'full', chars: body.length, ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) } };
       }
       const { text, sections } = skillMap(s.name, body);
-      log('skill', { skill: s.name, chars: text.length, bodyChars: body.length, sections: sections.length, view: 'map' });
+      // A dispatch that named a section gets the map AND that section, so the child starts on its own
+      // chapter without a second round trip. The map comes first and whole: the start section is an
+      // addition to the required rule blocks, never a substitute for them.
+      let full = text;
+      let started: string | undefined;
+      if (start) {
+        const hit = findSection(sections, start);
+        if (hit.section) {
+          started = hit.section.heading;
+          full = `${text}\n\n${START_HEADER}\n${sectionView(s.name, hit.section, sections).text}`;
+        } else {
+          // A name that resolves to nothing or to several is answered with the same usable move the
+          // explicit-section path offers — never a throw, and never a silent drop.
+          full = `${text}\n\n${sectionMiss(s.name, start, hit.candidates, sections)}`;
+        }
+      }
+      log('skill', { skill: s.name, chars: full.length, bodyChars: body.length, sections: sections.length, view: 'map', ...(start ? { startSection: start, startResolved: started ?? null } : {}) });
       return {
-        content: [{ type: 'text', text: wrap(s.name, s.file, text, 'map') + args }],
-        details: { skill: s.name, path: s.file, view: 'map', chars: text.length, bodyChars: body.length, sections: sections.filter((x) => x.level === 2).map((x) => x.heading) },
+        content: [{ type: 'text', text: wrap(s.name, s.file, full, 'map') + args }],
+        details: { skill: s.name, path: s.file, view: 'map', chars: full.length, bodyChars: body.length, sections: sections.filter((x) => x.level === 2).map((x) => x.heading), ...(start ? { startSection: start, startResolved: started ?? null } : {}) },
       };
     },
   });

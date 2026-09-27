@@ -36,7 +36,7 @@ const header = (r) => JSON.parse(fs.readFileSync(r.details.transcriptCopy, 'utf8
 
 test('registers Agent with Claude fields', () => {
   const { tool } = setup();
-  for (const k of ['description', 'prompt', 'subagent_type', 'skill']) assert.ok(tool.parameters.properties[k], k);
+  for (const k of ['description', 'prompt', 'subagent_type', 'skill', 'section']) assert.ok(tool.parameters.properties[k], k);
 });
 test('runs a child and returns its final text; the parent runs no SubagentStop (the child does, at its settle)', async () => {
   const { tool, calls } = setup();
@@ -368,4 +368,31 @@ test('shrinkJson drops the protection rather than returning over the cap', () =>
   assert.ok(Buffer.byteLength(json) <= 300, json.length);
   assert.match(JSON.parse(json).handover.notes, /…\[truncated\]$/);
   assert.ok(shortened > 0);
+});
+
+// ── Round 4, item 2: the dispatch can name the section the child starts from ─────────────────────
+test('Agent.section reaches the child as ACHILLES_PI_SKILL_SECTION, pinned to the named skill', async () => {
+  const { tool } = setup();
+  const r = await run(tool, { description: 'scout: x', prompt: 'do it', skill: 'orch-skill', section: 'Phase 3' });
+  assert.equal(header(r).startSection, 'Phase 3');
+  assert.equal(header(r).startSectionFor, 'orch-skill');
+});
+
+test('no Agent.section means the child inherits none, even when this process was given one', async () => {
+  const { tool } = setup();
+  const r = await withEnv({ ACHILLES_PI_SKILL_SECTION: 'Leaked', ACHILLES_PI_SKILL_SECTION_FOR: 'other-skill' },
+    () => run(tool, { description: 'scout: x', prompt: 'do it', skill: 'orch-skill' }));
+  assert.equal(header(r).startSection, '');
+  assert.equal(header(r).startSectionFor, '');
+});
+
+test('Agent.section without Agent.skill is refused rather than silently dropped', async () => {
+  const { tool } = setup();
+  await assert.rejects(() => run(tool, { description: 'scout: x', prompt: 'do it', section: 'Phase 3' }),
+    /Agent.section names a section of Agent.skill/);
+});
+
+test('the Agent description tells the orchestrator the field exists', () => {
+  const { tool } = setup();
+  assert.match(tool.description, /`section` names the one section of that skill the subagent should start from/);
 });

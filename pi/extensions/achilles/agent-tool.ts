@@ -329,13 +329,14 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
   pi.registerTool({
     name: 'Agent',
     label: 'Agent',
-    description: 'Dispatch a subagent with an isolated context. `description` is a short label that starts with the role prefix (e.g. "workflow-reviewer-phase1: ..."); `prompt` is the full brief; `skill` names an achilles skill the subagent should load.',
-    promptSnippet: 'Agent: dispatch a subagent ({ description, prompt, skill? })',
+    description: 'Dispatch a subagent with an isolated context. `description` is a short label that starts with the role prefix (e.g. "workflow-reviewer-phase1: ..."); `prompt` is the full brief; `skill` names an achilles skill the subagent should load; `section` names the one section of that skill the subagent should start from, so a large skill does not fill its window.',
+    promptSnippet: 'Agent: dispatch a subagent ({ description, prompt, skill?, section? })',
     parameters: Type.Object({
       description: Type.String({ description: 'Short label; starts with the role prefix' }),
       prompt: Type.String({ description: 'The complete brief for the subagent' }),
       subagent_type: Type.Optional(Type.String({ description: 'Subagent role; defaults to the description role prefix' })),
       skill: Type.Optional(Type.String({ description: 'achilles skill to advertise in the subagent' })),
+      section: Type.Optional(Type.String({ description: 'Heading of `skill` the subagent should start from' })),
     }),
     async execute(_id, params, signal, onUpdate, ctx: ExtensionContext) {
       const depth = piDepth();
@@ -346,6 +347,9 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         if (!s) throw new Error(`Unknown skill "${params.skill}" for Agent.skill`);
         skillDir = s.dir;
       }
+      // A start section only means something against a named skill; silently dropping it would send
+      // the child off without the chapter the brief assumes it is reading.
+      if (params.section && !params.skill) throw new Error('Agent.section names a section of Agent.skill; pass `skill` as well, or drop `section`.');
       const type = agentType(params);
       const active = parentActive(stateDir, ctx.sessionManager.getSessionId());
       const env: NodeJS.ProcessEnv = {
@@ -358,6 +362,16 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         // before execute runs.
         ACHILLES_PI_PARENT_SHADOW: shadowPath(ctx.sessionManager.getSessionId(), stateDir),
       };
+      // The start section is a per-dispatch instruction, not a session-wide setting: when this call
+      // names none, whatever THIS process inherited (it may itself be a subagent that was given one)
+      // must not reach the child. _FOR pins it to the skill it was named for, so a child that goes on
+      // to load a different skill is not handed a section of that one.
+      delete env.ACHILLES_PI_SKILL_SECTION;
+      delete env.ACHILLES_PI_SKILL_SECTION_FOR;
+      if (params.section && params.skill) {
+        env.ACHILLES_PI_SKILL_SECTION = params.section;
+        env.ACHILLES_PI_SKILL_SECTION_FOR = params.skill;
+      }
 
       await acquire();
       let tmp: string | undefined;
@@ -380,7 +394,7 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         const fmt = handoverLine(type);
         fs.writeFileSync(pf, `${params.prompt.trimEnd()}${fmt ? `\n\n${fmt}` : ''}\n`, { mode: 0o600 });
         args.push(`@${pf}`);
-        log('agent_spawn', { description: params.description, agentType: type, skill: params.skill, active, depth: depth + 1 });
+        log('agent_spawn', { description: params.description, agentType: type, skill: params.skill, section: params.section, active, depth: depth + 1 });
 
         let lastText = '', stderr = '', childSessionId = '';
         const exitCode = await new Promise<number | null>((resolve) => {
