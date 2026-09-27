@@ -78,9 +78,10 @@ export const SCOPE_POINTER = '(achilles session-scope notice applies — see the
 // hooks/lib/no-skip-messaging.sh rides on most onboarding-pipeline warnings and denies: ~900 fixed
 // chars of contract text, unchanged every time. Measured: 12 of 17 Agent returns in one run drew a
 // warning carrying it. The first sighting steers; later ones are a pointer, like the scope notice.
-// The tail is bounded: a text that merely mentions the contract in passing and carries no closing
-// Reference line within 2,000 chars does not match at all, rather than having its end swallowed.
-const NO_SKIP_BLOCK = /(?:[─━═]{3,}\r?\n)?[^\n]*(?:No-skip|no-skip messaging|onboarding contract)[^\n]*\r?\n[\s\S]{0,2000}?(?:Reference: skills\/onboarding\/SKILL\.md[^\n]*|$)/;
+// The match REQUIRES the canonical closing `Reference: skills/onboarding/SKILL.md` line: with `$` as an
+// alternative closer, a 344-char deny that merely said "the onboarding contract" mid-text had its own
+// `Fix:` line and `References:` block replaced by the pointer instead.
+const NO_SKIP_BLOCK = /(?:[─━═]{3,}\r?\n)?[^\n]*(?:No-skip|no-skip messaging|onboarding contract)[^\n]*\r?\n[\s\S]{0,2000}?Reference: skills\/onboarding\/SKILL\.md[^\n]*/;
 export const NO_SKIP_POINTER = '(achilles no-skip onboarding contract applies — see the first block this session.)';
 const LINE_CAP = 200;
 const CONTEXT_CAP = 1000;

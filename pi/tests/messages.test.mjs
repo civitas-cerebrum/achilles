@@ -302,6 +302,19 @@ test('text that only mentions the contract in passing, with no closing Reference
   assert.ok(out.includes('Keep this tail.'));
   assert.ok(!out.includes(NO_SKIP_POINTER));
 });
+// ── I1: only the canonical block closes the match; a short mention keeps its own tail ─────────────
+test('a short deny that mentions the onboarding contract keeps its Fix and References blocks', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  c.deny('first.sh', `[BLOCKED] seed\n\nFix: seed.\n${NO_SKIP}`); // marks the block seen
+  const short = `[BLOCKED] Phase 4 ledger row missing for journey "checkout".\n\nThe row is what the next phase reads, and this violates the onboarding contract for the run.\n\nFix: write the ledger row for phase 4, then retry the dispatch with the same description.\n\nReferences:\n  skills/onboarding/SKILL.md\n  schemas/subagent-returns/README.md`;
+  assert.ok(short.length > 320 && short.length < 400, `${short.length} chars`);
+  const out = c.deny('ledger.sh', short);
+  assert.equal(out, short);
+  assert.ok(out.includes('Fix: write the ledger row'));
+  assert.ok(out.includes('schemas/subagent-returns/README.md'));
+  assert.ok(!out.includes(NO_SKIP_POINTER));
+});
 test('schema-guard: the second and later warnings collapse to role + first error', (t) => {
   t.after(verboseOff());
   const c = createMessageCompactor();
