@@ -182,16 +182,20 @@ export function parseSections(body: string): SkillSection[] {
   });
 }
 
-/** The section a `section` argument asks for: a table-of-contents number, else an exact heading match
- * (case-insensitive), else a unique case-insensitive substring match. Several matches return the
- * candidates instead of guessing — a small model fetching the wrong rule block is worse than a retry. */
-export function findSection(sections: SkillSection[], query: string): { section?: SkillSection; candidates: SkillSection[] } {
-  const q = query.trim().toLowerCase().replace(/^#+\s*/, '');
+/** Whether `heading` answers `q` (already lowercased, hashes stripped): exactly, else as a substring. */
+function headingMatches(heading: string, q: string): boolean {
+  const h = heading.toLowerCase();
+  return h === q || h.includes(q);
+}
+
+const normQuery = (q: string) => q.trim().toLowerCase().replace(/^#+\s*/, '');
+
+/** One heading term: a table-of-contents number, else an exact match, else a unique substring match. */
+function matchTerm(sections: SkillSection[], q: string): { section?: SkillSection; candidates: SkillSection[] } {
   if (!q) return { candidates: [] };
   // The map numbers the `## ` sections, so "15" is a legitimate way to ask for the 15th.
   if (/^\d{1,3}$/.test(q)) {
-    const top = sections.filter((s) => s.level === 2);
-    const nth = top[Number(q) - 1];
+    const nth = sections.filter((s) => s.level === 2)[Number(q) - 1];
     if (nth) return { section: nth, candidates: [] };
   }
   const exact = sections.filter((s) => s.heading.toLowerCase() === q);
@@ -199,6 +203,36 @@ export function findSection(sections: SkillSection[], query: string): { section?
   const hits = exact.length > 1 ? exact : sections.filter((s) => s.heading.toLowerCase().includes(q));
   if (hits.length === 1) return { section: hits[0], candidates: [] };
   return { candidates: hits };
+}
+
+/**
+ * The section a `section` argument asks for: a `"<parent> > <child>"` path, else a table-of-contents
+ * number, else an exact heading match (case-insensitive), else a unique case-insensitive substring
+ * match. Several matches return the candidates instead of guessing — a small model fetching the wrong
+ * rule block is worse than a retry.
+ *
+ * The path form exists because five coverage-expansion subsections are all `### Hard rules —
+ * kernel-resident`: no heading text can pick one out, so the map prints candidates as
+ * `"<parent> > <child>"` and this accepts them back in that form. A query that is not a path, or
+ * whose parent term matches nothing, falls back to matching the query whole and then its last term.
+ */
+export function findSection(sections: SkillSection[], query: string): { section?: SkillSection; candidates: SkillSection[] } {
+  const whole = normQuery(query);
+  if (!whole) return { candidates: [] };
+  const path = query.split('>').map(normQuery).filter(Boolean);
+  if (path.length >= 2) {
+    const [parent, child] = [path[path.length - 2], path[path.length - 1]];
+    const hits = sections.filter((s) => {
+      if (!headingMatches(s.heading, child)) return false;
+      const p = parentOf(sections, s);
+      return !!p && headingMatches(p.heading, parent);
+    });
+    if (hits.length) return hits.length === 1 ? { section: hits[0], candidates: [] } : { candidates: hits };
+  }
+  const direct = matchTerm(sections, whole);
+  if (direct.section || direct.candidates.length || path.length < 2) return direct;
+  // A path whose parent named nothing: the child term alone is the best remaining reading.
+  return matchTerm(sections, path[path.length - 1]);
 }
 
 /** The nearest enclosing section of `s` (the heading above it at a lower level), if any. Several

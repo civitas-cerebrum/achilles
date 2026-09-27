@@ -78,12 +78,19 @@ export function capTableOfContents(toc: string, room: number, skill: string): st
   return [head, ...kept, ...(left ? [more(left)] : [])].join('\n');
 }
 
-/** The response when `section` matches nothing or several headings: the map plus the candidates. */
+/**
+ * The response when `section` matches nothing or several headings: the map plus the candidates, each
+ * written in a form that resolves on the retry. Five coverage-expansion subsections share the heading
+ * `Hard rules — kernel-resident`, so "ask for the heading exactly" was not a move the model could
+ * make; `"<parent> > <child>"` is, and findSection accepts it.
+ */
 function ambiguous(name: string, body: string, query: string, candidates: SkillSection[], sections: SkillSection[]): string {
-  const where = (c: SkillSection) => { const p = parentOf(sections, c); return p ? `"${c.heading}" (under "${p.heading}")` : `"${c.heading}"`; };
+  const where = (c: SkillSection) => { const p = parentOf(sections, c); return p ? `"${p.heading} > ${c.heading}"` : `"${c.heading}"`; };
   const head = candidates.length
-    ? `[achilles] section "${query}" matches ${candidates.length} headings: ${candidates.map(where).join(', ')}. Ask for one heading exactly, for the section it sits under, or for its number in the list below.`
-    : `[achilles] no section of "${name}" matches "${query}". Pick one from the list below, by heading or by number.`;
+    ? `[achilles] section "${query}" matches ${candidates.length} headings. Ask for one of these exactly, as written:\n${candidates
+        .map((c) => `  - Skill { skill: "${name}", section: ${where(c)} }  (${c.text.length} chars)`)
+        .join('\n')}`
+    : `[achilles] no section of "${name}" matches "${query}". Pick one from the list below, by heading, by number, or as "<parent> > <child>".`;
   return `${head}\n\n${skillMap(name, body).text}`;
 }
 

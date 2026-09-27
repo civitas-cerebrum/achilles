@@ -47,7 +47,7 @@ test('NaN ACHILLES_PI_DEPTH counts as the orchestrator: subagent-only is refused
 });
 
 // ── Sectioned skill bodies (round 2: bounded orchestrator context) ───────────────────────────────
-import { PACKAGE_DIR, parseSections, findSection, subsectionsOf, tableOfContents, listSkills, resolveSkill, REQUIRED_HEADING } from '../extensions/achilles/skills.ts';
+import { PACKAGE_DIR, parseSections, findSection, parentOf, subsectionsOf, tableOfContents, listSkills, resolveSkill, REQUIRED_HEADING } from '../extensions/achilles/skills.ts';
 import { skillMap, capTableOfContents, PENDING_HEADER } from '../extensions/achilles/skill-tool.ts';
 const realRoot = path.join(PACKAGE_DIR, 'skills');
 function realTool() { const pi = makeFakePi(); registerSkillTool(pi, { roots: [realRoot] }); return pi.tools.find((t) => t.name === 'Skill'); }
@@ -169,8 +169,39 @@ test('an ambiguous section returns the candidates with their parents, plus the m
   assert.equal(r.details.view, 'map');
   assert.ok(r.details.candidates.length > 1);
   assert.match(r.content[0].text, /matches \d+ headings/);
-  assert.match(r.content[0].text, /\(under "[^"]+"\)/);
+  assert.match(r.content[0].text, /section: "[^"]+ > Hard rules — kernel-resident" \}  \(\d+ chars\)/);
   assert.match(r.content[0].text, /Sections — fetch one with Skill/);
+});
+
+// ── M3: the move the ambiguity message offers has to work ────────────────────────────────────────
+test('every candidate the ambiguity message prints resolves when asked for verbatim', async () => {
+  const r = await call({ skill: 'coverage-expansion', section: 'Hard rules — kernel-resident' });
+  assert.equal(r.details.view, 'map');
+  const offered = [...r.content[0].text.matchAll(/section: "([^"]+)" \}/g)].map((m) => m[1]).filter((q) => !q.startsWith('<'));
+  assert.ok(offered.length >= 5, `${offered.length} candidates offered`);
+  for (const q of offered) {
+    const one = await call({ skill: 'coverage-expansion', section: q });
+    assert.equal(one.details.view, 'section', `"${q}" did not resolve`);
+    assert.equal(one.details.section, 'Hard rules — kernel-resident');
+  }
+  // The five resolve to five DIFFERENT blocks, not all to the first one.
+  const sizes = new Set();
+  for (const q of offered) sizes.add((await call({ skill: 'coverage-expansion', section: q })).details.chars);
+  assert.ok(sizes.size >= 4, `${[...sizes].join(',')}`);
+});
+
+test('a "<parent> > <child>" path resolves, and a heading containing ">" still resolves on its own', () => {
+  const all = parseSections(bodyOf('coverage-expansion'));
+  const hits = all.filter((x) => x.heading === 'Hard rules — kernel-resident');
+  assert.ok(hits.length >= 5);
+  for (const h of hits) {
+    const parent = parentOf(all, h);
+    const { section, candidates } = findSection(all, `${parent.heading} > ${h.heading}`);
+    assert.deepEqual(candidates, []);
+    assert.equal(section, h, `${parent.heading} > ${h.heading}`);
+  }
+  // A path whose parent matches nothing falls through to plain heading matching rather than failing.
+  assert.equal(findSection(all, 'nothing at all > No-skip contract').section.heading, 'No-skip contract');
 });
 
 test('an unmatched section returns the map and the pick-one line — it does not throw', async () => {
