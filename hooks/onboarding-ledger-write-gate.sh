@@ -429,7 +429,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
           emit_phase_deny "5" \
             "coverage-expansion-state.json does not record the full five-pass run + cleanup. Missing pass record(s):${MISSING_PASSES:- none}; cleanup recorded: ${CLEANUP_RECORDED}. A standard/depth Phase 5 completes only after passes 1-5 AND the cleanup/dedup step are recorded." \
             "complete all five passes (compositional 1-3 + adversarial 4-5) and the cleanup/dedup step. The ordering is: RECORD passes 1-5 + cleanup in coverage-expansion-state.json → workflow-reviewer-phase5 approval → the orchestrator DELETES the state file as the final post-approval act → write this Phase-5 ledger completion. The state file must still be present and complete at this write (deletion happens post-approval, not before)." \
-            "skills/coverage-expansion/SKILL.md §\"Five passes\" + cross-cutting §12 (phase-5 state-file ordering)"
+            "skills/coverage-expansion/SKILL.md §\"Standard mode — five-pass pipeline\" + cross-cutting §12 (phase-5 state-file ordering)"
         fi
       fi
 
@@ -456,7 +456,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
           emit_phase_deny "5" \
             "Pass 1 coverage incomplete: journey-map.md lists ${ROSTER_COUNT} journeys; coverage-expansion-state.json records ${DISPATCHED_COUNT} dispatched + ${DEFERRED_COUNT} deferred = ${TOTAL_ACCOUNTED} accounted. ${UNCOVERED} journey(s) are silently missing. This is the silent-scope-compression failure mode." \
             "either (a) dispatch the remaining ${UNCOVERED} journey(s) through coverage-expansion Pass 1, OR (b) add a deferredJourneys[] entry for each missing journey with a reason (structural prefix OR an \"authorizer\" field carrying a verbatim user quote). Pre-emptive scope reduction without authorisation is denied." \
-            "skills/coverage-expansion/SKILL.md §\"Two valid exits\" + §\"Deferral authorisation\""
+            "skills/coverage-expansion/SKILL.md §\"Two valid exits\""
         fi
 
         # Deferral authorisation: each deferredJourneys[] entry must have
@@ -478,7 +478,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
             emit_phase_deny "5" \
               "deferredJourneys[] entry for \"${BAD_DEFERRAL}\" carries neither a structural reason prefix (\`blocked-on-app-bug:\`, \`test-data-prerequisite:\`, \`user-authorised:\`) nor an \`authorizer\` field with a verbatim user quote. Self-imposed deferrals (budget-cap, session-length, auto-mode-stop) without authorisation are silent scope narrowing." \
               "either dispatch this journey through Pass 1, or add a reason matching one of the allowed structural prefixes, or capture the user's verbatim authorisation in an \`authorizer\` field." \
-              "skills/coverage-expansion/SKILL.md §\"Deferral authorisation\""
+              "skills/coverage-expansion/SKILL.md §\"Two valid exits\""
           fi
         fi
       fi

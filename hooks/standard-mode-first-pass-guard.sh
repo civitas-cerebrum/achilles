@@ -423,7 +423,7 @@ acceptable for this run, the operator must re-enter the onboarding
 front-load gate and select \`runMode: standard\` instead.
 
 See:
-  - skills/journey-mapping/SKILL.md §\"First-cycle strict / later-cycle relaxed\" — every-cycle-strict counterpart under depth
+  - skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\" — every-cycle-strict counterpart under depth
   - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
         exit 0
       fi

@@ -199,10 +199,10 @@ Ledger shows pass-${PRIOR_PASS_NAME}.reviewerVerdict = \"${PRIOR_PASS_VERDICT}\"
 
 Fix: dispatch \`perf-reviewer-pass-${PRIOR_PASS_NAME}:\` first. The
 reviewer checks every per-pass completion criterion from
-skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run passes\".
+skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run\".
 
 See:
-  - skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run passes\"
+  - skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run\"
   - skills/workflow-reviewer/SKILL.md
   - schemas/perf-onboarding-status.schema.json"
       exit 0
