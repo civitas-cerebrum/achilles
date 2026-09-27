@@ -101,7 +101,41 @@ test('an always-required block that fits the budget is included verbatim, and ma
 
 test('every always-required heading matches the documented pattern', () => {
   for (const s of parseSections(bodyOf('coverage-expansion')).filter((x) => x.required)) assert.match(s.heading, REQUIRED_HEADING);
-  assert.equal(parseSections(bodyOf('coverage-expansion')).filter((x) => x.required).length, 5);
+  assert.equal(parseSections(bodyOf('coverage-expansion')).filter((x) => x.required).length, 11);
+});
+
+// ── C2: `Hard rules — kernel-resident` is this repo's own name for an always-required block ───────
+test('a kernel-resident hard-rules block counts as always required', () => {
+  for (const h of ['Hard rules — kernel-resident', 'Hard rules', 'Kernel-resident invariants — convention', 'Engine hard rules'])
+    assert.match(h, REQUIRED_HEADING, h);
+});
+
+test('every skill with a kernel-resident hard-rules block has it inlined or listed in its map', () => {
+  const maps = realSkillMaps();
+  const withKernel = maps.filter((m) => m.sections.some((s) => /hard rule|kernel-resident/i.test(s.heading)));
+  assert.deepEqual(withKernel.map((m) => m.name).sort(), [
+    'achilles-protocol', 'bug-report', 'companion-mode', 'contributing-to-achilles-protocol',
+    'coverage-expansion', 'journey-mapping',
+  ]);
+  for (const m of withKernel) {
+    for (const s of m.sections.filter((x) => /hard rule|kernel-resident/i.test(x.heading))) {
+      const inlined = m.text.includes(s.ownText) && s.ownText.length > s.heading.length + 4;
+      const listed = m.text.includes(`  - ${'#'.repeat(s.level)} ${s.heading} (${s.text.length} chars)`);
+      assert.ok(inlined || listed, `${m.name}: kernel block "${s.heading}" is neither inlined nor listed`);
+      // A block inlined as a stub over subsections is listed as well (see C1).
+      if (inlined && s.text.length > s.ownText.length) assert.ok(listed, `${m.name}: "${s.heading}" inlined as a stub without a fetch line`);
+    }
+  }
+});
+
+test("journey-mapping's map carries the cycle protocol the preread gate assumes is known", async () => {
+  const r = await call({ skill: 'journey-mapping' });
+  const text = r.content[0].text;
+  const all = parseSections(bodyOf('journey-mapping'));
+  const kernel = all.find((s) => /Hard rules — kernel-resident/.test(s.heading));
+  assert.ok(kernel && kernel.ownText.length > 3000, 'fixture assumption');
+  assert.ok(text.includes(kernel.ownText), 'the kernel rules are not in the map');
+  assert.ok(text.length <= 6000, `${text.length} chars`);
 });
 
 test('a section fetch returns that section only, in full, with its subsections', async () => {

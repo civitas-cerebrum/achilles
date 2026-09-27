@@ -121,8 +121,14 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
 // dispatched for one job and its window holds only its own skill, so it still gets the whole body.
 
 /** A heading matching this is ALWAYS-REQUIRED: its text is in the map whatever the size costs, or,
- * when it does not fit the map budget, it is listed as mandatory reading the model must fetch. */
-export const REQUIRED_HEADING = /ABSOLUTE RULE|Absolute Rules|non-negotiable|No-skip contract|read this before|STOP AND READ|must read/i;
+ * when it does not fit the map budget, it is listed as mandatory reading the model must fetch.
+ *
+ * `Hard rules` / `kernel-resident` is this repo's own name for the category. coverage-expansion
+ * §"Kernel-resident invariants — convention" states the doctrine: such a subsection lists the
+ * invariants that must stay in working memory even when the reference itself is not loaded. Six
+ * skills carry one, and journey-mapping's is the whole cycle protocol that
+ * hooks/journey-mapping-skill-preread-gate.sh treats a bare `Skill{journey-mapping}` as proof of. */
+export const REQUIRED_HEADING = /ABSOLUTE RULE|Absolute Rules|non-negotiable|No-skip contract|read this before|STOP AND READ|must read|Hard rules|kernel-resident/i;
 
 export interface SkillSection {
   /** Heading text, hashes and surrounding whitespace removed. */
