@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { shadowPath, appendShadow, pruneShadows, KEEP_SHADOWS, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText, sessionStateDir } from '../extensions/achilles/transcript.ts';
+import { shadowPath, appendShadow, pruneShadows, KEEP_SHADOWS, toolUseEntry, assistantTextEntry, userPromptEntry, assistantText, sessionStateDir, shadowLiveWindow, SHADOW_LIVE_WINDOW_MS } from '../extensions/achilles/transcript.ts';
 import { claudeToolInput } from '../extensions/achilles/payload.ts';
 import { runHook, parseDecision } from '../extensions/achilles/bridge.ts';
 
@@ -210,11 +210,65 @@ test('pruneShadows keeps the newest 40 shadows and removes the rest', () => {
 test('pruneShadows spares a live session\'s shadow and the file it is told to keep', () => {
   const { stateDir, dir } = shadowDir(50);
   fs.writeFileSync(path.join(stateDir, 's0.active'), ''); // the live-session marker
-  assert.equal(pruneShadows(stateDir, path.join(dir, 's1.jsonl')), 8);
+  // shadowDir writes mtimes at epoch+1000s..+1049s; "now" just after the newest keeps them all inside
+  // the liveness window, so the marker is what decides — as it did before the window existed.
+  assert.equal(pruneShadows(stateDir, path.join(dir, 's1.jsonl'), KEEP_SHADOWS, 1_049_000), 8);
   assert.ok(fs.existsSync(path.join(dir, 's0.jsonl')), 'live session kept');
   assert.ok(fs.existsSync(path.join(dir, 's1.jsonl')), 'keepFile kept');
   assert.ok(!fs.existsSync(path.join(dir, 's2.jsonl')));
 });
+
+// ── I5: a marker alone is not evidence of a live session ─────────────────────────────────────────
+/** A shadow dir whose files have explicit ages (ms before `now`) and optional `.active` markers. */
+function agedShadows(spec, now) {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shadows-'));
+  after(() => fs.rmSync(stateDir, { recursive: true, force: true }));
+  const dir = path.join(stateDir, 'pi-transcripts');
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const [name, ageMs, marker] of spec) {
+    const f = path.join(dir, `${name}.jsonl`);
+    fs.writeFileSync(f, '{"type":"user"}\n');
+    const t = (now - ageMs) / 1000;
+    fs.utimesSync(f, t, t);
+    if (marker) fs.writeFileSync(path.join(stateDir, `${name}.active`), '');
+  }
+  return { stateDir, dir };
+}
+const DAY = 24 * 60 * 60 * 1000;
+
+test('a stale .active marker no longer exempts its shadow', () => {
+  const now = Date.now();
+  const { stateDir, dir } = agedShadows([['a', 1000], ['b', 2000], ['stale', 10 * DAY, true]], now);
+  assert.equal(pruneShadows(stateDir, undefined, 2, now), 1);
+  assert.ok(!fs.existsSync(path.join(dir, 'stale.jsonl')), 'a stranded marker pinned it forever');
+  assert.ok(fs.existsSync(path.join(stateDir, 'stale.active')), 'the marker itself is not touched');
+  // Idempotent, and the retained set is the keep count — not keep + one per historical run.
+  assert.equal(pruneShadows(stateDir, undefined, 2, now), 0);
+  assert.equal(fs.readdirSync(dir).length, 2);
+});
+
+test('a marker on a shadow written inside the window still spares it', () => {
+  const now = Date.now();
+  const { stateDir, dir } = agedShadows([['a', 1000], ['b', 2000], ['live', 3000, true], ['old', 10 * DAY]], now);
+  assert.equal(pruneShadows(stateDir, undefined, 2, now), 1);
+  assert.ok(fs.existsSync(path.join(dir, 'live.jsonl')), 'a running session must never lose its shadow');
+  assert.ok(!fs.existsSync(path.join(dir, 'old.jsonl')));
+});
+
+test('ACHILLES_PI_SHADOW_LIVE_WINDOW moves the liveness window', (t) => {
+  const prev = process.env.ACHILLES_PI_SHADOW_LIVE_WINDOW;
+  t.after(() => { if (prev === undefined) delete process.env.ACHILLES_PI_SHADOW_LIVE_WINDOW; else process.env.ACHILLES_PI_SHADOW_LIVE_WINDOW = prev; });
+  assert.equal(shadowLiveWindow(), SHADOW_LIVE_WINDOW_MS);
+  for (const bad of ['0', '-1', 'x', '']) { process.env.ACHILLES_PI_SHADOW_LIVE_WINDOW = bad; assert.equal(shadowLiveWindow(), SHADOW_LIVE_WINDOW_MS, bad); }
+  const now = Date.now();
+  const { stateDir, dir } = agedShadows([['a', 1000], ['b', 2000], ['hour', 60 * 60 * 1000, true]], now);
+  assert.equal(pruneShadows(stateDir, undefined, 2, now), 0, 'an hour old is live under the 6h default');
+  process.env.ACHILLES_PI_SHADOW_LIVE_WINDOW = '60000'; // one minute
+  assert.equal(shadowLiveWindow(), 60000);
+  assert.equal(pruneShadows(stateDir, undefined, 2, now), 1);
+  assert.ok(!fs.existsSync(path.join(dir, 'hour.jsonl')));
+});
+
 test('pruneShadows touches nothing else in the state dir and leaves non-jsonl files alone', () => {
   const { stateDir, dir } = shadowDir(45);
   fs.writeFileSync(path.join(stateDir, 'sid.active'), '');
