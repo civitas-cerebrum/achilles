@@ -12,7 +12,10 @@ import { piDepth } from './env.ts';
 import { shadowPath } from './transcript.ts';
 
 const LEGACY_CAP = 16 * 1024;
-const DEFAULT_RESULT_CAP = 8192;
+/** Model-facing bytes per subagent return. A real 8-phase run kept 23 returns, 118,319 chars, mean
+ * 5,144 under the old 8,192 cap: a third of a 32k window on text whose verdict is one line. The full
+ * return stays on disk under .achilles/pi-agent-returns/ and in the tool details. */
+const DEFAULT_RESULT_CAP = 3072;
 const KILL_GRACE_MS = 5000;
 /** Like Claude Code: subagents can load skills but cannot dispatch further subagents (the depth
  * cap stays as a backstop). The allowlist applies to extension tools too. */
@@ -64,7 +67,7 @@ function truncateBytes(text: string, max: number): string {
   return Buffer.from(text, 'utf8').subarray(0, max).toString('utf8').replace(/\uFFFD+$/, '');
 }
 
-/** ACHILLES_PI_AGENT_RESULT_CAP (bytes), default 8192; unparseable or non-positive values use the default. */
+/** ACHILLES_PI_AGENT_RESULT_CAP (bytes), default 3072; unparseable or non-positive values use the default. */
 export function resultCap(): number {
   const n = Number(process.env.ACHILLES_PI_AGENT_RESULT_CAP);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_RESULT_CAP;
@@ -124,14 +127,32 @@ const KEEP_SCALAR = 200;
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
+/** Top-level keys whose whole subtree is spared while anything else can still be shrunk: the handover
+ * envelope and the caller's next move are the two things the orchestrator acts on. Spelling variants
+ * are covered because different roles write the key differently. */
+export const PROTECTED_KEYS: readonly string[] = ['handover', 'next-action', 'next_action', 'nextAction'];
+
 /**
  * Shrink `obj` until its compact JSON fits `cap` bytes, keeping it valid JSON: repeatedly halve the
  * largest string or array value (by serialised size) anywhere in the tree, except short top-level
- * scalars. A shortened string ends in "…[truncated]"; a shortened array ends with a
- * "…[N more items omitted]" entry. Returns the JSON and how many values were shortened.
+ * scalars and the subtrees of `protect`. A shortened string ends in "…[truncated]"; a shortened array
+ * ends with a "…[N more items omitted]" entry. When everything else is already minimal and the JSON
+ * still does not fit, a second pass drops the protection rather than returning over the cap.
+ * Returns the JSON and how many values were shortened.
  */
-export function shrinkJson(obj: Record<string, unknown>, cap: number): { json: string; shortened: number } {
+export function shrinkJson(obj: Record<string, unknown>, cap: number, protect: readonly string[] = PROTECTED_KEYS): { json: string; shortened: number } {
   const root = JSON.parse(JSON.stringify(obj)) as { [k: string]: Json };
+  let shortened = shrinkPass(root, cap, protect);
+  let json = JSON.stringify(root);
+  if (bytes(json) > cap && protect.length > 0) {
+    shortened += shrinkPass(root, cap, []);
+    json = JSON.stringify(root);
+  }
+  return { json, shortened };
+}
+
+/** One shrink loop over `root`, sparing `protect`'s subtrees; returns how many values it shortened. */
+function shrinkPass(root: { [k: string]: Json }, cap: number, protect: readonly string[]): number {
   let json = JSON.stringify(root);
   let shortened = 0;
   for (let round = 0; bytes(json) > cap && round < 2000; round++) {
@@ -147,7 +168,7 @@ export function shrinkJson(obj: Record<string, unknown>, cap: number): { json: s
       if (Array.isArray(v)) v.forEach((x, i) => visit(v, i, x, false));
       else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) visit(v, k, x, false);
     };
-    for (const [k, v] of Object.entries(root)) visit(root, k, v, true);
+    for (const [k, v] of Object.entries(root)) if (!protect.includes(k)) visit(root, k, v, true);
     if (!best) break;
     const { parent, key } = best as { parent: Record<string | number, Json>; key: string | number };
     const v = parent[key];
@@ -164,7 +185,7 @@ export function shrinkJson(obj: Record<string, unknown>, cap: number): { json: s
     shortened++;
     json = JSON.stringify(root);
   }
-  return { json, shortened };
+  return shortened;
 }
 
 /** Plain text cut to `cap` bytes at the last line boundary (or the last whole character). */

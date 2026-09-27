@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeFakePi, makeFakeCtx } from './fake-pi.mjs';
-import { registerAgentTool, saveFullReturn, leanResult, shrinkJson, pruneReturns } from '../extensions/achilles/agent-tool.ts';
+import { registerAgentTool, saveFullReturn, leanResult, shrinkJson, pruneReturns, resultCap, PROTECTED_KEYS } from '../extensions/achilles/agent-tool.ts';
 const fx = path.join(import.meta.dirname, 'fixtures');
 const child = path.join(fx, 'fake-pi-child.mjs');
 const cleanup = [];
@@ -102,13 +102,13 @@ test('depth cap', async () => {
   await withEnv({ ACHILLES_PI_DEPTH: '2' }, () =>
     assert.rejects(() => setup().tool.execute('a5', { description: 'd', prompt: 'p' }, undefined, undefined, makeFakeCtx()), /nesting/));
 });
-test('model-facing text is capped at 8 KB with a pointer to the full return; details.text is full', async () => {
+test('model-facing text is capped at 3 KB with a pointer to the full return; details.text is full', async () => {
   const cwd = tmp();
   const { tool } = setup();
   const r = await withEnv({ FAKE_PI_LONG: '1', ACHILLES_PI_AGENT_RESULT_CAP: undefined, ACHILLES_PI_VERBOSE: undefined }, () => run(tool, { description: 'd', prompt: 'p' }, { cwd }));
   const [body, pointer] = r.content[0].text.split('\n');
-  assert.equal(body, 'y'.repeat(8192));
-  assert.equal(pointer, `[achilles] full subagent return: ${path.join('.achilles', 'pi-agent-returns', 'child-1.md')} (last ${32 * 1024} chars cut)`);
+  assert.equal(body, 'y'.repeat(3072));
+  assert.equal(pointer, `[achilles] full subagent return: ${path.join('.achilles', 'pi-agent-returns', 'child-1.md')} (last ${40 * 1024 - 3072} chars cut)`);
   assert.equal(r.details.text, 'y'.repeat(40 * 1024));
   const file = path.join(cwd, '.achilles', 'pi-agent-returns', 'child-1.md');
   assert.equal(fs.readFileSync(file, 'utf8'), 'y'.repeat(40 * 1024));
@@ -281,4 +281,53 @@ test('pruneReturns refuses a symlinked directory', () => {
   fs.symlinkSync(real, link);
   pruneReturns(link);
   assert.equal(fs.readdirSync(real).length, 25);
+});
+
+// ── round 2: the default cap is 3072, with the handover and next-action kept whole ────────────────
+test('the default result cap is 3072 bytes and the env override still wins', async () => {
+  await withEnv({ ACHILLES_PI_AGENT_RESULT_CAP: undefined }, () => assert.equal(resultCap(), 3072));
+  await withEnv({ ACHILLES_PI_AGENT_RESULT_CAP: '5000' }, () => assert.equal(resultCap(), 5000));
+  await withEnv({ ACHILLES_PI_AGENT_RESULT_CAP: 'nope' }, () => assert.equal(resultCap(), 3072));
+  await withEnv({ ACHILLES_PI_AGENT_RESULT_CAP: '-4' }, () => assert.equal(resultCap(), 3072));
+});
+/** A ~9k reviewer return of the shape the workflow-reviewer schema asks for. */
+const reviewerReturn = () => ({
+  handover: { role: 'workflow-reviewer-phase5', status: 'approved', 'next-action': 'advance to Phase 6', 'gate-evidence': 'passes 1-5 + cleanup recorded in coverage-expansion-state.json' },
+  verdict: 'approve',
+  phase: 5,
+  'next-action': 'dispatch Phase 6 bug-discovery per journey',
+  summary: 'The five-pass pipeline landed. '.repeat(100),
+  findings: Array.from({ length: 40 }, (_, i) => ({ id: `j-checkout-5-${i}`, severity: 'medium', evidence: 'e'.repeat(120), note: 'n'.repeat(80) })),
+});
+test('a 9k reviewer return fits the new cap as valid JSON with the verdict and next-action intact', async () => {
+  const full = `Here is my review.\n\n\`\`\`json\n${JSON.stringify(reviewerReturn(), null, 2)}\n\`\`\`\nThanks.`;
+  assert.ok(full.length > 9000, `fixture is ${full.length} chars`);
+  const l = await withEnv({ ACHILLES_PI_AGENT_RESULT_CAP: undefined }, async () => leanResult(full));
+  assert.ok(Buffer.byteLength(l.text) <= 3072, `${Buffer.byteLength(l.text)} bytes`);
+  const parsed = JSON.parse(l.text);
+  assert.equal(parsed.verdict, 'approve');
+  assert.equal(parsed.phase, 5);
+  assert.equal(parsed['next-action'], 'dispatch Phase 6 bug-discovery per journey');
+  assert.deepEqual(parsed.handover, reviewerReturn().handover, 'the handover envelope is kept whole');
+  // What paid for it: the bulky evidence, not the verdict.
+  assert.match(parsed.summary, /…\[truncated\]$/);
+  assert.match(parsed.findings.at(-1), /^…\[\d+ more items omitted\]$/);
+  assert.ok(l.shortened > 0 && l.handover);
+});
+test('shrinkJson spares the protected subtrees while shrinking the rest', () => {
+  const obj = { handover: { role: 'reviewer-x', notes: 'k'.repeat(400) }, 'next-action': 'n'.repeat(300), bulk: 'b'.repeat(5000) };
+  const { json } = shrinkJson(obj, 1200);
+  const parsed = JSON.parse(json);
+  assert.ok(Buffer.byteLength(json) <= 1200);
+  assert.deepEqual(parsed.handover, obj.handover);
+  assert.equal(parsed['next-action'], obj['next-action']);
+  assert.match(parsed.bulk, /…\[truncated\]$/);
+  assert.deepEqual(PROTECTED_KEYS.slice(0, 2), ['handover', 'next-action']);
+});
+test('shrinkJson drops the protection rather than returning over the cap', () => {
+  const obj = { handover: { notes: 'k'.repeat(4000) } };
+  const { json, shortened } = shrinkJson(obj, 300);
+  assert.ok(Buffer.byteLength(json) <= 300, json.length);
+  assert.match(JSON.parse(json).handover.notes, /…\[truncated\]$/);
+  assert.ok(shortened > 0);
 });
