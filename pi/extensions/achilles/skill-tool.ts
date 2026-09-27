@@ -192,6 +192,49 @@ export function startSection(skill: string): string | undefined {
 
 export const START_HEADER = '── the section your dispatch named — start here ──';
 
+/**
+ * Round 4 answered a bare `Skill { skill }` statelessly: the same call returned the same text, which
+ * is right for a fresh child process and wrong for the orchestrator. `Skill { coverage-expansion }`
+ * twice in one session spends ~5,600 chars twice on text already in the transcript, and on a 32k
+ * model that is 3.5% of the window for nothing. So a bare call remembers what it already sent.
+ *
+ * The memory lives in the registration, not in the module: one registration is one pi runtime, and a
+ * second copy of achilles registers nothing (see index.ts). It is keyed by the session and by the
+ * skill's own SIZE, so an edited skill — contributing-to-achilles-protocol exists to edit skills — is
+ * re-sent rather than pointed at, and it is dropped when the session changes or is compacted.
+ */
+export interface SentMaps {
+  session?: string;
+  /** `<skill>:<body length>` -> the size already sent, for every bare call answered in this session. */
+  sent: Map<string, number>;
+}
+
+export const sentKey = (name: string, bodyChars: number) => `${name}:${bodyChars}`;
+
+/** How many chars this bare call already sent in this session, or undefined for a first call. A
+ * change of session id empties the memory: pi can switch the session under a live registration, and
+ * pointing at a map that is in another session's transcript is worse than re-sending it. */
+export function sentSize(mem: SentMaps, key: string, session: string | undefined): number | undefined {
+  if (mem.session !== session) { mem.session = session; mem.sent.clear(); }
+  return mem.sent.get(key);
+}
+
+export function recordSent(mem: SentMaps, key: string, chars: number): void { mem.sent.set(key, chars); }
+
+/**
+ * The reply to a repeat bare call: where the text is, and the move that gets a piece of it back.
+ * It never restates a rule — the map above holds them, and a summary of a rule block is the fault
+ * round 3 fixed twice — so it says where they are instead.
+ */
+export function repeatPointer(name: string, chars: number, whole: boolean, start?: string): string {
+  const what = whole ? 'returned in full' : 'mapped';
+  return [
+    `[achilles] "${name}" was already ${what} earlier in this session (${chars} chars) and its file has not changed since: it is above in this transcript, rules and all, and re-reading it would spend those ${chars} chars twice.`,
+    start ? `Your dispatch's starting point in it is §"${start}".` : '',
+    `Scroll up for it, or fetch just the part you need: Skill { skill: "${name}", section: "<heading>" } — a table-of-contents number works too. If the transcript is compacted the text is gone from your window, and the next bare call returns it whole again.`,
+  ].filter(Boolean).join(' ');
+}
+
 /** Why a `section` argument did not narrow the response, for a skill returned whole anyway. */
 function droppedSectionNote(query: string, candidates: number, chars: number): string {
   const why = candidates ? `matches ${candidates} headings` : 'matches no heading';
@@ -199,6 +242,15 @@ function droppedSectionNote(query: string, candidates: number, chars: number): s
 }
 
 export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): void {
+  const mem: SentMaps = { sent: new Map() };
+  // A successful compaction drops transcript entries, so the map a pointer refers to may be gone:
+  // forget everything and let the next bare call re-send it whole. A FAILED compaction leaves the
+  // transcript intact (session_compact_failed), so it deliberately does not clear.
+  pi.on('session_compact', async (event) => {
+    const had = mem.sent.size;
+    mem.sent.clear();
+    log('skill_map_memory_cleared', { reason: event.reason, forgotten: had });
+  });
   pi.registerTool({
     name: 'Skill',
     label: 'Skill',
@@ -209,7 +261,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       section: Type.Optional(Type.String({ description: 'A `## `/`### ` heading of the skill (substring, case-insensitive); returns that section in full' })),
       args: Type.Optional(Type.String({ description: 'Optional arguments appended as the user request' })),
     }),
-    async execute(_id, params) {
+    async execute(_id, params, _signal, _onUpdate, ctx) {
       const s = resolveSkill(params.skill, opts.roots);
       if (!s) throw new Error(`Unknown skill "${params.skill}". Known skills: ${listSkills(opts.roots).join(', ')}`);
       // Only the orchestrator (depth 0) is refused a subagent-only skill; inside a subagent it is
@@ -267,10 +319,25 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       // same map, required rule blocks and all. ACHILLES_PI_VERBOSE=1 still returns every body whole.
       const sectioned = !piVerbose() && body.length >= fullBelow();
       const start = startSection(s.name);
+      // A bare call that repeats one from earlier in this session: the text is already in the
+      // transcript and identical, so all that is owed is a pointer at it and the move that gets one
+      // piece back. An explicit `section` never lands here (it returned above unless verbose), and
+      // ACHILLES_PI_VERBOSE=1 turns this compaction off with the others.
+      const key = sentKey(s.name, body.length);
+      const already = piVerbose() ? undefined : sentSize(mem, key, ctx?.sessionManager?.getSessionId?.());
+      if (already !== undefined) {
+        const text = repeatPointer(s.name, already, !sectioned, start);
+        log('skill', { skill: s.name, chars: text.length, sentChars: already, view: 'pointer', repeat: true, of: sectioned ? 'map' : 'full' });
+        return {
+          content: [{ type: 'text', text: wrap(s.name, s.file, text, 'pointer') + args }],
+          details: { skill: s.name, path: s.file, view: 'pointer', repeat: true, of: sectioned ? 'map' : 'full', chars: text.length, sentChars: already },
+        };
+      }
       if (!sectioned) {
         const note = params.section ? `\n\n[achilles] section "${params.section}" not applied: ACHILLES_PI_VERBOSE=1 returns every skill whole.` : '';
         // The whole body already holds the dispatch's section, so all that is owed is the pointer.
         const where = start ? `\n\n[achilles] your dispatch named §"${start}" as your starting point in this skill.` : '';
+        if (!piVerbose()) recordSent(mem, key, body.length);
         log('skill', { skill: s.name, chars: body.length, view: 'full', ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) });
         return { content: [{ type: 'text', text: wrap(s.name, s.file, body + note + where) + args }], details: { skill: s.name, path: s.file, view: 'full', chars: body.length, ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) } };
       }
@@ -291,6 +358,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
           full = `${text}\n\n${sectionMiss(s.name, start, hit.candidates, sections)}`;
         }
       }
+      recordSent(mem, key, full.length);
       log('skill', { skill: s.name, chars: full.length, bodyChars: body.length, sections: sections.length, view: 'map', ...(start ? { startSection: start, startResolved: started ?? null } : {}) });
       return {
         content: [{ type: 'text', text: wrap(s.name, s.file, full, 'map') + args }],

@@ -819,3 +819,147 @@ test('the content signal never fires for a skill returned whole and never change
   assert.doesNotMatch(sec.content[0].text, INFERRED_MARK);
   assert.match(sec.content[0].text, /You may not report a QA verdict/);
 });
+
+// ── Round 5 item 2: a repeat bare Skill call points at the map instead of re-sending it ──────────
+import { repeatPointer, sentKey, sentSize, recordSent } from '../extensions/achilles/skill-tool.ts';
+
+/** One registration, held across calls, the way a real pi session holds it. */
+function session(over = {}) {
+  const pi = makeFakePi();
+  registerSkillTool(pi, { roots: [realRoot] });
+  const t = pi.tools.find((x) => x.name === 'Skill');
+  const ctx = makeFakeCtx(over);
+  return { pi, ctx, call: (params) => t.execute('c', params, undefined, undefined, ctx) };
+}
+
+test('a second bare Skill call in one session returns a pointer, not the map again', async () => {
+  const s = session({ sessionId: 'dedupe-1' });
+  const first = await s.call({ skill: 'coverage-expansion' });
+  assert.equal(first.details.view, 'map');
+  const second = await s.call({ skill: 'coverage-expansion' });
+  assert.equal(second.details.view, 'pointer');
+  assert.equal(second.details.repeat, true);
+  assert.equal(second.details.of, 'map');
+  assert.equal(second.details.sentChars, first.details.chars);
+  assert.ok(second.details.chars < first.details.chars / 5, `pointer is ${second.details.chars} of ${first.details.chars}`);
+  const text = second.content[0].text;
+  assert.match(text, /view="pointer"/);
+  assert.match(text, /was already mapped earlier in this session \(\d+ chars\)/);
+  assert.match(text, /Skill \{ skill: "coverage-expansion", section: "<heading>" \}/);
+  // None of the map's text comes back: not the rule blocks, not the table of contents.
+  assert.doesNotMatch(text, /Sections — fetch one with Skill/);
+  assert.ok(!text.includes('Two valid exits'));
+  // A third call is still a pointer, and the same one.
+  const third = await s.call({ skill: 'coverage-expansion' });
+  assert.equal(third.content[0].text, second.content[0].text);
+});
+
+test('after a context compaction the map is re-sent whole, because it is gone from the window', async () => {
+  const s = session({ sessionId: 'dedupe-2' });
+  const first = await s.call({ skill: 'coverage-expansion' });
+  assert.equal((await s.call({ skill: 'coverage-expansion' })).details.view, 'pointer');
+  await s.pi.fire('session_compact', { type: 'session_compact', reason: 'threshold', willRetry: false }, s.ctx);
+  const again = await s.call({ skill: 'coverage-expansion' });
+  assert.equal(again.details.view, 'map');
+  assert.equal(again.content[0].text, first.content[0].text, 'the re-sent map is the same map');
+  // And the call after that dedupes again.
+  assert.equal((await s.call({ skill: 'coverage-expansion' })).details.view, 'pointer');
+});
+
+test('a FAILED compaction leaves the transcript intact, so it does not clear the memory', async () => {
+  const s = session({ sessionId: 'dedupe-3' });
+  await s.call({ skill: 'journey-mapping' });
+  await s.pi.fire('session_compact_failed', { type: 'session_compact_failed', reason: 'manual', aborted: true }, s.ctx);
+  assert.equal((await s.call({ skill: 'journey-mapping' })).details.view, 'pointer');
+});
+
+test('the memory is per skill and per session, and a session switch empties it', async () => {
+  let sid = 'a';
+  const pi = makeFakePi();
+  registerSkillTool(pi, { roots: [realRoot] });
+  const t = pi.tools.find((x) => x.name === 'Skill');
+  const ctx = makeFakeCtx({ sessionManager: { getSessionId: () => sid, getSessionFile() { return undefined; } } });
+  const go = (skill) => t.execute('c', { skill }, undefined, undefined, ctx);
+  assert.equal((await go('coverage-expansion')).details.view, 'map');
+  assert.equal((await go('journey-mapping')).details.view, 'map', 'another skill is not deduped');
+  assert.equal((await go('coverage-expansion')).details.view, 'pointer');
+  sid = 'b';
+  assert.equal((await go('coverage-expansion')).details.view, 'map', 'a new session gets the map');
+  assert.equal((await go('coverage-expansion')).details.view, 'pointer');
+});
+
+test('an explicit section fetch is never deduped, and neither is a whole body under verbose', async () => {
+  const s = session({ sessionId: 'dedupe-4' });
+  const a = await s.call({ skill: 'coverage-expansion', section: 'Two valid exits' });
+  const b = await s.call({ skill: 'coverage-expansion', section: 'Two valid exits' });
+  assert.equal(a.details.view, 'section');
+  assert.equal(b.details.view, 'section');
+  assert.equal(a.content[0].text, b.content[0].text);
+  const saved = process.env.ACHILLES_PI_VERBOSE;
+  try {
+    process.env.ACHILLES_PI_VERBOSE = '1';
+    const w = session({ sessionId: 'dedupe-5' });
+    assert.equal((await w.call({ skill: 'coverage-expansion' })).details.view, 'full');
+    assert.equal((await w.call({ skill: 'coverage-expansion' })).details.view, 'full', 'verbose turns the dedupe off too');
+  } finally { if (saved === undefined) delete process.env.ACHILLES_PI_VERBOSE; else process.env.ACHILLES_PI_VERBOSE = saved; }
+});
+
+test('a whole-body skill is deduped too, and the pointer says it was returned in full', async () => {
+  const s = session({ sessionId: 'dedupe-6' });
+  // secrets-sweep is 9,615 chars: under ACHILLES_PI_SKILL_FULL_BELOW, so it arrives whole even at depth 0.
+  const first = await s.call({ skill: 'secrets-sweep' });
+  assert.equal(first.details.view, 'full');
+  const second = await s.call({ skill: 'secrets-sweep' });
+  assert.equal(second.details.view, 'pointer');
+  assert.equal(second.details.of, 'full');
+  assert.match(second.content[0].text, /was already returned in full earlier in this session/);
+  assert.ok(second.details.chars < 800, `${second.details.chars}`);
+});
+
+test('the pointer never restates a rule, it says where the rules are', async () => {
+  const s = session({ sessionId: 'dedupe-7' });
+  const first = await s.call({ skill: 'ticket-driven-testing' });
+  assert.match(first.content[0].text, /You may not report a QA verdict/);
+  const second = await s.call({ skill: 'ticket-driven-testing' });
+  assert.doesNotMatch(second.content[0].text, /You may not report a QA verdict/);
+  assert.match(second.content[0].text, /it is above in this transcript, rules and all/);
+});
+
+test('a child repeat call keeps naming its dispatched start section', async () => {
+  const saved = { d: process.env.ACHILLES_PI_DEPTH, s: process.env.ACHILLES_PI_SKILL_SECTION, f: process.env.ACHILLES_PI_SKILL_SECTION_FOR };
+  try {
+    process.env.ACHILLES_PI_DEPTH = '1';
+    process.env.ACHILLES_PI_SKILL_SECTION = 'No-skip contract';
+    process.env.ACHILLES_PI_SKILL_SECTION_FOR = 'coverage-expansion';
+    const s = session({ sessionId: 'dedupe-8' });
+    const first = await s.call({ skill: 'coverage-expansion' });
+    assert.equal(first.details.startSection, 'No-skip contract');
+    const second = await s.call({ skill: 'coverage-expansion' });
+    assert.equal(second.details.view, 'pointer');
+    assert.match(second.content[0].text, /Your dispatch's starting point in it is §"No-skip contract"/);
+    assert.ok(!second.content[0].text.includes(START_HEADER), 'the section itself is not re-sent');
+  } finally {
+    for (const [k, v] of [['ACHILLES_PI_DEPTH', saved.d], ['ACHILLES_PI_SKILL_SECTION', saved.s], ['ACHILLES_PI_SKILL_SECTION_FOR', saved.f]])
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+});
+
+test('the memory is keyed by body size, so an edited skill is re-sent rather than pointed at', () => {
+  const mem = { sent: new Map() };
+  assert.equal(sentSize(mem, sentKey('x', 100), 's1'), undefined);
+  recordSent(mem, sentKey('x', 100), 42);
+  assert.equal(sentSize(mem, sentKey('x', 100), 's1'), 42);
+  // The skill grew by one char: a different key, so the next bare call sends the new text.
+  assert.equal(sentSize(mem, sentKey('x', 101), 's1'), undefined);
+  // A session change drops everything, including keys never asked about again.
+  assert.equal(sentSize(mem, sentKey('x', 100), 's2'), undefined);
+  assert.equal(mem.sent.size, 0);
+});
+
+test('repeatPointer names the skill, the size saved and the compaction escape hatch', () => {
+  const p = repeatPointer('onboarding', 1864, false);
+  assert.match(p, /"onboarding" was already mapped earlier in this session \(1864 chars\)/);
+  assert.match(p, /If the transcript is compacted the text is gone from your window, and the next bare call returns it whole again\./);
+  assert.ok(p.length < 700, `${p.length}`);
+  assert.match(repeatPointer('test-repair', 21097, true), /already returned in full/);
+});
