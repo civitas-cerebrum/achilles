@@ -62,9 +62,9 @@ const bodyOf = (name) => fs.readFileSync(path.join(realRoot, name, 'SKILL.md'), 
 /** Every real skill whose body is over the full-below threshold, with the map the orchestrator gets. */
 function realSkillMaps() {
   return listSkills([realRoot])
-    .map((name) => ({ name, body: resolveSkill(name, [realRoot]).body.trim() }))
-    .filter((x) => x.body.length >= 12000)
-    .map((x) => ({ name: x.name, body: x.body, ...skillMap(x.name, x.body, 6000) }));
+    .map((name) => resolveSkill(name, [realRoot]))
+    .filter((s) => s.body.trim().length >= 12000)
+    .map((s) => ({ name: s.name, body: s.body.trim(), ...skillMap(s.name, s.body.trim(), 6000, s.piKernel) }));
 }
 
 for (const name of HEAVY) {
@@ -683,13 +683,14 @@ function carriesRule(map, s) {
 }
 function everyRealSkill() {
   return listSkills([realRoot]).map((name) => {
-    const body = resolveSkill(name, [realRoot]).body.trim();
-    return { name, body, sections: parseSections(body), ...skillMap(name, body, 6000) };
+    const s = resolveSkill(name, [realRoot]);
+    const body = s.body.trim();
+    return { name, body, kernel: s.piKernel, sections: parseSections(body, s.piKernel), ...skillMap(name, body, 6000, s.piKernel) };
   });
 }
 
-// The invariant the brief asks for, over the real tree rather than a fixture: a future skill edit
-// that buries its rules under a neutral heading, or drops the wording this infers them from, fails.
+// The invariant over the real tree rather than a fixture: a future skill edit that buries its rules
+// under a neutral heading — or deletes the `pi-kernel:` entry that named them — fails here.
 test('every real skill map ends up with at least one binding rule, inlined or named', () => {
   const all = everyRealSkill();
   assert.equal(all.length, 24, `${all.length} skills`);
@@ -704,8 +705,19 @@ test('every real skill map ends up with at least one binding rule, inlined or na
       assert.match(text, INFERRED_MARK, `${name}: inferred rules must be labelled as inferred`);
     }
   }
-  // 14 of 24 had zero declared rule blocks when this was measured; the point of the fallback.
-  assert.equal(inferredCount, 14, `${inferredCount} skills fall back to the content signal`);
+  // Round 6: every achilles skill DECLARES its rule blocks — 10 by a required heading, 14 by
+  // `pi-kernel:` — so not one of them relies on the wording heuristic any more. The heuristic stays
+  // for skills this adapter does not own (see the fallback tests below, on fixtures).
+  assert.equal(inferredCount, 0, `${inferredCount} real skills still fall back to the content signal`);
+  const byHeading = all.filter((x) => !x.kernel).length;
+  const byKernel = all.filter((x) => x.kernel).length;
+  assert.deepEqual([byHeading, byKernel], [10, 14]);
+  // And every declared block is reported as declared, never as inferred.
+  for (const { name, text } of all) {
+    assert.ok(text.includes(DECLARED_HEADER) || text.includes(PENDING_HEADER), `${name}: no rule marker at all`);
+    assert.doesNotMatch(text, INFERRED_MARK, `${name}: a declared block must not be labelled inferred`);
+    assert.ok(!text.includes(INFERRED_PENDING_NOTE), `${name}: inferred caveat on a declared pending list`);
+  }
 });
 
 test('the sign-off gate prohibition reaches a child dispatched with ticket-driven-testing', async () => {
@@ -716,12 +728,17 @@ test('the sign-off gate prohibition reaches a child dispatched with ticket-drive
   assert.match(text, /\*\*You may not report a QA verdict until you have run the negative control \(§8\)/);
   assert.match(text, /\*\*You may not report a QA verdict for a ticket that has no evidence bundle of its own\.\*\*/);
   assert.match(text, /Do NOT proceed on ACs you invented/);
-  assert.match(text, INFERRED_MARK);
-  // Before this round the same call returned 933 chars of title + headings.
+  // Round 5 inferred these blocks from their wording; round 6 the skill DECLARES them, so the same
+  // rules arrive under the declared marker. `## The Contract`, whose own text is the five-deliverable
+  // contract the gate enforces, is declared with them.
+  assert.ok(text.includes(DECLARED_HEADER), 'the rules are declared, not inferred');
+  assert.doesNotMatch(text, INFERRED_MARK);
+  assert.match(text, /Produce all five, \*\*for each ticket\*\*/);
+  // Before round 5 the same call returned 933 chars of title + headings.
   assert.ok(r.details.chars > 3000, `${r.details.chars} — the map is still a bare table of contents`);
 });
 
-test('a declared required heading outranks rule wording in the text', () => {
+test('a declared rule block outranks rule wording in the text', () => {
   for (const { name, sections, text } of everyRealSkill()) {
     if (!sections.some((s) => s.required)) continue;
     // The declared marker appears when a block fits; when none does, the pending list carries them.
@@ -994,4 +1011,100 @@ test('every section the dispatch path derives resolves through the Skill tool as
     }
   }
   assert.equal(derived, cases.length);
+});
+
+// ── Round 6 item 1: the map serves the author's declaration, and the heuristic is the fallback ─────
+import { declaredKernelSections, kernelEntries } from '../extensions/achilles/skills.ts';
+
+const fxRoot = path.join(import.meta.dirname, 'fixtures', 'skills');
+/** The map of a real skill, with and without its author's `pi-kernel:` declaration. */
+function mapsOf(name) {
+  const s = resolveSkill(name, [realRoot]);
+  const body = s.body.trim();
+  return {
+    kernel: s.piKernel,
+    declared: skillMap(name, body, 6000, s.piKernel).text,
+    inferred: skillMap(name, body, 6000).text,
+    sections: parseSections(body),
+  };
+}
+
+test('the declaration replaces the heuristic block for block, and the map says DECLARED', () => {
+  for (const name of ['ticket-driven-testing', 'workflow-reviewer', 'self-repair', 'test-repair']) {
+    const m = mapsOf(name);
+    assert.ok(m.kernel?.length, `${name} carries no pi-kernel`);
+    assert.ok(m.declared.includes(DECLARED_HEADER) || m.declared.includes(PENDING_HEADER));
+    assert.doesNotMatch(m.declared, INFERRED_MARK);
+    assert.match(m.inferred, INFERRED_MARK, `${name}: fixture assumption — the heuristic used to fire here`);
+    // Every declared entry's block is carried, inlined or named.
+    for (const s of declaredKernelSections(m.sections, m.kernel).sections) {
+      assert.ok(carriesRule(m.declared, s), `${name}: declared block "${s.heading}" neither inlined nor named`);
+    }
+  }
+});
+
+test("workflow-reviewer's input list is no longer mistaken for a rule, and its three real rules are in", () => {
+  const m = mapsOf('workflow-reviewer');
+  // The heuristic pulled in §"Inputs the reviewer receives in its brief" on its "brief MUST cite"
+  // sentence — a list of what the DISPATCHER sends, not a rule the reviewer follows.
+  const inputs = m.sections.find((s) => s.heading === 'Inputs the reviewer receives in its brief');
+  assert.ok(m.inferred.includes(inputs.ownText), 'fixture assumption: the heuristic inlined the input list');
+  assert.ok(!m.declared.includes(inputs.ownText), 'the input list is not a rule block any more');
+  // What the skill's own description says it owns: the authorisation rule and the reject cap.
+  for (const h of ['Skip / early-stop authorisation', '3-cycle reject cap', 'Findings format — surgical fix list'])
+    assert.ok(m.declared.includes(m.sections.find((s) => s.heading === h).ownText), `${h} missing`);
+  assert.match(m.declared, /\*\*only\*\* legitimate path for skipping/);
+});
+
+test("self-repair's 5,350-char parenthetical is gone; the 641-char rule it buried is what travels", () => {
+  const m = mapsOf('self-repair');
+  const fanout = m.sections.find((s) => /Stage 3 — Fan-out/.test(s.heading));
+  const exit = m.sections.find((s) => s.heading === 'Exit gate — compliance sweep');
+  assert.equal(fanout.ownText.length, 5350, 'fixture assumption');
+  // Round 5 named Stage 3 on the fetch-first list for one lowercase "must not" in a parenthetical.
+  assert.ok(m.inferred.includes(`- ### ${fanout.heading} (${fanout.text.length} chars)`), 'fixture assumption');
+  assert.ok(!m.declared.includes(fanout.heading + ' ('), 'Stage 3 is no longer a rule block');
+  assert.ok(m.declared.includes(exit.ownText), 'the harness-enforced exit gate is');
+  assert.ok(m.declared.includes(m.sections.find((s) => s.heading === 'Scope boundaries (YAGNI)').ownText));
+});
+
+test('a declared block is marked [required reading] in the table of contents and fetched whole', async () => {
+  const r = await call({ skill: 'ticket-driven-testing' });
+  assert.match(r.content[0].text, /4\. The Contract \(2604 chars\) \[required reading\]/);
+  const sec = await call({ skill: 'ticket-driven-testing', section: 'The sign-off gate' });
+  assert.equal(sec.details.view, 'section');
+  assert.equal(sec.details.bounded, false);
+  assert.match(sec.content[0].text, /You may not report a QA verdict until you have run the negative control/);
+});
+
+test('the content signal still fires for a skill this adapter does not own', () => {
+  // No pi-kernel, no required heading: a user's own skill under ~/.agents/skills, or a third-party one.
+  const body = ['# Third-party skill', '', 'Lead.', '', '## Method', '', 'Do the thing.', '',
+    '## Rules', '', '**You may not ship without the control.**', ''].join('\n');
+  const { text } = skillMap('third-party', body, 6000);
+  assert.match(text, INFERRED_MARK);
+  assert.ok(text.includes('**You may not ship without the control.**'));
+  // And the same body with a declaration reports the same block as declared instead.
+  const declared = skillMap('third-party', body, 6000, kernelEntries('Rules')).text;
+  assert.ok(declared.includes(DECLARED_HEADER));
+  assert.doesNotMatch(declared, INFERRED_MARK);
+});
+
+test('a pi-kernel entry that resolves to nothing falls back to the heuristic — never to an empty map', () => {
+  const body = resolveSkill('ticket-driven-testing', [realRoot]).body.trim();
+  const { unresolved } = declaredKernelSections(parseSections(body), ['The sign-off gaet']);
+  assert.deepEqual(unresolved, ['The sign-off gaet'], 'a typo resolves to no heading');
+  const { text } = skillMap('ticket-driven-testing', body, 6000, ['The sign-off gaet']);
+  assert.match(text, INFERRED_MARK, 'the safety net catches an author typo');
+  assert.match(text, /You may not report a QA verdict/);
+});
+
+test('a fixture skill declaring BOTH a heading block and pi-kernel entries carries both in its map', () => {
+  const s = resolveSkill('kernel-skill', [fxRoot]);
+  const { text } = skillMap('kernel-skill', s.body.trim(), 6000, s.piKernel);
+  assert.ok(text.includes(DECLARED_HEADER));
+  assert.ok(text.includes('Declared by its heading, not by the frontmatter.'));
+  assert.ok(text.includes('Produce all three, for each ticket.'));
+  assert.ok(text.includes('Hold the line here.'));
+  assert.ok(!text.includes('Nothing binding lives here.'));
 });

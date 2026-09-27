@@ -17,6 +17,7 @@ description: >
   verifiable oracle. Not for: ORM/migration/DDL testing, schema-drift detection, load/perf testing,
   or pure UI assertions — those route elsewhere.
 pi-description: 'SQL assertions in tests: “verify db state”, “check the row was inserted”, “database test”, any steps.sql* call.'
+pi-kernel: 'Scope & Boundaries — Read Before Starting | Exit gate — compliance sweep | Return Shape'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared. Subagents (which return structured data) are exempt.

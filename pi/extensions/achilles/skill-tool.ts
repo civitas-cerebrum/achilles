@@ -44,18 +44,23 @@ function pendingLine(s: SkillSection, partial: boolean): string {
  * in subsections is BOTH inlined and listed, so an inlined stub can never pass for the whole block.
  * The table of contents absorbs the hard cap: it is the only part the budget may cut.
  *
- * When the skill declares NO required heading, the rule blocks come from the content signal instead
- * (inferredRuleSections) and the map says so. Same machinery, same budget, same fetch-before-you-act
- * contract — only the marker changes, because an inferred rule is a weaker claim than a declared one.
+ * `kernel` are the skill's `pi-kernel:` entries: the blocks its AUTHOR declared must stay in a child's
+ * working memory. They mark sections required exactly as a REQUIRED_HEADING match does and the two
+ * UNION, so this function cannot tell (and does not care) which of the two declared a given block.
+ *
+ * When the skill declares NO required block either way, the rule blocks come from the content signal
+ * instead (inferredRuleSections) and the map says so. Same machinery, same budget, same
+ * fetch-before-you-act contract — only the marker changes, because an inferred rule is a weaker claim
+ * than a declared one.
  */
-export function skillMap(name: string, body: string, headMax = skillHeadMax()): { text: string; sections: SkillSection[] } {
-  const sections = parseSections(body);
+export function skillMap(name: string, body: string, headMax = skillHeadMax(), kernel?: readonly string[]): { text: string; sections: SkillSection[] } {
+  const sections = parseSections(body, kernel);
   const preamble = skillPreamble(body);
   const lead = `[achilles] Map of a ${body.trim().length}-char skill: its opening, the rules that always apply, and its sections. Fetch a section with Skill { skill: "${name}", section: "<heading>" } before acting on it.`;
   const parts = [lead, preamble];
-  // A heading that declares itself required outranks rule wording found in the text: only a skill
-  // with NO required heading falls back to the content signal, so the 10 skills that have one keep
-  // exactly the map they had. See inferredRuleSections for why the proxy needed a fallback at all.
+  // A declared block — a heading that declares itself required, or a `pi-kernel:` entry — outranks
+  // rule wording found in the text: only a skill that declares NOTHING falls back to the content
+  // signal. See inferredRuleSections for why the proxy needed a fallback at all.
   const declared = sections.filter((x) => x.required);
   const inferred = declared.length ? { sections: [] as SkillSection[] } : inferredRuleSections(sections);
   const blocks = declared.length ? declared : inferred.sections;
@@ -178,8 +183,8 @@ function sectionMiss(name: string, query: string, candidates: SkillSection[], se
     : `[achilles] no section of "${name}" matches "${query}". Pick one from the list below, by heading, by number, or as "<parent> > <child>".`;
 }
 
-function ambiguous(name: string, body: string, query: string, candidates: SkillSection[], sections: SkillSection[]): string {
-  return `${sectionMiss(name, query, candidates, sections)}\n\n${skillMap(name, body).text}`;
+function ambiguous(name: string, body: string, query: string, candidates: SkillSection[], sections: SkillSection[], kernel?: readonly string[]): string {
+  return `${sectionMiss(name, query, candidates, sections)}\n\n${skillMap(name, body, skillHeadMax(), kernel).text}`;
 }
 
 /**
@@ -287,7 +292,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
       // ACHILLES_PI_VERBOSE=1 stays the one bypass — it turns every context compaction off — and the
       // response says so rather than dropping the argument in silence.
       if (params.section && !piVerbose()) {
-        const all = parseSections(body);
+        const all = parseSections(body, s.piKernel);
         const { section, candidates } = findSection(all, params.section);
         if (section) {
           // Over ACHILLES_PI_SECTION_MAX a splittable section arrives as its own prose plus a listing
@@ -310,7 +315,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
             details: { skill: s.name, path: s.file, view: 'full', candidates: candidates.map((c) => c.heading), chars: body.length, sectionDropped: params.section },
           };
         }
-        const text = ambiguous(s.name, body, params.section, candidates, all);
+        const text = ambiguous(s.name, body, params.section, candidates, all, s.piKernel);
         logSkill({ skill: s.name, section: params.section, candidates: candidates.length, chars: text.length, view: 'map' });
         return {
           content: [{ type: 'text', text: wrap(s.name, s.file, text, 'map') + args }],
@@ -346,7 +351,7 @@ export function registerSkillTool(pi: ExtensionAPI, opts: { roots: string[] }): 
         logSkill({ skill: s.name, chars: body.length, view: 'full', ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) });
         return { content: [{ type: 'text', text: wrap(s.name, s.file, body + note + where) + args }], details: { skill: s.name, path: s.file, view: 'full', chars: body.length, ...(start ? { startSection: start } : {}), ...(params.section ? { sectionDropped: params.section } : {}) } };
       }
-      const { text, sections } = skillMap(s.name, body);
+      const { text, sections } = skillMap(s.name, body, skillHeadMax(), s.piKernel);
       // A dispatch that named a section gets the map AND that section, so the child starts on its own
       // chapter without a second round trip. The map comes first and whole: the start section is an
       // addition to the required rule blocks, never a substitute for them.

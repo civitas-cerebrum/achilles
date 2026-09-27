@@ -19,6 +19,7 @@ description: >
   the secrets-sweep skill; this skill owns the data-lifecycle doctrine around
   it.
 pi-description: 'Where test data comes from and who cleans it up: “test data strategy”, “seed data”, “hardcoded data”, “test fixtures”.'
+pi-kernel: 'The strategy decision ladder | 12. DATA FEASIBILITY IS A COMPOSING GATE | Rationalizations to reject'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

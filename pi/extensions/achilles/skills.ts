@@ -11,6 +11,9 @@ export interface SkillInfo {
   subagentOnly: boolean;
   /** The pi routing line (`pi-description:` frontmatter), when the skill has one. */
   piDescription?: string;
+  /** The sections the skill's author declared kernel-resident (`pi-kernel:` frontmatter), as written.
+   * Empty/absent when the skill declares none — a third-party or user-authored skill never has one. */
+  piKernel?: string[];
 }
 
 /** <package>/ is three levels above this file: pi/extensions/achilles/. fileURLToPath rather than
@@ -40,6 +43,29 @@ export function unquote(value: string): string {
   if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) return v.slice(1, -1).replace(/''/g, "'");
   if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1).replace(/\\(["\\])/g, '$1');
   return v;
+}
+
+/**
+ * The delimiter between `pi-kernel:` entries.
+ *
+ * The frontmatter parser is a naive single-line `key: value` capture (parseFrontmatter), so the value
+ * is ONE quoted flow scalar, not a YAML list — the delimiter has to survive inside a heading. Skill
+ * headings contain em dashes, parentheses, backticks, colons, periods, `<N>` placeholders and `&`/`+`,
+ * so `-`, `,`, `/`, `:` and `;` are all out. `|` is the one ASCII separator that appears in exactly 1
+ * of the 653 headings across the 24 skills (workflow-reviewer's "Per load-test pass
+ * (`perf-reviewer-pass-<load|stress|spike|soak>`)"), it needs no escaping inside a single-quoted YAML
+ * scalar, and it is the character this repo's own tables already use to separate fields.
+ *
+ * That one heading is still declarable, which is why `|` is defensible rather than merely convenient:
+ * an entry is resolved with findSection, so a UNIQUE SUBSTRING of a heading names it. `Per load-test
+ * pass` resolves to that heading without ever typing the pipe. See declaredKernelSections.
+ */
+export const KERNEL_DELIMITER = '|';
+
+/** The `pi-kernel:` entries of a frontmatter value: split on the delimiter, trimmed, de-duplicated,
+ * empties dropped. A trailing or doubled delimiter is an author's typo, not an empty entry. */
+export function kernelEntries(value: string): string[] {
+  return [...new Set(value.split(KERNEL_DELIMITER).map((e) => e.trim()).filter(Boolean))];
 }
 
 /** Truthy YAML-ish flag: "true" or "yes", case-insensitive. */
@@ -108,7 +134,12 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
       isFlagTrue(fm['disable-model-invocation']) ||
       SUBAGENT_ONLY_MARKER.test(description);
     const piDescription = fm['pi-description'] ? unquote(fm['pi-description']) : undefined;
-    return { name, dir, file, description, body, subagentOnly, ...(piDescription ? { piDescription } : {}) };
+    const piKernel = fm['pi-kernel'] ? kernelEntries(unquote(fm['pi-kernel'])) : undefined;
+    return {
+      name, dir, file, description, body, subagentOnly,
+      ...(piDescription ? { piDescription } : {}),
+      ...(piKernel && piKernel.length ? { piKernel } : {}),
+    };
   }
   return undefined;
 }
@@ -131,12 +162,21 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
 export const REQUIRED_HEADING = /ABSOLUTE RULE|Absolute Rules|non-negotiable|No-skip contract|read this before|STOP AND READ|must read|Hard rules|kernel-resident/i;
 
 /**
- * CONTENT signal for a binding rule, used ONLY as a fallback for a skill in which NO heading matched
- * REQUIRED_HEADING. `SkillSection.required` is decided by the heading TEXT, which is a proxy: 14 of
- * the 24 skills declare no required heading at all, so their map used to be a lead, a preamble and a
- * table of contents — not one binding rule. ticket-driven-testing is the worst case: 85,462 chars
+ * CONTENT signal for a binding rule, used ONLY as a fallback for a skill that declares NO required
+ * block — neither a heading matching REQUIRED_HEADING nor a `pi-kernel:` entry. Every achilles skill
+ * now declares one, so in this package the fallback is unreachable; it stays for the skills this
+ * adapter does not own (a user's `~/.agents/skills/**`, a third-party skill), which have no achilles
+ * frontmatter and no say in this repo's heading conventions.
+ *
+ * Why it exists: `SkillSection.required` used to be decided by the heading TEXT alone, which is a
+ * proxy — 14 of the 24 skills declared no required heading, so their map was a lead, a preamble and a
+ * table of contents, not one binding rule. ticket-driven-testing was the worst case: 85,462 chars
  * whose `### The sign-off gate` carries "**You may not report a QA verdict until you have run the
- * negative control (§8)**", and a dispatched child never saw it.
+ * negative control (§8)**", and a dispatched child never saw it. The wording heuristic below found it,
+ * but a heuristic can only find what it recognises (it misses test-repair's "These are the
+ * non-negotiableS that every cluster decision must respect" on a plural) and it cannot tell a rule
+ * from a mention of one (it pulled in workflow-reviewer's §"Inputs the reviewer receives in its
+ * brief", an input list). `pi-kernel:` replaces the guess with the author's judgement.
  *
  * Two tiers, tried in order, and the FIRST tier that hits anything in a skill wins — the same ranking
  * as heading-beats-content, one level down. A skill that states a prohibition is not also searched for
@@ -215,11 +255,52 @@ export function skillPreamble(body: string): string {
   return lines.slice(0, first ? first.line : lines.length).join('\n').trim();
 }
 
-/** Every heading of `body` as a section, in document order (all levels, nested ones included). */
-export function parseSections(body: string): SkillSection[] {
+/**
+ * The sections a skill's `pi-kernel:` entries name, and the entries that named none.
+ *
+ * Each entry is resolved with findSection — the same address language the map prints and the model
+ * types back (an exact heading, a unique substring, or `"<parent> > <child>"`), so an author declares
+ * a block the same way they would fetch it. Two guards, both deliberate:
+ *
+ *  - only an UNAMBIGUOUS resolution counts. An entry matching several headings is unresolved, not
+ *    "all of them": a declaration that silently pulls a sibling rule block into every map is worse
+ *    than one the lint tells the author to disambiguate with `"<parent> > <child>"`.
+ *  - the matched heading must CONTAIN the entry's last term, which rejects the routes findSection
+ *    offers a model but an author never means — a table-of-contents NUMBER ("12" is the 12th section,
+ *    not a declaration) and a parent-path match whose child term did not touch the heading text.
+ *
+ * `unresolved` is the lint's business (scripts/lint-doc-drift.mjs), not a throw: the Skill tool must
+ * answer even a skill whose frontmatter has a typo, and when every entry misses, nothing is marked
+ * required and the content-signal fallback takes over exactly as it does for an unannotated skill.
+ */
+export function declaredKernelSections(
+  sections: SkillSection[],
+  entries: readonly string[] | undefined,
+): { sections: SkillSection[]; unresolved: string[] } {
+  const hit: SkillSection[] = [];
+  const unresolved: string[] = [];
+  for (const entry of entries ?? []) {
+    const { section } = findSection(sections, entry);
+    const last = entry.split('>').pop()!.trim().toLowerCase();
+    if (section && last && section.heading.toLowerCase().includes(last)) {
+      if (!hit.includes(section)) hit.push(section);
+    } else unresolved.push(entry);
+  }
+  return { sections: hit, unresolved };
+}
+
+/**
+ * Every heading of `body` as a section, in document order (all levels, nested ones included).
+ *
+ * `kernel` are the skill's `pi-kernel:` entries. A section they name is `required` exactly as a
+ * REQUIRED_HEADING match makes one: the two UNION, so annotating a skill that also has an
+ * `## ABSOLUTE RULES` block cannot drop the latter, and everything downstream — inline-or-name, the
+ * budget, ordering, PENDING_HEADER, "a rule block is never split" — works unchanged.
+ */
+export function parseSections(body: string, kernel?: readonly string[]): SkillSection[] {
   const lines = body.split('\n');
   const heads = headings(lines);
-  return heads.map((h, i) => {
+  const sections = heads.map((h, i) => {
     const next = heads.slice(i + 1).find((o) => o.level <= h.level);
     const anyNext = heads[i + 1];
     return {
@@ -230,13 +311,16 @@ export function parseSections(body: string): SkillSection[] {
       required: REQUIRED_HEADING.test(h.heading),
     };
   });
+  if (kernel?.length) for (const s of declaredKernelSections(sections, kernel).sections) s.required = true;
+  return sections;
 }
 
 /**
- * The sections whose OWN text states a binding rule, for a skill in which no HEADING declared one.
+ * The sections whose OWN text states a binding rule, for a skill that DECLARED none.
  *
- * A declared heading always outranks inferred text: a skill with even one `required` section returns
- * nothing here, so the 10 skills that already have required sections keep exactly the map they had.
+ * A declaration always outranks inferred text: a skill with even one `required` section — from a
+ * heading or from `pi-kernel:` — returns nothing here, so an annotated skill keeps exactly the map its
+ * author authored.
  * `ownText`, not `text`, because a parent section's `text` swallows its children — `## The Contract`
  * would match on its `### The sign-off gate` child and the map would inline the parent's prose while
  * the prohibition itself stayed out of reach.

@@ -8,6 +8,7 @@ description: >
   or present test coverage, test results, or QA milestones to stakeholders. This skill is optional and
   on-demand only — it never activates during test writing or debugging workflows.
 pi-description: 'HTML deck summarising the QA work done: “generate a QA report”, “export a deck”, “summarize work”.'
+pi-kernel: 'Step 2.5: Staleness gate | Constraints'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

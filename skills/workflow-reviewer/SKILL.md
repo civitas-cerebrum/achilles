@@ -11,6 +11,7 @@ description: >
   carries one of the three role prefixes, or when the orchestrator names
   the skill in a Skill-tool invocation.
 pi-description: 'Subagent-only — gate reviews of onboarding phases, coverage passes and mapping cycles (workflow-reviewer-* roles): delegate with Agent { skill: "workflow-reviewer" }.'
+pi-kernel: 'Findings format — surgical fix list | Skip / early-stop authorisation | 3-cycle reject cap'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

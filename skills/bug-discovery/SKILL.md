@@ -12,6 +12,7 @@ description: >
   latency-under-concurrency / VU-ramp work routes to performance-testing, not this skill.
   Use only when the goal is to actively discover bugs.
 pi-description: 'Adversarial bug hunt once the suite passes: “find bugs”, “break the app”, “stress test the app” (functional). Not load testing (use performance-testing).'
+pi-kernel: 'Session charter (mandatory) | Evidence rule (replaces the absolute screenshot cap) | What static mode must never claim | Return shape (probe)'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

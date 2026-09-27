@@ -16,6 +16,7 @@ description: >
   Do NOT use to find new bugs adversarially — that is `bug-discovery`. Do NOT use to write new tests —
   that is `test-composer`.
 pi-description: 'Restore a broken or flaky suite to green in-session: “repair the suite”, “fix my tests”, “the suite rotted”. One failing test: failure-diagnosis.'
+pi-kernel: 'Bug-vs-Heal Discipline | Exit gate — compliance sweep'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

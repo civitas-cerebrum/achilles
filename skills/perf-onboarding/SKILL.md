@@ -10,6 +10,7 @@ description: >
   the `performance-testing` COMPANION skill which it dispatches for
   per-scenario authoring work.
 pi-description: 'Build a whole performance suite from zero: “perf-onboard this project”, “set up the performance pipeline”. One load test: use performance-testing.'
+pi-kernel: 'Status ledger + workflow reviewer (state-machine enforcement) | Hard ceilings (gate-enforced, not configurable) | Cross-cutting rules'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.

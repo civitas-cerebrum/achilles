@@ -2,6 +2,7 @@
 name: ticket-driven-testing
 description: Use when a code change is the unit of QA work — a ticket paired to a PR, a branch awaiting sign-off, OR a developer who has just finished building something and asks for it to be tested, verified, checked, covered, or QA'd. Triggers include "test this", "verify my changes work", "can you check this", "write tests for what I just built", "is this covered", "QA this before I open a PR", as well as any ask naming a tracker issue key. Covers UI verification, test automation, and adversarial review of the testing itself.
 pi-description: 'QA a code change, ticket or PR: “test this”, “verify my changes work”, “QA this before I open a PR”, a tracker issue key.'
+pi-kernel: 'The Contract | The sign-off gate | 1b. Derive the ACs — then get them confirmed | 8c. Compliance sweep — before any verdict leaves the session'
 ---
 
 # Ticket-Driven Testing

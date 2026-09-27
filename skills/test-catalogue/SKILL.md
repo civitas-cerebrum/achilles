@@ -7,6 +7,7 @@ description: >
   during test writing, coverage expansion, repair, or debugging. Requires a sentinel-bearing
   `tests/e2e/docs/journey-map.md` and at least one spec file to be present.
 pi-description: 'Stakeholder list of the scenarios in the suite: “produce a test catalogue”, “scenario report”, “export the scenario inventory”.'
+pi-kernel: 'Context discipline | Do Not | Rationalizations to reject | Phase 6 — Exhaustive Visual Inspection (mandatory, before delivery)'
 ---
 
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
