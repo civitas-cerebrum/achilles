@@ -329,6 +329,40 @@ test('schema-guard: the second and later warnings collapse to role + first error
   // Another hook's warnings are untouched by the schema guard's sighting.
   assert.match(c.note('other.sh', '[WARN] different hook.\n\nDetails here.', 'systemMessage'), /Details here/);
 });
+// ── I2: the shaped-warning collapse is keyed by (hook, role), not by hook ────────────────────────
+test('schema-guard: a first warning about a DIFFERENT role still arrives in full', (t) => {
+  t.after(verboseOff());
+  const c = createMessageCompactor();
+  const forRole = (role, err) => `[WARN] Subagent return validation surfaced issues.
+
+Description: "${role}-phase5: gate Phase 5"
+Role:        ${role}
+
+Schema validation errors (schemas/subagent-returns/${role}.schema.json):
+${err}
+
+References:
+  schemas/subagent-returns/README.md`;
+  const errs = [
+    "SCHEMA_FAIL: /handover must have required property 'next-action'",
+    'SCHEMA_FAIL: /handover/status must be one of approve|reject|escalate',
+    'SCHEMA_FAIL: /handover/phase must be integer',
+    'SCHEMA_FAIL: /handover/evidence must be array',
+  ].join('\n');
+  const first = c.note('subagent-return-schema-guard.sh', forRole('workflow-reviewer', errs), 'systemMessage');
+  for (const e of errs.split('\n')) assert.ok(first.includes(e), e);
+  // A first sighting for another role is a different rule set: it must not collapse to one line.
+  const other = c.note('subagent-return-schema-guard.sh', forRole('composer', errs), 'systemMessage');
+  assert.ok(other.length > 400, `${other.length} chars: ${other}`);
+  for (const e of errs.split('\n')) assert.ok(other.includes(e), `composer: ${e}`);
+  assert.ok(!other.includes('failed validation again'), other);
+  // A SECOND sighting of either role does collapse.
+  assert.match(c.note('subagent-return-schema-guard.sh', forRole('composer', 'SCHEMA_FAIL: /handover/files must be array'), 'systemMessage'),
+    /^\[achilles\] subagent-return-schema-guard\.sh: composer return failed validation again — SCHEMA_FAIL: \/handover\/files must be array\./);
+  assert.match(c.note('subagent-return-schema-guard.sh', forRole('workflow-reviewer', 'PARSE_FAIL: Unexpected token'), 'systemMessage'),
+    /workflow-reviewer return failed validation again/);
+});
+
 test('schema-guard helpers: role and first error come out of the real warning shape', () => {
   assert.equal(warnRole(GUARD_WARN('SCHEMA_FAIL: /verdict must be string')), 'workflow-reviewer');
   assert.equal(firstError(GUARD_WARN('SCHEMA_FAIL: /verdict must be string')), 'SCHEMA_FAIL: /verdict must be string');

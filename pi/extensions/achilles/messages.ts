@@ -229,9 +229,13 @@ export function createMessageCompactor(): MessageCompactor {
       warnings.add(key);
       // A shaped-warning hook (the schema guard) says the same thing every time around a different
       // issue list: the first one carries the rules, later ones carry the role and the first error.
+      // Keyed by (hook, role), not by hook alone: the return-shape rules a workflow-reviewer warning
+      // carries are not the ones a composer warning carries, and collapsing the first sighting of a
+      // DIFFERENT role to 235 chars hid four distinct schema errors in the measured run.
       if (SHAPED_WARN_HOOK.test(hook)) {
-        if (shapedSeen.has(hook)) return shapedWarnLine(hook, text);
-        shapedSeen.add(hook);
+        const shapedKey = `${hook}\0${warnRole(text)}`;
+        if (shapedSeen.has(shapedKey)) return shapedWarnLine(hook, text);
+        shapedSeen.add(shapedKey);
       }
       if (kind === 'additionalContext') return capAtLine(self.scope(text), CONTEXT_CAP);
       // First sight: the whole warning (it steers the model, e.g. a schema guard's issue list), capped.
