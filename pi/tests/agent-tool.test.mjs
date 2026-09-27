@@ -203,7 +203,7 @@ test('the pi-side validated-role list covers every schema-validated prefix in sc
   assert.ok(cases.length >= 16, `parsed only ${cases.length} cases`);
   const validated = cases.filter((c) => c.role).map((c) => c.pat);
   const unvalidated = cases.filter((c) => !c.role).map((c) => c.pat);
-  assert.equal(validated.length, 10, validated.join(','));
+  assert.equal(validated.length, 11, validated.join(","));
   // Every validated prefix is owed a handover, by a sample role built from its glob.
   for (const pat of validated) {
     const sample = `${pat.replace(/\*$/, '')}sample`;

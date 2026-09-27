@@ -41,8 +41,12 @@ export const BARE_HANDOVER_LINE = 'Return the bare handover JSON as your final m
  * all. pi/tests/agent-tool.test.mjs sources the shell file and fails if this list drifts from it.
  */
 export const SCHEMA_VALIDATED_ROLES = [
-  'perf-reviewer-', 'workflow-reviewer-', 'composer-', 'reviewer-', 'composition-judge-',
-  'probe-', 'repair-worker-', 'phase-validator-', 'phase4-prioritise-author', 'phase4-cycle-',
+  // `test-composer-` is the kernel-mandate spelling of the composer role and needs its own entry:
+  // owesHandover() matches with startsWith, so `composer-` does not cover `test-composer-j-<slug>:`
+  // — exactly as the shell's `composer-*` case glob does not cover it either.
+  'perf-reviewer-', 'workflow-reviewer-', 'test-composer-', 'composer-', 'reviewer-',
+  'composition-judge-', 'probe-', 'repair-worker-', 'phase-validator-',
+  'phase4-prioritise-author', 'phase4-cycle-',
 ] as const;
 
 /** True when a dispatch role's return is schema-validated, so the child owes a bare handover JSON. */

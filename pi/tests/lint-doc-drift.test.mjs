@@ -55,7 +55,7 @@ test('the real tree passes, and it is the 14 annotated skills that are being che
 test('GREEN: a heading that prints its pinned role token passes', () => {
   const r = checkRoleHeadingConvention(fx('roles-green'), ROLE_MAP, [['reviewer-skill', 'workflow-reviewer-phase5']]);
   assert.deepEqual(r.detail, []);
-  assert.match(r.label, /1 pinned roles, 1 found, 16 role stems/);
+  assert.match(r.label, /1 pinned roles, 1 found, 17 role stems/);
 });
 
 test('RED direction 1: a heading renamed to drop its role token fails, naming the role and the skill', () => {
@@ -86,5 +86,5 @@ test('the real tree passes: every pinned role still resolves and nothing new is 
   const r = checkRoleHeadingConvention();
   assert.deepEqual(r.detail, []);
   assert.equal(ROLE_HEADING_PINS.length, 21);
-  assert.match(r.label, /21 pinned roles, 21 found, 16 role stems/);
+  assert.match(r.label, /21 pinned roles, 21 found, 17 role stems/);
 });
