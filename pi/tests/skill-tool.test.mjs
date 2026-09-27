@@ -47,8 +47,8 @@ test('NaN ACHILLES_PI_DEPTH counts as the orchestrator: subagent-only is refused
 });
 
 // ── Sectioned skill bodies (round 2: bounded orchestrator context) ───────────────────────────────
-import { PACKAGE_DIR, parseSections, findSection, REQUIRED_HEADING } from '../extensions/achilles/skills.ts';
-import { skillMap } from '../extensions/achilles/skill-tool.ts';
+import { PACKAGE_DIR, parseSections, findSection, subsectionsOf, tableOfContents, listSkills, resolveSkill, REQUIRED_HEADING } from '../extensions/achilles/skills.ts';
+import { skillMap, capTableOfContents, PENDING_HEADER } from '../extensions/achilles/skill-tool.ts';
 const realRoot = path.join(PACKAGE_DIR, 'skills');
 function realTool() { const pi = makeFakePi(); registerSkillTool(pi, { roots: [realRoot] }); return pi.tools.find((t) => t.name === 'Skill'); }
 async function call(params, env = {}) {
@@ -59,6 +59,13 @@ async function call(params, env = {}) {
 }
 const HEAVY = ['coverage-expansion', 'journey-mapping', 'achilles-protocol', 'onboarding'];
 const bodyOf = (name) => fs.readFileSync(path.join(realRoot, name, 'SKILL.md'), 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim();
+/** Every real skill whose body is over the full-below threshold, with the map the orchestrator gets. */
+function realSkillMaps() {
+  return listSkills([realRoot])
+    .map((name) => ({ name, body: resolveSkill(name, [realRoot]).body.trim() }))
+    .filter((x) => x.body.length >= 12000)
+    .map((x) => ({ name: x.name, body: x.body, ...skillMap(x.name, x.body, 6000) }));
+}
 
 for (const name of HEAVY) {
   test(`${name}: the no-section response is a map under 6,000 chars naming every always-required heading`, async () => {
@@ -73,7 +80,7 @@ for (const name of HEAVY) {
     for (const s of required) {
       assert.ok(text.includes(s.heading), `${name} map omits required heading "${s.heading}"`);
       if (text.includes(s.ownText)) continue;
-      assert.match(text, /required, not included here: fetch each before you act/);
+      assert.match(text, /required, not included in full here: fetch each before you act/);
     }
     // The table of contents carries every `## ` section with its size.
     for (const s of parseSections(bodyOf(name)).filter((x) => x.level === 2)) {
@@ -173,7 +180,8 @@ test('args ride along with a map and with a section', async () => {
 
 test('skillMap keeps a required block whole or lists it — it never cuts one in half', () => {
   const body = bodyOf('coverage-expansion');
-  const required = parseSections(body).filter((s) => s.required);
+  const all = parseSections(body);
+  const required = all.filter((s) => s.required);
   for (const max of [3000, 6000, 12000, 40000]) {
     const { text } = skillMap('coverage-expansion', body, max);
     for (const s of required) {
@@ -182,10 +190,63 @@ test('skillMap keeps a required block whole or lists it — it never cuts one in
       if (text.includes(head)) assert.ok(text.includes(s.ownText) || text.includes(`  - ${head} (${s.text.length} chars)`), `${s.heading} at max=${max}`);
     }
   }
-  // A generous budget includes every required block.
+  // A generous budget includes every required block's own text.
   const wide = skillMap('coverage-expansion', body, 60000).text;
   for (const s of required) assert.ok(wide.includes(s.ownText), `${s.heading} missing at max=60000`);
-  assert.doesNotMatch(wide, /required, not included here/);
+  // Blocks whose rules live in subsections stay on the fetch list even then — their own text is not
+  // the whole block — and blocks that carry all their own rules are off it.
+  const listed = wide.slice(wide.indexOf(PENDING_HEADER)).split('\n').filter((l) => l.startsWith('  - '));
+  const withSubs = required.filter((s) => subsectionsOf(all, s).length);
+  assert.equal(listed.length, withSubs.length);
+  for (const s of withSubs) assert.ok(listed.some((l) => l.includes(s.heading) && l.includes('its own rules are inlined above')), s.heading);
+});
+
+// ── C1: an inlined required block is never allowed to read as the whole rule set ──────────────────
+test('a required block whose rules live in subsections is inlined AND listed, with a continuation marker', async () => {
+  const r = await call({ skill: 'achilles-protocol' });
+  const text = r.content[0].text;
+  const all = parseSections(bodyOf('achilles-protocol'));
+  const abs = all.find((s) => /ABSOLUTE RULES/.test(s.heading));
+  const subs = subsectionsOf(all, abs);
+  assert.ok(subs.length > 1 && abs.text.length > abs.ownText.length * 10, 'fixture assumption: the block is a stub over subsections');
+  assert.ok(text.includes(abs.ownText), 'the own rules are inlined');
+  assert.ok(text.includes(`[achilles] this rule block continues in ${subs.length} subsections (${abs.text.length} chars total)`), text);
+  assert.match(text, new RegExp(`fetch Skill \\{ skill: "achilles-protocol", section: "${abs.heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" \\} before acting`));
+  // And it is on the fetch-before-you-act list, not silently counted as satisfied.
+  const listed = text.slice(text.indexOf(PENDING_HEADER)).split('\n').filter((l) => l.startsWith('  - '));
+  assert.ok(listed.some((l) => l.includes(abs.heading)), listed.join('|'));
+});
+
+test('a required block that carries all its own rules gets no continuation marker', async () => {
+  const r = await call({ skill: 'contract-testing' }, { ACHILLES_PI_SKILL_FULL_BELOW: '1000' });
+  const text = r.content[0].text;
+  const abs = parseSections(bodyOf('contract-testing')).find((s) => /Absolute Rules/i.test(s.heading));
+  assert.equal(abs.text.length, abs.ownText.length);
+  assert.ok(text.includes(abs.ownText));
+  assert.doesNotMatch(text, /this rule block continues in/);
+  assert.ok(!text.includes(PENDING_HEADER), 'nothing pending');
+});
+
+// ── M1: the table of contents absorbs the hard cap ───────────────────────────────────────────────
+test('capTableOfContents cuts whole lines and says how many it left out', () => {
+  const toc = tableOfContents(parseSections(bodyOf('onboarding')), 'onboarding');
+  const n = toc.split('\n').length - 1;
+  const cut = capTableOfContents(toc, 400, 'onboarding');
+  assert.ok(cut.length <= 400, `${cut.length}`);
+  assert.match(cut, /more sections? not listed — ask by number: Skill \{ skill: "onboarding", section: "<n>" \}\./);
+  for (const l of cut.split('\n').slice(1, -1)) assert.ok(toc.includes(`\n${l}`), l);
+  // A room too small even for the header collapses to the one pointer line.
+  const tiny = capTableOfContents(toc, 10, 'onboarding');
+  assert.equal(tiny.split('\n').length, 1);
+  assert.ok(tiny.includes(`${n} more sections not listed`));
+  // Room to spare leaves it untouched.
+  assert.equal(capTableOfContents(toc, toc.length, 'onboarding'), toc);
+});
+
+test('every real skill that maps stays within ACHILLES_PI_SKILL_HEAD_MAX', () => {
+  const maps = realSkillMaps();
+  assert.ok(maps.length >= 15, `only ${maps.length} skills mapped`);
+  for (const { name, text } of maps) assert.ok(text.length <= 6000, `${name} map is ${text.length} chars`);
 });
 
 test('parseSections ignores headings inside fenced code blocks', () => {

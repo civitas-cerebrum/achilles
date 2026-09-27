@@ -214,6 +214,12 @@ export function tableOfContents(sections: SkillSection[], skill: string): string
   return `Sections — fetch one with Skill { skill: "${skill}", section: "<heading>" }:\n${lines.join('\n')}`;
 }
 
+/** The nested sections inside `s` — any level below it, in document order. A required `## ` block's
+ * own text is what the map inlines, so this is what the map's continuation marker counts. */
+export function subsectionsOf(sections: SkillSection[], s: SkillSection): SkillSection[] {
+  return sections.filter((o) => o.level > s.level && sectionOwns(sections, s, o));
+}
+
 /** Whether `child` falls inside `parent`'s span (both from the same parseSections result). */
 function sectionOwns(sections: SkillSection[], parent: SkillSection, child: SkillSection): boolean {
   const i = sections.indexOf(parent);
