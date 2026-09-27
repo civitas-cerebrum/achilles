@@ -262,3 +262,10 @@ assert_deny "$HOOK" "$(bash_payload 'sh -c "mv /tmp/x tests/e2e/docs/onboarding-
 assert_deny "$HOOK" "$(bash_payload 'bash -c "sed -i s/a/b/ tests/e2e/docs/onboarding-status.json"')" "bash -c wrapping sed -i on the ledger" "protected"
 assert_allow "$HOOK" "$(bash_payload 'bash -c "jq .currentPhase tests/e2e/docs/onboarding-status.json"')" "bash -c wrapping a jq read still allows"
 assert_allow "$HOOK" "$(bash_payload 'sh -c "cat tests/e2e/docs/journey-map.md"')" "sh -c wrapping a cat still allows"
+
+section "protected-artifact-bash-guard: no-skip block cites a heading that actually exists"
+# Pins the fix for a citation bug: no-skip-messaging.sh used to point at
+# skills/onboarding/SKILL.md §"Hard rules — kernel-resident", a heading
+# that file never had. It now cites §"Status ledger + workflow reviewer",
+# which does exist and governs the same no-skip / early-stop contract.
+assert_deny "$HOOK" "$(bash_payload 'rm tests/e2e/docs/onboarding-status.json')" "no-skip block Reference line pins the real onboarding heading" 'Reference: skills/onboarding/SKILL.md §"Status ledger + workflow reviewer"'
