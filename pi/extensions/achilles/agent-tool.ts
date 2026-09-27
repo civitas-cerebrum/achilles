@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Type } from 'typebox';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
-import { resolveSkill } from './skills.ts';
+import { resolveSkill, parseSections, findSection } from './skills.ts';
 import { log } from './log.ts';
 import { piDepth } from './env.ts';
 import { shadowPath } from './transcript.ts';
@@ -88,6 +88,57 @@ export function agentType(params: { description: string; subagent_type?: string 
   if (explicit) return explicit;
   const i = params.description.indexOf(':');
   return (i >= 0 ? params.description.slice(0, i) : params.description).trim();
+}
+
+/**
+ * The forms of a dispatch ROLE to look for in the dispatched skill's headings, longest first.
+ *
+ * The methodology writes a per-role heading whenever a role has its own contract, and it writes the
+ * role prefix into the heading verbatim: workflow-reviewer has 18 of them ("Phase 5 —
+ * Coverage-expansion (`workflow-reviewer-phase5`)"), journey-mapping has "Per-section-agent contract
+ * (`phase4-cycle-<N>-section-<id>:`)". So the variable parts have to be put back before the lookup:
+ *  - a digit run at the end of any segment BUT THE FIRST becomes `<N>` — `pass12` → `pass<N>`,
+ *    `cycle-1` → `cycle-<N>`, while `phase4` stays `phase4` because that is a literal name here;
+ *  - then the role is truncated segment by segment, keeping the trailing hyphen, so a per-instance
+ *    role ("phase4-cycle-1-section-checkout") reaches the contract written for the family
+ *    ("phase4-cycle-<N>-section-<id>").
+ */
+export function roleForms(role: string): string[] {
+  const r = role.trim();
+  if (r.length < 6 || !r.includes('-')) return [];
+  const out = [r];
+  const gen = r.split('-').map((seg, i) => (i === 0 ? seg : seg.replace(/(\D*?)\d+$/, '$1<N>'))).join('-');
+  if (gen !== r) out.push(gen);
+  let t = gen;
+  for (;;) {
+    const i = t.lastIndexOf('-');
+    if (i <= 0) break;
+    t = t.slice(0, i + 1);
+    if (t.length < 8 || !t.slice(0, -1).includes('-')) break;
+    out.push(t);
+    t = t.slice(0, -1);
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * The section of `body` a dispatch with this role should start from, when the SKILL'S OWN TEXT names
+ * that role in a heading — round 4 wired `Agent { section }` and nothing ever passed it.
+ *
+ * Reading the body here costs no orchestrator context: this runs in the extension, in node, and the
+ * orchestrator's model never sees a byte of it. Only an unambiguous resolution counts, and the matched
+ * heading must actually contain the role token, so a query that resolved through some other route in
+ * findSection (a table-of-contents number, a `parent > child` path) is rejected rather than guessed at.
+ * Measured over 25 plausible role prefixes x all 24 skills: 8 resolutions, all of them a heading in
+ * which the skill prints that very prefix, and no other match at all.
+ */
+export function roleSection(body: string, role: string): string | undefined {
+  const sections = parseSections(body.trim());
+  for (const q of roleForms(role)) {
+    const { section } = findSection(sections, q);
+    if (section && section.heading.toLowerCase().includes(q.toLowerCase())) return section.heading;
+  }
+  return undefined;
 }
 
 /** The legacy model-facing cap, kept for ACHILLES_PI_VERBOSE=1 (the pre-compaction behaviour). */
@@ -342,15 +393,21 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
       const depth = piDepth();
       if (depth >= maxDepth) throw new Error(`Agent nesting cap (${maxDepth}) reached; do this work inline instead of dispatching another subagent.`);
       let skillDir: string | undefined;
+      let skillBody: string | undefined;
       if (params.skill) {
         const s = resolveSkill(params.skill, opts.roots);
         if (!s) throw new Error(`Unknown skill "${params.skill}" for Agent.skill`);
         skillDir = s.dir;
+        skillBody = s.body;
       }
       // A start section only means something against a named skill; silently dropping it would send
       // the child off without the chapter the brief assumes it is reading.
       if (params.section && !params.skill) throw new Error('Agent.section names a section of Agent.skill; pass `skill` as well, or drop `section`.');
       const type = agentType(params);
+      // An explicit `section` always wins. Otherwise the role prefix picks one, when the skill's own
+      // text writes a contract for that role — the affordance round 4 added and nothing used.
+      const derived = !params.section && skillBody ? roleSection(skillBody, type) : undefined;
+      const section = params.section ?? derived;
       const active = parentActive(stateDir, ctx.sessionManager.getSessionId());
       const env: NodeJS.ProcessEnv = {
         ...process.env,
@@ -368,8 +425,8 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
       // to load a different skill is not handed a section of that one.
       delete env.ACHILLES_PI_SKILL_SECTION;
       delete env.ACHILLES_PI_SKILL_SECTION_FOR;
-      if (params.section && params.skill) {
-        env.ACHILLES_PI_SKILL_SECTION = params.section;
+      if (section && params.skill) {
+        env.ACHILLES_PI_SKILL_SECTION = section;
         env.ACHILLES_PI_SKILL_SECTION_FOR = params.skill;
       }
 
@@ -394,7 +451,7 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
         const fmt = handoverLine(type);
         fs.writeFileSync(pf, `${params.prompt.trimEnd()}${fmt ? `\n\n${fmt}` : ''}\n`, { mode: 0o600 });
         args.push(`@${pf}`);
-        log('agent_spawn', { description: params.description, agentType: type, skill: params.skill, section: params.section, active, depth: depth + 1 });
+        log('agent_spawn', { description: params.description, agentType: type, skill: params.skill, section, ...(section ? { sectionFrom: params.section ? 'call' : 'role' } : {}), active, depth: depth + 1 });
 
         let lastText = '', stderr = '', childSessionId = '';
         const exitCode = await new Promise<number | null>((resolve) => {
@@ -448,7 +505,7 @@ export function registerAgentTool(pi: ExtensionAPI, opts: AgentToolOptions): voi
           fs.copyFileSync(transcript, transcriptCopy);
           fs.chmodSync(transcriptCopy, 0o600);
         }
-        return { content: [{ type: 'text', text: modelFacing(lastText, ctx.cwd, childSessionId) }], details: { description: params.description, exitCode, childSessionId, text: lastText, shadowTranscript: childShadow, transcriptCopy } };
+        return { content: [{ type: 'text', text: modelFacing(lastText, ctx.cwd, childSessionId) }], details: { description: params.description, exitCode, childSessionId, text: lastText, shadowTranscript: childShadow, transcriptCopy, ...(section ? { section, sectionFrom: params.section ? 'call' : 'role' } : {}) } };
       } finally {
         // release() must run even when mkdtemp or the cleanup itself throws, or the slot leaks.
         try { if (tmp) fs.rmSync(tmp, { recursive: true, force: true }); } catch (err) { log('agent_cleanup_failed', { tmp, error: String(err) }); }

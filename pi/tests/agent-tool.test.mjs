@@ -396,3 +396,78 @@ test('the Agent description tells the orchestrator the field exists', () => {
   const { tool } = setup();
   assert.match(tool.description, /`section` names the one section of that skill the subagent should start from/);
 });
+
+// ── Round 5 item 3: the dispatch path populates `section` from the role prefix ────────────────────
+// Round 4 wired `Agent { section }` and documented it; nothing ever passed it. The skills DO name a
+// starting point per role — they write the role prefix into the heading of its contract — and reading
+// the body here costs no orchestrator context, because this runs in node and not in the model.
+import { roleForms, roleSection } from '../extensions/achilles/agent-tool.ts';
+import { resolveSkill } from '../extensions/achilles/skills.ts';
+const realSkills = path.resolve(import.meta.dirname, '..', '..', 'skills');
+const realBody = (name) => resolveSkill(name, [realSkills]).body;
+
+test('roleForms puts the methodology\'s variables back, and refuses a role too short to be a token', () => {
+  // The truncation stops before a single-word prefix: "workflow-" alone is not a role token.
+  assert.deepEqual(roleForms('workflow-reviewer-phase5'), ['workflow-reviewer-phase5', 'workflow-reviewer-phase<N>', 'workflow-reviewer-']);
+  assert.deepEqual(roleForms('workflow-reviewer-pass12').slice(0, 2), ['workflow-reviewer-pass12', 'workflow-reviewer-pass<N>']);
+  // "phase4" is a literal name, not a numbered instance: only a later segment's digits generalise.
+  assert.ok(roleForms('phase4-cycle-1-section-checkout').includes('phase4-cycle-<N>-section-checkout'));
+  assert.ok(roleForms('phase4-cycle-1-section-checkout').includes('phase4-cycle-<N>-section-'));
+  assert.ok(!roleForms('phase4-cycle-1-section-checkout').some((f) => f.startsWith('phase<N>')));
+  assert.deepEqual(roleForms('scout'), [], 'no hyphen, no token');
+  assert.deepEqual(roleForms('fd-x'), [], 'too short to look up safely');
+});
+
+test('roleSection finds the contract a skill writes for that role, and nothing else', () => {
+  assert.equal(roleSection(realBody('workflow-reviewer'), 'workflow-reviewer-phase5'), 'Phase 5 — Coverage-expansion (`workflow-reviewer-phase5`)');
+  assert.equal(roleSection(realBody('workflow-reviewer'), 'workflow-reviewer-pass12'), 'Per coverage-expansion pass (`workflow-reviewer-pass<N>`)');
+  assert.equal(roleSection(realBody('workflow-reviewer'), 'workflow-reviewer-cycle3'), 'Per journey-mapping cycle (`workflow-reviewer-cycle<N>`)');
+  assert.equal(roleSection(realBody('workflow-reviewer'), 'perf-reviewer-phase6'), 'Perf Phase 6 — Threshold-gate (`perf-reviewer-phase6`)');
+  assert.equal(roleSection(realBody('journey-mapping'), 'phase4-cycle-1-section-checkout'), 'Per-section-agent contract (`phase4-cycle-<N>-section-<id>:`)');
+  assert.equal(roleSection(realBody('journey-mapping'), 'phase4-prioritise-author'), 'Author step (`phase4-prioritise-author:`)');
+  // A role the skill says nothing about, and an ambiguous one, both derive nothing rather than guess.
+  assert.equal(roleSection(realBody('coverage-expansion'), 'composer-login-flow'), undefined);
+  assert.equal(roleSection(realBody('failure-diagnosis'), 'fd-login-spec'), undefined);
+  assert.equal(roleSection(realBody('workflow-reviewer'), 'reviewer-phase3'), undefined, 'two headings match: do not pick one');
+  assert.equal(roleSection(realBody('workflow-reviewer'), 'scout'), undefined);
+});
+
+test('a real dispatch now carries a section: the role prefix picks it, the child receives it', async () => {
+  const { tool } = setup({ roots: [realSkills] });
+  const r = await run(tool, { description: 'workflow-reviewer-phase5: review the coverage pass', prompt: 'go', skill: 'workflow-reviewer' });
+  assert.equal(r.details.sectionFrom, 'role');
+  assert.equal(r.details.section, 'Phase 5 — Coverage-expansion (`workflow-reviewer-phase5`)');
+  assert.equal(header(r).startSection, 'Phase 5 — Coverage-expansion (`workflow-reviewer-phase5`)');
+  assert.equal(header(r).startSectionFor, 'workflow-reviewer');
+});
+
+test('the most parallel dispatch in the methodology gets its own chapter', async () => {
+  const { tool } = setup({ roots: [realSkills] });
+  const r = await run(tool, { description: 'phase4-cycle-1-section-checkout: drive the checkout section', prompt: 'go', skill: 'journey-mapping' });
+  assert.equal(r.details.sectionFrom, 'role');
+  assert.equal(header(r).startSection, 'Per-section-agent contract (`phase4-cycle-<N>-section-<id>:`)');
+});
+
+test('an explicit Agent.section still wins over the role-derived one', async () => {
+  const { tool } = setup({ roots: [realSkills] });
+  const r = await run(tool, { description: 'workflow-reviewer-phase5: x', prompt: 'go', skill: 'workflow-reviewer', section: 'Verdict schema' });
+  assert.equal(r.details.sectionFrom, 'call');
+  assert.equal(header(r).startSection, 'Verdict schema');
+});
+
+test('a role the skill names nothing for sends no section, and a dispatch with no skill derives none', async () => {
+  const { tool } = setup({ roots: [realSkills] });
+  const a = await run(tool, { description: 'composer-login: write the specs', prompt: 'go', skill: 'test-composer' });
+  assert.equal(a.details.section, undefined);
+  assert.equal(a.details.sectionFrom, undefined);
+  assert.equal(header(a).startSection, '');
+  const b = await run(tool, { description: 'workflow-reviewer-phase5: x', prompt: 'go' });
+  assert.equal(b.details.section, undefined);
+  assert.equal(header(b).startSection, '');
+});
+
+test('subagent_type, not just the description prefix, drives the derivation', async () => {
+  const { tool } = setup({ roots: [realSkills] });
+  const r = await run(tool, { description: 'review this pass', prompt: 'go', subagent_type: 'workflow-reviewer-pass3', skill: 'workflow-reviewer' });
+  assert.equal(header(r).startSection, 'Per coverage-expansion pass (`workflow-reviewer-pass<N>`)');
+});

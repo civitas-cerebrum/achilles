@@ -963,3 +963,35 @@ test('repeatPointer names the skill, the size saved and the compaction escape ha
   assert.ok(p.length < 700, `${p.length}`);
   assert.match(repeatPointer('test-repair', 21097, true), /already returned in full/);
 });
+
+// ── Round 5 item 3: a role-derived start section must be a move the child can actually make ──────
+import { roleSection } from '../extensions/achilles/agent-tool.ts';
+
+test('every section the dispatch path derives resolves through the Skill tool as the child sees it', async () => {
+  // Round 3's rule — only print a move the model can make — applied across the two tools: what
+  // Agent writes into ACHILLES_PI_SKILL_SECTION has to come back as that very section at depth 1.
+  const cases = [
+    ['workflow-reviewer', 'workflow-reviewer-phase5'],
+    ['workflow-reviewer', 'workflow-reviewer-pass7'],
+    ['workflow-reviewer', 'workflow-reviewer-cycle2'],
+    ['workflow-reviewer', 'perf-reviewer-phase3'],
+    ['journey-mapping', 'phase4-cycle-1-section-checkout'],
+    ['journey-mapping', 'phase4-prioritise-author'],
+  ];
+  let derived = 0;
+  for (const [skill, role] of cases) {
+    const section = roleSection(resolveSkill(skill, [realRoot]).body, role);
+    assert.ok(section, `${skill}/${role} derived nothing`);
+    derived++;
+    const r = await call({ skill }, { ACHILLES_PI_DEPTH: '1', ACHILLES_PI_SKILL_SECTION: section, ACHILLES_PI_SKILL_SECTION_FOR: skill });
+    if (r.details.view === 'map') {
+      assert.equal(r.details.startResolved, section, `${skill}/${role} did not resolve at depth 1`);
+      assert.ok(r.content[0].text.includes(START_HEADER));
+    } else {
+      // Under the child whole-body threshold the section is already in the body; the pointer names it.
+      assert.equal(r.details.startSection, section);
+      assert.ok(r.content[0].text.includes(`§"${section}"`));
+    }
+  }
+  assert.equal(derived, cases.length);
+});
