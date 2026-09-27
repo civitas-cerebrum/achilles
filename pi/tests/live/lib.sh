@@ -32,11 +32,14 @@ node -e "require('$LIVE_REPO/scripts/postinstall.js').installAgentSkills('$LIVE_
 
 # live_pi <cwd> <prompt> [extra pi args...] — runs one headless JSON-mode turn with the extension loaded.
 # Stdout: the JSONL event stream. Exit code: pi's.
+# stdin is closed: `pi -p` reads piped stdin as extra prompt text, so a check launched with an open
+# stdin pipe (a CI runner, a background shell) otherwise sits idle until the timeout instead of
+# answering. agent-tool.ts closes it for the same reason when it spawns a child.
 live_pi() {
   local cwd="$1"; shift; local prompt="$1"; shift
   ( cd "$cwd" && timeout "$LIVE_TIMEOUT" pi --mode json -p --no-session -a \
       -e "$LIVE_REPO/pi/extensions/achilles/index.ts" \
-      --model "$LIVE_MODEL" --thinking off "$@" "$prompt" )
+      --model "$LIVE_MODEL" --thinking off "$@" "$prompt" </dev/null )
 }
 live_pass() { echo "PASS: $1"; }
 live_fail() { echo "FAIL: $1"; echo "--- log ---"; cat "$ACHILLES_PI_LOG" 2>/dev/null | tail -20; exit 1; }
