@@ -129,5 +129,5 @@ test('every pi-kernel entry of every real skill resolves to exactly one heading 
   }
   // The 14 that had no required heading at all before this round; scripts/lint-doc-drift.mjs checks
   // the same thing where a methodology author will see it.
-  assert.equal(annotated.length, 14, `${annotated.length} skills carry pi-kernel: ${annotated.join(', ')}`);
+  assert.equal(annotated.length, 15, `${annotated.length} skills carry pi-kernel: ${annotated.join(', ')}`);
 });

@@ -106,13 +106,13 @@ test('REAL repo skills: the orchestrator\'s whole rendered compact listing (pi\'
     assert.ok(listing.length / 4 < 2000, `depth ${depth}: ${listing.length / 4} tokens`);
   }
 });
-test('REAL repo skills: all 24 compact (names + descriptions) under 1,600 tokens (chars/4), both depths', () => {
+test('REAL repo skills: all 25 compact (names + descriptions) under 1,600 tokens (chars/4), both depths', () => {
   const names = listSkills([pkgSkills]);
-  assert.equal(names.length, 24);
+  assert.equal(names.length, 25);
   for (const depth of [0, 1]) {
     const skills = names.map((name) => ({ name, description: resolveSkill(name, [pkgSkills]).description }));
     const before = skills.reduce((n, s) => n + s.name.length + s.description.length, 0);
-    assert.equal(createPromptCompactor(pkgSkills).compact(skills, depth), 24);
+    assert.equal(createPromptCompactor(pkgSkills).compact(skills, depth), 25);
     const listing = skills.map((s) => `<name>${s.name}</name><description>${s.description}</description>`).join('\n');
     assert.ok(listing.length / 4 < 1600, `depth ${depth}: ${listing.length / 4} tokens`);
     assert.ok(listing.length < before / 4, `depth ${depth}: ${listing.length} vs ${before}`);

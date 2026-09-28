@@ -44,8 +44,8 @@ child=$(grep '^child' <<<"$report" | head -1)
 [ -n "$child" ] || live_fail "no child request recorded"
 read -r _ psys psec pnames <<<"$parent"
 read -r _ csys csec cnames <<<"$child"
-[ "$(tr ',' '\n' <<<"$pnames" | grep -c .)" -eq 24 ] || live_fail "orchestrator does not list the 24 achilles skills: $pnames"
-# Budget: the compact form is ~8k chars for 24 entries; pi's fixed per-skill markup (XML tags and the
+[ "$(tr ',' '\n' <<<"$pnames" | grep -c .)" -eq 25 ] || live_fail "orchestrator does not list the 25 achilles skills: $pnames"
+# Budget: the compact form is ~8k chars for 25 entries; pi's fixed per-skill markup (XML tags and the
 # <location> path) is ~4.4k of that. The uncompacted listing is ~32k.
 [ "$psec" -lt 8000 ] || live_fail "orchestrator skills section is $psec chars (want < 8000)"
 # pi XML-escapes skill descriptions, so the quotes reach the model as &quot;.

@@ -693,7 +693,7 @@ function everyRealSkill() {
 // under a neutral heading — or deletes the `pi-kernel:` entry that named them — fails here.
 test('every real skill map ends up with at least one binding rule, inlined or named', () => {
   const all = everyRealSkill();
-  assert.equal(all.length, 24, `${all.length} skills`);
+  assert.equal(all.length, 25, `${all.length} skills`);
   let inferredCount = 0;
   for (const { name, sections, text } of all) {
     const declared = sections.filter((s) => s.required);
@@ -705,13 +705,13 @@ test('every real skill map ends up with at least one binding rule, inlined or na
       assert.match(text, INFERRED_MARK, `${name}: inferred rules must be labelled as inferred`);
     }
   }
-  // Round 6: every achilles skill DECLARES its rule blocks — 10 by a required heading, 14 by
+  // Round 6: every achilles skill DECLARES its rule blocks — 10 by a required heading, 15 by
   // `pi-kernel:` — so not one of them relies on the wording heuristic any more. The heuristic stays
   // for skills this adapter does not own (see the fallback tests below, on fixtures).
   assert.equal(inferredCount, 0, `${inferredCount} real skills still fall back to the content signal`);
   const byHeading = all.filter((x) => !x.kernel).length;
   const byKernel = all.filter((x) => x.kernel).length;
-  assert.deepEqual([byHeading, byKernel], [10, 14]);
+  assert.deepEqual([byHeading, byKernel], [10, 15]);
   // And every declared block is reported as declared, never as inferred.
   for (const { name, text } of all) {
     assert.ok(text.includes(DECLARED_HEADER) || text.includes(PENDING_HEADER), `${name}: no rule marker at all`);

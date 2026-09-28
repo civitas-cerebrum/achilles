@@ -44,10 +44,10 @@ test('RED: two entries naming the same heading, and an empty declaration, each f
   assert.ok(has(r, /empty-skill\/SKILL\.md: pi-kernel: is present but names nothing/));
 });
 
-test('the real tree passes, and it is the 14 annotated skills that are being checked', () => {
+test('the real tree passes, and it is the 15 annotated skills that are being checked', () => {
   const r = checkPiKernelEntries();
   assert.deepEqual(r.detail, []);
-  assert.match(r.label, /40 entries across 14 skills/);
+  assert.match(r.label, /42 entries across 15 skills/);
 });
 
 // ── Check 8 — the role-derivation convention, both directions ────────────────────────────────────

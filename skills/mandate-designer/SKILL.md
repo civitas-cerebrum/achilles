@@ -9,6 +9,8 @@ description: >
   .claude/kernel-mandate.json manifest, and validate it. Works for ANY
   agentic workflow — QA pipelines, feature development, doc
   generation, research swarms.
+pi-description: 'Design a hook-enforced role mandate for agents: “kernel mandate”, “govern agents”.'
+pi-kernel: 'You joined a project that is already governed | You have finished work in a project that is NOT governed'
 ---
 
 # Mandate designer — design the boundaries your agents run inside
