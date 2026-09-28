@@ -34,13 +34,15 @@ WORKFLOW="$HOOK_DIR/data/achilles-qa.workflow.json"
 # ---------------------------------------------------------------------------
 section "kernel wiring: postinstall registers the wrapper, not the raw kernel"
 # ---------------------------------------------------------------------------
-# HOOK_MANIFEST body only — comments and the companion / superseded lists
-# below it must not count as registrations.
-MANIFEST_BODY=$(awk '/const HOOK_MANIFEST = \[/{p=1} p{print} p&&/^\];/{exit}' "$POSTINSTALL" | grep -vE '^\s*//')
-assert_eq "$(printf '%s' "$MANIFEST_BODY" | grep -cE "file: 'achilles-kernel-activation-gate\.sh',\s+event: 'PreToolUse',\s+matcher: '\.\*'")" "1" \
+# The hook table lives in hooks/manifest.json; postinstall require()s it. Query
+# it as JSON rather than scraping a JS literal — an awk scrape of an array that
+# no longer exists returns nothing, which makes the "not registered" assertion
+# below pass vacuously instead of failing.
+MANIFEST_JSON="$REPO_ROOT/hooks/manifest.json"
+assert_eq "$(node -e 'const m=require(process.argv[1]);console.log(m.filter(h=>h.file==="achilles-kernel-activation-gate.sh"&&h.event==="PreToolUse"&&h.matcher===".*").length)' "$MANIFEST_JSON")" "1" \
   "wrapper registered once on PreToolUse with matcher .*"
-assert_eq "$(printf '%s' "$MANIFEST_BODY" | grep -c "file: 'kernel-mandate-role-gate\.sh'")" "0" \
-  "raw kernel is NOT registered in HOOK_MANIFEST"
+assert_eq "$(node -e 'const m=require(process.argv[1]);console.log(m.filter(h=>h.file==="kernel-mandate-role-gate.sh").length)' "$MANIFEST_JSON")" "0" \
+  "raw kernel is NOT registered in the hook manifest"
 COMPANIONS=$(awk '/const HOOK_COMPANIONS = \[/{p=1} p{print} p&&/^\];/{exit}' "$POSTINSTALL")
 assert_eq "$(printf '%s' "$COMPANIONS" | grep -c "'kernel-mandate-role-gate\.sh'")" "1" \
   "raw kernel is copied as a companion (wrapper execs it)"
