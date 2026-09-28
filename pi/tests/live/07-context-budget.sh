@@ -86,7 +86,10 @@ childline=$(grep '"kind":"skill","depth":1' "$ACHILLES_PI_LOG" | grep '"view":"m
 json_num() { node -e 'process.stdout.write(String(JSON.parse(process.argv[1])[process.argv[2]] ?? ""))' "$1" "$2"; }
 cchars=$(json_num "$childline" chars)
 [ -n "$cchars" ] && [ "$cchars" -lt 6000 ] || live_fail "the child's coverage-expansion load is $cchars chars (want < 6000)"
-[ "$(json_num "$childline" bodyChars)" = "89400" ] || live_fail "the child was not mapped from the whole 89,400-char body: $childline"
+# A floor, not a byte-exact pin: the invariant is that the child was mapped from the WHOLE large body,
+# and any upstream edit to coverage-expansion legitimately moves the exact figure (PR #82 did).
+cbody=$(json_num "$childline" bodyChars)
+[ -n "$cbody" ] && [ "$cbody" -ge 85000 ] || live_fail "the child was not mapped from the whole (~90k) body: $childline"
 # Change 1 of round 4 in one line: the child's map IS the orchestrator's map, byte for byte.
 orchline=$(grep '"kind":"skill","depth":0' "$ACHILLES_PI_LOG" | grep '"view":"map"' | head -1)
 [ -n "$orchline" ] || live_fail "no orchestrator map recorded to compare against"

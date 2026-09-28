@@ -45,9 +45,12 @@ child=$(grep '^child' <<<"$report" | head -1)
 read -r _ psys psec pnames <<<"$parent"
 read -r _ csys csec cnames <<<"$child"
 [ "$(tr ',' '\n' <<<"$pnames" | grep -c .)" -eq 25 ] || live_fail "orchestrator does not list the 25 achilles skills: $pnames"
-# Budget: the compact form is ~8k chars for 25 entries; pi's fixed per-skill markup (XML tags and the
-# <location> path) is ~4.4k of that. The uncompacted listing is ~32k.
-[ "$psec" -lt 8000 ] || live_fail "orchestrator skills section is $psec chars (want < 8000)"
+# Budget: allow 350 chars per listed skill. pi's fixed per-skill markup (XML tags and the <location>
+# path) is ~175 of that, the routing line the rest; the uncompacted listing is ~32k. Scaling with the
+# count rather than pinning a total keeps this a per-skill bloat check: a 26th skill does not fail it,
+# but one skill with a runaway pi-description does. Actual at 25 skills: ~8.2k.
+pbudget=$(( 350 * 25 ))
+[ "$psec" -lt "$pbudget" ] || live_fail "orchestrator skills section is $psec chars (want < $pbudget for 25 skills)"
 # pi XML-escapes skill descriptions, so the quotes reach the model as &quot;.
 grep -qF 'delegate with Agent { skill: &quot;workflow-reviewer&quot; }.' "$REQ" || live_fail "subagent-only delegate line missing from the orchestrator prompt"
 # The hand-written pi-description routing lines (skills/*/SKILL.md) are what the model sees.
