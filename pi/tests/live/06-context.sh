@@ -44,12 +44,17 @@ child=$(grep '^child' <<<"$report" | head -1)
 [ -n "$child" ] || live_fail "no child request recorded"
 read -r _ psys psec pnames <<<"$parent"
 read -r _ csys csec cnames <<<"$child"
-[ "$(tr ',' '\n' <<<"$pnames" | grep -c .)" -eq 25 ] || live_fail "orchestrator does not list the 25 achilles skills: $pnames"
-# Budget: allow 350 chars per listed skill. pi's fixed per-skill markup (XML tags and the <location>
+# 24 of the 25 installed skills: mandate-designer carries `pi-listing: off`, because a run that
+# consumes the shipped kernel mandate never routes to the skill that AUTHORS one. Assert it by name
+# rather than by count alone, so a future hidden skill has to be a deliberate edit here too.
+plisted=$(tr ',' '\n' <<<"$pnames" | grep -c .)
+[ "$plisted" -eq 24 ] || live_fail "orchestrator lists $plisted skills, want 24 (25 installed, mandate-designer hidden): $pnames"
+grep -q 'mandate-designer' <<<"$pnames" && live_fail "mandate-designer should be hidden from the orchestrator listing: $pnames"
+# Budget: allow 350 chars per LISTED skill. pi's fixed per-skill markup (XML tags and the <location>
 # path) is ~175 of that, the routing line the rest; the uncompacted listing is ~32k. Scaling with the
 # count rather than pinning a total keeps this a per-skill bloat check: a 26th skill does not fail it,
-# but one skill with a runaway pi-description does. Actual at 25 skills: ~8.2k.
-pbudget=$(( 350 * 25 ))
+# but one skill with a runaway pi-description does.
+pbudget=$(( 350 * plisted ))
 [ "$psec" -lt "$pbudget" ] || live_fail "orchestrator skills section is $psec chars (want < $pbudget for 25 skills)"
 # pi XML-escapes skill descriptions, so the quotes reach the model as &quot;.
 grep -qF 'delegate with Agent { skill: &quot;workflow-reviewer&quot; }.' "$REQ" || live_fail "subagent-only delegate line missing from the orchestrator prompt"

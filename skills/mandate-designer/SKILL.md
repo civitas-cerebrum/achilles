@@ -10,6 +10,7 @@ description: >
   agentic workflow — QA pipelines, feature development, doc
   generation, research swarms.
 pi-description: 'Design a hook-enforced role mandate for agents: “kernel mandate”, “govern agents”.'
+pi-listing: off
 pi-kernel: 'You joined a project that is already governed | You have finished work in a project that is NOT governed'
 ---
 

@@ -86,15 +86,24 @@ interface ListedSkill { name: string; description: string }
 export interface PromptCompactor {
   /** Rewrites achilles entries in place; returns how many were compacted. */
   compact(skills: ListedSkill[], depth?: number): number;
+  /** True for an achilles skill carrying `pi-listing: off`. False for every non-achilles skill —
+   * this adapter compacts other people's skills but never removes them. */
+  isHidden(name: string): boolean;
 }
 
 /** `root` is the achilles skills directory: it defines which names are achilles skills and which of
  * them are subagent-only. Results are cached per (depth, name, original description). */
 export function createPromptCompactor(root = path.join(PACKAGE_DIR, 'skills')): PromptCompactor {
   let names: Set<string> | undefined;
-  const info = new Map<string, { subagentOnly: boolean; piDescription?: string }>();
+  const info = new Map<string, { subagentOnly: boolean; piDescription?: string; piHidden?: boolean }>();
   const cache = new Map<string, string>();
   return {
+    isHidden(name: string) {
+      if (!names) names = new Set(listSkills([root]));
+      if (!names.has(name)) return false;   // never touch a non-achilles skill
+      if (!info.has(name)) { const r = resolveSkill(name, [root]); info.set(name, { subagentOnly: r?.subagentOnly ?? false, piDescription: r?.piDescription, piHidden: r?.piHidden ?? false }); }
+      return info.get(name)!.piHidden === true;
+    },
     compact(skills, depth = piDepth()) {
       names ??= new Set(listSkills([root]));
       let n = 0;
@@ -103,7 +112,7 @@ export function createPromptCompactor(root = path.join(PACKAGE_DIR, 'skills')): 
         const key = `${depth}\0${s.name}\0${s.description}`;
         let out = cache.get(key);
         if (out === undefined) {
-          if (!info.has(s.name)) { const r = resolveSkill(s.name, [root]); info.set(s.name, { subagentOnly: r?.subagentOnly ?? false, piDescription: r?.piDescription }); }
+          if (!info.has(s.name)) { const r = resolveSkill(s.name, [root]); info.set(s.name, { subagentOnly: r?.subagentOnly ?? false, piDescription: r?.piDescription, piHidden: r?.piHidden ?? false }); }
           const i = info.get(s.name)!;
           out = compactDescription(s.name, s.description, i.subagentOnly, depth, i.piDescription);
           cache.set(key, out);
@@ -123,15 +132,33 @@ export function skillsSection(systemPrompt: string): string {
   return start >= 0 && end > start ? systemPrompt.slice(start, end + '</available_skills>'.length) : '';
 }
 
+/**
+ * Drop `pi-listing: off` skills from the ORCHESTRATOR's listing, in place.
+ *
+ * Depth 0 only. A dispatched child's listing already holds just the skill it was sent with, and
+ * removing that would leave it with nothing to follow. The skill stays resolvable by name through
+ * the Skill tool at either depth, so this hides a standing advertisement, not a capability.
+ */
+export function hideUnlisted(skills: Array<{ name: string }>, isHidden: (name: string) => boolean): string[] {
+  const dropped: string[] = [];
+  for (let i = skills.length - 1; i >= 0; i--) {
+    if (isHidden(skills[i].name)) { dropped.push(skills[i].name); skills.splice(i, 1); }
+  }
+  return dropped.reverse();
+}
+
 export function registerPromptCompaction(pi: ExtensionAPI, root?: string): void {
   const compactor = createPromptCompactor(root);
   pi.on('before_agent_start', async (event) => {
     try {
       const skills = event.systemPromptOptions?.skills;
+      const hidden = Array.isArray(skills) && piDepth() === 0
+        ? hideUnlisted(skills, (n) => compactor.isHidden(n))
+        : [];
       const compacted = Array.isArray(skills) ? compactor.compact(skills) : 0;
       if (process.env.ACHILLES_PI_LOG) {
         const sp = event.systemPrompt;
-        log('prompt_size', { depth: String(piDepth()), chars: sp.length, skillsChars: skillsSection(sp).length, compacted, skills: (skills ?? []).map((s) => s.name) });
+        log('prompt_size', { depth: String(piDepth()), chars: sp.length, skillsChars: skillsSection(sp).length, compacted, hidden, skills: (skills ?? []).map((s) => s.name) });
       }
     } catch (err) {
       log('handler_error', { event: 'before_agent_start', error: String(err) });

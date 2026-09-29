@@ -14,6 +14,12 @@ export interface SkillInfo {
   /** The sections the skill's author declared kernel-resident (`pi-kernel:` frontmatter), as written.
    * Empty/absent when the skill declares none — a third-party or user-authored skill never has one. */
   piKernel?: string[];
+  /** True when `pi-listing: off` — keep this skill out of the ORCHESTRATOR's always-loaded listing.
+   * For a skill the orchestrator of a run will never route to, the listing line is rent paid every
+   * turn for a capability that run does not use. The skill stays fully invocable by name through the
+   * Skill tool, and a subagent dispatched with it still receives it; only the standing advertisement
+   * goes. Claude Code is unaffected — it never reads this key. */
+  piHidden?: boolean;
 }
 
 /** <package>/ is three levels above this file: pi/extensions/achilles/. fileURLToPath rather than
@@ -135,10 +141,14 @@ export function resolveSkill(name: string, roots: string[]): SkillInfo | undefin
       SUBAGENT_ONLY_MARKER.test(description);
     const piDescription = fm['pi-description'] ? unquote(fm['pi-description']) : undefined;
     const piKernel = fm['pi-kernel'] ? kernelEntries(unquote(fm['pi-kernel'])) : undefined;
+    // Only the exact word `off` hides a skill. An unrecognised value keeps the skill listed, because
+    // a typo in a visibility switch should cost context, never silently remove a routing entry.
+    const piHidden = /^off$/i.test(unquote(fm['pi-listing'] ?? '').trim());
     return {
       name, dir, file, description, body, subagentOnly,
       ...(piDescription ? { piDescription } : {}),
       ...(piKernel && piKernel.length ? { piKernel } : {}),
+      ...(piHidden ? { piHidden } : {}),
     };
   }
   return undefined;

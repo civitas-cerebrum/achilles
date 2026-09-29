@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeFakePi } from './fake-pi.mjs';
-import { createPromptCompactor, registerPromptCompaction, firstSentence, delegateLine, skillsSection, DESCRIPTION_CAP, compactDescription, stripDelegate, DISPATCHED_PREFIX } from '../extensions/achilles/prompt.ts';
+import { createPromptCompactor, registerPromptCompaction, firstSentence, delegateLine, skillsSection, DESCRIPTION_CAP, compactDescription, stripDelegate, DISPATCHED_PREFIX, hideUnlisted } from '../extensions/achilles/prompt.ts';
 import { listSkills, resolveSkill } from '../extensions/achilles/skills.ts';
 
 const fx = path.join(import.meta.dirname, 'fixtures', 'skills');
+// Separate root: the shared `skills` fixtures are pinned by name in listSkills tests.
+const lx = path.join(import.meta.dirname, 'fixtures', 'listing');
 const pkgSkills = path.resolve(import.meta.dirname, '..', '..', 'skills');
 const LONG = 'Use this skill when the orchestrator needs **fixture** work, e.g. a test. Triggers on "a", "b", "c" and a very long tail of trigger phrases that should never reach the model.';
 
@@ -135,4 +137,50 @@ test('depth >= 1: any dispatched achilles skill (a test-composer child) reads as
   const f = [{ name: 'orch-skill', description: LONG }];
   createPromptCompactor(fx).compact(f, 1);
   assert.equal(f[0].description, `${DISPATCHED_PREFIX}Use this skill when the orchestrator needs fixture work, e.g. a test.`);
+});
+
+// --- pi-listing: off -------------------------------------------------------
+// A skill the orchestrator of a run will never route to still costs a listing line on every turn.
+// Hiding it removes the standing advertisement, not the capability: the Skill tool resolves by name
+// either way, and a dispatched child keeps the skill it was sent with.
+
+test('pi-listing: off marks a skill hidden; other achilles skills and non-achilles skills are not', () => {
+  const c = createPromptCompactor(lx);
+  assert.equal(c.isHidden('hidden-skill'), true);
+  assert.equal(c.isHidden('orch-skill'), false);
+  assert.equal(c.isHidden('not-an-achilles-skill'), false, 'never claim a skill this adapter does not own');
+});
+
+test('an unrecognised pi-listing value keeps the skill listed (a typo must not remove a routing entry)', () => {
+  const c = createPromptCompactor(lx);
+  assert.equal(c.isHidden('badflag-skill'), false);
+});
+
+test('hideUnlisted removes hidden entries in place and reports them in document order', () => {
+  const c = createPromptCompactor(lx);
+  const skills = [{ name: 'orch-skill' }, { name: 'hidden-skill' }, { name: 'third-party' }];
+  const dropped = hideUnlisted(skills, (n) => c.isHidden(n));
+  assert.deepEqual(dropped, ['hidden-skill']);
+  assert.deepEqual(skills.map((x) => x.name), ['orch-skill', 'third-party']);
+});
+
+test('hideUnlisted with nothing hidden leaves the array untouched', () => {
+  const c = createPromptCompactor(lx);
+  const skills = [{ name: 'orch-skill' }, { name: 'third-party' }];
+  assert.deepEqual(hideUnlisted(skills, (n) => c.isHidden(n)), []);
+  assert.deepEqual(skills.map((x) => x.name), ['orch-skill', 'third-party']);
+});
+
+test('REAL repo skills: mandate-designer is hidden from the orchestrator listing, and it is the only one', () => {
+  const c = createPromptCompactor(pkgSkills);
+  const hidden = listSkills([pkgSkills]).filter((n) => c.isHidden(n));
+  assert.deepEqual(hidden, ['mandate-designer'],
+    `unexpected hidden set: ${hidden.join(', ')} — hiding a workflow skill would silently stop it routing`);
+});
+
+test('REAL repo skills: a hidden skill is still resolvable by name, so Skill { skill } keeps working', () => {
+  const info = resolveSkill('mandate-designer', [pkgSkills]);
+  assert.ok(info, 'mandate-designer must still resolve');
+  assert.equal(info.piHidden, true);
+  assert.ok(info.body.length > 0, 'hiding is a listing decision, not a removal');
 });
