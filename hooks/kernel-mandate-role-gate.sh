@@ -466,7 +466,8 @@ ${MANIFEST_REF}
 
 unboundAgentPolicy is \"readonly\", which permits reading only what some role in this OS may read. A pattern is applied under the search root, so one that escapes upward is not a search of anything this OS has a scope for."
           fi
-          kernel_mandate_is_manifest_path "$UNBOUND_TARGET" && exit 0
+          { kernel_mandate_is_manifest_path "$UNBOUND_TARGET" \
+            || kernel_mandate_is_methodology_path "$UNBOUND_TARGET"; } && exit 0
           UNBOUND_REL=$(kernel_mandate_relpath "$UNBOUND_TARGET")
           kernel_mandate_path_in_scope "$UNBOUND_REL" "$UNBOUND_SCOPE" && exit 0
           kernel_mandate_deny "unbound read-out-of-scope $UNBOUND_REL" "[BLOCKED] This subagent's harness-OS role could not be resolved, and '$UNBOUND_REL' is outside every role's read scope.
@@ -2670,7 +2671,8 @@ A role's read and write scopes are relative to the project it is governed in. Ru
         for __p in "${GIT_PATHS[@]}"; do
           [ -n "$__p" ] || continue
           GIT_CONSTRAINED=1
-          kernel_mandate_is_manifest_path "$__p" && continue
+          { kernel_mandate_is_manifest_path "$__p" \
+            || kernel_mandate_is_methodology_path "$__p"; } && continue
           GIT_REL=$(kernel_mandate_relpath "$__p")
           if [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$GIT_REL" "$READ_DENY"; then :
           elif kernel_mandate_path_in_scope "$GIT_REL" "$READ_ALLOW"; then continue
@@ -2942,7 +2944,8 @@ Note: compound commands are checked segment-by-segment (&&, ||, ;, |, &, newline
         intarget=$(printf '%s' "$intarget" | tr -d '"'"'" | tr -d '\001')
         [ -n "$intarget" ] || continue
         case "$intarget" in *://*) continue ;; esac
-        kernel_mandate_is_manifest_path "$intarget" && continue
+        { kernel_mandate_is_manifest_path "$intarget" \
+          || kernel_mandate_is_methodology_path "$intarget"; } && continue
         REL_IN=$(kernel_mandate_relpath "$intarget")
         if { [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$REL_IN" "$READ_DENY"; } \
            || { ! kernel_mandate_path_in_scope "$REL_IN" "$READ_ALLOW" \
@@ -3582,7 +3585,8 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
                 for __ext in .jq .json ""; do
                   __cand="$__b/$__mod$__ext"
                   [ -f "$__cand" ] || continue
-                  kernel_mandate_is_manifest_path "$__cand" && continue
+                  { kernel_mandate_is_manifest_path "$__cand" \
+                    || kernel_mandate_is_methodology_path "$__cand"; } && continue
                   __rel=$(kernel_mandate_relpath "$__cand")
                   if [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$__rel" "$READ_DENY"; then :
                   elif kernel_mandate_path_in_scope "$__rel" "$READ_ALLOW"; then continue
@@ -3802,7 +3806,8 @@ Write the path literally (relative to the project root) so it can be scope-check
           case "$m" in
             /dev/null|/dev/stdout|/dev/stderr|/dev/tty|/dev/fd/*|/dev/std*) continue ;;
           esac
-          kernel_mandate_is_manifest_path "$m" && continue
+          { kernel_mandate_is_manifest_path "$m" \
+            || kernel_mandate_is_methodology_path "$m"; } && continue
           REL_M=$(kernel_mandate_relpath "$m")
           DENIED_READ=0
           if [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$REL_M" "$READ_DENY"; then
@@ -4286,8 +4291,12 @@ case "$KM_TOOL" in
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
     # The manifest itself is implicitly readable by every governed role —
     # it is the law the role is being held to (writes stay locked by the
-    # self-protection axis).
-    if [ -n "$TARGET" ] && ! kernel_mandate_is_manifest_path "$TARGET"; then
+    # self-protection axis). The installed methodology tree is readable on
+    # the same principle: a role dispatched to follow a skill has to be
+    # able to read that skill's reference files. Both exemptions are
+    # READ-ONLY; the write arm below carries neither.
+    if [ -n "$TARGET" ] && ! kernel_mandate_is_manifest_path "$TARGET" \
+       && ! kernel_mandate_is_methodology_path "$TARGET"; then
       check_path_scope read "$(kernel_mandate_relpath "$TARGET")" "read"
     fi
     ;;
@@ -4345,9 +4354,11 @@ A fetch tool reaches the network exactly as a curl does, so it is held to the sa
           ;;
         local:file://*|local:FILE://*|local:File://*)
           WF_P="${WF_URL#*://}"; [ "${WF_P#/}" = "$WF_P" ] && WF_P="/$WF_P"
-          kernel_mandate_is_manifest_path "$WF_P" || check_path_scope read "$(kernel_mandate_relpath "$WF_P")" "read via ${KM_TOOL}" ;;
+          kernel_mandate_is_manifest_path "$WF_P" || kernel_mandate_is_methodology_path "$WF_P" \
+            || check_path_scope read "$(kernel_mandate_relpath "$WF_P")" "read via ${KM_TOOL}" ;;
         local:/*|local:./*|local:../*|local:~/*)
-          kernel_mandate_is_manifest_path "$WF_URL" || check_path_scope read "$(kernel_mandate_relpath "$WF_URL")" "read via ${KM_TOOL}" ;;
+          kernel_mandate_is_manifest_path "$WF_URL" || kernel_mandate_is_methodology_path "$WF_URL" \
+            || check_path_scope read "$(kernel_mandate_relpath "$WF_URL")" "read via ${KM_TOOL}" ;;
       esac
     fi
     ;;
@@ -4719,7 +4730,8 @@ if [ "$MCP_MAP" != "{}" ] && [ -n "$MCP_MAP" ]; then
         data:*|DATA:*|Data:*) continue ;;
         file://*|FILE://*|File://*) v="${v#*://}"; [ "${v#/}" = "$v" ] && v="/$v" ;;
       esac
-      kernel_mandate_is_manifest_path "$v" && [ "$axis" = "read" ] && continue
+      { kernel_mandate_is_manifest_path "$v" \
+        || kernel_mandate_is_methodology_path "$v"; } && [ "$axis" = "read" ] && continue
       # Self-protection, on the third write channel. It had been attached
       # to tool NAMES — the Write/Edit arm and the Bash arm — rather than
       # to the act of writing, so a mapped MCP write tool reached the

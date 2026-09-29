@@ -54,6 +54,15 @@
           ],
           "default": "off"
         },
+        "methodologyRead": {
+          "description": "Whether a governed role may READ the installed methodology ('skills') trees the harness writes outside — and, for a project-level install, just inside — the project root. readonly (default, including when the key is absent) exempts those trees from read scoping only: a role dispatched to follow a skill has to be able to read that skill's reference files, and no role's read.allow could name the trees anyway, since scope patterns are matched against a path that stays ABSOLUTE once it is outside the root and the glob compiler expands neither `~` nor `$HOME`. off restores the pre-key behaviour: a methodology read is out of scope like any other ungranted path. WHERE the trees live stays in code (kernel_mandate_methodology_roots) — that is harness knowledge, not policy, and baking one machine's home directory into a manifest would make the manifest unportable. The exemption is READ-ONLY under either value: writes into the trees are held to the role's write scope, and the manifest, the kernel state directory, .claude/settings*.json, .claude/hooks and .claude/agents are untouched by it — the self-protection axis still refuses every one of them. An unrecognised value fails closed to off; this enum is what names it.",
+          "type": "string",
+          "enum": [
+            "readonly",
+            "off"
+          ],
+          "default": "readonly"
+        },
         "decisionLog": {
           "description": "What the kernel records in .claude/kernel-mandate.state/decision-log.jsonl. 'denies' (default) writes a line per refusal. 'all' also writes one per allow \u2014 which is what an audit needs to reconstruct what a role actually DID, since a log of refusals evidences only what was stopped and never what got through. A successful boundary breach is invisible under 'denies'. It is not the default because a busy session produces a lot of lines; it is the setting to turn on when the verdict matters.",
           "type": "string",

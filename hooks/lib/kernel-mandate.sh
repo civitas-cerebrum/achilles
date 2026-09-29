@@ -1061,6 +1061,145 @@ kernel_mandate_is_manifest_path() {
   [ "$(kernel_mandate_normalize_path "$1")" = "$(kernel_mandate_normalize_path "$KM_MANIFEST")" ]
 }
 
+# kernel_mandate_methodology_roots — the installed methodology ("skills")
+# trees, one absolute root per line. ROOT RESOLUTION, not policy: where a
+# harness puts its skills is harness knowledge, and the manifest has no
+# business carrying one machine's home directory. Whether the roots are
+# exempt at all is the manifest's call — see
+# kernel_mandate_methodology_read_policy below.
+#
+# The list is the destination list of the installer, read off
+# scripts/postinstall.js rather than guessed:
+#
+#   ~/.claude/skills   Claude Code — a global `npm i -g` install, and the
+#                      user-level half of a local one (postinstall.js:74,77)
+#   <root>/.claude/skills
+#                      the PROJECT-level half of a local `npm install`
+#                      (postinstall.js:76). It is inside the project, so it
+#                      relativises to `.claude/skills/**` — which no role
+#                      grants, and which the self-protection axis's
+#                      neighbourhood makes it tempting to treat as config.
+#                      It is not config; it is the methodology. The
+#                      exemption is this SUBTREE only, and it is read-only,
+#                      so `.claude/kernel-mandate.json`, the state dir,
+#                      `settings.json`, `hooks/` and `agents/` beside it
+#                      are exactly as protected as before.
+#   ~/.agents/skills   pi (postinstall.js:818, installAgentSkills)
+#   <root>/node_modules/@civitas-cerebrum/achilles/skills
+#                      the package's own bundled copy (postinstall.js:12) —
+#                      what a skill is read from before any install has run.
+#
+# Derived from $HOME and $KM_ROOT rather than read from a dedicated env
+# var. The roots are a property of WHERE THE HARNESS INSTALLS SKILLS, not
+# something a session should be able to nominate: a `KM_SKILLS_ROOT` knob
+# would be a scope-widening seam with the same reach as the read axis
+# itself, and the harness locations are fixed conventions, so there is
+# nothing for it to configure that is not already known here. Nor are the
+# roots probed for existence — a scope decision that depends on whether a
+# directory happens to exist is one that differs between two machines
+# running the same manifest. The test is purely lexical.
+kernel_mandate_methodology_roots() {
+  if [ -n "${HOME:-}" ]; then
+    printf '%s\n' "$HOME/.claude/skills" "$HOME/.agents/skills"
+  fi
+  if [ -n "${KM_ROOT:-}" ]; then
+    printf '%s\n' "$KM_ROOT/.claude/skills" \
+                  "$KM_ROOT/node_modules/@civitas-cerebrum/achilles/skills"
+  fi
+  return 0
+}
+
+# THE CACHE IS RESET AT SOURCE TIME, ON PURPOSE. These two are ordinary
+# shell variables, and a governed session controls the kernel's
+# environment; left uninitialised, `KM_METHODOLOGY_READ_RESOLVED=1
+# KM_METHODOLOGY_READ_VALUE=readonly` exported from a session would speak
+# for a manifest that says "off". Clearing them here means the only thing
+# that can answer the question is the manifest.
+KM_METHODOLOGY_READ_RESOLVED=""
+KM_METHODOLOGY_READ_VALUE=""
+
+# kernel_mandate_methodology_read_policy — `settings.methodologyRead`, the
+# manifest key that decides whether the methodology trees are readable:
+#
+#   readonly  (DEFAULT, including when the key is absent) every governed
+#             role may READ the installed methodology, and nothing more.
+#   off       no exemption: a methodology read is out of scope like any
+#             other path a role was not granted — the behaviour before the
+#             key existed.
+#
+# WHY THIS IS A MANIFEST KEY AND NOT A CONSTANT IN THIS FILE. The kernel's
+# own deny message tells a role that "the manifest grant is what needs to
+# change — ask the operator". A hardcoded exemption makes that sentence
+# false: an operator reading kernel-mandate.json could no longer tell what
+# a role may read, and the manifest is supposed to be the whole law. The
+# `settings` block already carries exactly this shape of global policy
+# (unboundAgentPolicy, roleTagCorroboration), and this joins it.
+#
+# AN UNRECOGNISED VALUE FAILS CLOSED TO `off`. A typo in an access-control
+# setting must never resolve to the more permissive of the two readings —
+# `unboundAgentPolicy` has always worked this way (a policy the kernel does
+# not recognise grants nothing), and this matches it. The bad value is
+# NAMED, loudly, by the schema: `methodologyRead` is an enum, so
+# `kernel-mandate validate` / `npm run schemas:lint` refuse the manifest
+# outright and say which value is wrong. Denying at the gate instead would
+# turn one typo into an unexplained refusal on every read in the session,
+# at nine call sites, with no path to the manifest that caused it — the
+# loud half belongs in validation, the safe half belongs here.
+kernel_mandate_methodology_read_policy() {
+  if [ -z "$KM_METHODOLOGY_READ_RESOLVED" ]; then
+    # `|| printf ''` rather than `|| echo readonly`: if jq cannot answer,
+    # the empty string falls through the case below to `off`. An exemption
+    # that survives its own policy lookup failing is not an exemption.
+    KM_METHODOLOGY_READ_VALUE=$(printf '%s' "${KM_MANIFEST_JSON:-}" \
+      | "$KM_JQ" -r '.settings.methodologyRead // "readonly"' 2>/dev/null || printf '')
+    case "$KM_METHODOLOGY_READ_VALUE" in
+      readonly) ;;
+      *) KM_METHODOLOGY_READ_VALUE="off" ;;
+    esac
+    KM_METHODOLOGY_READ_RESOLVED=1
+  fi
+  printf '%s' "$KM_METHODOLOGY_READ_VALUE"
+}
+
+# kernel_mandate_is_methodology_path <path> — the READ-direction twin of
+# kernel_mandate_is_manifest_path. The manifest is the law a role is held
+# to; the methodology tree is the INSTRUCTIONS it was dispatched to carry
+# out, and a role that cannot read its own instructions cannot follow
+# them. Under `methodologyRead: readonly` every governed role may READ it.
+# Write access stays denied by the ordinary write scope — a role that may
+# rewrite the methodology it is judged against is not governed by it — so
+# this helper must never be added to a write-direction check.
+#
+# Why here and not in a role's read.allow: kernel_mandate_relpath leaves a
+# path outside the project root ABSOLUTE, and kernel_mandate_glob_to_ere
+# expands neither `~` nor `$HOME`, so a manifest-side grant would have to
+# hardcode one machine's home directory — in every role, separately. What
+# the manifest CAN say, and now does, is whether the exemption applies at
+# all.
+#
+# The path is normalised BEFORE the prefix test, so a `..` chain that
+# climbs out of the tree is judged where it lands, not where it started.
+# The prefix is anchored at a path separator: `<root>-evil/x` is not
+# `<root>/x`, and `<root>/../settings.json` is not under `<root>` at all.
+kernel_mandate_is_methodology_path() {
+  local p root
+  [ "$(kernel_mandate_methodology_read_policy)" = "readonly" ] || return 1
+  p="$(kernel_mandate_normalize_path "$1")"
+  # A path is one string (see kernel_mandate_path_in_scope): an exemption
+  # is a whole-string question, and no legitimate path here has a newline.
+  case "$p" in *$'\n'*) return 1 ;; esac
+  while IFS= read -r root; do
+    [ -n "$root" ] || continue
+    root="$(kernel_mandate_normalize_path "$root")"
+    # A root that collapsed to `/` would exempt the entire filesystem.
+    [ "$root" = "/" ] && continue
+    case "$p" in
+      "$root"|"$root"/*) return 0 ;;
+    esac
+  done < <(kernel_mandate_methodology_roots)
+  return 1
+}
+
 # kernel_mandate_path_in_scope <relpath> <patterns-json-array>
 # 0 when relpath matches at least one glob in the JSON array.
 kernel_mandate_path_in_scope() {

@@ -51,7 +51,8 @@ inside) disables enforcement for bootstrap/redesign sessions.
   "name": "qa-pipeline",
   "settings": {
     "mainSessionRole": "orchestrator",   // omit → main session ungoverned
-    "unboundAgentPolicy": "readonly"     // deny | readonly | allow
+    "unboundAgentPolicy": "readonly",    // deny | readonly | allow
+    "methodologyRead": "readonly"        // readonly (default) | off
   },
   "commandGroups": {
     "inspection": ["^git (status|log|diff|show)\\b", "^(ls|find|wc|file|stat)\\b"],
@@ -139,6 +140,23 @@ Evaluated in this order inside the kernel; first deny wins.
    their scope; a `..` segment in the search *pattern* (which is applied
    under the path) is denied so it cannot climb out of the scoped root.
    Absent `read` section → unrestricted paths.
+   Two paths are exempt from this axis, both read-only. The **manifest**
+   itself: it is the law each role is held to, and an agent that cannot
+   read its own boundaries cannot respect them. The **installed
+   methodology trees** — where the harness writes its skills — under
+   `settings.methodologyRead` (`readonly`, the default and the value that
+   applies when the key is absent; `off` removes the exemption, and any
+   unrecognised value fails closed to `off`). A role dispatched to follow
+   a skill has to be able to read that skill's reference files, and no
+   `read.allow` could grant them: a path outside the repo root stays
+   ABSOLUTE after relativisation and the glob compiler expands neither `~`
+   nor `$HOME`, so a grant would have to hardcode one machine's home
+   directory in every role. WHERE the trees are stays in the kernel
+   (`kernel_mandate_methodology_roots`) because that is harness knowledge;
+   WHETHER they are readable is the manifest's, because that is policy.
+   Neither exemption touches axis 1 or axis 5 — writes to the manifest,
+   the state dir and the rest of `.claude` are refused exactly as before,
+   and writes into the methodology trees are held to `write.allow`.
 5. **Write scope** — same mechanics for `Write`/`Edit`/`NotebookEdit`
    over `write.allow`/`write.deny`. Absent `write` section → NO writes
    (write is opt-in, read is opt-out; the asymmetry is deliberate).

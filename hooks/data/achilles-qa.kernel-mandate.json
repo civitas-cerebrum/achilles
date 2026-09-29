@@ -4,7 +4,8 @@
   "settings": {
     "unboundAgentPolicy": "readonly",
     "roleTagCorroboration": "auto",
-    "mainSessionRole": "orchestrator"
+    "mainSessionRole": "orchestrator",
+    "methodologyRead": "readonly"
   },
   "roles": {
     "batch-reviewer": {

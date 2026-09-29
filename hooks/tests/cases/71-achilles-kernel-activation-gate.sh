@@ -169,6 +169,265 @@ assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=selector-diff-validator 
   "selector-diff-validator Write → DENY (writes nothing)" "may not use the 'Write' tool"
 
 # ---------------------------------------------------------------------------
+section "kernel wiring: the methodology tree is readable, and only readable"
+# ---------------------------------------------------------------------------
+# A role is dispatched to FOLLOW a methodology, and the methodology's
+# reference files live in the installed skills tree. `scripts/postinstall.js`
+# writes that tree to FOUR destinations, and all four are covered here —
+# the list is read off the installer, not off the kernel:
+#
+#   ~/.claude/skills            global install (postinstall.js:74), and the
+#                               user-level half of a local one (:77)
+#   <project>/.claude/skills    the project-level half of a LOCAL
+#                               `npm install` (postinstall.js:76)
+#   ~/.agents/skills            pi (postinstall.js:818, installAgentSkills)
+#   <pkg>/skills                the package's own bundled copy
+#                               (postinstall.js:12) — under a consumer
+#                               project that is
+#                               node_modules/@civitas-cerebrum/achilles/skills
+#
+# Three of the four sit OUTSIDE the project root, and no role's read scope
+# could name them: scope patterns are matched against a path that
+# kernel_mandate_relpath leaves ABSOLUTE once it is outside the root, and
+# the glob compiler expands neither `~` nor `$HOME`, so a manifest-side
+# grant would have to hardcode one machine's home directory, in every role
+# separately. The fourth sits INSIDE the root, under `.claude` — a
+# directory no role is granted and the self-protection axis treats as the
+# harness's own.
+#
+# So the exception is the manifest's: kernel_mandate_is_methodology_path is
+# the read-direction twin of kernel_mandate_is_manifest_path, and
+# `settings.methodologyRead` is the manifest key that switches it on. The
+# assertions that matter are the negative ones — this is a read-only
+# exception for four named trees, not a hole in path scoping, and above all
+# not a hole in `.claude`, where the manifest and the state dir live.
+MT_HOME_SAVED="$HOME"
+MT_HOME="$KW_TMP/home"
+MT_CC="$MT_HOME/.claude/skills"
+MT_PI="$MT_HOME/.agents/skills"
+MT_PKG="$KP/node_modules/@civitas-cerebrum/achilles/skills"
+MT_PROJ="$KP/.claude/skills"
+mkdir -p "$MT_CC/achilles-protocol/references" "$MT_PI/achilles-protocol/references" \
+         "$MT_PKG/onboarding" "$MT_PROJ/achilles-protocol/references" \
+         "$MT_HOME/.ssh" "$MT_HOME/.claude/skills-evil" \
+         "$KP/.claude/skills-evil" "$KP/.claude/kernel-mandate.state"
+echo '# stages' > "$MT_CC/achilles-protocol/references/stages-protocol.md"
+echo '# stages' > "$MT_PI/achilles-protocol/references/stages-protocol.md"
+echo '# stages' > "$MT_PROJ/achilles-protocol/references/stages-protocol.md"
+echo '# onboarding' > "$MT_PKG/onboarding/SKILL.md"
+echo 'PRIVATE KEY' > "$MT_HOME/.ssh/id_rsa"
+echo '{}' > "$MT_HOME/.claude/settings.json"
+echo 'x' > "$MT_HOME/.claude/skills-evil/x.md"
+echo '{}' > "$KP/.claude/settings.json"
+echo 'x' > "$KP/.claude/skills-evil/x.md"
+echo '{}' > "$KP/.claude/kernel-mandate.state/dispatch-registry.json"
+export HOME="$MT_HOME"
+
+# READ → ALLOW, under every harness root, for roles at both ends of the
+# privilege range (the scaffolder is the most constrained reader).
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_CC/achilles-protocol/references/stages-protocol.md")" \
+  "scaffolder Read ~/.claude/skills methodology reference → ALLOW"
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PI/achilles-protocol/references/stages-protocol.md")" \
+  "scaffolder Read ~/.agents/skills methodology reference → ALLOW (pi harness)"
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$MT_PKG/onboarding/SKILL.md")" \
+  "test-composer Read the package's bundled skills/ → ALLOW"
+# The destination a local `npm install` writes, and the one the first cut
+# of this exemption missed: it is inside the project root, so it
+# relativises to `.claude/skills/**` — which no role grants.
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md")" \
+  "scaffolder Read <project>/.claude/skills methodology reference → ALLOW (local install)"
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md")" \
+  "test-composer Read <project>/.claude/skills methodology reference → ALLOW (local install)"
+assert_allow "$KERNEL" "$(payload tool_name=Read file_path="$MT_CC/achilles-protocol/references/stages-protocol.md" cwd="$KP")" \
+  "orchestrator Read a methodology reference → ALLOW"
+assert_allow "$KERNEL" "$(payload tool_name=Read file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md" cwd="$KP")" \
+  "orchestrator Read <project>/.claude/skills methodology reference → ALLOW (local install)"
+# The bash read channel is the same read direction, so it agrees. The
+# command has to be one the role may actually RUN, or the command axis
+# denies first and the path assertion is vacuous.
+assert_allow "$KERNEL" "$(payload tool_name=Bash command="git diff $MT_CC/achilles-protocol/references/stages-protocol.md" cwd="$KP")" \
+  "orchestrator Bash names a methodology reference as a read token → ALLOW"
+assert_allow "$KERNEL" "$(payload tool_name=Bash command="git diff $MT_PROJ/achilles-protocol/references/stages-protocol.md" cwd="$KP")" \
+  "orchestrator Bash names a <project>/.claude/skills reference as a read token → ALLOW"
+
+# WRITE → DENY. The tree is the methodology the role is held to; a role
+# that may rewrite its own instructions is not governed by them.
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$MT_PI/achilles-protocol/SKILL.md" content='rewritten')" \
+  "test-composer Write into the skills tree → DENY" "outside the role's write scope"
+assert_deny "$KERNEL" "$(sub tool_name=Edit agent_type=test-composer file_path="$MT_PI/achilles-protocol/references/stages-protocol.md" old_string='# stages' new_string='# owned')" \
+  "test-composer Edit a methodology reference → DENY" "outside the role's write scope"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$MT_PROJ/achilles-protocol/SKILL.md" content='rewritten')" \
+  "test-composer Write into <project>/.claude/skills → DENY" "outside the role's write scope"
+assert_deny "$KERNEL" "$(sub tool_name=Edit agent_type=scaffolder file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md" old_string='# stages' new_string='# owned')" \
+  "scaffolder Edit a <project>/.claude/skills reference → DENY" "outside the role's write scope"
+# Likewise the redirect target: `git status` is permitted, so this reaches
+# the redirect-target write check rather than dying on the command axis.
+assert_deny "$KERNEL" "$(payload tool_name=Bash command="git status > $MT_PI/achilles-protocol/SKILL.md" cwd="$KP")" \
+  "orchestrator Bash redirect into the skills tree → DENY" "outside the role's write scope"
+assert_deny "$KERNEL" "$(payload tool_name=Bash command="git status > $MT_PROJ/achilles-protocol/SKILL.md" cwd="$KP")" \
+  "orchestrator Bash redirect into <project>/.claude/skills → DENY" "kernel mandate itself"
+
+# THE POINT OF FIX 1's RISK: `<project>/.claude` also holds the manifest,
+# the kernel's state directory and the harness config. Exempting
+# `.claude/skills` from READ scoping must leave every one of them exactly
+# as protected as before — self-protection is a WRITE axis and the
+# exemption is read-only, so these must all still refuse.
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/.claude/kernel-mandate.json" content='{"kernelMandateVersion":1}')" \
+  "test-composer Write <project>/.claude/kernel-mandate.json → DENY (self-protection)" "modify the kernel mandate itself"
+assert_deny "$KERNEL" "$(payload tool_name=Write file_path="$KP/.claude/kernel-mandate.json" content='{}' cwd="$KP")" \
+  "orchestrator Write the manifest → DENY (self-protection)" "modify the kernel mandate itself"
+assert_deny "$KERNEL" "$(sub tool_name=Edit agent_type=test-composer file_path="$KP/.claude/kernel-mandate.json" old_string='1' new_string='2')" \
+  "test-composer Edit the manifest → DENY (self-protection)" "modify the kernel mandate itself"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/.claude/kernel-mandate.state/dispatch-registry.json" content='{}')" \
+  "test-composer Write the in-tree state dir → DENY (self-protection)" "modify the kernel mandate itself"
+assert_deny "$KERNEL" "$(payload tool_name=Write file_path="$KERNEL_MANDATE_STATE_DIR/decision-log.jsonl" content='x' cwd="$KP")" \
+  "orchestrator Write the configured state dir → DENY (self-protection)" "modify the kernel mandate itself"
+assert_deny "$KERNEL" "$(payload tool_name=Write file_path="$KP/.claude/settings.json" content='{}' cwd="$KP")" \
+  "orchestrator Write <project>/.claude/settings.json → DENY (self-protection)" "modify the kernel mandate itself"
+assert_deny "$KERNEL" "$(payload tool_name=Bash command="git status > $KP/.claude/kernel-mandate.json" cwd="$KP")" \
+  "orchestrator Bash redirect into the manifest → DENY (self-protection)" "modify the kernel mandate itself"
+# …and the READ direction does not leak to `.claude`'s other children
+# either: the exemption is the skills subtree, not the directory above it.
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$KP/.claude/settings.json")" \
+  "scaffolder Read <project>/.claude/settings.json → DENY (sibling of the skills root)" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$KP/.claude/kernel-mandate.state/dispatch-registry.json")" \
+  "scaffolder Read the in-tree state dir → DENY" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$KP/.claude/skills-evil/x.md")" \
+  "scaffolder Read <project>/.claude/skills-evil/** → DENY (prefix is not a path boundary)" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/../settings.json")" \
+  "scaffolder Read <project>/.claude/skills/../settings.json → DENY (traversal normalised first)" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/../../src/app.ts")" \
+  "scaffolder Read <project>/.claude/skills/../../src/app.ts → DENY (traversal normalised first)" "outside the role's read scope"
+
+# Everything else outside the project is still refused: the exception is
+# four named trees, not "outside the root".
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path=/etc/passwd)" \
+  "scaffolder Read /etc/passwd → DENY" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_HOME/.ssh/id_rsa")" \
+  "scaffolder Read ~/.ssh/id_rsa → DENY" "outside the role's read scope"
+# The sibling of the skills root, and the harness config beside it, are
+# NOT the skills root — the prefix test is anchored at a path separator.
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_HOME/.claude/settings.json")" \
+  "scaffolder Read ~/.claude/settings.json → DENY (sibling of the skills root)" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_HOME/.claude/skills-evil/x.md")" \
+  "scaffolder Read ~/.claude/skills-evil/** → DENY (prefix is not a path boundary)" "outside the role's read scope"
+# Traversal: the path is normalised BEFORE the prefix test, so a `..`
+# chain that lands outside the tree is judged where it lands.
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_CC/../../.ssh/id_rsa")" \
+  "scaffolder Read <skills-root>/../../.ssh/id_rsa → DENY (traversal normalised first)" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PKG/../../../../.ssh/id_rsa")" \
+  "scaffolder Read <bundled-skills>/../…/.ssh/id_rsa → DENY (traversal normalised first)" "outside the role's read scope"
+
+# ---------------------------------------------------------------------------
+section "kernel wiring: settings.methodologyRead is where that decision lives"
+# ---------------------------------------------------------------------------
+# The kernel's own deny message tells a role that "the manifest grant is
+# what needs to change — ask the operator". A hardcoded exemption makes
+# that untrue: an operator reading kernel-mandate.json could no longer tell
+# what a role may read. So the DECISION is a manifest setting and only the
+# ROOT RESOLUTION stays in code — where the trees live is harness
+# knowledge, not policy.
+assert_eq "$("$JQ" -r '.settings.methodologyRead // "ABSENT"' "$MANDATE")" "readonly" \
+  "the shipped QA manifest declares settings.methodologyRead: readonly"
+
+MT_MANIFEST_SAVED="$KERNEL_MANDATE_MANIFEST"
+MT_STATE_SAVED="$KERNEL_MANDATE_STATE_DIR"
+mkdir -p "$KW_TMP/variants"
+# mt_variant <name> <jq filter over the shipped manifest> — points the
+# kernel at a variant manifest with its OWN state dir, so no role binding
+# cached under one policy is reused under another.
+mt_variant() {
+  "$JQ" "$2" "$MANDATE" > "$KW_TMP/variants/$1.json"
+  export KERNEL_MANDATE_MANIFEST="$KW_TMP/variants/$1.json"
+  export KERNEL_MANDATE_STATE_DIR="$KW_TMP/state-$1"
+}
+
+# ABSENT → readonly. An existing manifest written before this key existed
+# keeps working, and the defect is fixed out of the box.
+mt_variant absent 'del(.settings.methodologyRead)'
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead ABSENT → <project>/.claude/skills read ALLOW (defaults to readonly)"
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$MT_CC/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead ABSENT → ~/.claude/skills read ALLOW (defaults to readonly)"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$MT_PROJ/achilles-protocol/SKILL.md" content='x')" \
+  "methodologyRead ABSENT → skills-tree WRITE still DENY (readonly never grants writes)" "outside the role's write scope"
+
+# "off" restores the pre-change behaviour exactly: a methodology read is
+# out-of-scope like any other path outside the role's grants.
+mt_variant off '.settings.methodologyRead = "off"'
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead off → <project>/.claude/skills read DENY" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$MT_CC/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead off → ~/.claude/skills read DENY" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$MT_PI/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead off → ~/.agents/skills read DENY" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=in-flight-composer file_path="$MT_PKG/onboarding/SKILL.md")" \
+  "methodologyRead off → bundled skills read DENY" "outside the role's read scope"
+assert_deny "$KERNEL" "$(payload tool_name=Read file_path="$MT_CC/achilles-protocol/references/stages-protocol.md" cwd="$KP")" \
+  "methodologyRead off → orchestrator methodology read DENY" "outside the role's read scope"
+# The manifest exemption is a different rule and is untouched by it: an
+# agent may always read the law it is held to.
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$KW_TMP/variants/off.json")" \
+  "methodologyRead off → the manifest itself is still readable"
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$KP/tests/e2e/login.spec.ts")" \
+  "methodologyRead off → an in-scope read is unaffected"
+
+# An UNRECOGNISED value fails CLOSED — it behaves as "off" rather than as
+# the default. A typo in an access-control setting must never be the more
+# permissive reading of the two; the schema's enum is what names the bad
+# value out loud (asserted below), and `kernel-mandate validate` /
+# `npm run schemas:lint` are where an operator is told.
+mt_variant typo '.settings.methodologyRead = "read-only"'
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead \"read-only\" (typo) → read DENY (fails closed to off)" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$MT_CC/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead typo → ~/.claude/skills read DENY (fails closed to off)" "outside the role's read scope"
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$KW_TMP/variants/typo.json")" \
+  "methodologyRead typo → the manifest is still readable (so the operator can see the typo)"
+mt_variant empty '.settings.methodologyRead = ""'
+assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead \"\" → read DENY (fails closed to off)" "outside the role's read scope"
+# A "readonly" spelled right is still read-only: the switch has no write side.
+mt_variant explicit '.settings.methodologyRead = "readonly"'
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$MT_PROJ/achilles-protocol/references/stages-protocol.md")" \
+  "methodologyRead readonly → <project>/.claude/skills read ALLOW"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$MT_CC/achilles-protocol/SKILL.md" content='x')" \
+  "methodologyRead readonly → skills-tree WRITE still DENY" "outside the role's write scope"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/.claude/kernel-mandate.json" content='{}')" \
+  "methodologyRead readonly → the manifest is still self-protected" "modify the kernel mandate itself"
+
+export KERNEL_MANDATE_MANIFEST="$MT_MANIFEST_SAVED"
+export KERNEL_MANDATE_STATE_DIR="$MT_STATE_SAVED"
+
+# The schema is where an unrecognised value is NAMED. Runtime fails closed;
+# validation refuses the manifest outright, which is the loud half.
+if command -v node >/dev/null 2>&1 && node -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; then
+  MR_SCHEMA=$(node -e "
+    const Ajv = require('ajv/dist/2020.js'); const addFormats = require('ajv-formats');
+    const fs = require('fs');
+    const ajv = new Ajv({ strict: false, allErrors: true }); addFormats(ajv);
+    const schema = JSON.parse(fs.readFileSync('$REPO_ROOT/schemas/kernel-mandate.schema.json', 'utf8'));
+    const base = JSON.parse(fs.readFileSync('$MANDATE', 'utf8'));
+    const v = ajv.compile(schema);
+    const withKey = (x) => { const d = JSON.parse(JSON.stringify(base)); if (x === undefined) delete d.settings.methodologyRead; else d.settings.methodologyRead = x; return d; };
+    const say = (label, doc, want) => label + '=' + (v(doc) === want ? 'ok' : 'WRONG');
+    const prop = (schema.properties.settings.properties || {}).methodologyRead;
+    console.log([
+      say('readonly', withKey('readonly'), true),
+      say('off', withKey('off'), true),
+      say('absent', withKey(undefined), true),
+      say('typo', withKey('read-only'), false),
+      'default=' + (prop && prop.default === 'readonly' ? 'ok' : 'WRONG'),
+    ].join(' '));
+  " 2>&1)
+  assert_eq "$MR_SCHEMA" "readonly=ok off=ok absent=ok typo=ok default=ok" \
+    "schema: methodologyRead accepts readonly/off, tolerates absence, refuses an unrecognised value, and documents readonly as its default"
+else
+  echo "  ${CLR_DIM}(ajv not available — skipping the methodologyRead schema assertions)${CLR_RST}"
+fi
+export HOME="$MT_HOME_SAVED"
+
+# ---------------------------------------------------------------------------
 section "kernel wiring: runner config is the scaffolder's; imports are the composers'"
 # ---------------------------------------------------------------------------
 # The orchestrator both authors files and runs the runner, so the kernel's
