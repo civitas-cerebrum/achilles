@@ -100,6 +100,29 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$I
   "Write ledger with bad runMode enum → DENY" "fails schema validation"
 
 # ---------------------------------------------------------------------------
+section "ledger-write-gate: a cycle record beside subStages is rejected AT WRITE TIME, with the right home named"
+# The exact shape the 2026-09-29 live run wrote. Under the old schema
+# (phase items additionalProperties: true) this validated, and the failure only
+# surfaced later as an unsatisfiable dispatch denial. Now it fails here, early,
+# and the denial names the stray key and where the record belongs.
+CYCLE_BESIDE_SUBSTAGES='{"schemaVersion":1,"pipelineVersion":"0.4.0","runMode":"standard","startedAt":"2026-05-17T09:00:00Z","currentPhase":4,"currentSubStage":"cycle-2","status":"in-progress","phases":[
+  {"id":1,"name":"Scaffold","status":"completed","reviewerVerdict":"approved","handoverEnvelope":{},"deliverables":[]},
+  {"id":2,"name":"Groundwork","status":"completed","reviewerVerdict":"approved","handoverEnvelope":{},"deliverables":[]},
+  {"id":3,"name":"Happy-path","status":"completed","reviewerVerdict":"approved","handoverEnvelope":{},"deliverables":[]},
+  {"id":4,"name":"Journey-mapping","status":"in-progress","deliverables":[],"cycles":{"1":{"cycleNumber":1,"reviewerVerdict":"approved","reviewerCycles":1}}},
+  {"id":5,"name":"Coverage-expansion","status":"pending","deliverables":[]},
+  {"id":6,"name":"Bug-discovery","status":"pending","deliverables":[]},
+  {"id":7,"name":"Secrets-sweep","status":"pending","deliverables":[]},
+  {"id":8,"name":"Report","status":"pending","deliverables":[]}
+]}'
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$CYCLE_BESIDE_SUBSTAGES")" \
+  "Write ledger with phases[3].cycles beside subStages → DENY" "fails schema validation"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$CYCLE_BESIDE_SUBSTAGES")" \
+  "denial names the stray key" "Unrecognised key(s) on phases[3]: cycles"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$CYCLE_BESIDE_SUBSTAGES")" \
+  "denial names the canonical home" "phases[3].subStages[]"
+
+# ---------------------------------------------------------------------------
 section "ledger-write-gate: phase-skip transition DENIED"
 # Existing ledger at currentPhase=1; proposed bumps to 3 with phase 2 still pending.
 printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"

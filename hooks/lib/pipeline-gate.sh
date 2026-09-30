@@ -190,6 +190,29 @@ See: schemas/${PIPELINE_SCHEMA_NAME}.schema.json"
       return 0
     fi
 
+    # "must NOT have additional properties" on a phase item is, in practice, a
+    # sub-stage record written beside subStages instead of inside it — the
+    # 2026-09-29 live run put cycle-1 under phases[3].cycles, the schema of the
+    # day allowed it, and the dispatch gate (which reads subStages) then refused
+    # a cycle-2 dispatch whose cycle-1 was approved. The bare validator line
+    # names neither the offending key nor the right home; supply both.
+    local SHAPE_HINT=""
+    local BAD_PHASE
+    BAD_PHASE=$(printf '%s' "$VALIDATE_OUT" | sed -nE 's|.*/phases/([0-9]+) must NOT have additional properties.*|\1|p' | head -1)
+    if [ -n "$BAD_PHASE" ]; then
+      local EXTRA_KEYS
+      EXTRA_KEYS=$("$JQ" -r --argjson i "$BAD_PHASE" '
+        .phases[$i] | keys - ["id","name","startedAt","finishedAt","status","handoverEnvelope","reviewerVerdict","reviewerCycles","reviewerFindings","deliverables","subStages"]
+        | join(", ")' "$TMP_PROPOSED" 2>/dev/null || echo "?")
+      SHAPE_HINT="
+Unrecognised key(s) on phases[${BAD_PHASE}]: ${EXTRA_KEYS}
+A phase item holds no free-form keys. Cycle and pass records live ONLY at
+phases[${BAD_PHASE}].subStages[] as {\"id\": \"cycle-N\" | \"pass-N\", \"status\", \"reviewerVerdict\", ...}
+— that is where the dispatch gate reads the prior cycle's verdict, so a record
+kept anywhere else is invisible to it. (.cycles[N] is the shape of the separate
+.phase4-cycle-state.json sidecar, not of this ledger.)
+"
+    fi
     pipeline_emit_deny "[BLOCKED] Proposed ${PIPELINE_SCHEMA_NAME}.json fails schema validation.
 
 File: ${FILE_PATH}
@@ -197,7 +220,7 @@ Schema: ${PIPELINE_SCHEMA_NAME} (inlined in hooks/lib/validator.bundle.mjs; sour
 
 Validator output:
 ${VALIDATE_OUT}
-
+${SHAPE_HINT}
 Fix: correct the failing field(s) above; the schema is the authoritative
 spec. The valid + invalid fixtures under schemas/${PIPELINE_SCHEMA_NAME}.fixtures/
 are working examples of the shape.

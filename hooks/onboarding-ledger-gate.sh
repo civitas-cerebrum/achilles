@@ -242,10 +242,31 @@ if [ -n "$TARGET_CYCLE" ]; then
   PRIOR_CYCLE=$((TARGET_CYCLE - 1))
   if [ "$PRIOR_CYCLE" -ge 1 ]; then
     PRIOR_CYCLE_ID="cycle-${PRIOR_CYCLE}"
+    # `subStages[]` is the canonical home for a cycle record, but the schema marks
+    # it OPTIONAL and leaves phase items `additionalProperties: true`, so a ledger
+    # that records cycles as `.cycles["N"]` or `.["cycle-N"]` is equally valid
+    # against the schema. Reading only subStages and defaulting to "pending" made
+    # this gate refuse a cycle-2 dispatch whose cycle-1 WAS reviewer-approved —
+    # and the denial told the agent to re-dispatch a reviewer it had already run,
+    # which is unsatisfiable advice. Check the canonical path first, then the other
+    # shapes the schema permits, and report which path answered.
     PRIOR_CYCLE_VERDICT=$("$JQ" -r --arg id "$PRIOR_CYCLE_ID" '
       [.phases[]? | select(.id == 4) | .subStages[]? | select(.id == $id)] |
       .[0].reviewerVerdict // "pending"
     ' "$LEDGER" 2>/dev/null || echo "pending")
+    VERDICT_SOURCE="phases[id=4].subStages[id=${PRIOR_CYCLE_ID}].reviewerVerdict"
+    if [ "$PRIOR_CYCLE_VERDICT" != "approved" ]; then
+      ALT_VERDICT=$("$JQ" -r --arg id "$PRIOR_CYCLE_ID" --arg n "$PRIOR_CYCLE" '
+        [ .phases[]? | select(.id == 4)
+          | ( (.cycles[$n]? | objects), (.[$id]? | objects) )
+          | .reviewerVerdict? // empty ]
+        | (if any(. == "approved") then "approved" else (.[0] // "pending") end)
+      ' "$LEDGER" 2>/dev/null || echo "pending")
+      if [ "$ALT_VERDICT" = "approved" ]; then
+        PRIOR_CYCLE_VERDICT="approved"
+        VERDICT_SOURCE="phases[id=4].cycles[\"${PRIOR_CYCLE}\"] or phases[id=4][\"${PRIOR_CYCLE_ID}\"] (non-canonical but schema-valid)"
+      fi
+    fi
     if [ "$PRIOR_CYCLE_VERDICT" != "approved" ]; then
       emit_deny "[BLOCKED] Out-of-order Phase-4 cycle dispatch — cycle-${TARGET_CYCLE} cannot start while cycle-${PRIOR_CYCLE} is not reviewer-approved.
 
@@ -253,6 +274,13 @@ Description: \"${DESCRIPTION}\"
 
 Ledger shows cycle-${PRIOR_CYCLE}.reviewerVerdict = \"${PRIOR_CYCLE_VERDICT}\"
 (must be \"approved\").
+
+Paths inspected, in order:
+  phases[id=4].subStages[id=\"${PRIOR_CYCLE_ID}\"].reviewerVerdict   (canonical)
+  phases[id=4].cycles[\"${PRIOR_CYCLE}\"].reviewerVerdict             (schema-valid alt)
+  phases[id=4][\"${PRIOR_CYCLE_ID}\"].reviewerVerdict                 (schema-valid alt)
+None of them held \"approved\". If cycle-${PRIOR_CYCLE} HAS been approved, the
+record is somewhere none of the above reach — write it to the canonical path.
 
 Fix: dispatch \`workflow-reviewer-cycle${PRIOR_CYCLE}:\` first. The
 reviewer checks the iterative-discovery-cycle criteria from

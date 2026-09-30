@@ -16197,7 +16197,7 @@ var onboarding_status_schema_default = {
       description: "Length-8 array, populated as the run progresses. Phases 1-8 in order.",
       items: {
         type: "object",
-        additionalProperties: true,
+        additionalProperties: false,
         required: ["id", "name", "status"],
         properties: {
           id: {
@@ -16265,10 +16265,10 @@ var onboarding_status_schema_default = {
           },
           subStages: {
             type: "array",
-            description: "Optional. Used by phases 4 (cycles) + 5 (passes).",
+            description: "The ONLY home for a phase's sub-stage records: phase 4 cycles ('cycle-1'..'cycle-5') and phase 5 passes ('pass-1'..'pass-5'). Optional for phases that have none. Do not record cycles or passes under any other key on the phase item: `.cycles[N]` and `.[\"cycle-N\"]` are the shape of the separate cycle-state sidecar (tests/e2e/docs/.phase4-cycle-state.json), not of this ledger, and the dispatch gate reads the verdict from here \u2014 a record written anywhere else is invisible to it.",
             items: {
               type: "object",
-              additionalProperties: true,
+              additionalProperties: false,
               required: ["id", "status"],
               properties: {
                 id: {

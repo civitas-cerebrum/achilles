@@ -211,6 +211,57 @@ assert_deny "$H" "$(payload tool_name=Agent description='phase4-cycle-2-section-
   "cycle-2 dispatch with cycle-1 verdict pending → DENY" "cycle-1 is not reviewer-approved"
 
 # ---------------------------------------------------------------------------
+section "ledger-gate: cycle record in a schema-valid non-canonical shape is honoured"
+# `subStages` is OPTIONAL in onboarding-status.schema.json and phase items are
+# `additionalProperties: true`, so a ledger that records cycles as `.cycles["N"]`
+# or `.["cycle-N"]` is just as valid. Reading only subStages and falling back to
+# "pending" froze a real 2026-09-29 run: cycle-1 WAS approved, the gate could not
+# see it, and the denial told the agent to re-dispatch a reviewer it had already
+# run — advice it could not act on. Both alternate shapes must be honoured.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 4 |
+  .currentSubStage = "cycle-2" |
+  .phases[0].status = "completed" | .phases[0].reviewerVerdict = "approved" | .phases[0].handoverEnvelope = {} |
+  .phases[1].status = "completed" | .phases[1].reviewerVerdict = "approved" | .phases[1].handoverEnvelope = {} |
+  .phases[2].status = "completed" | .phases[2].reviewerVerdict = "approved" | .phases[2].handoverEnvelope = {} |
+  .phases[3].status = "in-progress" | .phases[3].cycles = {
+    "1": {"cycleNumber":1,"reviewerVerdict":"approved","reviewerCycles":1}
+  }
+')"
+assert_allow "$H" "$(payload tool_name=Agent description='phase4-cycle-2-section-auth:' prompt='Edge-probe auth.' cwd="$TMP_REPO")" \
+  "cycle-2 dispatch with cycle-1 approved under .cycles[\"1\"] → ALLOW"
+
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 4 |
+  .currentSubStage = "cycle-2" |
+  .phases[0].status = "completed" | .phases[0].reviewerVerdict = "approved" | .phases[0].handoverEnvelope = {} |
+  .phases[1].status = "completed" | .phases[1].reviewerVerdict = "approved" | .phases[1].handoverEnvelope = {} |
+  .phases[2].status = "completed" | .phases[2].reviewerVerdict = "approved" | .phases[2].handoverEnvelope = {} |
+  .phases[3].status = "in-progress" | .phases[3]["cycle-1"] = {
+    "cycleNumber":1,"reviewerVerdict":"approved","reviewerCycles":1
+  }
+')"
+assert_allow "$H" "$(payload tool_name=Agent description='phase4-cycle-2-section-auth:' prompt='Edge-probe auth.' cwd="$TMP_REPO")" \
+  "cycle-2 dispatch with cycle-1 approved under [\"cycle-1\"] → ALLOW"
+
+# The tolerance must not become a hole: an alternate shape that is NOT approved
+# still denies, and the denial now names every path it inspected.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 4 |
+  .currentSubStage = "cycle-2" |
+  .phases[0].status = "completed" | .phases[0].reviewerVerdict = "approved" | .phases[0].handoverEnvelope = {} |
+  .phases[1].status = "completed" | .phases[1].reviewerVerdict = "approved" | .phases[1].handoverEnvelope = {} |
+  .phases[2].status = "completed" | .phases[2].reviewerVerdict = "approved" | .phases[2].handoverEnvelope = {} |
+  .phases[3].status = "in-progress" | .phases[3].cycles = {
+    "1": {"cycleNumber":1,"reviewerVerdict":"rejected","reviewerCycles":1}
+  }
+')"
+assert_deny "$H" "$(payload tool_name=Agent description='phase4-cycle-2-section-auth:' prompt='Edge-probe auth.' cwd="$TMP_REPO")" \
+  "cycle-2 dispatch with cycle-1 rejected under .cycles[\"1\"] → DENY" "cycle-1 is not reviewer-approved"
+assert_deny "$H" "$(payload tool_name=Agent description='phase4-cycle-2-section-auth:' prompt='Edge-probe auth.' cwd="$TMP_REPO")" \
+  "denial names the paths it inspected" "Paths inspected"
+
+# ---------------------------------------------------------------------------
 section "ledger-gate: free-form prefixes silent-allow when no transition point pending"
 write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
   .currentPhase = 1 |
