@@ -122,6 +122,64 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$C
 assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$CYCLE_BESIDE_SUBSTAGES")" \
   "denial names the canonical home" "phases[3].subStages[]"
 
+# Local negative variant of lib.sh's assert_deny: the call must be DENIED and
+# the reason must NOT contain the substring. Same accounting globals so the
+# summary stays correct.
+assert_deny_without() {
+  local hook="$1" stdin="$2" name="$3" absent_substr="$4"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  run_hook "$hook" "$stdin"
+  local decision reason
+  decision=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  reason=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  if [ "$decision" != "deny" ]; then
+    TESTS_FAILED=$((TESTS_FAILED + 1)); FAIL_DETAILS+=("${name}: expected deny, got '${decision}'")
+    echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(expected deny, got '${decision}')${CLR_RST}"; return
+  fi
+  if echo "$reason" | grep -qF -- "$absent_substr"; then
+    TESTS_FAILED=$((TESTS_FAILED + 1)); FAIL_DETAILS+=("${name}: deny reason wrongly contains '${absent_substr}'")
+    echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(deny reason wrongly contains substring)${CLR_RST}"; return
+  fi
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+  echo "${CLR_PASS}  ✓${CLR_RST} ${name}"
+}
+
+# A stray key that is NOT a cycle/pass record must not get the subStages story
+# — on 2026-09-30 a first draft wrote `phase` where `id` was meant, and the
+# hint diagnosed a cycle record. It should name the key and list what is allowed.
+STRAY_PHASE_KEY='{"schemaVersion":1,"pipelineVersion":"0.4.0","runMode":"standard","startedAt":"2026-05-17T09:00:00Z","currentPhase":1,"status":"in-progress","phases":[
+  {"id":1,"phase":1,"name":"Scaffold","status":"in-progress","deliverables":[]},
+  {"id":2,"name":"Groundwork","status":"pending","deliverables":[]},
+  {"id":3,"name":"Happy-path","status":"pending","deliverables":[]},
+  {"id":4,"name":"Journey-mapping","status":"pending","deliverables":[]},
+  {"id":5,"name":"Coverage-expansion","status":"pending","deliverables":[]},
+  {"id":6,"name":"Bug-discovery","status":"pending","deliverables":[]},
+  {"id":7,"name":"Secrets-sweep","status":"pending","deliverables":[]},
+  {"id":8,"name":"Report","status":"pending","deliverables":[]}
+]}'
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$STRAY_PHASE_KEY")" \
+  "stray non-cycle key is named" "Unrecognised key(s) on phases[0]: phase"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$STRAY_PHASE_KEY")" \
+  "stray non-cycle key lists the allowed keys" "Allowed: id, name, startedAt"
+assert_deny_without "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$STRAY_PHASE_KEY")" \
+  "stray non-cycle key does NOT get the subStages diagnosis" "That is a cycle/pass record"
+
+# A wrong phase name must be told the eight allowed names, not just that it is wrong.
+BAD_PHASE_NAME='{"schemaVersion":1,"pipelineVersion":"0.4.0","runMode":"standard","startedAt":"2026-05-17T09:00:00Z","currentPhase":1,"status":"in-progress","phases":[
+  {"id":1,"name":"scaffold","status":"in-progress","deliverables":[]},
+  {"id":2,"name":"Groundwork","status":"pending","deliverables":[]},
+  {"id":3,"name":"Happy-path","status":"pending","deliverables":[]},
+  {"id":4,"name":"journey-mapping","status":"pending","deliverables":[]},
+  {"id":5,"name":"Coverage-expansion","status":"pending","deliverables":[]},
+  {"id":6,"name":"Bug-discovery","status":"pending","deliverables":[]},
+  {"id":7,"name":"Secrets-sweep","status":"pending","deliverables":[]},
+  {"id":8,"name":"Report","status":"pending","deliverables":[]}
+]}'
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$BAD_PHASE_NAME")" \
+  "wrong phase name → DENY" "fails schema validation"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$BAD_PHASE_NAME")" \
+  "wrong phase name is told the allowed names" "4 Journey-mapping"
+
 # ---------------------------------------------------------------------------
 section "ledger-write-gate: phase-skip transition DENIED"
 # Existing ledger at currentPhase=1; proposed bumps to 3 with phase 2 still pending.

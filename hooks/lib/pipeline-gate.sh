@@ -190,28 +190,48 @@ See: schemas/${PIPELINE_SCHEMA_NAME}.schema.json"
       return 0
     fi
 
-    # "must NOT have additional properties" on a phase item is, in practice, a
-    # sub-stage record written beside subStages instead of inside it — the
-    # 2026-09-29 live run put cycle-1 under phases[3].cycles, the schema of the
-    # day allowed it, and the dispatch gate (which reads subStages) then refused
-    # a cycle-2 dispatch whose cycle-1 was approved. The bare validator line
-    # names neither the offending key nor the right home; supply both.
+    # Two validator lines name a condition but not the remedy, and a refusal
+    # that does not say what to change just relocates the dead end:
+    #
+    #  - "must NOT have additional properties" on a phase item. Say WHICH key.
+    #    If it looks like a cycle/pass record written beside subStages (the
+    #    2026-09-29 live run put cycle-1 under phases[3].cycles and the
+    #    dispatch gate, which reads subStages, then refused a cycle-2 dispatch
+    #    whose cycle-1 was approved), say where it belongs. If it is anything
+    #    else — a first draft on 2026-09-30 wrote `phase` where `id` was meant —
+    #    the subStages story is the wrong diagnosis; list the allowed keys.
+    #  - "must be equal to one of the allowed values" on a phase name. The
+    #    same draft spent four writes guessing case ("journey-mapping",
+    #    "scaffold") because nothing in the denial listed the eight names.
     local SHAPE_HINT=""
-    local BAD_PHASE
-    BAD_PHASE=$(printf '%s' "$VALIDATE_OUT" | sed -nE 's|.*/phases/([0-9]+) must NOT have additional properties.*|\1|p' | head -1)
-    if [ -n "$BAD_PHASE" ]; then
-      local EXTRA_KEYS
-      EXTRA_KEYS=$("$JQ" -r --argjson i "$BAD_PHASE" '
-        .phases[$i] | keys - ["id","name","startedAt","finishedAt","status","handoverEnvelope","reviewerVerdict","reviewerCycles","reviewerFindings","deliverables","subStages"]
-        | join(", ")' "$TMP_PROPOSED" 2>/dev/null || echo "?")
-      SHAPE_HINT="
-Unrecognised key(s) on phases[${BAD_PHASE}]: ${EXTRA_KEYS}
-A phase item holds no free-form keys. Cycle and pass records live ONLY at
-phases[${BAD_PHASE}].subStages[] as {\"id\": \"cycle-N\" | \"pass-N\", \"status\", \"reviewerVerdict\", ...}
-— that is where the dispatch gate reads the prior cycle's verdict, so a record
-kept anywhere else is invisible to it. (.cycles[N] is the shape of the separate
-.phase4-cycle-state.json sidecar, not of this ledger.)
-"
+    local PHASE_KEYS='["id","name","startedAt","finishedAt","status","handoverEnvelope","reviewerVerdict","reviewerCycles","reviewerFindings","deliverables","subStages"]'
+    local BAD_PHASES
+    BAD_PHASES=$(printf '%s' "$VALIDATE_OUT" | sed -nE 's|.*/phases/([0-9]+) must NOT have additional properties.*|\1|p' | sort -un | tr '\n' ' ')
+    if [ -n "$BAD_PHASES" ]; then
+      local i EXTRA
+      for i in $BAD_PHASES; do
+        EXTRA=$("$JQ" -r --argjson i "$i" --argjson ok "$PHASE_KEYS" '(.phases[$i] | keys) - $ok | join(", ")' "$TMP_PROPOSED" 2>/dev/null || echo "?")
+        SHAPE_HINT="${SHAPE_HINT}
+Unrecognised key(s) on phases[${i}]: ${EXTRA}"
+        if printf '%s' "$EXTRA" | grep -qiE '(^|, )(cycles?|passes?|cycle-[0-9]+|pass-[0-9]+)(,|$)'; then
+          SHAPE_HINT="${SHAPE_HINT}
+  That is a cycle/pass record. It lives ONLY at phases[${i}].subStages[] as
+  {\"id\": \"cycle-N\" | \"pass-N\", \"status\", \"reviewerVerdict\", ...} — the dispatch
+  gate reads the prior cycle's verdict from there, so a record kept anywhere else
+  is invisible to it. (.cycles[N] is the shape of the separate
+  .phase4-cycle-state.json sidecar, not of this ledger.)"
+        fi
+      done
+      SHAPE_HINT="${SHAPE_HINT}
+A phase item holds no free-form keys. Allowed: id, name, startedAt, finishedAt,
+status, handoverEnvelope, reviewerVerdict, reviewerCycles, reviewerFindings,
+deliverables, subStages."
+    fi
+    if printf '%s' "$VALIDATE_OUT" | grep -q '/phases/[0-9]*/name must be equal to one of the allowed values'; then
+      SHAPE_HINT="${SHAPE_HINT}
+Phase names are fixed, in this order and this exact spelling:
+  1 Scaffold  2 Groundwork  3 Happy-path  4 Journey-mapping
+  5 Coverage-expansion  6 Bug-discovery  7 Secrets-sweep  8 Report"
     fi
     pipeline_emit_deny "[BLOCKED] Proposed ${PIPELINE_SCHEMA_NAME}.json fails schema validation.
 
