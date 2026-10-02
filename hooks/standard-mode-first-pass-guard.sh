@@ -238,7 +238,7 @@ explicit (up to ~20× more dispatches than \`mode: standard\`) and the
 contract is exhaustive per-unit fidelity.
 
 Fix: split this dispatch into N parallel single-journey dispatches in
-one message (one \`composer-j-<slug>:\` or \`probe-j-<slug>:\` Agent
+one message (one \`test-composer-j-<slug>:\` or \`probe-j-<slug>:\` Agent
 per journey, all sent in the same parallel wave). If grouping is
 genuinely needed on this run, the operator must re-enter the onboarding
 front-load gate and select \`runMode: standard\` instead.
@@ -260,7 +260,7 @@ foundation at maximum fidelity; that quality propagates through every
 later pass.
 
 Fix: split this dispatch into N parallel single-journey dispatches in
-one message (one \`composer-j-<slug>:\` Agent per journey, all sent in
+one message (one \`test-composer-j-<slug>:\` Agent per journey, all sent in
 the same parallel wave). Re-issue any \`[group]\` / \`[P3-batch]\`
 dispatches on Pass 2 or later, once Pass 1 has completed and the state
 file shows \`currentPass >= 2\`.
@@ -394,9 +394,10 @@ if [ "$HIT_COUNT" -ge 3 ]; then
   # Only fire on actual walkthrough attempts, not legitimate author /
   # validator dispatches that reference multiple sections in their brief.
   # Heuristic: skip the rule when the role prefix is one of the legitimate
-  # multi-section consumers.
+  # multi-section consumers. `test-composer-*` is the kernel-mandate
+  # spelling of the composer dispatch; `composer-*` (pre-kernel) is kept.
   case "$DESCRIPTION" in
-    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*|workflow-reviewer-*|composer-*|reviewer-*|probe-*|phase[1-8]-*) ;;
+    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*|workflow-reviewer-*|test-composer-*|composer-*|reviewer-*|probe-*|phase[1-8]-*) ;;
     *)
       # Under cycleStrictness: depth, DENY for ANY cycle (including cycle 2+
       # after cycle 1 has dispatched-sections recorded). Under standard,

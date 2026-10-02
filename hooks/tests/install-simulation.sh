@@ -93,6 +93,22 @@ run_install_simulation() {
       chmod 755 "$fake_hooks/$f"   # postinstall: fs.chmodSync(hookDest, 0o755)
     fi
   done
+  # 1b. HOOK_COMPANIONS — copied beside the registered hooks but never
+  #     registered (the kernel mandate kernel, exec'd by the activation-gate
+  #     wrapper). Parsed the same way so the sim tracks the installer.
+  local companion_files
+  companion_files=$(node -e "
+    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
+    const m = s.match(/const HOOK_COMPANIONS = \[([\s\S]*?)\];/);
+    if (!m) { process.exit(0); }
+    console.log([...m[1].matchAll(/['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]).join('\n'));
+  " 2>/dev/null)
+  for f in $companion_files; do
+    if [ -f "$repo_root/hooks/$f" ]; then
+      cp "$repo_root/hooks/$f" "$fake_hooks/$f"
+      chmod 755 "$fake_hooks/$f"
+    fi
+  done
 
   # 2. hooks/lib/ — top-level files only, exactly like postinstall (its
   #    readdir loop skips non-file entries; subdirectories are NOT copied).
@@ -145,6 +161,17 @@ run_install_simulation() {
       sim_pass "$f present and executable in the installed set"
     else
       sim_fail "$f present and executable in the installed set" "not found or not executable at $fake_hooks/$f"
+    fi
+  done
+
+  # --- Assertion: the kernel wrapper AND its exec target both land --------
+  # The wrapper is registered; the kernel is a companion copy. Either one
+  # missing means the mandate is silently unenforced from an install.
+  for f in achilles-kernel-activation-gate.sh kernel-mandate-role-gate.sh; do
+    if [ -x "$fake_hooks/$f" ]; then
+      sim_pass "$f lands in the copy set (wrapper + kernel companion)"
+    else
+      sim_fail "$f lands in the copy set (wrapper + kernel companion)" "not found or not executable at $fake_hooks/$f"
     fi
   done
 
@@ -216,7 +243,9 @@ run_install_simulation() {
   # doesn't (P7 not yet landed — reported as a P7-domain dependency).
   local probe attest_out attest_msg
   probe=$(mktemp "$work/tojson-probe-XXXXXX"); printf 'verdict: approve\n' > "$probe"
-  if [ -n "$NODE_BIN" ] && [ -f "$fake_hooks/lib/validator.bundle.mjs" ] \
+  # NODE_BIN is set by earlier case files under run.sh; standalone or
+  # filtered runs reach here without it.
+  if [ -n "${NODE_BIN:-$(command -v node || true)}" ] && [ -f "$fake_hooks/lib/validator.bundle.mjs" ] \
      && node "$fake_hooks/lib/validator.bundle.mjs" tojson "$probe" 2>/dev/null | grep -q 'verdict'; then
     # Evidence-free approve return (no on-disk path cited in attestation).
     local ev_free_payload

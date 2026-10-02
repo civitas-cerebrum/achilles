@@ -164,6 +164,40 @@ assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$
 rm -f "$LEDGER_PATH" "$REGISTRY"
 
 # ---------------------------------------------------------------------------
+section "perf-write-gate: terminal .status is an approval-class write (the off-switch)"
+# Same rule as the e2e ledger: status complete|aborted retires the session's
+# governance, so only a registered approver subagent may land it.
+printf '%s' "$VALID_FRESH_PERF" > "$LEDGER_PATH"
+rm -f "$REGISTRY"
+PERF_TERMINAL_COMPLETE=$(echo "$VALID_FRESH_PERF" | "$JQ" '.status = "complete"')
+PERF_TERMINAL_ABORTED=$(echo "$VALID_FRESH_PERF" | "$JQ" '.status = "aborted"')
+
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")" \
+  "Orchestrator direct perf write status → complete → DENY" "OFF-SWITCH"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_ABORTED")" \
+  "Orchestrator direct perf write status → aborted → DENY" "approval-class write"
+
+P_PT_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")
+P_PT_NOREG=$(echo "$P_PT_NOREG" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+assert_deny "$H" "$P_PT_NOREG" "Perf subagent status → complete but no registry → DENY" "no approver registry exists"
+
+NOW=$(date +%s)
+printf '{"toolu_perf_final":{"role":"perf-reviewer","description":"perf-reviewer-final","ts":%d}}' "$NOW" > "$REGISTRY"
+P_PT_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")
+P_PT_OK=$(echo "$P_PT_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+assert_allow "$H" "$P_PT_OK" "Registered perf approver subagent status → complete → ALLOW"
+P_PT_AB=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_ABORTED")
+P_PT_AB=$(echo "$P_PT_AB" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+assert_allow "$H" "$P_PT_AB" "Registered perf approver subagent status → aborted → ALLOW"
+rm -f "$REGISTRY"
+
+PERF_NON_TERMINAL=$(echo "$VALID_FRESH_PERF" | "$JQ" '.status = "blocked"')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_NON_TERMINAL")" \
+  "Orchestrator perf status → blocked (non-terminal) → ALLOW"
+
+rm -f "$LEDGER_PATH" "$REGISTRY"
+
+# ---------------------------------------------------------------------------
 section "perf-write-gate: Phase 1 → completed requires config + non-empty lib/"
 rm -f "$LEDGER_PATH"
 PRIOR_P1=$(echo "$VALID_FRESH_PERF" | "$JQ" '.phases[0].status = "in-progress" | .currentPhase = 1')

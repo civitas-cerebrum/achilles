@@ -68,6 +68,8 @@ section "first-pass-guard: Rule 1 — per-journey composer always ALLOWED"
 clear_cov_state
 assert_allow "$H" "$(payload tool_name=Agent description='composer-j-cart-1-c1:' prompt='Compose. composer.schema.json.' cwd="$TMP_REPO")" \
   "per-journey composer with no state file → ALLOW (not [group])"
+assert_allow "$H" "$(payload tool_name=Agent description='test-composer-j-cart: compose' prompt='Compose. composer.schema.json.' cwd="$TMP_REPO")" \
+  "per-journey test-composer (kernel-mandate spelling) → ALLOW"
 
 section "first-pass-guard: Rule 2 — author without ≥2 cycle-1 sections DENIED"
 clear_cycle_state

@@ -204,9 +204,10 @@ changes.
 
 This skill's subagent returns conform to the `composer` schema (see
 `schemas/subagent-returns/composer.schema.json`). `onboarding` dispatches
-this skill with the `composer-secrets-sweep:` description prefix, so
-returns are schema-validated against `composer.schema.json` with zero
-hook change.
+this skill with the `test-composer-secrets-sweep:` description prefix
+(`subagent_type: test-composer`, brief tagged `<<kernel-mandate-role:
+test-composer#<nonce>>>`), so returns are schema-validated against
+`composer.schema.json` with zero hook change.
 
 Every return MUST open with a `handover` envelope as its first key:
 

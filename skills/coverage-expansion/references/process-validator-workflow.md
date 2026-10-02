@@ -15,7 +15,7 @@ Same shape as the Stage B reviewer applied one level up. The validator does NOT 
 
 ## 1. When to invoke
 
-Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold:
+Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold. (Dispatch shape under the role kernel: `subagent_type: process-validator`, and the brief's first line is `<<kernel-mandate-role: process-validator#<nonce>>>` with a fresh nonce per dispatch — `skills/onboarding/SKILL.md` §"Dispatch grammar".)
 
 | Trigger | Threshold |
 |---|---|
@@ -52,14 +52,14 @@ The parent dispatches the validator with a **manifest** of the planned wave. The
 
 | # | description prefix | journey-id | slug | model-hint | must-fix-list summary |
 |---|---|---|---|---|---|
-| 1 | composer-j-a: cycle 1 | j-a | composer-j-a-2-c1 | sonnet | (n/a — pass 1) |
-| 2 | composer-j-b: cycle 1 | j-b | composer-j-b-2-c1 | sonnet | (n/a — pass 1) |
-| 3 | composer-j-c: cycle 1 | j-c | composer-j-c-2-c1 | opus   | (n/a — pass 1) |
+| 1 | test-composer-j-a: cycle 1 | j-a | composer-j-a-2-c1 | sonnet | (n/a — pass 1) |
+| 2 | test-composer-j-b: cycle 1 | j-b | composer-j-b-2-c1 | sonnet | (n/a — pass 1) |
+| 3 | test-composer-j-c: cycle 1 | j-c | composer-j-c-2-c1 | opus   | (n/a — pass 1) |
 
 (continue for all N rows)
 
 ## Pre-checks performed by parent before manifest emission
-- [ ] All description prefixes use role-explicit form (composer-/reviewer-/probe-/process-validator-).
+- [ ] All description prefixes use role-explicit form (test-composer-/reviewer-/probe-/process-validator-).
 - [ ] All slugs ≤ 28 chars.
 - [ ] No two rows share a slug.
 - [ ] Journey-ids drawn from the current journey-map.md (sentinel-verified).
@@ -70,9 +70,9 @@ The parent dispatches the validator with a **manifest** of the planned wave. The
 
 | Field | Rule |
 |---|---|
-| `description prefix` | Begins with `composer-` / `reviewer-` / `probe-` / `process-validator-`. Bare `j-` / `sj-` are forbidden — they're role-ambiguous. |
+| `description prefix` | Begins with `test-composer-` / `reviewer-` / `probe-` / `process-validator-`. Bare `j-` / `sj-` are forbidden — they're role-ambiguous. |
 | `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the validator checks (the dispatch-guard hook that previously checked it mechanically was retired in 0.3.6). |
-| `slug` | The CLI session slug for this dispatch. Pattern matches the role (composer-j-… / reviewer-j-… / probe-j-…) and respects the 28-char cap. |
+| `slug` | The CLI session slug for this dispatch. Pattern matches the role (composer-j-… / reviewer-j-… / probe-j-…; the composer slug drops the `test-` of its description prefix) and respects the 28-char cap. |
 | `model-hint` | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. |
 | `must-fix-list summary` | One-line summary of the Stage B feedback this Stage A retry must address, OR `(n/a)` for fresh-cycle composer dispatches. |
 
@@ -94,8 +94,8 @@ The validator runs the following checks against the manifest. Each check produce
 | Check | What to look for | Failure → finding |
 |---|---|---|
 | **Slug-length** | Every slug ≤ 28 chars. | `slug-length-cap-violation` — name the offending row. |
-| **Role-prefix consistency** | Every description prefix matches the role-explicit set (composer-/reviewer-/probe-/process-validator-). | `forbidden-prefix` — name the row + suggested prefix. |
-| **Description ↔ slug 1:1** | Every row's description prefix and slug share the same role-prefix (`composer-j-…` description ↔ `composer-j-…` slug). | `description-slug-mismatch` — name the row + show diff. |
+| **Role-prefix consistency** | Every description prefix matches the role-explicit set (test-composer-/reviewer-/probe-/process-validator-). | `forbidden-prefix` — name the row + suggested prefix. |
+| **Description ↔ slug 1:1** | Every row's description prefix and slug name the same role (`test-composer-j-…` description ↔ `composer-j-…` slug; `reviewer-j-…` ↔ `reviewer-j-…`). | `description-slug-mismatch` — name the row + show diff. |
 | **Journey-coverage completeness** | For composer/reviewer waves: the wave covers every journey listed in the current pass's roster (or the must-fix-list's journey-set for retry waves). | `journey-coverage-gap` — list missing journeys. |
 | **No duplicates** | No two rows share a slug or a journey-id. | `duplicate-slug` / `duplicate-journey` — name the conflicting rows. |
 | **Brief-minimalism (proxied via must-fix-list summary)** | The must-fix-list summary ≤ 240 chars; no orchestrator meta-content (`depth mode`, `5-pass pipeline`, `Pass 4/5`, etc.). | `brief-leak` — name the row + leaked phrase. |
@@ -236,11 +236,11 @@ A pass-2 wave of 5 composer dispatches:
 
 | # | description prefix | journey-id | slug | model-hint | must-fix-list summary |
 |---|---|---|---|---|---|
-| 1 | composer-j-a: cycle 1     | j-a     | composer-j-a-2-c1       | sonnet | address Stage B finding j-a-1-1-R-01 (mobile variant) |
-| 2 | composer-j-b: cycle 1     | j-b     | composer-j-b-2-c1       | sonnet | (n/a — re-pass trigger 3, no prior must-fix) |
-| 3 | composer-j-c: cycle 1     | j-c     | composer-j-c-2-c1       | opus   | address Stage B findings j-c-1-2-R-{01,02,03} |
-| 4 | composer-sj-d-1: cycle 1  | sj-d-1  | composer-sj-d-1-2-c1    | sonnet | address Stage B finding sj-d-1-1-1-R-01 (error state) |
-| 5 | composer-j-e: cycle 1     | j-e     | composer-j-e-2-c1       | sonnet | (n/a) |
+| 1 | test-composer-j-a: cycle 1     | j-a     | composer-j-a-2-c1       | sonnet | address Stage B finding j-a-1-1-R-01 (mobile variant) |
+| 2 | test-composer-j-b: cycle 1     | j-b     | composer-j-b-2-c1       | sonnet | (n/a — re-pass trigger 3, no prior must-fix) |
+| 3 | test-composer-j-c: cycle 1     | j-c     | composer-j-c-2-c1       | opus   | address Stage B findings j-c-1-2-R-{01,02,03} |
+| 4 | test-composer-sj-d-1: cycle 1  | sj-d-1  | composer-sj-d-1-2-c1    | sonnet | address Stage B finding sj-d-1-1-1-R-01 (error state) |
+| 5 | test-composer-j-e: cycle 1     | j-e     | composer-j-e-2-c1       | sonnet | (n/a) |
 
 ## Pre-checks performed by parent before manifest emission
 - [x] All description prefixes use role-explicit form.
