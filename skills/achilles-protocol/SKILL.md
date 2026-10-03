@@ -48,6 +48,7 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 | [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md) | Per-caller `autonomousMode: true` contracts. |
 | [`references/skill-registry.md`](references/skill-registry.md) | Canonical skill name registry. |
 | [`references/cascade-detector.md`](references/cascade-detector.md) | Canonical onboarding-state probe (Levels A/B/C/None) and per-caller responses. |
+| [`references/selector-evidence.md`](references/selector-evidence.md) | Selector evidence: insert-provisional → `achilles-selector-evidence` → drop-flag, the note contract the repository-evidence gate reads, honest backfill, rule 2 standing authorisation. |
 
 ## Stage ladder (canonical)
 
@@ -131,6 +132,7 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
 ### 2. Do NOT edit `page-repository.json` without explicit permission
 - Show the user the exact JSON you want to add. Wait for "yes." Then edit.
 - No silent additions. No "I'll just add this one locator."
+- **Standing authorisation.** The user may grant, once and on record: *live-verified entries with an evidence note need no approval round; source-only entries do.* Under it, an entry inspected live and evidenced by `achilles-selector-evidence` (note + screenshot, count checked) is inserted without a separate "yes"; an entry inferred from source code, docs or another suite still needs the "yes" above. Without that grant this rule applies unchanged. See [`references/selector-evidence.md`](references/selector-evidence.md#standing-authorisation).
 
 ### 3. ALWAYS read `references/api-reference.md` before writing or modifying code
 - Before writing test code, modifying selectors, fixing tests, reviewing compliance, or answering API questions — read the API reference first.
@@ -142,6 +144,7 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
 - You do not know what selectors exist on the page. Do not guess.
 - Use `@playwright/cli` (see [`references/playwright-cli-protocol.md`](references/playwright-cli-protocol.md)) to navigate to the page and inspect the real DOM. The CLI ships as a hard dependency of this package, so `npx playwright-cli ...` is always reachable after `npm install`.
 - If the browser binary is missing (the first `playwright-cli ... open` call fails with a "browser not installed" error), run `npx playwright-cli install-browser chromium` once, then retry.
+- Record what you saw: insert the entry with `"provisional": true`, run `npx achilles-selector-evidence --page <Page> --element <element> …` (it resolves the committed entry, requires count 1 — ≥ 1 for `"list": true` — and writes `<Page>.<element>.md` + `.png`), then drop the flag in the same change. An entry that stays provisional is listed in the project's known-issues. Sequence, note contract and honest backfill: [`references/selector-evidence.md`](references/selector-evidence.md).
 
 ### 5. Do NOT invent type definitions
 - If a type is missing, tell the user. Do not create `.d.ts` stubs or workarounds.
