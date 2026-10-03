@@ -128,6 +128,76 @@ Before a scenario is written, answer: can its data be generated programmatically
 
 ---
 
+## The data engine — requirements, never luck
+
+Rules 1-12 say what a test may assume. On a shared environment that cost money or state to touch — real orders, a
+third-party payment page, merchants with opening hours — they are carried by fixture code, not by each spec. That
+code is the **data engine**: five roles, each a small module behind the fixtures, none called from a spec.
+
+A spec states what it needs as a **`Requirements`** value and nothing else:
+
+```ts
+const req: Requirements = { payment: 'wallet', items: { count: 2, minBasket: 15 }, purpose: 'default' };
+const { plan, order } = await checkout.arriveWithPlannedBasket(req);   // resolver → planner → registry
+```
+
+A test never depends on luck: not on a merchant that happens to be open, an item that happens to be in stock, or
+another test's leftovers. If the requirements cannot be met now, the test says so by name (Rule 3), with the reasons.
+
+### The five roles
+
+1. **Resolver** — requirements → a candidate. Probes each candidate (merchant open now, items orderable, the
+   payment option offered in this context) and returns the first that satisfies everything, or a **structured
+   blocker list** per candidate (`{ candidate: 'demo-bistro', blockers: ['closed-now', 'wallet-not-offered'] }`).
+   The skip message quotes the list. Candidates and their facts are data (a catalogue per context), never branches.
+2. **Planner** — a candidate → a concrete, **deterministic per-attempt** plan (which items, how many). Variance is a
+   function of the attempt number, not of `Math.random()`: attempt 2 widens the basket structurally, the last
+   attempt rotates to the next candidate. The same inputs give the same plan, so a red run is reproducible.
+3. **Registry** — **intent before action.** Before the action that creates a resource (a basket, a discount code, an
+   order), the registry writes an intent to the run manifest; the fixture's disposer releases what the manifest holds,
+   even when the test fails half-way. A resource created before its intent was recorded is a leak nobody can find.
+4. **Janitor** — the release policy per resource class: a basket is abandoned; a `north` order is released
+   (`POST /orders/<id>/refuse`); a `south` order that must settle is left to settle and recorded. The janitor also
+   sweeps idle manifests of dead runs at global teardown, and restores account state a test changed (the selected
+   delivery address; the "Save payment method" switch turned off before paying).
+5. **Oracle** — what confirms the outcome, chosen by the scenario block, not by convenience (the `orders` service
+   `GET /orders/<id>` → `placed`, never "the confirmation page appeared"). The oracle is called visibly in the spec
+   (`references/spec-shape.md` in `achilles-protocol`); the engine only provides it.
+
+### Spend budgets
+
+Every scenario declares one spend policy (the scenario block's **Spend policy** token), and the brief of every
+change states the budget per policy:
+
+| Policy | What it costs | Runs |
+|---|---|---|
+| `none` | nothing is created (read-only pages, validation) | free to repeat |
+| `disposable` | a basket built and abandoned; nothing persists | free to repeat (stability runs, can-fail proofs) |
+| `released` | a real order, released by the janitor before it settles | repeatable within the brief's budget |
+| `one-confirming-run` | a real order that settles | once per change, by one named agent; audited, never re-run |
+
+**A red before any resource exists may be repeated; after that, the budget applies.** A run that fails while
+resolving or planning (no order can have been created) may be re-run while its precondition is still missing. The
+first run that gets past the registry counts against the budget — for `one-confirming-run`, it *is* the one run.
+
+### Can-fail hooks are honoured by fixtures only
+
+A can-fail proof needs a way to break the outcome on purpose (`E2E_MUTATION=<name>`: the planner shifts a total, a
+verb picks the wrong payment option). Those hooks are read by fixture code only — never by a spec, which would then
+carry an `if` that production never takes. Page-side mutations arrive through the injection contract of
+`achilles-mutate`, forwarded by the base fixture.
+
+### Environment facts — a memory with dates
+
+Some facts cost a red run to learn and are not in any API: a duplicate-order throttle keyed on account and merchant;
+an order listing that pages oldest-first, so a new order can fall past the last page; opening hours; a switch that
+defaults to ON. Record each in `tests/e2e/docs/app-context.md` under `## Environment facts` with **the date it was
+observed and how** (`2026-09-14, several red runs within five minutes`), and encode it in the engine (the planner varies
+the basket; the oracle reads `GET /orders/<id>` rather than the listing). A fact without a date cannot be re-checked;
+re-verify it when the date is old and a run contradicts it.
+
+---
+
 ## The test data plan — a per-project living document
 
 Every project using this suite maintains **`tests/e2e/docs/test-data-plan.md`** (alongside `journey-map.md` and `e2e-test-scenarios.md`). It is the durable record of where each data dependency stands and what the ideal test environment would unblock. **Creation owner:** `onboarding`’s Phase-1 scaffold seeds it from the template below; on a project that predates that scaffold, **the first composing session creates it from the template if absent** — so the Stage 4c judge’s dimension 4 always has a file to check, and never fails a fresh project on a file no step creates. **Composing sessions UPDATE this document when they hit a gap** — a missing seeding endpoint, a shared account, a prod-only side effect — in the same session that hit it. The Stage 4c judge's dimension 4 checks the plan exists and reflects the specs under review.
@@ -180,3 +250,4 @@ Three sections per data dependency / journey:
 | "I'll pin today's top item — it's obviously stable" | Ranking, seasonality, and CMS edits all reorder "obviously stable" lists. Declare the requirement ("first item in <collection>"), resolve it, assert the resolved fact. |
 | "Retry will regenerate anyway" | Only if generation is in the test body. Module-scope generation is exactly what retries do NOT re-run (Rule 1) — this excuse ships the retry-collision bug. |
 | "No seeding API, so I'll just use whatever data is live" | That is composing against unfeasible data. Rule 12: block/flag the scenario, record the gap in the test data plan, and let the roadmap carry the seeding-API request — don't hide the gap inside a fragile spec. |
+| "The resolver and planner deserve unit tests" | They are proven by the scenarios that use them, run N times, and by a can-fail proof per family — `achilles-protocol` Rule 17. The one exception here is a pure parser over a recorded payload when that payload is the contract (a catalogue response). "It's quick", "it documents the API" and "the reviewer asked for coverage" are not exceptions. |
