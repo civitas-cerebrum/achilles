@@ -1,0 +1,82 @@
+{
+  "$schema": "https://raw.githubusercontent.com/civitas-cerebrum/achilles/main/hooks/data/factory-rules.schema.json",
+  "version": 1,
+  "contexts": {
+    "north": { "baseUrl": "${SHOP_BASE_URL_NORTH}", "storageState": "tests/data/.auth/shopper-a.json", "description": "Region north, account shopper-a." },
+    "south": { "baseUrl": "${SHOP_BASE_URL_SOUTH}", "storageState": "tests/data/.auth/shopper-b.json", "description": "Region south, account shopper-b." }
+  },
+  "rules": {
+    "selectors.no-inline": {
+      "description": "Browser selectors and raw Playwright locator/navigation calls never appear inline in fixtures, specs, setup or support code; every element is referenced by repository name.",
+      "doc": "skills/achilles-protocol/references/factory-gates.md#selectors.no-inline",
+      "scope": ["tests/fixtures/**", "tests/e2e/**", "tests/setup/**", "tests/support/**"],
+      "forbidden": ["data-testid=", "data-test", "[data-", "getByRole(", "getByText(", "getByTestId(", "getByLabel(",
+                    "getByPlaceholder(", "getByAltText(", "getByTitle(", ".locator(", "frameLocator(", ".frame(",
+                    "page.goto(", "page.click(", "page.fill(", "page.waitFor", "page.evaluate(", "page.getBy", "page.$",
+                    "page.keyboard", "page.mouse", "querySelector", "xpath=", "css=", "text=", "role=", ":visible", "[aria-"],
+      "allowed": ["extractAttribute:", "getAttribute(", "page.context()", "addInitScript(", "addStyleTag("],
+      "action": "Reference the element by repository name: steps.<verb>('<element>', '<Page>'). If the element is not in tests/data/page-repository.json, add it with live evidence first (selectors.evidence)."
+    },
+    "selectors.evidence": {
+      "description": "Every new or changed page-repository selector has a live evidence note, or is marked provisional.",
+      "doc": "skills/achilles-protocol/references/factory-gates.md#selectors.evidence",
+      "repository": "tests/data/page-repository.json",
+      "evidenceDir": "docs/evidence/selectors",
+      "provisionalKey": "provisional",
+      "action": "Insert the entry with \"provisional\": true, run npx achilles-selector-evidence --page <Page> --element <element> --context <north|south> (live inspection first), then drop the flag in the same change; an entry that stays provisional needs a known-issues row."
+    },
+    "specs.shape": {
+      "description": "Every new UI spec traces each test title to a written scenario block; frozen directories take no new files.",
+      "doc": "skills/achilles-protocol/references/factory-gates.md#specs.shape",
+      "scope": ["tests/e2e/**"],
+      "exclude": ["tests/e2e/api/**"],
+      "frozenDirs": ["tests/e2e/legacy"],
+      "titleIdPattern": "^[A-Z]{2,5}-\\d{2,3}[a-z]? — ",
+      "scenarioDocs": ["docs/scenarios.md"],
+      "lint": ["node", "scripts/scenario-lint.mjs", "--quiet"],
+      "tags": ["@e2e", "@checkout", "@negative", "@smoke"],
+      "blockEnums": {
+        "type": ["@e2e", "@checkout", "@negative", "@smoke"],
+        "oracle": ["UI-only", "api", "db"],
+        "spendPolicy": ["none", "disposable", "released", "one-confirming-run"],
+        "status": ["proposed", "implemented", "green", "red-by-design", "blocked", "omitted-by-ruling"]
+      },
+      "action": "Title the test '<ID> — <scenario title>' with the id of its block in docs/scenarios.md (write or update the block first and lint it), then write the spec from it."
+    },
+    "spend.opt-in": {
+      "description": "Specs that place real orders are listed; running one needs a per-command opt-in.",
+      "doc": "skills/achilles-protocol/references/factory-gates.md#spend.opt-in",
+      "list": "tests/spend-list.json",
+      "optInEnv": "SPEND_OPT_IN",
+      "optInFlag": "--include-spend",
+      "wrapper": "scripts/run-suite.mjs",
+      "spendProjects": ["south"],
+      "spendScripts": ["test:south"],
+      "action": "Prefix the command with SPEND_OPT_IN=1 for an owner-approved run (one per scenario), or use node scripts/run-suite.mjs, which excludes the listed specs unless --include-spend is passed."
+    },
+    "secrets.none": {
+      "description": "No email addresses, phone numbers or tokens appear in committed tests, docs, scripts or project skills; only environment variable names do.",
+      "doc": "skills/achilles-protocol/references/factory-gates.md#secrets.none",
+      "scope": ["tests/**", "docs/**", "scripts/**", ".claude/skills/project-*/**", "README.md", "CLAUDE.md"],
+      "patterns": ["[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[a-z]{2,}", "\\+[1-9]\\d{9,14}", "eyJ[A-Za-z0-9_-]{20,}\\."],
+      "allowlist": ["docs/conventions/secrets.md", "tests/unit/fixtures/", "someone\u0040example.test"],
+      "action": "Replace the value with the name of the environment variable that holds it (e.g. SHOPPER_A_EMAIL) and read it via process.env; placeholders look like <SHOPPER_A_EMAIL>."
+    },
+    "process.evidence": {
+      "description": "Commits land with a fresh content-hash verify stamp and, for the current change, its verification report.",
+      "doc": "skills/achilles-protocol/references/factory-gates.md#process.evidence",
+      "stamp": ".factory/verify-stamp",
+      "currentChange": ".factory/current-change",
+      "trailDir": "docs/evidence",
+      "required": ["verify.md"],
+      "hashCommand": ["node", "scripts/tree-hash.mjs"],
+      "action": "npm run verify (then commit); for a change with an evidence trail: npm run change:start -- <slug>, fill brief.md, have the verifier write verify.md. Without .factory/current-change (a maintenance commit) only the stamp is checked."
+    },
+    "process.state": {
+      "description": "The process-state directory (verify stamp, current-change marker) is written only by the project's own tools.",
+      "doc": "skills/achilles-protocol/references/factory-gates.md#process.state",
+      "stateDir": ".factory",
+      "action": "Never write, move or delete .factory/ files by hand: the stamp is written only by npm run verify and the change marker only by npm run change:start; removing the marker after the last commit of a change is an owner action. Reading them (cat) is fine."
+    }
+  }
+}

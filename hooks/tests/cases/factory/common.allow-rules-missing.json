@@ -1,0 +1,1 @@
+{"hook":"repository-evidence-gate","cwd":"temp","input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/data/page-repository.json","content":"{}"}},"expect":"allow","warn":false,"_comment":"No rule file = the project has not opted in: a silent allow, not a warning."}

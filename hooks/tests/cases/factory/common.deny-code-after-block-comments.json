@@ -1,0 +1,1 @@
+{"hook":"selector-write-gate","input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/support/zz-case.ts","content":"/* a */ await page.locator('#x') /* b */;\n"}},"expect":"deny","messageContains":["[selectors.no-inline]"]}

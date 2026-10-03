@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"cat tests/spend-list.json | grep wallet-order"}},"expect":"allow","warn":false}

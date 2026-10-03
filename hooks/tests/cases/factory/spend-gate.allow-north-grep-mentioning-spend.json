@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test tests/e2e/north/north-card.spec.ts --project=north --grep \"not the checkout-order or wallet-order flow\""}},"expect":"allow","warn":false}

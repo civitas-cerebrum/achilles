@@ -1,0 +1,1 @@
+{"cwd":"temp","copy":["achilles-factory-rules.json"],"write":{"tests/e2e/south/checkout-order.spec.ts":"export {};\n"},"input":{"tool_name":"Edit","tool_input":{"file_path":"{{ROOT}}/tests/e2e/south/checkout-order.spec.ts","old_string":"a","new_string":"test('no id here', async () => {});"}},"expect":"allow","warn":false}

@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test --workers 1"}},"expect":"deny","messageContains":["no --project and no file argument"]}

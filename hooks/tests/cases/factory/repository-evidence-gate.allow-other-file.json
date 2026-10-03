@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/data/zz-other.json","content":"{ \"pages\": [ { \"name\": \"HomePage\", \"elements\": [ { \"elementName\": \"zzFake\", \"selector\": { \"css\": \"x\" } } ] } ] }\n"}},"expect":"allow","warn":false}

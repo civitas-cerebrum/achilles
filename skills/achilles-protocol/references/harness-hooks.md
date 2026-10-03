@@ -86,3 +86,60 @@ Every hook below applies **only to sessions where the achilles protocol is activ
 ## SubagentStop
 
 - **[playwright-cli-cleanup-on-stop](../../../hooks/playwright-cli-cleanup-on-stop.sh)** — `SubagentStop`. Reaps orphaned per-subagent browser sessions via `playwright-cli close-all`. Never blocks. [escape hatch: no]
+
+## Factory gates (project rule file)
+
+- **[factory gates](factory-gates.md)** — `PreToolUse:Write|Edit|MultiEdit` (`selector-write-gate`, `repository-evidence-gate`, `intake-gate`, `secrets-gate`) and `PreToolUse:Bash` (`spend-gate`, `commit-gate`, `state-gate`), all under `hooks/factory/` with the shared `hooks/lib/factory-common.sh`. Field-level content gates driven by the project's `achilles-factory-rules.json` (schema and floors in `hooks/data/factory-rules.schema.json`): no inline selectors, evidence for new repository selectors, specs traced to written scenarios, per-command opt-in for spend-incurring specs, no secrets in committed files, commits only on a fresh content-hash verify stamp, no hand-written process state. Silent no-op without a rule file (the file is the project's opt-in, so they run without the session-activation gate). Offline cases: `node hooks/tests/factory-run.mjs`. [escape hatch: yes (remove the rule, or the rule file, from the project — a silent opt-out that only the project's own verify step can catch, by requiring the file and validating it against the schema; Achilles ships no verify-step guard)]
+
+## Conventions learned in practice
+
+Rules for writing a PreToolUse hook that an agent will hit hundreds of times a day. Each one was paid for by a gate
+that got it wrong first; the factory gates and their fixture cases follow all of them.
+
+1. **Allow-with-warning when the harness cannot run.** A missing jq or node, an unreadable rule file, a payload that is
+   not a JSON object, a required field that is absent: allow, print one `[<hook>] <what> — <what still catches it>` line
+   on stderr, exit 0. A hook that denies because *it* is broken bricks the session for a fault the agent cannot fix. Pair
+   every such branch with a detector that runs where the environment is guaranteed (the project's verify step, an
+   integrity chain) and fails closed there.
+2. **Fail closed on your own undecidable input.** When the hook can see the input but cannot judge it — a spec argument
+   that is a shell expansion (`"$SPEC"`) on a command that may spend money — deny and ask for the decidable form (a
+   literal path): "I could not tell" is not "allowed". A gate script never exits non-zero by accident (`set -uo
+   pipefail`, every external call guarded): Claude Code treats a crashing hook as a non-blocking error, which is an
+   allow nobody chose.
+3. **Three-line messages.** Every deny reason is exactly `[<rule-id>] <what happened>` / `→ Do: <sanctioned
+   alternative>` / `→ Why/how: <doc#anchor>`. Line 1 names the file or command fragment and the offending literal; line
+   2 is an action, never just "don't"; line 3 is a stable anchor. Agents recover from a denial in one step when the
+   message says what to do instead; they loop when it only says no. The fixture runner rejects any deny that is not
+   exactly this shape.
+4. **Quote-aware Bash with one level of nesting.** Split the command into segments at unquoted `&& || ; | &` and
+   newlines, and each segment into tokens honouring `'…'`, `"…"` and `\` escapes. Classify one level of
+   `bash|sh|zsh -c '…'` and `eval '…'` as a command of its own, inheriting the outer segment's leading assignments.
+   Deeper nesting, aliases, functions and scripts are out of reach — say so in the header's known limits and name the
+   detector that covers them. A naive `grep` over the whole command both misses `sh -c` payloads and denies on text
+   inside a `--grep "…"` argument.
+5. **Opt-ins are per segment.** An opt-in (`SPEND_OPT_IN=1` prefix, `--include-spend` flag) counts only for the segment
+   it is written on. `export SPEND_OPT_IN=1; node scripts/run-suite.mjs --include-spend && npx playwright test …`
+   opts in the wrapper, not the Playwright run after it. Otherwise one early opt-in silently authorises everything
+   that follows.
+6. **Normalise paths before any scope decision.** Resolve a relative `file_path` against the call's `cwd`, then
+   resolve `.`, `..` and `//` lexically (`tests/e2e/north/../legacy/x.ts` is `tests/e2e/legacy/x.ts`), before matching
+   scopes or testing existence. Strip `:line[:col]` from test-file arguments. Where symlinks matter, resolve the parent
+   directory explicitly; otherwise document that the link path is judged.
+7. **Gates never write files.** A deny/allow gate writes no receipts, caches, logs or "last seen" markers. A gate that
+   writes state creates a second trust anchor that itself needs protecting, and makes the decision depend on call
+   order; recorders (archivers, registries) are separate scripts. State a gate reads (a verify stamp, a change marker)
+   is written by the project's own commands and protected by a Bash guard plus a content hash.
+8. **Content-hash stamps, not timestamps.** A "verified" receipt carries the hash of the tree it verified (sorted
+   `(path, content hash)` lines over the hashed roots). The commit-time check recomputes it. A touch keeps it; any added,
+   removed or changed file invalidates it; a forged stamp passes only if it carries the current tree's hash.
+9. **Run guard suites with `--forbid-only`.** A stray `test.only` in a guard spec runs one test, skips the rest and
+   still reports green.
+10. **Fixture cases are data.** One JSON file per case: `input` (the PreToolUse payload, `{{ROOT}}` for the project
+    dir), `expect` (`allow` | `deny`), `messageContains[]` (asserted only on denies, together with the three-line
+    shape), `stderrContains[]`, `warn` (`false` = must be a clean allow, `true` = must warn), plus `env`, and
+    `cwd: "temp"` with `copy[]` / `write{}` for a throwaway project. The runner fails a case whose exit status is not 0
+    or whose stdout is not JSON.
+11. **Allow cases assert no warning.** Give every allow case `"warn": false` unless the warning is the point. An allow
+    that is really a skipped gate (a required field misspelled, a helper missing) passes a bare `expect: "allow"`
+    forever; `"warn": false` turns that silent skip into a red case. A missing rule file is a deliberate silent opt-out,
+    so no case can catch it: that is the project's verify step's job (require the file, validate it against the schema).

@@ -1,0 +1,6 @@
+{
+  "specs": [
+    "tests/e2e/south/checkout-order.spec.ts",
+    "tests/e2e/south/wallet-order.spec.ts"
+  ]
+}
