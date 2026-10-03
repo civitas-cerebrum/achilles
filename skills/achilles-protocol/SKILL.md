@@ -42,6 +42,7 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 | [`references/playwright-cli-protocol.md`](references/playwright-cli-protocol.md) | The canonical browser-automation primitive: session model, slug naming, snapshots, auth state, dispatch-brief template. |
 | [`references/stages-protocol.md`](references/stages-protocol.md) | Stages 1–4 protocol: scenario discovery, element inspection, write automation, post-stabilization review (4a + 4b + 4c). |
 | [`references/test-composition-standards.md`](references/test-composition-standards.md) | Composing single source of truth: citation contract, canon index for every shared composing rule, contradiction-resolution record, the mandatory Stage 4c composition-judge loop, smoke-vs-e2e depth doctrine. |
+| [`references/spec-shape.md`](references/spec-shape.md) | The flat spec architecture: one scenario per `test()`, steps inline, verbs only for shared chores, oracle visible, the verifier's readability check. |
 | [`references/subagent-return-schema.md`](references/subagent-return-schema.md) | Canonical return + ledger schema for every dispatched subagent. §4.1 grep-based conformance check; §4.2 harness validator. |
 | [`references/test-optimization.md`](references/test-optimization.md) | Stage 4a optimization checklist + the whole-suite re-run gate. |
 | [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md) | Per-caller `autonomousMode: true` contracts. |
@@ -257,6 +258,31 @@ They do NOT hold:
 
 Parallel subagents own their own context windows. Context weight lives with the worker, not the conductor. This is how the skill architecture scales to many journeys without blowing the orchestrator's token budget.
 
+**The controller protocol** — how an orchestrator that runs a change through several agents (implementer, reviewer,
+verifier, inspector) keeps this discipline across a long session:
+
+- **Briefs and reports are files.** Each task gets a brief file (scope, files, exact values, rule ids, spend budget,
+  the account it may use) and each agent writes a report file. The dispatch is five parts: where the task fits, the
+  brief path ("read this first"), interfaces from earlier tasks the brief cannot know, the controller's rulings, the
+  report path with a short reply contract. Never paste accumulated history into a dispatch.
+- **Reports, not transcripts.** The controller reads the report. When a claim is disputed it greps the agent's
+  transcript for the specific evidence lines (a run summary, an order id line), records the finding, and moves on.
+- **Model tiers per role.** Cheap: transcription, single-file mechanical edits, scoped re-reviews of a short list.
+  Standard: implementers, task reviews, verifiers. Most capable: architecture, live inspection that needs judgment,
+  the final whole-change review, and fix rounds 4-5. Write the reason next to the tier in the ledger.
+- **Concurrency.** Read-only agents (reviewers, verifiers, inspectors) may run in parallel with one implementer on
+  disjoint files. At most **one implementer edits shared fixtures** at a time. **One agent per shared account** (two
+  agents on `shopper-a` collide on its basket and its duplicate-order throttle). **No fixture edits while a
+  verifier's runs compile them.** Temporary inspection files are deleted before hand-back.
+- **Hand-back statuses.** `DONE` → review. `DONE_WITH_CONCERNS` → rule on each concern, then review.
+  `NEEDS_CONTEXT` → answer with rulings and resume the same agent. `BLOCKED` → owner action, split the task, or
+  re-dispatch at a higher tier — never retry blindly, and never perform an action the agent's permission check denied.
+- **Bounded waiting.** Never poll an agent that has not handed back. Between hand-backs do only local work (ledger,
+  review package, next brief). A course correction is a message to the running agent, not a new dispatch.
+- **Rulings, not stalls.** Every ambiguity the controller resolves is one ledger line —
+  `Ruling: <what> — <why> — cost if wrong: <cost>` — and the work continues. Owner instructions are quoted with their
+  date. A question only the owner can answer is ledgered as an owner action while independent tasks proceed.
+
 ### 13. No scope compression in any pass, stage, or phase
 
 If the skill contract says "dispatch per journey" or "run both phases," the orchestrator dispatches per journey and runs both phases. An orchestrator that silently narrows scope is violating the contract regardless of budget, time, or perceived no-op likelihood. Budget-constrained runs return early with a resume-needed message; they do not silently narrow.
@@ -323,6 +349,30 @@ Element-scoped variant + raw-selector escape hatch are documented in `references
 **Baselines.** First run writes the baseline; subsequent runs diff. Use `npx playwright test --update-snapshots` to refresh baselines intentionally. Playwright fingerprints baselines per OS / browser channel — generate them in the same environment your CI runs.
 
 **Rough mental shape for a typical journey.** One `verifyVisualMatch` per design-locked page or component, masking the dynamic-data regions, lives alongside the journey's other variants in the same describe block. Don't add visual-match assertions to every test — they're overhead for non-visual scenarios. Use them where the layout itself is the assertion.
+
+### 17. No unit tests for the test framework itself
+
+Fixtures, verbs, resolvers, planners, registries, hooks and tools are **not** unit-tested. They exist to make
+scenarios run; the scenarios are their test. Proof comes from:
+
+- **Running the scenarios** that use them, N consecutive times (N ≥ 3, see `ticket-driven-testing` §8e);
+- **a can-fail proof per family** — a mutation that must turn the intended assertion red with the intended message;
+- **offline hook fixture cases** (`hooks/tests/`) for hooks and gates: input, expected decision, message;
+- **probes** — a tool run once against the real environment, its output recorded as evidence.
+
+Three exceptions, each cheap and each guarding a contract rather than an implementation:
+
+1. **One data-driven conventions guard** over the suite's own code (reads the rule file, scans the specs) — it
+   catches drift no scenario run notices.
+2. **A pure parser over a recorded payload** when the payload is the contract (a catalogue response): the
+   recorded fixture is the specification, and the parser is otherwise untestable offline.
+3. **A floor test for a rules file** — weakening a shipped floor must turn something red.
+
+Everything else is cost without value: a unit test of a fixture proves the fixture does what its author thought,
+which the scenario run already proves against the real application. Rationalizations to reject: *"it's quick"*
+(it is maintained forever), *"it documents the API"* (the specs are the documentation of how verbs are used),
+*"the reviewer asked for coverage"* (coverage of test code is not a quality signal — ask for a can-fail proof).
+Spec shape that keeps verbs thin enough to need no unit tests: [`references/spec-shape.md`](references/spec-shape.md).
 
 ### Workflow
 - **Run the tests** to validate your work. Do not skip this.
