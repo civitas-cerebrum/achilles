@@ -39,6 +39,105 @@
         ]
       }
     },
+    "doc-author": {
+      "description": "Writes documentation only: docs/** (except the evidence trail docs/evidence/**), CLAUDE.md and project skills under .claude/skills/**. No shell, no dispatch, no authored code.",
+      "agentTypes": [
+        "doc-author"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          ".claude/skills/**",
+          "CLAUDE.md",
+          "README.md",
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          ".claude/skills/**",
+          "CLAUDE.md",
+          "docs/**"
+        ],
+        "deny": [
+          "docs/evidence/**"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol"
+        ]
+      }
+    },
+    "implementer": {
+      "description": "Writes one change: specs, fixtures and support code under tests/** (never the page repository, which live inspection owns) and the change report (report.md in the change's folder under docs/evidence/). Proves its own work with the test runner on its own shard, the type check and the unit runner. Never reviews or verifies its own change and dispatches nothing.",
+      "agentTypes": [
+        "implementer"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "package.json",
+          "playwright.config.ts",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/evidence/*/report.md",
+          "tests/**"
+        ],
+        "deny": [
+          "tests/e2e/docs/onboarding-status.json",
+          "tests/e2e/page-repository.json"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "implementer-runs"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "contract-testing",
+          "database-testing",
+          "failure-diagnosis",
+          "test-composer",
+          "test-data-conventions"
+        ]
+      }
+    },
     "in-flight-composer": {
       "description": "Same mandate as test-composer, for specs composed mid-pipeline (coverage-expansion passes, self-repair heals).",
       "agentTypes": [
@@ -91,6 +190,56 @@
         ]
       }
     },
+    "live-inspector": {
+      "description": "Inspects the running app before any selector exists: writes throwaway inspection specs under the inspect dir (tests/e2e/inspect/**, deleted before hand-back), selector evidence under docs/evidence/selectors/** and a proposal note in the change's folder under docs/evidence/. Proposes; never edits the page repository, specs or fixtures.",
+      "agentTypes": [
+        "live-inspector"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**",
+          "tests/e2e/page-repository.json"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/evidence/*/proposal-*.md",
+          "docs/evidence/selectors/**",
+          "tests/e2e/inspect/**"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "live-inspector-runs"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol"
+        ]
+      }
+    },
     "orchestrator": {
       "description": "The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config — playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Never touches application source or secrets.",
       "agentTypes": [
@@ -123,6 +272,8 @@
         "allow": [
           ".achilles/**",
           ".gitignore",
+          "docs/evidence/*/brief.md",
+          "docs/evidence/*/review-package.md",
           "tests/**"
         ],
         "codeImports": []
@@ -140,13 +291,18 @@
       },
       "dispatch": [
         "batch-reviewer",
+        "doc-author",
+        "implementer",
         "in-flight-composer",
+        "live-inspector",
         "perf-reviewer",
         "phase-validator",
         "process-validator",
         "scaffolder",
         "selector-diff-validator",
+        "task-reviewer",
         "test-composer",
+        "verifier",
         "workflow-reviewer"
       ],
       "skills": {
@@ -335,6 +491,47 @@
         ]
       }
     },
+    "task-reviewer": {
+      "description": "Approver: reads the brief, the implementer's report and the review package for one change and records findings (Critical / Important / Minor, each with file:line and a fix) in review.md in the change's folder under docs/evidence/. Writes nothing else; runs only the type check, the unit runner and the hook fixture runner; never the app.",
+      "agentTypes": [
+        "task-reviewer"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "package.json",
+          "playwright.config.ts",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/evidence/*/review.md"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "task-reviewer-runs"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "workflow-reviewer"
+        ]
+      }
+    },
     "test-composer": {
       "description": "Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. Reads the page repository and docs; writes nothing outside tests/e2e/**.",
       "agentTypes": [
@@ -387,6 +584,56 @@
         ]
       }
     },
+    "verifier": {
+      "description": "Approver: independently runs a change and records the verdict in verify.md in the change's folder under docs/evidence/; only it may set that note's Status: complete. Runs the test runner (a spend-incurring spec only when the brief grants the project's spend opt-in), the type check, the unit runner and the hook fixture runner. Never edits code, specs or fixtures.",
+      "agentTypes": [
+        "verifier"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "package.json",
+          "playwright.config.ts",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "docs/evidence/*/verify.md"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "verifier-runs"
+        ],
+        "env": [
+          "SPEND_OPT_IN"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "failure-diagnosis",
+          "test-data-conventions"
+        ]
+      }
+    },
     "workflow-reviewer": {
       "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
       "agentTypes": [
@@ -421,8 +668,17 @@
     }
   },
   "commandGroups": {
+    "implementer-runs": [
+      "^npx playwright test\\b",
+      "^npx tsc --noEmit\\b",
+      "^npm run test:unit\\b"
+    ],
     "in-flight-composer-runs": [
       "^npx playwright test\\b"
+    ],
+    "live-inspector-runs": [
+      "^npx playwright test --config tests/e2e/inspect\\b",
+      "^npx achilles-selector-evidence\\b"
     ],
     "orchestrator-runs": [
       "^npx playwright test --list\\b",
@@ -433,10 +689,23 @@
       "^git commit\\b",
       "^npx playwright test\\b",
       "^npm test\\b",
-      "^npm run test:repair\\b"
+      "^npm run test:repair\\b",
+      "^npm run verify\\b",
+      "^npm run change:start\\b"
+    ],
+    "task-reviewer-runs": [
+      "^npx tsc --noEmit\\b",
+      "^npm run test:unit\\b",
+      "^npm run test:hooks\\b"
     ],
     "test-composer-runs": [
       "^npx playwright test\\b"
+    ],
+    "verifier-runs": [
+      "^npx playwright test\\b",
+      "^npx tsc --noEmit\\b",
+      "^npm run test:unit\\b",
+      "^npm run test:hooks\\b"
     ]
   }
 }

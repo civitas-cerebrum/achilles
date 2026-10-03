@@ -61,10 +61,11 @@ section "kernel wiring: the role ledger ships and is staged beside the mandate"
 LEDGER="$HOOK_DIR/data/achilles-qa.kernel-mandate.md"
 assert_eq "$([ -f "$LEDGER" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.kernel-mandate.md ships"
 for ROLE in orchestrator scaffolder test-composer in-flight-composer workflow-reviewer \
-            phase-validator process-validator batch-reviewer perf-reviewer selector-diff-validator; do
+            phase-validator process-validator batch-reviewer perf-reviewer selector-diff-validator \
+            implementer task-reviewer verifier live-inspector doc-author; do
   assert_eq "$(grep -c "^### \`$ROLE\`" "$LEDGER")" "1" "ledger documents the $ROLE role exactly once"
 done
-assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "10" "every role carries a refusal list — the half a manifest states only by omission"
+assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "15" "every role carries a refusal list — the half a manifest states only by omission"
 assert_eq "$(grep -c '^## Handover contracts' "$LEDGER")" "1" "the ledger names the handover contracts"
 assert_eq "$(grep -c '^```mermaid' "$LEDGER")" "1" "the ledger carries the workflow flowchart"
 # The approver roles hold no shell. The ledger must SAY so, in the section

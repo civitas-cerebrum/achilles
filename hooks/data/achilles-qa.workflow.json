@@ -69,6 +69,44 @@
       "agentTypes": [
         "selector-diff-validator"
       ]
+    },
+    "implementer": {
+      "description": "Writes one change: specs, fixtures and support code under tests/** (never the page repository, which live inspection owns) and the change report (report.md in the change's folder under docs/evidence/). Proves its own work with the test runner on its own shard, the type check and the unit runner. Never reviews or verifies its own change and dispatches nothing.",
+      "agentTypes": [
+        "implementer"
+      ],
+      "codeImports": [
+        "@playwright/test",
+        "@civitas-cerebrum/element-interactions"
+      ]
+    },
+    "task-reviewer": {
+      "description": "Approver: reads the brief, the implementer's report and the review package for one change and records findings (Critical / Important / Minor, each with file:line and a fix) in review.md in the change's folder under docs/evidence/. Writes nothing else; runs only the type check, the unit runner and the hook fixture runner; never the app.",
+      "agentTypes": [
+        "task-reviewer"
+      ]
+    },
+    "verifier": {
+      "description": "Approver: independently runs a change and records the verdict in verify.md in the change's folder under docs/evidence/; only it may set that note's Status: complete. Runs the test runner (a spend-incurring spec only when the brief grants the project's spend opt-in), the type check, the unit runner and the hook fixture runner. Never edits code, specs or fixtures.",
+      "agentTypes": [
+        "verifier"
+      ]
+    },
+    "live-inspector": {
+      "description": "Inspects the running app before any selector exists: writes throwaway inspection specs under the inspect dir (tests/e2e/inspect/**, deleted before hand-back), selector evidence under docs/evidence/selectors/** and a proposal note in the change's folder under docs/evidence/. Proposes; never edits the page repository, specs or fixtures.",
+      "agentTypes": [
+        "live-inspector"
+      ],
+      "codeImports": [
+        "@playwright/test",
+        "@civitas-cerebrum/element-interactions"
+      ]
+    },
+    "doc-author": {
+      "description": "Writes documentation only: docs/** (except the evidence trail docs/evidence/**), CLAUDE.md and project skills under .claude/skills/**. No shell, no dispatch, no authored code.",
+      "agentTypes": [
+        "doc-author"
+      ]
     }
   },
   "stages": [
@@ -143,12 +181,16 @@
       ],
       "writes": [
         "tests/**",
-        ".achilles/**"
+        ".achilles/**",
+        "docs/evidence/*/brief.md",
+        "docs/evidence/*/review-package.md"
       ],
       "runs": [
         "npx playwright test",
         "npm test",
-        "npm run test:repair"
+        "npm run test:repair",
+        "npm run verify",
+        "npm run change:start"
       ],
       "dispatches": [
         "scaffolder",
@@ -159,7 +201,12 @@
         "process-validator",
         "batch-reviewer",
         "perf-reviewer",
-        "selector-diff-validator"
+        "selector-diff-validator",
+        "implementer",
+        "task-reviewer",
+        "verifier",
+        "live-inspector",
+        "doc-author"
       ],
       "network": [
         "localhost:4173",
@@ -317,6 +364,138 @@
       "role": "selector-diff-validator",
       "reads": [
         "tests/**"
+      ]
+    },
+    {
+      "id": "implement",
+      "role": "implementer",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        "package.json",
+        "playwright.config.ts"
+      ],
+      "writes": [
+        "tests/**",
+        "docs/evidence/*/report.md"
+      ],
+      "writesDeny": [
+        "tests/e2e/page-repository.json",
+        "tests/e2e/docs/onboarding-status.json"
+      ],
+      "runs": [
+        "npx playwright test",
+        "npx tsc --noEmit",
+        "npm run test:unit"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "test-composer",
+        "test-data-conventions",
+        "contract-testing",
+        "database-testing",
+        "failure-diagnosis"
+      ]
+    },
+    {
+      "id": "review-task",
+      "role": "task-reviewer",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        "package.json",
+        "playwright.config.ts"
+      ],
+      "writes": [
+        "docs/evidence/*/review.md"
+      ],
+      "runs": [
+        "npx tsc --noEmit",
+        "npm run test:unit",
+        "npm run test:hooks"
+      ],
+      "skills": [
+        "workflow-reviewer",
+        "achilles-protocol"
+      ]
+    },
+    {
+      "id": "verify-change",
+      "role": "verifier",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        "package.json",
+        "playwright.config.ts"
+      ],
+      "writes": [
+        "docs/evidence/*/verify.md"
+      ],
+      "runs": [
+        "npx playwright test",
+        "npx tsc --noEmit",
+        "npm run test:unit",
+        "npm run test:hooks"
+      ],
+      "env": [
+        "SPEND_OPT_IN"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "failure-diagnosis",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "inspect-live",
+      "role": "live-inspector",
+      "reads": [
+        "tests/**",
+        "docs/**",
+        "tests/e2e/page-repository.json"
+      ],
+      "writes": [
+        "tests/e2e/inspect/**",
+        "docs/evidence/selectors/**",
+        "docs/evidence/*/proposal-*.md"
+      ],
+      "runs": [
+        "npx playwright test --config tests/e2e/inspect",
+        "npx achilles-selector-evidence"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol"
+      ]
+    },
+    {
+      "id": "author-docs",
+      "role": "doc-author",
+      "reads": [
+        "docs/**",
+        "tests/**",
+        "README.md",
+        "CLAUDE.md",
+        ".claude/skills/**"
+      ],
+      "writes": [
+        "docs/**",
+        "CLAUDE.md",
+        ".claude/skills/**"
+      ],
+      "writesDeny": [
+        "docs/evidence/**"
+      ],
+      "skills": [
+        "achilles-protocol"
       ]
     }
   ]
