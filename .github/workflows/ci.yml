@@ -1,9 +1,14 @@
 name: ✅ CI
 
-# Runs the package's own gates on every PR and on every push to main:
-# schema lint, the full hook-test suite, and the doc-drift lint. These are
-# the same checks publish.yml runs before publishing — running them here
-# catches regressions at PR time instead of at release time.
+# Runs the package's own gates on every PR and on every push to main: schema
+# lint, the full hook-test suite, the factory gate cases, the reporter tests
+# and the doc-drift lint. These are a superset of what publish.yml runs —
+# running them here catches regressions at PR time instead of at release time.
+#
+# Every suite the package owns is named explicitly, because the two that were
+# not named here ran nowhere at all: the factory gate cases (97 .json cases no
+# glob picked up) and the reporter's tests (reachable only through prepack,
+# which `npm publish --ignore-scripts` skips).
 
 on:
   pull_request:
@@ -38,8 +43,23 @@ jobs:
       - name: 🔎  Schemas lint
         run: npm run schemas:lint
 
+      # test:hooks ends by calling test:factory, so the hooks/factory/ gate
+      # cases run here too. The explicit step below is the visible proof of
+      # that: the 97 cases those gates shipped with ran in no suite at all
+      # until test:factory existed, because run.sh globs cases/*.sh and they
+      # are .json driven by hooks/tests/factory-run.mjs.
       - name: 🧪  Hook tests
         run: npm run test:hooks
+
+      - name: 🏭  Factory gate cases
+        run: npm run test:factory
+
+      # The reporter's tests ran NOWHERE. test:reporter was referenced only by
+      # prepack, and publish.yml publishes with `npm publish --ignore-scripts`,
+      # which is exactly the flag that skips prepack — so neither CI nor the
+      # release ever executed them.
+      - name: 📊  Reporter tests
+        run: npm run test:reporter
 
       - name: 📐  Doc-drift lint
         run: node scripts/lint-doc-drift.mjs

@@ -40,8 +40,18 @@ jobs:
       - name: 🔎  Schemas lint
         run: npm run schemas:lint
 
+      # test:hooks now ends by calling test:factory, so the hooks/factory/ gate
+      # cases gate the release too.
       - name: 🧪  Hook tests
         run: npm run test:hooks
+
+      # The publish step runs with --ignore-scripts, so prepack never runs here
+      # — and prepack was the ONLY thing that referenced test:reporter. The
+      # reporter's tests therefore gated neither CI nor the release. Named
+      # explicitly, because "prepack covers it" is exactly the assumption that
+      # --ignore-scripts invalidates.
+      - name: 📊  Reporter tests
+        run: npm run test:reporter
 
       # --ignore-scripts skips prepack (which would re-run test:hooks)
       # and any other lifecycle scripts on the publisher side.
