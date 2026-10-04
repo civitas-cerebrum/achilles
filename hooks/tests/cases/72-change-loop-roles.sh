@@ -62,7 +62,7 @@ ONE_WRITER=$("$JQ" -rn --slurpfile m "$MANDATE" '
     (if writers("docs/evidence/*/verify.md") == ["verifier"] then "verify=verifier" else "verify=\(writers("docs/evidence/*/verify.md"))" end),
     (if writers("docs/evidence/*/review.md") == ["task-reviewer"] then "review=task-reviewer" else "review=\(writers("docs/evidence/*/review.md"))" end),
     (if writers("docs/evidence/*/report.md") == ["implementer"] then "report=implementer" else "report=\(writers("docs/evidence/*/report.md"))" end),
-    (if ($r.implementer.write.deny // []) | index("tests/e2e/page-repository.json") != null then "implementer-no-repository" else "implementer-writes-repository" end),
+    (if ($r.implementer.write.deny // []) | index("**/page-repository*.json") != null then "implementer-no-repository" else "implementer-writes-repository" end),
     (if ($r["doc-author"].write.deny // []) | index("docs/evidence/**") != null then "doc-author-no-evidence" else "doc-author-writes-evidence" end),
     (if ([$r | to_entries[] | select(.key != "doc-author") | (.value.write.allow // [])[] | select(. == "docs/**" or . == "docs/evidence/**")] | length) == 0 then "no-blanket-evidence-writer" else "blanket-evidence-writer" end),
     (if ($r["doc-author"].tools.allow // []) | index("Bash") == null then "doc-author-no-shell" else "doc-author-has-shell" end),
@@ -129,8 +129,28 @@ assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="
   "implementer Write a spec → ALLOW"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/$EV/report.md" content='# Report')" \
   "implementer Write its report.md → ALLOW"
-assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/tests/e2e/page-repository.json" content='{}')" \
-  "implementer Write the page repository → DENY (live inspection owns it)" "explicitly denied"
+# The carve-out used to be the path literal tests/e2e/page-repository.json, so
+# it missed the repository wherever a project actually puts it — including
+# tests/data/page-repository.json, the default the factory rules themselves
+# ship. An implementer in such a project could rewrite the page repository
+# freely, which is the separation of duties this row exists to enforce: live
+# inspection owns the repository because a selector written from memory is a
+# guess. The deny is now a glob, and every path below has to be covered by it.
+for REPO_PATH in \
+  tests/e2e/page-repository.json \
+  tests/data/page-repository.json \
+  page-repository.json \
+  tests/e2e/north/page-repository.checkout.json
+do
+  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/$REPO_PATH" content='{}')" \
+    "implementer Write $REPO_PATH → DENY (live inspection owns the page repository)" "explicitly denied"
+done
+# …and the glob must not swallow the spec and support files the implementer IS
+# the author of, which happen to sit in the same trees.
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/tests/data/basket-items.json" content='[]')" \
+  "implementer Write tests/data/basket-items.json → ALLOW (not a page repository)"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/tests/e2e/fixtures/repository-helpers.ts" content='export const x = 1;')" \
+  "implementer Write a file whose name merely contains \"repository\" → ALLOW"
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/$EV/verify.md" content='Status: complete')" \
   "implementer Write verify.md → DENY (never verifies its own change)" "outside the role's write scope"
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/$EV/review.md" content='Approved')" \

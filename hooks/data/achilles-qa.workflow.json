@@ -380,7 +380,7 @@
         "docs/evidence/*/report.md"
       ],
       "writesDeny": [
-        "tests/e2e/page-repository.json",
+        "**/page-repository*.json",
         "tests/e2e/docs/onboarding-status.json"
       ],
       "runs": [
