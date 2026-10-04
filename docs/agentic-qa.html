@@ -8,6 +8,10 @@
   <meta property="og:title" content="Agentic Shift-Left — A Doctrine for Autonomous QA" />
   <meta property="og:description" content="Development is agentic. Quality assurance must be too. The methodology behind Achilles and Element Interactions." />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://civitas-cerebrum.github.io/achilles/agentic-qa.html" />
+  <meta property="og:image" content="https://civitas-cerebrum.github.io/achilles/apple-touch-icon.png" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="canonical" href="https://civitas-cerebrum.github.io/achilles/agentic-qa.html" />
   <meta name="theme-color" content="#0a0a0b" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
@@ -38,7 +42,7 @@
       --font-display:'Fraunces', Georgia, serif;
     }
 
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; overflow-x: clip; }
 
     body {
       background: var(--bg);
@@ -120,10 +124,15 @@
       color: var(--emerald-bright); border: 1px solid var(--border-glow);
       border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600;
       text-decoration: none; cursor: pointer;
-      background: rgba(16, 185, 129, 0.14);
+      background: rgba(16, 185, 129, 0.08);
       transition: background 0.2s, box-shadow 0.2s;
     }
-    .nav-doctrine:hover { background: rgba(16, 185, 129, 0.22); box-shadow: 0 0 12px rgba(16, 185, 129, 0.18); }
+    .nav-doctrine:hover { background: rgba(16, 185, 129, 0.16); box-shadow: 0 0 12px rgba(16, 185, 129, 0.18); }
+    .nav-doctrine.is-current {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: var(--emerald);
+      cursor: default;
+    }
 
     .nav-cta {
       background: linear-gradient(135deg, var(--emerald-dim), var(--purple-dim));
@@ -138,6 +147,7 @@
     /* ── HERO ──────────────────────────────────────────────────────────────── */
     #hero {
       min-height: 100vh;
+      overflow-x: clip;
       display: flex; flex-direction: column;
       justify-content: center;
       position: relative;
@@ -310,49 +320,6 @@
 
     .stage-desc { font-size: 14px; color: var(--muted); line-height: 1.7; }
 
-    /* ── ROLE TABLE ────────────────────────────────────────────────────────── */
-    .doctrine-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 32px 0;
-      font-size: 14px;
-    }
-
-    .doctrine-table thead th {
-      text-align: left;
-      padding: 14px 20px;
-      font-size: 12px; font-weight: 700;
-      letter-spacing: 0.08em; text-transform: uppercase;
-      color: var(--emerald);
-      border-bottom: 1px solid var(--border-glow);
-      background: rgba(16, 185, 129, 0.05);
-    }
-
-    .doctrine-table tbody td {
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--border);
-      color: rgba(245, 245, 247, 0.85);
-      vertical-align: top;
-    }
-
-    .doctrine-table tbody td:first-child {
-      font-weight: 600; color: var(--white);
-      white-space: nowrap;
-      border-left: 3px solid var(--emerald);
-    }
-
-    .doctrine-table tbody tr:hover td {
-      background: rgba(16, 185, 129, 0.04);
-    }
-
-    .doctrine-table-wrap {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      overflow: hidden;
-      backdrop-filter: blur(8px);
-    }
-
     /* ── CODE BLOCK ────────────────────────────────────────────────────────── */
     .code-block {
       background: rgba(16, 16, 18, 0.9);
@@ -365,6 +332,13 @@
       line-height: 1.8;
       color: var(--emerald-bright);
       overflow-x: auto;
+      overflow-wrap: break-word;
+    }
+
+    .inline-code {
+      font-family: var(--mono); color: var(--emerald-bright);
+      background: rgba(16, 185, 129, 0.1);
+      padding: 2px 6px; border-radius: 4px;
     }
 
     .code-block .kw   { color: var(--purple); }
@@ -456,8 +430,6 @@
     .guard-name { font-family: var(--font-display); font-size: 16px; font-weight: 400; margin-bottom: 8px; letter-spacing: -0.01em; color: var(--white); }
     .guard-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
 
-    .guard-arrow { display: none; }
-
     /* ── BULLET LIST ───────────────────────────────────────────────────────── */
     .prose ul {
       list-style: none;
@@ -538,9 +510,6 @@
     /* ── GRADIENT TEXT ─────────────────────────────────────────────────────── */
     .grad { background: linear-gradient(135deg, var(--emerald) 0%, var(--purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 
-    /* ── CALLOUT BLOCK ─────────────────────────────────────────────────────── */
-
-
     /* ── ALTERNATE BACKGROUND SECTIONS ────────────────────────────────────── */
     .bg-alt {
       background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 18%, var(--bg-2) 82%, var(--bg) 100%);
@@ -562,8 +531,10 @@
       .guard-grid { grid-template-columns: repeat(2, 1fr); }
       .nav-links { display: none; }
       .nav-doctrine { display: none; }
-      .gate-row { grid-template-columns: 1fr; }
+      .gate-row { grid-template-columns: 1fr; gap: 6px; }
       .gate-header { display: none; }
+      .gate-row .gate-blocks::before { content: 'Blocks: ';   color: var(--emerald); font-weight: 600; }
+      .gate-row .gate-pre::before    { content: 'Requires: '; color: var(--emerald); font-weight: 600; }
     }
 
     @media (max-width: 640px) {
@@ -572,19 +543,25 @@
       section { padding: 48px 0; }
     }
 
-    /* ── FLOATING PARTICLES ────────────────────────────────────────────────── */
-    .particle {
-      position: fixed; border-radius: 50%;
-      pointer-events: none; z-index: 0;
-      animation: float linear infinite;
-    }
-    @keyframes float {
-      0%   { transform: translateY(100vh) rotate(0deg); opacity: 0; }
-      10%  { opacity: 1; }
-      90%  { opacity: 0.3; }
-      100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+    /* ── REDUCED MOTION ────────────────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .reveal { opacity: 1 !important; transform: none !important; }
+      #neural-canvas { display: none; }
     }
   </style>
+
+  <noscript>
+    <style>
+      /* Scroll-reveal is JS-driven; without JS every section would stay at opacity 0. */
+      .reveal { opacity: 1 !important; transform: none !important; }
+    </style>
+  </noscript>
 </head>
 <body>
 
@@ -607,7 +584,7 @@
       <li><a href="#enforcement">Enforcement</a></li>
     </ul>
     <div class="nav-actions">
-      <a class="nav-doctrine" href="agentic-qa.html">Agentic QA</a>
+      <span class="nav-doctrine is-current" aria-current="page">Agentic QA</span>
       <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
     </div>
   </div>
@@ -642,7 +619,7 @@
 <section id="lifecycle">
   <div class="container">
     <div class="section-header reveal">
-      <div class="section-tag">Stage I</div>
+      <div class="section-tag">Part I</div>
       <h2 class="section-title">The Agentic Shift-Left<br /><span class="grad">Lifecycle</span></h2>
       <p class="section-desc">Four stages. A human starts it, agents do the heavy lifting, a human confirms the result, and agents guard it going forward.</p>
     </div>
@@ -673,7 +650,7 @@
         <div class="stage-num">04</div>
         <span class="stage-label auto">Autonomous</span>
         <h3 class="stage-title">Guard / Heal</h3>
-        <p class="stage-desc">Gated releases, layered verification. Self-repair classifies failures by re-running the test against the previous build: if it fails there too, it's an <strong>app bug</strong> (leave the test alone); if it passes, the test drifted (heal autonomously); if it's non-deterministic, it's a <strong>flake</strong> (quarantine with evidence). Every test ends green or explained &mdash; never silently skipped.</p>
+        <p class="stage-desc">Gated releases, layered verification. Self-repair establishes a baseline by running the failing scope three times, then classifies each failure from its own evidence &mdash; trace, console, network: fails every run, it's a <strong>deterministic failure</strong> (an app bug, filed with evidence; the test is left alone); passes sometimes, it's a <strong>flake</strong> (quarantined with evidence); mechanical drift, it's <strong>healed</strong> autonomously. Every test ends green or explained &mdash; never silently skipped.</p>
       </div>
     </div>
 
@@ -686,21 +663,18 @@
       <div class="guard-phase">
         <div class="guard-name">Regression</div>
         <div class="guard-desc">Runs in the go-live pipeline. A regression failure <strong>stops the release</strong> &mdash; regression is a gate, not an alarm.</div>
-        <div class="guard-arrow">&rarr;</div>
       </div>
       <div class="guard-phase">
         <div class="guard-name">Smoke</div>
         <div class="guard-desc">Targets individual features, pages, and components. Runs on <strong>every pull request</strong>. Speed is their contract.</div>
-        <div class="guard-arrow">&rarr;</div>
       </div>
       <div class="guard-phase">
         <div class="guard-name">E2E</div>
         <div class="guard-desc">Verifies complete user journeys. Every step happens in the browser &mdash; replicating the user's experience as closely as possible.</div>
-        <div class="guard-arrow">&rarr;</div>
       </div>
       <div class="guard-phase">
         <div class="guard-name">Self-Repair</div>
-        <div class="guard-desc">Autonomous triage &mdash; app bugs, test drift, and flakes classified and handled without human intervention.</div>
+        <div class="guard-desc">Autonomous triage &mdash; app bugs, test drift, and flakes classified from evidence. Mechanical repairs apply themselves; semantic changes, such as re-baselining an assertion, return as <code class="inline-code">operator-pending</code> for a person to decide.</div>
       </div>
     </div>
   </div>
@@ -710,14 +684,14 @@
 <section id="foundation">
   <div class="container">
     <div class="section-header reveal">
-      <div class="section-tag">Stage II</div>
+      <div class="section-tag">Part II</div>
       <h2 class="section-title">The Architectural<br /><span class="grad">Foundation</span></h2>
       <p class="section-desc">A test that hard-codes CSS selectors is a test that breaks when a class name changes. An agent that writes tests with hard-coded selectors produces a suite that rots faster than it grows.</p>
     </div>
 
     <div class="prose reveal">
       <h3>Separation of Concerns</h3>
-      <p>The foundation is a <strong>three-layer separation</strong>. When a frontend redesign changes every <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">data-testid</code> in the application, zero test files change. Each layer is the single source of truth for its concern.</p>
+      <p>The foundation is a <strong>three-layer separation</strong>. When a frontend redesign changes every <code class="inline-code">data-testid</code> in the application, zero test files change. Each layer is the single source of truth for its concern.</p>
     </div>
 
     <div class="layer-grid reveal">
@@ -745,7 +719,7 @@
 
     <div class="code-block reveal">
       <span class="kw">await</span> <span class="fn">steps</span>.<span class="fn">on</span>(<span class="str">'addToCartButton'</span>, <span class="str">'ProductPage'</span>).<span class="fn">click</span>()<br />
-      <span class="kw">await</span> <span class="fn">steps</span>.<span class="fn">on</span>(<span class="str">'cartCount'</span>, <span class="str">'CartDrawer'</span>).<span class="fn">expectText</span>(<span class="str">'1'</span>)
+      <span class="kw">await</span> <span class="fn">steps</span>.<span class="fn">on</span>(<span class="str">'cartCount'</span>, <span class="str">'CartDrawer'</span>).<span class="fn">verifyText</span>(<span class="str">'1'</span>)
     </div>
 
     <div class="prose reveal">
@@ -758,7 +732,7 @@
 <section id="commit-discard">
   <div class="container">
     <div class="section-header reveal">
-      <div class="section-tag">Stage III</div>
+      <div class="section-tag">Part III</div>
       <h2 class="section-title">Commit or<br /><span class="grad">Discard</span></h2>
       <p class="section-desc">Tests are discardable by default. The verification work always happens. But committing to the permanent suite is a separate decision with a separate gate.</p>
     </div>
@@ -790,7 +764,7 @@
 <section id="enforcement">
   <div class="container">
     <div class="section-header reveal">
-      <div class="section-tag">Stage IV</div>
+      <div class="section-tag">Part IV</div>
       <h2 class="section-title">Enforcement, Not<br /><span class="grad">Instructions</span></h2>
       <p class="section-desc">The distinction between a methodology and a best-practices document is enforcement. Every critical rule is backed by a harness hook that programmatically blocks the action when a precondition is not met.</p>
     </div>
@@ -809,12 +783,7 @@
       <div class="gate-row">
         <div class="gate-name">Adversarial verification</div>
         <div class="gate-blocks">Same surfaces as above</div>
-        <div class="gate-pre">Adversarial review receipt must exist and be newer than the newest spec edit</div>
-      </div>
-      <div class="gate-row">
-        <div class="gate-name">Negative control</div>
-        <div class="gate-blocks">QA sign-off</div>
-        <div class="gate-pre">Test must be demonstrated to fail without the fix</div>
+        <div class="gate-pre">Review receipt carrying both a <code class="inline-code">negativeControl</code> and a <code class="inline-code">review</code> object, newer than the newest spec edit</div>
       </div>
       <div class="gate-row">
         <div class="gate-name">Schema validation</div>
@@ -829,7 +798,7 @@
     </div>
 
     <div class="prose reveal">
-      <p>35 hooks ship with the package &mdash; 26 are enforcement gates. They are installed globally by <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
+      <p>37 hooks ship with the package &mdash; 28 are enforcement gates. They are installed globally by <code class="inline-code">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
     </div>
 
     <div class="prose reveal">
@@ -854,7 +823,7 @@
 <section id="constraint">
   <div class="container">
     <div class="section-header reveal">
-      <div class="section-tag">Stage V</div>
+      <div class="section-tag">Part V</div>
       <h2 class="section-title">The Honest<br /><span class="grad">Constraint</span></h2>
       <p class="section-desc">A methodology must be honest about what it cannot yet do.</p>
     </div>
@@ -863,6 +832,10 @@
       <p>The lifecycle works within the boundaries of the environment it runs against. When that environment is production &mdash; when every test hits a live database, real payment processors, and actual customer-facing state &mdash; the methodology must exclude its most critical flows.</p>
       <p>Checkout. Registration. Payment. Password reset. Account deletion. These are the flows with the highest CX/revenue impact, and they are the flows that cannot be safely automated against a production environment.</p>
       <p>The methodology covers these flows architecturally. Exercising them requires a <strong>fully controllable test environment</strong> &mdash; a faithful replica of production without live connections to payment processors, identity providers, or customer-facing state &mdash; and <strong>full control over test data</strong>: the ability to programmatically generate, seed, and clear it so every run starts from a known baseline.</p>
+
+      <div class="sub-tag" style="margin-top: 40px;">Platform Coverage</div>
+      <p>The second constraint is platform. The element layer is already platform-agnostic by design: <code class="inline-code">Element</code> is an interface, <code class="inline-code">WebElement</code> is its Playwright implementation, and <code class="inline-code">PlatformElement</code> is the Appium/WebDriverIO implementation beside it. The page repository resolves the same named selector through <code class="inline-code">UiSelector</code> on Android and predicate strings on iOS.</p>
+      <p>What is <strong>not</strong> here yet is the rest of the lifecycle. The agent skills, the harness gates, and the self-repair driver all assume a Playwright browser session today. <strong>Mobile support is on the roadmap, not in the package.</strong> Until it lands, treat everything on this page as a doctrine for web applications &mdash; the methodology generalises, the tooling does not yet.</p>
     </div>
   </div>
 </section>
@@ -883,7 +856,7 @@
       </div>
       <div class="stage-card">
         <h3 class="stage-title">Achilles</h3>
-        <p class="stage-desc">The agent writes tests through a three-layer architecture that isolates selectors from logic. Enforcement hooks block commits without evidence, reviews without adversarial challenge, and merges without negative control. The methodology is the codebase, not a wiki page the agent never reads.</p>
+        <p class="stage-desc">The agent writes tests through a three-layer architecture that isolates selectors from logic. Enforcement hooks block ticket sign-off without an evidence bundle, and non-draft pull requests without an adversarial review receipt. The methodology is the codebase, not a wiki page the agent never reads.</p>
       </div>
     </div>
   </div>
@@ -899,9 +872,9 @@
     </div>
 
     <div class="prose reveal">
-      <p>Install the two npm packages. The harness hooks register automatically via <code style="font-family: var(--mono); color: var(--emerald-bright); background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px;">postinstall</code>. Point the page repository at your application's selectors. Write new tests through the Steps API &mdash; existing Playwright tests continue to run unchanged alongside them.</p>
-      <p>Achilles is agent-agnostic. It works with any agent that can run npm scripts &mdash; Claude Code, Cursor, Copilot Workspace, or your own orchestrator. The enforcement layer sits below the agent: it doesn't care who wrote the test, only whether the methodology's preconditions are met.</p>
-      <p>The 26 enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
+      <p>Install the two npm packages. The harness hooks register automatically via <code class="inline-code">postinstall</code>. Point the page repository at your application's selectors. Write new tests through the Steps API &mdash; existing Playwright tests continue to run unchanged alongside them.</p>
+      <p>Achilles runs in <strong>Claude Code</strong> today: <code class="inline-code">postinstall</code> registers the gates as Claude Code hooks in <code class="inline-code">.claude/settings.json</code>. The gates themselves are plain shell scripts that read a tool invocation on stdin and return an allow/deny decision &mdash; so any harness that can run a script before a tool call can adopt them. The enforcement layer sits below the agent: it doesn't care who wrote the test, only whether the methodology's preconditions are met.</p>
+      <p>The 28 enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
     </div>
   </div>
 </section>
@@ -1017,6 +990,10 @@
     animId = requestAnimationFrame(draw);
   }
 
+  // Respect the OS "reduce motion" setting: render nothing rather than
+  // running an unbounded requestAnimationFrame loop behind the content.
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
   window.addEventListener('resize', () => { resize(); });
   window.addEventListener('scroll', () => {
     canvas.style.setProperty('--parallax-y', `${-window.scrollY * PARALLAX_FACTOR}px`);
@@ -1028,6 +1005,11 @@
 // ── SCROLL REVEAL ────────────────────────────────────────────────────────
 (function () {
   const els = document.querySelectorAll('.reveal');
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || typeof IntersectionObserver === 'undefined') {
+    els.forEach(el => el.classList.add('visible'));
+    return;
+  }
   const obs = new IntersectionObserver((entries) => {
     entries.forEach((e, i) => {
       if (e.isIntersecting) {

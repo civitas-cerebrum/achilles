@@ -38,7 +38,7 @@
       --font-display:'Fraunces', Georgia, serif;
     }
 
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; overflow-x: clip; }
 
     body {
       background: var(--bg);
@@ -553,7 +553,25 @@
 
     /* ── GRADIENT TEXT ─────────────────────────────────────────────────────── */
     .grad { background: linear-gradient(135deg, var(--emerald) 0%, var(--purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+    /* ── REDUCED MOTION ────────────────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .reveal { opacity: 1 !important; transform: none !important; }
+      #neural-canvas { display: none; }
+    }
   </style>
+
+  <noscript>
+    <style>
+      .reveal { opacity: 1 !important; transform: none !important; }
+    </style>
+  </noscript>
 </head>
 <body>
 
@@ -1005,6 +1023,10 @@
     animId = requestAnimationFrame(draw);
   }
 
+  // Respect the OS "reduce motion" setting: render nothing rather than
+  // running an unbounded requestAnimationFrame loop behind the content.
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
   window.addEventListener('resize', () => { resize(); });
   window.addEventListener('scroll', () => {
     canvas.style.setProperty('--parallax-y', `${-window.scrollY * PARALLAX_FACTOR}px`);
@@ -1016,6 +1038,11 @@
 // ── SCROLL REVEAL ────────────────────────────────────────────────────────
 (function () {
   const els = document.querySelectorAll('.reveal');
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || typeof IntersectionObserver === 'undefined') {
+    els.forEach(el => el.classList.add('visible'));
+    return;
+  }
   const obs = new IntersectionObserver((entries) => {
     entries.forEach((e, i) => {
       if (e.isIntersecting) {
