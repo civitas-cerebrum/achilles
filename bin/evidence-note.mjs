@@ -101,13 +101,37 @@ export function renderNote(n) {
   return lines.join('\n') + '\n'
 }
 
-/** Renders and validates a note: a `source` is required and the text may not contain '@'. Throws before any write. */
+/**
+ * Renders and validates a note: a `source` is required, and no line but `- selector:` may contain '@'. Throws
+ * before any write, so a refusal leaves the committed note alone.
+ *
+ * The '@' rule guards against personal data (an address read off a live page) reaching a committed file, which is
+ * why it covers the observed fields — the accessible name, the data attributes, the aria snippet, the url. It used
+ * to cover the whole rendered text, INCLUDING the selector line, and that made a legitimate entry unwritable: a
+ * selector like {"css": "[data-field=\"user@domain\"]"} is the project's own committed value, already in git in
+ * page-repository.json, and the gate requires the note to carry it back verbatim (deep-equal), so it can be neither
+ * redacted nor omitted. The tool therefore refused to write the one note the gate would accept, and the entry could
+ * only ever be marked provisional. The caller is also told WHICH line offends, because "its text contains '@'" sent
+ * the reader looking through a note that was never written.
+ */
 export function validateNote(n) {
-  if (!n.source) throw new Error(`refusing to write the ${n.key} note: it has no source`)
+  if (!n.source) { const e = new Error(`refusing to write the ${n.key} note: it has no source`); e.code = NOTE_REFUSED; throw e }
   const text = renderNote(n)
-  if (text.includes('@')) throw new Error(`refusing to write the ${n.key} note: its text contains '@' (personal data?)`)
+  const offending = text.split('\n').find((line) => line.includes('@') && !line.startsWith('- selector:'))
+  if (offending !== undefined) {
+    const err = new Error(`refusing to write the ${n.key} note: ${JSON.stringify(oneLine(offending).slice(0, 120))} contains '@' (personal data?)`)
+    err.code = NOTE_REFUSED
+    throw err
+  }
   return text
 }
+
+/**
+ * Marks an error as "the note was refused", as opposed to anything that went wrong reaching the page. A caller that
+ * cannot tell them apart reports a refusal as a resolution failure and sends the agent to fix the --url and the
+ * frame when the selector resolved perfectly well.
+ */
+export const NOTE_REFUSED = 'NOTE_REFUSED'
 
 export function writeNoteText(file, text) {
   mkdirSync(path.dirname(file), { recursive: true })

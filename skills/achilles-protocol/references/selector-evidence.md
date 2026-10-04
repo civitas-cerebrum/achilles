@@ -122,8 +122,12 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
 **Contract used by the repository-evidence gate** (proposal B): for a new or changed entry that is not provisional,
 the note must exist, its `- selector:` JSON must **deep-equal** the entry's selector (after JSON parse; key order
 irrelevant), and it must carry a `- source:` line. A changed selector with the old note is refused as stale; a
-hand-written note without a source is refused. The tool refuses to write a note without `source` or containing `@`
-(emails are redacted first).
+hand-written note without a source is refused. The tool refuses to write a note without `source`, or one whose text
+carries an `@` on any line **except** `- selector:` (emails are redacted first). The selector line is exempt because
+it is the project's own committed value, already in `page-repository.json`, and the gate requires the note to carry it
+back verbatim — so a selector containing `@` can be neither redacted nor omitted, and holding the note to the same
+rule made the one note the gate would accept impossible to write. A refusal is reported as a refusal: it names the
+offending line and says the element resolved, rather than sending you to re-check the `--url`.
 
 ## Honest backfill
 

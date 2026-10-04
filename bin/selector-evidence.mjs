@@ -34,7 +34,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
-import { DEFAULT_EVIDENCE_DIR, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './evidence-note.mjs'
+import { DEFAULT_EVIDENCE_DIR, NOTE_REFUSED, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './evidence-note.mjs'
 
 const MAX_PNG_BYTES = 300 * 1024
 const VIEWPORT = { width: 1920, height: 1080 }
@@ -248,7 +248,12 @@ try {
     }
   }
 } catch (e) {
-  failure = [`${key} could not be resolved: ${String(e?.message ?? e).split('\n')[0]}`, 'Check the --url (the page must render the element) and the frame the entry names, then re-run.']
+  // A refused NOTE is not a failed resolution. Reporting it as one told the agent to check the --url and the frame
+  // when the element had resolved to exactly one node and the only problem was the note's own content, which no
+  // amount of re-running from a different url can change.
+  failure = e?.code === NOTE_REFUSED
+    ? [String(e.message).split('\n')[0], `The element resolved; the note was refused. Remove the personal data from the page (or mask it with --mask), or insert the entry with the rule's provisional flag and a known-issues row. Nothing was written to ${path.relative(cwd, outDir)}.`]
+    : [`${key} could not be resolved: ${String(e?.message ?? e).split('\n')[0]}`, 'Check the --url (the page must render the element) and the frame the entry names, then re-run.']
 } finally {
   await browser.close().catch(() => {})
 }
