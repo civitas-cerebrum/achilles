@@ -306,6 +306,7 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 |---|---|
 | `composer-<j-slug>:` | Stage A — `status:` enum (new-tests-landed \| covered-exhaustively \| blocked \| skipped) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
 | `reviewer-<j-slug>:` | Stage B (§2.4) — `status:` (greenlight \| improvements-needed) + journey/pass/cycle + summary on greenlight \| findings sub-list on improvements-needed |
+| `composition-judge-<scope>:` | Stage 4c composition judge (`test-composition-standards.md` §4) — reuses `reviewer-inloop.schema.json` (no dedicated schema): `status: greenlight` ⇔ SATISFIED; `status: improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED. Briefs must cite the schema path (preread gate). |
 | `probe-<j-slug>:` | Adversarial — `probes:` + `boundaries:` + `findings:` count or list |
 | `phase-validator-<N>:` | Phase-exit checkpoint (§2.5) — `status:` + `phase:` + `exit-criteria-checked:` array + `summary:` (REQUIRED on both statuses) + `findings: []` literal on greenlight \| ≥1 `pv-<phase>-<nn>` must-fix on improvements-needed |
 | `workflow-reviewer-<scope>:` | Workflow-reviewer (`workflow-reviewer.schema.json`) — `verdict:` (approve \| reject \| escalate) + cycle accounting |

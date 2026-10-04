@@ -14,6 +14,12 @@
 
 set -euo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/selector-development/SKILL.md\n  skills/selector-development/references/hook-contracts.md"
+
+
 # Stop hooks receive a payload; we only need the session-identity fields
 # for the session-scope gate below.
 INPUT=$(cat 2>/dev/null || echo "{}")
@@ -44,5 +50,5 @@ else
   message="selector-development: incomplete patch detected for scope '${scope}' (last step: ${last:-<none>}). Run: rm '${receipt}' '${scope_file}'. Otherwise the next selector-development invocation will refuse to start."
 fi
 
-jq -n --arg msg "$message" '{systemMessage:$msg}'
+jq -n --arg msg "$message${HOOK_REFS}" '{systemMessage:$msg}'
 exit 0

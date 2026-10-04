@@ -31,3 +31,6 @@ Credentials and dataset paths come from `__ENV` (see `lib/config.js`), never inl
 
 A write-heavy load test (POST/PUT) creates real rows. Run against staging/sandbox only, and
 note in the report that the run mutated data — coordinate cleanup or use a disposable dataset.
+This is the load-testing instantiation of `test-data-conventions` Rule 9 (no prod pollution —
+`../../test-data-conventions/SKILL.md`): side-effecting load is gated on a test environment,
+and excluded with a named annotation otherwise.

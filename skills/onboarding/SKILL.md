@@ -196,7 +196,19 @@ augmentation.
    the dev server itself.
 2. Create `tests/e2e/fixtures/`, `tests/e2e/docs/`, and `tests/e2e/playwright.setup.ts`.
    Spec files themselves live at `tests/e2e/<journey>.spec.ts` (root of
-   `tests/e2e/`, no `specs/` subdirectory).
+   `tests/e2e/`, no `specs/` subdirectory). The fixtures directory's
+   `base.ts` is scaffolded **with `HELPER SLOT` comment markers** — one
+   per contracted insertion point (`resetState`, `freshUser`,
+   `setAuthCookie`, `seedCart`-style seed helpers, `dismissBanners`,
+   `beforeEach`). The slots start empty; Stage 4a of the composition
+   pipeline populates them from discovered infrastructure (see
+   `achilles-protocol/references/test-optimization.md` §"Placeholder
+   convention" — the protocol errors out if the markers are missing).
+   Also seed `tests/e2e/docs/test-data-plan.md` from the template in
+   `skills/test-data-conventions/SKILL.md` §"The test data plan" (header
+   + empty Dependencies/Roadmap sections) — the Stage 4c composition
+   judge checks this file at every composing exit, so the scaffold owns
+   its creation and composing sessions own keeping it current.
 3. Add `tests/e2e/.gitignore` entries for `playwright-report/`,
    `test-results/`, `.last-run.json`, `bug-evidence/` (the stable
    bug-evidence home used by `self-repair` — binary media, gitignored
@@ -216,7 +228,7 @@ augmentation.
 
 **Exit criteria.**
 - `npx playwright test --list` lists zero specs without error.
-- The four scaffold files exist on disk.
+- The scaffold files exist on disk (config, setup, fixtures tree with HELPER-SLOT-bearing `base.ts`, and the seeded `tests/e2e/docs/test-data-plan.md`).
 - `package.json` scripts include `test:repair`.
 
 Load `achilles-protocol` (Stage 1) for the exact file shapes.
@@ -265,7 +277,10 @@ the self-credentialing pattern.
    before declaring the cycle done — its return shape is the
    `reviewer-inloop` schema (see `schemas/subagent-returns/`). You
    don't load this reviewer as a separate skill; it is part of the
-   composer's cycle.
+   composer's cycle. The composer's Step 6c composition judge
+   (`achilles-protocol/references/test-composition-standards.md`
+   §4) is likewise part of that cycle — each happy-path spec exits
+   composing only on a judge-SATISFIED verdict.
 4. Commit each spec individually: `test(j-<journey>): happy path`.
 
 **Exit criteria.**
@@ -340,6 +355,33 @@ prioritised P0 / P1 / P2 / P3 (per `journey-mapping`'s priority framework).
 
 Load `journey-mapping` for the cycle gate, the edge-probe contract, and
 the priority-tier rubric.
+
+### Shared-resource audit
+
+Phase 4's test-infrastructure probe (dispatched by `journey-mapping`
+Phase 1 — full protocol:
+`skills/journey-mapping/references/test-infrastructure-probe.md`) returns
+a `tags:` array of **constraint tags** describing how the app's shared
+state behaves under parallel test workers. Recording those tags is the
+shared-resource audit; the orchestrator appends them verbatim to the
+`## Test Infrastructure` section of `tests/e2e/docs/app-context.md` so
+downstream consumers can read them without re-probing. The tag
+vocabulary and probing mechanics live in the probe reference — this
+section only owns where the tags land and who consumes them:
+
+- `global-reset:cross-test-race` — the discovered reset endpoint touches
+  global (non-tenanted) collections. Consumer: Stage 4a §1 picks the
+  per-test-user branch (§1.A) and **forbids** `beforeEach(reset)`.
+- `single-tenant-global-state` — assertions against global views race
+  across workers. Consumer: Stage 4a §1's overlay rewrites assertions to
+  per-user-scoped views.
+- `csrf-session-bound` — concurrent mutations against one session
+  invalidate CSRF tokens. Consumer: `test-composer` Step 3's file-level
+  serial-mode rule.
+
+Absence of a tag is itself a recorded outcome (the probe ran and found
+no constraint) — Stage 4a's branch selection depends on the difference
+between "no tag" and "not audited".
 
 ---
 

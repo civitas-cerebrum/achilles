@@ -4,7 +4,8 @@
 # Hook    : PreToolUse:Bash  (filters to `gh pr create` / `gh pr edit` only)
 # Mode    : DENY (high-confidence anti-pattern) — no WARN path
 # State   : none (stateless scan of the command surface)
-# Env     : none
+# Env     : ACHILLES_PROTOCOL (via lib/achilles-activation.sh)
+# Scope   : achilles-activated sessions only — plain dev sessions silent-allow
 #
 # Rule
 # ----
@@ -53,6 +54,12 @@
 
 set -euo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/contributing-to-achilles-protocol/SKILL.md §\"AI assistants don't get Co-Authored-By trailers\"\n  skills/achilles-protocol/references/harness-hooks.md §Bash"
+
+
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
@@ -64,7 +71,7 @@ fi
 
 # --- helpers ---
 emit_deny() {
-  "$JQ" -n --arg r "$1" '{
+  "$JQ" -n --arg r "$1${HOOK_REFS}" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
@@ -75,6 +82,12 @@ emit_deny() {
 
 # --- input ---
 INPUT=$(cat)
+
+# Session-scope gate: this hook applies only to achilles-activated
+# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+achilles_require_active "$INPUT"
+
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 [ "$TOOL_NAME" != "Bash" ] && exit 0
 

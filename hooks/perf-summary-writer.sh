@@ -31,7 +31,10 @@ INPUT=$(cat 2>/dev/null || echo "{}")
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
 achilles_require_active_or_completed "$INPUT"
 
-ROOT="${PWD}"
+# Pin to the project root: a session driven from a subdirectory must not
+# sprout a second .achilles/ there — the repo toplevel is the only sanctioned
+# home for run artifacts (falls back to PWD outside a git repo).
+ROOT=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
 PERF_LEDGER="$ROOT/tests/perf/docs/perf-onboarding-status.json"
 
 # NO-OP guard: if the perf ledger does not exist this is not a perf project.

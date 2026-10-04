@@ -96,6 +96,12 @@
 
 set -euo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/ticket-driven-testing/SKILL.md §\"8. Prove the tests discriminate the fix\"\n  skills/ticket-driven-testing/SKILL.md §\"8b. Dispatch the adversarial test review\""
+
+
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 JQ="$HOOK_DIR/bin/jq"
@@ -294,12 +300,12 @@ turned off — it needs the report to be accurate."
 # work to others as finished. So it DENIES rather than advises — an entry-B run that only warned
 # here would leave the developer path with no enforcement at all.
 if [ "$IS_TRANSITION" = "1" ] || [ "$IS_PR" = "1" ]; then
-  "$JQ" -n --arg r "$REASON" --arg g "$GUIDANCE" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Sign-off blocked. " + $r + "\n\n" + $g)}}'
+  "$JQ" -n --arg r "$REASON" --arg g "$GUIDANCE" --arg refs "$HOOK_REFS" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Sign-off blocked. " + $r + "\n\n" + $g + $refs)}}'
   exit 0
 fi
 
 "$JQ" -n --arg m "Posting a QA verdict with no adversarial verification. $REASON
 
-$GUIDANCE" '{systemMessage: $m}'
+$GUIDANCE${HOOK_REFS}" '{systemMessage: $m}'
 exit 0

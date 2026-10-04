@@ -154,10 +154,13 @@ writes data.
 - Track which tables/FKs/flows have scenarios; report what's uncovered (no silent truncation).
 - Keep the seed deterministic; if expected values depend on seed state, say so.
 - Never assert against production; never leave test mutations behind.
+- Seeding, cleanup, and deterministic-state discipline follow [`test-data-conventions`](../test-data-conventions/SKILL.md): the strategy decision ladder (seed-your-own vs content-resilient), per-attempt generation inside the test body (Rule 1), cleanup-in-hooks even on failure (Rule 5), no prod pollution (Rule 9), and DB-verified cleanup per its layering section. The Stage 4c judge's data-feasibility dimension reviews DB specs against that ladder.
 
 ## Exit gate — compliance sweep
 
 **Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+
+**Composing SSOT + Stage 4c.** Shared composing rules are single-homed in [`test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) (canon index §2 — cite, never fork). A **standalone** invocation of this skill (direct user request, outside any composer / ticket-driven flow) is a composing exit: after the compliance sweep, dispatch the independent `composition-judge-` subagent per §4 of that file and return only on SATISFIED (3 consecutive NOT SATISFIED → operator). Specs authored **inside** a `test-composer` / `coverage-expansion` / `ticket-driven-testing` flow are covered by that flow's judge or its documented equivalence — do not impose a second judge (same non-double-imposition pattern as the dual-stage equivalence).
 
 ## Return Shape
 

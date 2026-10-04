@@ -54,6 +54,12 @@
 
 set -euo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/subagent-return-schema.md\n  schemas/subagent-returns/README.md"
+
+
 # Resolve jq.
 JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
 [ -x "$JQ" ] || JQ="$(command -v jq || true)"
@@ -83,7 +89,7 @@ fi
 VALIDATOR="$HOOK_LIB_DIR/validator.bundle.mjs"
 
 emit_warn() {
-  local msg="$1
+  local msg="$1${HOOK_REFS}
 $(no_skip_messaging_block)"
   "$JQ" -n --arg m "$msg" '{
     "systemMessage": $m,
@@ -231,6 +237,10 @@ if [ "${SCHEMA_RETURN_GUARD:-warn}" = "strict" ]; then
       for item in "${HANDOVER_WARNS[@]}"; do echo "  - ${item}"; done
     fi
     echo "Re-dispatch the subagent with a brief that quotes the schema constraints verbatim."
+    echo ""
+    echo "References:"
+    echo "  skills/achilles-protocol/references/subagent-return-schema.md"
+    echo "  schemas/subagent-returns/README.md"
   } >&2
   exit 2
 fi

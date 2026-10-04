@@ -41,6 +41,10 @@ resolve_schema_role() {
     workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;
     composer-*)               echo "composer";               return 0 ;;
     reviewer-*)               echo "reviewer-inloop";        return 0 ;;
+    # Stage 4c composition judge (test-composition-standards.md §4)
+    # reuses the reviewer-inloop verdict shape — greenlight ⇔ SATISFIED,
+    # improvements-needed ⇔ NOT SATISFIED. No dedicated schema by design.
+    composition-judge-*)      echo "reviewer-inloop";        return 0 ;;
     probe-*)                  echo "probe";                  return 0 ;;
     repair-worker-*)          echo "repair-worker";          return 0 ;;
     phase-validator-*)        echo "phase-validator";        return 0 ;;

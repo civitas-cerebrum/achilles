@@ -52,6 +52,12 @@
 
 set -uo pipefail
 
+# Methodology pointers appended to every deny/warn message this hook
+# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
+# §"Hook error message format — repo standard").
+printf -v HOOK_REFS -- "\n\nReferences:\n  skills/work-summary-deck/SKILL.md §\"Print-safety rules\""
+
+
 # Opt-out.
 [ "${DECK_INSPECTION_GATE:-1}" != "0" ] || exit 0
 
@@ -146,7 +152,7 @@ Action required:
 
 This is a hard gate — Agent dispatches are DENIED while .deck-pending-inspection exists."
 
-    "$JQ" -n --arg m "$MSG" '{systemMessage:$m, suppressOutput:false}' 2>/dev/null || true
+    "$JQ" -n --arg m "$MSG${HOOK_REFS}" '{systemMessage:$m, suppressOutput:false}' 2>/dev/null || true
 
   else
     # pdftoppm not available — set sentinel anyway with a manual-inspection instruction.
@@ -165,7 +171,7 @@ You MUST still visually inspect the PDF before delivering. Open it and check eve
 After inspection, clear the gate:
   rm \"${SENTINEL}\""
 
-    "$JQ" -n --arg m "$MSG" '{systemMessage:$m, suppressOutput:false}' 2>/dev/null || true
+    "$JQ" -n --arg m "$MSG${HOOK_REFS}" '{systemMessage:$m, suppressOutput:false}' 2>/dev/null || true
   fi
 
   exit 0
@@ -239,7 +245,7 @@ issues before dispatching any agent or considering the task complete.
 
 To clear this gate after inspection:  rm \"${SENTINEL}\""
 
-  "$JQ" -n --arg r "$REASON" '{
+  "$JQ" -n --arg r "$REASON${HOOK_REFS}" '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",

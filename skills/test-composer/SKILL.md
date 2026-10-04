@@ -50,7 +50,8 @@ Every invocation performs these stages in order, inside this subagent's own cont
 2. **Stabilize** (Step 4) — run, fix, re-run until 100% of new tests pass.
 3. **Test Optimization** (Step 6a) — load `../achilles-protocol/references/test-optimization.md` and run its 7-check protocol on the freshly-written tests. Apply auto-fixes; re-stabilize if any auto-fix regresses a test.
 4. **API compliance review** (Step 6b) — run the Stage 4b API review protocol on the freshly-written tests. Fix any non-compliance and re-stabilize if needed.
-5. **Coverage verification + whole-suite gate** (Step 7) — check every step, branch, and applicable state variation from the journey's map block against the composed tests. Loop back to Compose for any missing coverage. After coverage is exhaustive, run the whole-suite re-run gate (see Step 7); only return to the caller when the gate passes.
+5. **Composition judge** (Step 6c) — dispatch the independent `composition-judge-` subagent per `../achilles-protocol/references/test-composition-standards.md` §4 (skipped when this invocation runs under `coverage-expansion` dual-stage — see Step 6c).
+6. **Coverage verification + whole-suite gate** (Step 7) — check every step, branch, and applicable state variation from the journey's map block against the composed tests. Loop back to Compose for any missing coverage. After coverage is exhaustive, run the whole-suite re-run gate (see Step 7); only return to the caller when the gate passes.
 
 The multi-journey iterative cycle (inventory, cross-app gap analysis, multi-pass decide) is documented in `coverage-expansion`. This skill owns the per-journey work items only.
 
@@ -67,6 +68,8 @@ The caller (user or `coverage-expansion`) passes `journey=<id>` referencing an e
    - **P1** → happy-path + error-states + edge-cases + mobile.
    - **P2** → happy-path + one error-state + one data-verification check.
    - **P3** → smoke test (loads, key elements present).
+
+   Depth per variant follows the smoke-vs-e2e doctrine — the journey's UI walk is the subject of exactly one e2e test; derivatives shortcut prerequisites via API/state injection and assert only their own surface (`../achilles-protocol/references/test-composition-standards.md` §5).
 4. List existing tests that already cover any step of this journey (from `npx playwright test --list`). These are the starting point — add variants, do not duplicate.
 
 Do NOT read other journey blocks. Do NOT hold the whole map in context. Do NOT compute cross-app priority or gap analysis — that is the caller's job.
@@ -106,13 +109,13 @@ A spec file contains exactly the tests its journey expectations and partition an
 
 **Implementation rules:**
 - Every test must use the Steps API from `./fixtures/base`
-- Every element selector goes in `page-repository.json` — no inline selectors in test code
+- Every element selector goes in `page-repository.json` — no inline selectors in test code (kernel mirror — canon: `../achilles-protocol/SKILL.md` §"Hard rules — kernel-resident"; scope + exception: `../achilles-protocol/references/test-composition-standards.md` §3.1)
 - Use `test.describe.configure({ timeout: 60_000 })` on every describe block
-- **File-level serial mode is mandatory for tenant-mutating specs.** If the spec issues any POST / PUT / PATCH / DELETE to a mutable endpoint, the file **must** open with `test.describe.configure({ mode: 'serial' })` at the top of the file — before any `test.describe(...)` or `test(...)` block. Rationale: parallel Playwright workers sharing a credential against a single tenant produce random CSRF-token invalidations when concurrent mutating requests race against the session-bound token. Serial mode at the file level eliminates the race without capping global parallelism. Follow-up (not landed in this PR): add a lint rule or pre-commit check that rejects any spec with a mutating request that lacks the serial directive.
+- **File-level serial mode is mandatory for tenant-mutating specs — and carries a `// serial-deliberate: <reason>` comment.** If the spec issues any POST / PUT / PATCH / DELETE to a mutable endpoint, the file **must** open with `test.describe.configure({ mode: 'serial' })` at the top of the file — before any `test.describe(...)` or `test(...)` block — with a `// serial-deliberate: <reason>` comment on the line above it stating why serial is required. Stage 4a's §6 review treats that annotation as satisfying review (no `stage4a:serial-mode-review` flag — see `../achilles-protocol/references/test-optimization.md` §6; resolution record: `test-composition-standards.md` §3.4). Rationale: parallel Playwright workers sharing a credential against a single tenant produce random CSRF-token invalidations when concurrent mutating requests race against the session-bound token. Serial mode at the file level eliminates the race without capping global parallelism. Follow-up (not landed in this PR): add a lint rule or pre-commit check that rejects any spec with a mutating request that lacks the serial directive.
 
   **What counts as a mutable endpoint.** Any request whose server response represents a persistence change against tenant or user data — entity create / update / delete, state transitions (publish, archive, submit), role or permission mutations, file uploads that persist, password or MFA changes. Read-only methods (GET / HEAD / OPTIONS) do NOT trigger the rule, even when they tunnel through a POST for query-payload reasons, **provided** the handler is idempotent and server-side writes are limited to audit-log entries. When in doubt, apply the rule: the cost is one line of configuration per file; the cost of missing it is non-deterministic CI failures that surface later as "flaky auth".
 - Tests that depend on data from other tests must handle both states (e.g., job status could be "draft" or "published")
-- Tests that need specific data should use `test.skip()` when that data isn't found, not fail
+- Tests that need specific data should use `test.skip()` when that data isn't found, not fail — skip **by name** per the premise/app-state/infra taxonomy in `../test-data-conventions/SKILL.md` Rule 3 (only a premise is skippable; a broken rendering or transport failure still fails)
 - **If any variant emits `steps.api*` calls, invoke the `contract-testing` skill** and apply its minimum obligations (status + error-envelope assertion) to each endpoint touched. This is what makes an L2 oracle real (see §"Oracle strength ladder" below) — an unasserted `apiGet` is not an oracle.
 
 **Prioritize by test type:**
@@ -141,6 +144,8 @@ Each variant is its own `test(...)` inside one describe block for the journey �
 ### Oracle strength ladder
 
 Every test proves its claim through an **oracle** — the assertion that would fail if the app regressed. Oracles vary in strength, and a variant's required strength is set by the journey's priority and whether the step mutates state. This subsection is the canonical ladder definition; `achilles-protocol/SKILL.md`'s kernel rule and the reviewer calibration in `../coverage-expansion/references/reviewer-subagent-contract.md` mirror it in one line each.
+
+The ladder is orthogonal to `test-optimization.md` §3b's round-trip / delta / shape oracles: L0–L3 picks **which layer** confirms the effect; §3b picks the **assertion form** that stays stable against volatile values within that layer (relationship recorded in `../achilles-protocol/references/test-composition-standards.md` §3.6).
 
 | Level | Oracle | What it proves |
 |---|---|---|
@@ -226,7 +231,7 @@ Cross-journey ordering (which journey to tackle first among many) is the caller'
 
 Run the new tests. Fix every failure. Run again. Repeat until 0 failures.
 
-**If tests fail:** invoke the `failure-diagnosis` protocol to run the full diagnostic pipeline. It will collect evidence (screenshot, DOM, error context), group failures by root cause, classify (test issue vs app bug), and fix test issues autonomously with stability validation (3-5 passing runs). App bugs are reported with full evidence.
+**If tests fail:** invoke the `failure-diagnosis` protocol to run the full diagnostic pipeline. It will collect evidence (screenshot, DOM, error context), group failures by root cause, classify (test issue vs app bug), and fix test issues autonomously with stability validation (3 consecutive green for a new/edited test; 5 consecutive for a heal of a previously-flaky test). App bugs are reported with full evidence.
 
 After fixing, re-run the full suite (not just the fixed test) to catch regressions.
 
@@ -253,9 +258,9 @@ Save to `docs/e2e-test-scenarios.md` (or a path the user specifies).
 
 ---
 
-## Step 6: Post-stabilization review (split into 6a + 6b)
+## Step 6: Post-stabilization review (split into 6a + 6b + 6c)
 
-**Step 6a runs first, Step 6b runs second.** Both run automatically after Step 4 (Stabilize) reports all new tests passing, before Step 7 (Coverage verification).
+**Step 6a runs first, Step 6b second, Step 6c third.** All run automatically after Step 4 (Stabilize) reports all new tests passing, before Step 7 (Coverage verification).
 
 ### Step 6a: Test Optimization
 
@@ -272,11 +277,17 @@ If any non-compliance is found (wrong argument order, deprecated APIs, missing o
 A lightweight self-review checklist for this journey only:
 
 - Every test uses the Steps API from `./fixtures/base` (no raw `page.locator(...)` in test files).
-- Every element selector lives in `page-repository.json` (no inline selectors in spec files).
+- Every element selector lives in `page-repository.json` — no inline selectors in spec files (citation — canon: `../achilles-protocol/references/test-composition-standards.md` §3.1).
 - Verification methods use correct option shapes (`{ exactly, greaterThan, lessThan }` for `verifyCount`; bare `verifyText()` for "not empty").
 - No use of deprecated methods or option shapes flagged in the API reference.
 - Every test ends with a verification that proves the action's effect — not a tautology.
 - `test.describe.configure({ timeout: 60_000 })` on every describe block composed for this journey.
+
+### Step 6c: Composition Judge
+
+Once 6a + 6b are clean, dispatch the independent `composition-judge-` subagent per the canonical charter in [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4 — four dimensions (scenario-intent coverage, oracle strength, API-compliance spot-check, test-data feasibility), `reviewer-inloop` return shape, fresh judge per cycle, 3 consecutive NOT SATISFIED → escalate to the caller/operator. Fix must-fix findings, re-run 6a/6b if code changed, re-judge.
+
+**Not double-imposed under dual-stage.** When this invocation runs under `coverage-expansion`'s dual-stage pipeline, the Stage-B reviewer cycle (`../coverage-expansion/references/reviewer-subagent-contract.md`) satisfies Stage 4c **provided its brief includes the test-data feasibility dimension** — skip Step 6c and let the caller's reviewer own the verdict. Standalone invocations (user-direct, `onboarding` Phase 3, whole-rewrite heals from `test-repair`/`self-repair`) run Step 6c themselves.
 
 ---
 
