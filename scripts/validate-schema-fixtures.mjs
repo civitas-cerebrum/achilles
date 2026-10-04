@@ -2,7 +2,10 @@
 // validate-schema-fixtures.mjs
 // For each schemas/subagent-returns/<role>.schema.json, verifies that
 // fixtures/<role>-valid.yaml passes and fixtures/<role>-invalid.yaml
-// fails. Also validates the schemas/onboarding-status.schema.json fixtures
+// fails. Also validates the standalone schemas' own <name>.fixtures/ dirs
+// (including hooks/data/factory-rules.schema.json, which lives outside
+// schemas/ because the hooks read it from the installed hook directory)
+// and the schemas/onboarding-status.schema.json fixtures
 // under schemas/onboarding-status.fixtures/ (every valid-*.json must
 // validate; every invalid-*.json must fail). Exits non-zero on any mismatch.
 
@@ -134,6 +137,32 @@ validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-sum
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
 validateStandaloneFixtures('schemas/kernel-mandate.schema.json', 'schemas/kernel-mandate.fixtures');
 validateStandaloneFixtures('schemas/kernel-mandate-bundle.schema.json', 'schemas/kernel-mandate-bundle.fixtures');
+
+// The factory-rules schema is the odd one out: it lives under hooks/data/
+// rather than schemas/, because the hooks read it from the installed hook
+// directory. That placement is why it was the one schema this package ships
+// that nothing compiled and nothing exercised — compile-schemas.mjs globs
+// schemas/subagent-returns/ only, and every fixture call above names a path
+// under schemas/. Its floors (`allOf`/`contains` over
+// selectors.no-inline.forbidden and secrets.none.patterns) and its closed
+// rule objects are the whole mechanism by which a project can add to a rule
+// but not weaken it, and they were asserted by nothing. The invalid-*
+// fixtures are one per way a project would weaken the file.
+validateStandaloneFixtures('hooks/data/factory-rules.schema.json', 'hooks/data/factory-rules.fixtures');
+
+// …and the valid fixture IS the shipped example, so a change to the example
+// that the schema would reject fails here rather than in a consumer's
+// project. Compared as parsed JSON so re-indentation is not a failure.
+{
+  const example = JSON.parse(readFileSync('hooks/data/factory-rules.example.json', 'utf8'));
+  const fixture = JSON.parse(readFileSync('hooks/data/factory-rules.fixtures/valid-example.json', 'utf8'));
+  if (JSON.stringify(example) !== JSON.stringify(fixture)) {
+    console.error('FAIL: hooks/data/factory-rules.fixtures/valid-example.json has drifted from hooks/data/factory-rules.example.json — copy the example over it');
+    failures++;
+  } else {
+    console.log('OK:   hooks/data/factory-rules.fixtures/valid-example.json is the shipped example, byte for byte');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Onboarding-status ledger fixtures
