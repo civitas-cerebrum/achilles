@@ -6,6 +6,8 @@
 # Mode    : DENY (silent allow without a rule file; allow-with-warning when it cannot run)
 # State   : none (reads the rule file)
 # Env     : FACTORY_RULES=<path> (rule-file override), FACTORY_JQ=<path> (jq override, tests)
+# Needs   : grep, tr (and jq). Any of them absent → allow-with-warning, never a silent pass: an
+#           empty `grep -oE` result is indistinguishable from "this file holds no secret".
 #
 # Rule
 # ----
@@ -37,6 +39,7 @@ rule_enabled "$ID"
   || emit_allow_warn "$ID scope/patterns missing in $(rules_rel) — secrets gate skipped; the project's verify step is the detector"
 REL="$(rel_path "$FILE_PATH")"
 in_scope "$REL" "$ID" || exit 0
+factory_require_tools grep tr   # an empty `grep -oE` result reads as "no secret here" — see factory-common.sh
 LITERALS=()
 while IFS= read -r a; do
   [ -z "$a" ] && continue

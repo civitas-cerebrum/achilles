@@ -42,6 +42,23 @@ emit_allow_warn() { echo "[factory] $1" >&2; exit 0; }   # allow-with-warning: n
 
 rules_rel() { case "$RULES" in "$FACTORY_ROOT"/*) printf '%s' "${RULES#"$FACTORY_ROOT"/}";; *) printf '%s' "$RULES";; esac; }
 
+# factory_require_tools <tool…> — allow-with-warning when a POSIX tool this gate is about to shell
+# out to is not on PATH. Call it after the cheap filters (so a call the gate would ignore anyway
+# stays silent) and before the first use.
+#
+# Why this needs its own helper: every one of these tools is used in a pipeline whose EMPTY output
+# means "nothing found". With grep gone, `grep -oE "$pat"` prints nothing and the gate concludes
+# there is no secret; with sed gone, mask_comments prints nothing and the gate concludes the file
+# contains no forbidden literal. Both then exit 0 having emitted no "[factory] …" line at all —
+# a SILENT fail-open, which is the one outcome the message contract forbids
+# (references/factory-gates.md#message-contract: a helper that cannot run is allow-WITH-warning).
+# `command -v` is a bash builtin, so this check itself survives an empty PATH.
+factory_require_tools() {
+  local t missing=
+  for t in "$@"; do command -v "$t" >/dev/null 2>&1 || missing="${missing:+$missing, }$t"; done
+  [ -z "$missing" ] || emit_allow_warn "$missing not found on PATH — ${ID:-this} gate cannot scan the content and is skipped; the project's verify step is the detector"
+}
+
 factory_guard_ready() {
   [ -f "$RULES" ] || exit 0   # no rule file = the project has not opted in
   [ -n "$JQ" ] || emit_allow_warn "jq not found — gate skipped; the project's verify step is the detector"

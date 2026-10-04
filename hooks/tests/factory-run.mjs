@@ -25,8 +25,11 @@
 //     "stamp"?: "fresh" | "<hash>" process.evidence.stamp is written as { treeHash }: "fresh" = what the rule's
 //                                    hashCommand prints in the temp project now; any other value verbatim.
 //     "_comment"?: "…" }
-// "{{ROOT}}" in any input string is replaced by the project directory the gate sees. A temp case runs with
-// FACTORY_RULES unset, so it reads the temp project's own rule file (or none). bash runs by absolute path.
+// "{{ROOT}}" in any "input" or "env" string is replaced by the project directory the gate sees, and "{{JQ}}" by the
+// jq the gates resolve ($FACTORY_JQ, else hooks/bin/jq, else jq on PATH) — the latter is what lets a case empty PATH
+// to prove a gate's behaviour when grep/sed/tr are missing while still giving it a usable jq, e.g.
+// "env": { "PATH": "", "FACTORY_JQ": "{{JQ}}" }. A temp case runs with FACTORY_RULES unset, so it reads the temp
+// project's own rule file (or none). bash runs by absolute path.
 // A case whose stderr carries a "[factory] " line counts as a warn (allow-with-warning) in the summary.
 import { readdirSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -42,11 +45,15 @@ if (!existsSync(project)) { console.error(`factory-run: fixture project ${projec
 const RULES_KEY = 'achilles-factory-rules.json';
 const rulesFile = process.env.FACTORY_RULES ? path.resolve(project, process.env.FACTORY_RULES) : path.join(project, RULES_KEY);
 const filter = process.argv[2] ?? '';
+// The jq a gate would resolve, for cases that empty PATH on purpose (see "{{JQ}}" above).
+const JQ_PATH = process.env.FACTORY_JQ
+  ?? (existsSync(path.join(hooksDir, 'bin', 'jq')) ? path.join(hooksDir, 'bin', 'jq')
+    : (spawnSync('/bin/sh', ['-c', 'command -v jq'], { encoding: 'utf8' }).stdout ?? '').trim());
 const rows = [];
 let failed = 0;
 
 const subst = (v, root) =>
-  typeof v === 'string' ? v.split('{{ROOT}}').join(root)
+  typeof v === 'string' ? v.split('{{ROOT}}').join(root).split('{{JQ}}').join(JQ_PATH)
   : Array.isArray(v) ? v.map((x) => subst(x, root))
   : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, subst(x, root)]))
   : v;
@@ -89,7 +96,8 @@ for (const file of readdirSync(casesDir).filter((f) => f.endsWith('.json') && f.
       if (process.env.FACTORY_RULES && !(c.env && 'FACTORY_RULES' in c.env)) env.FACTORY_RULES = rulesFile;
     }
     const input = subst(c.input, root);
-    r = spawnSync('/bin/bash', [script], { input: typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8', cwd: root, env: { ...env, CLAUDE_PROJECT_DIR: root }, timeout: 10000 });
+    // "env" is substituted too, so a case can hand the gate an absolute FACTORY_JQ while emptying PATH.
+    r = spawnSync('/bin/bash', [script], { input: typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8', cwd: root, env: { ...subst(env, root), CLAUDE_PROJECT_DIR: root }, timeout: 10000 });
   } catch (e) { problem = `case setup failed: ${e.message}`; r = { status: null, stdout: '', stderr: '' }; }
   finally { if (tmp) rmSync(tmp, { recursive: true, force: true }); }
   let decision = 'allow', reason = '';

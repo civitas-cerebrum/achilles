@@ -7,6 +7,8 @@
 # Mode    : DENY (silent allow without a rule file; allow-with-warning when it cannot run)
 # State   : none (reads the rule file and the scenario documents)
 # Env     : FACTORY_RULES=<path> (rule-file override), FACTORY_JQ=<path> (jq override, tests)
+# Needs   : sed (and jq). Absent → allow-with-warning, never a silent pass: mask_comments is a sed
+#           pipeline, so without it the title scan runs over an empty document and finds no test.
 #
 # Rule
 # ----
@@ -52,6 +54,7 @@ in_scope "$REL" "$ID" || exit 0
 in_scope "$REL" "$ID" exclude && exit 0
 PATTERN="$(rule_field "$ID" titleIdPattern)"
 [ -n "$PATTERN" ] || emit_allow_warn "$ID.titleIdPattern missing in $(rules_rel) — intake gate skipped"
+factory_require_tools sed   # mask_comments is a sed pipeline; without it the title scan sees an empty file
 DOCS=(); while IFS= read -r d; do [ -n "$d" ] && DOCS+=("$FACTORY_ROOT/$d"); done < <(rule_array "$ID" scenarioDocs)
 LINT=(); while IFS= read -r a; do [ -n "$a" ] && LINT+=("$a"); done < <(rule_array "$ID" lint)
 LINT_OK=  # decided at the first id: 1 = run the lint, 0 = no lint configured or it cannot run (warned once)

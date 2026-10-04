@@ -6,6 +6,8 @@
 # Mode    : DENY (silent allow without a rule file; allow-with-warning when it cannot run)
 # State   : none (reads <project>/achilles-factory-rules.json)
 # Env     : FACTORY_RULES=<path> (rule-file override), FACTORY_JQ=<path> (jq override, tests)
+# Needs   : sed, grep (and jq). Either absent → allow-with-warning, never a silent pass: without
+#           sed the comment-masked body is EMPTY, so every forbidden literal looks absent.
 #
 # Rule
 # ----
@@ -35,6 +37,7 @@ case "$FILE_PATH" in *.ts|*.mts|*.cts|*.js|*.mjs|*.cjs) ;; *) exit 0;; esac
 REL="$(rel_path "$FILE_PATH")"
 in_scope "$REL" "$ID" || exit 0
 [ -n "$CONTENT" ] || exit 0
+factory_require_tools sed grep   # without sed, mask_comments yields nothing and every literal "is absent"
 BODY="$(printf '%s\n' "$CONTENT" | mask_comments)"
 while IFS= read -r a; do [ -n "$a" ] && BODY="${BODY//"$a"/}"; done < <(rule_array "$ID" allowed)
 while IFS= read -r p; do
