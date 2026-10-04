@@ -125,6 +125,15 @@ Under the role kernel the description prefix is the manifest role name — the c
 
 **Forbidden:** bare `j-<slug>:` and bare `sj-<slug>:` — role-ambiguous, blocked at dispatch time. Pick one of `test-composer-`, `reviewer-`, or `probe-` based on what the subagent actually does.
 
+### Grouped dispatch and the role kernel
+
+The two `[group]` / `[P3-batch]` rows above are **not dispatchable while the role kernel is active**, and the reason is structural rather than an oversight to work around:
+
+- The kernel resolves a dispatch's role from the START of the description (`^<role>(-<slug>)?:`), so a description leading with `[group] ` names no role and is denied at the `Agent` call — `[BLOCKED] … this description names no manifest role`.
+- `standard-mode-first-pass-guard.sh` recognises the markers at the start of the description too, which is how Pass-1 grouping is refused under `mode: standard`.
+
+Both anchor at position zero, so no single spelling satisfies both: moving the marker behind the role prefix would make the grouping itself invisible to the first-pass guard. Until the kernel's resolver tolerates a leading `[marker]` (an upstream `@civitas-cerebrum/kernel-mandate` change — the kernel is vendored here, not editable in this repo), **issue grouped passes as per-journey dispatches**. The cap-7 grouping rules below still describe how the work is batched for review and recording; they just cost one `Agent` call per journey instead of one per group. Pass 1 is strict per-journey under both modes regardless, so only Passes 2-5 are affected.
+
 ---
 
 ## Self-talk red flags

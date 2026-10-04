@@ -2,26 +2,46 @@
   "name": "achilles-qa",
   "mainSessionRole": "orchestrator",
   "roles": {
-    "orchestrator": {
-      "description": "The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config \u2014 playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Never touches application source or secrets.",
+    "batch-reviewer": {
+      "description": "Approver: reviews a batch of composed specs and records the batch verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
       "agentTypes": [
-        "orchestrator"
+        "batch-reviewer"
       ]
     },
-    "scaffolder": {
-      "description": "Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch \u2014 the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
+    "cleanup": {
+      "description": "Cleanup / dedup worker for the coverage-expansion cleanup pass (`cleanup-<scope>:`): removes redundant specs under tests/e2e/** and re-runs the suite to prove the remainder is still green. Never the status ledger and never the page repository.",
       "agentTypes": [
-        "scaffolder"
-      ]
-    },
-    "test-composer": {
-      "description": "Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. Reads the page repository and docs; writes nothing outside tests/e2e/**.",
-      "agentTypes": [
-        "test-composer"
+        "cleanup"
       ],
       "codeImports": [
-        "@playwright/test",
-        "@civitas-cerebrum/element-interactions"
+        "@civitas-cerebrum/element-interactions",
+        "@playwright/test"
+      ]
+    },
+    "companion": {
+      "description": "companion-mode verification worker (`companion-<task-slug>:`): verifies one task against the live app in its own playwright-cli session and lands the evidence bundle under tests/e2e/evidence/**. Writes no suite specs, no ledger and no page repository.",
+      "agentTypes": [
+        "companion"
+      ],
+      "codeImports": [
+        "@civitas-cerebrum/element-interactions",
+        "@playwright/test"
+      ]
+    },
+    "contribution-handover": {
+      "description": "Pre-push handover author (`contribution-handover-<slug>:`): fills .contribution-handover.json from the contributing skill's guardrail checklist by reading this repo's own documentation and the branch diff. Writes exactly that one file.",
+      "agentTypes": [
+        "contribution-handover"
+      ]
+    },
+    "fd": {
+      "description": "failure-diagnosis worker (`fd-<test-slug>:`, `fd-ci-<run-id>:`): reproduces one failing spec against the live app in its own playwright-cli session, classifies deterministic vs flaky, and lands the diagnosis plus any heal under tests/e2e/**. Never the status ledger and never the page repository.",
+      "agentTypes": [
+        "fd"
+      ],
+      "codeImports": [
+        "@civitas-cerebrum/element-interactions",
+        "@playwright/test"
       ]
     },
     "in-flight-composer": {
@@ -34,28 +54,10 @@
         "@civitas-cerebrum/element-interactions"
       ]
     },
-    "workflow-reviewer": {
-      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+    "orchestrator": {
+      "description": "The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config — playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Never touches application source or secrets.",
       "agentTypes": [
-        "workflow-reviewer"
-      ]
-    },
-    "phase-validator": {
-      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. Reads only; no shell.",
-      "agentTypes": [
-        "phase-validator"
-      ]
-    },
-    "process-validator": {
-      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
-      "agentTypes": [
-        "process-validator"
-      ]
-    },
-    "batch-reviewer": {
-      "description": "Approver: reviews a batch of composed specs and records the batch verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
-      "agentTypes": [
-        "batch-reviewer"
+        "orchestrator"
       ]
     },
     "perf-reviewer": {
@@ -64,10 +66,84 @@
         "perf-reviewer"
       ]
     },
+    "phase-validator": {
+      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. Reads only; no shell.",
+      "agentTypes": [
+        "phase-validator"
+      ]
+    },
+    "phase1": {
+      "description": "journey-mapping Phase 1 discovery worker (`phase1-<entry>:`): crawls one entry-point subtree in its own playwright-cli session and returns the page + element list. The `phase1-test-infra:` variant additionally writes the canonical `## Test Infrastructure` section of tests/e2e/docs/app-context.md. Composes no specs.",
+      "agentTypes": [
+        "phase1"
+      ]
+    },
+    "phase2": {
+      "description": "journey-mapping Phase 2 flow-identification worker (`phase2-<scope>:`): walks one scope's flows in its own playwright-cli session and returns the flow list, appending only its discovery notes. Composes no specs.",
+      "agentTypes": [
+        "phase2"
+      ]
+    },
+    "phase4": {
+      "description": "journey-mapping Phase 4 worker: `phase4-cycle-<N>:` section agents discover one section of the map in their own playwright-cli session, and `phase4-prioritise-author:` is the only legitimate author of tests/e2e/docs/journey-map.md and its `<!-- journey-mapping:generated -->` sentinel. Cycle progress is recorded in tests/e2e/docs/.phase4-cycle-state.json.",
+      "agentTypes": [
+        "phase4"
+      ]
+    },
+    "probe": {
+      "description": "Stage A adversarial prober (`probe-j-<slug>:` for coverage-expansion passes 4-5 and bug-discovery, `probe-app-wide:` for the pass-4 pattern scan): probes the live app in its own playwright-cli session, appends findings to tests/e2e/docs/adversarial-findings.md under the advisory lock, and in pass 5 writes regression specs for verified boundaries. Never the status ledger and never the page repository.",
+      "agentTypes": [
+        "probe"
+      ],
+      "codeImports": [
+        "@civitas-cerebrum/element-interactions",
+        "@playwright/test"
+      ]
+    },
+    "process-validator": {
+      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "process-validator"
+      ]
+    },
+    "reviewer": {
+      "description": "Stage B in-loop reviewer (`reviewer-j-<slug>:` per journey, `reviewer-batch-pass-<N>:` for the cycle-1 compositional batch): reads Stage A's output and the live app in its own playwright-cli session and returns greenlight or improvements-needed. Writes ONLY its spillover file under tests/e2e/docs/.subagent-returns/ — it does not append to either ledger, does not modify specs and does not commit.",
+      "agentTypes": [
+        "reviewer"
+      ]
+    },
+    "scaffolder": {
+      "description": "Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch — the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
+      "agentTypes": [
+        "scaffolder"
+      ]
+    },
     "selector-diff-validator": {
       "description": "Read-only validator: compares selector changes across tests/** and reports. Writes nothing; no shell.",
       "agentTypes": [
         "selector-diff-validator"
+      ]
+    },
+    "stage2": {
+      "description": "Stage 2 element-inspection worker (`stage2-<scenario>:`): inspects the pages of one approved scenario in its own playwright-cli session and RETURNS proposed page-repository entries — the page repository itself stays the scaffolder's file. May persist a captured auth state under tests/e2e/.auth/**.",
+      "agentTypes": [
+        "stage2"
+      ]
+    },
+    "test-composer": {
+      "description": "Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. Reads the page repository and docs; writes nothing outside tests/e2e/**.",
+      "agentTypes": [
+        "test-composer"
+      ],
+      "codeImports": [
+        "@playwright/test",
+        "@civitas-cerebrum/element-interactions"
+      ]
+    },
+    "workflow-reviewer": {
+      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "agentTypes": [
+        "workflow-reviewer"
       ]
     }
   },

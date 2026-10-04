@@ -127,10 +127,17 @@ shape:
   exact manifest role name: `scaffolder`, `test-composer`,
   `in-flight-composer`, `workflow-reviewer`, `phase-validator`,
   `process-validator`, `batch-reviewer`, `perf-reviewer`,
-  `selector-diff-validator`. The longest matching role name wins, so
-  `workflow-reviewer-phase3:` binds `workflow-reviewer`.
+  `selector-diff-validator`, plus the in-pipeline worker roles
+  `phase1`, `phase2`, `phase4`, `stage2`, `probe`, `reviewer`,
+  `cleanup`, `companion`, `fd` and `contribution-handover`. The longest
+  matching role name wins, so `workflow-reviewer-phase3:` binds
+  `workflow-reviewer` and `reviewer-j-login:` binds `reviewer`.
   The pre-kernel `composer-j-<slug>:` spelling names no role and is
   refused — the composer is dispatched as `test-composer-j-<slug>:`.
+  A description that leads with a `[group]` / `[P3-batch]` marker also
+  names no role to the kernel, which resolves the role from the FIRST
+  characters of the description: see `../coverage-expansion/SKILL.md`
+  §"Grouped dispatch and the role kernel".
 - **`subagent_type`** — the same role name (`subagent_type:
   test-composer`). The child binds by its agent type, and a type that
   belongs to a different role than the description names is refused.
