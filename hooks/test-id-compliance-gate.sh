@@ -8,9 +8,32 @@
 # Env     : CIVITAS_DISABLE_TEST_ID_GATE=1 disables the hook (kill-switch for
 #           consumers who do not use the ID convention)
 #           CIVITAS_TEST_ID_PATTERN=<regex source> swaps in another ID shape,
-#           anchored at the start of the title with the ID in group 1
-#           (e.g. '^\s*([A-Z]{2,4}-[0-9]{2,4})'). Default is the house shape:
-#           TC + up to three more letters, dash, 4-6 digits.
+#           anchored at the start of the title, with the ID in group 1 when the
+#           pattern captures and the whole match otherwise
+#           (e.g. '^\s*([A-Z]{2,4}-[0-9]{2,4})').
+#           FACTORY_RULES=<path> the project rule file to read titleIdPattern
+#           from (default <project>/achilles-factory-rules.json).
+#
+# Where the ID shape comes from (first that is set wins)
+# -----------------------------------------------------
+#   1. CIVITAS_TEST_ID_PATTERN — an explicit operator override.
+#   2. rules["specs.shape"].titleIdPattern in the project's factory rule file —
+#      the project's OWN declared shape, which the factory intake gate
+#      (hooks/factory/intake-gate.sh) already enforces on every new spec.
+#   3. The house shape: TC + up to three more letters, dash, 4-6 digits.
+#
+# Step 2 exists because 1 and 3 alone were a trap. The documented authoring
+# flow — spec-shape.md, the requirement-intake skill, and the shipped
+# hooks/data/factory-rules.example.json, whose titleIdPattern is
+# "^[A-Z]{2,5}-\d{2,3}[a-z]? — " — teaches `test('CHK-03 — …')`, while this
+# gate enforced the TC house shape and nothing connected the two. An agent that
+# followed the documentation exactly had its spec write DENIED here, by a gate
+# the docs never mentioned, with a message demanding an ID in a scheme the
+# project had deliberately replaced; and factory-gates.md claimed the two gates
+# "complement" each other. Reading the project's own pattern makes that true:
+# one declared shape, two gates checking different things about it — this one
+# that an ID is present and unique, the intake gate that the ID names a
+# written, linted scenario.
 #
 # Rule
 # ----
@@ -89,6 +112,37 @@ emit_deny() {
 
 [ "${CIVITAS_DISABLE_TEST_ID_GATE:-0}" = "1" ] && exit 0
 
+# Adopt the project's declared test-id shape when the operator has not pinned
+# one. jq is already resolved above; a rule file that is absent, unreadable or
+# has no specs.shape rule leaves the house default in place, so this can only
+# ever widen what the gate accepts for a project that asked for it.
+if [ -z "${CIVITAS_TEST_ID_PATTERN:-}" ]; then
+  _tid_root="${CLAUDE_PROJECT_DIR:-}"
+  [ -n "$_tid_root" ] || _tid_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+  _tid_rules="${FACTORY_RULES:-achilles-factory-rules.json}"
+  case "$_tid_rules" in /*) ;; *) _tid_rules="${_tid_root%/}/$_tid_rules";; esac
+  if [ -f "$_tid_rules" ]; then
+    _tid_pattern="$("$JQ" -r '.rules["specs.shape"].titleIdPattern // empty' "$_tid_rules" 2>/dev/null || true)"
+    [ -n "$_tid_pattern" ] && export CIVITAS_TEST_ID_PATTERN="$_tid_pattern"
+  fi
+fi
+
+# The shape sentence of the deny, written from whichever source won above: a
+# message that quotes the house shape at a project on its own scheme tells the
+# agent to break the title it just wrote correctly.
+if [ -n "${CIVITAS_TEST_ID_PATTERN:-}" ]; then
+  SHAPE_LINES="    Shape: this project pins its own ID pattern — ${CIVITAS_TEST_ID_PATTERN}
+    (from rules[\"specs.shape\"].titleIdPattern in its factory rule file, or
+    CIVITAS_TEST_ID_PATTERN). Match it exactly, e.g. 'CHK-03 — place an order'
+    for the pattern the shipped example uses."
+else
+  SHAPE_LINES="    Shape: TC + up to three more letters of area code (2-5 letters total), a
+    dash, and a 4-6 digit ordinal — TC-0042, TCLG-000420, [TCSG-0012] · … .
+    A suite on another scheme declares rules[\"specs.shape\"].titleIdPattern in
+    its factory rule file (hooks/data/factory-rules.example.json), or sets
+    CIVITAS_TEST_ID_PATTERN."
+fi
+
 tool_name=$(echo "$input" | "$JQ" -r '.tool_name // empty')
 file_path=$(echo "$input" | "$JQ" -r '.tool_input.file_path // empty')
 
@@ -157,9 +211,7 @@ Do this instead:
 ──────────────────────────
   Option A — the case is new: give it an ID as the first token of the title
     test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { … });
-    Shape: TC + up to three more letters of area code (2-5 letters total), a
-    dash, and a 4-6 digit ordinal — TC-0042, TCLG-000420, [TCSG-0012] · … .
-    A suite on another scheme sets CIVITAS_TEST_ID_PATTERN instead.
+$SHAPE_LINES
   Option B — the ID is already taken in this file: mint the next free one
     grep -ohE 'TC[A-Z]{0,3}-[0-9]{4,6}' $(dirname "$file_path")/*.spec.* | sort -u
     Retired IDs are never reused; take the next ordinal, don't fill a gap.
