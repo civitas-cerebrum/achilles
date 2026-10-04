@@ -46,8 +46,11 @@ Gate semantics: `../achilles-protocol/references/factory-gates.md#specs.shape`.
 ## The one-door rule
 
 1. **No block, no spec.** The intake gate (`hooks/factory/intake-gate.sh`) refuses a new spec file whose `test(`
-   titles do not start with an ID that has a block in `scenarioDocs` and — when `lint` is set — passes it. The
-   verify-step guard refuses the same drift in files that already exist.
+   titles do not start with an ID that has a block in `scenarioDocs` and — when `lint` is set — passes it. It judges
+   NEW files only (intake is not a retrofit), so the same drift in a file that already exists is caught by the
+   **project's own** verify step, which should run this lint over every spec. Achilles ships no verify-step guard of
+   its own — see `../achilles-protocol/references/factory-gates.md#opting-in-the-rule-file`, "Who detects a missing or
+   weakened rule file". Without that step, an edit to an existing spec can drift from its block unnoticed.
 2. **The block is the requirement.** The spec implements the block's Steps and asserts its Expected through its
    Oracle. When live behaviour contradicts the block, the block gets a `Corrected (<date>)` bullet in the same
    change; the spec never silently diverges from it.

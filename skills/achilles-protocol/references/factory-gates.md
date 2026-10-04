@@ -20,6 +20,18 @@ factory gate allows silently. A rule id absent from the file → its gate allows
 > **Migration:** a rule file already placed under `.achilles/` (as `factory-rules.json`) is no longer read — move it to
 > `achilles-factory-rules.json` at the project root and commit it (or point `FACTORY_RULES` at it).
 
+**How the gates get there.** Installing the package registers them: `FACTORY_MANIFEST` in `scripts/postinstall.js`
+copies each gate to `<.claude>/hooks/factory/<gate>.sh` — the subdirectory is part of the contract, since every gate
+reaches its library through `source ../lib/factory-common.sh` — and adds one `PreToolUse` registration per gate to
+`settings.json`. Unlike every other guard family they carry **no session-activation wrapper**, because the opt-in is
+the project's rule file and not the session: on a machine whose projects have no rule file each gate is one process
+that exits 0 in silence. Committing the rule file is therefore the whole of a project's opt-in, but only for an install
+that ran — `CIVITAS_SKIP_HOOK_INSTALL=1`, or a vendored copy that predates the manifest, leaves the gates on disk and
+unregistered, which looks exactly like a project where everything passes. `npm run test:hooks` asserts the
+registration from a simulated consumer install (`hooks/tests/install-simulation.sh`), and
+`node scripts/lint-doc-drift.mjs` fails when a gate under `hooks/factory/` is missing from the manifest or from
+[harness-hooks.md](harness-hooks.md).
+
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/civitas-cerebrum/achilles/main/hooks/data/factory-rules.schema.json",
@@ -98,8 +110,21 @@ Two checks on a write that **creates** a file (existing files are never judged �
 
 Fields: `scope[]`, `exclude[]`, `frozenDirs[]`, `titleIdPattern`, `scenarioDocs[]`, `lint` (argv, optional), `tags[]`
 and `blockEnums` (`{ type, oracle, spendPolicy, status }` string arrays; read by the scenario lint when present, not by
-the gate). This complements `test-id-compliance-gate` (every title carries a stable id): the intake gate adds that
-the id names a written, linted scenario.
+the gate).
+
+**`titleIdPattern` is the project's one test-id shape.** It is read by a second, already-registered gate as well:
+`hooks/test-id-compliance-gate.sh` (every title an edit ADDS carries a stable id, and no id repeats in one file) takes
+its pattern from this field whenever the project has a `specs.shape` rule, so the two gates cannot disagree about what
+an id looks like. Precedence: `CIVITAS_TEST_ID_PATTERN` (an explicit operator override) → `titleIdPattern` → the house
+`TCXX-NNNNNN` default for a project with no rule file. Each gate still checks its own thing — the test-id gate that an
+id is *there* and unique, the intake gate that the id names a written, linted scenario — but against one shape.
+
+This used to be a flat contradiction rather than a complement, and it broke the flow this very reference teaches. The
+documented example id is `CHK-03 — …`; the test-id gate hard-coded the `TC`-stemmed house shape and nothing bridged
+them, so an agent that followed [spec-shape.md](spec-shape.md) and the `requirement-intake` skill to the letter had its
+spec write DENIED by a gate it was never told about, with a message asking for an id in a scheme the project had
+explicitly replaced. If a project needs the two to differ, it sets `CIVITAS_TEST_ID_PATTERN` deliberately — the
+override is there, but it is now a choice instead of an accident.
 
 <a id="spend.opt-in"></a>
 ### spend.opt-in
@@ -229,8 +254,15 @@ undecidable inputs (the kernel on an unknown role, a gate on an unjudgeable argu
 ## Running the cases
 
 ```bash
+npm run test:factory                 # the whole set, via package.json
 CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project node hooks/tests/factory-run.mjs [<filter>]
 ```
+
+These cases are the gates' only proof, so they are wired into the suites that gate a change rather than left to be
+remembered: `npm run test:hooks` ends by running `test:factory`, which puts them in `prepack` and in CI. `run.sh`
+cannot pick them up itself — it globs `cases/*.sh` and `cases/*/*.sh`, and these cases are `.json` driven by
+`factory-run.mjs` — so adding a case file to `cases/factory/` is enough, but adding a GATE without a case is
+invisible to every suite.
 
 The runner feeds each case's `input` to its gate and checks the decision, the three-line shape, `messageContains`,
 `stderrContains` and `warn`. Case fields: `input`, `expect` (`allow` | `deny`), `messageContains[]`, `stderrContains[]`,
