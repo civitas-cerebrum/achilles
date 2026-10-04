@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Five independent checks; each reports pass/fail; the process
+// describe. Seven independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
 //   (2) every relative .md link under skills/achilles-protocol/** resolves
 //   (3) HOOK_MANIFEST (scripts/postinstall.js)  ↔  harness-hooks.md links
+//  (3b) FACTORY_MANIFEST  ↔  hooks/factory/*.sh  ↔  harness-hooks.md links
 //   (4) every validated §4.4 description-prefix in subagent-return-schema.md
 //       has a matching case in hooks/lib/schema-role-map.sh
 //   (5) every deny/warn-capable hook's runtime messages carry a References:
 //       block citing >=1 resolvable skills/ (or schemas/) path — the
 //       methodology-pointer convention (contributing-to-achilles-protocol
 //       SKILL.md §"Hook error message format — repo standard")
+//   (6) the selectors.evidence `evidenceDir` default is the same string in
+//       the schema, the gate, bin/evidence-note.mjs and both reference pages
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -167,6 +170,59 @@ function checkHookManifest() {
 }
 
 // ---------------------------------------------------------------------------
+// Check 3b — FACTORY_MANIFEST  ↔  hooks/factory/*.sh  ↔  harness-hooks.md
+// ---------------------------------------------------------------------------
+// Check 3's link regex is `(../+hooks/<name>.sh)`, which cannot see a path
+// with a directory in it, so for a while every hooks/factory/ gate was
+// invisible to this lint: seven gates shipped, none registered, and no check
+// anywhere noticed. This one closes that hole on all three sides — a gate on
+// disk that no manifest registers is as much a defect as a manifest entry
+// with no gate, and either one with no documented entry drifts out of the
+// reference the deny messages point readers at.
+function checkFactoryManifest() {
+  const detail = [];
+  const post = readFileSync(POSTINSTALL, 'utf8');
+
+  const start = post.indexOf('const FACTORY_MANIFEST = [');
+  if (start === -1) {
+    report('FACTORY_MANIFEST ↔ hooks/factory/ ↔ harness-hooks.md', false, [
+      `${POSTINSTALL}: no FACTORY_MANIFEST — the hooks/factory/ gates are shipped but never installed or registered`,
+    ]);
+    return;
+  }
+  const body = post.slice(start, post.indexOf('];', start));
+  const registered = new Set(
+    [...body.matchAll(/file:\s*'([a-z0-9-]+\.sh)'/g)].map((m) => m[1]),
+  );
+
+  const onDisk = new Set(
+    existsSync('hooks/factory') ? readdirSync('hooks/factory').filter((f) => f.endsWith('.sh')) : [],
+  );
+
+  // Documented gates = markdown links of the form (.../hooks/factory/<file>.sh).
+  const hooksMd = readFileSync(HARNESS_HOOKS, 'utf8');
+  const documented = new Set(
+    [...hooksMd.matchAll(/\((?:\.\.\/)+hooks\/factory\/([a-z0-9-]+\.sh)\)/g)].map((m) => m[1]),
+  );
+
+  const unregistered = [...onDisk].filter((f) => !registered.has(f));
+  const phantom = [...registered].filter((f) => !onDisk.has(f));
+  const undocumented = [...registered].filter((f) => !documented.has(f));
+  const orphanDocs = [...documented].filter((f) => !onDisk.has(f));
+
+  if (unregistered.length) detail.push(`in hooks/factory/ but not in FACTORY_MANIFEST (shipped, never registered — every write would pass silently): ${unregistered.join(', ')}`);
+  if (phantom.length) detail.push(`in FACTORY_MANIFEST but no such file under hooks/factory/: ${phantom.join(', ')}`);
+  if (undocumented.length) detail.push(`in FACTORY_MANIFEST but not documented in harness-hooks.md: ${undocumented.join(', ')}`);
+  if (orphanDocs.length) detail.push(`documented in harness-hooks.md but no such file under hooks/factory/: ${orphanDocs.join(', ')}`);
+
+  report(
+    `FACTORY_MANIFEST ↔ hooks/factory/ ↔ harness-hooks.md (${onDisk.size} gates on disk, ${registered.size} registered, ${documented.size} documented)`,
+    detail.length === 0,
+    detail,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Check 4 — validated §4.4 prefixes ↔ schema-role-map.sh cases
 // ---------------------------------------------------------------------------
 function checkRoleMapCoverage() {
@@ -303,11 +359,75 @@ function checkHookReferences() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Check 6 — the selectors.evidence `evidenceDir` default agrees everywhere
+// ---------------------------------------------------------------------------
+// `evidenceDir` is schema-OPTIONAL, which makes its default load-bearing for
+// every project that omits the field — and that default was restated in five
+// places, two of which disagreed. repository-evidence-gate.sh looked in
+// `docs/evidence/selectors`; bin/selector-evidence.mjs wrote to
+// `tests/e2e/docs/evidence/selectors`. For a project on the default that is a
+// permanent deny loop with no way out from inside the session: the agent runs
+// achilles-selector-evidence, the note lands where the gate never reads, the
+// gate denies the same write again, and its action tells the agent to run the
+// tool it has just run.
+//
+// The schema's declared `default` is the authoritative copy; everything else
+// restates it and this check makes a restatement that drifts fail the publish.
+const FACTORY_SCHEMA = 'hooks/data/factory-rules.schema.json';
+const EVIDENCE_GATE = 'hooks/factory/repository-evidence-gate.sh';
+const EVIDENCE_NOTE = 'bin/evidence-note.mjs';
+const FACTORY_GATES_MD = 'skills/achilles-protocol/references/factory-gates.md';
+const SELECTOR_EVIDENCE_MD = 'skills/achilles-protocol/references/selector-evidence.md';
+
+function checkEvidenceDirDefault() {
+  const detail = [];
+  const schema = JSON.parse(readFileSync(FACTORY_SCHEMA, 'utf8'));
+  const want = schema?.$defs?.selectorsEvidence?.properties?.evidenceDir?.default;
+
+  if (typeof want !== 'string' || !want) {
+    report('selectors.evidence evidenceDir default agrees across gate, tool and docs', false, [
+      `${FACTORY_SCHEMA}: $defs.selectorsEvidence.properties.evidenceDir has no string "default" to be authoritative`,
+    ]);
+    return;
+  }
+
+  // The gate's own fallback: EVDIR="${EVDIR:-<default>}".
+  const gateSrc = readFileSync(EVIDENCE_GATE, 'utf8');
+  const gateMatch = gateSrc.match(/EVDIR="\$\{EVDIR:-([^}"]+)\}"/);
+  if (!gateMatch) detail.push(`${EVIDENCE_GATE}: no \`EVDIR="\${EVDIR:-…}"\` fallback found — cannot confirm the gate's default`);
+  else if (gateMatch[1] !== want) detail.push(`${EVIDENCE_GATE}: falls back to "${gateMatch[1]}", schema default is "${want}"`);
+
+  // The tool's shared constant.
+  const noteSrc = readFileSync(EVIDENCE_NOTE, 'utf8');
+  const noteMatch = noteSrc.match(/export const DEFAULT_EVIDENCE_DIR = '([^']+)'/);
+  if (!noteMatch) detail.push(`${EVIDENCE_NOTE}: no \`export const DEFAULT_EVIDENCE_DIR\` found — cannot confirm the tool's default`);
+  else if (noteMatch[1] !== want) detail.push(`${EVIDENCE_NOTE}: DEFAULT_EVIDENCE_DIR is "${noteMatch[1]}", schema default is "${want}"`);
+
+  // Both reference pages must quote the authoritative string and must not
+  // quote a different evidence directory as "the default".
+  for (const doc of [FACTORY_GATES_MD, SELECTOR_EVIDENCE_MD]) {
+    const md = readFileSync(doc, 'utf8');
+    if (!md.includes(want)) detail.push(`${doc}: never names the default evidence dir "${want}"`);
+    for (const m of md.matchAll(/[Dd]efault[^\n.]{0,24}`([A-Za-z0-9._/-]*evidence\/selectors)`/g)) {
+      if (m[1] !== want) detail.push(`${doc}: documents the default as "${m[1]}", schema default is "${want}"`);
+    }
+  }
+
+  report(
+    `selectors.evidence evidenceDir default agrees across gate, tool and docs ("${want}", 5 declarations)`,
+    detail.length === 0,
+    detail,
+  );
+}
+
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
+checkFactoryManifest();
 checkRoleMapCoverage();
 checkHookReferences();
+checkEvidenceDirDefault();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');
