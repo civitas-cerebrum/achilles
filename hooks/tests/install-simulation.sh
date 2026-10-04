@@ -110,6 +110,38 @@ run_install_simulation() {
     fi
   done
 
+  # 1c. FACTORY_MANIFEST — the hooks/factory/ gates. postinstall gives these
+  #     their own copy-and-register pass into <hooks>/factory/, because each
+  #     gate sources ../lib/factory-common.sh and so must keep its place
+  #     beside lib/. Mirrored (and asserted) here because the whole family
+  #     once shipped with no manifest entry at all: the gates were in the
+  #     tarball, the docs told projects how to opt in, and nothing copied or
+  #     registered a single one of them.
+  local factory_files
+  mkdir -p "$fake_hooks/factory"
+  factory_files=$(node -e "
+    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
+    const m = s.match(/const FACTORY_MANIFEST = \[([\s\S]*?)\];/);
+    if (!m) { process.exit(0); }
+    const files = [...new Set(
+      m[1].split('\n')
+        .filter(l => !/^\s*\/\//.test(l))
+        .flatMap(l => [...l.matchAll(/file:\s*['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]))
+    )];
+    console.log(files.join('\n'));
+  " 2>/dev/null)
+  if [ -z "$factory_files" ]; then
+    sim_fail "FACTORY_MANIFEST parse" \
+      "no FACTORY_MANIFEST in scripts/postinstall.js — the hooks/factory/ gates would ship unregistered, so a project that commits achilles-factory-rules.json gets no gate at all"
+  else
+    for f in $factory_files; do
+      if [ -f "$repo_root/hooks/factory/$f" ]; then
+        cp "$repo_root/hooks/factory/$f" "$fake_hooks/factory/$f"
+        chmod 755 "$fake_hooks/factory/$f"
+      fi
+    done
+  fi
+
   # 2. hooks/lib/ — top-level files only, exactly like postinstall (its
   #    readdir loop skips non-file entries; subdirectories are NOT copied).
   local entry
@@ -154,6 +186,84 @@ run_install_simulation() {
   else
     sim_fail "all HOOK_MANIFEST scripts copied and executable" "missing/non-executable: $missing"
   fi
+
+  # --- Assertion: every factory gate on disk is registered AND installed ---
+  # Two halves of the same bug. A gate in hooks/factory/ that FACTORY_MANIFEST
+  # does not name ships to consumers and never runs; a named gate that fails to
+  # land is a registration pointing at nothing.
+  local on_disk_factory g registered_set unregistered="" factory_missing=""
+  on_disk_factory=$(cd "$repo_root/hooks/factory" 2>/dev/null && ls -1 *.sh 2>/dev/null || true)
+  # $factory_files is newline-separated; flatten it so the membership test below
+  # is a plain space-delimited substring match.
+  registered_set=" $(echo $factory_files) "
+  for g in $on_disk_factory; do
+    case "$registered_set" in *" $g "*) ;; *) unregistered="${unregistered:+$unregistered, }$g" ;; esac
+  done
+  if [ -z "$unregistered" ]; then
+    sim_pass "every hooks/factory/ gate is named by FACTORY_MANIFEST"
+  else
+    sim_fail "every hooks/factory/ gate is named by FACTORY_MANIFEST" \
+      "shipped but never registered (a project that opts in gets no gate): $unregistered"
+  fi
+  for f in $factory_files; do
+    if [ ! -f "$fake_hooks/factory/$f" ] || [ ! -x "$fake_hooks/factory/$f" ]; then
+      factory_missing="${factory_missing:+$factory_missing, }$f"
+    fi
+  done
+  if [ -z "$factory_missing" ]; then
+    sim_pass "all FACTORY_MANIFEST gates copied to hooks/factory/ and executable"
+  else
+    sim_fail "all FACTORY_MANIFEST gates copied to hooks/factory/ and executable" "missing/non-executable: $factory_missing"
+  fi
+
+  # --- Assertion: a factory gate FIRES from the installed location ---------
+  # The Phase-1 bug class applied to this family: the gates live one directory
+  # deeper than every other hook and reach their library through a relative
+  # `source ../lib/factory-common.sh`, which resolves only when the install
+  # preserved the factory/ + lib/ + bin/ layout. Prove it with a real verdict
+  # against a fake project, not just by checking the file exists.
+  local fp_rules fac_payload fac_out fac_decision
+  fp_rules="$fake_project/achilles-factory-rules.json"
+  cat > "$fp_rules" <<'FACRULES'
+{
+  "version": 1,
+  "rules": {
+    "secrets.none": {
+      "doc": "skills/achilles-protocol/references/factory-gates.md#secrets.none",
+      "action": "Reference the environment variable name, never the value.",
+      "scope": ["tests/**"],
+      "patterns": ["[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"]
+    }
+  }
+}
+FACRULES
+  fac_payload=$("$JQ" -n --arg fp "$fake_project/tests/e2e/checkout.spec.ts" \
+    '{tool_name:"Write", tool_input:{file_path:$fp, content:"const shopper = \"ada@example.com\";"}}')
+  fac_out=$(cd "$fake_project" && printf '%s' "$fac_payload" \
+    | HOME="$work/home" CLAUDE_PROJECT_DIR="$fake_project" bash "$fake_hooks/factory/secrets-gate.sh" 2>/dev/null) || true
+  fac_decision=$(printf '%s' "$fac_out" | "$JQ" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null || echo "")
+  if [ "$fac_decision" = "deny" ]; then
+    sim_pass "factory secrets-gate denies a secret from the installed location (../lib/factory-common.sh resolved)"
+  else
+    sim_fail "factory secrets-gate denies a secret from the installed location (../lib/factory-common.sh resolved)" \
+      "expected permissionDecision=deny, got '${fac_decision}' output=${fac_out:0:200}"
+  fi
+
+  # The other half of the opt-in contract: with the rule file gone the same
+  # gate must allow in SILENCE — the installed-everywhere registration is only
+  # safe because a project that never opted in pays nothing and sees nothing.
+  rm -f "$fp_rules"
+  local fac_err
+  fac_err=$(mktemp "$work/factory-noopt-XXXXXX")
+  fac_out=$(cd "$fake_project" && printf '%s' "$fac_payload" \
+    | HOME="$work/home" CLAUDE_PROJECT_DIR="$fake_project" bash "$fake_hooks/factory/secrets-gate.sh" 2>"$fac_err") || true
+  if [ -z "$fac_out" ] && [ ! -s "$fac_err" ]; then
+    sim_pass "factory secrets-gate is a silent allow with no rule file (the project never opted in)"
+  else
+    sim_fail "factory secrets-gate is a silent allow with no rule file (the project never opted in)" \
+      "expected empty stdout and stderr, got out=${fac_out:0:120} err=$(head -c 120 "$fac_err" 2>/dev/null)"
+  fi
+  rm -f "$fac_err"
 
   # --- Assertion 3+4+: integrity-chain + bash-guard + new guards in set ----
   for f in ledger-integrity-chain.sh protected-artifact-bash-guard.sh harness-self-protection-guard.sh hook-authored-state-guard.sh; do

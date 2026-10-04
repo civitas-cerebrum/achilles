@@ -89,7 +89,26 @@ Every hook below applies **only to sessions where the achilles protocol is activ
 
 ## Factory gates (project rule file)
 
-- **[factory gates](factory-gates.md)** — `PreToolUse:Write|Edit|MultiEdit` (`selector-write-gate`, `repository-evidence-gate`, `intake-gate`, `secrets-gate`) and `PreToolUse:Bash` (`spend-gate`, `commit-gate`, `state-gate`), all under `hooks/factory/` with the shared `hooks/lib/factory-common.sh`. Field-level content gates driven by the project's `achilles-factory-rules.json` (schema and floors in `hooks/data/factory-rules.schema.json`): no inline selectors, evidence for new repository selectors, specs traced to written scenarios, per-command opt-in for spend-incurring specs, no secrets in committed files, commits only on a fresh content-hash verify stamp, no hand-written process state. Silent no-op without a rule file (the file is the project's opt-in, so they run without the session-activation gate). Offline cases: `node hooks/tests/factory-run.mjs`. [escape hatch: yes (remove the rule, or the rule file, from the project — a silent opt-out that only the project's own verify step can catch, by requiring the file and validating it against the schema; Achilles ships no verify-step guard)]
+[Factory gates](factory-gates.md) are field-level content gates driven by the project's `achilles-factory-rules.json`
+(schema and floors in `hooks/data/factory-rules.schema.json`). They live under `hooks/factory/` and share
+`hooks/lib/factory-common.sh`; postinstall copies them to `~/.claude/hooks/factory/` (the subdirectory is part of the
+contract — each gate sources `../lib/factory-common.sh`) and registers them from `FACTORY_MANIFEST` in
+`scripts/postinstall.js`. They are registered **without** the session-activation gate every other guard family uses,
+because the opt-in here is the project's committed rule file rather than the session: no rule file → every gate allows
+silently, and a rule id absent from the file → its own gate allows silently. Offline cases:
+`CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project node hooks/tests/factory-run.mjs` (also `npm run test:factory`).
+
+Each gate's escape hatch is the same one: remove the rule, or the rule file, from the project — a silent opt-out that
+only the project's own verify step can catch, by requiring the file and validating it against the schema. Achilles
+ships no verify-step guard.
+
+- **[selector-write-gate](../../../hooks/factory/selector-write-gate.sh)** — `PreToolUse:Write|Edit|MultiEdit`, rule `selectors.no-inline`. Denies an inline selector or a raw locator/navigation call in a source file under `scope`: elements are named through the page repository. [escape hatch: yes (drop the rule)]
+- **[repository-evidence-gate](../../../hooks/factory/repository-evidence-gate.sh)** — `PreToolUse:Write|Edit|MultiEdit`, rule `selectors.evidence`. Denies a new or changed page-repository selector that has neither a live evidence note under `evidenceDir` nor the honest `provisional` flag. [escape hatch: yes (drop the rule)]
+- **[intake-gate](../../../hooks/factory/intake-gate.sh)** — `PreToolUse:Write|Edit|MultiEdit`, rule `specs.shape`. Denies a NEW spec whose test titles do not trace to a linted scenario block, and any new file in a frozen directory. Existing specs are never judged. [escape hatch: yes (drop the rule)]
+- **[secrets-gate](../../../hooks/factory/secrets-gate.sh)** — `PreToolUse:Write|Edit|MultiEdit`, rule `secrets.none`. Denies writing an email address, phone number or token into a committed project file; quotes only the first three characters of the match. [escape hatch: yes (drop the rule)]
+- **[spend-gate](../../../hooks/factory/spend-gate.sh)** — `PreToolUse:Bash`, rule `spend.opt-in`. Denies a test run that would execute a spend-incurring spec without that command's own opt-in. Quote-aware, one level of `sh -c` / `eval`. [escape hatch: yes (drop the rule)]
+- **[commit-gate](../../../hooks/factory/commit-gate.sh)** — `PreToolUse:Bash`, rule `process.evidence`. Denies a `git commit` in this project without a verify stamp whose `treeHash` still matches the tree being committed, and (with a current-change marker) without that change's required evidence files. [escape hatch: yes (drop the rule)]
+- **[state-gate](../../../hooks/factory/state-gate.sh)** — `PreToolUse:Bash`, rule `process.state`. Denies Bash writes into the project's process-state directory — the stamp and the change marker are written by the project's own tools, never by hand. Reads and copies out are allowed. [escape hatch: yes (drop the rule)]
 
 ## Conventions learned in practice
 

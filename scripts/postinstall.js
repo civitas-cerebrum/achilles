@@ -378,6 +378,47 @@ const HOOK_COMPANIONS = [
   'kernel-mandate-role-gate.sh',
 ];
 
+// The factory gates — hooks/factory/*.sh, the field-level content gates driven
+// by the project's committed achilles-factory-rules.json. See
+// skills/achilles-protocol/references/factory-gates.md.
+//
+// A SEPARATE manifest rather than HOOK_MANIFEST entries, because these gates
+// live in a subdirectory and must stay there once installed: each one does
+// `source ../lib/factory-common.sh`, which only resolves when the gate sits at
+// <hooks>/factory/<gate>.sh beside <hooks>/lib/. HOOK_MANIFEST's loop copies
+// flat into <hooks>/<file>, and the install simulation that mirrors it assumes
+// the same shape, so a 'factory/x.sh' entry there would land in the wrong place
+// and drift the two apart. The copy-and-register pass below is this manifest's
+// own, and it creates the subdirectory first.
+//
+// Registered unconditionally, and deliberately WITHOUT the session-activation
+// wrapper every other guard family uses: the opt-in here is the PROJECT's rule
+// file, not the session. Every gate exits 0 in silence when
+// <project>/achilles-factory-rules.json is absent, and so does each individual
+// rule whose id that file omits — so a registration on a machine that has no
+// such project costs one no-op process per tool call and changes nothing.
+//
+// Registering them is what makes the documented opt-in real. Until this pass
+// existed, factory-gates.md told consumers "a project opts in by committing
+// achilles-factory-rules.json at the project root" while the installer copied
+// no gate and registered none: the project committed the file, every write and
+// every command passed, and nothing anywhere said the gates were not running.
+// A silent no-op is the one outcome these gates are built to never produce.
+const FACTORY_MANIFEST = [
+  // Write-side gates. 15s for the intake gate: when the rule carries a `lint`
+  // argv it boots that linter (node + a scenario-document parse) per write.
+  { file: 'selector-write-gate.sh',      event: 'PreToolUse', matcher: 'Write|Edit|MultiEdit', timeout: 10 },
+  { file: 'repository-evidence-gate.sh', event: 'PreToolUse', matcher: 'Write|Edit|MultiEdit', timeout: 10 },
+  { file: 'intake-gate.sh',              event: 'PreToolUse', matcher: 'Write|Edit|MultiEdit', timeout: 15 },
+  { file: 'secrets-gate.sh',             event: 'PreToolUse', matcher: 'Write|Edit|MultiEdit', timeout: 10 },
+  // Bash-side gates. 30s for the commit gate: it recomputes the project's
+  // content hash (`hashCommand` over every file under the hashed roots) on
+  // every `git commit`, which is the slowest thing any gate here does.
+  { file: 'spend-gate.sh',               event: 'PreToolUse', matcher: 'Bash',                 timeout: 10 },
+  { file: 'commit-gate.sh',              event: 'PreToolUse', matcher: 'Bash',                 timeout: 30 },
+  { file: 'state-gate.sh',               event: 'PreToolUse', matcher: 'Bash',                 timeout: 10 },
+];
+
 // Registrations to drop from settings.json on install even though the
 // script still exists on disk (so the dangling-file prune below cannot
 // catch them): hooks that used to be registered directly and are now
@@ -493,6 +534,27 @@ function installCivitasHooks(claudeDir) {
     if (registerHookInSettings(settings, entry, hookDest)) {
       registeredCount++;
       settingsModified = true;
+    }
+  }
+
+  // Factory gates: copied into <hooks>/factory/ — the subdirectory is part of
+  // the contract, since each gate sources ../lib/factory-common.sh — and
+  // registered like any other hook. See FACTORY_MANIFEST above for why these
+  // are a manifest of their own and why registering them unconditionally is
+  // safe (a project with no rule file gets a silent allow from every gate).
+  const factorySrcDir = path.join(packageDir, 'hooks', 'factory');
+  if (fs.existsSync(factorySrcDir)) {
+    const factoryDestDir = path.join(userHooksDir, 'factory');
+    fs.mkdirSync(factoryDestDir, { recursive: true });
+    for (const entry of FACTORY_MANIFEST) {
+      const hookSrc = path.join(factorySrcDir, entry.file);
+      if (!fs.existsSync(hookSrc)) continue;   // bundled gate missing — skip, never fail the install
+      const hookDest = path.join(factoryDestDir, entry.file);
+      if (copyHookFile(hookSrc, hookDest)) copiedCount++;
+      if (registerHookInSettings(settings, entry, hookDest)) {
+        registeredCount++;
+        settingsModified = true;
+      }
     }
   }
 
