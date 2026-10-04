@@ -34,12 +34,14 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
-import { RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './evidence-note.mjs'
+import { DEFAULT_EVIDENCE_DIR, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './evidence-note.mjs'
 
 const MAX_PNG_BYTES = 300 * 1024
 const VIEWPORT = { width: 1920, height: 1080 }
 const DEFAULT_REPOSITORY = 'tests/data/page-repository.json'
-const DEFAULT_OUT = 'tests/e2e/docs/evidence/selectors'
+// The default --out is the gate's default evidence dir, imported rather than restated: the two used to disagree,
+// which left a project that omits `evidenceDir` writing notes the gate never reads. See evidence-note.mjs.
+const DEFAULT_OUT = DEFAULT_EVIDENCE_DIR
 
 const USAGE =
   'achilles-selector-evidence --page <Page> --element <element> (--base-url <url> [--storage-state <path>] | --context <name>) ' +

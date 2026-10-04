@@ -19,6 +19,20 @@ export const TOOL_VERSION = '1.0'
 export const RULE_ID = 'selectors.evidence'
 export const DOC = 'skills/achilles-protocol/references/selector-evidence.md'
 
+/**
+ * Where notes live when `evidenceDir` is absent from the rule. The authoritative copy of this string is the
+ * `default` of `rules.selectors.evidence.evidenceDir` in hooks/data/factory-rules.schema.json; this constant and
+ * repository-evidence-gate.sh's own fallback restate it, and scripts/lint-doc-drift.mjs fails when any of them,
+ * or the two reference docs, drift apart.
+ *
+ * `evidenceDir` is schema-OPTIONAL, so the default is load-bearing, and the gate and the tool have to agree on it
+ * to the character. They did not: the gate looked in `docs/evidence/selectors` while this tool wrote to
+ * `tests/e2e/docs/evidence/selectors`. For a project that omits the field that is a permanent deny loop — the agent
+ * runs achilles-selector-evidence, the note lands where the gate never looks, the gate denies the same write again
+ * and its action tells the agent to run the tool it has just run. There is no way out of it from inside the session.
+ */
+export const DEFAULT_EVIDENCE_DIR = 'docs/evidence/selectors'
+
 /** The project's factory rules file: $FACTORY_RULES, else achilles-factory-rules.json. Missing file → {}. */
 export function loadFactoryRules(cwd = process.cwd()) {
   const file = path.resolve(cwd, process.env.FACTORY_RULES || 'achilles-factory-rules.json')

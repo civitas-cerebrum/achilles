@@ -68,7 +68,7 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
     "south": { "baseUrl": "https://shop.example.test", "storageState": "tests/data/.auth/shopper-b.json" }
   },
   "rules": {
-    "selectors.evidence": { "evidenceDir": "tests/e2e/docs/evidence/selectors", "provisionalKey": "provisional" }
+    "selectors.evidence": { "evidenceDir": "docs/evidence/selectors", "provisionalKey": "provisional" }
   }
 }
 ```
@@ -76,7 +76,12 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
 - `--context north` picks an entry; `--base-url` / `--storage-state` override its fields. Without a rules file, pass
   the flags.
 - `rules["selectors.evidence"].evidenceDir` is the one directory both the tool (default `--out`) and the
-  repository-evidence gate read. Default when unset: `tests/e2e/docs/evidence/selectors`.
+  repository-evidence gate read. Default when unset: `docs/evidence/selectors` — the `default` declared for the field
+  in `hooks/data/factory-rules.schema.json`, which is the authoritative copy of that string. The field is optional, so
+  that default is load-bearing: when the tool and the gate disagree about it, a project that omits `evidenceDir`
+  writes notes where the gate never looks and the gate denies the same write for ever, telling the agent to run the
+  tool it has just run. `scripts/lint-doc-drift.mjs` fails when the schema, the gate, `bin/evidence-note.mjs` or this
+  page drift apart on it.
 - **Dependency on proposal B.** These fields belong to the factory-rules schema that proposal B ships
   (`hooks/data/factory-rules.schema.json`); this tool depends on B defining them, all optional. The exact fields the
   tool consumes:
