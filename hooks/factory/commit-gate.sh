@@ -8,16 +8,23 @@
 # State   : reads <stamp> = { "treeHash": "<hex>", … } (written by the project's verify step only),
 #           <currentChange> (one line: the change folder name), <trailDir>/<change>/<required…>
 # Env     : FACTORY_RULES=<path> (rule-file override), FACTORY_JQ=<path> (jq override, tests),
-#           FACTORY_NODE=<path> (node override when <hashCommand> starts with `node`, tests)
+#           FACTORY_NODE=<path> (node override, tests)
+# Needs   : node (and jq). Absent → allow-with-warning: both the commit classification
+#           (hooks/lib/commit-classify.cjs) and the tree hash run under it.
 #
 # Rule
 # ----
-# The command is split into shell segments (newline ; && || | & and parentheses; not quote-aware) and
-# walked in order:
+# The command is classified by hooks/lib/commit-classify.cjs, which uses the quote-aware splitter
+# hooks/lib/shell-segments.cjs — the same one the sibling spend gate uses — and walks the segments in
+# order:
+#   * leading `VAR=val` assignments and the pass-through prefixes (`env`, `command`, `sudo`, `exec`, …)
+#     are peeled before the command word is read;
+#   * one level of `bash|sh|zsh|dash|ksh -c '<string>'` and `eval '<string>'` is classified too, so a
+#     commit wrapped in a quoted string is still a commit;
 #   * a `cd <dir>` segment moves the working directory for the segments after it (`cd` alone → $HOME);
-#   * a `[VAR=val …] git [--opt | -c k=v | -C <dir>]… commit` segment (--amend --no-edit included) is a
-#     commit; its directory is the current one, moved by that SAME segment's `-C <dir>` options
-#     (cumulative, as git does).
+#   * a `git [--opt | -c k=v | -C <dir>]… commit` segment (--amend --no-edit included) is a commit; its
+#     directory is the current one, moved by that SAME segment's `-C <dir>` options (cumulative, as git
+#     does).
 # A commit whose directory is inside this project is gated; a commit in another repository is not ours
 # to gate. Then deny when:
 #   (a) <stamp> is missing, has no treeHash, or its treeHash differs from what <hashCommand> prints now
@@ -33,7 +40,15 @@
 # hour and three edits ago. A timestamp cannot tell; a content hash can.
 #
 # Known limit: the stamp itself is protected by state-gate.sh (process.state); a forged stamp still has
-# to carry the hash of the current tree, which only a real verify run produces honestly.
+# to carry the hash of the current tree, which only a real verify run produces honestly. Shell
+# expansions are not resolved, so `$GIT commit` is not seen, and nesting deeper than one level is not
+# followed.
+#
+# This gate used to tokenise the command itself, in bash, and require token 0 to be literally `git`.
+# Three commands an agent writes unprompted walked straight past it — `sh -c 'git commit -m x'`,
+# `bash -c 'git commit -m x'` and `env git commit -m x`, whose token 0 is `sh`, `bash` and `env` — and
+# a commit the gate never sees is the whole rule defeated: process.evidence exists to make "verified"
+# mean the tree being committed is the tree that passed.
 #
 # Canonical reference
 # -------------------
@@ -45,43 +60,12 @@ ID=process.evidence
 rule_enabled "$ID"
 [ -n "$COMMAND" ] || exit 0
 [[ "$COMMAND" == *commit* ]] || exit 0
-unquote() { local t="$1"; t="${t%\"}"; t="${t#\"}"; t="${t%\'}"; t="${t#\'}"; printf '%s' "$t"; }
 ROOT_N="$(normalize_path "$FACTORY_ROOT")"
-resolve_dir() {  # resolve_dir <base> <target> → normalized absolute path
-  local t; t="$(unquote "$2")"
-  case "$t" in "~") t="$HOME";; "~/"*) t="$HOME/${t#\~/}";; /*) ;; *) t="$1/$t";; esac
-  normalize_path "$t"
-}
-NEWLINE=$'\n'
-SEGS="$COMMAND"
-SEGS="${SEGS//&&/$NEWLINE}"; SEGS="${SEGS//||/$NEWLINE}"; SEGS="${SEGS//;/$NEWLINE}"; SEGS="${SEGS//|/$NEWLINE}"; SEGS="${SEGS//&/$NEWLINE}"
-SEGS="${SEGS//(/ }"; SEGS="${SEGS//)/ }"; SEGS="${SEGS//\{/ }"; SEGS="${SEGS//\}/ }"
-CUR="$(normalize_path "${CWD:-$FACTORY_ROOT}")"
-GATED=0
-while IFS= read -r SEG; do
-  read -r -a TOK <<< "$SEG" || true
-  [ ${#TOK[@]} -gt 0 ] || continue
-  if [ "${TOK[0]}" = cd ]; then
-    if [ ${#TOK[@]} -gt 1 ] && [ "${TOK[1]}" != "-" ]; then CUR="$(resolve_dir "$CUR" "${TOK[1]}")"; else CUR="$(normalize_path "${HOME:-/}")"; fi
-    continue
-  fi
-  i=0; while [ $i -lt ${#TOK[@]} ] && [[ "${TOK[$i]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do i=$((i + 1)); done
-  [ "${TOK[$i]:-}" = git ] || continue
-  D="$CUR"; i=$((i + 1)); IS_COMMIT=0
-  while [ $i -lt ${#TOK[@]} ]; do
-    case "${TOK[$i]}" in
-      -C) i=$((i + 1)); [ $i -lt ${#TOK[@]} ] && D="$(resolve_dir "$D" "${TOK[$i]}")";;
-      -c) i=$((i + 1));;
-      -*) ;;
-      commit) IS_COMMIT=1; break;;
-      *) break;;
-    esac
-    i=$((i + 1))
-  done
-  [ $IS_COMMIT = 1 ] || continue
-  case "$D" in "$ROOT_N"|"$ROOT_N"/*) GATED=1;; esac
-done <<< "$SEGS"
-[ $GATED = 1 ] || exit 0
+NODE="${FACTORY_NODE-$(command -v node || true)}"
+[ -n "$NODE" ] && [ -x "$NODE" ] || emit_allow_warn "node not found — commit gate cannot classify the command; run the verify step before committing"
+GATED="$("$NODE" "$_FACTORY_LIB/commit-classify.cjs" "$COMMAND" "$ROOT_N" "${CWD:-$ROOT_N}" 2>/dev/null)" \
+  || emit_allow_warn "could not classify the command — commit gate skipped; run the verify step before committing"
+[ "$GATED" = gated ] || exit 0
 
 STAMP_REL="$(rule_field "$ID" stamp)"; TRAIL="$(rule_field "$ID" trailDir)"; CUR_REL="$(rule_field "$ID" currentChange)"
 HASH_CMD=(); while IFS= read -r a; do [ -n "$a" ] && HASH_CMD+=("$a"); done < <(rule_array "$ID" hashCommand)

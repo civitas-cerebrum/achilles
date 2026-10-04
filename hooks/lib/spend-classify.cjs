@@ -5,10 +5,12 @@
 // then prints the first "what happened" sentence of a deny, or nothing. Exit 2 = the rule or the list is unusable
 // (the gate turns that into an allow-with-warning).
 //
-// Quote-aware: the command is split into segments at unquoted && || ; | & and newlines, and each segment into
-// tokens honouring '…', "…" and \ escapes. Each segment is judged on its own: <optInEnv>=1 as a leading assignment
-// of a `playwright test` / `npm run <spendScript>` segment, or <optInFlag> inside a <wrapper> segment, opts THAT
-// segment in — nothing in another segment counts (`export X=1; …` does not opt the next segment in).
+// Quote-aware via hooks/lib/shell-segments.cjs — the splitter this file used to own, now shared with
+// commit-classify.cjs so the two Bash-side gates read the same shell. The command is split into segments at
+// unquoted && || ; | & ( ) and newlines, and each segment into tokens honouring '…', "…" and \ escapes.
+// Each segment is judged on its own: <optInEnv>=1 as a leading assignment of a `playwright test` /
+// `npm run <spendScript>` segment, or <optInFlag> inside a <wrapper> segment, opts THAT segment in — nothing in
+// another segment counts (`export X=1; …` does not opt the next segment in).
 // Nested commands (one level): `bash|sh|zsh [-opts]c '<string>'` and `eval '<string>'` are classified as commands
 // of their own (the outer segment's leading assignments are inherited, as the shell would). A spec argument or
 // --project value that holds a shell expansion ($VAR, ${…}, $(…), `…`) cannot be judged → deny, asking for a
@@ -16,6 +18,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { segments, nestedCommand } = require('./shell-segments.cjs');
 const [command, root, cwd, rulesFile] = process.argv.slice(2);
 
 const fail = (msg) => { process.stderr.write(`${msg}\n`); process.exit(2); };
@@ -31,24 +34,6 @@ const envName = rule.optInEnv, flag = rule.optInFlag;
 const wrapper = rule.wrapper ? path.basename(rule.wrapper) : null;
 const spendProjects = new Set(rule.spendProjects ?? []);
 const spendScripts = new Set(rule.spendScripts ?? []);
-
-function segments(s) {
-  const segs = []; let toks = [], tok = '', has = false, q = null;
-  const endTok = () => { if (has) toks.push(tok); tok = ''; has = false; };
-  const endSeg = () => { endTok(); if (toks.length) segs.push(toks); toks = []; };
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (q === "'") { if (c === "'") q = null; else tok += c; continue; }
-    if (q === '"') { if (c === '"') q = null; else if (c === '\\' && i + 1 < s.length && '"\\$`'.includes(s[i + 1])) tok += s[++i]; else tok += c; continue; }
-    if (c === "'" || c === '"') { q = c; has = true; continue; }
-    if (c === '\\') { if (i + 1 < s.length) { if (s[i + 1] !== '\n') { tok += s[i + 1]; has = true; } i++; } continue; }
-    if (c === ';' || c === '|' || c === '&' || c === '\n') { endSeg(); continue; }
-    if (c === ' ' || c === '\t') { endTok(); continue; }
-    tok += c; has = true;
-  }
-  endSeg();
-  return segs;
-}
 
 // Playwright options that take a separate value (their value is never a file argument).
 const VALUE_OPTS = new Set(['-c', '--config', '-g', '--grep', '-G', '--grep-invert', '--project', '--reporter', '--output',
@@ -68,7 +53,6 @@ function normArg(a) {
 const hits = (a) => listed.filter((e) => e.includes(a) || a.includes(e));
 
 const say = (msg) => { console.log(msg); process.exit(0); };
-const SHELLS = /(^|\/)(bash|sh|zsh)$/;
 const EXPANSION = /\$|`/;
 
 function classify(cmd, depth, inherited) {
@@ -80,13 +64,10 @@ function classify(cmd, depth, inherited) {
     }
     const envOk = env[envName] === '1';
     const rest = toks.slice(i);
-    if (depth === 0 && rest.length > 1) {
-      // bash -c '<cmd>' / sh -lc "<cmd>" / zsh -c … : the first -…c… option takes the command string.
-      if (SHELLS.test(rest[0])) {
-        const ci = rest.findIndex((t, j) => j > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(t));
-        if (ci > 0 && rest[ci + 1] !== undefined) { classify(rest[ci + 1], depth + 1, env); continue; }
-      }
-      if (rest[0] === 'eval') { classify(rest.slice(1).join(' '), depth + 1, env); continue; }
+    if (depth === 0) {
+      // bash -c '<cmd>' / sh -lc "<cmd>" / zsh -c … / eval '<cmd>' — see shell-segments.cjs.
+      const inner = nestedCommand(rest);
+      if (inner !== null) { classify(inner, depth + 1, env); continue; }
     }
     let mode = null, args = [];
     const pw = rest.findIndex((t, j) => /(^|\/)playwright$/.test(t) && rest[j + 1] === 'test');
