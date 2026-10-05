@@ -15,9 +15,20 @@
 //
 // Source resolution: $KERNEL_MANDATE_SRC (a checkout of the canonical repo)
 // beats node_modules/@civitas-cerebrum/kernel-mandate. When neither exists
-// the script reports and exits 0 — a contributor without the dependency
-// installed must not be blocked, drift is caught wherever the
-// dependency IS present (prepack runs --check).
+// the script reports and exits 0.
+//
+// READ THAT AGAIN BEFORE RELYING ON --check FOR ANYTHING. This repo declares
+// @civitas-cerebrum/kernel-mandate in neither `dependencies` nor
+// `devDependencies` and is not going to, so node_modules never holds it:
+// unless a contributor exports $KERNEL_MANDATE_SRC by hand, resolveSource()
+// returns null and BOTH modes exit 0 having compared nothing. --check is
+// therefore a manual tool for whoever has the canonical checkout, not a gate.
+// It used to be wired into prepack, which made it look like one; it has been
+// removed from there, because a gate that passes vacuously everywhere is
+// worse than no gate. What does hold in CI is the inventory comparison in
+// scripts/lint-doc-drift.mjs, which needs no canonical source: it reads the
+// manifest and the ledger side by side and fails when their role sets or the
+// ledger's stated count disagree.
 //
 // NEVER edit the vendored files in this repo — edit upstream, then sync.
 
@@ -110,14 +121,20 @@ for (const [srcRel, dstRel] of targets) {
   }
 }
 
-// THE ROLE LEDGER IS DERIVED HERE, not hand-written. The QA mandate is a
-// machine artifact; the ledger is its human copy — the ten roles, what each
-// one is REFUSED, where work changes hands, the flowchart and the review
-// loops — and postinstall stages it beside the manifest so a project that
-// has an OS imposed on it also gets the page that explains it. Regenerating
-// it from the canonical CLI is the only way it cannot drift from the
-// manifest it claims to describe: nobody can improve it by hand, and a hand
-// edit shows up here as drift rather than surviving as fiction.
+// The role ledger is RE-DERIVED here when a canonical source is available.
+// The QA mandate is a machine artifact; the ledger is its human copy — the
+// roles, what each one is REFUSED, where work changes hands, the flowchart
+// and the review loops — and postinstall stages it beside the manifest so a
+// project that has an OS imposed on it also gets the page that explains it.
+// A fresh render is the only thing that can reproduce the sections that are
+// a cross-product of the role set, so this block overwrites the committed
+// ledger wholesale and that is intended.
+//
+// Without a canonical source none of this runs, so the committed ledger is
+// hand-maintained: its role inventory is the part a human can keep correct,
+// and lint-doc-drift's inventory check fails the build when it is not. Its
+// cross-product sections carry an in-place note saying which render they
+// came from, because nobody can honestly hand-write them.
 const LEDGER_REL = 'hooks/data/achilles-qa.kernel-mandate.md';
 const MANDATE_REL = 'hooks/data/achilles-qa.kernel-mandate.json';
 const WORKFLOW_REL = 'hooks/data/achilles-qa.workflow.json';
