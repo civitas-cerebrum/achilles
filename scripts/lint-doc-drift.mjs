@@ -248,21 +248,34 @@ function checkRoleMapCoverage() {
 // "Canonical reference" section can never satisfy it — the References must
 // live in the message-producing region (strings, heredocs, echo lines).
 // Every cited skills/….md or schemas/….json path (in ANY hook, emitting or
-// not) must resolve in the repo, so a skill rename cannot silently orphan a
-// hook's pointers.
+// not — including the vendored kernel) must resolve in the repo, so a skill
+// rename cannot silently orphan a hook's pointers.
 function checkHookReferences() {
   const detail = [];
-  // Vendored verbatim from @civitas-cerebrum/kernel-mandate by
-  // scripts/sync-kernel-mandate.mjs (--check fails CI on drift). Its deny
-  // messages cite the kernel's own docs, not this repo's methodology, and
-  // an edit here would be overwritten on the next sync — so the References
-  // convention is achilles' own hooks' to keep, and the wrapper that
-  // registers the kernel (achilles-kernel-activation-gate.sh) is held to it.
-  const VENDORED = new Set(['hooks/kernel-mandate-role-gate.sh']);
+  // hooks/kernel-mandate-role-gate.sh is vendored verbatim from
+  // @civitas-cerebrum/kernel-mandate, and the obvious justification for
+  // exempting it is not available: nothing in this repo keeps it in sync.
+  // That package appears in neither `dependencies` nor `devDependencies`,
+  // so scripts/sync-kernel-mandate.mjs finds no canonical source, prints
+  // "canonical source not found … — skipping" and exits 0 — under `--check`
+  // too. An edit to the vendored bytes would not be overwritten by the next
+  // sync; it would just never be noticed by anything.
+  //
+  // What survives is a narrower exemption, from the References requirement
+  // alone. A `References:` block points at THIS repo's methodology
+  // (skills/…/SKILL.md); the kernel's deny messages cite the kernel's own
+  // docs, which is the right pointer for a file achilles does not author.
+  // The wrapper that registers it, achilles-kernel-activation-gate.sh, IS
+  // achilles' own and is held to the convention.
+  //
+  // The other half of the check still applies to the vendored file, which is
+  // why it is no longer filtered out of the sweep entirely: every skills/ or
+  // schemas/ path it cites must resolve here, so renaming a skill in this
+  // repo cannot silently orphan the vendored kernel's pointers.
+  const REFERENCES_EXEMPT = new Set(['hooks/kernel-mandate-role-gate.sh']);
   const hooks = readdirSync('hooks')
     .filter((f) => f.endsWith('.sh'))
-    .map((f) => join('hooks', f))
-    .filter((h) => !VENDORED.has(h));
+    .map((f) => join('hooks', f));
 
   let emitters = 0;
   let citedPaths = 0;
@@ -282,6 +295,8 @@ function checkHookReferences() {
         detail.push(`${h}: cited path does not resolve: ${cited}`);
       }
     }
+
+    if (REFERENCES_EXEMPT.has(h)) continue;
 
     const emits = /permissionDecision|"decision"\s*:\s*"block"|systemMessage|^exit 2$/m.test(code);
     if (!emits) continue;
