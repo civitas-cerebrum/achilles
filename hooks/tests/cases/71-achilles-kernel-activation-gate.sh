@@ -53,18 +53,23 @@ section "kernel wiring: the role ledger ships and is staged beside the mandate"
 # ---------------------------------------------------------------------------
 # A manifest is the machine's copy of the QA operating system; nobody
 # reviews an OS by reading path globs. The ledger is the human copy — the
-# ten roles, what each is REFUSED, the handovers and the review loops —
-# rendered by `kernel-mandate doc` (npm run sync:kernel-mandate, which
-# fails on drift) and staged by postinstall beside the manifest it
-# describes. These assertions are about the two properties that make it
-# worth trusting: it ships, and it claims nothing the manifest does not.
+# twenty roles, what each is REFUSED, the handovers and the review loops —
+# staged by postinstall beside the manifest it describes. Upstream it is
+# rendered by `kernel-mandate doc`, but that CLI ships in
+# @civitas-cerebrum/kernel-mandate, which this repo does not depend on, so
+# `npm run sync:kernel-mandate --check` finds no canonical source and exits
+# 0 without checking anything. The role inventory is hand-maintained here
+# and held to the manifest by lint-doc-drift's role-inventory check; these
+# assertions are about the two properties that make it worth trusting: it
+# ships, and it claims nothing the manifest does not.
 LEDGER="$HOOK_DIR/data/achilles-qa.kernel-mandate.md"
 assert_eq "$([ -f "$LEDGER" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.kernel-mandate.md ships"
 for ROLE in orchestrator scaffolder test-composer in-flight-composer workflow-reviewer \
-            phase-validator process-validator batch-reviewer perf-reviewer selector-diff-validator; do
+            phase-validator process-validator batch-reviewer perf-reviewer selector-diff-validator \
+            probe reviewer phase1 phase2 phase4 stage2 cleanup companion fd contribution-handover; do
   assert_eq "$(grep -c "^### \`$ROLE\`" "$LEDGER")" "1" "ledger documents the $ROLE role exactly once"
 done
-assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "10" "every role carries a refusal list — the half a manifest states only by omission"
+assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "20" "every role carries a refusal list — the half a manifest states only by omission"
 assert_eq "$(grep -c '^## Handover contracts' "$LEDGER")" "1" "the ledger names the handover contracts"
 assert_eq "$(grep -c '^```mermaid' "$LEDGER")" "1" "the ledger carries the workflow flowchart"
 # The approver roles hold no shell. The ledger must SAY so, in the section
