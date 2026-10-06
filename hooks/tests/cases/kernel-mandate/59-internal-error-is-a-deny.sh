@@ -52,12 +52,16 @@ export KERNEL_MANDATE_MANIFEST="$PROJ56/.claude/kernel-mandate.json"
 mkdir -p "$R56/hooks"
 cp -r "$HOOK_DIR/lib" "$R56/hooks/lib"
 [ -d "$HOOK_DIR/bin" ] && cp -r "$HOOK_DIR/bin" "$R56/hooks/bin"
+# <src> <dst> <line> — copy src to dst with the unbound reference inserted
+# before <line>. awk, because `sed -i` and one-line `i text` are GNU-only.
+insert_unbound() {
+  awk -v n="$3" 'NR == n { print ": \"$KM_ROUND56_UNBOUND\"" } { print }' "$1" > "$2"
+}
 broken() {
   local re="$1" out="$R56/hooks/$2.sh" n
-  cp "$H" "$out"
-  n=$(grep -nE "$re" "$out" | head -1 | cut -d: -f1)
+  n=$(grep -nE "$re" "$H" | head -1 | cut -d: -f1)
   [ -n "$n" ] || { echo "broken(): no line matches $re" >&2; return 1; }
-  sed -i "$((n+1))i : \"\$KM_ROUND56_UNBOUND\"" "$out"
+  insert_unbound "$H" "$out" "$((n+1))"
   printf '%s' "$out"
 }
 p() { payload tool_name="${2:-Bash}" command="$1" cwd="$PROJ56"; }
@@ -88,10 +92,10 @@ case "$err" in *"INTERNAL ERROR"*) assert_eq 1 1 "R56 stderr still says INTERNAL
   *) assert_eq "$err" "…INTERNAL ERROR…" "R56 stderr still says INTERNAL ERROR for the operator" ;; esac
 
 # ── No jq dependency in the trap: break jq, verdict still renders ────
-B3="$R56/hooks/nojq.sh"; cp "$B1" "$B3"
+B3="$R56/hooks/nojq.sh"
 # Route the bundled jq lookup to a broken binary AFTER the manifest has
 # been parsed, by clobbering KM_JQ on the same line as the fault.
-sed -i 's|: "\$KM_ROUND56_UNBOUND"|KM_JQ=/nonexistent/jq; JQ=/nonexistent/jq; : "$KM_ROUND56_UNBOUND"|' "$B3"
+sed 's|: "\$KM_ROUND56_UNBOUND"|KM_JQ=/nonexistent/jq; JQ=/nonexistent/jq; : "$KM_ROUND56_UNBOUND"|' "$B1" > "$B3"
 out=$(p 'cat notes/canary.txt' | bash "$B3" 2>/dev/null); rc=$?
 assert_eq "$rc" "0" "R56 with jq unreachable at fault time, still exit 0"
 case "$out" in *'"permissionDecision":"deny"'*) assert_eq 1 1 "R56 ...and the deny JSON is still rendered (printf, not jq)" ;;
@@ -110,8 +114,8 @@ assert_deny "$H" "$(p 'cat notes/canary.txt')" \
 B4="$R56/hooks/inside-deny.sh"; cp "$H" "$B4"
 mkdir -p "$R56/hooks-deny"; cp "$B4" "$R56/hooks-deny/inside-deny.sh"; cp -r "$R56/hooks/lib" "$R56/hooks-deny/lib"
 [ -d "$R56/hooks/bin" ] && cp -r "$R56/hooks/bin" "$R56/hooks-deny/bin"
-n=$(grep -nE '^kernel_mandate_deny\(\) \{$' "$R56/hooks-deny/lib/kernel-mandate.sh" | head -1 | cut -d: -f1)
-sed -i "$((n+2))i : \"\$KM_ROUND56_UNBOUND\"" "$R56/hooks-deny/lib/kernel-mandate.sh"
+n=$(grep -nE '^kernel_mandate_deny\(\) \{$' "$HOOK_DIR/lib/kernel-mandate.sh" | head -1 | cut -d: -f1)
+insert_unbound "$HOOK_DIR/lib/kernel-mandate.sh" "$R56/hooks-deny/lib/kernel-mandate.sh" "$((n+2))"
 out=$(p 'cat notes/canary.txt' | bash "$R56/hooks-deny/inside-deny.sh" 2>/dev/null); rc=$?
 assert_eq "$rc" "0" "R56 a fault inside the deny path still exits 0"
 assert_eq "$(printf '%s' "$out" | grep -c permissionDecision)" "1" \

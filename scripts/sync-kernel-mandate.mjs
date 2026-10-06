@@ -130,6 +130,7 @@ const LEDGER_REL = 'hooks/data/achilles-qa.kernel-mandate.md';
 const MANDATE_REL = 'hooks/data/achilles-qa.kernel-mandate.json';
 const WORKFLOW_REL = 'hooks/data/achilles-qa.workflow.json';
 const kernelCli = join(SRC, 'bin/cli.mjs');
+const RENDER_BUDGET_MS = 60_000;
 if (existsSync(kernelCli) && existsSync(join(REPO_ROOT, MANDATE_REL))) {
   const tmp = join(REPO_ROOT, 'hooks/data/.achilles-qa.kernel-mandate.md.tmp');
   // Repo-RELATIVE paths, run from the repo root: the ledger names the files
@@ -137,8 +138,11 @@ if (existsSync(kernelCli) && existsSync(join(REPO_ROOT, MANDATE_REL))) {
   // home directory into a committed file and fail --check everywhere else.
   const r = spawnSync(process.execPath, [kernelCli, 'doc', MANDATE_REL,
     '--workflow', WORKFLOW_REL, '--out', 'hooks/data/.achilles-qa.kernel-mandate.md.tmp', '--quiet'],
-  { encoding: 'utf8', cwd: REPO_ROOT });
-  if (r.status !== 0) {
+  { encoding: 'utf8', cwd: REPO_ROOT, timeout: RENDER_BUDGET_MS, killSignal: 'SIGKILL' });
+  if (r.error?.code === 'ETIMEDOUT') {
+    rmSync(tmp, { force: true });
+    console.warn(`[sync-kernel-mandate] WARNING: role-ledger render exceeded ${RENDER_BUDGET_MS / 1000}s (upstream docCycles blowup); keeping the committed ledger.`);
+  } else if (r.status !== 0) {
     console.error(`[sync-kernel-mandate] could not render the role ledger: ${(r.stderr || r.stdout || '').trim().slice(0, 300)}`);
     drift++;
   } else {

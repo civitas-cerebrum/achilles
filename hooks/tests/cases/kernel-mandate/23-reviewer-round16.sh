@@ -142,7 +142,8 @@ assert_allow "$H" "$(bpay 'sed '"'"'/pattern/d'"'"' tests/a.txt')" \
   "calibration: a delete → ALLOW"
 assert_allow "$H" "$(bpay 'sed '"'"'y/abc/xyz/'"'"' tests/a.txt')" \
   "calibration: a transliteration, whose body holds letters → ALLOW"
-assert_allow "$H" "$(bpay 'sed -i '"'"'s/a/b/'"'"' tests/a.txt')" \
+SED_INPLACE='sed -i '"'"'s/a/b/'"'"' tests/a.txt'  # portable-ok: payload text, never executed
+assert_allow "$H" "$(bpay "$SED_INPLACE")" \
   "calibration: -i in-place, which the write axis governs separately → ALLOW"
 assert_allow "$H" "$(bpay 'grep -rn foo tests')" \
   "calibration: grep is untouched by any of this → ALLOW"
@@ -171,7 +172,9 @@ assert_deny "$H" "$(bpay 'awk -l filefuncs '"'"'BEGIN{x=1}'"'"'')" \
   "self-probe the -l flag form → DENY" "run a command or open a file"
 assert_deny "$H" "$(bpay 'awk '"'"'@include "other.awk"; BEGIN{x=1}'"'"'')" \
   "self-probe @include pulls in unscreened source → DENY" "run a command or open a file"
-assert_deny "$H" "$(bpay 'awk '"'"'BEGIN{extension("x","y")}'"'"'')" \
+# In a variable: bash 3.2 brace-expands {…,…} inside "$(… '…' …)".
+AWK_EXT='awk '"'"'BEGIN{extension("x","y")}'"'"''
+assert_deny "$H" "$(bpay "$AWK_EXT")" \
   "self-probe the extension() builtin → DENY" "run a command or open a file"
 
 # gawk and GNU sed both ship --sandbox, which disables these constructs

@@ -53,7 +53,7 @@ assert_deny "$H" "$(b 'echo "# pwned" > .claude/agents/judge.md')"        "R57 b
 assert_deny "$H" "$(b 'cp /tmp/x.md .claude/agents/judge.md')"            "R57 bash cp over an agent def → DENY" "kernel mandate itself"
 assert_deny "$H" "$(b 'rm -rf .claude/agents')"                           "R57 bash rm of the agents dir → DENY" "kernel mandate itself"
 assert_deny "$H" "$(b 'echo "{}" > .mcp.json')"                           "R57 bash redirect into .mcp.json → DENY" "kernel mandate itself"
-assert_deny "$H" "$(b 'sed -i s/a/b/ .mcp.json')"                         "R57 bash sed -i on .mcp.json → DENY" "kernel mandate itself"
+assert_deny "$H" "$(b 'sed -i s/a/b/ .mcp.json')"                         "R57 bash sed -i on .mcp.json → DENY" "kernel mandate itself"  # portable-ok: payload text, never executed
 assert_deny "$H" "$(b 'tee .mcp.json < /dev/null')"                       "R57 bash tee into .mcp.json → DENY" "kernel mandate itself"
 
 # ── Calibration: reading them is ordinary; lookalikes are not them ───

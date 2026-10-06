@@ -534,6 +534,23 @@ The manifest, .claude/kernel-mandate.state/, and the project's .claude/settings*
 NORM_MANIFEST="$(kernel_mandate_normalize_path "$KM_MANIFEST")"
 NORM_STATE_DIR="$(kernel_mandate_normalize_path "$KM_STATE_DIR")"
 
+# deny_unscreened <log-key> <what was being screened> <context line>
+# A text tool inside a screen failed. Its output would be empty or
+# partial, and an empty list of imports or segments checks nothing, so
+# the call is refused rather than passed on unscreened.
+deny_unscreened() {
+  kernel_mandate_deny "$1" "[BLOCKED] kernel-mandate could not screen $2 (a text tool failed). Refusing rather than allowing it unscreened.
+
+${ROLE_HEADER}
+$3
+
+Retry the call. If it fails again, the host's sed, awk, grep, sort or perl is not behaving as the kernel expects; report it with the output of: uname -sr; command -v sed awk grep sort perl"
+}
+
+deny_unscreened_targets() {
+  deny_unscreened "bash-write-target-screen" "this command's write targets" "Command: ${CMD}"
+}
+
 # kernel_mandate_self_protect <path> <log-prefix>
 # Refuses a write to the kernel mandate itself: the manifest, the state
 # directory, this project's .claude config and hooks, and the installed
@@ -798,7 +815,11 @@ case "$KM_TOOL" in
       # — which is the same command as the denied one, spelled the way
       # anyone writes a long command line. Two spellings of one act, one
       # checked, in the fix for two spellings of one act.
-      __psegs=$(printf '%s' "$CMD" | tr -d "\"'" | sed -E ':a;/\\$/{N;s/\\\n//;ba}' | sed -E 's/[;&|]+/\n/g')
+      if ! __psegs=$(printf '%s' "$CMD" | tr -d "\"'" \
+        | awk '{ if (sub(/\\$/, "")) { printf "%s", $0; held = 1 } else { print; held = 0 } } END { if (held) print "\\" }' \
+        | awk '{ gsub(/[;&|]+/, "\n"); print }'); then
+        deny_unscreened "bash-self-protect-screen" "this command's operands" "Command: ${CMD}"
+      fi
       while IFS= read -r __pseg; do
         [ -n "$__pseg" ] || continue
         # shellcheck disable=SC2206
@@ -1056,7 +1077,7 @@ This is a table of names, so it is a floor rather than a boundary. The boundary 
     *.*) return 0 ;;
     *) : ;;
   esac
-  local CAPS_ALLOW CODE_N CAP_ID CAP_WHAT LOAD FS_METHODS
+  local CAPS_ALLOW CODE_N CODE_C CAP_ID CAP_WHAT LOAD FS_METHODS
   CAPS_ALLOW=$(kernel_mandate_role_field "$ROLE" '.write.codeCapabilities')
   CAP_ID=""; CAP_WHAT=""
   # Normalise the forms a module name can be written in before matching,
@@ -1095,6 +1116,10 @@ This is a table of names, so it is a floor rather than a boundary. The boundary 
   # BEFORE the comment forms makes a comment marker inside a literal stay
   # literal, which is what a lexer would do. Regex literals remain
   # ambiguous with division, as they are for every non-parsing tool.
+  # Each stage of this view denies when its tool fails: the raw code
+  # would otherwise be screened with its comments in place, and
+  # `require/*x*/("child_process")` passes a screen that expects only
+  # spaces between the keyword and its argument.
   CODE_N=$(printf '%s' "$code" | perl -0777 -pe '
       s{ ("(?:\\.|[^"\\])*")
        | (\x27(?:\\.|[^\x27\\])*\x27)
@@ -1104,7 +1129,8 @@ This is a table of names, so it is a floor rather than a boundary. The boundary 
        | (//[^\n]*)
        }{ (defined($1) || defined($2) || defined($3) || defined($4)) ? $& : " " }gsex;
       s{\b(require|import)\s*\(\s*}{$1(}gs;
-      s{\bfrom\s*(["\x27])}{from $1}gs' 2>/dev/null || printf '%s' "$code")
+      s{\bfrom\s*(["\x27])}{from $1}gs' 2>/dev/null) \
+    || deny_unscreened "write-code-import-screen $rel" "this file's imports" "File: $rel${via}"
   # A SECOND view, stripping comment shapes unconditionally, is appended
   # and screened alongside. The two views disagree on purpose, because
   # the two authoring channels disagree: when code arrives through Bash
@@ -1114,17 +1140,19 @@ This is a table of names, so it is a floor rather than a boundary. The boundary 
   # in either framing fires. It cannot add a false positive that the
   # lexer view avoids — stripping only ever removes text, and it removes
   # it to a space, so no two fragments can fuse into a match.
-  CODE_N="$CODE_N
-$(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^\n]*}{$1}g;
+  CODE_C=$(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^\n]*}{$1}g;
       s{\b(require|import)\s*\(\s*}{$1(}gs;
-      s{\bfrom\s*(["\x27])}{from $1}gs' 2>/dev/null || true)"
+      s{\bfrom\s*(["\x27])}{from $1}gs' 2>/dev/null) \
+    || deny_unscreened "write-code-import-screen $rel" "this file's imports" "File: $rel${via}"
+  CODE_N="$CODE_N
+$CODE_C"
   CODE_N=$(printf '%s' "$CODE_N" \
     | sed -E 's/\\"/"/g; s/\\'"'"'/'"'"'/g' \
     | tr '\140' '"' \
     | sed -E "s/'/\"/g; s/[[:space:]]*\+[[:space:]]*\"\"//g; s/\"[[:space:]]*\+[[:space:]]*\"//g; s/node:/ /g" \
     | perl -pe 's/\\x\{?([0-9a-fA-F]{2})\}?/chr(hex($1))/ge; s/\\u\{?([0-9a-fA-F]{4})\}?/chr(hex($1))/ge; s/\\([0-7]{1,3})/chr(oct($1))/ge' 2>/dev/null \
-    | sed -E "s/[[:space:]]+/ /g")
-  [ -n "$CODE_N" ] || CODE_N="$code"
+    | sed -E "s/[[:space:]]+/ /g") \
+    || deny_unscreened "write-code-import-screen $rel" "this file's imports" "File: $rel${via}"
   # Any module-loading call at all — static import, require, dynamic
   # import(), createRequire, or the builtin-module accessors — followed
   # by the capability name. Every way a module can be reached, including
@@ -1752,8 +1780,16 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
   # still refuses that for the calls it knows. That is a real limit and
   # the docs state it rather than implying the surface is closed.
   if [ -z "$CAP_ID" ]; then
-    local url_scope url_lit url_auth url_row url_ctx url_near
+    local url_scope url_lit url_auth url_rows url_row url_ctx url_near
     url_scope=$(kernel_mandate_role_field "$ROLE" '.network.allow')
+    url_rows=$(printf '%s' "$CODE_N" | perl -ne '
+      while (/"[[:space:]]*((?:[a-zA-Z][a-zA-Z0-9+.-]*:\/\/|stun:|stuns:|turn:|turns:)[^"]*)"/g) {
+        my $u = $1; my $ctx = substr($_, 0, pos($_));
+        $ctx = substr($ctx, -140) if length($ctx) > 140;
+        $ctx =~ s/[\t\n]/ /g; $u =~ s/[[:space:]]+$//;
+        print "$ctx\t$u\n";
+      }' 2>/dev/null) \
+      || deny_unscreened "write-code-network-screen $rel" "this file's network destinations" "File: $rel${via}"
     while IFS= read -r url_row; do
       [ -n "$url_row" ] || continue
       # A URL A TEST ASSERTS ON, OR BLOCKS, IS NOT A URL IT DIALS.
@@ -1820,13 +1856,7 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
     # positive this branch was fixed for. Leading and trailing space are
     # allowed inside the quotes, because `fetch(" http://evil/x".trim())`
     # is a destination with a space in front of it and nothing else.
-    done < <(printf '%s' "$CODE_N" | perl -ne '
-      while (/"[[:space:]]*((?:[a-zA-Z][a-zA-Z0-9+.-]*:\/\/|stun:|stuns:|turn:|turns:)[^"]*)"/g) {
-        my $u = $1; my $ctx = substr($_, 0, pos($_));
-        $ctx = substr($ctx, -140) if length($ctx) > 140;
-        $ctx =~ s/[\t\n]/ /g; $u =~ s/[[:space:]]+$//;
-        print "$ctx\t$u\n";
-      }' 2>/dev/null)
+    done <<< "$url_rows"
   fi
   # CONFIGURATION THAT IS A COMMAND. Round 25's finding, and the one
   # that says the most about what this screen is: every branch above
@@ -2070,6 +2100,62 @@ $(printf '%s' "$code" | perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{(^|[^:"\x27\\])//[^
         s{("(?:\\.|[^"\\])*")}{ my $s = $1; ($` =~ /(?:\bfrom|\brequire\s*\(|\bimport\s*\(|\bimport)\s*$/s) ? $s : q{""} }ge
       ' 2>/dev/null || printf '%s' "$CODE_N")
     [ -n "$CODE_IMP" ] || CODE_IMP="$CODE_N"
+    # `from "x"` is only an import when a STATEMENT said so — matching it
+    # anywhere denied a spec for a package name inside a string literal.
+    # But anchoring that statement to the start of a LINE was wrong in
+    # the other direction, and it was a regression: Prettier's default
+    # formatting puts the specifier on a different line from its `import`
+    # keyword, and on the Bash authoring channel the statement never
+    # starts a line at all. Round 6 caught both; anchoring lost them.
+    #
+    # So statements are re-derived instead of assumed: the text is
+    # normalised to one line, then split BEFORE every `import`/`export`/
+    # `require` keyword, so each fragment begins with the keyword that
+    # owns the specifier wherever a formatter put it. `import type` is
+    # erased at compile time — it imports nothing at run time — so it is
+    # dropped rather than held to a runtime list.
+    #
+    # A `..` TAIL SURVIVES THE PACKAGE-NAME REDUCTION, AND THE LOADER
+    # FOLLOWS IT. The reduction takes a specifier down to its package
+    # name for the allowlist and throws away everything after it, so:
+    #
+    #   require("dotenv")                                        DENY
+    #   require("@civitas-cerebrum/element-interactions/../../dotenv")
+    #                                                            ALLOW
+    #
+    # — matched as the declared `@civitas-cerebrum/element-interactions`
+    # while Node resolves the whole string out of the package and into
+    # any installed module. Round 51 used it to re-open round 6's
+    # `dotenv` escape verbatim against the bench composer: all three
+    # planted secrets, no obfuscation, one line. Round 25's relative
+    # specifier check never fires, because `/^[.\/]/b` only catches a
+    # specifier that literally STARTS with `.` or `/`, and this one
+    # starts with `@`.
+    #
+    # A specifier carrying a `..` segment is left WHOLE, so it fails the
+    # allowlist as the string it actually is. No legitimate package
+    # subpath needs to climb out of its own package — and a rule that
+    # reduced it to something safer would be making the same mistake
+    # again, one level down.
+    #
+    # A text tool that fails here would yield an empty list, and an empty
+    # list allows every package. grep's "no match" (exit 1) is an empty
+    # list legitimately (kernel_mandate_grep_or_empty); any other failure denies.
+    local import_specs
+    if ! import_specs=$(printf '%s' "$CODE_IMP" | tr '\n' ' ' | tr ';' '\n' \
+      | awk '{ out = ""; s = $0
+               while (match(s, /[^A-Za-z0-9_$](import|export|require)[^A-Za-z0-9_$]/)) {
+                 out = out substr(s, 1, RSTART) "\n" substr(s, RSTART + 1, RLENGTH - 1)
+                 s = substr(s, RSTART + RLENGTH)
+               }
+               print out s }' \
+      | kernel_mandate_grep_or_empty -vE '^[[:space:]]*(import|export)[[:space:]]+type[[:space:]]' \
+      | kernel_mandate_grep_or_empty -oE '(^|[^A-Za-z0-9_$])(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|^[[:space:]]*(import|export)[^";]*from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]*"[^"]+"' 2>/dev/null \
+      | sed -E 's/.*"([^"]+)".*/\1/' \
+      | sed -E -e '/^[.\/]/b' -e '/(^|\/)\.\.(\/|$)/b' -e 's|^(@[^/]+/[^/]+).*|\1|' -e 't' -e 's|^([^/]+)/.*|\1|' \
+      | sort -u); then
+      deny_unscreened "write-code-import-screen $rel" "this file's imports" "File: $rel${via}"
+    fi
     while IFS= read -r spec; do
       [ -n "$spec" ] || continue
       case "$spec" in '') continue ;; esac
@@ -2154,49 +2240,7 @@ Options, narrowest first:
 
 Preview before committing: kernel-mandate explain --role ${ROLE} --tool Write --path <file> --content '<code>'"
       fi
-    # `from "x"` is only an import when a STATEMENT said so — matching it
-    # anywhere denied a spec for a package name inside a string literal.
-    # But anchoring that statement to the start of a LINE was wrong in
-    # the other direction, and it was a regression: Prettier's default
-    # formatting puts the specifier on a different line from its `import`
-    # keyword, and on the Bash authoring channel the statement never
-    # starts a line at all. Round 6 caught both; anchoring lost them.
-    #
-    # So statements are re-derived instead of assumed: the text is
-    # normalised to one line, then split BEFORE every `import`/`export`/
-    # `require` keyword, so each fragment begins with the keyword that
-    # owns the specifier wherever a formatter put it. `import type` is
-    # erased at compile time — it imports nothing at run time — so it is
-    # dropped rather than held to a runtime list.
-    #
-    # A `..` TAIL SURVIVES THE PACKAGE-NAME REDUCTION, AND THE LOADER
-    # FOLLOWS IT. The reduction takes a specifier down to its package
-    # name for the allowlist and throws away everything after it, so:
-    #
-    #   require("dotenv")                                        DENY
-    #   require("@civitas-cerebrum/element-interactions/../../dotenv")
-    #                                                            ALLOW
-    #
-    # — matched as the declared `@civitas-cerebrum/element-interactions`
-    # while Node resolves the whole string out of the package and into
-    # any installed module. Round 51 used it to re-open round 6's
-    # `dotenv` escape verbatim against the bench composer: all three
-    # planted secrets, no obfuscation, one line. Round 25's relative
-    # specifier check never fires, because `/^[.\/]/b` only catches a
-    # specifier that literally STARTS with `.` or `/`, and this one
-    # starts with `@`.
-    #
-    # A specifier carrying a `..` segment is left WHOLE, so it fails the
-    # allowlist as the string it actually is. No legitimate package
-    # subpath needs to climb out of its own package — and a rule that
-    # reduced it to something safer would be making the same mistake
-    # again, one level down.
-    done < <(printf '%s' "$CODE_IMP" | tr '\n' ' ' | tr ';' '\n' \
-      | sed -E 's/([^A-Za-z0-9_$])(import|export|require)([^A-Za-z0-9_$])/\1\n\2\3/g' \
-      | grep -vE '^[[:space:]]*(import|export)[[:space:]]+type[[:space:]]' \
-      | grep -oE '(^|[^A-Za-z0-9_$])(require|import)[[:space:]]*\([[:space:]]*"[^"]+"|^[[:space:]]*(import|export)[^";]*from[[:space:]]*"[^"]+"|^[[:space:]]*import[[:space:]]*"[^"]+"' 2>/dev/null \
-      | sed -E 's/.*"([^"]+)".*/\1/' \
-      | sed -E '/^[.\/]/b; /(^|\/)\.\.(\/|$)/b; s|^(@[^/]+/[^/]+).*|\1|; t; s|^([^/]+)/.*|\1|' | sort -u)
+    done <<< "$import_specs"
   fi
 
   [ -n "$CAP_ID" ] || return 0
@@ -2275,7 +2319,8 @@ Preview before committing: kernel-mandate explain --role ${ROLE} --tool Write --
 screen_env_assignments() {
   local sa_seg="$1" sa_list sa_a sa_name sa_why
   sa_list=$(printf '%s' "$sa_seg" | sed -E 's/^[[:space:]({]+//' \
-    | grep -oE '^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*[[:space:]]+)+' 2>/dev/null || true)
+    | kernel_mandate_grep_or_empty -oE '^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]<>|&]*[[:space:]]+)+' 2>/dev/null) \
+    || deny_unscreened "bash-env-screen" "this command's leading assignments" "Segment: ${sa_seg}"
   [ -n "$sa_list" ] || return 0
   for sa_a in $sa_list; do
     sa_name="${sa_a%%=*}"
@@ -2374,7 +2419,9 @@ Fix the manifest in an operator design session — until then this role can run 
   # Mask fd-plumbing (2>&1, >/dev/null, …) BEFORE segmentation so a
   # lone '&' separator can be split on without shredding '2>&1', and so
   # redirect analysis below only ever sees real file targets.
-  CLEAN=$(printf '%s' "$CMD" | sed -E 's/[0-9]*>&[0-9-]+//g; s/[0-9&]*>>?[[:space:]]*\/dev\/(null|stderr|stdout|tty)//g')
+  if ! CLEAN=$(printf '%s' "$CMD" | sed -E 's/[0-9]*>&[0-9-]+//g; s/[0-9&]*>>?[[:space:]]*\/dev\/(null|stderr|stdout|tty)//g'); then
+    deny_unscreened "bash-clean-screen" "this command" "Command: ${CMD}"
+  fi
 
   # Split on every command separator — newline (multi-line commands
   # arrive verbatim), && || ; | and the single '&' (background). Then
@@ -2404,8 +2451,20 @@ Command: ${CMD}
 Everything after an unclosed quote reads as string rather than syntax, so the kernel cannot tell which parts are commands and which are text. A shell would refuse this command too. Close the quote and send it again."
   fi
 
-  SEGMENTS=$(printf '%s' "$CLEAN" | kernel_mandate_unquoted_view split \
-    | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g' -e 's/&/\n/g')
+  if ! SEGMENTS=$(printf '%s' "$CLEAN" | kernel_mandate_unquoted_view split \
+    | awk '{ gsub(/&&|\|\||[;|&]/, "\n"); print }'); then
+    deny_unscreened "bash-segment-screen" "this command's segments" "Command: ${CMD}"
+  fi
+  # A command with words in it yields at least one segment. None means a
+  # stage above returned nothing while exiting 0, and nothing is checked.
+  # Pure shell patterns, so this check has no tool of its own to fail.
+  case "$CMD" in
+    *[!\;\&\|[:space:]]*)
+      case "$SEGMENTS" in
+        *[![:space:]]*) ;;
+        *) deny_unscreened "bash-segment-empty" "this command's segments" "Command: ${CMD}" ;;
+      esac ;;
+  esac
   while IFS= read -r seg; do
     # Keep the untouched segment: the normalisation below strips trailing
     # grouping punctuation, which would silently REMOVE the closing brace
@@ -2672,7 +2731,7 @@ A role's read and write scopes are relative to the project it is governed in. Ru
           GIT_CONSTRAINED=1
           kernel_mandate_is_manifest_path "$__p" && continue
           GIT_REL=$(kernel_mandate_relpath "$__p")
-          if [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$GIT_REL" "$READ_DENY"; then :
+          if [ "$READ_DENY" != "null" ] && kernel_mandate_path_denied "$GIT_REL" "$__p" "$READ_DENY"; then :
           elif kernel_mandate_path_in_scope "$GIT_REL" "$READ_ALLOW"; then continue
           elif [ "$HAS_WRITE_GRANTS" = "1" ] && kernel_mandate_path_in_scope "$GIT_REL" "$WRITE_ALLOW"; then continue
           fi
@@ -2935,8 +2994,9 @@ Note: compound commands are checked segment-by-segment (&&, ||, ;, |, &, newline
     # (`<<`/`<<<` are here-docs/here-strings: their operand is inline
     # text, not a path, so only a single `<` is treated as a file read.)
     if [ "$READ_ALLOW" != "null" ]; then
-      IN_TARGETS=$(printf '%s' "$SEG_REDIR" | grep -oE '(^|[^<])<[[:space:]]*[^[:space:]<>;&|]+' 2>/dev/null \
-        | sed -E 's/^[^<]?<[[:space:]]*//' || true)
+      IN_TARGETS=$(printf '%s' "$SEG_REDIR" | kernel_mandate_grep_or_empty -oE '(^|[^<])<[[:space:]]*[^[:space:]<>;&|]+' 2>/dev/null \
+        | sed -E 's/^[^<]?<[[:space:]]*//') \
+        || deny_unscreened "bash-read-target-screen" "this command's input redirections" "Command: ${CMD}"
       while IFS= read -r intarget; do
         [ -n "$intarget" ] || continue
         intarget=$(printf '%s' "$intarget" | tr -d '"'"'" | tr -d '\001')
@@ -2944,7 +3004,7 @@ Note: compound commands are checked segment-by-segment (&&, ||, ;, |, &, newline
         case "$intarget" in *://*) continue ;; esac
         kernel_mandate_is_manifest_path "$intarget" && continue
         REL_IN=$(kernel_mandate_relpath "$intarget")
-        if { [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$REL_IN" "$READ_DENY"; } \
+        if { [ "$READ_DENY" != "null" ] && kernel_mandate_path_denied "$REL_IN" "$intarget" "$READ_DENY"; } \
            || { ! kernel_mandate_path_in_scope "$REL_IN" "$READ_ALLOW" \
                 && { [ "$HAS_WRITE_GRANTS" != "1" ] || ! kernel_mandate_path_in_scope "$REL_IN" "$WRITE_ALLOW"; }; }; then
           kernel_mandate_deny "bash-input-redirect-out-of-scope $REL_IN" "[BLOCKED] Role '${ROLE}' may not read '$REL_IN' — this command redirects it onto a command's standard input, and input redirection is held to the same read scope as naming the file.
@@ -2962,9 +3022,10 @@ Command: ${CMD}"
     # may not perform it at all, and a role WITH write grants may only
     # aim it inside its write scope — bash must not launder writes past
     # the Write/Edit axis for anyone.
-    REDIR_TARGETS=$(printf '%s' "$SEG_REDIR" | grep -oE '>>?[[:space:]]*[^[:space:]<>;&]+' 2>/dev/null | sed -E 's/^>>?[[:space:]]*//' || true)
+    REDIR_TARGETS=$(printf '%s' "$SEG_REDIR" | kernel_mandate_grep_or_empty -oE '>>?[[:space:]]*[^[:space:]<>;&]+' 2>/dev/null | sed -E 's/^>>?[[:space:]]*//') \
+      || deny_unscreened_targets
     if [ "${SEG_WORDS[0]:-}" = "tee" ]; then
-      TEE_TARGETS=$(printf '%s\n' "${SEG_WORDS[@]:1}" | grep -vE '^-' || true)
+      TEE_TARGETS=$(printf '%s\n' "${SEG_WORDS[@]:1}" | kernel_mandate_grep_or_empty -vE '^-') || deny_unscreened_targets
       REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$TEE_TARGETS")
     fi
     # Redirection is not the only way a command writes. `cp a b`,
@@ -3182,28 +3243,30 @@ Command: ${CMD}"
     # so the ordinary write-scope and self-protection machinery decides
     # it. `%output{>>path}` appends; the redirection marker is stripped
     # so the path is judged, not the spelling.
-    if printf '%s' "$CMD" | grep -q '%output{'; then
+    if [[ "$CMD" == *'%output{'* ]]; then
+      __ots=$(printf '%s' "$CMD" | kernel_mandate_grep_or_empty -oE '%output\{[^}]*\}' | sed -E 's/^%output\{//; s/\}$//') \
+        || deny_unscreened_targets
       while IFS= read -r __ot; do
         [ -n "$__ot" ] || continue
         __ot="${__ot#>}"; __ot="${__ot#>}"
         [ -n "$__ot" ] && FLAG_TARGETS="${FLAG_TARGETS}${__ot}"$'\n'
-      done < <(printf '%s' "$CMD" | grep -oE '%output\{[^}]*\}' | sed -E 's/^%output\{//; s/\}$//')
+      done <<< "$__ots"
     fi
     [ -n "$FLAG_TARGETS" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$FLAG_TARGETS")
 
-    WRITE_VERB=$(printf '%s' "$seg" | sed -E 's/^([a-z0-9_.\/-]*\/)?([a-z0-9_-]+).*/\2/')
+    WRITE_VERB=$(printf '%s' "$seg" | sed -E 's/^([a-z0-9_.\/-]*\/)?([a-z0-9_-]+).*/\2/') || deny_unscreened_targets
     case "$WRITE_VERB" in
       cp|mv|install|rsync|ln)
         # Destination is the last non-flag operand.
-        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' | tail -n1 || true)
+        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | kernel_mandate_grep_or_empty -vE '^-' | kernel_mandate_grep_or_empty -v '^$' | tail -n1) || deny_unscreened_targets
         [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         ;;
       dd)
-        DEST=$(printf '%s' "$seg" | grep -oE '(^|[[:space:]])of=[^[:space:]]+' | sed -E 's/.*of=//' || true)
+        DEST=$(printf '%s' "$seg" | kernel_mandate_grep_or_empty -oE '(^|[[:space:]])of=[^[:space:]]+' | sed -E 's/.*of=//') || deny_unscreened_targets
         [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         ;;
       truncate|shred|touch|chmod|chown)
-        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' || true)
+        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | kernel_mandate_grep_or_empty -vE '^-' | kernel_mandate_grep_or_empty -v '^$') || deny_unscreened_targets
         [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         ;;
       rm|rmdir|unlink)
@@ -3218,13 +3281,17 @@ Command: ${CMD}"
         # all. Every non-flag operand is a target; `--` and `-rf` are
         # flags and drop out, and each survivor is checked against write
         # scope exactly like a redirect destination.
-        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' || true)
+        DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | kernel_mandate_grep_or_empty -vE '^-' | kernel_mandate_grep_or_empty -v '^$') || deny_unscreened_targets
         [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         ;;
       sed|perl|ruby)
         # In-place editing rewrites every file operand.
-        if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])-[a-zA-Z]*i([[:space:]]|$|\.)'; then
-          DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | grep -vE '^-' | grep -v '^$' | tail -n +2 || true)
+        # bash's own regex, so the detection has no tool to fail; the
+        # pattern sits in a variable because bash 3.2 reads it differently
+        # when written inline.
+        __inplace_re='[[:space:]]-[a-zA-Z]*i([[:space:]]|$|\.)'
+        if [[ " $seg" =~ $__inplace_re ]]; then
+          DEST=$(printf '%s' "$seg" | tr ' ' '\n' | tail -n +2 | kernel_mandate_grep_or_empty -vE '^-' | kernel_mandate_grep_or_empty -v '^$' | tail -n +2) || deny_unscreened_targets
           [ -n "$DEST" ] && REDIR_TARGETS=$(printf '%s\n%s' "$REDIR_TARGETS" "$DEST")
         fi
         ;;
@@ -3375,7 +3442,7 @@ Command: ${CMD}
 Drop the redirection (pipe to your own context instead of a file), or hand the write to the role that owns the target path."
       fi
       REL_TARGET=$(kernel_mandate_relpath "$target")
-      if { [ "$WRITE_DENY" != "null" ] && kernel_mandate_path_in_scope "$REL_TARGET" "$WRITE_DENY"; } \
+      if { [ "$WRITE_DENY" != "null" ] && kernel_mandate_path_denied "$REL_TARGET" "$target" "$WRITE_DENY"; } \
          || ! kernel_mandate_path_in_scope "$REL_TARGET" "$WRITE_ALLOW"; then
         kernel_mandate_deny "bash-redirect-out-of-scope $REL_TARGET" "[BLOCKED] Role '${ROLE}' may not redirect output into '$REL_TARGET' — it is outside the role's write scope.
 
@@ -3564,8 +3631,9 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
       case "${SEG_WORDS[0]:-}" in
         jq|gojq|jaq)
           JQ_MODS=$(printf '%s\n' "${SEG_WORDS[@]}" \
-            | grep -oE '(import|include)[[:space:]]*"[^"]*"' 2>/dev/null \
-            | sed 's/.*"\([^"]*\)"/\1/' || true)
+            | kernel_mandate_grep_or_empty -oE '(import|include)[[:space:]]*"[^"]*"' 2>/dev/null \
+            | sed 's/.*"\([^"]*\)"/\1/') \
+            || deny_unscreened "bash-jq-module-screen" "this command's jq modules" "Command: ${CMD}"
           if [ -n "$JQ_MODS" ]; then
             JQ_BASES=("$KM_CWD")
             __skip_next=0
@@ -3584,7 +3652,7 @@ Shell redirection is held to the same write scope as the Write/Edit tools."
                   [ -f "$__cand" ] || continue
                   kernel_mandate_is_manifest_path "$__cand" && continue
                   __rel=$(kernel_mandate_relpath "$__cand")
-                  if [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$__rel" "$READ_DENY"; then :
+                  if [ "$READ_DENY" != "null" ] && kernel_mandate_path_denied "$__rel" "$__cand" "$READ_DENY"; then :
                   elif kernel_mandate_path_in_scope "$__rel" "$READ_ALLOW"; then continue
                   elif [ "$HAS_WRITE_GRANTS" = "1" ] && kernel_mandate_path_in_scope "$__rel" "$WRITE_ALLOW"; then continue
                   fi
@@ -3805,7 +3873,7 @@ Write the path literally (relative to the project root) so it can be scope-check
           kernel_mandate_is_manifest_path "$m" && continue
           REL_M=$(kernel_mandate_relpath "$m")
           DENIED_READ=0
-          if [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$REL_M" "$READ_DENY"; then
+          if [ "$READ_DENY" != "null" ] && kernel_mandate_path_denied "$REL_M" "$m" "$READ_DENY"; then
             DENIED_READ=1
           elif kernel_mandate_path_in_scope "$REL_M" "$READ_ALLOW"; then
             continue
@@ -3877,7 +3945,7 @@ Bash file access is held to the same read scope as the Read tool — the scope i
           CWD_REL=$(kernel_mandate_relpath "$KM_CWD")
           [ -n "$CWD_REL" ] || CWD_REL="."
           CWD_OK=0
-          if [ "$READ_DENY" != "null" ] && kernel_mandate_path_in_scope "$CWD_REL" "$READ_DENY"; then CWD_OK=0
+          if [ "$READ_DENY" != "null" ] && kernel_mandate_path_denied "$CWD_REL" "$KM_CWD" "$READ_DENY"; then CWD_OK=0
           elif kernel_mandate_path_in_scope "$CWD_REL" "$READ_ALLOW"; then CWD_OK=1
           elif [ "$HAS_WRITE_GRANTS" = "1" ] && kernel_mandate_path_in_scope "$CWD_REL" "$WRITE_ALLOW"; then CWD_OK=1
           fi
@@ -4248,12 +4316,13 @@ If this role genuinely needs its own runner configuration, the operator owns tha
 fi
 # --- Axis 4: read scope --------------------------------------------------
 check_path_scope() {
-  # check_path_scope <axis:read|write> <rel-path> <verb-for-message>
-  local axis="$1" rel="$2" verb="$3" allow deny
+  # check_path_scope <axis:read|write> <path> <verb-for-message>
+  local axis="$1" path="$2" verb="$3" rel allow deny
+  rel=$(kernel_mandate_relpath "$path")
   allow=$(kernel_mandate_role_field "$ROLE" ".${axis}.allow")
   deny=$(kernel_mandate_role_field "$ROLE" ".${axis}.deny")
 
-  if [ "$deny" != "null" ] && kernel_mandate_path_in_scope "$rel" "$deny"; then
+  if [ "$deny" != "null" ] && kernel_mandate_path_denied "$rel" "$path" "$deny"; then
     kernel_mandate_deny "${axis}-deny $rel" "[BLOCKED] Role '${ROLE}' is explicitly denied ${verb} '$rel'.
 
 ${ROLE_HEADER}"
@@ -4288,7 +4357,7 @@ case "$KM_TOOL" in
     # it is the law the role is being held to (writes stay locked by the
     # self-protection axis).
     if [ -n "$TARGET" ] && ! kernel_mandate_is_manifest_path "$TARGET"; then
-      check_path_scope read "$(kernel_mandate_relpath "$TARGET")" "read"
+      check_path_scope read "$TARGET" "read"
     fi
     ;;
   WebFetch|WebSearch)
@@ -4345,9 +4414,9 @@ A fetch tool reaches the network exactly as a curl does, so it is held to the sa
           ;;
         local:file://*|local:FILE://*|local:File://*)
           WF_P="${WF_URL#*://}"; [ "${WF_P#/}" = "$WF_P" ] && WF_P="/$WF_P"
-          kernel_mandate_is_manifest_path "$WF_P" || check_path_scope read "$(kernel_mandate_relpath "$WF_P")" "read via ${KM_TOOL}" ;;
+          kernel_mandate_is_manifest_path "$WF_P" || check_path_scope read "$WF_P" "read via ${KM_TOOL}" ;;
         local:/*|local:./*|local:../*|local:~/*)
-          kernel_mandate_is_manifest_path "$WF_URL" || check_path_scope read "$(kernel_mandate_relpath "$WF_URL")" "read via ${KM_TOOL}" ;;
+          kernel_mandate_is_manifest_path "$WF_URL" || check_path_scope read "$WF_URL" "read via ${KM_TOOL}" ;;
       esac
     fi
     ;;
@@ -4385,11 +4454,11 @@ A pattern is applied under the search root, so '..' escapes the role's scope. Na
       [ -n "$SEARCH_ROOT" ] && TARGET="$SEARCH_ROOT"
     fi
     [ -n "$TARGET" ] || TARGET="$KM_ROOT"
-    check_path_scope read "$(kernel_mandate_relpath "$TARGET")" "search"
+    check_path_scope read "$TARGET" "search"
     ;;
   Write|Edit|NotebookEdit)
     TARGET=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
-    [ -n "$TARGET" ] && check_path_scope write "$(kernel_mandate_relpath "$TARGET")" "write"
+    [ -n "$TARGET" ] && check_path_scope write "$TARGET" "write"
 
     # Axis 5b — the shared screen defined above. The bash write channel
     # runs the identical check, so neither authoring route is the soft one.
@@ -4617,7 +4686,8 @@ when several roles run at once: <<kernel-mandate-role: ${TARGET_ROLE}#a1b2c3>>."
     # and those two live in different files and run in different processes:
     # the gate's ALLOW is sound only relative to today's resolver. Round 30
     # could not turn it into an escape and argued it was debt anyway. It is.
-    NEAR_TAG=$(printf '%s' "$PROMPT" | kernel_mandate_neartag)
+    NEAR_TAG=$(printf '%s' "$PROMPT" | kernel_mandate_neartag) \
+      || deny_unscreened "dispatch-tag-screen $TARGET_ROLE" "this dispatch's role tags" "Target role: ${TARGET_ROLE}"
     if [ -n "$NEAR_TAG" ]; then
       kernel_mandate_deny "dispatch-malformed-tag" "[BLOCKED] This dispatch's prompt contains something shaped like a binding tag that this kernel cannot parse:
 
@@ -4630,7 +4700,8 @@ A binding tag is exactly \`<<kernel-mandate-role: name>>\` or \`<<kernel-mandate
 Write the tag exactly:
   <<kernel-mandate-role: ${TARGET_ROLE}>>"
     fi
-    FOREIGN_TAGS=$(printf '%s' "$PROMPT" | kernel_mandate_tag_roles | grep -vxF "${TARGET_ROLE}" || true)
+    FOREIGN_TAGS=$(printf '%s' "$PROMPT" | kernel_mandate_tag_roles | kernel_mandate_grep_or_empty -vxF "${TARGET_ROLE}") \
+      || deny_unscreened "dispatch-tag-screen $TARGET_ROLE" "this dispatch's role tags" "Target role: ${TARGET_ROLE}"
     if [ -n "$FOREIGN_TAGS" ]; then
       kernel_mandate_deny "dispatch-foreign-tag $TARGET_ROLE" "[BLOCKED] This dispatch of role '${TARGET_ROLE}' embeds binding tag(s) for a DIFFERENT role in its prompt:
 
@@ -4743,7 +4814,7 @@ if [ "$MCP_MAP" != "{}" ] && [ -n "$MCP_MAP" ]; then
           | if type == "string" then . else empty end' 2>/dev/null || echo "")
         [ -n "$MCP_CONTENT" ] && check_code_capabilities "$v" "$MCP_CONTENT"
       fi
-      check_path_scope "$axis" "$(kernel_mandate_relpath "$v")" \
+      check_path_scope "$axis" "$v" \
         "$([ "$axis" = "write" ] && echo "write" || echo "read") via ${KM_TOOL}"
     done <<< "$vals"
   }

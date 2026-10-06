@@ -83,13 +83,36 @@ assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npx achilles-self-repai
   "orchestrator npx achilles-self-repair --claude-bin → DENY (spawns whatever --claude-bin names)" "may not run this command"
 assert_allow "$KERNEL" "$(qs_main tool_name=Bash command='npx playwright test')" "orchestrator npx playwright test → ALLOW"
 
-section "qa-mandate: procedures the kernel refuses today (KL-05..KL-07)"
+section "qa-mandate: procedures the kernel refuses today (KL-05..KL-08)"
 assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='k6 run --vus 1 --duration 30s tests/perf/scenarios/home.js')" "orchestrator k6 run → DENY (KL-05)" "may not run this command"
 assert_deny "$KERNEL" "$(qs_disp 'scenario-model-checkout: author the script' perf-reviewer)" "perf scenario dispatch → DENY (KL-05)" "names no manifest role"
 assert_deny "$KERNEL" "$(qs_main tool_name=mcp__atlassian__transitionJiraIssue)" "orchestrator tracker MCP call → DENY (KL-06)" "may not use the 'mcp__atlassian__transitionJiraIssue' tool"
 assert_deny "$KERNEL" "$(qs_disp 'repair-worker-login-spec: repair' repair-worker)" "repair-worker dispatch → DENY (KL-07)" "names no manifest role"
 assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=contribution-handover command='gh pr create --title x --body y')" "contribution-handover gh pr create → DENY (KL-07)" "may not run this command"
 assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='gh pr create --title x --body y')" "orchestrator gh pr create → DENY (KL-08: pr-attribution-gate shadowed)" "may not run this command"
+
+# Hooks run in postinstall order: the kernel wrapper first. Active, its deny is the whole verdict;
+# with KERNEL_MANDATE=0 the wrapper is silent and the Achilles gate decides with its own text.
+shadow() { # <gate> <payload> <name> <gate-text>
+  local gate="$1" pl="$2" name="$3" text="$4"
+  export ACHILLES_PROTOCOL=1
+  run_hook "$HOOK_DIR/achilles-kernel-activation-gate.sh" "$pl"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [[ "$HOOK_OUT" == *"Role 'orchestrator' may not"* && "$HOOK_OUT" != *"$text"* ]]; then
+    echo "  ✓ $name: kernel denies first, $gate never decides"
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1)); FAIL_DETAILS+=("$name: kernel did not shadow $gate")
+    echo "  ✗ $name: kernel did not shadow $gate"
+  fi
+  KERNEL_MANDATE=0 assert_allow "$HOOK_DIR/achilles-kernel-activation-gate.sh" "$pl" "$name (KERNEL_MANDATE=0): wrapper silent"
+  WORKSPACE_ROOT="$QP" assert_deny "$HOOK_DIR/$gate.sh" "$pl" "$name: $gate decides alone" "$text"
+  unset ACHILLES_PROTOCOL
+}
+MCP_DONE=$(qs_main tool_name=mcp__atlassian__transitionJiraIssue | "$JQ" -c '.tool_input = {id: "QA-1", status: "Done"}')
+shadow pr-attribution-gate "$(qs_main tool_name=Bash command='gh pr create --title x --body "Generated with Claude Code"')" "gh pr create" "attribution"
+shadow perf-load-safety-gate "$(qs_main tool_name=Bash command='k6 run --vus 1 tests/perf/scenarios/home.js')" "k6 run" "perf-onboarding.config.json is missing"
+shadow adversarial-verification-gate "$MCP_DONE" "tracker MCP (adversarial)" "adversarial-verification receipt"
+shadow evidence-bundle-gate "$MCP_DONE" "tracker MCP (evidence)" "no evidence bundle"
 
 rm -rf "$QS_TMP"
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR

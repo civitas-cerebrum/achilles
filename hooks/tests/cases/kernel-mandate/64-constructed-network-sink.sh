@@ -96,10 +96,8 @@ u() {
   if [ "$got" = "$expect" ]; then assert_eq 1 1 "$label ($got)"; else assert_eq 1 0 "$label: got $got want $expect"; fi
 }
 # bind the unscoped role via agent_type
-python3 - "$P/.claude/kernel-mandate.json" <<'PY2' 2>/dev/null || sed -i 's/"unscoped": {/"unscoped": { "agentTypes": ["unscoped"],/' "$P/.claude/kernel-mandate.json"
-import json,sys
-p=sys.argv[1]; d=json.load(open(p)); d['roles']['unscoped']['agentTypes']=['unscoped']; json.dump(d,open(p,'w'))
-PY2
+"$JQ" '.roles.unscoped.agentTypes = ["unscoped"]' "$P/.claude/kernel-mandate.json" > "$P/.claude/km.tmp" \
+  && mv "$P/.claude/km.tmp" "$P/.claude/kernel-mandate.json"
 u DENY  "const h='evil.example'; fetch('http://'+h)"              "R60 no network scope: constructed fetch (concat) → DENY"
 u DENY  "fetch(['ht','tp://','evil'].join(''))"                    "R60 no network scope: constructed fetch (join) → DENY"
 u DENY  "new WebSocket(atob('d3M6Ly9ldmls'))"                      "R60 no network scope: constructed WebSocket → DENY"

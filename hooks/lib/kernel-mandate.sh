@@ -64,6 +64,13 @@ KM_ROLE_TAG_RE='<<kernel-mandate-role: [a-z][a-z0-9-]*(#[a-z0-9]{4,})?>>'
 # of coupling this project has been burned by four times.
 KM_ROLE_NEARTAG_RE='<<[[:space:]]*kernel-mandate-role[^>]*>>'
 
+# kernel_mandate_grep_or_empty <grep args…> — grep whose "no match" (exit 1)
+# is an empty result rather than a failure, so a screen's pipeline fails
+# only when a tool actually breaks (exit 2 and up).
+kernel_mandate_grep_or_empty() {
+  grep "$@" || [ $? -eq 1 ]
+}
+
 # kernel_mandate_tag_roles — read text on stdin, print the role NAME of every
 # strict role tag in it, one per line, sorted and unique.
 #
@@ -75,17 +82,19 @@ KM_ROLE_NEARTAG_RE='<<[[:space:]]*kernel-mandate-role[^>]*>>'
 # and nothing anywhere sees both sides. Two copies that must agree, with no
 # test able to catch the day they stop, is the defect this project has
 # recorded under four different names. It is one function now.
+# Exits non-zero when a tool fails, so a caller can tell "no tags" from
+# "could not read the tags".
 kernel_mandate_tag_roles() {
-  grep -oE "$KM_ROLE_TAG_RE" 2>/dev/null \
+  kernel_mandate_grep_or_empty -oE "$KM_ROLE_TAG_RE" 2>/dev/null \
     | sed -E 's/^<<kernel-mandate-role: ([a-z][a-z0-9-]*)(#[a-z0-9]+)?>>$/\1/' \
-    | grep -v '^$' | sort -u || true
+    | kernel_mandate_grep_or_empty -v '^$' | sort -u
 }
 
 # kernel_mandate_neartag — read text on stdin, print the first tag-SHAPED string
 # that the strict form does not accept, or nothing.
 kernel_mandate_neartag() {
   local nt_all nt_one
-  nt_all=$(grep -oE "$KM_ROLE_NEARTAG_RE" 2>/dev/null || true)
+  nt_all=$(kernel_mandate_grep_or_empty -oE "$KM_ROLE_NEARTAG_RE" 2>/dev/null) || return 1
   [ -n "$nt_all" ] || return 0
   while IFS= read -r nt_one; do
     [ -n "$nt_one" ] || continue
@@ -93,6 +102,17 @@ kernel_mandate_neartag() {
     printf '%s' "$nt_one"
     return 0
   done <<< "$nt_all"
+  return 0
+}
+
+# kernel_mandate__deny_tag_screen — a tool failed while the resolver was
+# reading the child's role tag from its transcript. An agent left unbound
+# falls to the unboundAgentPolicy, whose default is wider than any one
+# role, so the call is refused instead.
+kernel_mandate__deny_tag_screen() {
+  kernel_mandate_deny "role-tag-screen" "[BLOCKED] kernel-mandate could not screen this dispatch's role tags (a text tool failed). Refusing rather than running this agent unbound.
+
+Retry the call. If it fails again, the host's awk, sed, grep or sort is not behaving as the kernel expects; report it with the output of: uname -sr; command -v awk sed grep sort"
 }
 
 kernel_mandate__jq() {
@@ -194,7 +214,7 @@ kernel_mandate_load() {
   # adversary at all: only a project that lives inside a repo.
   if [ -n "${KERNEL_MANDATE_MANIFEST:-}" ]; then
     KM_MANIFEST="$KERNEL_MANDATE_MANIFEST"
-    KM_ROOT=$(cd "$KM_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$KM_CWD")
+    KM_ROOT=$(kernel_mandate_physical_root)
   else
     local km_dir km_found=""
     km_dir=$(cd "$KM_CWD" 2>/dev/null && pwd -P 2>/dev/null || printf '%s' "$KM_CWD")
@@ -262,7 +282,7 @@ kernel_mandate_load() {
       #
       # The fallback requires the manifest to PARSE, like the walk: a
       # broken file in main is not a reason to quietly govern nothing.
-      KM_ROOT=$(cd "$KM_CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || echo "$KM_CWD")
+      KM_ROOT=$(kernel_mandate_physical_root)
       KM_MANIFEST="$KM_ROOT/.claude/kernel-mandate.json"
       local km_common km_main
       km_common=$(cd "$KM_CWD" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null || echo "")
@@ -482,7 +502,7 @@ kernel_mandate_resolve_role() {
   # poison (or ambiguate) its binding, so assistant lines are filtered
   # out before tag extraction.
   if [ -n "$KM_TRANSCRIPT" ] && [ -f "$KM_TRANSCRIPT" ]; then
-    local user_tags nonce_roles distinct_nonce_role tags
+    local user_line user_tags nonce_roles distinct_nonce_role tags
     # A role tag only counts when it comes from the DISPATCH PROMPT.
     #
     # Transcript lines of type "user" are not all operator-authored: a
@@ -496,10 +516,16 @@ kernel_mandate_resolve_role() {
     # only the FIRST such qualifying line is considered: the dispatch
     # brief is the child's opening turn, so later user turns cannot
     # re-bind an agent either.
-    user_tags=$(grep -E '"(type|role)"[[:space:]]*:[[:space:]]*"user"' "$KM_TRANSCRIPT" 2>/dev/null \
-      | grep -vE '"(tool_result|tool_use|tool_output)"|"toolUseResult"' \
-      | head -n1 \
-      | grep -oE "$KM_ROLE_TAG_RE" || echo "")
+    # One awk selects that line and stops, so a failure is a failure:
+    # the grep|grep|head chain this replaces hid one behind `|| echo ""`
+    # (and `head` closing the pipe would have read as one under
+    # pipefail). A tool that fails here used to mean "no tags", which
+    # left the agent unbound — and unboundAgentPolicy's default is the
+    # union of every role's read scope.
+    user_line=$(awk '/"(type|role)"[[:space:]]*:[[:space:]]*"user"/ && !/"(tool_result|tool_use|tool_output)"|"toolUseResult"/ { print; exit }' "$KM_TRANSCRIPT" 2>/dev/null) \
+      || kernel_mandate__deny_tag_screen
+    user_tags=$(printf '%s\n' "$user_line" | kernel_mandate_grep_or_empty -oE "$KM_ROLE_TAG_RE") \
+      || kernel_mandate__deny_tag_screen
 
     # 4a — NONCE match (collision-proof). For every nonce-bearing tag in
     # the child's own transcript, look up the registered nonce→role. If
@@ -530,7 +556,7 @@ kernel_mandate_resolve_role() {
     # transcript's user-line tags → it is the child's own transcript and
     # that tag is its identity. Multiple distinct roles → a parent-wide
     # transcript; ambiguous, fall through.
-    tags=$(printf '%s\n' "$user_tags" | kernel_mandate_tag_roles)
+    tags=$(printf '%s\n' "$user_tags" | kernel_mandate_tag_roles) || kernel_mandate__deny_tag_screen
     if [ -n "$tags" ] && [ "$(printf '%s\n' "$tags" | wc -l | tr -d ' ')" = "1" ]; then
       KM_ROLE="$tags"
       # CORROBORATE THE BARE TAG AGAINST WHAT WAS ACTUALLY DISPATCHED.
@@ -868,7 +894,7 @@ kernel_mandate_quotes_balanced() {
 # AND everything under it; '**/x' matches x at any depth including root.
 
 kernel_mandate_glob_to_ere() {
-  local g="$1" ph=$'\001' out="" i c
+  local g="$1" ph=$'\037' out="" i c
   # Escape the regex metacharacters in the LITERAL part of the glob, so
   # `docs/e2e-ledger.json` matches that file and not `docs/e2e-ledgerXjson`.
   # `*` and `?` are deliberately NOT escaped — they are the glob operators
@@ -899,11 +925,15 @@ kernel_mandate_glob_to_ere() {
   g="${g//\*\*/$ph}"
   g="${g//\*/[^/]*}"
   g="${g//\?/[^/]}"
-  g=$(printf '%s' "$g" | sed \
-    -e "s|/${ph}\$|(/.*)?|" \
-    -e "s|^${ph}/|(.*/)?|" \
-    -e "s|/${ph}/|/(.*/)?|g" \
-    -e "s|${ph}|.*|g")
+  # Parameter expansion, not sed: a sed that failed here returned an empty
+  # ERE, `^$`, and every deny pattern then matched nothing.
+  # The `/` in a ${g//…} pattern is held in a variable: bash 3.2 ends the
+  # pattern at the first `/` even inside quotes.
+  local any_tail='(/.*)?' any_head='(.*/)?' any_mid='/(.*/)?' any='.*' mid="/$ph/"
+  case "$g" in *"/$ph") g="${g%"/$ph"}$any_tail" ;; esac
+  case "$g" in "$ph/"*) g="$any_head${g#"$ph/"}" ;; esac
+  g="${g//$mid/$any_mid}"
+  g="${g//$ph/$any}"
   printf '^%s$' "$g"
 }
 
@@ -1011,11 +1041,15 @@ kernel_mandate_authority_in_scope() {
   return 1
 }
 
-# kernel_mandate_normalize_path <path> — absolute, lexically-normalised form.
+# kernel_mandate_normalize_path <path> — absolute form with symlinks resolved.
 # Relative paths resolve against KM_CWD. `.`/`..` segments are squashed
 # BEFORE scope matching, so `src/../.claude/x` can never ride a `src/**`
-# grant. Prefers GNU `realpath -m` (also resolves symlinks in the
-# existing prefix); falls back to a pure-bash lexical normaliser.
+# grant. Prefers GNU `realpath -m`. Without it (BSD/macOS) the same
+# walk is done here: components left to right, each symlink replaced by
+# its target before the next `..` applies, as the OS resolves the path
+# when the command opens it. The project root is found physically
+# (`git rev-parse`, `pwd -P`), so a path left at /var/... on macOS would
+# never match a root under /private/var/....
 kernel_mandate_normalize_path() {
   local p="$1"
   case "$p" in
@@ -1026,18 +1060,32 @@ kernel_mandate_normalize_path() {
   local rp
   rp=$(realpath -m -- "$p" 2>/dev/null || true)
   if [ -n "$rp" ]; then printf '%s' "$rp"; return 0; fi
-  local out=() seg joined=""
-  local IFS='/'
-  for seg in $p; do
+  local out="" rest="$p" seg link hops=0
+  while [ -n "$rest" ]; do
+    seg="${rest%%/*}"
+    case "$rest" in */*) rest="${rest#*/}" ;; *) rest="" ;; esac
     case "$seg" in
-      ''|'.') ;;
-      '..') if [ ${#out[@]} -gt 0 ]; then unset "out[$((${#out[@]} - 1))]"; out=("${out[@]}"); fi ;;
-      *) out+=("$seg") ;;
+      ''|'.') continue ;;
+      '..') out="${out%/*}"; continue ;;
     esac
+    # 40 hops is Linux's ELOOP limit.
+    if [ -L "$out/$seg" ] && [ "$hops" -lt 40 ]; then
+      hops=$((hops + 1))
+      link=$(readlink -- "$out/$seg")
+      case "$link" in /*) out="" ;; esac
+      rest="$link/$rest"
+      continue
+    fi
+    out="$out/$seg"
   done
-  for seg in "${out[@]}"; do joined+="/$seg"; done
-  [ -n "$joined" ] || joined="/"
-  printf '%s' "$joined"
+  printf '%s' "${out:-/}"
+}
+
+# kernel_mandate_physical_root — the repo top-level of KM_CWD, else KM_CWD
+# itself, both with symlinks resolved: every path is compared against the
+# root after kernel_mandate_normalize_path resolves ITS symlinks.
+kernel_mandate_physical_root() {
+  ( cd "$KM_CWD" 2>/dev/null && { git rev-parse --show-toplevel 2>/dev/null || pwd -P; } ) || printf '%s' "$KM_CWD"
 }
 
 # kernel_mandate_relpath <path> — normalise, then repo-root-relativise.
@@ -1061,10 +1109,93 @@ kernel_mandate_is_manifest_path() {
   [ "$(kernel_mandate_normalize_path "$1")" = "$(kernel_mandate_normalize_path "$KM_MANIFEST")" ]
 }
 
-# kernel_mandate_path_in_scope <relpath> <patterns-json-array>
-# 0 when relpath matches at least one glob in the JSON array.
+# kernel_mandate_lexical_path <path> — absolute, `.`/`..` squashed, symlinks
+# NOT resolved: the path as the manifest author would have written it.
+kernel_mandate_lexical_path() {
+  local p="$1" out="" seg rest
+  case "$p" in
+    "~") p="${HOME:-}" ;;
+    "~/"*) p="${HOME:-}/${p#\~/}" ;;
+  esac
+  case "$p" in /*) : ;; *) p="${KM_CWD%/}/$p" ;; esac
+  rest="$p"
+  while [ -n "$rest" ]; do
+    seg="${rest%%/*}"
+    case "$rest" in */*) rest="${rest#*/}" ;; *) rest="" ;; esac
+    case "$seg" in
+      ''|'.') ;;
+      '..') out="${out%/*}" ;;
+      *) out="$out/$seg" ;;
+    esac
+  done
+  printf '%s' "${out:-/}"
+}
+
+# kernel_mandate_path_denied <relpath> <path-as-given> <deny-patterns-json>
+# A deny list is matched in BOTH the path's physical form and its form as
+# written. Resolution moves a path across symlinks (/etc -> /private/etc
+# on macOS), and a pattern with a wildcard at or above the link —
+# `/e*/**`, `/*/hosts` — can only be written against the unresolved form.
+# An absolute or `~` pattern is matched against the absolute path, so one
+# naming a tree INSIDE the project (`<root>/secret/**`) denies `secret/k`;
+# a relative pattern is matched against the project-relative path, so
+# `**/build/**` never reaches the project's own ancestors. Allow lists
+# match the resolved, relative form only, so a link never widens a grant.
+kernel_mandate_path_denied() {
+  local phys_rel="$1" given="$2" deny="$3" lex_abs lex_rel
+  lex_abs=$(kernel_mandate_lexical_path "$given")
+  kernel_mandate_path_in_scope "$(kernel_mandate_normalize_path "$given")" "$deny" absolute && return 0
+  kernel_mandate_path_in_scope "$lex_abs" "$deny" as-written && return 0
+  kernel_mandate_path_in_scope "$phys_rel" "$deny" relative && return 0
+  lex_rel=$(kernel_mandate_lexical_relpath "$lex_abs")
+  # A path inside the project whose written spelling runs through a link
+  # the root's own spelling does not (`<link>/proj/src/a.ts` from a
+  # physical cwd) stays absolute here; the physical half already judged
+  # it, and against the absolute form `**/build/**` would deny on the
+  # project's ancestors.
+  case "$lex_rel" in /*) case "$phys_rel" in /*) : ;; *) return 1 ;; esac ;; esac
+  kernel_mandate_path_in_scope "$lex_rel" "$deny" relative
+}
+
+# kernel_mandate_lexical_relpath <path> — the lexical path, relative to the
+# project root when it lies under it. The root is physical; its lexical
+# spelling is KM_CWD's, less the part of cwd that lies below the root, and
+# it only counts when it resolves to the root. A path left absolute here
+# would let a relative `**/build/**` deny match a directory ABOVE the
+# project, and deny every file in it.
+kernel_mandate_lexical_relpath() {
+  local p cwd_lex cwd_phys below root_lex r
+  p=$(kernel_mandate_lexical_path "$1")
+  cwd_lex=$(kernel_mandate_lexical_path "$KM_CWD")
+  cwd_phys=$(kernel_mandate_normalize_path "$KM_CWD")
+  root_lex=""
+  case "$cwd_phys" in
+    "$KM_ROOT"|"$KM_ROOT"/*)
+      below="${cwd_phys#"$KM_ROOT"}"
+      case "$cwd_lex" in *"$below") root_lex="${cwd_lex%"$below"}" ;; esac ;;
+  esac
+  if [ -n "$root_lex" ] && [ "$(kernel_mandate_normalize_path "$root_lex")" != "$KM_ROOT" ]; then
+    root_lex=""
+  fi
+  for r in "$KM_ROOT" "$root_lex"; do
+    [ -n "$r" ] || continue
+    case "$p" in
+      "$r") printf '.'; return 0 ;;
+      "$r"/*) printf '%s' "${p#"$r"/}"; return 0 ;;
+    esac
+  done
+  printf '%s' "$p"
+}
+
+# kernel_mandate_path_in_scope <path> <patterns-json-array> [mode]
+# 0 when the path matches at least one glob in the JSON array. Without a
+# mode every pattern is tried, with the literal prefix of an absolute or
+# `~` pattern resolved through symlinks, for a path resolved the same way.
+# `absolute` tries only absolute and `~` patterns; `as-written` tries the
+# same patterns unresolved, for a path that was not resolved either;
+# `relative` tries only relative patterns.
 kernel_mandate_path_in_scope() {
-  local rel="$1" patterns="$2" glob ere
+  local rel="$1" patterns="$2" mode="${3:-}" glob ere lit rlit
   # A PATH IS ONE STRING; `grep` MATCHES ONE LINE AT A TIME. Every path
   # decision in this kernel flows through here, and the match was
   # line-oriented, so a path containing a newline was "in scope" if ANY
@@ -1083,6 +1214,29 @@ kernel_mandate_path_in_scope() {
   case "$rel" in *$'\n'*) return 1 ;; esac
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
+    # The path arrives with symlinks resolved, so an absolute pattern's
+    # literal directory prefix is resolved the same way: on macOS /etc,
+    # /tmp and /var are symlinks into /private, and `/etc/**` written in
+    # a deny list must still deny /etc/hosts. `~` is expanded for the
+    # same reason — the path side already expands it.
+    # With HOME unset, `~/**` would become `/**`; it names nothing instead.
+    case "$glob" in
+      /*|"~"|"~/"*) [ "$mode" != relative ] || continue ;;
+      *) case "$mode" in absolute|as-written) continue ;; esac ;;
+    esac
+    case "$glob" in "~"|"~/"*) [ -n "${HOME:-}" ] || continue; glob="$HOME${glob#\~}" ;; esac
+    if [ "$mode" != as-written ]; then
+      case "$glob" in
+        /?*)
+          lit="${glob%%[*?[]*}"
+          [ "$lit" = "$glob" ] || lit="${lit%/*}"
+          if [ -n "$lit" ]; then
+            rlit=$(kernel_mandate_normalize_path "$lit")
+            [ "$rlit" = "/" ] && rlit=""
+            glob="$rlit${glob#"$lit"}"
+          fi ;;
+      esac
+    fi
     ere=$(kernel_mandate_glob_to_ere "$glob")
     if printf '%s' "$rel" | grep -Eq "$ere"; then return 0; fi
   done < <(printf '%s' "$patterns" | "$KM_JQ" -r '.[]?' 2>/dev/null)

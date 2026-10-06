@@ -119,8 +119,10 @@ test('t', async ({ page }) => { await page.setInputFiles('#f', 'tests/fixtures/c
   "R47 calibration: a fixture inside the read scope, root-relative → ALLOW"
 
 # --- F2: the detector cannot be walked past ---------------------------
-assert_deny "$H" "$(spec "import { test } from '@playwright/test';
-test('t', async ({ context }) => { await context.storageState({ indexedDB: Boolean(0), path: '.claude/settings.json' }); });")" \
+# In a variable: bash 3.2 brace-expands {…,…} inside "$(… "…" …)".
+NESTED_PAREN="import { test } from '@playwright/test';
+test('t', async ({ context }) => { await context.storageState({ indexedDB: Boolean(0), path: '.claude/settings.json' }); });"
+assert_deny "$H" "$(spec "$NESTED_PAREN")" \
   "R47 a nested paren before the operand no longer hides the call → DENY" "kernel mandate itself"
 assert_deny "$H" "$(spec "import { test } from '@playwright/test';
 const opts = { path: '.claude/kernel-mandate.json' };

@@ -106,7 +106,7 @@ for ok in \
   'find tests -name "*.spec.ts"' \
   'find tests -type f -newer tests/e2e' \
   'find tests -maxdepth 2 -print' \
-  'find tests -name "*.ts" -printf "%p\n"' ; do
+  'find tests -name "*.ts" -printf "%p\n"' ; do  # portable-ok: payload text, never executed
   assert_allow "$H" "$(b "$ok")" "R53 calibration: ordinary find → ALLOW"
 done
 

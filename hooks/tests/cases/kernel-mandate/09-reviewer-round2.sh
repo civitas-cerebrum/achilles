@@ -132,7 +132,8 @@ assert_deny "$H" "$(payload tool_name=Bash command='dd if=src/a.txt of=/tmp/pwne
   "N4 'dd of=' outside the write scope → DENY" "outside the role's write scope"
 assert_deny "$H" "$(payload tool_name=Bash command='install src/a.txt /tmp/pwned.txt' cwd="$P" $B)" \
   "N4 'install' outside the write scope → DENY" "outside the role's write scope"
-assert_deny "$H" "$(payload tool_name=Bash command='sed -i s/a/b/ src/a.txt' cwd="$P" $B)" \
+SED_INPLACE='sed -i s/a/b/ src/a.txt'  # portable-ok: payload text, never executed
+assert_deny "$H" "$(payload tool_name=Bash command="$SED_INPLACE" cwd="$P" $B)" \
   "N4 'sed -i' rewriting a read-only-scope file → DENY" "outside the role's write scope"
 assert_allow "$H" "$(payload tool_name=Bash command='cp src/a.txt dist/a.txt' cwd="$P" $B)" \
   "N4 calibration: 'cp' INTO the write scope → ALLOW (ordinary build work)"

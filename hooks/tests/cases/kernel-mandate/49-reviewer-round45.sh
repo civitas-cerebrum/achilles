@@ -185,8 +185,9 @@ assert_deny "$H" "$FOREIGN" \
   "read scope"
 # The distinction is the whole point, so pin the reason it is NOT.
 FOREIGN_OUT=$(printf '%s' "$FOREIGN" | bash "$H" 2>/dev/null || true)
-assert_eq "$(case "$FOREIGN_OUT" in *"modify the kernel mandate itself"*) echo mislabelled ;; *) echo correct ;; esac)" \
-  "correct" "R45 ...and is NOT reported as modifying the kernel mandate"
+FOREIGN_LABEL=correct  # outside $(…): bash 3.2 misparses a case pattern's `)` there
+case "$FOREIGN_OUT" in *"modify the kernel mandate itself"*) FOREIGN_LABEL=mislabelled ;; esac
+assert_eq "$FOREIGN_LABEL" "correct" "R45 ...and is NOT reported as modifying the kernel mandate"
 
 unset KERNEL_MANDATE_STATE_DIR KERNEL_MANDATE_MANIFEST
 rm -rf "$R45"
