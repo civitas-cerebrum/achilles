@@ -74,5 +74,14 @@ assert_allow "$KERNEL" "$(qs_disp 'test-composer-p3batch-p2-misc: j-logout, j-ro
 assert_allow "$KERNEL" "$(qs_disp 'probe-group-p4-auth: j-login, j-signup' probe)" "probe-group-<id>: + tag → ALLOW"
 assert_deny  "$KERNEL" "$(qs_disp '[group] test-composer-j-login,test-composer-j-signup:' test-composer)" "legacy leading [group] names no role → DENY" ""
 
+section "qa-mandate: the orchestrator runs no authored script"
+assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npm test')" \
+  "orchestrator npm test → DENY (scripts.test is scaffolder-authored text)" "may not run this command"
+assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npm run test:repair')" \
+  "orchestrator npm run test:repair → DENY (the CLI is the operator's front door)" "may not run this command"
+assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npx achilles-self-repair --claude-bin tests/e2e/x.sh')" \
+  "orchestrator npx achilles-self-repair --claude-bin → DENY (spawns whatever --claude-bin names)" "may not run this command"
+assert_allow "$KERNEL" "$(qs_main tool_name=Bash command='npx playwright test')" "orchestrator npx playwright test → ALLOW"
+
 rm -rf "$QS_TMP"
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR

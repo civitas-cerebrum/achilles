@@ -229,9 +229,7 @@
         ".achilles/**"
       ],
       "runs": [
-        "npx playwright test",
-        "npm test",
-        "npm run test:repair"
+        "npx playwright test"
       ],
       "dispatches": [
         "cleanup",

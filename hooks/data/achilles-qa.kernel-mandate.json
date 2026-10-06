@@ -910,8 +910,6 @@
       "^git add\\b",
       "^git commit\\b",
       "^npx playwright test\\b",
-      "^npm test\\b",
-      "^npm run test:repair\\b",
       "^npx playwright-cli (close-all|kill-all|list)\\b"
     ],
     "suite-runs": [
