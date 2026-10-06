@@ -15,6 +15,12 @@ assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=test-composer file_p
   "test-composer Write tests/e2e/page-repository.json → ALLOW (test-composer/SKILL.md stage 1 adds selectors)"
 assert_allow "$KERNEL" "$(qs_sub tool_name=Edit agent_type=test-composer file_path="$QP/tests/e2e/page-repository.json" old_string='[]' new_string='[{}]')" \
   "test-composer Edit the page repository → ALLOW"
+for P in page-repository.backup.json other/page-repository.v2.json fixtures/page-repository.json foo/page-repository.json; do
+  assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=test-composer file_path="$QP/tests/e2e/$P" content='{}')" \
+    "test-composer Write tests/e2e/$P → DENY (D-1 grants the one exact path)" "explicitly denied write"
+done
+assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=stage2 file_path="$QP/tests/e2e/page-repository.json" content='{}')" \
+  "stage2 Write the page repository → DENY (it returns proposed entries instead)" "outside the role's write scope"
 for R in probe cleanup fd; do
   assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=$R file_path="$QP/tests/e2e/page-repository.json" content='{}')" \
     "$R Write the page repository → DENY (only scaffolder and composers author selectors)" "explicitly denied write"
@@ -25,3 +31,4 @@ assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=test-composer file_pa
   "test-composer Write the status ledger → still DENY" "explicitly denied write"
 
 rm -rf "$QS_TMP"
+unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR

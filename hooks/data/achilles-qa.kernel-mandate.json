@@ -789,7 +789,10 @@
           "@playwright/test"
         ],
         "deny": [
-          "tests/e2e/docs/onboarding-status.json"
+          "tests/e2e/docs/onboarding-status.json",
+          "tests/e2e/page-repository.*.json",
+          "tests/e2e/page-repository-*.json",
+          "tests/e2e/*/**/page-repository*.json"
         ]
       },
       "bash": {

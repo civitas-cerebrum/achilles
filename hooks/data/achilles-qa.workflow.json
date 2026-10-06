@@ -266,6 +266,11 @@
         "tests/e2e/**",
         "tests/e2e/page-repository.json"
       ],
+      "writesDeny": [
+        "tests/e2e/page-repository.*.json",
+        "tests/e2e/page-repository-*.json",
+        "tests/e2e/*/**/page-repository*.json"
+      ],
       "runs": [
         "npx playwright test"
       ],
