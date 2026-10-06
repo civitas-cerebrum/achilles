@@ -12,15 +12,9 @@
 # session. The `-s=<slug>` flag is required (except for session-agnostic
 # subcommands like close-all / kill-all / list / install-browser /
 # --version / --help). The slug must:
-#   1. Begin with a recognized role prefix (composer-, reviewer-, probe-,
-#      process-validator-, phase1-, phase2-, phase4-, stage2-, cleanup-,
-#      companion-, fd-). `test-composer-` is accepted as well: it is the
-#      kernel-mandate name of the composer role and the description
-#      prefix that dispatches it (`test-composer-j-<slug>:`); the SHORT
-#      `composer-…` slug remains the documented CLI form because of the
-#      28-char socket-path cap below.
-#      phase4-c<N>-s-<section-id> covers journey-mapping iterative-cycle
-#      section agents (added in 0.3.6; cycle protocol per
+#   1. Begin with a recognized role prefix (DISPATCH_SLUG_PREFIX_RE in
+#      lib/dispatch-prefix.sh). phase4-c<N>-s-<section-id> covers
+#      journey-mapping iterative-cycle section agents (cycle protocol per
 #      skills/journey-mapping/SKILL.md §"Iterative discovery cycles").
 #   2. Not match a collision-prone reserved word (default, test, session, …).
 #   3. Be 6–28 characters (the macOS UNIX-socket-path cap leaves ~28 chars
@@ -127,18 +121,6 @@ if [ -z "$SLUG" ]; then
   SLUG=$(echo "$CMD" | grep -oE -- '-s[[:space:]]+[A-Za-z0-9_.-]+' | head -1 | sed -E 's/^-s[[:space:]]+//' || true)
 fi
 
-# Allowed slug prefixes — must match the Agent-description role prefixes
-# (see skills/achilles-protocol/references/playwright-cli-protocol.md §3.1). The
-# trailing `[a-z0-9-]+` enforces a non-empty suffix so bare prefixes like
-# `phase1-` are rejected. Bare `j-`/`sj-` are NOT accepted; use the
-# role-explicit forms `composer-j-<slug>`, `reviewer-j-<slug>`,
-# `probe-j-<slug>`. Companion-mode and failure-diagnosis prefixes
-# (`companion-`, `fd-`) are also accepted — see playwright-cli-protocol.md §3.1.
-# `test-composer` mirrors the kernel-mandate role name so a slug spelled
-# exactly like its dispatch description is not refused; `composer` stays
-# the short, documented form.
-SLUG_PREFIX_REGEX='^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*'
-
 # Case 1: -s= flag is missing entirely.
 if [ -z "$SLUG" ]; then
   emit_pre_deny "[BLOCKED] Missing -s=<slug> flag.
@@ -185,7 +167,7 @@ Why: when two subagents both use '-s=$SLUG', the second's open reuses the first'
 esac
 
 # Case 3: slug doesn't follow the role-prefix convention.
-if ! echo "$SLUG" | grep -qE "$SLUG_PREFIX_REGEX"; then
+if ! echo "$SLUG" | grep -qE "$DISPATCH_SLUG_PREFIX_RE"; then
   emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' missing role prefix.
 
 Command: $CMD_PREVIEW

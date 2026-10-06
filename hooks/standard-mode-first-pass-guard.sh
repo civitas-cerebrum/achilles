@@ -163,8 +163,7 @@ CYCLE_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 # ---------------------------------------------------------------------------
 # Rule 1: Grouping forbidden (Pass-1 under standard, every pass under depth)
 # ---------------------------------------------------------------------------
-# Grouped dispatch: role-first `<role>-group-<id>:` / `<role>-p3batch-<id>:`, or the legacy leading markers.
-if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*(\[(group|P3-batch)\]|(test-composer|probe)-(group|p3batch)-[a-z0-9-]+:)'; then
+if echo "$DESCRIPTION" | grep -qE "$DISPATCH_GROUPED_RE"; then
   # Determine current pass + run mode. Primary source: the workflow-level
   # onboarding ledger (`onboarding-status.json`), which lives for the whole
   # 8-phase pipeline. Fallback: the Phase-5-internal coverage-expansion
@@ -359,9 +358,7 @@ if [ "$HIT_COUNT" -ge 3 ]; then
     [ "$R3_PHASE" -eq 4 ] && RULE3_IN_SCOPE=1
   else
     # No workflow ledger — only treat phase4-shaped dispatches as in-scope.
-    case "$DESCRIPTION" in
-      phase4-*|phase4_*) RULE3_IN_SCOPE=1 ;;
-    esac
+    [ "$(dispatch_phase_number onboarding "$DESCRIPTION")" = 4 ] && RULE3_IN_SCOPE=1
   fi
   if [ "$RULE3_IN_SCOPE" != "1" ]; then
     exit 0
@@ -385,12 +382,7 @@ if [ "$HIT_COUNT" -ge 3 ]; then
   fi
   # Only fire on actual walkthrough attempts, not legitimate author /
   # validator dispatches that reference multiple sections in their brief.
-  # Heuristic: skip the rule when the role prefix is one of the legitimate
-  # multi-section consumers. `test-composer-*` is the kernel-mandate
-  # spelling of the composer dispatch; `composer-*` (pre-kernel) is kept.
-  case "$DESCRIPTION" in
-    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*|workflow-reviewer-*|secrets-sweep-*|test-composer-*|composer-*|reviewer-*|probe-*|phase[1-8]-*) ;;
-    *)
+  if ! is_multi_section_consumer "$DESCRIPTION"; then
       # Under cycleStrictness: depth, DENY for ANY cycle (including cycle 2+
       # after cycle 1 has dispatched-sections recorded). Under standard,
       # DENY only when no cycle-1 dispatches exist yet.
@@ -446,8 +438,7 @@ See:
   - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
         exit 0
       fi
-      ;;
-  esac
+  fi
 fi
 
 # All checks passed — silent allow.

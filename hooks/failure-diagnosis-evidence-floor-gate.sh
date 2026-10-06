@@ -167,7 +167,7 @@ TOOL_USES=$(
 # write is somebody else's business (a composer authoring a new spec, say).
 FD_CONTEXT=$(
   printf '%s\n' "$TOOL_USES" \
-    | grep -E '^SKILL ([a-z0-9./_-]+[:/])?failure-diagnosis$|^READ .*skills/failure-diagnosis/SKILL\.md$|^AGENT[[:space:]]+(fd|repair-worker)-' \
+    | grep -E '^SKILL ([a-z0-9./_-]+[:/])?failure-diagnosis$|^READ .*skills/failure-diagnosis/SKILL\.md$|^AGENT[[:space:]]+('"$DISPATCH_FD_ROLE_ALT"')-' \
     | head -1 || true
 )
 if [ -z "$FD_CONTEXT" ]; then

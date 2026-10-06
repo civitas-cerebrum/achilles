@@ -49,7 +49,7 @@ fi
 
 section "approver-registry: separator-less prefix does NOT register (unified reviewer-prefix contract)"
 # The canonical dispatch form is `workflow-reviewer-<scope>:` — detection is
-# shared with onboarding-ledger-gate via lib/reviewer-prefix.sh, so a
+# shared with onboarding-ledger-gate via is_reviewer_description (lib/dispatch-prefix.sh), so a
 # description the dispatch gate would not allow-list must not register either.
 rm -f "$REG"
 P=$(payload tool_name=Agent description='workflow-reviewer-phase1' cwd="$TMPREG")

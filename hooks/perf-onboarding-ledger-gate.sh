@@ -70,11 +70,6 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 
 # Helper: emit a DENY payload with the supplied reason.
 
-# Reviewer allow-list: perf-reviewer-* dispatches are detected by the shared
-# lib/reviewer-prefix.sh helper (which already accepts perf-reviewer-*).
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
-
 # Resolve repo root + ledger path.
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
@@ -87,7 +82,7 @@ SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
 PIPELINE_LEDGER="$LEDGER"
 PIPELINE_SIDECAR="$SIDECAR"
-PIPELINE_CAP_PREFIX_RE='s/^(perf-reviewer-phase)([0-9]+).*/\2/p'
+PIPELINE_CAP_PREFIX_RE="$DISPATCH_CAP_PREFIX_RE_PERF"
 PIPELINE_MSG_LEDGER_NAME='perf-onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
 PIPELINE_MSG_LEDGER_REL="$LEDGER_PERF_REL"
@@ -124,28 +119,9 @@ pipeline_transition_point_check "$DESCRIPTION" && exit 0
 
 # ---------------------------------------------------------------------------
 # Rules 1 & 2: out-of-order phase dispatch (lib call).
-# Perf-specific target-phase inference.
-# Patterns:
-#   scaffold-perf-*   → Phase 1 (Scaffold)
-#   readiness-*       → Phase 2 (Readiness)
-#   scenario-model-*  → Phase 3 (Scenario-model)
-#   baseline-*        → Phase 4 (Baseline)
-#   load-run-*        → Phase 5 (Load-run)
-#   threshold-gate-*  → Phase 6 (Threshold-gate)
-#   perf-report-*     → Phase 7 (Report)
+# Perf-specific target-phase inference (dispatch_phase_number perf).
 # ---------------------------------------------------------------------------
-perf_infer_target_phase() {
-  local DESC="$1"
-  case "$DESC" in
-    scaffold-perf-*|scaffold_perf-*) echo 1 ;;
-    readiness-*|readiness_*) echo 2 ;;
-    scenario-model-*|scenario_model-*) echo 3 ;;
-    baseline-*|baseline_*) echo 4 ;;
-    load-run-*|load_run-*) echo 5 ;;
-    threshold-gate-*|threshold_gate-*) echo 6 ;;
-    perf-report-*|perf_report-*) echo 7 ;;
-  esac
-}
+perf_infer_target_phase() { dispatch_phase_number perf "$1"; }
 pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" perf_infer_target_phase && exit 0
 
 # ---------------------------------------------------------------------------

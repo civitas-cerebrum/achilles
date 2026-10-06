@@ -84,10 +84,7 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 [ "$TOOL_NAME" = "Agent" ] || exit 0
 
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
-# Only act on approver-role dispatches (workflow-reviewer-* /
-# phase-validator-*). Detection is shared via lib/reviewer-prefix.sh.
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+# Only act on approver-role dispatches (is_reviewer_description, lib/dispatch-prefix.sh).
 is_reviewer_description "$DESCRIPTION" || exit 0
 
 # Extract the reviewer's return text from the tool response. Same shape

@@ -115,10 +115,7 @@ case "$TOOL_NAME" in
     ;;
   Agent)
     DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
-    case "$DESCRIPTION" in
-      phase4-cycle-*|phase4-prioritise-author*) ;;
-      *) exit 0 ;;
-    esac
+    is_phase4_mapping_description "$DESCRIPTION" || exit 0
     TRIGGER_KIND="dispatch"
     TRIGGER_TARGET="$DESCRIPTION"
     ;;

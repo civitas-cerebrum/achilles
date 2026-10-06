@@ -363,20 +363,19 @@ section "kernel wiring: drift pin — every harness prefix resolves to a manifes
 # forward direction. The harness states its dispatch grammar twice — as
 # playwright-cli session slugs and as Agent-description prefixes — and
 # both statements must land on a role the manifest actually declares.
-GUARD_SH="$HOOK_DIR/playwright-cli-isolation-guard.sh"
-ACTIVATION_SH="$HOOK_DIR/lib/achilles-activation.sh"
+DISPATCH_SH="$HOOK_DIR/lib/dispatch-prefix.sh"
 # Pull the alternation out of each regex literal. Trailing `-` (the
 # description form carries it, the slug form does not) is normalised off.
 extract_alts() { # <file> <var-name>
   grep -m1 "^$2='" "$1" \
     | grep -oE '\([^)]*\)' | head -1 | tr -d '()' | tr '|' '\n' | sed -e 's/-$//' -e '/^$/d'
 }
-SLUG_ALTS=$(extract_alts "$GUARD_SH" SLUG_PREFIX_REGEX)
-DISP_ALTS=$(extract_alts "$ACTIVATION_SH" ACHILLES_DISPATCH_PREFIX_RE)
+SLUG_ALTS=$(extract_alts "$DISPATCH_SH" DISPATCH_SLUG_PREFIX_RE)
+DISP_ALTS=$(extract_alts "$DISPATCH_SH" ACHILLES_DISPATCH_PREFIX_RE)
 # A pin that extracts nothing passes trivially, so assert it extracted
 # something first — a regex rename must break this loudly, not quietly.
 assert_eq "$([ "$(printf '%s\n' "$SLUG_ALTS" | wc -l)" -ge 8 ] && echo enough || echo "too-few:$SLUG_ALTS")" "enough" \
-  "SLUG_PREFIX_REGEX still parses into its prefix alternation"
+  "DISPATCH_SLUG_PREFIX_RE still parses into its prefix alternation"
 assert_eq "$([ "$(printf '%s\n' "$DISP_ALTS" | wc -l)" -ge 8 ] && echo enough || echo "too-few:$DISP_ALTS")" "enough" \
   "ACHILLES_DISPATCH_PREFIX_RE still parses into its prefix alternation"
 # The kernel's own resolution rule: a description `<prefix>-<slug>:`
@@ -404,7 +403,7 @@ UNRESOLVED=$(printf '%s' "$UNRESOLVED" | sed '/^$/d' | sort -u | tr '\n' ' ' | s
 # the socket-path budget. Pinning the exception set to exactly that one
 # member is what stops this list from quietly growing back.
 assert_eq "$UNRESOLVED" "composer" \
-  "every SLUG_PREFIX_REGEX / ACHILLES_DISPATCH_PREFIX_RE prefix resolves to a manifest role, except the retired \`composer\` slug alias"
+  "every DISPATCH_SLUG_PREFIX_RE / ACHILLES_DISPATCH_PREFIX_RE prefix resolves to a manifest role, except the retired \`composer\` slug alias"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: the orchestrator's documented browser cleanup runs"

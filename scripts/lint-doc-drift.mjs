@@ -530,7 +530,7 @@ function checkQaMandateParity() {
   report(`achilles-qa workflow table ↔ mandate parity (${mRoles.size} roles, ${wf.stages.length} stages)`, detail.length === 0, detail);
 }
 // Check 10 — every skill directory activates the protocol, unless excluded on purpose
-const ACTIVATION_LIB = 'hooks/lib/achilles-activation.sh';
+const ACTIVATION_LIB = 'hooks/lib/dispatch-prefix.sh';
 const ACTIVATION_EXCLUDED = new Set(['mandate-designer']); // generic kernel tool; must not switch on QA gates
 function checkActivationCoverage() {
   const src = readFileSync(ACTIVATION_LIB, 'utf8');

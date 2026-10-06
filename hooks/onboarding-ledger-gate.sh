@@ -91,13 +91,6 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 
 # Helper: emit a DENY payload with the supplied reason.
 
-# Rule 4 (allow-list): approver-role dispatches (workflow-reviewer-* /
-# phase-validator-*) always pass. Detection lives in lib/reviewer-prefix.sh
-# — the same helper the approver registry uses, so the allow-list can never
-# drift from the set of scopes the registry accepts.
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
-
 # Resolve repo root + ledger path (needed for the reviewerCycles cap check
 # on reviewer dispatches, below).
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
@@ -111,7 +104,7 @@ SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
 PIPELINE_LEDGER="$LEDGER"
 PIPELINE_SIDECAR="$SIDECAR"
-PIPELINE_CAP_PREFIX_RE='s/^(workflow-reviewer-phase|phase-validator-)([0-9]+).*/\2/p'
+PIPELINE_CAP_PREFIX_RE="$DISPATCH_CAP_PREFIX_RE_ONBOARDING"
 PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
 PIPELINE_MSG_LEDGER_REL="$LEDGER_ONBOARDING_REL"
@@ -120,6 +113,9 @@ PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
 PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
 PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
+# Rule 4 (allow-list): approver-role dispatches always pass. is_reviewer_description
+# is the same test the approver registry uses, so the allow-list cannot drift from
+# the scopes the registry accepts.
 if is_reviewer_description "$DESCRIPTION"; then
   # Rule 4 normally always-allows reviewer dispatches. EXCEPTION (change
   # #8b): a reviewer dispatch targeting a phase whose reviewerCycles is
@@ -157,25 +153,7 @@ pipeline_transition_point_check "$DESCRIPTION" && exit 0
 # Rule 1 & 2: out-of-order phase / pass / cycle dispatch (lib call).
 # Onboarding-specific target-phase inference; the generic rule lives in lib.
 # ---------------------------------------------------------------------------
-# Patterns observed:
-#   phase<N>-*           → target N
-#   secrets-sweep-*      → Phase 7
-#   work-summary-deck-*  → Phase 8
-onboarding_infer_target_phase() {
-  local DESC="$1"
-  case "$DESC" in
-    phase1-*|phase1_*) echo 1 ;;
-    phase2-*|phase2_*) echo 2 ;;
-    phase3-*|phase3_*) echo 3 ;;
-    phase4-*|phase4_*) echo 4 ;;
-    phase5-*|phase5_*) echo 5 ;;
-    phase6-*|phase6_*) echo 6 ;;
-    phase7-*|phase7_*) echo 7 ;;
-    phase8-*|phase8_*) echo 8 ;;
-    secrets-sweep-*|secrets_sweep-*) echo 7 ;;
-    work-summary-deck-*|qa-summary-*) echo 8 ;;
-  esac
-}
+onboarding_infer_target_phase() { dispatch_phase_number onboarding "$1"; }
 pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" onboarding_infer_target_phase && exit 0
 
 # ---------------------------------------------------------------------------
@@ -183,16 +161,12 @@ pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" onboarding_inf
 # If the description targets a specific pass-N or cycle-N within the
 # current phase, check the prior substage's reviewerVerdict.
 # ---------------------------------------------------------------------------
-# Phase 5 — composer-j-<slug>-<pass>-<...> or probe-j-<slug>-<pass>-<...>
-#   when currentPhase = 5. We only block when the pass number is
-#   strictly greater than the highest-substage's pass and that prior
-#   pass is unapproved. The grep below is deliberately UNANCHORED so the
-#   kernel-mandate spelling `test-composer-j-<slug>-<pass>` matches too
-#   (its tail is `composer-j-…`); the pre-kernel `composer-j-…` form is
-#   thereby still accepted as well.
+# Phase 5 — a composer/probe dispatch for pass N when currentPhase = 5. We
+#   only block when the pass number is strictly greater than the
+#   highest-substage's pass and that prior pass is unapproved.
 TARGET_PASS=""
 if [ "$CURRENT_PHASE" = "5" ]; then
-  TARGET_PASS=$(echo "$DESCRIPTION" | grep -oE '(composer|probe)-j-[a-z0-9-]+-[1-5]' | grep -oE '[1-5]$' | head -1 || true)
+  TARGET_PASS=$(echo "$DESCRIPTION" | grep -oE "$DISPATCH_PHASE5_PASS_RE" | grep -oE '[1-5]$' | head -1 || true)
 fi
 if [ -n "$TARGET_PASS" ]; then
   PRIOR_PASS=$((TARGET_PASS - 1))
