@@ -20,6 +20,9 @@
 #     briefs that list >= 3 j-slugs / section names but must ALLOW.
 
 set -uo pipefail   # not -e — individual cases are allowed to fail without aborting the runner
+# bash 3.2 brace-expands the `{a,\n b}` inside a double-quoted "$(cmd "...")" argument, splitting a JS fixture into
+# several words and eating its braces (macOS /bin/bash). Case files build such fixtures inline.
+set +B
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
