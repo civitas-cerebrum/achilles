@@ -168,13 +168,13 @@ Fix: re-issue this change as a full Write of the complete ledger JSON
 reinstall @civitas-cerebrum/achilles to get hooks/lib/validator.bundle.mjs."
         exit 0
       fi
-      TMP_OLD=$(mktemp /tmp/ledger-old-XXXXXX) ; TMP_NEW=$(mktemp /tmp/ledger-new-XXXXXX)
+      TMP_OLD=$(mktemp "${TMPDIR:-/tmp}/ledger-old-XXXXXX") ; TMP_NEW=$(mktemp "${TMPDIR:-/tmp}/ledger-new-XXXXXX")
       printf '%s' "$OLD_STRING" > "$TMP_OLD"
       printf '%s' "$NEW_STRING" > "$TMP_NEW"
       ALL_FLAG=""
       [ "$REPLACE_ALL" = "true" ] && ALL_FLAG="--all"
       SYNTH_EXIT=0
-      SYNTH_ERR_FILE=$(mktemp /tmp/ledger-synth-err-XXXXXX)
+      SYNTH_ERR_FILE=$(mktemp "${TMPDIR:-/tmp}/ledger-synth-err-XXXXXX")
       PROPOSED_CONTENT=$("$NODE_BIN" "$VALIDATOR" replace "$FILE_PATH" "$TMP_OLD" "$TMP_NEW" $ALL_FLAG 2>"$SYNTH_ERR_FILE") || SYNTH_EXIT=$?
       SYNTH_ERR=$(cat "$SYNTH_ERR_FILE" 2>/dev/null || true)
       rm -f "$TMP_OLD" "$TMP_NEW" "$SYNTH_ERR_FILE"
@@ -207,7 +207,7 @@ esac
 # parseability is enforced. Silent-allowing the whole hook on a missing
 # node binary would let an orchestrator with no node on $PATH bypass the
 # entire gate.
-TMP_PROPOSED=$(mktemp /tmp/onboarding-ledger-XXXXXX.json)
+TMP_PROPOSED=$(mktemp "${TMPDIR:-/tmp}/onboarding-ledger-XXXXXX")
 trap 'rm -f "$TMP_PROPOSED"' EXIT
 printf '%s' "$PROPOSED_CONTENT" > "$TMP_PROPOSED"
 

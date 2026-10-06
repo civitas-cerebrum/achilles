@@ -131,13 +131,13 @@ Fix: re-issue this change as a full Write of the complete ledger JSON
 reinstall @civitas-cerebrum/achilles to get hooks/lib/validator.bundle.mjs."
         exit 0
       fi
-      TMP_OLD=$(mktemp /tmp/perf-ledger-old-XXXXXX) ; TMP_NEW=$(mktemp /tmp/perf-ledger-new-XXXXXX)
+      TMP_OLD=$(mktemp "${TMPDIR:-/tmp}/perf-ledger-old-XXXXXX") ; TMP_NEW=$(mktemp "${TMPDIR:-/tmp}/perf-ledger-new-XXXXXX")
       printf '%s' "$OLD_STRING" > "$TMP_OLD"
       printf '%s' "$NEW_STRING" > "$TMP_NEW"
       ALL_FLAG=""
       [ "$REPLACE_ALL" = "true" ] && ALL_FLAG="--all"
       SYNTH_EXIT=0
-      SYNTH_ERR_FILE=$(mktemp /tmp/perf-ledger-synth-err-XXXXXX)
+      SYNTH_ERR_FILE=$(mktemp "${TMPDIR:-/tmp}/perf-ledger-synth-err-XXXXXX")
       PROPOSED_CONTENT=$("$NODE_BIN" "$VALIDATOR" replace "$FILE_PATH" "$TMP_OLD" "$TMP_NEW" $ALL_FLAG 2>"$SYNTH_ERR_FILE") || SYNTH_EXIT=$?
       SYNTH_ERR=$(cat "$SYNTH_ERR_FILE" 2>/dev/null || true)
       rm -f "$TMP_OLD" "$TMP_NEW" "$SYNTH_ERR_FILE"
@@ -158,7 +158,7 @@ esac
 # Silent-allow when we couldn't extract content (empty Write or Edit vs missing file).
 [ -n "$PROPOSED_CONTENT" ] || exit 0
 
-TMP_PROPOSED=$(mktemp /tmp/perf-onboarding-ledger-XXXXXX.json)
+TMP_PROPOSED=$(mktemp "${TMPDIR:-/tmp}/perf-onboarding-ledger-XXXXXX")
 trap 'rm -f "$TMP_PROPOSED"' EXIT
 printf '%s' "$PROPOSED_CONTENT" > "$TMP_PROPOSED"
 

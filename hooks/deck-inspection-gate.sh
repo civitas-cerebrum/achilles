@@ -103,7 +103,7 @@ if [ "$EVENT" = "PostToolUse" ] && [ "$TOOL_NAME" = "Bash" ]; then
   PDF_DIR=$(dirname "$PDF_PATH")
   SENTINEL="$PDF_DIR/.deck-pending-inspection"
   TIMESTAMP=$(date +%Y%m%dT%H%M%S)
-  INSPECT_DIR="/tmp/deck-inspection-${TIMESTAMP}"
+  INSPECT_DIR="${TMPDIR:-/tmp}/deck-inspection-${TIMESTAMP}"
 
   # Render PDF pages to PNG images using pdftoppm (part of poppler).
   PDFTOPPM=$(command -v pdftoppm || true)

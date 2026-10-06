@@ -180,7 +180,7 @@ fi
 SCHEMA_ERRORS=""
 if [ -n "$SCHEMA_ROLE" ]; then
   # Write RESPONSE to a temp file for the validator bundle.
-  TMPFILE=$(mktemp /tmp/subagent-schema-guard-XXXXXX.yaml)
+  TMPFILE=$(mktemp "${TMPDIR:-/tmp}/subagent-schema-guard-XXXXXX")
   trap 'rm -f "$TMPFILE"' EXIT
   printf '%s' "$RESPONSE" > "$TMPFILE"
 

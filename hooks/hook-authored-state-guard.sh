@@ -143,7 +143,7 @@ case "$TOOL_NAME" in
       NODE_BIN="$(command -v node 2>/dev/null || true)"
       VALIDATOR="$(dirname "${BASH_SOURCE[0]}")/lib/validator.bundle.mjs"
       if [ -n "$NODE_BIN" ] && [ -f "$VALIDATOR" ]; then
-        TMP_OLD=$(mktemp /tmp/has-old-XXXXXX); TMP_NEW=$(mktemp /tmp/has-new-XXXXXX)
+        TMP_OLD=$(mktemp "${TMPDIR:-/tmp}/has-old-XXXXXX"); TMP_NEW=$(mktemp "${TMPDIR:-/tmp}/has-new-XXXXXX")
         printf '%s' "$OLD_STRING" > "$TMP_OLD"; printf '%s' "$NEW_STRING" > "$TMP_NEW"
         ALL_FLAG=""; [ "$REPLACE_ALL" = "true" ] && ALL_FLAG="--all"
         PROPOSED=$("$NODE_BIN" "$VALIDATOR" replace "$FILE_PATH" "$TMP_OLD" "$TMP_NEW" $ALL_FLAG 2>/dev/null || echo "")
@@ -156,7 +156,7 @@ esac
 
 # Must be parseable JSON for the comparison to be meaningful; if not,
 # silent-allow (the consuming gate / schema check owns parse failures).
-TMP_NEW_FILE=$(mktemp /tmp/has-proposed-XXXXXX.json)
+TMP_NEW_FILE=$(mktemp "${TMPDIR:-/tmp}/has-proposed-XXXXXX")
 trap 'rm -f "$TMP_NEW_FILE"' EXIT
 printf '%s' "$PROPOSED" > "$TMP_NEW_FILE"
 "$JQ" -e . "$TMP_NEW_FILE" >/dev/null 2>&1 || exit 0

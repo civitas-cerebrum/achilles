@@ -119,7 +119,7 @@ emit_warn() {
 NODE_BIN="$(command -v node || true)"
 HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
 VALIDATOR_BUNDLE="$HOOK_LIB_DIR/validator.bundle.mjs"
-TMP_RESP=$(mktemp /tmp/wr-attestation-XXXXXX.txt)
+TMP_RESP=$(mktemp "${TMPDIR:-/tmp}/wr-attestation-XXXXXX")
 trap 'rm -f "$TMP_RESP" "$TMP_RESP.json"' EXIT
 printf '%s' "$RESPONSE" > "$TMP_RESP"
 

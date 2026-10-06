@@ -260,7 +260,7 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
       if [ -n "${FAKE_STAGED_HASH:-}" ]; then
         DIFF_HASH="$FAKE_STAGED_HASH"
       else
-        DIFF_TMP=$(mktemp /tmp/seldev-diff-XXXXXX)
+        DIFF_TMP=$(mktemp "${TMPDIR:-/tmp}/seldev-diff-XXXXXX")
         git -C "$WS" diff --cached -- "$FILE_PATH" > "$DIFF_TMP" 2>/dev/null || true
         DIFF_HASH=$(file_sha256 "$DIFF_TMP")
         rm -f "$DIFF_TMP"
@@ -415,7 +415,7 @@ Receipt: ${RECEIPT}"
       # ${ARR[@]+...} guards the expansion when the array is empty — bash 3.2
       # under `set -u` treats an empty array's "${ARR[@]}" as unbound.
       # Tempfile + file_sha256 keeps the digest byte-exact and macOS-portable.
-      STAGED_TMP=$(mktemp /tmp/seldev-staged-XXXXXX)
+      STAGED_TMP=$(mktemp "${TMPDIR:-/tmp}/seldev-staged-XXXXXX")
       git -C "$WS" diff --cached -- ${FILES_ARR[@]+"${FILES_ARR[@]}"} > "$STAGED_TMP" 2>/dev/null || true
       STAGED_HASH=$(file_sha256 "$STAGED_TMP")
       rm -f "$STAGED_TMP"
