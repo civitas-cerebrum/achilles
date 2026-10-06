@@ -218,6 +218,8 @@ P_GP=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "general-purpose"')
 assert_deny "$H" "$P_GP" "general-purpose agent_type approves a phase → DENY" "not an approver role"
 P_NOTYPE=$(echo "$P_PROBE" | "$JQ" -c 'del(.agent_type)')
 assert_deny "$H" "$P_NOTYPE" "subagent write with no agent_type approves a phase → DENY (fail closed)" "not an approver role"
+P_PV=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "process-validator"')
+assert_allow "$H" "$P_PV" "another approver type (process-validator) with a fresh registry → ALLOW"
 
 # Test: subagent context but the approver registry is empty → DENY
 printf '{}' > "$REGISTRY"

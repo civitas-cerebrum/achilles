@@ -30,6 +30,7 @@
     "bin",
     "hooks",
     "skills",
+    "agents",
     "schemas",
     "reporter",
     "scripts/postinstall.js"

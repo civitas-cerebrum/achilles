@@ -115,7 +115,7 @@ makes those failure modes harness-denied rather than instruction-only.
 
 ## Dispatch grammar (role kernel)
 
-Prerequisite: postinstall installs one agent definition per role into \`~/.claude/agents/\`; dispatch with \`subagent_type: <role>\`.
+Prerequisite: postinstall installs one agent definition per role into `~/.claude/agents/`; dispatch with `subagent_type: <role>`.
 
 Every `Agent` dispatch the orchestrator issues under the achilles
 protocol is checked by the role kernel (the mandate in

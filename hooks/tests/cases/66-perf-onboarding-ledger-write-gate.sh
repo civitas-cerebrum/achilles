@@ -156,6 +156,12 @@ assert_allow "$H" "$P_OK" "Perf subagent context + fresh approver registry → A
 P_PROBE=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
 P_PROBE=$(echo "$P_PROBE" | "$JQ" -c '. + {agent_id: "perf-subagent-probe", agent_type: "test-composer"}')
 assert_deny "$H" "$P_PROBE" "composer agent_type approves a perf phase while an approver is registered → DENY" "not an approver role"
+P_GP=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "general-purpose"')
+assert_deny "$H" "$P_GP" "general-purpose agent_type approves a perf phase → DENY" "not an approver role"
+P_NOTYPE=$(echo "$P_PROBE" | "$JQ" -c 'del(.agent_type)')
+assert_deny "$H" "$P_NOTYPE" "perf subagent write with no agent_type approves a phase → DENY (fail closed)" "not an approver role"
+P_OTHER=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "workflow-reviewer"')
+assert_deny "$H" "$P_OTHER" "approver type of the other pipeline (workflow-reviewer) is not a perf approver → DENY" "not an approver role"
 
 # Write that doesn't change any reviewerVerdict → ALLOW even from orchestrator.
 printf '%s' "$PRIOR_P1_APPROVED" > "$LEDGER_PATH"

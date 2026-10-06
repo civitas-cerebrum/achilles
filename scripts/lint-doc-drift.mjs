@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Ten independent checks; each reports pass/fail; the process
+// describe. Eleven independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -20,6 +20,7 @@
 //   (8) every environment switch a hook or script reads  ↔  a row in opt-in-surfaces.md
 //   (9) the QA workflow table  ↔  the QA mandate (scopes, imports, env, skills, dispatch, commands)
 //   (10) skills/*/ directories  ↔  ACHILLES_SKILL_ALT (every skill activates the protocol)
+//   (11) agents/*.md  ↔  the QA mandate's roles (one agent definition per subagent role, content current)
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -27,6 +28,7 @@
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const SKILLS_DIR = 'skills';
 const EI_DIR = 'skills/achilles-protocol';
@@ -540,6 +542,12 @@ function checkActivationCoverage() {
     Boolean(m) && missing.length === 0,
     [...(!m ? [`ACHILLES_SKILL_ALT not found in ${ACTIVATION_LIB}`] : []), ...(missing.length ? [`skills that activate nothing: ${missing.join(', ')}`] : [])]);
 }
+// Check 11 — agents/*.md are exactly what build-agents.mjs renders from the mandate
+function checkAgentDefinitions() {
+  const r = spawnSync(process.execPath, ['scripts/build-agents.mjs', '--check'], { encoding: 'utf8' });
+  report('agents/*.md ↔ QA mandate roles (build-agents.mjs --check)', r.status === 0,
+    r.status === 0 ? [] : (r.stderr || r.stdout).trim().split('\n'));
+}
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
@@ -550,6 +558,7 @@ checkRoleLedgerInventory();
 checkOptInSurfaces();
 checkQaMandateParity();
 checkActivationCoverage();
+checkAgentDefinitions();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

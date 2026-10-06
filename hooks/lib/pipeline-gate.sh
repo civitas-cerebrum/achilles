@@ -588,6 +588,10 @@ See:
 # <agent_type> is the writer's subagent type; it must be one of
 # $PIPELINE_APPROVER_TYPES (space-separated). Empty fails closed: a typed
 # dispatch is part of the reviewer contract (skills/workflow-reviewer).
+# Deliberately stricter than the kernel's "general-purpose is not a claim"
+# rule: there, general-purpose is merely unbound; here a missing or
+# general-purpose agent_type is an explicit deny because the write is an
+# approval and only a named approver role may make one.
 # Returns 0 + emits deny on violation; 1 when the registry checks pass.
 # Requires: JQ
 # The registry file is expected at $(dirname <file_path>)/.workflow-approvers.json
@@ -607,7 +611,8 @@ Only a subagent dispatched with an approver \`subagent_type\` can record
 an approval-class write; the registry check alone cannot tell a composer
 from a reviewer while any approver registration is fresh.
 
-Fix: dispatch the approver for this ledger and let it record the write.
+Fix: dispatch the approver for this ledger with \`subagent_type: <role>\`
+(agent definitions ship in \`agents/\`) and let it record the write.
 
 See:
   - hooks/workflow-approver-registry.sh
