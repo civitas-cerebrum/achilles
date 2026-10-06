@@ -21,10 +21,11 @@
 //            allowlist of data helpers (other bare packages are the kernel's
 //            codeImports). package.json and tsconfig / jsconfig there may not
 //            point outside.
-//   both     no URL-scheme specifier but node: / https:; no eval / Function / createRequire /
+//   both     no URL-scheme specifier but node: (https: under tests/perf only);
+//            no bare specifier with a dot segment; no eval / Function / createRequire /
 //            Reflect / arguments; process, module, globalThis and global only
-//            as the object of a static member read (never a value); process.env
-//            read but never written or passed on; require only as require("…")
+//            as the object of a static member read (never a value); process
+//            state read, never written (env, execPath, execArgv); require only as require("…")
 //            / require.resolve; no .require / ._load / ._compile / .constructor
 //            / process loader members on any object; no loader names as pattern
 //            keys or bare strings; no computed key assembled from strings.
@@ -48,12 +49,16 @@ const CONFIG_IMPORTS = new Set(['@playwright/test', '@civitas-cerebrum/element-i
 // Node builtins test code may load: data helpers that neither run code nor hand out the loader.
 const TEST_BUILTINS = new Set(['fs', 'fs/promises', 'path', 'path/posix', 'path/win32', 'url', 'os', 'crypto', 'util', 'util/types', 'buffer', 'stream', 'stream/promises', 'events', 'assert', 'assert/strict', 'timers', 'timers/promises', 'zlib', 'http', 'https', 'querystring', 'string_decoder', 'readline', 'perf_hooks']);
 const BUILTINS = new Set(builtinModules.map((m) => m.replace(/^node:/, '')));
-// Node resolves no URL specifier but node:; https: stays for k6 scenarios under tests/perf (jslib.k6.io), which Node cannot load either.
-const URL_SCHEME = /^(?!node:|https:)[a-z][a-z0-9+.-]*:/i;
+// Node resolves no URL specifier but node:. k6 scenarios under tests/perf import https://jslib.k6.io; Node never loads https:.
+const URL_SCHEME = /^(?!node:)[a-z][a-z0-9+.-]*:/i;
+const K6_DIR = ['tests', 'perf'];
+// A bare specifier resolves from node_modules; a dot segment climbs out of it into the project.
+const hasDotSegment = (spec) => spec.split('/').some((seg) => seg === '.' || seg === '..');
 const CODE_EXT = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 const PATH_KEYS = new Set(['globalSetup', 'globalTeardown', 'testDir', 'tsconfig', 'reporter']);
-// Members that reach the loader from any object: Module.prototype, process, Function.prototype.
-const LOADER_MEMBERS = new Set(['constructor', 'require', '_load', '_compile', 'mainModule', 'binding', '_linkedBinding', 'getBuiltinModule', 'dlopen', 'execve']);
+// Members that reach the loader or the workers' environment from any object:
+// Module.prototype, process, Function.prototype (arguments / caller give the CJS wrapper).
+const LOADER_MEMBERS = new Set(['constructor', 'require', '_load', '_compile', 'mainModule', 'binding', '_linkedBinding', 'getBuiltinModule', 'dlopen', 'execve', 'execArgv', 'loadEnvFile', 'arguments', 'caller']);
 const MODULE_MEMBERS = new Set(['exports', 'id', 'filename', 'path', 'loaded']);
 const GLOBAL_OBJECTS = new Set(['process', 'module', 'globalThis', 'global']);
 // `arguments` at module level is the CJS wrapper's (exports, require, module, …).
@@ -227,13 +232,15 @@ function isLoaderCall(n) {
 }
 
 // Each loaded specifier with its node, or the reason it cannot be read.
-function specifiers(ast) {
+function specifiers(ast, allowHttps = false) {
   const out = [];
   const take = (n, lit, where) => {
+    const v = lit && lit.value;
     if (!isStr(lit)) out.push({ bad: `${where} is not one string literal` });
-    else if (/\\/.test((lit.extra && lit.extra.raw) || '')) out.push({ bad: `${where} "${lit.value}" contains an escape` });
-    else if (URL_SCHEME.test(lit.value)) out.push({ bad: `${where} "${lit.value}" is a URL — it bypasses path resolution` });
-    else out.push({ node: n, spec: lit.value, typeOnly: n.importKind === 'type' || n.exportKind === 'type' });
+    else if (/\\/.test((lit.extra && lit.extra.raw) || '')) out.push({ bad: `${where} "${v}" contains an escape` });
+    else if (URL_SCHEME.test(v) && !(allowHttps && /^https:/i.test(v))) out.push({ bad: `${where} "${v}" is a URL — it bypasses path resolution` });
+    else if (!(v.startsWith('.') || path.isAbsolute(v)) && hasDotSegment(v)) out.push({ bad: `${where} "${v}" — a bare specifier with a dot segment climbs out of node_modules` });
+    else out.push({ node: n, spec: v, typeOnly: n.importKind === 'type' || n.exportKind === 'type' });
   };
   for (const { node: n } of walk(ast)) {
     if (n.type === 'ImportDeclaration' || n.type === 'ExportAllDeclaration') take(n, n.source, 'import source');
@@ -250,21 +257,32 @@ function specifiers(ast) {
 }
 
 const isProcessEnv = (n) => isMember(n) && isId(unwrap(n.object), 'process') && propName(n) === 'env';
-// True when m is process.env or a member chain rooted at it (process.env.X.Y).
-function onProcessEnv(m) {
-  for (let n = unwrap(m); isMember(n); n = unwrap(n.object)) if (isProcessEnv(n)) return true;
-  return false;
+// True when m is a member chain rooted at process (process.env.X, process.execPath).
+function onProcess(m) {
+  let n = unwrap(m);
+  while (isMember(n)) n = unwrap(n.object);
+  return isId(n, 'process');
+}
+// Every member expression a write target or pattern assigns to.
+function* writeTargets(t) {
+  t = unwrap(t);
+  if (!t) return;
+  if (isMember(t)) yield t;
+  else if (t.type === 'ArrayPattern') for (const e of t.elements) yield* writeTargets(e);
+  else if (t.type === 'ObjectPattern') for (const p of t.properties) yield* writeTargets(p.type === 'RestElement' ? p.argument : p.value);
+  else if (t.type === 'RestElement') yield* writeTargets(t.argument);
+  else if (t.type === 'AssignmentPattern') yield* writeTargets(t.left);
 }
 
 // Constructs that reach the loader or run code the specifier walk cannot see.
 function aliasOffences(ast) {
   const out = [];
   for (const { node: n, parent: p, key } of walk(ast)) {
-    // Workers inherit the environment: NODE_OPTIONS / NODE_PATH set here load code there.
-    if ((n.type === 'AssignmentExpression' && onProcessEnv(n.left)) || (n.type === 'UpdateExpression' && onProcessEnv(n.argument))
-        || (n.type === 'UnaryExpression' && n.operator === 'delete' && onProcessEnv(n.argument))) {
-      out.push('process.env is written — workers inherit it (NODE_OPTIONS, NODE_PATH)');
-    }
+    // Workers inherit process state: env, execPath and execArgv set here load code there.
+    const written = n.type === 'AssignmentExpression' ? n.left : n.type === 'UpdateExpression' ? n.argument
+      : n.type === 'UnaryExpression' && n.operator === 'delete' ? n.argument
+      : (n.type === 'ForInStatement' || n.type === 'ForOfStatement') && n.left.type !== 'VariableDeclaration' ? n.left : null;
+    if (written) for (const t of writeTargets(written)) if (onProcess(t)) { out.push('process state is written — workers inherit it (env, execPath, execArgv)'); break; }
     if (isProcessEnv(n) && !(isMember(p) && key === 'object') && !(p && p.type === 'VariableDeclarator' && key === 'init' && p.id.type === 'ObjectPattern')
         && !(p && (p.type === 'SpreadElement' || p.type === 'ForInStatement' || p.type === 'ForOfStatement'))) {
       out.push('process.env used as a value — read it as process.env.X or const { X } = process.env');
@@ -506,7 +524,7 @@ function scanTestCode(src, file, root, parser) {
   const base = path.dirname(file);
   const pkg = readJsonc(path.join(root, 'package.json')) || {};
   const own = typeof pkg.name === 'string' ? pkg.name : null;
-  for (const s of specifiers(ast)) {
+  for (const s of specifiers(ast, within(path.join(root, ...K6_DIR), file))) {
     if (s.bad) { out.push(s.bad); continue; }
     const spec = s.spec;
     if (spec.startsWith('#')) { out.push(`import "${spec}" — package imports map outside the screen`); continue; }

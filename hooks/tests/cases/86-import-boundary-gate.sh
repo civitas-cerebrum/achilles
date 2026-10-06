@@ -168,12 +168,12 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$CP/playwright.config.js"
 
 section "import-boundary-gate: the environment, the module wrapper and URL specifiers"
 assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; process.env.NODE_OPTIONS = "--require ./src/app.js"; export default defineConfig({ testDir: "./tests/e2e" });')" \
-  "config sets process.env.NODE_OPTIONS (every worker loads src/) → DENY" "process.env is written"
+  "config sets process.env.NODE_OPTIONS (every worker loads src/) → DENY" "process state is written"
 assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; process.env.NODE_PATH = "/x/src"; export default defineConfig({ testDir: "./tests/e2e" });')" \
-  "config sets process.env.NODE_PATH → DENY" "process.env is written"
-assert_deny "$H" "$(code tests/gsenv.ts 'export default async () => { process.env.NODE_OPTIONS = "--require ./src/app.js"; };')" "globalSetup under tests/ sets NODE_OPTIONS → DENY" "process.env is written"
-assert_deny "$H" "$(code tests/e2e/x.spec.ts 'process.env["NODE_OPTIONS"] += " --require ./src/app.js";')" "process.env[k] += … → DENY" "process.env is written"
-assert_deny "$H" "$(code tests/e2e/x.spec.ts 'delete process.env.CI;')" "delete process.env.X → DENY" "process.env is written"
+  "config sets process.env.NODE_PATH → DENY" "process state is written"
+assert_deny "$H" "$(code tests/gsenv.ts 'export default async () => { process.env.NODE_OPTIONS = "--require ./src/app.js"; };')" "globalSetup under tests/ sets NODE_OPTIONS → DENY" "process state is written"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'process.env["NODE_OPTIONS"] += " --require ./src/app.js";')" "process.env[k] += … → DENY" "process state is written"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'delete process.env.CI;')" "delete process.env.X → DENY" "process state is written"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'Object.assign(process.env, { NODE_OPTIONS: "--require ./src/app.js" });')" "Object.assign(process.env, …) → DENY" "process.env used as a value"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const e = process.env; e.NODE_OPTIONS = "--require ./src/app.js";')" "process.env bound to a name → DENY" "process.env used as a value"
 assert_allow "$H" "$(code tests/e2e/fixtures/env.ts 'const { BASE_URL, API_KEY } = process.env; export { BASE_URL, API_KEY }; export const u = process.env.USER_EMAIL!; export const k = (name: string) => process.env[name]; export const all = { ...process.env }; for (const n in process.env) {}')" \
@@ -192,6 +192,36 @@ assert_allow "$H" "$(code tests/perf/scenarios/smoke.js 'import http from "k6/ht
   "k6 scenario with a jslib https: import → ALLOW (Node loads no https: specifier; k6 does)"
 assert_deny "$H" "$(cfg 'import "file:///p/src/app.js"; export default { testDir: "./tests" };')" "config import of a file: URL → DENY" "is a URL"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'process.execve(process.execPath, [process.execPath, "./src/app.js"]);')" "process.execve → DENY" ".execve reaches"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; [process.env.NODE_OPTIONS] = ["--require ./src/app.js"]; export default defineConfig({ testDir: "./tests/e2e" });')" "array-pattern write to process.env → DENY" "process state is written"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; ({ o: process.env.NODE_OPTIONS } = { o: "--require ./src/app.js" }); export default defineConfig({ testDir: "./tests/e2e" });')" "object-pattern write to process.env → DENY" "process state is written"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; for (process.env.NODE_OPTIONS of ["--require ./src/app.js"]); export default defineConfig({ testDir: "./tests/e2e" });')" "for-of target process.env → DENY" "process state is written"
+assert_deny "$H" "$(code tests/gs/gsds.ts 'export default async function globalSetup() { [process.env.NODE_OPTIONS] = ["--require ./src/app.js"]; }')" "globalSetup array-pattern write → DENY" "process state is written"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'let o; ({ a: [, process.env.X = "1"], ...o } = { a: [0, 1] });')" "nested pattern with default and rest writing process.env → DENY" "process state is written"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'for (process.env.X in { a: 1 }) {}')" "for-in target process.env → DENY" "process state is written"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; process.execArgv.push("--require=./src/app.js"); export default defineConfig({ testDir: "./tests/e2e" });')" "process.execArgv.push in the config → DENY" ".execArgv reaches"
+assert_deny "$H" "$(code tests/gs/gsexec.ts 'export default async function () { process.execArgv.push("--require=./src/app.js"); }')" "process.execArgv.push in a globalSetup → DENY" ".execArgv reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'export const n = process.execArgv.length;')" "process.execArgv read → DENY (any reference)" ".execArgv reaches"
+assert_deny "$H" "$(code tests/gs/gsexecpath.ts 'import fs from "fs"; import path from "path"; export default async function () { const sh = path.join(__dirname, "n.sh"); fs.writeFileSync(sh, "#!/bin/sh\nexec node --require ./src/app.js \"\$@\"\n", { mode: 0o755 }); process.execPath = sh; }')" \
+  "process.execPath = wrapper script → DENY" "process state is written"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; process.loadEnvFile("./tests/x.env"); export default defineConfig({ testDir: "./tests/e2e" });')" "process.loadEnvFile → DENY" ".loadEnvFile reaches"
+assert_allow "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; process.env.NODE_OPTIONS?.length; process.execPath.length; export default defineConfig({ testDir: "./tests/e2e" });')" "process.env / process.execPath reads → ALLOW"
+assert_deny "$H" "$(code tests/e2e/caller.js 'function f() { return f.caller; } const w = f(); w.arguments[1]("../../src/app.js");')" "f.caller / .arguments on any object → DENY" ".caller reaches"
+assert_deny "$H" "$(code tests/e2e/pst.js 'Error.prepareStackTrace = (e, s) => s; const fn = new Error().stack[0].getFunction(); fn.arguments[1]("../../src/app.js");')" "stack-trace function .arguments → DENY" ".arguments reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'Object.keys(require.cache);')" "require.cache → DENY" "require used other than"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const k = "dl" + "open"; (process as any)[k]; process["dl"+"open"];')" "process[computed] → DENY" "computed from code"
+
+section "import-boundary-gate: bare specifiers never climb out of node_modules"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import * as x from "https://../../src/app.js";')" 'import "https://../../src/app.js" → DENY' "is a URL"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import * as y from "zz/../../src/app.js";')" 'import "zz/../../src/app.js" → DENY' "a bare specifier with a dot segment"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const x = require("lodash/../../src/app.js");')" 'require("lodash/../../src/app.js") → DENY' "a bare specifier with a dot segment"
+assert_deny "$H" "$(code tests/perf/scenarios/x.js 'import { textSummary } from "https://jslib.k6.io/../../../src/app.js";')" "https: with dot segments under tests/perf → DENY" "a bare specifier with a dot segment"
+assert_deny "$H" "$(cfg 'import x from "zz/../src/app"; export default { testDir: "./tests" };')" "config bare import with a dot segment → DENY" "a bare specifier with a dot segment"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import { textSummary } from "https://jslib.k6.io/k6-summary/0.1.0/index.js";')" "https: import outside tests/perf → DENY" "is a URL"
+assert_allow "$H" "$(code tests/perf/x.js 'import http from "k6/http"; import { textSummary } from "https://jslib.k6.io/k6-summary/0.1.0/index.js"; export default function () { http.get("http://localhost:3000"); }')" \
+  "k6 file directly under tests/perf with a jslib https: import → ALLOW"
+assert_allow "$H" "$(code tests/e2e/x.spec.ts 'import { test } from "@playwright/test"; import lodash from "lodash/fp"; import { a } from "@scope/pkg/sub/v1.0.0/index.js"; import fs from "fs";
+test("t", async () => { fs.writeFileSync(__dirname + "/gen.js", "1"); await import("./gen.js"); });')" \
+  "bare subpaths with dots inside segments, and a runtime fs write (KL-03: not seen) → ALLOW"
 
 section "import-boundary-gate: Node builtins under tests/ come from an allowlist"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import cluster from "node:cluster"; cluster.setupPrimary({ exec: "./src/app.js" }); cluster.fork();')" "node:cluster → DENY" "a Node builtin outside the tests/ allowlist"

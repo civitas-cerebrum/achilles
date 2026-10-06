@@ -38,13 +38,17 @@
 # load it. package.json and tsconfig/jsconfig under tests/ (JSONC) point
 # inside it; tsconfig extends and references are denied. No .git entry under
 # tests/.
-# Both: no URL-scheme specifier but node: and https: (k6 jslib); no eval, Function,
-# createRequire, Reflect or arguments; process, module, globalThis and global
-# only as the object of a static member read; process.env read, never
-# written, deleted or passed on; require only as require("…") or
+# Both: no URL-scheme specifier but node: (https: only under tests/perf, for
+# k6 jslib); no bare specifier with a . or .. segment (it climbs out of
+# node_modules); no eval, Function, createRequire, Reflect or arguments;
+# process, module, globalThis and global only as the object of a static member
+# read; process state (env, execPath) read, never written through any
+# assignment, pattern, for-of, update or delete, nor passed on; no
+# process.execArgv or process.loadEnvFile; require only as require("…") or
 # require.resolve("…"); no .require / ._load / ._compile / .constructor /
-# .execve / process loader members on any object, nor those names as
-# destructuring keys or bare strings; no computed key assembled from strings.
+# .execve / .arguments / .caller / process loader members on any object, nor
+# those names as destructuring keys or bare strings; no computed key assembled
+# from strings.
 # Root package.json: name, exports and imports do not change.
 # Root: $CLAUDE_PROJECT_DIR, else the file's git toplevel unless it sits inside
 # a project's tests/, else cwd cut above a tests/ segment whose parent holds a
@@ -74,7 +78,8 @@
 # - tests/** specifier outside tests/, non-literal, #, self-ref, loader
 #   module, or loading a non-code file                            → DENY
 # - loader alias (eval, Function, arguments, .constructor, module as
-#   a value…), URL specifier, process.env write, builtin off-list → DENY
+#   a value…), URL or dot-segment specifier, process state write,
+#   builtin off-list                                               → DENY
 # - root package.json name / exports / imports changed           → DENY
 # - content over 256KB; node or @babel/parser missing, scanner
 #   failure, no verdict                                           → DENY
@@ -114,11 +119,11 @@ Do this instead:
   of object literals.
   Files under tests/: give every import / require one plain string literal
   (no +, templates or escapes); import relative code or JSON under tests/
-  only, never # aliases, the project's own package, URLs, or Node builtins
-  beyond fs / path / url / os / crypto / util / buffer / stream / events /
-  assert / timers / zlib / http(s); read process.env, never write it; use
-  process, module and require only as process.x, module.exports and
-  require("…"); no arguments. Shared logic belongs in tests/e2e/fixtures/.
+  only, never # aliases, the project's own package, URLs, bare names with
+  . or .. segments, or Node builtins beyond fs / path / url / os / crypto /
+  util / buffer / stream / events / assert / timers / zlib / http(s); read
+  process.env, never write process state; use process, module and require
+  only as process.x, module.exports and require("…"); no arguments. Shared logic belongs in tests/e2e/fixtures/.
   Code must parse. package.json may change scripts, not name / exports /
   imports.
 
