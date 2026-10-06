@@ -55,6 +55,7 @@ set -uo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/transcript.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -73,50 +74,17 @@ TRANSCRIPT_PATH=$(echo "$INPUT" | "$JQ" -r '.transcript_path // empty' 2>/dev/nu
 [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] || exit 0
 
 # Last transcript line carrying a Write/Edit of a spec-shaped file.
-LAST_SPEC_WRITE=$(
-  "$JQ" -r '
-    (input_line_number) as $n |
-    if (.message?.content? | type) == "array" then
-      .message.content[]
-      | select(.type? == "tool_use")
-      | select(.name? == "Write" or .name? == "Edit")
-      | (.input.file_path // "")
-      | select(test("\\.(spec|test|setup)\\.(m|c)?(t|j)sx?$"))
-      | "\($n)"
-    else empty end
-  ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -1
-)
+LAST_SPEC_WRITE=$(transcript_last_spec_write_line "$TRANSCRIPT_PATH")
 [ -n "$LAST_SPEC_WRITE" ] || exit 0
 
 # Last transcript line carrying sweep evidence in assistant prose.
-LAST_SWEEP=$(
-  "$JQ" -r '
-    (input_line_number) as $n |
-    if (.message?.content? | type) == "array" then
-      .message.content[]
-      | select(.type? == "text")
-      | (.text // "")
-      | select(test("api compliance review|stage=4b|compliance sweep"; "i"))
-      | "\($n)"
-    else empty end
-  ' "$TRANSCRIPT_PATH" 2>/dev/null | tail -1
-)
+LAST_SWEEP=$(transcript_last_sweep_line "$TRANSCRIPT_PATH")
 
 if [ -n "$LAST_SWEEP" ] && [ "$LAST_SWEEP" -ge "$LAST_SPEC_WRITE" ] 2>/dev/null; then
   exit 0
 fi
 
-SPEC_FILES=$(
-  "$JQ" -r '
-    if (.message?.content? | type) == "array" then
-      .message.content[]
-      | select(.type? == "tool_use")
-      | select(.name? == "Write" or .name? == "Edit")
-      | (.input.file_path // "")
-      | select(test("\\.(spec|test|setup)\\.(m|c)?(t|j)sx?$"))
-    else empty end
-  ' "$TRANSCRIPT_PATH" 2>/dev/null | sort -u | head -8 | sed 's/^/    /'
-)
+SPEC_FILES=$(transcript_spec_write_files "$TRANSCRIPT_PATH")
 
 cat >&2 <<EOF
 [BLOCKED] Test code changed in this session, but the Stage-4b compliance sweep never ran.

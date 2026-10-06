@@ -106,6 +106,7 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/bash-classify.sh"
 hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_ADVERSARIAL_GATE:-}" = "1" ] && exit 0
@@ -146,9 +147,9 @@ if [ "$IS_PR" = "1" ]; then
   # `gh` must START the command or follow a shell separator. Matching the words anywhere meant
   # `echo gh pr create` and `grep "gh pr create" .` both tripped the gate — a hook that fires when
   # someone greps for its own trigger is the over-firing that gets hooks switched off.
-  printf '%s' "$CMD" | grep -qE '(^|[;&|])[[:space:]]*gh[[:space:]]+pr[[:space:]]+(create|ready)([[:space:]]|$)' || exit 0
+  bash_classify_is_gh_pr_publish "$CMD" || exit 0
   # `--draft` is explicitly not sign-off: it is how you share work in progress.
-  printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)' && exit 0
+  bash_classify_has_draft_flag "$CMD" && exit 0
 fi
 
 # A transition only matters when it moves the ticket to a terminal state.

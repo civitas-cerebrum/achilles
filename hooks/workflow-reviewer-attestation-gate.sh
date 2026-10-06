@@ -72,6 +72,7 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/workflow-reviewer/SKILL.md"
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/agent-return.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -89,15 +90,7 @@ is_reviewer_description "$DESCRIPTION" || exit 0
 
 # Extract the reviewer's return text from the tool response. Same shape
 # the existing return-schema-guard parses.
-RESPONSE=$(
-  echo "$INPUT" | "$JQ" -r '
-    [
-      (.tool_response.output? | if type == "array" then map(.text? // (. | tostring)) | join("\n") elif type == "string" then . else (. | tostring) end),
-      (.tool_response.result? // empty | tostring),
-      (if (.tool_response | type) == "string" then .tool_response else empty end)
-    ] | map(select(. != null and . != "")) | unique | join("\n")
-  ' 2>/dev/null || echo ""
-)
+RESPONSE=$(agent_return_text attestation)
 case "$RESPONSE" in
   ""|"null"|"{}"|"[]") exit 0 ;;
 esac

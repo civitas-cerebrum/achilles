@@ -77,6 +77,7 @@ fi
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/transcript.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -142,16 +143,7 @@ fi
 # Walks every assistant/tool-use message in the JSONL. If any line
 # matches either signal, the preread is satisfied.
 PREREAD_FOUND=$(
-  "$JQ" -r '
-    if (.message? | type) == "object" and (.message.content? | type) == "array" then
-      .message.content[] |
-        select(.type? == "tool_use") |
-        (
-          (select(.name? == "Skill") | (.input.skill // "") ),
-          (select(.name? == "Read")  | (.input.file_path // "") )
-        )
-    else empty end
-  ' "$TRANSCRIPT_PATH" 2>/dev/null \
+  transcript_skill_read_targets "$TRANSCRIPT_PATH" \
     | grep -E '(^|/)journey-mapping(:|$)|skills/journey-mapping/SKILL\.md' \
     | head -1 || true
 )
