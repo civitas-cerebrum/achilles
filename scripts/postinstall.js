@@ -330,6 +330,9 @@ const HOOK_MANIFEST = [
   // outside tests/ into project source.
   { file: 'achilles-import-boundary-gate.sh',     event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
 
+  // MultiEdit skips every Write|Edit gate above; refuse it while the protocol is active.
+  { file: 'achilles-multiedit-gate.sh',           event: 'PreToolUse', matcher: 'MultiEdit',   timeout: 5 },
+
   // selector-development — activation + inertness gates (PreToolUse:Write|Edit)
   { file: 'selector-development-activation-gate.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
   { file: 'selector-development-inertness-guard.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
