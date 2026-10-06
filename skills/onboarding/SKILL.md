@@ -295,6 +295,7 @@ are the orchestrator's.
 - `npx playwright test --list` lists zero specs without error.
 - The scaffold files exist on disk (config, setup, fixtures tree with HELPER-SLOT-bearing `base.ts`, and the seeded `tests/e2e/docs/test-data-plan.md`).
 - `package.json` scripts include `test:repair`.
+- The orchestrator reads the config diff for `webServer.command` before the first run (nothing screens it — known-limits KL-03).
 
 Load `achilles-protocol` (Stage 1) for the exact file shapes.
 
