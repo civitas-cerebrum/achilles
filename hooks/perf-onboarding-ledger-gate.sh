@@ -73,6 +73,7 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 # Resolve repo root + ledger path.
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
 LEDGER="$(ledger_path "$GUARD_REPO_ROOT" perf)"
 # shellcheck disable=SC1091

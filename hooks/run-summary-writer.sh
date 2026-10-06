@@ -38,6 +38,7 @@ out="$ROOT/.achilles/run-summary.json"
 mkdir -p "$ROOT/.achilles"
 
 phases_json='[]'
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
 LEDGER="$(ledger_path "$ROOT" onboarding)"
 [ -f "$LEDGER" ] && phases_json=$("$JQ" -c '.phases // []' "$LEDGER" 2>/dev/null || echo '[]')

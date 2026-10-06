@@ -10,7 +10,6 @@
 #   PIPELINE_SCHEMA_NAME   — validator-bundle schema id (write-gate only)
 #   PIPELINE_CAP_PREFIX_RE — sed -E capture extracting a reviewer's target phase
 #   JQ                     — path to jq (the gate resolves this already)
-#   lib/ledger.sh          — sourced first (LEDGER_APPROVERS_REL)
 #
 # Message-token contract (set by the sourcing gate alongside the above):
 #   PIPELINE_MSG_LEDGER_NAME   — bare ledger filename (e.g. onboarding-status.json)
@@ -21,6 +20,9 @@
 #   PIPELINE_MSG_SKILL_REF     — orchestrator skill path (e.g. skills/onboarding/SKILL.md)
 #   PIPELINE_MSG_SCHEMA_REF    — ledger schema path (e.g. schemas/onboarding-status.schema.json)
 #   PIPELINE_MSG_REVIEWER_SKILL — reviewer skill path (e.g. skills/workflow-reviewer/SKILL.md)
+
+# shellcheck disable=SC1091
+[ -n "${LEDGER_ONBOARDING_REL:-}" ] || . "$(dirname "${BASH_SOURCE[0]}")/ledger.sh"
 
 # Deny without the calling hook's HOOK_REFS: the gate's messages carry their own references.
 pipeline_emit_deny() { HOOK_REFS= emit_pre_deny "$1"; }
@@ -262,8 +264,8 @@ pipeline_validate_transition() {
   [ -f "$FILE_PATH" ] || return 1
 
   local PRIOR_PHASE NEW_PHASE
-  PRIOR_PHASE=$("$JQ" -r '.currentPhase // empty' "$FILE_PATH" 2>/dev/null || echo "")
-  NEW_PHASE=$("$JQ" -r '.currentPhase // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+  PRIOR_PHASE=$(ledger_get "$FILE_PATH" .currentPhase)
+  NEW_PHASE=$(ledger_get "$TMP_PROPOSED" .currentPhase)
   case "$PRIOR_PHASE" in ''|*[!0-9]*) PRIOR_PHASE=0 ;; esac
   case "$NEW_PHASE"   in ''|*[!0-9]*) NEW_PHASE=0 ;; esac
 
@@ -333,18 +335,18 @@ See: ${PIPELINE_MSG_SCHEMA_REF}
   #    top-level pipeline status "blocked".
   local vp_idx PRIOR_V NEW_V PRIOR_C NEW_C PHASE_ID NEW_STATUS_VP HAS_AUTH NEW_PIPE
   for vp_idx in 0 1 2 3 4 5 6 7; do
-    PRIOR_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$FILE_PATH" 2>/dev/null || echo "")
-    NEW_V=$("$JQ" -r ".phases[${vp_idx}].reviewerVerdict // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
+    PRIOR_V=$(ledger_get "$FILE_PATH" ".phases[${vp_idx}].reviewerVerdict")
+    NEW_V=$(ledger_get "$TMP_PROPOSED" ".phases[${vp_idx}].reviewerVerdict")
     [ -n "$NEW_V" ] || continue
-    PRIOR_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$FILE_PATH" 2>/dev/null || echo "0")
-    NEW_C=$("$JQ" -r ".phases[${vp_idx}].reviewerCycles // 0" "$TMP_PROPOSED" 2>/dev/null || echo "0")
+    PRIOR_C=$(ledger_get "$FILE_PATH" ".phases[${vp_idx}].reviewerCycles" 0)
+    NEW_C=$(ledger_get "$TMP_PROPOSED" ".phases[${vp_idx}].reviewerCycles" 0)
     case "$PRIOR_C" in ''|*[!0-9]*) PRIOR_C=0 ;; esac
     case "$NEW_C"   in ''|*[!0-9]*) NEW_C=0 ;; esac
     PHASE_ID=$((vp_idx + 1))
     # Exempt user-authorised skips: a phase whose new status is "skipped"
     # with a matching approvedDeviations[] authorizer is approved via the
     # user channel, not a reviewer round — reviewerCycles does not apply.
-    NEW_STATUS_VP=$("$JQ" -r ".phases[${vp_idx}].status // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
+    NEW_STATUS_VP=$(ledger_get "$TMP_PROPOSED" ".phases[${vp_idx}].status")
     if [ "$NEW_STATUS_VP" = "skipped" ]; then
       HAS_AUTH=$("$JQ" -r --argjson id "$PHASE_ID" \
         '((.approvedDeviations // []) | any(.phase == $id and ((.authorizer // "") | length) > 0))' \
@@ -373,7 +375,7 @@ See: ${PIPELINE_MSG_SCHEMA_REF}
     # proposed state lands a rejected verdict at the cap, whether or not the
     # verdict string changed in this write.
     if [ "$NEW_C" -eq 3 ] && [ "$NEW_V" = "rejected" ]; then
-      NEW_PIPE=$("$JQ" -r '.status // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+      NEW_PIPE=$(ledger_get "$TMP_PROPOSED" .status)
       pipeline_emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict \"rejected\" at reviewerCycles == 3.
 
 File: ${FILE_PATH}
@@ -528,14 +530,14 @@ pipeline_check_terminal_sod() {
   local AGENT_ID="$3"
   local AGENT_TYPE="${4:-}"
   local NEW_STATUS PRIOR_STATUS
-  NEW_STATUS=$("$JQ" -r '.status // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+  NEW_STATUS=$(ledger_get "$TMP_PROPOSED" .status)
   case "$NEW_STATUS" in
     complete|aborted) ;;
     *) return 1 ;;
   esac
   PRIOR_STATUS=""
   if [ -f "$FILE_PATH" ]; then
-    PRIOR_STATUS=$("$JQ" -r '.status // empty' "$FILE_PATH" 2>/dev/null || echo "")
+    PRIOR_STATUS=$(ledger_get "$FILE_PATH" .status)
   fi
   # Already terminal with the same value — no transition, nothing to gate.
   [ "$PRIOR_STATUS" = "$NEW_STATUS" ] && return 1
@@ -611,7 +613,7 @@ See:
   - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\""
       return 0 ;;
   esac
-  REGISTRY_FILE="$(dirname "$FILE_PATH")/${LEDGER_APPROVERS_REL##*/}"
+  REGISTRY_FILE="$(dirname "$FILE_PATH")/${LEDGER_APPROVERS_NAME}"
   if [ ! -f "$REGISTRY_FILE" ]; then
     pipeline_emit_deny "[BLOCKED] ${LEAD} from a subagent context, but no approver registry exists at:
 
@@ -688,14 +690,14 @@ pipeline_check_mode_authorizer() {
   local TMP_PROPOSED="$1"
   local FILE_PATH="$2"
   local NEW_MODE NEW_AUTHORIZER PRIOR_MODE PRIOR_AUTHORIZER
-  NEW_MODE=$("$JQ" -r '.runMode // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
-  NEW_AUTHORIZER=$("$JQ" -r '.modeAuthorizer // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
+  NEW_MODE=$(ledger_get "$TMP_PROPOSED" .runMode)
+  NEW_AUTHORIZER=$(ledger_get "$TMP_PROPOSED" .modeAuthorizer)
 
   PRIOR_MODE=""
   PRIOR_AUTHORIZER=""
   if [ -f "$FILE_PATH" ]; then
-    PRIOR_MODE=$("$JQ" -r '.runMode // empty' "$FILE_PATH" 2>/dev/null || echo "")
-    PRIOR_AUTHORIZER=$("$JQ" -r '.modeAuthorizer // empty' "$FILE_PATH" 2>/dev/null || echo "")
+    PRIOR_MODE=$(ledger_get "$FILE_PATH" .runMode)
+    PRIOR_AUTHORIZER=$(ledger_get "$FILE_PATH" .modeAuthorizer)
   fi
 
   # Case A: runMode being set or changed. The new value differs from the

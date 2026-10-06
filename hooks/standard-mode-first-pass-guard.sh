@@ -153,6 +153,7 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 # Resolve the cwd (where the state files live) — fall back to "." if absent.
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
 WORKFLOW_LEDGER="$(ledger_path "$GUARD_REPO_ROOT" onboarding)"
 COV_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/coverage-expansion-state.json"

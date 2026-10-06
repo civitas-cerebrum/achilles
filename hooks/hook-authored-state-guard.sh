@@ -57,6 +57,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 # shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
@@ -81,8 +83,8 @@ NORM="/${FILE_PATH#/}"
 
 # --- Class 1: hook-authored state — never Write|Edit. ---
 case "$NORM" in
-  */tests/e2e/docs/.workflow-approvers.json | \
-  */tests/perf/docs/.workflow-approvers.json)
+  */tests/e2e/docs/$LEDGER_APPROVERS_NAME | \
+  */tests/perf/docs/$LEDGER_APPROVERS_NAME)
     emit_deny "[BLOCKED] .workflow-approvers.json is hook-authored state.
 
 File: ${FILE_PATH}

@@ -82,8 +82,6 @@ case "$NORM_PATH" in
 esac
 
 # shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
-# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
 PIPELINE_LEDGER="$FILE_PATH"
 PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
@@ -223,10 +221,10 @@ PROJECT_ROOT="${FILE_PATH%/$LEDGER_PERF_REL}"
 PHASES_NEWLY_COMPLETED=""
 for phase_id in 1 2 3 4 5 6 7; do
   idx=$((phase_id - 1))
-  new_status=$("$JQ" -r ".phases[${idx}].status // empty" "$TMP_PROPOSED" 2>/dev/null || echo "")
+  new_status=$(ledger_get "$TMP_PROPOSED" ".phases[${idx}].status")
   prior_status="pending"
   if [ -f "$FILE_PATH" ]; then
-    prior_status=$("$JQ" -r ".phases[${idx}].status // \"pending\"" "$FILE_PATH" 2>/dev/null || echo "pending")
+    prior_status=$(ledger_get "$FILE_PATH" ".phases[${idx}].status" pending)
   fi
   if [ "$new_status" = "completed" ] && [ "$prior_status" != "completed" ]; then
     PHASES_NEWLY_COMPLETED="${PHASES_NEWLY_COMPLETED} ${phase_id}"

@@ -35,6 +35,7 @@ achilles_require_active_or_completed "$INPUT"
 # sprout a second .achilles/ there — the repo toplevel is the only sanctioned
 # home for run artifacts (falls back to PWD outside a git repo).
 ROOT=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
 PERF_LEDGER="$(ledger_path "$ROOT" perf)"
 

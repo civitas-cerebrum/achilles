@@ -47,6 +47,8 @@ set -uo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
 hook_jq_init silent
 
 HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
@@ -79,7 +81,7 @@ if [ "$EVENT" = "PostToolUse" ]; then
       case "$FILE_PATH" in
         */onboarding-status.json|onboarding-status.json|*/perf-onboarding-status.json|perf-onboarding-status.json)
           if [ -f "$FILE_PATH" ]; then
-            LEDGER_STATUS=$("$JQ" -r '.status // empty' "$FILE_PATH" 2>/dev/null || echo "")
+            LEDGER_STATUS=$(ledger_get "$FILE_PATH" .status)
             case "$LEDGER_STATUS" in
               complete|aborted)
                 achilles_mark_session_completed "$SESSION_ID" "$(basename "$FILE_PATH"):${LEDGER_STATUS}"
