@@ -17,15 +17,17 @@
 //   tests    every file under tests/, whatever its extension (node's CJS
 //            loader runs any extension as JS): every specifier is one string
 //            literal; relative ones resolve under tests/ and load code or JSON;
-//            no `#` imports, no self-reference, no module / vm / child_process /
-//            worker_threads / process modules. package.json and tsconfig /
-//            jsconfig there may not point outside.
-//   both     no eval / Function / createRequire / Reflect; process, module,
-//            globalThis and global only as the object of a static member read
-//            (never a value); require only as require("…") / require.resolve;
-//            no .require / ._load / ._compile / .constructor / process loader
-//            members on any object; no loader names as pattern keys or bare
-//            strings; no computed key assembled from strings.
+//            no `#` imports, no self-reference; Node builtins only from an
+//            allowlist of data helpers (other bare packages are the kernel's
+//            codeImports). package.json and tsconfig / jsconfig there may not
+//            point outside.
+//   both     no URL-scheme specifier but node: / https:; no eval / Function / createRequire /
+//            Reflect / arguments; process, module, globalThis and global only
+//            as the object of a static member read (never a value); process.env
+//            read but never written or passed on; require only as require("…")
+//            / require.resolve; no .require / ._load / ._compile / .constructor
+//            / process loader members on any object; no loader names as pattern
+//            keys or bare strings; no computed key assembled from strings.
 //   package  root package.json: name, exports and imports may not change.
 //
 // Usage: <PreToolUse payload> | node import-boundary-scan.js <file> <cwd>
@@ -37,21 +39,25 @@
 
 const fs = require('fs');
 const path = require('path');
-const { createRequire } = require('module');
+const { createRequire, builtinModules } = require('module');
 const { execFileSync } = require('child_process');
 
 const MAX_BYTES = 256 * 1024;
 const DEADLINE = Date.now() + 5000;
 const CONFIG_IMPORTS = new Set(['@playwright/test', '@civitas-cerebrum/element-interactions', 'dotenv', 'dotenv/config', 'node:path', 'path', 'node:url', 'url']);
-// Modules that load or run code by path, or hand out the loader; a tests/ file never needs them.
-const LOADER_MODULES = new Set(['module', 'vm', 'child_process', 'worker_threads', 'process']);
+// Node builtins test code may load: data helpers that neither run code nor hand out the loader.
+const TEST_BUILTINS = new Set(['fs', 'fs/promises', 'path', 'path/posix', 'path/win32', 'url', 'os', 'crypto', 'util', 'util/types', 'buffer', 'stream', 'stream/promises', 'events', 'assert', 'assert/strict', 'timers', 'timers/promises', 'zlib', 'http', 'https', 'querystring', 'string_decoder', 'readline', 'perf_hooks']);
+const BUILTINS = new Set(builtinModules.map((m) => m.replace(/^node:/, '')));
+// Node resolves no URL specifier but node:; https: stays for k6 scenarios under tests/perf (jslib.k6.io), which Node cannot load either.
+const URL_SCHEME = /^(?!node:|https:)[a-z][a-z0-9+.-]*:/i;
 const CODE_EXT = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 const PATH_KEYS = new Set(['globalSetup', 'globalTeardown', 'testDir', 'tsconfig', 'reporter']);
 // Members that reach the loader from any object: Module.prototype, process, Function.prototype.
-const LOADER_MEMBERS = new Set(['constructor', 'require', '_load', '_compile', 'mainModule', 'binding', '_linkedBinding', 'getBuiltinModule', 'dlopen']);
+const LOADER_MEMBERS = new Set(['constructor', 'require', '_load', '_compile', 'mainModule', 'binding', '_linkedBinding', 'getBuiltinModule', 'dlopen', 'execve']);
 const MODULE_MEMBERS = new Set(['exports', 'id', 'filename', 'path', 'loaded']);
 const GLOBAL_OBJECTS = new Set(['process', 'module', 'globalThis', 'global']);
-const CODE_RUNNERS = new Set(['eval', 'Function', 'createRequire', 'Reflect']);
+// `arguments` at module level is the CJS wrapper's (exports, require, module, …).
+const CODE_RUNNERS = new Set(['eval', 'Function', 'createRequire', 'Reflect', 'arguments']);
 const CASE_FOLD = process.platform === 'darwin' || process.platform === 'win32';
 const fold = (s) => (CASE_FOLD ? s.toLowerCase() : s);
 const SKIP_KEYS = new Set(['loc', 'start', 'end', 'extra', 'range', 'leadingComments', 'trailingComments', 'innerComments', 'comments', 'tokens', 'errors']);
@@ -226,6 +232,7 @@ function specifiers(ast) {
   const take = (n, lit, where) => {
     if (!isStr(lit)) out.push({ bad: `${where} is not one string literal` });
     else if (/\\/.test((lit.extra && lit.extra.raw) || '')) out.push({ bad: `${where} "${lit.value}" contains an escape` });
+    else if (URL_SCHEME.test(lit.value)) out.push({ bad: `${where} "${lit.value}" is a URL — it bypasses path resolution` });
     else out.push({ node: n, spec: lit.value, typeOnly: n.importKind === 'type' || n.exportKind === 'type' });
   };
   for (const { node: n } of walk(ast)) {
@@ -242,10 +249,26 @@ function specifiers(ast) {
   return out;
 }
 
+const isProcessEnv = (n) => isMember(n) && isId(unwrap(n.object), 'process') && propName(n) === 'env';
+// True when m is process.env or a member chain rooted at it (process.env.X.Y).
+function onProcessEnv(m) {
+  for (let n = unwrap(m); isMember(n); n = unwrap(n.object)) if (isProcessEnv(n)) return true;
+  return false;
+}
+
 // Constructs that reach the loader or run code the specifier walk cannot see.
 function aliasOffences(ast) {
   const out = [];
   for (const { node: n, parent: p, key } of walk(ast)) {
+    // Workers inherit the environment: NODE_OPTIONS / NODE_PATH set here load code there.
+    if ((n.type === 'AssignmentExpression' && onProcessEnv(n.left)) || (n.type === 'UpdateExpression' && onProcessEnv(n.argument))
+        || (n.type === 'UnaryExpression' && n.operator === 'delete' && onProcessEnv(n.argument))) {
+      out.push('process.env is written — workers inherit it (NODE_OPTIONS, NODE_PATH)');
+    }
+    if (isProcessEnv(n) && !(isMember(p) && key === 'object') && !(p && p.type === 'VariableDeclarator' && key === 'init' && p.id.type === 'ObjectPattern')
+        && !(p && (p.type === 'SpreadElement' || p.type === 'ForInStatement' || p.type === 'ForOfStatement'))) {
+      out.push('process.env used as a value — read it as process.env.X or const { X } = process.env');
+    }
     if (n.type === 'Identifier') {
       if (isStaticProp(p, key) || isKeyOf(p, key) || inTypePosition(p, key)) continue;
       const name = n.name;
@@ -293,8 +316,13 @@ function evalPath(n, root, cfgFile, resolves) {
     if (/\\/.test((n.extra && n.extra.raw) || '')) throw new Error('an escape in a path literal');
     return n.value;
   }
-  if (isId(n, '__dirname')) return root;
-  if (n.type === 'MemberExpression' && n.object.type === 'MetaProperty' && propName(n) === 'url') return 'file://' + cfgFile;
+  if (isId(n, '__dirname')) return path.dirname(cfgFile);
+  if (n.type === 'MemberExpression' && n.object.type === 'MetaProperty') {
+    const m = propName(n);
+    if (m === 'url') return 'file://' + cfgFile;
+    if (m === 'dirname') return path.dirname(cfgFile);
+    if (m === 'filename') return cfgFile;
+  }
   if (n.type === 'CallExpression' && isMember(n.callee)) {
     const obj = unwrap(n.callee.object);
     const fn = propName(n.callee);
@@ -483,7 +511,8 @@ function scanTestCode(src, file, root, parser) {
     const spec = s.spec;
     if (spec.startsWith('#')) { out.push(`import "${spec}" — package imports map outside the screen`); continue; }
     if (own && (spec === own || spec.startsWith(own + '/'))) { out.push(`import "${spec}" — the project's own package (self-reference)`); continue; }
-    if (LOADER_MODULES.has(spec.replace(/^node:/, '')) && !s.typeOnly) { out.push(`import "${spec}" — a module that loads or runs code by path`); continue; }
+    const bare = spec.replace(/^node:/, '');
+    if ((spec.startsWith('node:') || BUILTINS.has(bare)) && !TEST_BUILTINS.has(bare) && !s.typeOnly) { out.push(`import "${spec}" — a Node builtin outside the tests/ allowlist`); continue; }
     if (!(spec.startsWith('.') || path.isAbsolute(spec))) continue;
     const target = path.resolve(base, spec);
     if (!underTests(root, target)) { out.push(`import "${spec}" — resolves outside tests/`); continue; }
