@@ -21,23 +21,27 @@ achilles_session_active "$INPUT" || exit 0
 case "${KERNEL_MANDATE:-}" in 0|false|off) exit 0 ;; esac
 
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
-if [ ! -f "$KERNEL" ]; then
-  JQ_BIN="$(achilles__jq)"
-  CWD=""
+JQ_BIN="$(achilles__jq)"
+
+# True when this project has staged a manifest, i.e. the kernel is expected to govern it.
+manifest_staged() {
+  local cwd="" top="" root
   if [ -n "$JQ_BIN" ]; then
-    CWD=$(printf '%s' "$INPUT" | "$JQ_BIN" -r '.cwd // empty' 2>/dev/null)
+    cwd=$(printf '%s' "$INPUT" | "$JQ_BIN" -r '.cwd // empty' 2>/dev/null)
   else
-    CWD=$(printf '%s' "$INPUT" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+    cwd=$(printf '%s' "$INPUT" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
   fi
-  TOP=""
-  [ -n "$CWD" ] && [ -d "$CWD" ] && TOP=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
-  STAGED=""
-  [ -n "${KERNEL_MANDATE_MANIFEST:-}" ] && [ -f "$KERNEL_MANDATE_MANIFEST" ] && STAGED=1
-  for root in "${CLAUDE_PROJECT_DIR:-}" "$CWD" "$TOP"; do
-    [ -n "$root" ] && [ -f "$root/.claude/kernel-mandate.json" ] && STAGED=1
+  [ -n "$cwd" ] && [ -d "$cwd" ] && top=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
+  [ -n "${KERNEL_MANDATE_MANIFEST:-}" ] && [ -f "$KERNEL_MANDATE_MANIFEST" ] && return 0
+  for root in "${CLAUDE_PROJECT_DIR:-}" "$cwd" "$top" "$PWD"; do
+    [ -n "$root" ] && [ -f "$root/.claude/kernel-mandate.json" ] && return 0
   done
-  [ -n "$STAGED" ] || exit 0
-  REASON="[BLOCKED] kernel-mandate cannot run: this project has a kernel-mandate.json but $KERNEL is missing, so no role is enforced.
+  return 1
+}
+
+# $1: what is wrong with the kernel, as a sentence fragment.
+deny_cannot_run() {
+  local reason="[BLOCKED] kernel-mandate cannot run: $1, so no role is enforced.
 
 ──────────────────────────
 What to do:
@@ -48,14 +52,27 @@ References:
   skills/achilles-protocol/references/known-limits.md
   skills/achilles-protocol/references/opt-in-surfaces.md (KERNEL_MANDATE)"
   if [ -n "$JQ_BIN" ]; then
-    "$JQ_BIN" -n --arg r "$REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+    "$JQ_BIN" -n --arg r "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   else
-    # No jq to escape with, so the reason here omits the install path.
-    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] kernel-mandate cannot run: this project has a kernel-mandate.json but the kernel gate file is missing, so no role is enforced. Reinstall @civitas-cerebrum/achilles, or set KERNEL_MANDATE=0 in your own shell.\\n\\nReferences:\\n  skills/achilles-protocol/references/known-limits.md"}}\n'
+    # No jq to escape with, so the reason here is static.
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] kernel-mandate cannot run: the kernel gate file is missing or unrunnable, so no role is enforced. Reinstall @civitas-cerebrum/achilles, or set KERNEL_MANDATE=0 in your own shell.\\n\\nReferences:\\n  skills/achilles-protocol/references/known-limits.md"}}\n'
   fi
   exit 0
+}
+
+# An empty file exits 0 with no output and an unreadable one exits 126; both would read as allow.
+if [ ! -f "$KERNEL" ] || [ ! -s "$KERNEL" ] || [ ! -r "$KERNEL" ]; then
+  manifest_staged || exit 0
+  deny_cannot_run "this project has a kernel-mandate.json but $KERNEL is missing, empty or unreadable"
 fi
 
-# Relay: stdout and exit status pass through unchanged; a non-zero exit must not become 0.
-printf '%s' "$INPUT" | bash "$KERNEL"
-exit $?
+# Relay: stdout and exit status pass through unchanged, except that an exit other than
+# 0 (allow) or 2 (block) is non-blocking to the harness, so with a manifest staged it is refused.
+OUT=$(printf '%s' "$INPUT" | bash "$KERNEL"; printf 'x%s' "$?")
+RC=${OUT##*x}
+OUT=${OUT%x*}
+if [ "$RC" != 0 ] && [ "$RC" != 2 ] && manifest_staged; then
+  deny_cannot_run "the kernel exited $RC before deciding"
+fi
+printf '%s' "$OUT"
+exit "$RC"
