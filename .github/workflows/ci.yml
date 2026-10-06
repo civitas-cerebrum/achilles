@@ -38,6 +38,9 @@ jobs:
       - name: 🔎  Schemas lint
         run: npm run schemas:lint
 
+      - name: 🔒  Vendored kernel lock
+        run: node scripts/sync-kernel-mandate.mjs --check
+
       - name: 🧪  Hook tests
         run: npm run test:hooks
 
