@@ -40,7 +40,7 @@
 # tests/.
 # Both: no URL-scheme specifier but node: (https: only under tests/perf, for
 # k6 jslib); no bare specifier with a . or .. segment (it climbs out of
-# node_modules); no eval, Function, createRequire, Reflect or arguments;
+# node_modules) and no percent-encoding (%2e%2e decodes to ..); no eval, Function, createRequire, Reflect or arguments;
 # process, module, globalThis and global only as the object of a static member
 # read; process state (env, execPath) read, never written through any
 # assignment, pattern, for-of, update or delete, nor passed on; no

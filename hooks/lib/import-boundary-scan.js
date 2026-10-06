@@ -22,7 +22,7 @@
 //            codeImports). package.json and tsconfig / jsconfig there may not
 //            point outside.
 //   both     no URL-scheme specifier but node: (https: under tests/perf only);
-//            no bare specifier with a dot segment; no eval / Function / createRequire /
+//            no bare specifier with a dot segment; no percent-encoding; no eval / Function / createRequire /
 //            Reflect / arguments; process, module, globalThis and global only
 //            as the object of a static member read (never a value); process
 //            state read, never written (env, execPath, execArgv); require only as require("…")
@@ -238,6 +238,7 @@ function specifiers(ast, allowHttps = false) {
     const v = lit && lit.value;
     if (!isStr(lit)) out.push({ bad: `${where} is not one string literal` });
     else if (/\\/.test((lit.extra && lit.extra.raw) || '')) out.push({ bad: `${where} "${v}" contains an escape` });
+    else if (v.includes('%')) out.push({ bad: `${where} "${v}" — percent-encoding in a module specifier (the ESM resolver decodes %2e%2e to ..)` });
     else if (URL_SCHEME.test(v) && !(allowHttps && /^https:/i.test(v))) out.push({ bad: `${where} "${v}" is a URL — it bypasses path resolution` });
     else if (!(v.startsWith('.') || path.isAbsolute(v)) && hasDotSegment(v)) out.push({ bad: `${where} "${v}" — a bare specifier with a dot segment climbs out of node_modules` });
     else out.push({ node: n, spec: v, typeOnly: n.importKind === 'type' || n.exportKind === 'type' });
