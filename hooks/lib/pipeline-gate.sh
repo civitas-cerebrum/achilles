@@ -302,7 +302,6 @@ pipeline_validate_transition() {
   # Phase-skip detection: new > prior + 1 AND the in-between phase is
   # still `pending` in the new content.
   if [ "$NEW_PHASE" -gt "$((PRIOR_PHASE + 1))" ]; then
-    # For every phase id between prior+1 and new-1, check status.
     local MID_ID MID_STATUS
     for MID_ID in $(seq $((PRIOR_PHASE + 1)) $((NEW_PHASE - 1))); do
       MID_STATUS=$("$JQ" -r --argjson id "$MID_ID" '
@@ -329,8 +328,7 @@ See: ${PIPELINE_MSG_SCHEMA_REF}
     done
   fi
 
-  # reviewerVerdict approved without handoverEnvelope check — scan every
-  # phase's new state for the violation.
+  # An approved verdict needs a handoverEnvelope in any phase.
   local BAD_PHASE
   BAD_PHASE=$("$JQ" -r '
     [.phases[]? | select(.reviewerVerdict == "approved" and (.handoverEnvelope == null))] |
@@ -384,7 +382,6 @@ See: ${PIPELINE_MSG_SCHEMA_REF}
       [ "$HAS_AUTH" = "true" ] && continue
     fi
     if [ "$NEW_V" != "$PRIOR_V" ]; then
-      # Verdict changed — reviewerCycles must increment by exactly 1.
       if [ "$NEW_C" -ne "$((PRIOR_C + 1))" ]; then
         pipeline_emit_deny "[BLOCKED] Phase ${PHASE_ID} reviewerVerdict changed (\"${PRIOR_V:-<unset>}\" → \"${NEW_V}\") without incrementing reviewerCycles by exactly 1 (was ${PRIOR_C}, proposed ${NEW_C}).
 

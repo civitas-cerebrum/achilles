@@ -198,10 +198,8 @@ function flattenSvelte(node) {
       });
       result.push({ tag: n.name, attrs });
       (n.children || []).forEach(walk);
-    } else if (n.type === 'Fragment') {
-      (n.children || []).forEach(walk);
     } else if (n.children) {
-      (n.children || []).forEach(walk);
+      n.children.forEach(walk);
     }
   }
   walk(node);
@@ -246,7 +244,6 @@ function compareElements(beforeElems, afterElems) {
   }
 
   let added = null;   // { name, value } — the single allowed new attribute
-  let addedCount = 0;
 
   for (let i = 0; i < beforeElems.length; i++) {
     const b = beforeElems[i];
@@ -264,9 +261,8 @@ function compareElements(beforeElems, afterElems) {
       if (!aa) {
         return err('modifies-existing-attribute', `Attribute removed: ${ba.name}`);
       }
-      // Spread sentinels — compare as equal-if-both-spread
       if (ba.spread || aa.spread) {
-        if ((ba.spread && !aa.spread) || (!ba.spread && aa.spread)) {
+        if (!ba.spread || !aa.spread) {
           return err('modifies-existing-attribute', `Spread changed at position ${j} in <${b.tag}>`);
         }
         continue;
@@ -282,20 +278,15 @@ function compareElements(beforeElems, afterElems) {
       if (extra > 1) {
         return err('multiple-attributes-added', `${extra} attributes added in one element`);
       }
-      addedCount += 1;
-      if (addedCount > 1) {
+      if (added) {
         return err('multiple-attributes-added', 'Attributes added in more than one element');
       }
-      const newAttr = a.attrs[b.attrs.length]; // the extra one at the end
+      const newAttr = a.attrs[b.attrs.length];
       added = { name: newAttr.name, value: newAttr.value };
     }
   }
 
   if (!added) {
-    // No new attribute was found — treat as structural if no changes at all?
-    // The contract says we return ok:true only for additive edits.
-    // If nothing was added, it's not a selector-adding edit.
-    // However, this case should not arise in the test suite.
     return err('structural-change', 'No new attribute was added');
   }
 
@@ -309,45 +300,30 @@ function getExtension(filePath) {
   return m ? m[1].toLowerCase() : '';
 }
 
-function parseAndFlatten(src, ext) {
-  switch (ext) {
-    case 'tsx':
-    case 'jsx':
-    case 'ts':
-    case 'js': {
-      const ast = parseJSX(src);
-      return flattenJSX(ast);
-    }
-    case 'vue': {
-      const ast = parseVue(src);
-      return flattenVue(ast);
-    }
-    case 'svelte': {
-      const ast = parseSvelte(src);
-      return flattenSvelte(ast);
-    }
-    case 'html':
-    case 'htm': {
-      const ast = parseHTML(src);
-      return flattenParse5(ast);
-    }
-    default:
-      return null;
-  }
-}
+const PARSERS = new Map([
+  ['tsx', src => flattenJSX(parseJSX(src))],
+  ['jsx', src => flattenJSX(parseJSX(src))],
+  ['ts', src => flattenJSX(parseJSX(src))],
+  ['js', src => flattenJSX(parseJSX(src))],
+  ['vue', src => flattenVue(parseVue(src))],
+  ['svelte', src => flattenSvelte(parseSvelte(src))],
+  ['html', src => flattenParse5(parseHTML(src))],
+  ['htm', src => flattenParse5(parseHTML(src))],
+]);
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 function validate({ before, after, expectedAttr, filePath }) {
   const ext = getExtension(filePath);
-  if (!['tsx', 'jsx', 'ts', 'js', 'vue', 'svelte', 'html', 'htm'].includes(ext)) {
+  const parseAndFlatten = PARSERS.get(ext);
+  if (!parseAndFlatten) {
     return err('unsupported-extension', `No parser for extension: .${ext}`);
   }
 
   let beforeElems, afterElems;
   try {
-    beforeElems = parseAndFlatten(before, ext);
-    afterElems = parseAndFlatten(after, ext);
+    beforeElems = parseAndFlatten(before);
+    afterElems = parseAndFlatten(after);
   } catch (e) {
     return err('parser-error', e.message);
   }
@@ -355,7 +331,6 @@ function validate({ before, after, expectedAttr, filePath }) {
   const result = compareElements(beforeElems, afterElems);
   if (!result.ok) return result;
 
-  // Final checks
   if (result.attrName !== expectedAttr) {
     return err('wrong-attribute-name', `Expected ${expectedAttr} but got ${result.attrName}`);
   }

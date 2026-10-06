@@ -50,7 +50,7 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/selector-development/SKILL.md 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
-# Portable sha256 (macOS ships shasum, not sha256sum).
+# Portable sha256.
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
 
@@ -135,14 +135,12 @@ detect_step() {
       fi
       ;;
   esac
-  # Unrecognised
-  echo ""
 }
 
 # Step predecessor table
 step_predecessor() {
   case "$1" in
-    before_snapshot) echo "" ;;           # no predecessor (step 1)
+    before_snapshot) echo "" ;;           # step 1 has no predecessor
     patch_applied)   echo "before_snapshot" ;;
     typecheck)       echo "patch_applied" ;;
     unit_tests)      echo "typecheck" ;;
@@ -150,7 +148,6 @@ step_predecessor() {
     after_snapshot)  echo "e2e" ;;
     visual_diff)     echo "after_snapshot" ;;
     commit)          echo "visual_diff" ;;
-    *)               echo "" ;;
   esac
 }
 
@@ -198,8 +195,7 @@ if [ ! -f "$RECEIPT" ]; then
   exit 0
 fi
 
-# Must be valid JSON. (No xargs — it word-splits paths with spaces.)
-while IFS= read -r f; do cat "$f" 2>/dev/null; done <<< "$RECEIPT" | "$JQ" empty 2>/dev/null || exit 0
+"$JQ" empty "$RECEIPT" 2>/dev/null || exit 0   # must be valid JSON
 
 # Extract tool input
 CMD_OR_PATH=""
@@ -230,107 +226,58 @@ if [ "$EVENT_NAME" = "PostToolUse" ]; then
 
   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-  # Build the step entry and update receipt fields based on step type
+  # Journal entry is {name, status, ts} plus per-step extras; patch_applied also
+  # records the staged-diff hash and the file on the receipt itself.
+  EXTRA='{}'
+  RECEIPT_EDIT='.steps = $steps'
+  DIFF_HASH=""
   case "$STEP" in
     patch_applied)
-      # Append step entry with files field
-      FILE_PATH="$CMD_OR_PATH"
-      NEW_STEPS=$("$JQ" -n \
-        --argjson steps "$STEPS_JSON" \
-        --arg name "$STEP" \
-        --arg status "$STATUS" \
-        --arg ts "$TS" \
-        --arg file "$FILE_PATH" \
-        '$steps + [{name: $name, status: $status, ts: $ts, files: [$file]}]')
-
-      # Compute git_diff_hash for the staged changes to this file. The diff
-      # goes through a tempfile + file_sha256 so the digest stays byte-exact
-      # (trailing newline included) and portable to macOS (no sha256sum).
+      EXTRA=$("$JQ" -n --arg file "$CMD_OR_PATH" '{files: [$file]}')
+      RECEIPT_EDIT='.steps = $steps | .git_diff_hash = $hash | .files = ((.files // []) + [$file] | unique)'
+      # Tempfile + file_sha256 keeps the digest byte-exact (trailing newline
+      # included) and portable to macOS (no sha256sum).
       if [ -n "${FAKE_STAGED_HASH:-}" ]; then
         DIFF_HASH="$FAKE_STAGED_HASH"
       else
         DIFF_TMP=$(mktemp "${TMPDIR:-/tmp}/seldev-diff-XXXXXX")
-        git -C "$WS" diff --cached -- "$FILE_PATH" > "$DIFF_TMP" 2>/dev/null || true
+        git -C "$WS" diff --cached -- "$CMD_OR_PATH" > "$DIFF_TMP" 2>/dev/null || true
         DIFF_HASH=$(file_sha256 "$DIFF_TMP")
         rm -f "$DIFF_TMP"
       fi
-
-      # Write updated receipt: steps + git_diff_hash + append to top-level files
-      "$JQ" \
-        --argjson steps "$NEW_STEPS" \
-        --arg hash "$DIFF_HASH" \
-        --arg file "$FILE_PATH" \
-        '.steps = $steps | .git_diff_hash = $hash | .files = ((.files // []) + [$file] | unique)' \
-        "$RECEIPT" > "${RECEIPT}.tmp" \
-        && mv "${RECEIPT}.tmp" "$RECEIPT" \
-        || rm -f "${RECEIPT}.tmp"
       ;;
-
     visual_diff)
-      # Parse diff_pixels from tool_response.stdout JSON
-      STDOUT_RAW=$(echo "$TOOL_RESPONSE" | "$JQ" -r '.stdout // ""')
-      DIFF_PIXELS=$(echo "$STDOUT_RAW" | "$JQ" -r '.diffPixels // 0' 2>/dev/null || echo "0")
-      # Ensure it's a number (default 0 if not parseable)
-      if ! echo "$DIFF_PIXELS" | grep -qE '^[0-9]+$'; then
-        DIFF_PIXELS=0
-      fi
-
-      NEW_STEPS=$("$JQ" -n \
-        --argjson steps "$STEPS_JSON" \
-        --arg name "$STEP" \
-        --arg status "$STATUS" \
-        --arg ts "$TS" \
-        --argjson diff_pixels "$DIFF_PIXELS" \
-        '$steps + [{name: $name, status: $status, ts: $ts, diff_pixels: $diff_pixels}]')
-
-      "$JQ" --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
-        && mv "${RECEIPT}.tmp" "$RECEIPT" \
-        || rm -f "${RECEIPT}.tmp"
+      DIFF_PIXELS=$(echo "$TOOL_RESPONSE" | "$JQ" -r '.stdout // ""' | "$JQ" -r '.diffPixels // 0' 2>/dev/null || echo "0")
+      echo "$DIFF_PIXELS" | grep -qE '^[0-9]+$' || DIFF_PIXELS=0
+      EXTRA=$("$JQ" -n --argjson d "$DIFF_PIXELS" '{diff_pixels: $d}')
       ;;
-
     commit)
-      # Idempotency: if .current-scope is already gone, don't double-archive
-      if [ ! -f "$SCOPE_FILE" ]; then
-        exit 0
-      fi
-
-      # Append the step entry to the journal
-      NEW_STEPS=$("$JQ" -n \
-        --argjson steps "$STEPS_JSON" \
-        --arg name "$STEP" \
-        --arg status "$STATUS" \
-        --arg ts "$TS" \
-        '$steps + [{name: $name, status: $status, ts: $ts}]')
-
-      "$JQ" --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
-        && mv "${RECEIPT}.tmp" "$RECEIPT" \
-        || rm -f "${RECEIPT}.tmp"
-
-      # On success: archive receipt and clear .current-scope
-      if [ "$STATUS" = "pass" ]; then
-        ARCHIVE_DIR="$SELDEV_DIR/archive"
-        mkdir -p "$ARCHIVE_DIR"
-        TS_SAFE=$(echo "$TS" | tr ':' '-')
-        cp "$RECEIPT" "${ARCHIVE_DIR}/${SCOPE}.${TS_SAFE}.receipt.json" 2>/dev/null || true
-        rm -f "$SCOPE_FILE"
-      fi
-      ;;
-
-    *)
-      # Default: before_snapshot, typecheck, unit_tests, e2e, after_snapshot
-      # Shape: {name, status, ts} — no extras needed
-      NEW_STEPS=$("$JQ" -n \
-        --argjson steps "$STEPS_JSON" \
-        --arg name "$STEP" \
-        --arg status "$STATUS" \
-        --arg ts "$TS" \
-        '$steps + [{name: $name, status: $status, ts: $ts}]')
-
-      "$JQ" --argjson steps "$NEW_STEPS" '.steps = $steps' "$RECEIPT" > "${RECEIPT}.tmp" \
-        && mv "${RECEIPT}.tmp" "$RECEIPT" \
-        || rm -f "${RECEIPT}.tmp"
+      # Idempotent: a vanished .current-scope means the receipt is already archived.
+      [ -f "$SCOPE_FILE" ] || exit 0
       ;;
   esac
+
+  NEW_STEPS=$("$JQ" -n \
+    --argjson steps "$STEPS_JSON" \
+    --arg name "$STEP" \
+    --arg status "$STATUS" \
+    --arg ts "$TS" \
+    --argjson extra "$EXTRA" \
+    '$steps + [{name: $name, status: $status, ts: $ts} + $extra]')
+
+  "$JQ" --argjson steps "$NEW_STEPS" --arg hash "$DIFF_HASH" --arg file "$CMD_OR_PATH" \
+    "$RECEIPT_EDIT" "$RECEIPT" > "${RECEIPT}.tmp" \
+    && mv "${RECEIPT}.tmp" "$RECEIPT" \
+    || rm -f "${RECEIPT}.tmp"
+
+  # A passing commit ends the flight: archive the receipt, clear the scope.
+  if [ "$STEP" = "commit" ] && [ "$STATUS" = "pass" ]; then
+    ARCHIVE_DIR="$SELDEV_DIR/archive"
+    mkdir -p "$ARCHIVE_DIR"
+    TS_SAFE=$(echo "$TS" | tr ':' '-')
+    cp "$RECEIPT" "${ARCHIVE_DIR}/${SCOPE}.${TS_SAFE}.receipt.json" 2>/dev/null || true
+    rm -f "$SCOPE_FILE"
+  fi
 
   exit 0
 fi
@@ -394,16 +341,12 @@ Receipt: ${RECEIPT}"
     if [ -n "${FAKE_STAGED_HASH:-}" ]; then
       STAGED_HASH="$FAKE_STAGED_HASH"
     else
-      # Portable read-into-array (bash 3.2 lacks `mapfile`; macOS ships
-      # bash 3.2 as /bin/bash by default, so consumers running the hook
-      # on macOS would hit `command not found` here without this).
+      # No `mapfile`: macOS /bin/bash is 3.2. `${ARR[@]+...}` guards the empty
+      # array under `set -u`. Tempfile + file_sha256 keeps the digest byte-exact.
       FILES_ARR=()
       while IFS= read -r _line; do
         FILES_ARR+=("$_line")
       done < <("$JQ" -r '.files[]? // empty' "$RECEIPT" 2>/dev/null)
-      # ${ARR[@]+...} guards the expansion when the array is empty — bash 3.2
-      # under `set -u` treats an empty array's "${ARR[@]}" as unbound.
-      # Tempfile + file_sha256 keeps the digest byte-exact and macOS-portable.
       STAGED_TMP=$(mktemp "${TMPDIR:-/tmp}/seldev-staged-XXXXXX")
       git -C "$WS" diff --cached -- ${FILES_ARR[@]+"${FILES_ARR[@]}"} > "$STAGED_TMP" 2>/dev/null || true
       STAGED_HASH=$(file_sha256 "$STAGED_TMP")

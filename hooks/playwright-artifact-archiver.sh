@@ -33,13 +33,10 @@
 # Why
 # ---
 # During an autonomous self-repair session a baseline run captured traces and
-# error-context for a failing test; later runs in the same session wiped them,
-# and the repair worker dispatched to diagnose that test found no evidence and
-# had to reproduce from scratch. The same hazard silently overwrites the
-# failure artifacts a bug report links to. The methodology's answer was a rule
-# telling agents to copy evidence out immediately — exactly the kind of
-# discipline a harness should enforce instead of asking humans and agents to
-# remember it under context pressure.
+# error-context for a failing test; later runs wiped them and the repair worker
+# had to reproduce from scratch. The same hazard overwrites the artifacts a bug
+# report links to. A rule telling agents to copy evidence out is discipline a
+# harness should enforce.
 #
 # Canonical reference
 # -------------------
@@ -257,12 +254,9 @@ else
 fi
 
 # Fingerprint: file count + byte total + digest of every (size, mtime, path) in
-# the candidate set. File CONTENT is deliberately not hashed — digesting a
-# 120 MB trace would cost more than archiving it. The residual blind spot is
-# therefore narrow but real: two runs completing inside the same clock second
-# and producing byte-identical trees at identical paths look like one run, and
-# the second is treated as already archived. In practice a rerun changes at
-# least one trace size and `.last-run.json`'s mtime.
+# the candidate set. Content is not hashed (digesting a 120 MB trace costs more
+# than archiving it), so two runs in the same clock second with byte-identical
+# trees at identical paths look like one run.
 FP_DIGEST="$(command -v shasum || command -v sha1sum || command -v cksum || true)"
 fingerprint() {
   local rel listing count total digest
@@ -281,22 +275,16 @@ PREV_FP=""
 [ -f "$FP_FILE" ] && PREV_FP=$("$JQ" -r '.fingerprint // ""' "$FP_FILE" 2>/dev/null || echo "")
 [ "$FP" = "$PREV_FP" ] && exit 0
 
-# ---------------------------------------------------------------------------
-# Reporter claim. The Achilles Playwright reporter archives each failing
-# attempt as it happens and, from `onExit`, records what the run left on disk:
-# per candidate path, the file count, byte total and newest mtime in whole
-# seconds. It cannot compute the fingerprint above — that would mean
-# reimplementing this script's stat/sort/digest pipeline in another language
-# and keeping the two byte-identical — so it records the three quantities that
-# ARE reproducible across implementations, and this hook checks those.
+# Reporter claim. The Achilles Playwright reporter archives each failing attempt
+# and, from `onExit`, records per candidate path the file count, byte total and
+# newest mtime. It cannot reproduce the fingerprint above, so this hook checks
+# those three quantities instead.
 #
-# Per PATH, not in aggregate, because this hook's candidate set is frequently a
-# SUBSET of the reporter's: the reporter is handed the resolved config, while
-# this hook greps it, so a computed `outputDir` is invisible here and only the
-# html report is seen. The claim is honoured when every path THIS hook resolved
-# appears in the claim with numbers that still match disk. Anything the
-# reporter did not see is therefore never suppressed, and a stale or partial
-# claim costs a duplicate archive rather than lost evidence.
+# Per PATH, not in aggregate: this hook greps the config while the reporter is
+# handed it resolved, so this hook's candidate set is often a subset of the
+# reporter's. The claim is honoured only when every path resolved here appears in
+# it with numbers that still match disk, so a stale or partial claim costs a
+# duplicate archive, never lost evidence.
 # ---------------------------------------------------------------------------
 if [ -f "$FP_FILE" ]; then
   CLAIM_BY=$("$JQ" -r '.claimedBy // ""' "$FP_FILE" 2>/dev/null || echo "")
@@ -326,13 +314,12 @@ while [ -e "$RUNS_DIR/$RUN_ID" ]; do RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$n"; n=$
 DEST="$RUNS_DIR/$RUN_ID"
 mkdir -p "$DEST/artifacts" 2>/dev/null || exit 0
 
-# Large blobs: Playwright traces (*.zip) and videos (*.webm / *.mp4). These are
-# the bytes that fill disks; the small evidence (error-context.md, screenshots,
-# JSON report) is what a diagnosis usually needs first, so `reduced` mode keeps
-# it and drops only the blobs — never the other way round.
+# Large blobs: traces (*.zip) and videos (*.webm / *.mp4). `reduced` mode drops
+# only these; the small evidence a diagnosis needs first (error-context.md,
+# screenshots, JSON report) always lands.
 is_blob() { case "$1" in *.zip|*.webm|*.mp4) return 0 ;; *) return 1 ;; esac }
 
-SKIPPED_JSON="[]"; ARCHIVED_BYTES=0; SKIPPED_BYTES=0
+SKIPPED_JSON="[]"; SKIPPED_BYTES=0
 for rel in "${CANDIDATES[@]}"; do
   src="$ROOT/$rel"
   if [ "$MODE" = "full" ]; then
@@ -359,13 +346,10 @@ case "${ARCHIVED_BYTES:-}" in ''|*[!0-9]*) ARCHIVED_BYTES=0 ;; esac
 ARCHIVED_FILES=$(find "$DEST/artifacts" -type f 2>/dev/null | wc -l | tr -d ' ')
 case "${ARCHIVED_FILES:-}" in ''|*[!0-9]*) ARCHIVED_FILES=0 ;; esac
 
-# Reconcile intended against actual. `cp` failures are tolerated (the run must
-# never fail because of us) but they must never pass for a complete archive:
-# a disk-full or permission error mid-copy would otherwise write a manifest
-# claiming mode "full" and stamp the fingerprint, permanently marking a run
-# archived whose evidence never landed — and the next run then wipes the
-# originals. When the copy is short we say so and deliberately do NOT stamp
-# the fingerprint, so the next invocation (or the Stop backstop) retries.
+# Reconcile intended against actual. `cp` failures are tolerated but must not
+# pass for a complete archive: stamping the fingerprint after a short copy would
+# mark a run archived whose evidence never landed, and the next run wipes the
+# originals. A short copy is left unstamped so the next invocation retries.
 N_SKIPPED_FILES=$(printf '%s' "$SKIPPED_JSON" | "$JQ" -r 'length' 2>/dev/null || echo 0)
 EXPECTED_FILES=$((CAND_FILES - ${N_SKIPPED_FILES:-0}))
 EXPECTED_BYTES=$((CAND_BYTES - SKIPPED_BYTES))
@@ -380,12 +364,9 @@ count_matching() { find "$DEST/artifacts" -type f -name "$1" 2>/dev/null | wc -l
 N_TRACES=$(count_matching '*.zip'); N_VIDEOS=$(find "$DEST/artifacts" -type f \( -name '*.webm' -o -name '*.mp4' \) 2>/dev/null | wc -l | tr -d ' ')
 N_SHOTS=$(count_matching '*.png'); N_CTX=$(count_matching 'error-context.md')
 
-# Retention: keep the newest $RETAIN run directories. Only directories this
-# hook created (runId-shaped basename, under .achilles/runs/) are ever removed.
+# Retention: keep the newest $RETAIN runs. Only runId-shaped directories under
+# .achilles/runs/ are counted or removed; anything else there is invisible.
 PRUNED_JSON="[]"
-# Portable read-into-array (bash 3.2 lacks `mapfile`; macOS ships 3.2).
-# Only runId-shaped directories are counted or removed — anything else a
-# consumer keeps under .achilles/runs/ is invisible to retention.
 is_run_id() {
   case "$1" in
     [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z) return 0 ;;
@@ -441,29 +422,26 @@ CMD_TRUNC="$CMD"; [ ${#CMD_TRUNC} -gt 400 ] && CMD_TRUNC="${CMD_TRUNC:0:400}..."
      retention: { keep: $retain, maxMb: $maxMb, pruned: $pruned } }' \
   > "$DEST/manifest.json" 2>/dev/null || true
 
-# Only a reconciled archive earns the fingerprint. Leaving it unstamped costs
-# at worst a duplicate archive on the next invocation; stamping it after a
-# short copy costs the evidence itself.
+# Only a reconciled archive earns the fingerprint: unstamped costs a duplicate
+# archive next time, stamped after a short copy costs the evidence.
 if [ "$INCOMPLETE" = "false" ]; then
   "$JQ" -n --arg fp "$FP" --arg id "$RUN_ID" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{fingerprint:$fp, runId:$id, timestamp:$ts}' > "$FP_FILE" 2>/dev/null || true
 fi
 ln -sfn "$RUN_ID" "$RUNS_DIR/latest" 2>/dev/null || true
 
-# Nothing is ever discarded silently.
-N_SKIPPED="${N_SKIPPED_FILES:-0}"
 N_PRUNED=$(printf '%s' "$PRUNED_JSON" | "$JQ" -r 'length' 2>/dev/null || echo 0)
-if [ "${N_SKIPPED:-0}" -gt 0 ] || [ "${N_PRUNED:-0}" -gt 0 ] || [ "$INCOMPLETE" = "true" ]; then
+if [ "${N_SKIPPED_FILES:-0}" -gt 0 ] || [ "${N_PRUNED:-0}" -gt 0 ] || [ "$INCOMPLETE" = "true" ]; then
   MSG="[WARN] Playwright evidence archived to .achilles/runs/$RUN_ID with omissions."
   if [ "$INCOMPLETE" = "true" ]; then
     MSG="$MSG
 
 INCOMPLETE: $ARCHIVED_FILES of $EXPECTED_FILES file(s) copied. Some artifacts could not be written to the archive (disk full, permissions, or an I/O error). The run was NOT marked as archived, so the next run command or Stop will retry — but the originals in the outputDir survive only until the next Playwright run starts. Copy anything you need out now."
   fi
-  if [ "${N_SKIPPED:-0}" -gt 0 ]; then
+  if [ "${N_SKIPPED_FILES:-0}" -gt 0 ]; then
     MSG="$MSG
 
-Skipped $N_SKIPPED trace/video file(s) ($((SKIPPED_BYTES / 1048576)) MB): the run's artifacts exceeded ACHILLES_ARTIFACT_MAX_MB=${MAX_MB}. Screenshots, error-context.md and report JSON were archived. Raise the ceiling (ACHILLES_ARTIFACT_MAX_MB) before the next run if you need the traces, or copy them out of test-results/ now — the next run will wipe them."
+Skipped $N_SKIPPED_FILES trace/video file(s) ($((SKIPPED_BYTES / 1048576)) MB): the run's artifacts exceeded ACHILLES_ARTIFACT_MAX_MB=${MAX_MB}. Screenshots, error-context.md and report JSON were archived. Raise the ceiling (ACHILLES_ARTIFACT_MAX_MB) before the next run if you need the traces, or copy them out of test-results/ now — the next run will wipe them."
   fi
   if [ "${N_PRUNED:-0}" -gt 0 ]; then
     MSG="$MSG

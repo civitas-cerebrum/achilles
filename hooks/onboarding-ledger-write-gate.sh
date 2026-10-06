@@ -88,44 +88,11 @@ PIPELINE_MSG_DELIVERABLE_WHY=' The deliverables are unforgeable signatures of th
 skill having been invoked — without them, the phase was either skipped
 or shortcut.'
 
-# ---------------------------------------------------------------------------
-# Per-phase positive-deliverable checks (Phase-N → completed transitions).
-# When a phase's status flips from non-completed to "completed" in the
-# proposed write, the canonical deliverables for that phase must already
-# exist on disk. This catches "orchestrator marked the phase done without
-# actually producing the deliverables" — the failure mode that
-# markdown-text contract enforcement alone could not stop.
-#
-# Per-phase manifests (minimum required files / sentinel checks):
-#
-#   Phase 4 (Journey-mapping):
-#     - tests/e2e/docs/journey-map.md exists AND line 1 == the sentinel
-#       `<!-- journey-mapping:generated -->`.
-#     - tests/e2e/docs/.phase4-cycle-state.json exists AND contains at
-#       minimum cycles."1" + cycles."2" entries (cycle 1 discovery +
-#       cycle 2 edge-probe — non-negotiable per journey-mapping/SKILL.md
-#       §"Iterative discovery cycles").
-#
-#   Phase 5 (Coverage-expansion):
-#     - tests/e2e/docs/coverage-expansion-state.json exists AND contains
-#       at minimum passes."1" (the strict-per-journey first pass).
-#
-#   Phase 6 (Bug-discovery):
-#     - tests/e2e/docs/adversarial-findings.md exists.
-#
-#   Phase 7 (Secrets-sweep):
-#     - .env.example exists at the project root.
-#
-#   Phase 8 (Report):
-#     - qa-summary-deck.html AND qa-summary-deck.pdf exist at the
-#       project root.
-#
-# Phases 1-3 are not enforced here — their deliverables (config files,
-# fixtures, happy-path specs) don't have unforgeable signatures the
-# harness can verify cheaply. The ledger's `phases[N].deliverables[]`
-# array is the audit trail for those phases; the orchestrator-to-
-# reviewer brief gate ensures the reviewer reads them.
-# ---------------------------------------------------------------------------
+# Per-phase deliverable checks. When a phase flips to "completed", its canonical
+# deliverables must already exist on disk; markdown-text contract enforcement
+# alone could not stop "marked done without producing them". Phases 1-3 are not
+# enforced (no unforgeable signature the harness can verify cheaply);
+# phases[N].deliverables[] is their audit trail.
 onboarding_check_deliverables() {
   case "$1" in
     4)
@@ -155,8 +122,7 @@ onboarding_check_deliverables() {
           "skills/journey-mapping/SKILL.md §\"Cycle protocol\""
       fi
 
-      # Cycle 1 + Cycle 2 are non-negotiable per the iterative-discovery
-      # protocol (≥1 discovery cycle + exactly 1 edge-probe cycle).
+      # Cycles 1 (discovery) and 2 (edge-probe) are non-negotiable.
       HAS_CYCLE_1=$("$JQ" -r '.cycles["1"] != null' "$CYCLE_STATE_PATH" 2>/dev/null || echo "false")
       HAS_CYCLE_2=$("$JQ" -r '.cycles["2"] != null' "$CYCLE_STATE_PATH" 2>/dev/null || echo "false")
       if [ "$HAS_CYCLE_1" != "true" ] || [ "$HAS_CYCLE_2" != "true" ]; then
@@ -166,10 +132,8 @@ onboarding_check_deliverables() {
           "skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\""
       fi
 
-      # Cycle-roster completeness: for EVERY cycle recorded, the section
-      # subagents must have all returned. dispatched-sections == returned-
-      # sections (set equality, not just length). Catches the "dispatched
-      # 7, only 5 came back, marked the cycle done anyway" failure mode.
+      # Every recorded cycle must have all dispatched sections returned (set
+      # equality, not just length).
       for cycle_id in 1 2; do
         DISPATCHED=$("$JQ" -c ".cycles[\"${cycle_id}\"][\"dispatched-sections\"] // [] | sort" "$CYCLE_STATE_PATH" 2>/dev/null || echo "[]")
         RETURNED=$("$JQ" -c ".cycles[\"${cycle_id}\"][\"returned-sections\"] // [] | sort" "$CYCLE_STATE_PATH" 2>/dev/null || echo "[]")
@@ -200,16 +164,10 @@ onboarding_check_deliverables() {
           "skills/coverage-expansion/SKILL.md §\"Non-negotiables\""
       fi
 
-      # Phase-5 ordering (cross-cutting §12): a standard/depth run only
-      # completes when ALL FIVE passes plus the cleanup/dedup step are
-      # recorded in coverage-expansion-state.json. The cleanup commit
-      # RECORDS passes 1-5 + cleanup and does NOT delete the state file;
-      # the orchestrator deletes it only AFTER reviewer approval, as the
-      # final post-approval act, then writes the Phase-5 ledger completion.
-      # So at the moment this completion write lands, the state file must
-      # still exist and carry the full record. (A breadth-mode run is the
-      # documented single-pass exception — it records cleanup with a
-      # `mode: breadth` marker and is exempt from the 5-pass requirement.)
+      # A standard/depth run completes only with ALL FIVE passes plus cleanup
+      # recorded. The state file must still exist at this write: the orchestrator
+      # deletes it only after reviewer approval. Breadth mode (`mode: breadth`) is
+      # the documented single-pass exception.
       RUN_MODE_COV=$("$JQ" -r '.runMode // .mode // "standard"' "$COV_STATE_PATH" 2>/dev/null || echo "standard")
       if [ "$RUN_MODE_COV" != "breadth" ]; then
         MISSING_PASSES=""
@@ -228,16 +186,11 @@ onboarding_check_deliverables() {
         fi
       fi
 
-      # Coverage-completeness check: Pass 1's dispatched-journeys + any
-      # deferredJourneys[] entries must together cover the journey map's
-      # full roster. Catches the "dispatched 8 of 41 journeys, called
-      # exit-#2, marked Phase 5 complete" failure mode. The roster is
-      # derived from the journey-map.md (one entry per `^#### j-` block).
+      # Pass 1's dispatched-journeys + deferredJourneys[] must cover the journey
+      # map's roster (silent scope compression: 8 of 41 dispatched, marked done).
       MAP_PATH="$PROJECT_ROOT/tests/e2e/docs/journey-map.md"
       if [ -f "$MAP_PATH" ]; then
-        # Roster headings are canonical `### j-<slug>: <name>`; the prior
-        # `^#### j-` pattern (4 hashes) never matched the real map and left
-        # the coverage-completeness check dead. Accept `### j-` or `#### j-`.
+        # Roster headings are `### j-<slug>: <name>`; accept `#### j-` too.
         ROSTER_COUNT=$(grep -cE '^###[#]? j-' "$MAP_PATH" 2>/dev/null; true)
         ROSTER_COUNT=${ROSTER_COUNT:-0}
         DISPATCHED_COUNT=$("$JQ" -r '.passes["1"]["dispatched-journeys"] // [] | length' "$COV_STATE_PATH" 2>/dev/null || echo "0")
@@ -289,13 +242,9 @@ onboarding_check_deliverables() {
           "skills/onboarding/SKILL.md §\"Phase 6 — Bug discovery\" + skills/bug-discovery/SKILL.md"
       fi
 
-      # Content check: the ledger must contain at least one per-journey
-      # section block. The canonical schema (per
-      # references/subagent-return-schema.md §3) uses `### j-<slug>` as
-      # the per-journey section header. An empty ledger (just the
-      # title) means no probe ever ran — the file exists but the
-      # methodology was bypassed. grep -c always prints a count (even
-      # 0) and exits 1 on no-match — capture stdout, ignore exit code.
+      # The ledger needs at least one per-journey `### j-<slug>` block
+      # (references/subagent-return-schema.md §3); a title-only file means no
+      # probe ran. grep -c prints a count even for 0 but exits 1, so ignore status.
       JOURNEY_BLOCKS=$(grep -c '^### j-' "$ADV_PATH" 2>/dev/null; true)
       JOURNEY_BLOCKS=${JOURNEY_BLOCKS:-0}
       if [ "$JOURNEY_BLOCKS" -lt 1 ]; then
