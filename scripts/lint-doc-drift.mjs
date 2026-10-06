@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Six independent checks; each reports pass/fail; the process
+// describe. Seven independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -13,7 +13,9 @@
 //       block citing >=1 resolvable skills/ (or schemas/) path — the
 //       methodology-pointer convention (contributing-to-achilles-protocol
 //       SKILL.md §"Hook error message format — repo standard")
-//   (6) the QA role ledger's role inventory  ↔  the QA mandate's roles
+//   (6) hand-written hook / gate / skill counts in docs/*.html  ↔  the
+//       filesystem (hooks/*.sh, hooks/*-gate.sh + *-guard.sh, skills/*/)
+//   (7) the QA role ledger's role inventory  ↔  the QA mandate's roles
 //       (role-name sets both ways, plus the count the ledger states in prose)
 //
 // The lint is authored to the FINAL intended state of the surfaces other
@@ -30,6 +32,7 @@ const HARNESS_HOOKS = 'skills/achilles-protocol/references/harness-hooks.md';
 const POSTINSTALL = 'scripts/postinstall.js';
 const RETURN_SCHEMA = 'skills/achilles-protocol/references/subagent-return-schema.md';
 const ROLE_MAP = 'hooks/lib/schema-role-map.sh';
+const DOCS_DIR = 'docs';
 const QA_MANDATE = 'hooks/data/achilles-qa.kernel-mandate.json';
 const QA_LEDGER = 'hooks/data/achilles-qa.kernel-mandate.md';
 
@@ -323,7 +326,57 @@ function checkHookReferences() {
 }
 
 // ---------------------------------------------------------------------------
-// Check 6 — QA role ledger's role inventory ↔ QA mandate's roles
+// Check 6 — hand-written counts in docs/*.html  ↔  the filesystem
+// ---------------------------------------------------------------------------
+// The published pages quote concrete figures ("37 hooks ship with the
+// package — 28 are enforcement gates", "24 Agent Skills"). Nothing else in
+// this lint reads docs/, so those figures drifted silently twice before this
+// check existed. Each pattern below captures the number the page claims; the
+// check asserts it equals the number on disk.
+function checkDocsCounts() {
+  const detail = [];
+  if (!existsSync(DOCS_DIR)) {
+    report('docs/*.html hand-written counts ↔ filesystem (docs/ absent)', true, []);
+    return;
+  }
+
+  const hookFiles = readdirSync('hooks').filter((f) => f.endsWith('.sh'));
+  const gateFiles = hookFiles.filter((f) => f.endsWith('-gate.sh') || f.endsWith('-guard.sh'));
+  const skillDirs = readdirSync(SKILLS_DIR).filter((d) => statSync(join(SKILLS_DIR, d)).isDirectory());
+
+  // [ human label, actual value, /regex with one capturing group for the number/ ]
+  const RULES = [
+    ['hook scripts', hookFiles.length, /(\d+)\s+hooks?\s+ship with the package/g],
+    ['hook scripts', hookFiles.length, /(\d+)\+?\s+hook scripts/g],
+    ['enforcement gates', gateFiles.length, /(\d+)\s+are enforcement gates/g],
+    ['enforcement gates', gateFiles.length, /The\s+(\d+)\s+enforcement gates/g],
+    ['enforcement gates', gateFiles.length, /\((\d+)\+?\s+enforcement gates\)/g],
+    ['agent skills', skillDirs.length, /(\d+)\s+Agent Skills/g],
+  ];
+
+  let asserted = 0;
+  const pages = readdirSync(DOCS_DIR).filter((f) => f.endsWith('.html'));
+  for (const page of pages) {
+    const html = readFileSync(join(DOCS_DIR, page), 'utf8');
+    for (const [label, actual, re] of RULES) {
+      for (const m of html.matchAll(re)) {
+        asserted += 1;
+        if (Number(m[1]) !== actual) {
+          detail.push(`docs/${page}: claims ${m[1]} ${label}, filesystem has ${actual} — "${m[0]}"`);
+        }
+      }
+    }
+  }
+
+  report(
+    `docs/*.html hand-written counts ↔ filesystem (${asserted} figures across ${pages.length} pages)`,
+    detail.length === 0,
+    detail,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Check 7 — QA role ledger's role inventory ↔ QA mandate's roles
 // ---------------------------------------------------------------------------
 // The ledger (hooks/data/achilles-qa.kernel-mandate.md) is the human copy of
 // the mandate (…kernel-mandate.json). Upstream it is rendered by
@@ -394,12 +447,12 @@ function checkRoleLedgerInventory() {
     detail,
   );
 }
-
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
 checkRoleMapCoverage();
 checkHookReferences();
+checkDocsCounts();
 checkRoleLedgerInventory();
 
 if (anyFail) {
