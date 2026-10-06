@@ -325,6 +325,11 @@ const HOOK_MANIFEST = [
   // pre-convention suite stays writable (see test-identity.md §1).
   { file: 'test-id-compliance-gate.sh',           event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
 
+  // The root runner config imports only the runner, the framework, dotenv and
+  // path helpers, and names lifecycle files under tests/ only: the orchestrator
+  // runs it, so it must not execute project source.
+  { file: 'achilles-config-import-gate.sh',       event: 'PreToolUse', matcher: 'Write|Edit',  timeout: 10 },
+
   // selector-development — activation + inertness gates (PreToolUse:Write|Edit)
   { file: 'selector-development-activation-gate.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },
   { file: 'selector-development-inertness-guard.sh',     event: 'PreToolUse', matcher: 'Write|Edit', timeout: 10 },

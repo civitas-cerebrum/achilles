@@ -798,7 +798,7 @@
     </div>
 
     <div class="prose reveal">
-      <p>39 hooks ship with the package &mdash; 30 are enforcement gates. They are installed globally by <code class="inline-code">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
+      <p>40 hooks ship with the package &mdash; 31 are enforcement gates. They are installed globally by <code class="inline-code">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
     </div>
 
     <div class="prose reveal">
@@ -874,7 +874,7 @@
     <div class="prose reveal">
       <p>Install the two npm packages. The harness hooks register automatically via <code class="inline-code">postinstall</code>. Point the page repository at your application's selectors. Write new tests through the Steps API &mdash; existing Playwright tests continue to run unchanged alongside them.</p>
       <p>Achilles runs in <strong>Claude Code</strong> today: <code class="inline-code">postinstall</code> registers the gates as Claude Code hooks in <code class="inline-code">.claude/settings.json</code>. The gates themselves are plain shell scripts that read a tool invocation on stdin and return an allow/deny decision &mdash; so any harness that can run a script before a tool call can adopt them. The enforcement layer sits below the agent: it doesn't care who wrote the test, only whether the methodology's preconditions are met.</p>
-      <p>The 30 enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
+      <p>The 31 enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
     </div>
   </div>
 </section>
