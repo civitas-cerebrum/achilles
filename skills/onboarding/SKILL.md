@@ -595,24 +595,26 @@ should be portable across local / CI / staging targets.
 
 1. Load `secrets-sweep`. The skill defines the four literal classes
    (credentials, API keys, PII, URLs) and the extraction playbook.
-   Phase 7 is two dispatches, in order (§"Dispatch grammar"):
-   `scaffolder-phase7:` wires `.env`, `.env.example`, the `.gitignore`
-   entry and `dotenv` in `playwright*.config.ts` from the key list you
-   put in its brief; then `secrets-sweep-phase7:` (`subagent_type:
-   secrets-sweep`, tag `<<kernel-mandate-role: secrets-sweep#<nonce>>>`)
-   rewrites the specs. Neither has a shell: you run the suite after.
-2. Scan `tests/**/*.{ts,json}` and root `playwright*.config.ts` per
-   the `secrets-sweep` skill's scope.
+   Phase 7 is two dispatches (§"Dispatch grammar"), neither with a shell:
+   1. `scaffolder-phase7:` — brief: the `NAME=value` pairs and any
+      config literal to move; writes `.env`, `.env.example`, the
+      `.gitignore` entry, `dotenv` in `playwright*.config.ts`.
+   2. `secrets-sweep-phase7:` (`subagent_type: secrets-sweep`, tag
+      `<<kernel-mandate-role: secrets-sweep#<nonce>>>`) — brief: the
+      same NAME list, "use exactly these names"; rewrites `tests/**`.
+2. Before dispatching, scan `tests/**/*.{ts,json}` and root
+   `playwright*.config.ts` yourself per the `secrets-sweep` skill's
+   scope and build the pairs.
    *Do not* touch application source under `src/` or `app/`. Evidence
    bundles (`tests/e2e/evidence/`) are NOT swept by Phase 7 — they are
    redacted by `companion-mode`'s Phase-5 redaction step.
-3. The sweep replaces literals with `process.env.<NAME>`; the
-   scaffolder writes `.env` (real values, gitignored), `.env.example`
-   (placeholders, committed) and the `.gitignore` entry.
+3. The sweep replaces literals in `tests/**` with `process.env.<NAME>`;
+   the scaffolder writes `.env` (real values, gitignored),
+   `.env.example` (placeholders, committed) and the `.gitignore` entry.
 
 **Exit criteria.**
-- A re-scan of `tests/**` (plus root `playwright*.config.ts`) surfaces
-  no literal credentials.
+- You re-scan `tests/**` and root `playwright*.config.ts` (you can Read
+  both): zero literal credentials.
 - `.env`, `.env.example`, and the `.gitignore` entry are all in place.
 - `npx playwright test`, run by you after both return, still passes against the now-env-driven suite.
 

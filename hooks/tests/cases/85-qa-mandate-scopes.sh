@@ -30,7 +30,7 @@ assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=probe file_path="$QP/
 assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=test-composer file_path="$QP/tests/e2e/docs/onboarding-status.json" content='{}')" \
   "test-composer Write the status ledger → still DENY" "explicitly denied write"
 
-section "qa-mandate: the scaffolder wires .env; secrets-sweep rewrites specs and never runs anything"
+section "secrets-sweep-phase7"
 qs_disp() { # <description> <role>
   qs_main tool_name=Agent description="$1" prompt="<<kernel-mandate-role: $2#k7m2p9>>
 Phase 7." | "$JQ" -c --arg t "$2" '.tool_input.subagent_type = $t'
@@ -47,6 +47,8 @@ assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=scaffolder command='np
   "scaffolder Bash → DENY" "may not use the 'Bash' tool"
 assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=secrets-sweep file_path="$QP/tests/e2e/fixtures/users.ts" content='import { test } from "@playwright/test"; export const u = process.env.TEST_USER_EMAIL;')" \
   "secrets-sweep Write a fixture with process.env → ALLOW"
+assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=secrets-sweep file_path="$QP/tests/e2e/page-repository.json" content='{"baseUrl":"process.env.APP_URL"}')" \
+  "secrets-sweep Write the page repository → ALLOW (it holds URLs)"
 assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=secrets-sweep file_path="$QP/tests/e2e/x.spec.ts" content='import fs from "fs-extra";')" \
   "secrets-sweep importing an undeclared package → DENY" "not in this role's declared import list"
 for F in .env .env.example playwright.config.ts; do
@@ -59,6 +61,12 @@ assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=secrets-sweep command=
   "secrets-sweep Bash → DENY (the orchestrator re-runs the suite)" "may not use the 'Bash' tool"
 assert_deny "$KERNEL" "$(qs_sub tool_name=Read agent_type=test-composer file_path="$QP/.env")" \
   "test-composer Read .env → still DENY" "outside the role's read scope"
+
+section "qa-mandate: grouped dispatch binds the composer and probe roles"
+assert_allow "$KERNEL" "$(qs_disp 'test-composer-group-p2-auth: j-login, j-signup' test-composer)" "test-composer-group-<id>: + tag → ALLOW"
+assert_allow "$KERNEL" "$(qs_disp 'test-composer-p3batch-p2-misc: j-logout, j-role' test-composer)" "test-composer-p3batch-<id>: + tag → ALLOW"
+assert_allow "$KERNEL" "$(qs_disp 'probe-group-p4-auth: j-login, j-signup' probe)" "probe-group-<id>: + tag → ALLOW"
+assert_deny  "$KERNEL" "$(qs_disp '[group] test-composer-j-login,test-composer-j-signup:' test-composer)" "legacy leading [group] names no role → DENY" ""
 
 rm -rf "$QS_TMP"
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR

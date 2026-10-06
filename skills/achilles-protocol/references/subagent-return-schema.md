@@ -305,7 +305,7 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 | Description prefix | Validation target |
 |---|---|
 | `test-composer-<j-slug>:` (kernel-mandate role name; the legacy `composer-<j-slug>:` routes identically) | Stage A — `status:` enum (new-tests-landed \| covered-exhaustively \| blocked \| skipped) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
-| `secrets-sweep-<slug>:` | Same `composer` schema as `test-composer-` — the Phase 7 sweep returns the Stage A envelope (`status:` + per-status fields); literal values never appear in it |
+| `secrets-sweep-<slug>:` | Same `composer` schema as `test-composer-` — the Phase 7 sweep returns the Stage A envelope (`status:` + per-status fields); the sweep must report variable names and counts, never the literal values |
 | `reviewer-<j-slug>:` | Stage B (§2.4) — `status:` (greenlight \| improvements-needed) + journey/pass/cycle + summary on greenlight \| findings sub-list on improvements-needed |
 | `composition-judge-<scope>:` | Stage 4c composition judge (`test-composition-standards.md` §4) — reuses `reviewer-inloop.schema.json` (no dedicated schema): `status: greenlight` ⇔ SATISFIED; `status: improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED. Briefs must cite the schema path (preread gate). |
 | `probe-<j-slug>:` | Adversarial — `probes:` + `boundaries:` + `findings:` count or list |

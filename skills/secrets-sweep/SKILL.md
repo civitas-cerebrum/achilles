@@ -23,14 +23,16 @@ and removes it.
 This skill does **not** sanitise the application under test. Application
 source code is out of scope. Phase 7 is two dispatches, in order:
 
-1. `scaffolder-phase7:` writes `.env`, `.env.example`, the `.gitignore`
-   entry and the `dotenv` load in `playwright*.config.ts`, from the key
-   list the orchestrator passes in the brief (steps d-f).
-2. `secrets-sweep-phase7:` edits only files under `tests/` (e2e,
-   contracts, fixtures, data), replacing literals with `process.env`
-   references (steps a-c, g). It cannot read `.env` or run anything.
-
-The orchestrator then runs the suite (step h).
+0. The orchestrator scans `tests/**` and the root configs itself
+   (steps a-b) and builds `NAME=value` pairs.
+1. `scaffolder-phase7:` brief carries the pairs. It writes `.env`,
+   `.env.example`, the `.gitignore` entry and the `dotenv` load in
+   `playwright*.config.ts`, and rewrites config literals (steps d-f,
+   and any `localhost:3000` in a config) to `process.env.<NAME>`.
+2. `secrets-sweep-phase7:` brief carries the same NAME list: "use
+   exactly these names as `process.env.<NAME>`". It edits only
+   `tests/**` (steps c, g). It cannot read `.env` or run anything.
+3. The orchestrator runs steps h-j.
 
 ---
 
@@ -55,13 +57,10 @@ parameterised.
 
 Strict allow-list. Everything else is off-limits.
 
-| Touchable | Off-limits |
-|---|---|
-| `tests/e2e/**` (specs, fixtures, configs) | `src/**`, `app/**`, any application source |
-| `tests/contracts/**` (incl. `schemas.ts`) | Anything outside the test tree and root configs |
-| `tests/fixtures/**`, `tests/data/**` (incl. `page-repository.json`) | Renames or new spec files |
-| Root `playwright*.config.ts` (glob — incl. `playwright.contracts.config.ts`) | `tests/e2e/evidence/**` (see below) |
-| Root `.env`, `.env.example`, `.gitignore` | |
+| Role | Touchable | Off-limits |
+|---|---|---|
+| `secrets-sweep-phase7` | `tests/**` (specs, fixtures, `tests/contracts/**` incl. `schemas.ts`, `tests/data/**` incl. `page-repository.json`) | `src/**`, `app/**`, renames, new spec files, `tests/e2e/evidence/**` (see below), every file outside `tests/**` |
+| `scaffolder-phase7` only | `.env`, `.env.example`, `.gitignore`, root `playwright*.config.ts` (incl. `playwright.contracts.config.ts`) | everything else |
 
 If you find a credential hard-coded in application source, **flag it in
 the summary** rather than editing the application code. The application
@@ -80,8 +79,9 @@ Work the playbook in order. Each step has a verification.
 
 ### a. List candidates
 
-The role has no shell: run these patterns with the Grep tool over `tests/`.
-The orchestrator derives the key list for the scaffolder from your return.
+No shell: run these patterns with the Grep tool over `tests/` only. The
+orchestrator runs them over `tests/` and the root configs to build the
+key list (step 0) and again as the exit re-scan.
 
 ```bash
 git grep -nE 'password|secret|token|api[_-]?key|bearer|sk-[A-Za-z0-9]' -- 'tests/' 'playwright*.config.ts' || true
@@ -198,7 +198,7 @@ A failing suite at this point usually means an env var didn't get loaded
 — check that `dotenv` (or the test harness's equivalent) runs before
 the specs.
 
-### i. Second opinion (optional)
+### i. Second opinion (optional, orchestrator only)
 
 If `gitleaks` or `detect-secrets` is on PATH, run it over `tests/` as a
 second opinion and reconcile its hits against your skip notes from step
@@ -206,7 +206,7 @@ second opinion and reconcile its hits against your skip notes from step
 no-dependency floor; the scanner only adds confidence when it happens to
 be available.
 
-### j. Stage and commit
+### j. Stage and commit (orchestrator only, after the sweep returns)
 
 ```
 chore: extract secrets to .env
@@ -278,8 +278,9 @@ files modified.
 - **Editing application source.** Out of scope. Flag and report only.
 - **Forgetting `.env.local`.** Some frameworks read `.env.local` first;
   leaving it un-gitignored leaks secrets via local overrides.
-- **Hardcoded `localhost:3000` left in `playwright.config.ts`.** This is
-  in scope — extract to `APP_URL` so CI can point at staging.
+- **Hardcoded `localhost:3000` left in `playwright.config.ts`.** Put it
+  in the `scaffolder-phase7:` brief — extract to `APP_URL` so CI can
+  point at staging. The sweep cannot write configs.
 - **Removing `test@example.com`.** That's the *acceptable* default —
   don't replace a perfectly-fine placeholder with another placeholder.
 - **Touching specs that don't have literals.** If a spec is clean,
