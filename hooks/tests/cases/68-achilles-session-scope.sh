@@ -134,8 +134,6 @@ assert_allow "$WATCHER" "$(payload session_id=w2 hook_event_name=PreToolUse tool
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w2.active" ] && echo marked || echo unmarked)" "unmarked" "watcher ignored non-achilles skill"
 assert_allow "$WATCHER" "$(payload session_id=w3 hook_event_name=PreToolUse tool_name=Skill skill=achilles:secrets-sweep)" "watcher: plugin-prefixed achilles skill → silent, marks"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on prefixed skill name"
-assert_allow "$WATCHER" "$(payload session_id=w3b hook_event_name=PreToolUse tool_name=Skill skill=test-data-conventions)" "watcher: test-data-conventions → silent, marks"
-assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3b.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on Skill(test-data-conventions)"
 
 # Orchestrator alias. Installs that renamed the orchestrator skill to
 # `achilles-protocol` must still activate the protocol — a name the
@@ -146,6 +144,8 @@ assert_allow "$WATCHER" "$(payload session_id=w3a hook_event_name=PreToolUse too
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3a.active" ] && echo marked || echo unmarked)" "marked" "watcher marked session on Skill(achilles-protocol)"
 assert_allow "$WATCHER" "$(payload session_id=w3b hook_event_name=PreToolUse tool_name=Skill skill=achilles:achilles-protocol)" "watcher: plugin-prefixed achilles-protocol → silent, marks"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3b.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on prefixed achilles-protocol"
+assert_allow "$WATCHER" "$(payload session_id=w3c hook_event_name=PreToolUse tool_name=Skill skill=test-data-conventions)" "watcher: test-data-conventions → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3c.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on Skill(test-data-conventions)"
 
 section "activation-watcher: Agent dispatch prefixes"
 assert_allow "$WATCHER" "$(payload session_id=w4 hook_event_name=PreToolUse tool_name=Agent description='composer-j-login: build the variant set')" "watcher: composer- dispatch → silent, marks"

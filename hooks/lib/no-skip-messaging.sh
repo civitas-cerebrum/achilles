@@ -36,7 +36,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/onboarding/SKILL.md §"Hard rules — kernel-resident"
+# skills/onboarding/SKILL.md §"Completion rule"
 #
 # Usage
 # -----
@@ -77,7 +77,7 @@ cannot be skipped under any other framing.
 The legitimate early-stop path:
   mkdir -p .claude && touch .claude/onboarding-stop-authorized
 
-Reference: skills/onboarding/SKILL.md §"Hard rules — kernel-resident"
+Reference: skills/onboarding/SKILL.md §"Completion rule"
 NO_SKIP_BLOCK_EOF
 }
 

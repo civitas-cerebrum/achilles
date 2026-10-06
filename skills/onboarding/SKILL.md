@@ -115,6 +115,8 @@ makes those failure modes harness-denied rather than instruction-only.
 
 ## Dispatch grammar (role kernel)
 
+Prerequisite: postinstall installs one agent definition per role into \`~/.claude/agents/\`; dispatch with \`subagent_type: <role>\`.
+
 Every `Agent` dispatch the orchestrator issues under the achilles
 protocol is checked by the role kernel (the mandate in
 `hooks/data/achilles-qa.kernel-mandate.json`, staged into the project
@@ -661,10 +663,12 @@ when the exit criteria are technically met.
   return a schema-conformant envelope (see
   `schemas/subagent-returns/`).
 
-### Hard rules — kernel-resident
+### Completion rule
 
-- The pipeline ends only at full greenlight (phases 1–7) or an operator-authorised early stop (`.claude/onboarding-stop-authorized`). No other framing skips a phase.
-- Canonical: §"Status ledger + workflow reviewer"; enforced by `protected-artifact-bash-guard.sh` and `subagent-return-schema-guard.sh` (deny text from `hooks/lib/no-skip-messaging.sh`).
+- The pipeline ends only at full greenlight (phases 1–7) or an operator-authorised early stop. No other framing skips a phase.
+- NOT authorisation: "honest partial reporting", "pragmatic Pass N", "context-budget exit #2", "user's final-step instruction".
+- Authorised early stop: `mkdir -p .claude && touch .claude/onboarding-stop-authorized`.
+- Canonical: §"Status ledger + workflow reviewer"; enforced by `protected-artifact-bash-guard.sh` and `subagent-return-schema-guard.sh`.
 
 ---
 
