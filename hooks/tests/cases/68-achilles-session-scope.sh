@@ -134,6 +134,8 @@ assert_allow "$WATCHER" "$(payload session_id=w2 hook_event_name=PreToolUse tool
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w2.active" ] && echo marked || echo unmarked)" "unmarked" "watcher ignored non-achilles skill"
 assert_allow "$WATCHER" "$(payload session_id=w3 hook_event_name=PreToolUse tool_name=Skill skill=achilles:secrets-sweep)" "watcher: plugin-prefixed achilles skill → silent, marks"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on prefixed skill name"
+assert_allow "$WATCHER" "$(payload session_id=w3b hook_event_name=PreToolUse tool_name=Skill skill=test-data-conventions)" "watcher: test-data-conventions → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3b.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on Skill(test-data-conventions)"
 
 # Orchestrator alias. Installs that renamed the orchestrator skill to
 # `achilles-protocol` must still activate the protocol — a name the

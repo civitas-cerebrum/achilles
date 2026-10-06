@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Nine independent checks; each reports pass/fail; the process
+// describe. Ten independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -19,6 +19,7 @@
 //       (role-name sets both ways, plus the count the ledger states in prose)
 //   (8) every environment switch a hook or script reads  ↔  a row in opt-in-surfaces.md
 //   (9) the QA workflow table  ↔  the QA mandate (scopes, imports, env, skills, dispatch, commands)
+//   (10) skills/*/ directories  ↔  ACHILLES_SKILL_ALT (every skill activates the protocol)
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -526,6 +527,19 @@ function checkQaMandateParity() {
   }
   report(`achilles-qa workflow table ↔ mandate parity (${mRoles.size} roles, ${wf.stages.length} stages)`, detail.length === 0, detail);
 }
+// Check 10 — every skill directory activates the protocol, unless excluded on purpose
+const ACTIVATION_LIB = 'hooks/lib/achilles-activation.sh';
+const ACTIVATION_EXCLUDED = new Set(['mandate-designer']); // generic kernel tool; must not switch on QA gates
+function checkActivationCoverage() {
+  const src = readFileSync(ACTIVATION_LIB, 'utf8');
+  const m = src.match(/^ACHILLES_SKILL_ALT='([^']+)'/m);
+  const alt = new Set(m ? m[1].split('|') : []);
+  const dirs = readdirSync('skills', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const missing = dirs.filter((d) => !alt.has(d) && !ACTIVATION_EXCLUDED.has(d)).sort();
+  report(`skills/*/ ↔ ACHILLES_SKILL_ALT (${dirs.length} skills, ${ACTIVATION_EXCLUDED.size} excluded)`,
+    Boolean(m) && missing.length === 0,
+    [...(!m ? [`ACHILLES_SKILL_ALT not found in ${ACTIVATION_LIB}`] : []), ...(missing.length ? [`skills that activate nothing: ${missing.join(', ')}`] : [])]);
+}
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
@@ -535,6 +549,7 @@ checkDocsCounts();
 checkRoleLedgerInventory();
 checkOptInSurfaces();
 checkQaMandateParity();
+checkActivationCoverage();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

@@ -661,6 +661,11 @@ when the exit criteria are technically met.
   return a schema-conformant envelope (see
   `schemas/subagent-returns/`).
 
+### Hard rules — kernel-resident
+
+- The pipeline ends only at full greenlight (phases 1–7) or an operator-authorised early stop (`.claude/onboarding-stop-authorized`). No other framing skips a phase.
+- Canonical: §"Status ledger + workflow reviewer"; enforced by `protected-artifact-bash-guard.sh` and `subagent-return-schema-guard.sh` (deny text from `hooks/lib/no-skip-messaging.sh`).
+
 ---
 
 ## Resuming a partial run
