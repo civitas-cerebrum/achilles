@@ -77,6 +77,7 @@ HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
 # shellcheck source=lib/hook-emit.sh
 . "$HOOK_LIB_DIR/hook-emit.sh"
 # shellcheck source=lib/agent-return.sh
+# shellcheck disable=SC1091
 . "$HOOK_LIB_DIR/agent-return.sh"
 
 # Path to the self-contained validator bundle (co-located in lib/;
@@ -113,7 +114,16 @@ fi
 
 # Extract the subagent's textual return.
 # PostToolUse:Agent payloads carry the return in a few shapes.
-RESPONSE=$(agent_return_text schema-guard)
+RESPONSE=$(agent_return_text)
+
+if [ -z "$RESPONSE" ]; then
+  RESPONSE=$(echo "$INPUT" | "$JQ" -r '
+    if (.tool_response // null) == null then ""
+    elif (.tool_response | type) == "string" then .tool_response
+    else (.tool_response | tostring)
+    end
+  ' 2>/dev/null || echo "")
+fi
 
 case "$RESPONSE" in
   ""|"null"|"{}"|"[]") exit 0 ;;

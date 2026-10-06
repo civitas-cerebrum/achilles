@@ -61,7 +61,6 @@ set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
-. "$(dirname "${BASH_SOURCE[0]}")/lib/agent-return.sh"
 hook_jq_init silent
 
 INPUT=$(cat 2>/dev/null || echo "{}")
@@ -168,7 +167,13 @@ if [ "$HAS_RESPONSE" != "true" ]; then
 fi
 
 # PostToolUse — parse the judge's verdict from the return text.
-RESPONSE_TEXT=$(agent_return_text judge)
+RESPONSE_TEXT=$(printf '%s' "$INPUT" | "$JQ" -r '
+  [
+    (.tool_response.output? | if type == "array" then map(.text? // (. | tostring)) | join("\n") elif type == "string" then . else (. | tostring) end),
+    (.tool_response.content? // empty | if type == "array" then map(.text? // (. | tostring)) | join("\n") else (. | tostring) end),
+    (if (.tool_response | type) == "string" then .tool_response else empty end)
+  ] | map(select(. != null and . != "null")) | join("\n")
+' 2>/dev/null || echo "")
 
 # Anchor the parse on the return's status line — a greenlight return that
 # MENTIONS a prior cycle's improvements-needed verdict in prose must not
