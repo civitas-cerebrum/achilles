@@ -1,51 +1,10 @@
 #!/bin/bash
-# achilles-kernel-activation-gate.sh — binds the kernel-mandate role gate
-#                                      to the achilles protocol lifecycle.
+# achilles-kernel-activation-gate.sh — consult the vendored kernel only while the achilles
+# protocol is active in this session; relay its verdict and exit status unchanged.
 #
-# Hook    : PreToolUse:.*  (registered in place of the raw kernel gate)
-# Mode    : PASS-THROUGH — this file decides NOTHING about a tool call.
-#           It decides only WHETHER THE KERNEL IS CONSULTED, then relays
-#           the kernel's verdict byte-for-byte.
-# State   : none (reads the activation marker via lib/achilles-activation.sh)
-# Env     : ACHILLES_PROTOCOL=0|1 (activation suppression / forcing —
-#           the same seam every other achilles gate honours)
-#
-# Why
-# ---
-# The kernel is a general-purpose role OS: point it at a manifest and it
-# governs every tool call in the project, forever. That is the right
-# behaviour for a project that deliberately adopted a mandate, and the
-# wrong behaviour for a project that merely installed a test framework.
-# Shipping the kernel registered unconditionally would mean `npm i
-# @civitas-cerebrum/achilles` silently placed every future session in
-# that project under a mandate nobody asked for.
-#
-# So authority follows a deliberate act. The achilles protocol activates
-# when a person invokes an achilles skill, types /<skill>, or dispatches
-# a role-prefixed subagent — and only from that moment does the mandate
-# bind. When the pipeline reaches a terminal status, or the session ends,
-# the mandate lifts with it. A session that never runs QA never feels it.
-#
-# This also answers the cost objection honestly: an unregistered kernel
-# is free, and a dormant one costs a single marker stat rather than a
-# manifest parse and a scope resolution on every tool call.
-#
-# What this file must never do
-# ----------------------------
-# 1. **Decide.** It has no policy. If the protocol is active, the kernel's
-#    answer is the answer. If a future maintainer is tempted to add "…but
-#    allow X" here, that belongs in the mandate, where it is declared,
-#    validated and logged.
-# 2. **Swallow a non-zero exit.** The kernel signals an internal error by
-#    exiting non-zero with no stdout, and a wrapper that normalises that
-#    to 0 converts "the gate broke" into "the gate permitted" — the exact
-#    failure the kernel's own exit trap exists to prevent. The status is
-#    relayed unchanged.
-#
-# Failure → action
-# ----------------
-# Kernel script missing → exit 0 (nothing to consult; achilles' own gates
-# still apply). Kernel present → its verdict and its exit status, verbatim.
+# Hook : PreToolUse:.*   Env: ACHILLES_PROTOCOL, KERNEL_MANDATE (opt-in-surfaces.md)
+# Why behind activation: skills/achilles-protocol/references/harness-hooks.md §"All tools (kernel mandate)".
+# Kernel file missing: allowed with no manifest in the project, denied with one.
 
 set -uo pipefail
 
@@ -59,10 +18,44 @@ INPUT=$(cat)
 # mandate exists on disk but binds nothing. Silent allow.
 achilles_session_active "$INPUT" || exit 0
 
-KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
-[ -f "$KERNEL" ] || exit 0
+case "${KERNEL_MANDATE:-}" in 0|false|off) exit 0 ;; esac
 
-# Relay: the kernel's stdout IS this hook's stdout, and its exit status
-# IS this hook's exit status. No interpretation, no normalisation.
+KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
+if [ ! -f "$KERNEL" ]; then
+  JQ_BIN="$(achilles__jq)"
+  CWD=""
+  if [ -n "$JQ_BIN" ]; then
+    CWD=$(printf '%s' "$INPUT" | "$JQ_BIN" -r '.cwd // empty' 2>/dev/null)
+  else
+    CWD=$(printf '%s' "$INPUT" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+  fi
+  TOP=""
+  [ -n "$CWD" ] && [ -d "$CWD" ] && TOP=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
+  STAGED=""
+  [ -n "${KERNEL_MANDATE_MANIFEST:-}" ] && [ -f "$KERNEL_MANDATE_MANIFEST" ] && STAGED=1
+  for root in "${CLAUDE_PROJECT_DIR:-}" "$CWD" "$TOP"; do
+    [ -n "$root" ] && [ -f "$root/.claude/kernel-mandate.json" ] && STAGED=1
+  done
+  [ -n "$STAGED" ] || exit 0
+  REASON="[BLOCKED] kernel-mandate cannot run: this project has a kernel-mandate.json but $KERNEL is missing, so no role is enforced.
+
+──────────────────────────
+What to do:
+──────────────────────────
+Reinstall @civitas-cerebrum/achilles. To work without the kernel on purpose, set KERNEL_MANDATE=0 in your own shell.
+
+References:
+  skills/achilles-protocol/references/known-limits.md
+  skills/achilles-protocol/references/opt-in-surfaces.md (KERNEL_MANDATE)"
+  if [ -n "$JQ_BIN" ]; then
+    "$JQ_BIN" -n --arg r "$REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  else
+    # No jq to escape with, so the reason here omits the install path.
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] kernel-mandate cannot run: this project has a kernel-mandate.json but the kernel gate file is missing, so no role is enforced. Reinstall @civitas-cerebrum/achilles, or set KERNEL_MANDATE=0 in your own shell.\\n\\nReferences:\\n  skills/achilles-protocol/references/known-limits.md"}}\n'
+  fi
+  exit 0
+fi
+
+# Relay: stdout and exit status pass through unchanged; a non-zero exit must not become 0.
 printf '%s' "$INPUT" | bash "$KERNEL"
 exit $?

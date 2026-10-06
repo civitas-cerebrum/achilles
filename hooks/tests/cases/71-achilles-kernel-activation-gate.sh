@@ -20,7 +20,7 @@
 #     files still carry those literals (drift pin).
 #   - the wrapper is dormant without an achilles session marker and relays
 #     the kernel's verdict with one; KERNEL_MANDATE=0 still bypasses; a
-#     missing kernel script is a silent allow.
+#     missing kernel script with a staged manifest is a deny.
 #   - postinstall stages the manifest into <project>/.claude/ only when
 #     none exists there, never overwrites, and writes nowhere else.
 
@@ -542,13 +542,13 @@ assert_deny "$H" "$(probe km-act-2)" "…so the next out-of-scope call is DENIED
 assert_deny "$H" "$(payload tool_name=Read file_path="$KP/src/app.ts" cwd="$KP")" \
   "no session_id: fail-closed → kernel consulted → DENY" "outside the role's read scope"
 
-# Kernel script absent beside the wrapper → nothing to consult → silent allow.
+# Kernel script absent beside the wrapper while a manifest is staged → refused (case 87 holds the no-manifest allow).
 NOK="$KW_TMP/hooks-without-kernel"
 mkdir -p "$NOK/lib"
 cp "$H" "$NOK/"
 cp "$HOOK_DIR"/lib/achilles-activation.sh "$NOK/lib/"
-assert_allow "$NOK/achilles-kernel-activation-gate.sh" "$(probe km-act-1)" \
-  "marker present but kernel script missing → silent ALLOW (achilles' own gates still apply)"
+assert_deny "$NOK/achilles-kernel-activation-gate.sh" "$(probe km-act-1)" \
+  "marker present, manifest staged, kernel script missing → DENY" "kernel-mandate cannot run"
 
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR ACHILLES_SESSION_STATE_DIR
 

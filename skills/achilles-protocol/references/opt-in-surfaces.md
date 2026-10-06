@@ -5,7 +5,7 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 | Switch | Set where | Effect | Blast radius |
 |---|---|---|---|
 | `ACHILLES_PROTOCOL` | operator shell | `1` forces the protocol on; `0` stops a new session from activating (an active session stays active) | every Achilles hook, including the kernel wrapper |
-| `KERNEL_MANDATE` | operator shell | `0`, `false` or `off` bypasses the role kernel | kernel only; Achilles gates still run |
+| `KERNEL_MANDATE` | operator shell | `0`, `false` or `off` bypasses the role kernel, including the wrapper's refusal when the kernel file is missing | kernel only; Achilles gates still run |
 | `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it only when absent | kernel only |
 | `CIVITAS_SKIP_HOOK_INSTALL` | install env | `1` skips hook install and mandate staging | all hooks |
 | `CIVITAS_SKIP_JQ_INSTALL` | install env | `1` skips the bundled jq download | hooks then need jq on PATH |
