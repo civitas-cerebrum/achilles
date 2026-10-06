@@ -64,7 +64,6 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/contributing-to-achilles-proto
 # system jq for in-repo testing before postinstall has run.
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-. "$(dirname "${BASH_SOURCE[0]}")/lib/bash-classify.sh"
 hook_jq_init fatal
 
 # --- helpers ---
@@ -95,7 +94,8 @@ CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 # Only fire on the two gh subcommands that author a PR description. The
 # trigger tolerates `command` / `env` wrappers so `command gh pr create` is
 # gated, and allows global flags between `gh` and `pr`.
-if ! bash_classify_is_gh_pr "$CMD"; then
+GH_PR_TRIGGER='(^|[;&|][[:space:]]*)((command|env)[[:space:]]+)?gh([[:space:]]+--[a-z-]+(=[^[:space:]]+)?)*[[:space:]]+pr[[:space:]]+(create|edit)([[:space:]]|$)'
+if ! echo "$CMD" | grep -qE "$GH_PR_TRIGGER"; then
   exit 0
 fi
 

@@ -81,7 +81,6 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/references/
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
-. "$(dirname "${BASH_SOURCE[0]}")/lib/bash-classify.sh"
 hook_jq_init fatal
 
 # --- helpers ---
@@ -102,7 +101,8 @@ CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 # `env` wrappers and `-c key=val` / `--long[=val]` global flags between
 # `git` and `commit`, so wrapped invocations like `git -c user.name=x
 # commit` and `command git commit` are gated.
-if ! bash_classify_is_git_commit "$CMD"; then
+GIT_COMMIT_TRIGGER='(^|[;&|][[:space:]]*)((command|env)[[:space:]]+)?git([[:space:]]+(-[cC][[:space:]]+[^[:space:]]+|--[a-z-]+(=[^[:space:]]+)?))*[[:space:]]+commit([[:space:]]|$)'
+if ! echo "$CMD" | grep -qE "$GIT_COMMIT_TRIGGER"; then
   exit 0
 fi
 

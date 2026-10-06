@@ -106,7 +106,6 @@ fi
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-. "$(dirname "${BASH_SOURCE[0]}")/lib/transcript.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -146,7 +145,20 @@ fi
 # Flatten every tool_use in the transcript into one "<KIND> <value>" line per
 # salient field. Both the context probe and the evidence probe read this.
 # Space-separated (not tab) so the patterns below stay readable and portable.
-TOOL_USES=$(transcript_tool_uses "$TRANSCRIPT_PATH")
+TOOL_USES=$(
+  "$JQ" -r '
+    if (.message? | type) == "object" and (.message.content? | type) == "array" then
+      .message.content[] |
+        select(.type? == "tool_use") |
+        (
+          (select(.name? == "Skill") | "SKILL " + (.input.skill // "")),
+          (select(.name? == "Read")  | "READ "  + (.input.file_path // "")),
+          (select(.name? == "Bash")  | "BASH "  + (.input.command // "")),
+          (select(.name? == "Agent") | "AGENT " + (.input.description // ""))
+        )
+    else empty end
+  ' "$TRANSCRIPT_PATH" 2>/dev/null || true
+)
 [ -n "$TOOL_USES" ] || exit 0
 
 # --- (3) Is this session doing failure diagnosis? ---------------------------
