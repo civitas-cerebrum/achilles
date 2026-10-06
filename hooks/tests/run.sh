@@ -6,12 +6,14 @@
 #   bash hooks/tests/run.sh dispatch-guard  # run a single test file (matches cases/*<arg>*.sh)
 #
 # Exit code: 0 if all tests pass, 1 otherwise.
+# Harness self-test: bash hooks/tests/self/run-sh.sh
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CASES_DIR="$SCRIPT_DIR/cases"
+CASES_DIR="${HOOKTESTS_CASES_DIR:-$SCRIPT_DIR/cases}"  # overridable for self/run-sh.sh
+INSTALL_SIM="${HOOKTESTS_INSTALL_SIM:-$SCRIPT_DIR/install-simulation.sh}"
 
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
@@ -96,6 +98,16 @@ for f in "${selected[@]}"; do
   run_case_file "$f"
 done
 
+# Install simulation — proves the gates fire from a consumer-style install
+# (HOOK_MANIFEST scripts + lib/ + bin/jq copied to a fake home, no repo
+# context). Runs like a case file, before the harness-error report so its
+# early exits count. Respects the filter like any case file.
+if [ -z "$filter" ] || [[ "install-simulation.sh" == *"$filter"* ]]; then
+  echo
+  echo "=== install-simulation.sh ==="
+  run_case_file "$INSTALL_SIM"
+fi
+
 trap - ERR
 if [ ${#HARNESS_ERRORS[@]} -gt 0 ]; then
   echo
@@ -108,16 +120,6 @@ if [ ${#HARNESS_ERRORS[@]} -gt 0 ]; then
     FAIL_DETAILS+=("HARNESS: $e")
     TESTS_FAILED=$((TESTS_FAILED + 1))
   done
-fi
-
-# Install simulation — proves the gates fire from a consumer-style install
-# (HOOK_MANIFEST scripts + lib/ + bin/jq copied to a fake home, no repo
-# context). Sourced so its assertions share the counters above and land in
-# the final tally. Respects the filter like any case file.
-if [ -z "$filter" ] || [[ "install-simulation.sh" == *"$filter"* ]]; then
-  echo
-  echo "=== install-simulation.sh ==="
-  run_case_file "$SCRIPT_DIR/install-simulation.sh"
 fi
 
 # Summary.

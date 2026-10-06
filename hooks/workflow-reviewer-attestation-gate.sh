@@ -120,7 +120,7 @@ NODE_BIN="$(command -v node || true)"
 HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
 VALIDATOR_BUNDLE="$HOOK_LIB_DIR/validator.bundle.mjs"
 TMP_RESP=$(mktemp "${TMPDIR:-/tmp}/wr-attestation-XXXXXX")
-trap 'rm -f "$TMP_RESP" "$TMP_RESP.json"' EXIT
+trap 'rm -f "$TMP_RESP"' EXIT
 printf '%s' "$RESPONSE" > "$TMP_RESP"
 
 PARSED_JSON=""

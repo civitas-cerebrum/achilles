@@ -6,7 +6,7 @@
 #           PreToolUse:Agent  (DENY agent dispatch while sentinel exists)
 # Mode    : RECORD (Post) / DENY (Pre)
 # State   : .deck-pending-inspection  (sentinel, in the directory holding the PDF)
-#           /tmp/deck-inspection-<ts>/ (rendered page images)
+#           ${TMPDIR:-/tmp}/deck-inspection-<ts>/ (rendered page images)
 # Env     : DECK_INSPECTION_GATE=0  (opt-out — disables the gate entirely)
 #
 # Rule

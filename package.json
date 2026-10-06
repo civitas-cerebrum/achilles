@@ -5,7 +5,7 @@
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "build:validator": "node scripts/build-validator.mjs",
-    "test:hooks": "npm run build:validator && hooks/tests/run.sh",
+    "test:hooks": "npm run build:validator && hooks/tests/self/run-sh.sh && hooks/tests/run.sh",
     "test:reporter": "node --test --test-concurrency=1 \"reporter/tests/*.test.mjs\"",
     "sync-hooks": "node scripts/sync-hooks.js",
     "sync:kernel-mandate": "node scripts/sync-kernel-mandate.mjs",
