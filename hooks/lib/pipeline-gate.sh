@@ -1,12 +1,14 @@
 #!/bin/bash
 # pipeline-gate.sh — shared enforcement spine for ledger-gated orchestrator
-# pipelines (onboarding, perf-onboarding). Sourced by each pipeline's gate
-# hooks, which set the PIPELINE_* config + define the pipeline-specific
-# inference/deliverable functions, then call these generic primitives.
+# pipelines (onboarding, perf-onboarding). Sourced by pipeline-dispatch.sh
+# and pipeline-ledger-write.sh, whose callers set the PIPELINE_* config.
 #
-# Config contract (the sourcing gate sets these before calling lib fns):
+# Config contract:
 #   PIPELINE_LEDGER        — absolute path to the pipeline's status ledger JSON
 #   PIPELINE_SIDECAR       — absolute path to the .ledger-integrity.json sidecar
+#                            (both derived from the hook input by the *_main drivers)
+#   PIPELINE_KIND          — onboarding | perf (dispatch gate only: ledger_path,
+#                            dispatch_phase_number)
 #   PIPELINE_SCHEMA_NAME   — validator-bundle schema id (write-gate only)
 #   PIPELINE_CAP_PREFIX_RE — sed -E capture extracting a reviewer's target phase
 #   JQ                     — path to jq (the gate resolves this already)
@@ -390,98 +392,6 @@ See: ${PIPELINE_MSG_REVIEWER_SKILL} §\"Reject cap\" (3-cycle limit)"
       return 0
     fi
   done
-  return 1
-}
-
-# pipeline_write_gate <tool_name> <file_path>
-# The ledger write gates' shared checks, in order: synthesise the proposed
-# ledger, schema + parseability, state-machine transition, approver identity
-# (new approvals, then the terminal-status off-switch), mode authorisation.
-# Leaves the proposed ledger in TMP_PROPOSED (removed on exit) for the
-# caller's per-phase deliverable checks.
-# Returns 0 when the caller must exit 0 (deny emitted, or no content to
-# check); 1 when every check passed.
-# Requires: INPUT  JQ  HOOK_REFS  PIPELINE_*
-pipeline_write_gate() {
-  local TOOL_NAME="$1" FILE_PATH="$2"
-  local PROPOSED_CONTENT="" OLD_STRING NEW_STRING REPLACE_ALL TMP_OLD TMP_NEW ALL_FLAG SYNTH_EXIT SYNTH_ERR_FILE SYNTH_ERR AGENT_ID AGENT_TYPE
-  VALIDATOR="$(dirname "${BASH_SOURCE[0]}")/validator.bundle.mjs"
-  # An Edit is applied to the on-disk ledger with the bundle's literal
-  # `replace` (the Edit tool's uniqueness and replace_all semantics). An
-  # Edit against a missing file fails in the tool itself, so it falls
-  # through to the empty-content allow. Command substitution drops a
-  # trailing newline — harmless for JSON.
-  case "$TOOL_NAME" in
-    Write)
-      PROPOSED_CONTENT=$(echo "$INPUT" | "$JQ" -r '.tool_input.content // empty' 2>/dev/null || echo "")
-      ;;
-    Edit)
-      OLD_STRING=$(echo "$INPUT" | "$JQ" -r '.tool_input.old_string // empty' 2>/dev/null || echo "")
-      NEW_STRING=$(echo "$INPUT" | "$JQ" -r '.tool_input.new_string // ""' 2>/dev/null || echo "")
-      REPLACE_ALL=$(echo "$INPUT" | "$JQ" -r '.tool_input.replace_all // false' 2>/dev/null || echo "false")
-      if [ -f "$FILE_PATH" ] && [ -n "$OLD_STRING" ]; then
-        NODE_BIN="$(command -v node 2>/dev/null || true)"
-        if [ -z "$NODE_BIN" ] || [ ! -f "$VALIDATOR" ]; then
-          emit_pre_deny "[BLOCKED] Cannot synthesise the proposed ledger content for an Edit (node or the validator bundle is unavailable), so the gate cannot validate the transition.
-
-File: ${FILE_PATH}
-
-Fix: re-issue this change as a full Write of the complete ledger JSON
-(the Write path validates without content synthesis), or restore node /
-reinstall @civitas-cerebrum/achilles to get hooks/lib/validator.bundle.mjs."
-          return 0
-        fi
-        TMP_OLD=$(mktemp "${TMPDIR:-/tmp}/${PIPELINE_SCHEMA_NAME}-old-XXXXXX") ; TMP_NEW=$(mktemp "${TMPDIR:-/tmp}/${PIPELINE_SCHEMA_NAME}-new-XXXXXX")
-        printf '%s' "$OLD_STRING" > "$TMP_OLD"
-        printf '%s' "$NEW_STRING" > "$TMP_NEW"
-        ALL_FLAG=""
-        [ "$REPLACE_ALL" = "true" ] && ALL_FLAG="--all"
-        SYNTH_EXIT=0
-        SYNTH_ERR_FILE=$(mktemp "${TMPDIR:-/tmp}/${PIPELINE_SCHEMA_NAME}-synth-err-XXXXXX")
-        PROPOSED_CONTENT=$("$NODE_BIN" "$VALIDATOR" replace "$FILE_PATH" "$TMP_OLD" "$TMP_NEW" $ALL_FLAG 2>"$SYNTH_ERR_FILE") || SYNTH_EXIT=$?
-        SYNTH_ERR=$(cat "$SYNTH_ERR_FILE" 2>/dev/null || true)
-        rm -f "$TMP_OLD" "$TMP_NEW" "$SYNTH_ERR_FILE"
-        if [ "$SYNTH_EXIT" != "0" ]; then
-          emit_pre_deny "[BLOCKED] Edit to ${PIPELINE_MSG_LEDGER_NAME} could not be synthesised: ${SYNTH_ERR:-unknown error}.
-
-File: ${FILE_PATH}
-
-The gate validates the post-edit content before allowing the write. An
-old_string that is missing or not unique would also fail the Edit tool
-itself. Fix the old_string (or use replace_all) and re-issue."
-          return 0
-        fi
-      fi
-      ;;
-  esac
-  [ -n "$PROPOSED_CONTENT" ] || return 0
-
-  TMP_PROPOSED=$(mktemp "${TMPDIR:-/tmp}/${PIPELINE_SCHEMA_NAME}-XXXXXX")
-  trap 'rm -f "$TMP_PROPOSED"' EXIT
-  printf '%s' "$PROPOSED_CONTENT" > "$TMP_PROPOSED"
-
-  NODE_BIN="${NODE_BIN:-$(command -v node 2>/dev/null || true)}"
-  pipeline_schema_validate "$TMP_PROPOSED" "$FILE_PATH" && return 0
-  # Without node the schema check is skipped, but the jq checks below are
-  # meaningless on unparseable content, and skipping the whole gate would
-  # let a node-less orchestrator bypass it: deny.
-  if [ "${PIPELINE_SCHEMA_VALIDATION_SKIPPED:-0}" = "1" ]; then
-    if ! "$JQ" -e . "$TMP_PROPOSED" >/dev/null 2>&1; then
-      emit_pre_deny "[BLOCKED] Proposed ${PIPELINE_MSG_LEDGER_NAME} is not parseable JSON (schema validation was skipped because node/ajv is unavailable, but jq parsing failed).
-
-File: ${FILE_PATH}
-
-Fix: re-author the JSON, run \`jq . <<< '<contents>'\` locally to confirm it parses, then re-issue the write."
-      return 0
-    fi
-  fi
-
-  pipeline_validate_transition "$TMP_PROPOSED" "$FILE_PATH" && return 0
-  AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
-  AGENT_TYPE=$(echo "$INPUT" | "$JQ" -r '.agent_type // empty' 2>/dev/null || echo "")
-  pipeline_check_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" "$AGENT_TYPE" && return 0
-  pipeline_check_terminal_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" "$AGENT_TYPE" && return 0
-  pipeline_check_mode_authorizer "$TMP_PROPOSED" "$FILE_PATH" && return 0
   return 1
 }
 

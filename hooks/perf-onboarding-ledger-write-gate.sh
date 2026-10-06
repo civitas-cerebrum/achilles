@@ -50,41 +50,10 @@ set -uo pipefail
 # §"Hook error message format — repo standard").
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/perf-onboarding/SKILL.md\n  skills/workflow-reviewer/SKILL.md\n  schemas/perf-onboarding-status.schema.json"
 
-
 # shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-ledger-write.sh"
 hook_jq_init fatal
 
-hook_read_input
-
-# Session-scope gate: this hook applies only to achilles-activated
-# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
-achilles_require_active "$INPUT"
-TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
-
-# Only act on Write and Edit.
-case "$TOOL_NAME" in
-  Write|Edit) ;;
-  *) exit 0 ;;
-esac
-
-FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
-
-# Silent-allow when this isn't the perf ledger. Normalise leading slash so
-# bare relative paths also match.
-NORM_PATH="/${FILE_PATH#/}"
-case "$NORM_PATH" in
-  */tests/perf/docs/perf-onboarding-status.json) ;;
-  *) exit 0 ;;
-esac
-
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
-PIPELINE_LEDGER="$FILE_PATH"
-PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
 PIPELINE_SCHEMA_NAME="perf-onboarding-status"
 PIPELINE_MSG_LEDGER_NAME='perf-onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
@@ -94,8 +63,10 @@ PIPELINE_MSG_SKILL_REF='skills/perf-onboarding/SKILL.md'
 PIPELINE_APPROVER_TYPES="perf-reviewer"
 PIPELINE_MSG_SCHEMA_REF='schemas/perf-onboarding-status.schema.json'
 PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
-
-pipeline_write_gate "$TOOL_NAME" "$FILE_PATH" && exit 0
+PIPELINE_PHASE_COUNT=7
+PIPELINE_MSG_PHASE_LABEL='Perf Phase'
+PIPELINE_MSG_DELIVERABLE_LEDGER='perf ledger'
+PIPELINE_MSG_DELIVERABLE_WHY=''
 
 # ---------------------------------------------------------------------------
 # Per-phase positive-deliverable checks for the perf pipeline.
@@ -116,55 +87,14 @@ pipeline_write_gate "$TOOL_NAME" "$FILE_PATH" && exit 0
 #   Phase 7 (Report)         — tests/perf/docs/perf-report.md + line 1 is
 #                              `<!-- perf-onboarding:report -->`
 # ---------------------------------------------------------------------------
-
-# PROJECT_ROOT is the directory containing tests/perf/docs/.
-PROJECT_ROOT="${FILE_PATH%/$LEDGER_PERF_REL}"
-
-# Build the set of phase IDs whose status is transitioning to "completed".
-PHASES_NEWLY_COMPLETED=""
-for phase_id in 1 2 3 4 5 6 7; do
-  idx=$((phase_id - 1))
-  new_status=$(ledger_get "$TMP_PROPOSED" ".phases[${idx}].status")
-  prior_status="pending"
-  if [ -f "$FILE_PATH" ]; then
-    prior_status=$(ledger_get "$FILE_PATH" ".phases[${idx}].status" pending)
-  fi
-  if [ "$new_status" = "completed" ] && [ "$prior_status" != "completed" ]; then
-    PHASES_NEWLY_COMPLETED="${PHASES_NEWLY_COMPLETED} ${phase_id}"
-  fi
-done
-
-# Helper: emit a deny for a perf deliverable check failure.
-emit_phase_deny() {
-  local phase="$1"
-  local missing="$2"
-  local fix_hint="$3"
-  local skill_ref="$4"
-  emit_pre_deny "[BLOCKED] Perf Phase ${phase} cannot transition to status: \"completed\" — required deliverable missing.
-
-File: ${FILE_PATH}
-
-Missing: ${missing}
-
-This is the per-phase positive-deliverable check. The perf ledger cannot
-mark a phase complete unless that phase's canonical deliverables exist
-on disk.
-
-Fix: ${fix_hint}
-
-See: ${skill_ref}"
-  exit 0
-}
-
 perf_check_deliverables() {
-  local phase_id="$1"
-  case "$phase_id" in
+  case "$1" in
     1)
       # Phase 1 (Scaffold): config file + non-empty lib/ directory.
       CONFIG_PATH="$PROJECT_ROOT/tests/perf/perf-onboarding.config.json"
       LIB_DIR="$PROJECT_ROOT/tests/perf/lib"
       if [ ! -f "$CONFIG_PATH" ]; then
-        emit_phase_deny "1 (Scaffold)" \
+        pipeline_emit_phase_deny "1 (Scaffold)" \
           "tests/perf/perf-onboarding.config.json does not exist." \
           "complete the scaffold phase: create perf-onboarding.config.json with baseline targets, VU limits, and threshold definitions." \
           "skills/perf-onboarding/SKILL.md §\"Phase 1 — Scaffold\""
@@ -176,7 +106,7 @@ perf_check_deliverables() {
         [ "${LIB_FILE_COUNT:-0}" -gt 0 ] && LIB_HAS_FILES="true"
       fi
       if [ "$LIB_HAS_FILES" != "true" ]; then
-        emit_phase_deny "1 (Scaffold)" \
+        pipeline_emit_phase_deny "1 (Scaffold)" \
           "tests/perf/lib/ does not exist or is empty." \
           "populate tests/perf/lib/ with shared k6 helper modules (e.g. auth.js, thresholds.js) before closing Phase 1." \
           "skills/perf-onboarding/SKILL.md §\"Phase 1 — Scaffold\""
@@ -186,7 +116,7 @@ perf_check_deliverables() {
       # Phase 2 (Readiness): readiness.md.
       READINESS_PATH="$PROJECT_ROOT/tests/perf/docs/readiness.md"
       if [ ! -f "$READINESS_PATH" ]; then
-        emit_phase_deny "2 (Readiness)" \
+        pipeline_emit_phase_deny "2 (Readiness)" \
           "tests/perf/docs/readiness.md does not exist." \
           "complete the readiness assessment and write the readiness document before closing Phase 2." \
           "skills/perf-onboarding/SKILL.md §\"Phase 2 — Readiness\""
@@ -196,14 +126,14 @@ perf_check_deliverables() {
       # Phase 3 (Scenario-model): scenario-model.md + sentinel + ≥1 scenario file.
       SCENARIO_MODEL_PATH="$PROJECT_ROOT/tests/perf/docs/scenario-model.md"
       if [ ! -f "$SCENARIO_MODEL_PATH" ]; then
-        emit_phase_deny "3 (Scenario-model)" \
+        pipeline_emit_phase_deny "3 (Scenario-model)" \
           "tests/perf/docs/scenario-model.md does not exist." \
           "author the scenario model document before closing Phase 3." \
           "skills/perf-onboarding/SKILL.md §\"Phase 3 — Scenario-model\""
       fi
       SCENARIO_FIRST_LINE=$(head -n 1 "$SCENARIO_MODEL_PATH" 2>/dev/null || echo "")
       if [ "$SCENARIO_FIRST_LINE" != "<!-- perf-onboarding:scenario-model -->" ]; then
-        emit_phase_deny "3 (Scenario-model)" \
+        pipeline_emit_phase_deny "3 (Scenario-model)" \
           "tests/perf/docs/scenario-model.md is missing the line-1 sentinel \`<!-- perf-onboarding:scenario-model -->\`. Got: \"${SCENARIO_FIRST_LINE:0:80}\"" \
           "regenerate scenario-model.md via the perf-onboarding skill. The sentinel is its authorship marker." \
           "skills/perf-onboarding/SKILL.md §\"Phase 3 — Scenario-model\""
@@ -211,7 +141,7 @@ perf_check_deliverables() {
       SCENARIOS_DIR="$PROJECT_ROOT/tests/perf/scenarios"
       SCENARIO_FILE_COUNT=$(find "$SCENARIOS_DIR" -maxdepth 1 -name "*.js" -type f 2>/dev/null | wc -l | tr -d ' ')
       if [ "${SCENARIO_FILE_COUNT:-0}" -lt 1 ]; then
-        emit_phase_deny "3 (Scenario-model)" \
+        pipeline_emit_phase_deny "3 (Scenario-model)" \
           "no *.js scenario files found under tests/perf/scenarios/." \
           "create at least one k6 scenario script in tests/perf/scenarios/ before closing Phase 3." \
           "skills/perf-onboarding/SKILL.md §\"Phase 3 — Scenario-model\""
@@ -222,7 +152,7 @@ perf_check_deliverables() {
       BASELINES_DIR="$PROJECT_ROOT/tests/perf/baselines"
       BASELINE_FILE_COUNT=$(find "$BASELINES_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | wc -l | tr -d ' ')
       if [ "${BASELINE_FILE_COUNT:-0}" -lt 1 ]; then
-        emit_phase_deny "4 (Baseline)" \
+        pipeline_emit_phase_deny "4 (Baseline)" \
           "no *.json baseline files found under tests/perf/baselines/." \
           "run the baseline measurement and write at least one baseline JSON file before closing Phase 4." \
           "skills/perf-onboarding/SKILL.md §\"Phase 4 — Baseline\""
@@ -233,7 +163,7 @@ perf_check_deliverables() {
       RESULTS_DIR="$PROJECT_ROOT/tests/perf/results"
       RESULTS_FILE_COUNT=$(find "$RESULTS_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | wc -l | tr -d ' ')
       if [ "${RESULTS_FILE_COUNT:-0}" -lt 1 ]; then
-        emit_phase_deny "5 (Load-run)" \
+        pipeline_emit_phase_deny "5 (Load-run)" \
           "no *.json result files found under tests/perf/results/." \
           "complete at least one load-run pass and write its results JSON before closing Phase 5." \
           "skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run\""
@@ -243,7 +173,7 @@ perf_check_deliverables() {
       # Phase 6 (Threshold-gate): threshold-verdict.json + deliberateBreach non-empty.
       VERDICT_PATH="$PROJECT_ROOT/tests/perf/docs/threshold-verdict.json"
       if [ ! -f "$VERDICT_PATH" ]; then
-        emit_phase_deny "6 (Threshold-gate)" \
+        pipeline_emit_phase_deny "6 (Threshold-gate)" \
           "tests/perf/docs/threshold-verdict.json does not exist." \
           "run the threshold evaluation and write threshold-verdict.json before closing Phase 6." \
           "skills/perf-onboarding/SKILL.md §\"Phase 6 — Threshold-gate\""
@@ -251,7 +181,7 @@ perf_check_deliverables() {
       DELIBERATE_LEN=$("$JQ" -r 'if (.deliberateBreach | type) == "array" then (.deliberateBreach | length) else -1 end' "$VERDICT_PATH" 2>/dev/null || echo "-1")
       case "$DELIBERATE_LEN" in ''|*[!0-9-]*) DELIBERATE_LEN=-1 ;; esac
       if [ "$DELIBERATE_LEN" -lt 1 ]; then
-        emit_phase_deny "6 (Threshold-gate)" \
+        pipeline_emit_phase_deny "6 (Threshold-gate)" \
           "tests/perf/docs/threshold-verdict.json exists but .deliberateBreach is empty or missing. The threshold gate requires explicit deliberate-breach analysis with ≥1 entry." \
           "populate the deliberateBreach field in threshold-verdict.json with at least one threshold deliberation record." \
           "skills/perf-onboarding/SKILL.md §\"Phase 6 — Threshold-gate\""
@@ -261,14 +191,14 @@ perf_check_deliverables() {
       # Phase 7 (Report): perf-report.md + sentinel on line 1.
       REPORT_PATH="$PROJECT_ROOT/tests/perf/docs/perf-report.md"
       if [ ! -f "$REPORT_PATH" ]; then
-        emit_phase_deny "7 (Report)" \
+        pipeline_emit_phase_deny "7 (Report)" \
           "tests/perf/docs/perf-report.md does not exist." \
           "author the performance report before closing Phase 7." \
           "skills/perf-onboarding/SKILL.md §\"Phase 7 — Report\""
       fi
       REPORT_FIRST_LINE=$(head -n 1 "$REPORT_PATH" 2>/dev/null || echo "")
       if [ "$REPORT_FIRST_LINE" != "<!-- perf-onboarding:report -->" ]; then
-        emit_phase_deny "7 (Report)" \
+        pipeline_emit_phase_deny "7 (Report)" \
           "tests/perf/docs/perf-report.md is missing the line-1 sentinel \`<!-- perf-onboarding:report -->\`. Got: \"${REPORT_FIRST_LINE:0:80}\"" \
           "regenerate perf-report.md via the perf-onboarding skill. The sentinel is its authorship marker." \
           "skills/perf-onboarding/SKILL.md §\"Phase 7 — Report\""
@@ -277,9 +207,4 @@ perf_check_deliverables() {
   esac
 }
 
-for phase_id in $PHASES_NEWLY_COMPLETED; do
-  perf_check_deliverables "$phase_id"
-done
-
-# All checks passed — silent allow.
-exit 0
+pipeline_ledger_write_main perf_check_deliverables
