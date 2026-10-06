@@ -43,6 +43,40 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Each cases file uses $HOOKS_DIR via the HOOK_DIR variable.
 HOOK_DIR="$HOOKS_DIR"
 
+# Per-run sandbox: cases never touch the operator's ~/.claude, and two runs on one
+# machine never share session markers, kernel bindings or temp files.
+RUN_SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/achilles-hooktests.XXXXXX")"
+trap 'rm -rf "$RUN_SANDBOX"' EXIT
+export HOME="$RUN_SANDBOX/home"
+export TMPDIR="$RUN_SANDBOX/tmp"
+export ACHILLES_SESSION_STATE_DIR="$HOME/.claude/achilles/sessions"
+export KERNEL_MANDATE_STATE_DIR="$HOME/.claude/kernel-mandate-state"
+mkdir -p "$HOME" "$TMPDIR" "$ACHILLES_SESSION_STATE_DIR" "$KERNEL_MANDATE_STATE_DIR"
+
+# Runs one case file in a subshell so exports, cwd and counters cannot leak into the next file;
+# results come back through $RUN_SANDBOX. A file that exits before finishing is a harness error.
+run_case_file() {
+  local file="$1" name f_run f_pass f_fail d
+  name="$(basename "$file")"
+  rm -f "$RUN_SANDBOX/counts" "$RUN_SANDBOX/details" "$RUN_SANDBOX/harness"
+  (
+    TESTS_RUN=0; TESTS_PASSED=0; TESTS_FAILED=0; FAIL_DETAILS=(); HARNESS_ERRORS=()
+    # shellcheck source=/dev/null
+    source "$file"
+    printf '%s %s %s\n' "$TESTS_RUN" "$TESTS_PASSED" "$TESTS_FAILED" > "$RUN_SANDBOX/counts"
+    printf '%s\n' "${FAIL_DETAILS[@]+"${FAIL_DETAILS[@]}"}" > "$RUN_SANDBOX/details"
+    printf '%s\n' "${HARNESS_ERRORS[@]+"${HARNESS_ERRORS[@]}"}" > "$RUN_SANDBOX/harness"
+  )
+  if [ ! -s "$RUN_SANDBOX/counts" ]; then
+    HARNESS_ERRORS+=("$name: exited before finishing — its remaining assertions never ran")
+    return
+  fi
+  read -r f_run f_pass f_fail < "$RUN_SANDBOX/counts"
+  TESTS_RUN=$((TESTS_RUN + f_run)); TESTS_PASSED=$((TESTS_PASSED + f_pass)); TESTS_FAILED=$((TESTS_FAILED + f_fail))
+  while IFS= read -r d; do [ -n "$d" ] && FAIL_DETAILS+=("$d"); done < "$RUN_SANDBOX/details"
+  while IFS= read -r d; do [ -n "$d" ] && HARNESS_ERRORS+=("$d"); done < "$RUN_SANDBOX/harness"
+}
+
 # HARNESS CONTROL. The counters below only move when an assert_* helper is CALLED, so a case file
 # that dies on a typo'd helper name contributes nothing and the run still reports green. That is
 # not hypothetical: a block of seven new cases once called helpers that do not exist, every line
@@ -59,8 +93,7 @@ set -o errtrace
 for f in "${selected[@]}"; do
   echo
   echo "=== $(basename "$f") ==="
-  # shellcheck source=/dev/null
-  source "$f"
+  run_case_file "$f"
 done
 
 trap - ERR
@@ -84,8 +117,7 @@ fi
 if [ -z "$filter" ] || [[ "install-simulation.sh" == *"$filter"* ]]; then
   echo
   echo "=== install-simulation.sh ==="
-  # shellcheck source=install-simulation.sh
-  source "$SCRIPT_DIR/install-simulation.sh"
+  run_case_file "$SCRIPT_DIR/install-simulation.sh"
 fi
 
 # Summary.
