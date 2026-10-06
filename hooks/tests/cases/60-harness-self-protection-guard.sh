@@ -22,3 +22,7 @@ section "harness-self-protection-guard: project-local skills + unrelated paths A
 assert_allow "$H" "$(we_payload Write "$HOME/project/.claude/skills/journey-mapping/SKILL.md")" "project-local .claude/skills write → ALLOW"
 assert_allow "$H" "$(we_payload Write "/tmp/scratch.txt")" "unrelated path → ALLOW"
 assert_allow "$H" "$(we_payload Write "/repo/tests/e2e/spec.ts")" "spec write → ALLOW"
+
+section "harness-self-protection-guard: jq missing (fatal)"
+run_hook_nojq "$H" "$(we_payload Write "/tmp/x")"
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "1:" "no jq anywhere → exit 1, no stdout"

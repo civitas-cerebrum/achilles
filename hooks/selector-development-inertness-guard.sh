@@ -39,12 +39,9 @@ set -euo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/selector-development/SKILL.md\n  skills/selector-development/references/inertness-contract.md"
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 # Resolve hook's own lib directory so the validator can be found when this hook
 # is installed into ~/.claude/hooks/ (where $ws/hooks/lib won't exist).

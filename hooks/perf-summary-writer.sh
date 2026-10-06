@@ -19,9 +19,9 @@
 
 set -u
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { printf '{}\n'; exit 0; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init empty
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 

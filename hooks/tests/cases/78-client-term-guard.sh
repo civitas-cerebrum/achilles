@@ -46,3 +46,7 @@ assert_allow "$G" "not-json" "invalid JSON → silent allow"
 assert_allow "$G" "{}" "empty object → silent allow"
 
 rm -rf "$CTG_REPO"
+
+section "client-term-guard: jq missing (silent)"
+run_hook_nojq "$G" '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x"}}'
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "0:" "no jq anywhere → silent allow"

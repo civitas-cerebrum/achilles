@@ -54,11 +54,11 @@ set -uo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §\"Authoritative state file — read first, always\"\n  skills/achilles-protocol/references/harness-hooks.md"
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[hook-authored-state-guard] FATAL: jq not found." >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).

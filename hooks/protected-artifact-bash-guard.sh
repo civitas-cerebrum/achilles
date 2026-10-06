@@ -41,9 +41,9 @@ set -uo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/harness-hooks.md §Bash\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[protected-artifact-bash-guard] FATAL: jq not found." >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
 if [ -f "$HOOK_LIB_DIR/no-skip-messaging.sh" ]; then
@@ -53,7 +53,7 @@ else
   no_skip_messaging_block() { echo ""; }
 fi
 
-INPUT=$(cat)
+hook_read_input
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")

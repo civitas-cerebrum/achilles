@@ -52,8 +52,9 @@ set -euo pipefail
 # bundled binary first, system jq second. Consistency matters because the
 # bundled jq has a known version + behaviour; relying on system jq when the
 # bundled one is available risks behaviour drift across operator machines.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init continue
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 

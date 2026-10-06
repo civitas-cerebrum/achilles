@@ -91,3 +91,7 @@ assert_eq "$("$JQ" -r '.tests.flaky' "$SUMMARY")" "null" "fallback: flaky unknow
 assert_eq "$("$JQ" -r '.tests.total' "$SUMMARY")" "3" "fallback: total from test count"
 
 rm -rf "$RSW_TMP_A" "$RSW_TMP_B" "$RSW_TMP_C"
+
+section "run-summary-writer: jq missing (empty)"
+run_hook_nojq "$HOOK_DIR/run-summary-writer.sh" '{}'
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "0:{}" "no jq anywhere → {} and exit 0"

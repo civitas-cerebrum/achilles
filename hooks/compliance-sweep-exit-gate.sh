@@ -53,14 +53,11 @@
 
 set -uo pipefail
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: achilles-activated sessions only.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"

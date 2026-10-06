@@ -61,9 +61,9 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/work-summary-deck/SKILL.md §\
 # Opt-out.
 [ "${DECK_INSPECTION_GATE:-1}" != "0" ] || exit 0
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || exit 0
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init silent
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 

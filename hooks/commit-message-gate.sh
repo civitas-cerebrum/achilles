@@ -77,12 +77,9 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/references/
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH. Reinstall the package or install jq manually." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 # --- helpers ---
 emit_deny() {
@@ -96,7 +93,7 @@ emit_deny() {
 }
 
 # --- input ---
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).

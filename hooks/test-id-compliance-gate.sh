@@ -61,12 +61,9 @@ set -euo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/test-identity.md §1 \"Every test case carries a stable ID\"\n  skills/achilles-protocol/references/test-identity.md §2 \"@known-defect marks an intentional red\""
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 HOOK_LIB="$HOOK_DIR/lib"

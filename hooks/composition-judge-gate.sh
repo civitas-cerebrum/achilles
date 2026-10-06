@@ -57,9 +57,9 @@
 
 set -uo pipefail
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || exit 0
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init silent
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
@@ -68,9 +68,9 @@ INPUT=$(cat 2>/dev/null || echo "{}")
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
 achilles_require_active "$INPUT"
 
-EVENT=$(printf '%s' "$INPUT" | "$JQ" -r '.hook_event_name // empty' 2>/dev/null || echo "")
-TOOL_NAME=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
-SID=$(printf '%s' "$INPUT" | "$JQ" -r '.session_id // empty' 2>/dev/null || echo "")
+EVENT=$(hook_field .hook_event_name)
+TOOL_NAME=$(hook_field .tool_name)
+SID=$(hook_field .session_id)
 [ -n "$SID" ] || SID="default"
 
 STATE_DIR="${ACHILLES_JUDGE_STATE_DIR:-$HOME/.claude/achilles/composition-judge}"

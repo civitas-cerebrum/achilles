@@ -33,6 +33,19 @@ if [ -z "$JQ" ]; then
   exit 1
 fi
 
+# run_hook_nojq <hook-script> <stdin-payload>
+# Runs the hook from a copy with no bundled jq and a PATH that has none either
+# (system jq, e.g. macOS /usr/bin/jq, is masked). Sets HOOK_EXIT and HOOK_OUT.
+run_hook_nojq() {
+  local hook="$1" stdin="$2" d t
+  d=$(mktemp -d); mkdir -p "$d/hooks" "$d/path"
+  cp -R "$(dirname "$hook")/lib" "$d/hooks/lib"; cp "$hook" "$d/hooks/"
+  for t in /bin/* /usr/bin/*; do [ "${t##*/}" = jq ] || [ -e "$d/path/${t##*/}" ] || ln -s "$t" "$d/path/${t##*/}"; done
+  HOOK_EXIT=0
+  HOOK_OUT=$(printf '%s' "$stdin" | PATH="$d/path" bash "$d/hooks/$(basename "$hook")" 2>/dev/null) || HOOK_EXIT=$?
+  rm -rf "${d:?}"
+}
+
 # Colour helpers (no-op if NO_COLOR is set or stdout is not a terminal).
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   CLR_PASS=$'\033[32m'
