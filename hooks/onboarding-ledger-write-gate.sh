@@ -79,43 +79,10 @@ set -uo pipefail
 # §"Hook error message format — repo standard").
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"\n  skills/workflow-reviewer/SKILL.md\n  schemas/onboarding-status.schema.json"
 
-
 # shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-ledger-write.sh"
 hook_jq_init fatal
 
-hook_read_input
-
-# Session-scope gate: this hook applies only to achilles-activated
-# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
-achilles_require_active "$INPUT"
-TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
-
-# Only act on Write and Edit.
-case "$TOOL_NAME" in
-  Write|Edit) ;;
-  *) exit 0 ;;
-esac
-
-FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
-
-# Rule 4: silent-allow when this isn't a ledger write. Match the path
-# suffix against a leading-slash-normalised form so a BARE RELATIVE path
-# (tests/e2e/docs/onboarding-status.json) matches the same pattern as an
-# absolute one — otherwise a relative-path write would slip the gate.
-NORM_PATH="/${FILE_PATH#/}"
-case "$NORM_PATH" in
-  */tests/e2e/docs/onboarding-status.json) ;;
-  *) exit 0 ;;
-esac
-
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
-PIPELINE_LEDGER="$FILE_PATH"
-PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
 PIPELINE_SCHEMA_NAME="onboarding-status"
 PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
@@ -125,8 +92,12 @@ PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
 PIPELINE_APPROVER_TYPES="workflow-reviewer phase-validator process-validator"
 PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
 PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
-
-pipeline_write_gate "$TOOL_NAME" "$FILE_PATH" && exit 0
+PIPELINE_PHASE_COUNT=8
+PIPELINE_MSG_PHASE_LABEL='Phase'
+PIPELINE_MSG_DELIVERABLE_LEDGER='ledger'
+PIPELINE_MSG_DELIVERABLE_WHY=' The deliverables are unforgeable signatures of the correct
+skill having been invoked — without them, the phase was either skipped
+or shortcut.'
 
 # ---------------------------------------------------------------------------
 # Per-phase positive-deliverable checks (Phase-N → completed transitions).
@@ -166,62 +137,15 @@ pipeline_write_gate "$TOOL_NAME" "$FILE_PATH" && exit 0
 # array is the audit trail for those phases; the orchestrator-to-
 # reviewer brief gate ensures the reviewer reads them.
 # ---------------------------------------------------------------------------
-
-# PROJECT_ROOT is the directory containing tests/e2e/docs/. The ledger
-# path is .../tests/e2e/docs/onboarding-status.json — strip the tail.
-PROJECT_ROOT="${FILE_PATH%/$LEDGER_ONBOARDING_REL}"
-
-# Build the set of phase IDs whose status is transitioning to "completed"
-# in this write. Compare proposed[N].status vs prior[N].status (treat
-# "prior" as "pending" when the file doesn't yet exist). Space-separated
-# list to keep set -u happy on bash 3 where empty arrays expand to
-# "unset variable" under "${arr[@]}".
-PHASES_NEWLY_COMPLETED=""
-for phase_id in 1 2 3 4 5 6 7 8; do
-  idx=$((phase_id - 1))
-  new_status=$(ledger_get "$TMP_PROPOSED" ".phases[${idx}].status")
-  prior_status="pending"
-  if [ -f "$FILE_PATH" ]; then
-    prior_status=$(ledger_get "$FILE_PATH" ".phases[${idx}].status" pending)
-  fi
-  if [ "$new_status" = "completed" ] && [ "$prior_status" != "completed" ]; then
-    PHASES_NEWLY_COMPLETED="${PHASES_NEWLY_COMPLETED} ${phase_id}"
-  fi
-done
-
-# Helper: emit a deny with the standard payload structure used above.
-emit_phase_deny() {
-  local phase="$1"
-  local missing="$2"
-  local fix_hint="$3"
-  local skill_ref="$4"
-  emit_pre_deny "[BLOCKED] Phase ${phase} cannot transition to status: \"completed\" — required deliverable missing.
-
-File: ${FILE_PATH}
-
-Missing: ${missing}
-
-This is the per-phase positive-deliverable check. The ledger cannot
-mark a phase complete unless that phase's canonical deliverables exist
-on disk. The deliverables are unforgeable signatures of the correct
-skill having been invoked — without them, the phase was either skipped
-or shortcut.
-
-Fix: ${fix_hint}
-
-See: ${skill_ref}"
-  exit 0
-}
-
-for phase_id in $PHASES_NEWLY_COMPLETED; do
-  case "$phase_id" in
+onboarding_check_deliverables() {
+  case "$1" in
     4)
       # Phase 4 — journey-map.md + sentinel + cycle-state with cycles 1 & 2.
       MAP_PATH="$PROJECT_ROOT/tests/e2e/docs/journey-map.md"
       CYCLE_STATE_PATH="$PROJECT_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 
       if [ ! -f "$MAP_PATH" ]; then
-        emit_phase_deny "4" \
+        pipeline_emit_phase_deny "4" \
           "tests/e2e/docs/journey-map.md does not exist." \
           "invoke the \`journey-mapping\` skill via the Skill tool. It runs the iterative discovery cycle protocol and writes the map with the line-1 sentinel." \
           "skills/onboarding/SKILL.md §\"Phase 4 — Journey mapping\" + skills/journey-mapping/SKILL.md"
@@ -229,14 +153,14 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
 
       FIRST_LINE=$(head -n 1 "$MAP_PATH" 2>/dev/null || echo "")
       if [ "$FIRST_LINE" != "<!-- journey-mapping:generated -->" ]; then
-        emit_phase_deny "4" \
+        pipeline_emit_phase_deny "4" \
           "tests/e2e/docs/journey-map.md is missing the line-1 sentinel \`<!-- journey-mapping:generated -->\`. Got: \"${FIRST_LINE:0:80}\"" \
           "regenerate the map via the journey-mapping skill. The sentinel is its authorship marker — without it the map is forged." \
           "skills/journey-mapping/SKILL.md §\"Recognizing a previously-generated journey map\""
       fi
 
       if [ ! -f "$CYCLE_STATE_PATH" ]; then
-        emit_phase_deny "4" \
+        pipeline_emit_phase_deny "4" \
           "tests/e2e/docs/.phase4-cycle-state.json does not exist." \
           "the journey-mapping skill writes the cycle state as it dispatches per-section subagents. Absence ⇒ no cycle ever ran." \
           "skills/journey-mapping/SKILL.md §\"Cycle protocol\""
@@ -247,7 +171,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
       HAS_CYCLE_1=$("$JQ" -r '.cycles["1"] != null' "$CYCLE_STATE_PATH" 2>/dev/null || echo "false")
       HAS_CYCLE_2=$("$JQ" -r '.cycles["2"] != null' "$CYCLE_STATE_PATH" 2>/dev/null || echo "false")
       if [ "$HAS_CYCLE_1" != "true" ] || [ "$HAS_CYCLE_2" != "true" ]; then
-        emit_phase_deny "4" \
+        pipeline_emit_phase_deny "4" \
           ".phase4-cycle-state.json is missing cycle-1 and/or cycle-2 records (has-cycle-1=${HAS_CYCLE_1}, has-cycle-2=${HAS_CYCLE_2}). Both are non-negotiable: ≥1 discovery cycle + exactly 1 edge-probe cycle." \
           "complete the cycle protocol — dispatch cycle-1 section agents (strict per-section parallel), then the cycle-2 edge-probe — before closing Phase 4." \
           "skills/journey-mapping/SKILL.md §\"Iterative discovery cycles\""
@@ -263,7 +187,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
         if [ "$DISPATCHED" != "$RETURNED" ]; then
           DISPATCHED_COUNT=$(echo "$DISPATCHED" | "$JQ" 'length')
           RETURNED_COUNT=$(echo "$RETURNED" | "$JQ" 'length')
-          emit_phase_deny "4" \
+          pipeline_emit_phase_deny "4" \
             "Cycle ${cycle_id} dispatched-sections (${DISPATCHED_COUNT}) != returned-sections (${RETURNED_COUNT}). Some section agents did not return; the cycle is incomplete." \
             "wait for every dispatched section to return before authoring the journey map. Re-dispatch any stalled sections. The author step consumes the union of all section returns — partial returns mean partial coverage." \
             "skills/journey-mapping/SKILL.md §\"Cycle protocol\""
@@ -274,14 +198,14 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
       # Phase 5 — coverage-expansion-state.json with at least pass-1 record.
       COV_STATE_PATH="$PROJECT_ROOT/tests/e2e/docs/coverage-expansion-state.json"
       if [ ! -f "$COV_STATE_PATH" ]; then
-        emit_phase_deny "5" \
+        pipeline_emit_phase_deny "5" \
           "tests/e2e/docs/coverage-expansion-state.json does not exist." \
           "invoke the \`coverage-expansion\` skill via the Skill tool. It writes the state file as it runs the per-pass pipeline." \
           "skills/onboarding/SKILL.md §\"Phase 5 — Coverage expansion\" + skills/coverage-expansion/SKILL.md"
       fi
       HAS_PASS_1=$("$JQ" -r '.passes["1"] != null' "$COV_STATE_PATH" 2>/dev/null || echo "false")
       if [ "$HAS_PASS_1" != "true" ]; then
-        emit_phase_deny "5" \
+        pipeline_emit_phase_deny "5" \
           "coverage-expansion-state.json reports no pass-1 record. Pass 1 (strict per-journey, compositional) is the foundation of every coverage-expansion mode." \
           "run at least Pass 1 of coverage-expansion before closing Phase 5." \
           "skills/coverage-expansion/SKILL.md §\"Non-negotiables\""
@@ -308,7 +232,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
           (.cleanup != null) or (.cleanupRecorded == true) or (.passes["cleanup"] != null)
         ' "$COV_STATE_PATH" 2>/dev/null || echo "false")
         if [ -n "$MISSING_PASSES" ] || [ "$CLEANUP_RECORDED" != "true" ]; then
-          emit_phase_deny "5" \
+          pipeline_emit_phase_deny "5" \
             "coverage-expansion-state.json does not record the full five-pass run + cleanup. Missing pass record(s):${MISSING_PASSES:- none}; cleanup recorded: ${CLEANUP_RECORDED}. A standard/depth Phase 5 completes only after passes 1-5 AND the cleanup/dedup step are recorded." \
             "complete all five passes (compositional 1-3 + adversarial 4-5) and the cleanup/dedup step. The ordering is: RECORD passes 1-5 + cleanup in coverage-expansion-state.json → workflow-reviewer-phase5 approval → the orchestrator DELETES the state file as the final post-approval act → write this Phase-5 ledger completion. The state file must still be present and complete at this write (deletion happens post-approval, not before)." \
             "skills/coverage-expansion/SKILL.md §\"Five passes\" + cross-cutting §12 (phase-5 state-file ordering)"
@@ -335,7 +259,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
 
         if [ "$ROSTER_COUNT" -gt 0 ] && [ "$TOTAL_ACCOUNTED" -lt "$ROSTER_COUNT" ]; then
           UNCOVERED=$((ROSTER_COUNT - TOTAL_ACCOUNTED))
-          emit_phase_deny "5" \
+          pipeline_emit_phase_deny "5" \
             "Pass 1 coverage incomplete: journey-map.md lists ${ROSTER_COUNT} journeys; coverage-expansion-state.json records ${DISPATCHED_COUNT} dispatched + ${DEFERRED_COUNT} deferred = ${TOTAL_ACCOUNTED} accounted. ${UNCOVERED} journey(s) are silently missing. This is the silent-scope-compression failure mode." \
             "either (a) dispatch the remaining ${UNCOVERED} journey(s) through coverage-expansion Pass 1, OR (b) add a deferredJourneys[] entry for each missing journey with a reason (structural prefix OR an \"authorizer\" field carrying a verbatim user quote). Pre-emptive scope reduction without authorisation is denied." \
             "skills/coverage-expansion/SKILL.md §\"Two valid exits\" + §\"Deferral authorisation\""
@@ -357,7 +281,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
             ' "$COV_STATE_PATH" 2>/dev/null | head -1 || true
           )
           if [ -n "$BAD_DEFERRAL" ]; then
-            emit_phase_deny "5" \
+            pipeline_emit_phase_deny "5" \
               "deferredJourneys[] entry for \"${BAD_DEFERRAL}\" carries neither a structural reason prefix (\`blocked-on-app-bug:\`, \`test-data-prerequisite:\`, \`user-authorised:\`) nor an \`authorizer\` field with a verbatim user quote. Self-imposed deferrals (budget-cap, session-length, auto-mode-stop) without authorisation are silent scope narrowing." \
               "either dispatch this journey through Pass 1, or add a reason matching one of the allowed structural prefixes, or capture the user's verbatim authorisation in an \`authorizer\` field." \
               "skills/coverage-expansion/SKILL.md §\"Deferral authorisation\""
@@ -370,7 +294,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
       # Phase 6 — adversarial-findings ledger exists AND has substance.
       ADV_PATH="$PROJECT_ROOT/tests/e2e/docs/adversarial-findings.md"
       if [ ! -f "$ADV_PATH" ]; then
-        emit_phase_deny "6" \
+        pipeline_emit_phase_deny "6" \
           "tests/e2e/docs/adversarial-findings.md does not exist." \
           "invoke the \`bug-discovery\` skill (or the adversarial passes of coverage-expansion). They write the findings ledger as probes return." \
           "skills/onboarding/SKILL.md §\"Phase 6 — Bug discovery\" + skills/bug-discovery/SKILL.md"
@@ -386,7 +310,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
       JOURNEY_BLOCKS=$(grep -c '^### j-' "$ADV_PATH" 2>/dev/null; true)
       JOURNEY_BLOCKS=${JOURNEY_BLOCKS:-0}
       if [ "$JOURNEY_BLOCKS" -lt 1 ]; then
-        emit_phase_deny "6" \
+        pipeline_emit_phase_deny "6" \
           "tests/e2e/docs/adversarial-findings.md exists but contains 0 per-journey section blocks (\`### j-<slug>\`). File existence alone is not bug-discovery; the ledger must record at least one probe." \
           "dispatch the bug-discovery probe subagents per journey (or the adversarial passes of coverage-expansion). Each probe appends a \`### j-<slug>\` section to the ledger as it returns." \
           "skills/bug-discovery/SKILL.md + achilles-protocol/references/subagent-return-schema.md §3"
@@ -396,7 +320,7 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
       # Phase 7 — .env.example exists at project root.
       ENV_EXAMPLE_PATH="$PROJECT_ROOT/.env.example"
       if [ ! -f "$ENV_EXAMPLE_PATH" ]; then
-        emit_phase_deny "7" \
+        pipeline_emit_phase_deny "7" \
           ".env.example does not exist at the project root." \
           "invoke the \`secrets-sweep\` skill. It writes .env.example as it extracts literals from the test suite." \
           "skills/onboarding/SKILL.md §\"Phase 7 — Secrets sweep\" + skills/secrets-sweep/SKILL.md"
@@ -410,14 +334,13 @@ for phase_id in $PHASES_NEWLY_COMPLETED; do
       [ -f "$DECK_HTML" ] || MISSING_DECK="qa-summary-deck.html"
       [ -f "$DECK_PDF" ]  || MISSING_DECK="${MISSING_DECK:+$MISSING_DECK + }qa-summary-deck.pdf"
       if [ -n "$MISSING_DECK" ]; then
-        emit_phase_deny "8" \
+        pipeline_emit_phase_deny "8" \
           "$MISSING_DECK missing from project root." \
           "invoke the \`work-summary-deck\` skill. It writes the HTML deck and renders the PDF." \
           "skills/onboarding/SKILL.md §\"Phase 8 — Report\" + skills/work-summary-deck/SKILL.md"
       fi
       ;;
   esac
-done
+}
 
-# All checks passed — silent allow.
-exit 0
+pipeline_ledger_write_main onboarding_check_deliverables
