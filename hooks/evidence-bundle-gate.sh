@@ -225,6 +225,8 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 # shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/signoff.sh"
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
@@ -254,15 +256,7 @@ TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 
 # ─── which surface are we on ────────────────────────────────────────────────
 # Tracker vocabularies differ per vendor; match the shapes, not one product.
-IS_TRANSITION=0
-IS_COMMENT=0
-IS_PR=0
-case "$TOOL_NAME" in
-  *save_issue*|*transitionJiraIssue*|*update_issue*|*editJiraIssue*) IS_TRANSITION=1 ;;
-  *save_comment*|*addCommentToJiraIssue*|*create_comment*)           IS_COMMENT=1 ;;
-  Bash)                                                              IS_PR=1 ;;
-  *) exit 0 ;;
-esac
+signoff_classify_tool "$TOOL_NAME" || exit 0
 
 # Guard the TYPE, not just presence. A payload whose `tool_input` is a string
 # made every later `.command` / `.body` read a jq error, and under `set -e` that

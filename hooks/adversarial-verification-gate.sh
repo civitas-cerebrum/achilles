@@ -106,6 +106,8 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/signoff.sh"
 hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_ADVERSARIAL_GATE:-}" = "1" ] && exit 0
@@ -123,19 +125,7 @@ TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 
 # Tracker mutation surfaces across vendors. Reads are not gated — only the
 # two actions that constitute sign-off.
-IS_TRANSITION=0
-IS_COMMENT=0
-IS_PR=0
-case "$TOOL_NAME" in
-  *save_issue*|*transitionJiraIssue*|*update_issue*|*editJiraIssue*) IS_TRANSITION=1 ;;
-  *save_comment*|*addCommentToJiraIssue*|*create_comment*)           IS_COMMENT=1 ;;
-  # A developer-triggered run has no ticket to transition. Its sign-off boundary is opening the
-  # PR — the moment the work is presented to others as done — so that is where the same check
-  # belongs. Without this the whole entry-B path was ungated: the gate policed a surface the dev
-  # flow never touches.
-  Bash)                                                              IS_PR=1 ;;
-  *) exit 0 ;;
-esac
+signoff_classify_tool "$TOOL_NAME" || exit 0
 
 ARGS="$(printf '%s' "$INPUT" | "$JQ" -c '.tool_input // {}')"
 
