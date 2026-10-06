@@ -613,7 +613,8 @@ should be portable across local / CI / staging targets.
 
 **Exit criteria.**
 - You re-scan `tests/**` and root `playwright*.config.ts` (you can Read
-  both): zero literal credentials.
+  both): zero literal credentials, apart from JSON literals the sweep
+  reported (your decision).
 - `.env`, `.env.example`, and the `.gitignore` entry are all in place.
 - `npx playwright test`, run by you after both return, still passes against the now-env-driven suite.
 
