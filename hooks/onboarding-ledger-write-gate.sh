@@ -74,24 +74,13 @@
 
 set -uo pipefail
 
-# Methodology pointers appended to every deny/warn message this hook
-# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
-# §"Hook error message format — repo standard").
-printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"\n  skills/workflow-reviewer/SKILL.md\n  schemas/onboarding-status.schema.json"
-
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-ledger-write.sh"
 hook_jq_init fatal
 
+pipeline_config onboarding
 PIPELINE_SCHEMA_NAME="onboarding-status"
-PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
-PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL="$LEDGER_ONBOARDING_REL"
-PIPELINE_MSG_REVIEWER_LABEL='workflow-reviewer-phase'
-PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
 PIPELINE_APPROVER_TYPES="workflow-reviewer phase-validator process-validator"
-PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
-PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 PIPELINE_PHASE_COUNT=8
 PIPELINE_MSG_PHASE_LABEL='Phase'
 PIPELINE_MSG_DELIVERABLE_LEDGER='ledger'

@@ -3,6 +3,7 @@
 # Needs JQ (hook_jq_init) and achilles-activation.sh sourced first.
 #
 # HOOK_REFS stays a literal in each hook file: lint-doc-drift reads it there.
+# The pipeline ledger gates are the exception: pipeline_config sets theirs.
 
 # emit_pre_deny <reason> — PreToolUse deny; appends HOOK_REFS and the session-scope notice.
 emit_pre_deny() {

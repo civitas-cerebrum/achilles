@@ -42,24 +42,12 @@
 # Intentional: `set -uo pipefail` without `-e`. Input-tolerant by design.
 set -uo pipefail
 
-# Methodology pointers appended to every deny/warn message this hook
-# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
-# §"Hook error message format — repo standard").
-printf -v HOOK_REFS -- "\n\nReferences:\n  skills/perf-onboarding/SKILL.md\n  skills/workflow-reviewer/SKILL.md\n  schemas/perf-onboarding-status.schema.json"
-
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-dispatch.sh"
 hook_jq_init fatal
 
-PIPELINE_KIND=perf
+pipeline_config perf
 PIPELINE_CAP_PREFIX_RE="$DISPATCH_CAP_PREFIX_RE_PERF"
-PIPELINE_MSG_LEDGER_NAME='perf-onboarding-status.json'
-PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL="$LEDGER_PERF_REL"
-PIPELINE_MSG_REVIEWER_LABEL='perf-reviewer-phase'
-PIPELINE_MSG_SKILL_REF='skills/perf-onboarding/SKILL.md'
-PIPELINE_MSG_SCHEMA_REF='schemas/perf-onboarding-status.schema.json'
-PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
 # perf_substage_check <current_phase> — in Phase 5 a load-run-<pass>-*
 # dispatch waits for the approval of the pass before it in

@@ -63,24 +63,12 @@
 # Intentional: `set -uo pipefail` without `-e`. Input-tolerant by design.
 set -uo pipefail
 
-# Methodology pointers appended to every deny/warn message this hook
-# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
-# §"Hook error message format — repo standard").
-printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"\n  skills/workflow-reviewer/SKILL.md\n  schemas/onboarding-status.schema.json"
-
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-dispatch.sh"
 hook_jq_init fatal
 
-PIPELINE_KIND=onboarding
+pipeline_config onboarding
 PIPELINE_CAP_PREFIX_RE="$DISPATCH_CAP_PREFIX_RE_ONBOARDING"
-PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
-PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL="$LEDGER_ONBOARDING_REL"
-PIPELINE_MSG_REVIEWER_LABEL='workflow-reviewer-phase'
-PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
-PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
-PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
 # onboarding_substage_check <current_phase> — a Phase-5 composer / probe
 # dispatch for pass N, or a Phase-4 phase4-cycle-<N>-* dispatch, waits for

@@ -1,7 +1,8 @@
 #!/bin/bash
 # pipeline-gate.sh — shared enforcement spine for ledger-gated orchestrator
 # pipelines (onboarding, perf-onboarding). Sourced by pipeline-dispatch.sh
-# and pipeline-ledger-write.sh, whose callers set the PIPELINE_* config.
+# and pipeline-ledger-write.sh, whose callers set the PIPELINE_* config
+# (the part both gates of a pipeline share through pipeline_config).
 #
 # Config contract:
 #   PIPELINE_LEDGER        — absolute path to the pipeline's status ledger JSON
@@ -28,6 +29,36 @@
 
 # Deny without the calling hook's HOOK_REFS: the gate's messages carry their own references.
 pipeline_emit_deny() { HOOK_REFS= emit_pre_deny "$1"; }
+
+# pipeline_config <onboarding|perf>
+# Sets the config both gates of a pipeline share: PIPELINE_KIND, the
+# PIPELINE_MSG_* tokens, and HOOK_REFS, the methodology pointers appended to
+# every deny the gates emit (repo convention: contributing-to-achilles-protocol/
+# SKILL.md §"Hook error message format — repo standard").
+pipeline_config() {
+  PIPELINE_KIND="$1"
+  PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
+  case "$1" in
+    onboarding)
+      printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\"\n  skills/workflow-reviewer/SKILL.md\n  schemas/onboarding-status.schema.json"
+      PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
+      PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
+      PIPELINE_MSG_LEDGER_REL="$LEDGER_ONBOARDING_REL"
+      PIPELINE_MSG_REVIEWER_LABEL='workflow-reviewer-phase'
+      PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
+      PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
+      ;;
+    perf)
+      printf -v HOOK_REFS -- "\n\nReferences:\n  skills/perf-onboarding/SKILL.md\n  skills/workflow-reviewer/SKILL.md\n  schemas/perf-onboarding-status.schema.json"
+      PIPELINE_MSG_LEDGER_NAME='perf-onboarding-status.json'
+      PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
+      PIPELINE_MSG_LEDGER_REL="$LEDGER_PERF_REL"
+      PIPELINE_MSG_REVIEWER_LABEL='perf-reviewer-phase'
+      PIPELINE_MSG_SKILL_REF='skills/perf-onboarding/SKILL.md'
+      PIPELINE_MSG_SCHEMA_REF='schemas/perf-onboarding-status.schema.json'
+      ;;
+  esac
+}
 
 # pipeline_reviewer_cap_check <description>
 # Checks the reviewer-cycles cap for a reviewer dispatch.

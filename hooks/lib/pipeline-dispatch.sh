@@ -1,9 +1,8 @@
 #!/bin/bash
 # pipeline-dispatch.sh — the PreToolUse:Agent ledger gate shared by the
 # onboarding and perf-onboarding pipelines. A gate sources this file, runs
-# hook_jq_init (its fatal message names the calling hook), sets PIPELINE_KIND
-# (the ledger_path / dispatch_phase_number pipeline name) and the
-# pipeline-gate.sh config, then calls pipeline_dispatch_main.
+# hook_jq_init (its fatal message names the calling hook), calls
+# pipeline_config, sets PIPELINE_CAP_PREFIX_RE, then calls pipeline_dispatch_main.
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/hook-io.sh"
