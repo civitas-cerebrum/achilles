@@ -215,6 +215,10 @@ assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path
   "test-composer Write a spec importing @civitas-cerebrum/element-interactions → ALLOW"
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/x.spec.ts" content='import fs from "fs"')" \
   "test-composer Write a spec importing fs → DENY" "filesystem access"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/env.spec.ts" content='import "dotenv/config"; import { test } from "@playwright/test";')" \
+  "test-composer importing dotenv/config → DENY on every platform (BSD sed included)" ""
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/glob.spec.ts" content='const g = require("glob");')" \
+  "test-composer requiring glob → DENY on every platform" ""
 IMPORTS_CHECK=$("$JQ" -rn --slurpfile m "$MANDATE" '
   ($m[0].roles) as $r |
   [

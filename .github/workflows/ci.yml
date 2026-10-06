@@ -1,7 +1,7 @@
 name: ✅ CI
 
 # Runs the package's own gates on every PR and on every push to main:
-# schema lint, the full hook-test suite, and the doc-drift lint. These are
+# schema lint, hook tests, reporter tests, kernel lock, agents and doc-drift lints. These are
 # the same checks publish.yml runs before publishing — running them here
 # catches regressions at PR time instead of at release time.
 
@@ -19,7 +19,13 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    # BSD userland on macOS is the point: the kernel hooks must hold on both.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: 🗂️  Checkout
         uses: actions/checkout@v4
@@ -33,16 +39,41 @@ jobs:
       # to bundle the self-contained validator. --ignore-scripts skips the
       # package's own postinstall (which copies hooks/skills into ~/.claude).
       - name: 🧩  Install dependencies
+        id: install
         run: npm ci --ignore-scripts
 
+      # Every suite runs even when an earlier one fails, so one push reports
+      # all breakage; any red step still fails the job.
       - name: 🔎  Schemas lint
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run schemas:lint
 
       - name: 🔒  Vendored kernel lock
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: node scripts/sync-kernel-mandate.mjs --check
 
+      - name: 🤖  Generated agents up to date
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: node scripts/build-agents.mjs --check
+
       - name: 🧪  Hook tests
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:hooks
 
+      # Hooks use #!/bin/bash, which is 3.2 on macOS; the default PATH bash
+      # there is newer (Homebrew) so the first run does not cover 3.2.
+      - name: 🍎  Hook tests under /bin/bash 3.2
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' && runner.os == 'macOS' }}
+        run: |
+          PATH=/bin:$PATH
+          bash -c 'echo "bash $BASH_VERSION"; [[ $BASH_VERSION == 3.* ]]'
+          npm run build:validator
+          bash hooks/tests/run.sh
+
+      - name: 📊  Reporter tests
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:reporter
+
       - name: 📐  Doc-drift lint
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: node scripts/lint-doc-drift.mjs
