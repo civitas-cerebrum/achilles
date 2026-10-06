@@ -9,12 +9,13 @@
 #
 # Mechanism: a `bash` shim is put first on PATH. The suite calls hooks as `bash <hook>`
 # (lib.sh run_hook); the shim logs one TSV line per call and otherwise execs the real bash.
-# It records what the hook did, never whether the case passed, so cases that fail on a
-# given platform (e.g. BSD-sed failures in vendored kernel cases) are still captured.
+# It records what the hook did, never whether the case passed.
 # Only calls of hooks/*.sh and hooks/factory/*.sh are logged; a hook run any other way
-# (direct exec, deeper subdirectories) is not seen.
+# (direct exec, deeper subdirectories) is not seen. A hook killed by TERM/INT sent to its
+# shim is logged with exit 143/130; a SIGKILL to the shim loses that line, and the hook it
+# started is then orphaned.
 #
-# TSV line: <hook path relative to hooks/>  <exit>  <sha256(normalised stdin)[:16]>  <normalised stdout, newlines→spaces>
+# TSV line: <hook path relative to hooks/>  <exit>  <sha256(normalised stdin)[:16]>  <normalised stdout, newlines and tabs→spaces>
 #
 # Normalisations (applied to stdin before hashing and to stdout; each maps to a placeholder):
 #   macOS temp dirs  (/private)/var/folders/…/T/                -> <TMP>/
@@ -37,20 +38,32 @@ hooks="$(cd "$here/.." && pwd)"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 real_bash="$(command -v bash)"
 mkdir -p "$work/bin"
-cat > "$work/bin/bash" <<EOF
-#!$real_bash
-case "\${1:-}" in
-  "$hooks"/*.sh|"$hooks"/factory/*.sh) ;;
-  *) exec "$real_bash" "\$@" ;;
+cat > "$work/bin/bash" <<'EOF'
+#!@REAL@
+case "${1:-}" in
+  @HOOKS@/*.sh|@HOOKS@/factory/*.sh) ;;
+  *) exec @REAL@ "$@" ;;
 esac
-in="\$(mktemp)"; out="\$(mktemp)"
-cat > "\$in"
-"$real_bash" "\$@" < "\$in" > "\$out"; rc=\$?
-{ printf '%s\t%s\t' "\${1#$hooks/}" "\$rc"
-  "$work/norm" < "\$in" | { command -v sha256sum >/dev/null && sha256sum || shasum -a 256; } | cut -c1-16 | tr -d '\n'; printf '\t'
-  "$work/norm" < "\$out" | tr '\n' ' '; printf '\n'; } >> "$work/raw.tsv"
-cat "\$out"; rm -f "\$in" "\$out"; exit \$rc
+in="$(mktemp)"; out="$(mktemp)"
+cat > "$in"
+log() {  # <exit>; the whole line goes out in one append so nested or killed calls cannot garble it
+  local h o t=$'\t'
+  h="$(@WORK@/norm < "$in" | { command -v sha256sum >/dev/null && sha256sum || shasum -a 256; } | cut -c1-16)"
+  o="$(@WORK@/norm < "$out" | tr '\n\t' '  ')"
+  printf '%s\n' "${1#@HOOKS@/}$t$2$t$h$t$o" >> @WORK@/raw.tsv
+}
+hook="$1"; child=
+# The hook runs in the background so a TERM/INT aimed at this shim (assert_terminates'
+# pkill -P) reaches it and the hung call is still logged, with the signal's exit status.
+fwd() { kill "$1" "$child" 2>/dev/null; wait "$child" 2>/dev/null; rc=$?; log "$hook" "$rc"; cat "$out"; rm -f "$in" "$out"; exit "$rc"; }
+trap 'fwd -TERM' TERM
+trap 'fwd -INT' INT
+@REAL@ "$@" < "$in" > "$out" & child=$!
+wait "$child"; rc=$?
+log "$hook" "$rc"
+cat "$out"; rm -f "$in" "$out"; exit "$rc"
 EOF
+sed -i.bak -e "s#@REAL@#$real_bash#g" -e "s#@HOOKS@#$hooks#g" -e "s#@WORK@#$work#g" "$work/bin/bash"
 cat > "$work/norm" <<'EOF'
 #!/bin/sh
 sed -E \
@@ -68,6 +81,12 @@ EOF
 chmod +x "$work/bin/bash" "$work/norm"
 : > "$work/raw.tsv"
 PATH="$work/bin:$PATH" "$@" > "$work/run.log" 2>&1
+# A failing suite is expected; a crashed one is not. run.sh always ends with a summary line, and
+# any command must have invoked at least one hook, else the snapshot would be silently truncated.
+crashed=
+case "$*" in *run.sh*) grep -qE '(all [0-9]+ tests passed|[0-9]+ of [0-9]+ tests failed)' "$work/run.log" || crashed="no run.sh summary line" ;; esac
+[ -s "$work/raw.tsv" ] || crashed="${crashed:-no hook invocations recorded}"
+if [ -n "$crashed" ]; then echo "[snapshot] wrapped command did not complete ($crashed); tail of its output:" >&2; tail -n 30 "$work/run.log" >&2; exit 3; fi
 case "$mode" in
   record) cp "$work/raw.tsv" "$target"; echo "[snapshot] $(wc -l < "$target" | tr -d ' ') hook invocations → $target" ;;
   diff)   if diff -u "$target" "$work/raw.tsv" > "$work/d"; then echo "[snapshot] identical ($(wc -l < "$target" | tr -d ' ') invocations)"; else cat "$work/d"; echo "[snapshot] DIFFERS from $target"; exit 1; fi ;;
