@@ -91,21 +91,15 @@ assert_deny "$KERNEL" "$(qs_disp 'repair-worker-login-spec: repair' repair-worke
 assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=contribution-handover command='gh pr create --title x --body y')" "contribution-handover gh pr create → DENY (KL-07)" "may not run this command"
 assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='gh pr create --title x --body y')" "orchestrator gh pr create → DENY (KL-08: pr-attribution-gate shadowed)" "may not run this command"
 
-# Hooks run in postinstall order: the kernel wrapper first. Active, its deny is the whole verdict;
-# with KERNEL_MANDATE=0 the wrapper is silent and the Achilles gate decides with its own text.
+# Claude Code runs every matching hook and any deny blocks. While the kernel binds it denies these
+# commands itself, so the Achilles gate's deny is redundant; with KERNEL_MANDATE=0 the gate is the sole control.
 shadow() { # <gate> <payload> <name> <gate-text>
   local gate="$1" pl="$2" name="$3" text="$4"
   export ACHILLES_PROTOCOL=1
-  run_hook "$HOOK_DIR/achilles-kernel-activation-gate.sh" "$pl"
-  TESTS_RUN=$((TESTS_RUN + 1))
-  if [[ "$HOOK_OUT" == *"Role 'orchestrator' may not"* && "$HOOK_OUT" != *"$text"* ]]; then
-    echo "  ✓ $name: kernel denies first, $gate never decides"
-  else
-    TESTS_FAILED=$((TESTS_FAILED + 1)); FAIL_DETAILS+=("$name: kernel did not shadow $gate")
-    echo "  ✗ $name: kernel did not shadow $gate"
-  fi
-  KERNEL_MANDATE=0 assert_allow "$HOOK_DIR/achilles-kernel-activation-gate.sh" "$pl" "$name (KERNEL_MANDATE=0): wrapper silent"
-  WORKSPACE_ROOT="$QP" assert_deny "$HOOK_DIR/$gate.sh" "$pl" "$name: $gate decides alone" "$text"
+  assert_deny "$HOOK_DIR/achilles-kernel-activation-gate.sh" "$pl" "$name: kernel active → kernel denies" "Role 'orchestrator' may not"
+  WORKSPACE_ROOT="$QP" assert_deny "$HOOK_DIR/$gate.sh" "$pl" "$name: kernel active → $gate also denies (redundant)" "$text"
+  KERNEL_MANDATE=0 assert_allow "$HOOK_DIR/achilles-kernel-activation-gate.sh" "$pl" "$name: KERNEL_MANDATE=0 → kernel silent"
+  KERNEL_MANDATE=0 WORKSPACE_ROOT="$QP" assert_deny "$HOOK_DIR/$gate.sh" "$pl" "$name: KERNEL_MANDATE=0 → $gate is the sole control" "$text"
   unset ACHILLES_PROTOCOL
 }
 MCP_DONE=$(qs_main tool_name=mcp__atlassian__transitionJiraIssue | "$JQ" -c '.tool_input = {id: "QA-1", status: "Done"}')
