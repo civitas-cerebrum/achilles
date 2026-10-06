@@ -157,8 +157,6 @@ Per-journey dispatch is the default for element and flow probing — one `probe-
 
 **Role-prefix.** `probe-group-<id>: j-a, j-b, …`; spelling and binding in `../coverage-expansion/SKILL.md` §"Grouped dispatch". Members are all probe journeys (priority-pure, no mixing with composer groups). Cap-7 is enforced by methodology (count the members after the colon). Grouped dispatches are valid leaf-shape forms for the parent-only-orchestrator rule.
 
-**Schema validation.** Grouped dispatches get the envelope check only; the parent splits the per-item returns and validates each.
-
 **Returns.** Per-journey concatenated under one Agent return — each journey's findings appended to the report file under its own section heading (`### j-<slug> (probe-j-<slug>-<phase>, YYYY-MM-DD)`), exactly as if it had been dispatched per-journey. The grouped probe writes findings INCREMENTALLY (after each confirmed finding) so partial work survives if the dispatch is interrupted.
 
 **Quality safeguard — same as compositional groups.** If multiple journeys in one grouped probe return shallow/under-covered findings (the attention-rationing failure mode), the parent stops grouping for the rest of that pass and falls back to per-journey dispatch.

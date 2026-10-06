@@ -98,8 +98,6 @@ The symptom of getting batching wrong: every Stage B reviewer for a batched-Stag
 
 See §"Relevance grouping for compositional passes" and §"Batched dispatch for P3 peripheral journeys" for the two documented batching exceptions.
 
-**Schema validation and grouped dispatches.** Grouped dispatches get the envelope check only, not a role schema (`schema-role-map.sh`): the wrapper return contains per-item returns which the parent splits and validates individually.
-
 **Harness backstop.** The guardrail that previously denied batched dispatches disguised as single-journey calls and bare role-ambiguous prefixes was retired in 0.3.6; the rule still applies and reviewer dispatches enforce it. What remains live: `hooks/standard-mode-first-pass-guard.sh` (`PreToolUse:Agent`, DENY) blocks grouped dispatches on strict passes. See [`../achilles-protocol/references/harness-hooks.md`](../achilles-protocol/references/harness-hooks.md).
 
 ### Role prefixes
@@ -128,7 +126,7 @@ Under the role kernel the description prefix is the manifest role name — the c
 
 ### Grouped dispatch
 
-A group is one dispatch whose description starts with the role: `test-composer-group-<id>: j-a, j-b, …` (relevance and adversarial groups), `test-composer-p3batch-<id>: …` (P3 batch), `probe-group-<id>: …` (bug-discovery). `<id>` is `[a-z0-9-]+` (e.g. `p2-auth`); members follow the colon, at most 7, priority-pure. The kernel binds the role from the prefix; `standard-mode-first-pass-guard.sh` refuses groups on Pass 1 (standard) and on every pass (depth), and still recognises the legacy leading `[group]` / `[P3-batch]` markers (the kernel denies those: no role). Grouped returns are split per journey and validated per item. Cost rules: `references/depth-mode-pipeline.md` §"Relevance grouping for compositional passes".
+A group is one dispatch whose description starts with the role: `test-composer-group-<id>: j-a, j-b, …` (relevance and adversarial groups), `test-composer-p3batch-<id>: …` (P3 batch), `probe-group-<id>: …` (bug-discovery). `<id>` is `[a-z0-9-]+` (e.g. `p2-auth`); members follow the colon, at most 7, priority-pure. The kernel binds the role from the prefix; `standard-mode-first-pass-guard.sh` refuses groups on Pass 1 (standard) and on every pass (depth), and still recognises the legacy leading `[group]` / `[P3-batch]` markers (the kernel denies those: no role). Grouped returns get the envelope check only (`schema-role-map.sh`); the parent splits and validates per item (parent-side, not hook-enforced). Cost rules: `references/depth-mode-pipeline.md` §"Relevance grouping for compositional passes".
 
 ---
 
@@ -144,7 +142,7 @@ This file is the orchestrator-side contract kernel. The heavy spec lives in `ref
 
 | Reference file | What's in it |
 |---|---|
-| [`references/depth-mode-pipeline.md`](references/depth-mode-pipeline.md) | Per-pass pipeline (steps 1–8), pass differences, commit-message conventions, per-pass completion criteria, whole-suite re-run gate, parallelism model, model selection (hybrid; opus where it pays), auto-compaction between passes, re-pass mode for compositional passes 2–3, **relevance grouping for compositional passes (`test-composer-group-<id>:`, cap 7, all priorities, triggered by tier size > 5)**, batched dispatch for P3 peripheral journeys (`[P3-batch]`, cap 7, P3-only), **per-pass dedup (one cleanup subagent at the end of every pass — within-pass test or finding consolidation)**, post-pass-5 cross-pass ledger dedup. |
+| [`references/depth-mode-pipeline.md`](references/depth-mode-pipeline.md) | Per-pass pipeline (steps 1–8), pass differences, commit-message conventions, per-pass completion criteria, whole-suite re-run gate, parallelism model, model selection (hybrid; opus where it pays), auto-compaction between passes, re-pass mode for compositional passes 2–3, **relevance grouping for compositional passes (`test-composer-group-<id>:`, cap 7, all priorities, triggered by tier size > 5)**, batched dispatch for P3 peripheral journeys (`test-composer-p3batch-<id>:`, cap 7, P3-only), **per-pass dedup (one cleanup subagent at the end of every pass — within-pass test or finding consolidation)**, post-pass-5 cross-pass ledger dedup. |
 | [`references/dual-stage-retry-loop.md`](references/dual-stage-retry-loop.md) | The 7-cycle Stage A↔B retry loop pseudocode, termination conditions, "fresh reviewer every cycle" invariant, dual-stage-specific anti-rationalizations. |
 | [`references/state-file-schema.md`](references/state-file-schema.md) | `coverage-expansion-state.json` shape, per-journey `dispatches[]` entry fields including dual-stage fields, journey-roster mutability, corrupt-state-refusal protocol. |
 | [`references/subagent-isolation.md`](references/subagent-isolation.md) | Per-role dispatch contracts (compositional, adversarial, cleanup): isolation guarantees, brief inputs, `playwright-cli` session naming, the orchestrator's never-hold-payload-content rule. |

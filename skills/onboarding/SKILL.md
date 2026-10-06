@@ -490,7 +490,7 @@ order), plus per-pass dedup.
 > - `tests/e2e/docs/coverage-expansion-state.json` must exist with at
 >   minimum a `pass-1` record before the ledger will permit Phase 5 →
 >   completed. The write-gate denies the transition otherwise.
-> - Pass 1 is strict per-journey under both modes. grouped
+> - Pass 1 is strict per-journey under both modes. Grouped
 >   dispatches on Pass 1 are harness-blocked by
 >   `standard-mode-first-pass-guard.sh`.
 >

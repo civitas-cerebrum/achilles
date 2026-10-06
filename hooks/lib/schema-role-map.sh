@@ -40,7 +40,7 @@
 resolve_schema_role() {
   case "$1" in
     # Grouped dispatches return per-item results; envelope check only.
-    test-composer-group-*|test-composer-p3batch-*|probe-group-*)
+    test-composer-group-*|test-composer-p3batch-*|probe-group-*|probe-p3batch-*)
                               echo "";                       return 0 ;;
     perf-reviewer-*)          echo "perf-reviewer";          return 0 ;;
     workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;

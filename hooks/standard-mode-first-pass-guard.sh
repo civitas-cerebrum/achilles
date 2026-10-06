@@ -35,7 +35,7 @@
 #
 #   onboarding-status.json
 #     - `runMode: "standard" | "depth"` — the front-load gate's mode choice.
-#       Under "standard", `[group]` / `[P3-batch]` are denied on Pass 1 only;
+#       Under "standard", grouped dispatches are denied on Pass 1 only;
 #       under "depth", they are denied on every pass.
 #     - `currentPhase: 1..8` — the active phase. Rule 1 denies grouping when
 #       `currentPhase < 5` (pre-coverage-expansion) or
@@ -59,16 +59,17 @@
 # Rules
 # -----
 # 1. Grouping forbidden (Pass-1 under standard, every pass under depth).
-#    If the Agent description starts with `[group]` or `[P3-batch]` AND
+#    If the Agent description starts with `<role>-group-<id>:` /
+#    `<role>-p3batch-<id>:` (or the legacy `[group]` / `[P3-batch]`) AND
 #    EITHER:
 #      (a) the coverage-expansion state file doesn't exist (implicit Pass 1
 #          → DENY always), OR
 #      (b) `currentPass == 1` (DENY always), OR
 #      (c) `runMode == "depth"` (DENY regardless of currentPass)
 #    DENY. Pass 1 of `mode: standard` (formerly `mode: depth`) is strict
-#    per-journey by contract — `[group]` and `[P3-batch]` are only permitted
-#    on Passes 2-5. Under `mode: depth` (first-class strict-everywhere) those
-#    markers are forbidden on every pass.
+#    per-journey by contract — grouped dispatches are only permitted on
+#    Passes 2-5. Under `mode: depth` (first-class strict-everywhere) they
+#    are forbidden on every pass.
 #
 # 2. Author-without-≥2-cycle-1-sections forbidden.
 #    If the description starts with `phase4-prioritise-author:` AND
@@ -113,7 +114,7 @@
 #
 # Failure → action
 # ----------------
-# Pass-1 [group] / [P3-batch]      → DENY with fix-message pointing at the rule
+# Pass-1 grouped dispatch         → DENY with fix-message pointing at the rule
 # Cycle-1 author-without-≥2-sect.  → DENY with fix-message
 # Cycle-1 single-agent collapse    → DENY with fix-message
 
