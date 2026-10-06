@@ -124,7 +124,7 @@ child through a tag in the prompt, so every dispatch has exactly this
 shape:
 
 - **`description`** — `<role>-<slug>: <task>`, where `<role>` is the
-  exact manifest role name: `scaffolder`, `test-composer`,
+  exact manifest role name: `scaffolder`, `secrets-sweep`, `test-composer`,
   `workflow-reviewer`, `phase-validator`, `process-validator`,
   `perf-reviewer`, plus the in-pipeline worker roles
   `phase1`, `phase2`, `phase4`, `stage2`, `probe`, `reviewer`,
@@ -595,24 +595,26 @@ should be portable across local / CI / staging targets.
 
 1. Load `secrets-sweep`. The skill defines the four literal classes
    (credentials, API keys, PII, URLs) and the extraction playbook.
-   Phase 7 dispatches `secrets-sweep` with the
-   `test-composer-secrets-sweep:` description prefix (`subagent_type:
-   test-composer`, brief tagged `<<kernel-mandate-role:
-   test-composer#<nonce>>>` — §"Dispatch grammar").
+   Phase 7 is two dispatches, in order (§"Dispatch grammar"):
+   `scaffolder-phase7:` wires `.env`, `.env.example`, the `.gitignore`
+   entry and `dotenv` in `playwright*.config.ts` from the key list you
+   put in its brief; then `secrets-sweep-phase7:` (`subagent_type:
+   secrets-sweep`, tag `<<kernel-mandate-role: secrets-sweep#<nonce>>>`)
+   rewrites the specs. Neither has a shell: you run the suite after.
 2. Scan `tests/**/*.{ts,json}` and root `playwright*.config.ts` per
    the `secrets-sweep` skill's scope.
    *Do not* touch application source under `src/` or `app/`. Evidence
    bundles (`tests/e2e/evidence/`) are NOT swept by Phase 7 — they are
    redacted by `companion-mode`'s Phase-5 redaction step.
-3. Replace literals with `process.env.<NAME>`; write `.env` (real
-   values, gitignored) and `.env.example` (placeholders, committed);
-   ensure `.gitignore` covers `.env`.
+3. The sweep replaces literals with `process.env.<NAME>`; the
+   scaffolder writes `.env` (real values, gitignored), `.env.example`
+   (placeholders, committed) and the `.gitignore` entry.
 
 **Exit criteria.**
 - A re-scan of `tests/**` (plus root `playwright*.config.ts`) surfaces
   no literal credentials.
 - `.env`, `.env.example`, and the `.gitignore` entry are all in place.
-- `npx playwright test` still passes against the now-env-driven suite.
+- `npx playwright test`, run by you after both return, still passes against the now-env-driven suite.
 
 Load `secrets-sweep` for the full playbook and the strict edit-scope
 rules.

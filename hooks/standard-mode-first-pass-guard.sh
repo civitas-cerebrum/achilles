@@ -397,7 +397,7 @@ if [ "$HIT_COUNT" -ge 3 ]; then
   # multi-section consumers. `test-composer-*` is the kernel-mandate
   # spelling of the composer dispatch; `composer-*` (pre-kernel) is kept.
   case "$DESCRIPTION" in
-    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*|workflow-reviewer-*|test-composer-*|composer-*|reviewer-*|probe-*|phase[1-8]-*) ;;
+    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*|workflow-reviewer-*|secrets-sweep-*|test-composer-*|composer-*|reviewer-*|probe-*|phase[1-8]-*) ;;
     *)
       # Under cycleStrictness: depth, DENY for ANY cycle (including cycle 2+
       # after cycle 1 has dispatched-sections recorded). Under standard,

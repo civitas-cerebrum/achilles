@@ -129,7 +129,7 @@ ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|
 # still activates. `scaffolder-` is deliberately
 # NOT listed — it is generic-sounding, and the Phase 1 dispatch always
 # follows the `onboarding` Skill call that already activated the session.
-ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|test-composer-|composer-|probe-|process-validator-|contribution-handover-)'
+ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|secrets-sweep-|test-composer-|composer-|probe-|process-validator-|contribution-handover-)'
 
 achilles__jq() {
   if [ -n "${JQ:-}" ] && [ -x "${JQ:-}" ]; then

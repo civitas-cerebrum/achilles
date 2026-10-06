@@ -21,10 +21,16 @@ discipline upstream, a literal sometimes lands in a spec. The sweep finds
 and removes it.
 
 This skill does **not** sanitise the application under test. Application
-source code is out of scope. The sweep only edits files under
-`tests/` (e2e, contracts, fixtures, data), the project's root
-`playwright*.config.ts`, and the root `.env` / `.env.example` /
-`.gitignore`.
+source code is out of scope. Phase 7 is two dispatches, in order:
+
+1. `scaffolder-phase7:` writes `.env`, `.env.example`, the `.gitignore`
+   entry and the `dotenv` load in `playwright*.config.ts`, from the key
+   list the orchestrator passes in the brief (steps d-f).
+2. `secrets-sweep-phase7:` edits only files under `tests/` (e2e,
+   contracts, fixtures, data), replacing literals with `process.env`
+   references (steps a-c, g). It cannot read `.env` or run anything.
+
+The orchestrator then runs the suite (step h).
 
 ---
 
@@ -73,6 +79,9 @@ edit them here.
 Work the playbook in order. Each step has a verification.
 
 ### a. List candidates
+
+The role has no shell: run these patterns with the Grep tool over `tests/`.
+The orchestrator derives the key list for the scaffolder from your return.
 
 ```bash
 git grep -nE 'password|secret|token|api[_-]?key|bearer|sk-[A-Za-z0-9]' -- 'tests/' 'playwright*.config.ts' || true
@@ -123,6 +132,8 @@ function env(name: string): string {
 
 ### d. Write `.env` (real values, gitignored)
 
+Scaffolder, not the sweep.
+
 ```
 # .env  — local values, NEVER commit
 APP_URL=http://localhost:3000
@@ -132,6 +143,8 @@ STRIPE_API_KEY=sk_test_…
 ```
 
 ### e. Write `.env.example` (placeholders, committed)
+
+Scaffolder, not the sweep.
 
 One comment line per variable describing what it's for. Use a clearly
 non-secret placeholder.
@@ -150,6 +163,8 @@ STRIPE_API_KEY=sk_test_REPLACE_ME
 ```
 
 ### f. Ensure `.gitignore` covers `.env`
+
+Scaffolder, not the sweep.
 
 The file must contain at minimum:
 
@@ -170,6 +185,9 @@ Re-run the grep commands from step (a). All hits should now be either
 (a).
 
 ### h. Verify
+
+The `secrets-sweep` role has no shell; return after the re-scan. The
+orchestrator runs, after the sweep returns:
 
 ```bash
 npx playwright test --list           # specs still parse + enumerate
@@ -204,9 +222,9 @@ changes.
 
 This skill's subagent returns conform to the `composer` schema (see
 `schemas/subagent-returns/composer.schema.json`). `onboarding` dispatches
-this skill with the `test-composer-secrets-sweep:` description prefix
-(`subagent_type: test-composer`, brief tagged `<<kernel-mandate-role:
-test-composer#<nonce>>>`), so returns are schema-validated against
+this skill (after `scaffolder-phase7:`) with the `secrets-sweep-phase7:` description prefix
+(`subagent_type: secrets-sweep`, brief tagged `<<kernel-mandate-role:
+secrets-sweep#<nonce>>>`), so returns are schema-validated against
 `composer.schema.json` with zero hook change.
 
 Every return MUST open with a `handover` envelope as its first key:

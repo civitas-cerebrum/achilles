@@ -69,7 +69,7 @@ for ROLE in orchestrator scaffolder test-composer workflow-reviewer \
             probe reviewer phase1 phase2 phase4 stage2 cleanup companion fd contribution-handover; do
   assert_eq "$(grep -c "^### \`$ROLE\`" "$LEDGER")" "1" "ledger documents the $ROLE role exactly once"
 done
-assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "17" "every role carries a refusal list — the half a manifest states only by omission"
+assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "18" "every role carries a refusal list — the half a manifest states only by omission"
 assert_eq "$(grep -c 'Snapshot of the upstream render' "$LEDGER")" "0" "the ledger carries no unregenerated snapshot sections"
 assert_eq "$("$JQ" -r '.roles | keys | map(select(. == "batch-reviewer" or . == "in-flight-composer" or . == "selector-diff-validator")) | length' "$MANDATE")" "0" "orphan roles with no dispatch site are gone"
 # The approver roles hold no shell. The ledger must SAY so, in the section
@@ -106,7 +106,8 @@ fi
 # Table ↔ manifest consistency and the two hard boundaries the design
 # states: every role from the table is present (and only those), each
 # binds its own agentType, the main session is the orchestrator, and no
-# role's read scope names application source or the environment file.
+# role's read scope names application source, and only the scaffolder names the
+# environment file.
 TABLE_CHECK=$("$JQ" -rn --slurpfile wf "$WORKFLOW" --slurpfile m "$MANDATE" '
   ($wf[0]) as $w | ($m[0]) as $k |
   ($w.roles | keys | sort) as $wr | ($k.roles | keys | sort) as $kr |
@@ -114,10 +115,10 @@ TABLE_CHECK=$("$JQ" -rn --slurpfile wf "$WORKFLOW" --slurpfile m "$MANDATE" '
     (if $wr == $kr then "roles-match" else "roles-differ" end),
     (if $k.settings.mainSessionRole == "orchestrator" then "main=orchestrator" else "main=\($k.settings.mainSessionRole)" end),
     (if ([$k.roles | to_entries[] | select(.value.agentTypes != [.key])] | length) == 0 then "agentTypes=self" else "agentTypes-drift" end),
-    (if ([$k.roles[] | (.read.allow // [])[] | select(. == "src/**" or . == ".env" or startswith("src/") or startswith(".env"))] | length) == 0 then "no-src-no-env" else "reads-src-or-env" end)
+    (if ([$k.roles[] | (.read.allow // [])[] | select(. == "src/**" or startswith("src/"))] | length) == 0 and ([$k.roles | to_entries[] | select(.key != "scaffolder") | .value.read.allow // [] | .[] | select(startswith(".env"))] | length) == 0 then "no-src-env-only-scaffolder" else "reads-src-or-env" end)
   ] | join(" ")')
-assert_eq "$TABLE_CHECK" "roles-match main=orchestrator agentTypes=self no-src-no-env" \
-  "manifest roles == table roles, main session is orchestrator, agentTypes bind by name, nothing reads src/** or .env"
+assert_eq "$TABLE_CHECK" "roles-match main=orchestrator agentTypes=self no-src-env-only-scaffolder" \
+  "manifest roles == table roles, main session is orchestrator, agentTypes bind by name, nothing reads src/**, only the scaffolder reads .env"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: the QA mandate loads in the vendored kernel"
@@ -255,8 +256,10 @@ assert_allow "$KERNEL" "$(disp 'test-composer-j-login-flow: compose the login-fl
   "test-composer SKILL.md / onboarding Phase 3: test-composer-j-<slug> + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'test-composer-sj-checkout-1: cycle 1' '<<kernel-mandate-role: test-composer#m3n4p6>>' test-composer)" \
   "coverage-expansion: test-composer-sj-<slug> + tag → ALLOW"
-assert_allow "$KERNEL" "$(disp 'test-composer-secrets-sweep: extract literals to .env' '<<kernel-mandate-role: test-composer#m3n4p7>>' test-composer)" \
-  "onboarding Phase 7 / secrets-sweep: test-composer-secrets-sweep + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'secrets-sweep-phase7: extract literals to .env' '<<kernel-mandate-role: secrets-sweep#m3n4p7>>' secrets-sweep)" \
+  "onboarding Phase 7 / secrets-sweep: secrets-sweep-phase7 + tag → ALLOW"
+assert_allow "$KERNEL" "$(disp 'scaffolder-phase7: wire .env' '<<kernel-mandate-role: scaffolder#m3n4p8>>' scaffolder)" \
+  "onboarding Phase 7 / env wiring: scaffolder-phase7 + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'workflow-reviewer-phase3: review Phase 3' '<<kernel-mandate-role: workflow-reviewer#q7r8s9>>' workflow-reviewer)" \
   "workflow-reviewer SKILL.md / onboarding: workflow-reviewer-phase<N> + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'workflow-reviewer-pass2: review Pass 2' '<<kernel-mandate-role: workflow-reviewer#q7r8t0>>' workflow-reviewer)" \
@@ -495,6 +498,8 @@ pin() { # <file> <literal> <name>
 }
 pin skills/test-composer/SKILL.md '<<kernel-mandate-role: test-composer#<nonce>>>' 1 "test-composer SKILL.md teaches the test-composer binding tag"
 pin skills/test-composer/SKILL.md 'description: test-composer-j-<slug>: <task>' 1 "test-composer SKILL.md teaches the test-composer-j-<slug>: description"
+pin skills/onboarding/SKILL.md 'secrets-sweep-phase7:' 1 "onboarding Phase 7 teaches the secrets-sweep-phase7: description"
+pin skills/secrets-sweep/SKILL.md 'secrets-sweep-phase7:' 2 "secrets-sweep SKILL.md teaches the secrets-sweep-phase7: description"
 pin skills/workflow-reviewer/SKILL.md '<<kernel-mandate-role: workflow-reviewer#<nonce>>>' 1 "workflow-reviewer SKILL.md teaches the workflow-reviewer binding tag"
 pin skills/perf-onboarding/SKILL.md '<<kernel-mandate-role: perf-reviewer#<nonce>>>' 1 "perf-onboarding SKILL.md teaches the perf-reviewer binding tag"
 pin skills/coverage-expansion/references/process-validator-workflow.md '<<kernel-mandate-role: process-validator#<nonce>>>' 1 "process-validator-workflow.md teaches the process-validator binding tag"

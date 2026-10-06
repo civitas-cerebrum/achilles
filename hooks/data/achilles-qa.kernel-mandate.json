@@ -282,6 +282,7 @@
         "process-validator",
         "reviewer",
         "scaffolder",
+        "secrets-sweep",
         "stage2",
         "test-composer",
         "workflow-reviewer"
@@ -666,7 +667,7 @@
       }
     },
     "scaffolder": {
-      "description": "Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch — the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
+      "description": "Write-only author of the Phase 1-2 scaffold and the Phase 7 env wiring: playwright.config.ts, package.json scripts, .gitignore entries, .env and .env.example, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch — the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
       "agentTypes": [
         "scaffolder"
       ],
@@ -682,6 +683,8 @@
       },
       "read": {
         "allow": [
+          ".env",
+          ".env.example",
           ".gitignore",
           "README.md",
           "docs/**",
@@ -692,6 +695,8 @@
       },
       "write": {
         "allow": [
+          ".env",
+          ".env.example",
           ".gitignore",
           "package.json",
           "playwright.config.ts",
@@ -705,6 +710,46 @@
       "skills": {
         "allow": [
           "achilles-protocol"
+        ]
+      }
+    },
+    "secrets-sweep": {
+      "description": "Phase 7 secrets sweep: rewrites hard-coded credentials, keys, PII and app URLs in specs and fixtures under tests/** to process.env references. It writes no .env or config (the scaffolder wires those) and has no shell; the orchestrator re-runs the suite after it returns.",
+      "agentTypes": [
+        "secrets-sweep"
+      ],
+      "tools": {
+        "allow": [
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/**"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test",
+          "dotenv"
+        ],
+        "deny": [
+          "tests/e2e/docs/onboarding-status.json"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "secrets-sweep"
         ]
       }
     },
