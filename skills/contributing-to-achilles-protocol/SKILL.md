@@ -238,7 +238,7 @@ If none of these apply because the rule is genuinely unenforceable mechanically 
 
 **Why this is non-negotiable:** every markdown-only methodology rule that survives a release is a future incident waiting to happen. The cost of writing the hook is hours; the cost of debugging a wrong-classification incident the rule was meant to prevent is days plus the operator trust the package is supposed to earn. The asymmetry is the rule.
 
-**Reference:** `skills/contributing-to-achilles-protocol/SKILL.md` §"Workflow: adding a harness hook" (line 803 of this file) details the hook authoring patterns, test-case expectations, and `scripts/postinstall.js` registration. Read it before authoring any SKILL.md edit so the hook is designed alongside the rule rather than retro-fitted.
+**Reference:** `skills/contributing-to-achilles-protocol/SKILL.md` §"Workflow: adding a harness hook" (line 803 of this file) details the hook authoring patterns, test-case expectations, and registration in `hooks/data/hook-manifest.json`. Read it before authoring any SKILL.md edit so the hook is designed alongside the rule rather than retro-fitted.
 
 ### Before filing an issue or opening a PR — check existing work and sync status
 
@@ -925,7 +925,7 @@ Open both PRs in parallel. Element-repository PR ships first; element-interactio
 
 ## 🪝 Workflow: adding a harness hook
 
-Hooks live in `hooks/<name>.sh`, are installed into `~/.claude/hooks/` by `scripts/postinstall.js`, and are registered in `~/.claude/settings.json` via the `HOOK_MANIFEST` array. They run at PreToolUse / PostToolUse / SubagentStop / Stop boundaries to enforce skill contracts mechanically — markdown rules can be rationalised away mid-run, hooks cannot.
+Hooks live in `hooks/<name>.sh`, are installed into `~/.claude/hooks/` by `scripts/postinstall.js`, and are registered in `~/.claude/settings.json` from the `hooks` array of `hooks/data/hook-manifest.json`. They run at PreToolUse / PostToolUse / SubagentStop / Stop boundaries to enforce skill contracts mechanically — markdown rules can be rationalised away mid-run, hooks cannot.
 
 This section is the **how**. The **when** is fixed by the Hard rule §"Methodology improvements ship as programmatic hooks": every SKILL.md rule edit comes paired with a hook unless the rule is genuinely unenforceable mechanically. Re-read that hard rule first if you're authoring a SKILL.md change — its decision table maps each rule shape to a concrete hook surface.
 
@@ -1068,7 +1068,7 @@ When opening a PR that adds or modifies a hook:
 - [ ] Test cases added to `hooks/tests/cases/<NN>-<topic>.sh` covering: happy-path allow, each rule's deny/warn path, exempt cases, edge cases (empty inputs, special characters, alternate runner forms, etc.).
 - [ ] `bash hooks/tests/run.sh` reports green on the new case file plus all existing cases.
 - [ ] If the hook records state, the state-file path and shape are documented in the canonical reference.
-- [ ] `scripts/postinstall.js` HOOK_MANIFEST updated with the new entry (file, event, matcher, timeout, optional async).
+- [ ] `hooks/data/hook-manifest.json` `hooks` array updated with the new entry (file, event, matcher, timeout, optional async).
 - [ ] If the hook gates a markdown rule, the kernel-resident invariants in the relevant SKILL.md mention the harness backstop, naming the live hook precisely (e.g. "Harness-enforced by `hooks/standard-mode-first-pass-guard.sh`"). Never cite a retired hook; if a hook is removed, rewrite its skill-side claims to the honest-retirement form ("the harness guard for this rule was retired in <version>; the rule still applies").
 - [ ] If the rule has a category in the anti-rationalization registry, the registry entry's `Hooks that catch this:` list is updated.
 

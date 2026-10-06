@@ -33,7 +33,8 @@
     "agents",
     "schemas",
     "reporter",
-    "scripts/postinstall.js"
+    "scripts/postinstall.js",
+    "scripts/install"
   ],
   "devDependencies": {
     "@types/node": "^20.0.0",

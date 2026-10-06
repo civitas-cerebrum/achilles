@@ -5,7 +5,7 @@
 # exist there).
 #
 # Mirrors scripts/postinstall.js's REAL copy set:
-#   - every HOOK_MANIFEST entry's .sh script   (copyHookFile, chmod 755)
+#   - every hook-manifest.json hook + companion (copyHookFile, chmod 755)
 #   - hooks/lib/ top-level FILES only           (no subdirectories)
 #   - hooks/data/ top-level FILES only          (vocabularies, e.g.
 #     canonical-sections.txt)
@@ -14,8 +14,8 @@
 # NOT copied by postinstall (and therefore not copied here): hooks/tests/.
 # Hooks must degrade gracefully without those.
 #
-# NOTE: this MIRRORS postinstall's copy set (does not execute postinstall.js
-# itself — the installer's own copyHookFile/mtime logic is out of scope here).
+# The copy set is MIRRORED, not executed; only the upgrade-path assertion
+# runs the installer (installCivitasHooks into a temp .claude/).
 #
 # Everything runs against temp dirs only — never touches ~/.claude.
 #
@@ -63,50 +63,20 @@ run_install_simulation() {
   mkdir -p "$fake_hooks/lib" "$fake_hooks/data" "$fake_hooks/bin" "$fake_project/tests/e2e/docs"
 
   # --- Mirror the postinstall copy set ------------------------------------
-  # 1. Hook scripts: exactly the HOOK_MANIFEST entries, parsed live from
-  #    postinstall.js so the sim never drifts from the real installer.
-  # Parse the literal HOOK_MANIFEST array from postinstall.js using Node so
-  # the sim never drifts from the real installer. Node is guaranteed (the
-  # suite builds the validator with it). Matches file: '...' / file: "..."
-  # entries, strips lines whose non-whitespace content starts with //, and
-  # deduplicates via Set — exactly mirroring what postinstall installs.
-  local manifest_files f
-  manifest_files=$(node -e "
-    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
-    const m = s.match(/const HOOK_MANIFEST = \[([\s\S]*?)\];/);
-    if (!m) { process.exit(1); }
-    const lines = m[1].split('\n');
-    const files = [...new Set(
-      lines
-        .filter(l => !/^\s*\/\//.test(l))
-        .flatMap(l => [...l.matchAll(/file:\s*['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]))
-    )];
-    console.log(files.join('\n'));
-  " 2>/dev/null)
-  if [ -z "$manifest_files" ]; then
-    sim_fail "manifest parse" "could not extract HOOK_MANIFEST file list from scripts/postinstall.js"
+  # 1. Hook scripts: every registered hook and every companion (copied beside
+  #    the registered hooks, never registered — the kernel, exec'd by the
+  #    activation-gate wrapper), read from the manifest the installer reads.
+  local manifest="$repo_root/hooks/data/hook-manifest.json" manifest_files companion_files f
+  manifest_files=$("$JQ" -r '[.hooks[].file] | unique | .[]' "$manifest" 2>/dev/null)
+  companion_files=$("$JQ" -r '.companions[]' "$manifest" 2>/dev/null)
+  if [ -z "$manifest_files" ] || [ -z "$companion_files" ]; then
+    sim_fail "manifest parse" "could not read .hooks[].file / .companions[] from $manifest"
     return
   fi
-  for f in $manifest_files; do
+  for f in $manifest_files $companion_files; do
     if [ -f "$repo_root/hooks/$f" ]; then
       cp "$repo_root/hooks/$f" "$fake_hooks/$f"
       chmod 755 "$fake_hooks/$f"   # postinstall: fs.chmodSync(hookDest, 0o755)
-    fi
-  done
-  # 1b. HOOK_COMPANIONS — copied beside the registered hooks but never
-  #     registered (the kernel mandate kernel, exec'd by the activation-gate
-  #     wrapper). Parsed the same way so the sim tracks the installer.
-  local companion_files
-  companion_files=$(node -e "
-    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
-    const m = s.match(/const HOOK_COMPANIONS = \[([\s\S]*?)\];/);
-    if (!m) { process.exit(0); }
-    console.log([...m[1].matchAll(/['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]).join('\n'));
-  " 2>/dev/null)
-  for f in $companion_files; do
-    if [ -f "$repo_root/hooks/$f" ]; then
-      cp "$repo_root/hooks/$f" "$fake_hooks/$f"
-      chmod 755 "$fake_hooks/$f"
     fi
   done
 
@@ -157,9 +127,9 @@ run_install_simulation() {
     fi
   done
   if [ -z "$missing" ]; then
-    sim_pass "all HOOK_MANIFEST scripts copied and executable"
+    sim_pass "all manifest hook scripts copied and executable"
   else
-    sim_fail "all HOOK_MANIFEST scripts copied and executable" "missing/non-executable: $missing"
+    sim_fail "all manifest hook scripts copied and executable" "missing/non-executable: $missing"
   fi
 
   # --- Assertion 3+4+: integrity-chain + bash-guard + new guards in set ----

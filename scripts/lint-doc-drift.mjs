@@ -6,7 +6,7 @@
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
 //   (2) every relative .md link under skills/achilles-protocol/** resolves
-//   (3) HOOK_MANIFEST (scripts/postinstall.js)  ↔  harness-hooks.md links
+//   (3) hook manifest (hooks/data/hook-manifest.json)  ↔  harness-hooks.md links
 //   (4) every validated §4.4 description-prefix in subagent-return-schema.md
 //       has a matching case in hooks/lib/schema-role-map.sh
 //   (5) every deny/warn-capable hook's runtime messages carry a References:
@@ -34,7 +34,7 @@ const SKILLS_DIR = 'skills';
 const EI_DIR = 'skills/achilles-protocol';
 const REGISTRY = 'skills/achilles-protocol/references/skill-registry.md';
 const HARNESS_HOOKS = 'skills/achilles-protocol/references/harness-hooks.md';
-const POSTINSTALL = 'scripts/postinstall.js';
+const HOOK_MANIFEST = 'hooks/data/hook-manifest.json';
 const RETURN_SCHEMA = 'skills/achilles-protocol/references/subagent-return-schema.md';
 const ROLE_MAP = 'hooks/lib/schema-role-map.sh';
 const DOCS_DIR = 'docs';
@@ -143,19 +143,14 @@ function checkRelativeLinks() {
 }
 
 // ---------------------------------------------------------------------------
-// Check 3 — HOOK_MANIFEST  ↔  harness-hooks.md (both ways)
+// Check 3 — hook manifest  ↔  harness-hooks.md (both ways)
 // ---------------------------------------------------------------------------
 function checkHookManifest() {
   const detail = [];
-  const post = readFileSync(POSTINSTALL, 'utf8');
-
-  // Extract the HOOK_MANIFEST array body and pull each `file: '<name>.sh'`.
-  const start = post.indexOf('const HOOK_MANIFEST = [');
-  const end = post.indexOf('];', start);
-  const body = post.slice(start, end);
-  const manifestFiles = new Set(
-    [...body.matchAll(/file:\s*'([a-z0-9-]+\.sh)'/g)].map((m) => m[1]),
-  );
+  const registered = JSON.parse(readFileSync(HOOK_MANIFEST, 'utf8')).hooks.map((h) => h.file);
+  const malformed = registered.filter((f) => !/^[a-z0-9-]+\.sh$/.test(f));
+  if (malformed.length) detail.push(`${HOOK_MANIFEST} hook files not of the form <name>.sh: ${malformed.join(', ')}`);
+  const manifestFiles = new Set(registered);
 
   // Documented hooks = markdown links of the form (.../hooks/<file>.sh).
   // Exclude hooks/lib/* (those are library files cited in prose, not
@@ -168,12 +163,12 @@ function checkHookManifest() {
   const undocumented = [...manifestFiles].filter((f) => !documented.has(f));
   const orphanDocs = [...documented].filter((f) => !manifestFiles.has(f));
 
-  if (undocumented.length) detail.push(`in HOOK_MANIFEST but not documented in harness-hooks.md: ${undocumented.join(', ')}`);
-  if (orphanDocs.length) detail.push(`documented in harness-hooks.md but not in HOOK_MANIFEST: ${orphanDocs.join(', ')}`);
+  if (undocumented.length) detail.push(`in ${HOOK_MANIFEST} but not documented in harness-hooks.md: ${undocumented.join(', ')}`);
+  if (orphanDocs.length) detail.push(`documented in harness-hooks.md but not in ${HOOK_MANIFEST}: ${orphanDocs.join(', ')}`);
 
   report(
-    `HOOK_MANIFEST ↔ harness-hooks.md (${manifestFiles.size} manifest hooks, ${documented.size} documented)`,
-    undocumented.length === 0 && orphanDocs.length === 0,
+    `hook manifest ↔ harness-hooks.md (${manifestFiles.size} manifest hooks, ${documented.size} documented)`,
+    malformed.length === 0 && undocumented.length === 0 && orphanDocs.length === 0,
     detail,
   );
 }
@@ -469,7 +464,7 @@ function checkOptInSurfaces() {
   const detail = [];
   const sources = [
     ...walk('hooks', (p) => /\.(sh|js|cjs|mjs)$/.test(p) && !p.includes('/tests/') && !/\.bundle\.m?js$/.test(p)),
-    ...readdirSync('scripts').filter((f) => /\.(js|mjs)$/.test(f) && f !== 'lint-doc-drift.mjs').map((f) => join('scripts', f)),
+    ...walk('scripts', (p) => /\.(js|mjs)$/.test(p) && p !== join('scripts', 'lint-doc-drift.mjs')),
   ];
   // Operator-facing switch names: project prefixes plus the *_GATE/_GUARD/_OVERRIDE
   // suffixes the gates use. Ordinary environment is excluded by the deny-list.

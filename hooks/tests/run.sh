@@ -99,7 +99,7 @@ for f in "${selected[@]}"; do
 done
 
 # Install simulation — proves the gates fire from a consumer-style install
-# (HOOK_MANIFEST scripts + lib/ + bin/jq copied to a fake home, no repo
+# (hook-manifest.json scripts + lib/ + bin/jq copied to a fake home, no repo
 # context). Runs like a case file, before the harness-error report so its
 # early exits count. Respects the filter like any case file.
 if [ -z "$filter" ] || [[ "install-simulation.sh" == *"$filter"* ]]; then

@@ -6,8 +6,7 @@
 # Contract under test:
 #   - postinstall registers the WRAPPER on PreToolUse:.* and no longer
 #     registers the raw kernel; the kernel is copied beside the wrapper as
-#     a companion (the wrapper execs it) and a stale direct registration
-#     is pruned.
+#     a companion (the wrapper execs it), replacing a stale copy.
 #   - hooks/data/achilles-qa.kernel-mandate.json is a valid manifest,
 #     derived from hooks/data/achilles-qa.workflow.json, and LOADS in the
 #     vendored kernel with the intended boundaries (no role reads src/**
@@ -27,26 +26,19 @@
 H="$HOOK_DIR/achilles-kernel-activation-gate.sh"
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
-POSTINSTALL="$REPO_ROOT/scripts/postinstall.js"
 MANDATE="$HOOK_DIR/data/achilles-qa.kernel-mandate.json"
 WORKFLOW="$HOOK_DIR/data/achilles-qa.workflow.json"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: postinstall registers the wrapper, not the raw kernel"
 # ---------------------------------------------------------------------------
-# HOOK_MANIFEST body only — comments and the companion / superseded lists
-# below it must not count as registrations.
-MANIFEST_BODY=$(awk '/const HOOK_MANIFEST = \[/{p=1} p{print} p&&/^\];/{exit}' "$POSTINSTALL" | grep -vE '^\s*//')
-assert_eq "$(printf '%s' "$MANIFEST_BODY" | grep -cE "file: 'achilles-kernel-activation-gate\.sh',\s+event: 'PreToolUse',\s+matcher: '\.\*'")" "1" \
+HOOK_MANIFEST="$HOOK_DIR/data/hook-manifest.json"
+assert_eq "$("$JQ" '[.hooks[] | select(.file == "achilles-kernel-activation-gate.sh" and .event == "PreToolUse" and .matcher == ".*")] | length' "$HOOK_MANIFEST")" "1" \
   "wrapper registered once on PreToolUse with matcher .*"
-assert_eq "$(printf '%s' "$MANIFEST_BODY" | grep -c "file: 'kernel-mandate-role-gate\.sh'")" "0" \
-  "raw kernel is NOT registered in HOOK_MANIFEST"
-COMPANIONS=$(awk '/const HOOK_COMPANIONS = \[/{p=1} p{print} p&&/^\];/{exit}' "$POSTINSTALL")
-assert_eq "$(printf '%s' "$COMPANIONS" | grep -c "'kernel-mandate-role-gate\.sh'")" "1" \
+assert_eq "$("$JQ" '[.hooks[] | select(.file == "kernel-mandate-role-gate.sh")] | length' "$HOOK_MANIFEST")" "0" \
+  "raw kernel is NOT registered in the hook manifest"
+assert_eq "$("$JQ" '[.companions[] | select(. == "kernel-mandate-role-gate.sh")] | length' "$HOOK_MANIFEST")" "1" \
   "raw kernel is copied as a companion (wrapper execs it)"
-SUPERSEDED=$(awk '/const SUPERSEDED_REGISTRATIONS = \[/{p=1} p{print} p&&/^\];/{exit}' "$POSTINSTALL")
-assert_eq "$(printf '%s' "$SUPERSEDED" | grep -c "'kernel-mandate-role-gate\.sh'")" "1" \
-  "a stale direct kernel registration is listed for pruning"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: the role ledger ships and is staged beside the mandate"
@@ -78,9 +70,16 @@ APPROVER_SECTION=$(awk '/^### `workflow-reviewer`/{p=1} p{print} p&&/^### `[a-z-
 assert_eq "$(printf '%s' "$APPROVER_SECTION" | grep -c 'run any shell command')" "1" "the ledger states that an approver role runs nothing"
 assert_eq "$(printf '%s' "$APPROVER_SECTION" | grep -c '^- \*\*Runs\*\*')" "0" "and grants it no commands"
 # Staged by postinstall on the same never-overwrite terms as the manifest.
-assert_eq "$(grep -c "QA_LEDGER_FILE = 'achilles-qa.kernel-mandate.md'" "$POSTINSTALL")" "1" "postinstall knows the ledger file"
-assert_eq "$(awk '/function stageProjectMandate/{p=1} p{print} p&&/^}/{exit}' "$POSTINSTALL" | grep -c "kernel-mandate.md")" "1" \
+STAGE_PROJ=$(mktemp -d)
+stage_mandate() { CIVITAS_SKIP_HOOK_INSTALL= node -e "require('$REPO_ROOT/scripts/install/mandate.js').stageProjectMandate('$STAGE_PROJ')" >/dev/null; }
+stage_mandate
+assert_eq "$(cmp -s "$STAGE_PROJ/.claude/kernel-mandate.json" "$MANDATE" && echo same)" "same" "stageProjectMandate stages the manifest"
+assert_eq "$(cmp -s "$STAGE_PROJ/.claude/kernel-mandate.md" "$LEDGER" && echo same)" "same" \
   "stageProjectMandate stages the ledger beside the manifest"
+printf '{"custom":true}\n' > "$STAGE_PROJ/.claude/kernel-mandate.json"
+stage_mandate
+assert_eq "$(cat "$STAGE_PROJ/.claude/kernel-mandate.json")" '{"custom":true}' "a second staging leaves an existing manifest unchanged"
+rm -rf "$STAGE_PROJ"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: the shipped QA mandate validates and matches its table"
@@ -556,7 +555,7 @@ assert_deny "$NOK/achilles-kernel-activation-gate.sh" "$(probe km-act-1)" \
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR ACHILLES_SESSION_STATE_DIR
 
 # ---------------------------------------------------------------------------
-section "postinstall: stages the QA mandate into the project, never overwrites, prunes the direct kernel registration"
+section "postinstall: wires the wrapper, refreshes the kernel companion, stages the QA mandate once"
 # ---------------------------------------------------------------------------
 if command -v node >/dev/null 2>&1; then
   WIRE_TEST=$(mktemp "$KW_TMP/wiring-XXXXXX.mjs")
@@ -572,32 +571,28 @@ const home = '$WIRE_HOME';
 const proj = '$WIRE_PROJ';
 const userHooks = path.join(home, '.claude', 'hooks');
 const settingsPath = path.join(home, '.claude', 'settings.json');
-// An upgraded install: the raw kernel is registered directly AND present on disk,
-// so the dangling-file prune alone would keep it.
-// The stale kernel predates the package (copyHookFile copies on mtime), as
-// on any real upgrade — backdate the stub or the test would be testing the
-// mtime rule instead of the companion copy.
+// An upgraded install with a stale kernel on disk. The stale kernel predates
+// the package (copyHookFile copies on mtime), as on any real upgrade —
+// backdate the stub or the test would be testing the mtime rule instead of
+// the companion copy.
 const staleKernel = path.join(userHooks, 'kernel-mandate-role-gate.sh');
 fs.writeFileSync(staleKernel, '#!/bin/bash\nexit 0\n');
 const past = new Date(Date.now() - 7 * 24 * 3600 * 1000);
 fs.utimesSync(staleKernel, past, past);
-fs.writeFileSync(settingsPath, JSON.stringify({ hooks: { PreToolUse: [
-  { matcher: '.*', hooks: [ { type: 'command', command: path.join(userHooks, 'kernel-mandate-role-gate.sh'), timeout: 10 } ] },
-] } }, null, 2));
 process.env.HOME = home;
 process.env.CIVITAS_SKIP_JQ_INSTALL = '1';
 delete process.env.CIVITAS_SKIP_HOOK_INSTALL;
 const require = createRequire(import.meta.url);
 const pi = require(path.join('$REPO_ROOT', 'scripts', 'postinstall.js'));
 
-// --- hooks: wrapper registered, direct kernel registration pruned, kernel copied as companion
+// --- hooks: wrapper registered, kernel copied as an unregistered companion
 pi.installCivitasHooks();
 const after = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 const star = after.hooks.PreToolUse.filter(g => g.matcher === '.*');
 const starCmds = star.flatMap(g => (g.hooks || []).map(h => h.command));
 assert.ok(starCmds.some(c => c.endsWith('achilles-kernel-activation-gate.sh')), 'wrapper registered on PreToolUse:.*');
 const allCmds = after.hooks.PreToolUse.flatMap(g => (g.hooks || []).map(h => h.command));
-assert.ok(!allCmds.some(c => c.endsWith('kernel-mandate-role-gate.sh')), 'direct kernel registration pruned');
+assert.ok(!allCmds.some(c => c.endsWith('kernel-mandate-role-gate.sh')), 'kernel not registered');
 const kernelOnDisk = path.join(userHooks, 'kernel-mandate-role-gate.sh');
 assert.ok(fs.existsSync(kernelOnDisk), 'kernel still on disk (companion)');
 assert.ok(fs.statSync(kernelOnDisk).size > 1000, 'companion copy is the real kernel, not the stub');
@@ -632,7 +627,7 @@ EOF
   WIRE_OUT=$(HOME="$WIRE_HOME" node "$WIRE_TEST" 2>&1 || true)
   if echo "$WIRE_OUT" | grep -q 'WIRING_OK'; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
-    echo "${CLR_PASS}  ✓${CLR_RST} postinstall wires the wrapper, prunes the direct kernel registration, stages the mandate once and never overwrites"
+    echo "${CLR_PASS}  ✓${CLR_RST} postinstall wires the wrapper, refreshes the kernel companion, stages the mandate once and never overwrites"
   else
     TESTS_FAILED=$((TESTS_FAILED + 1))
     FAIL_DETAILS+=("postinstall kernel wiring: ${WIRE_OUT:0:400}")

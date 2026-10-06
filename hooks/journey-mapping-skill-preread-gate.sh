@@ -8,7 +8,7 @@
 #                                         this session.
 #
 # Hook    : PreToolUse:Write|Edit + PreToolUse:Agent (same script,
-#           registered against both events in HOOK_MANIFEST)
+#           registered against both events in data/hook-manifest.json)
 # Mode    : DENY
 # State   : reads the session transcript at `transcript_path` from the
 #           hook input — checks for any Skill('journey-mapping') tool
