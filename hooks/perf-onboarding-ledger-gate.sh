@@ -81,6 +81,7 @@ LEDGER="$(ledger_path "$GUARD_REPO_ROOT" perf)"
 SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
+PIPELINE_KIND=perf
 PIPELINE_LEDGER="$LEDGER"
 PIPELINE_SIDECAR="$SIDECAR"
 PIPELINE_CAP_PREFIX_RE="$DISPATCH_CAP_PREFIX_RE_PERF"
@@ -120,10 +121,8 @@ pipeline_transition_point_check "$DESCRIPTION" && exit 0
 
 # ---------------------------------------------------------------------------
 # Rules 1 & 2: out-of-order phase dispatch (lib call).
-# Perf-specific target-phase inference (dispatch_phase_number perf).
 # ---------------------------------------------------------------------------
-perf_infer_target_phase() { dispatch_phase_number perf "$1"; }
-pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" perf_infer_target_phase && exit 0
+pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" && exit 0
 
 # ---------------------------------------------------------------------------
 # Phase-5 sub-stage gate: pass ordering (load → stress → spike → soak).

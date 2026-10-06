@@ -203,19 +203,16 @@ See: schemas/${PIPELINE_SCHEMA_NAME}.schema.json
   return 2
 }
 
-# pipeline_out_of_order_phase_check <description> <current_phase> <infer_fn>
+# pipeline_out_of_order_phase_check <description> <current_phase>
 # Rules 1+2: if the description targets a phase ahead of current and the
-# prior phase is not approved, deny. <infer_fn> is the name of a bash
-# function defined by the caller that echoes the target phase number (or
-# empty string) given the description.
+# prior phase is not approved, deny.
 # Returns 0 + emits deny if gated; 1 for fall-through.
-# Requires: PIPELINE_LEDGER  JQ
+# Requires: PIPELINE_LEDGER  PIPELINE_KIND  JQ
 pipeline_out_of_order_phase_check() {
   local DESCRIPTION="$1"
   local CURRENT_PHASE="$2"
-  local INFER_FN="$3"
   local TARGET_PHASE PRIOR_PHASE PRIOR_VERDICT
-  TARGET_PHASE=$("$INFER_FN" "$DESCRIPTION")
+  TARGET_PHASE=$(dispatch_phase_number "$PIPELINE_KIND" "$DESCRIPTION")
   if [ -n "$TARGET_PHASE" ] && [ "$TARGET_PHASE" -gt "$CURRENT_PHASE" ]; then
     PRIOR_PHASE=$((TARGET_PHASE - 1))
     PRIOR_VERDICT=$("$JQ" -r --argjson id "$PRIOR_PHASE" '
