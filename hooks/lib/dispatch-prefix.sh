@@ -7,12 +7,9 @@
 
 # Skill names bundled by this package (skills/<name>/). Any Skill invocation of one
 # of these — bare or plugin/path-prefixed — activates the protocol for the session;
-# a name missing here activates nothing (scripts/lint-doc-drift.mjs check 10 parses
+# a name missing here activates nothing (scripts/lint-doc-drift.mjs check 9 parses
 # this line). `element-interactions` is the orchestrator's pre-rename skill name
 # (not the npm package), kept so installs still carrying the old directory activate.
-# Deliberate exclusion: mandate-designer — generic kernel infrastructure for any
-# multi-agent harness; invoking it must not switch on the QA gates in an unrelated
-# project (its own hook is self-scoped by manifest presence).
 ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-achilles-protocol|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|secrets-sweep|selector-development|test-catalogue|test-composer|test-data-conventions|test-repair|work-summary-deck|workflow-reviewer'
 
 # Pre-kernel description and CLI-slug spelling of the composer role; activates

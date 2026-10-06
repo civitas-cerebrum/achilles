@@ -7,9 +7,8 @@
 #   - postinstall registers the WRAPPER on PreToolUse:.* and no longer
 #     registers the raw kernel; the kernel is copied beside the wrapper as
 #     a companion (the wrapper execs it), replacing a stale copy.
-#   - hooks/data/achilles-qa.kernel-mandate.json is a valid manifest,
-#     derived from hooks/data/achilles-qa.workflow.json, and LOADS in the
-#     vendored kernel with the intended boundaries (no role reads src/**
+#   - hooks/data/achilles-qa.kernel-mandate.json LOADS in the vendored
+#     kernel with the intended boundaries (no role reads src/**
 #     or .env; approvers have no shell; the main session is `orchestrator`;
 #     the runner/resolution configs are the write-only scaffolder's, not
 #     the orchestrator's; composers may import exactly the test framework).
@@ -27,7 +26,6 @@ H="$HOOK_DIR/achilles-kernel-activation-gate.sh"
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 MANDATE="$HOOK_DIR/data/achilles-qa.kernel-mandate.json"
-WORKFLOW="$HOOK_DIR/data/achilles-qa.workflow.json"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: postinstall registers the wrapper, not the raw kernel"
@@ -46,12 +44,10 @@ section "kernel wiring: the role ledger ships and is staged beside the mandate"
 # A manifest is the machine's copy of the QA operating system; nobody
 # reviews an OS by reading path globs. The ledger is the human copy — the
 # twenty roles, what each is REFUSED, the handovers and the review loops —
-# staged by postinstall beside the manifest it describes. Upstream it is
-# rendered by `kernel-mandate doc`, but that CLI ships in
-# @civitas-cerebrum/kernel-mandate, which this repo does not depend on, so
-# `npm run sync:kernel-mandate --check` finds no canonical source and exits
-# 0 without checking anything. The role inventory is hand-maintained here
-# and held to the manifest by lint-doc-drift's role-inventory check; these
+# staged by postinstall beside the manifest it describes. Achilles does not
+# vendor the `kernel-mandate doc` renderer, so the role inventory is
+# hand-maintained and held to the manifest by lint-doc-drift's
+# role-inventory check; these
 # assertions are about the two properties that make it worth trusting: it
 # ships, and it claims nothing the manifest does not.
 LEDGER="$HOOK_DIR/data/achilles-qa.kernel-mandate.md"
@@ -82,42 +78,22 @@ assert_eq "$(cat "$STAGE_PROJ/.claude/kernel-mandate.json")" '{"custom":true}' "
 rm -rf "$STAGE_PROJ"
 
 # ---------------------------------------------------------------------------
-section "kernel wiring: the shipped QA mandate validates and matches its table"
+section "kernel wiring: the shipped QA mandate's hard boundaries"
 # ---------------------------------------------------------------------------
-assert_eq "$([ -f "$WORKFLOW" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.workflow.json ships"
 assert_eq "$([ -f "$MANDATE" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.kernel-mandate.json ships"
 
-if command -v node >/dev/null 2>&1 && node -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; then
-  SCHEMA_VERDICT=$(node -e "
-    const Ajv = require('ajv/dist/2020.js'); const addFormats = require('ajv-formats');
-    const fs = require('fs');
-    const ajv = new Ajv({ strict: false, allErrors: true }); addFormats(ajv);
-    const schema = JSON.parse(fs.readFileSync('$REPO_ROOT/schemas/kernel-mandate.schema.json', 'utf8'));
-    const doc = JSON.parse(fs.readFileSync('$MANDATE', 'utf8'));
-    const ok = ajv.validate(schema, doc);
-    console.log(ok ? 'valid' : JSON.stringify(ajv.errors).slice(0, 300));
-  " 2>&1)
-  assert_eq "$SCHEMA_VERDICT" "valid" "staged manifest validates against the vendored kernel-mandate schema"
-else
-  echo "  ${CLR_DIM}(ajv not available — skipping schema validation of the QA mandate)${CLR_RST}"
-fi
-
-# Table ↔ manifest consistency and the two hard boundaries the design
-# states: every role from the table is present (and only those), each
-# binds its own agentType, the main session is the orchestrator, and no
-# role's read scope names application source, and only the scaffolder names the
-# environment file.
-TABLE_CHECK=$("$JQ" -rn --slurpfile wf "$WORKFLOW" --slurpfile m "$MANDATE" '
-  ($wf[0]) as $w | ($m[0]) as $k |
-  ($w.roles | keys | sort) as $wr | ($k.roles | keys | sort) as $kr |
+# The boundaries the design states: each role binds its own agentType, the
+# main session is the orchestrator, no role's read scope names application
+# source, and only the scaffolder names the environment file.
+BOUNDARIES=$("$JQ" -rn --slurpfile m "$MANDATE" '
+  ($m[0]) as $k |
   [
-    (if $wr == $kr then "roles-match" else "roles-differ" end),
     (if $k.settings.mainSessionRole == "orchestrator" then "main=orchestrator" else "main=\($k.settings.mainSessionRole)" end),
     (if ([$k.roles | to_entries[] | select(.value.agentTypes != [.key])] | length) == 0 then "agentTypes=self" else "agentTypes-drift" end),
     (if ([$k.roles[] | (.read.allow // [])[] | select(. == "src/**" or startswith("src/"))] | length) == 0 and ([$k.roles | to_entries[] | select(.key != "scaffolder") | .value.read.allow // [] | .[] | select(startswith(".env"))] | length) == 0 then "no-src-env-only-scaffolder" else "reads-src-or-env" end)
   ] | join(" ")')
-assert_eq "$TABLE_CHECK" "roles-match main=orchestrator agentTypes=self no-src-env-only-scaffolder" \
-  "manifest roles == table roles, main session is orchestrator, agentTypes bind by name, nothing reads src/**, only the scaffolder reads .env"
+assert_eq "$BOUNDARIES" "main=orchestrator agentTypes=self no-src-env-only-scaffolder" \
+  "main session is orchestrator, agentTypes bind by name, nothing reads src/**, only the scaffolder reads .env"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: the QA mandate loads in the vendored kernel"
@@ -465,23 +441,14 @@ assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=phase4 file_path="$KP/te
   "phase4 Write a spec → DENY (discovery and authoring are different mandates)" "outside the role's write scope"
 
 # ---------------------------------------------------------------------------
-section "kernel wiring: the repair skill is reachable from inside a governed session"
+section "kernel wiring: every shipped skill is granted to some role"
 # ---------------------------------------------------------------------------
-# mandate-designer was the only one of the 25 skill directories granted
-# in no role's skills.allow. Activation is one-way, so an operator whose
-# session is blocked by a manifest gap had no in-session route to the
-# skill that repairs manifests — only KERNEL_MANDATE=0, which switches
-# the kernel off wholesale.
-assert_allow "$KERNEL" "$(payload tool_name=Skill skill=mandate-designer cwd="$KP")" \
-  "orchestrator Skill mandate-designer → ALLOW (the in-session repair route)"
-assert_deny "$KERNEL" "$(sub tool_name=Skill agent_type=test-composer skill=mandate-designer)" \
-  "test-composer Skill mandate-designer → DENY (repairing the rules is not a composer's job)" "may not invoke the skill"
-assert_eq "$("$JQ" -r '[.roles | to_entries[] | select((.value.skills.allow // []) | index("mandate-designer")) | .key] | join(",")' "$MANDATE")" "orchestrator" \
-  "exactly one role — the orchestrator — may invoke mandate-designer"
-# Bijection against the shipped skill directories: no skill may be
-# orphaned in no role's grant again.
+# A glob, not `find -printf`: BSD find rejects -printf, and the empty list
+# it left made the bijection below pass vacuously on darwin.
+SKILL_DIRS=$(for d in "$REPO_ROOT"/skills/*/; do basename "$d"; done | sort)
+assert_eq "$(printf '%s\n' "$SKILL_DIRS" | grep -cx achilles-protocol)" "1" "skill directories are enumerated (not an empty list)"
 UNGRANTED=$(comm -23 \
-  <(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort) \
+  <(printf '%s\n' "$SKILL_DIRS") \
   <("$JQ" -r '[.roles[].skills.allow // []] | flatten | .[]' "$MANDATE" | sort -u) | tr '\n' ' ' | sed 's/ $//')
 assert_eq "$UNGRANTED" "" "every shipped skill directory appears in at least one role's skills.allow"
 

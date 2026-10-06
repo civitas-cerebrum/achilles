@@ -2,18 +2,15 @@ const fs   = require('fs');
 const path = require('path');
 const { packageDir, projectRoot } = require('./context.js');
 
-// The achilles QA role manifest, derived from hooks/data/achilles-qa.workflow.json
-// (`kernel-mandate derive`), read by the kernel at <project>/.claude/kernel-mandate.json.
+// The achilles QA role manifest, read by the kernel at <project>/.claude/kernel-mandate.json.
 const QA_MANDATE_FILE = 'achilles-qa.kernel-mandate.json';
 
-// The human-readable copy of the same mandate. Upstream it is rendered by
-// `kernel-mandate doc`; that CLI is not installable here, so the copy in
-// this repo is hand-maintained against the manifest and held to it by
-// scripts/lint-doc-drift.mjs. Staged beside the manifest because a project
-// that has an operating system imposed on it deserves the page that
-// explains it: every role, what each one is REFUSED, where work changes
-// hands, and the review loops. The kernel never reads this file — it is for
-// the people.
+// The human-readable copy of the same mandate, hand-maintained against the
+// manifest and held to it by scripts/lint-doc-drift.mjs. Staged beside the
+// manifest because a project that has an operating system imposed on it
+// deserves the page that explains it: every role, what each one is REFUSED,
+// where work changes hands, and the review loops. The kernel never reads this
+// file — it is for the people.
 const QA_LEDGER_FILE = 'achilles-qa.kernel-mandate.md';
 
 // Stage the achilles QA role manifest into the consumer project at

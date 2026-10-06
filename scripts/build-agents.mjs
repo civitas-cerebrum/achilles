@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // build-agents.mjs — renders agents/<role>.md, one Claude Code agent definition
-// per QA-mandate role, from the manifest (tool grants, read/write scope) and
-// the workflow table (role description). Claude Code only resolves
-// `subagent_type: <role>` when such a file is installed; postinstall ships them.
+// per QA-mandate role, from the manifest (description, tool grants, read/write
+// scope). Claude Code only resolves `subagent_type: <role>` when such a file is
+// installed; postinstall ships them.
 //   node scripts/build-agents.mjs           write agents/*.md
 //   node scripts/build-agents.mjs --check   exit 1 on any missing, stale or orphan file
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
@@ -11,7 +11,6 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MANDATE = 'hooks/data/achilles-qa.kernel-mandate.json';
-const WORKFLOW = 'hooks/data/achilles-qa.workflow.json';
 const LEDGER = 'hooks/data/achilles-qa.kernel-mandate.md';
 const AGENTS = path.join(root, 'agents');
 // Ownership marker: postinstall prunes/overwrites only files that carry it.
@@ -22,13 +21,12 @@ const list = (a) => (a?.length ? a.map((x) => `\`${x}\``).join(', ') : null);
 
 export function renderAgents() {
   const mandate = readJson(MANDATE);
-  const workflow = readJson(WORKFLOW);
   const main = mandate.settings.mainSessionRole;
   const out = new Map();
   for (const [role, m] of Object.entries(mandate.roles)) {
     if (role === main) continue;
-    const desc = workflow.roles[role]?.description;
-    if (!desc) throw new Error(`${role}: no description in ${WORKFLOW}`);
+    const desc = m.description;
+    if (!desc) throw new Error(`${role}: no description in ${MANDATE}`);
     const tools = m.tools?.allow ?? [];
     const reads = list(m.read?.allow);
     const writes = list(m.write?.allow);

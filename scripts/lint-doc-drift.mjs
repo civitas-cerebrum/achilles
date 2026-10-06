@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Eleven independent checks; each reports pass/fail; the process
+// describe. Ten independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -18,9 +18,8 @@
 //   (7) the QA role ledger's role inventory  ↔  the QA mandate's roles
 //       (role-name sets both ways, plus the count the ledger states in prose)
 //   (8) every environment switch a hook or script reads  ↔  a row in opt-in-surfaces.md
-//   (9) the QA workflow table  ↔  the QA mandate (scopes, imports, env, skills, dispatch, commands)
-//   (10) skills/*/ directories  ↔  ACHILLES_SKILL_ALT (every skill activates the protocol)
-//   (11) agents/*.md  ↔  the QA mandate's roles (one agent definition per subagent role, content current)
+//   (9) skills/*/ directories  ↔  ACHILLES_SKILL_ALT (every skill activates the protocol)
+//   (10) agents/*.md  ↔  the QA mandate's roles (one agent definition per subagent role, content current)
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -254,32 +253,15 @@ function checkRoleMapCoverage() {
 // check: full-line comments are stripped first, so the header's
 // "Canonical reference" section can never satisfy it — the References must
 // live in the message-producing region (strings, heredocs, echo lines).
-// Every cited skills/….md or schemas/….json path (in ANY hook or hooks/lib/
-// script, emitting or not — including the vendored kernel) must resolve in the
-// repo, so a skill rename cannot silently orphan a hook's pointers.
+// Every cited skills/….md or schemas/….json path (in any hook or hooks/lib/
+// script, emitting or not) must resolve in the repo, so a skill rename cannot
+// silently orphan a hook's pointers.
 function checkHookReferences() {
   const detail = [];
-  // hooks/kernel-mandate-role-gate.sh is vendored verbatim from
-  // @civitas-cerebrum/kernel-mandate, and the obvious justification for
-  // exempting it is not available: nothing in this repo keeps it in sync.
-  // That package appears in neither `dependencies` nor `devDependencies`,
-  // so scripts/sync-kernel-mandate.mjs finds no canonical source, prints
-  // "canonical source not found … — skipping" and exits 0 — under `--check`
-  // too. An edit to the vendored bytes would not be overwritten by the next
-  // sync; it would just never be noticed by anything.
-  //
-  // What survives is a narrower exemption, from the References requirement
-  // alone. A `References:` block points at THIS repo's methodology
-  // (skills/…/SKILL.md); the kernel's deny messages cite the kernel's own
-  // docs, which is the right pointer for a file achilles does not author.
-  // The wrapper that registers it, achilles-kernel-activation-gate.sh, IS
-  // achilles' own and is held to the convention.
-  //
-  // The other half of the check still applies to the vendored file, which is
-  // why it is no longer filtered out of the sweep entirely: every skills/ or
-  // schemas/ path it cites must resolve here, so renaming a skill in this
-  // repo cannot silently orphan the vendored kernel's pointers.
-  const REFERENCES_EXEMPT = new Set(['hooks/kernel-mandate-role-gate.sh']);
+  // The vendored kernel runtime (the files scripts/kernel-mandate.lock.json
+  // pins) is exempt from both halves: its messages cite the kernel's own docs
+  // and schemas, which live upstream and are not shipped here.
+  const VENDORED = new Set(Object.keys(JSON.parse(readFileSync('scripts/kernel-mandate.lock.json', 'utf8')).files));
   const hooks = readdirSync('hooks')
     .filter((f) => f.endsWith('.sh'))
     .map((f) => join('hooks', f));
@@ -296,6 +278,7 @@ function checkHookReferences() {
   let citedPaths = 0;
 
   for (const h of [...hooks, ...libs]) {
+    if (VENDORED.has(h)) continue;
     const raw = readFileSync(h, 'utf8');
     // Strip full-line comments: the message-producing region is what remains.
     const code = raw
@@ -311,7 +294,7 @@ function checkHookReferences() {
       }
     }
 
-    if (REFERENCES_EXEMPT.has(h) || libSet.has(h)) continue;
+    if (libSet.has(h)) continue;
 
     const emits = /permissionDecision|"decision"\s*:\s*"block"|systemMessage|^exit 2$/m.test(code);
     if (!emits) continue;
@@ -387,12 +370,9 @@ function checkDocsCounts() {
 // Check 7 — QA role ledger's role inventory ↔ QA mandate's roles
 // ---------------------------------------------------------------------------
 // The ledger (hooks/data/achilles-qa.kernel-mandate.md) is the human copy of
-// the mandate (…kernel-mandate.json). Upstream it is rendered by
-// `kernel-mandate doc`, which ships in @civitas-cerebrum/kernel-mandate — a
-// package this repo does not depend on, so scripts/sync-kernel-mandate.mjs
-// resolves no canonical source and exits 0 without comparing anything. The
-// ledger's inventory is therefore hand-maintained, and this is what keeps it
-// honest.
+// the mandate (…kernel-mandate.json). Achilles vendors the kernel runtime,
+// not the `kernel-mandate doc` renderer, so the ledger is hand-maintained and
+// this is what keeps its inventory honest.
 //
 // Only the INVENTORY is comparable without the renderer: which roles exist,
 // and how many the ledger says there are. Both files state that three times
@@ -489,63 +469,24 @@ function checkOptInSurfaces() {
   // Check 8b — a Detector cell naming a cases/NN-*.sh file must name a file that exists.
   const limits = existsSync(KNOWN_LIMITS_DOC) ? readFileSync(KNOWN_LIMITS_DOC, 'utf8') : '';
   if (!limits) detail.push(`${KNOWN_LIMITS_DOC} is missing`);
-  for (const m of limits.matchAll(/`cases\/((?:kernel-mandate\/)?[\w.-]+\.sh)`/g))
+  for (const m of limits.matchAll(/`cases\/([\w.-]+\.sh)`/g))
     if (!existsSync(join('hooks/tests/cases', m[1]))) detail.push(`${KNOWN_LIMITS_DOC} names a missing detector: cases/${m[1]}`);
 
   report(`env switches read by hooks/scripts ↔ opt-in-surfaces.md; known-limits detectors exist (${names.size} switches read)`, detail.length === 0, detail);
 }
-// ---------------------------------------------------------------------------
-// Check 9 — workflow table ↔ QA mandate parity (stands in for `kernel-mandate derive --check`)
-// ---------------------------------------------------------------------------
-const QA_WORKFLOW = 'hooks/data/achilles-qa.workflow.json';
-function checkQaMandateParity() {
-  const detail = [];
-  const wf = JSON.parse(readFileSync(QA_WORKFLOW, 'utf8'));
-  const md = JSON.parse(readFileSync(QA_MANDATE, 'utf8'));
-  const S = (a) => new Set(a ?? []);
-  const eq = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
-  const show = (s) => [...s].sort().join(', ') || '∅';
-  const union = (st, k) => new Set(st.flatMap((s) => s[k] ?? []));
-  const tRoles = S(Object.keys(wf.roles)); const mRoles = S(Object.keys(md.roles));
-  if (!eq(tRoles, mRoles)) detail.push(`role sets differ — table: ${show(tRoles)}; mandate: ${show(mRoles)}`);
-  const byRole = {};
-  for (const s of wf.stages) (byRole[s.role] ??= []).push(s);
-  for (const role of [...mRoles].sort()) {
-    const st = byRole[role] ?? []; const m = md.roles[role];
-    if (!st.length) { detail.push(`${role}: no stage in ${QA_WORKFLOW}`); continue; }
-    const W = union(st, 'writes'); const WA = S(m.write?.allow);
-    if (!eq(W, WA)) detail.push(`${role}: write.allow {${show(WA)}} ≠ stage writes {${show(W)}}`);
-    const WD = S(m.write?.deny);
-    for (const d of union(st, 'writesDeny')) if (!WD.has(d)) detail.push(`${role}: writesDeny '${d}' absent from write.deny`);
-    const CI = S(wf.roles[role]?.codeImports); const MCI = S(m.write?.codeImports);
-    if (!eq(CI, MCI)) detail.push(`${role}: codeImports table {${show(CI)}} ≠ mandate {${show(MCI)}}`);
-    const E = union(st, 'env'); const ME = S(m.bash?.env);
-    if (!eq(E, ME)) detail.push(`${role}: bash.env {${show(ME)}} ≠ stage env {${show(E)}}`);
-    const RA = S(m.read?.allow);
-    for (const r of union(st, 'reads')) if (!RA.has(r)) detail.push(`${role}: stage read '${r}' absent from read.allow`);
-    const SK = union(st, 'skills');
-    if (SK.size && !eq(SK, S(m.skills?.allow))) detail.push(`${role}: skills.allow {${show(S(m.skills?.allow))}} ≠ stage skills {${show(SK)}}`);
-    const DI = union(st, 'dispatches'); const MD = S(Array.isArray(m.dispatch) ? m.dispatch : m.dispatch?.allow);
-    if (DI.size && !eq(DI, MD)) detail.push(`${role}: dispatch {${show(MD)}} ≠ stage dispatches {${show(DI)}}`);
-    const res = (m.bash?.groups ?? []).flatMap((g) => md.commandGroups?.[g] ?? []).map((p) => new RegExp(p));
-    for (const cmd of union(st, 'runs')) if (!res.some((re) => re.test(cmd))) detail.push(`${role}: stage runs '${cmd}' matches none of its command groups`);
-  }
-  report(`achilles-qa workflow table ↔ mandate parity (${mRoles.size} roles, ${wf.stages.length} stages)`, detail.length === 0, detail);
-}
-// Check 10 — every skill directory activates the protocol, unless excluded on purpose
+// Check 9 — every skill directory activates the protocol
 const ACTIVATION_LIB = 'hooks/lib/dispatch-prefix.sh';
-const ACTIVATION_EXCLUDED = new Set(['mandate-designer']); // generic kernel tool; must not switch on QA gates
 function checkActivationCoverage() {
   const src = readFileSync(ACTIVATION_LIB, 'utf8');
   const m = src.match(/^ACHILLES_SKILL_ALT='([^']+)'/m);
   const alt = new Set(m ? m[1].split('|') : []);
   const dirs = readdirSync('skills', { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
-  const missing = dirs.filter((d) => !alt.has(d) && !ACTIVATION_EXCLUDED.has(d)).sort();
-  report(`skills/*/ ↔ ACHILLES_SKILL_ALT (${dirs.length} skills, ${ACTIVATION_EXCLUDED.size} excluded)`,
+  const missing = dirs.filter((d) => !alt.has(d)).sort();
+  report(`skills/*/ ↔ ACHILLES_SKILL_ALT (${dirs.length} skills)`,
     Boolean(m) && missing.length === 0,
     [...(!m ? [`ACHILLES_SKILL_ALT not found in ${ACTIVATION_LIB}`] : []), ...(missing.length ? [`skills that activate nothing: ${missing.join(', ')}`] : [])]);
 }
-// Check 11 — agents/*.md are exactly what build-agents.mjs renders from the mandate
+// Check 10 — agents/*.md are exactly what build-agents.mjs renders from the mandate
 function checkAgentDefinitions() {
   const r = spawnSync(process.execPath, ['scripts/build-agents.mjs', '--check'], { encoding: 'utf8' });
   report('agents/*.md ↔ QA mandate roles (build-agents.mjs --check)', r.status === 0,
@@ -559,7 +500,6 @@ checkHookReferences();
 checkDocsCounts();
 checkRoleLedgerInventory();
 checkOptInSurfaces();
-checkQaMandateParity();
 checkActivationCoverage();
 checkAgentDefinitions();
 

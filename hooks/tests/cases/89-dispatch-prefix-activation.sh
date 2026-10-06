@@ -71,7 +71,7 @@ for S in $SKILLS; do
   assert_eq "$(lib_active "$(payload session_id="dp-k-$S" hook_event_name=PreToolUse tool_name=Skill skill="$S")")" "active" \
     "achilles_session_active on a fresh session: Skill($S)"
 done
-assert_eq "$(lib_active "$(payload session_id=dp-md hook_event_name=PreToolUse tool_name=Skill skill=mandate-designer)")" "inactive" \
-  "Skill(mandate-designer) does not activate (generic kernel tool)"
+assert_eq "$(lib_active "$(payload session_id=dp-md hook_event_name=PreToolUse tool_name=Skill skill=frontend-design)")" "inactive" \
+  "Skill(frontend-design) does not activate (a skill this package does not ship)"
 
 rm -rf "$DP_TMP"
