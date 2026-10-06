@@ -3,6 +3,10 @@
 H="$HOOK_DIR/achilles-import-boundary-gate.sh"
 IB_TMP=$(mktemp -d); CP="$IB_TMP/proj"
 mkdir -p "$CP/tests/e2e/fixtures" "$CP/src"
+# The root is $CLAUDE_PROJECT_DIR, else the git toplevel: pin both for the fixture.
+unset CLAUDE_PROJECT_DIR
+git init -q "$CP"
+printf '%s' '{"name":"proj","scripts":{}}' > "$CP/package.json"
 CFG="$CP/playwright.config.ts"
 cfg() { payload tool_name=Write file_path="$CFG" content="$1" cwd="$CP"; }
 code() { payload tool_name=Write file_path="$CP/$1" content="$2" cwd="$CP"; }
@@ -49,7 +53,7 @@ assert_deny "$H" "$(cfg 'export default { testDir: "." };')" "testDir . → DENY
 assert_deny "$H" "$(cfg 'export default { globalSetup: ["./tests/a.ts", "./src/b.ts"] };')" "globalSetup array with an entry in src/ → DENY" '"src/b.ts"'
 assert_deny "$H" "$(cfg 'export default { reporter: [["./src/reporter.js"]] };')" "reporter entry ./src/reporter.js → DENY" '"./src/reporter.js"'
 assert_deny "$H" "$(cfg 'export default { reporter: "./src/reporter.js" };')" "reporter string ./src/reporter.js → DENY" '"./src/reporter.js"'
-assert_deny "$H" "$(cfg 'export default { reporter: process.env.CI ? "dot" : "./src/r.js" };')" "reporter chosen at runtime → DENY" "must be a string literal"
+assert_deny "$H" "$(cfg 'export default { reporter: process.env.CI ? "dot" : "./src/r.js" };')" "reporter chosen at runtime → DENY" "must be a plain string literal"
 assert_deny "$H" "$(cfg 'const c = {}; c.globalSetup = "./src/x.ts"; export default c;')" "c.globalSetup = ./src/x.ts → DENY" "resolves outside tests/"
 assert_deny "$H" "$(cfg 'export default { ["global" + "Setup"]: "./src/x.ts" };')" "computed key → DENY" "computed property key"
 assert_deny "$H" "$(cfg 'const c = {}; c["global" + "Setup"] = "./src/x.ts"; export default c;')" "computed member assignment → DENY" "computed member"
@@ -82,6 +86,73 @@ assert_deny "$H" "$(code tests/e2e/fixtures/x.ts 'import { app } from "../../../
 assert_deny "$H" "$(code tests/e2e/fixtures/x.ts 'const m = require("../../../src/db");')" 'fixture require into src/ → DENY' "resolves outside tests/"
 assert_deny "$H" "$(code tests/e2e/playwright.config.ts 'import cfg from "../../playwright.base";')" \
   "nested config importing past tests/ → DENY (screened as test code)" "resolves outside tests/"
+
+section "import-boundary-gate: a specifier is one plain literal"
+BS='\'  # escapes are built at runtime so no tool on the way decodes them
+assert_deny "$H" "$(cfg "require('./tests/' + '../src/app'); export default {};")" "config require of a concatenation → DENY" "not a single literal argument"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts "await import('./' + '../../src/app');")" "test import() of a concatenation → DENY" "not a single literal argument"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'require(`./${"../../src/app"}`);')" "test require of a template substitution → DENY" "template with a substitution"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import "./.\x2e/../../src/app.js";')" "test specifier with \\x escape → DENY" "contains an escape"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts "import \"./${BS}u002e${BS}u002e/../../src/app.js\";")" "test specifier with \\u escape → DENY" "contains an escape"
+assert_deny "$H" "$(cfg 'export default { globalSetup: "./tests/.\x2e/src/x.ts" };')" "config path with \\x escape → DENY" "escape sequence"
+assert_deny "$H" "$(cfg 'export default { "globalSetu\x70": "./src/x.ts" };')" "config key globalSetu\\x70 → DENY" "escape sequence"
+assert_deny "$H" "$(cfg "export default { 'test\x44ir': '.' };")" "config key test\\x44ir → DENY" "escape sequence"
+assert_deny "$H" "$(cfg 'export default { "reporte\x72": "./src/r.js" };')" "config key reporte\\x72 → DENY" "escape sequence"
+assert_deny "$H" "$(cfg "export default { glob${BS}u0061lSetup: \"./src/x.ts\" };")" "config key glob\\u0061lSetup → DENY" "escape sequence"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests/\101" };')" "config octal escape → DENY" "escape sequence"
+
+section "import-boundary-gate: every file under tests/ is screened, and loads only code or JSON"
+printf '%s' 'export const a = 1;' > "$CP/tests/e2e/auth.setup.ts"
+printf '%s' 'module.exports = 1;' > "$CP/tests/helper.txt"
+printf '%s' 'module.exports = 1;' > "$CP/tests/h2"
+assert_deny "$H" "$(code tests/helper.txt 'require("../src/app.js")')" "tests/helper.txt requiring src → DENY (content screened whatever the extension)" "resolves outside tests/"
+assert_deny "$H" "$(code tests/h3 'require("../src/app.js")')" "extensionless tests/h3 requiring src → DENY" "resolves outside tests/"
+assert_deny "$H" "$(code tests/e2e/a.spec.js 'require("../helper.txt");')" "spec requiring an existing .txt → DENY" "not code or JSON"
+assert_deny "$H" "$(code tests/e2e/a.spec.js 'require("../notes.md");')" "spec requiring a .md not on disk → DENY" "not code or JSON"
+assert_deny "$H" "$(code tests/e2e/a.spec.ts 'import "../h2";')" "spec importing an existing extensionless file → DENY" "not code or JSON"
+assert_allow "$H" "$(code tests/e2e/a.spec.ts 'import { a } from "./auth.setup"; import data from "./data.json" with { type: "json" };')" \
+  "dotted module name with its .ts on disk, JSON import → ALLOW"
+assert_allow "$H" "$(code tests/e2e/docs/app-context.md 'Most pages require login. Uploads require a CSV file.')" "prose saying require under tests/ → ALLOW"
+assert_allow "$H" "$(code tests/e2e/page-repository.json '{"pages":[{"name":"x","selectors":{"a":"../../src"}}]}')" "page repository JSON → ALLOW (data)"
+assert_deny "$H" "$(code tests/e2e/fixtures/package.json '{"main":"../../../src/app.js"}')" "package.json under tests/ pointing into src → DENY" "resolves outside tests/"
+assert_deny "$H" "$(code tests/e2e/fixtures/tsconfig.json '{"compilerOptions":{"paths":{"@playwright/test":["../../../src/app"]}}}')" \
+  "tsconfig paths under tests/ pointing into src → DENY" "resolves outside tests/"
+
+section "import-boundary-gate: no # imports, no self-reference, root package.json resolution fixed"
+assert_deny "$H" "$(code tests/e2e/fixtures/x.ts 'import "#app";')" "fixture importing #app → DENY" "package imports"
+assert_deny "$H" "$(code tests/e2e/fixtures/x.ts 'import { app } from "proj/server";')" "fixture importing the project's own package → DENY" "self-reference"
+assert_deny "$H" "$(payload tool_name=Write file_path="$CP/package.json" content='{"name":"proj","scripts":{},"imports":{"#app":"./src/app.js"}}' cwd="$CP")" \
+  "root package.json adding imports → DENY" "imports changed"
+assert_deny "$H" "$(payload tool_name=Write file_path="$CP/package.json" content='{"name":"@playwright/test","scripts":{}}' cwd="$CP")" \
+  "root package.json renamed (self-reference as an allowed package) → DENY" "name changed"
+assert_allow "$H" "$(payload tool_name=Write file_path="$CP/package.json" content='{"name":"proj","scripts":{"test:repair":"achilles-self-repair"}}' cwd="$CP")" \
+  "root package.json adding a script → ALLOW"
+
+section "import-boundary-gate: the root does not move with cwd or case"
+assert_deny "$H" "$(payload tool_name=Write file_path="$CP/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$CP/tests/e2e")" \
+  "cwd inside tests/e2e (git root) → still DENY" "resolves outside tests/"
+NG="$IB_TMP/nogit"; mkdir -p "$NG/tests/e2e"
+GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$H" "$(payload tool_name=Write file_path="$NG/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$NG/tests/e2e")" \
+  "no git, cwd inside tests/e2e → root cut above tests/, DENY" "resolves outside tests/"
+CLAUDE_PROJECT_DIR="$NG" assert_deny "$H" "$(payload tool_name=Write file_path="$NG/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="/")" \
+  "CLAUDE_PROJECT_DIR anchors the root → DENY" "resolves outside tests/"
+if [ "$(uname)" = Darwin ]; then
+  assert_deny "$H" "$(payload tool_name=Write file_path="$CP/Tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$CP")" \
+    "Tests/e2e on a case-insensitive filesystem → DENY" "resolves outside tests/"
+  assert_deny "$H" "$(payload tool_name=Write file_path="$CP/Playwright.config.ts" content='import fs from "fs";' cwd="$CP")" \
+    "Playwright.config.ts on a case-insensitive filesystem → DENY" 'import "fs"'
+else
+  assert_allow "$H" "$(payload tool_name=Write file_path="$CP/Tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$CP")" \
+    "Tests/ is another directory on a case-sensitive filesystem → not this gate's file"
+  assert_allow "$H" "$(payload tool_name=Write file_path="$CP/Playwright.config.ts" content='import fs from "fs";' cwd="$CP")" \
+    "Playwright.config.ts is not the runner's config on a case-sensitive filesystem → not this gate's file"
+fi
+
+section "import-boundary-gate: size and stderr"
+BIG=$(head -c 270000 /dev/zero | tr '\0' 'a')
+assert_deny "$H" "$(code tests/e2e/big.spec.ts "$BIG")" "content over 256KB → DENY" "too large to screen"
+printf '%s' 'process.stderr.write("(node) warning: something\n");' > "$IB_TMP/warn.js"
+NODE_OPTIONS="--require $IB_TMP/warn.js" assert_allow "$H" "$(cfg 'export default {};')" "a node warning on stderr does not corrupt the verdict → ALLOW"
 
 section "import-boundary-gate: scope"
 assert_allow "$H" "$(code src/x.ts 'import "../../etc";')" "src/** → not this gate's file"
