@@ -47,7 +47,7 @@ The orchestrator decides — before dispatching — to batch P0/P1/P2 journeys i
 **Reality:** Stage A is one composer per journey, in parallel up to host max — never N composer agents each covering N/k journeys sequentially. The only batching exception is P3 peripheral journeys, capped at 7 per brief, with cycle-1 split-out semantics. P0/P1/P2 NEVER batch. The diagnostic for getting this wrong: every Stage B reviewer for batched journeys returns `improvements-needed` because the batched composer rationed attention across siblings.
 
 **Hooks that catch this:**
-- Dispatch-discipline rule: dispatches whose prompt references 2+ distinct `j-<slug>` IDs require a `[P3-batch]` description prefix. (The harness-enforcement hook was retired in 0.3.6; the rule remains.)
+- Dispatch-discipline rule: dispatches whose prompt references 2+ distinct `j-<slug>` IDs require a grouped-dispatch prefix (`coverage-expansion/SKILL.md` §"Grouped dispatch"). (The harness-enforcement hook was retired in 0.3.6; the rule remains.)
 
 **Origin:** the no-skip contract + role-prefix tightening, reinforced by brief-cleanup BLOCK promotion.
 

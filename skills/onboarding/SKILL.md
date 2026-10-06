@@ -133,10 +133,9 @@ shape:
   `workflow-reviewer` and `reviewer-j-login:` binds `reviewer`.
   The pre-kernel `composer-j-<slug>:` spelling names no role and is
   refused — the composer is dispatched as `test-composer-j-<slug>:`.
-  A description that leads with a `[group]` / `[P3-batch]` marker also
-  names no role to the kernel, which resolves the role from the FIRST
-  characters of the description: see `../coverage-expansion/SKILL.md`
-  §"Grouped dispatch and the role kernel".
+  Grouped dispatches put the role first
+  (`test-composer-group-<id>: j-a, j-b, …`): see
+  `../coverage-expansion/SKILL.md` §"Grouped dispatch".
 - **`subagent_type`** — the same role name (`subagent_type:
   test-composer`). The child binds by its agent type, and a type that
   belongs to a different role than the description names is refused.
@@ -188,7 +187,7 @@ propagates through the rest of the onboarding pipeline as follows:
 | Phase / dispatch | `runMode: standard` | `runMode: depth` |
 |---|---|---|
 | **Phase 4 — `journey-mapping`** | `args: "phases: full"` (default cycle-1 strict, cycle-2+ relaxed — the existing rule already coded into `journey-mapping/SKILL.md` §"First-cycle strict / later-cycle relaxed") | `args: "phases: full, cycle-strictness: depth"` — strict per-section parallel on every cycle (including edge-probe and any additional discovery cycles); single-subagent walkthroughs forbidden in every cycle |
-| **Phase 5 — `coverage-expansion`** | `args: "mode: standard"` (Pass 1 strict, Passes 2-5 may group; adversarial grouping permitted; `strict-adversarial: true` is opt-in) | `args: "mode: depth"` — strict per-journey parallel on every pass (no `[group]`, no `[P3-batch]` on any of Passes 1-5); adversarial Passes 4-5 are strict-per-journey by default (the `strict-adversarial: true` opt-in is implicit under depth) |
+| **Phase 5 — `coverage-expansion`** | `args: "mode: standard"` (Pass 1 strict, Passes 2-5 may group; adversarial grouping permitted; `strict-adversarial: true` is opt-in) | `args: "mode: depth"` — strict per-journey parallel on every pass (no grouping on any of Passes 1-5); adversarial Passes 4-5 are strict-per-journey by default (the `strict-adversarial: true` opt-in is implicit under depth) |
 | **State files** | The workflow ledger `tests/e2e/docs/onboarding-status.json` is written with `runMode: "standard"` at the front-load gate (the primary source the harness reads). Phase-5 `coverage-expansion-state.json` mirrors `runMode: "standard"` on its first write (fallback for bare invocations); Phase-4 `.phase4-cycle-state.json` is written with `cycleStrictness: "standard"`. | The workflow ledger is written with `runMode: "depth"`; Phase-5 `coverage-expansion-state.json` mirrors `runMode: "depth"` on first write; Phase-4 `.phase4-cycle-state.json` is written with `cycleStrictness: "depth"`. The `standard-mode-first-pass-guard.sh` hook reads `runMode` + `currentPhase` + `currentSubStage` from the workflow ledger first (with `coverage-expansion-state.json` as fallback) and enforces the depth-mode strict-everywhere semantics. Reading the workflow ledger means the depth contract still holds on Phase-6 grouped probes after `coverage-expansion-state.json` is deleted at Pass-5 cleanup. |
 
 The orchestrator emits one declaration line at the start of each phase
@@ -491,8 +490,8 @@ order), plus per-pass dedup.
 > - `tests/e2e/docs/coverage-expansion-state.json` must exist with at
 >   minimum a `pass-1` record before the ledger will permit Phase 5 →
 >   completed. The write-gate denies the transition otherwise.
-> - Pass 1 is strict per-journey under both modes. `[group]` and
->   `[P3-batch]` markers on Pass 1 are harness-blocked by
+> - Pass 1 is strict per-journey under both modes. grouped
+>   dispatches on Pass 1 are harness-blocked by
 >   `standard-mode-first-pass-guard.sh`.
 >
 > If you're tempted to inline-author specs because dispatching N
@@ -505,7 +504,7 @@ order), plus per-pass dedup.
    `runMode: standard` (Pass 1 strict per-journey, Passes 2-5 may
    group; adversarial grouping is default and `strict-adversarial:
    true` is opt-in) or `args: "mode: depth"` under `runMode: depth`
-   (strict per-journey on every pass — `[group]` and `[P3-batch]`
+   (strict per-journey on every pass — grouped dispatches
    forbidden across all 5 passes; adversarial Passes 4-5 are
    strict-per-journey by default). The skill defines three
    compositional passes (1-3), two adversarial passes (4-5), plus a
@@ -540,7 +539,7 @@ order), plus per-pass dedup.
   duplicate-scenario findings open.
 
 Load `coverage-expansion` for the full pass protocol and the
-`[group]` dispatch marker syntax.
+grouped dispatch syntax (§"Grouped dispatch").
 
 ---
 

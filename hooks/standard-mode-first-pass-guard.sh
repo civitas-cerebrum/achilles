@@ -172,8 +172,8 @@ emit_deny() {
 # ---------------------------------------------------------------------------
 # Rule 1: Grouping forbidden (Pass-1 under standard, every pass under depth)
 # ---------------------------------------------------------------------------
-# Description starts with `[group]` or `[P3-batch]` (allowing whitespace).
-if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*\[(group|P3-batch)\]'; then
+# Grouped dispatch: role-first `<role>-group-<id>:` / `<role>-p3batch-<id>:`, or the legacy leading markers.
+if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*(\[(group|P3-batch)\]|(test-composer|probe)-(group|p3batch)-[a-z0-9-]+:)'; then
   # Determine current pass + run mode. Primary source: the workflow-level
   # onboarding ledger (`onboarding-status.json`), which lives for the whole
   # 8-phase pipeline. Fallback: the Phase-5-internal coverage-expansion
@@ -232,7 +232,8 @@ if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*\[(group|P3-batch)\]'; then
 Description: \"${DESCRIPTION}\"
 
 \`mode: depth\` is the first-class strict-parallel-everywhere mode —
-\`[group]\` and \`[P3-batch]\` markers are FORBIDDEN on every pass
+\`<role>-group-<id>:\` / \`<role>-p3batch-<id>:\` dispatches (and the legacy
+\`[group]\` / \`[P3-batch]\` markers) are FORBIDDEN on every pass
 (Passes 1, 2, 3, 4, AND 5), not just Pass 1. Under depth the cost is
 explicit (up to ~20× more dispatches than \`mode: standard\`) and the
 contract is exhaustive per-unit fidelity.
@@ -254,14 +255,14 @@ See:
 Description: \"${DESCRIPTION}\"
 
 Pass 1 of \`mode: standard\` (formerly \`mode: depth\`) is strict
-per-journey by contract — \`[group]\` and \`[P3-batch]\` markers are
-only permitted on Passes 2-5. The first pass establishes the test
+per-journey by contract — \`<role>-group-<id>:\` / \`<role>-p3batch-<id>:\`
+(and legacy \`[group]\` / \`[P3-batch]\`) dispatches are only permitted on Passes 2-5. The first pass establishes the test
 foundation at maximum fidelity; that quality propagates through every
 later pass.
 
 Fix: split this dispatch into N parallel single-journey dispatches in
 one message (one \`test-composer-j-<slug>:\` Agent per journey, all sent in
-the same parallel wave). Re-issue any \`[group]\` / \`[P3-batch]\`
+the same parallel wave). Re-issue any grouped
 dispatches on Pass 2 or later, once Pass 1 has completed and the state
 file shows \`currentPass >= 2\`.
 

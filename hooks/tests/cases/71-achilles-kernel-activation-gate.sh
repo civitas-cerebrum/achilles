@@ -335,18 +335,9 @@ assert_allow "$KERNEL" "$(disp 'fd-ci-849201: diagnose the CI failure' '<<kernel
 assert_allow "$KERNEL" "$(disp 'contribution-handover-pr82: fill the handover' '<<kernel-mandate-role: contribution-handover#h1i2j3>>' contribution-handover)" \
   "contributing-to-achilles-protocol: contribution-handover-<slug> + tag → ALLOW"
 
-# THE GROUPED FORMS STAY REFUSED, AND THAT IS THE POINT OF THESE TWO
-# CASES. coverage-expansion SKILL.md documents `[group] …` / `[P3-batch]
-# …` descriptions, but the kernel resolves the role from the FIRST
-# characters of the description and `standard-mode-first-pass-guard.sh`
-# recognises the markers in the same position — both anchor at zero, so
-# no single spelling satisfies both, and moving the marker behind the
-# role prefix would make the grouping invisible to the first-pass guard.
-# Until the vendored kernel's resolver tolerates a leading `[marker]`,
-# grouped passes are issued per journey; the skill now says so, and the
-# pin below holds that sentence in place. If upstream ever starts
-# allowing these, these two cases fail and the docs get revisited —
-# which is the alarm we want, not a silent divergence.
+# Grouped dispatch is role-first (`test-composer-group-<id>: …`, bound in
+# case 85). The legacy leading `[group]` / `[P3-batch]` markers name no
+# role to the kernel, which resolves it from the first characters.
 assert_deny "$KERNEL" "$(disp '[group] test-composer-j-a,test-composer-j-b: compose the group' '<<kernel-mandate-role: test-composer#g1h2i3>>' test-composer)" \
   "[group] marker leads the description → DENY (kernel resolves the role from position zero)" "names no manifest role"
 assert_deny "$KERNEL" "$(disp '[P3-batch] test-composer-j-a,test-composer-j-b: compose the batch' '<<kernel-mandate-role: test-composer#g1h2i4>>' test-composer)" \
@@ -354,10 +345,10 @@ assert_deny "$KERNEL" "$(disp '[P3-batch] test-composer-j-a,test-composer-j-b: c
 pin_literal() { # <file> <literal> <count> <name>
   assert_eq "$(grep -cF -- "$2" "$REPO_ROOT/$1")" "$3" "$4"
 }
-pin_literal skills/coverage-expansion/SKILL.md 'Grouped dispatch and the role kernel' 1 \
-  "coverage-expansion SKILL.md carries the section stating the grouped-dispatch limitation"
-pin_literal skills/onboarding/SKILL.md 'Grouped dispatch and the role kernel' 1 \
-  "onboarding SKILL.md's dispatch grammar points at that section"
+pin_literal skills/coverage-expansion/SKILL.md '### Grouped dispatch' 1 \
+  "coverage-expansion SKILL.md is the canonical home for the role-first group grammar"
+pin_literal skills/onboarding/SKILL.md 'test-composer-group-<id>: j-a, j-b' 1 \
+  "onboarding SKILL.md's dispatch grammar shows the role-first group spelling"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: drift pin — every harness prefix resolves to a manifest role"

@@ -24,7 +24,7 @@ Adversarial passes never use batch mode — the per-journey live-app probe + mat
 
 **Two precedence rules override the batch default** (both also mirrored in `coverage-expansion/SKILL.md` §"Reviewer parallelism is non-negotiable"):
 
-1. **Any journey in a `[group]` / `[P3-batch]` Stage A dispatch gets a per-journey cycle-1 reviewer**, not the cross-pass batch reviewer. A grouped Stage A always produces per-journey cycle-1 Stage B reviewers (see `depth-mode-pipeline.md` §"Relevance grouping for compositional passes" — "Stage B remains per-journey within a group"); the batch reviewer path is for individually-dispatched journeys' cycle-1 reviews only. The two do not compose.
+1. **Any journey in a grouped Stage A dispatch gets a per-journey cycle-1 reviewer**, not the cross-pass batch reviewer. A grouped Stage A always produces per-journey cycle-1 Stage B reviewers (see `depth-mode-pipeline.md` §"Relevance grouping for compositional passes" — "Stage B remains per-journey within a group"); the batch reviewer path is for individually-dispatched journeys' cycle-1 reviews only. The two do not compose.
 2. **`mode: depth` → per-journey reviewers on every cycle of every pass.** Batch reviewer mode is a standard-mode economy; under depth, Stage B is per-journey throughout — cycle-1 included, no batch reviewer on any pass.
 
 A `mode: batch` reviewer that wants per-journey depth on a flagged journey returns `improvements-needed` for that journey in its return; the orchestrator then dispatches a follow-up cycle-2 per-journey reviewer for that journey only. Subagents do not switch modes mid-flight.

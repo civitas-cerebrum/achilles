@@ -135,7 +135,7 @@ When standalone, derive an analogous per-page negative-case list on the fly: for
 When a journey carries a **risk tier** — `elevated` (2+ defect-likelihood factors observed at journey-mapping) or `baseline` — probe the elevated journeys first within a given probe pass, and spend the larger share of the probe budget on them. Risk never changes a finding's severity or a journey's P-tier; it only orders *when* and *how hard* you probe.
 
 - Within a probe pass, dispatch elevated-risk journeys before baseline ones (same P-tier).
-- An elevated-risk journey is never folded into a `[group]` or `[P3-batch]` dispatch — it always probes per-journey so its risk surface gets undivided attention.
+- An elevated-risk journey is never folded into a grouped dispatch — it always probes per-journey so its risk surface gets undivided attention.
 - The probe budget (see the Session charter) tilts toward elevated journeys: close their categories on the higher end of the diminishing-returns window, baseline journeys on the lower end.
 
 **Risk tags reach a probe via its dispatch brief (the journey block), never by reading `journey-map.md` during Phase 1a — the zero-context rule stands.** A standalone run with no journey map treats every page as `baseline` and orders by observed surface complexity instead.
@@ -144,24 +144,24 @@ When a journey carries a **risk tier** — `elevated` (2+ defect-likelihood fact
 
 ### Relevance grouping for probe dispatch (Phases 1a/1b; onboarding Phase 6)
 
-Per-journey dispatch is the default for element and flow probing — one `probe-j-<slug>:` Agent call per journey. When the app has many journeys and many of them share a section (auth, cart, marketplace, etc.), the parent MAY group same-section journeys into one dispatch under the `[group]` marker, mirroring the relevance-group path that `coverage-expansion` uses for compositional passes. (This skill's probe passes are *bug-discovery* Phase 1a / 1b; when `onboarding` runs bug-discovery as its Phase 6, the onboarding orchestrator applies the same grouping to the journeys it hands down — the "Phase 6" label there is onboarding's, not a phase of this skill.)
+Per-journey dispatch is the default for element and flow probing — one `probe-j-<slug>:` Agent call per journey. When the app has many journeys and many of them share a section (auth, cart, marketplace, etc.), the parent MAY group same-section journeys into one `probe-group-<id>:` dispatch, mirroring the relevance-group path that `coverage-expansion` uses for compositional passes. (This skill's probe passes are *bug-discovery* Phase 1a / 1b; when `onboarding` runs bug-discovery as its Phase 6, the onboarding orchestrator applies the same grouping to the journeys it hands down — the "Phase 6" label there is onboarding's, not a phase of this skill.)
 
 **Trigger.** A probe pass (Phase 1a element-probing or Phase 1b flow-probing) has more than 5 journeys to cover. Below that threshold, per-journey dispatch is the rule.
 
-**Composition rules** (same as the compositional `[group]` path — see `coverage-expansion/references/depth-mode-pipeline.md` §"Relevance grouping for compositional passes"):
+**Composition rules** (same as the compositional group path — see `coverage-expansion/references/depth-mode-pipeline.md` §"Relevance grouping for compositional passes"):
 - **Priority-pure.** Never mix priorities in one group. If a probe pass (Phase 1a element-probing or Phase 1b flow-probing) spans multiple priority tiers, build separate groups per tier.
 - **Same section / shared `Pages touched`.** Group by relevance — auth-section journeys together, cart-section journeys together, etc. Section sharing is what makes the per-journey context overhead amortise.
 - **Cap 7.** Maximum 7 journeys per group. If a relevance cluster has 9 journeys, split into 7+2.
 - **No journeys carrying flagged remediation work.** If a journey is being re-probed because a prior pass surfaced a gap that needs targeted attention, dispatch it per-journey, not in a group.
-- **No elevated-risk journeys.** A journey whose dispatch brief tags it `elevated` (2+ defect-likelihood factors) never goes inside a `[group]` — its risk surface needs undivided probe attention. Group only `baseline` journeys; elevated ones dispatch per-journey (and first, per "Risk-weighted probe ordering").
+- **No elevated-risk journeys.** A journey whose dispatch brief tags it `elevated` (2+ defect-likelihood factors) never goes inside a group — its risk surface needs undivided probe attention. Group only `baseline` journeys; elevated ones dispatch per-journey (and first, per "Risk-weighted probe ordering").
 
-**Role-prefix.** Dispatch description: `[group] probe-j-<a>,probe-j-<b>,...:`. Items must all be `probe-j-` slugs (priority-pure, no mixing with `test-composer-j-`). Cap-7 rule, enforced by methodology (the comma count in the description tells you whether you're at the cap). The dispatch-guard hook that previously enforced this was retired in the 0.3.6 cleanup; the rule still applies. The parent-only-orchestrator methodology rule treats `[group]` dispatches the same way it treats `[P3-batch]` — both are valid leaf-shape forms.
+**Role-prefix.** `probe-group-<id>: j-a, j-b, …`; spelling and binding in `../coverage-expansion/SKILL.md` §"Grouped dispatch". Members are all probe journeys (priority-pure, no mixing with composer groups). Cap-7 is enforced by methodology (count the members after the colon). Grouped dispatches are valid leaf-shape forms for the parent-only-orchestrator rule.
 
-**Schema validation and `[group]` dispatches.** Grouped dispatches are intentionally **not** schema-validated by `subagent-return-schema-guard.sh` or `subagent-schema-preread-gate.sh`. The wrapper return contains per-item returns which the parent splits and validates individually. The schema-guards only fire on individual `test-composer-`/`probe-`/`reviewer-`/`phase-validator-` prefixed dispatches.
+**Schema validation.** Grouped dispatches get the envelope check only; the parent splits the per-item returns and validates each.
 
 **Returns.** Per-journey concatenated under one Agent return — each journey's findings appended to the report file under its own section heading (`### j-<slug> (probe-j-<slug>-<phase>, YYYY-MM-DD)`), exactly as if it had been dispatched per-journey. The grouped probe writes findings INCREMENTALLY (after each confirmed finding) so partial work survives if the dispatch is interrupted.
 
-**Quality safeguard — same as compositional `[group]`.** If multiple journeys in one grouped probe return shallow/under-covered findings (the attention-rationing failure mode), the parent stops grouping for the rest of that pass and falls back to per-journey dispatch.
+**Quality safeguard — same as compositional groups.** If multiple journeys in one grouped probe return shallow/under-covered findings (the attention-rationing failure mode), the parent stops grouping for the rest of that pass and falls back to per-journey dispatch.
 
 **When to keep per-journey dispatch even with > 5 journeys.** Cross-tab and concurrent-state probes (Phase 1b) often need their own dedicated `playwright-cli` session pool; if the journey's flow involves multiple authenticated browser contexts simultaneously, per-journey is safer. Element-probing (Phase 1a) groups more cleanly — most a11y / catalogue checks are per-page, not per-flow.
 

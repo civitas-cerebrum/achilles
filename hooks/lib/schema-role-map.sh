@@ -39,6 +39,9 @@
 #   # ... use $SCHEMA_ROLE
 resolve_schema_role() {
   case "$1" in
+    # Grouped dispatches return per-item results; envelope check only.
+    test-composer-group-*|test-composer-p3batch-*|probe-group-*)
+                              echo "";                       return 0 ;;
     perf-reviewer-*)          echo "perf-reviewer";          return 0 ;;
     workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;
     # The kernel mandate resolves a dispatch's role from the description
