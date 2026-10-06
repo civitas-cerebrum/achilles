@@ -3,160 +3,52 @@
 //
 // `npx playwright test` runs under the orchestrator and executes the root
 // config, every file it names, and every test file with its imports. None of
-// that may reach code outside tests/. A static floor, not a sandbox: it denies
-// what it cannot read, and reads with patterns, not a parser.
+// that may reach code outside tests/. A static floor, not a sandbox: the
+// source is parsed with @babel/parser and anything the screen cannot read is
+// denied.
 //
 //   config   root playwright*.config.ts: imports from a fixed allowlist or
 //            relative under tests/; globalSetup / globalTeardown / testDir and
-//            file reporters resolve under tests/; anything the screen cannot
-//            read statically is denied.
+//            file reporters evaluate statically to paths under tests/.
 //   tests    every file under tests/, whatever its extension (node's CJS
-//            loader runs any extension as JS): relative specifiers resolve
-//            under tests/ and load code or JSON; no `#` imports, no
-//            self-reference to the project's own package. Bare package
-//            specifiers are otherwise the kernel's codeImports screen.
-//            package.json and tsconfig/jsconfig under tests/ may not point
-//            outside tests/.
-//   package  root package.json: name, exports and imports may not change, since
-//            they decide what a bare or `#` specifier resolves to.
-//
-// Comments are screened as code: a stripper that does not parse regex
-// literals can be steered into eating real code.
+//            loader runs any extension as JS): every specifier is one string
+//            literal; relative ones resolve under tests/ and load code or JSON;
+//            no `#` imports, no self-reference to the project's package.
+//            package.json and tsconfig/jsconfig there may not point outside.
+//   package  root package.json: name, exports and imports may not change.
 //
 // Usage: <PreToolUse payload> | node import-boundary-scan.js <file> <cwd>
 //   → {"scope":"config"|"tests"|"package"|"none","offenders":["…", …]}
-// The payload's Write content, or its Edit applied to <file>, is what is screened.
+// Exit 3 when the time budget runs out; any non-zero exit is a deny.
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+const { createRequire } = require('module');
 const { execFileSync } = require('child_process');
 
-// Well under the size where the patterns below cost a hook's 10s timeout,
-// which does not block.
 const MAX_BYTES = 256 * 1024;
-
-const CONFIG_IMPORTS = new Set([
-  '@playwright/test',
-  '@civitas-cerebrum/element-interactions',
-  'dotenv',
-  'dotenv/config',
-  'node:path',
-  'path',
-  'node:url',
-  'url',
-]);
-const CODE_EXT = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
+const DEADLINE = Date.now() + 5000;
+const CONFIG_IMPORTS = new Set(['@playwright/test', '@civitas-cerebrum/element-interactions', 'dotenv', 'dotenv/config', 'node:path', 'path', 'node:url', 'url']);
+const CODE_EXT = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
+const LIFECYCLE = new Set(['globalSetup', 'globalTeardown', 'testDir', 'reporter']);
 const CASE_FOLD = process.platform === 'darwin' || process.platform === 'win32';
 const fold = (s) => (CASE_FOLD ? s.toLowerCase() : s);
+const SKIP_KEYS = new Set(['loc', 'start', 'end', 'extra', 'range', 'leadingComments', 'trailingComments', 'innerComments', 'comments', 'tokens', 'errors']);
 
-// Every pattern is linear: bounded clauses, no nested unbounded classes.
-const STR = String.raw`(['"\x60])((?:\\.|(?!\1)[^\\\n]){0,1024})\1`;
-const SPECIFIER_RES = [
-  // import 'x' | import a from 'x' | import a, { b } from 'x' | import * as a from 'x' | import type …
-  new RegExp(String.raw`\bimport\s*(?:type\s+)?(?:[\w$]{1,256}\s*,?\s*)?(?:\*\s*as\s+[\w$]{1,256}\s*|\{[^}]{0,1024}\}\s*)?(?:from\s*)?` + STR + String.raw`(?<tail>[ \t]*(?:\S{1,6})?)`, 'g'),
-  new RegExp(String.raw`\bexport\s*(?:type\s+)?(?:\*\s*(?:as\s+[\w$]{1,256}\s*)?|\{[^}]{0,1024}\}\s*)from\s*` + STR + String.raw`(?<tail>[ \t]*(?:\S{1,6})?)`, 'g'),
-  new RegExp(String.raw`\b(?:import|require(?:\.resolve)?)\s*\(\s*` + STR + String.raw`(?<tail>\s*\S?)`, 'g'),
-];
-// A specifier is exactly one plain literal: `'./tests/' + '../src'`,
-// `${…}` and escapes (`.\x2e`) make the text the screen reads differ from the
-// path node loads.
-function specifierProblem(m) {
-  const [, quote, spec] = m;
-  if (/\\/.test(spec)) return 'contains an escape';
-  if (quote === '`' && spec.includes('${')) return 'is a template with a substitution';
-  const tail = m.groups.tail.trim();
-  if (m[0].trimStart().match(/^(?:import|require(?:\.resolve)?)\s*\(/)) {
-    if (tail !== ')') return 'is not a single literal argument';
-  } else if (tail && !/^(?:;|\/\/|\/\*|with\b|assert\b)/.test(tail)) {
-    return 'is not a single literal';
+// The hook runs from ~/.claude/hooks/lib, outside any node_modules tree: look
+// beside it, then in the project, then in the project's copy of this package.
+function loadParser(root) {
+  const bases = [__filename, path.join(root, 'package.json'), path.join(root, 'node_modules', '@civitas-cerebrum', 'achilles', 'package.json')];
+  for (const b of bases) {
+    try { return createRequire(b)('@babel/parser'); } catch { /* next */ }
   }
-  return null;
-}
-function* specifiers(src) {
-  for (const re of SPECIFIER_RES) for (const m of src.matchAll(re)) yield m;
+  throw new Error('@babel/parser not found beside the hook or in the project');
 }
 
-// What the screen cannot read statically, it does not allow.
-const CANONICAL_PATH_IMPORT = /\bimport\s*\*\s*as\s+path\s+from\s*(['"])(?:node:)?path\1/g;
-const CANONICAL_DIRNAME = /^[ \t]*const[ \t]+__dirname[ \t]*=[ \t]*path\.dirname\([ \t]*fileURLToPath\([ \t]*import\.meta\.url[ \t]*\)[ \t]*\)[ \t]*;?[ \t]*$/gm;
-const LOADER_RES = [
-  [/\bimport\s*\(\s*(?!['"`])/g, 'dynamic import() of a non-literal'],
-  [/\brequire\b(?!\s*\(\s*['"`])(?!\.resolve\s*\(\s*['"`])/g, 'require used other than require("<literal>")'],
-  [/\bcreateRequire\b/g, 'createRequire'],
-];
-// Prose under tests/ (docs, notes) says "require" in sentences; only a
-// code-shaped use counts there. Such a file loads as code only through a
-// specifier that targetProblem() already bounds.
-const PROSE_LOADER_RES = [
-  LOADER_RES[0],
-  [/\brequire[ \t]*(?:[;,)\]}=.[]|\((?![ \t]*['"`])|$)/gm, 'require used other than require("<literal>")'],
-  LOADER_RES[2],
-];
-const OPAQUE_RES = [
-  ...LOADER_RES,
-  [/\\(?:x|u|[0-7])/g, 'escape sequence (node decodes it; the screen reads it raw)'],
-  [/\[[^[\]\n]{0,1024}\]\s*:(?!:)/g, 'computed property key'],
-  [/\]\s*=(?![=>])/g, 'assignment through a computed member'],
-  [/\b(?:eval|Function|JSON\.parse|defineProperty|defineProperties|Reflect|setPrototypeOf|__proto__|fromEntries|constructor|binding|dlopen|mainModule|_load|child_process)\b/g, 'reflective or dynamic code'],
-  [/\b(?:const|let|var|function|class)\s+(?:path|fileURLToPath|require)\b/g, 'a path helper redefined'],
-  [/\b(?:path|fileURLToPath|__dirname)\s*=(?![=>])|\bpath\.[\w$]+\s*=(?![=>])/g, 'a path helper reassigned'],
-  [/\bas\s+(?:path|fileURLToPath|__dirname)\b/g, 'a path helper bound by alias'],
-  [/\b(?:const|let|var)\s+__dirname\b/g, '__dirname defined other than path.dirname(fileURLToPath(import.meta.url))'],
-];
+// ── paths ───────────────────────────────────────────────────────────────────
 
-const LIFECYCLE = 'globalSetup|globalTeardown|testDir';
-const KEY_RE = new RegExp(String.raw`["']?\b(${LIFECYCLE}|reporter)\b["']?\s*:(?!:)\s*`, 'g');
-const ASSIGN_RE = new RegExp(String.raw`\.(${LIFECYCLE}|reporter)\s*=(?![=>])\s*`, 'g');
-// A lifecycle key named any other way (string argument, computed access) is unreadable.
-const STRAY_RES = [
-  new RegExp(String.raw`(?<!\.)\b(?:${LIFECYCLE})\b(?!["']?\s*:)|\.(?:${LIFECYCLE})\b(?!\s*=(?![=>]))`, 'g'),
-  /(['"`])reporter\1(?!\s*:)/g,
-];
-
-// A value may hold only literals and the path helpers: no env, no operators.
-const VALUE_TOKENS = /path\.(?:join|resolve)|require\.resolve|fileURLToPath\(\s*import\.meta\.url\s*\)|__dirname/g;
-
-// The value runs to the first `,` / `;` or closing bracket outside brackets and
-// strings. Not to a newline: `"./tests/a"\n  ? "./src/b" : …` continues the expression.
-// Bounded so that many keys cannot make the screen quadratic; an unterminated
-// value is null, and unreadable.
-const MAX_VALUE = 8192;
-const MAX_KEYS = 64;
-function valueAt(src, i) {
-  let depth = 0;
-  const end = Math.min(src.length, i + MAX_VALUE);
-  for (let j = i; j < end; j++) {
-    const c = src[j];
-    if (c === '"' || c === "'" || c === '`') {
-      for (j++; j < src.length && src[j] !== c; j += src[j] === '\\' ? 2 : 1);
-    } else if ('([{'.includes(c)) depth++;
-    else if (')]}'.includes(c)) { if (depth-- === 0) return src.slice(i, j); }
-    else if ((c === ',' || c === ';') && depth === 0) return src.slice(i, j);
-  }
-  return end === src.length ? src.slice(i) : null;
-}
-
-// Top-level elements of an array literal `[a, [b, c], …]`.
-function elements(arr) {
-  const inner = arr.trim().slice(1, -1);
-  const out = [];
-  let depth = 0, start = 0;
-  for (let j = 0; j < inner.length; j++) {
-    const c = inner[j];
-    if (c === '"' || c === "'" || c === '`') {
-      for (j++; j < inner.length && inner[j] !== c; j += inner[j] === '\\' ? 2 : 1);
-    } else if ('([{'.includes(c)) depth++;
-    else if (')]}'.includes(c)) depth--;
-    else if (c === ',' && depth === 0) { out.push(inner.slice(start, j)); start = j + 1; }
-  }
-  out.push(inner.slice(start));
-  return out.map((e) => e.trim()).filter(Boolean);
-}
-
-// Symlinks and (on case-insensitive filesystems) case resolved for the part
-// that exists, so tests/ means the project's tests/ however the path is spelled.
 function real(p) {
   let head = p, tail = '';
   while (!fs.existsSync(head) && path.dirname(head) !== head) {
@@ -165,171 +57,416 @@ function real(p) {
   }
   return path.join(fs.realpathSync.native(head), tail);
 }
-
 function within(dir, p) {
   const rel = path.relative(fold(dir), fold(p));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
+const testsDir = (root) => path.join(root, 'tests');
+const underTests = (root, abs) => within(testsDir(root), real(abs));
+const hasTestsSegment = (p) => p.split(path.sep).some((s) => fold(s) === 'tests');
 
-function underTests(root, base, p) {
-  return within(path.join(root, 'tests'), real(path.resolve(base, p)));
+// $CLAUDE_PROJECT_DIR, else the git toplevel unless it sits at or under a
+// tests/ segment (a gitfile under tests/ would move it), else cwd cut above tests/.
+function projectRoot(file, cwd) {
+  if (process.env.CLAUDE_PROJECT_DIR) return real(path.resolve(process.env.CLAUDE_PROJECT_DIR));
+  let dir = path.dirname(file);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  try {
+    const top = execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (top && !hasTestsSegment(real(top))) return real(top);
+  } catch { /* not a git work tree */ }
+  const parts = real(cwd).split(path.sep);
+  const t = parts.findIndex((s) => fold(s) === 'tests');
+  return t > 0 ? parts.slice(0, t).join(path.sep) : real(cwd);
 }
 
-function literalsOf(value) {
-  return [...value.matchAll(new RegExp(STR, 'g'))].map((s) => s[2]);
-}
+// ── JSONC (tsconfig accepts comments and trailing commas; node's package.json
+// loader strips a BOM) ─────────────────────────────────────────────────────
 
-// A path-shaped value: literals composed by the path helpers only.
-function pathOffence(key, value, root) {
-  const shape = value.replace(new RegExp(STR, 'g'), 'S').replace(VALUE_TOKENS, '');
-  if (!/^[\sS,()[\]]*$/.test(shape)) return `${key}: ${value} — only string literals and path helpers may build it`;
-  const literals = literalsOf(value);
-  if (literals.length === 0) return `${key}: ${value} — names no path`;
-  if (literals.some((l) => l.includes('${'))) return `${key}: ${value} — a template substitution`;
-  // `[a, b]` lists independent files; `path.join(__dirname, 'tests', 'x')` composes one.
-  const paths = value.startsWith('[') ? literals.map((l) => [l]) : [literals];
-  for (const parts of paths) {
-    const joined = path.join(...parts);
-    if (!underTests(root, root, joined) || !underTests(root, root, path.resolve(root, ...parts))) {
-      return `${key}: "${joined}" — resolves outside tests/`;
-    }
+function parseJsonc(text) {
+  let s = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== '"') j += s[j] === '\\' ? 2 : 1;
+      out += s.slice(i, j + 1);
+      i = j;
+    } else if (c === '/' && s[i + 1] === '/') {
+      while (i < s.length && s[i] !== '\n') i++;
+      out += '\n';
+    } else if (c === '/' && s[i + 1] === '*') {
+      const e = s.indexOf('*/', i + 2);
+      if (e === -1) throw new Error('unterminated comment');
+      i = e + 1;
+      out += ' ';
+    } else out += c;
   }
-  return null;
+  s = out.replace(/,(\s*[\]}])/g, '$1');
+  return JSON.parse(s);
 }
-
-// A reporter is a package name or a file; a file must sit under tests/.
-function reporterOffences(value, root) {
-  const names = value.startsWith('[')
-    ? elements(value).map((e) => (e.startsWith('[') ? elements(e)[0] || '' : e))
-    : [value];
-  const out = [];
-  for (const name of names) {
-    const lit = name.match(new RegExp('^' + STR + '$'));
-    if (!lit || lit[2].includes('${')) { out.push(`reporter: ${name} — the reporter name must be a plain string literal`); continue; }
-    const spec = lit[2];
-    if ((spec.startsWith('.') || spec.startsWith('/')) && !underTests(root, root, spec)) {
-      out.push(`reporter: "${spec}" — resolves outside tests/`);
-    }
-  }
-  return out;
+function readJsonc(p) {
+  try { return parseJsonc(fs.readFileSync(p, 'utf8')); } catch { return null; }
 }
-
-function readJson(p) {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+function canonical(v) {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]));
+  return v;
 }
-
 function stringLeaves(v, out = []) {
   if (typeof v === 'string') out.push(v);
   else if (v && typeof v === 'object') for (const x of Object.values(v)) stringLeaves(x, out);
   return out;
 }
 
+// ── AST ───────────────────────────────────────────────────────────────────
+
+function parseCode(src, file, parser) {
+  const ext = path.extname(file).toLowerCase();
+  const attrs = ['importAttributes', { deprecatedAssertSyntax: true }];
+  const sets = ext === '.ts' || ext === '.mts' || ext === '.cts' ? [['typescript', 'decorators-legacy']]
+    : ext === '.tsx' ? [['typescript', 'jsx', 'decorators-legacy']]
+    : CODE_EXT.includes(ext) ? [['jsx']]
+    : [['jsx'], ['typescript']]; // a non-code file is JS to node's CJS loader
+  let last;
+  for (const plugins of sets) {
+    try {
+      return parser.parse(src, { sourceType: 'unambiguous', errorRecovery: false, allowReturnOutsideFunction: true, plugins: [...plugins, attrs] });
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+
+function* walk(ast) {
+  const stack = [{ node: ast.program, parent: null, key: null }];
+  while (stack.length) {
+    if (Date.now() > DEADLINE) { process.stderr.write('time budget exceeded\n'); process.exit(3); }
+    const item = stack.pop();
+    yield item;
+    for (const [k, v] of Object.entries(item.node)) {
+      if (SKIP_KEYS.has(k) || !v || typeof v !== 'object') continue;
+      if (Array.isArray(v)) {
+        for (let i = v.length - 1; i >= 0; i--) if (v[i] && typeof v[i].type === 'string') stack.push({ node: v[i], parent: item.node, key: k });
+      } else if (typeof v.type === 'string') stack.push({ node: v, parent: item.node, key: k });
+    }
+  }
+}
+
+const isId = (n, name) => n && n.type === 'Identifier' && (name === undefined || n.name === name);
+const isStr = (n) => n && n.type === 'StringLiteral';
+// A member's property name when it is statically known; null when computed from code.
+function propName(m) {
+  if (!m.computed && m.property.type === 'Identifier') return m.property.name;
+  if (isStr(m.property)) return m.property.value;
+  return null;
+}
+const isMember = (n) => n && (n.type === 'MemberExpression' || n.type === 'OptionalMemberExpression');
+const isCall = (n) => n && (n.type === 'CallExpression' || n.type === 'OptionalCallExpression' || n.type === 'NewExpression');
+function unwrap(n) {
+  while (n && ['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'TSTypeAssertion', 'ParenthesizedExpression'].includes(n.type)) n = n.expression;
+  return n;
+}
+
+// A call that loads a module: import(), require(), require.resolve(), any
+// `.require` / `._load` member, createRequire(…)(…).
+function isLoaderCall(n) {
+  if (n.type === 'ImportExpression') return true;
+  if (!isCall(n)) return false;
+  const c = unwrap(n.callee);
+  if (c.type === 'Import' || isId(c, 'require')) return true;
+  if (isMember(c)) {
+    const p = propName(c);
+    if (p === 'require' || p === '_load') return true;
+    if (p === 'resolve' && isId(unwrap(c.object), 'require')) return true;
+  }
+  return isCall(c) && isId(unwrap(c.callee), 'createRequire');
+}
+
+// Each loaded specifier, or the reason it cannot be read.
+function specifiers(ast) {
+  const out = [];
+  const take = (lit, where) => {
+    if (!isStr(lit)) out.push({ bad: `${where} is not one string literal` });
+    else if (/\\/.test((lit.extra && lit.extra.raw) || '')) out.push({ bad: `${where} "${lit.value}" contains an escape` });
+    else out.push({ spec: lit.value });
+  };
+  for (const { node: n } of walk(ast)) {
+    if (n.type === 'ImportDeclaration' || n.type === 'ExportAllDeclaration') take(n.source, 'import source');
+    else if (n.type === 'ExportNamedDeclaration' && n.source) take(n.source, 'export source');
+    else if (n.type === 'TSImportEqualsDeclaration' && n.moduleReference.type === 'TSExternalModuleReference') take(n.moduleReference.expression, 'import = require()');
+    else if (isLoaderCall(n)) {
+      const args = n.type === 'ImportExpression' ? [n.source, ...(n.options ? [n.options] : [])] : n.arguments;
+      const extraOk = args.length === 2 && args[1].type === 'ObjectExpression' && (n.type === 'ImportExpression' || unwrap(n.callee).type === 'Import');
+      if (args.length !== 1 && !extraOk) out.push({ bad: 'a loader call takes other than one argument' });
+      else take(args[0], 'loader argument');
+    }
+  }
+  return out;
+}
+
+// Constructs that load or run code the specifier walk cannot see.
+function dangerous(ast) {
+  const out = [];
+  for (const { node: n, parent: p, key } of walk(ast)) {
+    if (n.type === 'Identifier' && ['eval', 'Function', 'createRequire'].includes(n.name) && !(p && /^TS(?:TypeReference|QualifiedName|ExpressionWithTypeArguments|InterfaceHeritage)$/.test(p.type))
+        && !(isMember(p) && key === 'property' && !p.computed) && !(p && p.type === 'ObjectProperty' && key === 'key' && !p.computed)) {
+      out.push(`${n.name} — code the screen cannot read`);
+    }
+    if (isId(n, 'require')) {
+      const callee = p && isCall(p) && key === 'callee';
+      const resolveObj = isMember(p) && key === 'object' && propName(p) === 'resolve';
+      const declKey = (isMember(p) && key === 'property' && !p.computed) || (p && p.type === 'ObjectProperty' && key === 'key' && !p.computed);
+      if (!callee && !resolveObj && !declKey) out.push('require used other than require("<literal>")');
+    }
+    if (isMember(n)) {
+      const obj = unwrap(n.object);
+      const name = propName(n);
+      if (name === null && (isId(obj, 'module') || isId(obj, 'require') || isId(obj, 'process') || isId(obj, 'globalThis') || isId(obj, 'global'))) {
+        out.push(`${obj.name}[…] computed from code`);
+      }
+      if (isId(obj, 'process') && ['binding', '_linkedBinding', 'getBuiltinModule', 'dlopen', 'mainModule'].includes(name)) out.push(`process.${name}`);
+      if (isId(obj, 'module') && ['constructor', 'require', 'children', 'parent'].includes(name) && !(name === 'require' && p && isCall(p) && key === 'callee')) out.push(`module.${name}`);
+      if (name === '_load' || name === 'constructor' && isId(obj, 'module')) out.push(`.${name}`);
+      if (name === 'require' && !(p && isCall(p) && key === 'callee')) out.push('.require used other than .require("<literal>")');
+    }
+  }
+  return out;
+}
+
+// ── config ─────────────────────────────────────────────────────────────────
+
+// Statically evaluates a path expression the config may use; throws otherwise.
+function evalPath(n, root, cfgFile) {
+  n = unwrap(n);
+  if (isStr(n)) {
+    if (/\\/.test((n.extra && n.extra.raw) || '')) throw new Error('an escape in a path literal');
+    return n.value;
+  }
+  if (isId(n, '__dirname')) return root;
+  if (n.type === 'MemberExpression' && n.object.type === 'MetaProperty' && propName(n) === 'url') return 'file://' + cfgFile;
+  if (n.type === 'CallExpression' && isMember(n.callee)) {
+    const obj = unwrap(n.callee.object);
+    const fn = propName(n.callee);
+    const args = () => n.arguments.map((a) => evalPath(a, root, cfgFile));
+    if (isId(obj, 'path') && fn === 'join') return path.join(...args());
+    if (isId(obj, 'path') && fn === 'resolve') return path.resolve(root, ...args());
+    if (isId(obj, 'path') && fn === 'dirname' && n.arguments.length === 1) return path.dirname(args()[0]);
+    if (isId(obj, 'require') && fn === 'resolve' && n.arguments.length === 1) return path.resolve(root, args()[0]);
+  }
+  if (n.type === 'CallExpression' && isId(n.callee, 'fileURLToPath') && n.arguments.length === 1) {
+    const u = evalPath(n.arguments[0], root, cfgFile);
+    if (!u.startsWith('file://')) throw new Error('fileURLToPath of something other than import.meta.url');
+    return u.slice('file://'.length);
+  }
+  throw new Error(`${n.type} is not a literal or path helper`);
+}
+
+function lifecycleOffences(key, value, root, cfgFile) {
+  const v = unwrap(value);
+  const out = [];
+  const check = (n, label) => {
+    let p;
+    try { p = evalPath(n, root, cfgFile); } catch (e) { out.push(`${label}: ${e.message}`); return; }
+    if (!underTests(root, path.resolve(root, p))) out.push(`${label}: "${p}" resolves outside tests/`);
+  };
+  if (key === 'reporter') {
+    const entries = v.type === 'ArrayExpression' ? v.elements : [v];
+    for (const e of entries) {
+      const name = e && unwrap(e).type === 'ArrayExpression' ? unwrap(e).elements[0] : e;
+      if (!name) { out.push('reporter: an empty entry'); continue; }
+      const n = unwrap(name);
+      if (isStr(n) && !n.value.startsWith('.') && !path.isAbsolute(n.value) && !/\\/.test(n.extra.raw)) continue; // a package
+      check(n, 'reporter');
+    }
+  } else if (v.type === 'ArrayExpression') {
+    for (const e of v.elements) e ? check(e, key) : out.push(`${key}: an empty entry`);
+  } else check(v, key);
+  return out;
+}
+
+// The object(s) the config exports: export default / module.exports of an
+// object, defineConfig(…objects), or an identifier bound to one of those.
+function exportedConfigs(ast) {
+  const top = new Map();
+  for (const s of ast.program.body) {
+    const decl = s.type === 'ExportNamedDeclaration' ? s.declaration : s;
+    if (decl && decl.type === 'VariableDeclaration') for (const d of decl.declarations) if (isId(d.id)) top.set(d.id.name, d.init);
+  }
+  const exported = [];
+  for (const s of ast.program.body) {
+    if (s.type === 'ExportDefaultDeclaration') exported.push(s.declaration);
+    if (s.type === 'ExpressionStatement' && s.expression.type === 'AssignmentExpression') {
+      const l = s.expression.left;
+      if (isMember(l) && isId(l.object, 'module') && propName(l) === 'exports') exported.push(s.expression.right);
+    }
+  }
+  if (exported.length !== 1) throw new Error(`${exported.length} config exports — exactly one is readable`);
+  const objects = [];
+  const resolve = (n, depth) => {
+    n = unwrap(n);
+    if (isId(n) && depth === 0 && top.has(n.name)) return resolve(top.get(n.name), 1);
+    if (n && n.type === 'ObjectExpression') return objects.push(n);
+    if (n && n.type === 'CallExpression' && isId(n.callee, 'defineConfig') && n.arguments.length) return n.arguments.forEach((a) => resolve(a, depth));
+    throw new Error(`the exported config is ${n ? n.type : 'empty'}, not an object the screen can read`);
+  };
+  resolve(exported[0], 0);
+  return objects;
+}
+
+function bindingOffences(ast) {
+  const out = [];
+  const CANON = (init) => init && init.type === 'CallExpression' && isMember(init.callee) && isId(init.callee.object, 'path') && propName(init.callee) === 'dirname'
+    && init.arguments.length === 1 && init.arguments[0].type === 'CallExpression' && isId(init.arguments[0].callee, 'fileURLToPath')
+    && init.arguments[0].arguments.length === 1 && init.arguments[0].arguments[0].type === 'MemberExpression' && init.arguments[0].arguments[0].object.type === 'MetaProperty';
+  const GUARDED = ['path', 'fileURLToPath', '__dirname', 'require', 'defineConfig', 'devices'];
+  for (const { node: n } of walk(ast)) {
+    if (n.type === 'ImportDeclaration') {
+      const src = n.source.value;
+      for (const s of n.specifiers) {
+        const local = s.local.name;
+        if (local === 'path' && !((src === 'path' || src === 'node:path') && s.type !== 'ImportSpecifier')) out.push(`path bound to ${src}`);
+        if (local === 'fileURLToPath' && !((src === 'url' || src === 'node:url') && s.type === 'ImportSpecifier' && (s.imported.name || s.imported.value) === 'fileURLToPath')) out.push(`fileURLToPath bound to ${src}`);
+        if (['__dirname', 'require', 'defineConfig', 'devices'].includes(local) && !(['defineConfig', 'devices'].includes(local) && src === '@playwright/test' && s.type === 'ImportSpecifier')) out.push(`${local} bound by import from ${src}`);
+      }
+    }
+    const declared = n.type === 'VariableDeclarator' || n.type === 'FunctionDeclaration' || n.type === 'ClassDeclaration' ? n.id : null;
+    if (declared && !isId(declared)) {
+      for (const { node: b } of walk({ program: declared })) if (isId(b) && GUARDED.includes(b.name)) out.push(`${b.name} redeclared by destructuring`);
+    } else if (declared && GUARDED.includes(declared.name) && declared.name !== '__dirname') out.push(`${declared.name} redeclared`);
+    else if (declared && declared.name === '__dirname' && !(n.type === 'VariableDeclarator' && CANON(n.init))) out.push('__dirname defined other than path.dirname(fileURLToPath(import.meta.url))');
+    if (n.type === 'AssignmentExpression' && isId(n.left) && GUARDED.includes(n.left.name)) out.push(`${n.left.name} reassigned`);
+  }
+  return out;
+}
+
+function scanConfig(ast, root, cfgFile) {
+  const out = [];
+  for (const s of specifiers(ast)) {
+    if (s.bad) out.push(s.bad);
+    else if (!CONFIG_IMPORTS.has(s.spec) && !((s.spec.startsWith('.') || path.isAbsolute(s.spec)) && underTests(root, path.resolve(root, s.spec)))) {
+      out.push(`import "${s.spec}" — not in the config import allowlist`);
+    }
+  }
+  out.push(...dangerous(ast), ...bindingOffences(ast));
+  try { exportedConfigs(ast); } catch (e) { out.push(e.message); }
+  // Every lifecycle key anywhere in the file, not only in the exported object:
+  // Object.assign(config, { globalSetup }) is the same channel.
+  for (const { node: n, parent: p, key } of walk(ast)) {
+    if (n.type === 'ObjectProperty' || n.type === 'ObjectMethod') {
+      if (n.computed && !isStr(n.key)) { out.push('a computed property key'); continue; }
+      if (n.key.type === 'NumericLiteral') continue;
+      const k = isId(n.key) ? n.key.name : isStr(n.key) ? n.key.value : null;
+      if (k === null) { out.push(`a ${n.key.type} property key`); continue; }
+      if (!LIFECYCLE.has(k)) continue;
+      if (n.type === 'ObjectMethod') out.push(`${k} defined as a method or accessor`);
+      else out.push(...lifecycleOffences(k, n.value, root, cfgFile));
+    } else if (n.type === 'SpreadElement' && p && p.type === 'ObjectExpression') {
+      const a = unwrap(n.argument);
+      const fromDevices = isMember(a) && isId(unwrap(a.object), 'devices');
+      if (!fromDevices) out.push('an object spread other than ...devices[…]');
+    } else if (n.type === 'AssignmentExpression' && isMember(n.left)) {
+      const k = propName(n.left);
+      if (k === null) out.push('an assignment through a computed member');
+      else if (LIFECYCLE.has(k)) out.push(`.${k} = … assigned outside the config literal`);
+    } else if ((isStr(n) || n.type === 'TemplateLiteral') && !(p && (p.type === 'ObjectProperty' || p.type === 'ObjectMethod') && key === 'key')) {
+      const v = isStr(n) ? n.value : n.quasis.map((q) => q.value.cooked).join('');
+      if (LIFECYCLE.has(v)) out.push(`"${v}" names a lifecycle key outside a property`);
+    } else if (n.type === 'Identifier' && ['defineProperty', 'defineProperties', 'Reflect', 'setPrototypeOf', '__proto__', 'fromEntries'].includes(n.name)) {
+      out.push(`${n.name} — the config's keys must be literal properties`);
+    } else if (isMember(n) && isId(unwrap(n.object), 'JSON') && propName(n) === 'parse') {
+      out.push("JSON.parse — the config's keys must be literal properties");
+    }
+  }
+  return out;
+}
+
+// ── tests/ ─────────────────────────────────────────────────────────────────
+
 // A relative specifier's target is loaded as code whatever its extension, so it
 // must be code or JSON: `./auth.setup` passes when auth.setup.ts is on disk,
 // `../helper.txt` and an extensionless file on disk do not.
 function targetProblem(target) {
   const ext = path.extname(target).toLowerCase();
-  if (CODE_EXT.has(ext) || ext === '.json') return null;
+  if (CODE_EXT.includes(ext) || ext === '.json') return null;
   let stat = null;
   try { stat = fs.statSync(target); } catch { /* not on disk yet */ }
   if (stat && stat.isFile()) return 'loads a file that is not code or JSON';
   if (!ext) return null;
-  const asCode = [...CODE_EXT].some((e) => fs.existsSync(target + e) || fs.existsSync(path.join(target, 'index' + e)));
-  return asCode ? null : `has extension ${ext}, which is not code or JSON (write the module it names first)`;
+  const twin = CODE_EXT.some((e) => fs.existsSync(target + e) || fs.existsSync(path.join(target, 'index' + e)));
+  return twin ? null : `has extension ${ext}, which is not code or JSON (write the module it names first)`;
 }
 
-function scanTestCode(src, file, root) {
+const hasTwin = (file) => CODE_EXT.some((e) => fs.existsSync(file + e) || fs.existsSync(path.join(file, 'index' + e)));
+
+function scanTestCode(src, file, root, parser) {
+  const ext = path.extname(file).toLowerCase();
+  let ast;
+  try { ast = parseCode(src, file, parser); } catch (e) {
+    // Prose that does not parse cannot run, unless node would load it in place of a code twin.
+    if (CODE_EXT.includes(ext) || hasTwin(file)) return [`does not parse: ${e.message}`];
+    return [];
+  }
   const out = [];
   const base = path.dirname(file);
-  const own = (readJson(path.join(root, 'package.json')) || {}).name;
-  for (const m of specifiers(src)) {
-    const spec = m[2];
-    const problem = specifierProblem(m);
-    if (problem) { out.push(`specifier ${m[1]}${spec}${m[1]} ${problem}`); continue; }
+  const pkg = readJsonc(path.join(root, 'package.json')) || {};
+  const own = typeof pkg.name === 'string' ? pkg.name : null;
+  for (const s of specifiers(ast)) {
+    if (s.bad) { out.push(s.bad); continue; }
+    const spec = s.spec;
     if (spec.startsWith('#')) { out.push(`import "${spec}" — package imports map outside the screen`); continue; }
     if (own && (spec === own || spec.startsWith(own + '/'))) { out.push(`import "${spec}" — the project's own package (self-reference)`); continue; }
     if (!(spec.startsWith('.') || path.isAbsolute(spec))) continue;
-    if (!underTests(root, base, spec)) { out.push(`import "${spec}" — resolves outside tests/`); continue; }
-    const t = targetProblem(path.resolve(base, spec));
+    const target = path.resolve(base, spec);
+    if (!underTests(root, target)) { out.push(`import "${spec}" — resolves outside tests/`); continue; }
+    const t = targetProblem(target);
     if (t) out.push(`import "${spec}" — ${t}`);
   }
-  const ext = path.extname(file).toLowerCase();
-  for (const [re, what] of CODE_EXT.has(ext) || !ext ? LOADER_RES : PROSE_LOADER_RES) {
-    const m = src.match(re);
-    if (m) out.push(`${what}: ${m[0].trim()}`);
-  }
+  out.push(...dangerous(ast));
   return out;
 }
 
-// JSON under tests/ is data, except the two files that steer resolution.
+// JSON under tests/ is data, except the files that steer resolution.
 function scanTestJson(src, file, root) {
   const name = path.basename(file).toLowerCase();
   const base = path.dirname(file);
+  const resolution = name === 'package.json' || /^(?:ts|js)config.*\.json$/.test(name);
+  if (!resolution) return [];
   let json;
-  try { json = JSON.parse(src); } catch { return []; }
+  try { json = parseJsonc(src); } catch (e) { return [`${name} does not parse: ${e.message}`]; }
   const out = [];
+  const inside = (v, from) => typeof v === 'string' && underTests(root, path.resolve(from, v));
   if (name === 'package.json') {
     for (const field of ['main', 'module', 'exports', 'imports', 'browser']) {
-      for (const v of stringLeaves(json[field])) {
-        if (!v.startsWith('.') || !underTests(root, base, v)) out.push(`package.json ${field}: "${v}" — resolves outside tests/`);
-      }
+      for (const v of stringLeaves(json[field])) if (!v.startsWith('.') || !inside(v, base)) out.push(`package.json ${field}: "${v}" resolves outside tests/`);
     }
-  } else if (/^(?:ts|js)config.*\.json$/.test(name)) {
-    const co = json.compilerOptions || {};
-    for (const [field, vals] of [['baseUrl', [co.baseUrl]], ['paths', stringLeaves(co.paths)], ['rootDirs', stringLeaves(co.rootDirs)]]) {
-      for (const v of vals.filter((x) => typeof x === 'string')) {
-        if (!underTests(root, base, v)) out.push(`${name} ${field}: "${v}" — resolves outside tests/`);
-      }
-    }
+    return out;
   }
+  if ('extends' in json) out.push(`${name} extends — the screen does not follow inherited config`);
+  if ('references' in json) out.push(`${name} references — the screen does not follow project references`);
+  const co = json.compilerOptions || {};
+  if ('baseUrl' in co && !inside(co.baseUrl, base)) out.push(`${name} baseUrl "${co.baseUrl}" resolves outside tests/`);
+  const pathsBase = typeof co.baseUrl === 'string' ? path.resolve(base, co.baseUrl) : base;
+  for (const v of stringLeaves(co.paths)) if (!inside(v, pathsBase)) out.push(`${name} paths "${v}" resolves outside tests/`);
+  for (const v of stringLeaves(co.rootDirs)) if (!inside(v, base)) out.push(`${name} rootDirs "${v}" resolves outside tests/`);
   return out;
 }
 
-function scanConfig(src, root) {
-  const offenders = [];
-  for (const m of specifiers(src)) {
-    const spec = m[2];
-    const problem = specifierProblem(m);
-    if (problem) { offenders.push(`specifier ${m[1]}${spec}${m[1]} ${problem}`); continue; }
-    if (CONFIG_IMPORTS.has(spec)) continue;
-    if ((spec.startsWith('.') || path.isAbsolute(spec)) && underTests(root, root, spec)) continue;
-    offenders.push(`import "${spec}" — not in the config import allowlist`);
-  }
-  const unreadable = src.replace(CANONICAL_DIRNAME, '').replace(CANONICAL_PATH_IMPORT, '');
-  for (const [re, what] of OPAQUE_RES) {
-    const m = unreadable.match(re);
-    if (m) offenders.push(`${what}: ${m[0].trim()}`);
-  }
-  for (const re of STRAY_RES) {
-    const m = src.match(re);
-    if (m) offenders.push(`${m[0]} named outside a literal property or .${m[0].replace(/['"`]/g, '')} = assignment`);
-  }
-  const keys = [...src.matchAll(KEY_RE), ...src.matchAll(ASSIGN_RE)];
-  if (keys.length > MAX_KEYS) return [...offenders, `${keys.length} lifecycle/reporter keys — too many to screen (cap ${MAX_KEYS})`];
-  for (const m of keys) {
-    const raw = valueAt(src, m.index + m[0].length);
-    if (raw === null) { offenders.push(`${m[1]}: value longer than ${MAX_VALUE} characters — too long to screen`); continue; }
-    const value = raw.trim();
-    if (m[1] === 'reporter') offenders.push(...reporterOffences(value, root));
-    else {
-      const o = pathOffence(m[1], value, root);
-      if (o) offenders.push(o);
-    }
-  }
-  return offenders;
-}
+// ── root package.json ──────────────────────────────────────────────────────
 
 // name, exports and imports decide what `import "<name>"` and `#x` load.
 function scanPackage(src, file) {
   let after;
-  try { after = JSON.parse(src); } catch { return []; }
-  const before = readJson(file) || {};
+  try { after = parseJsonc(src); } catch (e) { return [`package.json does not parse: ${e.message}`]; }
+  const before = readJsonc(file) || {};
   const out = [];
   for (const f of ['name', 'exports', 'imports']) {
-    if (JSON.stringify(before[f]) !== JSON.stringify(after[f])) out.push(`package.json ${f} changed — it decides what a bare or # specifier resolves to`);
+    if (JSON.stringify(canonical(before[f])) !== JSON.stringify(canonical(after[f]))) out.push(`package.json ${f} changed — it decides what a bare or # specifier resolves to`);
   }
   return out;
 }
+
+// ── main ───────────────────────────────────────────────────────────────────
 
 function postWrite(payload, file) {
   const t = payload.tool_input || {};
@@ -340,28 +477,13 @@ function postWrite(payload, file) {
   return i === -1 ? before : before.slice(0, i) + t.new_string + before.slice(i + t.old_string.length);
 }
 
-// $CLAUDE_PROJECT_DIR, else the file's git toplevel, else cwd cut above any
-// tests/ segment: a session that cd's into tests/e2e does not move the root.
-function projectRoot(file, cwd) {
-  if (process.env.CLAUDE_PROJECT_DIR) return real(path.resolve(process.env.CLAUDE_PROJECT_DIR));
-  let dir = path.dirname(file);
-  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
-  try {
-    const top = execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (top) return real(top);
-  } catch { /* not a git work tree */ }
-  const parts = real(cwd).split(path.sep);
-  const t = parts.findIndex((s) => fold(s) === 'tests');
-  return t > 0 ? parts.slice(0, t).join(path.sep) : real(cwd);
-}
-
 function scopeOf(file, root) {
   const name = path.basename(file);
   if (fold(path.dirname(file)) === fold(root)) {
     if (/^playwright.*\.config\.ts$/i.test(name)) return 'config';
     if (fold(name) === 'package.json') return 'package';
   }
-  if (within(path.join(root, 'tests'), file) && fold(file) !== fold(path.join(root, 'tests'))) return 'tests';
+  if (within(testsDir(root), file) && fold(file) !== fold(testsDir(root))) return 'tests';
   return 'none';
 }
 
@@ -374,10 +496,18 @@ const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 let offenders = [];
 if (scope !== 'none') {
   const src = postWrite(payload, file);
+  const ext = path.extname(file).toLowerCase();
   if (Buffer.byteLength(src) > MAX_BYTES) offenders = [`${Buffer.byteLength(src)} bytes — config/spec too large to screen (cap ${MAX_BYTES})`];
-  else if (scope === 'config') offenders = scanConfig(src, root);
   else if (scope === 'package') offenders = scanPackage(src, file);
-  else if (path.extname(file).toLowerCase() === '.json') offenders = scanTestJson(src, file, root);
-  else offenders = scanTestCode(src, file, root);
+  else if (scope === 'tests' && fold(path.basename(file)) === '.git') offenders = ['a .git file under tests/ would move the project root'];
+  else if (scope === 'tests' && ext === '.json') offenders = scanTestJson(src, file, root);
+  else {
+    const parser = loadParser(root);
+    if (scope === 'config') {
+      let ast;
+      try { ast = parseCode(src, file, parser); } catch (e) { ast = null; offenders = [`does not parse: ${e.message}`]; }
+      if (ast) offenders = scanConfig(ast, root, file);
+    } else offenders = scanTestCode(src, file, root, parser);
+  }
 }
-process.stdout.write(JSON.stringify({ scope, offenders: offenders.slice(0, 50) }));
+process.stdout.write(JSON.stringify({ scope, offenders: [...new Set(offenders)].slice(0, 50) }));

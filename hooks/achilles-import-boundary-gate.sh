@@ -7,25 +7,33 @@
 #           when the screen cannot run)
 # State   : none
 #
-# A static floor, not a sandbox: it reads with patterns and denies what it
-# cannot read.
+# A static floor, not a sandbox: the scanner parses with @babel/parser, and a
+# file that does not parse, a construct it cannot evaluate, or a scan over its
+# time budget is a deny.
 #
 # Rule
 # ----
 # Root playwright*.config.ts: imports only @playwright/test,
 # @civitas-cerebrum/element-interactions, dotenv, dotenv/config and path/url
-# (bare or node:), plus relative files under tests/. globalSetup,
-# globalTeardown, testDir and file reporters resolve under tests/ and are built
-# from string literals and path helpers only. Escapes, a require/import() the
-# screen cannot read, computed keys and reflective calls are denied.
+# (bare or node:), plus relative files under tests/. The exported config must
+# be an object literal (or defineConfig of them). globalSetup, globalTeardown,
+# testDir and file reporters, wherever they appear as properties, evaluate
+# statically from string literals and path helpers to paths under tests/.
+# Computed keys, member assignment of those keys, object spreads other than
+# ...devices[…], and eval / Function / process.binding / module.constructor
+# are denied.
 # Every file under tests/, whatever its extension (node's CJS loader runs any
-# extension as JS): each specifier is one plain literal; relative ones resolve
-# under tests/ and load code or JSON; no `#` imports and no self-reference to
-# the project's package. package.json / tsconfig under tests/ point inside it.
+# extension as JS): every loader call (import, require, require.resolve,
+# import(), .require, ._load, createRequire) takes one string literal with no
+# escapes; relative ones resolve under tests/ and load code or JSON; no `#`
+# imports and no self-reference to the project's package. A non-code file that
+# does not parse is prose, unless a code twin makes node load it. package.json
+# and tsconfig/jsconfig under tests/ (JSONC) point inside it; tsconfig extends
+# and references are denied. No .git file under tests/.
 # Root package.json: name, exports and imports do not change.
-# Root: $CLAUDE_PROJECT_DIR, else the file's git toplevel, else cwd cut above
-# any tests/ segment. Paths compare case-insensitively on macOS and Windows.
-# Content over 256KB is denied: the hook's timeout does not block.
+# Root: $CLAUDE_PROJECT_DIR, else the file's git toplevel unless it sits under a
+# tests/ segment, else cwd cut above tests/. Paths compare case-insensitively
+# on macOS and Windows. Content over 256KB is denied.
 #
 # Why
 # ---
@@ -44,7 +52,7 @@
 #
 # Failure → action
 # ----------------
-# - config import outside the allowlist, escape, unreadable code → DENY
+# - config import outside the allowlist, unparsable or unreadable → DENY
 # - lifecycle path / file reporter outside tests/, or non-literal → DENY
 # - tests/** specifier outside tests/, non-literal, #, self-ref,
 #   or loading a non-code file                                   → DENY
@@ -78,16 +86,15 @@ Do this instead:
 ──────────────────────────
   Runner config (root playwright*.config.ts): import only @playwright/test,
   @civitas-cerebrum/element-interactions, dotenv / dotenv/config and path /
-  url; name reporters by package, or by a file under tests/. Build
-  globalSetup / globalTeardown / testDir from string literals and
-  path.join / path.resolve / require.resolve / __dirname only, under tests/.
-  Comments are screened as code: drop comments that name require,
-  globalSetup, globalTeardown or testDir.
-  Files under tests/: write each specifier as one plain literal (no +, \${},
-  or escapes); import relative code or JSON under tests/ only, never #
-  aliases or the project's own package; shared logic belongs in
-  tests/e2e/fixtures/. package.json may change scripts, not name / exports /
-  imports.
+  url; export an object literal (or defineConfig of one); name reporters by
+  package, or by a file under tests/. Build globalSetup / globalTeardown /
+  testDir from string literals and path.join / path.resolve /
+  require.resolve / __dirname only, under tests/.
+  Files under tests/: give every import / require one plain string literal
+  (no +, templates or escapes); import relative code or JSON under tests/
+  only, never # aliases or the project's own package; shared logic belongs
+  in tests/e2e/fixtures/. Code must parse. package.json may change scripts,
+  not name / exports / imports.
 
 ──────────────────────────
 What was wrong:
