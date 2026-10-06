@@ -48,6 +48,8 @@ hook_jq_init fatal
 # shellcheck disable=SC1091
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/protected-paths.sh"
 
 hook_read_input
 
@@ -68,8 +70,7 @@ if ! echo "$CMD" | grep -qE '\.claude/achilles'; then
   achilles_require_active "$INPUT"
 fi
 
-# Protected artifact patterns (extended regex).
-PROTECTED='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/achilles|\.claude/hooks|\.claude/settings(\.local)?\.json'
+PROTECTED=$(protected_bash_regex)
 
 echo "$CMD" | grep -qE "$PROTECTED" || exit 0
 

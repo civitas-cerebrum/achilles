@@ -59,6 +59,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
 # shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/protected-paths.sh"
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
@@ -82,10 +84,10 @@ emit_deny() { emit_pre_deny "$1"; exit 0; }
 NORM="/${FILE_PATH#/}"
 
 # --- Class 1: hook-authored state — never Write|Edit. ---
-case "$NORM" in
-  */tests/e2e/docs/$LEDGER_APPROVERS_NAME | \
-  */tests/perf/docs/$LEDGER_APPROVERS_NAME)
-    emit_deny "[BLOCKED] .workflow-approvers.json is hook-authored state.
+if protected_write_match "$NORM"; then
+  case "${NORM##*/}" in
+    "$LEDGER_APPROVERS_NAME")
+      emit_deny "[BLOCKED] .workflow-approvers.json is hook-authored state.
 
 File: ${FILE_PATH}
 
@@ -96,10 +98,9 @@ relies on to verify that approvals come from a registered approver context.
 
 Fix: do not write this file. Dispatch the approver subagent with the correct
 description prefix; the registry hook records it automatically."
-    ;;
-  */tests/e2e/docs/.ledger-integrity.json | \
-  */tests/perf/docs/.ledger-integrity.json)
-    emit_deny "[BLOCKED] .ledger-integrity.json is hook-authored state.
+      ;;
+    *)
+      emit_deny "[BLOCKED] .ledger-integrity.json is hook-authored state.
 
 File: ${FILE_PATH}
 
@@ -110,8 +111,9 @@ hash chain.
 
 Fix: do not write this file. To accept an out-of-band ledger state, the
 operator deletes the sidecar in their own terminal."
-    ;;
-esac
+      ;;
+  esac
+fi
 
 # --- Class 2: monotonicity of orchestrator-written progress state. ---
 IS_CYCLE=0
