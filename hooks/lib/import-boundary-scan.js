@@ -596,8 +596,8 @@ function postWrite(payload, file) {
 function scopeOf(file, root) {
   const name = path.basename(file);
   if (fold(path.dirname(file)) === fold(root)) {
-    if (/^playwright.*\.config\.ts$/i.test(name)) return 'config';
-    if (/^playwright.*\.config\.[cm]?[jt]s$/i.test(name)) return 'config-ext';
+    if (/^playwright.*\.config\.ts$/.test(fold(name))) return 'config';
+    if (/^playwright.*\.config\.[cm]?[jt]s$/.test(fold(name))) return 'config-ext';
     if (fold(name) === 'package.json') return 'package';
   }
   if (within(testsDir(root), file) && fold(file) !== fold(testsDir(root))) return 'tests';

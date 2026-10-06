@@ -257,22 +257,22 @@ payload() {
     local v="${kv#*=}"
     case "$k" in
       tool_name)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '. + {tool_name: $v}') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '. + {tool_name: $v}') ;;
       description|prompt|command|file_path|content|old_string|new_string|skill|args|path|pattern|glob)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" --arg k "$k" '.tool_input = ((.tool_input // {}) + {($k): $v})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") --arg k "$k" '.tool_input = ((.tool_input // {}) + {($k): $v})') ;;
       response_text)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '.tool_response = ((.tool_response // {}) + {output: $v})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '.tool_response = ((.tool_response // {}) + {output: $v})') ;;
       response_content)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '.tool_response = ((.tool_response // {}) + {content: [{type: "text", text: $v}]})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '.tool_response = ((.tool_response // {}) + {content: [{type: "text", text: $v}]})') ;;
       exit_code|stdout)
         local field="exitCode"; [ "$k" = "stdout" ] && field="stdout"
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" --arg f "$field" '.tool_response = ((.tool_response // {}) + {($f): $v})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") --arg f "$field" '.tool_response = ((.tool_response // {}) + {($f): $v})') ;;
       cwd)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '. + {cwd: $v}') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '. + {cwd: $v}') ;;
       hook_event_name)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '. + {hook_event_name: $v}') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '. + {hook_event_name: $v}') ;;
       last_assistant_message|agent_id|agent_type|session_id|transcript_path|parent_tool_use_id|tool_use_id)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" --arg k "$k" '. + {($k): $v}') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") --arg k "$k" '. + {($k): $v}') ;;
       *) echo "payload: unknown key $k" >&2; return 1 ;;
     esac
   done
