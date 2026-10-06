@@ -259,9 +259,9 @@ function checkRoleMapCoverage() {
 // check: full-line comments are stripped first, so the header's
 // "Canonical reference" section can never satisfy it — the References must
 // live in the message-producing region (strings, heredocs, echo lines).
-// Every cited skills/….md or schemas/….json path (in ANY hook, emitting or
-// not — including the vendored kernel) must resolve in the repo, so a skill
-// rename cannot silently orphan a hook's pointers.
+// Every cited skills/….md or schemas/….json path (in ANY hook or hooks/lib/
+// script, emitting or not — including the vendored kernel) must resolve in the
+// repo, so a skill rename cannot silently orphan a hook's pointers.
 function checkHookReferences() {
   const detail = [];
   // hooks/kernel-mandate-role-gate.sh is vendored verbatim from
@@ -288,11 +288,19 @@ function checkHookReferences() {
   const hooks = readdirSync('hooks')
     .filter((f) => f.endsWith('.sh'))
     .map((f) => join('hooks', f));
+  // Sourced libs carry citations for the hooks that use them (the pipeline
+  // gates' References and message refs live in hooks/lib/pipeline-gate.sh),
+  // so their paths must resolve too. Libs do not emit on their own, so the
+  // References requirement below applies to hook files only.
+  const libs = readdirSync(join('hooks', 'lib'))
+    .filter((f) => f.endsWith('.sh'))
+    .map((f) => join('hooks', 'lib', f));
+  const libSet = new Set(libs);
 
   let emitters = 0;
   let citedPaths = 0;
 
-  for (const h of hooks) {
+  for (const h of [...hooks, ...libs]) {
     const raw = readFileSync(h, 'utf8');
     // Strip full-line comments: the message-producing region is what remains.
     const code = raw
@@ -308,7 +316,7 @@ function checkHookReferences() {
       }
     }
 
-    if (REFERENCES_EXEMPT.has(h)) continue;
+    if (REFERENCES_EXEMPT.has(h) || libSet.has(h)) continue;
 
     const emits = /permissionDecision|"decision"\s*:\s*"block"|systemMessage|^exit 2$/m.test(code);
     if (!emits) continue;
