@@ -10,6 +10,7 @@
 #   PIPELINE_SCHEMA_NAME   — validator-bundle schema id (write-gate only)
 #   PIPELINE_CAP_PREFIX_RE — sed -E capture extracting a reviewer's target phase
 #   JQ                     — path to jq (the gate resolves this already)
+#   lib/ledger.sh          — sourced first (LEDGER_APPROVERS_REL)
 #
 # Message-token contract (set by the sourcing gate alongside the above):
 #   PIPELINE_MSG_LEDGER_NAME   — bare ledger filename (e.g. onboarding-status.json)
@@ -610,7 +611,7 @@ See:
   - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\""
       return 0 ;;
   esac
-  REGISTRY_FILE="$(dirname "$FILE_PATH")/.workflow-approvers.json"
+  REGISTRY_FILE="$(dirname "$FILE_PATH")/${LEDGER_APPROVERS_REL##*/}"
   if [ ! -f "$REGISTRY_FILE" ]; then
     pipeline_emit_deny "[BLOCKED] ${LEAD} from a subagent context, but no approver registry exists at:
 

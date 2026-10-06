@@ -78,7 +78,8 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 # Resolve repo root + ledger path.
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-LEDGER="$GUARD_REPO_ROOT/tests/perf/docs/perf-onboarding-status.json"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+LEDGER="$(ledger_path "$GUARD_REPO_ROOT" perf)"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
 SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
@@ -89,7 +90,7 @@ PIPELINE_SIDECAR="$SIDECAR"
 PIPELINE_CAP_PREFIX_RE='s/^(perf-reviewer-phase)([0-9]+).*/\2/p'
 PIPELINE_MSG_LEDGER_NAME='perf-onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL='tests/perf/docs/perf-onboarding-status.json'
+PIPELINE_MSG_LEDGER_REL="$LEDGER_PERF_REL"
 PIPELINE_MSG_REVIEWER_LABEL='perf-reviewer-phase'
 PIPELINE_MSG_SKILL_REF='skills/perf-onboarding/SKILL.md'
 PIPELINE_MSG_SCHEMA_REF='schemas/perf-onboarding-status.schema.json'
@@ -108,10 +109,10 @@ _lic_ret=$?
 [ "$_lic_ret" -eq 1 ] && exit 0
 
 # Probe the ledger. Any extraction failure → silent allow.
-SCHEMA_VERSION=$("$JQ" -r '.schemaVersion // empty' "$LEDGER" 2>/dev/null || echo "")
+SCHEMA_VERSION=$(ledger_get "$LEDGER" .schemaVersion)
 [ -n "$SCHEMA_VERSION" ] || exit 0
 
-CURRENT_PHASE=$("$JQ" -r '.currentPhase // empty' "$LEDGER" 2>/dev/null || echo "")
+CURRENT_PHASE=$(ledger_get "$LEDGER" .currentPhase)
 case "$CURRENT_PHASE" in
   ''|*[!0-9]*) exit 0 ;;
 esac

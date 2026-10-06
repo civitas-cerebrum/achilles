@@ -102,7 +102,8 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 # on reviewer dispatches, below).
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-LEDGER="$GUARD_REPO_ROOT/tests/e2e/docs/onboarding-status.json"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+LEDGER="$(ledger_path "$GUARD_REPO_ROOT" onboarding)"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
 SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
@@ -113,7 +114,7 @@ PIPELINE_SIDECAR="$SIDECAR"
 PIPELINE_CAP_PREFIX_RE='s/^(workflow-reviewer-phase|phase-validator-)([0-9]+).*/\2/p'
 PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL='tests/e2e/docs/onboarding-status.json'
+PIPELINE_MSG_LEDGER_REL="$LEDGER_ONBOARDING_REL"
 PIPELINE_MSG_REVIEWER_LABEL='workflow-reviewer-phase'
 PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
 PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
@@ -139,10 +140,10 @@ _lic_ret=$?
 # Probe the ledger. Any extraction failure → silent allow (malformed
 # ledger should not jam the pipeline; the write-gate is responsible for
 # ledger integrity).
-SCHEMA_VERSION=$("$JQ" -r '.schemaVersion // empty' "$LEDGER" 2>/dev/null || echo "")
+SCHEMA_VERSION=$(ledger_get "$LEDGER" .schemaVersion)
 [ -n "$SCHEMA_VERSION" ] || exit 0
 
-CURRENT_PHASE=$("$JQ" -r '.currentPhase // empty' "$LEDGER" 2>/dev/null || echo "")
+CURRENT_PHASE=$(ledger_get "$LEDGER" .currentPhase)
 case "$CURRENT_PHASE" in
   ''|*[!0-9]*) exit 0 ;;
 esac

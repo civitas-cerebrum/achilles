@@ -81,7 +81,8 @@ if [ "$APPROVER_ROLE" = "perf-reviewer" ]; then
 else
   REGISTRY_DIR="$REPO_ROOT/tests/e2e/docs"
 fi
-REGISTRY_FILE="$REGISTRY_DIR/.workflow-approvers.json"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+REGISTRY_FILE="$REGISTRY_DIR/${LEDGER_APPROVERS_REL##*/}"
 
 # Best-effort: if the docs dir doesn't exist yet (early in Phase 1), the
 # write-gate will find no registry and deny any approval write — which is

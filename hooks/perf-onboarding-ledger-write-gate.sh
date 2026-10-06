@@ -82,13 +82,15 @@ case "$NORM_PATH" in
 esac
 
 # shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
 PIPELINE_LEDGER="$FILE_PATH"
 PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
 PIPELINE_SCHEMA_NAME="perf-onboarding-status"
 PIPELINE_MSG_LEDGER_NAME='perf-onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL='tests/perf/docs/perf-onboarding-status.json'
+PIPELINE_MSG_LEDGER_REL="$LEDGER_PERF_REL"
 PIPELINE_MSG_REVIEWER_LABEL='perf-reviewer-phase'
 PIPELINE_MSG_SKILL_REF='skills/perf-onboarding/SKILL.md'
 PIPELINE_APPROVER_TYPES="perf-reviewer"
@@ -215,7 +217,7 @@ pipeline_check_mode_authorizer "$TMP_PROPOSED" "$FILE_PATH" && exit 0
 # ---------------------------------------------------------------------------
 
 # PROJECT_ROOT is the directory containing tests/perf/docs/.
-PROJECT_ROOT="${FILE_PATH%/tests/perf/docs/perf-onboarding-status.json}"
+PROJECT_ROOT="${FILE_PATH%/$LEDGER_PERF_REL}"
 
 # Build the set of phase IDs whose status is transitioning to "completed".
 PHASES_NEWLY_COMPLETED=""

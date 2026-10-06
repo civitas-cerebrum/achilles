@@ -113,13 +113,15 @@ case "$NORM_PATH" in
 esac
 
 # shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
 PIPELINE_LEDGER="$FILE_PATH"
 PIPELINE_SIDECAR="$(dirname "$FILE_PATH")/.ledger-integrity.json"
 PIPELINE_SCHEMA_NAME="onboarding-status"
 PIPELINE_MSG_LEDGER_NAME='onboarding-status.json'
 PIPELINE_MSG_SIDECAR_REL='tests/e2e/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL='tests/e2e/docs/onboarding-status.json'
+PIPELINE_MSG_LEDGER_REL="$LEDGER_ONBOARDING_REL"
 PIPELINE_MSG_REVIEWER_LABEL='workflow-reviewer-phase'
 PIPELINE_MSG_SKILL_REF='skills/onboarding/SKILL.md'
 PIPELINE_APPROVER_TYPES="workflow-reviewer phase-validator process-validator"
@@ -287,7 +289,7 @@ pipeline_check_mode_authorizer "$TMP_PROPOSED" "$FILE_PATH" && exit 0
 
 # PROJECT_ROOT is the directory containing tests/e2e/docs/. The ledger
 # path is .../tests/e2e/docs/onboarding-status.json — strip the tail.
-PROJECT_ROOT="${FILE_PATH%/tests/e2e/docs/onboarding-status.json}"
+PROJECT_ROOT="${FILE_PATH%/$LEDGER_ONBOARDING_REL}"
 
 # Build the set of phase IDs whose status is transitioning to "completed"
 # in this write. Compare proposed[N].status vs prior[N].status (treat

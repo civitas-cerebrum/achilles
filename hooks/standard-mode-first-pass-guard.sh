@@ -153,7 +153,8 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 # Resolve the cwd (where the state files live) — fall back to "." if absent.
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-WORKFLOW_LEDGER="$GUARD_REPO_ROOT/tests/e2e/docs/onboarding-status.json"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+WORKFLOW_LEDGER="$(ledger_path "$GUARD_REPO_ROOT" onboarding)"
 COV_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/coverage-expansion-state.json"
 CYCLE_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 
@@ -175,13 +176,13 @@ if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*(\[(group|P3-batch)\]|(test-comp
   LEDGER_USED=""
   if [ -f "$WORKFLOW_LEDGER" ]; then
     LEDGER_USED="workflow"
-    RUN_MODE_RAW=$("$JQ" -r '.runMode // "standard"' "$WORKFLOW_LEDGER" 2>/dev/null || echo "standard")
+    RUN_MODE_RAW=$(ledger_get "$WORKFLOW_LEDGER" .runMode standard)
     case "$RUN_MODE_RAW" in
       depth) RUN_MODE="depth" ;;
       *)     RUN_MODE="standard" ;;
     esac
-    CURRENT_PHASE=$("$JQ" -r '.currentPhase // 0' "$WORKFLOW_LEDGER" 2>/dev/null || echo "0")
-    CURRENT_SUB_STAGE=$("$JQ" -r '.currentSubStage // ""' "$WORKFLOW_LEDGER" 2>/dev/null || echo "")
+    CURRENT_PHASE=$(ledger_get "$WORKFLOW_LEDGER" .currentPhase 0)
+    CURRENT_SUB_STAGE=$(ledger_get "$WORKFLOW_LEDGER" .currentSubStage)
     case "$CURRENT_PHASE" in
       ''|*[!0-9]*) CURRENT_PHASE=0 ;;
     esac
@@ -353,7 +354,7 @@ if [ "$HIT_COUNT" -ge 3 ]; then
   # bare journey-mapping run outside onboarding).
   RULE3_IN_SCOPE=0
   if [ -f "$WORKFLOW_LEDGER" ]; then
-    R3_PHASE=$("$JQ" -r '.currentPhase // 0' "$WORKFLOW_LEDGER" 2>/dev/null || echo "0")
+    R3_PHASE=$(ledger_get "$WORKFLOW_LEDGER" .currentPhase 0)
     case "$R3_PHASE" in ''|*[!0-9]*) R3_PHASE=0 ;; esac
     [ "$R3_PHASE" -eq 4 ] && RULE3_IN_SCOPE=1
   else

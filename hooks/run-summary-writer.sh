@@ -38,7 +38,9 @@ out="$ROOT/.achilles/run-summary.json"
 mkdir -p "$ROOT/.achilles"
 
 phases_json='[]'
-[ -f "$DOCS/onboarding-status.json" ] && phases_json=$("$JQ" -c '.phases // []' "$DOCS/onboarding-status.json" 2>/dev/null || echo '[]')
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+LEDGER="$(ledger_path "$ROOT" onboarding)"
+[ -f "$LEDGER" ] && phases_json=$("$JQ" -c '.phases // []' "$LEDGER" 2>/dev/null || echo '[]')
 
 scenarios_json='[]'
 [ -d "$ROOT/tests" ] && scenarios_json=$(find "$ROOT/tests" -type f \( -name '*.spec.ts' -o -name '*.spec.js' -o -name '*.spec.mjs' \) | "$JQ" -R . | "$JQ" -s .)
