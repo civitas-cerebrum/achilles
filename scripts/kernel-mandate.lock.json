@@ -1,7 +1,7 @@
 {
   "upstream": {
     "repo": "civitas-cerebrum/kernel-mandate",
-    "commit": "e77420374de2627f7bf2bcc7bc15aad2c1d2808e"
+    "commit": "928a07b0c147507eb197c397176787b0b26943de"
   },
   "files": {
     "hooks/kernel-mandate-role-gate.sh": "00833dd7496519828f70e8c7065016a5d88242e27d72fdcd0f7af59d4b2803d5",
@@ -73,7 +73,7 @@
     "hooks/tests/cases/kernel-mandate/65-dispatch-subagent-type.sh": "a48fc083bf277c3b84ce7a0b0a176890c83006120392be1397a1214cbc4311bd",
     "hooks/tests/cases/kernel-mandate/66-package-manager-reanchor.sh": "f347a9171a5772efe63259b34a53d6dd1ad88766f634bdfb86b807dc24025650",
     "hooks/tests/cases/kernel-mandate/67-runtime-capabilities.sh": "a97b5fb2cd1bee500246cf9c7e06dca74f32d72b4bd511004339b4fd87b529d0",
-    "hooks/tests/cases/kernel-mandate/68-portable-userland.sh": "a6769c87d813717f4fa33dff9fe04746ad0a247aa3dd4d99daa41f21afac7a56",
+    "hooks/tests/cases/kernel-mandate/68-portable-userland.sh": "9bf7acb87cab0bdd965df48e801d097b2857ff5ec707715145771965402894f9",
     "schemas/kernel-mandate-bundle.fixtures/invalid-bad-fingerprint-and-missing-revision.json": "36fb12ee7d0deb194107a7e81457d68e58c625c3345fd98d423d20c59bc47348",
     "schemas/kernel-mandate-bundle.fixtures/valid-qa-pipeline.km.json": "e8e52e31df82ce9e2035bd14aac26d03d1cc27440d7b926c05e7909b3ecef17d",
     "schemas/kernel-mandate-bundle.schema.json": "eb2b09121bb24b3bebd923f6e38e4963a6d241e116c5a701ad04987c7a969d35",

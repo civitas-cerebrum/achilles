@@ -127,15 +127,16 @@ assert_allow "$H" "$(pu_read "$PU_TMP/proj/tests/a.spec.ts")" "calibration: read
 assert_allow "$H" "$(payload tool_name=Write file_path=/tmp/km-68-probe.txt content=x cwd="$PU_TMP/proj")" \
   "write.allow /tmp/** allows /tmp/x"
 
+# /tm?/zz is narrow on purpose: /tm?/** would also match the test's own mktemp dir on Linux.
 # A wildcard at or above the link has no literal prefix to resolve, so a
 # deny list is also matched against the path as written.
 "$JQ" -n --arg link "$PU_TMP/lin" '{ kernelMandateVersion: 1, name: "wild", settings: { mainSessionRole: "author" },
   roles: { author: { description: "reads broadly except named trees", tools: { allow: ["Read"] },
-    read: { allow: ["**"], deny: ["/*/hosts", "/e*/**", "/tm?/**", ($link + "?/**")] } } } }' > "$PU_TMP/proj/.claude/wild.json"
+    read: { allow: ["**"], deny: ["/*/hosts", "/e*/**", "/tm?/zz", ($link + "?/**")] } } } }' > "$PU_TMP/proj/.claude/wild.json"
 export KERNEL_MANDATE_MANIFEST="$PU_TMP/proj/.claude/wild.json"
 assert_deny  "$H" "$(pu_read /etc/hosts)"                    "read.deny /*/hosts denies /etc/hosts" "explicitly denied"
 assert_deny  "$H" "$(pu_read /etc/passwd)"                   "read.deny /e*/** denies /etc/passwd" "explicitly denied"
-assert_deny  "$H" "$(pu_read /tmp/zz)"                       "read.deny /tm?/** denies /tmp/zz" "explicitly denied"
+assert_deny  "$H" "$(pu_read /tmp/zz)"                       "read.deny /tm?/zz denies /tmp/zz" "explicitly denied"
 assert_deny  "$H" "$(pu_read "$PU_TMP/link/f")"             "read.deny <lin>?/** denies a file reached through the link" "explicitly denied"
 assert_allow "$H" "$(pu_read "$PU_TMP/proj/tests/a.spec.ts")" "calibration: wildcard denies leave other paths alone → ALLOW"
 
