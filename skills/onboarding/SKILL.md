@@ -125,9 +125,8 @@ shape:
 
 - **`description`** — `<role>-<slug>: <task>`, where `<role>` is the
   exact manifest role name: `scaffolder`, `test-composer`,
-  `in-flight-composer`, `workflow-reviewer`, `phase-validator`,
-  `process-validator`, `batch-reviewer`, `perf-reviewer`,
-  `selector-diff-validator`, plus the in-pipeline worker roles
+  `workflow-reviewer`, `phase-validator`, `process-validator`,
+  `perf-reviewer`, plus the in-pipeline worker roles
   `phase1`, `phase2`, `phase4`, `stage2`, `probe`, `reviewer`,
   `cleanup`, `companion`, `fd` and `contribution-handover`. The longest
   matching role name wins, so `workflow-reviewer-phase3:` binds

@@ -2,12 +2,6 @@
   "name": "achilles-qa",
   "mainSessionRole": "orchestrator",
   "roles": {
-    "batch-reviewer": {
-      "description": "Approver: reviews a batch of composed specs and records the batch verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
-      "agentTypes": [
-        "batch-reviewer"
-      ]
-    },
     "cleanup": {
       "description": "Cleanup / dedup worker for the coverage-expansion cleanup pass (`cleanup-<scope>:`): removes redundant specs under tests/e2e/** and re-runs the suite to prove the remainder is still green. Never the status ledger and never the page repository.",
       "agentTypes": [
@@ -44,16 +38,6 @@
         "@playwright/test"
       ]
     },
-    "in-flight-composer": {
-      "description": "Same mandate as test-composer, for specs composed mid-pipeline (coverage-expansion passes, self-repair heals).",
-      "agentTypes": [
-        "in-flight-composer"
-      ],
-      "codeImports": [
-        "@playwright/test",
-        "@civitas-cerebrum/element-interactions"
-      ]
-    },
     "orchestrator": {
       "description": "The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config — playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Never touches application source or secrets.",
       "agentTypes": [
@@ -61,13 +45,13 @@
       ]
     },
     "perf-reviewer": {
-      "description": "Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. Reads only; no shell.",
+      "description": "Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. No shell; writes only the ledger.",
       "agentTypes": [
         "perf-reviewer"
       ]
     },
     "phase-validator": {
-      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. Reads only; no shell.",
+      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. No shell; writes only the ledger.",
       "agentTypes": [
         "phase-validator"
       ]
@@ -101,7 +85,7 @@
       ]
     },
     "process-validator": {
-      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. No shell; writes only the ledger.",
       "agentTypes": [
         "process-validator"
       ]
@@ -116,12 +100,6 @@
       "description": "Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch — the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
       "agentTypes": [
         "scaffolder"
-      ]
-    },
-    "selector-diff-validator": {
-      "description": "Read-only validator: compares selector changes across tests/** and reports. Writes nothing; no shell.",
-      "agentTypes": [
-        "selector-diff-validator"
       ]
     },
     "stage2": {
@@ -141,7 +119,7 @@
       ]
     },
     "workflow-reviewer": {
-      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. No shell; writes only the ledger.",
       "agentTypes": [
         "workflow-reviewer"
       ]
@@ -227,12 +205,10 @@
         "npm run test:repair"
       ],
       "dispatches": [
-        "batch-reviewer",
         "cleanup",
         "companion",
         "contribution-handover",
         "fd",
-        "in-flight-composer",
         "perf-reviewer",
         "phase-validator",
         "phase1",
@@ -242,7 +218,6 @@
         "process-validator",
         "reviewer",
         "scaffolder",
-        "selector-diff-validator",
         "stage2",
         "test-composer",
         "workflow-reviewer"
@@ -282,31 +257,6 @@
     {
       "id": "compose",
       "role": "test-composer",
-      "reads": [
-        "tests/**",
-        "docs/**",
-        "tests/e2e/page-repository.json"
-      ],
-      "writes": [
-        "tests/e2e/**"
-      ],
-      "runs": [
-        "npx playwright test"
-      ],
-      "network": [
-        "localhost"
-      ],
-      "skills": [
-        "test-composer",
-        "achilles-protocol",
-        "database-testing",
-        "selector-development",
-        "test-data-conventions"
-      ]
-    },
-    {
-      "id": "compose-in-flight",
-      "role": "in-flight-composer",
       "reads": [
         "tests/**",
         "docs/**",
@@ -372,20 +322,6 @@
       ]
     },
     {
-      "id": "review-batch",
-      "role": "batch-reviewer",
-      "reads": [
-        "tests/**",
-        "docs/**"
-      ],
-      "writes": [
-        "tests/e2e/docs/onboarding-status.json"
-      ],
-      "skills": [
-        "workflow-reviewer"
-      ]
-    },
-    {
       "id": "review-perf",
       "role": "perf-reviewer",
       "reads": [
@@ -397,13 +333,6 @@
       ],
       "skills": [
         "workflow-reviewer"
-      ]
-    },
-    {
-      "id": "validate-selectors",
-      "role": "selector-diff-validator",
-      "reads": [
-        "tests/**"
       ]
     },
     {

@@ -64,14 +64,14 @@ section "kernel wiring: the role ledger ships and is staged beside the mandate"
 # ships, and it claims nothing the manifest does not.
 LEDGER="$HOOK_DIR/data/achilles-qa.kernel-mandate.md"
 assert_eq "$([ -f "$LEDGER" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.kernel-mandate.md ships"
-for ROLE in orchestrator scaffolder test-composer in-flight-composer workflow-reviewer \
-            phase-validator process-validator batch-reviewer perf-reviewer selector-diff-validator \
+for ROLE in orchestrator scaffolder test-composer workflow-reviewer \
+            phase-validator process-validator perf-reviewer \
             probe reviewer phase1 phase2 phase4 stage2 cleanup companion fd contribution-handover; do
   assert_eq "$(grep -c "^### \`$ROLE\`" "$LEDGER")" "1" "ledger documents the $ROLE role exactly once"
 done
-assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "20" "every role carries a refusal list — the half a manifest states only by omission"
-assert_eq "$(grep -c '^## Handover contracts' "$LEDGER")" "1" "the ledger names the handover contracts"
-assert_eq "$(grep -c '^```mermaid' "$LEDGER")" "1" "the ledger carries the workflow flowchart"
+assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "17" "every role carries a refusal list — the half a manifest states only by omission"
+assert_eq "$(grep -c 'Snapshot of the upstream render' "$LEDGER")" "0" "the ledger carries no unregenerated snapshot sections"
+assert_eq "$("$JQ" -r '.roles | keys | map(select(. == "batch-reviewer" or . == "in-flight-composer" or . == "selector-diff-validator")) | length' "$MANDATE")" "0" "orphan roles with no dispatch site are gone"
 # The approver roles hold no shell. The ledger must SAY so, in the section
 # for one of them — a ledger that quietly widens a role is worse than none.
 APPROVER_SECTION=$(awk '/^### `workflow-reviewer`/{p=1} p{print} p&&/^### `[a-z-]+`$/&&!/workflow-reviewer/{exit}' "$LEDGER")
@@ -158,6 +158,9 @@ Verify the ledger.' cwd="$KP")" \
 sub() { payload "$@" cwd="$KP" | "$JQ" -c '. + {agent_id: ("sub-" + .agent_type)}'; }
 assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=workflow-reviewer command='ls')" \
   "workflow-reviewer Bash → DENY (approvers have no shell)" "may not use the 'Bash' tool"
+for APPROVER in phase-validator process-validator perf-reviewer; do
+  assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=$APPROVER command='ls')" "$APPROVER Bash → DENY (approvers have no shell)" "may not use the 'Bash' tool"
+done
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=workflow-reviewer file_path="$KP/tests/e2e/docs/onboarding-status.json" content='{}')" \
   "workflow-reviewer Write the ledger → ALLOW"
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=workflow-reviewer file_path="$KP/tests/e2e/login.spec.ts" content='x')" \
@@ -168,8 +171,6 @@ assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path
   "test-composer Write a spec (relative import) → ALLOW"
 assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$KP/src/app.ts")" \
   "test-composer Read src/app.ts → DENY" "outside the role's read scope"
-assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=selector-diff-validator file_path="$KP/tests/e2e/x.ts" content='x')" \
-  "selector-diff-validator Write → DENY (writes nothing)" "may not use the 'Write' tool"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: runner config is the scaffolder's; imports are the composers'"
@@ -213,19 +214,16 @@ assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path
   "test-composer Write a spec importing @civitas-cerebrum/element-interactions → ALLOW"
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/x.spec.ts" content='import fs from "fs"')" \
   "test-composer Write a spec importing fs → DENY" "filesystem access"
-assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=in-flight-composer file_path="$KP/tests/e2e/x.spec.ts" content='import { test } from "@playwright/test";')" \
-  "in-flight-composer Write a spec importing @playwright/test → ALLOW"
 IMPORTS_CHECK=$("$JQ" -rn --slurpfile m "$MANDATE" '
   ($m[0].roles) as $r |
   [
     (if ($r["test-composer"].write.codeImports == ["@civitas-cerebrum/element-interactions","@playwright/test"]) then "composer-imports" else "composer-imports-drift" end),
-    (if ($r["in-flight-composer"].write.codeImports == $r["test-composer"].write.codeImports) then "in-flight-same" else "in-flight-drift" end),
     (if ($r.scaffolder.tools.allow | index("Bash") == null and index("Agent") == null) then "scaffolder-no-bash-no-agent" else "scaffolder-has-shell-or-dispatch" end),
     (if ($r.orchestrator.write.allow | index("playwright.config.ts") == null and index("package.json") == null) then "orchestrator-no-config" else "orchestrator-writes-config" end),
     (if ($r.orchestrator.dispatch | index("scaffolder") != null) then "orchestrator-dispatches-scaffolder" else "no-scaffolder-dispatch" end)
   ] | join(" ")')
-assert_eq "$IMPORTS_CHECK" "composer-imports in-flight-same scaffolder-no-bash-no-agent orchestrator-no-config orchestrator-dispatches-scaffolder" \
-  "manifest: composers declare exactly the framework imports, scaffolder has no shell/dispatch, orchestrator writes no config and dispatches the scaffolder"
+assert_eq "$IMPORTS_CHECK" "composer-imports scaffolder-no-bash-no-agent orchestrator-no-config orchestrator-dispatches-scaffolder" \
+  "manifest: test-composer declares exactly the framework imports, scaffolder has no shell/dispatch, orchestrator writes no config and dispatches the scaffolder"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: dispatch grammar — every shape the skills teach binds, the old one is refused"
@@ -259,8 +257,6 @@ assert_allow "$KERNEL" "$(disp 'test-composer-sj-checkout-1: cycle 1' '<<kernel-
   "coverage-expansion: test-composer-sj-<slug> + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'test-composer-secrets-sweep: extract literals to .env' '<<kernel-mandate-role: test-composer#m3n4p7>>' test-composer)" \
   "onboarding Phase 7 / secrets-sweep: test-composer-secrets-sweep + tag → ALLOW"
-assert_allow "$KERNEL" "$(disp 'in-flight-composer-j-cart: heal the cart spec' '<<kernel-mandate-role: in-flight-composer#c1d2e3>>' in-flight-composer)" \
-  "in-flight-composer-<slug> + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'workflow-reviewer-phase3: review Phase 3' '<<kernel-mandate-role: workflow-reviewer#q7r8s9>>' workflow-reviewer)" \
   "workflow-reviewer SKILL.md / onboarding: workflow-reviewer-phase<N> + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'workflow-reviewer-pass2: review Pass 2' '<<kernel-mandate-role: workflow-reviewer#q7r8t0>>' workflow-reviewer)" \
@@ -275,10 +271,6 @@ assert_allow "$KERNEL" "$(disp 'perf-reviewer-pass-load: review the load pass' '
   "perf-onboarding: perf-reviewer-pass-<kind> + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'process-validator-stage-a-wave: validate the planned wave' '<<kernel-mandate-role: process-validator#w4x5y6>>' process-validator)" \
   "process-validator-workflow.md: process-validator-<scope> + tag → ALLOW"
-assert_allow "$KERNEL" "$(disp 'batch-reviewer-pass-1: cycle 1' '<<kernel-mandate-role: batch-reviewer#f4g5h6>>' batch-reviewer)" \
-  "batch-reviewer-<slug> + tag → ALLOW"
-assert_allow "$KERNEL" "$(disp 'selector-diff-validator-run1: diff the selectors' '<<kernel-mandate-role: selector-diff-validator#i7j8k9>>' selector-diff-validator)" \
-  "selector-diff-validator-<slug> + tag → ALLOW"
 # A tag without subagent_type still binds (the type is optional; when
 # present it must agree).
 assert_allow "$KERNEL" "$(disp 'test-composer-j-login-flow: compose' '<<kernel-mandate-role: test-composer#m3n4p8>>')" \
@@ -457,7 +449,7 @@ section "kernel wiring: the composers author specs, not the ledger or the page r
 # page repository — contradicting the scaffolder's own description
 # ("Write-only author of … tests/e2e/page-repository.json") and
 # reviewer-subagent-contract.md §"Do NOT append to the ledger".
-for COMPOSER in test-composer in-flight-composer; do
+for COMPOSER in test-composer; do
   assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/docs/onboarding-status.json" content='{}')" \
     "$COMPOSER Write the status ledger → DENY" "explicitly denied write"
   assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/page-repository.json" content='{}')" \
