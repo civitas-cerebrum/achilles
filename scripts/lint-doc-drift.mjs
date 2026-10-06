@@ -453,25 +453,40 @@ function checkRoleLedgerInventory() {
 // Check 8 — every env switch read by hooks/scripts has a row in opt-in-surfaces.md
 // ---------------------------------------------------------------------------
 const OPT_IN_DOC = 'skills/achilles-protocol/references/opt-in-surfaces.md';
+const KNOWN_LIMITS_DOC = 'skills/achilles-protocol/references/known-limits.md';
 function checkOptInSurfaces() {
   const detail = [];
   const sources = [
     ...walk('hooks', (p) => /\.(sh|js|cjs|mjs)$/.test(p) && !p.includes('/tests/') && !p.endsWith('validator.bundle.mjs')),
-    'scripts/postinstall.js',
+    ...readdirSync('scripts').filter((f) => /\.(js|mjs)$/.test(f) && f !== 'lint-doc-drift.mjs').map((f) => join('scripts', f)),
+  ];
+  // Operator-facing switch names: project prefixes plus the *_GATE/_GUARD/_OVERRIDE
+  // suffixes the gates use. Ordinary environment is excluded by the deny-list.
+  const switchShape = /^(ACHILLES_|CIVITAS_|KERNEL_MANDATE|SCHEMA_RETURN_GUARD|DECK_INSPECTION_GATE|FAKE_|DISABLE_|SKIP_)|(_GATE|_GUARD|_OVERRIDE)$/;
+  const ordinaryEnv = /^(HOME|PATH|TMPDIR|CLAUDE_.*|XDG_.*|PLAYWRIGHT_(?!SKIP_).*|PWD|USER|SHELL|LANG)$/;
+  const readShapes = [
+    /\$\{([A-Z][A-Z0-9_]*):?[-=?+]/g, // ${NAME:-default}: a read with a default is how hooks consume env; bare $NAME is also a local
+    /process\.env\.([A-Z][A-Z0-9_]*)/g,
+    /process\.env\[['"]([A-Z][A-Z0-9_]*)['"]\]/g,
   ];
   const names = new Set();
-  const shellRead = /\$\{((?:ACHILLES|CIVITAS|KERNEL_MANDATE|DECK_INSPECTION|WORKFLOW_REVIEWER|SCHEMA_RETURN|FAKE_STAGED|FACTORY|PLAYWRIGHT_SKIP)[A-Z0-9_]*):?[-=]/g;
-  const nodeRead = /process\.env\.((?:ACHILLES|CIVITAS|KERNEL_MANDATE|PLAYWRIGHT_SKIP)[A-Z0-9_]*)/g;
   for (const f of sources) {
     const text = readFileSync(f, 'utf8');
-    for (const m of text.matchAll(shellRead)) names.add(m[1]);
-    for (const m of text.matchAll(nodeRead)) names.add(m[1]);
+    for (const re of readShapes)
+      for (const m of text.matchAll(re)) if (switchShape.test(m[1]) && !ordinaryEnv.test(m[1])) names.add(m[1]);
   }
   const doc = existsSync(OPT_IN_DOC) ? readFileSync(OPT_IN_DOC, 'utf8') : '';
   const missing = [...names].filter((n) => !doc.includes('`' + n + '`')).sort();
   if (!doc) detail.push(`${OPT_IN_DOC} is missing`);
   if (missing.length) detail.push(`switches read in code with no row in ${OPT_IN_DOC}: ${missing.join(', ')}`);
-  report(`env switches read by hooks/scripts ↔ opt-in-surfaces.md (${names.size} switches read)`, detail.length === 0, detail);
+
+  // Check 8b — a Detector cell naming a cases/NN-*.sh file must name a file that exists.
+  const limits = existsSync(KNOWN_LIMITS_DOC) ? readFileSync(KNOWN_LIMITS_DOC, 'utf8') : '';
+  if (!limits) detail.push(`${KNOWN_LIMITS_DOC} is missing`);
+  for (const m of limits.matchAll(/`cases\/((?:kernel-mandate\/)?[\w.-]+\.sh)`/g))
+    if (!existsSync(join('hooks/tests/cases', m[1]))) detail.push(`${KNOWN_LIMITS_DOC} names a missing detector: cases/${m[1]}`);
+
+  report(`env switches read by hooks/scripts ↔ opt-in-surfaces.md; known-limits detectors exist (${names.size} switches read)`, detail.length === 0, detail);
 }
 // ---------------------------------------------------------------------------
 // Check 9 — workflow table ↔ QA mandate parity (stands in for `kernel-mandate derive --check`)
