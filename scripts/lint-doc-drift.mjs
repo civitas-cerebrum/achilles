@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Seven independent checks; each reports pass/fail; the process
+// describe. Eight independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -17,6 +17,7 @@
 //       filesystem (hooks/*.sh, hooks/*-gate.sh + *-guard.sh, skills/*/)
 //   (7) the QA role ledger's role inventory  ↔  the QA mandate's roles
 //       (role-name sets both ways, plus the count the ledger states in prose)
+//   (8) every environment switch a hook or script reads  ↔  a row in opt-in-surfaces.md
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -447,6 +448,30 @@ function checkRoleLedgerInventory() {
     detail,
   );
 }
+// ---------------------------------------------------------------------------
+// Check 8 — every env switch read by hooks/scripts has a row in opt-in-surfaces.md
+// ---------------------------------------------------------------------------
+const OPT_IN_DOC = 'skills/achilles-protocol/references/opt-in-surfaces.md';
+function checkOptInSurfaces() {
+  const detail = [];
+  const sources = [
+    ...walk('hooks', (p) => /\.(sh|js|cjs|mjs)$/.test(p) && !p.includes('/tests/') && !p.endsWith('validator.bundle.mjs')),
+    'scripts/postinstall.js',
+  ];
+  const names = new Set();
+  const shellRead = /\$\{((?:ACHILLES|CIVITAS|KERNEL_MANDATE|DECK_INSPECTION|WORKFLOW_REVIEWER|SCHEMA_RETURN|FAKE_STAGED|FACTORY|PLAYWRIGHT_SKIP)[A-Z0-9_]*):?[-=]/g;
+  const nodeRead = /process\.env\.((?:ACHILLES|CIVITAS|KERNEL_MANDATE|PLAYWRIGHT_SKIP)[A-Z0-9_]*)/g;
+  for (const f of sources) {
+    const text = readFileSync(f, 'utf8');
+    for (const m of text.matchAll(shellRead)) names.add(m[1]);
+    for (const m of text.matchAll(nodeRead)) names.add(m[1]);
+  }
+  const doc = existsSync(OPT_IN_DOC) ? readFileSync(OPT_IN_DOC, 'utf8') : '';
+  const missing = [...names].filter((n) => !doc.includes('`' + n + '`')).sort();
+  if (!doc) detail.push(`${OPT_IN_DOC} is missing`);
+  if (missing.length) detail.push(`switches read in code with no row in ${OPT_IN_DOC}: ${missing.join(', ')}`);
+  report(`env switches read by hooks/scripts ↔ opt-in-surfaces.md (${names.size} switches read)`, detail.length === 0, detail);
+}
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
@@ -454,6 +479,7 @@ checkRoleMapCoverage();
 checkHookReferences();
 checkDocsCounts();
 checkRoleLedgerInventory();
+checkOptInSurfaces();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');
