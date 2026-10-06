@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // build-validator.mjs — generates hooks/lib/validator.bundle.mjs, a
-// dependency-free single-file validator with every schema inlined.
+// dependency-free single-file validator with every schema inlined, and
+// hooks/lib/babel-parser.bundle.js, @babel/parser as one CJS file for
+// import-boundary-scan.js (installed hooks run from ~/.claude/hooks/lib,
+// outside any node_modules tree).
 // Spec: skills/achilles-protocol/references/harness-hooks.md
 //
 // Subcommand contract of the emitted bundle:
@@ -129,3 +132,15 @@ try {
 } finally {
   rmSync(GEN_ENTRY, { force: true });
 }
+
+rmSync('hooks/lib/babel-parser.bundle.js', { force: true });
+await build({
+  entryPoints: ['@babel/parser'],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  outfile: 'hooks/lib/babel-parser.bundle.js',
+  legalComments: 'none',
+  logLevel: 'warning',
+});
+console.log('✓ hooks/lib/babel-parser.bundle.js');

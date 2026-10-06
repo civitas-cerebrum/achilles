@@ -7,19 +7,31 @@
 // source is parsed with @babel/parser and anything the screen cannot read is
 // denied.
 //
-//   config   root playwright*.config.ts: imports from a fixed allowlist or
-//            relative under tests/; globalSetup / globalTeardown / testDir and
-//            file reporters evaluate statically to paths under tests/.
+//   config   root playwright*.config.ts: bare imports from a fixed allowlist,
+//            no value-producing relative import; exactly one export, of an
+//            object literal / defineConfig(object literals) / a const bound to
+//            one and referenced nowhere else; a top-level testDir, and every
+//            globalSetup / globalTeardown / testDir / tsconfig / file reporter
+//            evaluating statically to a path under tests/; projects as an
+//            array of object literals; no Object.* / Reflect / JSON / exports.
 //   tests    every file under tests/, whatever its extension (node's CJS
 //            loader runs any extension as JS): every specifier is one string
 //            literal; relative ones resolve under tests/ and load code or JSON;
-//            no `#` imports, no self-reference to the project's package.
-//            package.json and tsconfig/jsconfig there may not point outside.
+//            no `#` imports, no self-reference, no module / vm / child_process /
+//            worker_threads / process modules. package.json and tsconfig /
+//            jsconfig there may not point outside.
+//   both     no eval / Function / createRequire / Reflect; process, module,
+//            globalThis and global only as the object of a static member read
+//            (never a value); require only as require("…") / require.resolve;
+//            no .require / ._load / ._compile / .constructor / process loader
+//            members on any object; no loader names as pattern keys or bare
+//            strings; no computed key assembled from strings.
 //   package  root package.json: name, exports and imports may not change.
 //
 // Usage: <PreToolUse payload> | node import-boundary-scan.js <file> <cwd>
 //   → {"scope":"config"|"tests"|"package"|"none","offenders":["…", …]}
-// Exit 3 when the time budget runs out; any non-zero exit is a deny.
+// Exit 3 when the time budget runs out; any non-zero exit is a deny, with one
+// reason line on stderr.
 
 'use strict';
 
@@ -31,20 +43,29 @@ const { execFileSync } = require('child_process');
 const MAX_BYTES = 256 * 1024;
 const DEADLINE = Date.now() + 5000;
 const CONFIG_IMPORTS = new Set(['@playwright/test', '@civitas-cerebrum/element-interactions', 'dotenv', 'dotenv/config', 'node:path', 'path', 'node:url', 'url']);
+// Modules that load or run code by path, or hand out the loader; a tests/ file never needs them.
+const LOADER_MODULES = new Set(['module', 'vm', 'child_process', 'worker_threads', 'process']);
 const CODE_EXT = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
-const LIFECYCLE = new Set(['globalSetup', 'globalTeardown', 'testDir', 'reporter']);
+const PATH_KEYS = new Set(['globalSetup', 'globalTeardown', 'testDir', 'tsconfig', 'reporter']);
+// Members that reach the loader from any object: Module.prototype, process, Function.prototype.
+const LOADER_MEMBERS = new Set(['constructor', 'require', '_load', '_compile', 'mainModule', 'binding', '_linkedBinding', 'getBuiltinModule', 'dlopen']);
+const MODULE_MEMBERS = new Set(['exports', 'id', 'filename', 'path', 'loaded']);
+const GLOBAL_OBJECTS = new Set(['process', 'module', 'globalThis', 'global']);
+const CODE_RUNNERS = new Set(['eval', 'Function', 'createRequire', 'Reflect']);
 const CASE_FOLD = process.platform === 'darwin' || process.platform === 'win32';
 const fold = (s) => (CASE_FOLD ? s.toLowerCase() : s);
 const SKIP_KEYS = new Set(['loc', 'start', 'end', 'extra', 'range', 'leadingComments', 'trailingComments', 'innerComments', 'comments', 'tokens', 'errors']);
 
-// The hook runs from ~/.claude/hooks/lib, outside any node_modules tree: look
-// beside it, then in the project, then in the project's copy of this package.
+// The hook runs from ~/.claude/hooks/lib, outside any node_modules tree, so
+// the build bundles the parser beside it. Project lookups go through realpath:
+// a pnpm store keeps a package's dependencies next to its real directory.
 function loadParser(root) {
+  try { return require(path.join(__dirname, 'babel-parser.bundle.js')); } catch { /* unbuilt checkout */ }
   const bases = [__filename, path.join(root, 'package.json'), path.join(root, 'node_modules', '@civitas-cerebrum', 'achilles', 'package.json')];
   for (const b of bases) {
-    try { return createRequire(b)('@babel/parser'); } catch { /* next */ }
+    try { return createRequire(fs.realpathSync.native(b))('@babel/parser'); } catch { /* next */ }
   }
-  throw new Error('@babel/parser not found beside the hook or in the project');
+  throw new Error('@babel/parser not found; reinstall @civitas-cerebrum/achilles');
 }
 
 // ── paths ───────────────────────────────────────────────────────────────────
@@ -63,21 +84,30 @@ function within(dir, p) {
 }
 const testsDir = (root) => path.join(root, 'tests');
 const underTests = (root, abs) => within(testsDir(root), real(abs));
-const hasTestsSegment = (p) => p.split(path.sep).some((s) => fold(s) === 'tests');
 
-// $CLAUDE_PROJECT_DIR, else the git toplevel unless it sits at or under a
-// tests/ segment (a gitfile under tests/ would move it), else cwd cut above tests/.
+// The project directory above the shallowest `tests` segment of p, when that
+// directory has a package.json; null when p is not inside a project's tests/.
+function projectAbove(p) {
+  const parts = p.split(path.sep);
+  for (let i = 1; i < parts.length; i++) {
+    const above = parts.slice(0, i).join(path.sep) || path.sep;
+    if (fold(parts[i]) === 'tests' && fs.existsSync(path.join(above, 'package.json'))) return above;
+  }
+  return null;
+}
+
+// $CLAUDE_PROJECT_DIR, else the git toplevel unless it sits inside a project's
+// tests/ (a gitfile there would move the root), else cwd cut above tests/.
 function projectRoot(file, cwd) {
   if (process.env.CLAUDE_PROJECT_DIR) return real(path.resolve(process.env.CLAUDE_PROJECT_DIR));
   let dir = path.dirname(file);
   while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
   try {
     const top = execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (top && !hasTestsSegment(real(top))) return real(top);
+    if (top && projectAbove(real(top)) === null) return real(top);
   } catch { /* not a git work tree */ }
-  const parts = real(cwd).split(path.sep);
-  const t = parts.findIndex((s) => fold(s) === 'tests');
-  return t > 0 ? parts.slice(0, t).join(path.sep) : real(cwd);
+  const c = real(cwd);
+  return projectAbove(c) || c;
 }
 
 // ── JSONC (tsconfig accepts comments and trailing commas; node's package.json
@@ -141,7 +171,7 @@ function parseCode(src, file, parser) {
 function* walk(ast) {
   const stack = [{ node: ast.program, parent: null, key: null }];
   while (stack.length) {
-    if (Date.now() > DEADLINE) { process.stderr.write('time budget exceeded\n'); process.exit(3); }
+    if (Date.now() > DEADLINE) throw Object.assign(new Error('time budget exceeded'), { exitCode: 3 });
     const item = stack.pop();
     yield item;
     for (const [k, v] of Object.entries(item.node)) {
@@ -153,82 +183,101 @@ function* walk(ast) {
   }
 }
 
-const isId = (n, name) => n && n.type === 'Identifier' && (name === undefined || n.name === name);
-const isStr = (n) => n && n.type === 'StringLiteral';
+const isId = (n, name) => !!n && n.type === 'Identifier' && (name === undefined || n.name === name);
+const isStr = (n) => !!n && n.type === 'StringLiteral';
+const isMember = (n) => !!n && (n.type === 'MemberExpression' || n.type === 'OptionalMemberExpression');
+const isCall = (n) => !!n && (n.type === 'CallExpression' || n.type === 'OptionalCallExpression' || n.type === 'NewExpression');
+const isObj = (n) => !!n && n.type === 'ObjectExpression';
 // A member's property name when it is statically known; null when computed from code.
 function propName(m) {
   if (!m.computed && m.property.type === 'Identifier') return m.property.name;
   if (isStr(m.property)) return m.property.value;
   return null;
 }
-const isMember = (n) => n && (n.type === 'MemberExpression' || n.type === 'OptionalMemberExpression');
-const isCall = (n) => n && (n.type === 'CallExpression' || n.type === 'OptionalCallExpression' || n.type === 'NewExpression');
+// A property or pattern key's name; null when computed from code.
+function keyName(p) {
+  if (p.computed && !isStr(p.key)) return null;
+  return isId(p.key) ? p.key.name : isStr(p.key) ? p.key.value : p.key.type === 'NumericLiteral' ? String(p.key.value) : null;
+}
 function unwrap(n) {
   while (n && ['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'TSTypeAssertion', 'ParenthesizedExpression'].includes(n.type)) n = n.expression;
   return n;
 }
+const isKeyOf = (p, key) => !!p && key === 'key' && !p.computed && /^(?:Object|Class)(?:Property|Method|Accessor|PrivateProperty)$|^TS(?:Property|Method)Signature$/.test(p.type);
+const isStaticProp = (p, key) => isMember(p) && key === 'property' && !p.computed;
+// A TS node's child is a type unless it is the wrapped expression, a parameter
+// property or an enum initializer.
+const inTypePosition = (p, key) => !!p && p.type.startsWith('TS') && !['expression', 'parameter', 'initializer'].includes(key);
+const isLiteralText = (n) => isStr(n) || (n.type === 'TemplateLiteral' && n.expressions.length === 0);
+const literalText = (n) => (isStr(n) ? n.value : n.quasis.map((q) => q.value.cooked).join(''));
 
-// A call that loads a module: import(), require(), require.resolve(), any
-// `.require` / `._load` member, createRequire(…)(…).
+// A call that loads a module: import(), require(), require.resolve().
 function isLoaderCall(n) {
   if (n.type === 'ImportExpression') return true;
   if (!isCall(n)) return false;
   const c = unwrap(n.callee);
   if (c.type === 'Import' || isId(c, 'require')) return true;
-  if (isMember(c)) {
-    const p = propName(c);
-    if (p === 'require' || p === '_load') return true;
-    if (p === 'resolve' && isId(unwrap(c.object), 'require')) return true;
-  }
-  return isCall(c) && isId(unwrap(c.callee), 'createRequire');
+  return isMember(c) && propName(c) === 'resolve' && isId(unwrap(c.object), 'require');
 }
 
-// Each loaded specifier, or the reason it cannot be read.
+// Each loaded specifier with its node, or the reason it cannot be read.
 function specifiers(ast) {
   const out = [];
-  const take = (lit, where) => {
+  const take = (n, lit, where) => {
     if (!isStr(lit)) out.push({ bad: `${where} is not one string literal` });
     else if (/\\/.test((lit.extra && lit.extra.raw) || '')) out.push({ bad: `${where} "${lit.value}" contains an escape` });
-    else out.push({ spec: lit.value });
+    else out.push({ node: n, spec: lit.value, typeOnly: n.importKind === 'type' || n.exportKind === 'type' });
   };
   for (const { node: n } of walk(ast)) {
-    if (n.type === 'ImportDeclaration' || n.type === 'ExportAllDeclaration') take(n.source, 'import source');
-    else if (n.type === 'ExportNamedDeclaration' && n.source) take(n.source, 'export source');
-    else if (n.type === 'TSImportEqualsDeclaration' && n.moduleReference.type === 'TSExternalModuleReference') take(n.moduleReference.expression, 'import = require()');
+    if (n.type === 'ImportDeclaration' || n.type === 'ExportAllDeclaration') take(n, n.source, 'import source');
+    else if (n.type === 'ExportNamedDeclaration' && n.source) take(n, n.source, 'export source');
+    else if (n.type === 'TSImportEqualsDeclaration' && n.moduleReference.type === 'TSExternalModuleReference') take(n, n.moduleReference.expression, 'import = require()');
     else if (isLoaderCall(n)) {
       const args = n.type === 'ImportExpression' ? [n.source, ...(n.options ? [n.options] : [])] : n.arguments;
-      const extraOk = args.length === 2 && args[1].type === 'ObjectExpression' && (n.type === 'ImportExpression' || unwrap(n.callee).type === 'Import');
+      const extraOk = args.length === 2 && isObj(args[1]) && (n.type === 'ImportExpression' || unwrap(n.callee).type === 'Import');
       if (args.length !== 1 && !extraOk) out.push({ bad: 'a loader call takes other than one argument' });
-      else take(args[0], 'loader argument');
+      else take(n, args[0], 'loader argument');
     }
   }
   return out;
 }
 
-// Constructs that load or run code the specifier walk cannot see.
-function dangerous(ast) {
+// Constructs that reach the loader or run code the specifier walk cannot see.
+function aliasOffences(ast) {
   const out = [];
   for (const { node: n, parent: p, key } of walk(ast)) {
-    if (n.type === 'Identifier' && ['eval', 'Function', 'createRequire'].includes(n.name) && !(p && /^TS(?:TypeReference|QualifiedName|ExpressionWithTypeArguments|InterfaceHeritage)$/.test(p.type))
-        && !(isMember(p) && key === 'property' && !p.computed) && !(p && p.type === 'ObjectProperty' && key === 'key' && !p.computed)) {
-      out.push(`${n.name} — code the screen cannot read`);
-    }
-    if (isId(n, 'require')) {
-      const callee = p && isCall(p) && key === 'callee';
-      const resolveObj = isMember(p) && key === 'object' && propName(p) === 'resolve';
-      const declKey = (isMember(p) && key === 'property' && !p.computed) || (p && p.type === 'ObjectProperty' && key === 'key' && !p.computed);
-      if (!callee && !resolveObj && !declKey) out.push('require used other than require("<literal>")');
-    }
-    if (isMember(n)) {
+    if (n.type === 'Identifier') {
+      if (isStaticProp(p, key) || isKeyOf(p, key) || inTypePosition(p, key)) continue;
+      const name = n.name;
+      const isTypeof = p && p.type === 'UnaryExpression' && p.operator === 'typeof';
+      if (CODE_RUNNERS.has(name) && !isTypeof && !(name === 'Function' && p && p.type === 'BinaryExpression' && p.operator === 'instanceof' && key === 'right')) {
+        out.push(`${name} — code the screen cannot read`);
+      } else if (name === 'require') {
+        const callee = isCall(p) && key === 'callee';
+        const resolveObj = isMember(p) && key === 'object' && propName(p) === 'resolve';
+        if (!callee && !resolveObj && !isTypeof) out.push('require used other than require("<literal>") or require.resolve("<literal>")');
+      } else if (GLOBAL_OBJECTS.has(name) && !isTypeof && !(isMember(p) && key === 'object' && propName(p) !== null)) {
+        out.push(`${name} used as a value — only static member reads (${name}.x) are readable`);
+      }
+    } else if (isMember(n)) {
       const obj = unwrap(n.object);
       const name = propName(n);
-      if (name === null && (isId(obj, 'module') || isId(obj, 'require') || isId(obj, 'process') || isId(obj, 'globalThis') || isId(obj, 'global'))) {
-        out.push(`${obj.name}[…] computed from code`);
-      }
-      if (isId(obj, 'process') && ['binding', '_linkedBinding', 'getBuiltinModule', 'dlopen', 'mainModule'].includes(name)) out.push(`process.${name}`);
-      if (isId(obj, 'module') && ['constructor', 'require', 'children', 'parent'].includes(name) && !(name === 'require' && p && isCall(p) && key === 'callee')) out.push(`module.${name}`);
-      if (name === '_load' || name === 'constructor' && isId(obj, 'module')) out.push(`.${name}`);
-      if (name === 'require' && !(p && isCall(p) && key === 'callee')) out.push('.require used other than .require("<literal>")');
+      if (name === null) {
+        const k = n.property;
+        const strOperand = (e) => isStr(e) || e.type === 'TemplateLiteral';
+        if (isId(obj) && GLOBAL_OBJECTS.has(obj.name)) out.push(`${obj.name}[…] computed from code`);
+        else if ((k.type === 'TemplateLiteral' && k.expressions.length) || (k.type === 'BinaryExpression' && k.operator === '+' && (strOperand(k.left) || strOperand(k.right)))) out.push('a computed member key assembled from strings');
+      } else if (LOADER_MEMBERS.has(name)) {
+        out.push(`.${name} reaches the module loader or Function`);
+      } else if (isId(obj, 'module') && !MODULE_MEMBERS.has(name)) out.push(`module.${name}`);
+      else if (isId(obj) && (obj.name === 'globalThis' || obj.name === 'global') && (GLOBAL_OBJECTS.has(name) || CODE_RUNNERS.has(name) || name === 'require')) out.push(`${obj.name}.${name} — the global reached through another name`);
+    } else if (n.type === 'ObjectProperty' && p && p.type === 'ObjectPattern') {
+      const k = keyName(n);
+      if (k === null) out.push('a destructuring pattern with a computed key');
+      else if (LOADER_MEMBERS.has(k)) out.push(`{ ${k} } destructured — it reaches the module loader or Function`);
+    } else if (n.type === 'ObjectProperty' && keyName(n) === 'constructor') out.push('a constructor property key');
+    else if ((isStr(n) || n.type === 'TemplateLiteral') && !isKeyOf(p, key) && !(isMember(p) && key === 'property') && isLiteralText(n) && LOADER_MEMBERS.has(literalText(n))) {
+      out.push(`"${literalText(n)}" names a loader member`);
     }
   }
   return out;
@@ -237,7 +286,8 @@ function dangerous(ast) {
 // ── config ─────────────────────────────────────────────────────────────────
 
 // Statically evaluates a path expression the config may use; throws otherwise.
-function evalPath(n, root, cfgFile) {
+// require.resolve calls it accepts are recorded: the config may use no other.
+function evalPath(n, root, cfgFile, resolves) {
   n = unwrap(n);
   if (isStr(n)) {
     if (/\\/.test((n.extra && n.extra.raw) || '')) throw new Error('an escape in a path literal');
@@ -248,26 +298,26 @@ function evalPath(n, root, cfgFile) {
   if (n.type === 'CallExpression' && isMember(n.callee)) {
     const obj = unwrap(n.callee.object);
     const fn = propName(n.callee);
-    const args = () => n.arguments.map((a) => evalPath(a, root, cfgFile));
+    const args = () => n.arguments.map((a) => evalPath(a, root, cfgFile, resolves));
     if (isId(obj, 'path') && fn === 'join') return path.join(...args());
     if (isId(obj, 'path') && fn === 'resolve') return path.resolve(root, ...args());
     if (isId(obj, 'path') && fn === 'dirname' && n.arguments.length === 1) return path.dirname(args()[0]);
-    if (isId(obj, 'require') && fn === 'resolve' && n.arguments.length === 1) return path.resolve(root, args()[0]);
+    if (isId(obj, 'require') && fn === 'resolve' && n.arguments.length === 1) { resolves.add(n); return path.resolve(root, args()[0]); }
   }
   if (n.type === 'CallExpression' && isId(n.callee, 'fileURLToPath') && n.arguments.length === 1) {
-    const u = evalPath(n.arguments[0], root, cfgFile);
+    const u = evalPath(n.arguments[0], root, cfgFile, resolves);
     if (!u.startsWith('file://')) throw new Error('fileURLToPath of something other than import.meta.url');
     return u.slice('file://'.length);
   }
   throw new Error(`${n.type} is not a literal or path helper`);
 }
 
-function lifecycleOffences(key, value, root, cfgFile) {
+function pathKeyOffences(key, value, root, cfgFile, resolves) {
   const v = unwrap(value);
   const out = [];
   const check = (n, label) => {
     let p;
-    try { p = evalPath(n, root, cfgFile); } catch (e) { out.push(`${label}: ${e.message}`); return; }
+    try { p = evalPath(n, root, cfgFile, resolves); } catch (e) { out.push(`${label}: ${e.message}`); return; }
     if (!underTests(root, path.resolve(root, p))) out.push(`${label}: "${p}" resolves outside tests/`);
   };
   if (key === 'reporter') {
@@ -285,32 +335,39 @@ function lifecycleOffences(key, value, root, cfgFile) {
   return out;
 }
 
-// The object(s) the config exports: export default / module.exports of an
-// object, defineConfig(…objects), or an identifier bound to one of those.
+// The object literals the config exports. Exactly one export: `export default`
+// or `module.exports =` of an object literal, defineConfig(object literals),
+// or a top-level const bound to one of those and referenced nowhere else.
 function exportedConfigs(ast) {
   const top = new Map();
   for (const s of ast.program.body) {
-    const decl = s.type === 'ExportNamedDeclaration' ? s.declaration : s;
-    if (decl && decl.type === 'VariableDeclaration') for (const d of decl.declarations) if (isId(d.id)) top.set(d.id.name, d.init);
+    if (s.type === 'VariableDeclaration') for (const d of s.declarations) if (isId(d.id)) top.set(d.id.name, { kind: s.kind, init: d.init });
   }
   const exported = [];
   for (const s of ast.program.body) {
     if (s.type === 'ExportDefaultDeclaration') exported.push(s.declaration);
-    if (s.type === 'ExpressionStatement' && s.expression.type === 'AssignmentExpression') {
-      const l = s.expression.left;
-      if (isMember(l) && isId(l.object, 'module') && propName(l) === 'exports') exported.push(s.expression.right);
-    }
+    else if (s.type === 'ExportNamedDeclaration' && s.exportKind !== 'type' && !(s.declaration && /^TS(?:Interface|TypeAlias|Enum|Module|Declare)/.test(s.declaration.type))) throw new Error('a named export — the config exports exactly one default');
+    else if (s.type === 'ExportAllDeclaration' || s.type === 'TSExportAssignment') throw new Error(`${s.type} — the config exports exactly one default`);
+    else if (s.type === 'ExpressionStatement' && s.expression.type === 'AssignmentExpression' && isMember(s.expression.left)
+      && isId(unwrap(s.expression.left.object), 'module') && propName(s.expression.left) === 'exports') exported.push(s.expression.right);
   }
   if (exported.length !== 1) throw new Error(`${exported.length} config exports — exactly one is readable`);
   const objects = [];
-  const resolve = (n, depth) => {
+  const literals = (n) => {
     n = unwrap(n);
-    if (isId(n) && depth === 0 && top.has(n.name)) return resolve(top.get(n.name), 1);
-    if (n && n.type === 'ObjectExpression') return objects.push(n);
-    if (n && n.type === 'CallExpression' && isId(n.callee, 'defineConfig') && n.arguments.length) return n.arguments.forEach((a) => resolve(a, depth));
-    throw new Error(`the exported config is ${n ? n.type : 'empty'}, not an object the screen can read`);
+    if (isObj(n)) return objects.push(n);
+    if (n && n.type === 'CallExpression' && isId(n.callee, 'defineConfig') && n.arguments.length && n.arguments.every((a) => isObj(unwrap(a)))) return n.arguments.forEach((a) => objects.push(unwrap(a)));
+    throw new Error(`the exported config is ${n ? n.type : 'empty'}, not an object literal or defineConfig(object literals)`);
   };
-  resolve(exported[0], 0);
+  const e = unwrap(exported[0]);
+  if (isId(e) && top.has(e.name)) {
+    const b = top.get(e.name);
+    if (b.kind !== 'const') throw new Error(`${e.name} is ${b.kind}, not const — the exported binding may not change`);
+    let refs = 0;
+    for (const { node: n, parent: p, key } of walk(ast)) if (isId(n, e.name) && !isStaticProp(p, key) && !isKeyOf(p, key) && !inTypePosition(p, key)) refs++;
+    if (refs !== 2) throw new Error(`${e.name} is referenced outside its declaration and export — the exported object may not be touched`);
+    literals(b.init);
+  } else literals(e);
   return objects;
 }
 
@@ -342,42 +399,52 @@ function bindingOffences(ast) {
 
 function scanConfig(ast, root, cfgFile) {
   const out = [];
-  for (const s of specifiers(ast)) {
-    if (s.bad) out.push(s.bad);
-    else if (!CONFIG_IMPORTS.has(s.spec) && !((s.spec.startsWith('.') || path.isAbsolute(s.spec)) && underTests(root, path.resolve(root, s.spec)))) {
-      out.push(`import "${s.spec}" — not in the config import allowlist`);
-    }
+  const resolves = new Set();
+  let configs = [];
+  try { configs = exportedConfigs(ast); } catch (e) { out.push(e.message); }
+  if (configs.length && !configs.some((o) => o.properties.some((p) => p.type === 'ObjectProperty' && keyName(p) === 'testDir'))) {
+    out.push('no top-level testDir — Playwright would default to the config directory, which holds src/');
   }
-  out.push(...dangerous(ast), ...bindingOffences(ast));
-  try { exportedConfigs(ast); } catch (e) { out.push(e.message); }
-  // Every lifecycle key anywhere in the file, not only in the exported object:
-  // Object.assign(config, { globalSetup }) is the same channel.
+  const exportLeft = new Set(ast.program.body.filter((s) => s.type === 'ExpressionStatement' && s.expression.type === 'AssignmentExpression').map((s) => s.expression.left));
+  // Every path key anywhere in the file, not only in the exported object.
   for (const { node: n, parent: p, key } of walk(ast)) {
+    if (isMember(n) && isId(unwrap(n.object), 'module') && !exportLeft.has(n)) {
+      out.push(`module.${propName(n) || '[…]'} — the config writes module.exports once, as its only export`);
+    }
     if (n.type === 'ObjectProperty' || n.type === 'ObjectMethod') {
-      if (n.computed && !isStr(n.key)) { out.push('a computed property key'); continue; }
-      if (n.key.type === 'NumericLiteral') continue;
-      const k = isId(n.key) ? n.key.name : isStr(n.key) ? n.key.value : null;
-      if (k === null) { out.push(`a ${n.key.type} property key`); continue; }
-      if (!LIFECYCLE.has(k)) continue;
+      const k = keyName(n);
+      if (k === null) { out.push('a computed property key'); continue; }
+      if (k === '__proto__') { out.push('a __proto__ key'); continue; }
+      if (k === 'projects' && n.type === 'ObjectProperty') {
+        const v = unwrap(n.value);
+        if (!(v.type === 'ArrayExpression' && v.elements.every((e) => isObj(unwrap(e))))) out.push('projects is not an array of object literals');
+      }
+      if (!PATH_KEYS.has(k)) continue;
       if (n.type === 'ObjectMethod') out.push(`${k} defined as a method or accessor`);
-      else out.push(...lifecycleOffences(k, n.value, root, cfgFile));
+      else out.push(...pathKeyOffences(k, n.value, root, cfgFile, resolves));
     } else if (n.type === 'SpreadElement' && p && p.type === 'ObjectExpression') {
       const a = unwrap(n.argument);
-      const fromDevices = isMember(a) && isId(unwrap(a.object), 'devices');
-      if (!fromDevices) out.push('an object spread other than ...devices[…]');
+      if (!(isMember(a) && isId(unwrap(a.object), 'devices'))) out.push('an object spread other than ...devices[…]');
     } else if (n.type === 'AssignmentExpression' && isMember(n.left)) {
       const k = propName(n.left);
       if (k === null) out.push('an assignment through a computed member');
-      else if (LIFECYCLE.has(k)) out.push(`.${k} = … assigned outside the config literal`);
-    } else if ((isStr(n) || n.type === 'TemplateLiteral') && !(p && (p.type === 'ObjectProperty' || p.type === 'ObjectMethod') && key === 'key')) {
-      const v = isStr(n) ? n.value : n.quasis.map((q) => q.value.cooked).join('');
-      if (LIFECYCLE.has(v)) out.push(`"${v}" names a lifecycle key outside a property`);
-    } else if (n.type === 'Identifier' && ['defineProperty', 'defineProperties', 'Reflect', 'setPrototypeOf', '__proto__', 'fromEntries'].includes(n.name)) {
+      else if (PATH_KEYS.has(k)) out.push(`.${k} = … assigned outside the config literal`);
+    } else if ((isStr(n) || n.type === 'TemplateLiteral') && !isKeyOf(p, key) && isLiteralText(n) && PATH_KEYS.has(literalText(n))) {
+      out.push(`"${literalText(n)}" names a path key outside a property`);
+    } else if (n.type === 'Identifier' && ['Object', 'Reflect', 'Proxy', 'JSON', 'exports'].includes(n.name) && !isStaticProp(p, key) && !isKeyOf(p, key) && !inTypePosition(p, key)) {
       out.push(`${n.name} — the config's keys must be literal properties`);
-    } else if (isMember(n) && isId(unwrap(n.object), 'JSON') && propName(n) === 'parse') {
-      out.push("JSON.parse — the config's keys must be literal properties");
-    }
+    } else if (isMember(n) && ['prototype', '__proto__'].includes(propName(n))) out.push(`.${propName(n)} — the config's keys must be literal properties`);
   }
+  for (const s of specifiers(ast)) {
+    if (s.bad) { out.push(s.bad); continue; }
+    if (s.typeOnly) continue;
+    const relative = s.spec.startsWith('.') || path.isAbsolute(s.spec);
+    if (isCall(s.node) && isMember(unwrap(s.node.callee))) {
+      if (!resolves.has(s.node)) out.push(`require.resolve("${s.spec}") outside a globalSetup / globalTeardown / testDir value`);
+    } else if (relative) out.push(`import "${s.spec}" — the config loads no relative module (name files under tests/ in globalSetup / testDir / reporter instead)`);
+    else if (!CONFIG_IMPORTS.has(s.spec)) out.push(`import "${s.spec}" — not in the config import allowlist`);
+  }
+  out.push(...aliasOffences(ast), ...bindingOffences(ast));
   return out;
 }
 
@@ -416,13 +483,14 @@ function scanTestCode(src, file, root, parser) {
     const spec = s.spec;
     if (spec.startsWith('#')) { out.push(`import "${spec}" — package imports map outside the screen`); continue; }
     if (own && (spec === own || spec.startsWith(own + '/'))) { out.push(`import "${spec}" — the project's own package (self-reference)`); continue; }
+    if (LOADER_MODULES.has(spec.replace(/^node:/, '')) && !s.typeOnly) { out.push(`import "${spec}" — a module that loads or runs code by path`); continue; }
     if (!(spec.startsWith('.') || path.isAbsolute(spec))) continue;
     const target = path.resolve(base, spec);
     if (!underTests(root, target)) { out.push(`import "${spec}" — resolves outside tests/`); continue; }
     const t = targetProblem(target);
     if (t) out.push(`import "${spec}" — ${t}`);
   }
-  out.push(...dangerous(ast));
+  out.push(...aliasOffences(ast));
   return out;
 }
 
@@ -481,33 +549,43 @@ function scopeOf(file, root) {
   const name = path.basename(file);
   if (fold(path.dirname(file)) === fold(root)) {
     if (/^playwright.*\.config\.ts$/i.test(name)) return 'config';
+    if (/^playwright.*\.config\.[cm]?[jt]s$/i.test(name)) return 'config-ext';
     if (fold(name) === 'package.json') return 'package';
   }
   if (within(testsDir(root), file) && fold(file) !== fold(testsDir(root))) return 'tests';
   return 'none';
 }
 
-const [fileArg, cwdArg] = process.argv.slice(2);
-const cwd = path.resolve(cwdArg);
-const file = real(path.resolve(cwd, fileArg));
-const root = projectRoot(file, cwd);
-const scope = scopeOf(file, root);
-const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
-let offenders = [];
-if (scope !== 'none') {
-  const src = postWrite(payload, file);
-  const ext = path.extname(file).toLowerCase();
-  if (Buffer.byteLength(src) > MAX_BYTES) offenders = [`${Buffer.byteLength(src)} bytes — config/spec too large to screen (cap ${MAX_BYTES})`];
-  else if (scope === 'package') offenders = scanPackage(src, file);
-  else if (scope === 'tests' && fold(path.basename(file)) === '.git') offenders = ['a .git file under tests/ would move the project root'];
-  else if (scope === 'tests' && ext === '.json') offenders = scanTestJson(src, file, root);
-  else {
-    const parser = loadParser(root);
-    if (scope === 'config') {
-      let ast;
-      try { ast = parseCode(src, file, parser); } catch (e) { ast = null; offenders = [`does not parse: ${e.message}`]; }
-      if (ast) offenders = scanConfig(ast, root, file);
-    } else offenders = scanTestCode(src, file, root, parser);
+function main() {
+  const [fileArg, cwdArg] = process.argv.slice(2);
+  const cwd = path.resolve(cwdArg);
+  const file = real(path.resolve(cwd, fileArg));
+  const root = projectRoot(file, cwd);
+  const scope = scopeOf(file, root);
+  const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+  let offenders = [];
+  if (scope === 'config-ext') offenders = [`${path.basename(file)} — the runner config is playwright*.config.ts; Playwright would load this one too`];
+  else if (scope !== 'none') {
+    const src = postWrite(payload, file);
+    const ext = path.extname(file).toLowerCase();
+    const relSegments = path.relative(testsDir(root), file).split(path.sep);
+    if (Buffer.byteLength(src) > MAX_BYTES) offenders = [`${Buffer.byteLength(src)} bytes — config/spec too large to screen (cap ${MAX_BYTES})`];
+    else if (scope === 'package') offenders = scanPackage(src, file);
+    else if (scope === 'tests' && relSegments.some((s) => fold(s) === '.git')) offenders = ['a .git entry under tests/ would move the project root'];
+    else if (scope === 'tests' && ext === '.json') offenders = scanTestJson(src, file, root);
+    else {
+      const parser = loadParser(root);
+      if (scope === 'config') {
+        let ast;
+        try { ast = parseCode(src, file, parser); } catch (e) { ast = null; offenders = [`does not parse: ${e.message}`]; }
+        if (ast) offenders = scanConfig(ast, root, file);
+      } else offenders = scanTestCode(src, file, root, parser);
+    }
   }
+  process.stdout.write(JSON.stringify({ scope: scope === 'config-ext' ? 'config' : scope, offenders: [...new Set(offenders)].slice(0, 50) }));
 }
-process.stdout.write(JSON.stringify({ scope, offenders: [...new Set(offenders)].slice(0, 50) }));
+
+try { main(); } catch (e) {
+  process.stderr.write(`${e.message}\n`);
+  process.exit(e.exitCode || 2);
+}

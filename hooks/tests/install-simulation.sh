@@ -142,6 +142,13 @@ run_install_simulation() {
       "validator.bundle.mjs missing from hooks/lib (run npm run build:validator before testing; ship it in the tarball)"
   fi
 
+  if [ -f "$fake_hooks/lib/babel-parser.bundle.js" ]; then
+    sim_pass "babel-parser.bundle.js lands in the copy set"
+  else
+    sim_fail "babel-parser.bundle.js lands in the copy set" \
+      "babel-parser.bundle.js missing from hooks/lib (run npm run build:validator before testing; ship it in the tarball)"
+  fi
+
   # --- Assertion 2: every manifest hook copied and executable -------------
   local missing=""
   for f in $manifest_files; do

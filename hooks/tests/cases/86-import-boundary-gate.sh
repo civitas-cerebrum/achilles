@@ -41,6 +41,7 @@ export default defineConfig({
 });")" "fileURLToPath form → ALLOW"
 assert_allow "$H" "$(cfg "// playwright.config.ts
 export default defineConfig({
+  testDir: './tests/e2e',
   globalSetup: require.resolve('./tests/fixtures/global-setup'),
   // ...
 });")" "test-optimization.md global-setup form → ALLOW"
@@ -62,51 +63,98 @@ MANY="$MANY
   ],
 });"
 assert_allow "$H" "$(cfg "$MANY")" "40-project config → ALLOW"
-assert_allow "$H" "$(cfg "import { users } from './tests/e2e/fixtures/users'; export default { reporter: [['./tests/e2e/reporter.ts']] };")" \
-  "relative import and file reporter under tests/ → ALLOW"
+assert_allow "$H" "$(cfg 'export default { testDir: "./tests/e2e", reporter: [["./tests/e2e/reporter.ts"]] };')" "file reporter under tests/ → ALLOW"
+assert_allow "$H" "$(cfg 'import type { PlaywrightTestConfig } from "./tests/types";
+const config = { testDir: "./tests/e2e" } satisfies PlaywrightTestConfig;
+export default config;')" "import type (elided) and a const with satisfies → ALLOW"
+assert_allow "$H" "$(cfg 'const config = { testDir: "./tests/e2e" } as const; export default config as object;')" "as const / as Type wrappers → ALLOW"
+assert_allow "$H" "$(cfg 'enum E { A }
+@sealed class X { @prop y = 1 }
+export default { testDir: "./tests/e2e" };')" "enum and decorators parse → ALLOW"
+assert_allow "$H" "$(cfg 'module.exports = { testDir: "./tests/e2e" };')" "module.exports of an object literal → ALLOW"
 
 section "import-boundary-gate: config that runs code outside tests/ is denied"
-assert_deny "$H" "$(cfg 'import fs from "fs"; export default {};')" "import fs → DENY" 'import "fs"'
-assert_deny "$H" "$(cfg 'export default { globalSetup: "./src/index.ts" };')" "globalSetup ./src/index.ts → DENY" "resolves outside tests/"
-assert_deny "$H" "$(cfg 'export default { globalSetup: "./tests/../src/index.ts" };')" "globalSetup through tests/.. → DENY" "resolves outside tests/"
-assert_deny "$H" "$(cfg 'require("../src/x"); export default {};')" 'require("../src/x") → DENY' 'import "../src/x"'
-assert_deny "$H" "$(cfg 'import "./src/app"; export default {};')" "relative import into src/ → DENY" 'import "./src/app"'
+assert_deny "$H" "$(cfg 'import fs from "fs"; export default { testDir: "./tests" };')" "import fs → DENY" 'import "fs"'
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", globalSetup: "./src/index.ts" };')" "globalSetup ./src/index.ts → DENY" "resolves outside tests/"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", globalSetup: "./tests/../src/index.ts" };')" "globalSetup through tests/.. → DENY" "resolves outside tests/"
+assert_deny "$H" "$(cfg 'require("../src/x"); export default { testDir: "./tests" };')" 'require("../src/x") → DENY' 'import "../src/x"'
+assert_deny "$H" "$(cfg 'import "./src/app"; export default { testDir: "./tests" };')" "relative import into src/ → DENY" 'import "./src/app"'
 assert_deny "$H" "$(cfg 'export default { testDir: "." };')" "testDir . → DENY" "resolves outside tests/"
-assert_deny "$H" "$(cfg 'export default { globalSetup: ["./tests/a.ts", "./src/b.ts"] };')" "globalSetup array with an entry in src/ → DENY" '"./src/b.ts"'
-assert_deny "$H" "$(cfg 'export default { reporter: [["./src/reporter.js"]] };')" "reporter entry ./src/reporter.js → DENY" '"./src/reporter.js"'
-assert_deny "$H" "$(cfg 'export default { reporter: "./src/reporter.js" };')" "reporter string ./src/reporter.js → DENY" '"./src/reporter.js"'
-assert_deny "$H" "$(cfg 'export default { reporter: process.env.CI ? "dot" : "./src/r.js" };')" "reporter chosen at runtime → DENY" "ConditionalExpression"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", globalSetup: ["./tests/a.ts", "./src/b.ts"] };')" "globalSetup array with an entry in src/ → DENY" '"./src/b.ts"'
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", reporter: [["./src/reporter.js"]] };')" "reporter entry ./src/reporter.js → DENY" '"./src/reporter.js"'
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", reporter: "./src/reporter.js" };')" "reporter string ./src/reporter.js → DENY" '"./src/reporter.js"'
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", reporter: process.env.CI ? "dot" : "./src/r.js" };')" "reporter chosen at runtime → DENY" "ConditionalExpression"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", tsconfig: "./tsconfig.json" };')" "tsconfig key pointing at the root tsconfig → DENY" "resolves outside tests/"
 assert_deny "$H" "$(cfg 'const c = {}; c.globalSetup = "./src/x.ts"; export default c;')" "c.globalSetup = ./src/x.ts → DENY" "assigned outside the config literal"
 assert_deny "$H" "$(cfg 'export default { ["global" + "Setup"]: "./src/x.ts" };')" "computed key → DENY" "computed property key"
 assert_deny "$H" "$(cfg 'const c = {}; c["global" + "Setup"] = "./src/x.ts"; export default c;')" "computed member assignment → DENY" "computed member"
-assert_deny "$H" "$(cfg 'export default Object.defineProperty({}, "globalSetup", { value: "./src/x.ts" });')" "defineProperty → DENY" "defineProperty"
-assert_deny "$H" "$(cfg 'const base = JSON.parse("{}"); export default { ...base };')" "JSON.parse spread → DENY" "JSON.parse"
-assert_deny "$H" "$(cfg 'import base from "./tests/base"; export default { ...base };')" "spread of an imported object → DENY" "object spread"
-assert_deny "$H" "$(cfg 'export default makeConfig();')" "config not readable statically → DENY" "not an object the screen can read"
-assert_deny "$H" "$(cfg 'export default { globalSetup: process.env.X || "./tests/e2e/playwright.setup.ts" };')" \
+assert_deny "$H" "$(cfg 'export default Object.defineProperty({}, "globalSetup", { value: "./src/x.ts" });')" "defineProperty → DENY" "Object — the config's keys must be literal properties"
+assert_deny "$H" "$(cfg 'const base = JSON.parse("{}"); export default { ...base };')" "JSON.parse spread → DENY" "JSON — the config's keys must be literal properties"
+assert_deny "$H" "$(cfg 'export default makeConfig();')" "config not readable statically → DENY" "not an object literal or defineConfig"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", globalSetup: process.env.X || "./tests/e2e/playwright.setup.ts" };')" \
   "globalSetup steered by .env → DENY" "LogicalExpression"
-assert_deny "$H" "$(cfg 'export default { globalSetup: "./tests/a.ts"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", globalSetup: "./tests/a.ts"
   ? "./src/b.ts" : "" };')" "ternary continued on the next line → DENY" "ConditionalExpression"
-assert_deny "$H" "$(cfg 'const r = require; r("fs"); export default {};')" "aliased require → DENY" "require used other than"
-assert_deny "$H" "$(cfg 'const m = "fs"; import(m); export default {};')" "dynamic import of a non-literal → DENY" "not one string literal"
-assert_deny "$H" "$(cfg 'const s = "./src/x.ts"; export default { globalSetup: s };')" "globalSetup from a variable → DENY" "Identifier is not a literal"
+assert_deny "$H" "$(cfg 'const r = require; r("fs"); export default { testDir: "./tests" };')" "aliased require → DENY" "require used other than"
+assert_deny "$H" "$(cfg 'const m = "fs"; import(m); export default { testDir: "./tests" };')" "dynamic import of a non-literal → DENY" "not one string literal"
+assert_deny "$H" "$(cfg 'const s = "./src/x.ts"; export default { testDir: "./tests", globalSetup: s };')" "globalSetup from a variable → DENY" "Identifier is not a literal"
 assert_deny "$H" "$(cfg 'const __dirname = "/"; export default { testDir: path.join(__dirname, "tests") };')" "__dirname redefined → DENY" "__dirname"
-assert_deny "$H" "$(cfg 'import { devices } from "./tests/d"; export default { use: { ...devices.x } };')" "devices bound from a tests/ file → DENY" "devices bound by import"
-assert_deny "$H" "$(cfg 'process.binding("fs"); export default {};')" "process.binding → DENY" "process.binding"
-assert_deny "$H" "$(cfg 'eval("1"); export default {};')" "eval → DENY" "eval"
+assert_deny "$H" "$(cfg 'import { devices } from "@playwright/test"; const devices = {}; export default { testDir: "./tests", use: { ...devices.x } };')" "devices redeclared → DENY" "devices redeclared"
+assert_deny "$H" "$(cfg 'process.binding("fs"); export default { testDir: "./tests" };')" "process.binding → DENY" ".binding reaches the module loader"
+assert_deny "$H" "$(cfg 'eval("1"); export default { testDir: "./tests" };')" "eval → DENY" "eval"
+
+section "import-boundary-gate: config indirection — one literal export, no relative module, a testDir"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; export default defineConfig({ retries: 0 });')" \
+  "no testDir (Playwright defaults to the config directory) → DENY" "no top-level testDir"
+assert_deny "$H" "$(cfg 'module.exports = { projects: [{ name: "p", testDir: "./src", testMatch: /.*\.spec\.ts$/ }], use: {} };')" \
+  "projects[].testDir ./src without a top-level testDir → DENY" "no top-level testDir"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests/e2e", projects: [{ name: "p", testDir: "./src" }] };')" \
+  "projects[].testDir ./src under a tests/ top-level testDir → DENY" '"./src" resolves outside tests/'
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; import projects from "./tests/projects"; export default defineConfig({ testDir: "./tests/e2e", projects });')" \
+  "projects imported from tests/ (its testDir is unread) → DENY" "projects is not an array of object literals"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; export default defineConfig({ testDir: "./tests/e2e" }); exports.default = require("./tests/cfg");')" \
+  "exports.default = require(tests/cfg) after export default → DENY" "exports — the config's keys must be literal properties"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; export default defineConfig({ testDir: "./tests/e2e" }); module.exports.default = require("./tests/cfg");')" \
+  "module.exports.default = require(tests/cfg) → DENY" "module.exports — the config writes module.exports once"
+assert_deny "$H" "$(cfg 'module.exports = require("./tests/cfg");')" "module.exports = require(tests/cfg) → DENY" "not an object literal or defineConfig"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; const config = defineConfig({ testDir: "./tests/e2e" }); Object.assign(config, require("./tests/cfg")); export default config;')" \
+  "Object.assign(config, require(tests/cfg)) → DENY" "config is referenced outside its declaration and export"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; let config = defineConfig({ testDir: "./tests/e2e" }); config = require("./tests/cfg"); export default config;')" \
+  "let config reassigned from require → DENY" "config is let, not const"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; const config = defineConfig({ testDir: "./tests/e2e" }); export default config; export const _ = require("./tests/mut")(config);')" \
+  "export const _ = require(tests/mut)(config) → DENY" "a named export"
+assert_deny "$H" "$(cfg 'const config = { testDir: "./tests/e2e" }; const c2 = config; export default c2;')" "export of an alias of the const → DENY" "not an object literal or defineConfig"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; import "./tests/poll"; export default defineConfig({ testDir: "./tests/e2e" });')" \
+  "side-effect import of tests/poll (prototype pollution) → DENY" "the config loads no relative module"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; import base from "./tests/base.config"; export default defineConfig({ ...base, testDir: "./tests/e2e" });')" \
+  "spread of an imported object → DENY" "object spread"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; import base from "./tests/base.config"; export default defineConfig(base, { testDir: "./tests/e2e" });')" \
+  "defineConfig(importedBase, literal) → DENY" "not an object literal or defineConfig"
+assert_deny "$H" "$(cfg 'import { defineConfig } from "@playwright/test"; import cfg from "./tests/cfg"; export default defineConfig({ testDir: "./tests/e2e", projects: cfg.projects, use: cfg.use });')" \
+  "projects: cfg.projects from an import → DENY" "the config loads no relative module"
+assert_deny "$H" "$(cfg 'import { users } from "./tests/e2e/fixtures/users"; export default { testDir: "./tests/e2e" };')" "value import from tests/ → DENY" "the config loads no relative module"
+assert_deny "$H" "$(cfg 'const p = require.resolve("./tests/x"); export default { testDir: "./tests/e2e" };')" "require.resolve outside a path value → DENY" "require.resolve(\"./tests/x\") outside"
+assert_deny "$H" "$(cfg 'export const config = { testDir: "./tests/e2e" }; export default config;')" "named export beside the default → DENY" "a named export"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests/e2e", projects: [...more] };')" "projects with a spread → DENY" "projects is not an array of object literals"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests/e2e", "__proto__": { globalSetup: "./src/x" } };')" "__proto__ key → DENY" "__proto__"
+assert_deny "$H" "$(cfg 'Reflect.set(globalThis, "x", 1); export default { testDir: "./tests/e2e" };')" "Reflect → DENY" "Reflect"
+assert_deny "$H" "$(payload tool_name=Write file_path="$CP/playwright.config.mjs" content='export default { testDir: "./tests/e2e" };' cwd="$CP")" \
+  "playwright.config.mjs → DENY (the methodology mandates .ts)" "the runner config is playwright*.config.ts"
+assert_deny "$H" "$(payload tool_name=Write file_path="$CP/playwright.config.js" content='module.exports = { testDir: "./tests/e2e" };' cwd="$CP")" \
+  "playwright.config.js → DENY" "the runner config is playwright*.config.ts"
 
 section "import-boundary-gate: one string literal per specifier (parsed, not pattern-matched)"
-assert_deny "$H" "$(cfg "require('./tests/' + '../src/app'); export default {};")" "config require of a concatenation → DENY" "not one string literal"
+assert_deny "$H" "$(cfg "require('./tests/' + '../src/app'); export default { testDir: './tests' };")" "config require of a concatenation → DENY" "not one string literal"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts "await import('./' + '../../src/app');")" "test import() of a concatenation → DENY" "not one string literal"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'require(`./${"../../src/app"}`);')" "test require of a template → DENY" "not one string literal"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'require(`../../src/app`);')" "test require of a template without substitution → DENY" "not one string literal"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import "./.\x2e/../../src/app.js";')" "test specifier with \\x escape → DENY" "contains an escape"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts "import \"./${BS}u002e${BS}u002e/../../src/app.js\";")" "test specifier with \\u escape → DENY" "contains an escape"
-assert_deny "$H" "$(cfg 'export default { globalSetup: "./tests/.\x2e/src/x.ts" };')" "config path with \\x escape → DENY" "an escape in a path literal"
-assert_deny "$H" "$(cfg 'export default { "globalSetu\x70": "./src/x.ts" };')" "config key globalSetu\\x70 (decoded) → DENY" "resolves outside tests/"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", globalSetup: "./tests/.\x2e/src/x.ts" };')" "config path with \\x escape → DENY" "an escape in a path literal"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", "globalSetu\x70": "./src/x.ts" };')" "config key globalSetu\\x70 (decoded) → DENY" "resolves outside tests/"
 assert_deny "$H" "$(cfg "export default { 'test\x44ir': '.' };")" "config key test\\x44ir (decoded) → DENY" "resolves outside tests/"
-assert_deny "$H" "$(cfg 'export default { "reporte\x72": "./src/r.js" };')" "config key reporte\\x72 (decoded) → DENY" "resolves outside tests/"
-assert_deny "$H" "$(cfg "export default { glob${BS}u0061lSetup: \"./src/x.ts\" };")" "config key glob\\u0061lSetup (decoded) → DENY" "resolves outside tests/"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests", "reporte\x72": "./src/r.js" };')" "config key reporte\\x72 (decoded) → DENY" "resolves outside tests/"
+assert_deny "$H" "$(cfg "export default { testDir: './tests', glob${BS}u0061lSetup: \"./src/x.ts\" };")" "config key glob\\u0061lSetup (decoded) → DENY" "resolves outside tests/"
 assert_deny "$H" "$(cfg 'export default { testDir: "./tests/\101" };')" "config octal escape → DENY" "does not parse"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import x from /* c */ "../../src/app";')" "comment between from and source → DENY" "resolves outside tests/"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import /* c */ "../../src/app";')" "comment between import and source → DENY" "resolves outside tests/"
@@ -115,29 +163,74 @@ assert_deny "$H" "$(code tests/e2e/x.spec.ts 'export * from /**/ "../../src/app"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts "import x from \"../${BS}
 ../src/app\";")" "line continuation inside a specifier → DENY" "contains an escape"
 assert_deny "$H" "$(cfg "import evil from \"./sr${BS}
-c/app\"; export default {};")" "line continuation inside a config import → DENY" "contains an escape"
+c/app\"; export default { testDir: './tests' };")" "line continuation inside a config import → DENY" "contains an escape"
 LONG="./$(printf 'x/../%.0s' $(seq 1 300))../../src/app"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts "import x from \"$LONG\";")" "1500-character specifier → DENY" "resolves outside tests/"
-assert_deny "$H" "$(cfg "import evil from \"$LONG\"; export default {};")" "1500-character config import → DENY" "not in the config import allowlist"
+assert_deny "$H" "$(cfg "import evil from \"$LONG\"; export default { testDir: './tests' };")" "1500-character config import → DENY" "the config loads no relative module"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import "./x" /* */ + "../src";')" "static import followed by an operator → DENY" "does not parse"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import x = require("../../src/app");')" "import = require into src/ → DENY" "resolves outside tests/"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'export import y = require("../../src/app");')" "export import = require into src/ → DENY" "resolves outside tests/"
+assert_deny "$H" "$(code tests/e2e/x.mjs 'await import(import.meta.resolve("../../src/app.js"));')" "import() of import.meta.resolve → DENY" "not one string literal"
 
-section "import-boundary-gate: loaders other than import/require"
+section "import-boundary-gate: loader aliases under tests/"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import { test } from "@playwright/test";
-module.constructor._load("../../src/app", module);')" "module.constructor._load → DENY" "module.constructor"
-assert_deny "$H" "$(code tests/e2e/x.spec.ts 'module["require"]("../../src/app");')" 'module["require"] → DENY' "resolves outside tests/"
+module.constructor._load("../../src/app", module);')" "module.constructor._load → DENY" ".constructor reaches the module loader"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'module["require"]("../../src/app");')" 'module["require"] → DENY' ".require reaches the module loader"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const k = "require"; module[k]("../../src/app");')" "module[k] computed from code → DENY" "computed from code"
-assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const fs = process.getBuiltinModule("fs"); fs.writeFileSync(__dirname + "/h2", "x");')" "process.getBuiltinModule → DENY" "process.getBuiltinModule"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const fs = process.getBuiltinModule("fs"); fs.writeFileSync(__dirname + "/h2", "x");')" "process.getBuiltinModule → DENY" ".getBuiltinModule reaches"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import { createRequire } from "module"; const r = createRequire(import.meta.url); r("../../src/app");')" "createRequire → DENY" "createRequire"
-assert_deny "$H" "$(code tests/e2e/x.spec.ts 'process.mainModule.require("../../src/app");')" "process.mainModule.require → DENY" "process.mainModule"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'process.mainModule.require("../../src/app");')" "process.mainModule.require → DENY" ".mainModule reaches"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'new Function("return 1")();')" "Function constructor → DENY" "Function"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const { constructor: F } = function(){}; F("return process")();')" "{ constructor: F } destructured from a function → DENY" "{ constructor } destructured"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const F = (function(){}).constructor; F("return process")();')" ".constructor of a function → DENY" ".constructor reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const F = Object.getPrototypeOf(async function(){}).constructor; F("return 1")();')" ".constructor via getPrototypeOf → DENY" ".constructor reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'globalThis.process.mainModule.require("../../src/app");')" "globalThis.process.mainModule → DENY" ".mainModule reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const r = globalThis["require"]; r("../../src/app");')" 'globalThis["require"] → DENY' ".require reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const p = globalThis.process; p.binding("fs");')" "globalThis.process bound to a name → DENY" "globalThis.process — the global reached through another name"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const p = global.process; p.env;')" "global.process → DENY" "global.process — the global reached through another name"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const m = require.main; m.require("../../src/app");')" "require.main → DENY" "require used other than"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const M = require("module"); const m = new M("x"); m.load(require("path").resolve("src/app.js"));')" "require(\"module\") → DENY" 'import "module" — a module that loads'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const vm = require("vm"); vm.runInThisContext("1");')" "require(\"vm\") → DENY" 'import "vm"'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'require("child_process").execSync("node src/app.js");')" "require(\"child_process\") → DENY" 'import "child_process"'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const w = require("worker_threads"); new w.Worker("./src/app.js");')" "require(\"worker_threads\") → DENY" 'import "worker_threads"'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import * as M from "node:module"; const L = M.Module; L["_l" + "oad"]("../../src/app");')" "import node:module → DENY" 'import "node:module"'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import { Module } from "module"; Module._load("../../src/app");')" "Module._load → DENY" 'import "module"'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import p from "node:process"; p.binding("fs");')" "import node:process → DENY" 'import "node:process"'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const r = module.require.bind(module);')" "module.require read without a call → DENY" ".require reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'process["mainModule"];')" 'process["mainModule"] → DENY' ".mainModule reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const k = "mainModule"; process[k].require("../../src/app");')" "process[k] computed from code → DENY" "computed from code"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const { mainModule } = process; mainModule.require("../../src/app");')" "{ mainModule } = process → DENY" "process used as a value"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const { require: r } = module; r("../../src/app");')" "{ require: r } = module → DENY" "module used as a value"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const { require: r } = module; r.call(module, "../../src/app");')" "r.call(module, …) → DENY" "module used as a value"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'function f(p) { return p.binding("fs"); } f(process);')" "process passed as an argument → DENY" "process used as a value"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const m = { require: (x) => x }; m.require("../../src/app");')" ".require(…) on any object → DENY" ".require reaches"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const k = "constructor"; const F = (() => 1)[k];')" '"constructor" as a bare string → DENY' '"constructor" names a loader member'
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const F = (() => 1)["construct" + "or"];')" "computed key assembled from strings → DENY" "a computed member key assembled from strings"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const o = "or"; const F = (() => 1)[`construct${o}`];')" "computed key from a template with an expression → DENY" "a computed member key assembled from strings"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const F = Reflect.get(function(){}, "constructor");')" "Reflect in a spec → DENY" "Reflect"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'globalThis.eval("1");')" "globalThis.eval → DENY" "globalThis.eval — the global reached through another name"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'const M = require("module"); const m = new M("x"); m._compile("process.binding", "x");')" "_compile → DENY" 'import "module"'
 assert_allow "$H" "$(code tests/e2e/x.spec.ts 'import { test } from "./fixtures/base"; const cb: Function = () => {}; test("a", cb);')" "Function as a type annotation → ALLOW"
+assert_allow "$H" "$(code tests/e2e/x.spec.ts 'export const isFn = (x: unknown) => x instanceof Function; export const cjs = typeof require !== "undefined" && typeof process !== "undefined";')" \
+  "instanceof Function, typeof require, typeof process → ALLOW"
+assert_allow "$H" "$(code tests/e2e/fixtures/x.ts 'export const base = process.env.BASE_URL ?? "http://localhost:3000"; export const ci = process.platform === "linux" && process.argv.length > 1; module.exports.ok = process.cwd();')" \
+  "process.env / process.platform / process.argv / module.exports → ALLOW"
+assert_allow "$H" "$(code tests/e2e/pages/login.ts 'import type { Page } from "@playwright/test";
+export class LoginPage {
+  constructor(private readonly page: Page) {}
+  async open(): Promise<void> { await this.page.goto("/login"); }
+  get title() { return this.page.title(); }
+}
+export const rows: Record<string, number> = {}; export const pick = (k: string, i: number, users: string[]) => rows[k] + [1, 2][i] + [[1]][0][0] + users[(i + 1) % users.length].length;
+export const onLoad = (page: Page) => page.on("load", () => {}); export const doc = { load: (b: Buffer) => b }; export const d = doc.load(Buffer.from(""));')" \
+  "page object: class constructor, identifier / numeric / arithmetic computed keys, \"load\" string, .load() call → ALLOW"
 
 section "import-boundary-gate: Edit is screened on the file it produces"
-printf '%s' 'import { defineConfig } from "@playwright/test"; export default defineConfig({ retries: 0, workers: 0 });' > "$CFG"
+printf '%s' 'import { defineConfig } from "@playwright/test"; export default defineConfig({ testDir: "./tests/e2e", retries: 0, workers: 0 });' > "$CFG"
 assert_deny "$H" "$(payload tool_name=Edit file_path="$CFG" old_string='retries: 0' new_string='globalSetup: "./src/index.ts"' cwd="$CP")" \
   "Edit adding globalSetup into src/ → DENY" "resolves outside tests/"
 assert_allow "$H" "$(payload tool_name=Edit file_path="$CFG" old_string='retries: 0' new_string='retries: 2' cwd="$CP")" "Edit adding retries → ALLOW"
-assert_deny "$H" "$("$JQ" -n --arg f "$CFG" --arg cwd "$CP" '{tool_name:"Edit", cwd:$cwd, tool_input:{file_path:$f, old_string:"0 }", new_string:"0, testDir: \"./src\" }", replace_all:true}}')" \
+assert_deny "$H" "$("$JQ" -n --arg f "$CFG" --arg cwd "$CP" '{tool_name:"Edit", cwd:$cwd, tool_input:{file_path:$f, old_string:"0 }", new_string:"0, globalSetup: \"./src/x.ts\" }", replace_all:true}}')" \
   "Edit with replace_all into src/ → DENY" "resolves outside tests/"
 
 section "import-boundary-gate: test code imports only from tests/"
@@ -152,6 +245,7 @@ assert_deny "$H" "$(code tests/e2e/fixtures/x.ts 'const m = require("../../../sr
 assert_deny "$H" "$(code tests/e2e/playwright.config.ts 'import cfg from "../../playwright.base";')" \
   "nested config importing past tests/ → DENY (screened as test code)" "resolves outside tests/"
 assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import { test } from "@playwright/test" test("a")')" "test code that does not parse → DENY" "does not parse"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts 'import "../../src/app";')" "tests/ screen deny is labelled as such → DENY" "tests/ screen:"
 
 section "import-boundary-gate: every file under tests/ is screened, and loads only code or JSON"
 printf '%s' 'export const a = 1;' > "$CP/tests/e2e/auth.setup.ts"
@@ -161,9 +255,9 @@ printf '%s' 'export const d = 1;' > "$CP/tests/e2e/data.txt.ts"
 assert_deny "$H" "$(code tests/helper.txt 'require("../src/app.js")')" "tests/helper.txt requiring src → DENY (content screened whatever the extension)" "resolves outside tests/"
 assert_deny "$H" "$(code tests/h3 'require("../src/app.js")')" "extensionless tests/h3 requiring src → DENY" "resolves outside tests/"
 assert_deny "$H" "$(code tests/notes.md 'Notes.
-require/**/("../src/" + "app");')" "prose that parses into a loader call → DENY" "not one string literal"
+require/**/("../src/" + "app");')" "prose that parses into a loader call (Notes.require) → DENY" ".require reaches"
 assert_deny "$H" "$(code tests/notes.md '// Notes
-module["require"]("../src/app");')" "notes hiding module[\"require\"] → DENY" "resolves outside tests/"
+module["require"]("../src/app");')" "notes hiding module[\"require\"] → DENY" ".require reaches"
 assert_deny "$H" "$(code tests/e2e/a.spec.js 'require("../helper.txt");')" "spec requiring an existing .txt → DENY" "not code or JSON"
 assert_deny "$H" "$(code tests/e2e/a.spec.js 'require("../notes.md");')" "spec requiring a .md not on disk → DENY" "not code or JSON"
 assert_deny "$H" "$(code tests/e2e/a.spec.ts 'import "../h2";')" "spec importing an existing extensionless file → DENY" "not code or JSON"
@@ -193,7 +287,7 @@ section "import-boundary-gate: no # imports, no self-reference, root package.jso
 assert_deny "$H" "$(code tests/e2e/fixtures/x.ts 'import "#app";')" "fixture importing #app → DENY" "package imports"
 assert_deny "$H" "$(code tests/e2e/fixtures/x.ts 'import { app } from "proj/server";')" "fixture importing the project's own package → DENY" "self-reference"
 assert_deny "$H" "$(payload tool_name=Write file_path="$CP/package.json" content='{"name":"proj","scripts":{},"imports":{"#app":"./src/app.js"}}' cwd="$CP")" \
-  "root package.json adding imports → DENY" "imports changed"
+  "root package.json adding imports → DENY" "package.json screen:"
 assert_deny "$H" "$(payload tool_name=Write file_path="$CP/package.json" content='{"name":"@playwright/test","scripts":{}}' cwd="$CP")" \
   "root package.json renamed (self-reference as an allowed package) → DENY" "name changed"
 assert_deny "$H" "$(payload tool_name=Write file_path="$CP/package.json" content='{"name":"proj",' cwd="$CP")" "root package.json that does not parse → DENY" "does not parse"
@@ -217,15 +311,23 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$BOM/tests/x.cjs" content
 section "import-boundary-gate: the root does not move with cwd, a gitfile or case"
 assert_deny "$H" "$(payload tool_name=Write file_path="$CP/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$CP/tests/e2e")" \
   "cwd inside tests/e2e (git root) → still DENY" "resolves outside tests/"
-NG="$IB_TMP/nogit"; mkdir -p "$NG/tests/e2e"
+NG="$IB_TMP/nogit"; mkdir -p "$NG/tests/e2e"; printf '%s' '{"name":"nogit"}' > "$NG/package.json"
 GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$H" "$(payload tool_name=Write file_path="$NG/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$NG/tests/e2e")" \
-  "no git, cwd inside tests/e2e → root cut above tests/, DENY" "resolves outside tests/"
+  "no git, cwd inside tests/e2e → root cut above tests/ (its parent holds package.json), DENY" "resolves outside tests/"
 CLAUDE_PROJECT_DIR="$NG" assert_deny "$H" "$(payload tool_name=Write file_path="$NG/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="/")" \
   "CLAUDE_PROJECT_DIR anchors the root → DENY" "resolves outside tests/"
-GP="$IB_TMP/gitp"; mkdir -p "$GP/tests/e2e"; git init -q "$GP"; printf '%s' 'gitdir: ../.git' > "$GP/tests/.git"
+GP="$IB_TMP/gitp"; mkdir -p "$GP/tests/e2e"; git init -q "$GP"; printf '%s' '{"name":"gitp"}' > "$GP/package.json"; printf '%s' 'gitdir: ../.git' > "$GP/tests/.git"
 assert_deny "$H" "$(payload tool_name=Write file_path="$GP/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$GP")" \
   "a gitfile under tests/ does not move the root → DENY" "resolves outside tests/"
-assert_deny "$H" "$(payload tool_name=Write file_path="$CP/tests/.git" content='gitdir: ../.git' cwd="$CP")" "writing tests/.git → DENY" ".git file under tests/"
+assert_deny "$H" "$(payload tool_name=Write file_path="$CP/tests/.git" content='gitdir: ../.git' cwd="$CP")" "writing tests/.git → DENY" ".git entry under tests/"
+assert_deny "$H" "$(payload tool_name=Write file_path="$CP/tests/.git/HEAD" content='ref: refs/heads/main' cwd="$CP")" "writing tests/.git/HEAD → DENY" ".git entry under tests/"
+UT="$IB_TMP/tests/proj"; mkdir -p "$UT/tests/e2e/fixtures"; git init -q "$UT"; printf '%s' '{"name":"under-tests"}' > "$UT/package.json"
+assert_deny "$H" "$(payload tool_name=Write file_path="$UT/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$UT")" \
+  "project itself under a tests/ segment: the git toplevel stays the root → DENY" "resolves outside tests/"
+assert_allow "$H" "$(payload tool_name=Write file_path="$UT/tests/e2e/x.spec.ts" content='import { test } from "./fixtures/base";' cwd="$UT")" \
+  "project itself under a tests/ segment: its own tests/ is in scope → ALLOW"
+GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$H" "$(payload tool_name=Write file_path="$UT/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$UT/tests/e2e")" \
+  "no git, project under a tests/ segment, cwd in tests/e2e → cut to the project (no package.json above the outer tests/) → DENY" "resolves outside tests/"
 if [ "$(uname)" = Darwin ]; then
   assert_deny "$H" "$(payload tool_name=Write file_path="$CP/Tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$CP")" \
     "Tests/e2e on a case-insensitive filesystem → DENY" "resolves outside tests/"
@@ -248,7 +350,7 @@ done
 WS="import$(head -c 120000 /dev/zero | tr '\0' ' ')x"
 assert_deny "$H" "$(cfg "$WS")" "120KB of whitespace inside an import → DENY" "does not parse"
 printf '%s' 'process.stderr.write("(node) warning: something\n");' > "$IB_TMP/warn.js"
-NODE_OPTIONS="--require $IB_TMP/warn.js" assert_allow "$H" "$(cfg 'export default {};')" "a node warning on stderr does not corrupt the verdict → ALLOW"
+NODE_OPTIONS="--require $IB_TMP/warn.js" assert_allow "$H" "$(cfg 'export default { testDir: "./tests" };')" "a node warning on stderr does not corrupt the verdict → ALLOW"
 
 section "import-boundary-gate: scope"
 assert_allow "$H" "$(code src/x.ts 'import "../../etc";')" "src/** → not this gate's file"
@@ -258,13 +360,24 @@ assert_allow "$H" "$(payload tool_name=Write file_path="$CFG" content='import fs
 assert_allow "$H" "$(payload tool_name=Write file_path="$CP/tests/e2e/fixtures/x.ts" content='import "../../../src/index";' cwd="$CP" session_id=ib-gate-inactive)" \
   "test code, protocol inactive in the session → no decision"
 
-section "import-boundary-gate: the screen fails closed"
+section "import-boundary-gate: the screen fails closed, and runs from an installed copy"
 NONODE="$IB_TMP/bin"; mkdir -p "$NONODE"
 for d in /usr/bin /bin "$(dirname "$JQ")"; do
   for b in "$d"/*; do
     n=$(basename "$b"); [ "$n" = node ] || [ -e "$NONODE/$n" ] || ln -s "$b" "$NONODE/$n"
   done
 done
-PATH="$NONODE" assert_deny "$H" "$(cfg 'export default {};')" "node not on PATH → DENY" "config screen could not run"
+PATH="$NONODE" assert_deny "$H" "$(cfg 'export default { testDir: "./tests" };')" "node not on PATH → DENY" "import-boundary screen could not run"
+# ~/.claude/hooks has no node_modules above it and the project may have none
+# either (global or pnpm install): the parser comes from the bundle beside the scanner.
+INST="$IB_TMP/installed/hooks"; mkdir -p "$INST/lib"
+cp "$H" "$INST/"; cp "$HOOK_DIR/lib/achilles-activation.sh" "$HOOK_DIR/lib/import-boundary-scan.js" "$INST/lib/"
+GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$INST/achilles-import-boundary-gate.sh" "$(code tests/e2e/x.spec.ts 'import { test } from "./fixtures/base";')" \
+  "installed copy without the parser bundle or node_modules → DENY with one reason line" "@babel/parser not found; reinstall @civitas-cerebrum/achilles"
+cp "$HOOK_DIR/lib/babel-parser.bundle.js" "$INST/lib/"
+GIT_CEILING_DIRECTORIES="$IB_TMP" assert_allow "$INST/achilles-import-boundary-gate.sh" "$(code tests/e2e/x.spec.ts 'import { test } from "./fixtures/base";')" \
+  "installed copy with the parser bundle, no node_modules anywhere → ALLOW on a clean spec"
+GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$INST/achilles-import-boundary-gate.sh" "$(code tests/e2e/x.spec.ts 'import "../../src/app";')" \
+  "installed copy with the parser bundle → DENY on a spec reaching src/" "resolves outside tests/"
 
 rm -rf "$IB_TMP"

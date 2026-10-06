@@ -457,7 +457,7 @@ const KNOWN_LIMITS_DOC = 'skills/achilles-protocol/references/known-limits.md';
 function checkOptInSurfaces() {
   const detail = [];
   const sources = [
-    ...walk('hooks', (p) => /\.(sh|js|cjs|mjs)$/.test(p) && !p.includes('/tests/') && !p.endsWith('validator.bundle.mjs')),
+    ...walk('hooks', (p) => /\.(sh|js|cjs|mjs)$/.test(p) && !p.includes('/tests/') && !/\.bundle\.m?js$/.test(p)),
     ...readdirSync('scripts').filter((f) => /\.(js|mjs)$/.test(f) && f !== 'lint-doc-drift.mjs').map((f) => join('scripts', f)),
   ];
   // Operator-facing switch names: project prefixes plus the *_GATE/_GUARD/_OVERRIDE
