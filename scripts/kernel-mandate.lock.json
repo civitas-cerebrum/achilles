@@ -1,7 +1,7 @@
 {
   "upstream": {
     "repo": "civitas-cerebrum/kernel-mandate",
-    "commit": "928a07b0c147507eb197c397176787b0b26943de"
+    "commit": "febb5af68af7bd5fbf6f606ca8955278d002f74a"
   },
   "files": {
     "hooks/kernel-mandate-role-gate.sh": "00833dd7496519828f70e8c7065016a5d88242e27d72fdcd0f7af59d4b2803d5",
@@ -22,7 +22,7 @@
     "hooks/tests/cases/kernel-mandate/14-reviewer-round7.sh": "60394176f2fff690eb14cc9a875325ba6cf4f33bd78786fb03e6458f635cd2fd",
     "hooks/tests/cases/kernel-mandate/15-reviewer-round8.sh": "7e9cd4d4c4ad3d5c9663a05f631ac41a605e80ca4f037873b49c75ce5e57431e",
     "hooks/tests/cases/kernel-mandate/16-reviewer-round9.sh": "5d6ca70b78e9b5f8ecc0860fae7385db0f7e4e7832438ef35fb5986ddcfe79c0",
-    "hooks/tests/cases/kernel-mandate/17-reviewer-round10.sh": "88f2b3ce9e2e98da5e23de68a3019a574e8818c4e9440ad5d1db0401a8188ab4",
+    "hooks/tests/cases/kernel-mandate/17-reviewer-round10.sh": "41f03a21ac1cbb2605a3f11c3511ebdf733c680385670f4959cf6392ce1ee957",
     "hooks/tests/cases/kernel-mandate/18-reviewer-round11.sh": "f54b3ce43627dc8e4b115f3a81bbeaf5cc8a2188a3727075191b183088bee439",
     "hooks/tests/cases/kernel-mandate/19-reviewer-round12.sh": "a3888267b048a67b5e7ace86967d0039fd6df07a3081f5458e8fcd3953d958b8",
     "hooks/tests/cases/kernel-mandate/20-reviewer-round13.sh": "d9a87f1727871e85d1c8cfb6a94aef50bb0e8b814c28baf0c653d5a9c269b3a7",

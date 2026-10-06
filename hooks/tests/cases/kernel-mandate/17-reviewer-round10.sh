@@ -84,10 +84,12 @@ printf 'composer\n' > "$KERNEL_MANDATE_STATE_DIR/agents/composer"
 # into a loud deny means assert_allow rejects it too — a kernel that
 # never returns has not allowed anything.
 TIMED="$R10/timed-hook.sh"
+# macOS has no timeout(1) without coreutils; perl's alarm ends the run with SIGALRM (142).
+if command -v timeout >/dev/null 2>&1; then TMO="timeout 25"; else TMO="perl -e 'alarm 25; exec @ARGV' --"; fi
 cat > "$TIMED" <<EOF
 #!/bin/bash
-out=\$(timeout 25 bash "$H"); rc=\$?
-if [ "\$rc" -eq 124 ]; then
+out=\$($TMO bash "$H"); rc=\$?
+if [ "\$rc" -eq 124 ] || [ "\$rc" -eq 142 ]; then
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"TEST-HARNESS: the kernel did not terminate within 25s"}}'
   exit 0
 fi
