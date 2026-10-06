@@ -68,6 +68,8 @@ description: >
 
 # Contributing to @civitas-cerebrum/element-interactions
 
+Under an active role kernel some steps are refused: see [known-limits.md](../achilles-protocol/references/known-limits.md) KL-07.
+
 This package is a Playwright-on-top facade. Every API decision should preserve the framework's two non-negotiable promises:
 
 1. **No raw selectors in user test files.** Tests refer to elements by name (`'submitButton'`, `'CheckoutPage'`), never by CSS/XPath/locator strings.

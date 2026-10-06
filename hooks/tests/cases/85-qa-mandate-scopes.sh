@@ -83,5 +83,13 @@ assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npx achilles-self-repai
   "orchestrator npx achilles-self-repair --claude-bin → DENY (spawns whatever --claude-bin names)" "may not run this command"
 assert_allow "$KERNEL" "$(qs_main tool_name=Bash command='npx playwright test')" "orchestrator npx playwright test → ALLOW"
 
+section "qa-mandate: procedures the kernel refuses today (KL-05..KL-07)"
+assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='k6 run --vus 1 --duration 30s tests/perf/scenarios/home.js')" "orchestrator k6 run → DENY (KL-05)" "may not run this command"
+assert_deny "$KERNEL" "$(qs_disp 'scenario-model-checkout: author the script' perf-reviewer)" "perf scenario dispatch → DENY (KL-05)" "names no manifest role"
+assert_deny "$KERNEL" "$(qs_main tool_name=mcp__atlassian__transitionJiraIssue)" "orchestrator tracker MCP call → DENY (KL-06)" "may not use the 'mcp__atlassian__transitionJiraIssue' tool"
+assert_deny "$KERNEL" "$(qs_disp 'repair-worker-login-spec: repair' repair-worker)" "repair-worker dispatch → DENY (KL-07)" "names no manifest role"
+assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=contribution-handover command='gh pr create --title x --body y')" "contribution-handover gh pr create → DENY (KL-07)" "may not run this command"
+assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='gh pr create --title x --body y')" "orchestrator gh pr create → DENY (KL-08: pr-attribution-gate shadowed)" "may not run this command"
+
 rm -rf "$QS_TMP"
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR
