@@ -82,6 +82,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -124,17 +126,6 @@ PIPELINE_APPROVER_TYPES="workflow-reviewer phase-validator process-validator"
 PIPELINE_MSG_SCHEMA_REF='schemas/onboarding-status.schema.json'
 PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
-
 # Extract the proposed contents. For Write the field is `content`; for
 # Edit we synthesise by applying the patch to the existing file (via the
 # validator bundle's `replace` subcommand — LITERAL string replacement
@@ -157,7 +148,7 @@ case "$TOOL_NAME" in
       NODE_BIN="$(command -v node 2>/dev/null || true)"
       VALIDATOR="$(dirname "${BASH_SOURCE[0]}")/lib/validator.bundle.mjs"
       if [ -z "$NODE_BIN" ] || [ ! -f "$VALIDATOR" ]; then
-        emit_deny "[BLOCKED] Cannot synthesise the proposed ledger content for an Edit (node or the validator bundle is unavailable), so the gate cannot validate the transition.
+        emit_pre_deny "[BLOCKED] Cannot synthesise the proposed ledger content for an Edit (node or the validator bundle is unavailable), so the gate cannot validate the transition.
 
 File: ${FILE_PATH}
 
@@ -177,7 +168,7 @@ reinstall @civitas-cerebrum/achilles to get hooks/lib/validator.bundle.mjs."
       SYNTH_ERR=$(cat "$SYNTH_ERR_FILE" 2>/dev/null || true)
       rm -f "$TMP_OLD" "$TMP_NEW" "$SYNTH_ERR_FILE"
       if [ "$SYNTH_EXIT" != "0" ]; then
-        emit_deny "[BLOCKED] Edit to onboarding-status.json could not be synthesised: ${SYNTH_ERR:-unknown error}.
+        emit_pre_deny "[BLOCKED] Edit to onboarding-status.json could not be synthesised: ${SYNTH_ERR:-unknown error}.
 
 File: ${FILE_PATH}
 
@@ -222,7 +213,7 @@ _psv_ret=$?
 # whether ajv was available.
 if [ "${PIPELINE_SCHEMA_VALIDATION_SKIPPED:-0}" = "1" ]; then
   if ! "$JQ" -e . "$TMP_PROPOSED" >/dev/null 2>&1; then
-    emit_deny "[BLOCKED] Proposed onboarding-status.json is not parseable JSON (schema validation was skipped because node/ajv is unavailable, but jq parsing failed).
+    emit_pre_deny "[BLOCKED] Proposed onboarding-status.json is not parseable JSON (schema validation was skipped because node/ajv is unavailable, but jq parsing failed).
 
 File: ${FILE_PATH}
 
@@ -322,7 +313,7 @@ emit_phase_deny() {
   local missing="$2"
   local fix_hint="$3"
   local skill_ref="$4"
-  emit_deny "[BLOCKED] Phase ${phase} cannot transition to status: \"completed\" — required deliverable missing.
+  emit_pre_deny "[BLOCKED] Phase ${phase} cannot transition to status: \"completed\" — required deliverable missing.
 
 File: ${FILE_PATH}
 

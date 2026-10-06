@@ -74,6 +74,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/workflow-reviewer/SKILL.md\n  
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -100,16 +102,6 @@ if [ "${WORKFLOW_REVIEWER_BRIEF_GATE:-on}" = "off" ]; then
 fi
 
 PROMPT=$(echo "$INPUT" | "$JQ" -r '.tool_input.prompt // ""' 2>/dev/null || echo "")
-
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # Build a violations list — accumulate ALL failures, not just the first,
 # so the operator can fix everything in one pass.
@@ -157,7 +149,7 @@ if [ -z "$VIOLATIONS" ]; then
   exit 0
 fi
 
-emit_deny "[BLOCKED] workflow-reviewer dispatch brief fails integrity check.
+emit_pre_deny "[BLOCKED] workflow-reviewer dispatch brief fails integrity check.
 
 Description: \"${DESCRIPTION}\"
 

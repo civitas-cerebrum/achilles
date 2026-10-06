@@ -50,6 +50,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/perf-onboarding/SKILL.md\n  sk
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -67,16 +69,6 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 [ -n "$DESCRIPTION" ] || exit 0
 
 # Helper: emit a DENY payload with the supplied reason.
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # Reviewer allow-list: perf-reviewer-* dispatches are detected by the shared
 # lib/reviewer-prefix.sh helper (which already accepts perf-reviewer-*).
@@ -187,7 +179,7 @@ if [ -n "$TARGET_PASS_NAME" ]; then
       .[0].reviewerVerdict // "pending"
     ' "$LEDGER" 2>/dev/null || echo "pending")
     if [ "$PRIOR_PASS_VERDICT" != "approved" ]; then
-      emit_deny "[BLOCKED] Out-of-order Phase-5 pass dispatch — pass-${TARGET_PASS_NAME} cannot start while pass-${PRIOR_PASS_NAME} is not reviewer-approved.
+      emit_pre_deny "[BLOCKED] Out-of-order Phase-5 pass dispatch — pass-${TARGET_PASS_NAME} cannot start while pass-${PRIOR_PASS_NAME} is not reviewer-approved.
 
 Description: \"${DESCRIPTION}\"
 

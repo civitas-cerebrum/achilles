@@ -56,6 +56,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -70,16 +72,8 @@ case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 [ -n "$FILE_PATH" ] || exit 0
 
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-  exit 0
-}
+# A deny ends the hook.
+emit_deny() { emit_pre_deny "$1"; exit 0; }
 
 # Normalise to leading-slash form so bare relative paths match the same
 # suffix patterns as absolute ones.

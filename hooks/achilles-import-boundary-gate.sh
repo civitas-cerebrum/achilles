@@ -90,6 +90,8 @@ set -euo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
@@ -138,13 +140,7 @@ read scope.
 References:
   skills/onboarding/SKILL.md (Phase 1 scaffold)
   skills/achilles-protocol/references/known-limits.md (KL-03)"
-  "$JQ" -n --arg r "$reason$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
+  HOOK_REFS= emit_pre_deny "$reason"  # the message carries its own References
   exit 0
 }
 

@@ -71,6 +71,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -88,16 +90,6 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 [ -n "$DESCRIPTION" ] || exit 0
 
 # Helper: emit a DENY payload with the supplied reason.
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # Rule 4 (allow-list): approver-role dispatches (workflow-reviewer-* /
 # phase-validator-*) always pass. Detection lives in lib/reviewer-prefix.sh
@@ -210,7 +202,7 @@ if [ -n "$TARGET_PASS" ]; then
       .[0].reviewerVerdict // "pending"
     ' "$LEDGER" 2>/dev/null || echo "pending")
     if [ "$PRIOR_PASS_VERDICT" != "approved" ]; then
-      emit_deny "[BLOCKED] Out-of-order Phase-5 pass dispatch — pass-${TARGET_PASS} cannot start while pass-${PRIOR_PASS} is not reviewer-approved.
+      emit_pre_deny "[BLOCKED] Out-of-order Phase-5 pass dispatch — pass-${TARGET_PASS} cannot start while pass-${PRIOR_PASS} is not reviewer-approved.
 
 Description: \"${DESCRIPTION}\"
 
@@ -244,7 +236,7 @@ if [ -n "$TARGET_CYCLE" ]; then
       .[0].reviewerVerdict // "pending"
     ' "$LEDGER" 2>/dev/null || echo "pending")
     if [ "$PRIOR_CYCLE_VERDICT" != "approved" ]; then
-      emit_deny "[BLOCKED] Out-of-order Phase-4 cycle dispatch — cycle-${TARGET_CYCLE} cannot start while cycle-${PRIOR_CYCLE} is not reviewer-approved.
+      emit_pre_deny "[BLOCKED] Out-of-order Phase-4 cycle dispatch — cycle-${TARGET_CYCLE} cannot start while cycle-${PRIOR_CYCLE} is not reviewer-approved.
 
 Description: \"${DESCRIPTION}\"
 

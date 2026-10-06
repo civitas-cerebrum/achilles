@@ -34,6 +34,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/onboarding/SKILL.md §\"Status
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
@@ -48,10 +50,6 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 EVENT=$(echo "$INPUT" | "$JQ" -r '.hook_event_name // empty' 2>/dev/null || echo "")
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
-
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$r}}'
-}
 
 # Deny any direct Write/Edit to the sidecar itself (only this hook's Post
 # path may author it).
@@ -68,7 +66,7 @@ NORM_PATH="/${FILE_PATH#/}"
 case "$NORM_PATH" in
   */tests/e2e/docs/.ledger-integrity.json | \
   */tests/perf/docs/.ledger-integrity.json)
-    [ "$EVENT" = "PreToolUse" ] && emit_deny "[BLOCKED] The integrity sidecar .ledger-integrity.json is hook-authored state. It is never written via Write/Edit — it updates automatically when the ledger is written through the sanctioned path."
+    [ "$EVENT" = "PreToolUse" ] && emit_pre_deny "[BLOCKED] The integrity sidecar .ledger-integrity.json is hook-authored state. It is never written via Write/Edit — it updates automatically when the ledger is written through the sanctioned path."
     exit 0 ;;
   */tests/e2e/docs/onboarding-status.json)        CHAIN_KEY="onboarding-status.json" ;;
   */tests/perf/docs/perf-onboarding-status.json)  CHAIN_KEY="perf-onboarding-status.json" ;;
@@ -118,7 +116,7 @@ PREVIOUS=$("$JQ" -r "${CHAIN_FILTER_GET}[-2].sha256 // empty" "$SIDECAR" 2>/dev/
 [ -n "$LATEST" ] || exit 0   # malformed sidecar / no chain for this file — bootstrap
 
 if [ ! -f "$FILE_PATH" ]; then
-  emit_deny "[BLOCKED] ${CHAIN_KEY} has been deleted out of band — the integrity sidecar still holds its sanctioned hash chain.
+  emit_pre_deny "[BLOCKED] ${CHAIN_KEY} has been deleted out of band — the integrity sidecar still holds its sanctioned hash chain.
 
 Deleting a chained pipeline-state file resets the gates that depend on it;
 that is an operator decision, not an agent action.
@@ -133,7 +131,7 @@ fi
 CURRENT=$(file_sha256 "$FILE_PATH")
 [ -n "$CURRENT" ] || exit 0   # no hashing tool — chain disabled
 if [ "$CURRENT" != "$LATEST" ] && [ "$CURRENT" != "$PREVIOUS" ]; then
-  emit_deny "[BLOCKED] ${CHAIN_KEY} was mutated out of band — its content no longer matches the sanctioned hash chain.
+  emit_pre_deny "[BLOCKED] ${CHAIN_KEY} was mutated out of band — its content no longer matches the sanctioned hash chain.
 
 On-disk sha256:   ${CURRENT}
 Last sanctioned:  ${LATEST}

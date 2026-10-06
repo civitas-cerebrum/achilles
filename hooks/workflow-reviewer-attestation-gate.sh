@@ -70,6 +70,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/workflow-reviewer/SKILL.md"
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -102,13 +104,6 @@ RESPONSE=$(
 case "$RESPONSE" in
   ""|"null"|"{}"|"[]") exit 0 ;;
 esac
-
-emit_warn() {
-  "$JQ" -n --arg m "$1${HOOK_REFS}" '{
-    "systemMessage": $m,
-    "suppressOutput": false
-  }'
-}
 
 # Parse the return. The reviewer's return is YAML in practice; we convert
 # it to JSON through the bundled validator's `tojson` subcommand (P7

@@ -79,18 +79,11 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/references/
 # system jq for in-repo testing before postinstall has run.
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 # --- helpers ---
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # --- input ---
 hook_read_input
@@ -134,7 +127,7 @@ sys.stdout.write(s)
 
 # Anti-pattern: --no-verify / --no-gpg-sign / -c commit.gpgsign=false as args
 if echo "$CMD_NO_QUOTES" | grep -qE '(^|[[:space:]])(--no-verify|--no-gpg-sign|commit\.gpgsign=false)([[:space:]]|$)'; then
-  emit_deny "[BLOCKED] git commit cannot bypass hooks or signing.
+  emit_pre_deny "[BLOCKED] git commit cannot bypass hooks or signing.
 
 Command contains one of: --no-verify, --no-gpg-sign, commit.gpgsign=false (as a git argument, not as message content).
 
@@ -175,7 +168,7 @@ fi
 # generated-with / claude.ai-code alternatives are markers/URLs that are
 # never legitimate in a commit message, so they match anywhere.
 if echo "$ATTRIB_SCAN" | grep -qiE '(^|['"'"'"])[[:space:]]*co-authored-by:.*(claude|anthropic|noreply@anthropic\.com)|generated with.*claude([[:space:]]+code)?\b|claude\.ai/code'; then
-  emit_deny "[BLOCKED] git commit carries AI-attribution metadata.
+  emit_pre_deny "[BLOCKED] git commit carries AI-attribution metadata.
 
 Command/message surface contains one of:
   - a \`Co-Authored-By:\` trailer naming claude / anthropic / noreply@anthropic.com
@@ -219,7 +212,7 @@ fi
 
 # Anti-pattern: multi-journey commit shape  test(j-a,j-b,...): ...
 if echo "$SCAN" | grep -qE 'test\([^)]*j-[a-z0-9-]+[[:space:]]*,'; then
-  emit_deny "[BLOCKED] Multi-journey commit detected.
+  emit_pre_deny "[BLOCKED] Multi-journey commit detected.
 
 Message: \"${SCAN}\"
 
@@ -234,7 +227,7 @@ fi
 
 # Anti-pattern: feat(e2e): ... — coverage expansion / e2e tests are never `feat`.
 if echo "$SCAN" | grep -qiE '^feat\((e2e|tests|test|coverage|journey|onboarding)\)'; then
-  emit_deny "[BLOCKED] Test/coverage commits are 'test:' not 'feat:'.
+  emit_pre_deny "[BLOCKED] Test/coverage commits are 'test:' not 'feat:'.
 
 Message: \"${SCAN}\"
 
@@ -254,7 +247,7 @@ fi
 # and §"Dual-stage per-pass contract". Reviewer judgements live in the
 # state file, not the git log.
 if echo "$SCAN" | grep -qiE '^review\('; then
-  emit_deny "[BLOCKED] Review-tagged commits are forbidden.
+  emit_pre_deny "[BLOCKED] Review-tagged commits are forbidden.
 
 Message: \"${SCAN}\"
 

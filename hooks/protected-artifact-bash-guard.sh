@@ -45,13 +45,9 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/h
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 hook_jq_init fatal
 
-HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
-if [ -f "$HOOK_LIB_DIR/no-skip-messaging.sh" ]; then
-  # shellcheck disable=SC1091
-  source "$HOOK_LIB_DIR/no-skip-messaging.sh"
-else
-  no_skip_messaging_block() { echo ""; }
-fi
+# shellcheck disable=SC1091
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 
 hook_read_input
 

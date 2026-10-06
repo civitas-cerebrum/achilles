@@ -224,6 +224,8 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_EVIDENCE_GATE:-}" = "1" ] && exit 0
@@ -236,6 +238,7 @@ if [ -f "$HOOK_DIR/lib/achilles-activation.sh" ]; then
   achilles_session_active "$INPUT" || exit 0
 fi
 
+# Local: no session-scope notice, no HOOK_REFS.
 emit_deny() {
   "$JQ" -n --arg r "$1" '{
     hookSpecificOutput: {
@@ -244,10 +247,6 @@ emit_deny() {
       permissionDecisionReason: $r
     }
   }'
-}
-
-emit_warn() {
-  "$JQ" -n --arg m "$1" '{systemMessage: $m, suppressOutput: false}'
 }
 
 TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"

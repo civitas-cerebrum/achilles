@@ -67,6 +67,7 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/contributing-to-achilles-proto
 hook_jq_init fatal
 
 # --- helpers ---
+# Local: HOOK_REFS only, no session-scope notice.
 emit_deny() {
   "$JQ" -n --arg r "$1${HOOK_REFS}" '{
     "hookSpecificOutput": {

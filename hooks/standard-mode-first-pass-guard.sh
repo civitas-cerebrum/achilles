@@ -132,6 +132,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §
 # Resolve jq.
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -156,16 +158,6 @@ COV_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/coverage-expansion-state.json"
 CYCLE_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 
 # Emit a DENY JSON with the supplied reason.
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # ---------------------------------------------------------------------------
 # Rule 1: Grouping forbidden (Pass-1 under standard, every pass under depth)
@@ -225,7 +217,7 @@ if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*(\[(group|P3-batch)\]|(test-comp
   # Under depth: DENY on any pass.
   # Under standard: DENY when currentPass empty OR == 1.
   if [ "$RUN_MODE" = "depth" ]; then
-    emit_deny "[BLOCKED] Grouping forbidden on every pass under \`mode: depth\`.
+    emit_pre_deny "[BLOCKED] Grouping forbidden on every pass under \`mode: depth\`.
 
 Description: \"${DESCRIPTION}\"
 
@@ -248,7 +240,7 @@ See:
     exit 0
   fi
   if [ -z "$CURRENT_PASS" ] || [ "$CURRENT_PASS" = "1" ]; then
-    emit_deny "[BLOCKED] Pass-1 grouping forbidden under \`mode: standard\`.
+    emit_pre_deny "[BLOCKED] Pass-1 grouping forbidden under \`mode: standard\`.
 
 Description: \"${DESCRIPTION}\"
 
@@ -287,7 +279,7 @@ if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*phase4-prioritise-author:'; then
     esac
   fi
   if [ "$CYCLE_1_COUNT" -lt 2 ]; then
-    emit_deny "[BLOCKED] \`phase4-prioritise-author:\` dispatch denied — cycle 1 has not yet established the per-section baseline.
+    emit_pre_deny "[BLOCKED] \`phase4-prioritise-author:\` dispatch denied — cycle 1 has not yet established the per-section baseline.
 
 Description: \"${DESCRIPTION}\"
 
@@ -402,7 +394,7 @@ if [ "$HIT_COUNT" -ge 3 ]; then
       # after cycle 1 has dispatched-sections recorded). Under standard,
       # DENY only when no cycle-1 dispatches exist yet.
       if [ "$CYCLE_STRICTNESS" = "depth" ]; then
-        emit_deny "[BLOCKED] Single-subagent walkthrough forbidden on every cycle under \`cycleStrictness: depth\`.
+        emit_pre_deny "[BLOCKED] Single-subagent walkthrough forbidden on every cycle under \`cycleStrictness: depth\`.
 
 Description: \"${DESCRIPTION}\"
 
@@ -428,7 +420,7 @@ See:
         exit 0
       fi
       if [ "$CYCLE_1_DISPATCHED" -eq 0 ]; then
-        emit_deny "[BLOCKED] Single-subagent walkthrough of journey-mapping cycle 1 forbidden.
+        emit_pre_deny "[BLOCKED] Single-subagent walkthrough of journey-mapping cycle 1 forbidden.
 
 Description: \"${DESCRIPTION}\"
 

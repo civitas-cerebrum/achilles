@@ -473,7 +473,7 @@ PATH="$NONODE" assert_deny "$H" "$(cfg 'export default { testDir: "./tests" };')
 # ~/.claude/hooks has no node_modules above it and the project may have none
 # either (global or pnpm install): the parser comes from the bundle beside the scanner.
 INST="$IB_TMP/installed/hooks"; mkdir -p "$INST/lib"
-cp "$H" "$INST/"; cp "$HOOK_DIR/lib/hook-io.sh" "$HOOK_DIR/lib/achilles-activation.sh" "$HOOK_DIR/lib/import-boundary-scan.js" "$INST/lib/"
+cp "$H" "$INST/"; cp "$HOOK_DIR/lib/hook-io.sh" "$HOOK_DIR/lib/hook-emit.sh" "$HOOK_DIR/lib/achilles-activation.sh" "$HOOK_DIR/lib/import-boundary-scan.js" "$INST/lib/"
 GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$INST/achilles-import-boundary-gate.sh" "$(code tests/e2e/x.spec.ts 'import { test } from "./fixtures/base";')" \
   "installed copy without the parser bundle or node_modules → DENY with one reason line" "@babel/parser not found; reinstall @civitas-cerebrum/achilles"
 cp "$HOOK_DIR/lib/babel-parser.bundle.js" "$INST/lib/"

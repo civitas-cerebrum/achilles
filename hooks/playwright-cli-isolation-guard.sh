@@ -83,6 +83,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/p
 # system jq for in-repo testing before postinstall has run.
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -137,19 +139,9 @@ fi
 # the short, documented form.
 SLUG_PREFIX_REGEX='^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*'
 
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
-
 # Case 1: -s= flag is missing entirely.
 if [ -z "$SLUG" ]; then
-  emit_deny "[BLOCKED] Missing -s=<slug> flag.
+  emit_pre_deny "[BLOCKED] Missing -s=<slug> flag.
 
 Command: $CMD_PREVIEW
 
@@ -174,7 +166,7 @@ fi
 # Case 2: slug is in collision-prone blocklist.
 case "$SLUG" in
   default|test|session|temp|tmp|x|y|main|stage1|stage3|stage4|pass1|pass2|pass3|pass4|pass5)
-    emit_deny "[BLOCKED] Slug '-s=$SLUG' is collision-prone.
+    emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' is collision-prone.
 
 Command: $CMD_PREVIEW
 
@@ -194,7 +186,7 @@ esac
 
 # Case 3: slug doesn't follow the role-prefix convention.
 if ! echo "$SLUG" | grep -qE "$SLUG_PREFIX_REGEX"; then
-  emit_deny "[BLOCKED] Slug '-s=$SLUG' missing role prefix.
+  emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' missing role prefix.
 
 Command: $CMD_PREVIEW
 
@@ -216,7 +208,7 @@ fi
 
 # Case 4: slug is too short even with prefix (defense-in-depth).
 if [ ${#SLUG} -lt 6 ]; then
-  emit_deny "[BLOCKED] Slug '-s=$SLUG' is too short (≥6 chars required).
+  emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' is too short (≥6 chars required).
 
 Command: $CMD_PREVIEW
 
@@ -233,7 +225,7 @@ fi
 # longer than ~28 chars push the path over the limit and the daemon
 # silently fails with EINVAL on bind. Caught by Stage B reviewer in cycle 2.
 if [ ${#SLUG} -gt 28 ]; then
-  emit_deny "[BLOCKED] Slug '-s=$SLUG' is too long (${#SLUG} chars; ≤28 allowed).
+  emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' is too long (${#SLUG} chars; ≤28 allowed).
 
 Command: $CMD_PREVIEW
 

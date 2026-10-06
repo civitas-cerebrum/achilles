@@ -59,6 +59,8 @@ set -uo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init silent
 
 INPUT=$(cat 2>/dev/null || echo "{}")
@@ -141,7 +143,7 @@ References:
   skills/achilles-protocol/references/test-composition-standards.md §4
   skills/coverage-expansion/references/anti-rationalizations.md §"Judge-loop skipping"
 EOF
-    "$JQ" -n --arg r "$REASON" '{ "decision": "block", "reason": $r }'
+    emit_stop_block "$REASON"
     exit 0
   fi
   exit 0

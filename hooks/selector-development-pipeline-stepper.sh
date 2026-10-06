@@ -46,6 +46,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/selector-development/SKILL.md 
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 # Portable sha256 (macOS ships shasum, not sha256sum).
@@ -55,16 +57,6 @@ hook_jq_init fatal
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # Detect if a file path is a frontend source path.
 # Mirrors the activation-gate convention: must have a frontend extension AND
@@ -351,7 +343,7 @@ if [ "$EVENT_NAME" = "PreToolUse" ]; then
   # Check for any failed steps — a fail requires revert + restart
   FAILED_STEP=$(echo "$STEPS_JSON" | "$JQ" -r '[.[] | select(.status == "fail")] | .[0].name // ""' 2>/dev/null || echo "")
   if [ -n "$FAILED_STEP" ]; then
-    emit_deny "[BLOCKED] selector-development pipeline: ${FAILED_STEP} fail — must revert and restart.
+    emit_pre_deny "[BLOCKED] selector-development pipeline: ${FAILED_STEP} fail — must revert and restart.
 
 Step '${FAILED_STEP}' recorded a failure in the journal for scope '${SCOPE}'.
 
@@ -378,7 +370,7 @@ Receipt: ${RECEIPT}"
 
   if [ "$PRED_STATUS" != "pass" ]; then
     if [ -z "$PRED_STATUS" ]; then
-      emit_deny "[BLOCKED] selector-development pipeline: missing predecessor: ${PREDECESSOR}.
+      emit_pre_deny "[BLOCKED] selector-development pipeline: missing predecessor: ${PREDECESSOR}.
 
 Step '${STEP}' requires '${PREDECESSOR}' to have passed first.
 Current journal for scope '${SCOPE}' has no '${PREDECESSOR}' entry.
@@ -386,7 +378,7 @@ Current journal for scope '${SCOPE}' has no '${PREDECESSOR}' entry.
 Complete step '${PREDECESSOR}' before attempting '${STEP}'.
 Receipt: ${RECEIPT}"
     else
-      emit_deny "[BLOCKED] selector-development pipeline: ${PREDECESSOR} ${PRED_STATUS} — predecessor did not pass.
+      emit_pre_deny "[BLOCKED] selector-development pipeline: ${PREDECESSOR} ${PRED_STATUS} — predecessor did not pass.
 
 Step '${STEP}' requires '${PREDECESSOR}' to have passed, but it recorded '${PRED_STATUS}'.
 You must revert and restart the pipeline from step 1 (before_snapshot).
@@ -419,7 +411,7 @@ Receipt: ${RECEIPT}"
     fi
 
     if [ -z "$RECEIPT_HASH" ] || [ "$RECEIPT_HASH" != "$STAGED_HASH" ]; then
-      emit_deny "[BLOCKED] selector-development pipeline: git_diff_hash mismatch.
+      emit_pre_deny "[BLOCKED] selector-development pipeline: git_diff_hash mismatch.
 
 The receipt for scope '${SCOPE}' records git_diff_hash='${RECEIPT_HASH}'.
 The current staged diff hash is '${STAGED_HASH}'.

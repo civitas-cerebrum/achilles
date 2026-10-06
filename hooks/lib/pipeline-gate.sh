@@ -21,17 +21,8 @@
 #   PIPELINE_MSG_SCHEMA_REF    — ledger schema path (e.g. schemas/onboarding-status.schema.json)
 #   PIPELINE_MSG_REVIEWER_SKILL — reviewer skill path (e.g. skills/workflow-reviewer/SKILL.md)
 
-# Emit a PreToolUse deny payload with the supplied reason (stdout JSON).
-pipeline_emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
+# Deny without the calling hook's HOOK_REFS: the gate's messages carry their own references.
+pipeline_emit_deny() { HOOK_REFS= emit_pre_deny "$1"; }
 
 # pipeline_reviewer_cap_check <description>
 # Checks the reviewer-cycles cap for a reviewer dispatch.

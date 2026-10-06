@@ -76,6 +76,8 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/journey-mapping/SKILL.md\n  sk
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 hook_jq_init fatal
 
 hook_read_input
@@ -120,17 +122,8 @@ CYCLE_STATE_PATH="$PROJECT_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 
 # Helper: emit a DENY decision. The hook framework reads decisions from
 # `hookSpecificOutput.permissionDecision` (PreToolUse contract).
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-  exit 0
-}
+# A deny ends the hook.
+emit_deny() { emit_pre_deny "$1"; exit 0; }
 
 # --- Coverage matrix rule (Rule 3) ---
 if [ "$IS_COVERAGE" -eq 1 ]; then

@@ -74,6 +74,7 @@ input=$(cat)
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
 achilles_require_active "$input"
 
+# Local: no session-scope notice, no HOOK_REFS.
 emit_deny() {
   "$JQ" -n --arg r "$1" '{
     "hookSpecificOutput": {
