@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // lint-doc-drift.mjs — fails the publish (prepack) when the human-authored
 // doc surfaces drift out of sync with the machine-authoritative sources they
-// describe. Eight independent checks; each reports pass/fail; the process
+// describe. Nine independent checks; each reports pass/fail; the process
 // exits non-zero if any check fails.
 //
 //   (1) skill-registry table  ↔  skills/*/ directories          (bijection)
@@ -18,6 +18,7 @@
 //   (7) the QA role ledger's role inventory  ↔  the QA mandate's roles
 //       (role-name sets both ways, plus the count the ledger states in prose)
 //   (8) every environment switch a hook or script reads  ↔  a row in opt-in-surfaces.md
+//   (9) the QA workflow table  ↔  the QA mandate (scopes, imports, env, skills, dispatch, commands)
 //
 // The lint is authored to the FINAL intended state of the surfaces other
 // packages touch in parallel; where a surface has not yet converged it
@@ -472,6 +473,44 @@ function checkOptInSurfaces() {
   if (missing.length) detail.push(`switches read in code with no row in ${OPT_IN_DOC}: ${missing.join(', ')}`);
   report(`env switches read by hooks/scripts ↔ opt-in-surfaces.md (${names.size} switches read)`, detail.length === 0, detail);
 }
+// ---------------------------------------------------------------------------
+// Check 9 — workflow table ↔ QA mandate parity (stands in for `kernel-mandate derive --check`)
+// ---------------------------------------------------------------------------
+const QA_WORKFLOW = 'hooks/data/achilles-qa.workflow.json';
+function checkQaMandateParity() {
+  const detail = [];
+  const wf = JSON.parse(readFileSync(QA_WORKFLOW, 'utf8'));
+  const md = JSON.parse(readFileSync(QA_MANDATE, 'utf8'));
+  const S = (a) => new Set(a ?? []);
+  const eq = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
+  const show = (s) => [...s].sort().join(', ') || '∅';
+  const union = (st, k) => new Set(st.flatMap((s) => s[k] ?? []));
+  const tRoles = S(Object.keys(wf.roles)); const mRoles = S(Object.keys(md.roles));
+  if (!eq(tRoles, mRoles)) detail.push(`role sets differ — table: ${show(tRoles)}; mandate: ${show(mRoles)}`);
+  const byRole = {};
+  for (const s of wf.stages) (byRole[s.role] ??= []).push(s);
+  for (const role of [...mRoles].sort()) {
+    const st = byRole[role] ?? []; const m = md.roles[role];
+    if (!st.length) { detail.push(`${role}: no stage in ${QA_WORKFLOW}`); continue; }
+    const W = union(st, 'writes'); const WA = S(m.write?.allow);
+    if (!eq(W, WA)) detail.push(`${role}: write.allow {${show(WA)}} ≠ stage writes {${show(W)}}`);
+    const WD = S(m.write?.deny);
+    for (const d of union(st, 'writesDeny')) if (!WD.has(d)) detail.push(`${role}: writesDeny '${d}' absent from write.deny`);
+    const CI = S(wf.roles[role]?.codeImports); const MCI = S(m.write?.codeImports);
+    if (!eq(CI, MCI)) detail.push(`${role}: codeImports table {${show(CI)}} ≠ mandate {${show(MCI)}}`);
+    const E = union(st, 'env'); const ME = S(m.bash?.env);
+    if (!eq(E, ME)) detail.push(`${role}: bash.env {${show(ME)}} ≠ stage env {${show(E)}}`);
+    const RA = S(m.read?.allow);
+    for (const r of union(st, 'reads')) if (!RA.has(r)) detail.push(`${role}: stage read '${r}' absent from read.allow`);
+    const SK = union(st, 'skills');
+    if (SK.size && !eq(SK, S(m.skills?.allow))) detail.push(`${role}: skills.allow {${show(S(m.skills?.allow))}} ≠ stage skills {${show(SK)}}`);
+    const DI = union(st, 'dispatches'); const MD = S(Array.isArray(m.dispatch) ? m.dispatch : m.dispatch?.allow);
+    if (DI.size && !eq(DI, MD)) detail.push(`${role}: dispatch {${show(MD)}} ≠ stage dispatches {${show(DI)}}`);
+    const res = (m.bash?.groups ?? []).flatMap((g) => md.commandGroups?.[g] ?? []).map((p) => new RegExp(p));
+    for (const cmd of union(st, 'runs')) if (!res.some((re) => re.test(cmd))) detail.push(`${role}: stage runs '${cmd}' matches none of its command groups`);
+  }
+  report(`achilles-qa workflow table ↔ mandate parity (${mRoles.size} roles, ${wf.stages.length} stages)`, detail.length === 0, detail);
+}
 checkRegistryBijection();
 checkRelativeLinks();
 checkHookManifest();
@@ -480,6 +519,7 @@ checkHookReferences();
 checkDocsCounts();
 checkRoleLedgerInventory();
 checkOptInSurfaces();
+checkQaMandateParity();
 
 if (anyFail) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

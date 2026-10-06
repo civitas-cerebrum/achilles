@@ -227,15 +227,25 @@
         "npm run test:repair"
       ],
       "dispatches": [
-        "scaffolder",
-        "test-composer",
-        "in-flight-composer",
-        "workflow-reviewer",
-        "phase-validator",
-        "process-validator",
         "batch-reviewer",
+        "cleanup",
+        "companion",
+        "contribution-handover",
+        "fd",
+        "in-flight-composer",
         "perf-reviewer",
-        "selector-diff-validator"
+        "phase-validator",
+        "phase1",
+        "phase2",
+        "phase4",
+        "probe",
+        "process-validator",
+        "reviewer",
+        "scaffolder",
+        "selector-diff-validator",
+        "stage2",
+        "test-composer",
+        "workflow-reviewer"
       ],
       "network": [
         "localhost:4173",
@@ -265,7 +275,8 @@
         "test-repair",
         "work-summary-deck",
         "workflow-reviewer",
-        "test-data-conventions"
+        "test-data-conventions",
+        "mandate-designer"
       ]
     },
     {
@@ -393,6 +404,240 @@
       "role": "selector-diff-validator",
       "reads": [
         "tests/**"
+      ]
+    },
+    {
+      "id": "discover-entry",
+      "role": "phase1",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/app-context.md",
+        "tests/e2e/docs/.subagent-returns/**"
+      ],
+      "runs": [
+        "npx playwright-cli open"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "journey-mapping"
+      ]
+    },
+    {
+      "id": "discover-scope",
+      "role": "phase2",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/app-context.md",
+        "tests/e2e/docs/.subagent-returns/**"
+      ],
+      "runs": [
+        "npx playwright-cli open"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "journey-mapping"
+      ]
+    },
+    {
+      "id": "map-journeys",
+      "role": "phase4",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/.phase4-cycle-state.json",
+        "tests/e2e/docs/.subagent-returns/**",
+        "tests/e2e/docs/journey-map.md"
+      ],
+      "runs": [
+        "npx playwright-cli open"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "journey-mapping"
+      ]
+    },
+    {
+      "id": "inspect-elements",
+      "role": "stage2",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/.auth/**",
+        "tests/e2e/docs/.subagent-returns/**"
+      ],
+      "runs": [
+        "npx playwright-cli open"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "selector-development"
+      ]
+    },
+    {
+      "id": "review-journey",
+      "role": "reviewer",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/docs/.subagent-returns/**"
+      ],
+      "runs": [
+        "npx playwright-cli open"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "workflow-reviewer"
+      ]
+    },
+    {
+      "id": "probe-journey",
+      "role": "probe",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/**"
+      ],
+      "runs": [
+        "npx playwright-cli open",
+        "npx playwright test"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "bug-discovery",
+        "bug-report",
+        "database-testing",
+        "selector-development",
+        "test-composer",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "dedup-pass",
+      "role": "cleanup",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/**"
+      ],
+      "runs": [
+        "npx playwright-cli open",
+        "npx playwright test"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "test-composer",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "companion-task",
+      "role": "companion",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/evidence/**",
+        "tests/e2e/docs/.subagent-returns/**"
+      ],
+      "runs": [
+        "npx playwright-cli open",
+        "npx playwright test"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "companion-mode",
+        "test-composer",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "diagnose-failure",
+      "role": "fd",
+      "reads": [
+        "docs/**",
+        "tests/**"
+      ],
+      "writes": [
+        "tests/e2e/**"
+      ],
+      "runs": [
+        "npx playwright-cli open",
+        "npx playwright test"
+      ],
+      "network": [
+        "localhost"
+      ],
+      "skills": [
+        "achilles-protocol",
+        "database-testing",
+        "failure-diagnosis",
+        "selector-development",
+        "test-composer",
+        "test-data-conventions"
+      ]
+    },
+    {
+      "id": "hand-over-contribution",
+      "role": "contribution-handover",
+      "reads": [
+        ".contribution-handover.template.json",
+        "README.md",
+        "docs/**",
+        "package.json",
+        "schemas/**",
+        "skills/**"
+      ],
+      "writes": [
+        ".contribution-handover.json"
+      ],
+      "runs": [
+        "git status",
+        "git log",
+        "git diff"
+      ],
+      "skills": [
+        "contributing-to-achilles-protocol"
       ]
     }
   ]
