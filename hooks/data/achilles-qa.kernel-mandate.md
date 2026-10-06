@@ -35,7 +35,7 @@ reviewer only reads the deliverable" — are tool-call denials here.
 | **reviewer** | Stage B in-loop reviewer (`reviewer-j-<slug>:` per journey, `reviewer-batch-pass-<N>:` for the cycle-1 compositional batch): reads Stage A's output and the live app in its own playwright-cli session and returns greenlight or improvements-needed. | `docs/**`<br>`tests/**` | `tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | — |
 | **scaffolder** | Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. | `.gitignore`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/e2e/**` | `.gitignore`<br>`package.json`<br>`playwright.config.ts`<br>`tests/e2e/.gitignore`<br>`tests/e2e/docs/app-context.md`<br>`tests/e2e/fixtures/**`<br>`tests/e2e/page-repository.json`<br>`tests/e2e/playwright.setup.ts` | — | — |
 | **stage2** | Stage 2 element-inspection worker (`stage2-<scenario>:`): inspects the pages of one approved scenario in its own playwright-cli session and RETURNS proposed page-repository entries — the page repository itself stays the scaffolder's file. | `docs/**`<br>`tests/**` | `tests/e2e/.auth/**`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | — |
-| **test-composer** | Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. | `docs/**`<br>`tests/**`<br>`tests/e2e/page-repository.json` | `tests/e2e/**` | `^npx playwright test\b` | — |
+| **test-composer** | Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. | `docs/**`<br>`tests/**`<br>`tests/e2e/page-repository.json` | `tests/e2e/**`<br>`tests/e2e/page-repository.json` | `^npx playwright test\b` | — |
 | **workflow-reviewer** | Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. | `docs/**`<br>`tests/**` | `tests/e2e/docs/onboarding-status.json` | — | — |
 
 ## Each role, and what it is refused
@@ -334,7 +334,7 @@ Authors Playwright specs under tests/e2e/** from a journey brief and self-verifi
 - **Binds when** the host dispatches an agent of type `test-composer`, or when the brief carries `<<kernel-mandate-role: test-composer#<nonce>>>` and the description begins `test-composer-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
 - **Reads** `docs/**`, `tests/**`, `tests/e2e/page-repository.json`
-- **Writes** `tests/e2e/**`
+- **Writes** `tests/e2e/**`, `tests/e2e/page-repository.json`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright test\b` — anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`

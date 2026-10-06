@@ -263,7 +263,8 @@
         "tests/e2e/page-repository.json"
       ],
       "writes": [
-        "tests/e2e/**"
+        "tests/e2e/**",
+        "tests/e2e/page-repository.json"
       ],
       "runs": [
         "npx playwright test"

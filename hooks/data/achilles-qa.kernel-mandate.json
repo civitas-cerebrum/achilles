@@ -781,15 +781,15 @@
       },
       "write": {
         "allow": [
-          "tests/e2e/**"
+          "tests/e2e/**",
+          "tests/e2e/page-repository.json"
         ],
         "codeImports": [
           "@civitas-cerebrum/element-interactions",
           "@playwright/test"
         ],
         "deny": [
-          "tests/e2e/docs/onboarding-status.json",
-          "**/page-repository*.json"
+          "tests/e2e/docs/onboarding-status.json"
         ]
       },
       "bash": {

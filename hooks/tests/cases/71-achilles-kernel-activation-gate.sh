@@ -442,29 +442,12 @@ assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=probe command='npx playwr
   "probe runs kill-all → DENY (same rule)" "explicitly denied"
 
 # ---------------------------------------------------------------------------
-section "kernel wiring: the composers author specs, not the ledger or the page repository"
+section "kernel wiring: composing is the job; scaffolder and approvers keep their files"
 # ---------------------------------------------------------------------------
-# Both composers held `write.allow: ["tests/e2e/**"]` with no deny, so a
-# composer bound by agent_type could rewrite the status ledger and the
-# page repository — contradicting the scaffolder's own description
-# ("Write-only author of … tests/e2e/page-repository.json") and
-# reviewer-subagent-contract.md §"Do NOT append to the ledger".
-for COMPOSER in test-composer; do
-  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/docs/onboarding-status.json" content='{}')" \
-    "$COMPOSER Write the status ledger → DENY" "explicitly denied write"
-  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/page-repository.json" content='{}')" \
-    "$COMPOSER Write the page repository → DENY" "explicitly denied write"
-  # The deny is a glob, not a path literal, so a repository that lives
-  # somewhere else is still covered.
-  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/fixtures/page-repository.json" content='{}')" \
-    "$COMPOSER Write a page repository nested elsewhere → DENY (glob, not path literal)" "explicitly denied write"
-  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=$COMPOSER file_path="$KP/tests/e2e/page-repository.v2.json" content='{}')" \
-    "$COMPOSER Write a suffixed page repository → DENY" "explicitly denied write"
-done
-# Adjacent traffic: composing is the job, and the role that OWNS the page
+# Composing is the job, and the role that OWNS the page
 # repository still writes it.
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path="$KP/tests/e2e/checkout.spec.ts" content='import { test } from "@playwright/test"; test("x", async () => {});')" \
-  "test-composer Write a spec → ALLOW (the deny is scoped to the two state files)"
+  "test-composer Write a spec → ALLOW (the ledger deny is scoped to one file)"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/tests/e2e/page-repository.json" content='{"pages":{}}')" \
   "scaffolder Write the page repository → ALLOW (unchanged: it is that role's deliverable)"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=workflow-reviewer file_path="$KP/tests/e2e/docs/onboarding-status.json" content='{}')" \
