@@ -40,6 +40,12 @@ assert_allow "$KERNEL" "$(qs_disp 'secrets-sweep-phase7: rewrite literals to pro
 for F in .env .env.example .gitignore; do
   assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=scaffolder file_path="$QP/$F" content='X=1')" "scaffolder Write $F → ALLOW"
 done
+assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=scaffolder file_path="$QP/playwright.contracts.config.ts" content='export default {};')" "scaffolder Write playwright.contracts.config.ts → ALLOW (glob)"
+assert_allow "$KERNEL" "$(qs_main tool_name=Read file_path="$QP/playwright.contracts.config.ts")" "orchestrator Read playwright.contracts.config.ts → ALLOW"
+assert_deny "$KERNEL" "$(qs_main tool_name=Write file_path="$QP/playwright.contracts.config.ts" content='export default {};')" \
+  "orchestrator Write playwright.contracts.config.ts → DENY" "outside the role's write scope"
+assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=test-composer file_path="$QP/playwright.contracts.config.ts" content='export default {};')" \
+  "test-composer Write playwright.contracts.config.ts → DENY" "outside the role's write scope"
 assert_allow "$KERNEL" "$(qs_sub tool_name=Read agent_type=scaffolder file_path="$QP/.env")" "scaffolder Read .env → ALLOW (appends without duplicating keys)"
 assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=scaffolder file_path="$QP/playwright.config.ts" content='import "dotenv/config"; import { defineConfig } from "@playwright/test"; export default defineConfig({});')" \
   "scaffolder config importing dotenv → ALLOW (no import list; bounded by having no shell)"
@@ -47,7 +53,7 @@ assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=scaffolder command='np
   "scaffolder Bash → DENY" "may not use the 'Bash' tool"
 assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=secrets-sweep file_path="$QP/tests/e2e/fixtures/users.ts" content='import { test } from "@playwright/test"; export const u = process.env.TEST_USER_EMAIL;')" \
   "secrets-sweep Write a fixture with process.env → ALLOW"
-assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=secrets-sweep file_path="$QP/tests/e2e/page-repository.json" content='{"baseUrl":"process.env.APP_URL"}')" \
+assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=secrets-sweep file_path="$QP/tests/e2e/page-repository.json" content='{"pages":[]}')" \
   "secrets-sweep Write the page repository → ALLOW (it holds URLs)"
 assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=secrets-sweep file_path="$QP/tests/e2e/x.spec.ts" content='import fs from "fs-extra";')" \
   "secrets-sweep importing an undeclared package → DENY" "not in this role's declared import list"

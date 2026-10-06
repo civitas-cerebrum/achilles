@@ -594,19 +594,19 @@ should be portable across local / CI / staging targets.
 
 1. Load `secrets-sweep`. The skill defines the four literal classes
    (credentials, API keys, PII, URLs) and the extraction playbook.
-   Phase 7 is two dispatches (§"Dispatch grammar"), neither with a shell:
+   Scan `tests/**/*.{ts,json}` and root `playwright*.config.ts`
+   yourself and build the `NAME=value` pairs.
+   *Do not* touch application source under `src/` or `app/`. Evidence
+   bundles (`tests/e2e/evidence/`) are NOT swept by Phase 7 — they are
+   redacted by `companion-mode`'s Phase-5 redaction step.
+2. Two dispatches (§"Dispatch grammar"), neither with a shell:
    1. `scaffolder-phase7:` — brief: the `NAME=value` pairs and any
       config literal to move; writes `.env`, `.env.example`, the
       `.gitignore` entry, `dotenv` in `playwright*.config.ts`.
    2. `secrets-sweep-phase7:` (`subagent_type: secrets-sweep`, tag
-      `<<kernel-mandate-role: secrets-sweep#<nonce>>>`) — brief: the
-      same NAME list, "use exactly these names"; rewrites `tests/**`.
-2. Before dispatching, scan `tests/**/*.{ts,json}` and root
-   `playwright*.config.ts` yourself per the `secrets-sweep` skill's
-   scope and build the pairs.
-   *Do not* touch application source under `src/` or `app/`. Evidence
-   bundles (`tests/e2e/evidence/`) are NOT swept by Phase 7 — they are
-   redacted by `companion-mode`'s Phase-5 redaction step.
+      `<<kernel-mandate-role: secrets-sweep#<nonce>>>`) — brief:
+      `NAME (one-word role label)` pairs, e.g. `TEST_USER_EMAIL
+      (login email)`, "use exactly these names"; rewrites `tests/**`.
 3. The sweep replaces literals in `tests/**` with `process.env.<NAME>`;
    the scaffolder writes `.env` (real values, gitignored),
    `.env.example` (placeholders, committed) and the `.gitignore` entry.
