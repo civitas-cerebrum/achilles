@@ -92,6 +92,7 @@ PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
 PIPELINE_MSG_LEDGER_REL='tests/perf/docs/perf-onboarding-status.json'
 PIPELINE_MSG_REVIEWER_LABEL='perf-reviewer-phase'
 PIPELINE_MSG_SKILL_REF='skills/perf-onboarding/SKILL.md'
+PIPELINE_APPROVER_TYPES="perf-reviewer"
 PIPELINE_MSG_SCHEMA_REF='schemas/perf-onboarding-status.schema.json'
 PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
 
@@ -191,13 +192,14 @@ pipeline_validate_transition "$TMP_PROPOSED" "$FILE_PATH" && exit 0
 # Actor-identity check on approval transitions — separation of duties.
 # ---------------------------------------------------------------------------
 AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
-pipeline_check_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" && exit 0
+AGENT_TYPE=$(echo "$INPUT" | "$JQ" -r '.agent_type // empty' 2>/dev/null || echo "")
+pipeline_check_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" "$AGENT_TYPE" && exit 0
 
 # Same identity requirement for the OFF-SWITCH: a top-level .status →
 # complete|aborted transition retires the session's governance (activation
 # marker + kernel role binding), so only a registered approver subagent
 # may land it (lib call).
-pipeline_check_terminal_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" && exit 0
+pipeline_check_terminal_sod "$TMP_PROPOSED" "$FILE_PATH" "$AGENT_ID" "$AGENT_TYPE" && exit 0
 
 # ---------------------------------------------------------------------------
 # Mode-authorisation check.

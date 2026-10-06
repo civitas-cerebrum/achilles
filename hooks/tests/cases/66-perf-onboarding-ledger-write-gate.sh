@@ -151,8 +151,11 @@ NOW=$(date +%s)
 REGISTRY="$TMP_REPO/tests/perf/docs/.workflow-approvers.json"
 printf '{"toolu_perf_approved":{"role":"perf-reviewer","description":"perf-reviewer-phase2","ts":%d}}' "$NOW" > "$REGISTRY"
 P_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-abc", agent_type: "general-purpose"}')
+P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-abc", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_OK" "Perf subagent context + fresh approver registry → ALLOW"
+P_PROBE=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
+P_PROBE=$(echo "$P_PROBE" | "$JQ" -c '. + {agent_id: "perf-subagent-probe", agent_type: "test-composer"}')
+assert_deny "$H" "$P_PROBE" "composer agent_type approves a perf phase while an approver is registered → DENY" "not an approver role"
 
 # Write that doesn't change any reviewerVerdict → ALLOW even from orchestrator.
 printf '%s' "$PRIOR_P1_APPROVED" > "$LEDGER_PATH"
@@ -178,16 +181,18 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$P
   "Orchestrator direct perf write status → aborted → DENY" "approval-class write"
 
 P_PT_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")
-P_PT_NOREG=$(echo "$P_PT_NOREG" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+P_PT_NOREG=$(echo "$P_PT_NOREG" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_deny "$H" "$P_PT_NOREG" "Perf subagent status → complete but no registry → DENY" "no approver registry exists"
 
 NOW=$(date +%s)
 printf '{"toolu_perf_final":{"role":"perf-reviewer","description":"perf-reviewer-final","ts":%d}}' "$NOW" > "$REGISTRY"
 P_PT_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")
-P_PT_OK=$(echo "$P_PT_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+P_PT_OK=$(echo "$P_PT_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_PT_OK" "Registered perf approver subagent status → complete → ALLOW"
+P_PT_COMP=$(echo "$P_PT_OK" | "$JQ" -c '.agent_type = "test-composer"')
+assert_deny "$H" "$P_PT_COMP" "composer agent_type writes perf status → complete while an approver is registered → DENY" "not an approver role"
 P_PT_AB=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_ABORTED")
-P_PT_AB=$(echo "$P_PT_AB" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+P_PT_AB=$(echo "$P_PT_AB" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_PT_AB" "Registered perf approver subagent status → aborted → ALLOW"
 rm -f "$REGISTRY"
 

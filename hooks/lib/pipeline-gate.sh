@@ -415,6 +415,7 @@ pipeline_check_sod() {
   local TMP_PROPOSED="$1"
   local FILE_PATH="$2"
   local AGENT_ID="$3"
+  local AGENT_TYPE="${4:-}"
 
   # Compute the set of phase ids that are NEWLY approved in this write.
   local PRIOR_APPROVED NEW_APPROVED NEW_APPROVAL_IDS SKIP_AUTHORISED_IDS
@@ -510,10 +511,10 @@ See:
   fi
 
   # Subagent context — verify the parent is in the approver registry.
-  pipeline_approver_registry_check "$FILE_PATH" "Ledger write transitions ${APPROVAL_SUMMARY} to approved"
+  pipeline_approver_registry_check "$FILE_PATH" "Ledger write transitions ${APPROVAL_SUMMARY} to approved" "$AGENT_TYPE"
 }
 
-# pipeline_check_terminal_sod <tmp_proposed> <file_path> <agent_id>
+# pipeline_check_terminal_sod <tmp_proposed> <file_path> <agent_id> <agent_type>
 # The off-switch is an approval-class write. A write that transitions the
 # top-level `.status` to a TERMINAL value ("complete" / "aborted") is what
 # retires the session's protocol activation marker (the activation watcher
@@ -533,6 +534,7 @@ pipeline_check_terminal_sod() {
   local TMP_PROPOSED="$1"
   local FILE_PATH="$2"
   local AGENT_ID="$3"
+  local AGENT_TYPE="${4:-}"
   local NEW_STATUS PRIOR_STATUS
   NEW_STATUS=$("$JQ" -r '.status // empty' "$TMP_PROPOSED" 2>/dev/null || echo "")
   case "$NEW_STATUS" in
@@ -573,23 +575,45 @@ See:
     return 0
   fi
 
-  pipeline_approver_registry_check "$FILE_PATH" "Ledger write transitions the top-level .status to \"${NEW_STATUS}\""
+  pipeline_approver_registry_check "$FILE_PATH" "Ledger write transitions the top-level .status to \"${NEW_STATUS}\"" "$AGENT_TYPE"
 }
 
-# pipeline_approver_registry_check <file_path> <lead>
+# pipeline_approver_registry_check <file_path> <lead> <agent_type>
 # Shared registry half of the separation-of-duties checks: the calling
 # write is already known to come from a subagent context (non-empty
 # agent_id); verify that an approver-role dispatch was recorded in the
 # registry next to the ledger and that the most recent one is unexpired.
 # <lead> is the opening clause of every deny (\"Ledger write transitions …\")
 # so each caller's message names its own transition.
+# <agent_type> is the writer's subagent type; it must be one of
+# $PIPELINE_APPROVER_TYPES (space-separated). Empty fails closed: a typed
+# dispatch is part of the reviewer contract (skills/workflow-reviewer).
 # Returns 0 + emits deny on violation; 1 when the registry checks pass.
 # Requires: JQ
 # The registry file is expected at $(dirname <file_path>)/.workflow-approvers.json
 pipeline_approver_registry_check() {
   local FILE_PATH="$1"
   local LEAD="$2"
+  local AGENT_TYPE="${3:-}"
   local REGISTRY_FILE
+  case " ${PIPELINE_APPROVER_TYPES:-} " in
+    *" ${AGENT_TYPE:-<none>} "*) ;;
+    *)
+      pipeline_emit_deny "[BLOCKED] ${LEAD}, but the writer's agent_type '${AGENT_TYPE:-<missing>}' is not an approver role (${PIPELINE_APPROVER_TYPES:-none configured}).
+
+File: ${FILE_PATH}
+
+Only a subagent dispatched with an approver \`subagent_type\` can record
+an approval-class write; the registry check alone cannot tell a composer
+from a reviewer while any approver registration is fresh.
+
+Fix: dispatch the approver for this ledger and let it record the write.
+
+See:
+  - hooks/workflow-approver-registry.sh
+  - ${PIPELINE_MSG_SKILL_REF} §\"Status ledger + workflow reviewer\""
+      return 0 ;;
+  esac
   REGISTRY_FILE="$(dirname "$FILE_PATH")/.workflow-approvers.json"
   if [ ! -f "$REGISTRY_FILE" ]; then
     pipeline_emit_deny "[BLOCKED] ${LEAD} from a subagent context, but no approver registry exists at:

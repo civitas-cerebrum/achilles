@@ -12,7 +12,7 @@ One row per limit that ships. `Detector` is the case or lint that pins the behav
 | KL-09 | `sync-kernel-mandate --check` without `$KERNEL_MANDATE_SRC` proves the vendored bytes match the lock, not that the lock matches upstream. | `cases/84-sync-kernel-mandate-check.sh` | Achilles maintainers |
 | KL-10 | Kernel deny messages suggest `kernel-mandate explain`/`derive`; that CLI is not shipped by Achilles. | vendored text | kernel-mandate upstream |
 | KL-11 | An existing project `.claude/kernel-mandate.json` is never overwritten; Achilles dispatches then bind to that manifest's roles. | `cases/71-achilles-kernel-activation-gate.sh` §postinstall | Achilles install |
-| KL-12 | Several roles hold write scope on `onboarding-status.json`; who may record which transition is enforced by `onboarding-ledger-write-gate.sh`, not by the mandate. | `cases/51-onboarding-ledger-write-gate.sh` | Achilles hooks |
+| KL-12 | Several roles hold write scope on `onboarding-status.json`; who may record which transition is enforced by `onboarding-ledger-write-gate.sh`, not by the mandate; approval-class writes (verdict approvals, terminal status) must come from an approver `agent_type`, and a write with no `agent_type` is denied. | `cases/51-onboarding-ledger-write-gate.sh` | Achilles hooks |
 | KL-13 | The orchestrator may write anything under `tests/**`, including specs, fixtures and the page repository; delegating those to the scaffolder and composers is methodology, not enforcement. | `cases/71-achilles-kernel-activation-gate.sh` | methodology |
 
 ## Runtime requirements
