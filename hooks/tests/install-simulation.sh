@@ -193,6 +193,21 @@ run_install_simulation() {
       "missing at $fake_hooks/data/canonical-sections.txt — postinstall must copy hooks/data/"
   fi
 
+  # --- Assertion: upgrade path leaves settings.json unchanged -------------
+  # The fixture is the settings.json the pre-split installer wrote (hooks dir
+  # as @HOOKS@). Re-running the installer over it must change nothing.
+  local up="$work/upgrade" fixture="$repo_root/hooks/tests/fixtures/settings-0.1.8-pre-split.json" up_diff
+  mkdir -p "$up/.claude"
+  sed "s#@HOOKS@#$up/.claude/hooks#g" "$fixture" > "$up/.claude/settings.json"
+  cp "$up/.claude/settings.json" "$work/settings-expected.json"
+  HOME="$up" CIVITAS_SKIP_JQ_INSTALL=1 node -e "require('$repo_root/scripts/postinstall.js').installCivitasHooks('$up/.claude')" >/dev/null 2>&1
+  up_diff=$(diff <("$JQ" -S . "$work/settings-expected.json") <("$JQ" -S . "$up/.claude/settings.json") 2>&1)
+  if [ -z "$up_diff" ]; then
+    sim_pass "re-install over the pre-split settings.json leaves it unchanged"
+  else
+    sim_fail "re-install over the pre-split settings.json leaves it unchanged" "$up_diff"
+  fi
+
   # --- Assertion 5+6: write-gate DENIES a schema-invalid ledger write -----
   # Run from the fake project (no repo, no schemas/ dir anywhere above) with
   # HOME pointed at the fake home — exactly a consumer's runtime context.
