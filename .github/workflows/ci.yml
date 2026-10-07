@@ -1,14 +1,11 @@
 name: ✅ CI
 
-# Runs the package's own gates on every PR and on every push to main:
-# schema lint, hook tests, reporter tests, kernel lock, agents and doc-drift lints. These are
-# the same checks publish.yml runs before publishing — running them here
-# catches regressions at PR time instead of at release time.
+# Every suite the package owns, on Linux and macOS, as separate steps.
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ['**']
 
 permissions:
   contents: read
@@ -52,6 +49,10 @@ jobs:
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: node scripts/sync-kernel-mandate.mjs --check
 
+      - name: 📐  Doc-drift lint
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: node scripts/lint-doc-drift.mjs
+
       - name: 🤖  Generated agents up to date
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: node scripts/build-agents.mjs --check
@@ -73,7 +74,3 @@ jobs:
       - name: 📊  Reporter tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:reporter
-
-      - name: 📐  Doc-drift lint
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: node scripts/lint-doc-drift.mjs
