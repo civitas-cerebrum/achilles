@@ -43,7 +43,7 @@ section "kernel wiring: the role ledger ships and is staged beside the mandate"
 # ---------------------------------------------------------------------------
 # A manifest is the machine's copy of the QA operating system; nobody
 # reviews an OS by reading path globs. The ledger is the human copy — the
-# twenty roles, what each is REFUSED, the handovers and the review loops —
+# eighteen roles, what each is REFUSED, the handovers and the review loops —
 # staged by postinstall beside the manifest it describes. Achilles does not
 # vendor the `kernel-mandate doc` renderer, so the role inventory is
 # hand-maintained and held to the manifest by lint-doc-drift's
@@ -147,6 +147,8 @@ assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=test-composer file_path
   "test-composer Write a spec (relative import) → ALLOW"
 assert_deny "$KERNEL" "$(sub tool_name=Read agent_type=test-composer file_path="$KP/src/app.ts")" \
   "test-composer Read src/app.ts → DENY" "outside the role's read scope"
+assert_deny "$KERNEL" "$(sub tool_name=Skill agent_type=test-composer skill=frontend-design)" \
+  "test-composer invoking a non-granted skill → DENY" "may not invoke the skill"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: runner config is the scaffolder's; imports are the composers'"
@@ -515,7 +517,7 @@ assert_deny "$H" "$(payload tool_name=Read file_path="$KP/src/app.ts" cwd="$KP")
 NOK="$KW_TMP/hooks-without-kernel"
 mkdir -p "$NOK/lib"
 cp "$H" "$NOK/"
-cp "$HOOK_DIR"/lib/achilles-activation.sh "$NOK/lib/"
+cp "$HOOK_DIR"/lib/achilles-activation.sh "$HOOK_DIR"/lib/dispatch-prefix.sh "$NOK/lib/"
 assert_deny "$NOK/achilles-kernel-activation-gate.sh" "$(probe km-act-1)" \
   "marker present, manifest staged, kernel script missing → DENY" "kernel-mandate cannot run"
 

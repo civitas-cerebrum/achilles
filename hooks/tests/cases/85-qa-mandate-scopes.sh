@@ -89,7 +89,7 @@ assert_deny "$KERNEL" "$(qs_disp 'scenario-model-checkout: author the script' pe
 assert_deny "$KERNEL" "$(qs_main tool_name=mcp__atlassian__transitionJiraIssue)" "orchestrator tracker MCP call → DENY (KL-06)" "may not use the 'mcp__atlassian__transitionJiraIssue' tool"
 assert_deny "$KERNEL" "$(qs_disp 'repair-worker-login-spec: repair' repair-worker)" "repair-worker dispatch → DENY (KL-07)" "names no manifest role"
 assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=contribution-handover command='gh pr create --title x --body y')" "contribution-handover gh pr create → DENY (KL-07)" "may not run this command"
-assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='gh pr create --title x --body y')" "orchestrator gh pr create → DENY (KL-08: pr-attribution-gate shadowed)" "may not run this command"
+assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='gh pr create --title x --body y')" "orchestrator gh pr create → DENY (KL-08: gate redundant)" "may not run this command"
 
 # Claude Code runs every matching hook and any deny blocks. While the kernel binds it denies these
 # commands itself, so the Achilles gate's deny is redundant; with KERNEL_MANDATE=0 the gate is the sole control.
