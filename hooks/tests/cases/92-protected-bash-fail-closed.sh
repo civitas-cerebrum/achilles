@@ -115,7 +115,9 @@ rm -rf *
 rm -rf tests/e2e/*
 mv ~/.claude /tmp/x
 chmod -R 777 ~
-cp -r x ~
+cp -r somedir/.claude ~
+cp settings.json ~/.claude/
+cp -r $SRC .
 ANCESTORS
 
 section "protected-bash fail-closed: git commands that can rewrite worktree files stay unprovable"
@@ -131,6 +133,12 @@ rm -rf /tmp/scratch
 rm -rf node_modules
 rm -f *.log
 rm -rf tests/e2e/specs
+cp x .
+cp a.txt tests/e2e/
+ln -s ../x .
+mv build/out.js .
+cp -r x ~
+cp -r dist/* /tmp/out
 git commit -m "fix: rebuild tests/e2e/docs/onboarding-status.json"
 git -c user.name=x -C . commit -m "docs: ~/.claude/settings.json" -- README.md
 git add tests/e2e/docs/journey-map.md

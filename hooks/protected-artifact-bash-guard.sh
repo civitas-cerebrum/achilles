@@ -32,7 +32,9 @@
 # directory one lives in, or ANY ancestor of one (`~`, `/`, `.`, `..`, `tests`,
 # resolved against the call's cwd) denies, for every writer whose targets the
 # guard reads: rm, mv, cp/install/ln into, tee, truncate, dd of=, sed/yq -i,
-# chmod/chown/chgrp/touch, tar -C, rsync, unzip -d, curl -o, wget -O.
+# chmod/chown/chgrp/touch, tar -C, rsync, unzip -d, curl -o, wget -O. A copy,
+# move or link INTO a directory writes <dir>/<basename src>; that path is
+# judged, so `cp x .` passes and `cp -r somedir/.claude ~` does not.
 #
 # git commit, add, status, log, show, diff, blame, rev-parse, ls-files, grep,
 # fetch, and branch/tag listing write only under .git and count as safe.
@@ -147,6 +149,68 @@ editor_parse() {
   return 0
 }
 
+# is_dir <path> — <path>, against CWD, names an existing directory (or says so with a trailing /).
+is_dir() {
+  local p="$1"
+  case "$p" in */|.|..|'~') return 0 ;; '~/'*) p="$HOME/${p#\~/}" ;; /*) ;; *) p="$CWD/$p" ;; esac
+  [ -d "$p" ]
+}
+
+# cp / mv / install / ln. Into a directory, each source lands at <dir>/<basename>, and that path is
+# judged rather than the directory; a source ending in / copies its contents, each child judged.
+# A directory that holds protected entries is itself a protected destination. mv also removes its
+# sources. A recursive source that cannot be resolved denies when the directory is above protected state.
+copy_targets() {
+  local a last="" dir="" notdir=0 recursive=0 dest src p
+  local srcs=()
+  [ "${CMD_ARGS[0]}" = mv ] && recursive=1
+  for a in "${CMD_ARGS[@]:1}"; do
+    case "$last" in -t|--target-directory) dir="$a"; last=""; continue ;; esac
+    last="$a"
+    case "$a" in
+      --target-directory=*) dir="${a#*=}" ;;
+      -T|--no-target-directory) notdir=1 ;;
+      --recursive|--archive) recursive=1 ;;
+      -t|--target-directory|--*) ;;
+      -[!-]*) case "$a" in *[rRa]*) recursive=1 ;; esac ;;
+      *) srcs+=("$a") ;;
+    esac
+  done
+  if [ -z "$dir" ]; then
+    [ "${#srcs[@]}" -gt 0 ] || return 0
+    dest="${srcs[${#srcs[@]}-1]}"
+    srcs=("${srcs[@]:0:${#srcs[@]}-1}")
+    if [ "$notdir" = 1 ] || { [ "${#srcs[@]}" -le 1 ] && ! is_dir "$dest"; }; then
+      target "$dest"; dir=""
+    else
+      dir="${dest%/}"; [ -n "$dir" ] || dir=/
+    fi
+  fi
+  if [ "${CMD_ARGS[0]}" = mv ]; then
+    for src in ${srcs[@]+"${srcs[@]}"}; do target "$src"; done
+  fi
+  [ -n "$dir" ] || return 0
+  if e=$(protected_parent_match "$dir"); then HITS="$HITS$e"$'\n'; return 0; fi
+  for src in ${srcs[@]+"${srcs[@]}"}; do
+    if [ "$recursive" = 1 ]; then
+      case "$src" in
+        *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*/)
+          [ -n "$LOCATIONS" ] || LOCATIONS=$(protected_locations "$CWD")
+          protected_ancestor_match "$dir" "$CWD" "$LOCATIONS" >/dev/null || continue
+          case "$src" in
+            */) p="$src"; case "$p" in '~/'*) p="$HOME/${p#\~/}" ;; /*) ;; *) p="$CWD/$p" ;; esac
+                if [ -d "$p" ]; then
+                  for p in "$p"* "$p".[!.]*; do [ -e "$p" ] && target "$dir/${p##*/}"; done
+                  continue
+                fi ;;
+          esac
+          HITS="${HITS}source tree of $src under $dir"$'\n'; continue ;;
+      esac
+    fi
+    src="${src%/}"; target "$dir/${src##*/}"
+  done
+}
+
 judge_command() {
   local cmd="${CMD_ARGS[0]:-}" a t last="" sub="" pos=0
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
@@ -183,15 +247,9 @@ judge_command() {
       for a in "${CMD_ARGS[@]}"; do
         case "$a" in -delete|-exec|-execdir|-ok|-okdir|-fprint|-fprint0|-fprintf|-fls) UNSAFE="${UNSAFE}find $a"$'\n'; return 0 ;; esac
       done ;;
-    tee|rm|unlink|rmdir|truncate|shred|sponge|mv)
+    tee|rm|unlink|rmdir|truncate|shred|sponge)
       operands; for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
-    cp|install|ln)
-      operands; [ "${#OPERANDS[@]}" -gt 0 ] && target "${OPERANDS[${#OPERANDS[@]}-1]}"
-      for a in "${CMD_ARGS[@]}"; do
-        case "$last" in -t|--target-directory) target "$a" ;; esac
-        case "$a" in --target-directory=*) target "${a#*=}" ;; esac
-        last="$a"
-      done ;;
+    cp|mv|install|ln) copy_targets ;;
     dd) for a in "${CMD_ARGS[@]}"; do case "$a" in of=*) target "${a#of=}" ;; esac; done ;;
     # Writers the guard reads targets from but cannot prove safe: what they write is not only those.
     chmod|chown|chgrp|touch)
