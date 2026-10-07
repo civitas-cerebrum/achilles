@@ -231,31 +231,22 @@ run_install_simulation() {
   # fake install with NO `yaml` module hoisted. The gate now converts YAML
   # via the bundle's `tojson` subcommand (P7), so it must not silently
   # no-op the way the old require('yaml') path did at un-hoisted installs.
-  # Probe whether tojson exists in the installed bundle; skip when it
-  # doesn't (P7 not yet landed — reported as a P7-domain dependency).
-  local probe attest_out attest_msg
-  probe=$(mktemp "$work/tojson-probe-XXXXXX"); printf 'verdict: approve\n' > "$probe"
-  # NODE_BIN is set by earlier case files under run.sh; standalone or
-  # filtered runs reach here without it.
-  if [ -n "${NODE_BIN:-$(command -v node || true)}" ] && [ -f "$fake_hooks/lib/validator.bundle.mjs" ] \
-     && node "$fake_hooks/lib/validator.bundle.mjs" tojson "$probe" 2>/dev/null | grep -q 'verdict'; then
-    # Evidence-free approve return (no on-disk path cited in attestation).
-    local ev_free_payload
-    ev_free_payload=$("$JQ" -n --arg d "workflow-reviewer-phase3: review" \
-      '{tool_name:"Agent", tool_input:{description:$d}, cwd:".", tool_response:"verdict: approve\nattestation: all good"}')
-    attest_out=$(cd "$fake_project" && printf '%s' "$ev_free_payload" \
-      | HOME="$work/home" bash "$fake_hooks/workflow-reviewer-attestation-gate.sh" 2>/dev/null) || true
-    attest_msg=$(printf '%s' "$attest_out" | "$JQ" -r '.systemMessage // empty' 2>/dev/null || echo "")
-    if printf '%s' "$attest_msg" | grep -q 'approval without on-disk evidence'; then
-      sim_pass "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)"
-    else
-      sim_fail "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)" \
-        "expected a WARN systemMessage; got output=${attest_out:0:200}"
-    fi
-  else
-    sim_pass "attestation-gate tojson assertion skipped (validator bundle 'tojson' not yet shipped — P7 dependency)"
+  local attest_out attest_msg ev_free_payload
+  if ! command -v node >/dev/null 2>&1; then
+    sim_fail "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)" "required tool 'node' missing"
+    return
   fi
-  rm -f "$probe"
+  ev_free_payload=$("$JQ" -n --arg d "workflow-reviewer-phase3: review" \
+    '{tool_name:"Agent", tool_input:{description:$d}, cwd:".", tool_response:"verdict: approve\nattestation: all good"}')
+  attest_out=$(cd "$fake_project" && printf '%s' "$ev_free_payload" \
+    | HOME="$work/home" bash "$fake_hooks/workflow-reviewer-attestation-gate.sh" 2>/dev/null) || true
+  attest_msg=$(printf '%s' "$attest_out" | "$JQ" -r '.systemMessage // empty' 2>/dev/null || echo "")
+  if printf '%s' "$attest_msg" | grep -q 'approval without on-disk evidence'; then
+    sim_pass "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)"
+  else
+    sim_fail "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)" \
+      "expected a WARN systemMessage; got output=${attest_out:0:200}"
+  fi
 }
 
 run_install_simulation

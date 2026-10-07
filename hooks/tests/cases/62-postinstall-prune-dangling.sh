@@ -7,10 +7,7 @@
 # seeded settings.json. CIVITAS_SKIP_JQ_INSTALL=1 keeps it offline; the
 # function copies bundled hooks (local file copies, no network).
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping postinstall prune test)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+require_tool node || return 0
 
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 PRUNE_TEST=$(mktemp /tmp/prune-test-XXXXXX.mjs)

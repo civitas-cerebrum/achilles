@@ -276,9 +276,9 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done ABC-1)" \
 make_bundle "abc-1-widget-toggle-20260812-150715" >/dev/null
 
 section "evidence-gate: degenerate keys are rejected even when a matching dir exists"
-# Both guards below used to pass vacuously — no directory of that name existed,
-# so the tests proved nothing. Planting the directory is what makes them causal:
-# delete the reject-list entry and these fail.
+# A matching directory is planted for each degenerate key, so the DENY comes from
+# the reject list and not from a missing bundle: delete a reject-list entry and
+# its assert fails.
 mkdir -p "$EVI/evidence/screenshots"
 echo "# s" > "$EVI/evidence/summary.md"; echo png > "$EVI/evidence/screenshots/a.png"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done evidence)" \

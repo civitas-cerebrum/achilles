@@ -11,10 +11,7 @@
 # scope decision is computed at module load from npm_config_global.
 # CIVITAS_SKIP_JQ_INSTALL=1 keeps everything offline.
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping postinstall scope tests)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+require_tool node || return 0
 
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 SCOPE_TEST=$(mktemp /tmp/scope-test-XXXXXX.mjs)

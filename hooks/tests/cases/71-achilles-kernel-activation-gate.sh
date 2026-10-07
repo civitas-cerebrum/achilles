@@ -273,11 +273,9 @@ section "kernel wiring: the in-pipeline worker roles the protocol dispatches"
 # ---------------------------------------------------------------------------
 # These shapes are documented in coverage-expansion SKILL.md §"Role
 # prefixes", references/app-wide-scan.md, journey-mapping's phases.md and
-# onboarding SKILL.md, and all of them used to be refused with "names no
-# manifest role" — so an onboarding run reaching Phase 4, or a
-# coverage-expansion run reaching Pass 4, blocked at the Agent call. The
-# role set is DERIVED from the two harness prefix regexes (pinned below),
-# not from a hand-kept list.
+# onboarding SKILL.md; an unresolved one blocks the run at the Agent call.
+# The role set is DERIVED from the two harness prefix regexes (pinned
+# below), not from a hand-kept list.
 assert_allow "$KERNEL" "$(disp 'probe-j-login: adversarial probe, pass 4' '<<kernel-mandate-role: probe#p1q2r3>>' probe)" \
   "coverage-expansion pass 4-5 / bug-discovery: probe-j-<slug> + tag → ALLOW"
 assert_allow "$KERNEL" "$(disp 'probe-app-wide: pass 4 — establish pattern catalogue' '<<kernel-mandate-role: probe#p1q2r4>>' probe)" \
@@ -318,21 +316,13 @@ assert_deny "$KERNEL" "$(disp '[group] test-composer-j-a,test-composer-j-b: comp
   "[group] marker leads the description → DENY (kernel resolves the role from position zero)" "names no manifest role"
 assert_deny "$KERNEL" "$(disp '[P3-batch] test-composer-j-a,test-composer-j-b: compose the batch' '<<kernel-mandate-role: test-composer#g1h2i4>>' test-composer)" \
   "[P3-batch] marker leads the description → DENY (same resolver rule)" "names no manifest role"
-pin_literal() { # <file> <literal> <count> <name>
-  assert_eq "$(grep -cF -- "$2" "$REPO_ROOT/$1")" "$3" "$4"
-}
-pin_literal skills/coverage-expansion/SKILL.md '### Grouped dispatch' 1 \
-  "coverage-expansion SKILL.md is the canonical home for the role-first group grammar"
-pin_literal skills/onboarding/SKILL.md 'test-composer-group-<id>: j-a, j-b' 1 \
-  "onboarding SKILL.md's dispatch grammar shows the role-first group spelling"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: drift pin — every harness prefix resolves to a manifest role"
 # ---------------------------------------------------------------------------
-# The old pin here only checked that the RETIRED `composer-j-<slug>:`
-# spelling had left the skills. That is why CI stayed green while ten
-# live dispatch prefixes resolved to nothing: nothing asserted the
-# forward direction. The harness states its dispatch grammar twice — as
+# Checking only that a retired spelling left the skills would not catch a
+# live dispatch prefix resolving to nothing, so this pins the forward
+# direction. The harness states its dispatch grammar twice — as
 # playwright-cli session slugs and as Agent-description prefixes — and
 # both statements must land on a role the manifest actually declares.
 DISPATCH_SH="$HOOK_DIR/lib/dispatch-prefix.sh"
@@ -440,8 +430,8 @@ assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=phase4 file_path="$KP/te
 # ---------------------------------------------------------------------------
 section "kernel wiring: every shipped skill is granted to some role"
 # ---------------------------------------------------------------------------
-# A glob, not `find -printf`: BSD find rejects -printf, and the empty list
-# it left made the bijection below pass vacuously on darwin.
+# A glob, not `find -printf` (BSD find rejects it); the count assert below pins
+# that the bijection runs over a non-empty list.
 SKILL_DIRS=$(for d in "$REPO_ROOT"/skills/*/; do basename "$d"; done | sort)
 assert_eq "$(printf '%s\n' "$SKILL_DIRS" | grep -cx achilles-protocol)" "1" "skill directories are enumerated (not an empty list)"
 UNGRANTED=$(comm -23 \
@@ -449,10 +439,15 @@ UNGRANTED=$(comm -23 \
   <("$JQ" -r '[.roles[].skills.allow // []] | flatten | .[]' "$MANDATE" | sort -u) | tr '\n' ' ' | sed 's/ $//')
 assert_eq "$UNGRANTED" "" "every shipped skill directory appears in at least one role's skills.allow"
 
-# Drift pin: the skills still teach exactly these literals.
-pin() { # <file> <literal> <name>
+# ---------------------------------------------------------------------------
+section "drift pins: skill text the kernel cases depend on"
+# ---------------------------------------------------------------------------
+# Text pins, not behaviour: they fail when a skill stops teaching the shape the cases above dispatch.
+pin() { # <file> <literal> <count> <name>
   assert_eq "$(grep -cF -- "$2" "$REPO_ROOT/$1")" "$3" "$4"
 }
+pin skills/coverage-expansion/SKILL.md '### Grouped dispatch' 1 "coverage-expansion SKILL.md is the canonical home for the role-first group grammar"
+pin skills/onboarding/SKILL.md 'test-composer-group-<id>: j-a, j-b' 1 "onboarding SKILL.md's dispatch grammar shows the role-first group spelling"
 pin skills/test-composer/SKILL.md '<<kernel-mandate-role: test-composer#<nonce>>>' 1 "test-composer SKILL.md teaches the test-composer binding tag"
 pin skills/test-composer/SKILL.md 'description: test-composer-j-<slug>: <task>' 1 "test-composer SKILL.md teaches the test-composer-j-<slug>: description"
 pin skills/onboarding/SKILL.md 'secrets-sweep-phase7:' 1 "onboarding Phase 7 teaches the secrets-sweep-phase7: description"
@@ -521,7 +516,7 @@ unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR ACHILLES_SESSION_STATE_DI
 # ---------------------------------------------------------------------------
 section "postinstall: wires the wrapper, refreshes the kernel companion, stages the QA mandate once"
 # ---------------------------------------------------------------------------
-if command -v node >/dev/null 2>&1; then
+if require_tool node; then
   WIRE_TEST=$(mktemp "$KW_TMP/wiring-XXXXXX.mjs")
   WIRE_HOME="$KW_TMP/home"
   WIRE_PROJ="$KW_TMP/consumer"
@@ -597,7 +592,5 @@ EOF
     FAIL_DETAILS+=("postinstall kernel wiring: ${WIRE_OUT:0:400}")
     echo "${CLR_FAIL}  ✗${CLR_RST} postinstall kernel wiring ${CLR_DIM}(${WIRE_OUT:0:160})${CLR_RST}"
   fi
-else
-  echo "  ${CLR_DIM}(node not on PATH — skipping postinstall wiring test)${CLR_RST}"
 fi
 

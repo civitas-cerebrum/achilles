@@ -67,22 +67,8 @@ assert_eq "$("$JQ" -r '.phases | length' "$SUMMARY")" "2" "phases still passthro
 
 # ---------------------------------------------------------------------------
 section "perf-summary-writer: output validates against perf-summary schema"
+require_tool node || return 0
 PSW_VALIDATOR="$HOOK_DIR/lib/validator.bundle.mjs"
-PSW_NODE=$(command -v node 2>/dev/null || true)
-if [ -n "$PSW_NODE" ] && [ -f "$PSW_VALIDATOR" ] \
-   && ! "$PSW_NODE" "$PSW_VALIDATOR" validate perf-summary "$SUMMARY" 2>&1 | grep -q 'No schema for id'; then
-  TESTS_RUN=$((TESTS_RUN + 1))
-  PSW_VAL_OUT=$("$PSW_NODE" "$PSW_VALIDATOR" validate perf-summary "$PSW_TMP_B/.achilles/perf-summary.json" 2>&1)
-  PSW_VAL_EC=$?
-  if [ "$PSW_VAL_EC" = "0" ] && [ -z "$PSW_VAL_OUT" ]; then
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-    echo "${CLR_PASS}  ✓${CLR_RST} perf-summary output validates against perf-summary schema"
-  else
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    FAIL_DETAILS+=("perf-summary schema validation: ${PSW_VAL_OUT:0:200}")
-    echo "${CLR_FAIL}  ✗${CLR_RST} perf-summary output validates against perf-summary schema ${CLR_DIM}(${PSW_VAL_OUT:0:120})${CLR_RST}"
-  fi
-else
-  echo "${CLR_DIM}  (perf-summary schema not in validator bundle — skipping)${CLR_RST}"
-fi
+PSW_VAL_OUT=$(node "$PSW_VALIDATOR" validate perf-summary "$PSW_TMP_B/.achilles/perf-summary.json" 2>&1)
+assert_eq "$?:$PSW_VAL_OUT" "0:" "perf-summary output validates against perf-summary schema"
 

@@ -269,6 +269,32 @@ section() {
   echo "── $* ──"
 }
 
+# require_tool <name>… — a missing dependency fails the case file; it never skips it.
+# Caller: `require_tool node || return 0`.
+require_tool() {
+  local t rc=0
+  for t in "$@"; do
+    command -v "$t" >/dev/null 2>&1 && continue
+    TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1))
+    FAIL_DETAILS+=("$(basename "${BASH_SOURCE[1]}"): required tool '$t' missing")
+    echo "${CLR_FAIL}  ✗${CLR_RST} required tool '$t' missing"
+    rc=1
+  done
+  return $rc
+}
+# skip_test <reason> — the one sanctioned skip: a counted failure unless ACHILLES_TEST_ALLOW_SKIP=1.
+# Returns 0 when the skip is permitted, 1 when it was recorded as a failure.
+skip_test() {
+  if [ "${ACHILLES_TEST_ALLOW_SKIP:-}" = 1 ]; then
+    echo "${CLR_DIM}  (SKIP, permitted by ACHILLES_TEST_ALLOW_SKIP=1: $1)${CLR_RST}"
+    return 0
+  fi
+  TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1))
+  FAIL_DETAILS+=("$(basename "${BASH_SOURCE[1]}"): skipped without ACHILLES_TEST_ALLOW_SKIP=1: $1")
+  echo "${CLR_FAIL}  ✗${CLR_RST} skipped: $1"
+  return 1
+}
+
 # Helper: build a JSON payload from inline kv args. Each kv is "key=value".
 # Recognised keys: tool_name, description, prompt, command, file_path,
 # content, old_string, new_string, skill, args, response_text,
@@ -313,6 +339,7 @@ payload() {
 # EXIT trap below fires per file.
 ACHILLES_TEST_TMPS=()
 # tmp_into <var> [mktemp-template] — <var> = fresh temp dir, removed when the case file ends.
+# It owns the EXIT trap: a case file that sets its own EXIT trap after calling it drops this cleanup.
 # Pass a /tmp/<name>-XXXXXX template where the hook's behaviour depends on the path.
 tmp_into() {
   local __d; __d=$(mktemp -d ${2:+"$2"}) || return

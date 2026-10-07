@@ -9,10 +9,7 @@ H="$HOOK_DIR/playwright-cli-isolation-guard.sh"
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 COV_REF_DIR="$REPO_ROOT/skills/coverage-expansion"
 
-if [ ! -d "$COV_REF_DIR" ]; then
-  echo "  ${CLR_DIM}(coverage-expansion skill dir not found — skipping slug-template drift test)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+assert_eq "$([ -d "$COV_REF_DIR" ] && echo present || echo missing)" "present" "coverage-expansion skill dir exists"
 
 section "slug-template-drift: every -s= literal in coverage-expansion docs ALLOWs"
 # Extract unique -s= literals. Allow the template metachars <>/ that appear
@@ -26,9 +23,8 @@ SLUG_LITERALS=$(grep -rhoE -- '-s=[A-Za-z0-9_.<>/-]+' "$COV_REF_DIR" 2>/dev/null
   | sed 's/^-s=//' \
   | grep -E '^(phase1|phase2|phase4|stage2|composer|reviewer|probe|cleanup|companion|fd)-' \
   | sort -u)
-if [ -z "$SLUG_LITERALS" ]; then
-  echo "  ${CLR_DIM}(no -s= literals found in coverage-expansion docs — nothing to pin)${CLR_RST}"
-else
+assert_eq "$([ -n "$SLUG_LITERALS" ] && echo found || echo none)" "found" "coverage-expansion docs carry role-prefixed -s= literals to pin"
+{
   while IFS= read -r slug; do
     [ -z "$slug" ] && continue
     PAYLOAD=$("$JQ" -n --arg c "npx playwright-cli run -s=$slug --headed" '{tool_name:"Bash", tool_input:{command:$c}}')
@@ -36,4 +32,4 @@ else
   done <<EOF
 $SLUG_LITERALS
 EOF
-fi
+}

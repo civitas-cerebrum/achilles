@@ -7,15 +7,11 @@ H="$HOOK_DIR/onboarding-ledger-write-gate.sh"
 # Skip the suite if `node` or the package's ajv dependency isn't available
 # — the hook silent-allows in that situation, so the deny-expectation
 # tests below would not be meaningful. We probe both before running.
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+require_tool node || return 0
 NODE_BIN=$(command -v node)
-if ! "$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(ajv/ajv-formats not available — skipping onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+# ajv is a package dependency; without it the hook silent-allows and every deny case below is meaningless.
+assert_eq "$("$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; echo $?)" "0" \
+  "ajv and ajv-formats resolve from the package"
 
 tmp_into TMP_REPO /tmp/onboarding-ledger-write-XXXXXX
 mkdir -p "$TMP_REPO/tests/e2e/docs"
@@ -529,7 +525,7 @@ if [ -x /usr/bin/jq ] && ! /usr/bin/env -i PATH=/bin:/usr/bin command -v node >/
     echo "${CLR_FAIL}  ✗${CLR_RST} no-node bypass test ${CLR_DIM}(expected deny with 'orchestrator context'; got: ${OUT_NO_NODE})${CLR_RST}"
   fi
 else
-  echo "${CLR_DIM}  (skipped — /usr/bin layout doesn't match the macOS shape used for this test)${CLR_RST}"
+  skip_test "/usr/bin layout does not match the macOS shape this test needs (jq present, node absent)"
 fi
 
 # ---- Phase 6 ----

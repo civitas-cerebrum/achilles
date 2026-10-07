@@ -188,6 +188,7 @@ assert_allow "$H" "$(bash_cmd 'echo gh pr create')"        "the words inside an 
 assert_allow "$H" "$(bash_cmd 'grep -r "gh pr create" .')" "the words inside a grep → ALLOW"
 
 # With a green receipt bound to the BRANCH — entry B has no ticket key to bind to.
+assert_eq "$([ -n "$BR" ] && echo named || echo detached)" "named" "workspace is on a named branch (the receipt binds to it)"
 if [ -n "$BR" ]; then
   printf '%s' "{\"negativeControl\":{\"failed\":5},\"review\":{\"reviewer\":\"probe-rigour-x\",\"uiReviewed\":true,\"coverageSufficient\":true,\"scores\":{\"R1\":3,\"R2\":2,\"R3\":2,\"R4\":2,\"R5\":2,\"R6\":2},\"total\":13}}" \
     > "$WS/.achilles/adversarial-verification/${BR}.json"

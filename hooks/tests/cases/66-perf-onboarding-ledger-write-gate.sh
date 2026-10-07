@@ -5,15 +5,11 @@
 H="$HOOK_DIR/perf-onboarding-ledger-write-gate.sh"
 
 # Skip if node / ajv is unavailable (same pattern as onboarding write-gate tests).
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping perf-onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+require_tool node || return 0
 NODE_BIN=$(command -v node)
-if ! "$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(ajv/ajv-formats not available — skipping perf-onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+# ajv is a package dependency; without it the hook silent-allows and every deny case below is meaningless.
+assert_eq "$("$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; echo $?)" "0" \
+  "ajv and ajv-formats resolve from the package"
 
 tmp_into TMP_REPO /tmp/perf-ledger-write-XXXXXX
 mkdir -p "$TMP_REPO/tests/perf/docs"
