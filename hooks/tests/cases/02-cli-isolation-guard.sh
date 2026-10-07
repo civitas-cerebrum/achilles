@@ -79,3 +79,21 @@ for c in 'npx @playwright/cli open http://x' 'npx @playwright/cli@1.2.0 open htt
 done
 assert_allow "$H" "$(payload tool_name=Bash command='npx -p @playwright/cli playwright-cli -s=composer-j-x-1-c1 open http://x')" "-p package then a slugged invocation → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx @playwright/cli -s=composer-j-x-1-c1 open http://x')" "@playwright/cli with a slug → ALLOW"
+
+
+# Fix round 5: wrappers peel only known options, so an invocation reached through exec -a,
+# stdbuf --output, sudo --user, nice --adjustment, xargs --max-args, env -S, doas -u, npx
+# --package or after a bare assignment is still seen as a playwright-cli invocation.
+section "cli-isolation r5: invocations behind wrapper options"
+for c in \
+  'exec -a foo playwright-cli open https://x' \
+  'stdbuf --output L playwright-cli open https://x' \
+  'sudo --user me playwright-cli open https://x' \
+  'nice --adjustment 5 playwright-cli open https://x' \
+  'doas -u me playwright-cli open https://x' \
+  'npx --package @playwright/cli playwright-cli open https://x' \
+  "env -S 'playwright-cli open https://x'" \
+  'PATH=/tmp; playwright-cli open https://x'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
+done
+assert_deny "$H" "$(payload tool_name=Bash command='xargs --max-args 1 playwright-cli open < /tmp/u')" "xargs --max-args peeled → DENY" "Missing -s=<slug> flag"

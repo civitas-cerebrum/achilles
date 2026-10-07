@@ -27,12 +27,19 @@
 # Anything else on such a line (interpreters, awk, eval, sh -c, xargs,
 # find -delete/-exec/-fprint, command substitution, a target behind a
 # variable or glob, any other program) denies: the guard cannot prove it
-# does not write. Nor is a command safe when something on the line can
-# change what it runs: a command word outside the system bin dirs, an
-# assignment or `env` before it, git's -c/--config-env/--exec-path or the
-# options that name a program (--upload-pack, --ext-diff, --textconv, -O),
-# `rg --pre`, `file -C`, `yq -s`, a sed script with a w/W/e command or flag,
-# or an ln whose source is protected. Paths are normalised
+# does not write. Within a line the guard inverts to UNRECOGNISED = UNSAFE:
+# a sed script is safe only if it parses under a read-only grammar
+# (sed_script_safe) and sed's options are only the listed ones; cp/mv/
+# install/ln options are parsed as full short clusters (-vt DIR) and any
+# unknown option is unsafe; a wrapper (env, exec, nice, sudo, …) is peeled
+# only past options the splitter knows; git -c is inert only for user.*,
+# core.quotepath, color.*, advice.*, i18n.*, init.defaultbranch. Nor is a
+# command safe when something earlier on the line can change what it runs:
+# a command word outside the system bin dirs, an assignment or `env` before
+# it, an assignment-only command, export/declare/alias/hash/eval before it,
+# git's --config-env/--exec-path or the options that name a program
+# (--upload-pack, --ext-diff, --textconv, -O), `rg --pre`, `file -C`,
+# `yq -s`, or an ln whose source is protected. Paths are normalised
 # (lib/protected-paths.sh) first, so quoting, escapes, //, /./, .., ~ and
 # case do not change the verdict; unquoted {a,b} is expanded as bash would.
 # A line the splitter cannot finish (over 32 KB, 16 nested shells, 64
@@ -91,6 +98,10 @@ NAMED=""    # protected entries and directories the line names, one per line
 HITS=""     # protected entries or directories a write reaches
 UNSAFE=""   # why a command on the line cannot be proved safe
 OVERFLOW="" # 1 when the line could not be split whole
+POISON=0    # a PATH/alias/function/assignment-only command earlier on the line can redefine later ones
+
+# unresolved <word> — 0 when <word> holds an unexpanded variable, substitution or glob.
+unresolved() { case "$1" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*) return 0 ;; esac; return 1; }
 
 # names <word> — record the protected entry or directory <word> (or its --opt= value) names.
 names() {
@@ -140,7 +151,88 @@ operands() {
   done
 }
 
-# sed / yq: OPERANDS gets the files an in-place edit writes (empty without -i); SCRIPTS the
+# sed_parse — fills SED_SCRIPTS and OPERANDS (the files an in-place edit writes), sets SED_INPLACE.
+# Options invert to unknown=unsafe: only -n -E -r -s -u -z (flags), -e/--expression (script),
+# -i/-I/--in-place (writer) and the exact long forms --quiet --silent --regexp-extended are known.
+# -f/--file (script from a file), any abbreviation and any other option make the command unsafe.
+sed_parse() {
+  local a k=1 letters m ch rest sawscript=0
+  SED_SCRIPTS=(); OPERANDS=(); SED_INPLACE=0
+  while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+    a="${CMD_ARGS[k]}"; k=$((k + 1))
+    case "$a" in
+      --) while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+            if [ "$sawscript" = 0 ]; then SED_SCRIPTS+=("${CMD_ARGS[k]}"); sawscript=1; else OPERANDS+=("${CMD_ARGS[k]}"); fi; k=$((k + 1))
+          done; break ;;
+      --expression=*) SED_SCRIPTS+=("${a#*=}"); sawscript=1 ;;
+      --expression) SED_SCRIPTS+=("${CMD_ARGS[k]:-}"); k=$((k + 1)); sawscript=1 ;;
+      --in-place=*|--in-place) SED_INPLACE=1 ;;
+      --quiet|--silent|--regexp-extended) ;;
+      --*) UNSAFE="${UNSAFE}sed: unrecognised option $a"$'\n'; return 1 ;;
+      '') ;;
+      -)  if [ "$sawscript" = 0 ]; then SED_SCRIPTS+=("$a"); sawscript=1; else OPERANDS+=("$a"); fi ;;
+      -*) letters="${a#-}"; m=0
+          while [ "$m" -lt "${#letters}" ]; do
+            ch="${letters:m:1}"; m=$((m + 1)); rest="${letters:m}"
+            case "$ch" in
+              n|E|r|s|u|z) : ;;
+              e) if [ -n "$rest" ]; then SED_SCRIPTS+=("$rest"); else SED_SCRIPTS+=("${CMD_ARGS[k]:-}"); k=$((k + 1)); fi; sawscript=1; break ;;
+              i|I) SED_INPLACE=1; break ;;
+              f) UNSAFE="${UNSAFE}sed: script read from a file"$'\n'; return 1 ;;
+              *) UNSAFE="${UNSAFE}sed: unrecognised option -$ch"$'\n'; return 1 ;;
+            esac
+          done ;;
+      *) if [ "$sawscript" = 0 ]; then SED_SCRIPTS+=("$a"); sawscript=1; else OPERANDS+=("$a"); fi ;;
+    esac
+  done
+  return 0
+}
+
+# sed_script_safe <script> — 0 when every command in <script> parses under the read-only grammar:
+# [addr[,addr]][!] then one of p d q Q = n N g G h H x l (or a { } block), or s<d>…<d>…<d>[gpiI0-9]*,
+# or y<d>…<d>…<d>. No w W e r R F command or w/e flag. Anything else, or any unparsed text, is unsafe.
+sed__until() { local d="$1" c; while [ "$SI" -lt "$SN" ]; do c="${SP:SI:1}"; case "$c" in '\') SI=$((SI + 2)); continue ;; "$d") SI=$((SI + 1)); return 0 ;; esac; SI=$((SI + 1)); done; return 1; }
+sed__digits() { while [ "$SI" -lt "$SN" ]; do case "${SP:SI:1}" in [0-9]) SI=$((SI + 1)) ;; *) break ;; esac; done; }
+sed__addr() {
+  case "${SP:SI:1}" in
+    [0-9]) sed__digits; case "${SP:SI:1}" in '~') SI=$((SI + 1)); sed__digits ;; esac; return 0 ;;
+    '+') SI=$((SI + 1)); sed__digits; return 0 ;;
+    '$') SI=$((SI + 1)); return 0 ;;
+    '/') SI=$((SI + 1)); sed__until '/'; return $? ;;
+    '\') SI=$((SI + 2)); sed__until "${SP:SI-1:1}"; return $? ;;
+    *) return 1 ;;
+  esac
+}
+sed_script_safe() {
+  [ "${#1}" -le 4096 ] || return 1
+  local SP="$1" SN=${#1} SI=0 c d
+  while [ "$SI" -lt "$SN" ]; do
+    c="${SP:SI:1}"
+    case "$c" in
+      ' '|$'\t'|$'\n'|';'|'{'|'}') SI=$((SI + 1)); continue ;;
+      '#') while [ "$SI" -lt "$SN" ] && [ "${SP:SI:1}" != $'\n' ]; do SI=$((SI + 1)); done; continue ;;
+    esac
+    if sed__addr; then case "${SP:SI:1}" in ',') SI=$((SI + 1)); sed__addr || return 1 ;; esac; fi
+    while [ "$SI" -lt "$SN" ]; do case "${SP:SI:1}" in ' '|$'\t'|'!') SI=$((SI + 1)) ;; *) break ;; esac; done
+    c="${SP:SI:1}"
+    case "$c" in
+      p|d|q|Q|'='|n|N|g|G|h|H|x|l) SI=$((SI + 1)); sed__digits ;;
+      s|y)
+        d="${SP:SI+1:1}"; [ -n "$d" ] || return 1; SI=$((SI + 2))
+        sed__until "$d" || return 1
+        sed__until "$d" || return 1
+        if [ "$c" = s ]; then
+          while [ "$SI" -lt "$SN" ]; do
+            case "${SP:SI:1}" in [gpiI0-9]) SI=$((SI + 1)) ;; ' '|$'\t'|$'\n'|';'|'}') break ;; *) return 1 ;; esac
+          done
+        fi ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+# yq: OPERANDS gets the files an in-place edit writes (empty without -i); SCRIPTS the
 # expressions. 1 when a script cannot be read (-f, --from-file).
 editor_parse() {
   local a k=1 inplace=0 script=0
@@ -177,18 +269,41 @@ is_dir() {
 # sources; ln makes its sources reachable under another name, so they are judged too. A recursive
 # source that cannot be resolved denies when the directory is above protected state.
 copy_targets() {
-  local a last="" dir="" notdir=0 recursive=0 dest src p
-  local srcs=()
-  [ "${CMD_ARGS[0]}" = mv ] && recursive=1
-  for a in "${CMD_ARGS[@]:1}"; do
-    case "$last" in -t|--target-directory) dir="$a"; last=""; continue ;; esac
-    last="$a"
+  local a dir="" notdir=0 recursive=0 dest src p base letters m ch rest cmd0="${CMD_ARGS[0]}"
+  local srcs=() gi=1 nargs=${#CMD_ARGS[@]}
+  [ "$cmd0" = mv ] && recursive=1
+  while [ "$gi" -lt "$nargs" ]; do
+    a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
     case "$a" in
+      --) while [ "$gi" -lt "$nargs" ]; do srcs+=("${CMD_ARGS[gi]}"); gi=$((gi + 1)); done; break ;;
       --target-directory=*) dir="${a#*=}" ;;
-      -T|--no-target-directory) notdir=1 ;;
+      --no-target-directory) notdir=1 ;;
       --recursive|--archive) recursive=1 ;;
-      -t|--target-directory|--*) ;;
-      -[!-]*) case "$a" in *[rRa]*) recursive=1 ;; esac ;;
+      --*)
+        base="${a%%=*}"
+        if [ "${#base}" -ge 3 ] && case "--target-directory" in "$base"*) true ;; *) false ;; esac; then
+          case "$a" in *=*) dir="${a#*=}" ;; *) dir="${CMD_ARGS[gi]:-}"; gi=$((gi + 1)) ;; esac
+        elif [ "${#base}" -ge 4 ] && case "--no-target-directory" in "$base"*) true ;; *) false ;; esac; then
+          notdir=1
+        else
+          case "$base" in
+            --recursiv*|--archiv*) recursive=1 ;;
+            --verbose|--force|--no-clobber|--interactive|--symbolic|--logical|--relative|--backup|--suffix|--preserve|--no-preserve|--parents|--update|--link|--dereference|--no-dereference|--remove-destination|--strip-trailing-slashes|--mode|--owner|--group|--directory|--sparse|--reflink|--attributes-only|--one-file-system|--context|--copy-contents|--debug|--help|--version) ;;
+            *) UNSAFE="${UNSAFE}$cmd0: unrecognised option $a"$'\n' ;;
+          esac
+        fi ;;
+      -)  srcs+=("$a") ;;
+      -*) letters="${a#-}"; m=0
+          while [ "$m" -lt "${#letters}" ]; do
+            ch="${letters:m:1}"; m=$((m + 1)); rest="${letters:m}"
+            case "$ch" in
+              t) if [ -n "$rest" ]; then dir="$rest"; else dir="${CMD_ARGS[gi]:-}"; gi=$((gi + 1)); fi; break ;;
+              T) notdir=1 ;;
+              r|R|a) recursive=1 ;;
+              f|s|v|n|L|P|H|d|D|u|b|p|l|c|i|S|x|e) : ;;
+              *) UNSAFE="${UNSAFE}$cmd0: unrecognised option -$ch"$'\n' ;;
+            esac
+          done ;;
       *) srcs+=("$a") ;;
     esac
   done
@@ -200,11 +315,11 @@ copy_targets() {
       target "$dest"; dir=""
     else
       # Several sources need a directory; what the program does with anything else is not known.
-      is_dir "$dest" || UNSAFE="$UNSAFE${CMD_ARGS[0]}: destination $dest is not a directory"$'\n'
+      is_dir "$dest" || UNSAFE="$UNSAFE$cmd0: destination $dest is not a directory"$'\n'
       dir="${dest%/}"; [ -n "$dir" ] || dir=/
     fi
   fi
-  case "${CMD_ARGS[0]}" in mv|ln) for src in ${srcs[@]+"${srcs[@]}"}; do target "$src"; done ;; esac
+  case "$cmd0" in mv|ln) for src in ${srcs[@]+"${srcs[@]}"}; do target "$src"; done ;; esac
   [ -n "$dir" ] || return 0
   if e=$(protected_parent_match "$dir"); then HITS="$HITS$e"$'\n'; return 0; fi
   for src in ${srcs[@]+"${srcs[@]}"}; do
@@ -228,13 +343,22 @@ copy_targets() {
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" a t e sub="" pos=0 skip=0
+  local cmd="${CMD_ARGS[0]:-}" a t e gi gkey gval sub="" pos=0
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
-  [ -n "$cmd" ] || return 0
+  if [ -z "$cmd" ]; then
+    # Assignment-only (PATH=…; ) or a bare env/wrapper: it reshapes the environment of every
+    # command that follows on the line.
+    { [ "$CMD_ENV" = 1 ] || [ "${#CMD_SNEST[@]}" -gt 0 ]; } && POISON=1
+    return 0
+  fi
+  [ "$POISON" = 0 ] || UNSAFE="${UNSAFE}a PATH/alias/function/assignment earlier on the line can redefine $cmd"$'\n'
+  [ "${CMD_WRAP_BAD:-0}" = 0 ] || UNSAFE="${UNSAFE}$cmd: a wrapper carried an unrecognised option"$'\n'
   [ "$CMD_XARGS" = 1 ] && { UNSAFE="${UNSAFE}xargs $cmd: operands arrive on stdin"$'\n'; return 0; }
   for a in "${CMD_ARGS[@]}"; do
     case "$a" in *'$('*|*'`'*) UNSAFE="$UNSAFE$cmd: command substitution"$'\n'; return 0 ;; esac
   done
+  # These redefine the environment or the running of later commands.
+  case "$cmd" in export|declare|typeset|readonly|local|alias|unalias|hash|set|shopt|enable|eval|source|.) POISON=1 ;; esac
   # The allowlist names programs in the system bin dirs, run with the session's environment.
   [ -z "$CMD_PATH" ] || UNSAFE="$UNSAFE$cmd: run from $CMD_PATH"$'\n'
   [ "$CMD_ENV" = 0 ] || UNSAFE="$UNSAFE$cmd: environment set on the command line"$'\n'
@@ -245,21 +369,35 @@ judge_command() {
   case "$READERS" in *" $cmd "*) return 0 ;; esac
   case "$cmd" in
     git)
-      for a in "${CMD_ARGS[@]:1}"; do
-        [ "$skip" = 0 ] || { skip=0; continue; }
-        case "$a" in
-          --output*|--upload-pack*|--receive-pack*|--ext-diff|--textconv|-O*|--open-files-in-pager*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
-        esac
+      gi=1
+      while [ "$gi" -lt "${#CMD_ARGS[@]}" ]; do
+        a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
         if [ -z "$sub" ]; then
           case "$a" in
-            -c|--config-env*|--exec-path*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
-            -C|--git-dir|--work-tree) skip=1; continue ;;
-            -*) continue ;;
+            -c) gval="${CMD_ARGS[gi]:-}"; gi=$((gi + 1))
+                gkey=$(printf '%s' "${gval%%=*}" | tr '[:upper:]' '[:lower:]')
+                case "$gkey" in
+                  user.name|user.email|core.quotepath|init.defaultbranch) ;;
+                  color.*|advice.*|i18n.*) ;;
+                  *) # A non-inert key (alias.X=!body, core.pager=…) runs through git's own sh -c,
+                     # which strips a second level of quotes; reveal a protected name hidden that way.
+                     gval="${gval//\"/}"; gval="${gval//\'/}"
+                     e=$(protected_bash_mention "$gval") && NAMED="$NAMED$e"$'\n'
+                     UNSAFE="${UNSAFE}git -c"$'\n'; return 0 ;;
+                esac ;;
+            --exec-path|--exec-path=*|--config-env|--config-env=*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
+            --output*|--upload-pack*|--receive-pack*|--ext-diff|--textconv|-O*|--open-files-in-pager*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
+            -C|--git-dir|--work-tree|--namespace|--super-prefix) gi=$((gi + 1)) ;;
+            --git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*) ;;
+            --*|-*) ;;
+            *) sub="$a" ;;
           esac
-          sub="$a"
         else
-          case "$a" in -*) continue ;; esac
-          pos=$((pos + 1))
+          case "$a" in
+            --output*|--upload-pack*|--receive-pack*|--ext-diff|--textconv|-O*|--open-files-in-pager*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
+            -*) ;;
+            *) pos=$((pos + 1)) ;;
+          esac
         fi
       done
       case "$sub" in
@@ -267,17 +405,15 @@ judge_command() {
         branch|tag) case " ${CMD_ARGS[*]} " in *" -l "*|*" --list "*) ;; *) [ "$pos" = 0 ] || UNSAFE="${UNSAFE}git $sub creating"$'\n' ;; esac ;;
         *) UNSAFE="${UNSAFE}git $sub"$'\n' ;;
       esac ;;
-    sed|yq)
+    sed)
+      sed_parse || return 0
+      for a in ${SED_SCRIPTS[@]+"${SED_SCRIPTS[@]}"}; do
+        sed_script_safe "$a" || { UNSAFE="${UNSAFE}sed: not a provably read-only script: $a"$'\n'; return 0; }
+      done
+      [ "$SED_INPLACE" = 1 ] && for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
+    yq)
       editor_parse || { UNSAFE="$UNSAFE$cmd: script read from a file"$'\n'; return 0; }
-      if [ "$cmd" = sed ]; then
-        # w/W write a file and e runs a command, as commands or as s/// flags, glued or not.
-        for a in ${SCRIPTS[@]+"${SCRIPTS[@]}"}; do
-          printf '%s' "$a" | grep -qE '(^|[;{}/,!$~+[:space:]])[0-9gpiImM]*[wWe]' &&
-            { UNSAFE="${UNSAFE}sed: w/e command in $a"$'\n'; return 0; }
-        done
-      else
-        for a in "${CMD_ARGS[@]:1}"; do case "$a" in -s|-s*|--split-exp*) UNSAFE="${UNSAFE}yq $a writes files"$'\n'; return 0 ;; esac; done
-      fi
+      for a in "${CMD_ARGS[@]:1}"; do case "$a" in -s|-s*|--split-exp*) UNSAFE="${UNSAFE}yq $a writes files"$'\n'; return 0 ;; esac; done
       for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
     find)
       for a in "${CMD_ARGS[@]}"; do
@@ -291,10 +427,8 @@ judge_command() {
       # directories above (.claude, tests/e2e/docs) are not.
       operands m
       for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do
-        case "$t" in
-          *'$'*|*'`'*|*'*'*|*'?'*|*'['*) UNSAFE="${UNSAFE}mkdir: $t does not resolve"$'\n' ;;
-          *) e=$(protected_bash_match "$t") && HITS="$HITS$e"$'\n' ;;
-        esac
+        if unresolved "$t"; then UNSAFE="${UNSAFE}mkdir: $t does not resolve"$'\n'
+        else e=$(protected_bash_match "$t") && HITS="$HITS$e"$'\n'; fi
       done ;;
     cp|mv|install|ln) copy_targets ;;
     dd) for a in "${CMD_ARGS[@]}"; do case "$a" in of=*) target "${a#of=}" ;; esac; done ;;

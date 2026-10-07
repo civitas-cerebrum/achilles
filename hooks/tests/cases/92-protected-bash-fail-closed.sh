@@ -247,3 +247,97 @@ done
 assert_deny "$HOOK" "$(bash_payload 'mkdir ~/.claude/hooks/evil')" "mkdir inside the hook install" "Writes into: .claude/hooks"
 assert_deny "$HOOK" "$(bash_payload 'mkdir -p .claude/achilles')" "mkdir of the activation state dir" "Writes into: .claude/achilles"
 assert_deny "$HOOK" "$(bash_payload 'touch -d yesterday ~/.claude/settings.json')" "touch past its option value" "Writes into: .claude/settings.json"
+
+
+# Fix round 5: the guard inverts to UNRECOGNISED = UNSAFE. A sed script is safe only if it parses
+# under a read-only grammar; writer options are parsed as full short clusters; wrappers peel only
+# known options; an assignment/alias/function earlier on the line poisons later commands; git -c
+# accepts only inert keys; ANSI-C quotes are scanned honouring escapes.
+section "protected-bash fail-closed r5: sed scripts outside the read-only grammar DENY"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "Cannot prove"
+done <<'SEDBAD'
+sed 's|a|b|w /home/u/.claude/settings.json' x
+sed 's#a#b#w ~/.claude/settings.json' x
+sed '\%a%w ~/.claude/settings.json' x
+sed -n --expression=1w\ ~/.claude/settings.json x
+sed -n '1,3w /tmp/x' tests/e2e/docs/journey-map.md
+sed '$w /tmp/x' tests/e2e/docs/journey-map.md
+sed '1e touch ~/.claude/settings.json' x
+SEDBAD
+section "protected-bash fail-closed r5: sed options outside the allowlist DENY"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "protected"
+done <<'SEDOPT'
+sed -n --expr='1w ~/.claude/settings.json' x
+sed -n --exp '1w ~/.claude/settings.json' x
+sed -nf /tmp/s ~/.claude/settings.json
+sed -I '' s/a/b/ ~/.claude/settings.json
+sed -I.bak s/a/b/ ~/.claude/settings.json
+sed --in-pl s/a/b/ ~/.claude/settings.json
+sed -ni s/a/b/ ~/.claude/settings.json
+sed -i -f script.sed ~/.claude/settings.json
+SEDOPT
+section "protected-bash fail-closed r5: read-only sed on a protected file ALLOWs"
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
+done <<'SEDOK'
+sed -n /error/p tests/e2e/docs/journey-map.md
+sed -n '/^## Journey/p' tests/e2e/docs/journey-map.md
+sed -n s/x/eat/p tests/e2e/docs/journey-map.md
+sed -n 1,5p tests/e2e/docs/onboarding-status.json
+SEDOK
+
+section "protected-bash fail-closed r5: writer short-cluster and target-dir forms DENY"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "protected"
+done <<'WRITERS'
+cp -t~/.claude/hooks /tmp/evil.sh
+cp -vt ~/.claude/hooks /tmp/evil.sh
+cp --target-dir=~/.claude/hooks /tmp/evil.sh
+ln -sft ~/.claude/hooks /tmp/evil.sh
+ln -sT /tmp/evil.sh ~/.claude/settings.json
+mv -t~/.claude/hooks /tmp/evil.sh
+install -Dt ~/.claude/hooks /tmp/evil.sh
+WRITERS
+
+section "protected-bash fail-closed r5: a wrapper's unrecognised/known options"
+assert_deny "$HOOK" "$(bash_payload "exec -a grep sh -c 'echo x > ~/.claude/settings.json'")" "exec -a NAME peeled, then sh -c writes" "protected"
+assert_deny "$HOOK" "$(bash_payload "exec -c sh -c 'echo x > ~/.claude/settings.json'")" "exec -c is an unrecognised wrapper option" "protected"
+assert_deny "$HOOK" "$(bash_payload "nice -n 5 sh -c 'echo x > ~/.claude/settings.json'")" "nice -n 5 peeled" "protected"
+assert_deny "$HOOK" "$(bash_payload 'stdbuf -oL tee ~/.claude/settings.json < x')" "stdbuf -oL then tee" "protected"
+assert_deny "$HOOK" "$(bash_payload "env -S 'sh -c \"echo x > ~/.claude/settings.json\"'")" "env -S runs its string" "protected"
+assert_deny "$HOOK" "$(bash_payload 'sudo -E tee ~/.claude/settings.json < x')" "sudo -E flag then tee" "protected"
+assert_allow "$HOOK" "$(bash_payload 'nice --adjustment 5 cat ~/.claude/settings.json')" "nice before a read ALLOWs"
+assert_allow "$HOOK" "$(bash_payload 'timeout -s KILL 5 cat ~/.claude/settings.json')" "timeout before a read ALLOWs"
+assert_allow "$HOOK" "$(bash_payload 'stdbuf --output=L cat ~/.claude/settings.json')" "stdbuf before a read ALLOWs"
+
+section "protected-bash fail-closed r5: an assignment/alias/function poisons later commands"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "protected"
+done <<'POISON'
+PATH=/tmp/zz; cat -c 'echo x > ~/.claude/settings.json'
+PATH=/tmp/zz:$PATH; grep -c 'echo x > ~/.claude/settings.json'
+BASH_ENV=/tmp/e; bash -c 'cat ~/.claude/settings.json'
+x=1; cat ~/.claude/settings.json
+export PATH=/tmp; cat ~/.claude/settings.json
+POISON
+assert_allow "$HOOK" "$(bash_payload 'cat ~/.claude/settings.json; PATH=/usr/bin')" "an assignment AFTER a read does not poison it"
+
+section "protected-bash fail-closed r5: git -c accepts only inert keys"
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
+done <<'GITOK'
+git -c user.name=Feyzabora -c user.email=x commit -m "fix tests/e2e/docs/onboarding-status.json"
+git commit -m "fix tests/e2e/docs/onboarding-status.json"
+git -c core.quotepath=off status tests/e2e/docs/onboarding-status.json
+git -C . commit -m "touch tests/e2e/docs/onboarding-status.json"
+GITOK
+assert_deny "$HOOK" "$(bash_payload "git -c alias.x='!echo x > ~/.cl\"\"aude/settings.json' x")" "git -c alias body runs through sh -c" "git -c"
+assert_deny "$HOOK" "$(bash_payload 'git -c core.pager=x log tests/e2e/docs/journey-map.md')" "git -c core.pager is not inert" "git -c"
+assert_deny "$HOOK" "$(bash_payload 'git log --output=tests/e2e/docs/onboarding-status.json')" "git --output writes a file" "git --output"
+
+section "protected-bash fail-closed r5: ANSI-C quotes are scanned honouring escaped quotes"
+assert_deny "$HOOK" "$(bash_payload "echo \$'a\\' b' >~/.claude/settings.json #'")" "escaped quote inside \$'...' does not end the string" "protected"
+assert_deny "$HOOK" "$(bash_payload "echo \$'\\'' > ~/.claude/settings.json #'")" "\$'\\'' is a single quote, not the end of the word" "protected"
+assert_deny "$HOOK" "$(bash_payload "echo x > \$'/home/u/\\x2eclaude/settings.json'")" "hex escape \\x2e decodes to a dot" "protected"

@@ -24,6 +24,8 @@
 #               wrapper or program run from elsewhere is not the one its basename names
 #   CMD_ENV     1 when an assignment or env preceded the command: its environment is the line's
 #   CMD_WRITES  targets of the writing redirections (> >> >| &> &>> >&file <>, with any fd number)
+#   CMD_SNEST   strings a known wrapper runs as a command (env -S), re-split as nested commands
+#   CMD_WRAP_BAD 1 when a wrapper carried an option the peeler does not recognise
 #   CMD_HEREDOCS heredoc and here-string bodies
 #   CMD_XARGS   1 when xargs supplies the operands
 # The arrays can be empty: read them as ${A[@]+"${A[@]}"} (bash 3.2 under set -u).
@@ -61,7 +63,7 @@ shell__split() {
       \\) [ "${W:i-B+1:1}" = $'\n' ] || { w="$w${W:i-B+1:1}"; have=1; }; i=$((i + 2)) ;;
       \$) case "${W:i-B+1:1}" in
             \() shell__subst ;;
-            \') j="${t:i+2}"; j="${j%%\'*}"; w="$w$(printf '%b' "$j")"; have=1; i=$((i + ${#j} + 3)) ;;
+            \') shell__ansic ;;
             \{) j="${t:i}"; j="${j%%"$SW__CB"*}"; w="$w$j$SW__CB"; have=1; i=$((i + ${#j} + 1)) ;;
             *) w="$w\$"; have=1; i=$((i + 1)) ;;
           esac ;;
@@ -182,6 +184,24 @@ shell__subst() {
   w="$w${t:i:k-i+1}"; have=1; i=$((k + 1))
 }
 
+# $'…' — ANSI-C quotes. A backslash escapes the next character, so the closing quote is the first
+# ' not preceded by an odd run of backslashes. The escaping backslash before a quote is dropped and
+# a literal quote kept; every other escape (\x2e, \056, \141, \\) is left for printf %b.
+shell__ansic() {
+  local rest="${t:i+2}" piece bs body="" consumed=0
+  while :; do
+    piece="${rest%%\'*}"
+    if [ "$piece" = "$rest" ]; then body="$body$piece"; consumed=$((consumed + ${#piece})); break; fi
+    bs="${piece##*[!\\]}"
+    if [ $(( ${#bs} % 2 )) -eq 1 ]; then
+      body="$body${piece%\\}'"; consumed=$((consumed + ${#piece} + 1)); rest="${rest:${#piece}+1}"
+    else
+      body="$body$piece"; consumed=$((consumed + ${#piece} + 1)); break
+    fi
+  done
+  w="$w$(printf '%b' "$body")"; have=1; i=$((i + 2 + consumed))
+}
+
 shell__backtick() {
   local k=$((i + 1)) ch
   while :; do
@@ -203,6 +223,7 @@ shell__nested() {
 # The scripts a shell or eval runs.
 shell__expand() {
   local a k=1 b
+  for b in ${CMD_SNEST[@]+"${CMD_SNEST[@]}"}; do shell__nested "$b"; done
   case "${CMD_ARGS[0]:-}" in
     sh|bash|zsh|dash|ksh)
       while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
@@ -221,10 +242,71 @@ shell__expand() {
   return 0
 }
 
+# shell__wrapopt <wrapper> <option> — classify <option> for <wrapper>, inverting to unknown=unsafe.
+# Sets WOPT to: val (value is the next word), self (value glued or a flag), snest / snestnext
+# (env -S: a command string, glued in WVAL or the next word), or bad (unrecognised → the command
+# is unsafe). Only options the peeler must skip to reach the real command are listed.
+shell__wrapopt() {
+  local w="$1" o="$2" base letters m ch rest
+  WOPT=bad; WVAL=""
+  case "$o" in
+    --*)
+      base="${o%%=*}"
+      case "$w:$base" in
+        env:--split-string) case "$o" in *=*) WVAL="${o#*=}"; WOPT=snest ;; *) WOPT=snestnext ;; esac; return 0 ;;
+        env:--unset|env:--chdir|env:--block-signal|env:--default-signal|env:--ignore-signal|\
+        nice:--adjustment|timeout:--signal|timeout:--kill-after|\
+        stdbuf:--input|stdbuf:--output|stdbuf:--error|\
+        sudo:--user|sudo:--group|sudo:--close-from|sudo:--chdir|sudo:--chroot|sudo:--host|sudo:--prompt|sudo:--role|sudo:--type|sudo:--other-user|sudo:--command-timeout|\
+        doas:--user|\
+        xargs:--max-args|xargs:--max-lines|xargs:--max-procs|xargs:--max-chars|xargs:--delimiter|xargs:--arg-file|xargs:--eof|xargs:--replace|xargs:--process-slot-var|\
+        npx:--package|npx:--call|npx:--loglevel|npx:--userconfig|npx:--cache)
+          case "$o" in *=*) WOPT=self ;; *) WOPT=val ;; esac; return 0 ;;
+        env:--null|env:--ignore-environment|env:--debug|env:--version|env:--help|\
+        nice:--help|nice:--version|\
+        timeout:--preserve-status|timeout:--foreground|timeout:--verbose|timeout:--help|timeout:--version|\
+        stdbuf:--help|stdbuf:--version|\
+        sudo:--preserve-env|sudo:--background|sudo:--login|sudo:--non-interactive|sudo:--stdin|sudo:--shell|sudo:--set-home|sudo:--remove-timestamp|sudo:--reset-timestamp|sudo:--validate|sudo:--list|sudo:--help|sudo:--version|\
+        doas:--*|\
+        xargs:--null|xargs:--no-run-if-empty|xargs:--verbose|xargs:--exit|xargs:--interactive|xargs:--open-tty|xargs:--help|xargs:--version|\
+        npx:--yes|npx:--no-yes|npx:--quiet|npx:--no-install|npx:--prefer-online|npx:--prefer-offline|npx:--offline|npx:--ignore-existing)
+          WOPT=self; return 0 ;;
+        *) WOPT=bad; return 0 ;;
+      esac ;;
+    -)  WOPT=bad; return 0 ;;
+    -?*)
+      letters="${o#-}"; m=0
+      while [ "$m" -lt "${#letters}" ]; do
+        ch="${letters:m:1}"; m=$((m + 1)); rest="${letters:m}"
+        case "$w:$ch" in
+          exec:a|env:u|env:C|nice:n|timeout:s|timeout:k|stdbuf:i|stdbuf:o|stdbuf:e|\
+          sudo:u|sudo:g|sudo:C|sudo:D|sudo:R|sudo:h|sudo:p|sudo:r|sudo:t|sudo:U|sudo:T|\
+          doas:u|doas:C|\
+          xargs:I|xargs:i|xargs:n|xargs:L|xargs:P|xargs:s|xargs:d|xargs:a|xargs:E|xargs:e|xargs:J|xargs:R|xargs:S|\
+          npx:p|npx:c)
+            if [ -n "$rest" ]; then WOPT=self; else WOPT=val; fi; return 0 ;;
+          env:S)
+            if [ -n "$rest" ]; then WVAL="$rest"; WOPT=snest; else WOPT=snestnext; fi; return 0 ;;
+          env:i|env:0|env:v|\
+          timeout:v|\
+          sudo:E|sudo:H|sudo:i|sudo:n|sudo:S|sudo:s|sudo:b|sudo:k|sudo:K|sudo:v|sudo:l|sudo:A|sudo:P|sudo:e|\
+          doas:L|doas:n|doas:s|\
+          xargs:0|xargs:r|xargs:t|xargs:x|xargs:p|xargs:o|\
+          command:p|\
+          npx:y|npx:q)
+            : ;;
+          *) WOPT=bad; return 0 ;;
+        esac
+      done
+      WOPT=self; return 0 ;;
+  esac
+}
+
 shell_each_command() {
-  local fn="$1" k=0 word op wrapped dir peel skip
+  local fn="$1" k=0 word op wrapped dir peel skip snest_pending
   while [ "$k" -le "${#SW[@]}" ]; do
-    CMD_ARGS=(); CMD_WRITES=(); CMD_HEREDOCS=(); CMD_XARGS=0; CMD_ENV=0; CMD_PATH=""; wrapped=""; peel=1; skip=0
+    CMD_ARGS=(); CMD_WRITES=(); CMD_HEREDOCS=(); CMD_SNEST=(); CMD_XARGS=0; CMD_ENV=0; CMD_WRAP_BAD=0
+    CMD_PATH=""; wrapped=""; peel=1; skip=0; snest_pending=0
     while [ "$k" -lt "${#SW[@]}" ] && [ "${SW[k]}" != "$SW_SEP" ]; do
       word="${SW[k]}"; k=$((k + 1))
       case "$word" in
@@ -240,6 +322,7 @@ shell_each_command() {
       esac
       if [ "$peel" = 1 ]; then
         [ "$skip" = 0 ] || { skip=0; continue; }
+        if [ "$snest_pending" = 1 ]; then CMD_SNEST+=("$word"); snest_pending=0; continue; fi
         case "$word" in
           [A-Za-z_]*=*) case "${word%%=*}" in *[!A-Za-z0-9_]*) ;; *) CMD_ENV=1; continue ;; esac ;;
         esac
@@ -263,12 +346,16 @@ shell_each_command() {
         fi
         if [ -n "$wrapped" ]; then
           case "$word" in
-            -*) case "$wrapped:$word" in
-                  npx:-p|npx:--package|sudo:-u|sudo:-g|sudo:-U|sudo:-C|sudo:-D|sudo:-R|sudo:-T|sudo:-r|sudo:-t|sudo:-p| \
-                  doas:-u|doas:-C|env:-u|env:--unset|env:-C|env:--chdir|timeout:-k|timeout:-s|timeout:--kill-after|timeout:--signal| \
-                  nice:-n|stdbuf:-i|stdbuf:-o|stdbuf:-e|xargs:-I|xargs:-n|xargs:-L|xargs:-P|xargs:-s|xargs:-d|xargs:-a|xargs:-E|xargs:-J|xargs:-R|xargs:-S) skip=1 ;;
-                esac; continue ;;
-            [0-9]|[0-9]*[0-9smhd]) continue ;;
+            --) wrapped=""; continue ;;
+            -*) shell__wrapopt "$wrapped" "$word"
+                case "$WOPT" in
+                  val) skip=1; continue ;;
+                  self) continue ;;
+                  snest) CMD_SNEST+=("$WVAL"); CMD_WRAP_BAD=1; continue ;;
+                  snestnext) snest_pending=1; CMD_WRAP_BAD=1; continue ;;
+                  *) CMD_WRAP_BAD=1 ;;
+                esac ;;
+            *) [ "$wrapped" = timeout ] && case "$word" in [0-9]*) continue ;; esac ;;
           esac
         fi
         peel=0; CMD_PATH="$dir"
@@ -279,7 +366,7 @@ shell_each_command() {
       fi
       CMD_ARGS+=("$word")
     done
-    if [ "${#CMD_ARGS[@]}" -gt 0 ] || [ "${#CMD_WRITES[@]}" -gt 0 ]; then "$fn"; fi
+    if [ "${#CMD_ARGS[@]}" -gt 0 ] || [ "${#CMD_WRITES[@]}" -gt 0 ] || [ "$CMD_ENV" = 1 ] || [ "${#CMD_SNEST[@]}" -gt 0 ]; then "$fn"; fi
     k=$((k + 1))
   done
 }
