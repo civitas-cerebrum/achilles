@@ -19,7 +19,7 @@ psw_run() {
 
 # ---------------------------------------------------------------------------
 section "perf-summary-writer: no perf ledger → no-op (non-perf project)"
-PSW_TMP_A=$(mktemp -d /tmp/perf-summary-a-XXXXXX)
+tmp_into PSW_TMP_A /tmp/perf-summary-a-XXXXXX
 psw_run "$PSW_TMP_A"
 
 assert_eq "$PSW_OUT" "{}" "hook stdout is {} when no ledger"
@@ -27,7 +27,7 @@ assert_eq "$([ -f "$PSW_TMP_A/.achilles/perf-summary.json" ] && echo yes || echo
 
 # ---------------------------------------------------------------------------
 section "perf-summary-writer: ledger present + results → summary written with correct schema const + phases passthrough"
-PSW_TMP_B=$(mktemp -d /tmp/perf-summary-b-XXXXXX)
+tmp_into PSW_TMP_B /tmp/perf-summary-b-XXXXXX
 cp -R "$FIXTURE/." "$PSW_TMP_B/"
 psw_run "$PSW_TMP_B"
 SUMMARY="$PSW_TMP_B/.achilles/perf-summary.json"
@@ -52,7 +52,7 @@ assert_eq "$("$JQ" -r '.baseline_comparison[0].regressionPct != null' "$SUMMARY"
 
 # ---------------------------------------------------------------------------
 section "perf-summary-writer: ledger present + NO results → slo_results verdicts are null (not fabricated passing)"
-PSW_TMP_C=$(mktemp -d /tmp/perf-summary-c-XXXXXX)
+tmp_into PSW_TMP_C /tmp/perf-summary-c-XXXXXX
 cp -R "$FIXTURE/." "$PSW_TMP_C/"
 # Remove the results directory so no result files are present
 rm -rf "$PSW_TMP_C/tests/perf/results"
@@ -86,4 +86,3 @@ else
   echo "${CLR_DIM}  (perf-summary schema not in validator bundle — skipping)${CLR_RST}"
 fi
 
-rm -rf "$PSW_TMP_A" "$PSW_TMP_B" "$PSW_TMP_C"

@@ -2,11 +2,8 @@
 # The shipped QA mandate in the vendored kernel: scopes the methodology depends on.
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
 MANDATE="$HOOK_DIR/data/achilles-qa.kernel-mandate.json"
-QS_TMP=$(mktemp -d); QP="$QS_TMP/proj"
-mkdir -p "$QP/.claude" "$QP/tests/e2e/docs" "$QP/src"
-cp "$MANDATE" "$QP/.claude/kernel-mandate.json"
-export KERNEL_MANDATE_MANIFEST="$QP/.claude/kernel-mandate.json"
-export KERNEL_MANDATE_STATE_DIR="$QS_TMP/state"
+with_tmp_project_into QS_TMP tests/e2e/docs src; QP="$QS_TMP/proj"
+stage_qa_mandate "$QP"
 qs_main() { payload "$@" cwd="$QP"; }
 qs_sub()  { payload "$@" cwd="$QP" | "$JQ" -c '. + {agent_id: ("sub-" + .agent_type)}'; }
 
@@ -108,5 +105,4 @@ shadow perf-load-safety-gate "$(qs_main tool_name=Bash command='k6 run --vus 1 t
 shadow adversarial-verification-gate "$MCP_DONE" "tracker MCP (adversarial)" "adversarial-verification receipt"
 shadow evidence-bundle-gate "$MCP_DONE" "tracker MCP (evidence)" "no evidence bundle"
 
-rm -rf "$QS_TMP"
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR

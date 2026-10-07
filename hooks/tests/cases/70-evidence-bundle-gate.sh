@@ -71,7 +71,7 @@ assert_terminates() {
 # resolves) and a nested evidence directory, because bundles do not live at a
 # fixed depth — projects put them under apps/<x>/tests/evidence as readily as
 # tests/e2e/evidence.
-EWS="$(mktemp -d)"
+tmp_into EWS
 git init -q "$EWS" 2>/dev/null || true
 git -C "$EWS" config user.email t@example.com 2>/dev/null || true
 git -C "$EWS" config user.name t 2>/dev/null || true
@@ -367,7 +367,7 @@ assert_allow "$H" "$(raw '{tool_name:"mcp__linear__save_issue", tool_input:{id:"
   ".identifier is preferred over a UUID .id → ALLOW"
 
 section "evidence-gate: ACHILLES_EVIDENCE_DIR reaches bundles outside the repo"
-OUTSIDE="$(mktemp -d)"
+tmp_into OUTSIDE
 mkdir -p "$OUTSIDE/abc-9-elsewhere-20260812-190000/screenshots"
 echo "# s" > "$OUTSIDE/abc-9-elsewhere-20260812-190000/summary.md"
 echo png > "$OUTSIDE/abc-9-elsewhere-20260812-190000/screenshots/01.png"

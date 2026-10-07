@@ -3,7 +3,7 @@
 # protocol is active: Claude Code reads exit 1 as a non-blocking error, i.e. an allow. Inactive
 # sessions and non-PreToolUse events keep the hook's own no-jq contract.
 FC_STATE="$ACHILLES_SESSION_STATE_DIR"
-mkdir -p "$FC_STATE"; : > "$FC_STATE/fc-active.active"
+activate_session fc-active
 
 fc_payload() {  # fc_payload <session-id> <event> <payload args...>
   local sid="$1" ev="$2"; shift 2

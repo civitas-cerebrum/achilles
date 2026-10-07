@@ -1,8 +1,7 @@
 #!/bin/bash
 # achilles-import-boundary-gate.sh — code the orchestrator's playwright run loads stays inside tests/.
 H="$HOOK_DIR/achilles-import-boundary-gate.sh"
-IB_TMP=$(mktemp -d); CP="$IB_TMP/proj"
-mkdir -p "$CP/tests/e2e/fixtures" "$CP/src"
+with_tmp_project_into IB_TMP tests/e2e/fixtures src; CP="$IB_TMP/proj"
 # The root is $CLAUDE_PROJECT_DIR, else the git toplevel: pin both for the fixture.
 unset CLAUDE_PROJECT_DIR
 git init -q "$CP"
@@ -482,4 +481,3 @@ GIT_CEILING_DIRECTORIES="$IB_TMP" assert_allow "$INST/achilles-import-boundary-g
 GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$INST/achilles-import-boundary-gate.sh" "$(code tests/e2e/x.spec.ts 'import "../../src/app";')" \
   "installed copy with the parser bundle → DENY on a spec reaching src/" "resolves outside tests/"
 
-rm -rf "$IB_TMP"

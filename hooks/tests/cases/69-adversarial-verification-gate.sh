@@ -21,7 +21,7 @@ tracker() {
 
 # Isolated workspace per phase: a git repo with one spec, so the gate's
 # staleness comparison has something real to compare against.
-WS="$(mktemp -d)"
+tmp_into WS
 git init -q "$WS" 2>/dev/null || true
 mkdir -p "$WS/tests" "$WS/.achilles/adversarial-verification"
 echo "test('x', () => {})" > "$WS/tests/a.spec.ts"
@@ -210,4 +210,3 @@ ACHILLES_PROTOCOL=0 \
   "protocol inactive → ALLOW (plain dev sessions never feel this)"
 
 unset WORKSPACE_ROOT ACHILLES_PROTOCOL
-rm -rf "$WS"

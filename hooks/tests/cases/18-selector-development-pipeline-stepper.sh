@@ -659,7 +659,7 @@ ALL_7_S14=$(_steps_json \
   "visual_diff:pass")
 
 # Build a bare git repo so we can stage real files
-WS_GIT=$(mktemp -d)
+tmp_into WS_GIT
 git -C "$WS_GIT" init -q
 git -C "$WS_GIT" config user.email "test@test.com"
 git -C "$WS_GIT" config user.name "Test"
@@ -815,7 +815,7 @@ ALL_7_S16=$(_steps_json \
   "visual_diff:pass")
 
 # Build a git repo with a file path containing a space
-WS_SPACE=$(mktemp -d)
+tmp_into WS_SPACE
 git -C "$WS_SPACE" init -q
 git -C "$WS_SPACE" config user.email "test@test.com"
 git -C "$WS_SPACE" config user.name "Test"

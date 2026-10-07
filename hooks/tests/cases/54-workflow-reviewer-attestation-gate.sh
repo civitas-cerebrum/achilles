@@ -23,9 +23,8 @@ fi
 rm -f "$_ATTEST_PROBE"
 
 # Isolated repo so the hook resolves REPO_ROOT to a temp dir.
-ATTEST_TMP=$(mktemp -d)
-trap 'rm -rf "$ATTEST_TMP"' EXIT
-( cd "$ATTEST_TMP" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+tmp_into ATTEST_TMP
+init_repo "$ATTEST_TMP" --commit
 mkdir -p "$ATTEST_TMP/tests/e2e/docs" "$ATTEST_TMP/scripts"
 
 # Seed two real files in the temp repo. Paths mirror the post-reshape layout

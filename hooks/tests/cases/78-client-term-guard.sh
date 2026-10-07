@@ -13,7 +13,7 @@ G="$HOOK_DIR/client-term-guard.sh"
 # package.json "name" (rename-stable), NOT on any skills/<dir> path — the
 # skill directories have been renamed once already (element-interactions →
 # achilles-protocol) and a path-based fixture would mask a dead probe.
-CTG_REPO=$(mktemp -d)
+tmp_into CTG_REPO
 mkdir -p "$CTG_REPO/skills/contributing-to-achilles-protocol" "$CTG_REPO/skills/example-skill" "$CTG_REPO/.achilles"
 printf '{"name":"@civitas-cerebrum/achilles","version":"0.0.0"}' > "$CTG_REPO/package.json"
 touch "$CTG_REPO/skills/contributing-to-achilles-protocol/SKILL.md"
@@ -27,12 +27,11 @@ assert_deny "$G" "$(payload tool_name=Write file_path="$CTG_REPO/skills/examplec
 section "client-term-guard: adjacent traffic allows"
 assert_allow "$G" "$(payload tool_name=Write file_path="$CTG_REPO/skills/example-skill/SKILL.md" content='A neutral mechanism example using «BASE_URL» and j-<slug> placeholders')" "clean content → silent allow"
 assert_allow "$G" "$(payload tool_name=Write file_path="/tmp/somewhere-else/notes.md" content='ExampleClientBrand internal notes')" "write OUTSIDE this package repo → silent allow (out of scope)"
-CTG_OTHER=$(mktemp -d)
+tmp_into CTG_OTHER
 mkdir -p "$CTG_OTHER/skills/x" "$CTG_OTHER/.achilles"
 printf '{"name":"@example/other-package"}' > "$CTG_OTHER/package.json"
 printf 'exampleclientbrand\n' > "$CTG_OTHER/.achilles/client-terms.local.txt"
 assert_allow "$G" "$(payload tool_name=Write file_path="$CTG_OTHER/skills/x/SKILL.md" content='ExampleClientBrand')" "repo with a DIFFERENT package name → silent allow (marker is the name, not the tree shape)"
-rm -rf "$CTG_OTHER"
 assert_allow "$G" "$(payload tool_name=Bash command='echo ExampleClientBrand')" "non-Write|Edit tool → silent allow"
 assert_allow "$G" "$(payload tool_name=Write file_path="$CTG_REPO/skills/example-skill/SKILL.md" content='the word about contains ab but 2-char terms are ignored')" "terms under 3 chars ignored → silent allow"
 
@@ -45,7 +44,6 @@ assert_allow "$G" "" "empty stdin → silent allow"
 assert_allow "$G" "not-json" "invalid JSON → silent allow"
 assert_allow "$G" "{}" "empty object → silent allow"
 
-rm -rf "$CTG_REPO"
 
 section "client-term-guard: jq missing (silent; fail closed while active)"
 run_hook_nojq "$G" '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x"}}'

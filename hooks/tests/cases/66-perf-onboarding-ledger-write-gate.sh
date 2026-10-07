@@ -15,10 +15,9 @@ if ! "$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev
   return 0 2>/dev/null || exit 0
 fi
 
-TMP_REPO=$(mktemp -d /tmp/perf-ledger-write-XXXXXX)
+tmp_into TMP_REPO /tmp/perf-ledger-write-XXXXXX
 mkdir -p "$TMP_REPO/tests/perf/docs"
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 LEDGER_PATH="$TMP_REPO/tests/perf/docs/perf-onboarding-status.json"
 

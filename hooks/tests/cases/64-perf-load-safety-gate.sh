@@ -8,10 +8,9 @@ H="$HOOK_DIR/perf-load-safety-gate.sh"
 # The gate resolves the repo root from .cwd and reads
 # tests/perf/perf-onboarding.config.json from there.
 # ---------------------------------------------------------------------------
-TMP_REPO=$(mktemp -d /tmp/perf-load-safety-gate-XXXXXX)
+tmp_into TMP_REPO /tmp/perf-load-safety-gate-XXXXXX
 mkdir -p "$TMP_REPO/tests/perf"
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 CONFIG="$TMP_REPO/tests/perf/perf-onboarding.config.json"
 

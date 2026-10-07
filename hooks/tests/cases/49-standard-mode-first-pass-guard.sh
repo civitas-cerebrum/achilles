@@ -5,11 +5,10 @@
 H="$HOOK_DIR/standard-mode-first-pass-guard.sh"
 
 # Set up a temp repo-root so the hook can locate state files relative to cwd.
-TMP_REPO=$(mktemp -d /tmp/std-mode-first-pass-XXXXXX)
+tmp_into TMP_REPO /tmp/std-mode-first-pass-XXXXXX
 mkdir -p "$TMP_REPO/tests/e2e/docs"
 # Initialise git so `git rev-parse --show-toplevel` returns this dir.
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 write_cov_state() {
   echo "$1" > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"

@@ -4,7 +4,7 @@
 # by hand, so a dropped alternative fails a named assertion and an added one fails the
 # exact-set pin until it is listed (with its schema role) below.
 WATCHER="$HOOK_DIR/achilles-protocol-activation-watcher.sh"
-DP_TMP=$(mktemp -d)
+tmp_into DP_TMP
 export ACHILLES_SESSION_STATE_DIR="$DP_TMP/sessions"
 unset ACHILLES_PROTOCOL
 
@@ -74,4 +74,3 @@ done
 assert_eq "$(lib_active "$(payload session_id=dp-md hook_event_name=PreToolUse tool_name=Skill skill=frontend-design)")" "inactive" \
   "Skill(frontend-design) does not activate (a skill this package does not ship)"
 
-rm -rf "$DP_TMP"

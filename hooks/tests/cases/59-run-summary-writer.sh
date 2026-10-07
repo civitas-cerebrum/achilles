@@ -19,7 +19,7 @@ rsw_run() {
 
 # ---------------------------------------------------------------------------
 section "run-summary-writer: full fixture project"
-RSW_TMP_A=$(mktemp -d /tmp/run-summary-a-XXXXXX)
+tmp_into RSW_TMP_A /tmp/run-summary-a-XXXXXX
 cp -R "$FIXTURE/." "$RSW_TMP_A/"
 rsw_run "$RSW_TMP_A"
 SUMMARY="$RSW_TMP_A/.achilles/run-summary.json"
@@ -67,7 +67,7 @@ fi
 
 # ---------------------------------------------------------------------------
 section "run-summary-writer: empty project never fakes a pass"
-RSW_TMP_B=$(mktemp -d /tmp/run-summary-b-XXXXXX)
+tmp_into RSW_TMP_B /tmp/run-summary-b-XXXXXX
 rsw_run "$RSW_TMP_B"
 SUMMARY="$RSW_TMP_B/.achilles/run-summary.json"
 
@@ -77,7 +77,7 @@ assert_eq "$("$JQ" -c '.bugs.ids' "$SUMMARY")" "[]" "no findings ledger → empt
 
 # ---------------------------------------------------------------------------
 section "run-summary-writer: stats-less results.json falls back to per-test walk"
-RSW_TMP_C=$(mktemp -d /tmp/run-summary-c-XXXXXX)
+tmp_into RSW_TMP_C /tmp/run-summary-c-XXXXXX
 cp -R "$FIXTURE/." "$RSW_TMP_C/"
 "$JQ" 'del(.stats)' "$FIXTURE/playwright-report/results.json" \
   > "$RSW_TMP_C/playwright-report/results.json"
@@ -90,7 +90,6 @@ assert_eq "$("$JQ" -r '.tests.status' "$SUMMARY")" "failing" "fallback: status f
 assert_eq "$("$JQ" -r '.tests.flaky' "$SUMMARY")" "null" "fallback: flaky unknowable → null"
 assert_eq "$("$JQ" -r '.tests.total' "$SUMMARY")" "3" "fallback: total from test count"
 
-rm -rf "$RSW_TMP_A" "$RSW_TMP_B" "$RSW_TMP_C"
 
 section "run-summary-writer: jq missing (empty)"
 run_hook_nojq "$HOOK_DIR/run-summary-writer.sh" '{}'

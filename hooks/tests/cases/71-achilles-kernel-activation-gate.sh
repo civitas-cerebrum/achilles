@@ -66,7 +66,7 @@ APPROVER_SECTION=$(awk '/^### `workflow-reviewer`/{p=1} p{print} p&&/^### `[a-z-
 assert_eq "$(printf '%s' "$APPROVER_SECTION" | grep -c 'run any shell command')" "1" "the ledger states that an approver role runs nothing"
 assert_eq "$(printf '%s' "$APPROVER_SECTION" | grep -c '^- \*\*Runs\*\*')" "0" "and grants it no commands"
 # Staged by postinstall on the same never-overwrite terms as the manifest.
-STAGE_PROJ=$(mktemp -d)
+tmp_into STAGE_PROJ
 stage_mandate() { CIVITAS_SKIP_HOOK_INSTALL= node -e "require('$REPO_ROOT/scripts/install/mandate.js').stageProjectMandate('$STAGE_PROJ')" >/dev/null; }
 stage_mandate
 assert_eq "$(cmp -s "$STAGE_PROJ/.claude/kernel-mandate.json" "$MANDATE" && echo same)" "same" "stageProjectMandate stages the manifest"
@@ -75,7 +75,6 @@ assert_eq "$(cmp -s "$STAGE_PROJ/.claude/kernel-mandate.md" "$LEDGER" && echo sa
 printf '{"custom":true}\n' > "$STAGE_PROJ/.claude/kernel-mandate.json"
 stage_mandate
 assert_eq "$(cat "$STAGE_PROJ/.claude/kernel-mandate.json")" '{"custom":true}' "a second staging leaves an existing manifest unchanged"
-rm -rf "$STAGE_PROJ"
 
 # ---------------------------------------------------------------------------
 section "kernel wiring: the shipped QA mandate's hard boundaries"
@@ -98,12 +97,8 @@ assert_eq "$BOUNDARIES" "main=orchestrator agentTypes=self no-src-env-only-scaff
 # ---------------------------------------------------------------------------
 section "kernel wiring: the QA mandate loads in the vendored kernel"
 # ---------------------------------------------------------------------------
-KW_TMP=$(mktemp -d)
-KP="$KW_TMP/proj"
-mkdir -p "$KP/.claude" "$KP/tests/e2e/docs" "$KP/src"
-cp "$MANDATE" "$KP/.claude/kernel-mandate.json"
-export KERNEL_MANDATE_MANIFEST="$KP/.claude/kernel-mandate.json"
-export KERNEL_MANDATE_STATE_DIR="$KW_TMP/state"
+with_tmp_project_into KW_TMP tests/e2e/docs src; KP="$KW_TMP/proj"
+stage_qa_mandate "$KP"
 
 # Main session (no agent_id) binds as orchestrator.
 assert_deny "$KERNEL" "$(payload tool_name=Read file_path="$KP/src/app.ts" cwd="$KP")" \
@@ -489,7 +484,7 @@ probe() { payload session_id="$1" transcript_path="$DEV_TRANSCRIPT" tool_name=Re
 assert_allow "$H" "$(probe km-dev-1)" "dev session (no marker, no signal): wrapper → silent ALLOW (dormant)"
 assert_deny "$KERNEL" "$(probe km-dev-1)" "…while the raw kernel would DENY the same call (manifest is live on disk)" "outside the role's read scope"
 
-: > "$ACHILLES_SESSION_STATE_DIR/km-act-1.active"
+activate_session km-act-1
 assert_deny "$H" "$(probe km-act-1)" "marker present: wrapper relays the kernel's DENY" "outside the role's read scope"
 assert_allow "$H" "$(payload session_id=km-act-1 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KP/package.json" cwd="$KP")" \
   "marker present: in-scope Read relays the kernel's ALLOW"
@@ -606,4 +601,3 @@ else
   echo "  ${CLR_DIM}(node not on PATH — skipping postinstall wiring test)${CLR_RST}"
 fi
 
-rm -rf "$KW_TMP"

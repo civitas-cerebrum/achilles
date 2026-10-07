@@ -5,10 +5,9 @@
 H="$HOOK_DIR/onboarding-ledger-gate.sh"
 
 # Temp repo + ledger paths.
-TMP_REPO=$(mktemp -d /tmp/onboarding-ledger-gate-XXXXXX)
+tmp_into TMP_REPO /tmp/onboarding-ledger-gate-XXXXXX
 mkdir -p "$TMP_REPO/tests/e2e/docs"
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 LEDGER="$TMP_REPO/tests/e2e/docs/onboarding-status.json"
 

@@ -18,7 +18,7 @@ fi
 
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 SCOPE_TEST=$(mktemp /tmp/scope-test-XXXXXX.mjs)
-SCOPE_HOME=$(mktemp -d /tmp/scope-home-XXXXXX)
+tmp_into SCOPE_HOME /tmp/scope-home-XXXXXX
 
 echo
 echo "── postinstall: install scope follows the -g flag ──"
@@ -142,4 +142,3 @@ else
 fi
 
 rm -f "$SCOPE_TEST"
-rm -rf "$SCOPE_HOME"

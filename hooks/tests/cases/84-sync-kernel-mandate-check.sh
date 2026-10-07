@@ -1,7 +1,7 @@
 #!/bin/bash
 # sync-kernel-mandate.mjs --check: verifies vendored kernel bytes against scripts/kernel-mandate.lock.json.
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
-SK_TMP=$(mktemp -d)
+tmp_into SK_TMP
 sk_copy() { # copy the script, the lock and every locked file into $SK_TMP
   mkdir -p "$SK_TMP/scripts"
   cp "$REPO_ROOT/scripts/sync-kernel-mandate.mjs" "$SK_TMP/scripts/"
@@ -27,4 +27,3 @@ assert_eq "$(grep -c 'DRIFT: hooks/kernel-mandate-role-gate.sh (vendored here, n
 rm "$SK_TMP/scripts/kernel-mandate.lock.json"
 assert_eq "$(sk_run)" "2" "no lock → exit 2"
 assert_eq "$(env -u KERNEL_MANDATE_SRC node "$SK_TMP/scripts/sync-kernel-mandate.mjs" > /dev/null 2>&1; echo $?)" "2" "sync without a source → exit 2, never a silent pass"
-rm -rf "$SK_TMP"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # achilles-kernel-activation-gate.sh: a staged manifest with no kernel to run it is refused, not allowed.
 H="$HOOK_DIR/achilles-kernel-activation-gate.sh"
-KW_TMP=$(mktemp -d); KP="$KW_TMP/proj"; mkdir -p "$KP/.claude" "$KP/src"
+with_tmp_project_into KW_TMP .claude src; KP="$KW_TMP/proj"
 cp "$HOOK_DIR/data/achilles-qa.kernel-mandate.json" "$KP/.claude/kernel-mandate.json"
 FAKE_HOOKS="$KW_TMP/hooks"; mkdir -p "$FAKE_HOOKS/lib"
 cp "$H" "$FAKE_HOOKS/"; cp "$HOOK_DIR/lib/hook-io.sh" "$HOOK_DIR/lib/achilles-activation.sh" "$HOOK_DIR/lib/dispatch-prefix.sh" "$FAKE_HOOKS/lib/"
@@ -44,4 +44,3 @@ rm -rf "$KP/.git"
 rm "$KP/.claude/kernel-mandate.json"
 assert_allow "$W" "$(in_scope)" "no manifest, no kernel → ALLOW (nothing to enforce)"
 unset ACHILLES_PROTOCOL
-rm -rf "$KW_TMP"

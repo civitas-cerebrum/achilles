@@ -5,10 +5,9 @@
 H="$HOOK_DIR/workflow-approver-registry.sh"
 
 # Isolated test repo so EI's own tests/e2e/docs is never polluted.
-TMPREG=$(mktemp -d)
-trap 'rm -rf "$TMPREG"' EXIT
+tmp_into TMPREG
 mkdir -p "$TMPREG/tests/e2e/docs"
-( cd "$TMPREG" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+init_repo "$TMPREG" --commit
 REG="$TMPREG/tests/e2e/docs/.workflow-approvers.json"
 
 section "approver-registry: tool-name filtering"
@@ -65,11 +64,10 @@ TESTS_RUN=$((TESTS_RUN+1))
 [ ! -f "$REG" ] && { TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} no registry entry when tool_use_id absent"; } || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} registry written despite missing tool_use_id"; }
 
 section "approver-registry: missing tests/e2e/docs dir silent-allows without writing"
-NODOCS=$(mktemp -d)
-( cd "$NODOCS" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+tmp_into NODOCS
+init_repo "$NODOCS" --commit
 P=$(payload tool_name=Agent description='workflow-reviewer-phase1: review phase 1' cwd="$NODOCS")
 P=$(echo "$P" | "$JQ" -c '. + {tool_use_id: "toolu_xxx"}')
 assert_allow "$H" "$P" "no docs dir → silent allow"
 TESTS_RUN=$((TESTS_RUN+1))
 [ ! -f "$NODOCS/tests/e2e/docs/.workflow-approvers.json" ] && { TESTS_PASSED=$((TESTS_PASSED+1)); echo "${CLR_PASS}  ✓${CLR_RST} no registry created without docs dir"; } || { TESTS_FAILED=$((TESTS_FAILED+1)); echo "${CLR_FAIL}  ✗${CLR_RST} registry created without docs dir"; }
-rm -rf "$NODOCS"

@@ -307,3 +307,35 @@ payload() {
   done
   printf '%s' "$out"
 }
+
+# ---------------------------------------------------------------------------
+# Temp-project and session fixtures. Each case file runs in its own subshell (run.sh), so the
+# EXIT trap below fires per file.
+ACHILLES_TEST_TMPS=()
+# tmp_into <var> [mktemp-template] — <var> = fresh temp dir, removed when the case file ends.
+# Pass a /tmp/<name>-XXXXXX template where the hook's behaviour depends on the path.
+tmp_into() {
+  local __d; __d=$(mktemp -d ${2:+"$2"}) || return
+  ACHILLES_TEST_TMPS+=("$__d")
+  trap 'rm -rf "${ACHILLES_TEST_TMPS[@]}"' EXIT
+  printf -v "$1" '%s' "$__d"
+}
+# with_tmp_project_into <var> [subdir…] — <var> = temp root holding proj/<subdir…>.
+with_tmp_project_into() {
+  local __var="$1" __d; shift
+  tmp_into "$__var"
+  mkdir -p "${!__var}/proj"
+  for __d in "$@"; do mkdir -p "${!__var}/proj/$__d"; done
+}
+# init_repo <dir> [--commit] — git repo the hooks resolve as toplevel; --commit adds an empty first commit.
+init_repo() {
+  ( cd "$1" && git init -q && git config user.email t@t && git config user.name t \
+    && { [ "${2:-}" != --commit ] || git commit -q --allow-empty -m init; } ) >/dev/null 2>&1
+}
+# activate_session <session-id> — mark the session protocol-active.
+activate_session() { mkdir -p "$ACHILLES_SESSION_STATE_DIR"; : > "$ACHILLES_SESSION_STATE_DIR/$1.active"; }
+# stage_qa_mandate <project-dir> — the shipped QA mandate governs that project; state lives beside the project dir.
+stage_qa_mandate() {
+  mkdir -p "$1/.claude"; cp "$HOOK_DIR/data/achilles-qa.kernel-mandate.json" "$1/.claude/kernel-mandate.json"
+  export KERNEL_MANDATE_MANIFEST="$1/.claude/kernel-mandate.json" KERNEL_MANDATE_STATE_DIR="${1%/*}/state"
+}
