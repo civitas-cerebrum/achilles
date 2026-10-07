@@ -32,7 +32,7 @@ assert_allow "$HOOK" "$(bash_payload "sed -i '' 's/LEDGER_APPROVERS_NAME=.*/LEDG
 assert_allow "$HOOK" "$(bash_payload 'cp tests/e2e/docs/onboarding-status.json /tmp/backup.json')" "cp FROM the ledger"
 assert_allow "$HOOK" "$(bash_payload 'rm /tmp/junk && cat tests/e2e/docs/onboarding-status.json')" "rm of an unrelated path beside a ledger read"
 assert_allow "$HOOK" "$(bash_payload 'echo "see tests/e2e/docs/journey-map.md" > /tmp/note.txt')" "a protected name inside a redirected string"
-assert_allow "$HOOK" "$(bash_payload 'git commit -m "fix: rm tests/e2e/docs/onboarding-status.json"')" "a protected name inside a commit message"
+assert_deny "$HOOK" "$(bash_payload 'git commit -m "fix: rm tests/e2e/docs/onboarding-status.json"')" "git commit naming the ledger: not provably read-only" "Cannot prove"
 assert_allow "$HOOK" "$(bash_payload 'grep -l .workflow-approvers.json hooks/*.sh > /tmp/hits')" "grep for the registry name, redirected elsewhere"
 assert_allow "$HOOK" "$(bash_payload 'echo x 2>&1 >/tmp/log; cat ~/.claude/settings.json')" "fd duplication is not a file target"
 assert_deny "$HOOK" "$(bash_payload "sed -i '' 's/a/b/' hooks/x.sh tests/e2e/docs/.workflow-approvers.json")" "sed -i whose files include the registry" "protected"
@@ -76,20 +76,14 @@ assert_allow "$HOOK" "$(bash_payload 'echo hello > /tmp/scratch.txt')" "unrelate
 assert_allow "$HOOK" "$(bash_payload 'npx playwright test')" "unrelated command"
 assert_allow "$HOOK" "$(bash_payload 'ls tests/e2e/docs/')" "ls docs dir"
 assert_allow "$HOOK" "$(bash_payload 'yq .currentPhase tests/e2e/docs/onboarding-status.json')" "yq read-only (no -i)"
-# Interpreter one-liner READS of a protected artifact must ALLOW — the
-# prior unconditional INTERP_HIT denied these. (Allow-test convention:
-# the read-only adjacents to the write-shaped python/node denies above.)
-assert_allow "$HOOK" "$(bash_payload 'python3 -c "import json; print(json.load(open(\"tests/e2e/docs/onboarding-status.json\"))[\"currentPhase\"])"')" "python3 -c json.load read of ledger"
-assert_allow "$HOOK" "$(bash_payload 'node -e "console.log(require(\"fs\").readFileSync(\"tests/e2e/docs/coverage-expansion-state.json\",\"utf8\"))"')" "node -e readFileSync read of coverage state"
-# require(<ledger>.json) is the Node idiom for load+parse — a READ. Previously
-# unrecognized (no read token) → fell to ASK; now classified as read → ALLOW.
-assert_allow "$HOOK" "$(bash_payload 'node -e "const j=require(\"tests/e2e/docs/onboarding-status.json\"); console.log(j.currentPhase)"')" "node -e require() read of ledger"
-assert_allow "$HOOK" "$(bash_payload 'node -e "const j=require(\"tests/perf/docs/perf-onboarding-status.json\"); console.log(j.status)"')" "node -e require() read of perf ledger"
+# Interpreter one-liners cannot be proved read-only: a line that names a protected path denies.
+assert_deny "$HOOK" "$(bash_payload 'python3 -c "import json; print(json.load(open(\"tests/e2e/docs/onboarding-status.json\"))[\"currentPhase\"])"')" "python3 -c json.load read of ledger" "Cannot prove"
+assert_deny "$HOOK" "$(bash_payload 'node -e "console.log(require(\"fs\").readFileSync(\"tests/e2e/docs/coverage-expansion-state.json\",\"utf8\"))"')" "node -e readFileSync read of coverage state" "Cannot prove"
+assert_deny "$HOOK" "$(bash_payload 'node -e "const j=require(\"tests/e2e/docs/onboarding-status.json\"); console.log(j.currentPhase)"')" "node -e require() read of ledger" "Cannot prove"
+assert_deny "$HOOK" "$(bash_payload 'node -e "const j=require(\"tests/perf/docs/perf-onboarding-status.json\"); console.log(j.status)"')" "node -e require() read of perf ledger" "Cannot prove"
 
-section "protected-artifact-bash-guard: ambiguous interpreter one-liner → ASK"
-# Interpreter one-liner mentioning a protected path with NO recognizable
-# read or write token — can't classify, so defer to the operator.
-assert_ask "$HOOK" "$(bash_payload 'python3 -c "import sys; sys.argv.append(\"tests/e2e/docs/onboarding-status.json\")"')" "interpreter one-liner, no read/write token → ask" "ASK"
+section "protected-artifact-bash-guard: an unclassifiable interpreter one-liner denies"
+assert_deny "$HOOK" "$(bash_payload 'python3 -c "import sys; sys.argv.append(\"tests/e2e/docs/onboarding-status.json\")"')" "interpreter one-liner, no read/write token → deny" "Cannot prove"
 
 section "protected-artifact-bash-guard: flake-quarantine.md is protected"
 # harvest-U3: the flake-quarantine ledger is a protected pipeline-state

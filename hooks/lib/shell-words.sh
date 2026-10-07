@@ -16,7 +16,7 @@
 #   CMD_ARGS    command word (basename; assignments and the wrappers env, command, builtin, exec,
 #               nohup, time, nice, sudo, doas, stdbuf, timeout, xargs, npx, bunx and
 #               npm|pnpm|yarn exec peeled) then its arguments
-#   CMD_WRITES  targets of the writing redirections (> >> >| &> &>> >&)
+#   CMD_WRITES  targets of the writing redirections (> >> >| &> &>> >&file <>, with any fd number)
 #   CMD_HEREDOCS heredoc bodies
 #   CMD_XARGS   1 when xargs supplies the operands
 # The arrays can be empty: read them as ${A[@]+"${A[@]}"} (bash 3.2 under set -u).
@@ -193,7 +193,7 @@ shell_each_command() {
           [ "$k" -lt "${#SW[@]}" ] && [ "${SW[k]}" != "$SW_SEP" ] || continue
           case "$op:${SW[k]}" in
             '>&:-'|'>&:'[0-9]*) ;;
-            '>:'*|'>>:'*|'>|:'*|'&>:'*|'&>>:'*|'>&:'*) CMD_WRITES+=("${SW[k]}") ;;
+            '>:'*|'>>:'*|'>|:'*|'&>:'*|'&>>:'*|'>&:'*|'<>:'*) CMD_WRITES+=("${SW[k]}") ;;
             '<<:'*|'<<-:'*) CMD_HEREDOCS+=("${SW[k]}") ;;
           esac
           k=$((k + 1)); continue ;;

@@ -66,6 +66,26 @@ protected_bash_match() {
   return 1
 }
 
+# protected_parent_match <path> — prints the directory and returns 0 when <path> is a directory a
+# protected entry lives in: a leading part of a multi-component entry (.claude), or a ledger docs
+# dir, where the single-name entries live. Ancestors above those (the home dir, tests/) are not counted.
+protected_parent_match() {
+  local norm e p
+  norm="$(protected_path_normalise "$1")"
+  norm="/${norm#/}"
+  while IFS= read -r e; do
+    p="$e"
+    while [ "${p%/*}" != "$p" ]; do
+      p="${p%/*}"
+      case "$norm" in */"$p") printf '%s' "$p"; return 0 ;; esac
+    done
+  done < <(protected__entries bash)
+  for p in "${LEDGER_ONBOARDING_REL%/*}" "${LEDGER_PERF_REL%/*}"; do
+    case "$norm" in */"$p") printf '%s' "$p"; return 0 ;; esac
+  done
+  return 1
+}
+
 # protected_bash_mention <text> — prints the first bash entry <text> contains, case-folded, as a substring.
 protected_bash_mention() {
   local text e
