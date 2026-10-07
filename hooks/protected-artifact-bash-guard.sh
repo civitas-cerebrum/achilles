@@ -20,13 +20,24 @@
 #     yq without -i, find without an action) whose write redirections all
 #     resolve to unprotected paths, or
 #   - a recognised writer (tee, rm, unlink, rmdir, truncate, shred, sponge,
-#     mv, cp, install, ln, dd, sed -i, yq -i) whose write targets all resolve
-#     to unprotected paths outside every protected directory.
+#     mv, cp, install, ln, dd, sed -i, yq -i, touch, mkdir) whose write
+#     targets all resolve to unprotected paths outside every protected
+#     directory (mkdir: outside every protected entry; it creates, never
+#     alters, so `mkdir -p .claude` for the sanctioned early stop passes).
 # Anything else on such a line (interpreters, awk, eval, sh -c, xargs,
 # find -delete/-exec/-fprint, command substitution, a target behind a
 # variable or glob, any other program) denies: the guard cannot prove it
-# does not write. Paths are normalised (lib/protected-paths.sh) first, so
-# quoting, escapes, //, /./, .., ~ and case do not change the verdict.
+# does not write. Nor is a command safe when something on the line can
+# change what it runs: a command word outside the system bin dirs, an
+# assignment or `env` before it, git's -c/--config-env/--exec-path or the
+# options that name a program (--upload-pack, --ext-diff, --textconv, -O),
+# `rg --pre`, `file -C`, `yq -s`, a sed script with a w/W/e command or flag,
+# or an ln whose source is protected. Paths are normalised
+# (lib/protected-paths.sh) first, so quoting, escapes, //, /./, .., ~ and
+# case do not change the verdict; unquoted {a,b} is expanded as bash would.
+# A line the splitter cannot finish (over 32 KB, 16 nested shells, 64
+# brace words) denies as unverifiable; one with more than 40 paths to
+# normalise counts as naming protected state.
 #
 # Independently of naming, a write target that is a protected path, the
 # directory one lives in, or ANY ancestor of one (`~`, `/`, `.`, `..`, `tests`,
@@ -74,10 +85,12 @@ CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // empty' 2>/dev/null || echo "")
 [ -n "$CWD" ] || CWD="$PWD"
 LOCATIONS=""  # protected_locations "$CWD", computed at the first write target
 
-READERS=' cat head tail less grep egrep fgrep rg ls stat wc diff cmp file sha256sum shasum md5 md5sum jq echo printf test [ '
+# No pagers: less and more run $LESSOPEN.
+READERS=' cat head tail grep egrep fgrep rg ls stat wc diff cmp file sha256sum shasum md5 md5sum jq echo printf test [ '
 NAMED=""    # protected entries and directories the line names, one per line
 HITS=""     # protected entries or directories a write reaches
 UNSAFE=""   # why a command on the line cannot be proved safe
+OVERFLOW="" # 1 when the line could not be split whole
 
 # names <word> — record the protected entry or directory <word> (or its --opt= value) names.
 names() {
@@ -113,13 +126,15 @@ optval() {
   done
 }
 
-# OPERANDS: the arguments after the command word that are not options.
+# operands [letters] — OPERANDS: the arguments after the command word that are not options;
+# -<letter> options whose value is the next word are skipped with it.
 operands() {
-  local a opts=1
+  local a opts=1 skip=0
   OPERANDS=()
   for a in "${CMD_ARGS[@]:1}"; do
     if [ "$opts" = 1 ]; then
-      case "$a" in --) opts=0; continue ;; -?*) continue ;; esac
+      [ "$skip" = 0 ] || { skip=0; continue; }
+      case "$a" in --) opts=0; continue ;; -?*) [ -z "${1:-}" ] || case "$a" in -[$1]) skip=1 ;; esac; continue ;; esac
     fi
     OPERANDS+=("$a")
   done
@@ -159,7 +174,8 @@ is_dir() {
 # cp / mv / install / ln. Into a directory, each source lands at <dir>/<basename>, and that path is
 # judged rather than the directory; a source ending in / copies its contents, each child judged.
 # A directory that holds protected entries is itself a protected destination. mv also removes its
-# sources. A recursive source that cannot be resolved denies when the directory is above protected state.
+# sources; ln makes its sources reachable under another name, so they are judged too. A recursive
+# source that cannot be resolved denies when the directory is above protected state.
 copy_targets() {
   local a last="" dir="" notdir=0 recursive=0 dest src p
   local srcs=()
@@ -183,12 +199,12 @@ copy_targets() {
     if [ "$notdir" = 1 ] || { [ "${#srcs[@]}" -le 1 ] && ! is_dir "$dest"; }; then
       target "$dest"; dir=""
     else
+      # Several sources need a directory; what the program does with anything else is not known.
+      is_dir "$dest" || UNSAFE="$UNSAFE${CMD_ARGS[0]}: destination $dest is not a directory"$'\n'
       dir="${dest%/}"; [ -n "$dir" ] || dir=/
     fi
   fi
-  if [ "${CMD_ARGS[0]}" = mv ]; then
-    for src in ${srcs[@]+"${srcs[@]}"}; do target "$src"; done
-  fi
+  case "${CMD_ARGS[0]}" in mv|ln) for src in ${srcs[@]+"${srcs[@]}"}; do target "$src"; done ;; esac
   [ -n "$dir" ] || return 0
   if e=$(protected_parent_match "$dir"); then HITS="$HITS$e"$'\n'; return 0; fi
   for src in ${srcs[@]+"${srcs[@]}"}; do
@@ -212,21 +228,39 @@ copy_targets() {
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" a t last="" sub="" pos=0
+  local cmd="${CMD_ARGS[0]:-}" a t e sub="" pos=0 skip=0
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
   [ -n "$cmd" ] || return 0
   [ "$CMD_XARGS" = 1 ] && { UNSAFE="${UNSAFE}xargs $cmd: operands arrive on stdin"$'\n'; return 0; }
   for a in "${CMD_ARGS[@]}"; do
     case "$a" in *'$('*|*'`'*) UNSAFE="$UNSAFE$cmd: command substitution"$'\n'; return 0 ;; esac
   done
+  # The allowlist names programs in the system bin dirs, run with the session's environment.
+  [ -z "$CMD_PATH" ] || UNSAFE="$UNSAFE$cmd: run from $CMD_PATH"$'\n'
+  [ "$CMD_ENV" = 0 ] || UNSAFE="$UNSAFE$cmd: environment set on the command line"$'\n'
+  case "$cmd" in
+    rg) for a in "${CMD_ARGS[@]:1}"; do case "$a" in --pre|--pre=*|--pre-glob|--pre-glob=*) UNSAFE="${UNSAFE}rg $a"$'\n'; return 0 ;; esac; done ;;
+    file) for a in "${CMD_ARGS[@]:1}"; do case "$a" in --compile|-C*|-[!-]*C*) UNSAFE="${UNSAFE}file -C writes a magic file"$'\n'; return 0 ;; esac; done ;;
+  esac
   case "$READERS" in *" $cmd "*) return 0 ;; esac
   case "$cmd" in
     git)
       for a in "${CMD_ARGS[@]:1}"; do
-        case "$last" in -C|-c|--git-dir|--work-tree) [ -n "$sub" ] || { last=""; continue; } ;; esac
-        last="$a"
-        case "$a" in --output*) UNSAFE="${UNSAFE}git: $a"$'\n'; return 0 ;; -*) continue ;; esac
-        if [ -z "$sub" ]; then sub="$a"; else pos=$((pos + 1)); fi
+        [ "$skip" = 0 ] || { skip=0; continue; }
+        case "$a" in
+          --output*|--upload-pack*|--receive-pack*|--ext-diff|--textconv|-O*|--open-files-in-pager*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
+        esac
+        if [ -z "$sub" ]; then
+          case "$a" in
+            -c|--config-env*|--exec-path*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
+            -C|--git-dir|--work-tree) skip=1; continue ;;
+            -*) continue ;;
+          esac
+          sub="$a"
+        else
+          case "$a" in -*) continue ;; esac
+          pos=$((pos + 1))
+        fi
       done
       case "$sub" in
         commit|add|status|log|show|diff|blame|rev-parse|ls-files|grep|fetch) ;;
@@ -236,11 +270,13 @@ judge_command() {
     sed|yq)
       editor_parse || { UNSAFE="$UNSAFE$cmd: script read from a file"$'\n'; return 0; }
       if [ "$cmd" = sed ]; then
-        # w/W write a file and e runs a command, as commands or as s/// flags.
+        # w/W write a file and e runs a command, as commands or as s/// flags, glued or not.
         for a in ${SCRIPTS[@]+"${SCRIPTS[@]}"}; do
-          printf '%s' "$a" | grep -qE '(^|[;{}/[:space:]])[0-9gpiImM]*[wWe]([[:space:]]|$)' &&
+          printf '%s' "$a" | grep -qE '(^|[;{}/,!$~+[:space:]])[0-9gpiImM]*[wWe]' &&
             { UNSAFE="${UNSAFE}sed: w/e command in $a"$'\n'; return 0; }
         done
+      else
+        for a in "${CMD_ARGS[@]:1}"; do case "$a" in -s|-s*|--split-exp*) UNSAFE="${UNSAFE}yq $a writes files"$'\n'; return 0 ;; esac; done
       fi
       for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
     find)
@@ -249,12 +285,23 @@ judge_command() {
       done ;;
     tee|rm|unlink|rmdir|truncate|shred|sponge)
       operands; for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
+    touch) operands rdt; for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
+    mkdir)
+      # Creates only the directory named: a protected entry or a path inside one is a hit; the
+      # directories above (.claude, tests/e2e/docs) are not.
+      operands m
+      for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do
+        case "$t" in
+          *'$'*|*'`'*|*'*'*|*'?'*|*'['*) UNSAFE="${UNSAFE}mkdir: $t does not resolve"$'\n' ;;
+          *) e=$(protected_bash_match "$t") && HITS="$HITS$e"$'\n' ;;
+        esac
+      done ;;
     cp|mv|install|ln) copy_targets ;;
     dd) for a in "${CMD_ARGS[@]}"; do case "$a" in of=*) target "${a#of=}" ;; esac; done ;;
     # Writers the guard reads targets from but cannot prove safe: what they write is not only those.
-    chmod|chown|chgrp|touch)
+    chmod|chown|chgrp)
       operands
-      [ "$cmd" = touch ] || [ "${#OPERANDS[@]}" = 0 ] || OPERANDS=("${OPERANDS[@]:1}")
+      [ "${#OPERANDS[@]}" = 0 ] || OPERANDS=("${OPERANDS[@]:1}")
       for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done
       UNSAFE="$UNSAFE$cmd"$'\n' ;;
     rsync) operands; [ "${#OPERANDS[@]}" -gt 0 ] && target "${OPERANDS[${#OPERANDS[@]}-1]}"; UNSAFE="$UNSAFE$cmd"$'\n' ;;
@@ -269,8 +316,9 @@ judge_command() {
 
 shell_words "$CMD"
 if [ "$SW_OVERFLOW" = 1 ]; then
-  # Too long or too deeply nested to split whole: any protected name on the line denies.
-  e=$(protected_bash_mention "$CMD") && { NAMED="$NAMED$e"$'\n'; UNSAFE="${UNSAFE}command line too long or too deeply nested to split"$'\n'; }
+  # Not split whole, so nothing on it is proved; the mention still keys the .claude/achilles rule.
+  OVERFLOW=1
+  e=$(protected_bash_mention "$CMD") && NAMED="$NAMED$e"$'\n'
 else
   # The dequoted words, case-folded, catch every plain spelling at once. Words a substring test
   # can miss (//, /./, .., or a protected directory itself) are normalised one by one, a few
@@ -283,11 +331,12 @@ else
         n=$((n + 1)); [ "$n" -le 40 ] && names "$w" ;;
     esac
   done
-  [ "$n" -le 40 ] || UNSAFE="${UNSAFE}too many paths on the line to normalise"$'\n'
+  [ "$n" -le 40 ] || NAMED="${NAMED}(over 40 paths: not every one was checked)"$'\n'
   shell_each_command judge_command
 fi
-# A protected write target denies; anything unprovable denies only on a line naming protected state.
-[ -n "$HITS" ] || { [ -n "$NAMED" ] && [ -n "$UNSAFE" ]; } || exit 0
+# A protected write target or an unsplittable line denies; anything unprovable denies only on a
+# line naming protected state.
+[ -n "$HITS" ] || [ -n "$OVERFLOW" ] || { [ -n "$NAMED" ] && [ -n "$UNSAFE" ]; } || exit 0
 
 # Session-scope gate: this guard applies only to achilles-activated
 # sessions (lib/achilles-activation.sh) — EXCEPT for lines that name the
@@ -300,6 +349,8 @@ case "$NAMED$HITS" in *.claude/achilles*) ;; *) achilles_require_active "$INPUT"
 
 if [ -n "$HITS" ]; then
   WHY="Writes into: $(printf '%s' "$HITS" | sort -u | tr '\n' ' ')"
+elif [ -n "$OVERFLOW" ]; then
+  WHY="Command too long to verify (over 32 KB, 16 nested shells or 64 brace expansions); split it."
 else
   WHY="Cannot prove this command does not write: $(printf '%s' "$NAMED" | sort -u | tr '\n' ' ')
 Because of: $(printf '%s' "$UNSAFE" | sort -u | tr '\n' ';')"

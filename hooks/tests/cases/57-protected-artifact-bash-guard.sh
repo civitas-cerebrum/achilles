@@ -95,7 +95,7 @@ assert_allow "$HOOK" "$(bash_payload 'grep -n FLAKE tests/e2e/docs/flake-quarant
 # Write-tool append goes through Write|Edit, which this Bash guard never sees.
 assert_allow "$HOOK" "$("$JQ" -n '{tool_name:"Write", tool_input:{file_path:"tests/e2e/docs/flake-quarantine.md", content:"x"}}')" "Write-tool append to flake-quarantine → ALLOW (non-Bash)"
 
-section "protected-artifact-bash-guard: a line too long to split fails closed on a protected name"
+section "protected-artifact-bash-guard: a line too long to split fails closed"
 PAD=$(printf 'w%.0s ' $(seq 1 17000))
 assert_deny "$HOOK" "$(bash_payload "echo $PAD; cat tests/e2e/docs/journey-map.md")" "33 KB line naming the journey map → DENY" "protected"
-assert_allow "$HOOK" "$(bash_payload "echo $PAD > /tmp/pad")" "33 KB line naming no protected path → ALLOW"
+assert_deny "$HOOK" "$(bash_payload "echo $PAD > /tmp/pad")" "33 KB line naming no protected path → DENY (unverifiable)" "too long to verify"

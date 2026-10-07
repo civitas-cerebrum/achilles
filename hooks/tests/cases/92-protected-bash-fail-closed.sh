@@ -140,9 +140,10 @@ mv build/out.js .
 cp -r x ~
 cp -r dist/* /tmp/out
 git commit -m "fix: rebuild tests/e2e/docs/onboarding-status.json"
-git -c user.name=x -C . commit -m "docs: ~/.claude/settings.json" -- README.md
+git -C . commit -m "docs: ~/.claude/settings.json" -- README.md
 git add tests/e2e/docs/journey-map.md
 git branch --list
+git -c user.name=x commit -m "x" -- README.md
 NOT_ANCESTORS
 
 section "protected-bash fail-closed: provably safe lines naming a protected path ALLOW"
@@ -164,3 +165,85 @@ SAFE
 section "protected-bash fail-closed: the deny says what could not be proved"
 assert_deny "$HOOK" "$(bash_payload 'awk 1 ~/.claude/settings.json')" "unknown command on a protected line" "Cannot prove this command does not write: .claude/settings.json"
 assert_deny "$HOOK" "$(bash_payload 'cp x ~/.claude')" "cp into the directory the hook install lives in" "Writes into: .claude"
+
+# Fix round 4: the words bash runs are not the words typed (braces), a reader or writer is only
+# itself when nothing on the line changes what it runs, and a line the guard cannot finish denies.
+section "protected-bash fail-closed: brace expansion is judged as bash expands it"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "protected"
+done <<'BRACES'
+tee ~/.claude/settings{,}.json < x
+tee ~/.claude/settings.{json,bak} < x
+echo x | tee ~/.cl{a,}ude/settings.json
+cp x ~/.cl{a,}ude/settings.json
+rm -rf ~/.claude/hook{s,}
+rm -rf ~/.claude/hook{a..z}
+rm -rf tests/e2e/do{c,}s
+BRACES
+assert_deny "$HOOK" "$(bash_payload 'tee ~/.claude/settings{,}.json < x')" "the expanded word is the write target" "Writes into: .claude/settings.json"
+for c in 'rm -rf {dist,build}' 'rm -rf dist/{a,b}' 'mkdir -p dist/{a,b}' "printf '%s\\n' {1..3} > /tmp/n" 'find . -name "*.json" -exec rm {} \;'; do
+  assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
+done
+
+section "protected-bash fail-closed: programs that run or write what the line hands them"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "Cannot prove"
+done <<'HANDED'
+sed -n '1w/home/u/.claude/settings.json' x
+sed 's/a/b/w/home/u/.claude/settings.json' x
+sed -n '1,3w /tmp/x' tests/e2e/docs/journey-map.md
+sed '1e touch ~/.claude/settings.json' x
+yq -s '"/home/u/.claude/hooks/evil"' x.yml
+file -C -m ~/.claude/hooks/evil
+echo 'echo x > ~/.claude/settings.json' > /tmp/p.sh; rg --pre bash . /tmp/p.sh
+rg --pre=/tmp/p.sh x ~/.claude/settings.json
+LESSOPEN='|sh -c "echo x > ~/.claude/settings.json" %s' less /etc/hosts
+git -c core.fsmonitor='echo x > ~/.claude/settings.json' status
+git -c diff.external='sh -c "echo x > ~/.claude/settings.json"' diff
+git -c core.hooksPath=/tmp/h commit -m x ~/.claude/settings.json
+git --exec-path=/tmp/x log ~/.claude/settings.json
+git --config-env=core.pager=X log ~/.claude/settings.json
+GIT_EXTERNAL_DIFF='sh -c "echo x > ~/.claude/settings.json"' git diff
+git fetch --upload-pack='sh -c "echo x > ~/.claude/settings.json"' .
+git grep --open-files-in-pager='sh -c "echo x>~/.claude/settings.json"' foo
+git log --ext-diff -p ~/.claude/settings.json
+PATH=/tmp cat ~/.claude/settings.json
+env cat ~/.claude/settings.json
+/tmp/grep -c 'echo x > ~/.claude/settings.json'
+/tmp/cat -c 'echo x > ~/.claude/settings.json'
+./cat ~/.claude/settings.json
+/tmp/env cat ~/.claude/settings.json
+HANDED
+assert_deny "$HOOK" "$(bash_payload "/tmp/grep -c 'echo x > ~/.claude/settings.json'")" "a command word outside the system bin dirs is named" "grep: run from /tmp"
+assert_allow "$HOOK" "$(bash_payload '/usr/bin/grep hooks ~/.claude/settings.json')" "a reader from a system bin dir"
+assert_allow "$HOOK" "$(bash_payload 'LC_ALL=C sort x')" "an assignment before a command on a line naming nothing protected"
+
+section "protected-bash fail-closed: an ln whose source is protected state is a write to it"
+assert_deny "$HOOK" "$(bash_payload 'ln -s ~/.claude /tmp/l; echo x > /tmp/l/settings.json')" "link to the hook install dir" "Writes into"
+assert_deny "$HOOK" "$(bash_payload 'ln -sf ~/.claude/settings.json /tmp/s && tee /tmp/s < x')" "link to a settings file" "Writes into"
+assert_deny "$HOOK" "$(bash_payload 'ln -s ~ /tmp/h')" "link to an ancestor" "Writes into"
+assert_allow "$HOOK" "$(bash_payload 'ln -s /bin/bash /tmp/sh2')" "link to an unrelated file"
+
+section "protected-bash fail-closed: nested shells reached past their options"
+assert_deny "$HOOK" "$(bash_payload "bash -o pipefail -c 'echo x > ~/.cl\"\"aude/settings.json'")" "bash -o pipefail -c" "Writes into"
+assert_deny "$HOOK" "$(bash_payload "sh -e -o errexit -c 'echo x > ~/.cl\"\"aude/settings.json'")" "sh -e -o errexit -c" "Writes into"
+assert_deny "$HOOK" "$(bash_payload "bash -O extglob -c 'echo x > ~/.cl\"\"aude/settings.json'")" "bash -O extglob -c" "Writes into"
+assert_deny "$HOOK" "$(bash_payload "bash <<< 'echo x > ~/.cl\"\"aude/settings.json'")" "here-string fed to bash" "Writes into"
+
+section "protected-bash fail-closed: a line the guard cannot finish denies"
+PAD=$(printf 'w%.0s ' $(seq 1 17000))
+assert_deny "$HOOK" "$(bash_payload "echo $PAD > /tmp/pad")" "33 KB line naming nothing → DENY" "too long to verify"
+DOTS=""; for i in $(seq 1 41); do DOTS="$DOTS a$i/../b"; done
+assert_deny "$HOOK" "$(bash_payload "ls $DOTS; f=~/.claude/x/../settings.json; echo x > \"\$f\"")" "41 paths to normalise, then a write through a variable → DENY" "over 40 paths"
+assert_allow "$HOOK" "$(bash_payload "ls $DOTS; cat x")" "41 paths to normalise, every command provably safe → ALLOW"
+
+section "protected-bash fail-closed: mkdir and touch are writers with judged targets"
+for c in 'mkdir -p .claude && touch .claude/onboarding-stop-authorized' 'touch .claude/onboarding-stop-authorized' \
+         'mkdir -p tests/e2e/docs && echo hi' 'mkdir -p tests/e2e/docs/.subagent-returns' \
+         'while ! mkdir tests/e2e/docs/.adversarial-findings.lock 2>/dev/null; do sleep 0.2; done' \
+         'touch -r tests/e2e/docs/journey-map.md /tmp/stamp' 'if grep -q x ~/.claude/settings.json; then echo ok; fi'; do
+  assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
+done
+assert_deny "$HOOK" "$(bash_payload 'mkdir ~/.claude/hooks/evil')" "mkdir inside the hook install" "Writes into: .claude/hooks"
+assert_deny "$HOOK" "$(bash_payload 'mkdir -p .claude/achilles')" "mkdir of the activation state dir" "Writes into: .claude/achilles"
+assert_deny "$HOOK" "$(bash_payload 'touch -d yesterday ~/.claude/settings.json')" "touch past its option value" "Writes into: .claude/settings.json"
