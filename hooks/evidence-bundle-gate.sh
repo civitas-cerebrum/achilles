@@ -231,17 +231,6 @@ if [ -f "$HOOK_DIR/lib/achilles-activation.sh" ]; then
   achilles_session_active "$INPUT" || exit 0
 fi
 
-# Local: no session-scope notice, no HOOK_REFS.
-emit_deny() {
-  "$JQ" -n --arg r "$1" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
-}
-
 TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 [ -n "$TOOL_NAME" ] || exit 0
 
@@ -614,7 +603,7 @@ REFS="References:
   skills/companion-mode/SKILL.md §\"Redaction (mandatory — scoped to the artifact)\""
 
 if [ -n "$SECRET_FINDINGS" ]; then
-  emit_deny "[BLOCKED] A captured artifact in this ticket's evidence bundle still contains a live credential.
+  emit_pre_deny_bare "[BLOCKED] A captured artifact in this ticket's evidence bundle still contains a live credential.
 
 ──────────────────────────────────────────────────────────────────
 Do this instead — run companion-mode's redaction pass, then retry:
@@ -713,7 +702,7 @@ ${REFS}"
 # PR/transition that follows denies, so the report cannot pass as evidence-backed
 # without evidence.
 if [ "$IS_TRANSITION" = "1" ] || [ "$IS_PR" = "1" ]; then
-  emit_deny "[BLOCKED] Sign-off blocked — no evidence bundle for this ticket.
+  emit_pre_deny_bare "[BLOCKED] Sign-off blocked — no evidence bundle for this ticket.
 
 $BODY_MSG"
   exit 0

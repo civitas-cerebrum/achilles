@@ -73,17 +73,7 @@ input=$(cat)
 # Session-scope gate: achilles-activated sessions only (lib/achilles-activation.sh).
 . "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
 achilles_require_active "$input"
-
-# Local: no session-scope notice, no HOOK_REFS.
-emit_deny() {
-  "$JQ" -n --arg r "$1" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 
 [ "${CIVITAS_DISABLE_TEST_ID_GATE:-0}" = "1" ] && exit 0
 
@@ -201,5 +191,5 @@ How this is supposed to be done — load the skill, don't improvise:
   Skill('test-catalogue') → renders the ID as the row identifier, which is what
     makes a catalogue citable."
 
-emit_deny "$reason${HOOK_REFS}$(achilles_scope_notice)"
+emit_pre_deny_bare "$reason${HOOK_REFS}$(achilles_scope_notice)"
 exit 0

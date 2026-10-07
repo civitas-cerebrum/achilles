@@ -16,6 +16,17 @@ emit_pre_deny() {
   }'
 }
 
+# emit_pre_deny_bare <reason> — PreToolUse deny with the reason verbatim: no HOOK_REFS, no scope notice.
+emit_pre_deny_bare() {
+  "$JQ" -n --arg r "$1" '{
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": $r
+    }
+  }'
+}
+
 # emit_warn <message> — non-blocking systemMessage; appends HOOK_REFS.
 emit_warn() {
   "$JQ" -n --arg m "$1${HOOK_REFS:-}" '{
