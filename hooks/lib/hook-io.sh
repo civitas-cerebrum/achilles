@@ -59,16 +59,38 @@ hook_is_pre_tool_use() {
   esac
 }
 
-# hook_json_str <json> <jq-path> — string at <jq-path>, empty when absent. Without JQ, the first
-# string value whose key is the path's last segment (escapes kept): enough for the flat ids,
-# names and paths the fail-closed and activation checks read.
+# hook_json_str <json> <jq-path> — string at <jq-path>, empty when absent. Without JQ, an awk
+# scanner walks the document (strings and escapes respected) and prints the value whose key path
+# is <jq-path>, escapes kept, `{` or `[` for an object or array: enough for the ids, names and
+# paths the fail-closed and activation checks read, and not fooled by the same key nested deeper
+# or inside a string value.
 hook_json_str() {
   if [ -n "${JQ:-}" ]; then
     printf '%s' "$1" | "$JQ" -r "$2 // empty" 2>/dev/null || true
     return 0
   fi
-  printf '%s' "$1" | grep -oE "\"${2##*.}\"[[:space:]]*:[[:space:]]*(\"([^\"\\\\]|\\\\.)*\"|\\{)" | head -n 1 |
-    sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"?//; s/"$//'
+  printf '%s' "$1" | LC_ALL=C awk -v path="${2#.}" '
+    BEGIN { n = split(path, want, "."); RS = "\001" }
+    function hit(k) { if (d != n) return 0; for (k = 1; k <= n; k++) if (key[k] != want[k]) return 0; return 1 }
+    { s = $0; L = length(s); i = 1; d = 0; iskey = 0
+      while (i <= L) {
+        c = substr(s, i, 1)
+        if (c == "\"") {
+          v = ""; i++
+          while (i <= L) {
+            c = substr(s, i, 1)
+            if (c == "\\") { v = v c substr(s, i + 1, 1); i += 2; continue }
+            if (c == "\"") break
+            v = v c; i++
+          }
+          if (iskey) { key[d] = v; iskey = 0 } else if (hit()) { print v; exit }
+        } else if (c == "{" || c == "[") {
+          if (hit()) { print c; exit }
+          d++; ctx[d] = c; iskey = (c == "{"); key[d] = ""
+        } else if (c == "}" || c == "]") d--
+        else if (c == ",") iskey = (ctx[d] == "{")
+        i++
+      } }'
 }
 
 # hook_read_input — INPUT holds the whole hook payload.

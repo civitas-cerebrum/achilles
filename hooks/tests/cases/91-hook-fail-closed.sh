@@ -34,6 +34,14 @@ section "fail-closed: no jq, PostToolUse in an active session → unchanged (exi
 run_hook_nojq "$HOOK_DIR/ledger-integrity-chain.sh" "$(fc_payload fc-active PostToolUse tool_name=Write file_path=/tmp/x)"
 assert_eq "$HOOK_EXIT:$HOOK_OUT" "1:" "ledger-integrity-chain PostToolUse: no jq → exit 1"
 
+section "fail-closed: without jq, the session id is read at the top level, not the first one in the text"
+NESTED_FIRST='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo \"session_id\":\"fc-dev\"","session_id":"fc-dev"},"session_id":"fc-active"}'
+TOP_FIRST='{"session_id":"fc-dev","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls","session_id":"fc-active"}}'
+run_hook_nojq "$HOOK_DIR/protected-artifact-bash-guard.sh" "$NESTED_FIRST"
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "2:" "nested inactive id first, top-level active id last → active → exit 2"
+run_hook_nojq "$HOOK_DIR/protected-artifact-bash-guard.sh" "$TOP_FIRST"
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "1:" "top-level inactive id, nested active id → inactive → exit 1"
+
 section "fail-closed: a lib missing from the install"
 run_hook_without_lib "$HOOK_DIR/playwright-cli-isolation-guard.sh" dispatch-prefix.sh \
   "$(fc_payload fc-active PreToolUse tool_name=Bash 'command=npx playwright-cli -s=j-checkout-3 open')"
