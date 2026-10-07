@@ -28,6 +28,7 @@
 #   $RANDOM nonce    kernel-mandate-role: <role>#ab12c<digits>   -> …#ab12c<RANDOM>
 #   clock-derived    "age 3602s" in approver-expiry denials      -> age <N>s
 #   archiver run ids 20261006T012452Z, optional -N collision     -> <RUNID>
+#   deck inspection dirs  deck-inspection-20261007T085804        -> deck-inspection-<RUNID>
 # (No \b: BSD sed -E has no word-boundary escape.)
 set -uo pipefail
 mode="${1:?record|diff}"; target="${2:?file}"; shift 2
@@ -75,6 +76,7 @@ sed -E \
   -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z?#<TS>#g' \
   -e 's#(kernel-mandate-role: [A-Za-z0-9_-]+\#ab12c)[0-9]+#\1<RANDOM>#g' \
   -e 's#age [0-9]+s#age <N>s#g' \
+  -e 's#deck-inspection-[0-9]{8}T[0-9]{6}#deck-inspection-<RUNID>#g' \
   -e 's#[0-9]{8}T[0-9]{6}Z(-[0-9]+)?#<RUNID>#g' \
   -e 's#(^|[^0-9])1[6-9][0-9]{8}([^0-9]|$)#\1<EPOCH>\2#g'
 EOF

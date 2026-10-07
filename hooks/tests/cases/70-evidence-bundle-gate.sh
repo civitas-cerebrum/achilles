@@ -357,8 +357,7 @@ section "evidence-gate: UUID ids resolve via the bundle's own summary"
 UUID="9f8e7d6c-1234-4abc-9def-0123456789ab"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done "$UUID")" \
   "UUID with no bundle naming it → DENY"
-echo "$UUID" >> "$EVI/abc-7-dated-20260812/summary.md" 2>/dev/null || \
-  echo "$UUID" >> "$EVI/2026-08/abc-7-dated-20260812/summary.md"
+echo "$UUID" >> "$EVI/2026-08/abc-7-dated-20260812/summary.md"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done "$UUID")" \
   "UUID named in a bundle's summary.md → ALLOW"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done '00000000-0000-4000-8000-000000000000')" \
