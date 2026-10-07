@@ -101,6 +101,42 @@ unzip -o a.zip -d ~/.claude/hooks
 cpio -i -D ~/.claude/hooks
 PROBES
 
+section "protected-bash fail-closed: a write into any ancestor of a protected path DENIES"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "Writes into"
+done <<'ANCESTORS'
+rm -rf ~
+rm -rf $HOME
+rm -rf tests
+rm -rf .
+rm -rf ..
+rm -rf /
+rm -rf *
+rm -rf tests/e2e/*
+mv ~/.claude /tmp/x
+chmod -R 777 ~
+cp -r x ~
+ANCESTORS
+
+section "protected-bash fail-closed: git commands that can rewrite worktree files stay unprovable"
+assert_deny "$HOOK" "$(bash_payload 'git checkout -- ~/.claude/settings.json')" "git checkout of a protected path" "Cannot prove"
+assert_deny "$HOOK" "$(bash_payload 'git restore tests/e2e/docs/onboarding-status.json')" "git restore of the ledger" "Cannot prove"
+assert_deny "$HOOK" "$(bash_payload 'git branch topic tests/e2e/docs/journey-map.md')" "git branch creating, on a line naming the journey map" "Cannot prove"
+
+section "protected-bash fail-closed: writes beside, not above, protected paths ALLOW"
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
+done <<'NOT_ANCESTORS'
+rm -rf /tmp/scratch
+rm -rf node_modules
+rm -f *.log
+rm -rf tests/e2e/specs
+git commit -m "fix: rebuild tests/e2e/docs/onboarding-status.json"
+git -c user.name=x -C . commit -m "docs: ~/.claude/settings.json" -- README.md
+git add tests/e2e/docs/journey-map.md
+git branch --list
+NOT_ANCESTORS
+
 section "protected-bash fail-closed: provably safe lines naming a protected path ALLOW"
 while IFS= read -r c; do
   assert_allow "$HOOK" "$(bash_payload "$c")" "$c"

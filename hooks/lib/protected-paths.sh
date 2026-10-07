@@ -86,6 +86,45 @@ protected_parent_match() {
   return 1
 }
 
+# protected_locations <cwd> — the absolute, normalised protected paths: each .claude/… entry under
+# $HOME and under <cwd>, and each single-name entry in the ledger docs dirs under <cwd>. One per line.
+protected_locations() {
+  local e
+  while IFS= read -r e; do
+    case "$e" in
+      .claude/*) protected_path_normalise "$HOME/$e"; echo; protected_path_normalise "$1/$e"; echo ;;
+      */*) ;;
+      *) protected_path_normalise "$1/${LEDGER_ONBOARDING_REL%/*}/$e"; echo
+         protected_path_normalise "$1/${LEDGER_PERF_REL%/*}/$e"; echo ;;
+    esac
+  done < <(protected__entries bash)
+}
+
+# protected_ancestor_match <path> <cwd> <locations> — prints the location and returns 0 when <path>,
+# made absolute against <cwd>, is one of <locations> (protected_locations), an ancestor of one, or
+# inside one. A glob counts when its first wildcard component could match the next component of a
+# location below the glob's directory.
+protected_ancestor_match() {
+  local p="$1" t pat="" loc c
+  case "$p" in /*|'~'|'~/'*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) ;; *) p="$2/$p" ;; esac
+  case "$p" in
+    *[*?[]*) t="${p%%[*?[]*}"; pat="${p#"${t%/*}"/}"; pat="${pat%%/*}"; p="${t%/*}" ;;
+  esac
+  t="$(protected_path_normalise "${p:-/}")"
+  t="${t%/}"  # "/" becomes "", so "$t"/* below covers the root
+  pat=$(printf '%s' "$pat" | tr '[:upper:]' '[:lower:]')
+  while IFS= read -r loc; do
+    [ -n "$loc" ] || continue
+    case "$t" in "$loc"|"$loc"/*) printf '%s' "$loc"; return 0 ;; esac
+    case "$loc" in "$t"/*) ;; *) continue ;; esac
+    c="${loc#"$t"/}"; c="${c%%/*}"
+    if [ -z "$pat" ]; then printf '%s' "$loc"; return 0; fi
+    # shellcheck disable=SC2254 # the glob component is the pattern
+    case "$c" in $pat) printf '%s' "$loc"; return 0 ;; esac
+  done <<< "$3"
+  return 1
+}
+
 # protected_bash_mention <text> — prints the first bash entry <text> contains, case-folded, as a substring.
 protected_bash_mention() {
   local text e

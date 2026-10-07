@@ -28,6 +28,15 @@
 # does not write. Paths are normalised (lib/protected-paths.sh) first, so
 # quoting, escapes, //, /./, .., ~ and case do not change the verdict.
 #
+# Independently of naming, a write target that is a protected path, the
+# directory one lives in, or ANY ancestor of one (`~`, `/`, `.`, `..`, `tests`,
+# resolved against the call's cwd) denies, for every writer whose targets the
+# guard reads: rm, mv, cp/install/ln into, tee, truncate, dd of=, sed/yq -i,
+# chmod/chown/chgrp/touch, tar -C, rsync, unzip -d, curl -o, wget -O.
+#
+# git commit, add, status, log, show, diff, blame, rev-parse, ls-files, grep,
+# fetch, and branch/tag listing write only under .git and count as safe.
+#
 # The tamper-evident ledger chain (ledger-integrity-chain.sh) DETECTS
 # whatever this guard fails to PREVENT. The two ship as a pair.
 #
@@ -59,6 +68,9 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "
 [ "$TOOL_NAME" = "Bash" ] || exit 0
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "")
 [ -n "$CMD" ] || exit 0
+CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // empty' 2>/dev/null || echo "")
+[ -n "$CWD" ] || CWD="$PWD"
+LOCATIONS=""  # protected_locations "$CWD", computed at the first write target
 
 READERS=' cat head tail less grep egrep fgrep rg ls stat wc diff cmp file sha256sum shasum md5 md5sum jq echo printf test [ '
 NAMED=""    # protected entries and directories the line names, one per line
@@ -80,10 +92,23 @@ target() {
   local e
   case "$1" in
     '~'|'~/'*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) ;;
-    *'$'*|*'`'*|*'*'*|*'?'*|*'['*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 does not resolve"$'\n'; return 0 ;;
+    *'$'*|*'`'*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 does not resolve"$'\n'; return 0 ;;
+    *'*'*|*'?'*|*'['*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 is a glob"$'\n' ;;
   esac
-  e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") || return 0
+  [ -n "$LOCATIONS" ] || LOCATIONS=$(protected_locations "$CWD")
+  e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") ||
+    e=$(protected_ancestor_match "$1" "$CWD" "$LOCATIONS") || return 0
   HITS="$HITS$e"$'\n'
+}
+
+# optval <short> <long> — target every value of -<short> X, -<short>X, --<long> X, --<long>=X.
+optval() {
+  local a last=""
+  for a in "${CMD_ARGS[@]:1}"; do
+    case "$last" in "-$1"|"--$2") target "$a" ;; esac
+    case "$a" in "--$2="*) target "${a#*=}" ;; "-$1"?*) target "${a#-$1}" ;; esac
+    last="$a"
+  done
 }
 
 # OPERANDS: the arguments after the command word that are not options.
@@ -123,7 +148,7 @@ editor_parse() {
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" a t last="" sub=""
+  local cmd="${CMD_ARGS[0]:-}" a t last="" sub="" pos=0
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
   [ -n "$cmd" ] || return 0
   [ "$CMD_XARGS" = 1 ] && { UNSAFE="${UNSAFE}xargs $cmd: operands arrive on stdin"$'\n'; return 0; }
@@ -134,12 +159,16 @@ judge_command() {
   case "$cmd" in
     git)
       for a in "${CMD_ARGS[@]:1}"; do
-        case "$last" in -C|-c|--git-dir|--work-tree) last=""; continue ;; esac
+        case "$last" in -C|-c|--git-dir|--work-tree) [ -n "$sub" ] || { last=""; continue; } ;; esac
         last="$a"
         case "$a" in --output*) UNSAFE="${UNSAFE}git: $a"$'\n'; return 0 ;; -*) continue ;; esac
-        [ -n "$sub" ] || sub="$a"
+        if [ -z "$sub" ]; then sub="$a"; else pos=$((pos + 1)); fi
       done
-      case "$sub" in log|show|diff|status|blame) ;; *) UNSAFE="${UNSAFE}git $sub"$'\n' ;; esac ;;
+      case "$sub" in
+        commit|add|status|log|show|diff|blame|rev-parse|ls-files|grep|fetch) ;;
+        branch|tag) case " ${CMD_ARGS[*]} " in *" -l "*|*" --list "*) ;; *) [ "$pos" = 0 ] || UNSAFE="${UNSAFE}git $sub creating"$'\n' ;; esac ;;
+        *) UNSAFE="${UNSAFE}git $sub"$'\n' ;;
+      esac ;;
     sed|yq)
       editor_parse || { UNSAFE="$UNSAFE$cmd: script read from a file"$'\n'; return 0; }
       if [ "$cmd" = sed ]; then
@@ -164,6 +193,17 @@ judge_command() {
         last="$a"
       done ;;
     dd) for a in "${CMD_ARGS[@]}"; do case "$a" in of=*) target "${a#of=}" ;; esac; done ;;
+    # Writers the guard reads targets from but cannot prove safe: what they write is not only those.
+    chmod|chown|chgrp|touch)
+      operands
+      [ "$cmd" = touch ] || [ "${#OPERANDS[@]}" = 0 ] || OPERANDS=("${OPERANDS[@]:1}")
+      for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done
+      UNSAFE="$UNSAFE$cmd"$'\n' ;;
+    rsync) operands; [ "${#OPERANDS[@]}" -gt 0 ] && target "${OPERANDS[${#OPERANDS[@]}-1]}"; UNSAFE="$UNSAFE$cmd"$'\n' ;;
+    tar) optval C directory; UNSAFE="$UNSAFE$cmd"$'\n' ;;
+    unzip) optval d d; UNSAFE="$UNSAFE$cmd"$'\n' ;;
+    curl) optval o output; UNSAFE="$UNSAFE$cmd"$'\n' ;;
+    wget) optval O output-document; UNSAFE="$UNSAFE$cmd"$'\n' ;;
     *) UNSAFE="$UNSAFE$cmd"$'\n' ;;
   esac
   return 0
@@ -186,9 +226,10 @@ else
     esac
   done
   [ "$n" -le 40 ] || UNSAFE="${UNSAFE}too many paths on the line to normalise"$'\n'
-  [ -n "$NAMED" ] && shell_each_command judge_command
+  shell_each_command judge_command
 fi
-[ -n "$HITS" ] || [ -n "$UNSAFE" ] || exit 0
+# A protected write target denies; anything unprovable denies only on a line naming protected state.
+[ -n "$HITS" ] || { [ -n "$NAMED" ] && [ -n "$UNSAFE" ]; } || exit 0
 
 # Session-scope gate: this guard applies only to achilles-activated
 # sessions (lib/achilles-activation.sh) — EXCEPT for lines that name the

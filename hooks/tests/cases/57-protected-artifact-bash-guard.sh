@@ -32,7 +32,7 @@ assert_allow "$HOOK" "$(bash_payload "sed -i '' 's/LEDGER_APPROVERS_NAME=.*/LEDG
 assert_allow "$HOOK" "$(bash_payload 'cp tests/e2e/docs/onboarding-status.json /tmp/backup.json')" "cp FROM the ledger"
 assert_allow "$HOOK" "$(bash_payload 'rm /tmp/junk && cat tests/e2e/docs/onboarding-status.json')" "rm of an unrelated path beside a ledger read"
 assert_allow "$HOOK" "$(bash_payload 'echo "see tests/e2e/docs/journey-map.md" > /tmp/note.txt')" "a protected name inside a redirected string"
-assert_deny "$HOOK" "$(bash_payload 'git commit -m "fix: rm tests/e2e/docs/onboarding-status.json"')" "git commit naming the ledger: not provably read-only" "Cannot prove"
+assert_allow "$HOOK" "$(bash_payload 'git commit -m "fix: rm tests/e2e/docs/onboarding-status.json"')" "git commit naming the ledger (writes only under .git)"
 assert_allow "$HOOK" "$(bash_payload 'grep -l .workflow-approvers.json hooks/*.sh > /tmp/hits')" "grep for the registry name, redirected elsewhere"
 assert_allow "$HOOK" "$(bash_payload 'echo x 2>&1 >/tmp/log; cat ~/.claude/settings.json')" "fd duplication is not a file target"
 assert_deny "$HOOK" "$(bash_payload "sed -i '' 's/a/b/' hooks/x.sh tests/e2e/docs/.workflow-approvers.json")" "sed -i whose files include the registry" "protected"
