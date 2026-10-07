@@ -53,21 +53,20 @@
 # - Stop w/ last verdict SATISFIED / no verdict / no judge → silent allow
 # - composition-judge-* dispatch (PreToolUse)             → RECORD, silent allow
 # - composition-judge-* return (PostToolUse)              → RECORD verdict, silent allow
-# - malformed input / jq missing / state unreadable       → silent allow (fail open)
+# - malformed input / state unreadable                    → silent allow (fail open)
+# - jq missing, PreToolUse                                → deny while the protocol is active (KL-14), else silent allow
 
 set -uo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
+hook_lib hook-emit.sh
 hook_jq_init silent
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
 # Session-scope gate: only achilles-activated sessions feel this leash.
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 
 EVENT=$(hook_field .hook_event_name)

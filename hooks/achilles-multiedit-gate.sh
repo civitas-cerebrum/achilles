@@ -6,9 +6,8 @@
 #         pipeline) inspect Write and Edit payloads only. MultiEdit would reach the same files
 #         unchecked. Edit and Write cover every MultiEdit use.
 set -uo pipefail
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-. "$HOOK_DIR/lib/achilles-activation.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib achilles-activation.sh
 INPUT=$(cat)
 achilles_require_active "$INPUT"
 JQ="$(achilles__jq)"

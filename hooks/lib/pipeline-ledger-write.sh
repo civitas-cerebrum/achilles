@@ -13,12 +13,7 @@
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/hook-emit.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/achilles-activation.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/pipeline-gate.sh"
+hook_lib hook-emit.sh achilles-activation.sh pipeline-gate.sh
 
 # pipeline_ledger_write_main <deliverables_fn>
 # Gates a Write / Edit of the ledger at PIPELINE_MSG_LEDGER_REL, in order:

@@ -26,7 +26,7 @@ INPUT=$(cat 2>/dev/null || echo "{}")
 # must cover the final state); plain dev sessions silent-allow.
 # Also prevents .achilles/ run-summary artifacts appearing in projects
 # whose sessions never ran the methodology.
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active_or_completed "$INPUT"
 
 # Pin to the project root: a session driven from a subdirectory must not
@@ -38,8 +38,7 @@ out="$ROOT/.achilles/run-summary.json"
 mkdir -p "$ROOT/.achilles"
 
 phases_json='[]'
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+hook_lib ledger.sh
 LEDGER="$(ledger_path "$ROOT" onboarding)"
 [ -f "$LEDGER" ] && phases_json=$("$JQ" -c '.phases // []' "$LEDGER" 2>/dev/null || echo '[]')
 

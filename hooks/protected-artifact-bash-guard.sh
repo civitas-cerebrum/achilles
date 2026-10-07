@@ -45,14 +45,11 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/h
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 hook_jq_init fatal
 
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/protected-paths.sh"
+hook_lib hook-emit.sh protected-paths.sh
 
 hook_read_input
 
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 [ "$TOOL_NAME" = "Bash" ] || exit 0
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "")

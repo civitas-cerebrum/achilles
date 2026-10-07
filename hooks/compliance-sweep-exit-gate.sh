@@ -60,7 +60,7 @@ hook_jq_init fatal
 hook_read_input
 
 # Session-scope gate: achilles-activated sessions only.
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 
 [ "${CIVITAS_DISABLE_COMPLIANCE_SWEEP_GATE:-0}" = "1" ] && exit 0

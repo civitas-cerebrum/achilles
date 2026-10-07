@@ -42,8 +42,8 @@
 # Intentional: `set -uo pipefail` without `-e`. Input-tolerant by design.
 set -uo pipefail
 
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-dispatch.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib pipeline-dispatch.sh
 hook_jq_init fatal
 
 pipeline_config perf

@@ -64,7 +64,7 @@ hook_jq_init fatal
 
 hook_read_input
 
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 

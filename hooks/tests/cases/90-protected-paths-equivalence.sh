@@ -4,7 +4,8 @@
 # protected stays protected, and the near-misses next to each stay allowed.
 BASH_GUARD="$HOOK_DIR/protected-artifact-bash-guard.sh"
 WRITE_GUARD="$HOOK_DIR/hook-authored-state-guard.sh"
-. "$HOOK_DIR/lib/protected-paths.sh"
+. "$HOOK_DIR/lib/hook-io.sh"
+hook_lib protected-paths.sh
 
 OLD_BASH_RE='onboarding-status\.json|perf-onboarding-status\.json|journey-map\.md|\.phase4-cycle-state\.json|coverage-expansion-state\.json|\.workflow-approvers\.json|adversarial-findings\.md|\.ledger-integrity\.json|flake-quarantine\.md|\.claude/achilles|\.claude/hooks|\.claude/settings(\.local)?\.json'
 

@@ -9,8 +9,8 @@
 set -uo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-. "$HOOK_DIR/lib/achilles-activation.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib achilles-activation.sh
 
 INPUT=$(cat)
 

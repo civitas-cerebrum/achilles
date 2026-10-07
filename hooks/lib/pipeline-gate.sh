@@ -423,5 +423,4 @@ See: ${PIPELINE_MSG_REVIEWER_SKILL} §\"Reject cap\" (3-cycle limit)"
   return 1
 }
 
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/pipeline-sod.sh"
+hook_lib pipeline-sod.sh

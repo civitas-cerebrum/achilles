@@ -48,7 +48,7 @@ hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 [ "$TOOL_NAME" = "Agent" ] || exit 0
@@ -78,8 +78,7 @@ if [ "$APPROVER_ROLE" = "perf-reviewer" ]; then
 else
   REGISTRY_DIR="$REPO_ROOT/tests/e2e/docs"
 fi
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+hook_lib ledger.sh
 REGISTRY_FILE="$REGISTRY_DIR/${LEDGER_APPROVERS_NAME}"
 
 # Best-effort: if the docs dir doesn't exist yet (early in Phase 1), the

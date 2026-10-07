@@ -6,14 +6,7 @@
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/hook-emit.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/achilles-activation.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/hash.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/pipeline-gate.sh"
+hook_lib hook-emit.sh achilles-activation.sh hash.sh pipeline-gate.sh
 
 # pipeline_dispatch_main <substage_fn>
 # Gates an Agent dispatch against the ledger: reviewer dispatches pass subject

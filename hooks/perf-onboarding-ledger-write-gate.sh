@@ -45,8 +45,8 @@
 
 set -uo pipefail
 
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-ledger-write.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib pipeline-ledger-write.sh
 hook_jq_init fatal
 
 pipeline_config perf

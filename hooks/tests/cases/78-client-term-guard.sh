@@ -47,6 +47,8 @@ assert_allow "$G" "{}" "empty object → silent allow"
 
 rm -rf "$CTG_REPO"
 
-section "client-term-guard: jq missing (silent)"
+section "client-term-guard: jq missing (silent; fail closed while active)"
 run_hook_nojq "$G" '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x"}}'
-assert_eq "$HOOK_EXIT:$HOOK_OUT" "0:" "no jq anywhere → silent allow"
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "2:" "no jq anywhere, active → exit 2"
+ACHILLES_PROTOCOL=0 run_hook_nojq "$G" '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x"}}'
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "0:" "no jq anywhere, inactive → silent allow"

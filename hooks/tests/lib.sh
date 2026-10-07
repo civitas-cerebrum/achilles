@@ -35,14 +35,27 @@ fi
 
 # run_hook_nojq <hook-script> <stdin-payload>
 # Runs the hook from a copy with no bundled jq and a PATH that has none either
-# (system jq, e.g. macOS /usr/bin/jq, is masked). Sets HOOK_EXIT and HOOK_OUT.
-run_hook_nojq() {
-  local hook="$1" stdin="$2" d t
+# (system jq, e.g. macOS /usr/bin/jq, is masked). Sets HOOK_EXIT, HOOK_OUT and HOOK_ERR.
+run_hook_nojq() { run_hook_copied "$1" "$2" nojq; }
+
+# run_hook_without_lib <hook-script> <lib-file> <stdin-payload>
+# Runs the hook from a copy whose lib/ lacks <lib-file>. Sets HOOK_EXIT, HOOK_OUT and HOOK_ERR.
+run_hook_without_lib() { run_hook_copied "$1" "$3" "$2"; }
+
+# run_hook_copied <hook-script> <stdin-payload> <nojq | lib-file to delete>
+run_hook_copied() {
+  local hook="$1" stdin="$2" d t path="$PATH"
   d=$(mktemp -d); mkdir -p "$d/hooks" "$d/path"
   cp -R "$(dirname "$hook")/lib" "$d/hooks/lib"; cp "$hook" "$d/hooks/"
-  for t in /bin/* /usr/bin/*; do [ "${t##*/}" = jq ] || [ -e "$d/path/${t##*/}" ] || ln -s "$t" "$d/path/${t##*/}"; done
+  if [ "$3" = nojq ]; then
+    for t in /bin/* /usr/bin/*; do [ "${t##*/}" = jq ] || [ -e "$d/path/${t##*/}" ] || ln -s "$t" "$d/path/${t##*/}"; done
+    path="$d/path"
+  else
+    rm -f "$d/hooks/lib/$3"
+  fi
   HOOK_EXIT=0
-  HOOK_OUT=$(printf '%s' "$stdin" | PATH="$d/path" bash "$d/hooks/$(basename "$hook")" 2>/dev/null) || HOOK_EXIT=$?
+  HOOK_OUT=$(printf '%s' "$stdin" | PATH="$path" bash "$d/hooks/$(basename "$hook")" 2>"$d/err") || HOOK_EXIT=$?
+  HOOK_ERR=$(cat "$d/err")
   rm -rf "${d:?}"
 }
 

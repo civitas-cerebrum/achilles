@@ -47,13 +47,10 @@ set -uo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/ledger.sh"
+hook_lib ledger.sh
 hook_jq_init silent
 
-HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
-# shellcheck disable=SC1091
-. "$HOOK_LIB_DIR/achilles-activation.sh"
+hook_lib achilles-activation.sh
 
 # Hard off — never mark.
 case "${ACHILLES_PROTOCOL:-}" in

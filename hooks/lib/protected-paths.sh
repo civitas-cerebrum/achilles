@@ -1,10 +1,10 @@
 #!/bin/bash
 # protected-paths.sh — the pipeline-state artifacts the guards refuse to mutate, and the
 # two forms the guards match them in: an ERE for protected-artifact-bash-guard.sh and a
-# path test for hook-authored-state-guard.sh. Needs lib/ledger.sh (loaded here).
+# path test for hook-authored-state-guard.sh. Needs lib/hook-io.sh; loads lib/ledger.sh.
 # hooks/tests/cases/90-protected-paths-equivalence.sh pins every path each form protects.
 
-. "$(dirname "${BASH_SOURCE[0]}")/ledger.sh"
+hook_lib ledger.sh
 
 # "<glob>|<bash|write|both>". `bash` entries are matched anywhere in a shell command; a
 # `write` entry is matched as a file under the ledger docs dirs, which is where the pipeline

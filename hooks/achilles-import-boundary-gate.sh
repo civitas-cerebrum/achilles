@@ -90,8 +90,7 @@ set -euo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
+hook_lib hook-emit.sh
 hook_jq_init fatal
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
@@ -99,7 +98,7 @@ HOOK_LIB="$HOOK_DIR/lib"
 
 input=$(cat)
 
-. "$HOOK_DIR/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$input"
 
 emit_deny() {

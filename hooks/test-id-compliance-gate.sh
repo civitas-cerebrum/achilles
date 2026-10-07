@@ -71,9 +71,9 @@ HOOK_LIB="$HOOK_DIR/lib"
 input=$(cat)
 
 # Session-scope gate: achilles-activated sessions only (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$input"
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
+hook_lib hook-emit.sh
 
 [ "${CIVITAS_DISABLE_TEST_ID_GATE:-0}" = "1" ] && exit 0
 

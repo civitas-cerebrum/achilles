@@ -23,6 +23,8 @@ assert_allow "$H" "$(we_payload Write "$HOME/project/.claude/skills/journey-mapp
 assert_allow "$H" "$(we_payload Write "/tmp/scratch.txt")" "unrelated path → ALLOW"
 assert_allow "$H" "$(we_payload Write "/repo/tests/e2e/spec.ts")" "spec write → ALLOW"
 
-section "harness-self-protection-guard: jq missing (fatal)"
+section "harness-self-protection-guard: jq missing (fatal; fail closed while active)"
 run_hook_nojq "$H" "$(we_payload Write "/tmp/x")"
-assert_eq "$HOOK_EXIT:$HOOK_OUT" "1:" "no jq anywhere → exit 1, no stdout"
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "2:" "no jq anywhere, active → exit 2, no stdout"
+ACHILLES_PROTOCOL=0 run_hook_nojq "$H" "$(we_payload Write "/tmp/x")"
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "1:" "no jq anywhere, inactive → exit 1, no stdout"

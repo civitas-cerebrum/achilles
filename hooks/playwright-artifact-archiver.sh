@@ -89,7 +89,7 @@ INPUT=$(cat 2>/dev/null || echo "{}")
 
 # Session-scope gate: reporting hooks run while the protocol is active OR
 # after the pipeline completed; plain dev sessions silent-allow.
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active_or_completed "$INPUT"
 
 RETAIN="${ACHILLES_ARTIFACT_RETAIN:-5}"

@@ -52,7 +52,8 @@
 # - Write|Edit into this repo, no match                             → silent allow
 # - No denylist file (operator has not opted in)                    → silent allow
 # - Target file outside this package's repo tree                    → silent allow
-# - Malformed input / jq missing                                    → silent allow (fail open)
+# - Malformed input                                                 → silent allow (fail open)
+# - jq missing                                                    → deny while the protocol is active (KL-14), else silent allow
 
 set -uo pipefail
 

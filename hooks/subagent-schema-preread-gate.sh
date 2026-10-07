@@ -97,16 +97,13 @@ hook_jq_init fatal
 
 # Shared role-mapping. Single source of truth — same file is sourced by
 # the PostToolUse half of the contract (subagent-return-schema-guard.sh).
-# shellcheck source=lib/schema-role-map.sh
-HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
-# shellcheck disable=SC1091
-. "$HOOK_LIB_DIR/schema-role-map.sh"
+hook_lib schema-role-map.sh
 
 hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 

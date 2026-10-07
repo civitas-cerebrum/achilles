@@ -8,7 +8,7 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 | `KERNEL_MANDATE` | operator shell | `0`, `false` or `off` bypasses the role kernel, including the wrapper's refusal when the kernel file is missing | kernel only; Achilles gates still run |
 | `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it only when absent | kernel only |
 | `CIVITAS_SKIP_HOOK_INSTALL` | install env | `1` skips hook install and mandate staging | all hooks |
-| `CIVITAS_SKIP_JQ_INSTALL` | install env | `1` skips the bundled jq download | hooks then need jq on PATH |
+| `CIVITAS_SKIP_JQ_INSTALL` | install env | `1` skips the bundled jq download | hooks then need jq on PATH; without it, PreToolUse gates deny while the protocol is active |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` | install env | `1` skips the Chromium download | browser-driven skills |
 | `CIVITAS_DISABLE_ADVERSARIAL_GATE` | operator shell | `1` disables `adversarial-verification-gate` | that gate |
 | `CIVITAS_DISABLE_COMPLIANCE_SWEEP_GATE` | operator shell | `1` disables `compliance-sweep-exit-gate` | that gate |

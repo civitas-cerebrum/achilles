@@ -17,11 +17,11 @@ One row per limit that ships. `Detector` is the case or lint that pins the behav
 | KL-11 | An existing project `.claude/kernel-mandate.json` is never overwritten; Achilles dispatches then bind to that manifest's roles. | `cases/71-achilles-kernel-activation-gate.sh` §postinstall | Achilles install |
 | KL-12 | Several roles hold write scope on `onboarding-status.json`; who may record which transition is enforced by `onboarding-ledger-write-gate.sh`, not by the mandate; approval-class writes (verdict approvals, terminal status) must come from an approver `agent_type`, and a subagent write with no `agent_type` is denied. | `cases/51-onboarding-ledger-write-gate.sh` | Achilles hooks |
 | KL-13 | The orchestrator may write anything under `tests/**`, including specs, fixtures and the page repository; delegating those to the scaffolder and composers is methodology, not enforcement. | `cases/71-achilles-kernel-activation-gate.sh` | methodology |
-| KL-14 | With no jq at all, 29 hooks exit 1, which Claude Code treats as a non-blocking error (the call proceeds); 5 hooks allow silently, the 2 summary writers print `{}` and allow, and `playwright-cli-cleanup-on-stop` runs on with failing jq calls. postinstall bundles jq to make this rare. | `cases/60-harness-self-protection-guard.sh` §jq missing | Achilles hooks (`hooks/lib/hook-io.sh`) |
+| KL-14 | Without jq, or with a file missing from `hooks/lib/`, a PreToolUse call is denied (exit 2, remedy on stderr) only while the protocol is active; activation is read without jq, and a missing activation lib counts as active. Otherwise each hook keeps its own contract: in an inactive session, and on PostToolUse, Stop and SubagentStop events, 29 hooks exit 1 (a non-blocking error: the call proceeds), 5 allow silently, the 2 summary writers print `{}`, and `playwright-cli-cleanup-on-stop` runs on with failing jq calls. A missing `hooks/lib/hook-io.sh` is not covered: it is the file that does the covering. postinstall bundles jq. | `cases/91-hook-fail-closed.sh` | Achilles hooks (`hooks/lib/hook-io.sh`) |
 
 ## Runtime requirements
 
 | Requirement | Why | When missing |
 |---|---|---|
-| jq | every hook parses JSON with it | postinstall bundles one; hooks fall back to PATH |
+| jq | every hook parses JSON with it | postinstall bundles one; hooks fall back to PATH; with neither, PreToolUse gates deny while the protocol is active (KL-14) |
 | Node ≥ 20 | validator bundle, parser bundle, postinstall, CLIs | schema-validating hooks warn and allow; `achilles-import-boundary-gate` denies |

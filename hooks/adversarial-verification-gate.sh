@@ -94,24 +94,17 @@ set -euo pipefail
 # §"Hook error message format — repo standard").
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/ticket-driven-testing/SKILL.md §\"8. Prove the tests discriminate the fix\"\n  skills/ticket-driven-testing/SKILL.md §\"8b. Dispatch the adversarial test review\""
 
-
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/signoff.sh"
+hook_lib signoff.sh
 hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_ADVERSARIAL_GATE:-}" = "1" ] && exit 0
 
 INPUT="$(cat)"
 
-# shellcheck source=lib/achilles-activation.sh
-if [ -f "$HOOK_DIR/lib/achilles-activation.sh" ]; then
-  . "$HOOK_DIR/lib/achilles-activation.sh"
-  achilles_session_active "$INPUT" || exit 0
-fi
+hook_lib achilles-activation.sh
+achilles_session_active "$INPUT" || exit 0
 
 TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 [ -n "$TOOL_NAME" ] || exit 0
