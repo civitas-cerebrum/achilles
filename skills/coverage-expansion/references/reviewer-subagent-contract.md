@@ -176,7 +176,7 @@ The cross-journey synthesis is a real upgrade, not just a cost optimisation: a s
    - **`status: covered-exhaustively`** → the brief points at the §2.6 spill file at `tests/e2e/docs/.subagent-returns/composer-<JOURNEY>-<pass>-c1.md`. The reviewer reads the spill for the full per-expectation mapping table.
 
    The reviewer reads whichever form is provided; the brief construction is the orchestrator's responsibility.
-5. **Per-journey gated-skip evidence**: journeys flagged `gated_skip: true` in the state file (per `coverage-expansion/SKILL.md` §"Trigger-gated re-pass") are excluded from the batch reviewer's roster — no review needed. The roster is the journeys whose Stage A actually dispatched this cycle.
+5. **Per-journey gated-skip evidence**: journeys flagged `gated_skip: true` in the state file (per `coverage-expansion/SKILL.md` §"Trigger-gated re-pass for Passes 2 & 3") are excluded from the batch reviewer's roster — no review needed. The roster is the journeys whose Stage A actually dispatched this cycle.
 6. **App-context slice**: the consolidated `app-context.md` sections for every page touched.
 7. **No live app** — see §"Behavior" item 2 below for why the batch reviewer is a static reader.
 

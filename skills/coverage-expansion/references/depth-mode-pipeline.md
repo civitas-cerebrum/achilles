@@ -23,7 +23,7 @@ Every pass in depth mode runs this pipeline; steps 4 and 7 differ between compos
 3. **Build the journey independence graph.** The graph is the same across compositional and adversarial passes.
 4. **Emit the per-pass scope preview** (the declarative pre-dispatch summary documented near the end of §"Model selection" — `[coverage-expansion] Pass <N>/5 — dispatching ...`). Declarative only; no confirmation prompt.
 5. **Run the per-journey dual-stage retry loop** for every journey in the map — parallel for independent journeys, sequential for dependent ones, per §"Parallelism". Each journey's A↔B loop follows [`dual-stage-retry-loop.md` §"Retry loop"](dual-stage-retry-loop.md). The loop terminates when the journey has one of the four terminal `review_status` values.
-   - Model selection per the hybrid table in `coverage-expansion/SKILL.md` §"Hybrid model selection" (§"Model selection" below points at it).
+   - Model selection per the hybrid table in `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet) (§"Model selection" below points at it).
    - P3 batching narrowed per §"Batched dispatch for P3 peripheral journeys" — Stage A may be batched; Stage B never is.
 6. **Collect all journey outputs.** Each journey contributes: its committed test files (from the final greenlit or blocked-with-tests-landed Stage A cycle), its `review_status`, its cycle counts, and (if blocked) its final `must-fix` list. The orchestrator does NOT hold Stage A test source or Stage B review bodies — only structured summaries and the on-disk file paths.
 7. **Reconcile artefacts.**
@@ -45,7 +45,7 @@ After pass 5: one single-dispatch cleanup subagent dedupes the ledger. See §"Le
 
 ### Pre-Pass-4 step — P3 adversarial opt-out proposal (before the app-wide prelude)
 
-Before the Pass-4 app-wide-scan prelude is dispatched, the orchestrator mechanically evaluates the four P3 adversarial-opt-out exclusion criteria (per `coverage-expansion/SKILL.md` §"P3 small-surface journeys may opt OUT of adversarial passes") for every candidate journey, **restricted to `risk: baseline` journeys** — a `risk: elevated` journey (2+ `Risk factors:` tags per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is never an opt-out candidate, regardless of priority.
+Before the Pass-4 app-wide-scan prelude is dispatched, the orchestrator mechanically evaluates the four P3 adversarial-opt-out exclusion criteria (per `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (P3 opt-out bullet)) for every candidate journey, **restricted to `risk: baseline` journeys** — a `risk: elevated` journey (2+ `Risk factors:` tags per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is never an opt-out candidate, regardless of priority.
 
 For each candidate, evaluate all four criteria:
 
@@ -86,7 +86,7 @@ A pass is complete only when **every** criterion for that pass is met. "Ran some
 - **Pass 1** complete = `test-composer` has been dispatched for and has returned on **every** journey in the map. Not "enough journeys", not "the P0/P1 tier", not "the journeys that fit the budget". Every journey.
 - **Pass 2** complete = `test-composer` has been re-dispatched and returned for every journey, AND the map has been reconciled with any newly-promoted branches or sub-journeys surfaced in pass 1 or 2, AND — if the reconciliation produced map edits — the reconciliation commit has landed. If no map edits were needed, the pass still completes, but the orchestrator records `"pass 2 reconciliation — no map edits required"` in the state file / progress log rather than silently skipping the commit.
 - **Pass 3** complete = cross-journey and data-lifecycle variants have been dispatched for every journey whose `Test expectations:` calls for them, AND any journey that returned residual coverage gaps in passes 1 or 2 has been re-attempted, AND the pass commit has landed (if tests were added in this pass).
-- **Pass 4** complete = (a) the app-wide-scan prelude has emitted `tests/e2e/docs/app-wide-patterns.md` with the canonical sentinel (per `references/app-wide-scan.md`), AND (b) the adversarial-probe subagent has run for every journey in `journeyRoster - adversarialSkippedJourneys[].journey`, with terminal `review_status`. Journeys in `adversarialSkippedJourneys[]` are validly excluded per [`coverage-expansion/SKILL.md`](../SKILL.md) §"P3 small-surface journeys may opt OUT of adversarial passes". For every dispatched journey, the subagent's findings are appended to `tests/e2e/docs/adversarial-findings.md`. If no probes landed for a given dispatched journey (e.g., the subagent found nothing to probe or was gated), the orchestrator records `"no boundaries probed — <reason>"` for that journey in the ledger — it does NOT silently skip the journey. An empty ledger section for a dispatched journey is a bug, not a pass-4 completion state. The app-wide-scan prelude itself does NOT count toward the per-journey dispatch total — it is exempt per `app-wide-scan.md` §"Hard constraints".
+- **Pass 4** complete = (a) the app-wide-scan prelude has emitted `tests/e2e/docs/app-wide-patterns.md` with the canonical sentinel (per `references/app-wide-scan.md`), AND (b) the adversarial-probe subagent has run for every journey in `journeyRoster - adversarialSkippedJourneys[].journey`, with terminal `review_status`. Journeys in `adversarialSkippedJourneys[]` are validly excluded per [`coverage-expansion/SKILL.md`](../SKILL.md) §"Hard rules — kernel-resident" (P3 opt-out bullet). For every dispatched journey, the subagent's findings are appended to `tests/e2e/docs/adversarial-findings.md`. If no probes landed for a given dispatched journey (e.g., the subagent found nothing to probe or was gated), the orchestrator records `"no boundaries probed — <reason>"` for that journey in the ledger — it does NOT silently skip the journey. An empty ledger section for a dispatched journey is a bug, not a pass-4 completion state. The app-wide-scan prelude itself does NOT count toward the per-journey dispatch total — it is exempt per `app-wide-scan.md` §"Hard constraints".
 - **Pass 5** complete = every verified pass-4 finding has either a committed regression test in `j-<slug>-regression.spec.ts` OR an explicit decline-with-reason line in the ledger, drawn from one of four decline categories:
   - `no regression written — finding classified as suspected bug`
   - `no regression written — finding classified as ambiguous`
@@ -154,7 +154,7 @@ The Phase-0 shared-resource audit still caps parallelism where the app genuinely
 
 ### Model selection
 
-Model selection per dispatch type — see [`coverage-expansion/SKILL.md`](../SKILL.md) §"Hybrid model selection — Pass 1, Pass 4, Pass 5 on Opus, Pass 2/3 execution on Sonnet, all review on Opus" for the canonical table. Pass 5 is the regression layer — its targeted probes and regression-test authoring run Opus because the artifacts they produce are durable; Pass 4's adversarial probes also run Opus because their findings are the input to that regression layer. The kernel rule supersedes any prior cost-blind / opus-default framing.
+Model selection per dispatch type — see [`coverage-expansion/SKILL.md`](../SKILL.md) §"Hard rules — kernel-resident" (Hybrid model selection bullet) for the canonical table. Pass 5 is the regression layer — its targeted probes and regression-test authoring run Opus because the artifacts they produce are durable; Pass 4's adversarial probes also run Opus because their findings are the input to that regression layer. The kernel rule supersedes any prior cost-blind / opus-default framing.
 
 Before every pass dispatch (step 4 of the per-pass pipeline), emit a declarative scope preview. The preview is informational only — there is no confirmation prompt, no timeout, no abort option, and no reduce-scope offer. The contract is every journey in the (roster − adversarialSkippedJourneys), every pass; the preview makes that contract explicit so any mid-pass rationalisation is visible against the declared scope.
 
@@ -164,7 +164,7 @@ Template (values filled in per pass, from the map index, independence graph, and
 [coverage-expansion] Pass <N>/5 — dispatching <test-composer | adversarial probe> per journey
   Journeys: <count> (<delta-note, e.g., "3 newly promoted in pass <N-1>">)
   Independence graph: <G> groups, <K>-way parallel dispatch possible (cap <C>)
-  Model mix: per dispatch-type table in `coverage-expansion/SKILL.md` §"Hybrid model selection".
+  Model mix: per dispatch-type table in `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet).
   Expected wall-clock: ~<H>h at <K>-parallel
   Contract: every journey in the (roster − adversarialSkippedJourneys), this pass.
 ```
@@ -373,7 +373,7 @@ After pass 5 commits, the orchestrator dispatches one additional, non-per-journe
 
 ### Cleanup subagent constraints
 
-- Model: **opus** (per the Cleanup ledger dedup row of `coverage-expansion/SKILL.md` §"Hybrid model selection" — the kernel table wins). Semantic clustering of near-duplicate findings across journey sections is judgement work, not mechanical text editing.
+- Model: **opus** (per the Cleanup ledger dedup row of `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet) — the kernel table wins). Semantic clustering of near-duplicate findings across journey sections is judgement work, not mechanical text editing.
 - Single dispatch — NOT per-journey. Just one subagent, handed the full ledger file path.
 - Isolated context. No prior session content.
 - Does not modify the journey-map, the page-repository, or any test files. Only the ledger.

@@ -41,7 +41,7 @@ One row per shared composing concern. "Canonical home" is where the full rule te
 | Oracle strength ladder L0–L3 | `../../test-composer/SKILL.md` §"Oracle strength ladder" |
 | Deliberate-failure bite check (mutate expected value, confirm the test fails, revert) | `../../test-composer/SKILL.md` §"Oracle strength ladder" (UI); `../../contract-testing/SKILL.md` Rule 8 (API) |
 | Input-domain / partition analysis | `../../test-composer/references/input-domain-analysis.md` |
-| Tenant cleanup contract (`cleanupViaApiBackdoor`, `cleanup: done \| blocked \| not-needed`) | `../../test-composer/SKILL.md` §"Tenant cleanup hooks are non-negotiable" |
+| Tenant cleanup contract (`cleanupViaApiBackdoor`, `cleanup: done \| blocked \| not-needed`) | `../../test-composer/SKILL.md` §"Tenant cleanup hooks are non-negotiable for add-* journeys" |
 | Evidence-required rule for findings | [`subagent-return-schema.md`](subagent-return-schema.md) §1 "Evidence rule" |
 | Fresh-eyes reviewer independence | `../../coverage-expansion/references/reviewer-subagent-contract.md` §"Hard constraints" |
 | Subagent return + ledger shapes | [`subagent-return-schema.md`](subagent-return-schema.md) |

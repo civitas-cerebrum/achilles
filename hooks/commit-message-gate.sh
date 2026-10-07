@@ -215,7 +215,7 @@ if echo "$SCAN" | grep -qE 'test\([^)]*j-[a-z0-9-]+[[:space:]]*,'; then
 
 Message: \"${SCAN}\"
 
-Fix: split into one commit per journey. The convention from coverage-expansion §\"Commit-message conventions\" is one journey per commit, no exceptions:
+Fix: split into one commit per journey. The convention from coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\" is one journey per commit, no exceptions:
 
   test(j-checkout): cycle-2 — multi-item variant
   test(j-signup): cycle-2 — long-input edge
@@ -230,7 +230,7 @@ if echo "$SCAN" | grep -qiE '^feat\((e2e|tests|test|coverage|journey|onboarding)
 
 Message: \"${SCAN}\"
 
-Fix: use the convention from coverage-expansion §\"Commit-message conventions\":
+Fix: use the convention from coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\":
 
   test(<j-slug>): <variant>          for compositional passes
   docs(ledger): <j-slug> — ...       for adversarial pass 4
@@ -259,7 +259,7 @@ If you intended a tests-from-Stage-A commit, the right form is:
   docs(ledger): <j-slug> — ...       for adversarial pass 4
   test(<j-slug>-regression): ...     for adversarial pass 5
 
-See coverage-expansion §\"Commit-message conventions\"."
+See coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\"."
   exit 0
 fi
 

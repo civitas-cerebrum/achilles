@@ -357,7 +357,7 @@ The "Batch reviewer mode" rule lives in `skills/coverage-expansion/references/re
 
 ## Pattern: `markdown-only` deferral — app-wide-scan sentinel + citation contract
 
-The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" + `references/app-wide-scan.md` + `adversarial-subagent-contract.md` §"Inputs" #9. The output file `tests/e2e/docs/app-wide-patterns.md` carries the sentinel `<!-- app-wide-scan:generated -->`, but no hook validates that writes preserve the sentinel or that new entries follow the per-pattern catalogue schema (`<pattern-id>` + `Cite as: coverage: app-wide:<pattern-id>` line).
+The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" + `references/app-wide-scan.md` + `adversarial-subagent-contract.md` §"Inputs (given at dispatch time)" #9. The output file `tests/e2e/docs/app-wide-patterns.md` carries the sentinel `<!-- app-wide-scan:generated -->`, but no hook validates that writes preserve the sentinel or that new entries follow the per-pattern catalogue schema (`<pattern-id>` + `Cite as: coverage: app-wide:<pattern-id>` line).
 
 **Tag:** `markdown-only`.
 **Deferred hook:** sentinel-validation hook for `tests/e2e/docs/app-wide-patterns.md` (the analogous sentinel-guard hook for `journey-map.md` was retired in 0.3.6; if revived, this pattern would mirror its sentinel-and-citation contract).

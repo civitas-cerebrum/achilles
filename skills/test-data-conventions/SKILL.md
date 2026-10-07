@@ -96,7 +96,7 @@ A backend setting can legitimately flip behaviour mid-day. Observed: registratio
 
 `before*` hooks create; `after*` hooks remove — **even on failure** (afterEach/afterAll run on failure; put cleanup there, never at the end of the test body), and **idempotently** (cleaning up an entity the failed test never created must not itself throw). Setup failures must read as setup failures — throw with a `setup:`-prefixed message rather than letting the first step's element timeout masquerade as the failure.
 
-The cleanup contract is canonical in `../test-composer/SKILL.md` §"Tenant cleanup hooks are non-negotiable" — `cleanupViaApiBackdoor`, the `CleanupBackdoorUnavailableError` stub, the `cleanup-blocked` annotation, and the `cleanup: done | blocked | not-needed` enum in the composer return. Cite it; do not fork it.
+The cleanup contract is canonical in `../test-composer/SKILL.md` §"Tenant cleanup hooks are non-negotiable for add-* journeys" — `cleanupViaApiBackdoor`, the `CleanupBackdoorUnavailableError` stub, the `cleanup-blocked` annotation, and the `cleanup: done | blocked | not-needed` enum in the composer return. Cite it; do not fork it.
 
 ### 6. API-first state setup for derivatives
 

@@ -4,13 +4,15 @@ import { makeAjv } from '../lib/ajv.mjs';
 const HARNESS_HOOKS = 'skills/achilles-protocol/references/harness-hooks.md';
 const HOOK_MANIFEST = 'hooks/data/hook-manifest.json';
 
+// Source: https://code.claude.com/docs/en/hooks (event table).
 const HOOK_EVENTS = [
-  'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PostToolBatch', 'UserPromptSubmit',
-  'UserPromptExpansion', 'Notification', 'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop',
-  'TeammateIdle', 'TaskCreated', 'TaskCompleted', 'PermissionRequest', 'PermissionDenied',
-  'PreCompact', 'PostCompact', 'SessionStart', 'SessionEnd', 'Setup', 'InstructionsLoaded',
-  'ConfigChange', 'CwdChanged', 'FileChanged', 'WorktreeCreate', 'WorktreeRemove',
-  'Elicitation', 'ElicitationResult',
+  'SessionStart', 'Setup', 'UserPromptSubmit', 'UserPromptExpansion', 'PreToolUse',
+  'PermissionRequest', 'PermissionDenied', 'PostToolUse', 'PostToolUseFailure',
+  'PostToolBatch', 'Notification', 'MessageDisplay', 'SubagentStart', 'SubagentStop',
+  'TaskCreated', 'TaskCompleted', 'Stop', 'StopFailure', 'TeammateIdle', 'InstructionsLoaded',
+  'ConfigChange', 'CwdChanged', 'DirectoryAdded', 'FileChanged', 'WorktreeCreate',
+  'WorktreeRemove', 'PreCompact', 'PostCompact', 'PreModelSwitch', 'PostModelSwitch',
+  'Elicitation', 'ElicitationResult', 'SessionEnd',
 ];
 const validEntry = makeAjv().compile({
   type: 'object',

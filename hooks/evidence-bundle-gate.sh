@@ -196,7 +196,8 @@
 # skills/ticket-driven-testing/SKILL.md §"The sequence" (step 0),
 #                                       §"The Contract",
 #                                       §"The sign-off gate"
-# skills/companion-mode/SKILL.md        §"Redaction"
+# skills/companion-mode/SKILL.md        §"Redaction (mandatory — scoped to the artifact,
+#                                       not to the bundle)"
 # skills/achilles-protocol/references/harness-hooks.md
 #
 # Failure → action

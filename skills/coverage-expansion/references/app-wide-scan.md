@@ -41,7 +41,7 @@ Brief inputs:
 
 Brief explicitly says: do NOT iterate the journey map; this is a app-wide reconnaissance pass, not a per-journey probe. The map will be probed per-journey in subsequent dispatches.
 
-Model: opus, per the Pass 4 row of `coverage-expansion/SKILL.md` §"Hybrid model selection".
+Model: opus, per the Pass 4 row of `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet).
 
 ---
 
@@ -147,6 +147,6 @@ The `coverage:` field IS the citation. The per-journey probe does NOT re-documen
 ## Cross-links
 
 - `coverage-expansion/SKILL.md` §"Standard mode" — invokes this scan as the Pass-4 prelude.
-- `adversarial-subagent-contract.md` §"Inputs" — per-journey probes get the app-wide-patterns file as Input 9 alongside the journey-specific inputs.
+- `adversarial-subagent-contract.md` §"Inputs (given at dispatch time)" — per-journey probes get the app-wide-patterns file as Input 9 alongside the journey-specific inputs.
 - `../../achilles-protocol/references/subagent-return-schema.md` §1 — documents the `coverage:` field that holds the citation.
 - The empirical motivation and savings analysis for this scan are documented in the project history.

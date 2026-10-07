@@ -488,7 +488,7 @@ Examples:
 - `test(j-<slug>): error-states`
 - `test(j-add-<entity>): data-lifecycle`
 
-Do NOT use `test(pass<N>): …`, `feat(e2e): …`, or `test(<j1>, <j2>): …` — see the **Commit-message conventions** table in `coverage-expansion/SKILL.md` for the full list of anti-patterns across all passes.
+Do NOT use `test(pass<N>): …`, `feat(e2e): …`, or `test(<j1>, <j2>): …` — see the **Commit-message conventions** table in `skills/coverage-expansion/references/depth-mode-pipeline.md` for the full list of anti-patterns across all passes.
 
 ---
 

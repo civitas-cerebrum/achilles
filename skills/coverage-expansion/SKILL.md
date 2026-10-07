@@ -177,8 +177,8 @@ If a future contributor needs to add (say) a Pass 6 — accessibility-specific a
 1. **Position in pipeline** — does it slot before/after existing passes, or replace one?
 2. **Compositional or adversarial shape** — drives Stage A skill choice (test-composer vs bug-discovery vs new) and review_status calibration.
 3. **Stage A skill** — reuse an existing one with a flag, or new skill?
-4. **Commit-message template** — append to §"Commit-message conventions" with the new pass's pattern.
-5. **review_status calibration** — what counts as `must-fix` for this pass's reviewer? Add to `reviewer-subagent-contract.md` §"Must-fix calibration".
+4. **Commit-message template** — append to `references/depth-mode-pipeline.md` §"Commit-message conventions" with the new pass's pattern.
+5. **review_status calibration** — what counts as `must-fix` for this pass's reviewer? Add to `reviewer-subagent-contract.md` §"Behavior" (item 6, must-fix calibration).
 6. **Ledger location** — new ledger file or shared with adversarial-findings?
 7. **Re-pass triggers** — does the new pass have a re-pass equivalent? If so, add a 5th trigger to §"Re-pass mode" (or a new section).
 
@@ -316,10 +316,6 @@ Every one of the 5 passes runs **per journey** as two sequential stages — Stag
 - **Cycle 7 reached without greenlight → `blocked-cycle-exhausted`.** Marking it greenlit when it isn't corrupts state. `blocked-cycle-exhausted` is a valid terminal, not a pass failure.
 - **Empty findings on `improvements-needed` → coerce to greenlight after one re-dispatch.** Empty findings = no changes needed; the status was malformed.
 - **Pass full findings through verbatim.** Compressed findings lose the surgical specificity Stage A needs. No "summary string" inputs to the next cycle.
-
-### Commit-message conventions
-
-Canonical text: [`references/depth-mode-pipeline.md`](references/depth-mode-pipeline.md) §"Commit-message conventions".
 
 ## Prerequisites
 
