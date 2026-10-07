@@ -14,6 +14,7 @@
 //   9 activation        skills/*/  ↔  ACHILLES_SKILL_ALT
 //  10 agents            agents/*.md  ↔  QA mandate roles
 //  11 anchors           every cited §"Heading" exists in the cited file
+//  12 role-dispatch-sites  role names in skill/README prose  ↔  QA mandate roles
 //
 // Where a surface has not yet converged the lint reports the specific drift
 // rather than weakening the check.
@@ -30,10 +31,11 @@ import * as optInSurfaces from './lint/opt-in-surfaces.mjs';
 import * as activation from './lint/activation.mjs';
 import * as agents from './lint/agents.mjs';
 import * as anchors from './lint/anchors.mjs';
+import * as roleDispatchSites from './lint/role-dispatch-sites.mjs';
 
 const { report, state } = makeReport();
 for (const check of [registry, links, hookManifest, roleMap, hookRefs, docsCounts,
-  ledgerInventory, optInSurfaces, activation, agents, anchors]) check.run(report);
+  ledgerInventory, optInSurfaces, activation, agents, anchors, roleDispatchSites]) check.run(report);
 
 if (state.failed) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');
