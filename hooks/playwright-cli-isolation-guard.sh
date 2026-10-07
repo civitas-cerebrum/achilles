@@ -92,14 +92,14 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 
 # Judge every command the shell would run (lib/shell-words.sh) whose command word is
-# playwright-cli, directly or through npx, bunx, pnpm|yarn exec, env, sh -c or $( ).
-# A mention inside a quoted argument or a heredoc body is not an invocation.
+# playwright-cli or its package @playwright/cli, directly or through npx, bunx, pnpm|yarn exec,
+# env, sudo, sh -c or $( ). A mention inside a quoted argument or a heredoc body is not an invocation.
 CMD_PREVIEW="$CMD"
 [ ${#CMD} -le 160 ] || CMD_PREVIEW="${CMD:0:160}..."
 
 judge_invocation() {
   local k=1 a SLUG=""
-  [ "${CMD_ARGS[0]:-}" = playwright-cli ] || return 0
+  case "${CMD_ARGS[0]:-}" in playwright-cli|@playwright/cli) ;; *) return 0 ;; esac
   # Session-agnostic subcommands run without -s= by design; no argument prints the help.
   case "${CMD_ARGS[1]:-}" in
     ''|install-browser|close-all|kill-all|list|list-sessions|sessions|--help|-h|--version|-v) return 0 ;;
