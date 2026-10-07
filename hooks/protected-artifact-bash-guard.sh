@@ -36,7 +36,8 @@
 # core.quotepath, color.*, advice.*, i18n.*, init.defaultbranch. Nor is a
 # command safe when something earlier on the line can change what it runs:
 # a command word outside the system bin dirs, an assignment or `env` before
-# it, an assignment-only command, export/declare/alias/hash/eval before it,
+# it, an assignment-only command, export/declare/alias/hash/eval/read/
+# printf -v/let before it,
 # git's --config-env/--exec-path or the options that name a program
 # (--upload-pack, --ext-diff, --textconv, -O), `rg --pre`, `file -C`,
 # `yq -s`, or an ln whose source is protected. Paths are normalised
@@ -357,8 +358,11 @@ judge_command() {
   for a in "${CMD_ARGS[@]}"; do
     case "$a" in *'$('*|*'`'*) UNSAFE="$UNSAFE$cmd: command substitution"$'\n'; return 0 ;; esac
   done
-  # These redefine the environment or the running of later commands.
-  case "$cmd" in export|declare|typeset|readonly|local|alias|unalias|hash|set|shopt|enable|eval|source|.) POISON=1 ;; esac
+  # These assign variables or redefine how later commands resolve: the rest of the line is tainted.
+  case "$cmd" in
+    export|declare|typeset|readonly|local|alias|unalias|hash|set|shopt|enable|eval|source|.|read|mapfile|readarray|let) POISON=1 ;;
+    printf) for a in "${CMD_ARGS[@]:1}"; do case "$a" in -v|-v?*) POISON=1; break ;; --) break ;; esac; done ;;
+  esac
   # The allowlist names programs in the system bin dirs, run with the session's environment.
   [ -z "$CMD_PATH" ] || UNSAFE="$UNSAFE$cmd: run from $CMD_PATH"$'\n'
   [ "$CMD_ENV" = 0 ] || UNSAFE="$UNSAFE$cmd: environment set on the command line"$'\n'
@@ -374,7 +378,8 @@ judge_command() {
         a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
         if [ -z "$sub" ]; then
           case "$a" in
-            -c) gval="${CMD_ARGS[gi]:-}"; gi=$((gi + 1))
+            -c|-c?*)
+                if [ "$a" = -c ]; then gval="${CMD_ARGS[gi]:-}"; gi=$((gi + 1)); else gval="${a#-c}"; fi
                 gkey=$(printf '%s' "${gval%%=*}" | tr '[:upper:]' '[:lower:]')
                 case "$gkey" in
                   user.name|user.email|core.quotepath|init.defaultbranch) ;;

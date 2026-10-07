@@ -341,3 +341,24 @@ section "protected-bash fail-closed r5: ANSI-C quotes are scanned honouring esca
 assert_deny "$HOOK" "$(bash_payload "echo \$'a\\' b' >~/.claude/settings.json #'")" "escaped quote inside \$'...' does not end the string" "protected"
 assert_deny "$HOOK" "$(bash_payload "echo \$'\\'' > ~/.claude/settings.json #'")" "\$'\\'' is a single quote, not the end of the word" "protected"
 assert_deny "$HOOK" "$(bash_payload "echo x > \$'/home/u/\\x2eclaude/settings.json'")" "hex escape \\x2e decodes to a dot" "protected"
+
+
+# Task F1b: assignment builtins poison the line like PATH=; a glued git -c<key>=<value> is parsed
+# like the spaced form.
+section "protected-bash fail-closed F1b: assignment builtins poison every later command"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "earlier on the line can redefine"
+done <<'ASSIGN'
+printf -v PATH /tmp/x; cat -c 'echo PWNED > ~/.claude/settings.json'
+read PATH <<< /tmp/x; cat -c 'echo PWNED > ~/.claude/settings.json'
+declare -n p=PATH; p=/tmp/x; cat -c 'echo PWNED > ~/.claude/settings.json'
+printf -v x %s y; cat tests/e2e/docs/onboarding-status.json
+mapfile -t PATH < /tmp/p; cat ~/.claude/settings.json
+let x=1; cat ~/.claude/settings.json
+ASSIGN
+assert_allow "$HOOK" "$(bash_payload "printf '%s\\n' tests/e2e/docs/onboarding-status.json")" "printf without -v assigns nothing"
+assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json; printf -v x %s y')" "printf -v AFTER the read does not poison it"
+
+section "protected-bash fail-closed F1b: glued git -c<key>=<value>"
+assert_deny "$HOOK" "$(bash_payload 'git -ccore.pager=x log ~/.claude/settings.json')" "glued -c with a non-inert key" "git -c"
+assert_allow "$HOOK" "$(bash_payload 'git -cuser.name=x commit -m "fix tests/e2e/docs/onboarding-status.json"')" "glued -c with an inert key"
