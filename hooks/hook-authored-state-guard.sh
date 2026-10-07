@@ -56,7 +56,7 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-hook_lib ledger.sh protected-paths.sh hook-emit.sh
+hook_lib protected-paths.sh hook-emit.sh
 hook_jq_init fatal
 
 hook_read_input
@@ -74,9 +74,10 @@ FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/nul
 # A deny ends the hook.
 emit_deny() { emit_pre_deny "$1"; exit 0; }
 
-# Normalise to leading-slash form so bare relative paths match the same
-# suffix patterns as absolute ones.
-NORM="/${FILE_PATH#/}"
+# One spelling per file (lib/protected-paths.sh), in leading-slash form so bare
+# relative paths match the same suffix patterns as absolute ones.
+NORM="$(protected_path_normalise "$FILE_PATH")"
+NORM="/${NORM#/}"
 
 # --- Class 1: hook-authored state — never Write|Edit. ---
 if protected_write_match "$NORM"; then

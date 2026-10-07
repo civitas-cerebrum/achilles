@@ -1,14 +1,14 @@
 #!/bin/bash
-# protected-paths.sh — the pipeline-state artifacts the guards refuse to mutate, and the
-# two forms the guards match them in: an ERE for protected-artifact-bash-guard.sh and a
-# path test for hook-authored-state-guard.sh. Needs lib/hook-io.sh; loads lib/ledger.sh.
-# hooks/tests/cases/90-protected-paths-equivalence.sh pins every path each form protects.
+# protected-paths.sh — the pipeline-state artifacts the guards refuse to mutate, and how a path is
+# matched against them: protected_bash_match for protected-artifact-bash-guard.sh,
+# protected_write_match for hook-authored-state-guard.sh. Needs lib/hook-io.sh; loads lib/ledger.sh.
+# hooks/tests/cases/90-protected-paths-equivalence.sh denies every entry through the guard its tag names.
 
 hook_lib ledger.sh
 
-# "<glob>|<bash|write|both>". `bash` entries are matched anywhere in a shell command; a
-# `write` entry is matched as a file under the ledger docs dirs, which is where the pipeline
-# keeps hook-authored state; `both` is both. The glob uses * (one path segment) and ** (any).
+# "<path>|<bash|write|both>". A `bash` entry protects every path that contains it as whole
+# components; a `write` entry protects that file under the ledger docs dirs, where the pipeline
+# keeps hook-authored state; `both` is both. Entries are literal: no glob, no regex.
 PROTECTED_PATHS=(
   'onboarding-status.json|bash'
   'perf-onboarding-status.json|bash'
@@ -25,34 +25,66 @@ PROTECTED_PATHS=(
   '.claude/settings.local.json|bash'
 )
 
-# Entries whose tag is <want> or both.
-protected__globs() {
+# Entries whose tag is <want> or both, lower-cased like the paths they are matched against.
+protected__entries() {
   local e
   for e in "${PROTECTED_PATHS[@]}"; do
     case "${e##*|}" in "$1"|both) printf '%s\n' "${e%|*}" ;; esac
-  done
+  done | tr '[:upper:]' '[:lower:]'
 }
 
-# protected_bash_regex — ERE alternation; the caller greps it unanchored.
-protected_bash_regex() {
-  local g r out=""
-  while IFS= read -r g; do
-    r=${g//./\\.}
-    r=${r//\*\*/$'\001'}
-    r=${r//\*/[^/]*}
-    out="${out:+$out|}${r//$'\001'/.*}"
-  done < <(protected__globs bash)
-  printf '%s' "$out"
+# protected_path_normalise <path> — the file <path> names, spelled one way: ~ and $HOME expanded,
+# // and /./ collapsed, .. resolved lexically, lower-cased (darwin and Windows file systems fold
+# case; on Linux this over-protects only paths that differ from a protected one by case).
+protected_path_normalise() {
+  local p="$1" seg out="" n=0 abs=""
+  case "$p" in
+    '~'|'~/'*) p="$HOME${p#\~}" ;;
+    '$HOME'|'$HOME/'*) p="$HOME${p#\$HOME}" ;;
+    '${HOME}'|'${HOME}/'*) p="$HOME${p#\$\{HOME\}}" ;;
+  esac
+  case "$p" in /*) abs=/ ;; esac
+  while IFS= read -r -d / seg; do
+    case "$seg" in
+      ''|.) ;;
+      ..) if [ "$n" -gt 0 ]; then out="${out%/*}"; n=$((n - 1)); elif [ -z "$abs" ]; then out="$out/.."; fi ;;
+      *) out="$out/$seg"; n=$((n + 1)) ;;
+    esac
+  done <<< "$p/"
+  if [ -n "$abs" ]; then p="${out:-/}"; else p="${out#/}"; fi
+  printf '%s' "$p" | tr '[:upper:]' '[:lower:]'
+}
+
+# protected_bash_match <path> — prints the entry and returns 0 when a Bash write to <path> must be denied.
+protected_bash_match() {
+  local norm e
+  norm="$(protected_path_normalise "$1")"
+  norm="/${norm#/}/"
+  while IFS= read -r e; do
+    case "$norm" in *"/$e/"*) printf '%s' "$e"; return 0 ;; esac
+  done < <(protected__entries bash)
+  return 1
+}
+
+# protected_bash_mention <text> — prints the first bash entry <text> contains, case-folded, as a substring.
+protected_bash_mention() {
+  local text e
+  text=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  while IFS= read -r e; do
+    case "$text" in *"$e"*) printf '%s' "$e"; return 0 ;; esac
+  done < <(protected__entries bash)
+  return 1
 }
 
 # protected_write_match <path> — 0 when a Write|Edit to <path> must be denied outright.
 protected_write_match() {
-  local norm="/${1#/}" g dir
-  while IFS= read -r g; do
+  local norm e dir
+  norm="$(protected_path_normalise "$1")"
+  norm="/${norm#/}"
+  while IFS= read -r e; do
     for dir in "${LEDGER_ONBOARDING_REL%/*}" "${LEDGER_PERF_REL%/*}"; do
-      # shellcheck disable=SC2254 # the glob is the pattern
-      case "$norm" in */$dir/$g) return 0 ;; esac
+      case "$norm" in */"$dir/$e") return 0 ;; esac
     done
-  done < <(protected__globs write)
+  done < <(protected__entries write)
   return 1
 }

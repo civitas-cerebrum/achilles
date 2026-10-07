@@ -25,10 +25,47 @@ assert_deny "$HOOK" "$(bash_payload 'truncate -s 0 tests/e2e/docs/.ledger-integr
 assert_deny "$HOOK" "$(bash_payload 'yq -i ".a=1" tests/e2e/docs/journey-map.md')" "yq -i in-place edit on journey map" "protected"
 
 assert_deny "$HOOK" "$(bash_payload ': >| tests/e2e/docs/onboarding-status.json')" "clobber redirect into ledger" "protected"
-# Pin the documented false-positive tradeoff: cp is a read-only use of the protected file,
-# but the guard denies it anyway because a mutate verb co-occurs with a protected name.
-# DO NOT 'fix' this — it is an accepted over-deny by design (see header comment).
-assert_deny "$HOOK" "$(bash_payload 'cp tests/e2e/docs/onboarding-status.json /tmp/backup.json')" "accepted false positive: read-only cp of protected file (intentional over-deny)" "protected"
+
+section "protected-artifact-bash-guard: write targets, not mentions"
+# Observed false positive: the sed expression names the approver registry; the file edited is a lib.
+assert_allow "$HOOK" "$(bash_payload "sed -i '' 's/LEDGER_APPROVERS_NAME=.*/LEDGER_APPROVERS_NAME=\".workflow-approvers.json\"/' hooks/lib/ledger.sh")" "sed -i whose expression names the registry, on another file"
+assert_allow "$HOOK" "$(bash_payload 'cp tests/e2e/docs/onboarding-status.json /tmp/backup.json')" "cp FROM the ledger"
+assert_allow "$HOOK" "$(bash_payload 'rm /tmp/junk && cat tests/e2e/docs/onboarding-status.json')" "rm of an unrelated path beside a ledger read"
+assert_allow "$HOOK" "$(bash_payload 'echo "see tests/e2e/docs/journey-map.md" > /tmp/note.txt')" "a protected name inside a redirected string"
+assert_allow "$HOOK" "$(bash_payload 'git commit -m "fix: rm tests/e2e/docs/onboarding-status.json"')" "a protected name inside a commit message"
+assert_allow "$HOOK" "$(bash_payload 'grep -l .workflow-approvers.json hooks/*.sh > /tmp/hits')" "grep for the registry name, redirected elsewhere"
+assert_allow "$HOOK" "$(bash_payload 'echo x 2>&1 >/tmp/log; cat ~/.claude/settings.json')" "fd duplication is not a file target"
+assert_deny "$HOOK" "$(bash_payload "sed -i '' 's/a/b/' hooks/x.sh tests/e2e/docs/.workflow-approvers.json")" "sed -i whose files include the registry" "protected"
+assert_deny "$HOOK" "$(bash_payload 'cp /tmp/x tests/e2e/docs/.workflow-approvers.json')" "cp onto the registry" "protected"
+assert_deny "$HOOK" "$(bash_payload 'cp -t ~/.claude/hooks x.sh')" "cp -t into the hook install" "protected"
+assert_deny "$HOOK" "$(bash_payload 'mv tests/e2e/docs/onboarding-status.json /tmp/x')" "mv away from the ledger (removes it)" "protected"
+assert_deny "$HOOK" "$(bash_payload 'ls | tee -a tests/e2e/docs/journey-map.md')" "tee -a after a pipe" "protected"
+assert_deny "$HOOK" "$(bash_payload 'dd if=/dev/zero of=tests/e2e/docs/.ledger-integrity.json')" "dd of= the integrity sidecar" "protected"
+assert_deny "$HOOK" "$(bash_payload 'echo x 2> tests/e2e/docs/journey-map.md')" "stderr redirect into the journey map" "protected"
+assert_deny "$HOOK" "$(bash_payload 'perl -pi -e "s/a/b/" tests/e2e/docs/adversarial-findings.md')" "perl -pi on the findings ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload 'find tests -name onboarding-status.json -delete')" "find -delete naming the ledger" "protected"
+assert_deny "$HOOK" "$(bash_payload 'echo tests/e2e/docs/onboarding-status.json | xargs rm')" "xargs rm fed the ledger path" "protected"
+assert_deny "$HOOK" "$(bash_payload "bash -c 'echo {} > tests/e2e/docs/onboarding-status.json'")" "bash -c script redirect" "protected"
+assert_deny "$HOOK" "$(bash_payload 'x=$(tee tests/e2e/docs/journey-map.md < /tmp/x)')" "tee inside a command substitution" "protected"
+assert_deny "$HOOK" "$(bash_payload 'sudo rm ~/.claude/settings.json')" "rm behind sudo" "protected"
+assert_deny "$HOOK" "$(bash_payload 'eval "rm tests/e2e/docs/onboarding-status.json"')" "rm inside eval" "protected"
+assert_deny "$HOOK" "$(bash_payload 'bash <<EOF
+rm tests/e2e/docs/onboarding-status.json
+EOF')" "rm in a heredoc fed to bash" "protected"
+assert_allow "$HOOK" "$(bash_payload 'cat > /tmp/notes.md <<EOF
+rm tests/e2e/docs/onboarding-status.json
+EOF')" "the same text in a heredoc written to another file"
+
+section "protected-artifact-bash-guard: spellings that reach a protected file"
+for p in '.CLAUDE/hooks/a.sh' '.cla\ude/hooks/a.sh' '.cla"ude"/hooks/a.sh' ".claude/hoo''ks/a.sh" '.claude//hooks/a.sh' \
+         '.claude/./hooks/a.sh' '.claude/x/../hooks/a.sh' '~/.claude/settings.json' '"$HOME"/.claude/settings.json' \
+         '${HOME}/.claude/settings.json' "\$'.cla\\x75de'/hooks/a.sh" 'tests/e2e/docs/Onboarding-Status.JSON'; do
+  assert_deny "$HOOK" "$(bash_payload "echo x > $p")" "redirect into $p" "protected"
+done
+for p in '.claude/hooksx/a.sh' '.claude/hooks.bak' '.claude/x/../hooksy/a' '.claude/hooks/../skills/a.md' \
+         'tests/e2e/docs/onboarding-status.json.bak' '/tmp/.claude-hooks'; do
+  assert_allow "$HOOK" "$(bash_payload "echo x > $p")" "redirect into near-miss $p"
+done
 
 section "protected-artifact-bash-guard: ALLOW read-only access + unrelated writes"
 assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json')" "read ledger"
@@ -63,3 +100,8 @@ assert_deny "$HOOK" "$(bash_payload 'sed -i "" "s/a/b/" tests/e2e/docs/flake-qua
 assert_allow "$HOOK" "$(bash_payload 'grep -n FLAKE tests/e2e/docs/flake-quarantine.md')" "grep flake-quarantine read → ALLOW"
 # Write-tool append goes through Write|Edit, which this Bash guard never sees.
 assert_allow "$HOOK" "$("$JQ" -n '{tool_name:"Write", tool_input:{file_path:"tests/e2e/docs/flake-quarantine.md", content:"x"}}')" "Write-tool append to flake-quarantine → ALLOW (non-Bash)"
+
+section "protected-artifact-bash-guard: a line too long to split fails closed on a protected name"
+PAD=$(printf 'w%.0s ' $(seq 1 17000))
+assert_deny "$HOOK" "$(bash_payload "echo $PAD; cat tests/e2e/docs/journey-map.md")" "33 KB line naming the journey map → DENY" "protected"
+assert_allow "$HOOK" "$(bash_payload "echo $PAD > /tmp/pad")" "33 KB line naming no protected path → ALLOW"

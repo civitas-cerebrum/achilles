@@ -52,3 +52,20 @@ assert_allow "$H" "$(payload tool_name=Bash command='pnpm exec playwright-cli -s
 
 section "cli-isolation: noise (playwright-cli mentioned inside string)"
 assert_allow "$H" "$(payload tool_name=Bash command='echo \"playwright-cli is great\"')" "playwright-cli inside echo → silent allow"
+# Observed false positive: a quoted argument that contains a separator before the tool name.
+assert_allow "$H" "$(payload tool_name=Bash command="printf 'Run: cd app && playwright-cli open http://x\n' > notes.md")" "printf of a usage line → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command="printf 'step 1; npx playwright-cli open\n'")" "quoted ';' before the tool name → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command="git commit -m 'docs: x | playwright-cli snapshot needs -s'")" "quoted '|' in a commit message → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='cat > notes.md <<EOF
+npx playwright-cli open http://app
+EOF')" "heredoc body written to a file → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='command -v playwright-cli')" "command -v lookup → silent allow"
+
+section "cli-isolation: invocations are judged wherever the shell runs them"
+assert_deny "$H" "$(payload tool_name=Bash command='cd app && npx playwright-cli open http://x')" "after && → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='"playwright-cli" open http://x')" "quoted command word → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='FOO=1 npx playwright-cli open http://x')" "after an assignment → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command="bash -c 'npx playwright-cli open http://x'")" "inside bash -c → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='out=$(npx playwright-cli open http://x)')" "inside \$( ) → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command="echo '-s=composer-j-x-1-c1'; npx playwright-cli open http://x")" "a slug in another command does not count → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=composer-j-x-1-c1 open; npx playwright-cli -s=j-x-1 open')" "every invocation is judged → DENY" "missing role prefix"
