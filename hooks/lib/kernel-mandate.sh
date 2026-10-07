@@ -46,22 +46,13 @@
 #   KERNEL_MANDATE_STATE_DIR explicit state dir
 
 # The binding tag carried by every dispatch prompt. The role name is
-# required; an optional `#NONCE` makes the binding collision-proof and
-# robust against a transcript that quotes another role's tag — the kernel
-# registers each dispatch's nonce→role at dispatch time and resolves the
-# child by the nonce in its own transcript, so mixed parallel dispatch no
-# longer degrades to the unbound fallback whenever the child has its own
-# transcript. Nonce: 4+ chars of [a-z0-9]. Both forms are accepted.
+# required; an optional `#NONCE` (4+ chars of [a-z0-9]) is registered
+# nonce→role at dispatch time, so a child binds exactly by the nonce in its
+# own transcript even under mixed parallel dispatch or a quoted foreign tag.
 KM_ROLE_TAG_RE='<<kernel-mandate-role: [a-z][a-z0-9-]*(#[a-z0-9]{4,})?>>'
-# Anything SHAPED like a role tag. A near miss — `<<kernel-mandate-role:  judge>>`
-# with two spaces, a nonce too short, a stray character — does not match the
-# strict form above, so the dispatch gate's foreign-tag scan never saw it and
-# the prompt was allowed through. It is inert today for exactly one reason:
-# the resolver happens to be precisely as strict as the gate. Round 30 made
-# the argument that this is debt rather than safety, and it is right — the
-# gate's ALLOW is only sound relative to today's resolver, and the two live
-# in different files and run in different processes, which is the one shape
-# of coupling this project has been burned by four times.
+# Anything shaped like a role tag. A near miss (`<<kernel-mandate-role:  judge>>`,
+# a short nonce) fails the strict form; the dispatch gate refuses it rather
+# than rely on the resolver being exactly as strict, in another process.
 KM_ROLE_NEARTAG_RE='<<[[:space:]]*kernel-mandate-role[^>]*>>'
 
 # kernel_mandate_grep_or_empty <grep args…> — grep whose "no match" (exit 1)
@@ -72,18 +63,10 @@ kernel_mandate_grep_or_empty() {
 }
 
 # kernel_mandate_tag_roles — read text on stdin, print the role NAME of every
-# strict role tag in it, one per line, sorted and unique.
-#
-# ONE DECISION, ONE PLACE. This extraction existed twice — in the dispatch
-# gate's tag-purity check and in resolution rung 4b — as two hand-rolled
-# copies of the same sed. They agreed, and the entire security of the bare
-# tag rests on them agreeing: the gate validates the PROMPT it can see, the
-# resolver reads the TRANSCRIPT at a different time in a different process,
-# and nothing anywhere sees both sides. Two copies that must agree, with no
-# test able to catch the day they stop, is the defect this project has
-# recorded under four different names. It is one function now.
-# Exits non-zero when a tool fails, so a caller can tell "no tags" from
-# "could not read the tags".
+# strict role tag in it, one per line, sorted and unique. Shared by the
+# dispatch gate (the prompt) and resolution rung 4b (the transcript), which
+# must agree. Exits non-zero when a tool fails, so a caller can tell "no
+# tags" from "could not read the tags".
 kernel_mandate_tag_roles() {
   kernel_mandate_grep_or_empty -oE "$KM_ROLE_TAG_RE" 2>/dev/null \
     | sed -E 's/^<<kernel-mandate-role: ([a-z][a-z0-9-]*)(#[a-z0-9]+)?>>$/\1/' \
@@ -150,15 +133,9 @@ kernel_mandate_load() {
 
   KM_JQ="$(kernel_mandate__jq)"
   if [ -z "$KM_JQ" ]; then
-    # Returning 1 here means "this project is not governed", and for an
-    # ungoverned project that is true. But jq is how this kernel reads
-    # the payload AND the manifest, so with a manifest present the same
-    # return says "not governed" about a project that is — every role
-    # unenforced, silently, because a dependency is missing. Enforcement
-    # that can be switched off by uninstalling a tool is not enforcement.
-    # The manifest is located here by file test alone, which is all that
-    # is possible without jq and all that is needed to tell the two
-    # states apart.
+    # Without jq nothing can be read, but with a manifest present returning
+    # "not governed" would silently unenforce every role. The manifest is
+    # located by file test alone, which needs no jq.
     local probe
     probe="${KERNEL_MANDATE_MANIFEST:-$( { git rev-parse --show-toplevel 2>/dev/null || pwd; } )/.claude/kernel-mandate.json}"
     if [ -f "$probe" ]; then
@@ -175,75 +152,22 @@ kernel_mandate_load() {
   KM_PARENT_TOOL_USE_ID=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.parent_tool_use_id // empty' 2>/dev/null || echo "")
   KM_TRANSCRIPT=$(printf '%s' "$KM_INPUT" | "$KM_JQ" -r '.transcript_path // empty' 2>/dev/null || echo "")
 
-  # WHERE THE MANIFEST IS, and this is the most important question in
-  # the file: every axis in this kernel is dead code the moment the
-  # answer is "nowhere". Not-found means the project never opted in,
-  # which means ALLOW — so a wrong answer here does not deny anything,
-  # it silently ungoverns everything, with no deny, no warning and no
-  # line in the decision log.
-  #
-  # It used to be a POINT LOOKUP keyed on git:
-  #
-  #     KM_ROOT=$(cd "$KM_CWD" && git rev-parse --show-toplevel || echo "$KM_CWD")
-  #     KM_MANIFEST="$KM_ROOT/.claude/kernel-mandate.json"
-  #
-  # which reads as "the project root", and is not. It is an assumption
-  # that repo-root equals project-root, documented nowhere as a
-  # requirement, and false for the two most ordinary ways code sits on
-  # disk. Round 27 demonstrated both against the benchmark's own
-  # manifest:
-  #
-  #   a governed project checked out inside a larger repo — git answers
-  #   with the OUTER root, the manifest is not there, and the reviewer,
-  #   a role with no write grants at all, was allowed to overwrite the
-  #   manifest itself. The root of trust, rewritable by the most
-  #   restricted role in the manifest — not by defeating a check, but by
-  #   making every check unreachable;
-  #
-  #   a non-git project with cwd one directory down — same silence.
-  #
-  # So discovery WALKS UP, the way every other tool finds its own
-  # config, and stops at the first `.claude/kernel-mandate.json`. The
-  # directory holding it is the project root, which makes the root a
-  # consequence of where the law is rather than a guess that the law
-  # will be where git says.
-  #
-  # Round 10 swept "is this kernel applicable here?" and fixed four
-  # instances — a nonexistent cwd, a relative cwd, a missing jq, an
-  # unimplemented version. This is a fifth, and the one that needed no
-  # adversary at all: only a project that lives inside a repo.
+  # Where the manifest is decides everything: not-found means ALLOW for
+  # every axis. Discovery walks up from cwd and stops at the first
+  # `.claude/kernel-mandate.json`, whose directory is the project root; a git
+  # toplevel lookup misses projects nested in a larger repo or outside git.
   if [ -n "${KERNEL_MANDATE_MANIFEST:-}" ]; then
     KM_MANIFEST="$KERNEL_MANDATE_MANIFEST"
     KM_ROOT=$(kernel_mandate_physical_root)
   else
     local km_dir km_found=""
     km_dir=$(cd "$KM_CWD" 2>/dev/null && pwd -P 2>/dev/null || printf '%s' "$KM_CWD")
-    # Bounded by construction: each step drops a path component, so the
-    # walk terminates at `/` whatever it is handed. A relative or
-    # nonexistent cwd falls through to the not-found branch, where the
-    # gate's own cwd-fault check (round 10) reports it properly.
-    #
-    # A BROKEN MANIFEST IS A DOWNGRADE, NOT A STOP. The walk used to
-    # halt at the first `.claude/kernel-mandate.json` that EXISTED. A
-    # present-but-unparseable manifest is a distinct state further down:
-    # mutations fail closed, but reads stay open so the file can be
-    # repaired — sound for the case it was written for, an operator who
-    # broke their own JSON.
-    #
-    # It is not sound for a file that arrives from below. Round 44 put
-    # eight bytes of non-JSON at `tests/e2e/.claude/kernel-mandate.json` and
-    # a call rooted there read the whole filesystem: the nearest
-    # manifest was broken, so the outer manifest — valid, and the actual
-    # law of the project — was never consulted at all. Writing that file
-    # is refused now, on every channel; this is the second half, because
-    # a repair path that only ever needs to apply to the OUTERMOST
-    # manifest should not be reachable by shadowing it.
-    #
-    # So the walk stops at the first manifest that PARSES, and remembers
-    # the first one it merely FOUND. A lone broken manifest still lands
-    # in the fail-closed repair state exactly as before — nothing outer
-    # exists to fall back to — while a broken inner one is simply
-    # ignored in favour of the law above it.
+    # Bounded: each step drops a path component, so the walk ends at `/`.
+    # A relative or nonexistent cwd falls through to not-found, where the
+    # gate's cwd-fault check reports it.
+    # The walk stops at the first manifest that PARSES and remembers the first
+    # one found. A broken inner manifest must not shadow the outer law (its
+    # repair path would open reads); a lone broken one is the repair state.
     local km_first=""
     case "$km_dir" in
       /*)
@@ -264,24 +188,10 @@ kernel_mandate_load() {
       KM_ROOT="$km_found"
       KM_MANIFEST="$KM_ROOT/.claude/kernel-mandate.json"
     else
-      # A GIT WORKTREE IS A SIBLING, NOT A DESCENDANT. The walk above goes
-      # UP from cwd, and a worktree at <repo>/wt-a shares history with
-      # <repo>/main without sitting under it — so a manifest the operator
-      # keeps untracked (gitignored, the ordinary way to hold a local
-      # policy file) exists in main and in no worktree. Round 57 checked
-      # a worktree out for a parallel implementer and read `.env` from it:
-      # the walk found nothing, "nothing" means "never opted in", and the
-      # kernel wrote its state directory there and governed nothing.
-      #
-      # Parallel workers in worktrees is the ordinary shape of a multi-
-      # agent build, and the checkout an implementer is handed must not
-      # be the one place the law does not reach. So: no manifest above
-      # cwd, but cwd is inside a worktree → the main worktree's manifest
-      # is the law, and this checkout's root is the base its scopes
-      # resolve against. Same manifest, applied to this tree.
-      #
-      # The fallback requires the manifest to PARSE, like the walk: a
-      # broken file in main is not a reason to quietly govern nothing.
+      # A git worktree is a sibling of the main checkout, not a descendant, and
+      # an untracked manifest exists only in main. With no manifest above cwd
+      # inside a worktree, the main worktree's manifest is the law and this
+      # checkout's root is the base its scopes resolve against. It must parse.
       KM_ROOT=$(kernel_mandate_physical_root)
       KM_MANIFEST="$KM_ROOT/.claude/kernel-mandate.json"
       local km_common km_main
@@ -309,14 +219,8 @@ kernel_mandate_load() {
   else
     local version
     version=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r '.kernelMandateVersion // empty' 2>/dev/null || echo "")
-    # A version this kernel does not implement used to be treated as
-    # inactive, on the reasoning that half-enforcing grants you do not
-    # understand is worse than not enforcing them. The first half of that
-    # is right and the conclusion is not: a project that ships
-    # `kernelMandateVersion: 2` to an older kernel got NO enforcement and no
-    # indication of it, which is the one outcome worse than both. Refuse
-    # instead, and name the mismatch — the operator can then upgrade or
-    # opt out deliberately.
+    # An unimplemented manifest version is refused by name, not treated as
+    # inactive: silently enforcing nothing is worse than either alternative.
     if [ "$version" != "1" ]; then
       kernel_mandate__emit_fixed_deny "[BLOCKED] kernel-mandate cannot enforce this project: its manifest declares a kernelMandateVersion this kernel does not implement (this kernel implements version 1). Enforcing grants the kernel cannot interpret would be unsound, and ignoring them would leave every role unenforced without saying so. Upgrade the kernel-mandate kernel to match the manifest, correct the manifest's kernelMandateVersion, or set KERNEL_MANDATE=0 to run this session ungoverned on purpose."
     fi
@@ -332,22 +236,9 @@ kernel_mandate_load() {
 # Role resolution ladder
 # ---------------------------------------------------------------------------
 
-# An agent id becomes a FILENAME, and a filename is where two distinct
-# ids can become one. `tr -c` maps every unsafe character to `_`, so
-# `a/b` and `a:b` both land on `a_b` — and a binding file is what says
-# which role an agent is. Two agents sharing one file is one agent
-# inheriting the other's role.
-#
-# Not reachable today: agent ids are host-assigned and this host assigns
-# safe ones. Round 27 flagged it as a sharp edge rather than an escape,
-# and it is worth removing while it is still cheap, because the day a
-# host starts putting a `/` or a `:` in an id is not a day anyone will
-# connect to this function.
-#
-# An id that needs no substitution keeps its own name — so every binding
-# already on disk, and every test that seeds one by hand, is unchanged.
-# Only the ids that WOULD collide grow a digest of the original, which
-# is exactly the set where the collision lives.
+# An agent id becomes a filename, and `tr -c` maps `a/b` and `a:b` to the
+# same `a_b`, which would share one role binding. Ids that need no
+# substitution keep their name; only those that would collide gain a digest.
 kernel_mandate__sanitize_id() {
   local raw="$1" safe
   safe=$(printf '%s' "$raw" | tr -c 'a-zA-Z0-9_-' '_')
@@ -415,22 +306,9 @@ kernel_mandate_resolve_role() {
   KM_ROLE=""
   KM_ROLE_STATE="ungoverned"
 
-  # Rung 1 — no agent_id: this is the top-level session.
-  #
-  # TWO FACTS, NOT ONE. This branch used to fold "declares no
-  # mainSessionRole" (ungoverned on purpose) and "names a role that does
-  # not exist" (a typo) into a single `else` that silent-allowed. One
-  # character in a role name — `orchestratorr` — bought total
-  # ungovernance: exit 0, zero bytes of stdout, no state directory, no
-  # log line, `rm -rf /` permitted. Indistinguishable, to an operator, from
-  # a project that was never governed.
-  #
-  # That was inconsistent with this kernel's own adjacent design: an
-  # UNPARSEABLE manifest fails closed. A corrupt JSON file was safer than
-  # a misspelled name. The manifest holds both facts; only one was read.
-  #
-  # A named role that does not resolve is a MISCONFIGURATION, and a
-  # misconfigured gate is not an absent gate. It fails closed and says so.
+  # Rung 1 — no agent_id: this is the top-level session. A named
+  # mainSessionRole that does not exist is a misconfiguration and fails
+  # closed, distinct from declaring none (ungoverned on purpose).
   if [ -z "$KM_AGENT_ID" ]; then
     KM_ROLE=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r '.settings.mainSessionRole // empty' 2>/dev/null || echo "")
     if [ -z "$KM_ROLE" ]; then
@@ -456,22 +334,10 @@ kernel_mandate_resolve_role() {
     KM_ROLE=""
   fi
 
-  # Rung 2b — the host's own agent_type. Every subagent hook payload
-  # carries agent_type: the name of the agent DEFINITION the child was
-  # dispatched as, owned by the host, in the same payload as the
-  # agent_id already read above. Where a role declares `agentTypes`, this
-  # is the most authoritative identity there is — it needs no transcript
-  # tag, no nonce this kernel minted, no dispatch record that a cleared
-  # state directory would lose. The judge who reviewed this kernel called
-  # reading it "the single best architectural lever you have"; the field
-  # sat in the payload, unread, for 55 rounds while `explain` synthesized
-  # it into its own fixture.
-  #
-  # It sits AFTER the cached binding (that is just this rung's own prior
-  # answer, memoised) and BEFORE the prose rungs, which remain as
-  # fallback for roles that declare no types. A type resolves to at most
-  # one role — validate refuses a manifest that lists one twice — so a
-  # match is unambiguous. The binding is cached like every other rung's.
+  # Rung 2b — the host's own agent_type: the agent definition the child was
+  # dispatched as, owned by the host, needing no tag, nonce or registry.
+  # After the cached binding, before the prose rungs. validate refuses a type
+  # listed under two roles, so a match is unambiguous; it is cached.
   if [ -n "$KM_AGENT_TYPE" ]; then
     local type_role
     type_role=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r --arg t "$KM_AGENT_TYPE"       'first(.roles | to_entries[] | select(.value.agentTypes // [] | index($t)) | .key) // empty'       2>/dev/null || echo "")
@@ -503,25 +369,11 @@ kernel_mandate_resolve_role() {
   # out before tag extraction.
   if [ -n "$KM_TRANSCRIPT" ] && [ -f "$KM_TRANSCRIPT" ]; then
     local user_line user_tags nonce_roles distinct_nonce_role tags
-    # A role tag only counts when it comes from the DISPATCH PROMPT.
-    #
-    # Transcript lines of type "user" are not all operator-authored: a
-    # tool_result is delivered as a user line whose content is whatever
-    # the agent just fetched. An adversarial reviewer used exactly that
-    # to promote an unbound agent to `judge` by having it READ a file
-    # containing the literal string `<<kernel-mandate-role: judge>>` — a
-    # string that appears in this project's own documentation, so it is
-    # plantable and guessable. Any line carrying a tool_result (or tool
-    # output/use) is therefore excluded before tags are extracted, and
-    # only the FIRST such qualifying line is considered: the dispatch
-    # brief is the child's opening turn, so later user turns cannot
-    # re-bind an agent either.
-    # One awk selects that line and stops, so a failure is a failure:
-    # the grep|grep|head chain this replaces hid one behind `|| echo ""`
-    # (and `head` closing the pipe would have read as one under
-    # pipefail). A tool that fails here used to mean "no tags", which
-    # left the agent unbound — and unboundAgentPolicy's default is the
-    # union of every role's read scope.
+    # A role tag only counts when it comes from the dispatch prompt: the first
+    # user line that is not a tool_result (fetched content arrives as user
+    # lines, and docs contain tags). Later user turns cannot re-bind.
+    # One awk selects that line and stops, so a tool failure is a failure, not
+    # "no tags" (which would leave the agent on the wider unbound policy).
     user_line=$(awk '/"(type|role)"[[:space:]]*:[[:space:]]*"user"/ && !/"(tool_result|tool_use|tool_output)"|"toolUseResult"/ { print; exit }' "$KM_TRANSCRIPT" 2>/dev/null) \
       || kernel_mandate__deny_tag_screen
     user_tags=$(printf '%s\n' "$user_line" | kernel_mandate_grep_or_empty -oE "$KM_ROLE_TAG_RE") \
@@ -559,47 +411,13 @@ kernel_mandate_resolve_role() {
     tags=$(printf '%s\n' "$user_tags" | kernel_mandate_tag_roles) || kernel_mandate__deny_tag_screen
     if [ -n "$tags" ] && [ "$(printf '%s\n' "$tags" | wc -l | tr -d ' ')" = "1" ]; then
       KM_ROLE="$tags"
-      # CORROBORATE THE BARE TAG AGAINST WHAT WAS ACTUALLY DISPATCHED.
-      #
-      # Rungs 1-4a anchor identity to something the caller demonstrably
-      # owns: a binding recorded for this agent_id, a parent tool_use_id
-      # naming its own dispatch, a nonce this kernel itself minted and
-      # wrote to the registry. This rung anchored it to a string printed
-      # in a file, corroborated by nothing — and rounds 29 and 30
-      # independently made the same argument about it: the FORGEABLE
-      # path was the DEFAULT path, which is this project's own
-      # anti-pattern ("a gate whose failure mode is ALLOW is not a
-      # gate") pointed at identity instead of at path scope.
-      #
-      # Requiring corroboration unconditionally would break the
-      # documented plain-tag flow wherever it is legitimate, which is
-      # why round 29 left it alone and said so. The middle is sound and
-      # costs nothing: corroborate WHEN CORROBORATION IS POSSIBLE. If
-      # this session has live dispatch records the kernel knows which
-      # roles were actually summoned, and a tag naming any other role is
-      # a claim it can refuse on evidence. If there are none — no
-      # dispatcher in play, or a human driving with tags by hand —
-      # there is nothing to check against and the tag stands, exactly as
-      # before.
-      #
-      # `strict` refuses an uncorroborated tag outright; `auto` refuses
-      # only when the registry can contradict it. Either way the fall is
-      # to unbound, where unboundAgentPolicy decides — a degradation,
-      # not a break.
-      #
-      # AND THE DEFAULT IS `off`, which is a decision worth being
-      # explicit about rather than burying. Two reviewers argued the
-      # believe-on-sight default is wrong and I think they are right on
-      # the merits. I did not flip it, because `auto` refuses any
-      # tag-bound agent whose dispatch was never registered — a session
-      # resumed after the state directory was cleared, a child spawned
-      # by something that is not this gate, a tag placed by hand — and
-      # silently narrowing those into unbound is a functional break I
-      # should not choose on a user's behalf from inside a review loop.
-      # What was mine to fix was that the choice had no name and no
-      # switch. It has both now, `validate` recommends `auto` for any
-      # manifest that has a dispatcher, and the argument is recorded in
-      # docs/benchmark.md rather than settled quietly.
+      # Corroborate the bare tag against what was actually dispatched: it is a
+      # string in a file, unlike the rungs above. `strict` refuses an
+      # uncorroborated tag; `auto` refuses only when live dispatch records
+      # contradict it. Either way the agent falls to unbound.
+      # Default `off`: `auto` would unbind resumed sessions with a cleared state
+      # dir, hand-placed tags and children spawned outside this gate. `validate`
+      # recommends `auto` for any manifest with a dispatcher (docs/benchmark.md).
       local tag_policy tag_ok tag_reg tag_now
       tag_policy=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r '.settings.roleTagCorroboration // "off"' 2>/dev/null || echo "off")
       if [ "$tag_policy" != "off" ]; then
@@ -627,35 +445,9 @@ kernel_mandate_resolve_role() {
   fi
 
   # Rung 5 — registry claim (unambiguous single-role in-flight set).
-  #
-  # OFF BY DEFAULT since round 29, and the reason is worth stating
-  # exactly, because every other rung is a different KIND of answer.
-  # Rungs 1-4 answer "this agent is role X": a binding file recorded for
-  # this agent_id, a parent tool_use_id that names this agent's own
-  # dispatch, a tag on this agent's own transcript. Rung 5 answers
-  # "some single role is in flight, therefore you are it" — an identity
-  # oracle keyed on AMBIENT state, which never checks that the caller is
-  # the child of that dispatch. And it persists the binding.
-  #
-  # Round 29 demonstrated the consequence: with a judge legitimately
-  # dispatched and in flight, an unrelated fresh agent — not the child,
-  # no parent, no tag — wrote the ledger as the judge. That is the one
-  # direction this project had not found before: a rung resolving a role
-  # MORE privileged than the caller holds.
-  #
-  # It was safe in practice only by an emergent property nobody had
-  # written down as load-bearing: registration runs in the parent's
-  # PreToolUse, before the child is spawned, so a real child always has
-  # its own entry by the time it calls. Rounds 3, 4 and 22 are all about
-  # what happens to an undocumented invariant, and a host that ever
-  # reused an agent_id or let a call precede its own registration would
-  # turn this into a live escalation with nothing to catch it.
-  #
-  # So it is opt-in. Turning it off does not break a project, it
-  # DEGRADES it: an agent that would have been guessed at is now
-  # unbound, and unboundAgentPolicy — which exists for exactly that
-  # caller — decides. That is the safe direction, and the deny an
-  # operator sees names the setting.
+  # Opt-in: it binds on ambient state ("one role is in flight, so you are
+  # it") without checking the caller is that dispatch's child. Off, such an
+  # agent is unbound and unboundAgentPolicy decides.
   local claim_policy
   claim_policy=$(printf '%s' "$KM_MANIFEST_JSON" | "$KM_JQ" -r '.settings.ambientDispatchClaim // "off"' 2>/dev/null || echo "off")
   if [ "$claim_policy" = "on" ]; then
@@ -717,32 +509,19 @@ kernel_mandate_register_dispatch() {
 # ---------------------------------------------------------------------------
 # Quote-aware shell word handling
 # ---------------------------------------------------------------------------
-# The kernel used to tokenise a command segment by deleting every quote
-# character and splitting on whitespace. That conflates two things the
-# shell keeps strictly apart: a quoted word is a LITERAL, an unquoted one
-# is a pattern the shell expands. Deleting the quotes made
-# `find tests -name "*.json"` look like a read of every .json file in the
-# project — a false deny on one of the most ordinary commands there is.
-#
-# These two helpers restore the distinction. Neither is a full shell
-# parser, and neither needs to be: both fail toward "treat it as
-# unquoted", which is the conservative direction (an unquoted word is
-# expanded and scope-checked; a quoted one is only checked literally).
+# A quoted word is a literal; an unquoted one is a pattern the shell
+# expands (`find tests -name "*.json"` reads no json file). Neither helper
+# is a full shell parser; both fail toward "unquoted", which is expanded
+# and scope-checked.
 
 # kernel_mandate_shell_words — read one segment on stdin, emit one word per
 # line prefixed with its quoting state:
 #   Q<word>  every character came from inside quotes -> the shell will
 #            NOT glob-expand it; it names exactly this literal
 #   U<word>  at least one character was unquoted -> expansion applies
-# Unquoted '>' also separates words, matching the redirection split the
-# caller previously did with sed (a '>' inside quotes is just text).
-# The whole input is one record, matching kernel_mandate_unquoted_view. With
-# awk's default newline record separator the two scanners disagreed about
-# a quoted string spanning newlines: this one reset its quote state at
-# every line, so `echo "row1\n.env\nrow3" > notes.txt` had `.env` read as
-# an unquoted operand and denied as an out-of-scope read, when bash only
-# ever writes it as text. Two parsers of the same command must not
-# disagree about where the quotes are.
+# Unquoted '>' also separates words (a '>' inside quotes is just text).
+# The whole input is one record, as in kernel_mandate_unquoted_view, so the
+# two scanners agree about a quoted string spanning newlines.
 kernel_mandate_shell_words() {
   awk 'BEGIN { RS = "\034" }
   {
@@ -786,16 +565,11 @@ kernel_mandate_shell_words() {
 #   single  blank only single-quoted runs — $… and `…` keep expanding
 #           inside double quotes, so expansion checks must see in there
 #   redir   keep every character EXCEPT that < and > inside quotes lose
-#           their meaning. Redirection is the one thing that must be read
-#           from a view where quoted text cannot pose as syntax and
-#           quoted PATHS survive: `grep '=>' f` redirects nothing, while
+#           their meaning, so `grep '=>' f` redirects nothing while
 #           `echo x > "docs/ledger.json"` still names its target.
-#   split   keep every character EXCEPT that the command separators
-#           ; | & and newline lose their meaning INSIDE quotes, each
-#           swapped for a distinct placeholder the caller restores after
-#           splitting. `echo "a; b"` is one command, not two, and
-#           splitting it into two produced denies on ordinary quoted text
-#           containing a semicolon — which is most lines of JavaScript.
+#   split   keep every character EXCEPT that ; | & and newline inside
+#           quotes are swapped for distinct placeholders the caller
+#           restores after splitting: `echo "a; b"` is one command.
 # The whole input is one record (RS is a byte no command contains), so a
 # quoted NEWLINE is seen by the scanner rather than being pre-split by
 # awk. That matters only for 'split', which is the mode that runs on a
@@ -809,11 +583,7 @@ kernel_mandate_unquoted_view() {
       # A backslash escapes the next character everywhere except inside
       # single quotes, where bash does no escaping at all. The escaped
       # character is literal TEXT and can never be syntax — not a quote,
-      # not a separator, not a redirect. Missing this was an escape of my
-      # own making: `echo \" ; cat .env` reads as an opening quote to a
-      # naive scanner, which then swallows the `;` and hides `cat .env`
-      # inside a string bash never saw. It also over-split `"a\" ; b"`,
-      # where the escaped quote does NOT end the string.
+      # not a separator, not a redirect: `echo \" ; cat .env` is two commands.
       if (c == "\\" && q != "'"'"'" && i < n) {
         e = substr(s, i + 1, 1)
         if (mode == "split") {
@@ -865,13 +635,8 @@ kernel_mandate_unsplit() {
 }
 
 # kernel_mandate_quotes_balanced — 0 when every quote in the input on stdin
-# is closed. An unterminated quote means the scanner's idea of what is
-# text and what is syntax has diverged from any shell's, and everything
-# after the stray quote reads as inert string. bash refuses such a
-# command outright ("unexpected EOF while looking for matching") so
-# nothing is lost by refusing it here too — and resting on "the shell
-# will error anyway" is exactly the assumption that becomes an escape
-# the day the runtime differs.
+# is closed. After a stray quote the scanner reads the rest as inert text;
+# bash refuses such a command anyway, so refusing it here loses nothing.
 kernel_mandate_quotes_balanced() {
   awk 'BEGIN { RS = "\034"; ORS = "" }
   {
@@ -898,22 +663,9 @@ kernel_mandate_glob_to_ere() {
   # Escape the regex metacharacters in the LITERAL part of the glob, so
   # `docs/e2e-ledger.json` matches that file and not `docs/e2e-ledgerXjson`.
   # `*` and `?` are deliberately NOT escaped — they are the glob operators
-  # the conversion below turns into character classes.
-  #
-  # This was a sed bracket expression, and it escaped NOTHING. `s/[.[\]…/`
-  # does not mean "the class containing ] "; POSIX reads it as the class
-  # `{. [ \}` followed by the literal text `()+{}^$|\]`, which never
-  # occurs — so every metacharacter in every manifest path scope was a
-  # live regex operator, silently, in the one function every path
-  # decision flows through. Round 24 found it by testing the function
-  # character by character rather than reading it.
-  #
-  # The replacement is pure bash, which is the real lesson rather than a
-  # corrected class: a bracket expression whose meaning depends on where
-  # `]` sits and how many backslashes survive three layers of quoting is
-  # a construct that can be wrong while looking right, and this one was,
-  # for twenty-three rounds. A `case` cannot be. It is also one fewer
-  # execve in the hottest function in the kernel.
+  # the conversion below turns into character classes. A `case` per
+  # character, not a sed bracket expression whose meaning depends on where
+  # `]` sits; it also saves an execve in the hottest function here.
   for (( i = 0; i < ${#g}; i++ )); do
     c="${g:i:1}"
     case "$c" in
@@ -939,52 +691,16 @@ kernel_mandate_glob_to_ere() {
 
 # kernel_mandate_url_authority <url> — print the authority a client will
 # actually connect to (host[:port], lowercased), or nothing when the
-# string is not a network URL.
-#
-# The whole point is that this is a PARSER problem and a command group is
-# a regex. Round 33 pointed a grant reading `^curl … http://localhost:4173`
-# at `http://localhost:4173@example.com/` and curl connected to
-# example.com — `localhost:4173` is USERINFO, not a host. The visible
-# prefix and the destination are different strings, which is exactly the
-# shape a prefix match cannot see.
+# string is not a network URL. A parser, because a prefix match is fooled
+# by userinfo (`http://localhost:4173@example.com/` dials example.com).
 # kernel_mandate_is_network_url <string> — true when the string names a
-# REMOTE resource. ONE DECISION, ONE PLACE, and case-insensitively.
-#
-# This was three copies of a lowercase prefix list — here, in the
-# WebFetch arm, and in the MCP arm — and all three agreed on being
-# wrong. RFC 3986 says a scheme is case-insensitive and curl normalises
-# it before dialling, so `HTTP://evil.example/` is a URL to every client
-# and was a URL to none of these lists. Round 35 appended one to an
-# otherwise-permitted curl and shipped an in-scope file to a host the
-# manifest forbids; the identical command in lowercase was correctly
-# refused. A confident DENY for `http://` beside a silent ALLOW for
-# `HTTP://` is worse than no check, because it looks exactly like one.
-#
-# Every network fix since round 33 — userinfo, lookalike hosts, the
-# override flags, the proxy environment — sits downstream of this
-# function, so every one of them inherited the blindness. That is why
-# this is a shared predicate now rather than a fourth list.
+# REMOTE resource. Shared by every network check, and case-insensitive:
+# RFC 3986 schemes are, and curl normalises `HTTP://` before dialling.
 kernel_mandate_is_network_url() {
   case "$1" in *://*) : ;; *) return 1 ;; esac
-  # INVERTED, after round 36. This was an ALLOWLIST of network schemes,
-  # and an unrecognised scheme therefore meant "not a network URL" —
-  # skipped, no authority parsed, no scope checked. The machine's own
-  # curl compiles `gophers`, `smbs`, `rtmp` and `rtmps`; none was on the
-  # list, and `curl … rtmp://127.0.0.1:9999/live/x` opened a live
-  # connection to a forbidden host under a kernel ALLOW.
-  #
-  # The shape was wrong by this project's own stated principle, which
-  # the network scan two functions away already follows: exempt the
-  # known-safe and check everything unknown. This did the opposite, and
-  # an unknown scheme failed OPEN. Worse, it coupled the kernel to
-  # libcurl's compiled protocol table — a list some other tool maintains
-  # and this one must match — which is the coupling the benchmark has
-  # been burned by repeatedly.
-  #
-  # So: anything spelled `scheme://…` is a destination, unless the
-  # scheme is one of the few that names something LOCAL or INERT. A
-  # scheme nobody has heard of is checked, because the client that dials
-  # it is more dangerous than the one that does not exist.
+  # Any `scheme://…` is a destination unless the scheme names something
+  # local or inert. An allowlist of network schemes fails open on schemes
+  # curl supports and it does not know (`rtmp`, `gophers`, `smbs`).
   case "$(printf '%s' "${1%%://*}" | tr 'A-Z' 'a-z')" in
     file|data|blob|about|javascript|chrome|chrome-extension|resource|jar|classpath|filesystem) return 1 ;;
     *) return 0 ;;
@@ -1018,8 +734,7 @@ kernel_mandate_url_userinfo() {
 # authority match one of the manifest's network entries? An entry with no
 # port matches any port on that host; an entry with a port must match
 # exactly. A leading `*.` matches subdomains, and nothing else does —
-# `localhost:4173` must NOT match `localhost:4173.evil.com`, which is the
-# other half of round 33.
+# `localhost:4173` must NOT match `localhost:4173.evil.com`.
 kernel_mandate_authority_in_scope() {
   local auth="$1" patterns="$2" host port entry ehost eport
   [ -n "$auth" ] || return 1
@@ -1196,21 +911,9 @@ kernel_mandate_lexical_relpath() {
 # `relative` tries only relative patterns.
 kernel_mandate_path_in_scope() {
   local rel="$1" patterns="$2" mode="${3:-}" glob ere lit rlit
-  # A PATH IS ONE STRING; `grep` MATCHES ONE LINE AT A TIME. Every path
-  # decision in this kernel flows through here, and the match was
-  # line-oriented, so a path containing a newline was "in scope" if ANY
-  # of its lines matched:
-  #
-  #   Write "/etc/evil\ntests/e2e/ok"                       ->  ALLOW
-  #   Read  "/etc/passwd\ntests/e2e/ok"                     ->  ALLOW
-  #   judge Write "…/.claude/kernel-mandate.json\ndocs/e2e-ledger.json" -> ALLOW
-  #
-  # Round 47 reported it as latent — the file actually opened carries the
-  # newline, so it is hard to aim — and a soundness bug in the one
-  # function every scope check calls is not something to leave standing
-  # on the strength of "hard to aim". No legitimate path in this system
-  # contains a newline, and a scope test is a whole-string question, so
-  # it is answered as one.
+  # A path is one string and grep matches line by line, so a path containing
+  # a newline would be in scope if any line matched. No legitimate path has
+  # one; the scope test is a whole-string question.
   case "$rel" in *$'\n'*) return 1 ;; esac
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
@@ -1252,28 +955,10 @@ kernel_mandate_log() {
   local LC_ALL=C
   mkdir -p "$KM_STATE_DIR" 2>/dev/null || return 0
 
-  # A CAP ON A RENDERER'S INPUT IS NOT A CAP ON ITS OUTPUT. This used to
-  # truncate `detail` at 4 000 characters and call the line bounded. It
-  # is not: JSON renders a control character as \uXXXX, so an agent
-  # spelling its command with 3 900 of them turned one audit entry into
-  # 23 520 bytes — measured, against the real kernel, 183x an ordinary
-  # 128-byte line. Every byte of it is attacker-chosen, and `detail` is
-  # the one field an agent writes.
-  #
-  # Two consequences, and the second is the one that matters. The log
-  # bloats without limit, which is merely rude. And an append larger
-  # than the buffer the writer flushes in is issued as SEVERAL write()
-  # calls, so two of them interleave and BOTH lines are destroyed —
-  # including the line belonging to whichever other role was logging at
-  # that moment. A 24 KB line reliably shreds under concurrent appends;
-  # a sub-4 KB one does not. That makes the size of an audit record an
-  # integrity property of the audit trail, not a cosmetic one, and it
-  # puts it in reach of the role being audited.
-  #
-  # So: flatten control characters, which carry no forensic value and
-  # are the whole source of the expansion, then bound the RENDERED line
-  # and shrink until it fits. Bounding the thing that is actually
-  # written is the only version of this that is checkable.
+  # Bound the RENDERED line, not the input: JSON expands each control
+  # character to \uXXXX, and an append larger than the writer's buffer is
+  # split into several write() calls that interleave with concurrent roles.
+  # Control characters are flattened, then the line shrinks until it fits.
   detail=$(printf '%s' "$detail" | tr '\000-\037\177' '?')
   [ "${#detail}" -le 4000 ] || detail="${detail:0:4000} [truncated]"
   local guard=0
@@ -1297,63 +982,22 @@ kernel_mandate_log() {
 
 # kernel_mandate_awk_sed_verdict <command-word> <segment-text>
 # Prints "indirect" when an awk/sed program is NOT provably inert, and
-# nothing otherwise.
-#
-# awk and sed are interpreters. Their programs can spawn processes
-# (`system()`, `cmd | getline`, `print | cmd`, sed's `e`) and open files
-# (`getline < f`, `print > f`, sed's `r`/`w`), so a role granted either
-# holds an unrestricted shell unless something says otherwise.
-#
-# The first version of this check screened for those constructs and
-# scope-checked the literal beside them, letting an in-scope path
-# through. That is unsound, and a reviewer showed it in eleven
-# characters: put the literal in a variable — `f=".env"; getline l < f`
-# — and every pattern sees nothing, because the operand of an awk
-# construct is an arbitrary expression. Round 8 had already ruled on
-# this shape: a channel that turns data into execution must be closed,
-# not pattern-matched.
-#
-# So the question is inverted here. Inert is what must be provable, and
-# anything else is refused whatever it names — which is the only form of
-# the check that indirection cannot walk around. Roles that genuinely
-# need the constructs opt in through bash.permit, like every other
-# indirection in that list.
+# nothing otherwise. Their programs can spawn processes and open files,
+# and an operand can be any expression (`f=".env"; getline l < f`), so
+# inertness must be proved; roles that need the constructs use bash.permit.
 # kernel_mandate_interpreter_inline <command-word> <segment-text>
 # Prints "indirect" when an interpreter is being handed code to run.
-#
-# The screen this replaces matched the code-bearing flag as an exact
-# whole-word token — `-c`, `-e`, `-p`, `--eval`. Every one of these
-# interpreters also accepts that letter BUNDLED with its other short
-# options, as a single argv token that equals none of them:
-#
-#     perl -ne 'system("cat .env")'      python3 -Ic 'print(open(".env").read())'
-#     perl -pe '…'   ruby -ne '…'        python3 -uc '…'
-#
-# so the screen saw nothing and an interpreter grant became an
-# unrestricted shell. That is the same defect as `sort -oFILE` and
-# `grep -f.env` — an exact spelling where a cluster was possible — and
-# the third axis to have had it.
-#
-# Matching is therefore on the CLUSTER: any short-option group ending in
-# a letter that means "here is code" or "load this module". The command
-# word must be the interpreter itself; wrappers that hide it (`env`,
-# `timeout`, `sh -c`) are denied by their own entries in the list.
+# Matches the short-option CLUSTER (`perl -ne`, `python3 -Ic`), not an
+# exact `-c`/`-e` token. The command word must be the interpreter itself;
+# wrappers (`env`, `timeout`, `sh -c`) are denied by their own entries.
 kernel_mandate_interpreter_inline() {
   local cmd="$1" seg="$2" base value_letters code_letters
   base="${cmd##*/}"
-  # Each interpreter's short options fall into three kinds: booleans,
-  # options that CONSUME a value, and options whose value IS code. Only
-  # the last matters, and the three lists differ per interpreter — `-E`
-  # is code for perl and a boolean for python, so one shared letter class
-  # denies ordinary `python3 -sE script.py` while missing `perl -E`.
-  #
-  # The code letters are split in two, because the two are not the same
-  # risk and a role should not have to accept one to get the other.
-  # `-c`/`-e` run a program the AGENT wrote on the command line;
-  # `-m`/`-r` run or preload an installed module, which the agent did
-  # not author. A Python test role needs `python -m pytest` and has no
-  # business with `python -c`, and until this split permitting one meant
-  # permitting both.
+  # Each interpreter's short options are booleans, value-takers, or code
+  # letters, and the lists differ (`-E` is code for perl, a boolean for
+  # python). Code letters are split: `-c`/`-e` run agent-written code,
+  # `-m`/`-r` run an installed module, so `python -m pytest` can be
+  # permitted without `python -c`.
   local module_letters
   case "$base" in
     python|python2|python3|python[0-9].[0-9]*)
@@ -1384,11 +1028,8 @@ kernel_mandate_interpreter_inline() {
       -*)
         # Walk the cluster left to right. The first value-taking letter
         # swallows the rest of the token, so nothing after it is a flag;
-        # if that letter is a CODE letter the interpreter is running code
-        # — whether its argument is attached (`-c'…'`) or separated
-        # (`-c '…'`). Round 19 got in through the attached spelling,
-        # which is the sixth time an exact-versus-attached distinction
-        # has defeated a check in this kernel.
+        # if that letter is a code letter the interpreter is running code,
+        # whether its argument is attached (`-c'…'`) or separated (`-c '…'`).
         rest="${w#-}"
         i=0
         while [ "$i" -lt "${#rest}" ]; do
@@ -1417,21 +1058,9 @@ kernel_mandate_interpreter_inline() {
 
 kernel_mandate_awk_sed_verdict() {
   local cmd="$1" seg="$2"
-  # Both gawk and GNU sed ship a `--sandbox` that disables exactly these
-  # constructs in the interpreter itself — system(), redirections and
-  # getline-from-file for gawk; `e`, `r` and `w` for sed. A program run
-  # that way is inert by construction rather than by this function's
-  # reading of it, which is a far better guarantee than any scan, so it
-  # is accepted. On a build that does not know the flag the command
-  # fails to start, so the wrong guess errs toward nothing running.
-  #
-  # Only for the implementations that HAVE it. `gawk` and GNU `sed` do;
-  # a bare `awk` could be mawk or busybox, and trusting a flag a binary
-  # may not implement is exactly the kind of unverifiable assumption
-  # this loop keeps punishing. mawk here rejects the flag outright,
-  # which is the fail-safe direction — but "the awk on this machine"
-  # is not something the kernel can check at decision time, so the
-  # guarantee is claimed only where the command word names it.
+  # gawk and GNU sed `--sandbox` disable these constructs in the interpreter
+  # itself, so such a program is inert by construction. Accepted only when
+  # the command word is `gawk` or `sed`: a bare `awk` may be mawk or busybox.
   case "$cmd" in
     gawk|sed)
       case " $seg " in *" --sandbox "*|*" --sandbox="*) return 0 ;; esac ;;
@@ -1439,13 +1068,9 @@ kernel_mandate_awk_sed_verdict() {
   case "$cmd" in
     awk|gawk|mawk|nawk|busybox)
       # `system`, `getline`, `close` and `ENVIRON` have no inert use.
-      # A pipe or redirect is only a redirect in a print STATEMENT —
-      # elsewhere `|` is regex alternation and `>` is comparison, and
-      # denying those would refuse most ordinary awk.
-      #
-      # String and regex literals are removed FIRST, because a `}` or a
-      # `;` inside one ends the statement scan early: `print "{x}" > f`
-      # kept its redirect hidden behind the brace in its own argument.
+      # A pipe or redirect is only a redirect in a print statement; elsewhere
+      # `|` is alternation and `>` comparison. String and regex literals are
+      # removed first, since a `}` or `;` inside one ends the statement scan.
       AWKSEG="$seg" perl -e '
         my $p = $ENV{AWKSEG};
         $p =~ s{"(?:\\.|[^"\\])*"}{ }g;
@@ -1453,8 +1078,7 @@ kernel_mandate_awk_sed_verdict() {
         # gawk can also load a shared library, which is strictly worse
         # than system(): `@load`, `@include`, `extension()` and their
         # -l/--load/-i/--include flags all reach code this kernel never
-        # sees. They read as perfectly inert to a scan looking for
-        # redirects, which is how they survived the first inversion.
+        # sees, and look inert to a scan for redirects.
         print "indirect" if $p =~ /(^|[^a-zA-Z_])(system|getline|close|ENVIRON|extension)([^a-zA-Z_0-9]|$)/
                          || $p =~ /\@(load|include)/
                          || $ENV{AWKSEG} =~ /(^|\s)(-l|-i|--load|--include)(\s|=)/
@@ -1488,16 +1112,9 @@ kernel_mandate_awk_sed_verdict() {
 }
 
 # kernel_mandate_bound_text <text>
-# Bounds a deny message to something an agent can actually read.
-#
-# A deny message quotes the thing it is refusing — a command line, a path,
-# a file's contents — so its length is set by the caller, not by us. That
-# matters twice over: an unbounded message is a channel for pushing
-# arbitrary text into the reading agent's context, and it is what made
-# the renderer below reachable as a failure. The opening line says what
-# was blocked and the closing lines say what to do instead, so it is the
-# middle that gives way. Pure parameter expansion: no process is started
-# here, at any input size.
+# Bounds a deny message: its length is set by what it quotes, and an
+# unbounded message pushes arbitrary text into the reading agent's context.
+# The middle gives way. Pure parameter expansion: no process at any size.
 kernel_mandate_bound_text() {
   local t="$1" keep=2000
   if [ "${#t}" -le $((keep * 2)) ]; then
@@ -1510,30 +1127,15 @@ kernel_mandate_bound_text() {
 
 # kernel_mandate_deny <short-detail-for-log> <reason>
 # Emits the repo-standard deny JSON and exits 0.
-#
-# The reason used to reach jq through argv, which put the whole decision
-# at the mercy of execve's MAX_ARG_STRLEN: pad the quoted text past
-# ~128 KB and jq never starts, no JSON is printed, and an empty stdout on
-# exit 0 is precisely how this hook says ALLOW. A deny that can be
-# switched off by making its own explanation longer is not a deny. The
-# EXIT trap does not catch it either, because nothing here exits
-# non-zero — the failure is entirely inside a successful-looking run.
-#
-# So: the reason is bounded first, then handed to jq on stdin, where no
-# such limit exists. And if jq fails regardless — missing, killed, out of
-# memory — the decision is still emitted, carried by a fixed string that
-# needs no renderer. The explanation is not the decision, and losing the
-# former must never discard the latter.
+# The reason is bounded, then passed to jq on stdin (argv is capped by
+# MAX_ARG_STRLEN, and no JSON means ALLOW). If jq fails anyway, a fixed
+# deny string is emitted: losing the explanation must not lose the decision.
 kernel_mandate_deny() {
   local reason
   kernel_mandate_log "deny" "$1"
   reason=$(kernel_mandate_bound_text "$2")
-  # KM_DECIDED is set AFTER the verdict is on stdout, never before. Round
-  # 56 found the window: set before emission, a fault between the flag
-  # and the printf exited 1 with the flag raised — so the exit trap stood
-  # down ("a verdict was delivered") when none had been. KM_DECIDED=1
-  # must mean exactly one thing: the JSON is written and nothing but
-  # `exit 0` remains.
+  # KM_DECIDED is set AFTER the verdict is on stdout: set earlier, a fault
+  # before the printf would make the exit trap stand down with no verdict.
   if printf '%s' "$reason" | "$KM_JQ" -Rs '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
@@ -1557,20 +1159,8 @@ kernel_mandate_role_field() {
 
 # kernel_mandate_code_calls_in_scope <code> <network-allow-json> <method-regex>
 # — true when the role declares a network scope AND every matching call
-# in the code names a LITERAL destination inside it.
-#
-# The exfil branches in the code screen are destination-blind and total:
-# they refuse the CHANNEL, not the host. Round 38 showed what that costs
-# in both directions at once — a composer authoring
-# `request.get("http://localhost:4173/api")`, a fetch of its own in-scope
-# app, was refused as "an exfiltration channel", while a browser
-# navigation to a genuinely forbidden host went through. The check that
-# fired was the one that should not have.
-#
-# A role that declares where it may connect has said something the
-# kernel can use. One that has not, has not: absent a scope there is no
-# destination that can be shown to be permitted, so the blanket refusal
-# stands and this returns false.
+# in the code names a literal destination inside it. Without a declared
+# scope nothing can be shown permitted, so the blanket refusal stands.
 kernel_mandate_code_calls_in_scope() {
   local cc_code="$1" cc_scope="$2" cc_re="$3" cc_call cc_arg cc_lit cc_auth cc_seen=0
   [ "$cc_scope" != "null" ] || return 1
