@@ -25,8 +25,8 @@
 # play, a Write|Edit to a `*.spec.*` file or a `page-repository*.json` is
 # denied when the transcript contains NO evidence access whatsoever.
 #
-# Scope, stated honestly
-# ----------------------
+# Scope
+# -----
 # The gate proves evidence was ACCESSED, not that it was UNDERSTOOD. An agent
 # that opens a trace and then ignores it passes. It cannot read the written
 # observation for each floor item, and it cannot tell attempt 0's trace from

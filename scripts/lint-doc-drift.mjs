@@ -372,7 +372,7 @@ function checkDocsCounts() {
 // The ledger (hooks/data/achilles-qa.kernel-mandate.md) is the human copy of
 // the mandate (…kernel-mandate.json). Achilles vendors the kernel runtime,
 // not the `kernel-mandate doc` renderer, so the ledger is hand-maintained and
-// this is what keeps its inventory honest.
+// this is what holds its inventory to the manifest.
 //
 // Only the INVENTORY is comparable without the renderer: which roles exist,
 // and how many the ledger says there are. Both files state that three times

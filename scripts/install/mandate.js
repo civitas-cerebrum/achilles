@@ -45,10 +45,8 @@ function stageProjectMandate(projectDir = projectRoot) {
   fs.copyFileSync(src, dest);
   console.log(`[civitas-cerebrum] QA mandate staged at ${dest} — dormant until the achilles protocol activates in a session (main session then binds as \`orchestrator\`).`);
 
-  // A mandate nobody can read is a mandate nobody reviews. The ledger is
-  // derived from the same manifest, so it can never grant anything the
-  // kernel does not enforce; it is staged on the same never-overwrite
-  // terms as the manifest itself.
+  // The ledger is a hand-kept description of the manifest; lint check 7 holds its role inventory to it.
+  // Staged on the same never-overwrite terms as the manifest.
   const ledgerSrc = path.join(packageDir, 'hooks', 'data', QA_LEDGER_FILE);
   const ledgerDest = path.join(destDir, 'kernel-mandate.md');
   if (fs.existsSync(ledgerSrc) && !fs.existsSync(ledgerDest)) {

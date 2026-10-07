@@ -10,7 +10,7 @@
 #                  THIS ticket — sign-off is the moment the evidence must exist)
 #           DENY  (an unredacted secret in a captured HAR or console log, on every
 #                  surface this hook reaches — comments included, see "Why secrets
-#                  DENY everywhere" below. "Reaches" is the honest word: a comment
+#                  DENY everywhere" below. "Reaches" matters: a comment
 #                  that is not verdict-shaped, and a draft PR, exit before the
 #                  bundle is ever located, so neither is scanned. A non-verdict
 #                  comment publishing a bundle path with a live token in it is a
@@ -69,23 +69,17 @@
 # "I already did this" is a locally reasonable inference and a globally wrong
 # one. A gate keyed on the ACTION does not care what the agent inferred.
 #
-# HONEST SCOPE — read this before relying on the gate. In the origin story above
-# the artifact-free verdict was posted as a tracker COMMENT, and this gate WARNs
-# on comments; it does not block them. What it would have blocked is the
-# terminal transition and the published PR that follow. Adversarial review made
-# that point sharply and it is correct: on the comment surface this is an
-# advisory, which is the same class of thing the "Why" paragraph argues is
-# insufficient. The grading is deliberate (see below) but it is a trade, not a
-# win, and the narrative should not imply otherwise.
+# Scope: the artifact-free verdict above was a tracker COMMENT, which this gate
+# only WARNs on. It blocks the terminal transition and published PR that follow;
+# on the comment surface it is advisory.
 #
 # Why secrets DENY everywhere, including comments
 # -----------------------------------------------
 # The missing-bundle case is graded (DENY terminal / WARN comment) because it
 # has a legitimate outcome: `ticket-driven-testing` §"Prerequisites" says a run
 # against an unreachable app "stops at the diff review, which is still worth
-# doing". A bundle-less verdict CAN be honest, so long as it says so — and a
-# hard block there would push an honest report into either dishonesty or a
-# disabled hook.
+# doing". A bundle-less verdict can be truthful if it says so, and a hard block
+# there would push it into misreporting or a disabled hook.
 #
 # An unredacted live credential in a captured artifact has no such outcome.
 # There is no run for which the right answer is "ship it with the token in it",
@@ -93,18 +87,15 @@
 # gated surface, comments included — the comment is usually where the bundle's
 # path gets published to the tracker in the first place.
 #
-# Deliberately NOT enforced — the honest limits
-# ---------------------------------------------
-# Every item below was found by adversarial review of this hook, reproduced,
-# and left in place with a reason. A limits list that omits the limits the
-# reviewer found is worse than no list.
+# Deliberately NOT enforced
+# -------------------------
 #
 # * **Staleness.** Its sibling gate requires the receipt to be newer than the
-#   newest spec. That check is WRONG here and is deliberately absent: the
+#   newest spec. That check is absent on purpose: the
 #   skill's own order runs the evidence bundle at §6 and writes the durable
 #   tests at §7, so a correct bundle ALWAYS predates the specs. A staleness rule
 #   would make this gate permanently unpassable.
-# * **That the bundle is honest.** The bundle is authored by the same actor the
+# * **That the bundle is genuine.** The bundle is authored by the same actor the
 #   gate judges, in a directory no protected-artifact guard covers. Fabricating
 #   one that satisfies this gate is `mkdir -p x/screenshots && touch
 #   x/summary.md x/screenshots/a.png` — three empty files. Cross-ticket reuse is
@@ -255,7 +246,6 @@ TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 [ -n "$TOOL_NAME" ] || exit 0
 
 # ─── which surface are we on ────────────────────────────────────────────────
-# Tracker vocabularies differ per vendor; match the shapes, not one product.
 signoff_classify_tool "$TOOL_NAME" || exit 0
 
 # Guard the TYPE: a string `tool_input` would abort every later jq read, and an
@@ -482,7 +472,6 @@ PLACEHOLDER_RE='redacted|\*\*\*|<removed>|\[hidden\]|xxxxx|<[a-z_-]+>'
 # which have nothing to redact and no remedy but disabling the hook.
 NAME_RE='^(cookie|set-cookie|apikey|x-apikey)$|(^|[-_])(authorization|auth|bypass|token|jwt|secret|credential|password|passwd|api[-_]?key)([-_]|$)'
 
-# Credential-shaped assignments inside request/response bodies. The deny message
 # Credential-shaped assignments in request/response bodies. The >=6-char value
 # keeps `api_key= is required` (an app error string) from denying. POSIX
 # classes, not `\t`: grep -E reads `[ \t]` as {space, backslash, t}, which under
@@ -719,8 +708,10 @@ one.
 
 ${REFS}"
 
-# Publishing a PR and completing a ticket both present the work as finished, so
-# they deny. A comment warns.
+# A transition or published PR is terminal, so it denies. A comment is not: a hard
+# block would push a bundle-less verdict into misreporting, so it warns, and the
+# PR/transition that follows denies, so the report cannot pass as evidence-backed
+# without evidence.
 if [ "$IS_TRANSITION" = "1" ] || [ "$IS_PR" = "1" ]; then
   emit_deny "[BLOCKED] Sign-off blocked — no evidence bundle for this ticket.
 

@@ -59,7 +59,7 @@ NO_SKIP_BLOCK_EOF
 # --- self-test ----------------------------------------------------------------
 # Run as `NO_SKIP_MESSAGING_SELFTEST=1 bash hooks/lib/hook-emit.sh`.
 # Echoes the block once and exits 0 if the four required substrings are
-# present, exits 1 otherwise. Used by 32-no-skip-messaging-coverage.sh.
+# present, exits 1 otherwise.
 if [ "${NO_SKIP_MESSAGING_SELFTEST:-0}" = "1" ]; then
   out=$(no_skip_messaging_block)
   ok=1

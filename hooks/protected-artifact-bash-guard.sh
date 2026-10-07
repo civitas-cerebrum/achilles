@@ -46,7 +46,6 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/h
 hook_jq_init fatal
 
 # shellcheck disable=SC1091
-# shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-emit.sh"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/protected-paths.sh"

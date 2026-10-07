@@ -75,17 +75,9 @@ resolve_schema_role() {
   esac
 }
 
-# Migration note: workflow-reviewer-* used to live in a post-only superset
-# (resolve_schema_role_post, consumed only by subagent-return-schema-guard.sh)
-# because the documented reviewer-brief contract did not instruct the
-# orchestrator to cite workflow-reviewer.schema.json — pre-gating would have
-# rejected exactly the briefs the skill taught. The brief contract now
-# REQUIRES the citation (skills/workflow-reviewer/SKILL.md §"Inputs the
-# reviewer receives in its brief" input 5; skills/onboarding/SKILL.md
-# §"Status ledger + workflow reviewer"), so the mapping was promoted into
-# resolve_schema_role and the post-only function was deleted — both the
-# PreToolUse preread gate and the PostToolUse return guard now use
-# resolve_schema_role directly.
+# workflow-reviewer-* is pre-gated: the brief contract requires the citation
+# (skills/workflow-reviewer/SKILL.md §"Inputs the reviewer receives in its brief"
+# input 5; skills/onboarding/SKILL.md §"Status ledger + workflow reviewer").
 # NOTE: perf-reviewer-* is listed BEFORE workflow-reviewer-* and reviewer-*
 # so it cannot be shadowed by either broader pattern; case globs anchor at
 # the string start so there is no overlap between the three.

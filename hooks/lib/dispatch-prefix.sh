@@ -3,7 +3,8 @@
 # that checks activation has these names. lib/schema-role-map.sh keeps its own
 # literal case labels (scripts/lint-doc-drift.mjs check 4 parses them).
 # Activation is the root of trust: an alternative dropped here turns every gate off
-# for that role. hooks/tests/cases/89-dispatch-prefix-activation.sh pins each one.
+# for that role. hooks/tests/cases/89-dispatch-prefix-activation.sh pins the activation prefixes and the
+# skill list; the other grammars are exercised by the gates' own cases.
 
 # Skill names bundled by this package (skills/<name>/). Any Skill invocation of one
 # of these — bare or plugin/path-prefixed — activates the protocol for the session;
@@ -23,7 +24,8 @@ ACHILLES_LEGACY_COMPOSER_PREFIX='composer-'
 # on purpose: a dev's "cleanup-temp:" agent must not switch the guards on, and the
 # Phase 1 scaffolder dispatch always follows the `onboarding` Skill call.
 # `composer-` here is ACHILLES_LEGACY_COMPOSER_PREFIX, spelled out so case 71 can
-# parse the alternation.
+# parse the alternation. standard-mode-first-pass-guard.sh Rule 2 additionally keys on
+# `^[[:space:]]*phase4-prioritise-author:` (the colon-terminated form of the alternative above).
 ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|secrets-sweep-|test-composer-|composer-|probe-|process-validator-|contribution-handover-)'
 
 # Grouped dispatch: role-first `<role>-group-<id>:` / `<role>-p3batch-<id>:`, or the

@@ -30,7 +30,7 @@
 #
 # The skill was revised and now does fire the check (see its §"Baseline
 # testing"). This gate is therefore DEFENCE IN DEPTH, not the sole
-# mechanism, and the honest reason it still earns its place is:
+# mechanism; it earns its place because:
 #
 #   1. Instructions are advisory; a gate is not. A skill can be skimmed,
 #      truncated, or superseded by a user instruction. This cannot.
@@ -58,18 +58,14 @@
 #     "total": 15                         // <= 12 blocks
 #   }
 #
-# The UI flag is not ceremony. A reviewer who reads only specs can certify that
-# every assertion is well-formed while the feature is visibly broken in a
-# browser — that exact gap shipped here, where two acceptance criteria were
-# declared verified on a mechanism and a tautology and every test passed. It must be NEWER than the newest spec file in
-# the workspace — a receipt from before the tests were last edited proves
-# nothing about the tests as they now stand. The receipt must ALSO carry the
-# ticket key in its filename: without that, any receipt unlocked any ticket,
-# which was a real defect found by adversarial review of this gate.
+# The UI flag matters: a reviewer who reads only specs can certify every
+# assertion while the feature is visibly broken in a browser.
 #
-# HONEST STATUS — read before relying on this. Adversarial review defeated the receipt binding
-# four ways and the staleness scan six. Exact-key matching closed the first set; the rest are
-# structural and CANNOT be patched:
+# The receipt must be NEWER than the newest spec file in the workspace; one from
+# before the tests were last edited says nothing about them as they now stand. It
+# must also carry the ticket key in its filename, or any receipt unlocks any ticket.
+#
+# Limits. Exact-key matching closes the receipt-binding bypasses; the rest are structural:
 #   * the receipt lives in a directory no protected-artifact guard covers, so the agent being
 #     judged can author, post-date or delete its own acquittal (`touch -t 2030…` makes staleness
 #     permanently unfailable);
@@ -85,14 +81,11 @@
 # This is a speed bump, not a control. Making it sound needs a hook-authored, hash-chained receipt
 # on the protected list — the pattern ledger-integrity-chain.sh already implements.
 #
-# Deliberately NOT enforced here: whether the receipt's contents are
-# honest. A hook cannot tell a real probe run from a fabricated JSON file.
-# This gate raises the cost of skipping from "forget" to "actively write a
-# false artifact". That is NOT the ceiling for a harness — this repo already
-# ships a stronger pattern (hook-authored, hash-chained artifacts on the
-# protected list, per ledger-integrity-chain.sh). The receipt should move to
-# that pattern; until it does, the honest description is "raises the cost",
-# not "prevents".
+# Deliberately NOT enforced: whether the receipt's contents are true. A hook
+# cannot tell a real probe run from a fabricated JSON file, so this raises the
+# cost of skipping from "forget" to "write a false artifact" and does not
+# prevent it. The fix is a hook-authored, hash-chained receipt on the protected
+# list (the ledger-integrity-chain.sh pattern).
 
 set -euo pipefail
 
@@ -209,7 +202,7 @@ receipt_for_ticket() {
 
 RECEIPT="$(receipt_for_ticket || true)"
 
-# A receipt older than the newest spec describes tests that no longer exist in that form.
+# A receipt older than the newest spec describes tests as they were, not as they are.
 #
 # The scan is bounded and prunes node_modules DURING the walk, not after: this hook runs with a
 # 10s budget and an unpruned walk of a monorepo blows it, which fails OPEN. Sorting by mtime is

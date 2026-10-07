@@ -374,6 +374,7 @@ is_run_id() {
     *) return 1 ;;
   esac
 }
+# bash 3.2 (macOS) has no mapfile.
 ALL_RUNS=()
 while IFS= read -r d; do
   b=$(basename "$d")

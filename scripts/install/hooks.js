@@ -16,11 +16,11 @@ const { packageDir, userClaudeDir } = require('./context.js');
 //     timeout  — seconds the harness waits before killing the hook
 //     async    — true for fire-and-forget hooks (used for cleanup)
 //   companions     — scripts copied beside the hooks but NEVER registered: a
-//                    registered hook execs them. The kernel mandate kernel is
+//                    registered hook execs them. The kernel is
 //                    one — achilles-kernel-activation-gate.sh execs it only while
 //                    the achilles protocol is active; registered directly it
 //                    would govern every session in the project unconditionally.
-//   legacyEiHooks  — hooks this package shipped once and no longer does; an
+//   legacyEiHooks  — hooks this package once shipped and dropped; an
 //                    upgrade deletes them and their registrations.
 // What each hook enforces: skills/achilles-protocol/references/harness-hooks.md.
 //

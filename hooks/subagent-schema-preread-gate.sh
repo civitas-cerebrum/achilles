@@ -37,7 +37,7 @@
 # Substring match is intentionally syntactic, not semantic. A brief that
 # says "DO NOT use <role>.schema.json; use the other one" satisfies the
 # gate; so does a stale "in the old contract we used <role>.schema.json"
-# reference that no longer reflects what the subagent should follow. The
+# reference that is outdated for what the subagent should follow. The
 # gate is a "forgot to cite the schema at all" check, not a semantic
 # enforcement — semantic checks would require NLP-grade negation
 # detection, which is well outside scope for a public-package hook. If

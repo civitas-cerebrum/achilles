@@ -32,7 +32,7 @@
 #          → DENY always), OR
 #      (b) `currentPass == 1` (DENY always), OR
 #      (c) `runMode == "depth"` (DENY regardless of currentPass)
-#    DENY. Pass 1 of `mode: standard` (formerly `mode: depth`) is strict
+#    DENY. Pass 1 of `mode: standard` is strict
 #    per-journey by contract — grouped dispatches are only permitted on
 #    Passes 2-5. Under `mode: depth` (first-class strict-everywhere) they
 #    are forbidden on every pass.
