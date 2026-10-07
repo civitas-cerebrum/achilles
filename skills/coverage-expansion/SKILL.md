@@ -190,7 +190,7 @@ The orchestrator runs three grep-based validation checks. All three live here fo
 
 - **Stage A return shape** — grep per `subagent-return-schema.md` §4.1's "Finding blocks" / "covered-exhaustively returns" / "Banned tokens" / "Ledger append" bullets.
 - **Stage B return shape** — grep per `subagent-return-schema.md` §4.1's "Reviewer returns (§2.4)" bullet (status enum, finding-block regex, summary-line requirement on greenlights).
-- **Re-pass subagent 4-trigger format** — grep per §"Re-pass mode for compositional passes 2–3" below for the literal strings "trigger 1" through "trigger 4" plus mapping-table header and per-expectation entries. (Note: this is the dispatched-subagent's in-dispatch audit; the orchestrator-side three-trigger gating in §"Trigger-gated re-pass for Passes 2 & 3" is the pre-dispatch check, see `references/depth-mode-pipeline.md` §"Re-pass mode for compositional passes 2-3" for the explicit mapping.)
+- **Re-pass subagent 4-trigger format** — grep per §"Re-pass mode for compositional passes 2–3" below for the literal strings "trigger 1" through "trigger 4" plus mapping-table header and per-expectation entries. (Note: this is the dispatched-subagent's in-dispatch audit; the orchestrator-side three-trigger gating in §"Trigger-gated re-pass for Passes 2 & 3" is the pre-dispatch check, see `references/depth-mode-pipeline.md` §"Re-pass mode for compositional passes 2–3" for the explicit mapping.)
 
 If any check fails, the orchestrator re-dispatches with a brief explicitly quoting the rejected parts. Failures consume one cycle of the 7-cycle budget. Persistent malformed returns terminate as `blocked-dispatch-failure`.
 
@@ -316,6 +316,10 @@ Every one of the 5 passes runs **per journey** as two sequential stages — Stag
 - **Cycle 7 reached without greenlight → `blocked-cycle-exhausted`.** Marking it greenlit when it isn't corrupts state. `blocked-cycle-exhausted` is a valid terminal, not a pass failure.
 - **Empty findings on `improvements-needed` → coerce to greenlight after one re-dispatch.** Empty findings = no changes needed; the status was malformed.
 - **Pass full findings through verbatim.** Compressed findings lose the surgical specificity Stage A needs. No "summary string" inputs to the next cycle.
+
+### Commit-message conventions
+
+Canonical text: [`references/depth-mode-pipeline.md`](references/depth-mode-pipeline.md) §"Commit-message conventions".
 
 ## Prerequisites
 

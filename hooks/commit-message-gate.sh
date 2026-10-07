@@ -10,7 +10,7 @@
 # ----
 # `git commit` invocations during coverage-expansion / journey-mapping work
 # must follow the conventions documented in
-#   skills/coverage-expansion/SKILL.md §"Commit-message conventions"
+#   skills/coverage-expansion/references/depth-mode-pipeline.md §"Commit-message conventions"
 #
 # This gate enforces only the most common anti-patterns (coverage expansion
 # is never `feat`; multi-journey commits are forbidden; hook bypass is
@@ -27,9 +27,9 @@
 #
 # Canonical reference
 # -------------------
-# skills/coverage-expansion/SKILL.md §"Commit-message conventions"
+# skills/coverage-expansion/references/depth-mode-pipeline.md §"Commit-message conventions"
 # (Convention reproduced in the comment block below for at-a-glance
-#  scanning; the SKILL.md section is canonical.)
+#  scanning; that section is canonical.)
 #
 # Conventions
 # -----------
@@ -53,8 +53,8 @@
 # the `-m` subject extraction, so a second `-m` trailer, a heredoc body,
 # or a message file all get caught.
 #
-# Canonical reference: contributing/SKILL.md §"AI assistants don't get
-# Co-Authored-By trailers". The upstream fix when this fires is to remove
+# Canonical reference: contributing-to-achilles-protocol/SKILL.md §"AI assistants don't get
+# Co-Authored-By: trailers". The upstream fix when this fires is to remove
 # the trailer instruction from CLAUDE.md (do not re-add it per-commit).
 #
 # Failure → action
@@ -242,9 +242,10 @@ Why: the convention makes commits filterable by type. 'feat(...)' is for product
 fi
 
 # Anti-pattern: review(...) or any review-tagged commit — Stage B never
-# commits per coverage-expansion/SKILL.md §"Commit-message conventions"
-# and §"Dual-stage per-pass contract". Reviewer judgements live in the
-# state file, not the git log.
+# commits per coverage-expansion/references/depth-mode-pipeline.md
+# §"Commit-message conventions" and coverage-expansion/SKILL.md
+# §"Dual-stage per-pass contract". Reviewer judgements live in the state
+# file, not the git log.
 if echo "$SCAN" | grep -qiE '^review\('; then
   emit_pre_deny "[BLOCKED] Review-tagged commits are forbidden.
 

@@ -96,7 +96,7 @@ The minimum 2 (1 discovery + 1 edge-probe) is non-negotiable: even when cycle 1 
 
 ### Inputs
 
-The cycle protocol consumes `tests/e2e/docs/.discovery-draft.json` produced by `achilles-protocol` Stage 3 in `onboarding` Phase 3 (per `achilles-protocol/references/autonomous-mode-callers.md` §"Mandatory output for `onboarding` Phase 3 — discovery draft"). The draft seeds:
+The cycle protocol consumes `tests/e2e/docs/.discovery-draft.json` produced by `achilles-protocol` Stage 3 in `onboarding` Phase 3 (per `achilles-protocol/references/autonomous-mode-callers.md` §"Mandatory output"). The draft seeds:
 
 - **Cycle-1 section roster** — the union of `sections-inferred[].id` and `unvisited-but-linked[].section-guess` from the draft.
 - **Credentials policy** — `handover-to-phase4.credentials-discovered` tells cycle agents whether they can self-credential to drive gated areas.

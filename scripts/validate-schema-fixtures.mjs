@@ -9,22 +9,11 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { parse } from 'yaml';
-import Ajv from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
+import { makeAjv } from './lib/ajv.mjs';
 
 const dir = 'schemas/subagent-returns';
 const fixturesDir = join(dir, 'fixtures');
-// `allowUnionTypes` accommodates the handover envelope's `cycle` union
-// (integer | string), which the spec deliberately permits. `strictSchema:
-// false` keeps Ajv tolerant of vendor keywords.
-const ajv = new Ajv({
-  strict: true,
-  allErrors: true,
-  loadSchema: false,
-  allowUnionTypes: true,
-  strictSchema: false,
-});
-addFormats(ajv);
+const ajv = makeAjv();
 
 const handover = JSON.parse(readFileSync(join(dir, 'handover.schema.json'), 'utf8'));
 ajv.addSchema(handover);
@@ -99,14 +88,7 @@ for (const file of schemaFiles) {
 function validateStandaloneFixtures(schemaPath, fixturesDirPath) {
   if (!existsSync(schemaPath) || !existsSync(fixturesDirPath)) return;
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
-  const standaloneAjv = new Ajv({
-    strict: true,
-    allErrors: true,
-    loadSchema: false,
-    allowUnionTypes: true,
-    strictSchema: false,
-  });
-  addFormats(standaloneAjv);
+  const standaloneAjv = makeAjv();
   const validateFn = standaloneAjv.compile(schema);
 
   for (const f of readdirSync(fixturesDirPath).filter(n => n.endsWith('.json'))) {
@@ -145,14 +127,7 @@ if (existsSync(onboardingSchemaPath) && existsSync(onboardingFixturesDir)) {
   const onboardingSchema = JSON.parse(readFileSync(onboardingSchemaPath, 'utf8'));
   // Use a fresh Ajv instance — the onboarding-status schema is a
   // standalone document, not a member of the subagent-return collection.
-  const ajvOnboarding = new Ajv({
-    strict: true,
-    allErrors: true,
-    loadSchema: false,
-    allowUnionTypes: true,
-    strictSchema: false,
-  });
-  addFormats(ajvOnboarding);
+  const ajvOnboarding = makeAjv();
   const validateOnboarding = ajvOnboarding.compile(onboardingSchema);
 
   for (const f of readdirSync(onboardingFixturesDir).filter(n => n.endsWith('.json'))) {

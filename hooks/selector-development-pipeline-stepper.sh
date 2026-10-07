@@ -34,7 +34,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/selector-development/SKILL.md §"Pipeline steps"
+# skills/selector-development/SKILL.md §"Workflow contract"
 
 set -euo pipefail
 

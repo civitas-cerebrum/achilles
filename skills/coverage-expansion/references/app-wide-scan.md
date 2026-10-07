@@ -1,6 +1,6 @@
 # App-Wide Pattern Scan — Pre-Pass-4 single dispatch
 
-**Status:** authoritative spec for the one-shot app-wide scan that precedes Pass 4 (and informs Pass 5). Cited from `coverage-expansion/SKILL.md` §"Adversarial passes (4 and 5)" and from `adversarial-subagent-contract.md`.
+**Status:** authoritative spec for the one-shot app-wide scan that precedes Pass 4 (and informs Pass 5). Cited from `coverage-expansion/SKILL.md` §"Standard mode" and from `adversarial-subagent-contract.md`.
 **Scope:** what the scan does, how it's dispatched, the pattern catalogue it establishes, the output file format, and how per-journey probes cite the catalogue rather than re-finding each pattern.
 
 For the per-journey adversarial subagent contract that runs after the scan, see `adversarial-subagent-contract.md`.
@@ -146,7 +146,7 @@ The `coverage:` field IS the citation. The per-journey probe does NOT re-documen
 
 ## Cross-links
 
-- `coverage-expansion/SKILL.md` §"Adversarial passes (4 and 5)" — invokes this scan as the Pass-4 prelude.
+- `coverage-expansion/SKILL.md` §"Standard mode" — invokes this scan as the Pass-4 prelude.
 - `adversarial-subagent-contract.md` §"Inputs" — per-journey probes get the app-wide-patterns file as Input 9 alongside the journey-specific inputs.
 - `../../achilles-protocol/references/subagent-return-schema.md` §1 — documents the `coverage:` field that holds the citation.
 - The empirical motivation and savings analysis for this scan are documented in the project history.

@@ -45,7 +45,7 @@ compression at transition points — see §"Empirical origin" below.
 
 | Prefix | Fires between | Mapped to methodology section |
 |---|---|---|
-| `workflow-reviewer-phase<N>:` | onboarding phase N completion and phase N+1 start | `skills/onboarding/SKILL.md` §"Phase N" exit criteria (one per phase 1-8) |
+| `workflow-reviewer-phase<N>:` | onboarding phase N completion and phase N+1 start | the exit criteria of each `## Phase <N>` section of `skills/onboarding/SKILL.md` (phases 1-8) |
 | `workflow-reviewer-pass<N>:` | coverage-expansion pass N completion and pass N+1 start | `skills/coverage-expansion/SKILL.md` §"Per-pass completion criteria" |
 | `workflow-reviewer-cycle<N>:` | journey-mapping cycle N completion and cycle N+1 start | `skills/journey-mapping/SKILL.md` §"Iterative discovery cycles" |
 

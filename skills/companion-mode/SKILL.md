@@ -439,7 +439,7 @@ The offer is **automation-first**. Failure-diagnosis remains the path on a faile
 **Failed × `failure-diagnosis` accepted × diagnosis = app bug × "yes" (file ticket):**
 1. Invoke `bug-report`. Pass the following inputs extracted from the bundle:
    - **Evidence files**: all files in `<bundle>/screenshots/`, `<bundle>/video.webm`, `<bundle>/console.log` — listed verbatim as attachments.
-   - **Steps to reproduce**: the numbered step list from `summary.md` §"What I did".
+   - **Steps to reproduce**: the numbered step list under `## What I did` in `summary.md`.
    - **Actual result**: the failure assertion message from the Playwright run output (quoted verbatim).
    - **Environment**: the App URL from Phase 1.
    - **Pass criterion** (as the Expected result): copied verbatim from `summary.md`.
