@@ -8,7 +8,7 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 | `KERNEL_MANDATE` | operator shell | `0`, `false` or `off` bypasses the role kernel, including the wrapper's refusal when the kernel file is missing | kernel only; Achilles gates still run |
 | `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it only when absent | kernel only |
 | `achilles-factory-rules.json` | project root | committing it opts the project into the factory gates it has rules for; no file, or a rule id absent, makes that gate allow silently ([factory-gates.md](factory-gates.md#opting-in-the-rule-file)) | seven gates registered for every project, no-op without the file |
-| `FACTORY_RULES` | operator shell | path of the rule file, absolute or relative to the project root | the factory gates and the scenario lint |
+| `FACTORY_RULES` | operator shell | path of the rule file, absolute or relative to the project root (`$CLAUDE_PROJECT_DIR`, else the cwd) | the factory gates and the scenario lint |
 | `FACTORY_JQ` | tests only | jq binary the factory gates use | never set it in a real session |
 | `FACTORY_NODE` | tests only | node binary `spend-gate` and `commit-gate` use | never set it in a real session |
 | `CIVITAS_SKIP_HOOK_INSTALL` | install env | `1` skips hook install and mandate staging | all hooks |

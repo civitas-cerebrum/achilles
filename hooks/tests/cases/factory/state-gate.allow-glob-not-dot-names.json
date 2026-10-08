@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "rm -rf dist/*"}}, "expect": "allow", "warn": false, "_comment": "A glob that cannot match a dot name does not name the state dir."}

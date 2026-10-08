@@ -55,7 +55,8 @@ IDs follow `titleIdPattern` and are unique **per context** (the same ID may name
 `npx achilles-scenario-lint [files…] [--id <ID>] [--quiet] [--json]` (`bin/scenario-lint.mjs`).
 
 - Files default to `specs.shape.scenarioDocs`; file arguments are relative to the project root. The rule file and the
-  root are resolved as in [opt-in-surfaces.md](../achilles-protocol/references/opt-in-surfaces.md) (`FACTORY_RULES`).
+  root (`$CLAUDE_PROJECT_DIR`, else the cwd) are resolved as in
+  [opt-in-surfaces.md](../achilles-protocol/references/opt-in-surfaces.md) (`FACTORY_RULES`).
 - **Exit 0** — every selected block passes. **Exit 1** — a block is rejected or `--id` matched no block.
   **Exit 2** — usage or configuration: unknown flag, missing rule file, no document, document not found.
 - Errors use the three-line [message contract](../achilles-protocol/references/factory-gates.md#message-contract).

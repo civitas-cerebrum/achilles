@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "git show HEAD:.factory/current-change"}}, "expect": "allow", "warn": false}

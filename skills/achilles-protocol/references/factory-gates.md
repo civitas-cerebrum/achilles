@@ -161,26 +161,31 @@ stamp, and only when every check passed; `state-gate` blocks hand-written forger
 <a id="process.state"></a>
 ### process.state
 
-A Bash line is **armed** when a word names `stateDir` as a path component (`.factory`, `./.factory/x`,
-`/abs/.factory/x`, `of=.factory/x`). `user.factory.ts` does not arm it, and quoted text is an argument, never a
-redirect: `echo "> .factory/x"` passes. On an armed line, unrecognised means unsafe:
+A Bash line is **armed** when `stateDir` appears in it, case folded, as a path component (`.factory`, `./.factory/x`,
+`/abs/.factory/x`) or as a glob that could match one (`.fact*`, `.f[a]ctory`, `.*`; a leading dot needs a literal dot, so
+`*` and `dist/*` do not), in a whole word, an `=` value or a `-X` value; or as a token inside any word, quoted strings
+and environment values included (`sh -c 'cp x .factory/y'`). `user.factory.ts` does not arm it, and quoted text is an
+argument, never a redirect: `echo "> .factory/x"` passes. On an armed line, unrecognised means unsafe:
 
-- A segment that names `stateDir`, or runs after a `cd` into it, passes only as a reader (`cat head tail less grep rg jq
-  ls stat wc diff cmp test [ [[ file md5 md5sum shasum sha*sum echo printf`, or `find` without `-delete -exec -execdir
-  -ok -okdir -fprint* -fls`) or as `cp`, `install` or `rsync` with `stateDir` provably a source: every option known and
-  before the operands, the target (last operand, or the `-t` directory) literal and outside `stateDir`. Anything else
-  is denied: `rm`, `mv`, `tee`, `find -delete`, `curl -o`, `wget -O`, `tar -C`, `unzip -d`, `git checkout`, `patch`,
-  `sed`, `python3`, a script in the directory.
-- A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal (`$VAR`, `$( )`, a glob),
-  is denied, wherever on the line it is.
-- `cd` or `pushd` into `stateDir`, or to a target the gate cannot resolve, makes every later segment count as inside
-  it: only readers pass, and a redirect must go to an absolute path outside it.
+- A segment **touches** `stateDir` when it names it, holds a word that is not literal (`$VAR`, `$( )`, a glob), runs a
+  program from outside the system bin dirs, or runs after a `cd` that may have entered it. A touching segment passes
+  only as a reader or as a copy-out. Readers: `cat head tail less grep rg jq ls stat wc diff cmp test [ [[ file md5
+  md5sum shasum sha*sum echo printf`; `find` without `-delete -exec -execdir -ok -okdir -fprint* -fls`; `git diff log
+  show status ls-files blame` with no global option and none of the options `shell_git_exec_option` names. Excluded
+  per reader: `less -o -O --log-file`, `rg --pre --hostname-bin`, `file -C --compile`. A reader with an environment
+  assignment other than `LC_*` / `LANG` is denied. Copy-out: `cp`, `install`, `rsync` with `stateDir` provably a source:
+  every option known and before the operands, the target (last operand, or the `-t` directory) literal and outside
+  `stateDir`. Everything else is denied: `rm`, `mv`, `tee`, `find -delete`, `curl -o`, `tar -C`, `git checkout`, `sed`,
+  `python3`, a script in the directory, `xargs` feeding anything but a reader.
+- A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal, is denied.
+- A `cd`, `pushd` or `popd` the gate cannot resolve exactly counts as entering `stateDir`: a target naming it or not
+  literal, more than one operand (bash 3.2 enters the first), `-`, `~-`, `~+`, `popd`, or a `CDPATH` naming it. Every
+  later segment is then inside it: only readers pass, and a redirect must go to an absolute path outside it.
 - A wrapper option the splitter does not know, or a command word that is not literal, is denied.
-- A `$VAR`, `$( )` or path glob in a word of a writer (`tee rm touch truncate unlink shred ln mv cp install rsync`,
-  `dd of=`, `sed -i`, `perl -i`) is denied anywhere on the line, because the variable may hold the state path.
+- A line that sets `dotglob`, `nocaseglob` or `GLOBIGNORE` and holds a glob is denied, armed or not.
 - A line too long to split that names `stateDir` is denied.
 
-Reading and copying out to a literal path are allowed. What a single line cannot show is listed in
+Reading and copying out to a literal path are allowed. What a single line cannot show is in
 [known-limits.md](known-limits.md) KL-20.
 
 Fields: `stateDir` (missing → allow with a warning on every Bash call, so the gap is visible).

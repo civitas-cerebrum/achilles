@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "rm -rf tests/*.factory.ts"}}, "expect": "allow", "warn": false}
