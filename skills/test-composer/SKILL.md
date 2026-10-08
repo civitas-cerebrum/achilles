@@ -28,13 +28,13 @@ Stage 5 of the achilles-protocol workflow as the atomic unit of coverage. Given 
 
 **Pre-empting reviewer must-fix items.** Skim §"Must-fix calibration" in `reviewer-subagent-contract.md` before composing — the reviewer will demand: (a) every `Test expectations:` item has a covering test, (b) tests use the Steps API correctly with page-repo selectors (no inline selectors), (c) file-level serial mode on tenant-mutating specs, (d) mobile variant on P0/P1 journeys, (e) test assertions match what the live DOM exposes. Meeting that bar in cycle 1 is the difference between a 1-cycle journey and a 4-cycle journey. The reviewer is not antagonistic — it is consistent, and you can know in advance what it will check.
 
-**Dispatch grammar (role kernel).** The orchestrator dispatches this skill as a `test-composer` subagent — the role kernel's name for the composer — so the dispatch is `description: test-composer-j-<slug>: <task>` (sub-journeys: `test-composer-sj-<slug>:`), `subagent_type: test-composer`, and the brief's FIRST line is the binding tag:
+**Dispatch.** Dispatched as role `test-composer`: `description: test-composer-j-<slug>: <task>` (sub-journeys `test-composer-sj-<slug>:`), `subagent_type: test-composer`, first prompt line:
 
 ~~~
 <<kernel-mandate-role: test-composer#<nonce>>>
 ~~~
 
-The orchestrator mints a fresh nonce per dispatch (4+ lowercase alphanumerics — the last 6 chars of the current Unix timestamp in base36 — never reused within a phase). The pre-kernel `composer-j-<slug>:` spelling names no role and is refused at the `Agent` call. The `playwright-cli` session slug keeps the short `composer-j-<slug>-<pass>-c<N>` form (28-char cap) and the spill file keeps `composer-<journey>-<pass>-c<N>.md`. Full grammar: `skills/onboarding/SKILL.md` §"Dispatch grammar".
+Grammar and nonce: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar". The `playwright-cli` session slug keeps the short `composer-j-<slug>-<pass>-c<N>` form and the spill file `composer-<journey>-<pass>-c<N>.md`.
 
 ---
 

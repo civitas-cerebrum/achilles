@@ -226,8 +226,7 @@ changes.
 This skill's subagent returns conform to the `composer` schema (see
 `schemas/subagent-returns/composer.schema.json`). `onboarding` dispatches
 this skill (after `scaffolder-phase7:`) with the `secrets-sweep-phase7:` description prefix
-(`subagent_type: secrets-sweep`, brief tagged `<<kernel-mandate-role:
-secrets-sweep#<nonce>>>`), so returns are schema-validated against
+(`subagent_type: secrets-sweep`; grammar: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar"), so returns are schema-validated against
 `composer.schema.json` with zero hook change.
 
 Every return MUST open with a `handover` envelope as its first key:

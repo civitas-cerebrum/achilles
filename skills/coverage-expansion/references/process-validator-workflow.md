@@ -15,7 +15,7 @@ Same shape as the Stage B reviewer applied one level up. The validator does NOT 
 
 ## 1. When to invoke
 
-Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold. (Dispatch shape under the role kernel: `subagent_type: process-validator`, and the brief's first line is `<<kernel-mandate-role: process-validator#<nonce>>>` with a fresh nonce per dispatch — `skills/onboarding/SKILL.md` §"Dispatch grammar".)
+Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold. (Dispatched with `subagent_type: process-validator` and first line `<<kernel-mandate-role: process-validator#<nonce>>>`: [roles-and-dispatch.md](../../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar".)
 
 | Trigger | Threshold |
 |---|---|

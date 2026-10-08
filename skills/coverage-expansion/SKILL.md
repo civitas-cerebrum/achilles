@@ -104,7 +104,7 @@ See §"Relevance grouping for compositional passes" and §"Batched dispatch for 
 
 Every Agent dispatch description starts with a role-explicit prefix. The prefix routes the dispatch through the harness gates: `subagent-schema-preread-gate.sh` denies schema-validated role dispatches whose brief omits the return-schema citation, the playwright-cli isolation guard ties the prefix to a session slug, and `subagent-return-schema-guard.sh` validates the output shape against the role's contract. Same role on description, on CLI session slug, on the schema selector — one mechanical convention. (Harness gates indexed in [`../achilles-protocol/references/harness-hooks.md`](../achilles-protocol/references/harness-hooks.md).)
 
-Under the role kernel the description prefix is the manifest role name — the composer role is `test-composer`, so its dispatch is `test-composer-j-<slug>: <task>` with `subagent_type: test-composer`, and every brief opens with `<<kernel-mandate-role: <role>#<nonce>>>` (fresh nonce per dispatch, never reused within a pass; grammar in `skills/onboarding/SKILL.md` §"Dispatch grammar"). The CLI session slug keeps the short `composer-` form to stay under the 28-char cap. The pre-kernel `composer-j-<slug>:` description is refused at the `Agent` call.
+Description prefix, `subagent_type` and tag follow [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar"; the composer role is `test-composer`. The CLI session slug keeps the short `composer-` form to stay under the 28-char cap.
 
 | Role | Description prefix | CLI session slug | Return shape |
 |---|---|---|---|

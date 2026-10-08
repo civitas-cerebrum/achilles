@@ -57,12 +57,10 @@ transitions (Phase 4 inner loop).
 
 ## Inputs the reviewer receives in its brief
 
-The brief's FIRST line is the role kernel's binding tag —
+The brief's first line is the binding tag
 `<<kernel-mandate-role: workflow-reviewer#<nonce>>>` (`perf-reviewer#<nonce>`
-for the perf pipeline, `phase-validator#<nonce>` for a phase-validator) —
-and the dispatch names the same role as `subagent_type`. The orchestrator
-mints a fresh nonce per dispatch (4+ lowercase alphanumerics, never
-reused within a phase); full grammar in `skills/onboarding/SKILL.md`
+for the perf pipeline, `phase-validator#<nonce>` for a phase-validator),
+and `subagent_type` names the same role: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md)
 §"Dispatch grammar". Then the brief should give the reviewer:
 
 1. **The ledger** at `tests/e2e/docs/onboarding-status.json` — the

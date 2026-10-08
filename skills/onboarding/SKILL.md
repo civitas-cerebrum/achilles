@@ -66,10 +66,8 @@ orchestrator only advances when the verdict is `approve`. Every
 return-schema path
 (`schemas/subagent-returns/workflow-reviewer.schema.json`) — the
 `subagent-schema-preread-gate.sh` hook denies briefs that omit the
-citation — and, under the role kernel, MUST open with the binding tag
-`<<kernel-mandate-role: workflow-reviewer#<nonce>>>` on its first line,
-dispatched with `subagent_type: workflow-reviewer` (§"Dispatch grammar"
-below). The same holds for `phase-validator-<N>:` dispatches with the
+citation — and, under the role kernel, MUST open with the binding tag and name the role as `subagent_type`
+(§"Dispatch grammar" below). The same holds for `phase-validator-<N>:` dispatches with the
 `phase-validator` role.
 
 The contract is harness-enforced:
@@ -337,9 +335,7 @@ the self-credentialing pattern.
 Load `test-composer` for the dispatch contract; consult
 `schemas/subagent-returns/composer.schema.json` and
 `reviewer-inloop.schema.json` for return shapes. Each composer is
-dispatched as `test-composer-j-<slug>: <task>` with `subagent_type:
-test-composer` and the binding tag `<<kernel-mandate-role:
-test-composer#<nonce>>>` as the brief's first line (§"Dispatch grammar").
+dispatched as `test-composer-j-<slug>: <task>` (§"Dispatch grammar").
 
 ---
 
@@ -568,8 +564,7 @@ should be portable across local / CI / staging targets.
    1. `scaffolder-phase7:` — brief: the `NAME=value` pairs and any
       config literal to move; writes `.env`, `.env.example`, the
       `.gitignore` entry, `dotenv` in `playwright*.config.ts`.
-   2. `secrets-sweep-phase7:` (`subagent_type: secrets-sweep`, tag
-      `<<kernel-mandate-role: secrets-sweep#<nonce>>>`) — brief:
+   2. `secrets-sweep-phase7:` (`subagent_type: secrets-sweep`) — brief:
       `NAME (one-word role label)` pairs, e.g. `TEST_USER_EMAIL
       (login email)`, "use exactly these names"; rewrites `tests/**`.
 3. The sweep replaces literals in `tests/**` with `process.env.<NAME>`;
