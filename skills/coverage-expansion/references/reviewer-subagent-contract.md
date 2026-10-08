@@ -87,7 +87,7 @@ Every reviewer return **MUST** open with a `handover` envelope as its first key.
 |---|---|
 | `role` | `reviewer-inloop` (per-journey) or `reviewer-batch-pass-<N>` (batch mode). |
 | `cycle` | Integer ≥ 1. |
-| `status` | Per-journey: see [ledger-vocabulary.md](../../achilles-protocol/references/ledger-vocabulary.md); `batch-complete` in batch mode. |
+| `status` | Per-journey: see [reviewer-inloop schema](../../../schemas/subagent-returns/reviewer-inloop.schema.json); `batch-complete` in batch mode. |
 | `next-action` | One-line directive for the orchestrator. |
 
 `phase` and `summary` are **top-level** fields — they MUST NOT appear inside `handover`. Banned tokens inside any reviewer return: `nice-to-have`, `greenlight-with-notes`, top-level `notes:`.

@@ -100,7 +100,7 @@ A pass is complete only when **every** criterion for that pass is met. "Ran some
 
 Only when **all** of the above are true may the orchestrator report depth-mode coverage-expansion complete to its caller. Anything less is a partial run and must be reported as such (see the resume-state contract).
 
-**Dual-stage extension.** On top of the per-pass criteria above, a pass is complete only when **every dispatched journey has a terminal `review_status`** (`greenlight`, `blocked-cycle-stalled`, `blocked-cycle-exhausted`, or `blocked-dispatch-failure`) recorded in the state file's `dispatches[]` array. For Passes 4 and 5, "every dispatched journey" means every journey in `journeyRoster - adversarialSkippedJourneys[].journey`. A pass where every journey's Stage A returned but some journeys have no `review_status` is **incomplete**, even if the per-pass criteria above appear satisfied. Stage B participation is part of the completion gate, not optional.
+**Dual-stage extension.** On top of the per-pass criteria above, a pass is complete only when **every dispatched journey has a terminal `review_status`** ([state-file-schema.md](state-file-schema.md)) recorded in the state file's `dispatches[]` array. For Passes 4 and 5, "every dispatched journey" means every journey in `journeyRoster - adversarialSkippedJourneys[].journey`. A pass where every journey's Stage A returned but some journeys have no `review_status` is **incomplete**, even if the per-pass criteria above appear satisfied. Stage B participation is part of the completion gate, not optional.
 
 ### Whole-suite re-run gate (per-pass exit)
 
