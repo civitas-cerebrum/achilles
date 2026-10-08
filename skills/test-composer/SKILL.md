@@ -473,22 +473,7 @@ Within a journey, variants (happy path, error states, edge cases, mobile, negati
 
 ## Commit-message conventions
 
-Every test this skill commits MUST use the compositional-pass template:
-
-```
-test(<j-slug>): <variant>
-```
-
-- `<j-slug>` is the journey ID (the `j-<slug>` from `journey-map.md`, without angle brackets).
-- `<variant>` names the variant just committed: `happy-path`, `error-states`, `edge-cases`, `mobile`, `negative-flows`, `data-lifecycle`, or a specific sub-variant (e.g. `happy-path-returning-user`).
-- One journey per commit, one variant per commit. Do not batch multiple variants into a single commit; do not batch multiple journeys into a single commit.
-
-Examples:
-- `test(j-<slug>): happy-path`
-- `test(j-<slug>): error-states`
-- `test(j-add-<entity>): data-lifecycle`
-
-Do NOT use `test(pass<N>): …`, `feat(e2e): …`, or `test(<j1>, <j2>): …` — see the **Commit-message conventions** table in `skills/coverage-expansion/references/depth-mode-pipeline.md` for the full list of anti-patterns across all passes.
+Commit subjects: [depth-mode-pipeline.md](../coverage-expansion/references/depth-mode-pipeline.md) §"Commit-message conventions". Compositional passes use `test(<j-slug>): <variant>`, one journey and one variant per commit.
 
 ---
 
