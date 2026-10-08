@@ -14,77 +14,42 @@
 # State   : reads <workspace>/.achilles/adversarial-verification/*.json
 #           (no writes — this gate never authors the thing it checks)
 # Env     : WORKSPACE_ROOT (defaults to git toplevel of cwd)
-#           CIVITAS_DISABLE_ADVERSARIAL_GATE=1 disables the hook. Deliberately
-#           NOT repeated in the denial message: a gate that prints its own
-#           bypass at the moment of maximum frustration is a gate that lives in
-#           someone's shell profile by the end of week one. Documented here and
-#           in the skill, where it is read in a calmer moment.
+#           CIVITAS_DISABLE_ADVERSARIAL_GATE=1 disables the hook. Not named
+#           in the denial message, so the deny does not advertise its bypass.
 #
-# Why this exists
-# ---------------
-# Baseline testing of the ticket-driven-testing skill found that an early
-# draft omitted this check every time: an agent that had just written a
-# suite produced an otherwise excellent plan and never asked whether the
-# suite could fail. An agent with NO skill at all named that check first,
-# unprompted — so the draft was worse than nothing on this dimension.
-#
-# The skill was revised and now does fire the check (see its §"Baseline
-# testing"). This gate is therefore DEFENCE IN DEPTH, not the sole
-# mechanism; it earns its place because:
-#
-#   1. Instructions are advisory; a gate is not. A skill can be skimmed,
-#      truncated, or superseded by a user instruction. This cannot.
-#   2. It is independent of the skill's CONTENTS. A gate keyed on the action
-#      does not care what the skill said, or whether the installed copy
-#      matched the repository copy — a desync that once hid a draft's failure
-#      for five test runs. It is NOT independent of whether an achilles skill
-#      was invoked at all: this hook is session-scoped like every other, and
-#      silent-allows in a session that never activated the protocol.
-#
-# Deliberately NOT claimed: that instruction-level guidance does not work.
-# It does. This is a second line, not a replacement.
+# Why
+# ---
+# Instructions are advisory and can be skimmed, truncated or superseded; a gate
+# keyed on the action is independent of the skill's contents. Defence in depth
+# next to `ticket-driven-testing` §8. Session-scoped like every other hook.
 #
 # What counts as a receipt
 # ------------------------
-# .achilles/adversarial-verification/<ticket>.json, carrying BOTH a
-# `negativeControl` object (the author ran the checks) and a `review` object
-# (someone independent judged the result adequate):
+# .achilles/adversarial-verification/<ticket>.json (ticket key in the filename),
+# newer than the newest spec, carrying a `negativeControl` object and a `review`
+# object (the shape below). A reviewer who reads only specs can certify every
+# assertion while the feature is broken in a browser, hence `uiReviewed`.
 #
 #   "review": {
 #     "reviewer": "probe-rigour-<id>",   // who; empty is a denial
-#     "uiReviewed": true,                 // they looked at the UI, not only the specs
+#     "uiReviewed": true,                 // looked at the UI, not only the specs
 #     "coverageSufficient": true,         // the explicit conclusion
 #     "scores": { "R1": 3, "R2": 2, ... },// any 0 blocks, whatever the total
 #     "total": 15                         // <= 12 blocks
 #   }
 #
-# The UI flag matters: a reviewer who reads only specs can certify every
-# assertion while the feature is visibly broken in a browser.
-#
-# The receipt must be NEWER than the newest spec file in the workspace; one from
-# before the tests were last edited says nothing about them as they now stand. It
-# must also carry the ticket key in its filename, or any receipt unlocks any ticket.
-#
-# Limits. Exact-key matching closes the receipt-binding bypasses; the rest are structural:
-#   * the receipt lives in a directory no protected-artifact guard covers, so the agent being
-#     judged can author, post-date or delete its own acquittal (`touch -t 2030…` makes staleness
-#     permanently unfailable);
-#   * the spec scan truncates at 2000 paths in READDIR order and xargs-batches, so on a large
-#     monorepo the genuinely-newest spec can be missed;
-#   * the `review` block is JSON the same agent can write. This gate enforces the SHAPE and the
-#     THRESHOLDS of a review, which is real — it cannot enforce that a reviewer ran, or that the
-#     reviewer was not the author. A PreToolUse hook has no way to attest subagent identity. Treat
-#     a passing receipt as "the author asserts a review with these scores", not "a review happened";
-#   * only mcp__* tools are seen — Bash, curl and gh are ungated, and the skill itself documents
-#     them as the fallback;
+# Limits. A speed bump, not a control; it raises the cost of skipping from
+# "forget" to "write a false artifact":
+#   * the receipt lives where no protected-artifact guard reaches, so the agent
+#     judged can author, post-date (`touch -t`) or delete it;
+#   * the `review` block is JSON the same agent writes; the gate enforces its
+#     shape and thresholds, not that an independent reviewer ran (a PreToolUse
+#     hook cannot attest subagent identity);
+#   * the spec scan truncates at 2000 paths in READDIR order, so on a large
+#     monorepo the newest spec can be missed;
+#   * only mcp__* tools are seen; Bash, curl and gh are ungated;
 #   * the status vocabulary is six English words.
-# This is a speed bump, not a control. Making it sound needs a hook-authored, hash-chained receipt
-# on the protected list — the pattern ledger-integrity-chain.sh already implements.
-#
-# Deliberately NOT enforced: whether the receipt's contents are true. A hook
-# cannot tell a real probe run from a fabricated JSON file, so this raises the
-# cost of skipping from "forget" to "write a false artifact" and does not
-# prevent it. The fix is a hook-authored, hash-chained receipt on the protected
+# Making it sound needs a hook-authored, hash-chained receipt on the protected
 # list (the ledger-integrity-chain.sh pattern).
 
 set -euo pipefail

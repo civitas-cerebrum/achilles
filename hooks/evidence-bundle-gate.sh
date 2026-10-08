@@ -26,66 +26,29 @@
 #           ACHILLES_EVIDENCE_DIR   — extra directory to search for bundles,
 #                                     for projects whose evidence lives outside
 #                                     the repo
-#           CIVITAS_DISABLE_EVIDENCE_GATE=1 disables the hook. Deliberately NOT
-#           repeated in the denial message, for the same reason its sibling
-#           adversarial-verification-gate.sh does not: a gate that prints its
-#           own bypass at the moment of maximum frustration lives in someone's
-#           shell profile by the end of week one.
+#           CIVITAS_DISABLE_EVIDENCE_GATE=1 disables the hook. Not named
+#           in the denial message, so the deny does not advertise its bypass.
 #
 # Rule
 # ----
-# `ticket-driven-testing` §"The Contract" requires five deliverables per ticket,
-# item 3 of which is "an evidence bundle — via companion-mode". This gate binds
-# that requirement to the actions that constitute sign-off, PER TICKET: a
-# transition to a completed state, a published (non-draft) PR, and — as a warn —
-# a verdict-shaped tracker comment. A bundle belonging to a DIFFERENT ticket
-# does not satisfy it. That per-ticket binding is the mechanical half of the
-# skill's §0 re-entry rule: one ticket, one run.
-#
-# The gate additionally refuses to let a sign-off proceed while a captured
-# `network.har` / `console.log` in the matched bundle still carries an
-# unredacted credential — `companion-mode` §"Redaction" mandates that pass and
-# nothing enforced it.
+# `ticket-driven-testing` §"The Contract" item 3 requires an evidence bundle.
+# This gate binds it per ticket to sign-off actions: a terminal transition and a
+# published (non-draft) PR deny without a bundle for that ticket; a verdict-shaped
+# comment warns. A bundle for another ticket does not count (skill §0 re-entry).
 #
 # Why
 # ---
-# Observed failure, and the reason this hook exists rather than another
-# paragraph of markdown:
-#
-#   A session invoked `ticket-driven-testing` for one ticket and followed it
-#   properly. The operator then moved to a SECOND ticket in the same session.
-#   The agent treated the skill as "already loaded", ran an ad-hoc verification
-#   instead of the sequence, and posted a verdict to the tracker with measured
-#   numbers and ZERO artifacts — no screenshots, no recording, no trace, no
-#   bundle. Nothing objected. When the same work was redone under
-#   `companion-mode` it immediately surfaced two defects the ad-hoc path had
-#   missed: artifact paths that collided so a second environment's run silently
-#   overwrote the first's video/trace/HAR, and a live deployment
-#   protection-bypass token sitting unredacted in the captured HARs.
-#
-# The skill's activation is intent-triggered, and the agent's own judgement was
-# the only thing that could re-fire it. Judgement is exactly what a second
-# ticket erodes: the skill IS loaded, the transcript DOES contain the method, so
-# "I already did this" is a locally reasonable inference and a globally wrong
-# one. A gate keyed on the ACTION does not care what the agent inferred.
-#
-# Scope: the artifact-free verdict above was a tracker COMMENT, which this gate
-# only WARNs on. It blocks the terminal transition and published PR that follow;
-# on the comment surface it is advisory.
+# A gate keyed on the action does not depend on the agent remembering the skill
+# when a second ticket starts in the same session. It also refuses sign-off while
+# the matched `network.har` / `console.log` holds an unredacted credential
+# (`companion-mode` §"Redaction").
 #
 # Why secrets DENY everywhere, including comments
 # -----------------------------------------------
-# The missing-bundle case is graded (DENY terminal / WARN comment) because it
-# has a legitimate outcome: `ticket-driven-testing` §"Prerequisites" says a run
-# against an unreachable app "stops at the diff review, which is still worth
-# doing". A bundle-less verdict can be truthful if it says so, and a hard block
-# there would push it into misreporting or a disabled hook.
-#
-# An unredacted live credential in a captured artifact has no such outcome.
-# There is no run for which the right answer is "ship it with the token in it",
-# and the remedy costs about thirty seconds. So that branch denies on every
-# gated surface, comments included — the comment is usually where the bundle's
-# path gets published to the tracker in the first place.
+# A missing bundle has a legitimate outcome (`ticket-driven-testing`
+# §"Prerequisites": an unreachable app stops at diff review), so it is graded
+# DENY/WARN. A live credential has none, and a comment is usually where the
+# bundle path gets published, so that branch denies on every gated surface.
 #
 # Deliberately NOT enforced
 # -------------------------
