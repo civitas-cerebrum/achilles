@@ -58,3 +58,9 @@ run_hook_without_lib "$HOOK_DIR/protected-artifact-bash-guard.sh" protected-path
 assert_eq "$HOOK_EXIT:$HOOK_OUT" "2:" "no protected-paths.sh, active → exit 2"
 
 rm -f "$FC_STATE"/fc-*
+
+section "fail-closed: control — with jq present the same gate refuses by decision, not by crash"
+activate_session fc-ctl
+assert_deny "$HOOK_DIR/playwright-cli-isolation-guard.sh" "$(fc_payload fc-ctl PreToolUse tool_name=Bash 'command=npx playwright-cli -s=j-checkout-3 open')" \
+  "active session, jq present, unprefixed slug → DENY (JSON decision)" "missing role prefix"
+rm -f "$FC_STATE"/fc-*

@@ -4,9 +4,8 @@
 # PreToolUse:Write|Edit. DENY mode.
 H="$HOOK_DIR/onboarding-ledger-write-gate.sh"
 
-# Skip the suite if `node` or the package's ajv dependency isn't available
-# — the hook silent-allows in that situation, so the deny-expectation
-# tests below would not be meaningful. We probe both before running.
+# The hook silent-allows without node or ajv, which would make every deny case below pass
+# vacuously — so a missing tool fails this file (require_tool) rather than skipping it.
 require_tool node || return 0
 NODE_BIN=$(command -v node)
 # ajv is a package dependency; without it the hook silent-allows and every deny case below is meaningless.
@@ -198,9 +197,8 @@ P_NOREG=$(echo "$P_NOREG" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_ty
 assert_deny "$H" "$P_NOREG" "Subagent context but no registry → DENY" "no approver registry exists"
 
 # Seed the approver registry next to the ledger, then re-test.
-NOW=$(date +%s)
 REGISTRY="$TMP_REPO/tests/e2e/docs/.workflow-approvers.json"
-printf '{"toolu_approved":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$NOW" > "$REGISTRY"
+printf '{"toolu_approved":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
 
 # Test: subagent context + fresh non-empty approver registry → ALLOW
 P_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
@@ -223,8 +221,7 @@ P_EMPTY=$(echo "$P_EMPTY" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_ty
 assert_deny "$H" "$P_EMPTY" "Subagent context but empty registry → DENY" "approver registry is empty"
 
 # Test: most-recent approver registration expired (> 30 min) → DENY
-EXPIRED_TS=$((NOW - 3600))
-printf '{"toolu_expired":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$EXPIRED_TS" > "$REGISTRY"
+printf '{"toolu_expired":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$REGISTRY_TS_EXPIRED" > "$REGISTRY"
 P_EXP=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
 P_EXP=$(echo "$P_EXP" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "workflow-reviewer"}')
 assert_deny "$H" "$P_EXP" "Expired approver registration → DENY" "has expired"
@@ -263,8 +260,7 @@ P_T_NOREG=$(echo "$P_T_NOREG" | "$JQ" -c '. + {agent_id: "subagent-final", agent
 assert_deny "$H" "$P_T_NOREG" "Subagent status → complete but no registry → DENY" "no approver registry exists"
 
 # Registered, unexpired approver → the existing behaviour (ALLOW).
-NOW=$(date +%s)
-printf '{"toolu_final":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$NOW" > "$REGISTRY"
+printf '{"toolu_final":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
 P_T_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")
 P_T_OK=$(echo "$P_T_OK" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type: "workflow-reviewer"}')
 assert_allow "$H" "$P_T_OK" "Registered approver subagent status → complete → ALLOW"
@@ -278,7 +274,7 @@ P_T_AB=$(echo "$P_T_AB" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type:
 assert_allow "$H" "$P_T_AB" "Registered approver subagent status → aborted → ALLOW"
 
 # Expired registration → DENY, as for approvals.
-printf '{"toolu_stale":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$((NOW - 3600))" > "$REGISTRY"
+printf '{"toolu_stale":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$REGISTRY_TS_EXPIRED" > "$REGISTRY"
 assert_deny "$H" "$P_T_OK" "Expired approver registration for status → complete → DENY" "has expired"
 rm -f "$REGISTRY"
 

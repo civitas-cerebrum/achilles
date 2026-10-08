@@ -74,3 +74,10 @@ done
 assert_eq "$(lib_active "$(payload session_id=dp-md hook_event_name=PreToolUse tool_name=Skill skill=frontend-design)")" "inactive" \
   "Skill(frontend-design) does not activate (a skill this package does not ship)"
 
+section "activation has teeth: a marked session is gated, an unmarked one is not"
+BARE='npx playwright-cli -s=j-checkout-3 open --browser=chromium http://app'
+ISO="$HOOK_DIR/playwright-cli-isolation-guard.sh"
+assert_deny "$ISO" "$(payload session_id=dp-w1 hook_event_name=PreToolUse tool_name=Bash command="$BARE")" \
+  "session marked by a dispatch prefix → bare slug DENY" "missing role prefix"
+assert_allow "$ISO" "$(payload session_id=dp-never hook_event_name=PreToolUse tool_name=Bash command="$BARE")" \
+  "unmarked session → same command ALLOW"

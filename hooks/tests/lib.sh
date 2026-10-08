@@ -269,6 +269,11 @@ section() {
   echo "── $* ──"
 }
 
+# Approver-registry timestamps. The hooks read the real clock with no seam, so cases pin ts to
+# values that are fresh/expired for any plausible clock (year 2100 is never older than the TTL).
+REGISTRY_TS_FRESH=4102444800
+REGISTRY_TS_EXPIRED=1
+
 # require_tool <name>… — a missing dependency fails the case file; it never skips it.
 # Caller: `require_tool node || return 0`.
 require_tool() {

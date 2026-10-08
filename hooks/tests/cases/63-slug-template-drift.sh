@@ -24,12 +24,14 @@ SLUG_LITERALS=$(grep -rhoE -- '-s=[A-Za-z0-9_.<>/-]+' "$COV_REF_DIR" 2>/dev/null
   | grep -E '^(phase1|phase2|phase4|stage2|composer|reviewer|probe|cleanup|companion|fd)-' \
   | sort -u)
 assert_eq "$([ -n "$SLUG_LITERALS" ] && echo found || echo none)" "found" "coverage-expansion docs carry role-prefixed -s= literals to pin"
-{
-  while IFS= read -r slug; do
-    [ -z "$slug" ] && continue
-    PAYLOAD=$("$JQ" -n --arg c "npx playwright-cli run -s=$slug --headed" '{tool_name:"Bash", tool_input:{command:$c}}')
-    assert_allow "$H" "$PAYLOAD" "doc slug literal '-s=$slug' → ALLOW (guard ↔ doc pinned)"
-  done <<EOF
+while IFS= read -r slug; do
+  [ -z "$slug" ] && continue
+  PAYLOAD=$("$JQ" -n --arg c "npx playwright-cli run -s=$slug --headed" '{tool_name:"Bash", tool_input:{command:$c}}')
+  assert_allow "$H" "$PAYLOAD" "doc slug literal '-s=$slug' → ALLOW (guard ↔ doc pinned)"
+done <<EOF
 $SLUG_LITERALS
 EOF
-}
+
+section "slug-template-drift: the pin can fail — the guard still refuses an unprefixed slug"
+assert_deny "$H" "$("$JQ" -n --arg c "npx playwright-cli run -s=j-checkout-3 --headed" '{tool_name:"Bash", tool_input:{command:$c}}')" \
+  "bare j- slug → DENY (so the ALLOWs above are not vacuous)" "missing role prefix"

@@ -4,7 +4,7 @@
 # PreToolUse:Write|Edit. DENY mode.
 H="$HOOK_DIR/perf-onboarding-ledger-write-gate.sh"
 
-# Skip if node / ajv is unavailable (same pattern as onboarding write-gate tests).
+# A missing node/ajv fails this file: the hook would silent-allow and every deny below would pass vacuously.
 require_tool node || return 0
 NODE_BIN=$(command -v node)
 # ajv is a package dependency; without it the hook silent-allows and every deny case below is meaningless.
@@ -142,9 +142,8 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$I
 # Phase 2 deliverable: readiness.md must exist.
 mkdir -p "$TMP_REPO/tests/perf/docs"
 printf '# Readiness\n' > "$TMP_REPO/tests/perf/docs/readiness.md"
-NOW=$(date +%s)
 REGISTRY="$TMP_REPO/tests/perf/docs/.workflow-approvers.json"
-printf '{"toolu_perf_approved":{"role":"perf-reviewer","description":"perf-reviewer-phase2","ts":%d}}' "$NOW" > "$REGISTRY"
+printf '{"toolu_perf_approved":{"role":"perf-reviewer","description":"perf-reviewer-phase2","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
 P_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
 P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-abc", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_OK" "Perf subagent context + fresh approver registry → ALLOW"
@@ -185,8 +184,7 @@ P_PT_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TER
 P_PT_NOREG=$(echo "$P_PT_NOREG" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_deny "$H" "$P_PT_NOREG" "Perf subagent status → complete but no registry → DENY" "no approver registry exists"
 
-NOW=$(date +%s)
-printf '{"toolu_perf_final":{"role":"perf-reviewer","description":"perf-reviewer-final","ts":%d}}' "$NOW" > "$REGISTRY"
+printf '{"toolu_perf_final":{"role":"perf-reviewer","description":"perf-reviewer-final","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
 P_PT_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")
 P_PT_OK=$(echo "$P_PT_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_PT_OK" "Registered perf approver subagent status → complete → ALLOW"

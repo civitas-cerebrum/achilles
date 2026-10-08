@@ -45,5 +45,19 @@ assert_allow "$H" "$(export_cmd 'ls')" "non-export Bash → silent ALLOW"
 DECK_INSPECTION_GATE=0 assert_allow "$H" "$(export_cmd 'node export-pdf.js deck.html')" "DECK_INSPECTION_GATE=0 → export not gated"
 assert_eq "$(has_sentinel)" "no" "…and no sentinel"
 
+section "deck-inspection-gate: no pdftoppm → manual inspection mode"
+# A PATH holding only the tools the hook calls, so pdftoppm is unresolvable wherever it is installed.
+NOPDF="$DK/proj/nopdf-bin"; mkdir -p "$NOPDF"
+for t in bash sh env jq grep sed dirname basename date cat rm mkdir head tr; do
+  p=$(command -v "$t") && ln -sf "$p" "$NOPDF/$t"
+done
+reset
+PATH="$NOPDF" assert_warn "$H" "$(export_cmd 'node export-pdf.js deck.html')" "no pdftoppm → manual-inspection systemMessage" "pdftoppm is not installed"
+assert_eq "$(has_sentinel)" "yes" "…the sentinel is still written"
+assert_eq "$(grep -c '^inspect_dir=MANUAL$' "$SENT")" "1" "…marked inspect_dir=MANUAL"
+assert_eq "$(grep -c '^page_count=0$' "$SENT")" "1" "…with page_count=0"
+assert_deny "$H" "$(agent)" "…and the next Agent dispatch is still DENIED" "BLOCKED"
+reset
+
 section "deck-inspection-gate: other events"
 assert_allow "$H" "$(payload hook_event_name=PreToolUse tool_name=Bash command='ls' cwd="$DECK")" "PreToolUse:Bash → silent ALLOW"

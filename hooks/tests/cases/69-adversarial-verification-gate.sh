@@ -73,8 +73,9 @@ assert_allow "$H" "$(tracker mcp__linear__save_comment body 'QA Test Report: AC-
   "receipt present → comment no longer warns"
 
 section "adversarial-gate: a receipt older than the tests it vouches for is not a receipt"
-sleep 1
-touch "$WS/tests/a.spec.ts"
+# Explicit mtimes, not a sleep: the hook compares mtimes only.
+touch -t 202001010000 "$WS/.achilles/adversarial-verification/ABC-1.json"
+touch -t 202001020000 "$WS/tests/a.spec.ts"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "spec edited after receipt → DENY" "OLDER than the most recently edited spec"
 

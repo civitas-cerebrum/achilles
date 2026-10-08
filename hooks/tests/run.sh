@@ -92,10 +92,31 @@ HARNESS_ERRORS=()
 trap 'if [ $? -eq 127 ] && [ "$(basename "${BASH_SOURCE[0]}")" != "run.sh" ]; then HARNESS_ERRORS+=("$(basename "${BASH_SOURCE[0]}"):${LINENO}: command not found — a helper is mistyped or out of scope"); fi' ERR
 set -o errtrace
 
-for f in "${selected[@]}"; do
+for f in ${selected[@]+"${selected[@]}"}; do
   echo
   echo "=== $(basename "$f") ==="
   run_case_file "$f"
+done
+
+# A case file that only ever asserts ALLOW cannot detect a hook that dies early (a crashed hook
+# also emits nothing). Files below are exempt, each for a stated reason.
+ALLOW_ONLY_OK=(
+  44-playwright-cli-cleanup-on-stop.sh    # recorder: always exits 0, side-effects only
+  52-workflow-approver-registry.sh        # recorder: always silent-allows, writes the registry
+  59-run-summary-writer.sh                # recorder: Stop hook, never denies
+  67-perf-summary-writer.sh               # recorder: Stop hook, never denies
+  80-playwright-artifact-archiver.sh      # recorder: "never fails the run: no deny under any input"
+  47-public-package-contamination-scan.sh # not a hook: the scan's verdict is the assertion
+  62-postinstall-prune-dangling.sh        # not a hook: installer behaviour, checked by state
+  75-self-repair-known-defect.sh          # not a hook: classifier output
+  82-postinstall-install-scope.sh         # not a hook: installer behaviour, checked by state
+  84-sync-kernel-mandate-check.sh         # not a hook: a CLI whose refusals are exit codes
+)
+for f in ${selected[@]+"${selected[@]}"}; do
+  name="$(basename "$f")"
+  case " ${ALLOW_ONLY_OK[*]} " in *" $name "*) continue ;; esac
+  grep -qE '^[^#]*assert_(deny|warn|stop_block|block_subagent|ask)' "$f" ||
+    HARNESS_ERRORS+=("$name: no assert_deny/assert_warn/assert_stop_block/assert_block_subagent — allow-only files cannot detect a hook that dies early")
 done
 
 # Install simulation — proves the gates fire from a consumer-style install

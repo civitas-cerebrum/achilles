@@ -8,7 +8,7 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/run-sh-selftest.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/cases"
 printf 'exit 3\n' > "$WORK/early.sh"
-printf ":\n" > "$WORK/cases/ok.sh"
+printf "assert_deny() { :; }\nassert_deny\n" > "$WORK/cases/ok.sh"
 printf ":\n" > "$WORK/sim-ok.sh"
 fail=0
 check() { # name expected_rc output_pattern
@@ -22,4 +22,6 @@ check "early-exit case file fails the run" 1 "early.sh: exited before finishing"
 rm "$WORK/cases/early.sh"
 check "early-exit install-simulation fails the run" 1 "early.sh: exited before finishing" "$WORK/early.sh"
 check "clean case file and simulation pass" 0 "all .* tests passed" "$WORK/sim-ok.sh"
+printf ":\n" > "$WORK/cases/allow-only.sh"
+check "allow-only case file is a harness error" 1 "allow-only.sh: no assert_deny" "$WORK/sim-ok.sh"
 exit "$fail"
