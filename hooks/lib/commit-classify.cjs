@@ -5,17 +5,8 @@
 // project root, and nothing otherwise. Exit 2 = unusable argv (the gate turns that into an
 // allow-with-warning).
 //
-// Quote-aware via hooks/lib/shell-segments.cjs — the same splitter the spend gate uses. The gate
-// used to do this in bash: substitute the shell operators for newlines, `read -a` each segment,
-// and require TOK[0] == "git". Three everyday commands slipped straight through it —
-//
-//   sh -c 'git commit -m x'        token 0 is `sh`
-//   bash -c 'git commit -m x'      token 0 is `bash`
-//   env git commit -m x            token 0 is `env`
-//
-// — and an ungated commit is the whole rule defeated: the point of process.evidence is that
-// "verified" means the tree being committed is the tree that passed, and a commit the gate never
-// sees carries no stamp check at all.
+// Quote-aware via hooks/lib/shell-segments.cjs, the splitter the spend gate uses. A commit behind `sh -c '…'`,
+// `bash -c '…'` or `env git commit` is still a commit: an ungated one carries no stamp check at all.
 //
 // What a segment can do here:
 //   * leading `VAR=value` assignments, and the prefixes a shell passes straight through

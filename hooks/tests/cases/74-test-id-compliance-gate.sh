@@ -143,11 +143,8 @@ CIVITAS_DISABLE_TEST_ID_GATE=1 \
 section "test-id-gate: the project's own titleIdPattern drives the shape"
 # The documented authoring flow (spec-shape.md §1, the requirement-intake
 # skill, and hooks/data/factory-rules.example.json, whose titleIdPattern is
-# "^[A-Z]{2,5}-\d{2,3}[a-z]? — ") teaches test('CHK-03 — …'). This gate used to
-# enforce the TC house shape with nothing connecting the two, so an agent that
-# followed the documentation exactly had its spec write DENIED here — by a gate
-# the documentation never mentions, demanding an ID in a scheme the project had
-# deliberately replaced. These cases pin the bridge in both directions.
+# "^[A-Z]{2,5}-\d{2,3}[a-z]? — ") teaches test('CHK-03 — …'). A spec that follows it must not be denied for a TC
+# house shape the project replaced. These cases pin the bridge in both directions.
 TID_PROJ=$(mktemp -d /tmp/test-id-rules-XXXXXX)
 mkdir -p "$TID_PROJ/tests"
 cat > "$TID_PROJ/achilles-factory-rules.json" <<'TIDRULES'

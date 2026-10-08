@@ -4,10 +4,8 @@ const HARNESS_HOOKS = 'skills/achilles-protocol/references/harness-hooks.md';
 const HOOK_MANIFEST = 'hooks/data/hook-manifest.json';
 const FACTORY_DIR = 'hooks/factory';
 
-// Check 13 — manifest.factory  ↔  hooks/factory/*.sh  ↔  harness-hooks.md
-// Check 3's link pattern has no directory segment, so it cannot see a
-// factory gate; this check holds that family on all three sides. A gate on
-// disk the manifest omits ships and never runs.
+// manifest.factory ↔ hooks/factory/*.sh ↔ harness-hooks.md. The hook-manifest check matches links without a
+// directory segment, so it cannot see these gates. A gate on disk that the manifest omits ships and never runs.
 export function run(report) {
   const detail = [];
   const registered = new Set((JSON.parse(readFileSync(HOOK_MANIFEST, 'utf8')).factory ?? []).map((e) => e.file));

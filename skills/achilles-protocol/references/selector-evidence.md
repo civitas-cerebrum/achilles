@@ -81,13 +81,11 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
 - `rules["selectors.evidence"].repository` is the default for `--repository`.
 - Relative paths (`--repository`, `--out`, `--storage-state`) resolve against the project root (`$CLAUDE_PROJECT_DIR`,
   else the cwd), like the rules file.
-- **Dependency on proposal B.** These fields belong to the factory-rules schema that proposal B ships
-  (`hooks/data/factory-rules.schema.json`); this tool depends on B defining them, all optional. The exact fields the
-  tool consumes:
+- **Schema fields the tool reads** (`hooks/data/factory-rules.schema.json`, all optional):
   - `contexts` — optional top-level map `{ "<name>": { "baseUrl": string, "storageState": string } }`;
   - `rules["selectors.evidence"].evidenceDir` — the evidence directory (default `--out`);
-  - `rules["selectors.evidence"].provisionalKey` — the entry flag name (`provisional`), read by the gate and the
-    guard; the tool itself does not change entries.
+  - `rules["selectors.evidence"].provisionalKey` — the entry flag name (`provisional`), read by the gate; the tool
+    itself does not change entries.
 
   A project that shards by another dimension (locale, tenant, device) names its contexts after it.
 
@@ -118,17 +116,16 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
 | `screenshot` | the PNG beside the note (live notes only) |
 | `source` | `live`, or a backfill source (below) |
 
-**Contract used by the repository-evidence gate** (proposal B): for a new or changed entry that is not provisional,
+**Contract used by the repository-evidence gate:** for a new or changed entry that is not provisional,
 the note must exist, its `- selector:` JSON must **deep-equal** the entry's selector (after JSON parse; key order
 irrelevant), and it must carry a `- source:` line. A changed selector with the old note is refused as stale; a
 hand-written note without a source is refused. The tool refuses to write a note without `source`, or one whose text
 carries an `@` on any line **except** `- selector:` (emails are redacted first). The selector line is exempt because
 it is the project's own committed value, already in `page-repository.json`, and the gate requires the note to carry it
-back verbatim — so a selector containing `@` can be neither redacted nor omitted, and holding the note to the same
-rule made the one note the gate would accept impossible to write. A refusal is reported as a refusal: it names the
-offending line and says the element resolved, rather than sending you to re-check the `--url`.
+back verbatim, so a selector containing `@` can be neither redacted nor omitted. A refusal is reported as a refusal: it
+names the offending line and says the element resolved, rather than sending you to re-check the `--url`.
 
-## Honest backfill
+## Backfill
 
 A project adopting the convention has entries that predate it. A backfill writes a note only on what the record says:
 
@@ -139,7 +136,7 @@ A project adopting the convention has entries that predate it. A backfill writes
    `hidden` waits do not count) → `source: live-run (exercised by <file:line>)`, `live-observed: yes (by run)`.
 3. **Otherwise no note**: the entry becomes `"provisional": true` and gets a known-issues row.
 
-"Seen live" is written only when the record says so — never inferred from the entry looking plausible. A backfill
+"Seen live" is written only when the record says so, never inferred from a plausible-looking entry. A backfill
 never touches a `source: live` note and is idempotent. Running the tool later replaces a backfill note with a live one.
 
 ## Provisional entries

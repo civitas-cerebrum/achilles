@@ -22,18 +22,10 @@
 #      (hooks/factory/intake-gate.sh) already enforces on every new spec.
 #   3. The house shape: TC + up to three more letters, dash, 4-6 digits.
 #
-# Step 2 exists because 1 and 3 alone were a trap. The documented authoring
-# flow — spec-shape.md, the requirement-intake skill, and the shipped
-# hooks/data/factory-rules.example.json, whose titleIdPattern is
-# "^[A-Z]{2,5}-\d{2,3}[a-z]? — " — teaches `test('CHK-03 — …')`, while this
-# gate enforced the TC house shape and nothing connected the two. An agent that
-# followed the documentation exactly had its spec write DENIED here, by a gate
-# the docs never mentioned, with a message demanding an ID in a scheme the
-# project had deliberately replaced; and factory-gates.md claimed the two gates
-# "complement" each other. Reading the project's own pattern makes that true:
-# one declared shape, two gates checking different things about it — this one
-# that an ID is present and unique, the intake gate that the ID names a
-# written, linted scenario.
+# Step 2 keeps the two gates on one shape: the documented authoring flow (spec-shape.md, requirement-intake,
+# hooks/data/factory-rules.example.json) teaches `test('CHK-03 — …')`, so this gate reads the project's pattern
+# instead of enforcing the TC shape. This gate checks that an ID is present and unique; the intake gate checks that
+# the ID names a written, linted scenario.
 #
 # Rule
 # ----

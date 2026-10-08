@@ -5,8 +5,8 @@
 // then prints the first "what happened" sentence of a deny, or nothing. Exit 2 = the rule or the list is unusable
 // (the gate turns that into an allow-with-warning).
 //
-// Quote-aware via hooks/lib/shell-segments.cjs — the splitter this file used to own, now shared with
-// commit-classify.cjs so the two Bash-side gates read the same shell. The command is split into segments at
+// Quote-aware via hooks/lib/shell-segments.cjs — shared with commit-classify.cjs so the two
+// Bash-side gates read the same shell. The command is split into segments at
 // unquoted && || ; | & ( ) and newlines, and each segment into tokens honouring '…', "…" and \ escapes.
 // Each segment is judged on its own: <optInEnv>=1 as a leading assignment of a `playwright test` /
 // `npm run <spendScript>` segment, or <optInFlag> inside a <wrapper> segment, opts THAT segment in — nothing in

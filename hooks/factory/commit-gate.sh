@@ -40,15 +40,12 @@
 # hour and three edits ago. A timestamp cannot tell; a content hash can.
 #
 # Known limit: the stamp itself is protected by state-gate.sh (process.state); a forged stamp still has
-# to carry the hash of the current tree, which only a real verify run produces honestly. Shell
+# to carry the hash of the current tree, which only a real verify run produces. Shell
 # expansions are not resolved, so `$GIT commit` is not seen, and nesting deeper than one level is not
 # followed.
 #
-# This gate used to tokenise the command itself, in bash, and require token 0 to be literally `git`.
-# Three commands an agent writes unprompted walked straight past it — `sh -c 'git commit -m x'`,
-# `bash -c 'git commit -m x'` and `env git commit -m x`, whose token 0 is `sh`, `bash` and `env` — and
-# a commit the gate never sees is the whole rule defeated: process.evidence exists to make "verified"
-# mean the tree being committed is the tree that passed.
+# Command splitting is shared with the spend gate (hooks/lib/shell-segments.cjs), so `sh -c 'git commit'`
+# and `env git commit` are seen as commits.
 #
 # Canonical reference
 # -------------------

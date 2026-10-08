@@ -48,7 +48,7 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 | [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md) | Per-caller `autonomousMode: true` contracts. |
 | [`references/skill-registry.md`](references/skill-registry.md) | Canonical skill name registry. |
 | [`references/cascade-detector.md`](references/cascade-detector.md) | Canonical onboarding-state probe (Levels A/B/C/None) and per-caller responses. |
-| [`references/selector-evidence.md`](references/selector-evidence.md) | Selector evidence: insert-provisional → `achilles-selector-evidence` → drop-flag, the note contract the repository-evidence gate reads, honest backfill, rule 2 standing authorisation. |
+| [`references/selector-evidence.md`](references/selector-evidence.md) | Selector evidence: insert-provisional → `achilles-selector-evidence` → drop-flag, the note contract the repository-evidence gate reads, backfill, rule 2 standing authorisation. |
 | [`references/roles-and-dispatch.md`](references/roles-and-dispatch.md) | Role kernel binding, dispatch grammar, nonce, switches and limits. |
 | [`references/controller-protocol.md`](references/controller-protocol.md) | Running a change through several agents: briefs and reports as files, dispatch parts, concurrency, hand-back statuses. |
 | [`references/verification-record.md`](references/verification-record.md) | "Stable" and "verified" as records: run counts, can-fail proofs, the verify note, the content-hash stamp. |
@@ -147,7 +147,7 @@ These rules are non-negotiable. They override helpfulness, initiative, and assum
 - You do not know what selectors exist on the page. Do not guess.
 - Use `@playwright/cli` (see [`references/playwright-cli-protocol.md`](references/playwright-cli-protocol.md)) to navigate to the page and inspect the real DOM. The CLI ships as a hard dependency of this package, so `npx playwright-cli ...` is always reachable after `npm install`.
 - If the browser binary is missing (the first `playwright-cli ... open` call fails with a "browser not installed" error), run `npx playwright-cli install-browser chromium` once, then retry.
-- Record what you saw: insert the entry with `"provisional": true`, run `npx achilles-selector-evidence --page <Page> --element <element> …` (it resolves the committed entry, requires count 1 — ≥ 1 for `"list": true` — and writes `<Page>.<element>.md` + `.png`), then drop the flag in the same change. An entry that stays provisional is listed in the project's known-issues. Sequence, note contract and honest backfill: [`references/selector-evidence.md`](references/selector-evidence.md).
+- Record what you saw: insert the entry with `"provisional": true`, run `npx achilles-selector-evidence --page <Page> --element <element> …` (it resolves the committed entry, requires count 1 — ≥ 1 for `"list": true` — and writes `<Page>.<element>.md` + `.png`), then drop the flag in the same change. An entry that stays provisional is listed in the project's known-issues. Sequence, note contract and backfill: [`references/selector-evidence.md`](references/selector-evidence.md).
 
 ### 5. Do NOT invent type definitions
 - If a type is missing, tell the user. Do not create `.d.ts` stubs or workarounds.

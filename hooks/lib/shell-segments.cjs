@@ -2,18 +2,11 @@
 // (hooks/factory/spend-gate.sh via spend-classify.cjs, hooks/factory/commit-gate.sh via
 // commit-classify.cjs).
 //
-// Extracted from spend-classify.cjs, where it was the only quote-aware splitter in the repo.
-// commit-gate.sh had its own, written in bash as a chain of `${VAR//x/y}` substitutions over the
-// raw command, and it had the defect that shape makes inevitable: it tokenised each segment with
-// `read -a` and then required token 0 to be literally `git`, so `sh -c 'git commit -m x'` had
-// token 0 `sh`, hit `continue`, and committed with no gate at all. Same for `bash -c …` and for
-// `env git commit`. Every one of those is a thing an agent writes by itself. One splitter, used by
-// both gates, is the only way the two stay honest about the same shell.
+// One splitter for both gates, so they read the same shell.
 //
-// Deliberate limits (shared with the gates that use it, documented in their headers and in
-// references/factory-gates.md §"What the gates deliberately do not do"): no expansion of $VAR,
-// $(…) or `…`; no aliases, functions or scripts that call the runner; one level of nesting only,
-// which is the callers' business, not this module's.
+// Limits (shared with the gates that use it; known-limits.md KL-17): no expansion of $VAR, $(…) or `…`; no aliases,
+// functions or scripts that call the runner; one level of nesting only, which is the callers' business, not this
+// module's.
 'use strict';
 
 // Unquoted shell metacharacters that end a command: the control operators, plus the subshell

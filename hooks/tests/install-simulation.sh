@@ -1,8 +1,7 @@
 #!/bin/bash
 # install-simulation.sh — proves the gates actually FIRE from a
-# consumer-style install (the Phase-1 bug class: hooks copied to
-# ~/.claude/hooks/ silently no-op because schemas/node_modules don't
-# exist there).
+# consumer-style install (hooks copied to ~/.claude/hooks/ silently
+# no-op when schemas/node_modules don't exist there).
 #
 # Mirrors scripts/postinstall.js's REAL copy set:
 #   - every hook-manifest.json hook + companion (copyHookFile, chmod 755)
@@ -164,11 +163,9 @@ run_install_simulation() {
   fi
 
   # --- Assertion: a factory gate FIRES from the installed location ---------
-  # The Phase-1 bug class applied to this family: the gates live one directory
-  # deeper than every other hook and reach their library through a relative
-  # `source ../lib/factory-common.sh`, which resolves only when the install
-  # preserved the factory/ + lib/ + bin/ layout. Prove it with a real verdict
-  # against a fake project, not just by checking the file exists.
+  # The gates live one directory deeper than every other hook and reach their library through a relative
+  # `source ../lib/factory-common.sh`, which resolves only when the install preserved the factory/ + lib/ + bin/
+  # layout. Prove it with a real verdict against a fake project, not by checking that the file exists.
   local fp_rules fac_payload fac_out fac_decision
   fp_rules="$fake_project/achilles-factory-rules.json"
   cat > "$fp_rules" <<'FACRULES'

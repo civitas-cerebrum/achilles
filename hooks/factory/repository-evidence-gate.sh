@@ -22,7 +22,7 @@
 # Why
 # ---
 # A selector written from memory or from a screenshot is a guess. The note is the receipt that the
-# selector was read off the live page; the provisional flag is the honest alternative while the page
+# selector was read off the live page; the provisional flag is the alternative while the page
 # cannot be inspected (it must be dropped in the same change once evidence exists).
 #
 # Known limit: an edit whose old_string does not occur in the on-disk file, or a result that is not
