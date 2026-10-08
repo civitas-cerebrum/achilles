@@ -8,7 +8,7 @@
 #                                         this session.
 #
 # Hook    : PreToolUse:Write|Edit + PreToolUse:Agent (same script,
-#           registered against both events in HOOK_MANIFEST)
+#           registered against both events in data/hook-manifest.json)
 # Mode    : DENY
 # State   : reads the session transcript at `transcript_path` from the
 #           hook input — checks for any Skill('journey-mapping') tool
@@ -75,18 +75,15 @@ if [ "${JOURNEY_MAPPING_PREREAD_GATE:-on}" = "off" ]; then
   exit 0
 fi
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 
@@ -118,10 +115,7 @@ case "$TOOL_NAME" in
     ;;
   Agent)
     DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
-    case "$DESCRIPTION" in
-      phase4-cycle-*|phase4-prioritise-author*) ;;
-      *) exit 0 ;;
-    esac
+    is_phase4_mapping_description "$DESCRIPTION" || exit 0
     TRIGGER_KIND="dispatch"
     TRIGGER_TARGET="$DESCRIPTION"
     ;;

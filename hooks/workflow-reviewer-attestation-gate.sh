@@ -68,47 +68,30 @@ set -uo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/workflow-reviewer/SKILL.md"
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found." >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh agent-return.sh
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 [ "$TOOL_NAME" = "Agent" ] || exit 0
 
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
-# Only act on approver-role dispatches (workflow-reviewer-* /
-# phase-validator-*). Detection is shared via lib/reviewer-prefix.sh.
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+# Only act on approver-role dispatches (is_reviewer_description, lib/dispatch-prefix.sh).
 is_reviewer_description "$DESCRIPTION" || exit 0
 
 # Extract the reviewer's return text from the tool response. Same shape
 # the existing return-schema-guard parses.
-RESPONSE=$(
-  echo "$INPUT" | "$JQ" -r '
-    [
-      (.tool_response.output? | if type == "array" then map(.text? // (. | tostring)) | join("\n") elif type == "string" then . else (. | tostring) end),
-      (.tool_response.result? // empty | tostring),
-      (if (.tool_response | type) == "string" then .tool_response else empty end)
-    ] | map(select(. != null and . != "")) | unique | join("\n")
-  ' 2>/dev/null || echo ""
-)
+RESPONSE=$(agent_return_text)
 case "$RESPONSE" in
   ""|"null"|"{}"|"[]") exit 0 ;;
 esac
-
-emit_warn() {
-  "$JQ" -n --arg m "$1${HOOK_REFS}" '{
-    "systemMessage": $m,
-    "suppressOutput": false
-  }'
-}
 
 # Parse the return. The reviewer's return is YAML in practice; we convert
 # it to JSON through the bundled validator's `tojson` subcommand (P7
@@ -119,8 +102,8 @@ emit_warn() {
 NODE_BIN="$(command -v node || true)"
 HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
 VALIDATOR_BUNDLE="$HOOK_LIB_DIR/validator.bundle.mjs"
-TMP_RESP=$(mktemp /tmp/wr-attestation-XXXXXX.txt)
-trap 'rm -f "$TMP_RESP" "$TMP_RESP.json"' EXIT
+TMP_RESP=$(mktemp "${TMPDIR:-/tmp}/wr-attestation-XXXXXX")
+trap 'rm -f "$TMP_RESP"' EXIT
 printf '%s' "$RESPONSE" > "$TMP_RESP"
 
 PARSED_JSON=""

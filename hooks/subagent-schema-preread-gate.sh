@@ -37,7 +37,7 @@
 # Substring match is intentionally syntactic, not semantic. A brief that
 # says "DO NOT use <role>.schema.json; use the other one" satisfies the
 # gate; so does a stale "in the old contract we used <role>.schema.json"
-# reference that no longer reflects what the subagent should follow. The
+# reference that is outdated for what the subagent should follow. The
 # gate is a "forgot to cite the schema at all" check, not a semantic
 # enforcement — semantic checks would require NLP-grade negation
 # detection, which is well outside scope for a public-package hook. If
@@ -91,25 +91,19 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/s
 
 
 # Resolve jq (matches the resolution pattern used by sibling hooks).
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 # Shared role-mapping. Single source of truth — same file is sourced by
 # the PostToolUse half of the contract (subagent-return-schema-guard.sh).
-# shellcheck source=lib/schema-role-map.sh
-HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
-# shellcheck disable=SC1091
-. "$HOOK_LIB_DIR/schema-role-map.sh"
+hook_lib schema-role-map.sh
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 

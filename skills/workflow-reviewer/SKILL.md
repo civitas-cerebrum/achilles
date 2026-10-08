@@ -45,7 +45,7 @@ compression at transition points — see §"Empirical origin" below.
 
 | Prefix | Fires between | Mapped to methodology section |
 |---|---|---|
-| `workflow-reviewer-phase<N>:` | onboarding phase N completion and phase N+1 start | `skills/onboarding/SKILL.md` §"Phase N" exit criteria (one per phase 1-8) |
+| `workflow-reviewer-phase<N>:` | onboarding phase N completion and phase N+1 start | the exit criteria of each `## Phase <N>` section of `skills/onboarding/SKILL.md` (phases 1-8) |
 | `workflow-reviewer-pass<N>:` | coverage-expansion pass N completion and pass N+1 start | `skills/coverage-expansion/SKILL.md` §"Per-pass completion criteria" |
 | `workflow-reviewer-cycle<N>:` | journey-mapping cycle N completion and cycle N+1 start | `skills/journey-mapping/SKILL.md` §"Iterative discovery cycles" |
 
@@ -57,13 +57,7 @@ transitions (Phase 4 inner loop).
 
 ## Inputs the reviewer receives in its brief
 
-The brief's FIRST line is the role kernel's binding tag —
-`<<kernel-mandate-role: workflow-reviewer#<nonce>>>` (`perf-reviewer#<nonce>`
-for the perf pipeline, `phase-validator#<nonce>` for a phase-validator) —
-and the dispatch names the same role as `subagent_type`. The orchestrator
-mints a fresh nonce per dispatch (4+ lowercase alphanumerics, never
-reused within a phase); full grammar in `skills/onboarding/SKILL.md`
-§"Dispatch grammar". Then the brief should give the reviewer:
+The brief's first line is `<<kernel-mandate-role: workflow-reviewer#<nonce>>>` (`perf-reviewer` or `phase-validator` for those dispatches; grammar in [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md)). Then the brief should give the reviewer:
 
 1. **The ledger** at `tests/e2e/docs/onboarding-status.json` — the
    current phase / pass / cycle row + the prior unit's row for context.
@@ -121,7 +115,7 @@ the return.
 - `coverage-expansion-state.json` records all five passes + cleanup (deletion happens post-approval)
 
 ### Phase 6 — Bug-discovery (`workflow-reviewer-phase6`)
-- Every probe terminal (`clean` | `findings-emitted` | `blocked`); blocked probes require a ledger deferral entry with an `authorizer` or a re-dispatch
+- Every probe terminal (a [probe](../../schemas/subagent-returns/probe.schema.json) status); blocked probes require a ledger deferral entry with an `authorizer` or a re-dispatch
 - Every `findings-emitted` return has a regression spec OR an explicit `app-bug` flag
 
 ### Phase 7 — Secrets-sweep (`workflow-reviewer-phase7`)

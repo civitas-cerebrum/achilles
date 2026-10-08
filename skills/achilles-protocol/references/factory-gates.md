@@ -20,7 +20,7 @@ factory gate allows silently. A rule id absent from the file → its gate allows
 > **Migration:** a rule file already placed under `.achilles/` (as `factory-rules.json`) is no longer read — move it to
 > `achilles-factory-rules.json` at the project root and commit it (or point `FACTORY_RULES` at it).
 
-**How the gates get there.** Installing the package registers them: `FACTORY_MANIFEST` in `scripts/postinstall.js`
+**How the gates get there.** Installing the package registers them: the `factory` list in `hooks/data/hook-manifest.json`
 copies each gate to `<.claude>/hooks/factory/<gate>.sh` — the subdirectory is part of the contract, since every gate
 reaches its library through `source ../lib/factory-common.sh` — and adds one `PreToolUse` registration per gate to
 `settings.json`. Unlike every other guard family they carry **no session-activation wrapper**, because the opt-in is
@@ -204,7 +204,7 @@ gates are the early, cheap half; without a project verify step, a warning is the
 
 ## Ordering with the kernel
 
-The role kernel (`hooks/data/achilles-qa.workflow.json`) decides **authority**: which role may write which path, run
+The role kernel (`hooks/data/achilles-qa.kernel-mandate.json`) decides **authority**: which role may write which path, run
 which command, dispatch which role. The factory gates decide **content**: whether what an allowed role writes or runs
 is acceptable for this project. A factory gate never inspects who is calling; the kernel never inspects what is written.
 

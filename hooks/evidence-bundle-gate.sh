@@ -10,7 +10,7 @@
 #                  THIS ticket — sign-off is the moment the evidence must exist)
 #           DENY  (an unredacted secret in a captured HAR or console log, on every
 #                  surface this hook reaches — comments included, see "Why secrets
-#                  DENY everywhere" below. "Reaches" is the honest word: a comment
+#                  DENY everywhere" below. "Reaches" matters: a comment
 #                  that is not verdict-shaped, and a draft PR, exit before the
 #                  bundle is ever located, so neither is scanned. A non-verdict
 #                  comment publishing a bundle path with a live token in it is a
@@ -26,85 +26,39 @@
 #           ACHILLES_EVIDENCE_DIR   — extra directory to search for bundles,
 #                                     for projects whose evidence lives outside
 #                                     the repo
-#           CIVITAS_DISABLE_EVIDENCE_GATE=1 disables the hook. Deliberately NOT
-#           repeated in the denial message, for the same reason its sibling
-#           adversarial-verification-gate.sh does not: a gate that prints its
-#           own bypass at the moment of maximum frustration lives in someone's
-#           shell profile by the end of week one.
+#           CIVITAS_DISABLE_EVIDENCE_GATE=1 disables the hook. Not named
+#           in the denial message, so the deny does not advertise its bypass.
 #
 # Rule
 # ----
-# `ticket-driven-testing` §"The Contract" requires five deliverables per ticket,
-# item 3 of which is "an evidence bundle — via companion-mode". This gate binds
-# that requirement to the actions that constitute sign-off, PER TICKET: a
-# transition to a completed state, a published (non-draft) PR, and — as a warn —
-# a verdict-shaped tracker comment. A bundle belonging to a DIFFERENT ticket
-# does not satisfy it. That per-ticket binding is the mechanical half of the
-# skill's §0 re-entry rule: one ticket, one run.
-#
-# The gate additionally refuses to let a sign-off proceed while a captured
-# `network.har` / `console.log` in the matched bundle still carries an
-# unredacted credential — `companion-mode` §"Redaction" mandates that pass and
-# nothing enforced it.
+# `ticket-driven-testing` §"The Contract" item 3 requires an evidence bundle.
+# This gate binds it per ticket to sign-off actions: a terminal transition and a
+# published (non-draft) PR deny without a bundle for that ticket; a verdict-shaped
+# comment warns. A bundle for another ticket does not count (skill §0 re-entry).
 #
 # Why
 # ---
-# Observed failure, and the reason this hook exists rather than another
-# paragraph of markdown:
-#
-#   A session invoked `ticket-driven-testing` for one ticket and followed it
-#   properly. The operator then moved to a SECOND ticket in the same session.
-#   The agent treated the skill as "already loaded", ran an ad-hoc verification
-#   instead of the sequence, and posted a verdict to the tracker with measured
-#   numbers and ZERO artifacts — no screenshots, no recording, no trace, no
-#   bundle. Nothing objected. When the same work was redone under
-#   `companion-mode` it immediately surfaced two defects the ad-hoc path had
-#   missed: artifact paths that collided so a second environment's run silently
-#   overwrote the first's video/trace/HAR, and a live deployment
-#   protection-bypass token sitting unredacted in the captured HARs.
-#
-# The skill's activation is intent-triggered, and the agent's own judgement was
-# the only thing that could re-fire it. Judgement is exactly what a second
-# ticket erodes: the skill IS loaded, the transcript DOES contain the method, so
-# "I already did this" is a locally reasonable inference and a globally wrong
-# one. A gate keyed on the ACTION does not care what the agent inferred.
-#
-# HONEST SCOPE — read this before relying on the gate. In the origin story above
-# the artifact-free verdict was posted as a tracker COMMENT, and this gate WARNs
-# on comments; it does not block them. What it would have blocked is the
-# terminal transition and the published PR that follow. Adversarial review made
-# that point sharply and it is correct: on the comment surface this is an
-# advisory, which is the same class of thing the "Why" paragraph argues is
-# insufficient. The grading is deliberate (see below) but it is a trade, not a
-# win, and the narrative should not imply otherwise.
+# A gate keyed on the action does not depend on the agent remembering the skill
+# when a second ticket starts in the same session. It also refuses sign-off while
+# the matched `network.har` / `console.log` holds an unredacted credential
+# (`companion-mode` §"Redaction").
 #
 # Why secrets DENY everywhere, including comments
 # -----------------------------------------------
-# The missing-bundle case is graded (DENY terminal / WARN comment) because it
-# has a legitimate outcome: `ticket-driven-testing` §"Prerequisites" says a run
-# against an unreachable app "stops at the diff review, which is still worth
-# doing". A bundle-less verdict CAN be honest, so long as it says so — and a
-# hard block there would push an honest report into either dishonesty or a
-# disabled hook.
+# A missing bundle has a legitimate outcome (`ticket-driven-testing`
+# §"Prerequisites": an unreachable app stops at diff review), so it is graded
+# DENY/WARN. A live credential has none, and a comment is usually where the
+# bundle path gets published, so that branch denies on every gated surface.
 #
-# An unredacted live credential in a captured artifact has no such outcome.
-# There is no run for which the right answer is "ship it with the token in it",
-# and the remedy costs about thirty seconds. So that branch denies on every
-# gated surface, comments included — the comment is usually where the bundle's
-# path gets published to the tracker in the first place.
-#
-# Deliberately NOT enforced — the honest limits
-# ---------------------------------------------
-# Every item below was found by adversarial review of this hook, reproduced,
-# and left in place with a reason. A limits list that omits the limits the
-# reviewer found is worse than no list.
+# Not enforced
+# -------------------------
 #
 # * **Staleness.** Its sibling gate requires the receipt to be newer than the
-#   newest spec. That check is WRONG here and is deliberately absent: the
+#   newest spec. That check is absent on purpose: the
 #   skill's own order runs the evidence bundle at §6 and writes the durable
 #   tests at §7, so a correct bundle ALWAYS predates the specs. A staleness rule
 #   would make this gate permanently unpassable.
-# * **That the bundle is honest.** The bundle is authored by the same actor the
+# * **That the bundle is genuine.** The bundle is authored by the same actor the
 #   gate judges, in a directory no protected-artifact guard covers. Fabricating
 #   one that satisfies this gate is `mkdir -p x/screenshots && touch
 #   x/summary.md x/screenshots/a.png` — three empty files. Cross-ticket reuse is
@@ -205,7 +159,8 @@
 # skills/ticket-driven-testing/SKILL.md §"The sequence" (step 0),
 #                                       §"The Contract",
 #                                       §"The sign-off gate"
-# skills/companion-mode/SKILL.md        §"Redaction (mandatory …)"
+# skills/companion-mode/SKILL.md        §"Redaction (mandatory — scoped to the artifact,
+#                                       not to the bundle)"
 # skills/achilles-protocol/references/harness-hooks.md
 #
 # Failure → action
@@ -220,97 +175,43 @@
 
 set -euo pipefail
 
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-JQ="$HOOK_DIR/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib signoff.sh hook-emit.sh
+hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_EVIDENCE_GATE:-}" = "1" ] && exit 0
 
 INPUT="$(cat)"
 
-# shellcheck source=lib/achilles-activation.sh
-if [ -f "$HOOK_DIR/lib/achilles-activation.sh" ]; then
-  . "$HOOK_DIR/lib/achilles-activation.sh"
-  achilles_session_active "$INPUT" || exit 0
-fi
-
-emit_deny() {
-  "$JQ" -n --arg r "$1" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
-}
-
-emit_warn() {
-  "$JQ" -n --arg m "$1" '{systemMessage: $m, suppressOutput: false}'
-}
+hook_lib achilles-activation.sh
+achilles_session_active "$INPUT" || exit 0
 
 TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 [ -n "$TOOL_NAME" ] || exit 0
 
 # ─── which surface are we on ────────────────────────────────────────────────
-# Tracker vocabularies differ per vendor; match the shapes, not one product.
-IS_TRANSITION=0
-IS_COMMENT=0
-IS_PR=0
-case "$TOOL_NAME" in
-  *save_issue*|*transitionJiraIssue*|*update_issue*|*editJiraIssue*) IS_TRANSITION=1 ;;
-  *save_comment*|*addCommentToJiraIssue*|*create_comment*)           IS_COMMENT=1 ;;
-  Bash)                                                              IS_PR=1 ;;
-  *) exit 0 ;;
-esac
+signoff_classify_tool "$TOOL_NAME" || exit 0
 
-# Guard the TYPE, not just presence. A payload whose `tool_input` is a string
-# made every later `.command` / `.body` read a jq error, and under `set -e` that
-# killed the hook mid-way with no output — which the harness reads as an ALLOW.
-# Failing open is the right direction here, but it should be a decision, not an
-# uncaught abort.
+# Guard the TYPE: a string `tool_input` would abort every later jq read, and an
+# abort under `set -e` reads as ALLOW. Fail open, but on purpose.
 ARGS="$(printf '%s' "$INPUT" | "$JQ" -c 'if (.tool_input | type) == "object" then .tool_input else {} end' 2>/dev/null || echo '{}')"
 
-# ─── Bash surface: is this actually publishing a PR? ────────────────────────
-# Strip quoted strings and trailing comments before looking at flags. Scanning
-# the raw command for `-d` matched flags mentioned inside a PR title or body,
-# which silently disabled the gate on ordinary commands.
-# The `#` arm only fires at a word boundary. A shell comment must start a word;
-# `#` inside one is literal, so stripping it context-free ate the rest of the
-# line — `gh pr create --title issue#5 --draft` lost its `--draft` and denied a
-# genuine draft PR with nothing in the message to explain why.
+# Strip quoted strings and trailing comments before scanning flags, so a `-d` in
+# a PR title is not read as the flag. `#` starts a comment only at a word
+# boundary (`issue#5` is literal).
 strip_quoted() {
   printf '%s' "$1" | sed -E "s/'[^']*'/ /g; s/\"[^\"]*\"/ /g; s/(^|[[:space:]])#.*$/\1/"
 }
 
-# Peel wrapper prefixes off one command segment so the real program is first.
-# `env`, `command`, `time`, `nohup`, `exec`, `eval`, `sh -c`, `bash -lc` and
-# leading `VAR=val` assignments are how people actually script `gh` — treating
-# them as evasions to be ignored left every one of them ungated.
+# Peel wrapper prefixes (`env`, `time`, `sh -c`, `VAR=val`, ...) so the real
+# program is first.
 #
-# The assignment arm is matched against the FIRST TOKEN ONLY, and its name part
-# must be identifier characters. An earlier version used the glob
-# `[A-Za-z_]*=*\ *`, which does not mean "starts with an assignment" — it means
-# "contains `=` with a space somewhere after it", so it matched the gh command
-# itself and peeled `gh` away word by word. `gh pr create --base=main --fill`
-# (the flag form in gh's own documentation, with any argument after it) silently
-# disabled the gate. That regression was strictly worse than the hole it was
-# written to close, because it fired on ordinary interactive use rather than on
-# opt-in scripting forms.
-#
-# EVERY arm below must consume at least one character before it `continue`s, and
-# the assignment arm strips the TOKEN rather than "up to the first space" for
-# exactly that reason: `${s#* }` on a segment with no space is a no-op, so the
-# first draft of the fix above spun forever on a bare `A=1` — an ordinary Bash
-# command, on which the gate then rendered no decision at all until the harness
-# timed it out. A hook that never returns is a hook that is off, and it takes
-# the tool call with it. PEEL_CAP is the belt to that braces: if a future arm is
-# added that can fail to consume, the loop gives up and lets the segment be
-# judged as-is instead of hanging the tool call.
+# The assignment arm matches the FIRST TOKEN only, with identifier characters in
+# the name; a glob over the whole segment matched `gh --base=main` itself and
+# peeled `gh` away. Every arm must consume at least one character before it
+# continues (a bare `A=1` would otherwise spin), and PEEL_CAP bounds the loop so
+# a future arm that fails to consume cannot hang the tool call.
 PEEL_CAP=32
 normalise_segment() {
   local s="$1" peeled=0 tok name i=0
@@ -329,15 +230,10 @@ normalise_segment() {
         name="${tok%%=*}"
         case "$name" in
           *[!A-Za-z0-9_]*) ;;
-          # Strip the token itself — never "up to the first space", which does
-          # nothing when the segment IS the assignment.
-          #
-          # Except when the VALUE opens a substitution or a quote: `OUT=`gh pr
-          # create`` has no space to stop at, so the token runs to `OUT=`gh` and
-          # stripping it swallows the backtick and the program name together.
-          # Strip just `NAME=` there and let the peel arm above take the opener.
-          # Found by the suite when the segment splitter stopped breaking on
-          # backticks — the two changes are only safe as a pair.
+          # Strip the token, never "up to the first space" (a no-op when the
+          # segment IS the assignment). When the VALUE opens a quote or
+          # substitution (`OUT=`gh pr create``) strip just `NAME=` and let the
+          # peel arm above take the opener.
           *)
             case "${tok#*=}" in
               \`*|\"*|\'*) s="${s#*=}" ;;
@@ -366,23 +262,12 @@ if [ "$IS_PR" = "1" ]; then
   CMD_JOINED="$(printf '%s' "$CMD" | sed -e :a -e '/\\$/N; s/\\\n/ /; ta')"
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
-    # The probe costs two forks per segment. A segment with no `gh` substring
-    # anywhere cannot normalise INTO one — peeling only removes prefixes — so
-    # skipping here is free correctness-wise and keeps a many-segment command
-    # from eating the budget before the HAR scan starts.
+    # A segment with no `gh` substring cannot normalise into one; skip the forks.
     case "$seg" in *gh*) ;; *) continue ;; esac
     norm="$(normalise_segment "$seg")"
-    # Classification runs on a normalised PROBE, never on `norm` itself: quotes
-    # are removed and whitespace runs collapsed, so `"gh" pr create`,
-    # `gh pr "create"`, `gh pr<TAB>create` and `gh pr  create` classify like the
-    # plain form. All are valid shell that publishes a PR, and all were silently
-    # allowed — the old code peeled a LEADING quote only, which left the closing
-    # one glued to the token so `first` was `gh"` and matched nothing. A half-
-    # handled quote arm is worse than none: it reads as though quoting is covered.
-    #
-    # GH_SEGMENT keeps the ORIGINAL text, because the --draft scan below needs
-    # `strip_quoted` to blank quoted regions — a probe with quotes already
-    # removed would let a `-d` mentioned inside a PR title read as the flag.
+    # Classify on a quote-free, whitespace-collapsed PROBE so `"gh" pr create`,
+    # `gh pr "create"` and `gh pr<TAB>create` match. GH_SEGMENT keeps the
+    # ORIGINAL text: the --draft scan needs strip_quoted to blank quoted regions.
     probe="$(printf '%s' "$norm" | tr -d '"'"'" | tr -s '[:space:]' ' ')"
     first="${probe%%[[:space:]]*}"
     case "$first" in
@@ -397,13 +282,9 @@ if [ "$IS_PR" = "1" ]; then
   done < <(printf '%s\n' "$CMD_JOINED" | tr ';&|(){}' '\n')
 
   [ -n "$GH_SEGMENT" ] || exit 0
-  # Sharing work in progress is not a claim that it is verified. `--draft=true`
-  # is the same flag — pflag accepts the `=` form for booleans, and scripts that
-  # compute draftness (`--draft=$IS_DRAFT`) reach for it. The truthy vocabulary
-  # and the case-insensitivity are pflag's, not ours: `strconv.ParseBool` accepts
-  # 1/t/T/TRUE/true/True, so denying `--draft=True` would reproduce the very
-  # false-deny this arm was added to fix. `--draft=false` is NOT a draft and
-  # deliberately does not match.
+  # Draft PRs are not a verification claim. `--draft=<truthy>` uses pflag's own
+  # vocabulary (strconv.ParseBool, case-insensitive); `--draft=false` is not a
+  # draft.
   printf '%s' "$(strip_quoted "$GH_SEGMENT")" |
     grep -qiE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)|(^|[[:space:]])(--draft|-d)=(true|t|1|y|yes)([[:space:]]|$)' && exit 0
 fi
@@ -423,12 +304,8 @@ if [ "$IS_TRANSITION" = "1" ]; then
 fi
 
 if [ "$IS_COMMENT" = "1" ]; then
-  # Comment bodies are not called `body` everywhere. Jira's comment tool sends
-  # `.commentBody`; reading `.body` alone left BOTH branches dead on a tool this
-  # hook names in its own matcher — the same "names a tool it cannot gate"
-  # defect review already caught on the transition surface, missed one surface
-  # over. Non-string shapes are dropped rather than stringified so an ADF
-  # document object cannot match on its own field names.
+  # Comment bodies are `.body`, `.commentBody` (Jira), `.comment` or `.text`.
+  # Non-string shapes are dropped so an ADF document cannot match on field names.
   BODY="$(printf '%s' "$ARGS" | "$JQ" -r '
       [ .body?, .commentBody?, .comment?, .text? ]
       | map(select(type == "string")) | join("\n")' 2>/dev/null || true)"
@@ -455,24 +332,15 @@ fi
 # ─── locate the bundle ──────────────────────────────────────────────────────
 evidence_roots() {
   [ -n "${ACHILLES_EVIDENCE_DIR:-}" ] && [ -d "$ACHILLES_EVIDENCE_DIR" ] && printf '%s\n' "$ACHILLES_EVIDENCE_DIR"
-  # Prunes DURING the walk, not after. There is deliberately NO result cap:
-  # an earlier version truncated at 40, and because `find` emits readdir order
-  # that made the gate nondeterministic — a valid bundle in the wrong part of a
-  # monorepo silently denied, and the answer changed as the tree changed. The
-  # cap was justified by a 10s budget the walk does not come close to using
-  # (measured: 0.03s over a 90-package synthetic monorepo, 0.09s over a real
-  # one). Correctness beats a bound that was never needed.
+  # Prunes during the walk. No result cap: `find` emits readdir order, so a cap
+  # made the gate nondeterministic. The walk takes ~0.1s on a real monorepo.
   find "$WORKSPACE_ROOT" -maxdepth 10 \
     \( -name node_modules -o -name .git -o -name dist -o -name build -o -name .next -o -name coverage -o -name vendor \) -prune -o \
     -type d -name evidence -print 2>/dev/null
 }
 
-# Files a companion-mode bundle can carry, at the bundle root or one level down.
-# One level down is not optional: `companion-mode` §"Phase 5" tells operators to
-# give each environment its own subdirectory (`preview/`, `production/`) to stop
-# the second run overwriting the first — a root-only check denied exactly the
-# layout the skill recommends, and a root-only secret scan was blind to the
-# credentials inside it.
+# Files a companion-mode bundle can carry, at the root or one level down
+# (§"Phase 5" gives each environment its own subdirectory).
 bundle_artifacts() {
   local d="$1"
   ls -1 "$d"/video.webm "$d"/trace.zip "$d"/*.har "$d"/console.log \
@@ -549,64 +417,29 @@ PLACEHOLDER_RE='redacted|\*\*\*|<removed>|\[hidden\]|xxxxx|<[a-z_-]+>'
 # which have nothing to redact and no remedy but disabling the hook.
 NAME_RE='^(cookie|set-cookie|apikey|x-apikey)$|(^|[-_])(authorization|auth|bypass|token|jwt|secret|credential|password|passwd|api[-_]?key)([-_]|$)'
 
-# Credential-shaped assignments inside request/response bodies. The deny message
-# itself tells operators to drop response bodies precisely because they carry
-# these, so not scanning them was incoherent. The >=6-char value requirement is
-# what keeps `api_key= is required` (an app error string) from denying.
-#
-# POSIX classes, not `\t`: `grep -E` does not read `\t` as a tab, so `[ \t]`
-# is the SET {space, backslash, t} — and under `-i` that silently excludes `T`
-# as well, which truncated every match just before the redaction placeholder
-# and turned "Bearer [REDACTED]" into a finding.
+# Credential-shaped assignments in request/response bodies. The >=6-char value
+# keeps `api_key= is required` (an app error string) from denying. POSIX
+# classes, not `\t`: grep -E reads `[ \t]` as {space, backslash, t}, which under
+# `-i` also excludes `T` and turned "Bearer [REDACTED]" into a finding.
 BODY_RE='(access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|api[_-]?key|password|passwd|secret[_-]?key|private[_-]?key)"?['"'"']?[[:blank:]]*[:=][[:blank:]]*["'"'"']?[^"'"'"'[:space:],;}]{6,}'
 
 # One credential-keyed pair inside a `;`-separated multi-value header, matched in
-# ONE pass over the whole value. The keyword boundaries mirror NAME_RE's
-# `(^|[-_])keyword([-_]|$)` so the pair vocabulary and the field vocabulary do
-# not drift apart.
-#
-# This is a regex sweep rather than a split-and-test loop for a measured reason:
-# the loop form cost ~0.55s/MB against ~0.11s/MB for the whole-value scan it
-# replaced — a 5x regression that lands as an IMPLICIT ALLOW, because a hook the
-# harness kills at its timeout emits nothing and nothing is an allow. Large HARs
-# are by construction the ones that still carry response bodies, i.e. exactly
-# where the secret branch matters most, so making that branch fall off a cliff
-# earlier than the gate it replaced was strictly worse than not having it.
+# one pass over the whole value. Keyword boundaries mirror NAME_RE. A split-and-
+# test loop measured 5x slower, and a hook killed at its timeout emits nothing,
+# which is an allow.
 PAIR_RE='(^|[;,[:space:]])([A-Za-z0-9_.-]*[-_])?(authorization|auth|bypass|token|jwt|secret|credential|password|passwd|api[-_]?key)([-_][A-Za-z0-9_.-]*)?[[:space:]]*=[^;]+'
 
-# A HAR big enough to be a parsing risk is, by construction, one that still has
-# response bodies in it — i.e. exactly the thing redaction removes.
-#
-# The number is derived from the hook's REGISTERED BUDGET, not picked. The
-# manifest gives this hook a 10s PreToolUse timeout, and the structural scan
-# measures ~0.17s/MB, so the scan itself runs out of budget somewhere near 60MB.
-# A cap above that is unreachable: the harness kills the hook first, the hook
-# emits nothing, and nothing is an ALLOW — so the "too large to verify" finding
-# would never be seen and a 100MB HAR full of response bodies would sail
-# through. 32MB costs ~5s, leaves headroom on a slow machine, and turns that
-# silent timeout into a deny an operator can act on. If the budget or the scan
-# cost changes, this number changes with it.
+# Cap on HAR size. Derived from the manifest's 10s PreToolUse budget and the
+# ~0.17s/MB structural scan: a cap above ~60MB is unreachable because the harness
+# kills the hook first and silence is an ALLOW. 32MB costs ~5s and turns that
+# timeout into an actionable deny.
 MAX_HAR_BYTES=$((32 * 1024 * 1024))
 
-# ── the gate's own deadline ────────────────────────────────────────────────
-# A byte cap cannot bound TIME, which is the thing that actually kills this
-# hook. Cost per MB varies ~2x by HAR shape: body-heavy runs ~0.17s/MB, but
-# cookie-dense — the shape a credential scanner cares about, because cookies
-# are where credentials live — runs closer to 0.34s/MB. The cap was calibrated
-# on the cheap shape, so a 31.5MB cookie-dense HAR passed it and took ~10.7s.
-# The cap is also per FILE while the budget is per INVOCATION: two 18.3MB HARs
-# each pass and together take ~12s.
-#
-# Being killed is not a neutral outcome. A killed hook emits nothing, and
-# nothing is an ALLOW — the gate does not fail loudly, it evaporates, and the
-# operator sees an ordinary successful command. That is the same fail-open this
-# hook already had to fix once.
-#
-# So the gate now watches its own clock and stops on its OWN terms, turning an
-# implicit ALLOW into an explicit, actionable finding. Overridable so the
-# behaviour is testable, and derived from the registered manifest budget rather
-# than picked: two thirds leaves room for the message to be written and for a
-# slow machine to be slower than the measurement.
+# The gate's own deadline. A byte cap cannot bound time (cookie-dense HARs cost
+# ~2x per MB, and the cap is per file while the budget is per invocation), and a
+# killed hook emits nothing, which is an ALLOW. So the gate stops on its own
+# terms and reports what it did not scan. Two thirds of the budget leaves room
+# for the message and for a slower machine.
 HOOK_BUDGET_S="${ACHILLES_EVIDENCE_GATE_BUDGET_S:-30}"
 SCAN_DEADLINE_S=$(( HOOK_BUDGET_S * 2 / 3 ))
 
@@ -629,25 +462,12 @@ scan_har() {
 "
     return 0
   fi
-  # HAR is JSON, so walk it structurally. A minified HAR is ONE line, which
-  # defeats any "is there a placeholder nearby" line heuristic: a single
-  # redacted header would launder every live one beside it.
-  #
-  # `findings` exists because one header can hold MANY credentials: a `cookie`
-  # / `set-cookie` value is a `;`-separated list of `k=v` pairs, so judging the
-  # whole string against the placeholder vocabulary lets one redacted pair vouch
-  # for every live pair beside it. That is the same laundering the structural
-  # walk exists to prevent, one level further in — and partial redaction is
-  # precisely the state this branch is meant to catch. So each pair is ALSO
-  # judged on its own, by its own key, against the same name vocabulary. The
-  # whole-value test comes first: this is additive, it never turns an existing
-  # finding into a pass.
-  #
-  # A pair-level finding NAMES THE PAIR. Reporting only the header is
-  # undiagnosable: the operator who has already redacted `authorization` inside
-  # a cookie opens it, sees the placeholder, and concludes the gate is broken —
-  # and the remedy text points them at the field they already fixed. A finding
-  # nobody can act on is how a gate gets disabled.
+  # HAR is JSON, so walk it structurally: a minified HAR is one line, which
+  # defeats any "placeholder nearby" line heuristic. `findings` also judges each
+  # `;`-separated pair of a multi-value header (cookie, set-cookie) on its own
+  # key, so one redacted pair cannot vouch for live ones beside it. It is
+  # additive to the whole-value test and names the pair, so the operator can see
+  # what to fix.
   names="$("$JQ" -r --arg ph "$PLACEHOLDER_RE" --arg nre "$NAME_RE" \
                   --arg bre "$BODY_RE" --arg pre "$PAIR_RE" '
       def live: tostring | (length > 0) and (test($ph; "i") | not);
@@ -694,9 +514,8 @@ scan_har() {
   done <<< "$names"
 }
 
-# Console logs are unstructured. Each OCCURRENCE is extracted and checked for a
-# placeholder on its own — a redacted value earlier on the same line must not
-# launder a live one after it, which is the same laundering the structural HAR
+# Console logs are unstructured. Each OCCURRENCE is checked for a placeholder on
+# its own, so a redacted value earlier on the line cannot launder a live one.
 # walk exists to prevent.
 scan_text() {
   local f="$1" label pat live
@@ -740,7 +559,7 @@ REFS="References:
   skills/companion-mode/SKILL.md §\"Redaction (mandatory — scoped to the artifact)\""
 
 if [ -n "$SECRET_FINDINGS" ]; then
-  emit_deny "[BLOCKED] A captured artifact in this ticket's evidence bundle still contains a live credential.
+  emit_pre_deny_bare "[BLOCKED] A captured artifact in this ticket's evidence bundle still contains a live credential.
 
 ──────────────────────────────────────────────────────────────────
 Do this instead — run companion-mode's redaction pass, then retry:
@@ -777,8 +596,7 @@ ${REFS}"
   exit 0
 fi
 
-# Entry B has no ticket, so saying "this ticket" at it sends the reader looking
-# for a key that does not exist. Name where the key came from instead.
+# Entry B has no ticket; name where the key came from instead.
 if [ -n "$TICKET_KEY" ] && [ "$BRANCH_BOUND" = "1" ]; then
   WHOSE="This is a developer-triggered run with no ticket key in the payload, so the gate binds the bundle to the BRANCH instead. No evidence bundle was found for \`${TICKET_KEY}\` (the current branch name, with slashes as dashes)."
 elif [ -n "$TICKET_KEY" ]; then
@@ -835,12 +653,12 @@ one.
 
 ${REFS}"
 
-# Publishing a PR and moving a ticket to a completed state are terminal in the
-# same way: they present the work to others as finished. A comment is not, so it
-# warns — the report can still be worth reading, it just must not read as
-# evidence-backed when there is no evidence.
+# A transition or published PR is terminal, so it denies. A comment is not: a hard
+# block would push a bundle-less verdict into misreporting, so it warns, and the
+# PR/transition that follows denies, so the report cannot pass as evidence-backed
+# without evidence.
 if [ "$IS_TRANSITION" = "1" ] || [ "$IS_PR" = "1" ]; then
-  emit_deny "[BLOCKED] Sign-off blocked — no evidence bundle for this ticket.
+  emit_pre_deny_bare "[BLOCKED] Sign-off blocked — no evidence bundle for this ticket.
 
 $BODY_MSG"
   exit 0

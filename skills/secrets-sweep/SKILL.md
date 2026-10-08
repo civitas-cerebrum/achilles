@@ -21,10 +21,19 @@ discipline upstream, a literal sometimes lands in a spec. The sweep finds
 and removes it.
 
 This skill does **not** sanitise the application under test. Application
-source code is out of scope. The sweep only edits files under
-`tests/` (e2e, contracts, fixtures, data), the project's root
-`playwright*.config.ts`, and the root `.env` / `.env.example` /
-`.gitignore`.
+source code is out of scope. Phase 7 is two dispatches, in order:
+
+0. The orchestrator scans `tests/**` and the root configs itself
+   (steps a-b) and builds `NAME=value` pairs.
+1. `scaffolder-phase7:` brief carries the pairs. It writes `.env`,
+   `.env.example`, the `.gitignore` entry and the `dotenv` load in
+   `playwright*.config.ts`, and rewrites config literals (steps d-f,
+   and any `localhost:3000` in a config) to `process.env.<NAME>`.
+2. `secrets-sweep-phase7:` brief carries `NAME (one-word role label)`
+   pairs, e.g. `TEST_USER_EMAIL (login email)`: "use exactly these
+   names as `process.env.<NAME>`". It edits only
+   `tests/**` (steps c, g). It cannot read `.env` or run anything.
+3. The orchestrator runs steps h-j.
 
 ---
 
@@ -49,13 +58,10 @@ parameterised.
 
 Strict allow-list. Everything else is off-limits.
 
-| Touchable | Off-limits |
-|---|---|
-| `tests/e2e/**` (specs, fixtures, configs) | `src/**`, `app/**`, any application source |
-| `tests/contracts/**` (incl. `schemas.ts`) | Anything outside the test tree and root configs |
-| `tests/fixtures/**`, `tests/data/**` (incl. `page-repository.json`) | Renames or new spec files |
-| Root `playwright*.config.ts` (glob — incl. `playwright.contracts.config.ts`) | `tests/e2e/evidence/**` (see below) |
-| Root `.env`, `.env.example`, `.gitignore` | |
+| Role | Touchable | Off-limits |
+|---|---|---|
+| `secrets-sweep-phase7` | `tests/**` (specs, fixtures, `tests/contracts/**` incl. `schemas.ts`, `tests/data/**`). JSON under `tests/**` (incl. `page-repository.json`) cannot hold `process.env.*`: scan it and REPORT literals as name + `file:line`, do not rewrite; env-dependent JSON values are the orchestrator's decision | `src/**`, `app/**`, renames, new spec files, `tests/e2e/evidence/**` (see below), every file outside `tests/**` |
+| `scaffolder-phase7` only | `.env`, `.env.example`, `.gitignore`, root `playwright*.config.ts` (incl. `playwright.contracts.config.ts`) | everything else |
 
 If you find a credential hard-coded in application source, **flag it in
 the summary** rather than editing the application code. The application
@@ -74,18 +80,24 @@ Work the playbook in order. Each step has a verification.
 
 ### a. List candidates
 
-```bash
-git grep -nE 'password|secret|token|api[_-]?key|bearer|sk-[A-Za-z0-9]' -- 'tests/' 'playwright*.config.ts' || true
-git grep -nE '@[a-z0-9._-]+\.(com|io|net|org)' -- 'tests/' 'playwright*.config.ts' || true
-git grep -nE 'https?://|:[0-9]{4,5}' -- 'tests/' 'playwright*.config.ts' || true
-# token-shape patterns
-git grep -nE 'eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*' -- 'tests/' || true   # raw 3-segment JWT
-git grep -nE 'AKIA[0-9A-Z]{16}' -- 'tests/' || true                                          # AWS access key id
-git grep -nE 'ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}' -- 'tests/' || true          # GitHub tokens
-git grep -nE 'xox[baprs]-' -- 'tests/' || true                                               # Slack tokens
-# credential-shaped second argument to type/fill calls
-git grep -nE "(type|fill)\((['\"]).*[Pp]ass.*\2," -- 'tests/' || true
-```
+No shell anywhere in this phase: scans use the Grep tool with these
+regexes (`-E`).
+
+| Pattern | Catches |
+|---|---|
+| `password\|secret\|token\|api[_-]?key\|bearer\|sk-[A-Za-z0-9]` | credential and key names |
+| `@[a-z0-9._-]+\.(com\|io\|net\|org)` | email addresses |
+| `https?://\|:[0-9]{4,5}` | URLs and ports |
+| `eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*` | raw 3-segment JWT |
+| `AKIA[0-9A-Z]{16}` | AWS access key id |
+| `ghp_[A-Za-z0-9]{36}\|github_pat_[A-Za-z0-9_]{22,}` | GitHub tokens |
+| `xox[baprs]-` | Slack tokens |
+| `(type\|fill)\(['"].*[Pp]ass.*['"],` | credential-shaped argument to type/fill |
+
+| Scanner | Paths |
+|---|---|
+| Orchestrator (step 0, exit re-scan) | `tests/**` and root `playwright*.config.ts` |
+| `secrets-sweep-phase7` (steps a, g) | `tests/**` |
 
 Read each hit and decide which class it belongs to. False positives
 (documentation strings, deliberately-public test endpoints) are fine to
@@ -123,6 +135,8 @@ function env(name: string): string {
 
 ### d. Write `.env` (real values, gitignored)
 
+Scaffolder, not the sweep.
+
 ```
 # .env  — local values, NEVER commit
 APP_URL=http://localhost:3000
@@ -132,6 +146,8 @@ STRIPE_API_KEY=sk_test_…
 ```
 
 ### e. Write `.env.example` (placeholders, committed)
+
+Scaffolder, not the sweep.
 
 One comment line per variable describing what it's for. Use a clearly
 non-secret placeholder.
@@ -151,6 +167,8 @@ STRIPE_API_KEY=sk_test_REPLACE_ME
 
 ### f. Ensure `.gitignore` covers `.env`
 
+Scaffolder, not the sweep.
+
 The file must contain at minimum:
 
 ```
@@ -165,11 +183,14 @@ forgetting them is a common foot-gun.
 
 ### g. Re-scan
 
-Re-run the grep commands from step (a). All hits should now be either
+Re-run the step (a) patterns over `tests/**`. All hits should now be either
 `process.env.<NAME>` references or deliberate skips you noted in step
 (a).
 
 ### h. Verify
+
+The `secrets-sweep` role has no shell; return after the re-scan. The
+orchestrator runs, after the sweep returns:
 
 ```bash
 npx playwright test --list           # specs still parse + enumerate
@@ -180,7 +201,7 @@ A failing suite at this point usually means an env var didn't get loaded
 — check that `dotenv` (or the test harness's equivalent) runs before
 the specs.
 
-### i. Second opinion (optional)
+### i. Second opinion (optional, orchestrator only)
 
 If `gitleaks` or `detect-secrets` is on PATH, run it over `tests/` as a
 second opinion and reconcile its hits against your skip notes from step
@@ -188,7 +209,7 @@ second opinion and reconcile its hits against your skip notes from step
 no-dependency floor; the scanner only adds confidence when it happens to
 be available.
 
-### j. Stage and commit
+### j. Stage and commit (orchestrator only, after the sweep returns)
 
 ```
 chore: extract secrets to .env
@@ -204,9 +225,8 @@ changes.
 
 This skill's subagent returns conform to the `composer` schema (see
 `schemas/subagent-returns/composer.schema.json`). `onboarding` dispatches
-this skill with the `test-composer-secrets-sweep:` description prefix
-(`subagent_type: test-composer`, brief tagged `<<kernel-mandate-role:
-test-composer#<nonce>>>`), so returns are schema-validated against
+this skill (after `scaffolder-phase7:`) with the `secrets-sweep-phase7:` description prefix
+(`subagent_type: secrets-sweep`; grammar: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar"), so returns are schema-validated against
 `composer.schema.json` with zero hook change.
 
 Every return MUST open with a `handover` envelope as its first key:
@@ -215,7 +235,7 @@ Every return MUST open with a `handover` envelope as its first key:
 |---|---|
 | `role` | Kebab-case slug: `secrets-sweep`. |
 | `cycle` | Integer ≥ 1. |
-| `status` | One of `new-tests-landed`, `covered-exhaustively`, `blocked`, `skipped`. |
+| `status` | Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". |
 | `next-action` | One-line directive for the orchestrator. |
 
 **Worked example — `covered-exhaustively`:**
@@ -229,18 +249,16 @@ Every return MUST open with a `handover` envelope as its first key:
     "next-action": "orchestrator to record Phase-7 completion in the onboarding ledger"
   },
   "tests-added": 0,
-  "summary": "Extracted 5 literals into APP_URL, TEST_USER_EMAIL, TEST_USER_PASSWORD, STRIPE_API_KEY; 7 files modified; .env/.env.example/.gitignore written; re-scan clean (2 noted skips); suite green."
+  "summary": "Rewrote literals to APP_URL, TEST_USER_EMAIL, TEST_USER_PASSWORD, STRIPE_API_KEY; 7 files modified; re-scan clean (2 noted skips)."
 }
 ```
 
-The schema's status enum is
-`{blocked, skipped, new-tests-landed, covered-exhaustively}`:
+Meaning per status:
 
 - `new-tests-landed` — when `tests-added > 0` because a regression
   fixture was authored as part of the sweep.
 - `covered-exhaustively` — the typical happy path: literals were
-  extracted, env files written, the suite still passes, no new specs
-  needed.
+  rewritten and the re-scan is clean, no new specs needed.
 - `skipped` — when there is nothing to extract (suite was already
   clean). Provide a `skip-authorisation` line explaining how you
   verified.
@@ -250,7 +268,7 @@ The schema's status enum is
   `blocked-reason` MUST name the un-extracted findings so the human
   can route them.
 
-`summary` must include the env var names you defined and the count of
+`summary` must include the env var names used and the count of
 files modified.
 
 ---
@@ -260,8 +278,9 @@ files modified.
 - **Editing application source.** Out of scope. Flag and report only.
 - **Forgetting `.env.local`.** Some frameworks read `.env.local` first;
   leaving it un-gitignored leaks secrets via local overrides.
-- **Hardcoded `localhost:3000` left in `playwright.config.ts`.** This is
-  in scope — extract to `APP_URL` so CI can point at staging.
+- **Hardcoded `localhost:3000` left in `playwright.config.ts`.** Put it
+  in the `scaffolder-phase7:` brief — extract to `APP_URL` so CI can
+  point at staging. The sweep cannot write configs.
 - **Removing `test@example.com`.** That's the *acceptable* default —
   don't replace a perfectly-fine placeholder with another placeholder.
 - **Touching specs that don't have literals.** If a spec is clean,

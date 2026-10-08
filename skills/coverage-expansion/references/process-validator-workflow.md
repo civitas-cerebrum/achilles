@@ -15,7 +15,7 @@ Same shape as the Stage B reviewer applied one level up. The validator does NOT 
 
 ## 1. When to invoke
 
-Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold. (Dispatch shape under the role kernel: `subagent_type: process-validator`, and the brief's first line is `<<kernel-mandate-role: process-validator#<nonce>>>` with a fresh nonce per dispatch — `skills/onboarding/SKILL.md` §"Dispatch grammar".)
+Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold. (Dispatched with `subagent_type: process-validator` and first line `<<kernel-mandate-role: process-validator#<nonce>>>`: [roles-and-dispatch.md](../../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar".)
 
 | Trigger | Threshold |
 |---|---|
@@ -73,7 +73,7 @@ The parent dispatches the validator with a **manifest** of the planned wave. The
 | `description prefix` | Begins with `test-composer-` / `reviewer-` / `probe-` / `process-validator-`. Bare `j-` / `sj-` are forbidden — they're role-ambiguous. |
 | `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the validator checks (the dispatch-guard hook that previously checked it mechanically was retired in 0.3.6). |
 | `slug` | The CLI session slug for this dispatch. Pattern matches the role (composer-j-… / reviewer-j-… / probe-j-…; the composer slug drops the `test-` of its description prefix) and respects the 28-char cap. |
-| `model-hint` | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. |
+| `model-hint` | Model hint per `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet) — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. |
 | `must-fix-list summary` | One-line summary of the Stage B feedback this Stage A retry must address, OR `(n/a)` for fresh-cycle composer dispatches. |
 
 ### What the manifest does NOT contain
@@ -101,7 +101,7 @@ The validator runs the following checks against the manifest. Each check produce
 | **Brief-minimalism (proxied via must-fix-list summary)** | The must-fix-list summary ≤ 240 chars; no orchestrator meta-content (`depth mode`, `5-pass pipeline`, `Pass 4/5`, etc.). | `brief-leak` — name the row + leaked phrase. |
 | **Parallelism cap** | Wave size ≤ the effective cap = user override (`parallel-cap: N`) if any, else shared-resource-audit credential caps if any, else unlimited (host max). Flag `parallelism-cap-violation` ONLY when a declared override or audit cap is exceeded — never against a fixed numeric default. | `parallelism-cap-violation` — name the planned size + the override/audit cap it exceeded. |
 | **Hook-rule pre-checks** | All bullets in the manifest's "Pre-checks performed by parent" section are checked. | `pre-check-not-acknowledged` — name the unchecked bullet. |
-| **Model-hint sanity** | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. | `model-mismatch` — name the row + suggested model. |
+| **Model-hint sanity** | Model hint per `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet) — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. | `model-mismatch` — name the row + suggested model. |
 | **Pass-boundary fit** | The wave's pass + stage match the coverage-expansion-state.json's pending state. | `state-misalignment` — quote the conflict. |
 
 ### Finding-block shape

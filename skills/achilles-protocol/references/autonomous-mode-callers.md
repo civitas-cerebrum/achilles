@@ -155,7 +155,7 @@ In autonomous mode:
 Autonomous mode still commits after each passing + compliant test, same as interactive mode. The caller is responsible for the outer commit boundary:
 
 - `onboarding` → `test: happy path — <name>` commit.
-- `coverage-expansion` → per-pass commit message defined in that skill's §"Commit-message conventions".
+- `coverage-expansion` → per-pass commit message defined in `skills/coverage-expansion/references/depth-mode-pipeline.md` §"Commit-message conventions".
 - `companion-mode` Phase-6 graduation → `test: graduate companion-mode bundle <slug>-<ts>` commit.
 
 ## Returning control (any entry point)

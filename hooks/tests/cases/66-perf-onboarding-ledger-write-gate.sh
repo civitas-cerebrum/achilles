@@ -4,21 +4,16 @@
 # PreToolUse:Write|Edit. DENY mode.
 H="$HOOK_DIR/perf-onboarding-ledger-write-gate.sh"
 
-# Skip if node / ajv is unavailable (same pattern as onboarding write-gate tests).
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping perf-onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+# A missing node/ajv fails this file: the hook would silent-allow and every deny below would pass vacuously.
+require_tool node || return 0
 NODE_BIN=$(command -v node)
-if ! "$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(ajv/ajv-formats not available — skipping perf-onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+# ajv is a package dependency; without it the hook silent-allows and every deny case below is meaningless.
+assert_eq "$("$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; echo $?)" "0" \
+  "ajv and ajv-formats resolve from the package"
 
-TMP_REPO=$(mktemp -d /tmp/perf-ledger-write-XXXXXX)
+tmp_into TMP_REPO /tmp/perf-ledger-write-XXXXXX
 mkdir -p "$TMP_REPO/tests/perf/docs"
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 LEDGER_PATH="$TMP_REPO/tests/perf/docs/perf-onboarding-status.json"
 
@@ -147,12 +142,20 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$I
 # Phase 2 deliverable: readiness.md must exist.
 mkdir -p "$TMP_REPO/tests/perf/docs"
 printf '# Readiness\n' > "$TMP_REPO/tests/perf/docs/readiness.md"
-NOW=$(date +%s)
 REGISTRY="$TMP_REPO/tests/perf/docs/.workflow-approvers.json"
-printf '{"toolu_perf_approved":{"role":"perf-reviewer","description":"perf-reviewer-phase2","ts":%d}}' "$NOW" > "$REGISTRY"
+printf '{"toolu_perf_approved":{"role":"perf-reviewer","description":"perf-reviewer-phase2","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
 P_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-abc", agent_type: "general-purpose"}')
+P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-abc", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_OK" "Perf subagent context + fresh approver registry → ALLOW"
+P_PROBE=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
+P_PROBE=$(echo "$P_PROBE" | "$JQ" -c '. + {agent_id: "perf-subagent-probe", agent_type: "test-composer"}')
+assert_deny "$H" "$P_PROBE" "composer agent_type approves a perf phase while an approver is registered → DENY" "not an approver role"
+P_GP=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "general-purpose"')
+assert_deny "$H" "$P_GP" "general-purpose agent_type approves a perf phase → DENY" "not an approver role"
+P_NOTYPE=$(echo "$P_PROBE" | "$JQ" -c 'del(.agent_type)')
+assert_deny "$H" "$P_NOTYPE" "perf subagent write with no agent_type approves a phase → DENY (fail closed)" "not an approver role"
+P_OTHER=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "workflow-reviewer"')
+assert_deny "$H" "$P_OTHER" "approver type of the other pipeline (workflow-reviewer) is not a perf approver → DENY" "not an approver role"
 
 # Write that doesn't change any reviewerVerdict → ALLOW even from orchestrator.
 printf '%s' "$PRIOR_P1_APPROVED" > "$LEDGER_PATH"
@@ -178,16 +181,17 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$P
   "Orchestrator direct perf write status → aborted → DENY" "approval-class write"
 
 P_PT_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")
-P_PT_NOREG=$(echo "$P_PT_NOREG" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+P_PT_NOREG=$(echo "$P_PT_NOREG" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_deny "$H" "$P_PT_NOREG" "Perf subagent status → complete but no registry → DENY" "no approver registry exists"
 
-NOW=$(date +%s)
-printf '{"toolu_perf_final":{"role":"perf-reviewer","description":"perf-reviewer-final","ts":%d}}' "$NOW" > "$REGISTRY"
+printf '{"toolu_perf_final":{"role":"perf-reviewer","description":"perf-reviewer-final","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
 P_PT_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_COMPLETE")
-P_PT_OK=$(echo "$P_PT_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+P_PT_OK=$(echo "$P_PT_OK" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_PT_OK" "Registered perf approver subagent status → complete → ALLOW"
+P_PT_COMP=$(echo "$P_PT_OK" | "$JQ" -c '.agent_type = "test-composer"')
+assert_deny "$H" "$P_PT_COMP" "composer agent_type writes perf status → complete while an approver is registered → DENY" "not an approver role"
 P_PT_AB=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PERF_TERMINAL_ABORTED")
-P_PT_AB=$(echo "$P_PT_AB" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "general-purpose"}')
+P_PT_AB=$(echo "$P_PT_AB" | "$JQ" -c '. + {agent_id: "perf-subagent-final", agent_type: "perf-reviewer"}')
 assert_allow "$H" "$P_PT_AB" "Registered perf approver subagent status → aborted → ALLOW"
 rm -f "$REGISTRY"
 

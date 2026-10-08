@@ -7,13 +7,14 @@
     "mainSessionRole": "orchestrator"
   },
   "roles": {
-    "batch-reviewer": {
-      "description": "Approver: reviews a batch of composed specs and records the batch verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+    "cleanup": {
+      "description": "Cleanup / dedup worker for the coverage-expansion cleanup pass (`cleanup-<scope>:`): removes redundant specs under tests/e2e/** and re-runs the suite to prove the remainder is still green. Never the status ledger and never the page repository.",
       "agentTypes": [
-        "batch-reviewer"
+        "cleanup"
       ],
       "tools": {
         "allow": [
+          "Bash",
           "Edit",
           "Glob",
           "Grep",
@@ -30,12 +31,133 @@
       },
       "write": {
         "allow": [
-          "tests/e2e/docs/onboarding-status.json"
+          "tests/e2e/**"
+        ],
+        "deny": [
+          "tests/e2e/docs/onboarding-status.json",
+          "**/page-repository*.json"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs",
+          "suite-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
         ]
       },
       "skills": {
         "allow": [
-          "workflow-reviewer"
+          "achilles-protocol",
+          "test-composer",
+          "test-data-conventions"
+        ]
+      }
+    },
+    "companion": {
+      "description": "companion-mode verification worker (`companion-<task-slug>:`): verifies one task against the live app in its own playwright-cli session and lands the evidence bundle under tests/e2e/evidence/**. Writes no suite specs, no ledger and no page repository.",
+      "agentTypes": [
+        "companion"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/evidence/**",
+          "tests/e2e/docs/.subagent-returns/**"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs",
+          "suite-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "companion-mode",
+          "test-composer",
+          "test-data-conventions"
+        ]
+      }
+    },
+    "contribution-handover": {
+      "description": "Pre-push handover author (`contribution-handover-<slug>:`): fills .contribution-handover.json from the contributing skill's guardrail checklist by reading this repo's own documentation and the branch diff. Writes exactly that one file.",
+      "agentTypes": [
+        "contribution-handover"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          ".contribution-handover.template.json",
+          "README.md",
+          "docs/**",
+          "package.json",
+          "schemas/**",
+          "skills/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          ".contribution-handover.json"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "handover-inspection"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "contributing-to-achilles-protocol"
         ]
       }
     },
@@ -79,6 +201,66 @@
         ]
       }
     },
+    "fd": {
+      "description": "failure-diagnosis worker (`fd-<test-slug>:`, `fd-ci-<run-id>:`): reproduces one failing spec against the live app in its own playwright-cli session, classifies deterministic vs flaky, and lands the diagnosis plus any heal under tests/e2e/**. Never the status ledger and never the page repository.",
+      "agentTypes": [
+        "fd"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/**"
+        ],
+        "deny": [
+          "tests/e2e/docs/onboarding-status.json",
+          "**/page-repository*.json"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs",
+          "suite-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "database-testing",
+          "failure-diagnosis",
+          "selector-development",
+          "test-composer",
+          "test-data-conventions"
+        ]
+      }
+    },
     "implementer": {
       "description": "Writes one change: specs, fixtures and support code under tests/** (never the page repository, which live inspection owns) and the change report (report.md in the change's folder under docs/evidence/). Proves its own work with the test runner on its own shard, the type check and the unit runner. Never reviews or verifies its own change and dispatches nothing.",
       "agentTypes": [
@@ -108,13 +290,13 @@
           "docs/evidence/*/report.md",
           "tests/**"
         ],
-        "deny": [
-          "**/page-repository*.json",
-          "tests/e2e/docs/onboarding-status.json"
-        ],
         "codeImports": [
           "@civitas-cerebrum/element-interactions",
           "@playwright/test"
+        ],
+        "deny": [
+          "**/page-repository*.json",
+          "tests/e2e/docs/onboarding-status.json"
         ]
       },
       "bash": {
@@ -133,58 +315,6 @@
           "contract-testing",
           "database-testing",
           "failure-diagnosis",
-          "test-composer",
-          "test-data-conventions"
-        ]
-      }
-    },
-    "in-flight-composer": {
-      "description": "Same mandate as test-composer, for specs composed mid-pipeline (coverage-expansion passes, self-repair heals).",
-      "agentTypes": [
-        "in-flight-composer"
-      ],
-      "tools": {
-        "allow": [
-          "Bash",
-          "Edit",
-          "Glob",
-          "Grep",
-          "Read",
-          "Skill",
-          "Write"
-        ]
-      },
-      "read": {
-        "allow": [
-          "docs/**",
-          "tests/**",
-          "tests/e2e/page-repository.json"
-        ]
-      },
-      "write": {
-        "allow": [
-          "tests/e2e/**"
-        ],
-        "codeImports": [
-          "@civitas-cerebrum/element-interactions",
-          "@playwright/test"
-        ]
-      },
-      "bash": {
-        "groups": [
-          "in-flight-composer-runs"
-        ]
-      },
-      "network": {
-        "allow": [
-          "localhost"
-        ]
-      },
-      "skills": {
-        "allow": [
-          "achilles-protocol",
-          "database-testing",
-          "selector-development",
           "test-composer",
           "test-data-conventions"
         ]
@@ -264,7 +394,7 @@
           "README.md",
           "docs/**",
           "package.json",
-          "playwright.config.ts",
+          "playwright*.config.ts",
           "tests/**"
         ]
       },
@@ -290,16 +420,24 @@
         ]
       },
       "dispatch": [
-        "batch-reviewer",
+        "cleanup",
+        "companion",
+        "contribution-handover",
         "doc-author",
+        "fd",
         "implementer",
-        "in-flight-composer",
         "live-inspector",
         "perf-reviewer",
         "phase-validator",
+        "phase1",
+        "phase2",
+        "phase4",
+        "probe",
         "process-validator",
+        "reviewer",
         "scaffolder",
-        "selector-diff-validator",
+        "secrets-sweep",
+        "stage2",
         "task-reviewer",
         "test-composer",
         "verifier",
@@ -321,6 +459,7 @@
           "onboarding",
           "perf-onboarding",
           "performance-testing",
+          "requirement-intake",
           "secrets-sweep",
           "selector-development",
           "self-repair",
@@ -335,7 +474,7 @@
       }
     },
     "perf-reviewer": {
-      "description": "Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. Reads only; no shell.",
+      "description": "Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. No shell; writes only the ledger.",
       "agentTypes": [
         "perf-reviewer"
       ],
@@ -367,7 +506,7 @@
       }
     },
     "phase-validator": {
-      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. Reads only; no shell.",
+      "description": "Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. No shell; writes only the ledger.",
       "agentTypes": [
         "phase-validator"
       ],
@@ -398,8 +537,214 @@
         ]
       }
     },
+    "phase1": {
+      "description": "journey-mapping Phase 1 discovery worker (`phase1-<entry>:`): crawls one entry-point subtree in its own playwright-cli session and returns the page + element list. The `phase1-test-infra:` variant additionally writes the canonical `## Test Infrastructure` section of tests/e2e/docs/app-context.md. Composes no specs.",
+      "agentTypes": [
+        "phase1"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/app-context.md",
+          "tests/e2e/docs/.subagent-returns/**"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "journey-mapping"
+        ]
+      }
+    },
+    "phase2": {
+      "description": "journey-mapping Phase 2 flow-identification worker (`phase2-<scope>:`): walks one scope's flows in its own playwright-cli session and returns the flow list, appending only its discovery notes. Composes no specs.",
+      "agentTypes": [
+        "phase2"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/app-context.md",
+          "tests/e2e/docs/.subagent-returns/**"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "journey-mapping"
+        ]
+      }
+    },
+    "phase4": {
+      "description": "journey-mapping Phase 4 worker: `phase4-cycle-<N>:` section agents discover one section of the map in their own playwright-cli session, and `phase4-prioritise-author:` is the only legitimate author of tests/e2e/docs/journey-map.md and its `<!-- journey-mapping:generated -->` sentinel. Cycle progress is recorded in tests/e2e/docs/.phase4-cycle-state.json.",
+      "agentTypes": [
+        "phase4"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/.phase4-cycle-state.json",
+          "tests/e2e/docs/.subagent-returns/**",
+          "tests/e2e/docs/journey-map.md"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "journey-mapping"
+        ]
+      }
+    },
+    "probe": {
+      "description": "Stage A adversarial prober (`probe-j-<slug>:` for coverage-expansion passes 4-5 and bug-discovery, `probe-app-wide:` for the pass-4 pattern scan): probes the live app in its own playwright-cli session, appends findings to tests/e2e/docs/adversarial-findings.md under the advisory lock, and in pass 5 writes regression specs for verified boundaries. Never the status ledger and never the page repository.",
+      "agentTypes": [
+        "probe"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/**"
+        ],
+        "deny": [
+          "tests/e2e/docs/onboarding-status.json",
+          "**/page-repository*.json"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs",
+          "suite-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "bug-discovery",
+          "bug-report",
+          "database-testing",
+          "selector-development",
+          "test-composer",
+          "test-data-conventions"
+        ]
+      }
+    },
     "process-validator": {
-      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "description": "Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. No shell; writes only the ledger.",
       "agentTypes": [
         "process-validator"
       ],
@@ -430,8 +775,55 @@
         ]
       }
     },
+    "reviewer": {
+      "description": "Stage B in-loop reviewer (`reviewer-j-<slug>:` per journey, `reviewer-batch-pass-<N>:` for the cycle-1 compositional batch): reads Stage A's output and the live app in its own playwright-cli session and returns greenlight or improvements-needed. Writes ONLY its spillover file under tests/e2e/docs/.subagent-returns/ — it does not append to either ledger, does not modify specs and does not commit.",
+      "agentTypes": [
+        "reviewer"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/docs/.subagent-returns/**"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "workflow-reviewer"
+        ]
+      }
+    },
     "scaffolder": {
-      "description": "Write-only author of the Phase 1-2 scaffold: playwright.config.ts, package.json scripts, .gitignore entries, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch — the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
+      "description": "Write-only author of the Phase 1-2 scaffold and the Phase 7 env wiring: playwright.config.ts, package.json scripts, .gitignore entries, .env and .env.example, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. No shell and no dispatch — the orchestrator runs `npx playwright test --list` to verify what it wrote, so the role that authors the runner's config never runs the runner.",
       "agentTypes": [
         "scaffolder"
       ],
@@ -447,19 +839,23 @@
       },
       "read": {
         "allow": [
+          ".env",
+          ".env.example",
           ".gitignore",
           "README.md",
           "docs/**",
           "package.json",
-          "playwright.config.ts",
+          "playwright*.config.ts",
           "tests/e2e/**"
         ]
       },
       "write": {
         "allow": [
+          ".env",
+          ".env.example",
           ".gitignore",
           "package.json",
-          "playwright.config.ts",
+          "playwright*.config.ts",
           "tests/e2e/.gitignore",
           "tests/e2e/docs/app-context.md",
           "tests/e2e/fixtures/**",
@@ -473,21 +869,91 @@
         ]
       }
     },
-    "selector-diff-validator": {
-      "description": "Read-only validator: compares selector changes across tests/** and reports. Writes nothing; no shell.",
+    "secrets-sweep": {
+      "description": "Phase 7 secrets sweep: rewrites hard-coded credentials, keys, PII and app URLs in specs and fixtures under tests/** to process.env references. It writes no .env or config (the scaffolder wires those) and has no shell; the orchestrator re-runs the suite after it returns.",
       "agentTypes": [
-        "selector-diff-validator"
+        "secrets-sweep"
       ],
       "tools": {
         "allow": [
+          "Edit",
           "Glob",
           "Grep",
-          "Read"
+          "Read",
+          "Skill",
+          "Write"
         ]
       },
       "read": {
         "allow": [
           "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/**"
+        ],
+        "codeImports": [
+          "@civitas-cerebrum/element-interactions",
+          "@playwright/test",
+          "dotenv"
+        ],
+        "deny": [
+          "tests/e2e/docs/onboarding-status.json"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "secrets-sweep"
+        ]
+      }
+    },
+    "stage2": {
+      "description": "Stage 2 element-inspection worker (`stage2-<scenario>:`): inspects the pages of one approved scenario in its own playwright-cli session and RETURNS proposed page-repository entries — the page repository itself stays the scaffolder's file. May persist a captured auth state under tests/e2e/.auth/**.",
+      "agentTypes": [
+        "stage2"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "docs/**",
+          "tests/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          "tests/e2e/.auth/**",
+          "tests/e2e/docs/.subagent-returns/**"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "browser-session-runs"
+        ],
+        "deny": [
+          "^npx playwright-cli (close-all|kill-all)\\b"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "selector-development"
         ]
       }
     },
@@ -557,11 +1023,18 @@
       },
       "write": {
         "allow": [
-          "tests/e2e/**"
+          "tests/e2e/**",
+          "tests/e2e/page-repository.json"
         ],
         "codeImports": [
           "@civitas-cerebrum/element-interactions",
           "@playwright/test"
+        ],
+        "deny": [
+          "tests/e2e/docs/onboarding-status.json",
+          "tests/e2e/page-repository.*.json",
+          "tests/e2e/page-repository-*.json",
+          "tests/e2e/*/**/page-repository*.json"
         ]
       },
       "bash": {
@@ -635,7 +1108,7 @@
       }
     },
     "workflow-reviewer": {
-      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. Reads only; no shell.",
+      "description": "Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. No shell; writes only the ledger.",
       "agentTypes": [
         "workflow-reviewer"
       ],
@@ -668,13 +1141,18 @@
     }
   },
   "commandGroups": {
+    "browser-session-runs": [
+      "^npx playwright-cli\\b"
+    ],
+    "handover-inspection": [
+      "^git status\\b",
+      "^git log\\b",
+      "^git diff\\b"
+    ],
     "implementer-runs": [
       "^npx playwright test\\b",
       "^npx tsc --noEmit\\b",
       "^npm run test:unit\\b"
-    ],
-    "in-flight-composer-runs": [
-      "^npx playwright test\\b"
     ],
     "live-inspector-runs": [
       "^npx playwright test --config tests/e2e/inspect\\b",
@@ -688,10 +1166,12 @@
       "^git add\\b",
       "^git commit\\b",
       "^npx playwright test\\b",
-      "^npm test\\b",
-      "^npm run test:repair\\b",
+      "^npx playwright-cli (close-all|kill-all|list)\\b",
       "^npm run verify\\b",
       "^npm run change:start\\b"
+    ],
+    "suite-runs": [
+      "^npx playwright test\\b"
     ],
     "task-reviewer-runs": [
       "^npx tsc --noEmit\\b",

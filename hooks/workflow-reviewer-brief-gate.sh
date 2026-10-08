@@ -72,25 +72,23 @@ set -uo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/workflow-reviewer/SKILL.md\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found." >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 [ "$TOOL_NAME" = "Agent" ] || exit 0
 
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
 
-# Only act on approver-role dispatches (workflow-reviewer-* /
-# phase-validator-*). Detection is shared via lib/reviewer-prefix.sh.
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+# Only act on approver-role dispatches (is_reviewer_description, lib/dispatch-prefix.sh).
 is_reviewer_description "$DESCRIPTION" || exit 0
 
 # Optional bypass for special-case re-dispatches. The bypass is
@@ -100,16 +98,6 @@ if [ "${WORKFLOW_REVIEWER_BRIEF_GATE:-on}" = "off" ]; then
 fi
 
 PROMPT=$(echo "$INPUT" | "$JQ" -r '.tool_input.prompt // ""' 2>/dev/null || echo "")
-
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # Build a violations list — accumulate ALL failures, not just the first,
 # so the operator can fix everything in one pass.
@@ -157,7 +145,7 @@ if [ -z "$VIOLATIONS" ]; then
   exit 0
 fi
 
-emit_deny "[BLOCKED] workflow-reviewer dispatch brief fails integrity check.
+emit_pre_deny "[BLOCKED] workflow-reviewer dispatch brief fails integrity check.
 
 Description: \"${DESCRIPTION}\"
 

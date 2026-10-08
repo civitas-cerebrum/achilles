@@ -19,23 +19,24 @@
 
 set -u
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { printf '{}\n'; exit 0; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init empty
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions OR sessions whose pipeline just completed (reporting/cleanup
 # must cover the final state); plain dev sessions silent-allow.
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active_or_completed "$INPUT"
 
 # Pin to the project root: a session driven from a subdirectory must not
 # sprout a second .achilles/ there — the repo toplevel is the only sanctioned
 # home for run artifacts (falls back to PWD outside a git repo).
 ROOT=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-PERF_LEDGER="$ROOT/tests/perf/docs/perf-onboarding-status.json"
+hook_lib ledger.sh
+PERF_LEDGER="$(ledger_path "$ROOT" perf)"
 
 # NO-OP guard: if the perf ledger does not exist this is not a perf project.
 [ -f "$PERF_LEDGER" ] || { printf '{}\n'; exit 0; }
@@ -46,7 +47,7 @@ mkdir -p "$ROOT/.achilles"
 # meta fields
 ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 sha=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo "")
-run_mode=$("$JQ" -r '.runMode // ""' "$PERF_LEDGER" 2>/dev/null || echo "")
+run_mode=$(ledger_get "$PERF_LEDGER" .runMode)
 
 # phases: verbatim .phases from the ledger, or []
 phases_json=$("$JQ" -c '.phases // []' "$PERF_LEDGER" 2>/dev/null || echo '[]')

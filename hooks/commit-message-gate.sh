@@ -10,7 +10,7 @@
 # ----
 # `git commit` invocations during coverage-expansion / journey-mapping work
 # must follow the conventions documented in
-#   skills/coverage-expansion/SKILL.md §"Commit-message conventions"
+#   skills/coverage-expansion/references/depth-mode-pipeline.md §"Commit-message conventions"
 #
 # This gate enforces only the most common anti-patterns (coverage expansion
 # is never `feat`; multi-journey commits are forbidden; hook bypass is
@@ -27,22 +27,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/coverage-expansion/SKILL.md §"Commit-message conventions"
-# (Convention reproduced in the comment block below for at-a-glance
-#  scanning; the SKILL.md section is canonical.)
-#
-# Conventions
-# -----------
-#   chore: scaffold element-interactions framework
-#   docs: initial app-context and site map
-#   test: happy path — <name>
-#   docs: journey map — <N> journeys prioritized
-#   test(j-<slug>): <variant>                 [compositional pass 1-3]
-#   docs(ledger): j-<slug> — N probes, ...    [adversarial pass 4]
-#   test(j-<slug>-regression): lock <desc>    [adversarial pass 5]
-#   docs(ledger): dedupe cross-cutting findings
-#   docs(coverage-expansion-state): ...
-#   chore: ...                                [infrastructure]
+# skills/coverage-expansion/references/depth-mode-pipeline.md §"Commit-message conventions"
 #
 # AI-attribution rule
 # -------------------
@@ -53,8 +38,8 @@
 # the `-m` subject extraction, so a second `-m` trailer, a heredoc body,
 # or a message file all get caught.
 #
-# Canonical reference: contributing/SKILL.md §"AI assistants don't get
-# Co-Authored-By trailers". The upstream fix when this fires is to remove
+# Canonical reference: contributing-to-achilles-protocol/SKILL.md §"AI assistants don't get
+# Co-Authored-By: trailers". The upstream fix when this fires is to remove
 # the trailer instruction from CLAUDE.md (do not re-add it per-commit).
 #
 # Failure → action
@@ -77,30 +62,19 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/references/
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH. Reinstall the package or install jq manually." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh
+hook_jq_init fatal
 
 # --- helpers ---
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # --- input ---
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 [ "$TOOL_NAME" != "Bash" ] && exit 0
@@ -137,7 +111,7 @@ sys.stdout.write(s)
 
 # Anti-pattern: --no-verify / --no-gpg-sign / -c commit.gpgsign=false as args
 if echo "$CMD_NO_QUOTES" | grep -qE '(^|[[:space:]])(--no-verify|--no-gpg-sign|commit\.gpgsign=false)([[:space:]]|$)'; then
-  emit_deny "[BLOCKED] git commit cannot bypass hooks or signing.
+  emit_pre_deny "[BLOCKED] git commit cannot bypass hooks or signing.
 
 Command contains one of: --no-verify, --no-gpg-sign, commit.gpgsign=false (as a git argument, not as message content).
 
@@ -178,7 +152,7 @@ fi
 # generated-with / claude.ai-code alternatives are markers/URLs that are
 # never legitimate in a commit message, so they match anywhere.
 if echo "$ATTRIB_SCAN" | grep -qiE '(^|['"'"'"])[[:space:]]*co-authored-by:.*(claude|anthropic|noreply@anthropic\.com)|generated with.*claude([[:space:]]+code)?\b|claude\.ai/code'; then
-  emit_deny "[BLOCKED] git commit carries AI-attribution metadata.
+  emit_pre_deny "[BLOCKED] git commit carries AI-attribution metadata.
 
 Command/message surface contains one of:
   - a \`Co-Authored-By:\` trailer naming claude / anthropic / noreply@anthropic.com
@@ -222,11 +196,11 @@ fi
 
 # Anti-pattern: multi-journey commit shape  test(j-a,j-b,...): ...
 if echo "$SCAN" | grep -qE 'test\([^)]*j-[a-z0-9-]+[[:space:]]*,'; then
-  emit_deny "[BLOCKED] Multi-journey commit detected.
+  emit_pre_deny "[BLOCKED] Multi-journey commit detected.
 
 Message: \"${SCAN}\"
 
-Fix: split into one commit per journey. The convention from coverage-expansion §\"Commit-message conventions\" is one journey per commit, no exceptions:
+Fix: split into one commit per journey. The convention from coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\" is one journey per commit, no exceptions:
 
   test(j-checkout): cycle-2 — multi-item variant
   test(j-signup): cycle-2 — long-input edge
@@ -237,11 +211,11 @@ fi
 
 # Anti-pattern: feat(e2e): ... — coverage expansion / e2e tests are never `feat`.
 if echo "$SCAN" | grep -qiE '^feat\((e2e|tests|test|coverage|journey|onboarding)\)'; then
-  emit_deny "[BLOCKED] Test/coverage commits are 'test:' not 'feat:'.
+  emit_pre_deny "[BLOCKED] Test/coverage commits are 'test:' not 'feat:'.
 
 Message: \"${SCAN}\"
 
-Fix: use the convention from coverage-expansion §\"Commit-message conventions\":
+Fix: use the convention from coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\":
 
   test(<j-slug>): <variant>          for compositional passes
   docs(ledger): <j-slug> — ...       for adversarial pass 4
@@ -253,11 +227,12 @@ Why: the convention makes commits filterable by type. 'feat(...)' is for product
 fi
 
 # Anti-pattern: review(...) or any review-tagged commit — Stage B never
-# commits per coverage-expansion/SKILL.md §"Commit-message conventions"
-# and §"Dual-stage per-pass contract". Reviewer judgements live in the
-# state file, not the git log.
+# commits per coverage-expansion/references/depth-mode-pipeline.md
+# §"Commit-message conventions" and coverage-expansion/SKILL.md
+# §"Dual-stage per-pass contract". Reviewer judgements live in the state
+# file, not the git log.
 if echo "$SCAN" | grep -qiE '^review\('; then
-  emit_deny "[BLOCKED] Review-tagged commits are forbidden.
+  emit_pre_deny "[BLOCKED] Review-tagged commits are forbidden.
 
 Message: \"${SCAN}\"
 
@@ -269,7 +244,7 @@ If you intended a tests-from-Stage-A commit, the right form is:
   docs(ledger): <j-slug> — ...       for adversarial pass 4
   test(<j-slug>-regression): ...     for adversarial pass 5
 
-See coverage-expansion §\"Commit-message conventions\"."
+See coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\"."
   exit 0
 fi
 

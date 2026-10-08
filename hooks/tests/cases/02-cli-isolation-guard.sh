@@ -52,3 +52,48 @@ assert_allow "$H" "$(payload tool_name=Bash command='pnpm exec playwright-cli -s
 
 section "cli-isolation: noise (playwright-cli mentioned inside string)"
 assert_allow "$H" "$(payload tool_name=Bash command='echo \"playwright-cli is great\"')" "playwright-cli inside echo → silent allow"
+# Observed false positive: a quoted argument that contains a separator before the tool name.
+assert_allow "$H" "$(payload tool_name=Bash command="printf 'Run: cd app && playwright-cli open http://x\n' > notes.md")" "printf of a usage line → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command="printf 'step 1; npx playwright-cli open\n'")" "quoted ';' before the tool name → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command="git commit -m 'docs: x | playwright-cli snapshot needs -s'")" "quoted '|' in a commit message → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='cat > notes.md <<EOF
+npx playwright-cli open http://app
+EOF')" "heredoc body written to a file → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='command -v playwright-cli')" "command -v lookup → silent allow"
+
+section "cli-isolation: invocations are judged wherever the shell runs them"
+assert_deny "$H" "$(payload tool_name=Bash command='cd app && npx playwright-cli open http://x')" "after && → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='"playwright-cli" open http://x')" "quoted command word → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='FOO=1 npx playwright-cli open http://x')" "after an assignment → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command="bash -c 'npx playwright-cli open http://x'")" "inside bash -c → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='out=$(npx playwright-cli open http://x)')" "inside \$( ) → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command="echo '-s=composer-j-x-1-c1'; npx playwright-cli open http://x")" "a slug in another command does not count → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=composer-j-x-1-c1 open; npx playwright-cli -s=j-x-1 open')" "every invocation is judged → DENY" "missing role prefix"
+
+section "cli-isolation: package specs, wrapper options and shell keywords before the invocation"
+for c in 'npx @playwright/cli open http://x' 'npx @playwright/cli@1.2.0 open http://x' 'npx playwright-cli@latest open http://x' \
+         'npx -p @playwright/cli playwright-cli open http://x' 'npx --package=@playwright/cli playwright-cli open http://x' \
+         'npm exec -- playwright-cli open http://x' 'sudo -u me playwright-cli open http://x' 'env -u FOO playwright-cli open http://x' \
+         './node_modules/.bin/playwright-cli open http://x' 'if npx playwright-cli open http://x; then echo ok; fi'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
+done
+assert_allow "$H" "$(payload tool_name=Bash command='npx -p @playwright/cli playwright-cli -s=composer-j-x-1-c1 open http://x')" "-p package then a slugged invocation → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='npx @playwright/cli -s=composer-j-x-1-c1 open http://x')" "@playwright/cli with a slug → ALLOW"
+
+
+# wrappers peel only known options, so an invocation reached through exec -a,
+# stdbuf --output, sudo --user, nice --adjustment, xargs --max-args, env -S, doas -u, npx
+# --package or after a bare assignment is still seen as a playwright-cli invocation.
+section "cli-isolation r5: invocations behind wrapper options"
+for c in \
+  'exec -a foo playwright-cli open https://x' \
+  'stdbuf --output L playwright-cli open https://x' \
+  'sudo --user me playwright-cli open https://x' \
+  'nice --adjustment 5 playwright-cli open https://x' \
+  'doas -u me playwright-cli open https://x' \
+  'npx --package @playwright/cli playwright-cli open https://x' \
+  "env -S 'playwright-cli open https://x'" \
+  'PATH=/tmp; playwright-cli open https://x'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
+done
+assert_deny "$H" "$(payload tool_name=Bash command='xargs --max-args 1 playwright-cli open < /tmp/u')" "xargs --max-args peeled → DENY" "Missing -s=<slug> flag"

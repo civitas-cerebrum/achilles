@@ -58,22 +58,24 @@ set -uo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/harness-hooks.md\n  skills/contributing-to-achilles-protocol/SKILL.md §\"Workflow: adding a harness hook\""
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[harness-self-protection-guard] FATAL: jq not found." >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh protected-paths.sh
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 [ -n "$FILE_PATH" ] || exit 0
 
-# Normalise to a leading-slash form so a bare relative path
-# (.claude/hooks/x.sh) matches the same case patterns as an absolute one.
-NORM="/${FILE_PATH#/}"
+# One spelling per file (lib/protected-paths.sh: case, //, /./, .., ~), in
+# leading-slash form so a bare relative path (.claude/hooks/x.sh) matches the
+# same case patterns as an absolute one.
+NORM="$(protected_path_normalise "$FILE_PATH")"
+NORM="/${NORM#/}"
 
 case "$NORM" in
   # Session-activation state: protected UNCONDITIONALLY (no session-scope

@@ -42,173 +42,30 @@
 # Intentional: `set -uo pipefail` without `-e`. Input-tolerant by design.
 set -uo pipefail
 
-# Methodology pointers appended to every deny/warn message this hook
-# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
-# §"Hook error message format — repo standard").
-printf -v HOOK_REFS -- "\n\nReferences:\n  skills/perf-onboarding/SKILL.md\n  skills/workflow-reviewer/SKILL.md\n  schemas/perf-onboarding-status.schema.json"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib pipeline-dispatch.sh
+hook_jq_init fatal
 
+pipeline_config perf
+PIPELINE_CAP_PREFIX_RE="$DISPATCH_CAP_PREFIX_RE_PERF"
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
-
-INPUT=$(cat)
-
-# Session-scope gate: this hook applies only to achilles-activated
-# sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
-achilles_require_active "$INPUT"
-TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
-
-# Only act on Agent dispatches.
-[ "$TOOL_NAME" = "Agent" ] || exit 0
-
-DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
-[ -n "$DESCRIPTION" ] || exit 0
-
-# Helper: emit a DENY payload with the supplied reason.
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
-
-# Reviewer allow-list: perf-reviewer-* dispatches are detected by the shared
-# lib/reviewer-prefix.sh helper (which already accepts perf-reviewer-*).
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
-
-# Resolve repo root + ledger path.
-GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
-GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-LEDGER="$GUARD_REPO_ROOT/tests/perf/docs/perf-onboarding-status.json"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/hash.sh"
-SIDECAR="$(dirname "$LEDGER")/.ledger-integrity.json"
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/pipeline-gate.sh"
-PIPELINE_LEDGER="$LEDGER"
-PIPELINE_SIDECAR="$SIDECAR"
-PIPELINE_CAP_PREFIX_RE='s/^(perf-reviewer-phase)([0-9]+).*/\2/p'
-PIPELINE_MSG_LEDGER_NAME='perf-onboarding-status.json'
-PIPELINE_MSG_SIDECAR_REL='tests/perf/docs/.ledger-integrity.json'
-PIPELINE_MSG_LEDGER_REL='tests/perf/docs/perf-onboarding-status.json'
-PIPELINE_MSG_REVIEWER_LABEL='perf-reviewer-phase'
-PIPELINE_MSG_SKILL_REF='skills/perf-onboarding/SKILL.md'
-PIPELINE_MSG_SCHEMA_REF='schemas/perf-onboarding-status.schema.json'
-PIPELINE_MSG_REVIEWER_SKILL='skills/workflow-reviewer/SKILL.md'
-
-if is_reviewer_description "$DESCRIPTION"; then
-  # Rule 4: perf-reviewer-* dispatches always-allow subject to the 3-cycle cap.
-  pipeline_reviewer_cap_check "$DESCRIPTION" && exit 0
-  exit 0
-fi
-
-# Rule 5 + integrity verify: missing-ledger guard and hash-chain check.
-pipeline_ledger_integrity_check
-_lic_ret=$?
-[ "$_lic_ret" -eq 0 ] && exit 0
-[ "$_lic_ret" -eq 1 ] && exit 0
-
-# Probe the ledger. Any extraction failure → silent allow.
-SCHEMA_VERSION=$("$JQ" -r '.schemaVersion // empty' "$LEDGER" 2>/dev/null || echo "")
-[ -n "$SCHEMA_VERSION" ] || exit 0
-
-CURRENT_PHASE=$("$JQ" -r '.currentPhase // empty' "$LEDGER" 2>/dev/null || echo "")
-case "$CURRENT_PHASE" in
-  ''|*[!0-9]*) exit 0 ;;
-esac
-
-# ---------------------------------------------------------------------------
-# Rule 3: transition-point enforcement (lib call).
-# ---------------------------------------------------------------------------
-pipeline_transition_point_check "$DESCRIPTION" && exit 0
-
-# ---------------------------------------------------------------------------
-# Rules 1 & 2: out-of-order phase dispatch (lib call).
-# Perf-specific target-phase inference.
-# Patterns:
-#   scaffold-perf-*   → Phase 1 (Scaffold)
-#   readiness-*       → Phase 2 (Readiness)
-#   scenario-model-*  → Phase 3 (Scenario-model)
-#   baseline-*        → Phase 4 (Baseline)
-#   load-run-*        → Phase 5 (Load-run)
-#   threshold-gate-*  → Phase 6 (Threshold-gate)
-#   perf-report-*     → Phase 7 (Report)
-# ---------------------------------------------------------------------------
-perf_infer_target_phase() {
-  local DESC="$1"
-  case "$DESC" in
-    scaffold-perf-*|scaffold_perf-*) echo 1 ;;
-    readiness-*|readiness_*) echo 2 ;;
-    scenario-model-*|scenario_model-*) echo 3 ;;
-    baseline-*|baseline_*) echo 4 ;;
-    load-run-*|load_run-*) echo 5 ;;
-    threshold-gate-*|threshold_gate-*) echo 6 ;;
-    perf-report-*|perf_report-*) echo 7 ;;
-  esac
-}
-pipeline_out_of_order_phase_check "$DESCRIPTION" "$CURRENT_PHASE" perf_infer_target_phase && exit 0
-
-# ---------------------------------------------------------------------------
-# Phase-5 sub-stage gate: pass ordering (load → stress → spike → soak).
-# When currentPhase = 5, a dispatch targeting load-run-<pass>-* must not
-# start while the prior pass's reviewerVerdict is not approved.
-# ---------------------------------------------------------------------------
-# Named pass order array (bash 3-compatible positional approach).
-PASS_ORDER="load stress spike soak"
-TARGET_PASS_NAME=""
-if [ "$CURRENT_PHASE" = "5" ]; then
-  # Extract the pass name from descriptions like: load-run-stress-*, load-run-spike-*, etc.
-  TARGET_PASS_NAME=$(echo "$DESCRIPTION" | sed -nE 's/^load-run-(load|stress|spike|soak)[_-].*/\1/p' | head -1)
-fi
-
-if [ -n "$TARGET_PASS_NAME" ]; then
-  # Find the prior pass name by looking up the pass order.
-  PRIOR_PASS_NAME=""
-  PREV=""
-  for PASS in $PASS_ORDER; do
-    if [ "$PASS" = "$TARGET_PASS_NAME" ]; then
-      PRIOR_PASS_NAME="$PREV"
-      break
-    fi
-    PREV="$PASS"
+# perf_substage_check <current_phase> — in Phase 5 a load-run-<pass>-*
+# dispatch waits for the approval of the pass before it in
+# load → stress → spike → soak.
+perf_substage_check() {
+  local target prior="" pass
+  [ "$1" = "5" ] || return 1
+  target=$(echo "$DESCRIPTION" | sed -nE 's/^load-run-(load|stress|spike|soak)[_-].*/\1/p' | head -1)
+  [ -n "$target" ] || return 1
+  for pass in load stress spike soak; do
+    [ "$pass" = "$target" ] && break
+    prior="$pass"
   done
+  [ -n "$prior" ] || return 1
+  pipeline_substage_order_check 5 pass "$target" "$prior" "perf-reviewer-pass-${prior}:" \
+    "every per-pass completion criterion from
+skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run passes\"" \
+    "skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run passes\""
+}
 
-  if [ -n "$PRIOR_PASS_NAME" ]; then
-    PRIOR_PASS_ID="pass-${PRIOR_PASS_NAME}"
-    PRIOR_PASS_VERDICT=$("$JQ" -r --arg id "$PRIOR_PASS_ID" '
-      [.phases[]? | select(.id == 5) | .subStages[]? | select(.id == $id)] |
-      .[0].reviewerVerdict // "pending"
-    ' "$LEDGER" 2>/dev/null || echo "pending")
-    if [ "$PRIOR_PASS_VERDICT" != "approved" ]; then
-      emit_deny "[BLOCKED] Out-of-order Phase-5 pass dispatch — pass-${TARGET_PASS_NAME} cannot start while pass-${PRIOR_PASS_NAME} is not reviewer-approved.
-
-Description: \"${DESCRIPTION}\"
-
-Ledger shows pass-${PRIOR_PASS_NAME}.reviewerVerdict = \"${PRIOR_PASS_VERDICT}\"
-(must be \"approved\").
-
-Fix: dispatch \`perf-reviewer-pass-${PRIOR_PASS_NAME}:\` first. The
-reviewer checks every per-pass completion criterion from
-skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run passes\".
-
-See:
-  - skills/perf-onboarding/SKILL.md §\"Phase 5 — Load-run passes\"
-  - skills/workflow-reviewer/SKILL.md
-  - schemas/perf-onboarding-status.schema.json"
-      exit 0
-    fi
-  fi
-fi
-
-# All checks passed — silent allow.
-exit 0
+pipeline_dispatch_main perf_substage_check

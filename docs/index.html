@@ -38,7 +38,7 @@
       --font-display:'Fraunces', Georgia, serif;
     }
 
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; overflow-x: clip; }
 
     body {
       background: var(--bg);
@@ -113,6 +113,17 @@
       transition: color 0.2s;
     }
     .nav-links a:hover { color: var(--white); }
+
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+
+    .nav-doctrine {
+      color: var(--emerald-bright); border: 1px solid var(--border-glow);
+      border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600;
+      text-decoration: none; cursor: pointer;
+      background: rgba(16, 185, 129, 0.08);
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    .nav-doctrine:hover { background: rgba(16, 185, 129, 0.16); box-shadow: 0 0 12px rgba(16, 185, 129, 0.18); }
 
     .nav-cta {
       background: linear-gradient(135deg, var(--emerald-dim), var(--purple-dim));
@@ -514,6 +525,7 @@
       .phases { grid-template-columns: repeat(2, 1fr); }
       .diffs-grid { grid-template-columns: 1fr 1fr; }
       .nav-links { display: none; }
+      .nav-doctrine { display: none; }
       .phase-arrow { display: none; }
       .phase { padding: 28px 24px; }
     }
@@ -541,7 +553,25 @@
 
     /* ── GRADIENT TEXT ─────────────────────────────────────────────────────── */
     .grad { background: linear-gradient(135deg, var(--emerald) 0%, var(--purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+    /* ── REDUCED MOTION ────────────────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .reveal { opacity: 1 !important; transform: none !important; }
+      #neural-canvas { display: none; }
+    }
   </style>
+
+  <noscript>
+    <style>
+      .reveal { opacity: 1 !important; transform: none !important; }
+    </style>
+  </noscript>
 </head>
 <body>
 
@@ -564,7 +594,10 @@
       <li><a href="#doctrine">Doctrine</a></li>
       <li><a href="#why">Why Achilles</a></li>
     </ul>
-    <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
+    <div class="nav-actions">
+      <a class="nav-doctrine" href="agentic-qa.html">Agentic QA</a>
+      <a class="nav-cta" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">Get Started</a>
+    </div>
   </div>
 </nav>
 
@@ -610,7 +643,7 @@
       </div>
 
       <div class="hero-stats">
-        <div class="stat"><div class="stat-value grad">23</div><div class="stat-label">Agent Skills</div></div>
+        <div class="stat"><div class="stat-value grad">25</div><div class="stat-label">Agent Skills</div></div>
         <div class="stat"><div class="stat-value grad">35</div><div class="stat-label">Harness Hooks</div></div>
         <div class="stat"><div class="stat-value grad">9</div><div class="stat-label">Working Modes</div></div>
         <div class="stat"><div class="stat-value grad">4</div><div class="stat-label">Verification Stages</div></div>
@@ -794,7 +827,7 @@
     </div>
 
     <div class="reveal" style="text-align:center; margin-top: 40px;">
-      <a class="btn-secondary" href="https://github.com/civitas-cerebrum/achilles/blob/main/docs/agentic-shift-left.md" target="_blank" rel="noopener">Read the full doctrine →</a>
+      <a class="btn-secondary" href="agentic-qa.html">Read the full doctrine →</a>
     </div>
   </div>
 </section>
@@ -823,7 +856,7 @@
       <div class="diff-card reveal">
         <div class="diff-icon">⚡</div>
         <h4 class="diff-title">Harness-Enforced Discipline</h4>
-        <p class="diff-desc">30+ hook scripts (40+ registered gates) sit between every tool invocation. They prevent scope compression, phase skipping, and silent scope reduction — and block sign-off until negative-control and adversarial-review evidence exists. Enforcement, not instructions.</p>
+        <p class="diff-desc">41 hook scripts (32 enforcement gates) sit between every tool invocation. They prevent scope compression, phase skipping, and silent scope reduction &mdash; and block sign-off until negative-control and adversarial-review evidence exists. Enforcement, not instructions.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🎯</div>
@@ -886,7 +919,7 @@
         <span class="cta-badge">MIT License</span>
         <span class="cta-badge">Built on Playwright</span>
         <span class="cta-badge">Driven by Agents</span>
-        <span class="cta-badge">23 Agent Skills</span>
+        <span class="cta-badge">25 Agent Skills</span>
       </div>
     </div>
   </div>
@@ -901,7 +934,7 @@
       <a href="https://github.com/civitas-cerebrum/achilles" target="_blank" rel="noopener">GitHub</a>
       <a href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">npm</a>
       <a href="https://github.com/civitas-cerebrum/achilles/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
-      <a href="https://github.com/civitas-cerebrum/achilles/blob/main/docs/agentic-shift-left.md" target="_blank" rel="noopener">Doctrine</a>
+      <a href="agentic-qa.html">Doctrine</a>
     </div>
   </div>
 </footer>
@@ -990,6 +1023,10 @@
     animId = requestAnimationFrame(draw);
   }
 
+  // Respect the OS "reduce motion" setting: render nothing rather than
+  // running an unbounded requestAnimationFrame loop behind the content.
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
   window.addEventListener('resize', () => { resize(); });
   window.addEventListener('scroll', () => {
     canvas.style.setProperty('--parallax-y', `${-window.scrollY * PARALLAX_FACTOR}px`);
@@ -1001,6 +1038,11 @@
 // ── SCROLL REVEAL ────────────────────────────────────────────────────────
 (function () {
   const els = document.querySelectorAll('.reveal');
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || typeof IntersectionObserver === 'undefined') {
+    els.forEach(el => el.classList.add('visible'));
+    return;
+  }
   const obs = new IntersectionObserver((entries) => {
     entries.forEach((e, i) => {
       if (e.isIntersecting) {

@@ -12,15 +12,9 @@
 # session. The `-s=<slug>` flag is required (except for session-agnostic
 # subcommands like close-all / kill-all / list / install-browser /
 # --version / --help). The slug must:
-#   1. Begin with a recognized role prefix (composer-, reviewer-, probe-,
-#      process-validator-, phase1-, phase2-, phase4-, stage2-, cleanup-,
-#      companion-, fd-). `test-composer-` is accepted as well: it is the
-#      kernel-mandate name of the composer role and the description
-#      prefix that dispatches it (`test-composer-j-<slug>:`); the SHORT
-#      `composer-…` slug remains the documented CLI form because of the
-#      28-char socket-path cap below.
-#      phase4-c<N>-s-<section-id> covers journey-mapping iterative-cycle
-#      section agents (added in 0.3.6; cycle protocol per
+#   1. Begin with a recognized role prefix (DISPATCH_SLUG_PREFIX_RE in
+#      lib/dispatch-prefix.sh). phase4-c<N>-s-<section-id> covers
+#      journey-mapping iterative-cycle section agents (cycle protocol per
 #      skills/journey-mapping/SKILL.md §"Iterative discovery cycles").
 #   2. Not match a collision-prone reserved word (default, test, session, …).
 #   3. Be 6–28 characters (the macOS UNIX-socket-path cap leaves ~28 chars
@@ -81,78 +75,46 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/p
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH. Reinstall the package or install jq manually." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh shell-words.sh
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 [ "$TOOL_NAME" != "Bash" ] && exit 0
 
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 
-# Filter: only fire when playwright-cli is actually being INVOKED as a command,
-# not just mentioned inside a string argument (echo, error message, JSON literal).
-# A real invocation appears at:
-#   - start of the command line, optionally via npx | bunx | pnpm exec | yarn exec
-#   - after a command separator (;, &&, ||, |) with the same optional runners
-# Crucially, NOT inside a quoted string — those are preceded by " or ' or :.
-RUNNERS='(npx|bunx|pnpm[[:space:]]+exec|yarn[[:space:]]+exec)[[:space:]]+'
-SEP='(^|[;|][[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*)'
-if ! echo "$CMD" | grep -qE "${SEP}(${RUNNERS})?playwright-cli[[:space:]]"; then
-  exit 0
-fi
-
-# Allow session-agnostic subcommands. These run without `-s=` by design.
-if echo "$CMD" | grep -qE 'playwright-cli[[:space:]]+(install-browser|close-all|kill-all|list|list-sessions|sessions|--help|-h|--version|-v)([[:space:]]|$)'; then
-  exit 0
-fi
-
-# Truncate command for inclusion in error messages.
+# Judge every command the shell would run (lib/shell-words.sh) whose command word is
+# playwright-cli or its package @playwright/cli, directly or through npx, bunx, pnpm|yarn exec,
+# env, sudo, sh -c or $( ). A mention inside a quoted argument or a heredoc body is not an invocation.
 CMD_PREVIEW="$CMD"
-if [ ${#CMD} -gt 160 ]; then
-  CMD_PREVIEW="${CMD:0:160}..."
-fi
+[ ${#CMD} -le 160 ] || CMD_PREVIEW="${CMD:0:160}..."
 
-# Extract slug from either form: `-s=<slug>` or `-s <slug>`.
-SLUG=$(echo "$CMD" | grep -oE -- '-s=[A-Za-z0-9_.-]+' | head -1 | sed 's/^-s=//' || true)
-if [ -z "$SLUG" ]; then
-  SLUG=$(echo "$CMD" | grep -oE -- '-s[[:space:]]+[A-Za-z0-9_.-]+' | head -1 | sed -E 's/^-s[[:space:]]+//' || true)
-fi
+judge_invocation() {
+  local k=1 a SLUG=""
+  case "${CMD_ARGS[0]:-}" in playwright-cli|@playwright/cli) ;; *) return 0 ;; esac
+  # Session-agnostic subcommands run without -s= by design; no argument prints the help.
+  case "${CMD_ARGS[1]:-}" in
+    ''|install-browser|close-all|kill-all|list|list-sessions|sessions|--help|-h|--version|-v) return 0 ;;
+  esac
+  while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+    a="${CMD_ARGS[k]}"; k=$((k + 1))
+    case "$a" in
+      -s=*) SLUG="${a#-s=}"; break ;;
+      -s) SLUG="${CMD_ARGS[k]:-}"; break ;;
+    esac
+  done
 
-# Allowed slug prefixes — must match the Agent-description role prefixes
-# (see skills/achilles-protocol/references/playwright-cli-protocol.md §3.1). The
-# trailing `[a-z0-9-]+` enforces a non-empty suffix so bare prefixes like
-# `phase1-` are rejected. Bare `j-`/`sj-` are NOT accepted; use the
-# role-explicit forms `composer-j-<slug>`, `reviewer-j-<slug>`,
-# `probe-j-<slug>`. Companion-mode and failure-diagnosis prefixes
-# (`companion-`, `fd-`) are also accepted — see playwright-cli-protocol.md §3.1.
-# `test-composer` mirrors the kernel-mandate role name so a slug spelled
-# exactly like its dispatch description is not refused; `composer` stays
-# the short, documented form.
-SLUG_PREFIX_REGEX='^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*'
-
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
-
-# Case 1: -s= flag is missing entirely.
-if [ -z "$SLUG" ]; then
-  emit_deny "[BLOCKED] Missing -s=<slug> flag.
+  # Case 1: -s= flag is missing entirely.
+  if [ -z "$SLUG" ]; then
+    emit_pre_deny "[BLOCKED] Missing -s=<slug> flag.
 
 Command: $CMD_PREVIEW
 
@@ -171,13 +133,13 @@ Slug convention (must match the Agent description prefix that dispatched this su
   cleanup-<scope>                        ledger / cleanup
 
 Why: without -s=, playwright-cli uses the shared default session — two parallel subagents fight over one browser process and isolation breaks. See achilles-protocol Rule 11 + playwright-cli-protocol.md §3.1."
-  exit 0
-fi
+    exit 0
+  fi
 
-# Case 2: slug is in collision-prone blocklist.
-case "$SLUG" in
-  default|test|session|temp|tmp|x|y|main|stage1|stage3|stage4|pass1|pass2|pass3|pass4|pass5)
-    emit_deny "[BLOCKED] Slug '-s=$SLUG' is collision-prone.
+  # Case 2: slug is in collision-prone blocklist.
+  case "$SLUG" in
+    default|test|session|temp|tmp|x|y|main|stage1|stage3|stage4|pass1|pass2|pass3|pass4|pass5)
+      emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' is collision-prone.
 
 Command: $CMD_PREVIEW
 
@@ -191,13 +153,13 @@ Fix: use a slug that names the specific subagent context, matching the dispatchi
   cleanup-<scope>
 
 Why: when two subagents both use '-s=$SLUG', the second's open reuses the first's browser and isolation breaks silently. See playwright-cli-protocol.md §3.1."
-    exit 0
-    ;;
-esac
+      exit 0
+      ;;
+  esac
 
-# Case 3: slug doesn't follow the role-prefix convention.
-if ! echo "$SLUG" | grep -qE "$SLUG_PREFIX_REGEX"; then
-  emit_deny "[BLOCKED] Slug '-s=$SLUG' missing role prefix.
+  # Case 3: slug doesn't follow the role-prefix convention.
+  if ! echo "$SLUG" | grep -qE "$DISPATCH_SLUG_PREFIX_RE"; then
+    emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' missing role prefix.
 
 Command: $CMD_PREVIEW
 
@@ -214,12 +176,12 @@ Allowed prefixes: composer- | test-composer- | reviewer- | probe- | phase1- | ph
 Bare \`j-\` and \`sj-\` slug prefixes are rejected — they're role-ambiguous. Use \`composer-j-<slug>\`, \`reviewer-j-<slug>\`, or \`probe-j-<slug>\` based on the dispatching subagent's role.
 
 Why: a slug without a role prefix is unreviewable — you can't tell from .playwright-cli/<slug>* which subagent or pass produced the artifacts. The convention also locks subagent description ↔ CLI slug into a mechanical mapping (same prefix on both ends). See playwright-cli-protocol.md §3.1."
-  exit 0
-fi
+    exit 0
+  fi
 
-# Case 4: slug is too short even with prefix (defense-in-depth).
-if [ ${#SLUG} -lt 6 ]; then
-  emit_deny "[BLOCKED] Slug '-s=$SLUG' is too short (≥6 chars required).
+  # Case 4: slug is too short even with prefix (defense-in-depth).
+  if [ ${#SLUG} -lt 6 ]; then
+    emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' is too short (≥6 chars required).
 
 Command: $CMD_PREVIEW
 
@@ -228,15 +190,15 @@ Fix: add the scope after the role prefix.
   -s=composer-j-checkout-1-c1    not    -s=composer-x
 
 Why: ≥6 chars + role prefix is required to disambiguate parallel subagents. See playwright-cli-protocol.md §3.1."
-  exit 0
-fi
+    exit 0
+  fi
 
-# Case 5: slug is too long. The playwright-cli daemon binds a UNIX socket
-# under \$TMPDIR; on macOS the socket path is capped at 104 chars. Slugs
-# longer than ~28 chars push the path over the limit and the daemon
-# silently fails with EINVAL on bind. Caught by Stage B reviewer in cycle 2.
-if [ ${#SLUG} -gt 28 ]; then
-  emit_deny "[BLOCKED] Slug '-s=$SLUG' is too long (${#SLUG} chars; ≤28 allowed).
+  # Case 5: slug is too long. The playwright-cli daemon binds a UNIX socket
+  # under \$TMPDIR; on macOS the socket path is capped at 104 chars. Slugs
+  # longer than ~28 chars push the path over the limit and the daemon
+  # silently fails with EINVAL on bind. Caught by Stage B reviewer in cycle 2.
+  if [ ${#SLUG} -gt 28 ]; then
+    emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' is too long (${#SLUG} chars; ≤28 allowed).
 
 Command: $CMD_PREVIEW
 
@@ -252,7 +214,10 @@ Examples that fit:
   phase1-public                (13 chars)
 
 Why: the playwright-cli daemon binds a UNIX socket under \$TMPDIR. Long slugs push the socket path over the 104-char macOS limit and the daemon silently fails to bind (EINVAL). See playwright-cli-protocol.md §3.1."
-  exit 0
-fi
+    exit 0
+  fi
+}
 
+shell_words "$CMD"
+shell_each_command judge_invocation
 exit 0

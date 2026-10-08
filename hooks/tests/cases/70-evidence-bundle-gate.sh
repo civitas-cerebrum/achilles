@@ -71,7 +71,7 @@ assert_terminates() {
 # resolves) and a nested evidence directory, because bundles do not live at a
 # fixed depth — projects put them under apps/<x>/tests/evidence as readily as
 # tests/e2e/evidence.
-EWS="$(mktemp -d)"
+tmp_into EWS
 git init -q "$EWS" 2>/dev/null || true
 git -C "$EWS" config user.email t@example.com 2>/dev/null || true
 git -C "$EWS" config user.name t 2>/dev/null || true
@@ -276,9 +276,9 @@ assert_deny "$H" "$(tracker mcp__linear__save_issue state Done ABC-1)" \
 make_bundle "abc-1-widget-toggle-20260812-150715" >/dev/null
 
 section "evidence-gate: degenerate keys are rejected even when a matching dir exists"
-# Both guards below used to pass vacuously — no directory of that name existed,
-# so the tests proved nothing. Planting the directory is what makes them causal:
-# delete the reject-list entry and these fail.
+# A matching directory is planted for each degenerate key, so the DENY comes from
+# the reject list and not from a missing bundle: delete a reject-list entry and
+# its assert fails.
 mkdir -p "$EVI/evidence/screenshots"
 echo "# s" > "$EVI/evidence/summary.md"; echo png > "$EVI/evidence/screenshots/a.png"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done evidence)" \
@@ -357,8 +357,7 @@ section "evidence-gate: UUID ids resolve via the bundle's own summary"
 UUID="9f8e7d6c-1234-4abc-9def-0123456789ab"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done "$UUID")" \
   "UUID with no bundle naming it → DENY"
-echo "$UUID" >> "$EVI/abc-7-dated-20260812/summary.md" 2>/dev/null || \
-  echo "$UUID" >> "$EVI/2026-08/abc-7-dated-20260812/summary.md"
+echo "$UUID" >> "$EVI/2026-08/abc-7-dated-20260812/summary.md"
 assert_allow "$H" "$(tracker mcp__linear__save_issue state Done "$UUID")" \
   "UUID named in a bundle's summary.md → ALLOW"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done '00000000-0000-4000-8000-000000000000')" \
@@ -367,7 +366,7 @@ assert_allow "$H" "$(raw '{tool_name:"mcp__linear__save_issue", tool_input:{id:"
   ".identifier is preferred over a UUID .id → ALLOW"
 
 section "evidence-gate: ACHILLES_EVIDENCE_DIR reaches bundles outside the repo"
-OUTSIDE="$(mktemp -d)"
+tmp_into OUTSIDE
 mkdir -p "$OUTSIDE/abc-9-elsewhere-20260812-190000/screenshots"
 echo "# s" > "$OUTSIDE/abc-9-elsewhere-20260812-190000/summary.md"
 echo png > "$OUTSIDE/abc-9-elsewhere-20260812-190000/screenshots/01.png"

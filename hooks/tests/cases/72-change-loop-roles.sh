@@ -1,19 +1,10 @@
 #!/bin/bash
 # Tests for the change-loop roles in the QA mandate — implementer,
-# task-reviewer, verifier, live-inspector, doc-author — added to
-# hooks/data/achilles-qa.workflow.json and derived into
+# task-reviewer, verifier, live-inspector, doc-author — in
 # hooks/data/achilles-qa.kernel-mandate.json.
 #
-# AUTHORED BLIND. This file was written against the #82 head of the table,
-# the ledger and case 71, without a kernel to run it on. Before merging,
-# run it upstream (npm run test:hooks) and, for every DENY below, confirm
-# the reason with `kernel-mandate explain` on the same payload: the
-# reason substrings asserted here are the ones case 71 already relies on,
-# but the ones for the new `write.deny` carve-outs ("explicitly denied")
-# and the spend layering are read from the kernel source, not observed.
-#
 # Contract under test:
-#   - the table and the manifest carry the five roles; each binds its own
+#   - the manifest carries the five roles, each described; each binds its own
 #     agentType; only the orchestrator dispatches them; none reads src/**
 #     or .env; exactly one role may write each evidence deliverable.
 #   - every dispatch shape the change loop teaches — `implementer-<change>:`,
@@ -34,16 +25,15 @@
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 MANDATE="$HOOK_DIR/data/achilles-qa.kernel-mandate.json"
-WORKFLOW="$HOOK_DIR/data/achilles-qa.workflow.json"
 SPEND_GATE="$HOOK_DIR/factory/spend-gate.sh"
 NEW_ROLES="implementer task-reviewer verifier live-inspector doc-author"
 
 # ---------------------------------------------------------------------------
-section "change-loop roles: the table and the manifest carry the five roles"
+section "change-loop roles: the manifest carries the five roles"
 # ---------------------------------------------------------------------------
 for ROLE in $NEW_ROLES; do
-  assert_eq "$("$JQ" -r --arg r "$ROLE" '.roles[$r] | if . == null then "missing" else "present" end' "$WORKFLOW")" "present" \
-    "table declares the $ROLE role"
+  assert_eq "$("$JQ" -r --arg r "$ROLE" '.roles[$r].description // "" | length > 0' "$MANDATE")" "true" \
+    "manifest: $ROLE carries a description"
   assert_eq "$("$JQ" -r --arg r "$ROLE" '.roles[$r].agentTypes == [$r]' "$MANDATE")" "true" \
     "manifest: $ROLE binds its own agentType"
   assert_eq "$("$JQ" -r --arg r "$ROLE" '(.roles[$r].dispatch // []) | length' "$MANDATE")" "0" \
@@ -53,7 +43,7 @@ for ROLE in $NEW_ROLES; do
 done
 
 # One writer per evidence deliverable. A literal glob check is enough here:
-# the scopes are declared literally in the table, and the kernel probes
+# the scopes are declared literally in the manifest, and the kernel probes
 # below prove the same property by decision.
 ONE_WRITER=$("$JQ" -rn --slurpfile m "$MANDATE" '
   ($m[0].roles) as $r |
@@ -216,7 +206,7 @@ assert_allow "$KERNEL" "$(payload tool_name=Bash command='npm run change:start -
 section "change-loop roles: verify.md Status: complete is approver-class"
 # ---------------------------------------------------------------------------
 # The orchestrator drove the change; it may not be the one that declares it
-# verified. The table makes that a path decision (only the verifier's scope
+# verified. The manifest makes that a path decision (only the verifier's scope
 # names verify.md); a project that widens a scope keeps the field-level
 # rule in its own gate.
 assert_deny "$KERNEL" "$(payload tool_name=Write file_path="$CP/$EV/verify.md" content='# Verify

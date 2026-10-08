@@ -5,7 +5,8 @@
 # exist there).
 #
 # Mirrors scripts/postinstall.js's REAL copy set:
-#   - every HOOK_MANIFEST entry's .sh script   (copyHookFile, chmod 755)
+#   - every hook-manifest.json hook + companion (copyHookFile, chmod 755)
+#   - every manifest.factory gate into factory/ (beside lib/)
 #   - hooks/lib/ top-level FILES only           (no subdirectories)
 #   - hooks/data/ top-level FILES only          (vocabularies, e.g.
 #     canonical-sections.txt)
@@ -14,8 +15,8 @@
 # NOT copied by postinstall (and therefore not copied here): hooks/tests/.
 # Hooks must degrade gracefully without those.
 #
-# NOTE: this MIRRORS postinstall's copy set (does not execute postinstall.js
-# itself — the installer's own copyHookFile/mtime logic is out of scope here).
+# The copy set is MIRRORED, not executed; only the upgrade-path assertion
+# runs the installer (installCivitasHooks into a temp .claude/).
 #
 # Everything runs against temp dirs only — never touches ~/.claude.
 #
@@ -63,76 +64,31 @@ run_install_simulation() {
   mkdir -p "$fake_hooks/lib" "$fake_hooks/data" "$fake_hooks/bin" "$fake_project/tests/e2e/docs"
 
   # --- Mirror the postinstall copy set ------------------------------------
-  # 1. Hook scripts: exactly the HOOK_MANIFEST entries, parsed live from
-  #    postinstall.js so the sim never drifts from the real installer.
-  # Parse the literal HOOK_MANIFEST array from postinstall.js using Node so
-  # the sim never drifts from the real installer. Node is guaranteed (the
-  # suite builds the validator with it). Matches file: '...' / file: "..."
-  # entries, strips lines whose non-whitespace content starts with //, and
-  # deduplicates via Set — exactly mirroring what postinstall installs.
-  local manifest_files f
-  manifest_files=$(node -e "
-    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
-    const m = s.match(/const HOOK_MANIFEST = \[([\s\S]*?)\];/);
-    if (!m) { process.exit(1); }
-    const lines = m[1].split('\n');
-    const files = [...new Set(
-      lines
-        .filter(l => !/^\s*\/\//.test(l))
-        .flatMap(l => [...l.matchAll(/file:\s*['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]))
-    )];
-    console.log(files.join('\n'));
-  " 2>/dev/null)
-  if [ -z "$manifest_files" ]; then
-    sim_fail "manifest parse" "could not extract HOOK_MANIFEST file list from scripts/postinstall.js"
+  # 1. Hook scripts: every registered hook and every companion (copied beside
+  #    the registered hooks, never registered — the kernel, exec'd by the
+  #    activation-gate wrapper), read from the manifest the installer reads.
+  local manifest="$repo_root/hooks/data/hook-manifest.json" manifest_files companion_files f
+  manifest_files=$("$JQ" -r '[.hooks[].file] | unique | .[]' "$manifest" 2>/dev/null)
+  companion_files=$("$JQ" -r '.companions[]' "$manifest" 2>/dev/null)
+  if [ -z "$manifest_files" ] || [ -z "$companion_files" ]; then
+    sim_fail "manifest parse" "could not read .hooks[].file / .companions[] from $manifest"
     return
   fi
-  for f in $manifest_files; do
+  for f in $manifest_files $companion_files; do
     if [ -f "$repo_root/hooks/$f" ]; then
       cp "$repo_root/hooks/$f" "$fake_hooks/$f"
       chmod 755 "$fake_hooks/$f"   # postinstall: fs.chmodSync(hookDest, 0o755)
     fi
   done
-  # 1b. HOOK_COMPANIONS — copied beside the registered hooks but never
-  #     registered (the kernel mandate kernel, exec'd by the activation-gate
-  #     wrapper). Parsed the same way so the sim tracks the installer.
-  local companion_files
-  companion_files=$(node -e "
-    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
-    const m = s.match(/const HOOK_COMPANIONS = \[([\s\S]*?)\];/);
-    if (!m) { process.exit(0); }
-    console.log([...m[1].matchAll(/['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]).join('\n'));
-  " 2>/dev/null)
-  for f in $companion_files; do
-    if [ -f "$repo_root/hooks/$f" ]; then
-      cp "$repo_root/hooks/$f" "$fake_hooks/$f"
-      chmod 755 "$fake_hooks/$f"
-    fi
-  done
 
-  # 1c. FACTORY_MANIFEST — the hooks/factory/ gates. postinstall gives these
-  #     their own copy-and-register pass into <hooks>/factory/, because each
-  #     gate sources ../lib/factory-common.sh and so must keep its place
-  #     beside lib/. Mirrored (and asserted) here because the whole family
-  #     once shipped with no manifest entry at all: the gates were in the
-  #     tarball, the docs told projects how to opt in, and nothing copied or
-  #     registered a single one of them.
+  # 1c. manifest.factory — the hooks/factory/ gates, copied into
+  #     <hooks>/factory/ because each sources ../lib/factory-common.sh.
   local factory_files
   mkdir -p "$fake_hooks/factory"
-  factory_files=$(node -e "
-    const s = require('fs').readFileSync('$repo_root/scripts/postinstall.js', 'utf8');
-    const m = s.match(/const FACTORY_MANIFEST = \[([\s\S]*?)\];/);
-    if (!m) { process.exit(0); }
-    const files = [...new Set(
-      m[1].split('\n')
-        .filter(l => !/^\s*\/\//.test(l))
-        .flatMap(l => [...l.matchAll(/file:\s*['\"]([^'\"]+\\.sh)['\"]/g)].map(x => x[1]))
-    )];
-    console.log(files.join('\n'));
-  " 2>/dev/null)
+  factory_files=$("$JQ" -r '[.factory[].file] | unique | .[]' "$manifest" 2>/dev/null)
   if [ -z "$factory_files" ]; then
-    sim_fail "FACTORY_MANIFEST parse" \
-      "no FACTORY_MANIFEST in scripts/postinstall.js — the hooks/factory/ gates would ship unregistered, so a project that commits achilles-factory-rules.json gets no gate at all"
+    sim_fail "manifest.factory parse" \
+      "no .factory[] in $manifest — the hooks/factory/ gates would ship unregistered"
   else
     for f in $factory_files; do
       if [ -f "$repo_root/hooks/factory/$f" ]; then
@@ -174,6 +130,13 @@ run_install_simulation() {
       "validator.bundle.mjs missing from hooks/lib (run npm run build:validator before testing; ship it in the tarball)"
   fi
 
+  if [ -f "$fake_hooks/lib/babel-parser.bundle.js" ]; then
+    sim_pass "babel-parser.bundle.js lands in the copy set"
+  else
+    sim_fail "babel-parser.bundle.js lands in the copy set" \
+      "babel-parser.bundle.js missing from hooks/lib (run npm run build:validator before testing; ship it in the tarball)"
+  fi
+
   # --- Assertion 2: every manifest hook copied and executable -------------
   local missing=""
   for f in $manifest_files; do
@@ -182,15 +145,14 @@ run_install_simulation() {
     fi
   done
   if [ -z "$missing" ]; then
-    sim_pass "all HOOK_MANIFEST scripts copied and executable"
+    sim_pass "all manifest hook scripts copied and executable"
   else
-    sim_fail "all HOOK_MANIFEST scripts copied and executable" "missing/non-executable: $missing"
+    sim_fail "all manifest hook scripts copied and executable" "missing/non-executable: $missing"
   fi
 
   # --- Assertion: every factory gate on disk is registered AND installed ---
-  # Two halves of the same bug. A gate in hooks/factory/ that FACTORY_MANIFEST
-  # does not name ships to consumers and never runs; a named gate that fails to
-  # land is a registration pointing at nothing.
+  # A gate manifest.factory does not name ships and never runs; a named gate
+  # that fails to land is a registration pointing at nothing.
   local on_disk_factory g registered_set unregistered="" factory_missing=""
   on_disk_factory=$(cd "$repo_root/hooks/factory" 2>/dev/null && ls -1 *.sh 2>/dev/null || true)
   # $factory_files is newline-separated; flatten it so the membership test below
@@ -200,9 +162,9 @@ run_install_simulation() {
     case "$registered_set" in *" $g "*) ;; *) unregistered="${unregistered:+$unregistered, }$g" ;; esac
   done
   if [ -z "$unregistered" ]; then
-    sim_pass "every hooks/factory/ gate is named by FACTORY_MANIFEST"
+    sim_pass "every hooks/factory/ gate is named by manifest.factory"
   else
-    sim_fail "every hooks/factory/ gate is named by FACTORY_MANIFEST" \
+    sim_fail "every hooks/factory/ gate is named by manifest.factory" \
       "shipped but never registered (a project that opts in gets no gate): $unregistered"
   fi
   for f in $factory_files; do
@@ -211,9 +173,9 @@ run_install_simulation() {
     fi
   done
   if [ -z "$factory_missing" ]; then
-    sim_pass "all FACTORY_MANIFEST gates copied to hooks/factory/ and executable"
+    sim_pass "all manifest.factory gates copied to hooks/factory/ and executable"
   else
-    sim_fail "all FACTORY_MANIFEST gates copied to hooks/factory/ and executable" "missing/non-executable: $factory_missing"
+    sim_fail "all manifest.factory gates copied to hooks/factory/ and executable" "missing/non-executable: $factory_missing"
   fi
 
   # --- Assertion: a factory gate FIRES from the installed location ---------
@@ -296,6 +258,23 @@ FACRULES
       "missing at $fake_hooks/data/canonical-sections.txt — postinstall must copy hooks/data/"
   fi
 
+  # --- Assertion: upgrade path leaves settings.json unchanged -------------
+  # The fixture is the settings.json the pre-split installer wrote (hooks dir
+  # as @HOOKS@). Re-running the installer over it must change nothing except
+  # adding the factory gates, which that installer did not register.
+  local up="$work/upgrade" fixture="$repo_root/hooks/tests/fixtures/settings-0.1.8-pre-split.json" up_diff
+  mkdir -p "$up/.claude"
+  sed "s#@HOOKS@#$up/.claude/hooks#g" "$fixture" > "$up/.claude/settings.json"
+  cp "$up/.claude/settings.json" "$work/settings-expected.json"
+  HOME="$up" CIVITAS_SKIP_JQ_INSTALL=1 node -e "require('$repo_root/scripts/postinstall.js').installCivitasHooks('$up/.claude')" >/dev/null 2>&1
+  up_diff=$(diff <("$JQ" -S . "$work/settings-expected.json") \
+    <("$JQ" -S '.hooks |= map_values(map(.hooks |= map(select(.command | contains("/hooks/factory/") | not))) | map(select(.hooks | length > 0)))' "$up/.claude/settings.json") 2>&1)
+  if [ -z "$up_diff" ]; then
+    sim_pass "re-install over the pre-split settings.json leaves it unchanged"
+  else
+    sim_fail "re-install over the pre-split settings.json leaves it unchanged" "$up_diff"
+  fi
+
   # --- Assertion 5+6: write-gate DENIES a schema-invalid ledger write -----
   # Run from the fake project (no repo, no schemas/ dir anywhere above) with
   # HOME pointed at the fake home — exactly a consumer's runtime context.
@@ -349,31 +328,22 @@ FACRULES
   # fake install with NO `yaml` module hoisted. The gate now converts YAML
   # via the bundle's `tojson` subcommand (P7), so it must not silently
   # no-op the way the old require('yaml') path did at un-hoisted installs.
-  # Probe whether tojson exists in the installed bundle; skip when it
-  # doesn't (P7 not yet landed — reported as a P7-domain dependency).
-  local probe attest_out attest_msg
-  probe=$(mktemp "$work/tojson-probe-XXXXXX"); printf 'verdict: approve\n' > "$probe"
-  # NODE_BIN is set by earlier case files under run.sh; standalone or
-  # filtered runs reach here without it.
-  if [ -n "${NODE_BIN:-$(command -v node || true)}" ] && [ -f "$fake_hooks/lib/validator.bundle.mjs" ] \
-     && node "$fake_hooks/lib/validator.bundle.mjs" tojson "$probe" 2>/dev/null | grep -q 'verdict'; then
-    # Evidence-free approve return (no on-disk path cited in attestation).
-    local ev_free_payload
-    ev_free_payload=$("$JQ" -n --arg d "workflow-reviewer-phase3: review" \
-      '{tool_name:"Agent", tool_input:{description:$d}, cwd:".", tool_response:"verdict: approve\nattestation: all good"}')
-    attest_out=$(cd "$fake_project" && printf '%s' "$ev_free_payload" \
-      | HOME="$work/home" bash "$fake_hooks/workflow-reviewer-attestation-gate.sh" 2>/dev/null) || true
-    attest_msg=$(printf '%s' "$attest_out" | "$JQ" -r '.systemMessage // empty' 2>/dev/null || echo "")
-    if printf '%s' "$attest_msg" | grep -q 'approval without on-disk evidence'; then
-      sim_pass "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)"
-    else
-      sim_fail "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)" \
-        "expected a WARN systemMessage; got output=${attest_out:0:200}"
-    fi
-  else
-    sim_pass "attestation-gate tojson assertion skipped (validator bundle 'tojson' not yet shipped — P7 dependency)"
+  local attest_out attest_msg ev_free_payload
+  if ! command -v node >/dev/null 2>&1; then
+    sim_fail "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)" "required tool 'node' missing"
+    return
   fi
-  rm -f "$probe"
+  ev_free_payload=$("$JQ" -n --arg d "workflow-reviewer-phase3: review" \
+    '{tool_name:"Agent", tool_input:{description:$d}, cwd:".", tool_response:"verdict: approve\nattestation: all good"}')
+  attest_out=$(cd "$fake_project" && printf '%s' "$ev_free_payload" \
+    | HOME="$work/home" bash "$fake_hooks/workflow-reviewer-attestation-gate.sh" 2>/dev/null) || true
+  attest_msg=$(printf '%s' "$attest_out" | "$JQ" -r '.systemMessage // empty' 2>/dev/null || echo "")
+  if printf '%s' "$attest_msg" | grep -q 'approval without on-disk evidence'; then
+    sim_pass "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)"
+  else
+    sim_fail "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)" \
+      "expected a WARN systemMessage; got output=${attest_out:0:200}"
+  fi
 }
 
 run_install_simulation

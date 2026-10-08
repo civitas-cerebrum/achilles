@@ -5,6 +5,8 @@ description: Use when a code change is the unit of QA work — a ticket paired t
 
 # Ticket-Driven Testing
 
+Under an active role kernel some steps are refused: see [known-limits.md](../achilles-protocol/references/known-limits.md) KL-06.
+
 ## Overview
 
 A ticket is not a test plan. It is a claim about behaviour, a branch that allegedly implements it, and a set of acceptance criteria someone will sign off against. This skill turns that into: verified evidence, durable regression tests, and sentinel tests for every defect found.

@@ -4,28 +4,19 @@
 # combined attestation + checklist evidence cites no real on-disk paths.
 H="$HOOK_DIR/workflow-reviewer-attestation-gate.sh"
 
-# Skip the suite if the validator bundle's `tojson` subcommand isn't
-# available (the hook then silent-allows on parse failure, which makes
-# deny-expectation tests meaningless). `tojson` is shipped by P7 in the
-# rebuilt bundle; until that lands this suite skips (P7-domain dependency).
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping attestation-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+# Without the validator bundle's `tojson` subcommand the hook silent-allows on
+# parse failure, which would make every WARN expectation below meaningless.
+require_tool node || return 0
 NODE_BIN=$(command -v node)
 ATTEST_BUNDLE="$HOOK_DIR/lib/validator.bundle.mjs"
 _ATTEST_PROBE=$(mktemp); printf 'verdict: approve\n' > "$_ATTEST_PROBE"
-if ! "$NODE_BIN" "$ATTEST_BUNDLE" tojson "$_ATTEST_PROBE" 2>/dev/null | grep -q 'verdict'; then
-  rm -f "$_ATTEST_PROBE"
-  echo "  ${CLR_DIM}(validator bundle 'tojson' subcommand unavailable — skipping attestation-gate cases; ships with P7)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+ATTEST_TOJSON=$("$NODE_BIN" "$ATTEST_BUNDLE" tojson "$_ATTEST_PROBE" 2>/dev/null)
 rm -f "$_ATTEST_PROBE"
+assert_eq "$(printf '%s' "$ATTEST_TOJSON" | grep -c verdict)" "1" "validator bundle 'tojson' subcommand converts YAML"
 
 # Isolated repo so the hook resolves REPO_ROOT to a temp dir.
-ATTEST_TMP=$(mktemp -d)
-trap 'rm -rf "$ATTEST_TMP"' EXIT
-( cd "$ATTEST_TMP" && git init -q && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+tmp_into ATTEST_TMP
+init_repo "$ATTEST_TMP" --commit
 mkdir -p "$ATTEST_TMP/tests/e2e/docs" "$ATTEST_TMP/scripts"
 
 # Seed two real files in the temp repo. Paths mirror the post-reshape layout

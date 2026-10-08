@@ -62,31 +62,18 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/contributing-to-achilles-proto
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH. Reinstall the package or install jq manually." >&2
-  exit 1
-fi
-
-# --- helpers ---
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 # --- input ---
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
+hook_lib hook-emit.sh
 
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 [ "$TOOL_NAME" != "Bash" ] && exit 0
@@ -127,7 +114,7 @@ fi
 # generated-with / claude.ai-code alternatives are markers/URLs that are never
 # legitimate in a PR description, so they match anywhere.
 if echo "$ATTRIB_SCAN" | grep -qiE '(^|['"'"'"])[[:space:]]*co-authored-by:.*(claude|anthropic|noreply@anthropic\.com)|generated with.*claude([[:space:]]+code)?\b|claude\.ai/code'; then
-  emit_deny "[BLOCKED] pull request carries AI-attribution metadata.
+  emit_pre_deny_bare "[BLOCKED] pull request carries AI-attribution metadata.
 
 Command/body surface contains one of:
   - a \`Co-Authored-By:\` trailer naming claude / anthropic / noreply@anthropic.com
@@ -143,7 +130,7 @@ Fix: re-issue the command with the attribution trailer / marker / URL removed
 from the title and body. The upstream fix is to remove the attribution
 instruction from CLAUDE.md (or set \`attribution.pr\` to an empty string in
 settings.json) so it stops being added in the first place — do not strip it
-by hand on every PR."
+by hand on every PR.${HOOK_REFS}"
   exit 0
 fi
 

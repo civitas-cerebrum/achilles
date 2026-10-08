@@ -20,8 +20,8 @@
 # Behaviour:
 #   - schema-validated prefix → prints the schema role name (composer,
 #     reviewer-inloop, probe, phase-validator) and returns 0. Both the
-#     kernel-mandate spelling `test-composer-*` and the legacy
-#     `composer-*` route to the composer schema.
+#     kernel-mandate spelling `test-composer-*`, `secrets-sweep-*` and the
+#     legacy `composer-*` route to the composer schema.
 #   - known prefix with no schema (process-validator-*) → prints an
 #     empty string and returns 0. The caller knows the prefix is part
 #     of the protocol but has no JSON-Schema enforcement.
@@ -39,6 +39,9 @@
 #   # ... use $SCHEMA_ROLE
 resolve_schema_role() {
   case "$1" in
+    # Grouped dispatches return per-item results; envelope check only.
+    test-composer-group-*|test-composer-p3batch-*|probe-group-*|probe-p3batch-*)
+                              echo "";                       return 0 ;;
     perf-reviewer-*)          echo "perf-reviewer";          return 0 ;;
     workflow-reviewer-*)      echo "workflow-reviewer";      return 0 ;;
     # The kernel mandate resolves a dispatch's role from the description
@@ -47,6 +50,7 @@ resolve_schema_role() {
     # globs anchor at the string start, so `composer-*` does NOT cover it;
     # it gets its own case. The pre-kernel spelling `composer-*` stays
     # accepted below for briefs and transcripts written before the rename.
+    secrets-sweep-*)          echo "composer";               return 0 ;;
     test-composer-*)          echo "composer";               return 0 ;;
     composer-*)               echo "composer";               return 0 ;;
     reviewer-*)               echo "reviewer-inloop";        return 0 ;;
@@ -71,17 +75,9 @@ resolve_schema_role() {
   esac
 }
 
-# Migration note: workflow-reviewer-* used to live in a post-only superset
-# (resolve_schema_role_post, consumed only by subagent-return-schema-guard.sh)
-# because the documented reviewer-brief contract did not instruct the
-# orchestrator to cite workflow-reviewer.schema.json — pre-gating would have
-# rejected exactly the briefs the skill taught. The brief contract now
-# REQUIRES the citation (skills/workflow-reviewer/SKILL.md §"Inputs the
-# reviewer receives in its brief" input 5; skills/onboarding/SKILL.md
-# §"Status ledger + workflow reviewer"), so the mapping was promoted into
-# resolve_schema_role and the post-only function was deleted — both the
-# PreToolUse preread gate and the PostToolUse return guard now use
-# resolve_schema_role directly.
+# workflow-reviewer-* is pre-gated: the brief contract requires the citation
+# (skills/workflow-reviewer/SKILL.md §"Inputs the reviewer receives in its brief"
+# input 5; skills/onboarding/SKILL.md §"Status ledger + workflow reviewer").
 # NOTE: perf-reviewer-* is listed BEFORE workflow-reviewer-* and reviewer-*
 # so it cannot be shadowed by either broader pattern; case globs anchor at
 # the string start so there is no overlap between the three.

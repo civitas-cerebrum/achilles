@@ -228,7 +228,7 @@ For every journey, count how many of the following eight factors are present. Ea
 **What risk does — and does not — do.**
 
 - **Does** order dispatch *within* a priority tier in coverage-expansion: `risk: elevated` journeys dispatch before `risk: baseline` ones in the same P-tier.
-- **Does** exclude `risk: elevated` journeys from grouped dispatch — they are never folded into a `[group]` or `[P3-batch]` brief (compositional grouping, adversarial grouping, AND P3-batch eligibility). Concentrated failure surfaces are exactly what grouped attention-rationing misses.
+- **Does** exclude `risk: elevated` journeys from grouped dispatch — they are never folded into a grouped brief (compositional grouping, adversarial grouping, AND P3-batch eligibility). Concentrated failure surfaces are exactly what grouped attention-rationing misses.
 - **Does NOT** change the P-tier. Risk is a second axis, never a priority modifier — an elevated P2 journey stays P2; it does not get promoted to P1.
 - **Does NOT** add or remove test expectations. Expectations are priority-conditional (§"Priority Framework" coverage-expectation column); risk leaves them untouched.
 - **Backward-compatible.** A journey block with no `Risk factors:` field is `risk: baseline` and groups normally. No existing map breaks.

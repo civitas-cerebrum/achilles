@@ -52,20 +52,21 @@
 # - Write|Edit into this repo, no match                             → silent allow
 # - No denylist file (operator has not opted in)                    → silent allow
 # - Target file outside this package's repo tree                    → silent allow
-# - Malformed input / jq missing                                    → silent allow (fail open)
+# - Malformed input                                                 → silent allow (fail open)
+# - jq missing                                                    → deny while the protocol is active (KL-14), else silent allow
 
 set -uo pipefail
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || exit 0
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init silent
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
-TOOL_NAME=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
+TOOL_NAME=$(hook_field .tool_name)
 case "$TOOL_NAME" in Write|Edit) : ;; *) exit 0 ;; esac
 
-FILE_PATH=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
+FILE_PATH=$(hook_field .tool_input.file_path)
 [ -n "$FILE_PATH" ] || exit 0
 
 # Locate this package's repo root by walking up from the target file.

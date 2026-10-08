@@ -8,8 +8,7 @@
 # the kill-switch.
 H="$HOOK_DIR/test-id-compliance-gate.sh"
 
-TMP_SPEC=$(mktemp -d /tmp/test-id-gate-XXXXXX)
-trap 'rm -rf "$TMP_SPEC"' EXIT
+tmp_into TMP_SPEC /tmp/test-id-gate-XXXXXX
 
 SPEC="$TMP_SPEC/login.spec.ts"
 LEGACY="$TMP_SPEC/legacy.spec.ts"

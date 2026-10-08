@@ -41,7 +41,7 @@ One row per shared composing concern. "Canonical home" is where the full rule te
 | Oracle strength ladder L0–L3 | `../../test-composer/SKILL.md` §"Oracle strength ladder" |
 | Deliberate-failure bite check (mutate expected value, confirm the test fails, revert) | `../../test-composer/SKILL.md` §"Oracle strength ladder" (UI); `../../contract-testing/SKILL.md` Rule 8 (API) |
 | Input-domain / partition analysis | `../../test-composer/references/input-domain-analysis.md` |
-| Tenant cleanup contract (`cleanupViaApiBackdoor`, `cleanup: done \| blocked \| not-needed`) | `../../test-composer/SKILL.md` §"Tenant cleanup hooks are non-negotiable" |
+| Tenant cleanup contract (`cleanupViaApiBackdoor`, `cleanup: done \| blocked \| not-needed`) | `../../test-composer/SKILL.md` §"Tenant cleanup hooks are non-negotiable for add-* journeys" |
 | Evidence-required rule for findings | [`subagent-return-schema.md`](subagent-return-schema.md) §1 "Evidence rule" |
 | Fresh-eyes reviewer independence | `../../coverage-expansion/references/reviewer-subagent-contract.md` §"Hard constraints" |
 | Subagent return + ledger shapes | [`subagent-return-schema.md`](subagent-return-schema.md) |
@@ -120,7 +120,7 @@ Two spec depths, chosen per test by what the test is *about*:
 
 - **e2e spec — the journey IS the subject.** Walk the journey through the UI end-to-end; no state-injection shortcuts on the path under test. A journey's full UI walk is the subject of **exactly one** e2e test.
 - **smoke / derivative spec — a surface is the subject.** Reach the target view via API / state injection (`test-optimization.md` §4's two-of-two gate; `setAuthCookie` / seed helpers), and put UI assertions ONLY on the surface under test. Everything upstream of the subject is setup, and setup goes through the fastest safe channel.
-- **Auth:** session/cookie injection everywhere **except** the tests whose subject IS login/signup — those keep the UI walk. Authentication is a *precondition*, not a step of the journeys it unlocks, so injecting it does not breach the e2e no-shortcut rule (the gate-first regression/smoke/e2e architecture this section instantiates is defined in `../../../docs/agentic-shift-left.md` §"Stage 4 — Guard / Heal").
+- **Auth:** session/cookie injection everywhere **except** the tests whose subject IS login/signup — those keep the UI walk. Authentication is a *precondition*, not a step of the journeys it unlocks, so injecting it does not breach the e2e no-shortcut rule (the gate-first regression/smoke/e2e architecture this section instantiates is defined in `../../../docs/agentic-shift-left.md` §"Stage 4 — Gate / Heal").
 - **Organisation:** specs are organised by user journey (one spec file per journey / feature area holding its scenarios); suites split e2e vs smoke so the depth choice is visible in the tree. Derivatives shortcut; the one e2e walk does not.
 
 Rationale: duplicated UI walks multiply run time and flake surface without multiplying signal — the walk is already locked by its one e2e test; derivatives re-walking it re-test the walk, not their own subject.

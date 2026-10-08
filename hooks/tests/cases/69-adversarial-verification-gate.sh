@@ -21,7 +21,7 @@ tracker() {
 
 # Isolated workspace per phase: a git repo with one spec, so the gate's
 # staleness comparison has something real to compare against.
-WS="$(mktemp -d)"
+tmp_into WS
 git init -q "$WS" 2>/dev/null || true
 mkdir -p "$WS/tests" "$WS/.achilles/adversarial-verification"
 echo "test('x', () => {})" > "$WS/tests/a.spec.ts"
@@ -73,8 +73,9 @@ assert_allow "$H" "$(tracker mcp__linear__save_comment body 'QA Test Report: AC-
   "receipt present → comment no longer warns"
 
 section "adversarial-gate: a receipt older than the tests it vouches for is not a receipt"
-sleep 1
-touch "$WS/tests/a.spec.ts"
+# Explicit mtimes, not a sleep: the hook compares mtimes only.
+touch -t 202001010000 "$WS/.achilles/adversarial-verification/ABC-1.json"
+touch -t 202001020000 "$WS/tests/a.spec.ts"
 assert_deny "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "spec edited after receipt → DENY" "OLDER than the most recently edited spec"
 
@@ -188,6 +189,7 @@ assert_allow "$H" "$(bash_cmd 'echo gh pr create')"        "the words inside an 
 assert_allow "$H" "$(bash_cmd 'grep -r "gh pr create" .')" "the words inside a grep → ALLOW"
 
 # With a green receipt bound to the BRANCH — entry B has no ticket key to bind to.
+assert_eq "$([ -n "$BR" ] && echo named || echo detached)" "named" "workspace is on a named branch (the receipt binds to it)"
 if [ -n "$BR" ]; then
   printf '%s' "{\"negativeControl\":{\"failed\":5},\"review\":{\"reviewer\":\"probe-rigour-x\",\"uiReviewed\":true,\"coverageSufficient\":true,\"scores\":{\"R1\":3,\"R2\":2,\"R3\":2,\"R4\":2,\"R5\":2,\"R6\":2},\"total\":13}}" \
     > "$WS/.achilles/adversarial-verification/${BR}.json"
@@ -210,4 +212,3 @@ ACHILLES_PROTOCOL=0 \
   "protocol inactive → ALLOW (plain dev sessions never feel this)"
 
 unset WORKSPACE_ROOT ACHILLES_PROTOCOL
-rm -rf "$WS"

@@ -25,8 +25,8 @@
 # play, a Write|Edit to a `*.spec.*` file or a `page-repository*.json` is
 # denied when the transcript contains NO evidence access whatsoever.
 #
-# Scope, stated honestly
-# ----------------------
+# Scope
+# -----
 # The gate proves evidence was ACCESSED, not that it was UNDERSTOOD. An agent
 # that opens a trace and then ignores it passes. It cannot read the written
 # observation for each floor item, and it cannot tell attempt 0's trace from
@@ -104,18 +104,15 @@ if [ "${FD_EVIDENCE_FLOOR_GATE:-on}" = "off" ]; then
   exit 0
 fi
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated sessions;
 # plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
@@ -170,7 +167,7 @@ TOOL_USES=$(
 # write is somebody else's business (a composer authoring a new spec, say).
 FD_CONTEXT=$(
   printf '%s\n' "$TOOL_USES" \
-    | grep -E '^SKILL ([a-z0-9./_-]+[:/])?failure-diagnosis$|^READ .*skills/failure-diagnosis/SKILL\.md$|^AGENT[[:space:]]+(fd|repair-worker)-' \
+    | grep -E '^SKILL ([a-z0-9./_-]+[:/])?failure-diagnosis$|^READ .*skills/failure-diagnosis/SKILL\.md$|^AGENT[[:space:]]+('"$DISPATCH_FD_ROLE_ALT"')-' \
     | head -1 || true
 )
 if [ -z "$FD_CONTEXT" ]; then

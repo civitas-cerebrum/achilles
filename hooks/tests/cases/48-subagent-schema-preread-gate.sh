@@ -76,3 +76,9 @@ section "schema-preread-gate: workflow-reviewer briefs must cite the schema"
 # hooks/lib/schema-role-map.sh.
 assert_deny "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase2: review Phase 2 exit criteria' prompt='Read the ledger at tests/e2e/docs/onboarding-status.json and verify Phase 2 deliverables on disk.')" "workflow-reviewer brief without schema citation → DENY" "workflow-reviewer.schema.json"
 assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase2: review Phase 2 exit criteria' prompt='Read the ledger at tests/e2e/docs/onboarding-status.json and verify Phase 2 deliverables on disk. Return per schemas/subagent-returns/workflow-reviewer.schema.json.')" "workflow-reviewer brief with schema citation → ALLOW"
+
+section "schema-role-map: grouped dispatches resolve to envelope-only, never the composer/probe schema"
+for d in 'test-composer-group-x: j-a, j-b' 'test-composer-p3batch-x: j-a' 'probe-group-x: j-a, j-b' 'probe-p3batch-x: j-a'; do
+  got=$(bash -c 'source "$1/lib/schema-role-map.sh"; r=$(resolve_schema_role "$2"); echo "[$r] rc=$?"' _ "$HOOK_DIR" "$d")
+  assert_eq "$got" "[] rc=0" "$d → empty role, rc 0"
+done

@@ -3,6 +3,7 @@
 #                                     review of the tests.
 #
 # Hook    : PreToolUse:mcp__.*  (tracker mutation tools)
+#           PreToolUse:Bash     (`gh pr create|ready`, non-draft)
 # Mode    : DENY  (transitioning a ticket to a COMPLETED state with no
 #                  verification receipt — that is sign-off, and sign-off is
 #                  exactly the moment the check must already have happened)
@@ -14,85 +15,44 @@
 # State   : reads <workspace>/.achilles/adversarial-verification/*.json
 #           (no writes — this gate never authors the thing it checks)
 # Env     : WORKSPACE_ROOT (defaults to git toplevel of cwd)
-#           CIVITAS_DISABLE_ADVERSARIAL_GATE=1 disables the hook. Deliberately
-#           NOT repeated in the denial message: a gate that prints its own
-#           bypass at the moment of maximum frustration is a gate that lives in
-#           someone's shell profile by the end of week one. Documented here and
-#           in the skill, where it is read in a calmer moment.
+#           CIVITAS_DISABLE_ADVERSARIAL_GATE=1 disables the hook. Not named
+#           in the denial message, so the deny does not advertise its bypass.
 #
-# Why this exists
-# ---------------
-# Baseline testing of the ticket-driven-testing skill found that an early
-# draft omitted this check every time: an agent that had just written a
-# suite produced an otherwise excellent plan and never asked whether the
-# suite could fail. An agent with NO skill at all named that check first,
-# unprompted — so the draft was worse than nothing on this dimension.
-#
-# The skill was revised and now does fire the check (see its §"Baseline
-# testing"). This gate is therefore DEFENCE IN DEPTH, not the sole
-# mechanism, and the honest reason it still earns its place is:
-#
-#   1. Instructions are advisory; a gate is not. A skill can be skimmed,
-#      truncated, or superseded by a user instruction. This cannot.
-#   2. It is independent of the skill's CONTENTS. A gate keyed on the action
-#      does not care what the skill said, or whether the installed copy
-#      matched the repository copy — a desync that once hid a draft's failure
-#      for five test runs. It is NOT independent of whether an achilles skill
-#      was invoked at all: this hook is session-scoped like every other, and
-#      silent-allows in a session that never activated the protocol.
-#
-# Deliberately NOT claimed: that instruction-level guidance does not work.
-# It does. This is a second line, not a replacement.
+# Why
+# ---
+# Instructions are advisory and can be skimmed, truncated or superseded; a gate
+# keyed on the action is independent of the skill's contents. Defence in depth
+# next to `ticket-driven-testing` §8. Session-scoped like every other hook.
 #
 # What counts as a receipt
 # ------------------------
-# .achilles/adversarial-verification/<ticket>.json, carrying BOTH a
-# `negativeControl` object (the author ran the checks) and a `review` object
-# (someone independent judged the result adequate):
+# .achilles/adversarial-verification/<ticket>.json (ticket key in the filename),
+# newer than the newest spec, carrying a `negativeControl` object and a `review`
+# object (the shape below). A reviewer who reads only specs can certify every
+# assertion while the feature is broken in a browser, hence `uiReviewed`.
 #
 #   "review": {
 #     "reviewer": "probe-rigour-<id>",   // who; empty is a denial
-#     "uiReviewed": true,                 // they looked at the UI, not only the specs
+#     "uiReviewed": true,                 // looked at the UI, not only the specs
 #     "coverageSufficient": true,         // the explicit conclusion
 #     "scores": { "R1": 3, "R2": 2, ... },// any 0 blocks, whatever the total
 #     "total": 15                         // <= 12 blocks
 #   }
 #
-# The UI flag is not ceremony. A reviewer who reads only specs can certify that
-# every assertion is well-formed while the feature is visibly broken in a
-# browser — that exact gap shipped here, where two acceptance criteria were
-# declared verified on a mechanism and a tautology and every test passed. It must be NEWER than the newest spec file in
-# the workspace — a receipt from before the tests were last edited proves
-# nothing about the tests as they now stand. The receipt must ALSO carry the
-# ticket key in its filename: without that, any receipt unlocked any ticket,
-# which was a real defect found by adversarial review of this gate.
-#
-# HONEST STATUS — read before relying on this. Adversarial review defeated the receipt binding
-# four ways and the staleness scan six. Exact-key matching closed the first set; the rest are
-# structural and CANNOT be patched:
-#   * the receipt lives in a directory no protected-artifact guard covers, so the agent being
-#     judged can author, post-date or delete its own acquittal (`touch -t 2030…` makes staleness
-#     permanently unfailable);
-#   * the spec scan truncates at 2000 paths in READDIR order and xargs-batches, so on a large
-#     monorepo the genuinely-newest spec can be missed;
-#   * the `review` block is JSON the same agent can write. This gate enforces the SHAPE and the
-#     THRESHOLDS of a review, which is real — it cannot enforce that a reviewer ran, or that the
-#     reviewer was not the author. A PreToolUse hook has no way to attest subagent identity. Treat
-#     a passing receipt as "the author asserts a review with these scores", not "a review happened";
-#   * only mcp__* tools are seen — Bash, curl and gh are ungated, and the skill itself documents
-#     them as the fallback;
+# Limits. A speed bump, not a control; it raises the cost of skipping from
+# "forget" to "write a false artifact":
+#   * the receipt lives where no protected-artifact guard reaches, so the agent
+#     judged can author, post-date (`touch -t`) or delete it;
+#   * the `review` block is JSON the same agent writes; the gate enforces its
+#     shape and thresholds, not that an independent reviewer ran (a PreToolUse
+#     hook cannot attest subagent identity);
+#   * the spec scan truncates at 2000 paths in READDIR order, so on a large
+#     monorepo the newest spec can be missed;
+#   * only mcp__* tools and `gh pr create|ready` are seen; other shells, curl and
+#     non-gh PR paths are ungated;
 #   * the status vocabulary is six English words.
-# This is a speed bump, not a control. Making it sound needs a hook-authored, hash-chained receipt
-# on the protected list — the pattern ledger-integrity-chain.sh already implements.
-#
-# Deliberately NOT enforced here: whether the receipt's contents are
-# honest. A hook cannot tell a real probe run from a fabricated JSON file.
-# This gate raises the cost of skipping from "forget" to "actively write a
-# false artifact". That is NOT the ceiling for a harness — this repo already
-# ships a stronger pattern (hook-authored, hash-chained artifacts on the
-# protected list, per ledger-integrity-chain.sh). The receipt should move to
-# that pattern; until it does, the honest description is "raises the cost",
-# not "prevents".
+# Making it sound needs a hook-authored, hash-chained receipt on the protected
+# list (the ledger-integrity-chain.sh pattern).
 
 set -euo pipefail
 
@@ -101,44 +61,24 @@ set -euo pipefail
 # §"Hook error message format — repo standard").
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/ticket-driven-testing/SKILL.md §\"8. Prove the tests discriminate the fix\"\n  skills/ticket-driven-testing/SKILL.md §\"8b. Dispatch the adversarial test review\""
 
-
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-JQ="$HOOK_DIR/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib signoff.sh
+hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_ADVERSARIAL_GATE:-}" = "1" ] && exit 0
 
 INPUT="$(cat)"
 
-# shellcheck source=lib/achilles-activation.sh
-if [ -f "$HOOK_DIR/lib/achilles-activation.sh" ]; then
-  . "$HOOK_DIR/lib/achilles-activation.sh"
-  achilles_session_active "$INPUT" || exit 0
-fi
+hook_lib achilles-activation.sh
+achilles_session_active "$INPUT" || exit 0
 
 TOOL_NAME="$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty')"
 [ -n "$TOOL_NAME" ] || exit 0
 
 # Tracker mutation surfaces across vendors. Reads are not gated — only the
 # two actions that constitute sign-off.
-IS_TRANSITION=0
-IS_COMMENT=0
-IS_PR=0
-case "$TOOL_NAME" in
-  *save_issue*|*transitionJiraIssue*|*update_issue*|*editJiraIssue*) IS_TRANSITION=1 ;;
-  *save_comment*|*addCommentToJiraIssue*|*create_comment*)           IS_COMMENT=1 ;;
-  # A developer-triggered run has no ticket to transition. Its sign-off boundary is opening the
-  # PR — the moment the work is presented to others as done — so that is where the same check
-  # belongs. Without this the whole entry-B path was ungated: the gate policed a surface the dev
-  # flow never touches.
-  Bash)                                                              IS_PR=1 ;;
-  *) exit 0 ;;
-esac
+signoff_classify_tool "$TOOL_NAME" || exit 0
 
 ARGS="$(printf '%s' "$INPUT" | "$JQ" -c '.tool_input // {}')"
 
@@ -222,7 +162,7 @@ receipt_for_ticket() {
 
 RECEIPT="$(receipt_for_ticket || true)"
 
-# A receipt older than the newest spec describes tests that no longer exist in that form.
+# A receipt older than the newest spec describes tests as they were, not as they are.
 #
 # The scan is bounded and prunes node_modules DURING the walk, not after: this hook runs with a
 # 10s budget and an unpruned walk of a monorepo blows it, which fails OPEN. Sorting by mtime is

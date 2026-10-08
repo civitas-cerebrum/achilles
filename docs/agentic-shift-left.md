@@ -86,7 +86,7 @@ This separation is what makes agent-authored tests viable. The agent writes busi
 
 ```
 await steps.on('addToCartButton', 'ProductPage').click()
-await steps.on('cartCount', 'CartDrawer').expectText('1')
+await steps.on('cartCount', 'CartDrawer').verifyText('1')
 ```
 
 The Steps API is the interface between human intent and automated verification. A product owner can read the test above and know what it checks. An agent can write it without knowing how click-interception retry works under the hood.
