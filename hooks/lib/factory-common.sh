@@ -13,16 +13,7 @@
 #                  every other clone and the gates silently off).
 #   JQ           — $FACTORY_JQ (tests), else the jq bundled next to the hooks, else jq on PATH.
 #
-# Outcome contract (see references/factory-gates.md#message-contract)
-#   * no rule file, or the gate's rule id absent → silent allow: the project has not opted in;
-#   * jq missing, rule file not a JSON object, hook payload not a JSON object, a rule field the
-#     gate needs is missing, a helper cannot run → allow-with-warning: one "[factory] …" line on
-#     stderr, exit 0. Achilles ships no verify-step guard: the detector is the PROJECT's verify
-#     step (schema validation of the rule file, plus whatever content checks it mirrors);
-#   * a violation → a PreToolUse deny whose reason is exactly three lines:
-#       [<rule-id>] <what happened>
-#       → Do: <the sanctioned alternative>
-#       → Why/how: <doc#anchor>
+# Outcomes and the three-line deny: references/factory-gates.md#message-contract.
 # A gate never writes a file.
 #
 # Pure bash where it matters: with PATH emptied (no cat, dirname or jq) a gate still loads and

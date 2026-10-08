@@ -244,14 +244,13 @@ Rules for a PreToolUse hook an agent hits hundreds of times a day. The factory g
    literal path): "I could not tell" is not "allowed". A gate script never exits non-zero by accident (`set -uo
    pipefail`, every external call guarded): Claude Code treats a crashing hook as a non-blocking error, which is an
    allow nobody chose.
-3. **Three-line messages.** Every deny reason is exactly `[<rule-id>] <what happened>` / `→ Do: <sanctioned
-   alternative>` / `→ Why/how: <doc#anchor>`. Line 1 names the file or command fragment and the offending literal; line
-   2 is an action, never just "don't"; line 3 is a stable anchor. Agents recover from a denial in one step when the
-   message says what to do instead; they loop when it only says no. The fixture runner rejects any deny that is not
-   exactly this shape.
+3. **Three-line messages.** Every deny is `[<rule-id>] …` / `→ Do: …` / `→ Why/how: <doc#anchor>`; line 2 is an
+   action, never just "don't". Contract:
+   [factory-gates.md](../../achilles-protocol/references/factory-gates.md#message-contract). The fixture runner rejects
+   any deny that is not exactly this shape.
 4. **Quote-aware Bash with one level of nesting.** Split the command into segments at unquoted `&& || ; | &` and
    newlines, and each segment into tokens honouring `'…'`, `"…"` and `\` escapes. Classify one level of
-   `bash|sh|zsh -c '…'` and `eval '…'` as a command of its own, inheriting the outer segment's leading assignments.
+   `bash|sh|zsh|dash|ksh -c '…'` and `eval '…'` as a command of its own, inheriting the outer segment's leading assignments.
    Deeper nesting, aliases, functions and scripts are out of reach — say so in the header's known limits and name the
    detector that covers them. A naive `grep` over the whole command both misses `sh -c` payloads and denies on text
    inside a `--grep "…"` argument.
@@ -268,15 +267,53 @@ Rules for a PreToolUse hook an agent hits hundreds of times a day. The factory g
    order; recorders (archivers, registries) are separate scripts. State a gate reads (a verify stamp, a change marker)
    is written by the project's own commands and protected by a Bash guard plus a content hash.
 8. **Content-hash stamps, not timestamps.** A "verified" receipt carries the hash of the tree it verified:
-   [`verification-record.md`](../../achilles-protocol/references/verification-record.md) §"The stamp".
-9. **Run guard suites with `--forbid-only`.** A stray `test.only` in a guard spec runs one test, skips the rest and
-   still reports green.
-10. **Fixture cases are data.** One JSON file per case: `input` (the PreToolUse payload, `{{ROOT}}` for the project
-    dir), `expect` (`allow` | `deny`), `messageContains[]` (asserted only on denies, together with the three-line
-    shape), `stderrContains[]`, `warn` (`false` = must be a clean allow, `true` = must warn), plus `env`, and
-    `cwd: "temp"` with `copy[]` / `write{}` for a throwaway project. The runner fails a case whose exit status is not 0
-    or whose stdout is not JSON.
+   [`factory-gates.md`](../../achilles-protocol/references/factory-gates.md#process.evidence).
+9. **Run guard suites with `--forbid-only`.** Why: [factory-gates.md](../../achilles-protocol/references/factory-gates.md#verify-step-conventions-the-gates-rely-on).
+10. **Fixture cases are data.** One JSON file per case; fields under [Running the cases](#factory-gates-adding-a-rule--running-the-cases).
 11. **Allow cases assert no warning.** Give every allow case `"warn": false` unless the warning is the point. An allow
     that is really a skipped gate (a required field misspelled, a helper missing) passes a bare `expect: "allow"`
     forever; `"warn": false` turns that silent skip into a red case. A missing rule file is a deliberate silent opt-out,
     so no case can catch it: that is the project's verify step's job (require the file, validate it against the schema).
+
+## Factory gates: adding a rule / running the cases
+
+**Adding a rule**
+
+1. **Row** — add the rule object to `achilles-factory-rules.json` (id `<area>.<name>`, `doc`, `action`, fields) and its
+   definition to the schema; ship a floor if weakening the list is the risk.
+2. **Checker** — a gate under `hooks/factory/` that sources `../lib/factory-common.sh`, calls `factory_guard_ready;
+   factory_read_input`, reads its fields with `rule_field` / `rule_array`, and ends in `emit_deny <id> "<what>"` or
+   `exit 0`. Header in the hook style (Hook / Mode / State / Env / Rule / Why / Canonical reference). Register it in the
+   `factory` list of `hooks/data/hook-manifest.json`; the gate needs a bullet in
+   [harness-hooks.md](../../achilles-protocol/references/harness-hooks.md#factory-gates-opt-in).
+3. **Doc anchor** — a section in [factory-gates.md](../../achilles-protocol/references/factory-gates.md) headed by
+   `<a id="<rule-id>"></a>`, and the rule's `doc` pointing at it.
+4. **Case** — fixture cases under `hooks/tests/cases/factory/<gate>.<name>.json`: at least one deny with
+   `messageContains` for the id, the offending literal and the anchor; one clean allow with `"warn": false`; one
+   allow-with-warning for the missing-field path.
+
+**Running the cases**
+
+```bash
+npm run test:factory                 # the whole set
+CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project node hooks/tests/factory-run.mjs [<filter>]
+```
+
+`run.sh` does not pick these cases up (it globs `cases/*.sh` and `cases/*/*.sh`); `test:factory` is its own suite in
+`npm test` and CI. A gate without a case is invisible to every suite.
+
+The runner feeds each case's `input` to its gate and checks the decision, the three-line shape, `messageContains`,
+`stderrContains` and `warn`. Case fields: `input` (the PreToolUse payload; `{{ROOT}}` is the project dir), `expect`
+(`allow` | `deny`), `messageContains[]` (asserted on denies), `stderrContains[]`, `warn` (`false` = must be a clean
+allow, `true` = must warn), `hook` (default: the file-name prefix), `env`, `cwd: "temp"` with `copy[]` (a path, or
+`{ "<dest>": "<src>" }` to rename) / `write{}` / `stamp` (`"fresh"` = what `hashCommand` prints in the temp project),
+`_comment`. The runner fails a case whose exit status is not 0 or whose stdout is not JSON.
+
+Most cases are self-contained temp projects. The non-temp cases run against a per-run temp copy of the shipped fixture
+project `hooks/tests/fixtures/factory-project/` (the runner's default when `CLAUDE_PROJECT_DIR` is unset; inside a
+Claude Code session that variable usually points at the repo root, so pass the fixture explicitly):
+`tests/spend-list.json` = `{ "specs": ["tests/e2e/south/checkout-order.spec.ts", "tests/e2e/south/wallet-order.spec.ts"] }`,
+stub specs under `tests/e2e/north/` and `tests/e2e/south/`, `docs/scenarios.md` (four scenario blocks) and
+`scripts/scenario-lint-stub.mjs` (the intake cases copy it to `scripts/scenario-lint.mjs`). The rule file is
+`hooks/data/factory-rules.example.json` (override: `FACTORY_RULES`); temp cases get it as `achilles-factory-rules.json`
+through `copy`.

@@ -3,32 +3,18 @@
 //
 //   achilles-scenario-lint [files…] [--id <ID>] [--quiet] [--json]
 //
-// Project values come from the factory rule file — $FACTORY_RULES (absolute, or relative to the project root) or
-// <project>/achilles-factory-rules.json — rule `specs.shape`:
-//   titleIdPattern  (required) the id grammar, e.g. "^[A-Z]{2,5}-\\d{2,3}[a-z]? — " (a leading ^ and a trailing " — "
-//                   are stripped to get the id core)
-//   scenarioDocs    the documents linted when no file is given
-//   doc             the anchor quoted on the third line of every message
-//   blockEnums      optional { type, oracle, spendPolicy, status } (string arrays): the allowed tags of **Type** and
-//                   the allowed leading token of **Oracle**, **Spend policy** and **Status**. A missing array falls
-//                   back to the built-in default below; **Type** falls back to specs.shape.tags, then to "any @tag".
-// Tokens are hyphenated (`one-confirming-run`, `red-by-design`, `omitted-by-ruling`). Before matching, the lint
-// normalises the value's first line and every token: lower case, counts such as `3×` / `n×` removed, runs of spaces
-// turned into hyphens — so the prose a person writes (`green 3× (date)`, `red by design (reason)`,
-// `one confirming run`) matches `green`, `red-by-design`, `one-confirming-run`. The token must be followed by the end
-// of the value or a character that is not a letter or digit.
-// **Contexts** is free text (one or more names of whatever the project shards by: region, tenant, browser…).
+// Rule `specs.shape` of the factory rule file ($FACTORY_RULES, else <project>/achilles-factory-rules.json) supplies
+// titleIdPattern (required; a leading ^ and trailing " — " are stripped to get the id core), scenarioDocs, doc and
+// blockEnums. Field contract, enum defaults and token normalisation:
+// skills/requirement-intake/references/scenario-block.md. DEFAULT_ENUMS below is the machine copy.
 // The project root is $CLAUDE_PROJECT_DIR, else the current directory; file arguments resolve against it.
 //
 // A block starts at a `#### <ID> — <title>` heading and ends at the next heading of level 1–4 or a `---` rule. Other
 // `####` headings are not blocks (listed as `skipped`), except a heading that starts with an ID-like token but fails
-// the grammar: that is an error. Each block needs the nine fields as top-level bullets (`- **<Field>**: …`); Steps
-// are numbered, in user language, with no selectors and no fixed waits; an ID may appear once per context across all
-// given files. A block whose normalised Status starts with `omitted-by-ruling` needs only Contexts, Purpose and Status
-// (a project that customises blockEnums.status keeps that token to keep the minimal form).
+// the grammar: that is an error. An ID may appear once per context across all given files.
 //
 // Exit 0 = every (selected) block passes; exit 1 = a block is rejected or `--id` matched no block; exit 2 = usage or
-// configuration (unknown flag, missing rule file, missing document). Messages have three lines: `[specs.shape] <file>:<line> <ID>: <what>` / `→ Do: …` / `→ Why/how: <doc>`.
+// configuration. Messages have three lines: `[specs.shape] <file>:<line> <ID>: <what>` / `→ Do: …` / `→ Why/how: <doc>`.
 // `--json` prints { ok, blocks: [{ id, title, line, file, fields, errors }], skipped }: `blocks` holds the selected
 // blocks (only the `--id` match when given); `skipped` always lists every non-block `####` heading of the given files.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';

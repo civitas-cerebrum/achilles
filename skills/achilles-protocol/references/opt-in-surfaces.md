@@ -7,6 +7,10 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 | `ACHILLES_PROTOCOL` | operator shell | `1` forces the protocol on; `0` stops a new session from activating (an active session stays active) | every Achilles hook, including the kernel wrapper |
 | `KERNEL_MANDATE` | operator shell | `0`, `false` or `off` bypasses the role kernel, including the wrapper's refusal when the kernel file is missing | kernel only; Achilles gates still run |
 | `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it only when absent | kernel only |
+| `achilles-factory-rules.json` | project root | committing it opts the project into the factory gates it has rules for; no file, or a rule id absent, makes that gate allow silently ([factory-gates.md](factory-gates.md#opting-in-the-rule-file)) | seven gates registered for every project, no-op without the file |
+| `FACTORY_RULES` | operator shell | path of the rule file, absolute or relative to the project root | the factory gates and the scenario lint |
+| `FACTORY_JQ` | tests only | jq binary the factory gates use | never set it in a real session |
+| `FACTORY_NODE` | tests only | node binary `spend-gate` and `commit-gate` use | never set it in a real session |
 | `CIVITAS_SKIP_HOOK_INSTALL` | install env | `1` skips hook install and mandate staging | all hooks |
 | `CIVITAS_SKIP_JQ_INSTALL` | install env | `1` skips the bundled jq download | hooks then need jq on PATH; without it, PreToolUse gates deny while the protocol is active |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` | install env | `1` skips the Chromium download | browser-driven skills |

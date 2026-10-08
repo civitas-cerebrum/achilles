@@ -17,20 +17,12 @@ factory gate allows silently. A rule id absent from the file → its gate allows
 [`hooks/data/factory-rules.example.json`](../../../hooks/data/factory-rules.example.json); validate against
 [`hooks/data/factory-rules.schema.json`](../../../hooks/data/factory-rules.schema.json).
 
-> **Migration:** a rule file already placed under `.achilles/` (as `factory-rules.json`) is no longer read — move it to
-> `achilles-factory-rules.json` at the project root and commit it (or point `FACTORY_RULES` at it).
-
-**How the gates get there.** Installing the package registers them: the `factory` list in `hooks/data/hook-manifest.json`
-copies each gate to `<.claude>/hooks/factory/<gate>.sh` — the subdirectory is part of the contract, since every gate
-reaches its library through `source ../lib/factory-common.sh` — and adds one `PreToolUse` registration per gate to
-`settings.json`. Unlike every other guard family they carry **no session-activation wrapper**, because the opt-in is
-the project's rule file and not the session: on a machine whose projects have no rule file each gate is one process
-that exits 0 in silence. Committing the rule file is therefore the whole of a project's opt-in, but only for an install
-that ran — `CIVITAS_SKIP_HOOK_INSTALL=1`, or a vendored copy that predates the manifest, leaves the gates on disk and
-unregistered, which looks exactly like a project where everything passes. `npm run test:hooks` asserts the
-registration from a simulated consumer install (`hooks/tests/install-simulation.sh`), and
-`node scripts/lint-doc-drift.mjs` fails when a gate under `hooks/factory/` is missing from the manifest or from
-[harness-hooks.md](harness-hooks.md).
+**Registration.** Installing the package registers the gates ([harness-hooks.md](harness-hooks.md#factory-gates-opt-in)),
+so committing the rule file is the whole of a project's opt-in. That holds only for an install that ran:
+`CIVITAS_SKIP_HOOK_INSTALL=1`, or a vendored copy that predates the manifest, leaves the gates on disk and
+unregistered, which looks exactly like a project where everything passes. `hooks/tests/install-simulation.sh` asserts
+the registration from a simulated consumer install; `node scripts/lint-doc-drift.mjs` fails when a gate under
+`hooks/factory/` is missing from the manifest or from harness-hooks.md.
 
 ```json
 {
@@ -109,8 +101,8 @@ Two checks on a write that **creates** a file (existing files are never judged �
    (else its first line) are quoted in the deny.
 
 Fields: `scope[]`, `exclude[]`, `frozenDirs[]`, `titleIdPattern`, `scenarioDocs[]`, `lint` (argv, optional), `tags[]`
-and `blockEnums` (`{ type, oracle, spendPolicy, status }` string arrays; read by the scenario lint when present, not by
-the gate).
+and `blockEnums` (read by the scenario lint, not by the gate:
+[scenario-block.md](../../requirement-intake/references/scenario-block.md)).
 
 **`titleIdPattern` is the project's one test-id shape.** It is read by a second, already-registered gate as well:
 `hooks/test-id-compliance-gate.sh` (every title an edit ADDS carries a stable id, and no id repeats in one file) takes
@@ -119,12 +111,7 @@ an id looks like. Precedence: `CIVITAS_TEST_ID_PATTERN` (an explicit operator ov
 `TCXX-NNNNNN` default for a project with no rule file. Each gate still checks its own thing — the test-id gate that an
 id is *there* and unique, the intake gate that the id names a written, linted scenario — but against one shape.
 
-This used to be a flat contradiction rather than a complement, and it broke the flow this very reference teaches. The
-documented example id is `CHK-03 — …`; the test-id gate hard-coded the `TC`-stemmed house shape and nothing bridged
-them, so an agent that followed [spec-shape.md](spec-shape.md) and the `requirement-intake` skill to the letter had its
-spec write DENIED by a gate it was never told about, with a message asking for an id in a scheme the project had
-explicitly replaced. If a project needs the two to differ, it sets `CIVITAS_TEST_ID_PATTERN` deliberately — the
-override is there, but it is now a choice instead of an accident.
+To make the two differ, set `CIVITAS_TEST_ID_PATTERN` deliberately.
 
 <a id="spend.opt-in"></a>
 ### spend.opt-in
@@ -139,7 +126,7 @@ denies when:
 - `playwright test` (including `--list`) has no file argument and no `--project`, or a `--project` in `spendProjects`;
 - `npm run <spendScript>` runs a spend project unfiltered.
 
-One level of `bash|sh|zsh -c '…'` and `eval '…'` is classified as a command of its own (outer assignments inherited).
+One level of `bash|sh|zsh|dash|ksh -c '…'` and `eval '…'` is classified as a command of its own (outer assignments inherited).
 A spec or project argument that is a shell expansion (`"$SPEC"`) cannot be judged and is denied with a request for a
 literal path. An opt-in exported in an earlier segment (`export SPEND_OPT_IN=1; …`) does not count.
 
@@ -165,7 +152,11 @@ marker means a maintenance commit: only the stamp is checked. Commits in other r
 
 Fields: `stamp`, `trailDir`, `hashCommand` (argv; required), `currentChange`, `required[]`.
 
-The receipt carries `treeHash`: sorted `(path, content hash)` lines over the hashed roots. A touch keeps it; any added, removed or changed file invalidates it.
+The receipt is `{ "treeHash": "<hex>", "at": "<iso>" }`. `treeHash` is the sha1 over the sorted `(relative path, sha1 of
+contents)` lines of every file under the hashed roots, excluding `stateDir`, local run output and authentication
+state; a symlink is hashed by its target text. A touch keeps the hash; any added, removed or changed file invalidates
+it. `hashCommand` prints the same function without running the checks. Only the project's verify step writes the
+stamp, and only when every check passed; `state-gate` blocks hand-written forgeries.
 
 <a id="process.state"></a>
 ### process.state
@@ -203,10 +194,9 @@ Outcomes other than deny:
 | jq or node missing; rule file not a JSON object; payload not a JSON object; a required field missing; a helper cannot run | allow with one `[factory] …` line on stderr |
 | Input the gate can see but cannot judge (a shell expansion as a spec argument) | deny, asking for a literal |
 
-The allow-with-warning branch never bricks a session: an environment without jq still lets the agent work. The other
-half of the pair is the **project's** verify step (Achilles ships none): it runs where the environment is guaranteed,
-validates the rule file against the schema, mirrors whichever checks the project wants in CI, and fails closed. The
-gates are the early, cheap half; without a project verify step, a warning is the only signal.
+The allow-with-warning branch never bricks a session: an environment without jq still lets the agent work. The
+detector for that branch is the project's verify step (see [Who detects a missing or weakened rule
+file](#opting-in-the-rule-file)).
 
 ## Ordering with the kernel
 
@@ -218,66 +208,12 @@ Both run on PreToolUse; matching hooks run independently and a single deny wins,
 and no gate relies on another having run. A call passes only when both agree. Both fail closed on their own
 undecidable inputs (the kernel on an unknown role, a gate on an unjudgeable argument) and neither writes a file.
 
-## What the gates deliberately do not do
+## Verify-step conventions the gates rely on
 
-- **Bash is best effort.** The Bash gates split the command quote-aware: `spend-gate` and `commit-gate` with one level
-  of `sh -c` / `eval`, `state-gate` through `hooks/lib/shell-words.sh`, which also descends into `$( )`. Aliases, functions, scripts that call the runner,
-  interpreter one-liners (`node -e`) and encoded paths are not seen. Detection is the pair's other half: the wrapper
-  excludes the spend list by default, and the commit gate recomputes the content hash, so a forged stamp passes only if
-  it carries the hash of the current tree.
-- **Write gates read the written text, not the program.** Comment masking is line based; a title or selector built at
-  runtime is not seen. The project's verify step is the detector.
-- **No symlink resolution.** Paths are normalised lexically (`.`, `..`, `//`) before any scope decision; a symlinked
-  directory is judged by its link path.
-- **No state, no writes.** A gate reads the rule file and the files it judges; it never writes a receipt, cache or log.
-- **No retrofits.** The intake and frozen-directory checks judge new files only; an existing suite is never held hostage
-  by an unrelated edit.
+- **Stamp.** The verify step runs every check (typecheck, unit and guard, hook fixtures, lints) and writes the receipt of
+  [process.evidence](#process.evidence) only when all pass.
+- **`--forbid-only`.** The verify step runs its unit/guard project with `--forbid-only`: a stray `test.only` in a
+  guard spec would otherwise run one test, skip the rest of the guard, and still stamp.
 
-## Project verify-step conventions the gates rely on
-
-- **Content-hash stamp.** The verify step runs every check (typecheck, unit and guard, hook fixtures, lints) and only
-  when all pass writes `stamp` = `{ "treeHash": "<hex>", "at": "<iso>" }`. The hash is the sha1 over the sorted
-  `(relative path, sha1 of contents)` lines of every file under the hashed roots, excluding `stateDir`, local run
-  output and authentication state; a symlink is hashed by its target text. A touch keeps the hash; an added, removed or
-  changed file invalidates it. `hashCommand` prints the same function without running the checks, so the commit gate
-  can compare. Only the verify step writes the stamp — `state-gate` blocks the obvious hand-written forgeries.
-- **`--forbid-only`.** The verify step runs its unit/guard project with `--forbid-only`: a stray `test.only` in a guard
-  spec would otherwise run one test, skip the rest of the guard, and still stamp.
-
-## Adding a rule
-
-1. **Row** — add the rule object to `achilles-factory-rules.json` (id `<area>.<name>`, `doc`, `action`, fields) and its
-   definition to the schema; ship a floor if weakening the list is the risk.
-2. **Checker** — a gate under `hooks/factory/` that sources `../lib/factory-common.sh`, calls `factory_guard_ready;
-   factory_read_input`, reads its fields with `rule_field` / `rule_array`, and ends in `emit_deny <id> "<what>"` or
-   `exit 0`. Header in the hook style (Hook / Mode / State / Env / Rule / Why / Canonical reference). If the project has a
-   verify step, mirror the check there; at minimum that step validates the rule file against the schema.
-3. **Doc anchor** — a section here headed by `<a id="<rule-id>"></a>`, and the rule's `doc` pointing at it.
-4. **Case** — fixture cases under `hooks/tests/cases/factory/<gate>.<name>.json`: at least one deny with
-   `messageContains` for the id, the offending literal and the anchor; one clean allow with `"warn": false`; one
-   allow-with-warning for the missing-field path.
-
-## Running the cases
-
-```bash
-npm run test:factory                 # the whole set, via package.json
-CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project node hooks/tests/factory-run.mjs [<filter>]
-```
-
-These cases are the gates' only proof, so they are wired into the suites that gate a change rather than left to be
-remembered: `npm run test:hooks` ends by running `test:factory`, which puts them in `prepack` and in CI. `run.sh`
-cannot pick them up itself — it globs `cases/*.sh` and `cases/*/*.sh`, and these cases are `.json` driven by
-`factory-run.mjs` — so adding a case file to `cases/factory/` is enough, but adding a GATE without a case is
-invisible to every suite.
-
-The runner feeds each case's `input` to its gate and checks the decision, the three-line shape, `messageContains`,
-`stderrContains` and `warn`. Case fields: `input`, `expect` (`allow` | `deny`), `messageContains[]`, `stderrContains[]`,
-`warn` (`false` = must be a clean allow, `true` = must warn), `hook` (default: the file-name prefix), `env`,
-`cwd: "temp"` with `copy[]` (a path, or `{ "<dest>": "<src>" }` to rename) / `write{}` / `stamp` (`"fresh"` = what `hashCommand` prints in the temp project), `_comment`.
-Most cases are self-contained temp projects. The non-temp cases run against a per-run temp copy of the shipped fixture project
-`hooks/tests/fixtures/factory-project/` (the runner's default when `CLAUDE_PROJECT_DIR` is unset; inside a Claude Code
-session that variable usually points at the repo root, so pass the fixture explicitly): `tests/spend-list.json` =
-`{ "specs": ["tests/e2e/south/checkout-order.spec.ts", "tests/e2e/south/wallet-order.spec.ts"] }`, stub specs under
-`tests/e2e/north/` and `tests/e2e/south/`, `docs/scenarios.md` (four scenario blocks) and `scripts/scenario-lint-stub.mjs`
-(the intake cases copy it to `scripts/scenario-lint.mjs`). The rule file is `hooks/data/factory-rules.example.json`
-(override: `FACTORY_RULES`); temp cases get it as `achilles-factory-rules.json` through `copy`.
+Limits of the gates: [known-limits.md](known-limits.md) KL-17 to KL-19. Adding a rule and running the cases:
+[hook-authoring.md](../../contributing-to-achilles-protocol/references/hook-authoring.md#factory-gates-adding-a-rule--running-the-cases).

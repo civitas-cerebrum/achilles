@@ -20,7 +20,7 @@ value. The test that implements the block is titled `'<ID> — <title>'`.
 - **Expected**: <observable outcomes; UI copy in quotes where it matters; amounts as rules (total = subtotal −
   discount), not literals>
 - **Oracle**: <UI-only | api | db, or the project's blockEnums.oracle> <(+ the field or status checked)>
-- **Spend policy**: <none | disposable | released | one-confirming-run, or the project's blockEnums.spendPolicy>
+- **Spend policy**: <a policy from `test-data-conventions` §"Spend budgets", or the project's blockEnums.spendPolicy>
 - **Status**: <proposed | implemented | green | red-by-design | blocked | omitted-by-ruling> <(count, date, evidence, reason)>
 ```
 
@@ -36,12 +36,16 @@ value. The test that implements the block is titled `'<ID> — <title>'`.
 | Steps | numbered, indented, user language | no `data-test…`, `[`, `#id`, `getBy…`, `locator`, no durations or fixed waits |
 | Expected | what the user observes when the behaviour is right | present |
 | Oracle | the layer that confirms the outcome (`test-composer` oracle ladder: UI-only ≈ L0/L1, api ≈ L2, db ≈ L3) | first word from `blockEnums.oracle` (default `UI-only`, `api`, `db`) |
-| Spend policy | what running it costs (see the spend budgets in `test-data-conventions`) | leading token from `blockEnums.spendPolicy` (default `none`, `disposable`, `released`, `one-confirming-run`) |
+| Spend policy | what running it costs (`test-data-conventions` §"Spend budgets") | leading token from `blockEnums.spendPolicy` (default: the policies of that table) |
 | Status | lifecycle, updated after verification | leading token from `blockEnums.status` (default: the six above) |
+
+Each `blockEnums` array in the `specs.shape` rule (`type`, `oracle`, `spendPolicy`, `status`; string arrays) replaces its
+built-in default; a missing array falls back to it. The CLI's `DEFAULT_ENUMS` is the machine copy.
 
 Tokens are hyphenated, but a block may use prose: the lint lower-cases the value, drops counts such as `3×`, and
 turns spaces into hyphens before matching, so `green 3× (2026-09-12)` matches `green` and `one confirming run`
-matches `one-confirming-run`.
+matches `one-confirming-run`. The token must be followed by the end of the value or a character that is not a letter or
+digit.
 
 Optional bullets the lint ignores: **Spec** (spec file, test title, tags — first bullet once implemented) and
 **Corrected (<date>)** (what live behaviour contradicted, keeping the old claim visible — last bullet).
