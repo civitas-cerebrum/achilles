@@ -65,6 +65,7 @@ jobs:
           PATH=/bin:$PATH
           bash -c 'echo "bash $BASH_VERSION"; [[ $BASH_VERSION == 3.* ]]'
           npm run build:validator
+          hooks/tests/self/run-sh.sh
           bash hooks/tests/run.sh
 
       - name: 🏭  Factory gate cases
