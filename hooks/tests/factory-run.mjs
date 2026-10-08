@@ -26,7 +26,8 @@
 //     "stamp"?: "fresh" | "<hash>" process.evidence.stamp is written as { treeHash }: "fresh" = what the rule's
 //                                    hashCommand prints in the temp project now; any other value verbatim.
 //     "_comment"?: "…" }
-// "{{ROOT}}" in any "input" or "env" string is replaced by the project directory the gate sees, and "{{JQ}}" by the
+// "{{ROOT}}" in any "input", "env" or "write" string is replaced by the project directory the gate sees, "{{REPO}}" by this
+// repository's root (to point a rule at a real CLI, e.g. bin/scenario-lint.mjs), and "{{JQ}}" by the
 // jq the gates resolve ($FACTORY_JQ, else hooks/bin/jq, else jq on PATH) — the latter is what lets a case empty PATH
 // to prove a gate's behaviour when grep/sed/tr are missing while still giving it a usable jq, e.g.
 // "env": { "PATH": "", "FACTORY_JQ": "{{JQ}}" }. A temp case runs with FACTORY_RULES unset, so it reads the temp
@@ -65,8 +66,9 @@ if (!process.env.FACTORY_RULES) copyFileSync(rulesFile, path.join(project, RULES
 const rows = [];
 let failed = 0;
 
+const repoRoot = path.resolve(hooksDir, '..');
 const subst = (v, root) =>
-  typeof v === 'string' ? v.split('{{ROOT}}').join(root).split('{{JQ}}').join(JQ_PATH)
+  typeof v === 'string' ? v.split('{{ROOT}}').join(root).split('{{REPO}}').join(repoRoot).split('{{JQ}}').join(JQ_PATH)
   : Array.isArray(v) ? v.map((x) => subst(x, root))
   : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, subst(x, root)]))
   : v;
@@ -99,7 +101,7 @@ for (const file of readdirSync(casesDir).filter((f) => f.endsWith('.json') && f.
           copyFileSync(src === RULES_KEY ? rulesFile : path.join(project, src), t);
         }
       }
-      for (const [p, body] of Object.entries(c.write ?? {})) { const t = inside(p); mkdirSync(path.dirname(t), { recursive: true }); writeFileSync(t, body); }
+      for (const [p, body] of Object.entries(c.write ?? {})) { const t = inside(p); mkdirSync(path.dirname(t), { recursive: true }); writeFileSync(t, subst(body, tmp)); }
       if (c.stamp) {
         const rule = JSON.parse(readFileSync(path.join(tmp, RULES_KEY), 'utf8')).rules['process.evidence'];
         const t = inside(rule.stamp); mkdirSync(path.dirname(t), { recursive: true });

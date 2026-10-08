@@ -189,6 +189,13 @@ offenders=$(echo "$result" | "$JQ" -r '
 headline="test-id-compliance-gate: this write adds test case(s) without a stable test ID"
 [ "$untagged_count" = "0" ] && headline="test-id-compliance-gate: this write introduces a duplicate test ID"
 
+# The grep knows only the house shape; a pinned pattern is a different grammar.
+if [ -n "${CIVITAS_TEST_ID_PATTERN:-}" ]; then
+  ID_LISTING="list the IDs the titles in $(dirname "$file_path")/*.spec.* already carry (the pattern above)"
+else
+  ID_LISTING="grep -ohE 'TC[A-Z]{0,3}-[0-9]{4,6}' $(dirname "$file_path")/*.spec.* | sort -u"
+fi
+
 reason="[BLOCKED] $headline
 
 ──────────────────────────
@@ -198,7 +205,7 @@ Do this instead:
     test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { … });
 $SHAPE_LINES
   Option B — the ID is already taken in this file: mint the next free one
-    grep -ohE 'TC[A-Z]{0,3}-[0-9]{4,6}' $(dirname "$file_path")/*.spec.* | sort -u
+    $ID_LISTING
     Retired IDs are never reused; take the next ordinal, don't fill a gap.
 
 ──────────────────────────

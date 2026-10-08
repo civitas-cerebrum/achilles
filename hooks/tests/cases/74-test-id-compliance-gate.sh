@@ -192,6 +192,13 @@ CLAUDE_PROJECT_DIR="$TID_PROJ" \
   assert_deny "$H" "$(payload tool_name=Write file_path="$TID_PROJ/tests/untitled2.spec.ts" content="test('place an order', async ({ steps }) => {});")" \
   "deny names the project's own pattern, not the house shape" \
   "this project pins its own ID pattern"
+# Option B's grep only knows the house shape: under a project pattern the deny must not offer it.
+CLAUDE_PROJECT_DIR="$TID_PROJ" run_hook "$H" "$(payload tool_name=Write file_path="$TID_PROJ/tests/untitled4.spec.ts" content="test('place an order', async ({ steps }) => {});")"
+OPT_B_REASON="$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // empty')"
+assert_eq "$(grep -cF 'TC[A-Z]{0,3}' <<<"$OPT_B_REASON")" "0" "project pattern → Option B offers no house-shape grep"
+assert_eq "$(grep -cF '^[A-Z]{2,5}-\d{2,3}[a-z]? — ' <<<"$OPT_B_REASON")" "1" "project pattern → the deny quotes the active pattern"
+run_hook "$H" "$(payload tool_name=Write file_path="$TMP_SPEC/untitled5.spec.ts" content="test('place an order', async ({ steps }) => {});")"
+assert_eq "$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason' | grep -cF 'TC[A-Z]{0,3}')" "1" "house shape → Option B keeps the grep"
 # The root is the current directory when CLAUDE_PROJECT_DIR is unset or empty.
 cd "$TID_PROJ" || exit 1
 CLAUDE_PROJECT_DIR= \

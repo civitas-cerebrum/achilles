@@ -19,8 +19,7 @@
 #     cannot set `Status: complete` on a change it drove.
 #   - spend layering: the kernel lets the verifier run the test runner
 #     (authority), and the project's spend gate refuses a spend-incurring
-#     spec without the project's spend opt-in (content). The gate half is
-#     skipped when the field-level gate set (hooks/factory/) is absent.
+#     spec without the project's spend opt-in (content).
 
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
@@ -148,9 +147,14 @@ assert_allow "$KERNEL" "$(sub tool_name=Bash agent_type=implementer command='npx
 assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=implementer command='npm run verify')" \
   "implementer Bash npm run verify → DENY (closure is the orchestrator's)" "may not run this command"
 
+assert_deny "$KERNEL" "$(sub tool_name=Edit agent_type=implementer file_path="$CP/$EV/verify.md" old_string='Status: in verification' new_string='Status: complete')" \
+  "implementer Edit verify.md → DENY (Edit is held to the same scope as Write)" "outside the role's write scope"
+
 # task-reviewer
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=task-reviewer file_path="$CP/$EV/review.md" content='# Review')" \
   "task-reviewer Write review.md → ALLOW"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=task-reviewer file_path="$CP/$EV/verify.md" content='Status: complete')" \
+  "task-reviewer Write verify.md → DENY (the reviewer cannot close a change)" "outside the role's write scope"
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=task-reviewer file_path="$CP/tests/e2e/north/basket.spec.ts" content="$SPEC")" \
   "task-reviewer Write a spec → DENY (reads, never fixes)" "outside the role's write scope"
 assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=task-reviewer command='npx playwright test tests/e2e/north/basket.spec.ts')" \
@@ -166,6 +170,9 @@ assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=verifier file_path="$CP/
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=verifier file_path="$CP/$EV/review.md" content='Approved')" \
   "verifier Write review.md → DENY" "outside the role's write scope"
 
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=verifier file_path="$CP/$EV/report.md" content='# Report')" \
+  "verifier Write report.md → DENY (the implementer's note)" "outside the role's write scope"
+
 # live-inspector
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=live-inspector file_path="$CP/tests/e2e/inspect/pay-button.spec.ts" content="$SPEC")" \
   "live-inspector Write an inspection spec under the inspect dir → ALLOW"
@@ -178,6 +185,11 @@ assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=live-inspector file_path
 assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=live-inspector file_path="$CP/tests/e2e/north/basket.spec.ts" content="$SPEC")" \
   "live-inspector Write a suite spec → DENY" "outside the role's write scope"
 
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=live-inspector file_path="$CP/$EV/verify.md" content='Status: complete')" \
+  "live-inspector Write verify.md → DENY" "outside the role's write scope"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=live-inspector file_path="$CP/$EV/review.md" content='Approved')" \
+  "live-inspector Write review.md → DENY" "outside the role's write scope"
+
 # doc-author
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/docs/spend-classes.md" content='# Spend classes')" \
   "doc-author Write docs/** → ALLOW"
@@ -185,8 +197,10 @@ assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$
   "doc-author Write CLAUDE.md → ALLOW (declares no code constraints, so the agent-instructions screen does not apply)"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/.claude/skills/shop-notes/SKILL.md" content='# Shop notes')" \
   "doc-author Write a project skill → ALLOW"
-assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/$EV/verify.md" content='Status: complete')" \
-  "doc-author Write verify.md → DENY (evidence is carved out of docs/**)" "explicitly denied"
+for NOTE in verify review report; do
+  assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/$EV/$NOTE.md" content='x')" \
+    "doc-author Write $NOTE.md → DENY (evidence is carved out of docs/**)" "explicitly denied"
+done
 assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=doc-author command='ls')" \
   "doc-author Bash → DENY (no shell)" "may not use the 'Bash' tool"
 
@@ -227,23 +241,19 @@ assert_allow "$KERNEL" "$(sub tool_name=Bash agent_type=verifier command="SPEND_
 assert_deny "$KERNEL" "$(sub tool_name=Bash agent_type=implementer command="SPEND_OPT_IN=1 npx playwright test $SPEND_SPEC")" \
   "kernel: implementer sets the spend opt-in (not granted) → DENY" "SPEND_OPT_IN"
 
-if [ -x "$SPEND_GATE" ] || [ -f "$SPEND_GATE" ]; then
-  mkdir -p "$CP/scripts"
-  printf '%s\n' "{\"specs\":[\"$SPEND_SPEC\"]}" > "$CP/scripts/spend-list.json"
-  printf '%s\n' '{"version":1,"rules":{"spend.opt-in":{"list":"scripts/spend-list.json","optInEnv":"SPEND_OPT_IN","optInFlag":"--include-spend"}}}' > "$CP/achilles-factory-rules.json"
-  : > "$CP/$SPEND_SPEC"
-  export FACTORY_RULES="$CP/achilles-factory-rules.json"
-  export CLAUDE_PROJECT_DIR="$CP"
-  assert_deny "$SPEND_GATE" "$(sub tool_name=Bash agent_type=verifier command="npx playwright test $SPEND_SPEC")" \
-    "spend gate: verifier runs a spend-incurring spec without the opt-in → DENY" "spend.opt-in"
-  assert_allow "$SPEND_GATE" "$(sub tool_name=Bash agent_type=verifier command="SPEND_OPT_IN=1 npx playwright test $SPEND_SPEC")" \
-    "spend gate: the same run with the project's spend opt-in → ALLOW"
-  assert_allow "$SPEND_GATE" "$(sub tool_name=Bash agent_type=verifier command='npx playwright test tests/e2e/north/basket.spec.ts')" \
-    "spend gate: a disposable-basket spec needs no opt-in → ALLOW"
-  unset FACTORY_RULES CLAUDE_PROJECT_DIR
-else
-  echo "  ${CLR_DIM}(hooks/factory/spend-gate.sh not present — skipping the spend-gate half; the kernel half above still ran)${CLR_RST}"
-fi
+mkdir -p "$CP/scripts"
+printf '%s\n' "{\"specs\":[\"$SPEND_SPEC\"]}" > "$CP/scripts/spend-list.json"
+printf '%s\n' '{"version":1,"rules":{"spend.opt-in":{"list":"scripts/spend-list.json","optInEnv":"SPEND_OPT_IN","optInFlag":"--include-spend"}}}' > "$CP/achilles-factory-rules.json"
+: > "$CP/$SPEND_SPEC"
+export FACTORY_RULES="$CP/achilles-factory-rules.json"
+export CLAUDE_PROJECT_DIR="$CP"
+assert_deny "$SPEND_GATE" "$(sub tool_name=Bash agent_type=verifier command="npx playwright test $SPEND_SPEC")" \
+  "spend gate: verifier runs a spend-incurring spec without the opt-in → DENY" "spend.opt-in"
+assert_allow "$SPEND_GATE" "$(sub tool_name=Bash agent_type=verifier command="SPEND_OPT_IN=1 npx playwright test $SPEND_SPEC")" \
+  "spend gate: the same run with the project's spend opt-in → ALLOW"
+assert_allow "$SPEND_GATE" "$(sub tool_name=Bash agent_type=verifier command='npx playwright test tests/e2e/north/basket.spec.ts')" \
+  "spend gate: a disposable-basket spec needs no opt-in → ALLOW"
+unset FACTORY_RULES CLAUDE_PROJECT_DIR
 
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR
 rm -rf "$CL_TMP"

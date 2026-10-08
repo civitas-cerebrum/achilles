@@ -150,23 +150,8 @@ run_install_simulation() {
     sim_fail "all manifest hook scripts copied and executable" "missing/non-executable: $missing"
   fi
 
-  # --- Assertion: every factory gate on disk is registered AND installed ---
-  # A gate manifest.factory does not name ships and never runs; a named gate
-  # that fails to land is a registration pointing at nothing.
-  local on_disk_factory g registered_set unregistered="" factory_missing=""
-  on_disk_factory=$(cd "$repo_root/hooks/factory" 2>/dev/null && ls -1 *.sh 2>/dev/null || true)
-  # $factory_files is newline-separated; flatten it so the membership test below
-  # is a plain space-delimited substring match.
-  registered_set=" $(echo $factory_files) "
-  for g in $on_disk_factory; do
-    case "$registered_set" in *" $g "*) ;; *) unregistered="${unregistered:+$unregistered, }$g" ;; esac
-  done
-  if [ -z "$unregistered" ]; then
-    sim_pass "every hooks/factory/ gate is named by manifest.factory"
-  else
-    sim_fail "every hooks/factory/ gate is named by manifest.factory" \
-      "shipped but never registered (a project that opts in gets no gate): $unregistered"
-  fi
+  # --- Assertion: every registered factory gate lands, executable (lint factory-manifest holds disk <-> manifest) ---
+  local factory_missing=""
   for f in $factory_files; do
     if [ ! -f "$fake_hooks/factory/$f" ] || [ ! -x "$fake_hooks/factory/$f" ]; then
       factory_missing="${factory_missing:+$factory_missing, }$f"
@@ -211,20 +196,28 @@ FACRULES
       "expected permissionDecision=deny, got '${fac_decision}' output=${fac_out:0:200}"
   fi
 
-  # The other half of the opt-in contract: with the rule file gone the same
-  # gate must allow in SILENCE — the installed-everywhere registration is only
+  # The other half of the opt-in contract: with the rule file gone each gate
+  # must allow in SILENCE — the installed-everywhere registration is only
   # safe because a project that never opted in pays nothing and sees nothing.
+  # One Write-matcher gate and one Bash-matcher gate.
   rm -f "$fp_rules"
-  local fac_err
+  local fac_err fac_gate fac_in
   fac_err=$(mktemp "$work/factory-noopt-XXXXXX")
-  fac_out=$(cd "$fake_project" && printf '%s' "$fac_payload" \
-    | HOME="$work/home" CLAUDE_PROJECT_DIR="$fake_project" bash "$fake_hooks/factory/secrets-gate.sh" 2>"$fac_err") || true
-  if [ -z "$fac_out" ] && [ ! -s "$fac_err" ]; then
-    sim_pass "factory secrets-gate is a silent allow with no rule file (the project never opted in)"
-  else
-    sim_fail "factory secrets-gate is a silent allow with no rule file (the project never opted in)" \
-      "expected empty stdout and stderr, got out=${fac_out:0:120} err=$(head -c 120 "$fac_err" 2>/dev/null)"
-  fi
+  for fac_gate in secrets-gate commit-gate; do
+    if [ "$fac_gate" = commit-gate ]; then
+      fac_in=$("$JQ" -n '{tool_name:"Bash", tool_input:{command:"git commit -m x"}}')
+    else
+      fac_in="$fac_payload"
+    fi
+    fac_out=$(cd "$fake_project" && printf '%s' "$fac_in" \
+      | HOME="$work/home" CLAUDE_PROJECT_DIR="$fake_project" bash "$fake_hooks/factory/$fac_gate.sh" 2>"$fac_err") || true
+    if [ -z "$fac_out" ] && [ ! -s "$fac_err" ]; then
+      sim_pass "factory $fac_gate is a silent allow with no rule file (the project never opted in)"
+    else
+      sim_fail "factory $fac_gate is a silent allow with no rule file (the project never opted in)" \
+        "expected empty stdout and stderr, got out=${fac_out:0:120} err=$(head -c 120 "$fac_err" 2>/dev/null)"
+    fi
+  done
   rm -f "$fac_err"
 
   # --- Assertion 3+4+: integrity-chain + bash-guard + new guards in set ----

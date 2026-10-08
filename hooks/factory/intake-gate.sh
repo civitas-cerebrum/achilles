@@ -65,9 +65,11 @@ lint_ready() {
   if ! command -v "${LINT[0]}" >/dev/null 2>&1 && [ ! -x "$FACTORY_ROOT/${LINT[0]}" ]; then
     echo "[factory] ${LINT[0]} not found — $ID scenario lint skipped; the project's verify step is the detector" >&2; return 0
   fi
-  local a
+  local a p
   for a in "${LINT[@]:1}"; do
-    case "$a" in -*) ;; *) [ -e "$FACTORY_ROOT/$a" ] || { echo "[factory] $a missing — $ID scenario lint skipped; the project's verify step is the detector" >&2; return 0; }; break;; esac
+    case "$a" in -*) continue;; /*) p="$a";; *) p="$FACTORY_ROOT/$a";; esac
+    [ -e "$p" ] || { echo "[factory] $a missing — $ID scenario lint skipped; the project's verify step is the detector" >&2; return 0; }
+    break
   done
   LINT_OK=1
 }
