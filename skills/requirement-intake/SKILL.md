@@ -54,11 +54,11 @@ IDs follow `titleIdPattern` and are unique **per context** (the same ID may name
 
 `npx achilles-scenario-lint [files…] [--id <ID>] [--quiet] [--json]` (`bin/scenario-lint.mjs`).
 
-- Files default to `specs.shape.scenarioDocs`; file arguments are relative to the project root; the rule file is `$FACTORY_RULES` (absolute, or relative to the
-  project root) or `achilles-factory-rules.json` at the root. The root is `$CLAUDE_PROJECT_DIR`, else the cwd.
+- Files default to `specs.shape.scenarioDocs`; file arguments are relative to the project root. The rule file and the
+  root are resolved as in [opt-in-surfaces.md](../achilles-protocol/references/opt-in-surfaces.md) (`FACTORY_RULES`).
 - **Exit 0** — every selected block passes. **Exit 1** — a block is rejected or `--id` matched no block.
   **Exit 2** — usage or configuration: unknown flag, missing rule file, no document, document not found.
-- Every error is three lines: `[specs.shape] <file>:<line> <ID>: <what>` / `→ Do: …` / `→ Why/how: <doc#anchor>`.
+- Errors use the three-line [message contract](../achilles-protocol/references/factory-gates.md#message-contract).
 - `--json` prints `{ ok, blocks: [{ id, title, line, file, fields, errors }], skipped }` for tools; with `--id`,
   `blocks` holds only the match while `skipped` still lists every non-block `####` heading of the given files.
 - The intake gate calls it as `<lint…> --id <ID> <doc…>`; set `specs.shape.lint` to

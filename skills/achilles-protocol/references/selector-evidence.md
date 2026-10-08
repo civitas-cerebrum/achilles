@@ -51,7 +51,7 @@ npx achilles-selector-evidence --page <Page> --element <element> \
   from). Otherwise a storage state is required; the tool never logs in — the project's auth setup produces the file.
 - Never clicks, types or submits. An element that only renders after an interaction (a dialog behind a button) cannot
   be evidenced by the tool; see [Provisional entries](#provisional-entries).
-- Every refusal prints the three-line message `[selectors.evidence] <what>` / `→ Do: …` / `→ Why/how: <this file>#<anchor>`.
+- Every refusal uses the three-line [message contract](factory-gates.md#message-contract).
 - Exit codes (as `achilles-mutate`): **0** note written · **1** evidence refused (count, resolution failure, PNG over
   cap, invalid note) · **2** usage or configuration error (flags, unknown entry, missing storage state, dependency not
   resolvable).
