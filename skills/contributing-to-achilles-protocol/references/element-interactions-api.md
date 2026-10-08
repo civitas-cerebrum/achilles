@@ -639,9 +639,7 @@ cp .contribution-handover.template.json .contribution-handover.json
 
 # 7. Commit + push + open PR
 #    (Methodology rule: do not push or open a PR until the
-#    `.contribution-handover.json` is valid. The harness gate
-#    that previously refused `git push` / `gh pr create` was
-#    retired in 0.3.6; the rule still applies.)
+#    `.contribution-handover.json` is valid.)
 git add -A
 git commit -m "feat: add steps.<method> for <use case>"
 git push -u origin feat/your-feature

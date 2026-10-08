@@ -486,7 +486,7 @@ The §"Re-pass mode for compositional passes 2–3" reference (depth-mode-pipeli
 
 ### Adversarial grouping for Passes 4 and 5
 
-**Default for `mode: standard`: `probe-group-<id>:` cap-7 permitted for adversarial Passes 4 and 5.** The prior "adversarial passes never batch" rule is relaxed. Empirical rationale: adversarial findings cluster by app-wide pattern (see `references/app-wide-scan.md`'s catalogue). Once the Pass-4 prelude has emitted `tests/e2e/docs/app-wide-patterns.md`, ~80% of per-journey `info`-severity findings duplicate the catalogue entries — per-journey isolation over-pays for that majority. Grouped probes share the catalogue brief and surface per-journey unique findings against it.
+**Default for `mode: standard`: `probe-group-<id>:` cap-7 permitted for adversarial Passes 4 and 5.** Adversarial findings cluster by app-wide pattern (see `references/app-wide-scan.md`'s catalogue). Once the Pass-4 prelude has emitted `tests/e2e/docs/app-wide-patterns.md`, ~80% of per-journey `info`-severity findings duplicate the catalogue entries, so per-journey isolation over-pays for that majority. Grouped probes share the catalogue brief and surface per-journey unique findings against it.
 
 **Opt-in strictness.** A caller that needs per-journey isolation on the adversarial layer (regulated audit, high-risk domain, baseline-quality establishment) opts back into the per-journey contract via `args: "strict-adversarial: true"`. When set, grouping is forbidden on Passes 4 and 5 just as it is on Pass 1; the orchestrator emits a `[coverage-expansion] strict-adversarial: true — Pass 4/5 per-journey` declaration line. The `standard-mode-first-pass-guard.sh` hook does NOT deny adversarial grouped dispatches by default — that gate is Pass-1-only.
 

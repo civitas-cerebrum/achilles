@@ -55,7 +55,7 @@ This section is the **how**. The **when** is fixed by the Hard rule §"Methodolo
 When to add a hook (vs declaring the rule `markdown-only`):
 
 - The rule is **mechanically detectable** at a tool-use boundary (specific tool, file path, command pattern, response-shape signal). → Hook.
-- Markdown enforcement has been observed to fail under context pressure. → Hook (the failure mode is no longer hypothetical).
+- Markdown enforcement has been observed to fail under context pressure. → Hook.
 - The cost of a violation is high (corrupt state, lost work, contract violation propagating downstream). → Hook.
 - The rule is too contextual to detect mechanically (e.g. "use the right level of detail in this brief", "be honest about uncertainty"). → Stays markdown-only **and** the rule gets tagged in `coverage-expansion/references/anti-rationalizations.md` so the un-backed surface stays visible.
 
