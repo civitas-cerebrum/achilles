@@ -253,7 +253,7 @@ Every return MUST open with a `handover` envelope as its first key:
 }
 ```
 
-Per status:
+Meaning per status:
 
 - `new-tests-landed` — when `tests-added > 0` because a regression
   fixture was authored as part of the sweep.

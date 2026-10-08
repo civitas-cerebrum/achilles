@@ -28,21 +28,6 @@
 # Canonical reference
 # -------------------
 # skills/coverage-expansion/references/depth-mode-pipeline.md §"Commit-message conventions"
-# (Convention reproduced in the comment block below for at-a-glance
-#  scanning; that section is canonical.)
-#
-# Conventions
-# -----------
-#   chore: scaffold element-interactions framework
-#   docs: initial app-context and site map
-#   test: happy path — <name>
-#   docs: journey map — <N> journeys prioritized
-#   test(j-<slug>): <variant>                 [compositional pass 1-3]
-#   docs(ledger): j-<slug> — N probes, ...    [adversarial pass 4]
-#   test(j-<slug>-regression): lock <desc>    [adversarial pass 5]
-#   docs(ledger): dedupe cross-cutting findings
-#   docs(coverage-expansion-state): ...
-#   chore: ...                                [infrastructure]
 #
 # AI-attribution rule
 # -------------------

@@ -115,7 +115,7 @@ the return.
 - `coverage-expansion-state.json` records all five passes + cleanup (deletion happens post-approval)
 
 ### Phase 6 — Bug-discovery (`workflow-reviewer-phase6`)
-- Every probe terminal (`clean` | `findings-emitted` | `blocked`); blocked probes require a ledger deferral entry with an `authorizer` or a re-dispatch
+- Every probe terminal (a [probe](../../schemas/subagent-returns/probe.schema.json) status); blocked probes require a ledger deferral entry with an `authorizer` or a re-dispatch
 - Every `findings-emitted` return has a regression spec OR an explicit `app-bug` flag
 
 ### Phase 7 — Secrets-sweep (`workflow-reviewer-phase7`)

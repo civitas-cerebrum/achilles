@@ -533,7 +533,7 @@ application — and lock the failure modes with regression specs.
    specs; they go into `tests/e2e/docs/adversarial-findings.md`.
 
 **Exit criteria.**
-- Every probe terminal (`clean` | `findings-emitted` | `blocked`);
+- Every probe terminal (a [probe](../../schemas/subagent-returns/probe.schema.json) status);
   blocked probes require a ledger deferral entry with an `authorizer`
   or a re-dispatch.
 - All `findings-emitted` returns have a corresponding regression spec
