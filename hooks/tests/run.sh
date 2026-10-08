@@ -115,7 +115,9 @@ ALLOW_ONLY_OK=(
 for f in ${selected[@]+"${selected[@]}"}; do
   name="$(basename "$f")"
   case " ${ALLOW_ONLY_OK[*]} " in *" $name "*) continue ;; esac
-  grep -qE '^[^#]*assert_(deny|warn|stop_block|block_subagent|ask)' "$f" ||
+  # A statement that starts with the helper, after any VAR=value prefixes; a mention in a
+  # comment or inside a string argument does not count.
+  grep -qE '^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=("[^"]*"|[^[:space:]"]*)+[[:space:]]+)*assert_(deny|warn|stop_block|block_subagent|ask)([[:space:]]|$)' "$f" ||
     HARNESS_ERRORS+=("$name: no assert_deny/assert_warn/assert_stop_block/assert_block_subagent — allow-only files cannot detect a hook that dies early")
 done
 

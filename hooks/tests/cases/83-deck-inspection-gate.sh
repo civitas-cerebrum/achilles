@@ -48,7 +48,7 @@ assert_eq "$(has_sentinel)" "no" "…and no sentinel"
 section "deck-inspection-gate: no pdftoppm → manual inspection mode"
 # A PATH holding only the tools the hook calls, so pdftoppm is unresolvable wherever it is installed.
 NOPDF="$DK/proj/nopdf-bin"; mkdir -p "$NOPDF"
-for t in bash sh env jq grep sed dirname basename date cat rm mkdir head tr; do
+for t in bash sh env jq grep sed dirname basename date cat rm mkdir head tr mktemp cut tail wc shasum sha256sum; do
   p=$(command -v "$t") && ln -sf "$p" "$NOPDF/$t"
 done
 reset

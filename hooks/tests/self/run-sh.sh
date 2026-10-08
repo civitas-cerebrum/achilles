@@ -24,4 +24,8 @@ check "early-exit install-simulation fails the run" 1 "early.sh: exited before f
 check "clean case file and simulation pass" 0 "all .* tests passed" "$WORK/sim-ok.sh"
 printf ":\n" > "$WORK/cases/allow-only.sh"
 check "allow-only case file is a harness error" 1 "allow-only.sh: no assert_deny" "$WORK/sim-ok.sh"
+printf 'assert_allow() { :; }\nassert_allow x "mentions assert_deny in a string"\n# assert_deny in a comment\n' > "$WORK/cases/allow-only.sh"
+check "assert_deny inside a string or comment does not count" 1 "allow-only.sh: no assert_deny" "$WORK/sim-ok.sh"
+printf 'assert_warn() { :; }\nFOO="a b" assert_warn x\n' > "$WORK/cases/allow-only.sh"
+check "assert_warn after a VAR=value prefix counts" 0 "all .* tests passed" "$WORK/sim-ok.sh"
 exit "$fail"
