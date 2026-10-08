@@ -3,11 +3,11 @@
 //
 // Usage: CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project [FACTORY_RULES=<rule file>] node hooks/tests/factory-run.mjs [<filter>]
 //   CLAUDE_PROJECT_DIR — the project a non-temp case runs against; default (unset): the shipped fixture project
-//                        hooks/tests/fixtures/factory-project/ (rule file = a copy of hooks/data/factory-rules.example.json,
-//                        the spend list, stub specs; see references/factory-gates.md#running-the-cases). Inside a
-//                        Claude Code session CLAUDE_PROJECT_DIR is usually set to the repo root: pass the fixture explicitly.
-//   FACTORY_RULES      — the rule file (default <CLAUDE_PROJECT_DIR>/achilles-factory-rules.json); passed through to
-//                        non-temp cases, and the source of the "achilles-factory-rules.json" copy key in temp cases.
+//                        hooks/tests/fixtures/factory-project/ (spend list, stub specs, stub lint and scenarios doc; see
+//                        references/factory-gates.md#running-the-cases). Inside a Claude Code session CLAUDE_PROJECT_DIR is
+//                        usually set to the repo root: pass the fixture explicitly.
+//   FACTORY_RULES      — the rule file (default hooks/data/factory-rules.example.json, copied into the fixture project for the run); handed to non-temp cases, and the
+//                        source of the "achilles-factory-rules.json" copy key in temp cases.
 //   <filter>           — run only the cases whose file name contains it.
 //
 // Each case is hooks/tests/cases/factory/<gate>.<name>.json:
@@ -19,8 +19,9 @@
 //     "hook"?: "<gate>",           default: the file-name prefix before the first "." (a "common." case must set it)
 //     "env"?: {…},                 overrides the gate's environment (e.g. { "PATH": "", "FACTORY_JQ": "/nonexistent" })
 //     "cwd"?: "temp",              run against an empty temp project instead of CLAUDE_PROJECT_DIR, into which
-//     "copy"?: ["<rel path>"],       these paths are copied from CLAUDE_PROJECT_DIR ("achilles-factory-rules.json"
-//                                    comes from FACTORY_RULES when set), and
+//     "copy"?: ["<rel path>" | {"<dest>": "<src>"}],
+//                                  these paths are copied from CLAUDE_PROJECT_DIR ("achilles-factory-rules.json"
+//                                    comes from the rule file above), and
 //     "write"?: {"<rel>": "<text>"}, these files are written; then
 //     "stamp"?: "fresh" | "<hash>" process.evidence.stamp is written as { treeHash }: "fresh" = what the rule's
 //                                    hashCommand prints in the temp project now; any other value verbatim.
@@ -46,12 +47,16 @@ const casesDir = path.join(here, 'cases', 'factory');
 const project = path.resolve(process.env.CLAUDE_PROJECT_DIR || path.join(here, 'fixtures', 'factory-project'));
 if (!existsSync(project)) { console.error(`factory-run: fixture project ${project} not found (set CLAUDE_PROJECT_DIR)`); process.exit(2); }
 const RULES_KEY = 'achilles-factory-rules.json';
-const rulesFile = process.env.FACTORY_RULES ? path.resolve(project, process.env.FACTORY_RULES) : path.join(project, RULES_KEY);
+const rulesFile = path.resolve(project, process.env.FACTORY_RULES ?? path.join(hooksDir, 'data', 'factory-rules.example.json'));
 const filter = process.argv[2] ?? '';
 // The jq a gate would resolve, for cases that empty PATH on purpose (see "{{JQ}}" above).
 const JQ_PATH = process.env.FACTORY_JQ
   ?? (existsSync(path.join(hooksDir, 'bin', 'jq')) ? path.join(hooksDir, 'bin', 'jq')
     : (spawnSync('/bin/sh', ['-c', 'command -v jq'], { encoding: 'utf8' }).stdout ?? '').trim());
+// Non-temp cases read the fixture project's own rule file; it is generated here so the example stays the only copy.
+const projectRules = path.join(project, RULES_KEY);
+const generatedRules = !process.env.FACTORY_RULES && !existsSync(projectRules);
+if (generatedRules) copyFileSync(rulesFile, projectRules);
 const rows = [];
 let failed = 0;
 
@@ -83,9 +88,11 @@ for (const file of readdirSync(casesDir).filter((f) => f.endsWith('.json') && f.
       tmp = root = mkdtempSync(path.join(os.tmpdir(), 'factory-gate.tmp.'));
       // copy/write keys must stay inside the temp project (a "../" key would touch the fixture project or the machine)
       const inside = (p) => { const t = path.resolve(tmp, p); if (!t.startsWith(tmp + path.sep)) throw new Error(`case path escapes the temp dir: ${p}`); return t; };
-      for (const p of c.copy ?? []) {
-        const t = inside(p); mkdirSync(path.dirname(t), { recursive: true });
-        copyFileSync(p === RULES_KEY ? rulesFile : path.join(project, p), t);
+      for (const entry of c.copy ?? []) {
+        for (const [dest, src] of Object.entries(typeof entry === 'string' ? { [entry]: entry } : entry)) {
+          const t = inside(dest); mkdirSync(path.dirname(t), { recursive: true });
+          copyFileSync(src === RULES_KEY ? rulesFile : path.join(project, src), t);
+        }
       }
       for (const [p, body] of Object.entries(c.write ?? {})) { const t = inside(p); mkdirSync(path.dirname(t), { recursive: true }); writeFileSync(t, body); }
       if (c.stamp) {
@@ -130,6 +137,8 @@ for (const file of readdirSync(casesDir).filter((f) => f.endsWith('.json') && f.
   if (problem) failed++;
   rows.push({ hook, case: name.slice(name.indexOf('.') + 1), expect: c.expect, got: warn ? 'allow (warn)' : decision, exit: r.status, result: problem ? `FAIL — ${problem}` : 'pass' });
 }
+
+if (generatedRules) rmSync(projectRules);
 
 const cols = ['hook', 'case', 'expect', 'got', 'exit', 'result'];
 const w = Object.fromEntries(cols.map((k) => [k, Math.max(k.length, ...rows.map((x) => String(x[k]).length))]));

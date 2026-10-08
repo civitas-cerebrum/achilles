@@ -1,0 +1,5 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [ { "op": "remove", "path": "/rules/specs.shape/titleIdPattern" }, { "op": "add", "path": "/rules/specs.shape/titleIdPatern", "value": "^[A-Z]{2,5}-\\d{2,3}[a-z]? — " } ],
+  "expectError": "/rules/specs.shape: must NOT have additional properties"
+}
