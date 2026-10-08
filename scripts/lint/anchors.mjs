@@ -4,7 +4,7 @@ import { walk, SKILLS_DIR } from './util.mjs';
 
 // Check 11 — every `<path> §"Heading"` citation in hooks, hook libs and skills
 // names a heading that exists in the cited file. In Markdown a heading is
-// `#… Heading` or a bold lead-in at paragraph start (`**Heading.**`), ignoring symbols, a section number or `Pattern:` before the first letter
+// `#… Heading` or a line that starts with a bold lead-in (`**Heading.**`), ignoring symbols, a section number or `Pattern:` before the first letter
 // and a trailing `{#anchor}`; in a test case it is a `section "Heading"` line. Lines inside
 // code fences are not headings. A citation may be a multi-word prefix of the
 // heading (`§"Mode selection"` cites `## Mode selection (the orchestrator decides)`). The path is resolved
@@ -17,16 +17,14 @@ function headingsOf(file) {
   if (!headingsCache.has(file)) {
     const out = [];
     let fenced = false;
-    let prev = '';
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
       else if (!fenced) {
-        const m = (prev === '' && line.match(/^\*\*(.+?)[.:]?\*\*/))
+        const m = line.match(/^\*\*(.+?)[.:]?\*\*/)
           ?? line.match(/^#+\s+(?:[^\p{L}\p{N}\s`*"'(]+\s*|\d+(?:\.\d+)*\.?\s+|Pattern:\s+)*(.*?)\s*(?:\{#[^}]*\})?\s*$/u)
           ?? line.match(/^section "(.*)"\s*$/);
         if (m) out.push(m[1].replace(/`/g, ''));
       }
-      prev = line.trim();
     }
     headingsCache.set(file, out);
   }
