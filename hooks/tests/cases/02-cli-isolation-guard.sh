@@ -97,3 +97,33 @@ for c in \
   assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
 done
 assert_deny "$H" "$(payload tool_name=Bash command='xargs --max-args 1 playwright-cli open < /tmp/u')" "xargs --max-args peeled → DENY" "Missing -s=<slug> flag"
+
+section "cli-isolation: brace groups, function bodies, reserved words and wrapper options with arguments"
+for c in \
+  '{ playwright-cli open https://x; }' \
+  'true && { playwright-cli open https://x; }' \
+  '{ { playwright-cli open https://x; }; }' \
+  'f() { playwright-cli open https://x; }; f' \
+  'function f { playwright-cli open https://x; }; f' \
+  'function f() { playwright-cli open https://x; }; f' \
+  'coproc playwright-cli open https://x' \
+  'coproc P { playwright-cli open https://x; }' \
+  'nice -5 playwright-cli open https://x' \
+  'nice -n5 playwright-cli open https://x' \
+  'time -p playwright-cli open https://x' \
+  'time -o /tmp/t playwright-cli open https://x' \
+  'env -P /usr/bin playwright-cli open https://x' \
+  'env -i -P /usr/bin playwright-cli open https://x' \
+  'exec -c playwright-cli open https://x' \
+  'exec -cl -a n playwright-cli open https://x'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
+done
+assert_deny "$H" "$(payload tool_name=Bash command='{ playwright-cli -s=j-x-1 open https://x; }')" "brace group: the slug is judged too → DENY" "missing role prefix"
+assert_deny "$H" "$(payload tool_name=Bash command='nice --bogus playwright-cli -s=composer-j-x-1-c1 open https://x')" "unrecognised wrapper option before the program → DENY" "wrapper option"
+assert_allow "$H" "$(payload tool_name=Bash command='{ playwright-cli -s=composer-j-x-1-c1 open https://x; }')" "brace group with a slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='f() { playwright-cli -s=composer-j-x-1-c1 open https://x; }; f')" "function body with a slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='nice -5 playwright-cli -s=composer-j-x-1-c1 open https://x')" "nice -5 with a slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='time -p playwright-cli -s=composer-j-x-1-c1 open https://x')" "time -p with a slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='echo "{ playwright-cli open https://x; }"')" "quoted brace group → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='echo "f() { playwright-cli open; }"')" "quoted function definition → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='nice --bogus ls')" "unrecognised wrapper option before another program → silent allow"

@@ -15,17 +15,19 @@
 # reaches the guard as written.
 #
 # shell_each_command <fn> calls <fn> once per command with
-#   CMD_ARGS    command word (basename; assignments, the shell keywords if/then/else/while/do/!…
-#               and the wrappers env, command, builtin, exec, nohup, time, nice, sudo, doas,
-#               stdbuf, timeout, xargs, npx, bunx and npm|pnpm|yarn exec peeled, with the values
-#               of their options; an npx package spec keeps its @scope and drops its @version)
+#   CMD_ARGS    command word (basename; assignments, the shell keywords if/then/else/while/do/!…,
+#               the reserved words { and } of a brace group or function body, `function NAME`,
+#               `coproc [NAME]` and the wrappers env, command, builtin, exec, nohup, time, nice,
+#               sudo, doas, stdbuf, timeout, xargs, npx, bunx and npm|pnpm|yarn exec peeled, with
+#               the values of their options; an npx package spec keeps its @scope and drops its @version)
 #               then its arguments
 #   CMD_PATH    the command word's directory when it is not a system bin dir, else empty: a
 #               wrapper or program run from elsewhere is not the one its basename names
 #   CMD_ENV     1 when an assignment or env preceded the command: its environment is the line's
 #   CMD_WRITES  targets of the writing redirections (> >> >| &> &>> >&file <>, with any fd number)
 #   CMD_SNEST   strings a known wrapper runs as a command (env -S), re-split as nested commands
-#   CMD_WRAP_BAD 1 when a wrapper carried an option the peeler does not recognise
+#   CMD_WRAP_BAD 1 when a wrapper carried an option the peeler does not recognise: the command word
+#               is then unknown and the caller must not treat the command as judged
 #   CMD_HEREDOCS heredoc and here-string bodies
 #   CMD_XARGS   1 when xargs supplies the operands
 # The arrays can be empty: read them as ${A[@]+"${A[@]}"} (bash 3.2 under set -u).
@@ -254,8 +256,8 @@ shell__wrapopt() {
       base="${o%%=*}"
       case "$w:$base" in
         env:--split-string) case "$o" in *=*) WVAL="${o#*=}"; WOPT=snest ;; *) WOPT=snestnext ;; esac; return 0 ;;
-        env:--unset|env:--chdir|env:--block-signal|env:--default-signal|env:--ignore-signal|\
-        nice:--adjustment|timeout:--signal|timeout:--kill-after|\
+        env:--unset|env:--argv0|env:--chdir|env:--block-signal|env:--default-signal|env:--ignore-signal|\
+        nice:--adjustment|time:--output|time:--format|timeout:--signal|timeout:--kill-after|\
         stdbuf:--input|stdbuf:--output|stdbuf:--error|\
         sudo:--user|sudo:--group|sudo:--close-from|sudo:--chdir|sudo:--chroot|sudo:--host|sudo:--prompt|sudo:--role|sudo:--type|sudo:--other-user|sudo:--command-timeout|\
         doas:--user|\
@@ -264,6 +266,7 @@ shell__wrapopt() {
           case "$o" in *=*) WOPT=self ;; *) WOPT=val ;; esac; return 0 ;;
         env:--null|env:--ignore-environment|env:--debug|env:--version|env:--help|\
         nice:--help|nice:--version|\
+        time:--portability|time:--verbose|time:--append|time:--quiet|time:--help|time:--version|\
         timeout:--preserve-status|timeout:--foreground|timeout:--verbose|timeout:--help|timeout:--version|\
         stdbuf:--help|stdbuf:--version|\
         sudo:--preserve-env|sudo:--background|sudo:--login|sudo:--non-interactive|sudo:--stdin|sudo:--shell|sudo:--set-home|sudo:--remove-timestamp|sudo:--reset-timestamp|sudo:--validate|sudo:--list|sudo:--help|sudo:--version|\
@@ -279,7 +282,7 @@ shell__wrapopt() {
       while [ "$m" -lt "${#letters}" ]; do
         ch="${letters:m:1}"; m=$((m + 1)); rest="${letters:m}"
         case "$w:$ch" in
-          exec:a|env:u|env:C|nice:n|timeout:s|timeout:k|stdbuf:i|stdbuf:o|stdbuf:e|\
+          exec:a|env:u|env:C|env:P|env:a|nice:n|time:o|time:f|timeout:s|timeout:k|stdbuf:i|stdbuf:o|stdbuf:e|\
           sudo:u|sudo:g|sudo:C|sudo:D|sudo:R|sudo:h|sudo:p|sudo:r|sudo:t|sudo:U|sudo:T|\
           doas:u|doas:C|\
           xargs:I|xargs:i|xargs:n|xargs:L|xargs:P|xargs:s|xargs:d|xargs:a|xargs:E|xargs:e|xargs:J|xargs:R|xargs:S|\
@@ -287,7 +290,7 @@ shell__wrapopt() {
             if [ -n "$rest" ]; then WOPT=self; else WOPT=val; fi; return 0 ;;
           env:S)
             if [ -n "$rest" ]; then WVAL="$rest"; WOPT=snest; else WOPT=snestnext; fi; return 0 ;;
-          env:i|env:0|env:v|\
+          env:i|env:0|env:v|exec:c|exec:l|nice:[0-9]|time:p|time:l|time:a|time:h|time:v|time:q|time:V|\
           timeout:v|\
           sudo:E|sudo:H|sudo:i|sudo:n|sudo:S|sudo:s|sudo:b|sudo:k|sudo:K|sudo:v|sudo:l|sudo:A|sudo:P|sudo:e|\
           doas:L|doas:n|doas:s|\
@@ -335,7 +338,9 @@ shell_each_command() {
         esac
         if [ -z "$dir" ]; then
           case "${word##*/}" in
-            if|then|elif|else|fi|while|until|do|done|'!') continue ;;
+            if|then|elif|else|fi|while|until|do|done|'!'|'{'|'}') continue ;;
+            function) skip=1; continue ;;
+            coproc) if [ "${SW[k+1]:-}" = '{' ]; then skip=1; fi; continue ;;
             command) case "${SW[k]:-}" in -v|-V) ;; *) wrapped=command; continue ;; esac ;;
             env) CMD_ENV=1; wrapped=env; continue ;;
             builtin|exec|nohup|time|nice|sudo|doas|stdbuf|timeout) wrapped="${word##*/}"; continue ;;

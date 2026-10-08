@@ -99,6 +99,25 @@ CMD_PREVIEW="$CMD"
 
 judge_invocation() {
   local k=1 a SLUG=""
+  # A wrapper option the splitter does not know hides the command word: playwright-cli among
+  # the words may be the program, so the slug cannot be judged.
+  if [ "$CMD_WRAP_BAD" = 1 ]; then
+    for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"}; do
+      case "$a" in
+        playwright-cli|playwright-cli@*|*/playwright-cli|@playwright/cli|@playwright/cli@*)
+          emit_pre_deny "[BLOCKED] Unrecognised wrapper option in front of playwright-cli.
+
+Command: $CMD_PREVIEW
+
+Fix: drop the wrapper option, or run playwright-cli directly with its slug.
+
+  npx playwright-cli -s=<slug> <subcommand> ...
+
+Why: the guard cannot tell which program the wrapper runs, so it cannot check -s=<slug>. Wrapper options it knows: see hooks/lib/shell-words.sh (shell__wrapopt)."
+          exit 0 ;;
+      esac
+    done
+  fi
   case "${CMD_ARGS[0]:-}" in playwright-cli|@playwright/cli) ;; *) return 0 ;; esac
   # Session-agnostic subcommands run without -s= by design; no argument prints the help.
   case "${CMD_ARGS[1]:-}" in

@@ -303,7 +303,7 @@ WRITERS
 
 section "protected-bash fail-closed r5: a wrapper's unrecognised/known options"
 assert_deny "$HOOK" "$(bash_payload "exec -a grep sh -c 'echo x > ~/.claude/settings.json'")" "exec -a NAME peeled, then sh -c writes" "protected"
-assert_deny "$HOOK" "$(bash_payload "exec -c sh -c 'echo x > ~/.claude/settings.json'")" "exec -c is an unrecognised wrapper option" "protected"
+assert_deny "$HOOK" "$(bash_payload "exec -c sh -c 'echo x > ~/.claude/settings.json'")" "exec -c peeled, then sh -c writes" "protected"
 assert_deny "$HOOK" "$(bash_payload "nice -n 5 sh -c 'echo x > ~/.claude/settings.json'")" "nice -n 5 peeled" "protected"
 assert_deny "$HOOK" "$(bash_payload 'stdbuf -oL tee ~/.claude/settings.json < x')" "stdbuf -oL then tee" "protected"
 assert_deny "$HOOK" "$(bash_payload "env -S 'sh -c \"echo x > ~/.claude/settings.json\"'")" "env -S runs its string" "protected"
@@ -311,6 +311,39 @@ assert_deny "$HOOK" "$(bash_payload 'sudo -E tee ~/.claude/settings.json < x')" 
 assert_allow "$HOOK" "$(bash_payload 'nice --adjustment 5 cat ~/.claude/settings.json')" "nice before a read ALLOWs"
 assert_allow "$HOOK" "$(bash_payload 'timeout -s KILL 5 cat ~/.claude/settings.json')" "timeout before a read ALLOWs"
 assert_allow "$HOOK" "$(bash_payload 'stdbuf --output=L cat ~/.claude/settings.json')" "stdbuf before a read ALLOWs"
+assert_deny "$HOOK" "$(bash_payload 'nice --bogus cat ~/.claude/settings.json')" "an unrecognised wrapper option stays unsafe" "unrecognised option"
+
+section "protected-bash fail-closed H1: brace groups, function bodies and wrapper options are peeled to the real command"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "protected"
+done <<'PEELED_WRITES'
+{ rm ~/.claude/settings.json; }
+true && { rm ~/.claude/settings.json; }
+f() { rm ~/.claude/settings.json; }; f
+function f { rm ~/.claude/settings.json; }; f
+function f() { rm ~/.claude/settings.json; }; f
+coproc rm ~/.claude/settings.json
+coproc P { rm ~/.claude/settings.json; }
+nice -5 rm ~/.claude/settings.json
+time -p rm ~/.claude/settings.json
+env -P /bin rm ~/.claude/settings.json
+exec -c rm ~/.claude/settings.json
+{ nice -5 tee ~/.claude/settings.json < x; }
+nice -5 sh -c 'echo x > ~/.claude/settings.json'
+PEELED_WRITES
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
+done <<'PEELED_READS'
+{ cat ~/.claude/settings.json; }
+nice -5 cat ~/.claude/settings.json
+time -p cat ~/.claude/settings.json
+exec -c cat ~/.claude/settings.json
+{ rm /tmp/junk; } ; cat ~/.claude/settings.json
+echo "{ rm ~/.claude/settings.json; }"
+echo "f() { rm ~/.claude/settings.json; }"
+PEELED_READS
+# The function name is a command word the guard cannot resolve, so a definition stays unsafe.
+assert_deny "$HOOK" "$(bash_payload 'f() { cat ~/.claude/settings.json; }; f')" "a function definition names an unknown command" "protected"
 
 section "protected-bash fail-closed r5: an assignment/alias/function poisons later commands"
 while IFS= read -r c; do
