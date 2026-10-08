@@ -48,6 +48,16 @@ export function run(report) {
     [...hooksMd.matchAll(/\((?:\.\.\/)+hooks\/([a-z0-9-]+\.sh)\)/g)].map((m) => m[1]),
   );
 
+  // One bullet per hook: `- **[name](.../hooks/<file>.sh)**`.
+  const bulletCount = new Map();
+  for (const m of hooksMd.matchAll(/^- \*\*\[[^\]]+\]\((?:\.\.\/)+hooks\/([a-z0-9-]+\.sh)\)\*\*/gm)) {
+    bulletCount.set(m[1], (bulletCount.get(m[1]) || 0) + 1);
+  }
+  for (const f of manifestFiles) {
+    const n = bulletCount.get(f) || 0;
+    if (n !== 1) detail.push(`harness-hooks.md has ${n} bullets for ${f}, expected exactly 1`);
+  }
+
   const undocumented = [...manifestFiles].filter((f) => !documented.has(f));
   const orphanDocs = [...documented].filter((f) => !manifestFiles.has(f));
 
@@ -56,7 +66,7 @@ export function run(report) {
 
   report(
     `hook manifest ↔ harness-hooks.md (${manifestFiles.size} manifest hooks, ${documented.size} documented)`,
-    invalid === 0 && undocumented.length === 0 && orphanDocs.length === 0,
+    invalid === 0 && undocumented.length === 0 && orphanDocs.length === 0 && detail.length === 0,
     detail,
   );
 }

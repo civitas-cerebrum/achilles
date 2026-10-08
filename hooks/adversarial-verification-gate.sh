@@ -3,6 +3,7 @@
 #                                     review of the tests.
 #
 # Hook    : PreToolUse:mcp__.*  (tracker mutation tools)
+#           PreToolUse:Bash     (`gh pr create|ready`, non-draft)
 # Mode    : DENY  (transitioning a ticket to a COMPLETED state with no
 #                  verification receipt — that is sign-off, and sign-off is
 #                  exactly the moment the check must already have happened)
@@ -47,7 +48,8 @@
 #     hook cannot attest subagent identity);
 #   * the spec scan truncates at 2000 paths in READDIR order, so on a large
 #     monorepo the newest spec can be missed;
-#   * only mcp__* tools are seen; Bash, curl and gh are ungated;
+#   * only mcp__* tools and `gh pr create|ready` are seen; other shells, curl and
+#     non-gh PR paths are ungated;
 #   * the status vocabulary is six English words.
 # Making it sound needs a hook-authored, hash-chained receipt on the protected
 # list (the ledger-integrity-chain.sh pattern).

@@ -97,7 +97,7 @@ The same shape applies to actions — `steps.on('btn', 'Page').click()` flows th
 - `tests/` — Playwright tests, all hitting the real Vue test app.
 - `tests/fixture/` — test fixture wiring + shared helper functions (e.g. `pageHelpers.ts`).
 - `tests/data/` — `page-repository.json` and any fixture data.
-- `skills/contributing-to-achilles-protocol/` — this skill (top-level so the harness auto-discovers it). Agent-facing skill files for the broader suite live under sibling directories at `skills/<skill-name>/SKILL.md`.
+- `skills/contributing-to-achilles-protocol/` — the contributing skill (top-level so the harness auto-discovers it). Agent-facing skill files for the broader suite live under sibling directories at `skills/<skill-name>/SKILL.md`.
 
 When you add a new file:
 - New public API entrypoint? `src/steps/`.

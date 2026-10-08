@@ -80,7 +80,7 @@ If a contribution undermines either promise, it doesn't ship.
 ---
 
 ## 🏛️ Software Architecture
-Moved to [element-interactions-api.md](references/element-interactions-api.md) §"Software Architecture".  Includes the decision tree, API hard rules and design rules.
+Moved to [element-interactions-api.md](references/element-interactions-api.md) §"Software Architecture". Includes the decision tree, API hard rules and design rules.
 
 ---
 
