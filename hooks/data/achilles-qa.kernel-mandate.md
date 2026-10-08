@@ -23,7 +23,7 @@ reviewer only reads the deliverable" — are tool-call denials here.
 | **cleanup** | Cleanup / dedup worker for the coverage-expansion cleanup pass (`cleanup-<scope>:`): removes redundant specs under tests/e2e/** and re-runs the suite to prove the remainder is still green. | `docs/**`<br>`tests/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | — |
 | **companion** | companion-mode verification worker (`companion-<task-slug>:`): verifies one task against the live app in its own playwright-cli session and lands the evidence bundle under tests/e2e/evidence/**. | `docs/**`<br>`tests/**` | `tests/e2e/evidence/**`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | — |
 | **contribution-handover** | Pre-push handover author (`contribution-handover-<slug>:`): fills .contribution-handover.json from the contributing skill's guardrail checklist by reading this repo's own documentation and the branch diff. | `.contribution-handover.template.json`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`schemas/**`<br>`skills/**` | `.contribution-handover.json` | `^git status\b`<br>`^git log\b`<br>`^git diff\b` | — |
-| **doc-author** | Writes documentation only: docs/** (except the evidence trail docs/evidence/**), CLAUDE.md and project skills under .claude/skills/**. | `.claude/skills/**`<br>`CLAUDE.md`<br>`README.md`<br>`docs/**`<br>`tests/**` | `.claude/skills/**`<br>`CLAUDE.md`<br>`docs/**`<br>*except* `docs/evidence/**` | — | — |
+| **doc-author** | Writes documentation only: docs/** (except the evidence trail docs/evidence/**). Changes to CLAUDE.md and project skills are proposals under docs/proposals/ that the operator applies. | `.claude/skills/**`<br>`CLAUDE.md`<br>`README.md`<br>`docs/**`<br>`tests/**` | `docs/**`<br>*except* `docs/evidence/**` | — | — |
 | **fd** | failure-diagnosis worker (`fd-<test-slug>:`, `fd-ci-<run-id>:`): reproduces one failing spec against the live app in its own playwright-cli session, classifies deterministic vs flaky, and lands the diagnosis plus any heal under tests/e2e/**. | `docs/**`<br>`tests/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | — |
 | **implementer** | Writes one change: specs, fixtures and support code under tests/** (never the page repository, which live inspection owns) and the change report (report.md in the change's folder under docs/evidence/). | `docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/**` | `docs/evidence/*/report.md`<br>`tests/**`<br>*except* `**/page-repository*.json`<br>`tests/e2e/docs/onboarding-status.json` | `^npx playwright test\b`<br>`^npx tsc --noEmit\b`<br>`^npm run test:unit\b` | — |
 | **live-inspector** | Inspects the running app before any selector exists: writes throwaway inspection specs under the inspect dir (tests/e2e/inspect/**, deleted before hand-back), selector evidence under docs/evidence/selectors/** and a proposal note in the change's folder under docs/evidence/. | `docs/**`<br>`tests/**`<br>`tests/e2e/page-repository.json` | `docs/evidence/*/proposal-*.md`<br>`docs/evidence/selectors/**`<br>`tests/e2e/inspect/**` | `^npx playwright test --config tests/e2e/inspect\b`<br>`^npx achilles-selector-evidence\b` | — |
@@ -115,12 +115,12 @@ Pre-push handover author (`contribution-handover-<slug>:`): fills .contribution-
 
 ### `doc-author`
 
-Writes documentation only: docs/** (except the evidence trail docs/evidence/**), CLAUDE.md and project skills under .claude/skills/**. No shell, no dispatch, no authored code.
+Writes documentation only: docs/** (except the evidence trail docs/evidence/**). Changes to CLAUDE.md and project skills are proposals under docs/proposals/ that the operator applies. No shell, no dispatch, no authored code.
 
 - **Binds when** the host dispatches an agent of type `doc-author`, or when the brief carries `<<kernel-mandate-role: doc-author#<nonce>>>` and the description begins `doc-author-<slug>:`.
 - **Tools** `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
 - **Reads** `.claude/skills/**`, `CLAUDE.md`, `README.md`, `docs/**`, `tests/**`
-- **Writes** `.claude/skills/**`, `CLAUDE.md`, `docs/**`
+- **Writes** `docs/**`
 - **Never writes** `docs/evidence/**` — carved out of the write scope; deny beats allow.
 - **Skills** `achilles-protocol`
 
@@ -389,7 +389,7 @@ Phase 7 secrets sweep: rewrites hard-coded credentials, keys, PII and app URLs i
 - dispatch any subagent
 - reach any network destination
 - see what `contribution-handover` writes (`.contribution-handover.json`)
-- see what `doc-author` writes (`.claude/skills/**`, `CLAUDE.md`, `docs/**`)
+- see what `doc-author` writes (`docs/**`)
 - see what `task-reviewer` writes (`docs/evidence/*/review.md`)
 - see what `verifier` writes (`docs/evidence/*/verify.md`)
 

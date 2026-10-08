@@ -162,7 +162,7 @@
       }
     },
     "doc-author": {
-      "description": "Writes documentation only: docs/** (except the evidence trail docs/evidence/**), CLAUDE.md and project skills under .claude/skills/**. No shell, no dispatch, no authored code.",
+      "description": "Writes documentation only: docs/** (except the evidence trail docs/evidence/**). Changes to CLAUDE.md and project skills are proposals under docs/proposals/ that the operator applies. No shell, no dispatch, no authored code.",
       "agentTypes": [
         "doc-author"
       ],
@@ -187,8 +187,6 @@
       },
       "write": {
         "allow": [
-          ".claude/skills/**",
-          "CLAUDE.md",
           "docs/**"
         ],
         "deny": [

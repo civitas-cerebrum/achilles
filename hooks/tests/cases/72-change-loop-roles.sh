@@ -193,10 +193,12 @@ assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=live-inspector file_path
 # doc-author
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/docs/spend-classes.md" content='# Spend classes')" \
   "doc-author Write docs/** → ALLOW"
-assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/CLAUDE.md" content='# Project rules')" \
-  "doc-author Write CLAUDE.md → ALLOW (declares no code constraints, so the agent-instructions screen does not apply)"
-assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/.claude/skills/shop-notes/SKILL.md" content='# Shop notes')" \
-  "doc-author Write a project skill → ALLOW"
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/docs/proposals/shop-notes.md" content='# Proposal')" \
+  "doc-author Write docs/proposals/<topic>.md → ALLOW (instruction changes are proposals)"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/CLAUDE.md" content='# Project rules')" \
+  "doc-author Write CLAUDE.md → DENY (the operator applies instruction changes)" "outside the role's write scope"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/.claude/skills/shop-notes/SKILL.md" content='# Shop notes')" \
+  "doc-author Write a project skill → DENY" "outside the role's write scope"
 for NOTE in verify review report; do
   assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=doc-author file_path="$CP/$EV/$NOTE.md" content='x')" \
     "doc-author Write $NOTE.md → DENY (evidence is carved out of docs/**)" "explicitly denied"
@@ -226,6 +228,11 @@ assert_deny "$KERNEL" "$(payload tool_name=Edit file_path="$CP/$EV/verify.md" ol
   "orchestrator Edit verify.md to Status: complete → DENY" "outside the role's write scope"
 assert_deny "$KERNEL" "$(payload tool_name=Bash command="npm run verify > $EV/verify.md" cwd="$CP")" \
   "orchestrator redirects into verify.md → DENY (redirects are held to the write scope)" "outside the role's write scope"
+
+# KL-16: the verifier's scope is a path, so the content of its verdict is not judged.
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=verifier file_path="$CP/$EV/verify.md" content='Verdict: FAIL
+Status: complete')" \
+  "verifier Write verify.md with Status: complete beside a FAIL verdict → ALLOW (KL-16: path-gated, not content-gated)"
 
 # ---------------------------------------------------------------------------
 section "change-loop roles: the verifier's spend-incurring runs need the project's spend opt-in"
