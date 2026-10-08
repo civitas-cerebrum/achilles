@@ -376,6 +376,7 @@ judge_command() {
       gi=1
       while [ "$gi" -lt "${#CMD_ARGS[@]}" ]; do
         a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
+        if shell_git_exec_option "$a"; then UNSAFE="${UNSAFE}git $a"$'\n'; return 0; fi
         if [ -z "$sub" ]; then
           case "$a" in
             -c|-c?*)
@@ -390,8 +391,6 @@ judge_command() {
                      e=$(protected_bash_mention "$gval") && NAMED="$NAMED$e"$'\n'
                      UNSAFE="${UNSAFE}git -c"$'\n'; return 0 ;;
                 esac ;;
-            --exec-path|--exec-path=*|--config-env|--config-env=*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
-            --output*|--upload-pack*|--receive-pack*|--ext-diff|--textconv|-O*|--open-files-in-pager*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
             -C|--git-dir|--work-tree|--namespace|--super-prefix) gi=$((gi + 1)) ;;
             --git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*) ;;
             --*|-*) ;;
@@ -399,7 +398,6 @@ judge_command() {
           esac
         else
           case "$a" in
-            --output*|--upload-pack*|--receive-pack*|--ext-diff|--textconv|-O*|--open-files-in-pager*) UNSAFE="${UNSAFE}git $a"$'\n'; return 0 ;;
             -*) ;;
             *) pos=$((pos + 1)) ;;
           esac

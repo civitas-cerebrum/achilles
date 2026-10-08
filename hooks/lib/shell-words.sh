@@ -23,6 +23,7 @@
 #               then its arguments
 #   CMD_PATH    the command word's directory when it is not a system bin dir, else empty: a
 #               wrapper or program run from elsewhere is not the one its basename names
+#   CMD_ASSIGN  the assignment words peeled before the command word
 #   CMD_ENV     1 when an assignment or env preceded the command: its environment is the line's
 #   CMD_WRITES  targets of the writing redirections (> >> >| &> &>> >&file <>, with any fd number)
 #               and the file named by time -o / --output
@@ -225,24 +226,51 @@ shell__nested() {
 
 # The scripts a shell or eval runs.
 shell__expand() {
-  local a k=1 b
+  local b
   for b in ${CMD_SNEST[@]+"${CMD_SNEST[@]}"}; do shell__nested "$b"; done
   case "${CMD_ARGS[0]:-}" in
     sh|bash|zsh|dash|ksh)
-      while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
-        a="${CMD_ARGS[k]}"; k=$((k + 1))
-        case "$a" in
-          -o|-O|+o|+O|--init-file|--rcfile) k=$((k + 1)) ;;
-          --*) ;;
-          -*c*) [ "$k" -lt "${#CMD_ARGS[@]}" ] && shell__nested "${CMD_ARGS[k]}"; break ;;
-          -*) ;;
-          *) break ;;
-        esac
-      done
+      shell_script_arg
+      [ "$SW_SCRIPT_C" = 1 ] && shell__nested "${CMD_ARGS[SW_SCRIPT]}"
       for b in ${CMD_HEREDOCS[@]+"${CMD_HEREDOCS[@]}"}; do shell__nested "$b"; done ;;
     eval) [ "${#CMD_ARGS[@]}" -gt 1 ] && shell__nested "${CMD_ARGS[*]:1}" ;;
   esac
   return 0
+}
+
+# shell_script_arg — for CMD_ARGS of a shell: SW_SCRIPT is the index of its script operand (the -c
+# string, or the script file) and SW_SCRIPT_C is 1 for a -c string; 0 and 0 when there is none.
+# Every later word is a positional parameter.
+shell_script_arg() {
+  local a k=1
+  SW_SCRIPT=0; SW_SCRIPT_C=0
+  while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+    a="${CMD_ARGS[k]}"; k=$((k + 1))
+    case "$a" in
+      -o|-O|+o|+O|--init-file|--rcfile) k=$((k + 1)) ;;
+      --*) ;;
+      -*c*) if [ "$k" -lt "${#CMD_ARGS[@]}" ]; then SW_SCRIPT=$k; SW_SCRIPT_C=1; fi; return 0 ;;
+      -*) ;;
+      *) SW_SCRIPT=$((k - 1)); return 0 ;;
+    esac
+  done
+  return 0
+}
+
+# shell_word_literal <word> — 0 when the shell would run or read the word as written: no variable,
+# command substitution, backtick or glob character. A quoted one counts too: the splitter drops quotes.
+shell_word_literal() {
+  case "$1" in *[\$\`*?[]*) return 1 ;; esac
+  return 0
+}
+
+# shell_git_exec_option <word> — 0 when a git option makes git run a program or write a file named
+# by its value, whatever the subcommand.
+shell_git_exec_option() {
+  case "$1" in
+    --exec-path|--exec-path=*|--config-env|--config-env=*|--output*|--upload-pack*|--receive-pack*|--ext-diff|--textconv|-O*|--open-files-in-pager*) return 0 ;;
+  esac
+  return 1
 }
 
 # shell__wrapopt <wrapper> <option> — classify <option> for <wrapper>, inverting to unknown=unsafe.
@@ -313,7 +341,7 @@ shell__wrapopt() {
 shell_each_command() {
   local fn="$1" k=0 word op wrapped dir peel skip snest_pending write_pending
   while [ "$k" -le "${#SW[@]}" ]; do
-    CMD_ARGS=(); CMD_WRITES=(); CMD_HEREDOCS=(); CMD_SNEST=(); CMD_XARGS=0; CMD_ENV=0; CMD_WRAP_BAD=0
+    CMD_ARGS=(); CMD_WRITES=(); CMD_HEREDOCS=(); CMD_SNEST=(); CMD_ASSIGN=(); CMD_XARGS=0; CMD_ENV=0; CMD_WRAP_BAD=0
     CMD_PATH=""; wrapped=""; peel=1; skip=0; snest_pending=0; write_pending=0
     while [ "$k" -lt "${#SW[@]}" ] && [ "${SW[k]}" != "$SW_SEP" ]; do
       word="${SW[k]}"; k=$((k + 1))
@@ -333,7 +361,7 @@ shell_each_command() {
         if [ "$snest_pending" = 1 ]; then CMD_SNEST+=("$word"); snest_pending=0; continue; fi
         if [ "$write_pending" = 1 ]; then CMD_WRITES+=("$word"); write_pending=0; continue; fi
         case "$word" in
-          [A-Za-z_]*=*) case "${word%%=*}" in *[!A-Za-z0-9_]*) ;; *) CMD_ENV=1; continue ;; esac ;;
+          [A-Za-z_]*=*) case "${word%%=*}" in *[!A-Za-z0-9_]*) ;; *) CMD_ENV=1; CMD_ASSIGN+=("$word"); continue ;; esac ;;
         esac
         # A wrapper is only itself when it comes from a system bin dir; `@scope/name` is a package.
         dir=""

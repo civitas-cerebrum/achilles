@@ -93,55 +93,92 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 
 # Judge every command the shell would run (lib/shell-words.sh). Unrecognised = unsafe: a command
-# with a word that names playwright-cli (@playwright/cli, a path to it, a name with a suffix), quoted
-# or not, is DENY unless it is
+# whose words, assignments, heredoc bodies or directory name playwright-cli (@playwright/cli, a path
+# to it, a name with a suffix, in any letter case: APFS is case-insensitive), quoted or not, is DENY
+# unless it is
 #   (a) playwright-cli itself, directly or behind the wrappers the splitter peels (npx, bunx,
 #       pnpm|yarn exec, env, sudo, nice, time, …) with every wrapper option recognised: its slug is
 #       judged below; or
-#   (b) a shell or eval, whose script is judged as nested commands; or
-#   (c) a reader that does not execute its arguments: echo printf cat head tail grep egrep fgrep ls
-#       wc which type, `command -v|-V`, git commit|log|show|diff|status|add|grep|tag|branch.
-# Any other wrapper (setsid, watch, script, flock, parallel, chroot, env -S …) hides the program.
+#   (b) a shell whose only mention is its script operand (the -c string, or the script file; the
+#       string is judged as nested commands), or eval; or
+#   (c) a reader that does not execute its arguments: echo printf (not -v) cat head tail tee grep
+#       egrep fgrep ls wc which type jq pgrep, `command -v|-V`, `npm ls|view|list|info`,
+#       git commit|log|show|diff|status|add|grep|tag|branch without an option that runs a program.
+# A command word that expands (a variable, command substitution, backtick or glob character) is DENY
+# whatever it names. Any other wrapper (setsid, watch, script, flock, parallel, chroot, env -S …)
+# hides the program. A command string a wrapper runs (env -S, npx -c) is judged as its own command.
 CMD_PREVIEW="$CMD"
 [ ${#CMD} -le 160 ] || CMD_PREVIEW="${CMD:0:160}..."
 
 pw_mention() {
-  case "$1" in *playwright-cli*|*@playwright/cli*) return 0 ;; esac
-  return 1
+  local rc=1
+  shopt -s nocasematch
+  case "$1" in *playwright-cli*|*@playwright/cli*) rc=0 ;; esac
+  shopt -u nocasematch
+  return "$rc"
 }
 
-# The command word is a non-executing reader or a shell, run as the session's own program.
+pw_command_word() {
+  local rc=1
+  shopt -s nocasematch
+  case "$1" in playwright-cli|@playwright/cli) rc=0 ;; esac
+  shopt -u nocasematch
+  return "$rc"
+}
+
+# The command word is a non-executing reader, or a shell/eval whose script is judged separately.
 is_exempt_command() {
+  local a k=1
   [ "$CMD_ENV" = 0 ] && [ -z "$CMD_PATH" ] || return 1
   case "${CMD_ARGS[0]:-}" in
-    echo|printf|cat|head|tail|grep|egrep|fgrep|ls|wc|which|type|sh|bash|zsh|dash|ksh|eval) return 0 ;;
+    echo|cat|head|tail|tee|grep|egrep|fgrep|ls|wc|which|type|jq|pgrep|eval) return 0 ;;
+    printf) for a in "${CMD_ARGS[@]:1}"; do case "$a" in -v|-v?*) return 1 ;; --) break ;; esac; done; return 0 ;;
     command) case "${CMD_ARGS[1]:-}" in -v|-V) return 0 ;; esac ;;
-    git) case "${CMD_ARGS[1]:-}" in commit|log|show|diff|status|add|grep|tag|branch) return 0 ;; esac ;;
+    npm) case "${CMD_ARGS[1]:-}" in ls|list|view|info) return 0 ;; esac ;;
+    git) case "${CMD_ARGS[1]:-}" in
+           commit|log|show|diff|status|add|grep|tag|branch)
+             for a in "${CMD_ARGS[@]:1}"; do shell_git_exec_option "$a" && return 1; done
+             return 0 ;;
+         esac ;;
+    sh|bash|zsh|dash|ksh)
+      shell_script_arg
+      while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+        if [ "$k" != "$SW_SCRIPT" ] && pw_mention "${CMD_ARGS[k]}"; then return 1; fi
+        k=$((k + 1))
+      done
+      return 0 ;;
   esac
   return 1
 }
 
-judge_invocation() {
-  local k=1 a SLUG="" mentioned=0 recognised=0
-  for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_SNEST[@]+"${CMD_SNEST[@]}"}; do
-    if pw_mention "$a"; then mentioned=1; break; fi
-  done
-  [ "$mentioned" = 1 ] || return 0
-  case "${CMD_ARGS[0]:-}" in
-    playwright-cli|@playwright/cli) if [ "$CMD_WRAP_BAD" = 0 ] && [ "${#CMD_SNEST[@]}" = 0 ]; then recognised=1; fi ;;
-  esac
-  if [ "$recognised" = 0 ]; then
-    is_exempt_command && return 0
-    emit_pre_deny "[BLOCKED] Cannot judge a command that mentions playwright-cli.
+deny_unjudgeable() {
+  emit_pre_deny "[BLOCKED] Cannot judge this command: $1.
 
 Command: $CMD_PREVIEW
 
-Fix: run playwright-cli as the command word, with its slug and no wrapper the guard does not know.
+Fix: run playwright-cli as a literal command word, with its slug and no wrapper the guard does not know.
 
   npx playwright-cli -s=<slug> <subcommand> ...
 
-Why: an unrecognised wrapper option or program (setsid, watch, script, flock, env -S, npx -c …) may run playwright-cli without -s=<slug>, and the guard cannot see inside it. Wrappers and options it knows: hooks/lib/shell-words.sh (shell__wrapopt). Readers it lets through: see the header of this hook."
-    exit 0
+Why: an unrecognised wrapper option or program (setsid, watch, script, flock, npx -c …), a command word that expands (\$x, a glob), or the name passed as text may run playwright-cli without -s=<slug>, and the guard cannot see inside it. Wrappers and options it knows: hooks/lib/shell-words.sh (shell__wrapopt). Readers it lets through: see the header of this hook."
+  exit 0
+}
+
+judge_invocation() {
+  local k=1 a SLUG="" mentioned=0 recognised=0 cmd="${CMD_ARGS[0]:-}"
+  case "$cmd" in '['|'[[') ;; *) shell_word_literal "$cmd" || deny_unjudgeable "the command word $cmd expands" ;; esac
+  for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_HEREDOCS[@]+"${CMD_HEREDOCS[@]}"} "$CMD_PATH"; do
+    if pw_mention "$a"; then mentioned=1; break; fi
+  done
+  # The body of a substitution in an assignment is split and judged as its own commands.
+  for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do
+    case "$a" in *'$('*|*'`'*) ;; *) if pw_mention "$a"; then mentioned=1; fi ;; esac
+  done
+  [ "$mentioned" = 1 ] || return 0
+  if pw_command_word "$cmd" && [ "$CMD_WRAP_BAD" = 0 ] && [ "${#CMD_SNEST[@]}" = 0 ]; then recognised=1; fi
+  if [ "$recognised" = 0 ]; then
+    is_exempt_command && return 0
+    deny_unjudgeable "playwright-cli is named where the guard cannot read the invocation"
   fi
   # Session-agnostic subcommands run without -s= by design; no argument prints the help.
   case "${CMD_ARGS[1]:-}" in

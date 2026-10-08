@@ -131,13 +131,9 @@ assert_allow "$H" "$(payload tool_name=Bash command='nice --bogus ls')" "unrecog
 # shell whose script is judged as nested commands, or a closed list of non-executing readers is DENY.
 section "cli-isolation: unrecognised = unsafe for any command that mentions playwright-cli"
 for c in \
-  "env -S 'playwright-cli open https://x'" \
   "env -S 'playwright-cli\\_open\\_https://x'" \
   "env -S'playwright-cli\\_open'" \
   "env --split-string='playwright-cli\\_open'" \
-  "npx -c 'playwright-cli open https://x'" \
-  "npm exec -c 'playwright-cli open https://x'" \
-  "npx --call='playwright-cli open https://x'" \
   'setsid playwright-cli open https://x' \
   'watch playwright-cli open https://x' \
   'script -c "playwright-cli open https://x"' \
@@ -152,6 +148,37 @@ for c in \
   'someunknownwrapper playwright-cli open https://x'; do
   assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Cannot judge"
 done
+# A command string a wrapper runs is split and judged as its own command, as sh -c is.
+for c in "env -S 'playwright-cli open https://x'" "npx -c 'playwright-cli open https://x'" \
+         "npm exec -c 'playwright-cli open https://x'" "npx --call='playwright-cli open https://x'"; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
+done
+assert_allow "$H" "$(payload tool_name=Bash command="npx -c 'playwright-cli -s=composer-j-x-1-c1 open https://x'")" "npx -c with a slugged invocation → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command="env -S 'playwright-cli -s=composer-j-x-1-c1 open https://x'")" "env -S with a slugged invocation → ALLOW"
+
+section "cli-isolation: the name in a spelling, word or text the guard must still see"
+for c in \
+  'PLAYWRIGHT-CLI open http://a' 'Playwright-Cli open http://a' 'node_modules/.bin/PLAYWRIGHT-CLI open http://a' 'npx PLAYWRIGHT-CLI open http://a' \
+  'playwright-cl{i..i} open http://a' 'node_modules/.bin/playwright-c{l..l}i open http://a' './node_modules/.bin/playwright-cl? open http://a' \
+  'node_modules/.bin/playwr*ght-cli open http://a' './node_modules/.bin/playwright-cl[i] open http://a' \
+  'x=playwright-cli; $x open http://a' 'printf -v x playwright-cli; $x open http://a' 'read x <<< playwright-cli; $x open http://a' \
+  "x=playwright-cli
+\$x open http://a" \
+  "bash -c '\"\$@\"' _ playwright-cli open http://a" "sh -c '\$0 open http://a' playwright-cli" "bash -c 'exec \"\$1\" open http://a' _ playwright-cli" \
+  'xargs -I{} {} open http://a <<< playwright-cli' \
+  "git grep -O'playwright-cli open http://a' hi" "git grep --open-files-in-pager='playwright-cli open' hi" \
+  'FOO=playwright-cli env true'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY"
+done
+assert_allow "$H" "$(payload tool_name=Bash command='PLAYWRIGHT-CLI -s=composer-j-x-1-c1 open http://a')" "case-variant name with a slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='[ -f x ] && ls ./*.md')" "[ as a command word, glob in an operand → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='jq ".dependencies[\"@playwright/cli\"]" package.json')" "jq → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='pgrep -f playwright-cli')" "pgrep → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npm ls @playwright/cli')" "npm ls → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npm view @playwright/cli version')" "npm view → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='bash hooks/tests/cases/02-cli-isolation-guard.sh')" "a shell running a script whose path names the guard → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "x=playwright-cli"')" "printf of an assignment-shaped string → silent allow"
+
 assert_allow "$H" "$(payload tool_name=Bash command='grep -rn playwright-cli hooks/')" "grep for the name → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='cat playwright-cli-notes.md | head')" "cat of a file named after it → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='which playwright-cli')" "which → silent allow"
