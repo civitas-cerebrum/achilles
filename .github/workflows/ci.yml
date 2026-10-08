@@ -39,23 +39,19 @@ jobs:
         id: install
         run: npm ci --ignore-scripts
 
-      # Every suite runs even when an earlier one fails, so one push reports
-      # all breakage; any red step still fails the job.
-      - name: 🔎  Schemas lint
+      # One step per suite; each runs even when an earlier one fails, so one push reports
+      # all breakage. The list matches scripts/run-suites.mjs (`npm test`).
+      - name: 🔎  Schemas
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run schemas:lint
 
       - name: 🔒  Vendored kernel lock
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: node scripts/sync-kernel-mandate.mjs --check
+        run: npm run test:lock
 
       - name: 📐  Doc-drift lint
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: node scripts/lint-doc-drift.mjs
-
-      - name: 🤖  Generated agents up to date
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: node scripts/build-agents.mjs --check
+        run: npm run test:lint
 
       - name: 🧪  Hook tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
@@ -71,6 +67,10 @@ jobs:
           npm run build:validator
           bash hooks/tests/run.sh
 
+      - name: 🏭  Factory gate cases
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:factory
+
       - name: 🛠️  CLI tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:bin
@@ -78,3 +78,7 @@ jobs:
       - name: 📊  Reporter tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:reporter
+
+      - name: 🤖  Generated agents up to date
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:agents

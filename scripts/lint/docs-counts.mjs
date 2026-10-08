@@ -17,7 +17,8 @@ export function run(report) {
     return;
   }
 
-  const hookFiles = readdirSync('hooks').filter((f) => f.endsWith('.sh'));
+  const factoryFiles = existsSync('hooks/factory') ? readdirSync('hooks/factory').filter((f) => f.endsWith('.sh')) : [];
+  const hookFiles = [...readdirSync('hooks').filter((f) => f.endsWith('.sh')), ...factoryFiles];
   const gateFiles = hookFiles.filter((f) => f.endsWith('-gate.sh') || f.endsWith('-guard.sh'));
   const skillDirs = readdirSync(SKILLS_DIR).filter((d) => statSync(join(SKILLS_DIR, d)).isDirectory());
 

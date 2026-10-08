@@ -250,8 +250,8 @@ Once kicked off, the orchestrators run end-to-end without further prompts. `onbo
 ## Verifying (from a repo checkout)
 
 ```bash
-npm run schemas:lint   # compiles every schema and exercises every fixture
-npm run test:hooks     # full hook test suite (count printed at the end)
+npm test               # every suite (schemas, kernel lock, doc-drift lint, hooks, factory gates, CLI, reporter, agents); exits non-zero if any failed
+npm run test:hooks     # one suite alone, e.g. the hook tests (count printed at the end)
 npm pack --dry-run     # tarball shape sanity check
 ```
 

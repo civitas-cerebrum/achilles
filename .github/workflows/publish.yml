@@ -27,9 +27,8 @@ jobs:
       # used by sibling publishing workflows (@civitas-cerebrum/element-repository,
       # @civitas-cerebrum/element-interactions). package-lock.json is committed
       # to the repo so the deterministic install works on the CI runner.
-      # Dev deps ARE installed: the pre-publish `test:hooks` step runs
-      # `build:validator`, which imports `esbuild` (a devDependency) to bundle
-      # the self-contained validator. Omitting dev deps breaks that build. Dev
+      # Dev deps ARE installed: the release gate runs `build:validator`, which imports `esbuild` (a devDependency)
+      # to bundle the self-contained validator. Omitting dev deps breaks that build. Dev
       # deps never reach the published tarball anyway — `files:` in package.json
       # governs the tarball, not node_modules.
       # --ignore-scripts skips the package's own postinstall (which copies
@@ -37,14 +36,12 @@ jobs:
       - name: 🧩  Install dependencies (incl. dev — esbuild needed to build the validator)
         run: npm ci --ignore-scripts
 
-      - name: 🔎  Schemas lint
-        run: npm run schemas:lint
+      # The same gate as `npm test`: schemas, kernel lock, doc-drift lint, hooks, factory gates, CLI tests,
+      # reporter tests, generated agents. Publish runs with --ignore-scripts, so prepack never gates it.
+      - name: ✅  Release gate (npm test)
+        run: npm test
 
-      - name: 🧪  Hook tests
-        run: npm run test:hooks
-
-      # --ignore-scripts skips prepack (which would re-run test:hooks)
-      # and any other lifecycle scripts on the publisher side.
+      # --ignore-scripts skips prepack (which would re-run the gate) and the other lifecycle scripts.
       - name: 📦  Publish Package
         run: npm publish --ignore-scripts --access public --provenance
         env:
