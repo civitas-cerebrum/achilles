@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 const CLI = new URL('../../bin/selector-evidence.mjs', import.meta.url).pathname;
 
-test('the repository default comes from rules["selectors.evidence"].repository', { todo: 'Task 6' }, () => {
+test('the repository default comes from rules["selectors.evidence"].repository', () => {
   const d = mkdtempSync(join(tmpdir(), 'se-'));
   writeFileSync(join(d, 'achilles-factory-rules.json'), JSON.stringify({ rules: { 'selectors.evidence': { repository: 'custom/repo.json', evidenceDir: 'ev' } } }));
   const r = spawnSync(process.execPath, [CLI, '--page', 'P', '--element', 'e', '--base-url', 'https://x.example.test', '--anonymous'], { cwd: d, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: d } });

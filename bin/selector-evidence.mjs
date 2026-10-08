@@ -34,14 +34,12 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
+import { projectRoot } from './lib/project-root.mjs'
 import { DEFAULT_EVIDENCE_DIR, NOTE_REFUSED, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './lib/evidence-note.mjs'
 
 const MAX_PNG_BYTES = 300 * 1024
 const VIEWPORT = { width: 1920, height: 1080 }
-const DEFAULT_REPOSITORY = 'tests/data/page-repository.json'
-// The default --out is the gate's default evidence dir, imported rather than restated: the two used to disagree,
-// which left a project that omits `evidenceDir` writing notes the gate never reads. See evidence-note.mjs.
-const DEFAULT_OUT = DEFAULT_EVIDENCE_DIR
+const DEFAULT_REPOSITORY = 'tests/e2e/page-repository.json'
 
 const USAGE =
   'achilles-selector-evidence --page <Page> --element <element> (--base-url <url> [--storage-state <path>] | --context <name>) ' +
@@ -58,8 +56,8 @@ count 1 (≥ 1 for an entry marked "list": true), outlines it, screenshots the v
   --context           name of an entry in the "contexts" map of achilles-factory-rules.json
                       ({ "<name>": { "baseUrl": "…", "storageState": "…" } }); flags override its fields
   --url               path to open (default "/"); the page must render the element without any interaction
-  --out               output directory (default: rules["${RULE_ID}"].evidenceDir, else ${DEFAULT_OUT})
-  --repository        page repository file (default ${DEFAULT_REPOSITORY})
+  --out               output directory (default: rules["${RULE_ID}"].evidenceDir, else the schema default ${DEFAULT_EVIDENCE_DIR})
+  --repository        page repository file (default: rules["${RULE_ID}"].repository, else ${DEFAULT_REPOSITORY})
   --mask              CSS selector masked in the screenshot (repeatable; default: none) — use it for personal data
   --anonymous         no session: open the page signed out (pre-login pages)
   --help              this text
@@ -97,7 +95,7 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2))
-const cwd = process.cwd()
+const root = projectRoot()
 if (!args.page || !args.element) fail('Missing --page or --element', `Use: ${USAGE}`, 'the-tool', 2)
 
 const rules = loadFactoryRules()
@@ -124,11 +122,11 @@ try {
 }
 if (!args.anonymous && !storageState)
   fail('No session: pass --storage-state (or a context with storageState), or --anonymous for a signed-out page', `Use: ${USAGE}`, 'config-and-contexts', 2)
-if (storageState && !fs.existsSync(path.resolve(cwd, storageState)))
+if (storageState && !fs.existsSync(path.resolve(root, storageState)))
   fail(`Storage state ${storageState} does not exist`, "Run the project's auth setup to produce it (the tool never logs in), then re-run.", 'config-and-contexts', 2)
 
-const repoFile = path.resolve(cwd, args.repository ?? DEFAULT_REPOSITORY)
-if (!fs.existsSync(repoFile)) fail(`Page repository ${path.relative(cwd, repoFile)} not found`, 'Pass --repository <file>.', 'the-tool', 2)
+const repoFile = path.resolve(root, args.repository ?? rules.rules?.[RULE_ID]?.repository ?? DEFAULT_REPOSITORY)
+if (!fs.existsSync(repoFile)) fail(`Page repository ${path.relative(root, repoFile)} not found`, 'Pass --repository <file>.', 'the-tool', 2)
 const repo = JSON.parse(fs.readFileSync(repoFile, 'utf8'))
 const page = (repo.pages ?? []).find((p) => p.name === args.page)
 const entry = page?.elements?.find((e) => e.elementName === args.element)
@@ -145,17 +143,17 @@ if (!entry)
 // are CommonJS and a dynamic import can yield a namespace without the named exports.
 let chromium, ElementRepository
 try {
-  const req = createRequire(path.join(cwd, 'noop.js'))
+  const req = createRequire(path.join(root, 'noop.js'))
   const pw = req('@playwright/test')
   chromium = pw?.chromium ?? pw?.default?.chromium
   ElementRepository = req('@civitas-cerebrum/element-repository').ElementRepository
   if (!chromium || !ElementRepository) throw new Error('module resolved but a required export is missing')
 } catch (e) {
-  fail(`@playwright/test or @civitas-cerebrum/element-repository unusable from ${cwd}: ${e.message}`, 'Run the tool from the project root after npm install.', 'the-tool', 2)
+  fail(`@playwright/test or @civitas-cerebrum/element-repository unusable from ${root}: ${e.message}`, 'Run the tool from the project root after npm install.', 'the-tool', 2)
 }
 
 const key = `${args.page}.${args.element}`
-const outDir = path.resolve(cwd, args.out ?? rules.rules?.[RULE_ID]?.evidenceDir ?? DEFAULT_OUT)
+const outDir = path.resolve(root, args.out ?? rules.rules?.[RULE_ID]?.evidenceDir ?? DEFAULT_EVIDENCE_DIR)
 const pngPath = path.join(outDir, `${key}.png`)
 const mdPath = path.join(outDir, `${key}.md`)
 const contextLabel = `${args.context ?? 'flags'}${args.anonymous ? ' (anonymous)' : ''}`
@@ -244,7 +242,7 @@ try {
       fs.mkdirSync(outDir, { recursive: true })
       fs.writeFileSync(pngPath, png)
       writeNoteText(mdPath, text)
-      process.stdout.write(text + `png: ${path.relative(cwd, pngPath)} (${Math.round(png.length / 1024)} KB)\n`)
+      process.stdout.write(text + `png: ${path.relative(root, pngPath)} (${Math.round(png.length / 1024)} KB)\n`)
     }
   }
 } catch (e) {
@@ -252,7 +250,7 @@ try {
   // when the element had resolved to exactly one node and the only problem was the note's own content, which no
   // amount of re-running from a different url can change.
   failure = e?.code === NOTE_REFUSED
-    ? [String(e.message).split('\n')[0], `The element resolved; the note was refused. Remove the personal data from the page (or mask it with --mask), or insert the entry with the rule's provisional flag and a known-issues row. Nothing was written to ${path.relative(cwd, outDir)}.`]
+    ? [String(e.message).split('\n')[0], `The element resolved; the note was refused. Remove the personal data from the page (or mask it with --mask), or insert the entry with the rule's provisional flag and a known-issues row. Nothing was written to ${path.relative(root, outDir)}.`]
     : [`${key} could not be resolved: ${String(e?.message ?? e).split('\n')[0]}`, 'Check the --url (the page must render the element) and the frame the entry names, then re-run.']
 } finally {
   await browser.close().catch(() => {})

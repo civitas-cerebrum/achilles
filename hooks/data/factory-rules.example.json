@@ -15,13 +15,12 @@
                     "page.goto(", "page.click(", "page.fill(", "page.waitFor", "page.evaluate(", "page.getBy", "page.$",
                     "page.keyboard", "page.mouse", "querySelector", "xpath=", "css=", "text=", "role=", ":visible", "[aria-"],
       "allowed": ["extractAttribute:", "getAttribute(", "page.context()", "addInitScript(", "addStyleTag("],
-      "action": "Reference the element by repository name: steps.<verb>('<element>', '<Page>'). If the element is not in tests/data/page-repository.json, add it with live evidence first (selectors.evidence)."
+      "action": "Reference the element by repository name: steps.<verb>('<element>', '<Page>'). If the element is not in tests/e2e/page-repository.json, add it with live evidence first (selectors.evidence)."
     },
     "selectors.evidence": {
       "description": "Every new or changed page-repository selector has a live evidence note, or is marked provisional.",
       "doc": "skills/achilles-protocol/references/factory-gates.md#selectors.evidence",
-      "repository": "tests/data/page-repository.json",
-      "evidenceDir": "docs/evidence/selectors",
+      "repository": "tests/e2e/page-repository.json",
       "provisionalKey": "provisional",
       "action": "Insert the entry with \"provisional\": true, run npx achilles-selector-evidence --page <Page> --element <element> --context <north|south> (live inspection first), then drop the flag in the same change; an entry that stays provisional needs a known-issues row."
     },

@@ -119,13 +119,9 @@ assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="
   "implementer Write a spec → ALLOW"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=implementer file_path="$CP/$EV/report.md" content='# Report')" \
   "implementer Write its report.md → ALLOW"
-# The carve-out used to be the path literal tests/e2e/page-repository.json, so
-# it missed the repository wherever a project actually puts it — including
-# tests/data/page-repository.json, the default the factory rules themselves
-# ship. An implementer in such a project could rewrite the page repository
-# freely, which is the separation of duties this row exists to enforce: live
-# inspection owns the repository because a selector written from memory is a
-# guess. The deny is now a glob, and every path below has to be covered by it.
+# Live inspection owns the page repository because a selector written from memory
+# is a guess, so the deny is a glob that covers the repository wherever a project
+# puts it; every path below has to be covered by it.
 for REPO_PATH in \
   tests/e2e/page-repository.json \
   tests/data/page-repository.json \

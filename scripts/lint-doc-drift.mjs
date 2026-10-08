@@ -16,7 +16,6 @@
 //  11 anchors           every cited §"Heading" exists in the cited file
 //  12 role-dispatch-sites  role names in skill/README prose  ↔  QA mandate roles
 //  13 factory-manifest  hook-manifest.json .factory  ↔  hooks/factory/*.sh  ↔  harness-hooks.md
-//  14 evidence-dir      selectors.evidence evidenceDir default  ↔  gate, CLI, reference pages
 //
 // Where a surface has not yet converged the lint reports the specific drift
 // rather than weakening the check.
@@ -35,12 +34,11 @@ import * as agents from './lint/agents.mjs';
 import * as anchors from './lint/anchors.mjs';
 import * as roleDispatchSites from './lint/role-dispatch-sites.mjs';
 import * as factoryManifest from './lint/factory-manifest.mjs';
-import * as evidenceDir from './lint/evidence-dir.mjs';
 
 const { report, state } = makeReport();
 for (const check of [registry, links, hookManifest, roleMap, hookRefs, docsCounts,
   ledgerInventory, optInSurfaces, activation, agents, anchors, roleDispatchSites,
-  factoryManifest, evidenceDir]) check.run(report);
+  factoryManifest]) check.run(report);
 
 if (state.failed) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

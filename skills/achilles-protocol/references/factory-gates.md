@@ -92,7 +92,7 @@ it first). Every entry whose selector is new or changed must either carry `"<pro
 irrelevant) and which has a `- source:` line. A note that still describes the old selector is stale. Adding the
 provisional flag alone, removing an entry or reordering is never judged.
 
-Fields: `repository` (required), `evidenceDir` (default `docs/evidence/selectors`), `provisionalKey` (default
+Fields: `repository` (required), `evidenceDir` (default: see `hooks/data/factory-rules.schema.json`), `provisionalKey` (default
 `provisional`); `action` may carry `<Page>` and `<element>`, which the gate fills in. Page and element names are read
 separately, so a page name containing a dot (`Checkout.v2`) works; the note is `<evidenceDir>/Checkout.v2.<element>.md`.
 

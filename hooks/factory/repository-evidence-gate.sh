@@ -36,11 +36,15 @@ factory_guard_ready; factory_read_input
 ID=selectors.evidence
 rule_enabled "$ID"
 REPO_REL="$(rule_field "$ID" repository)"
-EVDIR="$(rule_field "$ID" evidenceDir)"; EVDIR="${EVDIR:-docs/evidence/selectors}"
+# evidenceDir is optional; its default is declared once, in the schema, and bin/lib/evidence-note.mjs reads it there too.
+SCHEMA="${BASH_SOURCE[0]%/*}/../data/factory-rules.schema.json"
+EVDIR="$(rule_field "$ID" evidenceDir)"
+[ -n "$EVDIR" ] || EVDIR="$("$JQ" -r '."$defs".selectorsEvidence.properties.evidenceDir.default // empty' "$SCHEMA" 2>/dev/null)"
 PKEY="$(rule_field "$ID" provisionalKey)"; PKEY="${PKEY:-provisional}"
 [ -n "$FILE_PATH" ] || exit 0
 [ -n "$REPO_REL" ] || emit_allow_warn "$ID.repository missing in $(rules_rel) — gate skipped"
 [ "$(rel_path "$FILE_PATH")" = "$REPO_REL" ] || exit 0
+[ -n "$EVDIR" ] || emit_allow_warn "$ID.evidenceDir unset and no default in $SCHEMA — gate skipped"
 DISK_FILE="$FACTORY_ROOT/$REPO_REL"; [ -f "$DISK_FILE" ] || DISK_FILE=/dev/null
 CHANGED="$(printf '%s' "$INPUT" | "$JQ" -r --rawfile disk "$DISK_FILE" --arg pk "$PKEY" '
   def entries: [ .pages[]? as $p | ($p.elements // [])[] | select(type == "object")
