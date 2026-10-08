@@ -57,9 +57,9 @@ no executable test and keeps its heading so the decision stays on record. A proj
 
 - **Contexts**: region-2
 - **Type**: @e2e @checkout @negative
-- **Purpose**: A shopper who abandons the wallet provider's modal is back at checkout and the order is not placed.
-- **Preconditions / test data**: merchant open now (`shop` or any merchant the resolver finds); one orderable
-  item; the wallet provider offered on `/pay`; account `user-b` with the "Save payment method" switch off.
+- **Purpose**: A user who abandons the payment modal is back at checkout and the order is not placed.
+- **Preconditions / test data**: shop open now (`shop` or any shop the resolver finds); one orderable
+  item; the payment modal offered on `/pay`; account `user-b` with the "Save payment method" switch off.
 - **Steps**:
   1. Add one item to the basket and go to checkout.
   2. Choose the wallet provider and continue to payment.

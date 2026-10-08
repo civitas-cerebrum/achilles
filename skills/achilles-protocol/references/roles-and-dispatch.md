@@ -42,6 +42,7 @@ The orchestrator dispatches every step and each note has one writer, so these ar
 
 - Review loop: `task-reviewer` → `orchestrator` → `implementer` → `task-reviewer`. Findings go back to the same implementer, resumed; the re-review checks only the listed items. At most 5 rounds, then the orchestrator escalates to the operator.
 - Verify loop: `verifier` → `orchestrator` → `implementer` → `verifier`. A failing verdict becomes a fix round, followed by a new independent verification.
+- Instruction changes: `doc-author` writes `docs/proposals/<topic>.md`; the operator (a human) reviews it and applies it to `CLAUDE.md` or `.claude/skills/**`. No role is granted those paths.
 - The round cap and resuming the same implementer are protocol rules, not path scopes.
 
 ## Verify, switch off, limits

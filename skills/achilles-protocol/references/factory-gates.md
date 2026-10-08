@@ -165,7 +165,7 @@ marker means a maintenance commit: only the stamp is checked. Commits in other r
 
 Fields: `stamp`, `trailDir`, `hashCommand` (argv; required), `currentChange`, `required[]`.
 
-The stamp format and what it proves: [verification-record.md](verification-record.md#the-stamp).
+The receipt carries `treeHash`: sorted `(path, content hash)` lines over the hashed roots. A touch keeps it; any added, removed or changed file invalidates it.
 
 <a id="process.state"></a>
 ### process.state

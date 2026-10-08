@@ -146,7 +146,7 @@ another test's leftovers. If the requirements cannot be met now, the test says s
 
 ### The five roles
 
-1. **Resolver** — requirements → a candidate. Probes each candidate (merchant open now, items orderable, the
+1. **Resolver** — requirements → a candidate. Probes each candidate (shop open now, items orderable, the
    payment option offered in this context) and returns the first that satisfies everything, or a **structured
    blocker list** per candidate (`{ candidate: 'shop', blockers: ['closed-now', 'wallet-not-offered'] }`).
    The skip message quotes the list. Candidates and their facts are data (a catalogue per context), never branches.

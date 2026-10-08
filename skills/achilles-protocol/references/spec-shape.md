@@ -12,7 +12,7 @@ scenario block it implements is defined by `requirement-intake`.
    block's Type: `test('CHK-03 — …', { tag: ['@e2e', '@checkout'] }, async ({ … }) => { … })`. No loops that
    generate tests from a table, no `test.step` wrappers that hide several scenarios in one test.
 2. **Steps inline, in reading order.** The block's Steps appear in the spec in the same order, one or a few calls
-   each, by repository name (`steps.click('walletOption', 'PayPage')`). A reader finds step 3 of the block by
+   each, by repository name (`steps.click('payOption', 'PayPage')`). A reader finds step 3 of the block by
    reading down to the third step of the test.
 3. **Verbs only for shared chores.** A repeated chore (arrive at checkout with a planned basket, fill delivery
    details, pay by card) becomes a fixture verb only when **two or more** scenarios share it. A step unique to one
@@ -71,7 +71,7 @@ test('CHK-03 — Cancelling the payment modal returns to checkout without an ord
   const { order } = await checkout.arriveWithPlannedBasket(req);          // step 1: chore shared by 6 scenarios → verb
 
   await steps.click('continueToPayment', 'CheckoutPage');                  // step 2
-  await steps.click('walletOption', 'PayPage');
+  await steps.click('payOption', 'PayPage');
   const modal = await checkout.paymentModal();                             // Steps bound to the modal (fixture)
   await modal.click('cancelAndReturn', 'PaymentModal');                    // step 3
   await steps.verifyUrlContains('/checkout');                              // step 4: checkout shown again

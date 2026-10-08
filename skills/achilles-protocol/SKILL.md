@@ -328,7 +328,7 @@ Element-scoped variant + raw-selector escape hatch are documented in `references
 Fixtures, verbs, resolvers, planners, registries, hooks and tools are **not** unit-tested. They exist to make
 scenarios run; the scenarios are their test. Proof comes from:
 
-- **Running the scenarios** that use them, N consecutive times ([`references/verification-record.md`](references/verification-record.md));
+- **Running the scenarios** that use them, N consecutive times (bar: [`references/test-composition-standards.md`](references/test-composition-standards.md) §7; record: [`references/verification-record.md`](references/verification-record.md));
 - **a can-fail proof per family** — a mutation that must turn the intended assertion red with the intended message;
 - **offline hook fixture cases** (`hooks/tests/`) for hooks and gates: input, expected decision, message;
 - **probes** — a tool run once against the real environment, its output recorded as evidence.

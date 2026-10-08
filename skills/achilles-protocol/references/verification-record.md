@@ -1,7 +1,7 @@
 # Verification record
 
 What "verified" and "stable" mean as written artefacts: the verify note, the can-fail proofs, the content-hash stamp.
-Rule 7 (`SKILL.md`) sets the run counts; the verifier role's scope is in
+The run counts live in [test-composition-standards.md](test-composition-standards.md) §7 ("Stability is 3×/5×"); the verifier role's scope is in
 [roles-and-dispatch.md](roles-and-dispatch.md) §"Change loop".
 
 ## Stable
@@ -9,8 +9,7 @@ Rule 7 (`SKILL.md`) sets the run counts; the verifier role's scope is in
 A test the suite keeps is **stable** only when both hold:
 
 1. **N consecutive green runs for its test id** in the Achilles reporter history (`.achilles/history/tests.ndjson`:
-   one entry per test per run, keyed by `id`, with `project` and `status`). N is set by the project, never below the
-   Rule 7 bar (3 for a new or edited test, 5 for a healed flake). Each run is its own invocation with its own
+   one entry per test per run, keyed by `id`, with `project` and `status`). N is set by the project, never below that bar. Each run is its own invocation with its own
    `--output` directory, so a failure's artefacts are never overwritten. `flaky` (green only on retry) does not count:
    pass `--retries=0` on the verification invocation. An order-placing test on the `one-confirming-run` spend policy
    (`test-data-conventions`, spend budgets) counts one audited run instead and is never re-run to reach N.
@@ -72,8 +71,5 @@ controller that drove the change. The path gate does not read the verdict (KL-16
 
 ## The stamp
 
-The project's verify command writes a receipt that the commit gate (`process.evidence`,
-[factory-gates.md](factory-gates.md#process.evidence)) checks. The receipt carries the hash of the tree it verified
-(`treeHash`: sorted `(path, content hash)` lines over the hashed roots), never a timestamp. The commit-time check
-recomputes it: a touch keeps it, any added, removed or changed file invalidates it, and a forged stamp passes only if
-it carries the current tree's hash.
+The commit gate checks the verify command's receipt: format and check in
+[factory-gates.md](factory-gates.md#process.evidence). The receipt carries a tree hash, never a timestamp.
