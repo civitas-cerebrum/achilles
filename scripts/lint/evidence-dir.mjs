@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const FACTORY_SCHEMA = 'hooks/data/factory-rules.schema.json';
 const EVIDENCE_GATE = 'hooks/factory/repository-evidence-gate.sh';
-const EVIDENCE_NOTE = 'bin/evidence-note.mjs';
+const EVIDENCE_NOTE = 'bin/lib/evidence-note.mjs';
 const DOCS = [
   'skills/achilles-protocol/references/factory-gates.md',
   'skills/achilles-protocol/references/selector-evidence.md',

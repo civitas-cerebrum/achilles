@@ -80,7 +80,7 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
   in `hooks/data/factory-rules.schema.json`, which is the authoritative copy of that string. The field is optional, so
   that default is load-bearing: when the tool and the gate disagree about it, a project that omits `evidenceDir`
   writes notes where the gate never looks and the gate denies the same write for ever, telling the agent to run the
-  tool it has just run. `scripts/lint-doc-drift.mjs` fails when the schema, the gate, `bin/evidence-note.mjs` or this
+  tool it has just run. `scripts/lint-doc-drift.mjs` fails when the schema, the gate, `bin/lib/evidence-note.mjs` or this
   page drift apart on it.
 - **Dependency on proposal B.** These fields belong to the factory-rules schema that proposal B ships
   (`hooks/data/factory-rules.schema.json`); this tool depends on B defining them, all optional. The exact fields the

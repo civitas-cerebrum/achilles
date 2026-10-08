@@ -27,8 +27,8 @@
 // given files. A block whose normalised Status starts with `omitted-by-ruling` needs only Contexts, Purpose and Status
 // (a project that customises blockEnums.status keeps that token to keep the minimal form).
 //
-// Exit 0 = every (selected) block passes; exit 1 = a block is rejected, `--id` matched no block, or a file/rules
-// problem. Messages have three lines: `[specs.shape] <file>:<line> <ID>: <what>` / `→ Do: …` / `→ Why/how: <doc>`.
+// Exit 0 = every (selected) block passes; exit 1 = a block is rejected or `--id` matched no block; exit 2 = usage or
+// configuration (unknown flag, missing rule file, missing document). Messages have three lines: `[specs.shape] <file>:<line> <ID>: <what>` / `→ Do: …` / `→ Why/how: <doc>`.
 // `--json` prints { ok, blocks: [{ id, title, line, file, fields, errors }], skipped }: `blocks` holds the selected
 // blocks (only the `--id` match when given); `skipped` always lists every non-block `####` heading of the given files.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -36,8 +36,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_RULES_FILE, projectRoot, rulesPath } from './lib/project-root.mjs';
 
-export const RULE_ID = 'specs.shape';
-export const FIELDS = ['Contexts', 'Type', 'Purpose', 'Preconditions / test data', 'Steps', 'Expected', 'Oracle', 'Spend policy', 'Status'];
+const RULE_ID = 'specs.shape';
+const FIELDS = ['Contexts', 'Type', 'Purpose', 'Preconditions / test data', 'Steps', 'Expected', 'Oracle', 'Spend policy', 'Status'];
 const OMITTED_REQUIRED = ['Contexts', 'Purpose', 'Status'];
 export const DEFAULT_ENUMS = {
   oracle: ['UI-only', 'api', 'db'],
@@ -73,7 +73,7 @@ const startsWithToken = (value, allowed) => {
 };
 
 /** Reads rule specs.shape and fills the lint's defaults. Throws with a readable message on any problem. */
-export function loadRule(root = projectRoot()) {
+function loadRule(root = projectRoot()) {
   const file = rulesPath(root);
   if (!existsSync(file)) throw new Error(`rule file not found at ${file}`);
   let rules;
@@ -244,7 +244,7 @@ export function lintScenarioText(text, file = '<text>', rule = loadRule()) {
 }
 
 /** Lints several documents together (duplicates checked across all of them). files: [{ abs, display }]. */
-export function lintFiles(files, rule = loadRule()) {
+function lintFiles(files, rule = loadRule()) {
   const blocks = [];
   const skipped = [];
   for (const f of files) {
@@ -256,7 +256,7 @@ export function lintFiles(files, rule = loadRule()) {
   return { blocks, skipped };
 }
 
-export function formatError(block, e, doc) {
+function formatError(block, e, doc) {
   return `[${RULE_ID}] ${block.file}:${e.line} ${block.id}: ${e.message}\n→ Do: ${DO_ACTION}\n→ Why/how: ${doc}`;
 }
 
@@ -268,18 +268,21 @@ function main(argv) {
     else if (a === '--json') args.json = true;
     else if (a === '--id') args.id = argv[++i] ?? '';
     else if (a.startsWith('--id=')) args.id = a.slice(5);
-    else args.files.push(a);
+    else if (a.startsWith('-')) {
+      process.stderr.write(`[${RULE_ID}] unknown option ${a}\n→ Do: use achilles-scenario-lint [files…] [--id <ID>] [--quiet] [--json]\n→ Why/how: ${DEFAULT_DOC}\n`);
+      return 2;
+    } else args.files.push(a);
   }
   const root = projectRoot();
   let rule;
   try { rule = loadRule(root); } catch (e) {
     process.stderr.write(`[${RULE_ID}] scenario lint cannot run: ${e.message}\n→ Do: create ${DEFAULT_RULES_FILE} at the project root (or point FACTORY_RULES at the rule file) with rule specs.shape and its titleIdPattern\n→ Why/how: ${DEFAULT_DOC}\n`);
-    return 1;
+    return 2;
   }
   if (!args.files.length) args.files = (rule.scenarioDocs ?? []).map((d) => path.join(root, d));
   if (!args.files.length) {
     process.stderr.write(`[${RULE_ID}] no scenario document to lint\n→ Do: pass a document or list it in specs.shape.scenarioDocs\n→ Why/how: ${rule.doc}\n`);
-    return 1;
+    return 2;
   }
   const files = [];
   for (const f of args.files) {
@@ -288,7 +291,7 @@ function main(argv) {
     const display = rel && !rel.startsWith('..') ? rel : abs;
     if (!existsSync(abs)) {
       process.stderr.write(`[${RULE_ID}] scenario document ${display} not found\n→ Do: pass an existing scenario document (specs.shape.scenarioDocs)\n→ Why/how: ${rule.doc}\n`);
-      return 1;
+      return 2;
     }
     files.push({ abs, display });
   }

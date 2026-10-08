@@ -34,7 +34,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
-import { DEFAULT_EVIDENCE_DIR, NOTE_REFUSED, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './evidence-note.mjs'
+import { DEFAULT_EVIDENCE_DIR, NOTE_REFUSED, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './lib/evidence-note.mjs'
 
 const MAX_PNG_BYTES = 300 * 1024
 const VIEWPORT = { width: 1920, height: 1080 }

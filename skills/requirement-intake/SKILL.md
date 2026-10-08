@@ -82,8 +82,8 @@ IDs follow `titleIdPattern` and are unique **per context** (the same ID may name
 
 - Files default to `specs.shape.scenarioDocs`; the rule file is `$FACTORY_RULES` (absolute, or relative to the
   project root) or `achilles-factory-rules.json` at the root. The root is `$CLAUDE_PROJECT_DIR`, else the cwd.
-- **Exit 0** — every selected block passes. **Exit 1** — a block is rejected, `--id` matched no block, or the
-  rule file or a document is missing.
+- **Exit 0** — every selected block passes. **Exit 1** — a block is rejected or `--id` matched no block.
+  **Exit 2** — usage or configuration: unknown flag, missing rule file, no document, document not found.
 - Every error is three lines: `[specs.shape] <file>:<line> <ID>: <what>` / `→ Do: …` / `→ Why/how: <doc#anchor>`.
 - `--json` prints `{ ok, blocks: [{ id, title, line, file, fields, errors }], skipped }` for tools; with `--id`,
   `blocks` holds only the match while `skipped` still lists every non-block `####` heading of the given files.

@@ -1,5 +1,4 @@
-// evidence-note.mjs — the selector evidence note, shared by selector-evidence.mjs (live) and any backfill tool a
-// project writes for entries that predate the convention.
+// evidence-note.mjs — the selector evidence note written by selector-evidence.mjs.
 //
 // One note per repository entry: <evidence dir>/<Page>.<element>.md. The note is a contract, not a log: the
 // repository-evidence gate reads exactly two of its lines —
@@ -14,7 +13,7 @@
 // (resolveAndCheck) can be driven with a fake locator.
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import * as path from 'node:path'
-import { projectRoot, rulesPath } from './lib/project-root.mjs'
+import { projectRoot, rulesPath } from './project-root.mjs'
 
 export const TOOL_VERSION = '1.0'
 export const RULE_ID = 'selectors.evidence'
@@ -45,14 +44,9 @@ export function loadFactoryRules(root = projectRoot()) {
   }
 }
 
-/** The three-line message every factory tool prints: [rule-id] what / → Do: … / → Why/how: doc#anchor. */
-export function formatMessage(what, action, anchor = 'the-sequence') {
-  return `[${RULE_ID}] ${what}\n→ Do: ${action}\n→ Why/how: ${DOC}#${anchor}`
-}
-
-/** Prints the three-line message to stderr and exits (1 = evidence refused, 2 = usage or configuration). */
+/** Prints the three-line message `[rule-id] what / → Do: … / → Why/how: doc#anchor` to stderr and exits (1 = evidence refused, 2 = usage or configuration). */
 export function fail(what, action, anchor, code = 1) {
-  process.stderr.write(formatMessage(what, action, anchor) + '\n')
+  process.stderr.write(`[${RULE_ID}] ${what}\n→ Do: ${action}\n→ Why/how: ${DOC}#${anchor}\n`)
   process.exit(code)
 }
 
@@ -74,8 +68,7 @@ const oneLine = (s) => String(s).replace(/\s+/g, ' ').trim()
 
 /**
  * Renders a note. `n` = { key, selector, context, url, date, tool, count, list, meta: { tag, role, name, dataAttrs },
- * aria, screenshot, source, record, legacySource, live } — missing fields render as "—".
- * A note without `count` is a backfill note: it says so instead of pretending the tool resolved it.
+ * aria, screenshot, source } — missing fields render as "—".
  */
 export function renderNote(n) {
   const d = (v) => (v === undefined || v === null || v === '' ? '—' : v)
@@ -84,19 +77,12 @@ export function renderNote(n) {
     `- selector: ${JSON.stringify(n.selector)}`,
     `- context: ${d(n.context)} · url: ${d(n.url)} · date: ${d(n.date)} · tool: ${d(n.tool)}`,
   ]
-  if (n.count !== undefined) {
-    const m = n.meta ?? {}
-    lines.push(
-      `- resolved count: ${n.count}${n.list ? ' (list entry)' : ''} · tag: ${d(m.tag)} · role: ${d(m.role)} · ` +
-        `name: ${m.name ? JSON.stringify(oneLine(m.name)) : '—'} · data-attribute: ${d(m.dataAttrs)}`,
-    )
-    lines.push(`- aria snippet: ${n.aria ? '`' + oneLine(n.aria).replace(/`/g, "'").slice(0, 300) + '`' : '—'}`)
-  } else {
-    lines.push('- resolved count: — (backfill note: not re-resolved by the tool)')
-  }
-  if (n.record !== undefined) lines.push(`- legacy record: ${JSON.stringify(oneLine(n.record).slice(0, 700))}`)
-  if (n.legacySource !== undefined) lines.push(`- legacy source: ${n.legacySource}`)
-  if (n.live !== undefined) lines.push(`- live-observed: ${n.live}`)
+  const m = n.meta ?? {}
+  lines.push(
+    `- resolved count: ${d(n.count)}${n.list ? ' (list entry)' : ''} · tag: ${d(m.tag)} · role: ${d(m.role)} · ` +
+      `name: ${m.name ? JSON.stringify(oneLine(m.name)) : '—'} · data-attribute: ${d(m.dataAttrs)}`,
+  )
+  lines.push(`- aria snippet: ${n.aria ? '`' + oneLine(n.aria).replace(/`/g, "'").slice(0, 300) + '`' : '—'}`)
   lines.push(`- screenshot: ${d(n.screenshot)}`)
   lines.push(`- source: ${n.source}`)
   return lines.join('\n') + '\n'
@@ -106,14 +92,10 @@ export function renderNote(n) {
  * Renders and validates a note: a `source` is required, and no line but `- selector:` may contain '@'. Throws
  * before any write, so a refusal leaves the committed note alone.
  *
- * The '@' rule guards against personal data (an address read off a live page) reaching a committed file, which is
- * why it covers the observed fields — the accessible name, the data attributes, the aria snippet, the url. It used
- * to cover the whole rendered text, INCLUDING the selector line, and that made a legitimate entry unwritable: a
- * selector like {"css": "[data-field=\"user@domain\"]"} is the project's own committed value, already in git in
- * page-repository.json, and the gate requires the note to carry it back verbatim (deep-equal), so it can be neither
- * redacted nor omitted. The tool therefore refused to write the one note the gate would accept, and the entry could
- * only ever be marked provisional. The caller is also told WHICH line offends, because "its text contains '@'" sent
- * the reader looking through a note that was never written.
+ * The '@' rule guards against personal data (an address read off a live page) reaching a committed file, so it covers
+ * the observed fields (accessible name, data attributes, aria snippet, url) but not the selector line: the selector
+ * is the project's own committed value and the gate requires the note to carry it back verbatim. The error names the
+ * offending line.
  */
 export function validateNote(n) {
   if (!n.source) { const e = new Error(`refusing to write the ${n.key} note: it has no source`); e.code = NOTE_REFUSED; throw e }
@@ -139,8 +121,6 @@ export function writeNoteText(file, text) {
   writeFileSync(file, text)
   return text
 }
-
-export const writeNote = (file, n) => writeNoteText(file, validateNote(n))
 
 /**
  * The count check on a resolved locator — the seam a fake locator can drive. Exactly one match, or at least one
