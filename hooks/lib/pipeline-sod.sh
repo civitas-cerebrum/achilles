@@ -189,7 +189,7 @@ See:
 # <agent_type> is the writer's subagent type; it must be one of
 # $PIPELINE_APPROVER_TYPES (space-separated). Empty fails closed: a typed
 # dispatch is part of the reviewer contract (skills/workflow-reviewer).
-# Deliberately stricter than the kernel's "general-purpose is not a claim"
+# Stricter than the kernel's "general-purpose is not a claim"
 # rule: there, general-purpose is merely unbound; here a missing or
 # general-purpose agent_type is an explicit deny because the write is an
 # approval and only a named approver role may make one.

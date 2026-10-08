@@ -166,7 +166,7 @@ section "protected-bash fail-closed: the deny says what could not be proved"
 assert_deny "$HOOK" "$(bash_payload 'awk 1 ~/.claude/settings.json')" "unknown command on a protected line" "Cannot prove this command does not write: .claude/settings.json"
 assert_deny "$HOOK" "$(bash_payload 'cp x ~/.claude')" "cp into the directory the hook install lives in" "Writes into: .claude"
 
-# Fix round 4: the words bash runs are not the words typed (braces), a reader or writer is only
+# the words bash runs are not the words typed (braces), a reader or writer is only
 # itself when nothing on the line changes what it runs, and a line the guard cannot finish denies.
 section "protected-bash fail-closed: brace expansion is judged as bash expands it"
 while IFS= read -r c; do
@@ -249,7 +249,7 @@ assert_deny "$HOOK" "$(bash_payload 'mkdir -p .claude/achilles')" "mkdir of the 
 assert_deny "$HOOK" "$(bash_payload 'touch -d yesterday ~/.claude/settings.json')" "touch past its option value" "Writes into: .claude/settings.json"
 
 
-# Fix round 5: the guard inverts to UNRECOGNISED = UNSAFE. A sed script is safe only if it parses
+# the guard inverts to UNRECOGNISED = UNSAFE. A sed script is safe only if it parses
 # under a read-only grammar; writer options are parsed as full short clusters; wrappers peel only
 # known options; an assignment/alias/function earlier on the line poisons later commands; git -c
 # accepts only inert keys; ANSI-C quotes are scanned honouring escapes.

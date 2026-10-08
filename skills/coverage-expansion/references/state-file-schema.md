@@ -55,7 +55,7 @@ State file shape (minimum fields):
 }
 ```
 
-**`runMode` field** — enum `{"standard", "depth"}`. Default `"standard"` when absent (back-compat: state files written before depth mode landed as a first-class option do not carry the field and are interpreted as standard). The orchestrator MUST write the field on the first state-file write of the run, sourced from the `mode:` arg parsed at entry: `mode: standard` → `runMode: "standard"`, `mode: depth` → `runMode: "depth"`, `mode: breadth` → field omitted (breadth mode is a separate pipeline shape, not a strictness flag). The `standard-mode-first-pass-guard.sh` hook reads this field to decide grouping-denial scope: under `"standard"` it denies grouped dispatches on Pass 1 only; under `"depth"` it denies them on every pass.
+**`runMode` field** — enum `{"standard", "depth"}`. Default `"standard"` when absent (back-compat: state files written before depth mode existed do not carry the field and are interpreted as standard). The orchestrator MUST write the field on the first state-file write of the run, sourced from the `mode:` arg parsed at entry: `mode: standard` → `runMode: "standard"`, `mode: depth` → `runMode: "depth"`, `mode: breadth` → field omitted (breadth mode is a separate pipeline shape, not a strictness flag). The `standard-mode-first-pass-guard.sh` hook reads this field to decide grouping-denial scope: under `"standard"` it denies grouped dispatches on Pass 1 only; under `"depth"` it denies them on every pass.
 
 **Per-journey dispatch entry fields (dual-stage).** Each entry in `dispatches[]` carries:
 
@@ -64,7 +64,7 @@ State file shape (minimum fields):
 - `stage_b_cycles` — integer; number of Stage B dispatches for this journey in this pass (equal to or one less than stage_a_cycles depending on whether cycle 7 exhausted or greenlit early).
 - `review_status` — one of `greenlight | blocked-cycle-stalled | blocked-cycle-exhausted | blocked-dispatch-failure`.
 - `final_must_fix` — array of finding-IDs. Empty for `greenlight`; populated for blocked statuses with the list Stage A failed to resolve (carried to next pass's Stage A brief as trigger 4).
-- `result` — the no-skip contract enum value ([ledger-vocabulary.md](../../achilles-protocol/references/ledger-vocabulary.md)). `result` describes Stage A's outcome alongside the no-skip enum; `review_status` describes Stage B's judgement; together they describe both stages' outcomes.
+- `result` — the no-skip contract enum value ([composer schema](../../../schemas/subagent-returns/composer.schema.json)). `result` describes Stage A's outcome alongside the no-skip enum; `review_status` describes Stage B's judgement; together they describe both stages' outcomes.
 - `authorizer` — only non-null for `skipped` (requires user authorisation).
 - `batch_id` — nullable string. Non-null when this journey was part of a batched Stage A dispatch (per [`depth-mode-pipeline.md` §"Batched dispatch for P3 peripheral journeys"](depth-mode-pipeline.md)); the `batch_id` value is shared across every journey in the same batch so resume logic can reconstruct the batch grouping. Null for individually-dispatched journeys. When a journey breaks out of a batch mid-cycle (any cycle ≥ 2 after its Stage B returned `improvements-needed`), `batch_id` becomes null from cycle 2 onward — the cycle-1 batched entry retains the original `batch_id`, the cycle-2+ individual entry does not. `stage_a_cycles` is recorded per-journey in both cases.
 

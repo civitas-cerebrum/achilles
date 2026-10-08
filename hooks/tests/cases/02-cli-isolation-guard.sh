@@ -81,7 +81,7 @@ assert_allow "$H" "$(payload tool_name=Bash command='npx -p @playwright/cli play
 assert_allow "$H" "$(payload tool_name=Bash command='npx @playwright/cli -s=composer-j-x-1-c1 open http://x')" "@playwright/cli with a slug → ALLOW"
 
 
-# Fix round 5: wrappers peel only known options, so an invocation reached through exec -a,
+# wrappers peel only known options, so an invocation reached through exec -a,
 # stdbuf --output, sudo --user, nice --adjustment, xargs --max-args, env -S, doas -u, npx
 # --package or after a bare assignment is still seen as a playwright-cli invocation.
 section "cli-isolation r5: invocations behind wrapper options"

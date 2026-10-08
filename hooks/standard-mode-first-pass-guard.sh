@@ -34,7 +34,7 @@
 #      (c) `runMode == "depth"` (DENY regardless of currentPass)
 #    DENY. Pass 1 of `mode: standard` is strict
 #    per-journey by contract — grouped dispatches are only permitted on
-#    Passes 2-5. Under `mode: depth` (first-class strict-everywhere) they
+#    Passes 2-5. Under `mode: depth` (strict on every pass) they
 #    are forbidden on every pass.
 #
 # 2. Author-without-≥2-cycle-1-sections forbidden.

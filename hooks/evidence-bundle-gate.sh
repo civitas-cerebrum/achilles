@@ -50,7 +50,7 @@
 # DENY/WARN. A live credential has none, and a comment is usually where the
 # bundle path gets published, so that branch denies on every gated surface.
 #
-# Deliberately NOT enforced
+# Not enforced
 # -------------------------
 #
 # * **Staleness.** Its sibling gate requires the receipt to be newer than the
