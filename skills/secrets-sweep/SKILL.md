@@ -235,7 +235,7 @@ Every return MUST open with a `handover` envelope as its first key:
 |---|---|
 | `role` | Kebab-case slug: `secrets-sweep`. |
 | `cycle` | Integer ≥ 1. |
-| `status` | One of `new-tests-landed`, `covered-exhaustively`, `blocked`, `skipped`. |
+| `status` | Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". |
 | `next-action` | One-line directive for the orchestrator. |
 
 **Worked example — `covered-exhaustively`:**
@@ -253,8 +253,7 @@ Every return MUST open with a `handover` envelope as its first key:
 }
 ```
 
-The schema's status enum is
-`{blocked, skipped, new-tests-landed, covered-exhaustively}`:
+Per status:
 
 - `new-tests-landed` — when `tests-added > 0` because a regression
   fixture was authored as part of the sweep.

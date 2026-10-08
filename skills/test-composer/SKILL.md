@@ -372,7 +372,7 @@ Every composer return **MUST** open with a `handover` envelope as its first key.
 |---|---|
 | `role` | Kebab-case slug, e.g. `test-composer-j-login-flow`. |
 | `cycle` | Integer ≥ 1. The cycle number within this journey's dispatch loop. |
-| `status` | One of `new-tests-landed`, `covered-exhaustively`, `blocked`, `skipped`. |
+| `status` | Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". |
 | `next-action` | One-line directive for the orchestrator. |
 
 `phase` and `summary` are **top-level** fields — they MUST NOT appear inside `handover`.

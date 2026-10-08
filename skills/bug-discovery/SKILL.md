@@ -55,7 +55,7 @@ Every probe return **MUST** open with a `handover` envelope as its first key. Th
 |---|---|
 | `role` | `probe` (standalone) or `probe-j-<slug>` (when dispatched per-journey by coverage-expansion). |
 | `cycle` | Integer ≥ 1. |
-| `status` | One of `clean`, `findings-emitted`, `blocked`. |
+| `status` | Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". |
 | `next-action` | One-line directive for the orchestrator. |
 
 `summary` is a **top-level** field — it MUST NOT appear inside `handover`. Forbidden inside the envelope: `phase`, `from`, `to`.

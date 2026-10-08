@@ -87,7 +87,7 @@ Full schema: `schemas/subagent-returns/phase-validator.schema.json`.
 
 The phase-validator is dispatched at the end of each pipeline phase to verify exit criteria before the orchestrator advances.
 
-**Status enum:** `greenlight` | `improvements-needed`
+Status words: [ledger-vocabulary.md](ledger-vocabulary.md) §"Subagent returns".
 
 **Required top-level fields on `greenlight`:** `handover`, `phase` (integer 1–7), `exit-criteria-checked` (array, ≥1 item), `summary`.
 
