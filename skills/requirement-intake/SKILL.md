@@ -73,8 +73,8 @@ Template and field contract: [`references/scenario-block.md`](references/scenari
 | Spend policy | what one run costs (`none`, `disposable`, `released`, `one-confirming-run`) |
 | Status | `proposed` → `implemented` → `green` / `red-by-design` / `blocked` / `omitted-by-ruling` |
 
-IDs follow `titleIdPattern` and are unique **per context** (the same ID may name the same scenario in `north` and
-`south`). Env variable NAMES only — never values.
+IDs follow `titleIdPattern` and are unique **per context** (the same ID may name the same scenario in `region-1` and
+`region-2`). Env variable NAMES only — never values.
 
 ## The lint contract
 
@@ -110,7 +110,7 @@ IDs follow `titleIdPattern` and are unique **per context** (the same ID may name
 
 ## Status updates after verification
 
-1. From the verify note (see `ticket-driven-testing` §8e): `green 3× (<date>)`, `green 1× (<date>, confirming run)`,
+1. From the verify note ([`verification-record.md`](../achilles-protocol/references/verification-record.md)): `green N× (<date>)`, `green 1× (<date>, confirming run)`,
    `red-by-design (<reason>)`, `blocked (<reason, missing variable or owner action>)` — the count after `green` is
    free text for the reader; the lint matches the token.
 2. Add `Corrected (<date>)` when live behaviour contradicted the block; keep the old claim visible.

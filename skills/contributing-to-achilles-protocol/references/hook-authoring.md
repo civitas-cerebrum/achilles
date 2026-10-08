@@ -260,16 +260,15 @@ Rules for a PreToolUse hook an agent hits hundreds of times a day. The factory g
    opts in the wrapper, not the Playwright run after it. Otherwise one early opt-in silently authorises everything
    that follows.
 6. **Normalise paths before any scope decision.** Resolve a relative `file_path` against the call's `cwd`, then
-   resolve `.`, `..` and `//` lexically (`tests/e2e/north/../legacy/x.ts` is `tests/e2e/legacy/x.ts`), before matching
+   resolve `.`, `..` and `//` lexically (`tests/e2e/region-1/../legacy/x.ts` is `tests/e2e/legacy/x.ts`), before matching
    scopes or testing existence. Strip `:line[:col]` from test-file arguments. Where symlinks matter, resolve the parent
    directory explicitly; otherwise document that the link path is judged.
 7. **Gates never write files.** A deny/allow gate writes no receipts, caches, logs or "last seen" markers. A gate that
    writes state creates a second trust anchor that itself needs protecting, and makes the decision depend on call
    order; recorders (archivers, registries) are separate scripts. State a gate reads (a verify stamp, a change marker)
    is written by the project's own commands and protected by a Bash guard plus a content hash.
-8. **Content-hash stamps, not timestamps.** A "verified" receipt carries the hash of the tree it verified (sorted
-   `(path, content hash)` lines over the hashed roots). The commit-time check recomputes it. A touch keeps it; any added,
-   removed or changed file invalidates it; a forged stamp passes only if it carries the current tree's hash.
+8. **Content-hash stamps, not timestamps.** A "verified" receipt carries the hash of the tree it verified:
+   [`verification-record.md`](../../achilles-protocol/references/verification-record.md) §"The stamp".
 9. **Run guard suites with `--forbid-only`.** A stray `test.only` in a guard spec runs one test, skips the rest and
    still reports green.
 10. **Fixture cases are data.** One JSON file per case: `input` (the PreToolUse payload, `{{ROOT}}` for the project

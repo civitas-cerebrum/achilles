@@ -165,6 +165,8 @@ marker means a maintenance commit: only the stamp is checked. Commits in other r
 
 Fields: `stamp`, `trailDir`, `hashCommand` (argv; required), `currentChange`, `required[]`.
 
+The stamp format and what it proves: [verification-record.md](verification-record.md#the-stamp).
+
 <a id="process.state"></a>
 ### process.state
 

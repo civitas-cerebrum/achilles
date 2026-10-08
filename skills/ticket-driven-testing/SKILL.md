@@ -831,64 +831,9 @@ proved.
 
 #### 8e. "Stable" is a record, not a feeling — and the verify note says so
 
-A test the suite keeps (8d PROPOSE, confirmed) is called **stable** only when both hold:
-
-1. **N consecutive green runs for its test id** in the Achilles reporter history
-   (`.achilles/history/tests.ndjson`: one entry per test per run, keyed by `id`, with `project` and `status`). Each
-   run is its own invocation with its own `--output` directory, so a failure's artefacts are never overwritten.
-   `flaky` (green only on retry) does not count: pass `--retries=0` on the verification invocation (the project's
-   config stays unchanged). N is set by the project, never below the `achilles-protocol` Rule 7 bar (3 for a new or
-   edited test, 5 for a healed flake). An order-placing test on the `one-confirming-run` spend policy
-   (`test-data-conventions`, spend budgets) counts one audited run instead, and is never re-run to reach N.
-2. **One can-fail proof per family** — the §8 negative control, or a mutation (`E2E_MUTATION=<hook>` honoured by a
-   fixture, or `achilles-mutate --only <id>` after `--calibrate`) that turns the intended assertion red **with the
-   intended message**. Red for another reason is not a proof.
-
-**Citations are context-qualified.** A suite that shards by a dimension (region, tenant, browser, account) runs the
-same test id once per context, and "CHK-03 is green" is ambiguous. Every id a verify note cites is written with its
-context — `south CHK-03` — or the note carries a single `Context:` line when it covers exactly one. A bare id never
-counts as evidence; tools that read verify notes (an inventory, a status updater) must match on the pair.
-
-The verifier — an agent that did not write or review the change — writes the note from this template to
-`docs/evidence/<change>/verify.md`:
-
-```markdown
-# Verify — <change>
-
-- **Change**: <change> (brief: docs/evidence/<change>/brief.md)
-- **Verifier**: independent (did not write or review the code)
-- **Date**: <YYYY-MM-DD>
-- **Context**: <single-context note only; delete when the note covers several>
-- **Verdict**: <PASS | PASS with notes | FAIL>
-- **Status**: <in verification | complete>
-
-## Gates
-- <type check, unit + conventions guard, hook fixture cases, scenario lint: result and counts>
-- Secrets: <evidence dirs scanned by env variable NAME; no values printed>
-- Readability: <spec-shape.md check — flat, steps visible, oracle call present, no test that cannot fail>
-
-## Runs
-| Spec file | Context | Run label (`--output`) | Result | Resources (id → final state) |
-|---|---|---|---|---|
-
-## Can-fail proofs
-| Mutation | Context + id | Red at (quoted assertion + message) |
-|---|---|---|
-
-## <context>
-- <context> <ID> — green N× (runs above) | one-confirming-run (audited); proof: <mutation>
-
-## Findings
-<defects, flakiness, weak oracles, residual gaps; unverified, skipped or blocked ids as bare ids — they do not count>
-```
-
-Verdicts: **PASS** (every gate, run and proof holds), **PASS with notes** (as PASS, with weak oracles or gaps
-listed under Findings), **FAIL** (anything else, naming the item). A controller may override a FAIL only with a
-recorded ruling that names the evidence.
-
-**Status** is `in verification` until every run and proof is recorded, then `complete`, and `complete` only with PASS
-or PASS with notes. `complete` is approver-class: only the independent verifier writes it, never the author or the
-controller that drove the change (in the achilles-qa workflow the `verifier` role is the note's only writer).
+Stable means N green runs per test id plus one can-fail proof per family; the independent verifier records both in
+`docs/evidence/<change>/verify.md`. Definition, template and verdicts:
+[`achilles-protocol/references/verification-record.md`](../achilles-protocol/references/verification-record.md).
 
 ### 9. Live observation — watch it, don't just assert it
 

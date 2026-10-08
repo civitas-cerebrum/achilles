@@ -8,14 +8,14 @@ value. The test that implements the block is titled `'<ID> — <title>'`.
 ```markdown
 #### <ID> — <title>
 
-- **Contexts**: <one or more context names — whatever the project shards runs by, e.g. north, south>
+- **Contexts**: <one or more context names — whatever the project shards runs by, e.g. region-1, region-2>
 - **Type**: <tags from specs.shape.blockEnums.type (else specs.shape.tags) — e.g. @e2e @checkout>
 - **Purpose**: <one sentence: the behaviour under test, in user terms>
 - **Preconditions / test data**: <what must be true before step 1, stated as requirements (merchant purpose, item
   count, minimum basket, payment option offered, account constraints); env variable NAMES only, never values>
 - **Steps**:
   1. <user-language action — "Add an item to the basket", "Choose the wallet provider">
-  2. <next action; name the observable condition, never a selector and never a fixed wait ("the popup closes",
+  2. <next action; name the observable condition, never a selector and never a fixed wait ("the modal closes",
      not "wait 30 s")>
 - **Expected**: <observable outcomes; UI copy in quotes where it matters; amounts as rules (total = subtotal −
   discount), not literals>
@@ -53,18 +53,18 @@ no executable test and keeps its heading so the decision stays on record. A proj
 ## Example (the neutral example application)
 
 ```markdown
-#### CHK-03 — Cancelling the wallet popup returns to checkout without an order
+#### CHK-03 — Cancelling the payment modal returns to checkout without an order
 
-- **Contexts**: south
+- **Contexts**: region-2
 - **Type**: @e2e @checkout @negative
-- **Purpose**: A shopper who abandons the wallet provider's popup is back at checkout and the order is not placed.
-- **Preconditions / test data**: merchant open now (`demo-bistro` or any merchant the resolver finds); one orderable
-  item; the wallet provider offered on `/pay`; account `shopper-b` with the "Save payment method" switch off.
+- **Purpose**: A shopper who abandons the wallet provider's modal is back at checkout and the order is not placed.
+- **Preconditions / test data**: merchant open now (`shop` or any merchant the resolver finds); one orderable
+  item; the wallet provider offered on `/pay`; account `user-b` with the "Save payment method" switch off.
 - **Steps**:
   1. Add one item to the basket and go to checkout.
   2. Choose the wallet provider and continue to payment.
-  3. In the popup, choose "Cancel and return".
-  4. The popup closes and checkout is shown again.
+  3. In the modal, choose "Cancel and return".
+  4. The modal closes and checkout is shown again.
 - **Expected**: checkout shows the basket unchanged (same items, total = subtotal + delivery fee); no confirmation
   page is reached.
 - **Oracle**: api (`GET /orders/<id>` for the order started at checkout stays `pending`, never `placed`)

@@ -35,20 +35,20 @@ scenario block it implements is defined by `requirement-intake`.
 
 ## Before / after — the neutral example application
 
-Scenario block `CHK-03 — Cancelling the wallet popup returns to checkout without an order` (see
+Scenario block `CHK-03 — Cancelling the payment modal returns to checkout without an order` (see
 `../../requirement-intake/references/scenario-block.md`).
 
 **Before** — layered, generated, oracle hidden:
 
 ```ts
 // tests/e2e/payments.spec.ts
-for (const region of ['north', 'south']) {
+for (const region of ['region-1', 'region-2']) {
   test.describe(`wallet ${region}`, () => {
     test('wallet cancel', async ({ page }) => {
       const shop = new ShopFlow(page);                  // page-object layer over the Steps API
       await shop.buyFirstItemAndPayWithWallet(region);   // five scenario steps hidden in one call
-      if (region === 'south') {                          // branching on context in the spec
-        await shop.popup().cancel();
+      if (region === 'region-2') {                       // branching on context in the spec
+        await shop.modal().cancel();
       } else {
         await shop.cancelRedirect();
       }
@@ -65,15 +65,15 @@ for (const region of ['north', 'south']) {
 
 ```ts
 // tests/e2e/wallet-payments.spec.ts — family: wallet payments
-test('CHK-03 — Cancelling the wallet popup returns to checkout without an order',
+test('CHK-03 — Cancelling the payment modal returns to checkout without an order',
   { tag: ['@e2e', '@checkout', '@negative'] }, async ({ steps, checkout, orders }) => {
   const req: Requirements = { payment: 'wallet', items: { count: 1 } };
   const { order } = await checkout.arriveWithPlannedBasket(req);          // step 1: chore shared by 6 scenarios → verb
 
   await steps.click('continueToPayment', 'CheckoutPage');                  // step 2
   await steps.click('walletOption', 'PayPage');
-  const popup = await checkout.walletPopup();                              // Steps bound to the popup (fixture)
-  await popup.click('cancelAndReturn', 'WalletPopup');                     // step 3
+  const modal = await checkout.paymentModal();                             // Steps bound to the modal (fixture)
+  await modal.click('cancelAndReturn', 'PaymentModal');                    // step 3
   await steps.verifyUrlContains('/checkout');                              // step 4: checkout shown again
   await steps.verifyOrder('basketItems', 'CheckoutPage', order.plannedItemNames);
 
@@ -82,7 +82,7 @@ test('CHK-03 — Cancelling the wallet popup returns to checkout without an orde
 });
 ```
 
-The `south` popup and the `north` same-tab redirect are two blocks (or one block with two contexts and a verb that
+The `region-2` modal and the `region-1` same-tab redirect are two blocks (or one block with two contexts and a verb that
 knows the difference); either way the spec does not branch.
 
 ## The readability check (verifier)

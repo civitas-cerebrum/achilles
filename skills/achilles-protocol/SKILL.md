@@ -50,6 +50,8 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 | [`references/cascade-detector.md`](references/cascade-detector.md) | Canonical onboarding-state probe (Levels A/B/C/None) and per-caller responses. |
 | [`references/selector-evidence.md`](references/selector-evidence.md) | Selector evidence: insert-provisional → `achilles-selector-evidence` → drop-flag, the note contract the repository-evidence gate reads, honest backfill, rule 2 standing authorisation. |
 | [`references/roles-and-dispatch.md`](references/roles-and-dispatch.md) | Role kernel binding, dispatch grammar, nonce, switches and limits. |
+| [`references/controller-protocol.md`](references/controller-protocol.md) | Running a change through several agents: briefs and reports as files, dispatch parts, concurrency, hand-back statuses. |
+| [`references/verification-record.md`](references/verification-record.md) | "Stable" and "verified" as records: run counts, can-fail proofs, the verify note, the content-hash stamp. |
 
 ## Stage ladder (canonical)
 
@@ -250,42 +252,9 @@ Every skill in this suite that drives a live browser — `journey-mapping`, `cov
 
 ### 12. Orchestrator context discipline
 
-Orchestrator skills (`coverage-expansion`, this orchestrator) hold only **index-level state** in their own context:
-
-- Identifiers, names, priorities, page lists, counters, dispatch rosters.
-
-They do NOT hold:
-- Full journey step lists, branches, or state variations beyond what is needed to dispatch.
-- Any DOM snapshot or CLI transcript from subagent work.
-- Any subagent's produced test source.
-- Any stabilization transcript.
-
-Parallel subagents own their own context windows. Context weight lives with the worker, not the conductor. This is how the skill architecture scales to many journeys without blowing the orchestrator's token budget.
-
-**The controller protocol** — how an orchestrator that runs a change through several agents (implementer, reviewer,
-verifier, inspector) keeps this discipline across a long session:
-
-- **Briefs and reports are files.** Each task gets a brief file (scope, files, exact values, rule ids, spend budget,
-  the account it may use) and each agent writes a report file. The dispatch is five parts: where the task fits, the
-  brief path ("read this first"), interfaces from earlier tasks the brief cannot know, the controller's rulings, the
-  report path with a short reply contract. Never paste accumulated history into a dispatch.
-- **Reports, not transcripts.** The controller reads the report. When a claim is disputed it greps the agent's
-  transcript for the specific evidence lines (a run summary, an order id line), records the finding, and moves on.
-- **Model tiers per role.** Cheap: transcription, single-file mechanical edits, scoped re-reviews of a short list.
-  Standard: implementers, task reviews, verifiers. Most capable: architecture, live inspection that needs judgment,
-  the final whole-change review, and fix rounds 4-5. Write the reason next to the tier in the ledger.
-- **Concurrency.** Read-only agents (reviewers, verifiers, inspectors) may run in parallel with one implementer on
-  disjoint files. At most **one implementer edits shared fixtures** at a time. **One agent per shared account** (two
-  agents on `shopper-a` collide on its basket and its duplicate-order throttle). **No fixture edits while a
-  verifier's runs compile them.** Temporary inspection files are deleted before hand-back.
-- **Hand-back statuses.** `DONE` → review. `DONE_WITH_CONCERNS` → rule on each concern, then review.
-  `NEEDS_CONTEXT` → answer with rulings and resume the same agent. `BLOCKED` → owner action, split the task, or
-  re-dispatch at a higher tier — never retry blindly, and never perform an action the agent's permission check denied.
-- **Bounded waiting.** Never poll an agent that has not handed back. Between hand-backs do only local work (ledger,
-  review package, next brief). A course correction is a message to the running agent, not a new dispatch.
-- **Rulings, not stalls.** Every ambiguity the controller resolves is one ledger line —
-  `Ruling: <what> — <why> — cost if wrong: <cost>` — and the work continues. Owner instructions are quoted with their
-  date. A question only the owner can answer is ledgered as an owner action while independent tasks proceed.
+Orchestrators (`coverage-expansion`, this one) hold only index-level state: identifiers, names, priorities, page lists, counters, dispatch rosters. They never hold journey step lists beyond what dispatch needs, DOM snapshots, CLI transcripts, subagent test source or stabilization transcripts.
+Parallel subagents own their context windows: the weight lives with the worker, so the architecture scales to many journeys.
+Running a change through several agents: [`references/controller-protocol.md`](references/controller-protocol.md).
 
 ### 13. No scope compression in any pass, stage, or phase
 
@@ -359,7 +328,7 @@ Element-scoped variant + raw-selector escape hatch are documented in `references
 Fixtures, verbs, resolvers, planners, registries, hooks and tools are **not** unit-tested. They exist to make
 scenarios run; the scenarios are their test. Proof comes from:
 
-- **Running the scenarios** that use them, N consecutive times (N ≥ 3, see `ticket-driven-testing` §8e);
+- **Running the scenarios** that use them, N consecutive times ([`references/verification-record.md`](references/verification-record.md));
 - **a can-fail proof per family** — a mutation that must turn the intended assertion red with the intended message;
 - **offline hook fixture cases** (`hooks/tests/`) for hooks and gates: input, expected decision, message;
 - **probes** — a tool run once against the real environment, its output recorded as evidence.

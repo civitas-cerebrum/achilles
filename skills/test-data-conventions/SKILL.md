@@ -148,7 +148,7 @@ another test's leftovers. If the requirements cannot be met now, the test says s
 
 1. **Resolver** — requirements → a candidate. Probes each candidate (merchant open now, items orderable, the
    payment option offered in this context) and returns the first that satisfies everything, or a **structured
-   blocker list** per candidate (`{ candidate: 'demo-bistro', blockers: ['closed-now', 'wallet-not-offered'] }`).
+   blocker list** per candidate (`{ candidate: 'shop', blockers: ['closed-now', 'wallet-not-offered'] }`).
    The skip message quotes the list. Candidates and their facts are data (a catalogue per context), never branches.
 2. **Planner** — a candidate → a concrete, **deterministic per-attempt** plan (which items, how many). Variance is a
    function of the attempt number, not of `Math.random()`: attempt 2 widens the basket structurally, the last
@@ -156,8 +156,8 @@ another test's leftovers. If the requirements cannot be met now, the test says s
 3. **Registry** — **intent before action.** Before the action that creates a resource (a basket, a discount code, an
    order), the registry writes an intent to the run manifest; the fixture's disposer releases what the manifest holds,
    even when the test fails half-way. A resource created before its intent was recorded is a leak nobody can find.
-4. **Janitor** — the release policy per resource class: a basket is abandoned; a `north` order is released
-   (`POST /orders/<id>/refuse`); a `south` order that must settle is left to settle and recorded. The janitor also
+4. **Janitor** — the release policy per resource class: a basket is abandoned; a `region-1` order is released
+   (`POST /orders/<id>/refuse`); a `region-2` order that must settle is left to settle and recorded. The janitor also
    sweeps idle manifests of dead runs at global teardown, and restores account state a test changed (the selected
    delivery address; the "Save payment method" switch turned off before paying).
 5. **Oracle** — what confirms the outcome, chosen by the scenario block, not by convenience (the `orders` service
