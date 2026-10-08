@@ -66,8 +66,7 @@ orchestrator only advances when the verdict is `approve`. Every
 return-schema path
 (`schemas/subagent-returns/workflow-reviewer.schema.json`) — the
 `subagent-schema-preread-gate.sh` hook denies briefs that omit the
-citation — and, under the role kernel, MUST open with the binding tag and name the role as `subagent_type`
-(§"Dispatch grammar" below). The same holds for `phase-validator-<N>:` dispatches with the
+citation — and MUST open with the binding tag (§"Dispatch grammar" below). The same holds for `phase-validator-<N>:` dispatches with the
 `phase-validator` role.
 
 The contract is harness-enforced:

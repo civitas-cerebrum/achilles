@@ -12,9 +12,9 @@ Prerequisite: postinstall installs one agent definition per role into `~/.claude
 |---|---|---|
 | `description` | role name, optional `-<slug>` (`[a-z0-9-]+`), then `:`; longest matching role name wins | `test-composer-j-login:` |
 | `subagent_type` | the role name; a type from a different role than the description names is refused | `test-composer` |
-| first line of `prompt` | `<<kernel-mandate-role: <role>#<nonce>>>`, exactly one per prompt | `<<kernel-mandate-role: test-composer#k9x2a1>>` |
+| first line of `prompt` | `<<kernel-mandate-role: <role>#<nonce>>>`; required by this methodology (the kernel binds by nonce when present and refuses a tag naming a different role) | `<<kernel-mandate-role: test-composer#k9x2a1>>` |
 
-Role names are the manifest's. `workflow-reviewer-phase3:` binds `workflow-reviewer`; `reviewer-j-login:` binds `reviewer`. The pre-kernel `composer-` description names no role and is refused at the `Agent` call. To mention another role in prose, write its name, never its tag form.
+Role names are the manifest's. `workflow-reviewer-phase3:` binds `workflow-reviewer`; `reviewer-j-login:` binds `reviewer`. The pre-kernel `composer-` description names no role and the kernel refuses it; the Achilles prefix hooks (schema routing, preread, activation) still accept `composer-*` for older briefs and transcripts. To mention another role in prose, write its name, never its tag form.
 
 ## Nonce
 
@@ -32,4 +32,5 @@ The CLI session slug keeps the short `composer-` form: [playwright-cli-protocol.
 
 - Verify: `bash hooks/tests/run.sh 85-qa-mandate-scopes`.
 - Switches: [opt-in-surfaces.md](opt-in-surfaces.md).
+- Deactivation: a terminal ledger write (`complete`/`aborted`) by an approver, or session end; no mid-session off switch ([harness-hooks.md](harness-hooks.md) §"Session-scoped activation").
 - Limits, including KL-13 (the orchestrator may write `tests/**`; delegating scaffold and specs is methodology): [known-limits.md](known-limits.md).
