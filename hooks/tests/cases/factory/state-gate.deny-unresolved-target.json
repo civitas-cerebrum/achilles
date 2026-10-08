@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"target=.factory/verify-stamp; rm \"$target\""}},"expect":"deny","messageContains":["[process.state]","trust anchors","npm run verify","factory-gates.md#process.state"],"_comment":"Fail closed: a variable target cannot be judged."}

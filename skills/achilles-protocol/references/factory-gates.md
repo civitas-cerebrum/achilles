@@ -169,8 +169,12 @@ Fields: `stamp`, `trailDir`, `hashCommand` (argv; required), `currentChange`, `r
 ### process.state
 
 A Bash command naming `stateDir` is denied when it writes into it: a redirect onto a path in it; `tee`, `rm`, `touch`,
-`truncate`, `unlink`, `shred`, `ln`, `mv`, `dd`, `sed -i`, `perl -i` naming a path in it; `cp`, `install`, `rsync` whose
-target is in it; any of those after a `cd` into it. Reading and copying out are allowed.
+`truncate`, `unlink`, `shred`, `ln`, `mv`, `dd of=`, `sed -i`, `perl -i` naming a path in it; `cp`, `install`, `rsync`
+whose target (last operand, or the `-t` directory) is in it; any of those after a `cd` into it. Quoted text is an
+argument: `echo "> .achilles/x"` passes. Reading and copying out are allowed.
+
+The gate fails closed when it cannot judge the target: a line too long to split, an unknown wrapper option, `xargs`
+feeding a writer, or a `$VAR`, `$( )` or path glob as the operand of a writer other than `cp`, `install` and `rsync`.
 
 Fields: `stateDir` (missing → allow with a warning on every Bash call, so the gap is visible).
 
@@ -214,8 +218,8 @@ undecidable inputs (the kernel on an unknown role, a gate on an unjudgeable argu
 
 ## What the gates deliberately do not do
 
-- **Bash is best effort.** `spend-gate` is quote-aware with one level of `sh -c` / `eval`; `commit-gate` and
-  `state-gate` split on shell operators without quote awareness. Aliases, functions, scripts that call the runner,
+- **Bash is best effort.** The Bash gates split the command quote-aware: `spend-gate` and `commit-gate` with one level
+  of `sh -c` / `eval`, `state-gate` through `hooks/lib/shell-words.sh`, which also descends into `$( )`. Aliases, functions, scripts that call the runner,
   interpreter one-liners (`node -e`) and encoded paths are not seen. Detection is the pair's other half: the wrapper
   excludes the spend list by default, and the commit gate recomputes the content hash, so a forged stamp passes only if
   it carries the hash of the current tree.
