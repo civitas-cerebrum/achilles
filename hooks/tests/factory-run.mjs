@@ -33,6 +33,9 @@
 // A case whose stderr carries a "[factory] " line counts as a warn (allow-with-warning) in the summary.
 import { readdirSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+// The runner's own `bash`, resolved once: cases may empty PATH, and a PATH lookup lets
+// hooks/tests/snapshot.sh shim it and CI pick /bin/bash 3.2 the way run.sh does.
+const BASH = (spawnSync('/bin/sh', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout ?? '').trim() || '/bin/bash';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -76,7 +79,8 @@ for (const file of readdirSync(casesDir).filter((f) => f.endsWith('.json') && f.
   try {
     if (!existsSync(script)) throw new Error(`no gate ${hook}.sh (set "hook")`);
     if (c.cwd === 'temp') {
-      tmp = root = mkdtempSync(path.join(os.tmpdir(), 'factory-gate-'));
+      // `tmp.` + suffix: hooks/tests/snapshot.sh normalises it to tmp.X.
+      tmp = root = mkdtempSync(path.join(os.tmpdir(), 'factory-gate.tmp.'));
       // copy/write keys must stay inside the temp project (a "../" key would touch the fixture project or the machine)
       const inside = (p) => { const t = path.resolve(tmp, p); if (!t.startsWith(tmp + path.sep)) throw new Error(`case path escapes the temp dir: ${p}`); return t; };
       for (const p of c.copy ?? []) {
@@ -97,7 +101,7 @@ for (const file of readdirSync(casesDir).filter((f) => f.endsWith('.json') && f.
     }
     const input = subst(c.input, root);
     // "env" is substituted too, so a case can hand the gate an absolute FACTORY_JQ while emptying PATH.
-    r = spawnSync('/bin/bash', [script], { input: typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8', cwd: root, env: { ...subst(env, root), CLAUDE_PROJECT_DIR: root }, timeout: 10000 });
+    r = spawnSync(BASH, [script], { input: typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8', cwd: root, env: { ...subst(env, root), CLAUDE_PROJECT_DIR: root }, timeout: 10000 });
   } catch (e) { problem = `case setup failed: ${e.message}`; r = { status: null, stdout: '', stderr: '' }; }
   finally { if (tmp) rmSync(tmp, { recursive: true, force: true }); }
   let decision = 'allow', reason = '';
