@@ -275,6 +275,19 @@ FACRULES
     sim_fail "re-install over the pre-split settings.json leaves it unchanged" "$up_diff"
   fi
 
+  # What the upgrade added: exactly manifest.factory, one registration each.
+  local factory_want factory_have
+  factory_want=$("$JQ" -r '.factory[] | "\(.event) \(.matcher) \(.file)"' "$manifest" | sort)
+  factory_have=$("$JQ" -r '.hooks | to_entries[] | .key as $e | .value[] | (.matcher // "") as $m
+    | .hooks[] | select(.command | contains("/hooks/factory/"))
+    | "\($e) \($m) \(.command | split("/") | last)"' "$up/.claude/settings.json" | sort)
+  if [ "$factory_want" = "$factory_have" ]; then
+    sim_pass "re-install registers exactly manifest.factory (event, matcher, file; once each)"
+  else
+    sim_fail "re-install registers exactly manifest.factory (event, matcher, file; once each)" \
+      "$(diff <(echo "$factory_want") <(echo "$factory_have"))"
+  fi
+
   # --- Assertion 5+6: write-gate DENIES a schema-invalid ledger write -----
   # Run from the fake project (no repo, no schemas/ dir anywhere above) with
   # HOME pointed at the fake home — exactly a consumer's runtime context.

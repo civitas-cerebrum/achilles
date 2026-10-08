@@ -161,7 +161,7 @@ Writes one change: specs, fixtures and support code under tests/** (never the pa
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright test\b`, `^npx tsc --noEmit\b`, `^npm run test:unit\b` — anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`
-- **Skills** `achilles-protocol`, `contract-testing`, `database-testing`, `failure-diagnosis`, `test-composer`, `test-data-conventions`
+- **Skills** `achilles-protocol`, `contract-testing`, `database-testing`, `failure-diagnosis`, `requirement-intake`, `test-composer`, `test-data-conventions`
 
 **May not** 
 - use `Agent`
@@ -439,7 +439,7 @@ Authors Playwright specs under tests/e2e/** from a journey brief and self-verifi
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright test\b` — anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`
-- **Skills** `achilles-protocol`, `database-testing`, `selector-development`, `test-composer`, `test-data-conventions`
+- **Skills** `achilles-protocol`, `database-testing`, `requirement-intake`, `selector-development`, `test-composer`, `test-data-conventions`
 
 **May not** 
 - use `Agent`

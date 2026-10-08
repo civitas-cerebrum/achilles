@@ -34,15 +34,15 @@ The orchestrator dispatches every step and each note has one writer, so these ar
 
 | Dispatch | Writes | Hands to |
 |---|---|---|
-| `live-inspector-<change>:` | `docs/evidence/<change>/proposal-*.md`, backed by `docs/evidence/selectors/**` | `orchestrator` |
-| `implementer-<change>:` | `tests/**` and `docs/evidence/<change>/report.md`; the orchestrator bundles them into `review-package.md` | `task-reviewer` |
+| `live-inspector-<change>:` | `docs/evidence/<change>/proposal-*.md`, backed by `docs/evidence/selectors/**` and `tests/e2e/inspect/**` | `orchestrator` |
+| `implementer-<change>:` | `tests/**` and `docs/evidence/<change>/report.md`; the orchestrator bundles them into `review-package.md` | `orchestrator` (review package to `task-reviewer`) |
 | `task-reviewer-<change>:` | findings in `docs/evidence/<change>/review.md` | `orchestrator` |
 | `verifier-<change>:` | the verdict in `docs/evidence/<change>/verify.md`; only the verifier sets `Status: complete` | `orchestrator` |
 | `doc-author-<slug>:` | `docs/**` except `docs/evidence/**`, `CLAUDE.md`, `.claude/skills/**` | `orchestrator` |
 
 - Review loop: `task-reviewer` → `orchestrator` → `implementer` → `task-reviewer`. Findings go back to the same implementer, resumed; the re-review checks only the listed items. At most 5 rounds, then the orchestrator escalates to the operator.
 - Verify loop: `verifier` → `orchestrator` → `implementer` → `verifier`. A failing verdict becomes a fix round, followed by a new independent verification.
-- The round cap and resuming the same implementer are protocol rules ([SKILL.md](../SKILL.md) rule 12), not path scopes.
+- The round cap and resuming the same implementer are protocol rules, not path scopes.
 
 ## Verify, switch off, limits
 

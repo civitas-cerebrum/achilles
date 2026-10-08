@@ -33,12 +33,12 @@
 // A case whose stderr carries a "[factory] " line counts as a warn (allow-with-warning) in the summary.
 import { readdirSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-// The runner's own `bash`, resolved once: cases may empty PATH, and a PATH lookup lets
-// hooks/tests/snapshot.sh shim it and CI pick /bin/bash 3.2 the way run.sh does.
-const BASH = (spawnSync('/bin/sh', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout ?? '').trim() || '/bin/bash';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+
+// The PATH `bash`, as run.sh uses (snapshot.sh shims it there), resolved once because cases may empty PATH.
+const BASH = (spawnSync('/bin/sh', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout ?? '').trim() || '/bin/bash';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const hooksDir = path.resolve(here, '..');

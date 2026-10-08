@@ -315,6 +315,7 @@
           "contract-testing",
           "database-testing",
           "failure-diagnosis",
+          "requirement-intake",
           "test-composer",
           "test-data-conventions"
         ]
@@ -1051,6 +1052,7 @@
         "allow": [
           "achilles-protocol",
           "database-testing",
+          "requirement-intake",
           "selector-development",
           "test-composer",
           "test-data-conventions"
