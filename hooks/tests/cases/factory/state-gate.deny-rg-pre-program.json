@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "rg --pre cp foo .factory"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"], "_comment": "A reader that runs a program is not a reader."}

@@ -161,13 +161,27 @@ stamp, and only when every check passed; `state-gate` blocks hand-written forger
 <a id="process.state"></a>
 ### process.state
 
-A Bash command naming `stateDir` is denied when it writes into it: a redirect onto a path in it; `tee`, `rm`, `touch`,
-`truncate`, `unlink`, `shred`, `ln`, `mv`, `dd of=`, `sed -i`, `perl -i` naming a path in it; `cp`, `install`, `rsync`
-whose target (last operand, or the `-t` directory) is in it; any of those after a `cd` into it. Quoted text is an
-argument: `echo "> .achilles/x"` passes. Reading and copying out are allowed.
+A Bash line is **armed** when a word names `stateDir` as a path component (`.factory`, `./.factory/x`,
+`/abs/.factory/x`, `of=.factory/x`). `user.factory.ts` does not arm it, and quoted text is an argument, never a
+redirect: `echo "> .factory/x"` passes. On an armed line, unrecognised means unsafe:
 
-The gate fails closed when it cannot judge the target: a line too long to split, an unknown wrapper option, `xargs`
-feeding a writer, or a `$VAR`, `$( )` or path glob as the operand of a writer other than `cp`, `install` and `rsync`.
+- A segment that names `stateDir`, or runs after a `cd` into it, passes only as a reader (`cat head tail less grep rg jq
+  ls stat wc diff cmp test [ [[ file md5 md5sum shasum sha*sum echo printf`, or `find` without `-delete -exec -execdir
+  -ok -okdir -fprint* -fls`) or as `cp`, `install` or `rsync` with `stateDir` provably a source: every option known and
+  before the operands, the target (last operand, or the `-t` directory) literal and outside `stateDir`. Anything else
+  is denied: `rm`, `mv`, `tee`, `find -delete`, `curl -o`, `wget -O`, `tar -C`, `unzip -d`, `git checkout`, `patch`,
+  `sed`, `python3`, a script in the directory.
+- A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal (`$VAR`, `$( )`, a glob),
+  is denied, wherever on the line it is.
+- `cd` or `pushd` into `stateDir`, or to a target the gate cannot resolve, makes every later segment count as inside
+  it: only readers pass, and a redirect must go to an absolute path outside it.
+- A wrapper option the splitter does not know, or a command word that is not literal, is denied.
+- A `$VAR`, `$( )` or path glob in a word of a writer (`tee rm touch truncate unlink shred ln mv cp install rsync`,
+  `dd of=`, `sed -i`, `perl -i`) is denied anywhere on the line, because the variable may hold the state path.
+- A line too long to split that names `stateDir` is denied.
+
+Reading and copying out to a literal path are allowed. What a single line cannot show is listed in
+[known-limits.md](known-limits.md) KL-20.
 
 Fields: `stateDir` (missing → allow with a warning on every Bash call, so the gap is visible).
 
@@ -215,5 +229,5 @@ undecidable inputs (the kernel on an unknown role, a gate on an unjudgeable argu
 - **`--forbid-only`.** The verify step runs its unit/guard project with `--forbid-only`: a stray `test.only` in a
   guard spec would otherwise run one test, skip the rest of the guard, and still stamp.
 
-Limits of the gates: [known-limits.md](known-limits.md) KL-17 to KL-19. Adding a rule and running the cases:
-[hook-authoring.md](../../contributing-to-achilles-protocol/references/hook-authoring.md#factory-gates-adding-a-rule--running-the-cases).
+Limits of the gates: [known-limits.md](known-limits.md) KL-17, KL-18, KL-19 and KL-20.
+Adding a rule and running the cases: [hook-authoring.md](../../contributing-to-achilles-protocol/references/hook-authoring.md#factory-gates-adding-a-rule--running-the-cases).

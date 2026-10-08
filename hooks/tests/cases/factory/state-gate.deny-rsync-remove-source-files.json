@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "rsync --remove-source-files .factory/x /tmp/y"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"], "_comment": "An option the gate does not know is unsafe."}

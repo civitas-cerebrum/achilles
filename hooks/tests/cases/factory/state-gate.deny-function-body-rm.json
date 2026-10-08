@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "f() { rm .factory/verify-stamp; }; f"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"]}

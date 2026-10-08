@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "cat .factory/verify-stamp && rm /tmp/old-copy"}}, "expect": "allow", "warn": false}

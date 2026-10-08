@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "cat tests/data/user.factory.ts; rm -rf \"$OUT\""}}, "expect": "allow", "warn": false}
