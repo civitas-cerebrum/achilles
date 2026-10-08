@@ -331,6 +331,22 @@ exec -c rm ~/.claude/settings.json
 { nice -5 tee ~/.claude/settings.json < x; }
 nice -5 sh -c 'echo x > ~/.claude/settings.json'
 PEELED_WRITES
+section "protected-bash fail-closed H1: options whose value is a written file or a command string"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(bash_payload "$c")" "$c" "protected"
+done <<'OPTION_VALUES'
+command time -o ~/.claude/settings.json cat y
+/usr/bin/time -o ~/.claude/settings.json cat y
+/usr/bin/time --output=.claude/settings.json cat y
+/usr/bin/time -ao ~/.claude/settings.json cat y
+nice time -o ~/.claude/settings.json cat y
+command time --append --output ~/.claude/settings.json cat y
+npx -c 'rm ~/.claude/settings.json'
+npx --call='rm ~/.claude/settings.json'
+npm exec -c 'rm ~/.claude/settings.json'
+sudo -D ~/.claude rm settings.json
+sudo --chdir=.claude rm settings.json
+OPTION_VALUES
 while IFS= read -r c; do
   assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
 done <<'PEELED_READS'

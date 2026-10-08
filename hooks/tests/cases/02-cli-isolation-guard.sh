@@ -92,7 +92,6 @@ for c in \
   'nice --adjustment 5 playwright-cli open https://x' \
   'doas -u me playwright-cli open https://x' \
   'npx --package @playwright/cli playwright-cli open https://x' \
-  "env -S 'playwright-cli open https://x'" \
   'PATH=/tmp; playwright-cli open https://x'; do
   assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
 done
@@ -127,3 +126,35 @@ assert_allow "$H" "$(payload tool_name=Bash command='time -p playwright-cli -s=c
 assert_allow "$H" "$(payload tool_name=Bash command='echo "{ playwright-cli open https://x; }"')" "quoted brace group → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='echo "f() { playwright-cli open; }"')" "quoted function definition → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='nice --bogus ls')" "unrecognised wrapper option before another program → silent allow"
+
+# playwright-cli in any word of a command the guard cannot identify as playwright-cli itself, a
+# shell whose script is judged as nested commands, or a closed list of non-executing readers is DENY.
+section "cli-isolation: unrecognised = unsafe for any command that mentions playwright-cli"
+for c in \
+  "env -S 'playwright-cli open https://x'" \
+  "env -S 'playwright-cli\\_open\\_https://x'" \
+  "env -S'playwright-cli\\_open'" \
+  "env --split-string='playwright-cli\\_open'" \
+  "npx -c 'playwright-cli open https://x'" \
+  "npm exec -c 'playwright-cli open https://x'" \
+  "npx --call='playwright-cli open https://x'" \
+  'setsid playwright-cli open https://x' \
+  'watch playwright-cli open https://x' \
+  'script -c "playwright-cli open https://x"' \
+  'script -q /dev/null playwright-cli open https://x' \
+  'flock /tmp/l playwright-cli open https://x' \
+  'parallel playwright-cli open ::: https://x' \
+  'chroot / playwright-cli open https://x' \
+  'unshare playwright-cli open https://x' \
+  'ionice -c3 playwright-cli open https://x' \
+  'taskset 1 playwright-cli open https://x' \
+  'caffeinate playwright-cli open https://x' \
+  'someunknownwrapper playwright-cli open https://x'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Cannot judge"
+done
+assert_allow "$H" "$(payload tool_name=Bash command='grep -rn playwright-cli hooks/')" "grep for the name → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='cat playwright-cli-notes.md | head')" "cat of a file named after it → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='which playwright-cli')" "which → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='git log --grep playwright-cli')" "git log --grep → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "npx playwright-cli open"')" "printf of a usage line → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='env -S "ls -l"')" "env -S naming another program → silent allow"

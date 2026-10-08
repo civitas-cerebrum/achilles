@@ -1,7 +1,7 @@
 #!/bin/bash
 # playwright-cli-isolation-guard.sh — playwright-cli session-isolation enforcer
 #
-# Hook    : PreToolUse:Bash  (filters to `playwright-cli` invocations)
+# Hook    : PreToolUse:Bash  (filters to commands that mention `playwright-cli`)
 # Mode    : DENY (missing -s=, collision-prone slug, missing role prefix, length cap)
 # State   : none
 # Env     : none
@@ -62,6 +62,7 @@
 # - Slug missing role prefix                                    → DENY
 # - Slug shorter than 6 chars                                   → DENY
 # - Slug longer than 28 chars                                   → DENY (length-cap)
+# - playwright-cli behind a wrapper, option or program the guard cannot read → DENY
 # - Session-agnostic subcommand (close-all / kill-all / list / install-browser / etc.) → silent allow
 # - Anything else                                               → silent allow
 
@@ -91,34 +92,57 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 
-# Judge every command the shell would run (lib/shell-words.sh) whose command word is
-# playwright-cli or its package @playwright/cli, directly or through npx, bunx, pnpm|yarn exec,
-# env, sudo, sh -c or $( ). A mention inside a quoted argument or a heredoc body is not an invocation.
+# Judge every command the shell would run (lib/shell-words.sh). Unrecognised = unsafe: a command
+# with a word that names playwright-cli (@playwright/cli, a path to it, a name with a suffix), quoted
+# or not, is DENY unless it is
+#   (a) playwright-cli itself, directly or behind the wrappers the splitter peels (npx, bunx,
+#       pnpm|yarn exec, env, sudo, nice, time, …) with every wrapper option recognised: its slug is
+#       judged below; or
+#   (b) a shell or eval, whose script is judged as nested commands; or
+#   (c) a reader that does not execute its arguments: echo printf cat head tail grep egrep fgrep ls
+#       wc which type, `command -v|-V`, git commit|log|show|diff|status|add|grep|tag|branch.
+# Any other wrapper (setsid, watch, script, flock, parallel, chroot, env -S …) hides the program.
 CMD_PREVIEW="$CMD"
 [ ${#CMD} -le 160 ] || CMD_PREVIEW="${CMD:0:160}..."
 
+pw_mention() {
+  case "$1" in *playwright-cli*|*@playwright/cli*) return 0 ;; esac
+  return 1
+}
+
+# The command word is a non-executing reader or a shell, run as the session's own program.
+is_exempt_command() {
+  [ "$CMD_ENV" = 0 ] && [ -z "$CMD_PATH" ] || return 1
+  case "${CMD_ARGS[0]:-}" in
+    echo|printf|cat|head|tail|grep|egrep|fgrep|ls|wc|which|type|sh|bash|zsh|dash|ksh|eval) return 0 ;;
+    command) case "${CMD_ARGS[1]:-}" in -v|-V) return 0 ;; esac ;;
+    git) case "${CMD_ARGS[1]:-}" in commit|log|show|diff|status|add|grep|tag|branch) return 0 ;; esac ;;
+  esac
+  return 1
+}
+
 judge_invocation() {
-  local k=1 a SLUG=""
-  # A wrapper option the splitter does not know hides the command word: playwright-cli among
-  # the words may be the program, so the slug cannot be judged.
-  if [ "$CMD_WRAP_BAD" = 1 ]; then
-    for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"}; do
-      case "$a" in
-        playwright-cli|playwright-cli@*|*/playwright-cli|@playwright/cli|@playwright/cli@*)
-          emit_pre_deny "[BLOCKED] Unrecognised wrapper option in front of playwright-cli.
+  local k=1 a SLUG="" mentioned=0 recognised=0
+  for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_SNEST[@]+"${CMD_SNEST[@]}"}; do
+    if pw_mention "$a"; then mentioned=1; break; fi
+  done
+  [ "$mentioned" = 1 ] || return 0
+  case "${CMD_ARGS[0]:-}" in
+    playwright-cli|@playwright/cli) if [ "$CMD_WRAP_BAD" = 0 ] && [ "${#CMD_SNEST[@]}" = 0 ]; then recognised=1; fi ;;
+  esac
+  if [ "$recognised" = 0 ]; then
+    is_exempt_command && return 0
+    emit_pre_deny "[BLOCKED] Cannot judge a command that mentions playwright-cli.
 
 Command: $CMD_PREVIEW
 
-Fix: drop the wrapper option, or run playwright-cli directly with its slug.
+Fix: run playwright-cli as the command word, with its slug and no wrapper the guard does not know.
 
   npx playwright-cli -s=<slug> <subcommand> ...
 
-Why: the guard cannot tell which program the wrapper runs, so it cannot check -s=<slug>. Wrapper options it knows: see hooks/lib/shell-words.sh (shell__wrapopt)."
-          exit 0 ;;
-      esac
-    done
+Why: an unrecognised wrapper option or program (setsid, watch, script, flock, env -S, npx -c …) may run playwright-cli without -s=<slug>, and the guard cannot see inside it. Wrappers and options it knows: hooks/lib/shell-words.sh (shell__wrapopt). Readers it lets through: see the header of this hook."
+    exit 0
   fi
-  case "${CMD_ARGS[0]:-}" in playwright-cli|@playwright/cli) ;; *) return 0 ;; esac
   # Session-agnostic subcommands run without -s= by design; no argument prints the help.
   case "${CMD_ARGS[1]:-}" in
     ''|install-browser|close-all|kill-all|list|list-sessions|sessions|--help|-h|--version|-v) return 0 ;;
