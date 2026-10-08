@@ -18,7 +18,7 @@
 // `one confirming run`) matches `green`, `red-by-design`, `one-confirming-run`. The token must be followed by the end
 // of the value or a character that is not a letter or digit.
 // **Contexts** is free text (one or more names of whatever the project shards by: region, tenant, browser…).
-// The project root is $CLAUDE_PROJECT_DIR, else the current directory.
+// The project root is $CLAUDE_PROJECT_DIR, else the current directory; file arguments resolve against it.
 //
 // A block starts at a `#### <ID> — <title>` heading and ends at the next heading of level 1–4 or a `---` rule. Other
 // `####` headings are not blocks (listed as `skipped`), except a heading that starts with an ID-like token but fails
@@ -286,8 +286,8 @@ function main(argv) {
   }
   const files = [];
   for (const f of args.files) {
-    const abs = path.resolve(f);
-    const rel = path.relative(process.cwd(), abs);
+    const abs = path.resolve(root, f);
+    const rel = path.relative(root, abs);
     const display = rel && !rel.startsWith('..') ? rel : abs;
     if (!existsSync(abs)) {
       process.stderr.write(`[${RULE_ID}] scenario document ${display} not found\n→ Do: pass an existing scenario document (specs.shape.scenarioDocs)\n→ Why/how: ${rule.doc}\n`);

@@ -71,6 +71,10 @@ jobs:
           npm run build:validator
           bash hooks/tests/run.sh
 
+      - name: 🛠️  CLI tests
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:bin
+
       - name: 📊  Reporter tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:reporter

@@ -4,9 +4,10 @@
 #                                (rule selectors.evidence).
 #
 # Hook    : PreToolUse:Write|Edit|MultiEdit (the page repository only)
-# Mode    : DENY (silent allow without a rule file; allow-with-warning when it cannot run)
+# Mode    : DENY (silent allow without a rule file; allow-with-warning when it cannot run; deny when the shipped schema is unreadable)
 # State   : none (reads the rule file, the on-disk repository and <evidenceDir>/<Page>.<element>.md)
-# Env     : FACTORY_RULES=<path> (rule-file override), FACTORY_JQ=<path> (jq override, tests)
+# Env     : FACTORY_RULES=<path> (rule-file override), FACTORY_JQ=<path> (jq override, tests),
+#           FACTORY_SCHEMA=<path> (schema override, tests)
 #
 # Rule
 # ----
@@ -37,14 +38,15 @@ ID=selectors.evidence
 rule_enabled "$ID"
 REPO_REL="$(rule_field "$ID" repository)"
 # evidenceDir is optional; its default is declared once, in the schema, and bin/lib/evidence-note.mjs reads it there too.
-SCHEMA="${BASH_SOURCE[0]%/*}/../data/factory-rules.schema.json"
+SCHEMA="${FACTORY_SCHEMA:-${BASH_SOURCE[0]%/*}/../data/factory-rules.schema.json}"
 EVDIR="$(rule_field "$ID" evidenceDir)"
-[ -n "$EVDIR" ] || EVDIR="$("$JQ" -r '."$defs".selectorsEvidence.properties.evidenceDir.default // empty' "$SCHEMA" 2>/dev/null)"
+SCHEMA_ERR=
+[ -n "$EVDIR" ] || EVDIR="$("$JQ" -er '."$defs".selectorsEvidence.properties.evidenceDir.default' "$SCHEMA" 2>&1)" || { SCHEMA_ERR="$EVDIR"; EVDIR=; }
 PKEY="$(rule_field "$ID" provisionalKey)"; PKEY="${PKEY:-provisional}"
 [ -n "$FILE_PATH" ] || exit 0
 [ -n "$REPO_REL" ] || emit_allow_warn "$ID.repository missing in $(rules_rel) — gate skipped"
 [ "$(rel_path "$FILE_PATH")" = "$REPO_REL" ] || exit 0
-[ -n "$EVDIR" ] || emit_allow_warn "$ID.evidenceDir unset and no default in $SCHEMA — gate skipped"
+[ -z "$SCHEMA_ERR" ] || emit_deny "$ID" "The shipped schema $SCHEMA is unreadable or lacks the evidenceDir default ($(printf '%s' "$SCHEMA_ERR" | head -1))." "Reinstall @civitas-cerebrum/achilles; the gate reads the evidenceDir default from it."
 DISK_FILE="$FACTORY_ROOT/$REPO_REL"; [ -f "$DISK_FILE" ] || DISK_FILE=/dev/null
 CHANGED="$(printf '%s' "$INPUT" | "$JQ" -r --rawfile disk "$DISK_FILE" --arg pk "$PKEY" '
   def entries: [ .pages[]? as $p | ($p.elements // [])[] | select(type == "object")

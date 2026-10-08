@@ -272,7 +272,7 @@ The runner feeds each case's `input` to its gate and checks the decision, the th
 `stderrContains` and `warn`. Case fields: `input`, `expect` (`allow` | `deny`), `messageContains[]`, `stderrContains[]`,
 `warn` (`false` = must be a clean allow, `true` = must warn), `hook` (default: the file-name prefix), `env`,
 `cwd: "temp"` with `copy[]` (a path, or `{ "<dest>": "<src>" }` to rename) / `write{}` / `stamp` (`"fresh"` = what `hashCommand` prints in the temp project), `_comment`.
-Most cases are self-contained temp projects. The non-temp cases run against the shipped fixture project
+Most cases are self-contained temp projects. The non-temp cases run against a per-run temp copy of the shipped fixture project
 `hooks/tests/fixtures/factory-project/` (the runner's default when `CLAUDE_PROJECT_DIR` is unset; inside a Claude Code
 session that variable usually points at the repo root, so pass the fixture explicitly): `tests/spend-list.json` =
 `{ "specs": ["tests/e2e/south/checkout-order.spec.ts", "tests/e2e/south/wallet-order.spec.ts"] }`, stub specs under

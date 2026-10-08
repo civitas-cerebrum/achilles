@@ -46,6 +46,12 @@ test('a block missing a field is refused with the three-line message', () => {
   assert.match(r.stderr, /→ Why\/how:/);
 });
 
+test('file arguments resolve against the project root, not the cwd', () => {
+  const d = project(GOOD);
+  const r = spawnSync(process.execPath, [CLI, 'docs/scenarios.md'], { cwd: tmpdir(), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: d } });
+  assert.equal(r.status, 0, r.stderr);
+});
+
 test('--json prints parseable findings', () => {
   const r = run(['--json', 'docs/scenarios.md'], project(MISSING));
   const out = JSON.parse(r.stdout);

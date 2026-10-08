@@ -2,11 +2,11 @@
 // factory-run.mjs — offline fixture runner for the factory gates (hooks/factory/*.sh).
 //
 // Usage: CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project [FACTORY_RULES=<rule file>] node hooks/tests/factory-run.mjs [<filter>]
-//   CLAUDE_PROJECT_DIR — the project a non-temp case runs against; default (unset): the shipped fixture project
+//   CLAUDE_PROJECT_DIR — the fixture project a non-temp case runs against (copied to a temp dir per run); default (unset): the shipped fixture project
 //                        hooks/tests/fixtures/factory-project/ (spend list, stub specs, stub lint and scenarios doc; see
 //                        references/factory-gates.md#running-the-cases). Inside a Claude Code session CLAUDE_PROJECT_DIR is
 //                        usually set to the repo root: pass the fixture explicitly.
-//   FACTORY_RULES      — the rule file (default hooks/data/factory-rules.example.json, copied into the fixture project for the run); handed to non-temp cases, and the
+//   FACTORY_RULES      — the rule file (default hooks/data/factory-rules.example.json, copied into the run's project); handed to non-temp cases, and the
 //                        source of the "achilles-factory-rules.json" copy key in temp cases.
 //   <filter>           — run only the cases whose file name contains it.
 //
@@ -32,7 +32,7 @@
 // "env": { "PATH": "", "FACTORY_JQ": "{{JQ}}" }. A temp case runs with FACTORY_RULES unset, so it reads the temp
 // project's own rule file (or none). bash runs by absolute path.
 // A case whose stderr carries a "[factory] " line counts as a warn (allow-with-warning) in the summary.
-import { readdirSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, cpSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
@@ -44,8 +44,15 @@ const BASH = (spawnSync('/bin/sh', ['-c', 'command -v bash'], { encoding: 'utf8'
 const here = path.dirname(fileURLToPath(import.meta.url));
 const hooksDir = path.resolve(here, '..');
 const casesDir = path.join(here, 'cases', 'factory');
-const project = path.resolve(process.env.CLAUDE_PROJECT_DIR || path.join(here, 'fixtures', 'factory-project'));
-if (!existsSync(project)) { console.error(`factory-run: fixture project ${project} not found (set CLAUDE_PROJECT_DIR)`); process.exit(2); }
+const fixture = path.resolve(process.env.CLAUDE_PROJECT_DIR || path.join(here, 'fixtures', 'factory-project'));
+if (!existsSync(fixture)) { console.error(`factory-run: fixture project ${fixture} not found (set CLAUDE_PROJECT_DIR)`); process.exit(2); }
+// Every run gets its own copy of the fixture project, so concurrent runs cannot share state and an interrupted run leaves nothing.
+// `tmp.` + suffix: hooks/tests/snapshot.sh normalises it to tmp.X.
+const project = mkdtempSync(path.join(os.tmpdir(), 'factory-gate.tmp.'));
+const cleanup = () => rmSync(project, { recursive: true, force: true });
+process.on('exit', cleanup);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(130));
+cpSync(fixture, project, { recursive: true });
 const RULES_KEY = 'achilles-factory-rules.json';
 const rulesFile = path.resolve(project, process.env.FACTORY_RULES ?? path.join(hooksDir, 'data', 'factory-rules.example.json'));
 const filter = process.argv[2] ?? '';
@@ -53,10 +60,8 @@ const filter = process.argv[2] ?? '';
 const JQ_PATH = process.env.FACTORY_JQ
   ?? (existsSync(path.join(hooksDir, 'bin', 'jq')) ? path.join(hooksDir, 'bin', 'jq')
     : (spawnSync('/bin/sh', ['-c', 'command -v jq'], { encoding: 'utf8' }).stdout ?? '').trim());
-// Non-temp cases read the fixture project's own rule file; it is generated here so the example stays the only copy.
-const projectRules = path.join(project, RULES_KEY);
-const generatedRules = !process.env.FACTORY_RULES && !existsSync(projectRules);
-if (generatedRules) copyFileSync(rulesFile, projectRules);
+// Non-temp cases read the project's own rule file; the example stays the only checked-in copy.
+if (!process.env.FACTORY_RULES) copyFileSync(rulesFile, path.join(project, RULES_KEY));
 const rows = [];
 let failed = 0;
 
@@ -137,8 +142,6 @@ for (const file of readdirSync(casesDir).filter((f) => f.endsWith('.json') && f.
   if (problem) failed++;
   rows.push({ hook, case: name.slice(name.indexOf('.') + 1), expect: c.expect, got: warn ? 'allow (warn)' : decision, exit: r.status, result: problem ? `FAIL — ${problem}` : 'pass' });
 }
-
-if (generatedRules) rmSync(projectRules);
 
 const cols = ['hook', 'case', 'expect', 'got', 'exit', 'result'];
 const w = Object.fromEntries(cols.map((k) => [k, Math.max(k.length, ...rows.map((x) => String(x[k]).length))]));
