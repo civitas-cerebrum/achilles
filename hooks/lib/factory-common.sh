@@ -1,8 +1,8 @@
 #!/bin/bash
 # factory-common.sh — shared spine of the factory gates (hooks/factory/*.sh).
 #
-# Sourced by every factory gate. Resolves the project root and the rule file,
-# finds jq, reads the hook payload once, and provides the rule accessors, path
+# Sourced by every factory gate. Resolves the project root and the rule file (lib/project-root.sh),
+# finds jq (lib/hook-io.sh), reads the hook payload once, and provides the rule accessors, path
 # helpers and the three-line deny emitter.
 #
 # Config contract
@@ -30,12 +30,12 @@
 
 set -uo pipefail
 _FACTORY_LIB="${BASH_SOURCE[0]%/*}"
-FACTORY_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
-FACTORY_ROOT="${FACTORY_ROOT%/}"
-RULES="${FACTORY_RULES:-achilles-factory-rules.json}"
-case "$RULES" in /*) ;; *) RULES="$FACTORY_ROOT/$RULES";; esac
-if [ -n "${FACTORY_JQ:-}" ]; then JQ="$FACTORY_JQ"; else JQ="$_FACTORY_LIB/../bin/jq"; fi
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
+. "$_FACTORY_LIB/project-root.sh"
+FACTORY_ROOT="$(achilles_project_root)"
+RULES="$(achilles_rules_file "$FACTORY_ROOT")"
+. "$_FACTORY_LIB/hook-io.sh"
+. "$_FACTORY_LIB/hook-emit.sh"
+if [ -x "${FACTORY_JQ:-}" ]; then JQ="$FACTORY_JQ"; else hook_jq_init continue; fi
 IFS= read -r -d '' INPUT || true   # the whole payload, without an external `cat`
 
 emit_allow_warn() { echo "[factory] $1" >&2; exit 0; }   # allow-with-warning: never brick the session
@@ -125,7 +125,6 @@ emit_deny() {  # emit_deny <rule-id> <what> [<action>] — the action defaults t
   [ -n "$action" ] || action="$(rule_field "$id" action)"
   doc="$(rule_field "$id" doc)"
   [ -n "$doc" ] || doc="skills/achilles-protocol/references/factory-gates.md#$id"
-  local msg; msg="$(printf '[%s] %s\n→ Do: %s\n→ Why/how: %s' "$id" "$what" "$action" "$doc")"
-  "$JQ" -n --arg r "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  emit_pre_deny_bare "$(printf '[%s] %s\n→ Do: %s\n→ Why/how: %s' "$id" "$what" "$action" "$doc")"
   exit 0
 }

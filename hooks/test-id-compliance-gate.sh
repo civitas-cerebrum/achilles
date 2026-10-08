@@ -96,7 +96,7 @@ input=$(cat)
 # Session-scope gate: achilles-activated sessions only (lib/achilles-activation.sh).
 hook_lib achilles-activation.sh
 achilles_require_active "$input"
-hook_lib hook-emit.sh
+hook_lib hook-emit.sh project-root.sh
 
 [ "${CIVITAS_DISABLE_TEST_ID_GATE:-0}" = "1" ] && exit 0
 
@@ -105,10 +105,7 @@ hook_lib hook-emit.sh
 # has no specs.shape rule leaves the house default in place, so this can only
 # ever widen what the gate accepts for a project that asked for it.
 if [ -z "${CIVITAS_TEST_ID_PATTERN:-}" ]; then
-  _tid_root="${CLAUDE_PROJECT_DIR:-}"
-  [ -n "$_tid_root" ] || _tid_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
-  _tid_rules="${FACTORY_RULES:-achilles-factory-rules.json}"
-  case "$_tid_rules" in /*) ;; *) _tid_rules="${_tid_root%/}/$_tid_rules";; esac
+  _tid_rules="$(achilles_rules_file "$(achilles_project_root)")"
   if [ -f "$_tid_rules" ]; then
     _tid_pattern="$("$JQ" -r '.rules["specs.shape"].titleIdPattern // empty' "$_tid_rules" 2>/dev/null || true)"
     [ -n "$_tid_pattern" ] && export CIVITAS_TEST_ID_PATTERN="$_tid_pattern"

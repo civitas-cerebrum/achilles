@@ -100,7 +100,7 @@ const args = parseArgs(process.argv.slice(2))
 const cwd = process.cwd()
 if (!args.page || !args.element) fail('Missing --page or --element', `Use: ${USAGE}`, 'the-tool', 2)
 
-const rules = loadFactoryRules(cwd)
+const rules = loadFactoryRules()
 let ctx = {}
 if (args.context) {
   ctx = rules.contexts?.[args.context]

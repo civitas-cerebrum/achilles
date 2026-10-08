@@ -192,6 +192,13 @@ CLAUDE_PROJECT_DIR="$TID_PROJ" \
   assert_deny "$H" "$(payload tool_name=Write file_path="$TID_PROJ/tests/untitled2.spec.ts" content="test('place an order', async ({ steps }) => {});")" \
   "deny names the project's own pattern, not the house shape" \
   "this project pins its own ID pattern"
+# The root is the current directory when CLAUDE_PROJECT_DIR is unset or empty.
+cd "$TID_PROJ" || exit 1
+CLAUDE_PROJECT_DIR= \
+  assert_deny "$H" "$(payload tool_name=Write file_path="$TID_PROJ/tests/untitled3.spec.ts" content="test('place an order', async ({ steps }) => {});")" \
+  "CLAUDE_PROJECT_DIR empty, cwd = project → same verdict, project pattern named" \
+  "this project pins its own ID pattern"
+cd - >/dev/null || exit 1
 # Precedence: an explicit operator override still beats the rule file, and a
 # project with no rule file is still on the house shape.
 CIVITAS_TEST_ID_PATTERN='^(TC[A-Z]{2}-[0-9]{4,6})' CLAUDE_PROJECT_DIR="$TID_PROJ" \

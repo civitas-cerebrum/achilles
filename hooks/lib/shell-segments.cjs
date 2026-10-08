@@ -73,4 +73,4 @@ function nestedCommand(rest) {
   return null;
 }
 
-module.exports = { segments, nestedCommand, SHELLS };
+module.exports = { segments, nestedCommand };

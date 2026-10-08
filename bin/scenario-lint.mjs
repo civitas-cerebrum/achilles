@@ -34,6 +34,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_RULES_FILE, projectRoot, rulesPath } from './lib/project-root.mjs';
 
 export const RULE_ID = 'specs.shape';
 export const FIELDS = ['Contexts', 'Type', 'Purpose', 'Preconditions / test data', 'Steps', 'Expected', 'Oracle', 'Spend policy', 'Status'];
@@ -44,7 +45,6 @@ export const DEFAULT_ENUMS = {
   status: ['proposed', 'implemented', 'green', 'red-by-design', 'blocked', 'omitted-by-ruling'],
 };
 const OMITTED = 'omitted-by-ruling';
-const DEFAULT_RULES_FILE = 'achilles-factory-rules.json';
 const DEFAULT_DOC = 'skills/requirement-intake/SKILL.md#the-block';
 
 /** Step lines must read as user language: no selectors, no raw locators, no fixed waits. */
@@ -61,13 +61,6 @@ const STEP_FORBIDDEN = [
 const DO_ACTION = 'Bring the block in line with skills/requirement-intake/references/scenario-block.md (all nine fields as '
   + '"- **<Field>**: …" bullets, enum values from specs.shape.blockEnums or the defaults, numbered user-language Steps with no selectors or waits, '
   + 'one block per ID and context), then re-run the lint.';
-
-const projectRoot = () => path.resolve(process.env.CLAUDE_PROJECT_DIR || process.cwd());
-
-function rulesPath(root) {
-  const p = process.env.FACTORY_RULES || DEFAULT_RULES_FILE;
-  return path.isAbsolute(p) ? p : path.join(root, p);
-}
 
 /** Normalises an enum token or a field value: lower case, counts (`3×`, `n×`) removed, spaces → hyphens. */
 export const normalise = (s) => String(s).replace(/\*\*|`/g, '').toLowerCase()

@@ -14,6 +14,7 @@
 // (resolveAndCheck) can be driven with a fake locator.
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import * as path from 'node:path'
+import { projectRoot, rulesPath } from './lib/project-root.mjs'
 
 export const TOOL_VERSION = '1.0'
 export const RULE_ID = 'selectors.evidence'
@@ -33,14 +34,14 @@ export const DOC = 'skills/achilles-protocol/references/selector-evidence.md'
  */
 export const DEFAULT_EVIDENCE_DIR = 'docs/evidence/selectors'
 
-/** The project's factory rules file: $FACTORY_RULES, else achilles-factory-rules.json. Missing file → {}. */
-export function loadFactoryRules(cwd = process.cwd()) {
-  const file = path.resolve(cwd, process.env.FACTORY_RULES || 'achilles-factory-rules.json')
+/** The project's factory rules file (see lib/project-root.mjs). Missing file → {}. */
+export function loadFactoryRules(root = projectRoot()) {
+  const file = rulesPath(root)
   if (!existsSync(file)) return {}
   try {
     return JSON.parse(readFileSync(file, 'utf8'))
   } catch (e) {
-    fail(`${path.relative(cwd, file)} is not valid JSON: ${e.message}`, 'Fix the rules file, or unset FACTORY_RULES.', 'config-and-contexts', 2)
+    fail(`${path.relative(root, file)} is not valid JSON: ${e.message}`, 'Fix the rules file, or unset FACTORY_RULES.', 'config-and-contexts', 2)
   }
 }
 

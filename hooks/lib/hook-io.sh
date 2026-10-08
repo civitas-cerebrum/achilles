@@ -1,6 +1,7 @@
 #!/bin/bash
 # hook-io.sh — jq bootstrap, lib loading and hook-input access shared by every Achilles hook.
-HOOK_IO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Builtins only: the factory gates load this with PATH emptied.
+case "${BASH_SOURCE[0]}" in */*) HOOK_IO_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)";; *) HOOK_IO_DIR="$PWD";; esac
 
 # hook_jq_init <fatal|silent|empty|continue> — set JQ (bundled, else PATH). Without jq a
 # PreToolUse call in an active session is denied (hook_fail_closed); otherwise the mode applies:
