@@ -47,6 +47,7 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 | [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md) | Per-caller `autonomousMode: true` contracts. |
 | [`references/skill-registry.md`](references/skill-registry.md) | Canonical skill name registry. |
 | [`references/cascade-detector.md`](references/cascade-detector.md) | Canonical onboarding-state probe (Levels A/B/C/None) and per-caller responses. |
+| [`references/roles-and-dispatch.md`](references/roles-and-dispatch.md) | Role kernel binding, dispatch grammar, nonce, switches and limits. |
 
 ## Stage ladder (canonical)
 

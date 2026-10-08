@@ -115,45 +115,7 @@ makes those failure modes harness-denied rather than instruction-only.
 
 ## Dispatch grammar (role kernel)
 
-Prerequisite: postinstall installs one agent definition per role into `~/.claude/agents/`; dispatch with `subagent_type: <role>`.
-
-Every `Agent` dispatch the orchestrator issues under the achilles
-protocol is checked by the role kernel (the mandate in
-`hooks/data/achilles-qa.kernel-mandate.json`, staged into the project
-as `.claude/kernel-mandate.json` — see the README §"Role kernel"). The
-kernel resolves the target role from the description and binds the
-child through a tag in the prompt, so every dispatch has exactly this
-shape:
-
-- **`description`** — `<role>-<slug>: <task>`, where `<role>` is the
-  exact manifest role name: `scaffolder`, `secrets-sweep`, `test-composer`,
-  `workflow-reviewer`, `phase-validator`, `process-validator`,
-  `perf-reviewer`, plus the in-pipeline worker roles
-  `phase1`, `phase2`, `phase4`, `stage2`, `probe`, `reviewer`,
-  `cleanup`, `companion`, `fd` and `contribution-handover`. The longest
-  matching role name wins, so `workflow-reviewer-phase3:` binds
-  `workflow-reviewer` and `reviewer-j-login:` binds `reviewer`.
-  The pre-kernel `composer-j-<slug>:` spelling names no role and is
-  refused — the composer is dispatched as `test-composer-j-<slug>:`.
-  Grouped dispatches put the role first
-  (`test-composer-group-<id>: j-a, j-b, …`): see
-  `../coverage-expansion/SKILL.md` §"Grouped dispatch".
-- **`subagent_type`** — the same role name (`subagent_type:
-  test-composer`). The child binds by its agent type, and a type that
-  belongs to a different role than the description names is refused.
-- **`prompt`** — its FIRST line is the binding tag
-  `<<kernel-mandate-role: <role>#<nonce>>>`; the brief follows. The
-  orchestrator mints a fresh nonce per dispatch — 4+ lowercase
-  alphanumerics; use the last 6 chars of the current Unix timestamp in
-  base36 — and never reuses one within a phase, so parallel dispatches
-  of different roles each bind exactly. Exactly one tag per prompt:
-  quote another role's NAME in prose if you must, never its tag form.
-
-An unprefixed, untagged, or old-spelling dispatch is denied at the
-`Agent` call with the fix in the reason. The achilles hooks that key on
-description prefixes accept both `test-composer-*` and the legacy
-`composer-*` when validating history; the kernel accepts only the role
-name.
+Grammar, nonce, grouping (`test-composer-group-<id>: j-a, j-b`) and verification: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md). Phase dispatch templates stay in each phase below.
 
 ---
 
