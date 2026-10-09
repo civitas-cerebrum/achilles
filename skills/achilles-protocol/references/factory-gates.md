@@ -161,11 +161,15 @@ stamp, and only when every check passed; `state-gate` blocks hand-written forger
 <a id="process.state"></a>
 ### process.state
 
-A Bash line is **armed** when `stateDir` appears in it, case folded, as a path component (`.factory`, `./.factory/x`,
-`/abs/.factory/x`) or as a glob that could match one (`.fact*`, `.f[a]ctory`, `.*`; a leading dot needs a literal dot, so
-`*` and `dist/*` do not), in a whole word, an `=` value or a `-X` value; or as a token inside any word, quoted strings
-and environment values included (`sh -c 'cp x .factory/y'`). `user.factory.ts` does not arm it, and quoted text is an
-argument, never a redirect: `echo "> .factory/x"` passes. On an armed line, unrecognised means unsafe:
+A Bash line is **armed** when some command on it mentions `stateDir`, case folded, as a path component (`.factory`,
+`./.factory/x`, `/abs/.factory/x`) or as a glob that could match one (`.fact*`, `.f[a]ctory`, `.*`; a leading dot needs a
+literal dot, so `*` and `dist/*` do not). Each word is read whole, by its `=` values, and as tokens cut at spaces, quotes
+and `;|&<>()`, so quoted command strings and environment values count (`sh -c 'rm .fact*/x'`, `rsync -e …`, `LESSOPEN=…`).
+`user.factory.ts` does not arm it, and quoted text is an argument, never a redirect: `echo "> .factory/x"` passes. Not
+read as mentions, because they are judged as commands of their own or are inert text: the `-c` script of a shell and the
+arguments of `eval`; the message of `git commit`, `tag`, `merge`, `notes add|append` and `stash push|save` (`-m <msg>`,
+`-m<msg>`, `--message[=]<msg>`, a short-flag cluster ending in `m`). `-F` and `--file` values are paths and are judged. On
+an armed line, unrecognised means unsafe:
 
 - A segment **touches** `stateDir` when it names it, holds a word that is not literal (`$VAR`, `$( )`, a glob), runs a
   program from outside the system bin dirs, or runs after a `cd` that may have entered it. A touching segment passes
@@ -180,9 +184,10 @@ argument, never a redirect: `echo "> .factory/x"` passes. On an armed line, unre
 - A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal, is denied.
 - A `cd`, `pushd` or `popd` the gate cannot resolve exactly counts as entering `stateDir`: a target naming it or not
   literal, more than one operand (bash 3.2 enters the first), `-`, `~-`, `~+`, `popd`, or a `CDPATH` naming it. Every
-  later segment is then inside it: only readers pass, and a redirect must go to an absolute path outside it.
+  later segment is then inside it, and a later `cd` does not leave: only readers pass, and a redirect must go to an absolute path outside it.
 - A wrapper option the splitter does not know, or a command word that is not literal, is denied.
-- A line that sets `dotglob`, `nocaseglob` or `GLOBIGNORE` and holds a glob is denied, armed or not.
+- A line that sets `extglob` is denied; one that sets `dotglob`, `nocaseglob` or `GLOBIGNORE` and holds a glob is
+  denied, armed or not.
 - A line too long to split that names `stateDir` is denied.
 
 Reading and copying out to a literal path are allowed. What a single line cannot show is in

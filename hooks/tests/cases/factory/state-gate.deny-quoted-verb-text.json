@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'mv x .factory/verify-stamp'"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"], "_comment": "A token inside any word arms the line, and git commit is not a reader: the cost of closing sh -c 'cp x .factory/y'."}

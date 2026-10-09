@@ -10,10 +10,12 @@
 # Rule
 # ----
 # The command is split as the shell would (lib/shell-words.sh: quotes, `sh -c`, `eval`, `$( )`, braces, wrappers), so
-# quoted text is an argument, never a redirect. A line is ARMED when a word names <stateDir>: as a path component,
-# literal or as a glob that could match it (`.fact*`, `.f[a]ctory`; a leading dot needs a literal dot), in the whole
-# word, an `=` value or a `-X` value, case folded; or as a token inside any word (`sh -c 'cp x .factory/y'`, an env
-# value). `user.factory.ts` does not arm it. On an armed line unrecognised = unsafe:
+# quoted text is an argument, never a redirect. A line is ARMED when a command on it mentions <stateDir>: as a path
+# component, literal or as a glob that could match it (`.fact*`, `.f[a]ctory`; a leading dot needs a literal dot), case
+# folded, in a whole word, an `=` value or a token cut at spaces, quotes and `;|&<>()` (`sh -c 'cp x .factory/y'`, an
+# env value). Not mentions: a shell's `-c` script and eval's arguments (judged as commands of their own), and the message
+# of git commit|tag|merge|notes add|append|stash push|save. `user.factory.ts` does not arm it. On an armed line
+# unrecognised = unsafe:
 #   * a segment that touches <stateDir> (names it, holds a non-literal word, or runs after a `cd` that may have entered
 #     it) passes only when its command is
 #       - a reader: cat head tail less grep rg jq ls stat wc diff cmp test [ [[ file md5 md5sum sha*sum shasum echo
@@ -24,12 +26,12 @@
 #     everything else is denied, whatever it is;
 #   * a redirect target (> >> >| &> n>) naming <stateDir>, or not literal, is denied;
 #   * `cd` / `pushd` / `popd` the gate cannot resolve exactly (a state or non-literal target, several operands, `-`,
-#     `~-`, a CDPATH naming it) makes every later segment count as inside it: only readers pass, and a redirect must go
-#     to an absolute path outside it;
+#     `~-`, a CDPATH naming it) makes every later segment of the line count as inside it: only readers pass, and a
+#     redirect must go to an absolute path outside it;
 #   * a wrapper option the splitter does not know, or a command word that is not literal, is denied;
 #   * xargs feeding anything but a reader is denied;
-#   * a line too long to split is denied when it names <stateDir>.
-# A line that sets dotglob, nocaseglob or GLOBIGNORE and holds a glob is denied whether armed or not.
+#   * a line too long to split is denied when it names <stateDir>;
+#   * a line that sets extglob, or dotglob / nocaseglob / GLOBIGNORE beside a glob, is denied whether armed or not.
 #
 # Why
 # ---
@@ -70,20 +72,24 @@ glob_names_state() {
   done
   return 1
 }
-# state_word <word> — 0 when the word, its `=` value or its `-X` value names <stateDir>.
+# state_word <word> — 0 when the word, its `=` values or a path-like token of it names <stateDir>. Tokens are cut at
+# characters a path cannot hold, so a command string (`sh -c 'rm .fact*/x'`, `rsync -e …`, LESSOPEN) is read too.
 state_word() {
-  local v o
-  for v in "$1" "${1#*=}" "${1##*=}"; do
+  local w="$1" cands t o
+  case "$w" in *[*?[]*) ;; *) [[ "$w" == *"$STATE_DIR"* ]] || return 1;; esac
+  w="${w//[\'\"\;\|\&\<\>\(\)\`=,@\\ $'\t'$'\n']/ }"
+  read -r -a cands <<< "$w"
+  for t in "$1" "${1#*=}" "${1##*=}" ${cands[@]+"${cands[@]}"}; do
     o=""
-    case "$v" in -?*) o="${v#-}"; while [[ "$o" == [A-Za-z]* ]]; do o="${o#?}"; done;; esac
-    for v in "$v" "$o"; do
-      [[ "$v" == *"$STATE_DIR"* && "$v" =~ $STATE_TOKEN_RE ]] && return 0
-      case "$v" in *[*?[]*) glob_names_state "$v" && return 0;; esac
+    case "$t" in -?*) o="${t#-}"; while [[ "$o" == [A-Za-z]* ]]; do o="${o#?}"; done;; esac
+    for t in "$t" "$o"; do
+      [[ "$t" == *"$STATE_DIR"* && "$t" =~ $STATE_TOKEN_RE ]] && return 0
+      case "$t" in *[*?[]*) glob_names_state "$t" && return 0;; esac
     done
   done
   return 1
 }
-# refs_state <word> — state_word, or the state dir as a token inside the word; case folded (APFS ignores case).
+# refs_state <word> — state_word, case folded (APFS ignores case).
 refs_state() {
   local r=1
   shopt -s nocasematch
@@ -91,7 +97,7 @@ refs_state() {
   shopt -u nocasematch
   return $r
 }
-deny_state() { emit_deny "$ID" "Bash command $1 (\`${2:0:80}\`) — its files are trust anchors written only by the project's own tools."; }
+deny_state() { local f="${2//$'\n'/ }"; emit_deny "$ID" "Bash command $1 (\`${f:0:80}\`) — its files are trust anchors written only by the project's own tools."; }
 
 shell_words "$COMMAND"
 if [ "$SW_OVERFLOW" = 1 ]; then
@@ -101,11 +107,52 @@ if [ "$SW_OVERFLOW" = 1 ]; then
 fi
 joined="${SW[*]-}"
 case "$joined" in
-  *[*?[]*) case "$joined" in *dotglob*|*nocaseglob*|*GLOBIGNORE*) deny_state "changes how globs match while holding one, so $STATE_DIR/ may hide in it" "${COMMAND:-}";; esac;;
+  *extglob*) deny_state "turns on extglob, whose patterns the gate cannot read, so $STATE_DIR/ may hide in one" "$COMMAND";;
+  *[*?[]*) case "$joined" in *dotglob*|*nocaseglob*|*GLOBIGNORE*) deny_state "changes how globs match while holding one, so $STATE_DIR/ may hide in it" "$COMMAND";; esac;;
 esac
-armed=0
-for w in ${SW[@]+"${SW[@]}"}; do refs_state "$w" && { armed=1; break; }; done
-[ "$armed" = 1 ] || exit 0
+
+# mark_inert — INERT lists the indices of CMD_ARGS that are text another command judges or that no path can come from:
+# the -c script of a shell and the arguments of eval (split and judged as commands of their own), and the message of
+# git commit / tag / merge / notes add|append / stash push|save. -F and --file stay: their value is a path.
+mark_inert() {
+  local cmd="${CMD_ARGS[0]:-}" n=${#CMD_ARGS[@]} i=2 a
+  INERT=" "
+  case "$cmd" in
+    sh|bash|zsh|dash|ksh) shell_script_arg; [ "$SW_SCRIPT_C" = 0 ] || INERT="$INERT$SW_SCRIPT ";;
+    eval) for ((i = 1; i < n; i++)); do INERT="$INERT$i "; done;;
+    git)
+      case "${CMD_ARGS[1]:-}" in
+        commit|tag|merge) ;;
+        notes|stash) case "${CMD_ARGS[2]:-}" in add|append|push|save) i=3;; *) return 0;; esac;;
+        *) return 0;;
+      esac
+      for ((; i < n; i++)); do
+        a="${CMD_ARGS[i]}"
+        case "$a" in
+          --message=*|-m?*) INERT="$INERT$i ";;
+          --message|-m|-[!-]*m) i=$((i + 1)); INERT="$INERT$i ";;
+        esac
+      done;;
+  esac
+  return 0
+}
+is_inert() { [[ "$INERT" == *" $1 "* ]]; }
+
+ARMED=0
+arm_command() {
+  local a i
+  [ "$ARMED" = 0 ] || return 0
+  mark_inert
+  for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"} ${CMD_WRITES[@]+"${CMD_WRITES[@]}"} ${CMD_PATH:+"$CMD_PATH"}; do
+    refs_state "$a" && ARMED=1
+  done
+  for ((i = 0; i < ${#CMD_ARGS[@]}; i++)); do
+    is_inert "$i" || ! refs_state "${CMD_ARGS[i]}" || ARMED=1
+  done
+  return 0
+}
+shell_each_command arm_command
+[ "$ARMED" = 1 ] || exit 0
 
 # reader_ok — 0 when CMD_ARGS is a read-only command.
 reader_ok() {
@@ -190,20 +237,19 @@ CDPATH_BAD=0
 IN_STATE=0
 # cd_into_state — 0 when the cd / pushd / popd in CMD_ARGS may leave the shell inside <stateDir>.
 cd_into_state() {
-  local i a operands=0 last=""
+  local i a operands=0
   [ "$CDPATH_BAD" = 0 ] || return 0
   [ "${CMD_ARGS[0]}" != popd ] || return 0
   for ((i = 1; i < ${#CMD_ARGS[@]}; i++)); do
     a="${CMD_ARGS[i]}"
     case "$a" in --) continue;; -?*) continue;; esac
-    operands=$((operands + 1)); last="$a"
+    operands=$((operands + 1))
     refs_state "$a" && return 0
     shell_word_literal "$a" || return 0
     case "$a" in -|\~-*|\~+*|\~[0-9]*|+*) return 0;; esac
   done
   [ "$operands" -le 1 ] || return 0
   [ "$operands" -eq 1 ] || [ "${CMD_ARGS[0]}" != pushd ] || return 0
-  [ "$IN_STATE" = 1 ] && case "$last" in /*) ;; *) return 0;; esac
   return 1
 }
 
@@ -221,11 +267,15 @@ judge_command() {
   [ -n "$cmd" ] || return 0
   case "$cmd" in '['|'[[') ;; *) shell_word_literal "$cmd" || deny_state "runs a command word it cannot resolve ($cmd) while naming $STATE_DIR/" "$frag";; esac
   case "$cmd" in
-    cd|pushd|popd) if cd_into_state; then IN_STATE=1; else IN_STATE=0; fi; return 0;;
+    cd|pushd|popd) ! cd_into_state || IN_STATE=1; return 0;;
   esac
   [ "$IN_STATE" = 0 ] || touches=1
   [ -z "$CMD_PATH" ] || touches=1
-  for ((t = 1; t < n; t++)); do a="${CMD_ARGS[t]}"; refs_state "$a" && touches=1; shell_word_literal "$a" || touches=1; done
+  mark_inert
+  for ((t = 1; t < n; t++)); do
+    is_inert "$t" && continue
+    a="${CMD_ARGS[t]}"; refs_state "$a" && touches=1; shell_word_literal "$a" || touches=1
+  done
   for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do refs_state "$a" && touches=1; done
   if [ "$CMD_XARGS" = 1 ] && ! reader_ok; then
     deny_state "runs $cmd on operands from stdin while naming $STATE_DIR/" "$frag"

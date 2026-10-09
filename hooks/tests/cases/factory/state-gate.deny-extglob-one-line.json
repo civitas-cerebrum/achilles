@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "shopt -s extglob; rm .fac@(t)ory/x"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"]}
