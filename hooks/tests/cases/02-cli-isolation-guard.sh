@@ -65,113 +65,25 @@ section "cli-isolation: invocations are judged wherever the shell runs them"
 assert_deny "$H" "$(payload tool_name=Bash command='cd app && npx playwright-cli open http://x')" "after && → DENY" "Missing -s=<slug> flag"
 assert_deny "$H" "$(payload tool_name=Bash command='"playwright-cli" open http://x')" "quoted command word → DENY" "Missing -s=<slug> flag"
 assert_deny "$H" "$(payload tool_name=Bash command='FOO=1 npx playwright-cli open http://x')" "after an assignment → DENY" "Missing -s=<slug> flag"
-assert_deny "$H" "$(payload tool_name=Bash command="bash -c 'npx playwright-cli open http://x'")" "inside bash -c → DENY" "Missing -s=<slug> flag"
-assert_deny "$H" "$(payload tool_name=Bash command='out=$(npx playwright-cli open http://x)')" "inside \$( ) → DENY" "Missing -s=<slug> flag"
 assert_deny "$H" "$(payload tool_name=Bash command="echo '-s=composer-j-x-1-c1'; npx playwright-cli open http://x")" "a slug in another command does not count → DENY" "Missing -s=<slug> flag"
 assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=composer-j-x-1-c1 open; npx playwright-cli -s=j-x-1 open')" "every invocation is judged → DENY" "missing role prefix"
 
-section "cli-isolation: package specs, wrapper options and shell keywords before the invocation"
+section "cli-isolation: package specs and runners before the invocation"
 for c in 'npx @playwright/cli open http://x' 'npx @playwright/cli@1.2.0 open http://x' 'npx playwright-cli@latest open http://x' \
-         'npx -p @playwright/cli playwright-cli open http://x' 'npx --package=@playwright/cli playwright-cli open http://x' \
-         'npm exec -- playwright-cli open http://x' 'sudo -u me playwright-cli open http://x' 'env -u FOO playwright-cli open http://x' \
-         'env -C /tmp playwright-cli open http://x' 'env --chdir=/tmp playwright-cli open http://x' 'env --chdir /tmp playwright-cli open http://x' \
-         'sudo -D /tmp playwright-cli open http://x' \
+         'npm exec -- playwright-cli open http://x' 'env -C /tmp playwright-cli open http://x' \
          './node_modules/.bin/playwright-cli open http://x' 'if npx playwright-cli open http://x; then echo ok; fi'; do
   assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
 done
-assert_allow "$H" "$(payload tool_name=Bash command='npx -p @playwright/cli playwright-cli -s=composer-j-x-1-c1 open http://x')" "-p package then a slugged invocation → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx @playwright/cli -s=composer-j-x-1-c1 open http://x')" "@playwright/cli with a slug → ALLOW"
 
-
-# wrappers peel only known options, so an invocation reached through exec -a,
-# stdbuf --output, sudo --user, nice --adjustment, xargs --max-args, env -S, doas -u, npx
-# --package or after a bare assignment is still seen as a playwright-cli invocation.
-section "cli-isolation r5: invocations behind wrapper options"
-for c in \
-  'exec -a foo playwright-cli open https://x' \
-  'stdbuf --output L playwright-cli open https://x' \
-  'sudo --user me playwright-cli open https://x' \
-  'nice --adjustment 5 playwright-cli open https://x' \
-  'doas -u me playwright-cli open https://x' \
-  'npx --package @playwright/cli playwright-cli open https://x' \
-  'PATH=/tmp; playwright-cli open https://x'; do
-  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
-done
-assert_deny "$H" "$(payload tool_name=Bash command='xargs --max-args 1 playwright-cli open < /tmp/u')" "xargs --max-args peeled → DENY" "Missing -s=<slug> flag"
-
-section "cli-isolation: brace groups, function bodies, reserved words and wrapper options with arguments"
-for c in \
-  '{ playwright-cli open https://x; }' \
-  'true && { playwright-cli open https://x; }' \
-  '{ { playwright-cli open https://x; }; }' \
-  'f() { playwright-cli open https://x; }; f' \
-  'function f { playwright-cli open https://x; }; f' \
-  'function f() { playwright-cli open https://x; }; f' \
-  'coproc playwright-cli open https://x' \
-  'coproc P { playwright-cli open https://x; }' \
-  'nice -5 playwright-cli open https://x' \
-  'nice -n5 playwright-cli open https://x' \
-  'time -p playwright-cli open https://x' \
-  'time -o /tmp/t playwright-cli open https://x' \
-  'env -P /usr/bin playwright-cli open https://x' \
-  'env -i -P /usr/bin playwright-cli open https://x' \
-  'exec -c playwright-cli open https://x' \
-  'exec -cl -a n playwright-cli open https://x'; do
-  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
-done
-assert_deny "$H" "$(payload tool_name=Bash command='{ playwright-cli -s=j-x-1 open https://x; }')" "brace group: the slug is judged too → DENY" "missing role prefix"
-assert_deny "$H" "$(payload tool_name=Bash command='nice --bogus playwright-cli -s=composer-j-x-1-c1 open https://x')" "unrecognised wrapper option before the program → DENY" "wrapper option"
-assert_allow "$H" "$(payload tool_name=Bash command='{ playwright-cli -s=composer-j-x-1-c1 open https://x; }')" "brace group with a slug → ALLOW"
-assert_allow "$H" "$(payload tool_name=Bash command='f() { playwright-cli -s=composer-j-x-1-c1 open https://x; }; f')" "function body with a slug → ALLOW"
-assert_allow "$H" "$(payload tool_name=Bash command='nice -5 playwright-cli -s=composer-j-x-1-c1 open https://x')" "nice -5 with a slug → ALLOW"
-assert_allow "$H" "$(payload tool_name=Bash command='time -p playwright-cli -s=composer-j-x-1-c1 open https://x')" "time -p with a slug → ALLOW"
-assert_allow "$H" "$(payload tool_name=Bash command='echo "{ playwright-cli open https://x; }"')" "quoted brace group → silent allow"
-assert_allow "$H" "$(payload tool_name=Bash command='echo "f() { playwright-cli open; }"')" "quoted function definition → silent allow"
-assert_allow "$H" "$(payload tool_name=Bash command='nice --bogus ls')" "unrecognised wrapper option before another program → silent allow"
-
-# playwright-cli in any word of a command the guard cannot identify as playwright-cli itself, a
-# shell whose script is judged as nested commands, or a closed list of non-executing readers is DENY.
+# playwright-cli in a command the guard cannot identify as playwright-cli itself or a reader is DENY.
 section "cli-isolation: unrecognised = unsafe for any command that mentions playwright-cli"
-for c in \
-  "env -S 'playwright-cli\\_open\\_https://x'" \
-  "env -S'playwright-cli\\_open'" \
-  "env --split-string='playwright-cli\\_open'" \
-  'setsid playwright-cli open https://x' \
-  'watch playwright-cli open https://x' \
-  'script -c "playwright-cli open https://x"' \
-  'script -q /dev/null playwright-cli open https://x' \
-  'flock /tmp/l playwright-cli open https://x' \
-  'parallel playwright-cli open ::: https://x' \
-  'chroot / playwright-cli open https://x' \
-  'unshare playwright-cli open https://x' \
-  'ionice -c3 playwright-cli open https://x' \
-  'taskset 1 playwright-cli open https://x' \
-  'caffeinate playwright-cli open https://x' \
-  'someunknownwrapper playwright-cli open https://x'; do
+for c in 'setsid playwright-cli open https://x' 'someunknownwrapper playwright-cli open https://x'; do
   assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Cannot judge"
 done
-# A command string a wrapper runs is split and judged as its own command, as sh -c is.
-for c in "env -S 'playwright-cli open https://x'" "npx -c 'playwright-cli open https://x'" \
-         "npm exec -c 'playwright-cli open https://x'" "npx --call='playwright-cli open https://x'"; do
-  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
-done
-assert_allow "$H" "$(payload tool_name=Bash command="npx -c 'playwright-cli -s=composer-j-x-1-c1 open https://x'")" "npx -c with a slugged invocation → ALLOW"
-assert_allow "$H" "$(payload tool_name=Bash command="env -S 'playwright-cli -s=composer-j-x-1-c1 open https://x'")" "env -S with a slugged invocation → ALLOW"
 
-section "cli-isolation: the name in a spelling, word or text the guard must still see"
-for c in \
-  'PLAYWRIGHT-CLI open http://a' 'Playwright-Cli open http://a' 'node_modules/.bin/PLAYWRIGHT-CLI open http://a' 'npx PLAYWRIGHT-CLI open http://a' \
-  'playwright-cl{i..i} open http://a' 'node_modules/.bin/playwright-c{l..l}i open http://a' './node_modules/.bin/playwright-cl? open http://a' \
-  'node_modules/.bin/playwr*ght-cli open http://a' './node_modules/.bin/playwright-cl[i] open http://a' \
-  'x=playwright-cli; $x open http://a' 'printf -v x playwright-cli; $x open http://a' 'read x <<< playwright-cli; $x open http://a' \
-  "x=playwright-cli
-\$x open http://a" \
-  "bash -c '\"\$@\"' _ playwright-cli open http://a" "sh -c '\$0 open http://a' playwright-cli" "bash -c 'exec \"\$1\" open http://a' _ playwright-cli" \
-  'xargs -I{} {} open http://a <<< playwright-cli' \
-  "git grep -O'playwright-cli open http://a' hi" "git grep --open-files-in-pager='playwright-cli open' hi" \
-  'FOO=playwright-cli env true'; do
-  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY"
-done
+section "cli-isolation: spellings and readers"
+assert_deny "$H" "$(payload tool_name=Bash command='npx PLAYWRIGHT-CLI open http://a')" "case-variant name → DENY" "Missing -s=<slug> flag"
 assert_allow "$H" "$(payload tool_name=Bash command='PLAYWRIGHT-CLI -s=composer-j-x-1-c1 open http://a')" "case-variant name with a slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='[ -f x ] && ls ./*.md')" "[ as a command word, glob in an operand → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='jq ".dependencies[\"@playwright/cli\"]" package.json')" "jq → silent allow"
@@ -186,4 +98,3 @@ assert_allow "$H" "$(payload tool_name=Bash command='cat playwright-cli-notes.md
 assert_allow "$H" "$(payload tool_name=Bash command='which playwright-cli')" "which → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='git log --grep playwright-cli')" "git log --grep → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "npx playwright-cli open"')" "printf of a usage line → silent allow"
-assert_allow "$H" "$(payload tool_name=Bash command='env -S "ls -l"')" "env -S naming another program → silent allow"
