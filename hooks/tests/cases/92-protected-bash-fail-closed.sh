@@ -341,3 +341,12 @@ done <<'GIT_OPTIONS_ALLOW'
 git restore -s HEAD src
 git --no-pager log
 GIT_OPTIONS_ALLOW
+
+# A forced checkout or switch, reset --hard and clean overwrite the tree they act on: the cwd, or a
+# literal -C directory judged by the protected state it holds.
+section "protected-bash fail-closed: destructive git on a tree holding protected state"
+assert_deny "$HOOK" "$(chdir_payload 'git checkout -f main')" "git checkout -f" "Writes into"
+assert_deny "$HOOK" "$(chdir_payload 'git switch -f main')" "git switch -f" "Writes into"
+else_payload() { "$JQ" -n --arg c "$1" --arg d "$CHDIR_TMP/elsewhere" '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}'; }
+assert_deny "$HOOK" "$(else_payload "git -C $CHDIR_TMP/proj reset --hard")" "git -C <project> reset --hard from another directory" "Writes into"
+assert_deny "$HOOK" "$(else_payload 'git -C ../proj clean -fd')" "git -C <project> clean -fd from another directory" "Writes into"

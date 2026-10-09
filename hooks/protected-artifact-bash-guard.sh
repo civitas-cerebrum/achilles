@@ -22,6 +22,7 @@
 # settings.local.json is covered as well as settings.json: local overrides carry the same risk.
 #
 # Canonical reference: skills/achilles-protocol/references/harness-hooks.md
+# Size: one target rule and a judge per writer family (git, sed/yq, find, cp/mv/install/ln, the rest).
 
 set -uo pipefail
 
@@ -65,7 +66,7 @@ names() {
 # target <word> — a write target: one holding a variable or substitution is unsafe, a glob is unsafe
 # and matched as a pattern; a protected entry, its directory or an ancestor is a hit.
 target() {
-  local e
+  local e loc
   case "$1" in
     /*|'~'*|'$HOME'*|'${HOME}'*) ;;
     *) [ -z "$TGT_BASE" ] || set -- "$TGT_BASE/$1" ;;
@@ -76,9 +77,20 @@ target() {
     *'*'*|*'?'*|*'['*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 is a glob"$'\n' ;;
   esac
   [ -n "$LOCATIONS" ] || LOCATIONS=$(protected_locations "$CWD")
+  loc="$LOCATIONS"; [ -z "$TGT_BASE" ] || loc="$loc"$'\n'"$(base_locations)"
   e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") ||
-    e=$(protected_ancestor_match "$1" "$CWD" "$LOCATIONS") || return 0
+    e=$(protected_ancestor_match "$1" "$CWD" "$loc") || return 0
   HITS="$HITS$e"$'\n'
+}
+
+# base_locations — the protected locations under TGT_BASE when protected state lives there: a literal
+# env -C / git -C directory is judged by what it holds, not only by the cwd's layout.
+base_locations() {
+  local b d
+  case "$TGT_BASE" in /*) b="$TGT_BASE" ;; '~'|'~/'*) b="$HOME${TGT_BASE#\~}" ;; *) b="$CWD/$TGT_BASE" ;; esac
+  for d in "${LEDGER_ONBOARDING_REL%/*}" "${LEDGER_PERF_REL%/*}" .claude; do
+    [ -e "$b/$d" ] && { protected_locations "$b"; return 0; }
+  done
 }
 
 # operands [letters] — OPERANDS: the arguments after the command word that are not options;
@@ -98,7 +110,7 @@ operands() {
 target_operands() { local t; for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done; }
 
 # judge_git — `git [-C DIR] [-c k=v] <sub>`: a read passes; checkout restore reset clean rm mv switch stash
-# write their operands, or the work tree when there are none (and on reset --hard, stash).
+# write their operands, or the work tree when there are none (and on reset --hard, checkout|switch -f, stash).
 judge_git() {
   local gi=1 a sub="" whole=0 base="$CMD_CHDIR"
   while [ "$gi" -lt "${#CMD_ARGS[@]}" ] && [ -z "$sub" ]; do
@@ -115,7 +127,8 @@ judge_git() {
   UNSAFE="${UNSAFE}git $sub"$'\n'
   case "$sub" in checkout|restore|reset|clean|rm|mv|switch|stash) ;; *) return 0 ;; esac
   CMD_ARGS=("$sub" "${CMD_ARGS[@]:gi}"); operands
-  case " ${CMD_ARGS[*]} " in *" --hard "*) whole=1 ;; esac
+  # reset --hard and a forced checkout or switch overwrite the whole work tree.
+  case "$sub: ${CMD_ARGS[*]:1} " in *" --hard "*|checkout:*" -f "*|checkout:*" --force "*|switch:*" -f "*|switch:*" --force "*) whole=1 ;; esac
   [ "$sub" != stash ] && [ "${#OPERANDS[@]}" -gt 0 ] || whole=1
   TGT_BASE="$base"; target_operands
   [ "$whole" = 1 ] || return 0
