@@ -3,9 +3,7 @@
 # band. The Write|Edit gates (ledger write-gate, sentinel gate, integrity chain) never see a
 # `cat > onboarding-status.json`.
 #
-# Hook    : PreToolUse:Bash
-# Mode    : DENY
-# State   : none
+# Hook: PreToolUse:Bash   Mode: DENY   State: none
 #
 # Rule (fail closed), per command as lib/shell-words.sh splits the line:
 #   - A write target that is a protected path, the directory one lives in, or any ancestor of one
@@ -27,11 +25,7 @@
 
 set -uo pipefail
 
-# Methodology pointers appended to every deny/warn message this hook
-# can emit (repo convention: contributing-to-achilles-protocol/SKILL.md
-# §"Hook error message format — repo standard").
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/harness-hooks.md §Bash\n  skills/onboarding/SKILL.md §\"Status ledger + workflow reviewer\""
-
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"

@@ -1,6 +1,7 @@
 #!/bin/bash
 # evidence-bundle-gate.sh — a QA verdict without evidence is an opinion, and a
 #                           bundle with a live credential in it is a leak.
+# Size: two sign-off surfaces (tracker tools, gh pr) and the HAR / console secret scan; a third of it is the rationale header.
 #
 # Hook    : PreToolUse:mcp__.*  (registered matcher; the tool-name test inside
 #                                is shape-based and does NOT require the `mcp__`

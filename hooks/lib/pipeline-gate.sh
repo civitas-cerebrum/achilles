@@ -3,6 +3,7 @@
 # pipelines (onboarding, perf-onboarding). Sourced by pipeline-dispatch.sh
 # and pipeline-ledger-write.sh, whose callers set the PIPELINE_* config
 # (the part both gates of a pipeline share through pipeline_config).
+# Size: the shared spine of both ledger pipelines' gates; pipeline-sod.sh holds the separation-of-duties half.
 #
 # Config contract:
 #   PIPELINE_LEDGER        — absolute path to the pipeline's status ledger JSON

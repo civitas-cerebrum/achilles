@@ -1,5 +1,6 @@
 // import-boundary-scan.js — import-boundary screen for
 // hooks/achilles-import-boundary-gate.sh.
+// Size: the config, test-file and package.json screens share the parse, walk and resolution helpers below.
 //
 // `npx playwright test` runs under the orchestrator and executes the root
 // config, every file it names, and every test file with its imports. None of

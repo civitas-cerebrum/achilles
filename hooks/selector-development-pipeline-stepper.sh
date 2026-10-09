@@ -1,5 +1,6 @@
 #!/bin/bash
 # selector-development-pipeline-stepper.sh — 8-step pipeline state machine
+# Size: eight steps, each with its PreToolUse predecessor check and PostToolUse journal entry.
 #
 # Hook    : PreToolUse:Bash|Edit|Write  — deny if predecessor step not in journal as pass
 #           PostToolUse:Bash|Edit|Write — append step entry to journal on success or fail

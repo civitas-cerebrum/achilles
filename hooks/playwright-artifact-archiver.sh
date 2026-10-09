@@ -1,5 +1,6 @@
 #!/bin/bash
 # playwright-artifact-archiver.sh — per-run Playwright evidence preservation
+# Size: discovery, fingerprint, copy, retention and manifest are one record step, a section each below.
 #
 # Hook    : PostToolUse:Bash  (primary — fires after a Playwright run command)
 #           Stop, SubagentStop  (backstop — catches interrupted / aborted runs)
