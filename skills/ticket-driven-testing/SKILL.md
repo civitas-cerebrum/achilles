@@ -230,7 +230,7 @@ a second ticket that reuses the first ticket's deliverables has produced none of
 **You may not report a QA verdict until you have run the negative control (§8) and can state its result.**
 
 **You may not report a QA verdict for a ticket that has no evidence bundle of its own.** This is
-item 3 above, restated at the boundary where it gets skipped. If the run genuinely captured
+item 3 above, restated at the boundary where it gets skipped. If the run captured
 nothing (an unreachable app, a diff review only) say *that* in the verdict and scope the claim
 to what you actually did. An unevidenced report labelled unevidenced is honest; the same report
 labelled verified is not.
@@ -637,7 +637,7 @@ subtlety in the prose was re-derived wrongly at least once — that is the evide
 as code. The runner refuses to start without a `noop` mutation, because without one there is no
 way to tell "the suite catches mutations" from "the harness breaks the page".
 
-- **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one — this part the runner genuinely cannot do for you. Two variables, exact names and grammar:
+- **Browser-level mutation needs a hook in the project's fixture**, because a Playwright config cannot add one — this part the runner cannot do for you. Two variables, exact names and grammar:
 
   | Variable | Contains | Applied |
   |---|---|---|
@@ -1075,7 +1075,7 @@ Each of these cost a failed run or a wrong conclusion in practice.
 
 | Trap | What happens | Fix |
 |---|---|---|
-| **Suite's default viewport** | ACs are signed off at one size; the project's device preset is another. Behaviour genuinely differs. | Pin the viewport explicitly in `beforeEach`. Cover the other size as its own test. |
+| **Suite's default viewport** | ACs are signed off at one size; the project's device preset is another. Behaviour differs. | Pin the viewport explicitly in `beforeEach`. Cover the other size as its own test. |
 | **Late-hydrating components** | Client-rendered regions (search/results grids) are absent when your first assertion runs; your feature gate checked an SSR'd element and passed. | `waitForState` on the client-rendered container before asserting against it. |
 | **Self-consuming observables** | A sentinel watches a session-storage flag; the destination page's effect reads and deletes it before you assert. Test passes, bug is live. | Assert a state that persists — a DOM state marker at the source, not a message in flight. |
 | **Assumed default states** | You click a toggle expecting it to open; it was already open, so you closed it. | Read the initial state, assert the round-trip, don't assume a starting position. |

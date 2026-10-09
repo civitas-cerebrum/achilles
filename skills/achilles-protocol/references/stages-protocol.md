@@ -17,7 +17,7 @@ For the API surface Stage 3 writes against, see `api-reference.md`.
 If the user provides a complete scenario or detailed acceptance criteria upfront, do NOT ask unnecessary discovery questions. Instead:
 
 1. Reformat their scenario into the Given/When/Then structure below, favouring clear, discrete steps.
-2. Ask only about anything that is genuinely unclear or ambiguous.
+2. Ask only about anything that is unclear or ambiguous.
 3. Present the formatted scenario for approval.
 
 ### Full Discovery Process
@@ -155,7 +155,7 @@ Show the user the exact JSON entries you want to add:
 
    When picking a verification, ask: **"If the action had silently done nothing, would this assertion still pass?"** If yes, the assertion is tautological — find one that would fail under a no-op.
 
-   Only in rare, explicitly documented cases where the action genuinely has no observable effect at any layer (e.g. a framework-level smoke exercise of an API's call shape) may you fall back to `verifyState('visible')` on the target element — and the reason must be stated in a one-line comment. Never leave a test trailing on an action.
+   Only in rare, explicitly documented cases where the action has no observable effect at any layer (e.g. a framework-level smoke exercise of an API's call shape) may you fall back to `verifyState('visible')` on the target element — and the reason must be stated in a one-line comment. Never leave a test trailing on an action.
 6. **Run the test** with `npx playwright test <test-file>`.
 7. **If the test fails:** invoke the `failure-diagnosis` protocol — collect evidence (screenshot, DOM, error context), group failures by root cause, classify (test issue vs app bug vs ambiguous), check edge cases, then fix test issues autonomously with stability validation (3 consecutive green for a new/edited test; 5 consecutive for a heal of a previously-flaky test) or report app bugs with full evidence. If the fix requires new selectors, use `playwright-cli` to inspect the DOM, propose the new entry, and get approval before editing.
 8. **If the test passes:** commit immediately.

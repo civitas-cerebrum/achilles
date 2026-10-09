@@ -50,7 +50,7 @@ The `commit-message-gate.sh` hook is the canonical implementation — copy its m
 
 Hooks live in `hooks/<name>.sh`, are installed into `~/.claude/hooks/` by `scripts/postinstall.js`, and are registered in `~/.claude/settings.json` from the `hooks` array of `hooks/data/hook-manifest.json`. They run at PreToolUse / PostToolUse / SubagentStop / Stop boundaries to enforce skill contracts mechanically — markdown rules can be rationalised away mid-run, hooks cannot.
 
-This section is the **how**. The **when** is fixed by the Hard rule §"Methodology improvements ship as programmatic hooks": every SKILL.md rule edit comes paired with a hook unless the rule is genuinely unenforceable mechanically. Re-read that hard rule first if you're authoring a SKILL.md change — its decision table maps each rule shape to a concrete hook surface.
+This section is the **how**. The **when** is fixed by the Hard rule §"Methodology improvements ship as programmatic hooks": every SKILL.md rule edit comes paired with a hook unless the rule is unenforceable mechanically. Re-read that hard rule first if you're authoring a SKILL.md change — its decision table maps each rule shape to a concrete hook surface.
 
 When to add a hook (vs declaring the rule `markdown-only`):
 

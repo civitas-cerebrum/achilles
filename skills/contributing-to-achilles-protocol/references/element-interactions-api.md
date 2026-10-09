@@ -225,7 +225,7 @@ Acceptable verification forms (ordered by strength):
 2. **Navigation** — click a listed element that navigates; `verifyUrlContains(...)` or `verifyAbsence(...)` on an element only present before the click.
 3. **Extraction + assertion** — `expect(await steps.getInputValue(...)).toBe('filled')` for `fill`; `expect(cellText).toMatch(/pattern/)` for regex filters.
 4. **State-change verification** — `verifyState('checked')` after `check()`, `verifyState('disabled')` after a submit that disables the button, etc.
-5. **Fallback** — `verifyState('visible')` or `verifyPresence(...)` on the target is acceptable ONLY when (a) the method has genuinely no observable side-effect at any layer, and (b) a one-line comment explains why. Framework-only smoke cases qualify; feature tests do not.
+5. **Fallback** — `verifyState('visible')` or `verifyPresence(...)` on the target is acceptable ONLY when (a) the method has no observable side-effect at any layer, and (b) a one-line comment explains why. Framework-only smoke cases qualify; feature tests do not.
 
 When reviewing a PR:
 

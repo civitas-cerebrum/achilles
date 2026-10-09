@@ -294,7 +294,7 @@ Two rules govern how test data shows up in spec files.
 
   **The fixture carve-out is scoped to durable identities** — accounts and entities that exist *by design* (an admin account, a seeded catalog user), sourced from `process.env`. Any identity a test **creates** is generated per-attempt **inside the test body** (`` `user-${Date.now()}-…` ``) — never at module scope (retries re-run the test body, not the module, so module-scope values collide with the prior attempt's state). Full data-lifecycle doctrine: the `test-data-conventions` skill.
 
-If you genuinely need a one-off literal in a spec (a hard-coded element label, a test-only string), put it inline in the assertion — the `secrets-sweep` skill's Phase-7 sweep flags top-level uppercase constant declarations; inline assertion literals inside `expect(...).toBe("literal")` or step calls are exempt.
+If you need a one-off literal in a spec (a hard-coded element label, a test-only string), put it inline in the assertion — the `secrets-sweep` skill's Phase-7 sweep flags top-level uppercase constant declarations; inline assertion literals inside `expect(...).toBe("literal")` or step calls are exempt.
 
 ### 16. Visual regression — `verifyVisualMatch` with masks, not animation-freezing hacks
 

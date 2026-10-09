@@ -570,7 +570,7 @@ Findings carry a triage status across runs. This is a **methodology convention (
 
 **Rules:**
 
-1. **Stable identity.** Triage state is keyed by the canonical FINDING-ID (`<journey-slug>-<pass>-<nn>` / `<journey-slug>-<nn>` per the canonical schema §1). Every entry carries the ID in its heading. **IDs are never renumbered or reused** across runs — a re-found bug keeps its original ID; a genuinely new bug gets a fresh one.
+1. **Stable identity.** Triage state is keyed by the canonical FINDING-ID (`<journey-slug>-<pass>-<nn>` / `<journey-slug>-<nn>` per the canonical schema §1). Every entry carries the ID in its heading. **IDs are never renumbered or reused** across runs — a re-found bug keeps its original ID; a new bug gets a fresh one.
 2. **Operator-only deferral.** Only an operator may set `deferred` or `wontfix`, and the verbatim instruction is recorded with the entry. **Severity is frozen during triage** — triage status changes, severity does not.
 3. **Evidence-revocable fix-verified.** `fix-verified` is not terminal. A `fix-verified` entry whose reproduction test **fails again** flips to `acknowledged` with a dated `regressed YYYY-MM-DD` note — severity unchanged. (Mere failure-to-reproduce of an *inferred* static finding is `live-unconfirmed`, not a regression — see static-mode epistemics.)
 

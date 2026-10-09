@@ -23,7 +23,7 @@ Before prompting the user for any field, read everything already provided:
 | Test output / assertion | Failing assertion message word-for-word → becomes Actual result |
 | Written description | Flow being tested, what was expected, what happened |
 
-Extract everything available first. Only ask for what is genuinely missing.
+Extract everything available first. Only ask for what is missing.
 
 ---
 

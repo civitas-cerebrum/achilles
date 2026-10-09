@@ -422,7 +422,7 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
 2. Append a `// stage4a:serial-mode-review` comment above the `configure` line.
 3. Surface the finding in the structured return as `{ rule: '§6', severity: 'review', spec: <path>, reason: '…' }`.
 
-The agent does not auto-flip `mode: 'serial'` to per-test isolation because doing so can break tests that genuinely need serial state. Human review or a follow-up coverage-expansion pass takes the call.
+The agent does not auto-flip `mode: 'serial'` to per-test isolation because doing so can break tests that need serial state. Human review or a follow-up coverage-expansion pass takes the call.
 
 **Sentinel example (compliant):**
 

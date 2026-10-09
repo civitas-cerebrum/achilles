@@ -334,7 +334,7 @@ Each one gets an explicit written observation, even when it is negative — "con
 
 **The floor binds both conclusions, not just app bugs.** Stage 6's rule that an app-bug report must cite an artifact only binds *after* you have already concluded "app bug". The cheaper and far more common conclusion is "test issue" — and that is precisely the one that most needs a floor, because a wrong test-issue call produces a spec edit that hides the real defect and makes the suite lie. Classifying a failure as a test issue, a flake, or a framework defect without the floor is the same violation as classifying it as an app bug without it.
 
-**If a piece of the floor is genuinely unavailable** (no trace on the failing attempt because of `on-first-retry`; artifact expired; console empty because the trace predates the failure), name the specific gap and the specific reason in the evidence package, and proceed on the remaining evidence — including the JSON reporter's `stderr` and `annotations` and the video. A named gap is auditable; a silent one turns the whole classification into a guess.
+**If a piece of the floor is unavailable** (no trace on the failing attempt because of `on-first-retry`; artifact expired; console empty because the trace predates the failure), name the specific gap and the specific reason in the evidence package, and proceed on the remaining evidence — including the JSON reporter's `stderr` and `annotations` and the video. A named gap is auditable; a silent one turns the whole classification into a guess.
 
 **Anti-rationalizations — the log-text-only diagnosis.** The dominant real-world failure of this skill is an agent reading the CI log or the terminal error, recognising a familiar-looking error string, and shipping a root cause without ever opening the trace. Every one of these framings is the same move:
 
@@ -351,7 +351,7 @@ Each one gets an explicit written observation, even when it is negative — "con
 - "the trace I found shows a clean pass, so it isn't reproducible" (you read the retry, not the failure — Stage 0b step 5)
 - "I read the framework source, so I know what it does" (from *your* `node_modules`, not the version CI resolved — Stage 0a)
 
-**Reality:** the error message tells you *where execution stopped*. It does not tell you *what the page was doing*, and those are different questions — which is the entire reason the trace exists. `Timeout ... waiting for element to be visible, enabled and stable` is emitted identically by an overlay intercepting pointer events, a sticky cookie banner, an element animating forever, a mid-flight client-side navigation, a 500 behind a skeleton, a framework-side retry defect, and a genuinely absent element. The call log's resolved-element `outerHTML` proves the element *matched*; it says nothing about what was painted on top of it. Recognising the error *shape* from a previous diagnosis is exactly the condition under which a different root cause gets the previous session's answer stapled to it. Cost is not a reason: `unzip` + `jq` reads a trace headlessly in seconds, and the screencast frames are readable images.
+**Reality:** the error message tells you *where execution stopped*. It does not tell you *what the page was doing*, and those are different questions — which is the entire reason the trace exists. `Timeout ... waiting for element to be visible, enabled and stable` is emitted identically by an overlay intercepting pointer events, a sticky cookie banner, an element animating forever, a mid-flight client-side navigation, a 500 behind a skeleton, a framework-side retry defect, and a absent element. The call log's resolved-element `outerHTML` proves the element *matched*; it says nothing about what was painted on top of it. Recognising the error *shape* from a previous diagnosis is exactly the condition under which a different root cause gets the previous session's answer stapled to it. Cost is not a reason: `unzip` + `jq` reads a trace headlessly in seconds, and the screencast frames are readable images.
 
 A root cause proposed without the evidence floor is a guess, and Stage 4a's preconditions cannot be honestly evaluated against a guess — every heal that follows inherits the guess.
 
@@ -403,7 +403,7 @@ Common test issues:
 
 **At least one** of the following must be true:
 - Screenshot shows unexpected UI state (blank page, error message, broken layout, wrong content displayed)
-- DOM inspection confirms the element genuinely doesn't exist or the app produces incorrect output
+- DOM inspection confirms the element doesn't exist or the app produces incorrect output
 - The test logic is correct per the scenario — the app simply doesn't do what it should
 
 Additionally: the bug must be **reproducible** (not a one-off network blip). There are two admissible evidence tiers, and the second exists because triaging a production pipeline from artifacts alone cannot satisfy the first:
@@ -553,7 +553,7 @@ When the heal strategy is (a) selector re-learn, do NOT guess a replacement sele
 
 - **High confidence** (text match + role match + landmark match all agree) → update `page-repository.json` atomically, run the test immediately to confirm.
 - **Multiple competing candidates** → escalate to the operator with the candidate list; do not guess between them.
-- **No candidate found** → the element likely genuinely disappeared. Re-classify as either (c) flow drift (something replaced it) or app bug (component missing that should be present) using the screenshot evidence as the tiebreaker.
+- **No candidate found** → the element likely disappeared. Re-classify as either (c) flow drift (something replaced it) or app bug (component missing that should be present) using the screenshot evidence as the tiebreaker.
 
 ### Root cause: fragile selector
 

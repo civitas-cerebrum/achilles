@@ -204,7 +204,7 @@ post-cycle: dispatch phase4-prioritise-author: (single subagent)
      further mapping."
 ```
 
-**Why the edge-probe is non-negotiable.** A naïve "terminate when cycle 1 surfaces no new sections" rule would let shallow exploration pass for full mapping. The edge-probe re-engages the same section agents with a different lens — explicitly asking for the flows users wouldn't volunteer ("how do I delete my account", "what happens when my session expires mid-checkout", "what does the admin path look like"). If the edge-probe genuinely surfaces nothing, that IS the converged state — but it's a confirmed convergence, not an assumed one.
+**Why the edge-probe is non-negotiable.** A naïve "terminate when cycle 1 surfaces no new sections" rule would let shallow exploration pass for full mapping. The edge-probe re-engages the same section agents with a different lens — explicitly asking for the flows users wouldn't volunteer ("how do I delete my account", "what happens when my session expires mid-checkout", "what does the admin path look like"). If the edge-probe surfaces nothing, that IS the converged state — but it's a confirmed convergence, not an assumed one.
 
 **Cycles must be contiguous.** Keys 1..N with no gaps — a run with cycle keys {1, 3, 5} cannot converge regardless of edge-probe presence.
 
@@ -413,7 +413,7 @@ Every `phase4-prioritise-author:` return **MUST** open with a `handover` envelop
 
 ### Concurrency coordination (race-only)
 
-Cycle agents run in parallel. Most parallel work is independent — each agent owns its own CLI session, its own throwaway user (per `single-tenant:shared-state` audit tags), its own subtree of routes. But some interactions are genuinely shared: a global reset endpoint (`POST /api/reset` style), an email-uniqueness constraint on signup, a rate-limited login endpoint. When a cycle agent encounters a race that affects sibling agents' work, it MUST emit a structured concurrency-log entry so siblings can adjust.
+Cycle agents run in parallel. Most parallel work is independent — each agent owns its own CLI session, its own throwaway user (per `single-tenant:shared-state` audit tags), its own subtree of routes. But some interactions are shared: a global reset endpoint (`POST /api/reset` style), an email-uniqueness constraint on signup, a rate-limited login endpoint. When a cycle agent encounters a race that affects sibling agents' work, it MUST emit a structured concurrency-log entry so siblings can adjust.
 
 **Channel.** A single append-only JSONL file at `tests/e2e/docs/.phase4-concurrency-log.jsonl`. One JSON object per line (a fixed canonical schema below). Atomic append on POSIX requires writes ≤ `PIPE_BUF` (typically 4096 bytes) — every entry must fit in a single line that fits the buffer. Lines longer than that race; emit a stub entry with `details: "see <spill-path>"` and write the long form to the spill file.
 

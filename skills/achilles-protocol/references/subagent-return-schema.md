@@ -275,7 +275,7 @@ Every caller (`coverage-expansion`, `test-composer`, `bug-discovery`) MUST:
    - re-dispatch with a stricter brief that names the specific schema violation, or
    - surface the violation to the user when re-dispatch is not possible.
 4. Never invent new severities, new finding-ID schemes, or new ledger block shapes. One schema, one file.
-5. **No "one extra field" extensions.** A caller that adds an informational bullet, sub-line, or suffix to the finding block is forking the schema. If a new field is genuinely necessary, open a follow-up that extends this file; do not ship the extension in a caller's SKILL.md as a de-facto override.
+5. **No "one extra field" extensions.** A caller that adds an informational bullet, sub-line, or suffix to the finding block is forking the schema. If a new field is necessary, open a follow-up that extends this file; do not ship the extension in a caller's SKILL.md as a de-facto override.
 
 ### 4.1 Minimal conformance check (what the caller should look for)
 

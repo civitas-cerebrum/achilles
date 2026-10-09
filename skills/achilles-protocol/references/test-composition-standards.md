@@ -12,7 +12,7 @@ Composing rules used to be restated per skill, and the restatements drifted into
 The contract, patterned on [`subagent-return-schema.md`](subagent-return-schema.md) §4:
 
 1. **Cite, never fork.** A composing skill that needs a shared rule links to the canonical home (or to this file's index). It does not re-paste the rule's full text into its own SKILL.md.
-2. **No "one extra field" extensions.** A skill that adds a clause, exception, or qualifier to a shared rule inside its own SKILL.md is forking the standard. If a new clause is genuinely necessary, extend the canonical home (and this index if the home moves) in a dedicated PR; do not ship the extension as a de-facto per-skill override.
+2. **No "one extra field" extensions.** A skill that adds a clause, exception, or qualifier to a shared rule inside its own SKILL.md is forking the standard. If a new clause is necessary, extend the canonical home (and this index if the home moves) in a dedicated PR; do not ship the extension as a de-facto per-skill override.
 3. **Kernel mirrors carry a dual-update obligation.** Short restated invariants inside a skill's `### Hard rules — kernel-resident` block (per `coverage-expansion/SKILL.md` §"Kernel-resident invariants — convention") are deliberate redundancy, not forks. When a mirrored rule changes, the editor updates BOTH the kernel mirror AND the canonical text in the same PR.
 4. **Conflicts resolve toward the canon.** If a skill's text disagrees with the canonical home, the canonical home wins and the skill's text is a bug; fix it via the contribution workflow (`../../contributing-to-achilles-protocol/SKILL.md`), recording the resolution in §3 if the disagreement was normative.
 

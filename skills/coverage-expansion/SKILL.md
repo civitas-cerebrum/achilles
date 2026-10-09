@@ -134,7 +134,7 @@ A group is one dispatch whose description starts with the role: `test-composer-g
 
 When the orchestrator catches itself reasoning along certain framings (pre-emptive scope reduction, self-authorised batching, self-certifying greenlight, sonnet cost-down rationalisation, brief-leak, etc.) the relevant **failure-mode pattern** is documented in [`references/anti-rationalizations.md`](references/anti-rationalizations.md). The registry is keyed by category (not surface phrasing), names the symptoms that signal each pattern, the reality counter, and which hook (if any) catches that class mechanically.
 
-A novel framing that doesn't obviously match anything → match to the closest existing pattern first; only add a new pattern if genuinely categorical-new. Symptom-level enumeration is what the registry consolidates **away** from; chasing every tactical excuse never keeps up.
+A novel framing that doesn't obviously match anything → match to the closest existing pattern first; only add a new pattern if categorical-new. Symptom-level enumeration is what the registry consolidates **away** from; chasing every tactical excuse never keeps up.
 
 ## Reference index
 

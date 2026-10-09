@@ -151,7 +151,7 @@ New: **`host max`**: the orchestrator uses whatever parallel width the dispatch 
 
 #### Shared-resource audit interaction
 
-The Phase-0 shared-resource audit still caps parallelism where the app genuinely can't tolerate more (single credential per role, rate limits, CSRF serialization). Those caps override the host-max default. The audit's constraint tags apply to Stage A AND Stage B equally; reviewers compete for the same credentials.
+The Phase-0 shared-resource audit still caps parallelism where the app can't tolerate more (single credential per role, rate limits, CSRF serialization). Those caps override the host-max default. The audit's constraint tags apply to Stage A AND Stage B equally; reviewers compete for the same credentials.
 
 ### Model selection
 

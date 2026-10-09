@@ -109,7 +109,7 @@ Markdown is documentation, not enforcement. Under context pressure, an orchestra
 | "Subagent return must follow shape S" | `SubagentStop` parses the handover envelope, exit-2-blocks non-compliant returns. |
 | "After phase N, file F must exist" | `PreToolUse:Agent` denies advancing to phase N+1 when F is absent or stale. |
 
-If none of these apply because the rule is genuinely unenforceable mechanically (e.g. "use the right level of detail in the brief", "be honest about uncertainty"), the SKILL.md edit MUST add a `markdown-only` tag to the relevant entry in `coverage-expansion/references/anti-rationalizations.md` so the registry continues to track the failure surface even without harness backing.
+If none of these apply because the rule is unenforceable mechanically (e.g. "use the right level of detail in the brief", "be honest about uncertainty"), the SKILL.md edit MUST add a `markdown-only` tag to the relevant entry in `coverage-expansion/references/anti-rationalizations.md` so the registry continues to track the failure surface even without harness backing.
 
 **Why this is non-negotiable:** every markdown-only methodology rule that survives a release is a future incident waiting to happen. The cost of writing the hook is hours; the cost of debugging a wrong-classification incident the rule was meant to prevent is days plus the operator trust the package is supposed to earn. The asymmetry is the rule.
 
@@ -313,7 +313,7 @@ Stop. The right path:
 
 2. **Run the duplicate-prevention checks** from the "Before filing an issue or opening a PR" hard rule above — search existing issues/PRs (open + closed) in both repos, diff local vs. `origin/main`, and confirm your pinned dependency version is the latest. A large share of "missing API" reports are already fixed on main or in a newer published version.
 
-3. **If it's genuinely missing after those checks:**
+3. **If it's missing after those checks:**
    - Open an issue on `civitas-cerebrum/element-interactions` describing the use case. Include the check results (see the hard rule's reporting template).
    - If it's a generic element capability (CSS variable, custom property, drag with timing), it belongs in element-repository's `Element` interface first.
    - If it's an assertion shape, it belongs on the matcher tree.
@@ -375,7 +375,7 @@ Before opening a PR on element-interactions:
 - [ ] README updated under `🛠️ API Reference: Steps` — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
 - [ ] If adding a new method, it has a JSDoc block on the public-facing class
 - [ ] `.contribution-handover.json` populated against `schemas/contribution-handover.schema.json` — every boolean set; every `false` / `"n/a"` paired with a specific `*Reason` field (methodology rule)
-- [ ] **If this PR adds, modifies, or strengthens any `skills/*/SKILL.md` rule, workflow, phase, gate, invariant, or contract, it ALSO ships a hook under `hooks/` that enforces the rule programmatically (Hard rule §"Methodology improvements ship as programmatic hooks"). When mechanical enforcement is genuinely impossible, the PR description includes a paragraph explaining why and the rule is tagged `markdown-only` in `coverage-expansion/references/anti-rationalizations.md`.**
+- [ ] **If this PR adds, modifies, or strengthens any `skills/*/SKILL.md` rule, workflow, phase, gate, invariant, or contract, it ALSO ships a hook under `hooks/` that enforces the rule programmatically (Hard rule §"Methodology improvements ship as programmatic hooks"). When mechanical enforcement is impossible, the PR description includes a paragraph explaining why and the rule is tagged `markdown-only` in `coverage-expansion/references/anti-rationalizations.md`.**
 
 If you're adding to element-repository first:
 

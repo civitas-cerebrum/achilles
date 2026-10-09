@@ -119,7 +119,7 @@ Cross-cutting journeys (sub-journeys, regression-only specs spanning multiple pr
 1. Enumerate every distinct URL path / page name from `Pages touched:` across all journeys.
 2. Cluster by URL-path prefix (e.g., `/<area-A>/*`, `/<area-B>/*`). One cluster = one candidate page area.
 3. For each cluster, assign the human label from `app-context.md` if available, otherwise infer from the URL segment (e.g., `/<area-name>` → titlecase the segment).
-4. Fold singleton clusters (≤1 journey) into the closest sibling area — or into a catch-all "Miscellaneous" area if none fits. Do not leave an area with a single journey unless the project genuinely has a standalone area.
+4. Fold singleton clusters (≤1 journey) into the closest sibling area — or into a catch-all "Miscellaneous" area if none fits. Do not leave an area with a single journey unless the project has a standalone area.
 5. Target **10–14 total areas** across the catalogue. Fewer than 8 means the taxonomy is too coarse to be useful; more than 18 means it's too granular to scan. Adjust by merging adjacent singletons or splitting overly broad areas.
 
 The result is a derived, project-specific taxonomy. Write it out in the skill's return summary so reviewers can see what was chosen. Present the final area list on the catalogue's contents page with journey count per area, so a reader can see coverage density at a glance.
