@@ -43,7 +43,7 @@ A template with any unresolved `«…»` placeholder MUST NOT be written into `b
 | 1 | Reliability | State isolation (`beforeEach(resetState)`) | yes (per-spec insert) |
 | 2 | Reliability | Hardcoded shared resources | yes (per-spec rotate or fall through to #1) |
 | 3 | Reliability | Per-run uniqueness (`Date.now()`/`crypto.randomUUID()`) | yes (per-spec rewrite literal) |
-| 3b | Reliability | Assertion robustness — oracle audit | yes (per-spec rewrite assertion) / flag-only for copy-churn |
+| 3b | Reliability | Assertion strength — oracle audit | yes (per-spec rewrite assertion) / flag-only for copy-churn |
 | 4 | Speed | API shortcuts for tested prerequisites | yes (per-spec replace UI prereq with helper call; populate helper in `base.ts` if absent) |
 | 5 | Speed | Cookie banner / persistent modal handling | yes (per-spec strip duplicated dismiss; populate `dismissBanners` in `base.ts`) |
 | 6 | DRY | Serial mode discipline | flag-only (do not silently strip `mode: 'serial'`) |
@@ -224,7 +224,7 @@ For values that participate in case-sensitivity tests, prefer `crypto.randomUUID
 
 **Allowance — duplicate-detection tests:** if the spec is *about* duplicate detection (file name or describe title contains `duplicate` / `already-exists` / `taken`), the literal stays — the test is verifying the duplicate path. Add a `// stage4a:duplicate-deliberate` comment for human review and skip the auto-fix.
 
-## §3b Assertion robustness — oracle audit
+## §3b Assertion strength — oracle audit
 
 **Trigger:** the spec asserts an expected value that is *volatile* — a value the app legitimately changes between runs even when behaviour is correct. A passing assertion against a volatile value is a flake waiting to happen (and a re-baseline tax every time the data moves). This is the per-spec **oracle audit**: every assertion in the spec is graded for whether it pins a *stable* truth or an *incidental* one.
 
@@ -243,7 +243,7 @@ Volatile values to flag:
 - **Delta oracle** — capture `getCount`/`getText` before the action, act, then assert the *change* (count + 1, total + price), not the absolute post-state.
 - **Shape oracle** — assert the value *matches a pattern* rather than equals a literal: `text.toMatch(/^\$\d[\d,]*\.\d{2}$/)` for currency, `.satisfy(el => Number(el.text) > 0)` for a positive count, `verifyListOrder` for ordering instead of a fixed positional read.
 
-**Auto-fix?** Yes when the robust rewrite is mechanical (round-trip against a captured value, delta capture, pattern match) — apply it per-spec. **Flag-only** when the assertion looks like *copy-churn* — a hand-written human expectation (e.g. a marketing string, a fixed business rule) where rewriting to a pattern would weaken the test's intent. In that case add a `// stage4a:assertion-volatile-review` comment and surface it as `review`, do not auto-rewrite.
+**Auto-fix?** Yes when the stronger rewrite is mechanical (round-trip against a captured value, delta capture, pattern match) — apply it per-spec. **Flag-only** when the assertion looks like *copy-churn* — a hand-written human expectation (e.g. a marketing string, a fixed business rule) where rewriting to a pattern would weaken the test's intent. In that case add a `// stage4a:assertion-volatile-review` comment and surface it as `review`, do not auto-rewrite.
 
 **Examples:**
 

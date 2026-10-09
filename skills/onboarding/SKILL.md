@@ -101,8 +101,7 @@ row's `status` becomes `blocked`. This mirrors the existing
 - `skills/workflow-reviewer/SKILL.md` — reviewer methodology
 - `skills/achilles-protocol/references/harness-hooks.md` — both new hooks indexed
 
-The ledger + reviewer layer was added because empirical observation (a
-21-journey benchmark, Run 5) demonstrated that markdown-text contract
+The ledger + reviewer layer exists because markdown-text contract
 enforcement alone permits silent scope compression: orchestrators
 could skip phases entirely, stop early, or accept subagent "complete"
 returns whose deliverables were missing. The state-machine layer

@@ -2,15 +2,15 @@
 
 Niche failure shapes that LLMs routinely misclassify when running failure-diagnosis. Each entry names the symptom, the diagnostic move that disambiguates it, and the canonical resolution (heal / no-heal / report).
 
-This file is a **living catalogue**. When a diagnosis session encounters a niche shape, resolves it, and the resolution wasn't already covered here, append a new entry so the next diagnoser doesn't redo the work. The Stage 4 table in `SKILL.md` is for common edge cases; this file is for the long tail — the ones where the obvious-looking classification is wrong.
+This file is a **living catalogue**. When a diagnosis session encounters a niche shape, resolves it, and the resolution wasn't already covered here, append a new entry so the next diagnoser doesn't redo the work. The Stage 4 table in `SKILL.md` is for common edge cases; this file is for the long tail; the ones where the obvious-looking classification is wrong.
 
 Entry shape (use this for new entries):
 
-- **Symptom** — what the failure looks like in the screenshot / error / DOM.
-- **Why LLMs struggle** — the specific reasoning trap.
-- **Disambiguating probe** — the specific tool call / DOM check that resolves it.
-- **Classification** — `test-issue` / `app-bug` / `ambiguous`, plus the Stage 4a heal strategy if applicable.
-- **Cross-link** — to the Stage 4 / 4a row that covers the surface form, if one exists.
+- **Symptom**: what the failure looks like in the screenshot / error / DOM.
+- **Why LLMs struggle**: the specific reasoning trap.
+- **Disambiguating probe**: the specific tool call / DOM check that resolves it.
+- **Classification**: `test-issue` / `app-bug` / `ambiguous`, plus the Stage 4a heal strategy if applicable.
+- **Cross-link**: to the Stage 4 / 4a row that covers the surface form, if one exists.
 
 ---
 
@@ -34,7 +34,7 @@ Entry shape (use this for new entries):
 
 **Why LLMs struggle.** Two plausible-looking classifications converge on the wrong answer. Either (a) "this configuration legitimately offers a smaller set — update the test's expectation" (treats the reduced set as documented per-configuration variance); or (b) "the test expects more options than exist, so it's a stale assertion — re-baseline" (treats it as drift). Both mask a real outage. The reasoning chain "smaller list + something that *looks* like a generic notification → app is in a documented degraded-but-correct state" is plausible and almost always wrong here. The actual root cause is the same upstream-fetch failure shape as entry #1, with the frontend gracefully degrading to a fallback subset rather than showing an empty list.
 
-**Disambiguating probe.** Pick any of the rendered options and trigger its documented downstream interaction (the click that opens its detail modal, the selection that drives a follow-on fetch, etc.). Observe whether the downstream interaction produces the documented next-state container within the documented timeout. If the downstream interaction does not produce its next-state — or produces it with the spinner-sentinel symptom from entry #1 — this is the same upstream-fetch hang, surfaced through the option-list fallback. Cross-reference the banner copy against `app-context.md`'s list of documented degradation banners; if it matches one of those copy strings, the degradation is the surface, not the root.
+**Disambiguating probe.** Pick any of the rendered options and trigger its documented downstream interaction (the click that opens its detail modal, the selection that drives a follow-on fetch, etc.). Observe whether the downstream interaction produces the documented next-state container within the documented timeout. If the downstream interaction does not produce its next-state, or produces it with the spinner-sentinel symptom from entry #1, this is the same upstream-fetch hang, surfaced through the option-list fallback. Cross-reference the banner copy against `app-context.md`'s list of documented degradation banners; if it matches one of those copy strings, the degradation is the surface, not the root.
 
 **Classification.** `app-bug`. Stage 4a heal: `(h) Documented-quirk match — no heal`. Do NOT update the test's expected-options list; do NOT re-baseline.
 
@@ -52,7 +52,7 @@ Entry shape (use this for new entries):
 1. `count(selector)` against the live DOM — if it returns ≥2, the selector is ambiguous and the test is interacting with whichever element matches first, which may be the hidden duplicate.
 2. Screenshot-vs-DOM cross-reference — take a screenshot at the moment of the failed interaction and ask: is the element the locator resolved to actually visible on screen at the screenshot's viewport? If the bounding box is offscreen, hidden, or `display: none`, the locator is matching a phantom.
 
-**Classification.** `test-issue`. Stage 4a heal: `(a) Selector re-learn` — tighten the page-repository entry to disambiguate (add a visibility filter, scope to a stable landmark, switch to role+name, or anchor on the visible-only branch of the duplicated component tree). Do NOT just add a wait — the timing isn't the problem.
+**Classification.** `test-issue`. Stage 4a heal: `(a) Selector re-learn`: tighten the page-repository entry to disambiguate (add a visibility filter, scope to a stable landmark, switch to role+name, or anchor on the visible-only branch of the duplicated component tree). Do NOT just add a wait; the timing isn't the problem.
 
 **Cross-link.** Stage 4 row "Element obscured/overlapped" covers the *visible-but-blocked* shape; this entry covers the *resolves-but-wrong-element* shape, which looks similar in the failure log but has a different fix.
 
@@ -65,7 +65,7 @@ The catalogue is meant to grow. When a diagnostic session resolves a failure who
 ### When to add (criteria — must hold ALL)
 
 1. **You actually misclassified at first** (or were close to). The catalogue is for shapes that *trap* the diagnoser — not for failures whose classification was obvious from the screenshot. If Stage 0 + Stage 4 got you to the right answer cleanly, no entry needed.
-2. **The disambiguating probe was non-obvious.** The thing you ended up doing — the specific tool call, DOM read, or evidence grab that flipped the classification — is what the next diagnoser most needs. If your probe was just "look at the screenshot more carefully", that's not catalogue-worthy.
+2. **The disambiguating probe was non-obvious.** The thing you ended up doing (the specific tool call, DOM read, or evidence grab that flipped the classification) is what the next diagnoser most needs. If your probe was just "look at the screenshot more carefully", that's not catalogue-worthy.
 3. **The shape is reproducible across consumers**, not project-specific. A bug in *this app's checkout flow* is a project finding, not a niche-edges entry. A bug shape that any consumer of the package could plausibly hit (modal-fetch hangs, role-attribute serialisation, page-repo entry resolves but matches a hidden duplicate, etc.) is.
 
 If any criterion fails: don't add an entry. Project-specific findings go in the project's bug ledger; obvious classifications go nowhere; one-off probes that won't generalise go nowhere.

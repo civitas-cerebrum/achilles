@@ -92,13 +92,13 @@ Required fields:
 - `gated_skip: true` — distinguishes the entry from a dispatch.
 - `result: "covered-exhaustively"` — the Pass-2/3 contract is "the journey is covered to exhaustion" by Pass 1's tests; the gated-skip records that the orchestrator confirmed no new work was needed.
 - `review_status: "greenlight"` — gated skips are by definition greenlit; no Stage B review applies.
-- `triggers_checked` — object with three boolean fields naming each trigger explicitly. **All three MUST be `false`** for the entry to be valid; any `true` value means a trigger fired and the orchestrator should have dispatched. Missing fields are silent scope narrowing. (The harness schema guard that previously denied such entries was retired in the 0.3.6 cleanup; the rule still applies.)
+- `triggers_checked` — object with three boolean fields naming each trigger explicitly. **All three MUST be `false`** for the entry to be valid; any `true` value means a trigger fired and the orchestrator should have dispatched. Missing fields are silent scope narrowing.
 
 Gated-skip entries count as "work done" for the §"Authoritative state file" pre-emptive-stop check — a Pass 2 with 30 gated skips and zero dispatches is legitimately complete. The hook recognises both shapes (dispatch with `stage_a_cycles`/`review_status`, or gated-skip with `triggers_checked`) as evidence of work.
 
-Gated-skip entries are valid **only** for Passes 2 and 3. Pass 1 has no prior pass to gate against; Passes 4 and 5 (adversarial) keep dispatch-driven discipline because the per-journey adversarial yield is empirically uncorrelated with Pass-1 confidence.
+Gated-skip entries are valid **only** for Passes 2 and 3. Pass 1 has no prior pass to gate against; Passes 4 and 5 (adversarial) keep dispatch-driven discipline because per-journey adversarial yield does not track Pass-1 confidence.
 
-**`adversarialSkippedJourneys[]` field (issue #164.4, opt-in P3 adversarial skip):** array of objects, each with:
+**`adversarialSkippedJourneys[]` field (opt-in P3 adversarial skip):** array of objects, each with:
 
 - `journey` — the journey ID (`j-<slug>`).
 - `rationale` — non-empty string explaining why the journey is being excluded from Passes 4 and 5. Vague rationales (`"low value"`, `"P3 doesn't need it"`) fail the contract; specific rationales naming the covered surface and the app-wide entry that subsumes it pass.
@@ -110,7 +110,7 @@ The field is **opt-in per project, never silent**. The orchestrator may not appe
 
 The state file is rewritten after every per-pass commit (and whenever auto-compaction triggers — see [`depth-mode-pipeline.md` §"Auto-compaction between passes"](depth-mode-pipeline.md)).
 
-**`deferredJourneys[]` field (issue #155 Gap 2 — semantic authorisation).** Top-level array of objects, one entry per deferred journey. Each entry MUST satisfy one of:
+**`deferredJourneys[]` field (semantic authorisation).** Top-level array of objects, one entry per deferred journey. Each entry MUST satisfy one of:
 
 - **(A)** `reason` starts with one of the allowed structural prefixes — `blocked-on-app-bug:<id>`, `test-data-prerequisite:<thing>`, `user-authorised:<verbatim quote>`. These are subagent-returned or environment-attested reasons that need no further authorisation.
 - **(B)** The entry carries an `authorizer` field whose value is a non-empty string interpreted as a verbatim quote of in-conversation user authorisation.
@@ -127,7 +127,7 @@ Entry shape:
 
 **Namespace note.** This `authorizer` field is distinct from the per-`dispatches[]`-entry `authorizer` field documented above. The dispatch-entry `authorizer` is non-null only when `result == "skipped"` (per-journey skip authorised by user). The `deferredJourneys[]` `authorizer` is the verbatim quote authorising a self-imposed deferral. Two distinct contracts share the field name; the hook distinguishes by entry shape (presence of `stage_a_cycles` / `review_status` marks a dispatch entry; their absence + `journey` + `reason` marks a deferral entry).
 
-Methodology rule. Self-imposed reasons (`budget-cap`, `session-length`, `mode-deviation`, `inferred-pref`, `auto-mode-stop`) are invalid without an `authorizer:` field; empty / whitespace-only / `null` authorizer is equally invalid. (The harness deferral-auth guard that previously denied such writes was retired in the 0.3.6 cleanup; the rule still applies.)
+Methodology rule. Self-imposed reasons (`budget-cap`, `session-length`, `mode-deviation`, `inferred-pref`, `auto-mode-stop`) are invalid without an `authorizer:` field; empty / whitespace-only / `null` authorizer is equally invalid.
 
 **Journey-roster mutability.** The roster for a given pass is frozen at the start of that pass — it is a snapshot of the journey IDs the orchestrator intends to dispatch *this pass*. If a compositional pass discovers and promotes a new journey or sub-journey mid-pass, the new entry is appended to the **next** pass's roster, not retroactively to the current pass's. This prevents the "did I cover everything?" ambiguity where `journeyRoster` and `completedJourneys` diverge because the roster keeps growing. Reconciliation commits (Pass 2/3) write the new roster to the state file at the same commit that appends the new map blocks, so the post-compact resume reads a consistent roster-to-map alignment.
 

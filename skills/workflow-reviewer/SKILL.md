@@ -346,9 +346,8 @@ package (see `skills/achilles-protocol/references/stages-protocol.md`).
 
 ## Empirical origin
 
-A 21-journey benchmark onboarding run demonstrated that markdown-text
-contract enforcement alone permits silent scope compression even when
-the rules are crisp. Observed failure modes:
+Markdown-text contract enforcement alone permits silent scope
+compression even when the rules are crisp. Failure modes:
 
 - The orchestrator skipped a phase entirely without a documented
   authorisation.

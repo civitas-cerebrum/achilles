@@ -363,7 +363,7 @@ Do NOT write any automation code until Stage 3. Do NOT create selectors until St
 
 ### Checklist
 
-You MUST create a task for each of these items and complete them in order (Stages 1-4 are for individual scenarios; Stage 5 is for comprehensive suite expansion):
+You MUST create a task for each of these items and complete them in order (Stages 1-4 are for individual scenarios; Stage 5 is for whole-suite expansion):
 
 1. **Understand intent** — read the user's message; only show the greeting menu if intent is unclear
 2. **Stage 1: Scenario Discovery** — understand the app, clarify the scenario, produce a formatted scenario

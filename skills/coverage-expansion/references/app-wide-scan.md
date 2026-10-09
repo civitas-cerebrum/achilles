@@ -25,7 +25,7 @@ If the scan output file already exists from a prior run on the same project, the
 
 ## Dispatch shape
 
-Description prefix: `probe-app-wide:`. Single subagent, dedicated `playwright-cli` session, isolated context. The `probe-` family role-prefix is the conventional leaf-shape probe marker. (The harness dispatch-guard hook that previously recognised the prefix was retired in 0.3.6; the convention still applies.)
+Description prefix: `probe-app-wide:`. Single subagent, dedicated `playwright-cli` session, isolated context. The `probe-` family role-prefix is the conventional leaf-shape probe marker.
 
 ```
 description: "probe-app-wide: pass 4 — establish pattern catalogue"
@@ -149,4 +149,3 @@ The `coverage:` field IS the citation. The per-journey probe does NOT re-documen
 - `coverage-expansion/SKILL.md` §"Standard mode" — invokes this scan as the Pass-4 prelude.
 - `adversarial-subagent-contract.md` §"Inputs (given at dispatch time)" — per-journey probes get the app-wide-patterns file as Input 9 alongside the journey-specific inputs.
 - `../../achilles-protocol/references/subagent-return-schema.md` §1 — documents the `coverage:` field that holds the citation.
-- The empirical motivation and savings analysis for this scan are documented in the project history.

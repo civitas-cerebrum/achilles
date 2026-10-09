@@ -6,9 +6,7 @@ description: >
   inlining it contaminates orchestrator context. The orchestrator detects
   a failure and dispatches a subagent; the subagent loads this skill.
   Loading this skill into orchestrator context is a methodology violation
-  (the skill is heavy enough to contaminate orchestrator context). The
-  previous harness-side guard was retired in 0.3.6; respect the convention
-  by dispatching a subagent.
+  (the skill is heavy enough to contaminate orchestrator context).
 
   Diagnose failing Playwright tests through structured evidence-based triage.
   Two entrypoints — a LOCAL failure (artifacts already on disk) and a
@@ -81,7 +79,7 @@ Two ways in. They differ **only** in how Stage 0's source-of-truth and Stage 1's
 
 Before collecting evidence on the failing test, read what the project already documents. Skipping this stage is how confidently-wrong "app bug" classifications get published — you compare the screenshot against your recollection of the page instead of against what the project already specifies.
 
-**Methodology rule.** Failure-diagnosis edits and bug-report writes that skip the documented context pre-read produce confidently-wrong "app bug" classifications. The previous harness backstop that blocked these writes was retired in the 0.3.6 cleanup; the pre-read remains mandatory.
+**Methodology rule.** Failure-diagnosis edits and bug-report writes that skip the documented context pre-read produce confidently-wrong "app bug" classifications. The pre-read is mandatory.
 
 **Locate the files — do not assume the paths.** The paths below are the *scaffold defaults*, not a guarantee. Real consumers put their suite at `apps/e2e/`, `packages/e2e/`, `e2e/`, or a workspace package of their own naming, and some of these documents do not exist at all. Resolve each one before reading it, and record what you found (or that it is absent):
 

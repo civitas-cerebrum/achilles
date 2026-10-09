@@ -79,8 +79,8 @@ Phases 1 → 3.5 detail (process, parallel-discovery model, output formats) is i
 - **Risk factors are the second axis, never a priority modifier.** The journey block's `Risk factors:` field (canonical 8-factor vocabulary in `references/phases.md` §"Defect-likelihood risk factors") derives `risk: elevated` (2+ factors) vs `risk: baseline` (default when the field is absent or `none`). Risk NEVER changes the P-tier and never adds or removes test expectations; it orders dispatch within a tier (elevated first) and excludes elevated journeys from grouped dispatches (`coverage-expansion/SKILL.md` §"Grouped dispatch"). Methodology rule, not hook-enforced.
 - **Phase 4 is sentinel-bearing.** Phase 5 re-verifies. A Phase-4 commit without the sentinel re-fires Phase 4.
 - **In `phases-2-4` mode, Phases 2 / 3 / 3.5 run as iterative cycles, not as one sequential walkthrough.** See §"Iterative discovery cycles" below. The single-subagent sequential walkthrough is forbidden in `phases-2-4` mode — it produces shallow per-section coverage and hides the parallelism the skill was designed for.
-- **Cycle 1 (discovery) is strict per-section parallel in EVERY mode.** A single-subagent walkthrough is forbidden in cycle 1 of `full` mode AND `phases-2-4` mode — `full` mode previously left this under-specified, allowing a single agent to collapse the whole phase and hide the parallelism the skill was designed for. The first cycle establishes the section baseline at maximum fidelity; that quality propagates through every later cycle and into authoring. Harness-enforced: the `standard-mode-first-pass-guard.sh` hook denies a `phase4-prioritise-author:` dispatch until ≥ 2 distinct `phase4-cycle-1-section-<id>:` dispatches have been recorded, and denies a dispatch description that names ≥ 3 canonical section IDs in one brief (the single-agent-collapse heuristic).
-- **Cycle 2+ (edge-probe, additional discovery) may be single-subagent sequential when `cycleStrictness: standard`** (default). The strict-per-section contract that holds on cycle 1 is relaxed for cycle 2+: edge-probe and incremental-discovery work is empirically lower-fidelity per section and benefits less from per-section isolation. The hook does NOT block single-subagent cycle-2+ dispatches under `cycleStrictness: standard`.
+- **Cycle 1 (discovery) is strict per-section parallel in EVERY mode.** A single-subagent walkthrough is forbidden in cycle 1 of `full` mode AND `phases-2-4` mode. The first cycle establishes the section baseline at maximum fidelity; that quality propagates through every later cycle and into authoring. Harness-enforced: the `standard-mode-first-pass-guard.sh` hook denies a `phase4-prioritise-author:` dispatch until ≥ 2 distinct `phase4-cycle-1-section-<id>:` dispatches have been recorded, and denies a dispatch description that names ≥ 3 canonical section IDs in one brief (the single-agent-collapse heuristic).
+- **Cycle 2+ (edge-probe, additional discovery) may be single-subagent sequential when `cycleStrictness: standard`** (default). The strict-per-section contract that holds on cycle 1 is relaxed for cycle 2+: edge-probe and incremental-discovery work is lower-fidelity per section and benefits less from per-section isolation. The hook does NOT block single-subagent cycle-2+ dispatches under `cycleStrictness: standard`.
 - **Under `cycleStrictness: depth`, EVERY cycle is strict per-section parallel.** When the invocation carries `args: "phases: full, cycle-strictness: depth"` (set by `onboarding` Phase 4 dispatch when the front-load gate selected `runMode: depth`), the strict-per-section contract holds on cycle 1 AND every later cycle (edge-probe and any additional discovery cycles). Single-subagent walkthroughs are forbidden in every cycle, not just cycle 1. The orchestrator writes `cycleStrictness: "depth"` into `tests/e2e/docs/.phase4-cycle-state.json` on the first state-file write so the `standard-mode-first-pass-guard.sh` hook can read the field and deny single-agent cycle-N dispatches for any cycle, not just cycle 1. Default is `cycleStrictness: "standard"` when the field is absent. Cost: each cycle under depth runs at the cycle-1 dispatch cap; for a typical 5-cycle convergence, that is ~5× the section-agent count of the standard-mode default (which runs ~1 cycle strict + ~4 cycles relaxed).
 
 ## Iterative discovery cycles (drives Phases 2 / 3 / 3.5 in `phases-2-4` mode AND `full` mode)
@@ -92,7 +92,7 @@ The cycle protocol runs **at minimum 2 cycles, up to 5** of section-agent dispat
 
 The minimum 2 (1 discovery + 1 edge-probe) is non-negotiable: even when cycle 1 surfaces no new sections, the edge-probe runs to confirm there really aren't any edge journeys hiding. Per-cycle dedup terminates the loop when both conditions hold: no new sections post-dedup AND the edge-probe cycle has run. The loop is bounded at 5 cycles regardless. After cycles converge, a single `phase4-prioritise-author:` subagent applies Phase 3 prioritisation + Phase 3.5 redundancy revision + Phase 4 authoring.
 
-**First-cycle strict / later-cycle relaxed (standard) — or every-cycle strict (depth).** Cycle 1 is **strict per-section parallel** in every mode — one subagent per target section, dispatched in one parallel wave. The high-value moment for strict-parallel-per-section dispatch is the first cycle: it establishes the section baseline at maximum fidelity. Single-subagent walkthroughs of cycle 1 are forbidden (and hook-denied — see §"Hard rules — kernel-resident") regardless of whether the invocation is `full` mode or `phases-2-4` mode. Under `cycleStrictness: standard` (default), cycle 2+ (edge-probe and incremental discovery) may be single-subagent sequential when the orchestrator chooses — the strict contract relaxes from cycle 2 onward, because incremental discovery is empirically lower-fidelity-per-section and benefits less from per-section isolation. **Under `cycleStrictness: depth`** (selected via `onboarding`'s `runMode: depth` front-load gate and propagated as `args: "phases: full, cycle-strictness: depth"`), every cycle is strict per-section parallel — including edge-probe and any additional discovery cycles — and single-subagent walkthroughs are forbidden in every cycle. Phase 1 entry-crawl + post-crawl test-infra subagent contract is unchanged (already mandates parallelism).
+**First-cycle strict / later-cycle relaxed (standard) — or every-cycle strict (depth).** Cycle 1 is **strict per-section parallel** in every mode — one subagent per target section, dispatched in one parallel wave. The high-value moment for strict-parallel-per-section dispatch is the first cycle: it establishes the section baseline at maximum fidelity. Single-subagent walkthroughs of cycle 1 are forbidden (and hook-denied — see §"Hard rules — kernel-resident") regardless of whether the invocation is `full` mode or `phases-2-4` mode. Under `cycleStrictness: standard` (default), cycle 2+ (edge-probe and incremental discovery) may be single-subagent sequential when the orchestrator chooses — the strict contract relaxes from cycle 2 onward, because incremental discovery is lower-fidelity-per-section and benefits less from per-section isolation. **Under `cycleStrictness: depth`** (selected via `onboarding`'s `runMode: depth` front-load gate and propagated as `args: "phases: full, cycle-strictness: depth"`), every cycle is strict per-section parallel — including edge-probe and any additional discovery cycles — and single-subagent walkthroughs are forbidden in every cycle. Phase 1 entry-crawl + post-crawl test-infra subagent contract is unchanged (already mandates parallelism).
 
 ### Inputs
 
@@ -101,7 +101,7 @@ The cycle protocol consumes `tests/e2e/docs/.discovery-draft.json` produced by `
 - **Cycle-1 section roster** — the union of `sections-inferred[].id` and `unvisited-but-linked[].section-guess` from the draft.
 - **Credentials policy** — `handover-to-phase4.credentials-discovered` tells cycle agents whether they can self-credential to drive gated areas.
 
-If the draft is missing or malformed (no sentinel, empty `cycle-1-targets`), `phases-2-4` mode stops immediately with `blocked-on-prerequisite: discovery-draft-missing` — `journey-mapping` does not synthesise a draft from scratch. (The harness hook that previously denied cycle dispatches when the draft was absent was retired in the 0.3.6 cleanup; the rule still applies.)
+If the draft is missing or malformed (no sentinel, empty `cycle-1-targets`), `phases-2-4` mode stops immediately with `blocked-on-prerequisite: discovery-draft-missing` — `journey-mapping` does not synthesise a draft from scratch.
 
 > **Cycle transitions are now reviewer-gated (additive).** When this skill is invoked as Phase 4 of the onboarding pipeline, every cycle N → cycle N+1 transition is gated by a `workflow-reviewer-cycle<N>:` subagent reading the onboarding-status ledger (`tests/e2e/docs/onboarding-status.json`). The existing `.phase4-cycle-state.json` is unchanged and remains the authoritative per-cycle / per-section dispatch ledger; the new gate is additive — the orchestrator must dispatch `workflow-reviewer-cycle<N>:` between cycles (grammar: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md)), and the harness `onboarding-ledger-gate.sh` denies cycle-N+1 section dispatches until the prior cycle's `reviewerVerdict` is `approved`. See `skills/workflow-reviewer/SKILL.md` and `skills/onboarding/SKILL.md` §"Status ledger + workflow reviewer".
 
@@ -163,17 +163,12 @@ orchestrator-loop (cycle N from 1 to 5):
      cycles.N.dispatched-sections appears in cycles.N.returned-sections.
      Background dispatches do NOT count as completed until their PostToolUse
      records the return; "all 7 cycle-N agents launched" is not the same as
-     "cycle N is done". (Methodology rule — dispatched-sections must equal
-     returned-sections before cycle-N+1 dispatch. The harness cycle-gate
-     hook that previously enforced this mechanically was retired in the
-     0.3.6 cleanup; the rule still applies.)
+     "cycle N is done". (Methodology rule.)
   4. Per-cycle dedup:
        - apply canonical section-id normalization (see §"Section vocabulary")
        - drop new-sections-discovered already present in cycles 1..N
        - record duplicates-merged
-  5. Decision (orchestrator-derived from the cycle data per the rules below.
-     Methodology rule — the harness cycle-gate hook that previously derived
-     this mechanically was retired in 0.3.6; the rules still apply):
+  5. Decision (orchestrator-derived from the cycle data per the rules below):
        - cycles.<highest>.dispatched-sections == returned-sections AND
          post-dedup new-sections-discovered is empty AND
          at least one cycle has kind == "edge-probe" AND
@@ -193,9 +188,7 @@ post-cycle: dispatch phase4-prioritise-author: (single subagent)
   map is committed and silently disappear. The author dispatch is forbidden
   while convergence-status is not "converged" or "hard-cap-reached"; both
   require every dispatched section in the highest cycle to appear in
-  returned-sections. (Methodology rule — the harness cycle-gate hook that
-  previously enforced this was retired in 0.3.6; the rule still applies.
-  The live partial gate: standard-mode-first-pass-guard.sh Rule 2 denies a
+  returned-sections. (Methodology rule. The live partial gate: standard-mode-first-pass-guard.sh Rule 2 denies a
   phase4-prioritise-author: dispatch until ≥ 2 distinct
   phase4-cycle-1-section-<id>: dispatches have been recorded.)
   - reads ALL section blocks from cycle returns (spill files + state file)
@@ -213,7 +206,7 @@ post-cycle: dispatch phase4-prioritise-author: (single subagent)
 
 **Why the edge-probe is non-negotiable.** A naïve "terminate when cycle 1 surfaces no new sections" rule would let shallow exploration pass for full mapping. The edge-probe re-engages the same section agents with a different lens — explicitly asking for the flows users wouldn't volunteer ("how do I delete my account", "what happens when my session expires mid-checkout", "what does the admin path look like"). If the edge-probe genuinely surfaces nothing, that IS the converged state — but it's a confirmed convergence, not an assumed one.
 
-**Cycles must be contiguous.** Keys 1..N with no gaps — a run with cycle keys {1, 3, 5} cannot converge regardless of edge-probe presence. Methodology rule — the harness cycle-gate hook that previously enforced this was retired in 0.3.6; the rule still applies.
+**Cycles must be contiguous.** Keys 1..N with no gaps — a run with cycle keys {1, 3, 5} cannot converge regardless of edge-probe presence.
 
 ### Per-section-agent contract (`phase4-cycle-<N>-section-<id>:`)
 
@@ -367,7 +360,7 @@ The author does NOT drive `playwright-cli` itself — all live observation happe
 
 When in doubt: ask "is this a distinct user goal that requires separate prioritisation and test depth, OR is this a state/viewport variation on an existing journey?" If the latter, fold it in.
 
-**Retry semantics.** If the author returns `status: blocked` (corrupt cycle state, malformed spill files, unresolvable input, OR the author's own internal-consistency check failed), the orchestrator may re-dispatch `phase4-prioritise-author:` up to 3 times. (Methodology rule — `author-attempts` is tracked in the state file and the 4th attempt is forbidden. The harness cycle-gate hook that previously denied the 4th attempt was retired in the 0.3.6 cleanup; the rule still applies.) After 3 failures, surface to the user with the most recent author return — manual review of the cycle data is needed before proceeding.
+**Retry semantics.** If the author returns `status: blocked` (corrupt cycle state, malformed spill files, unresolvable input, OR the author's own internal-consistency check failed), the orchestrator may re-dispatch `phase4-prioritise-author:` up to 3 times. (Methodology rule — `author-attempts` is tracked in the state file and the 4th attempt is forbidden.) After 3 failures, surface to the user with the most recent author return — manual review of the cycle data is needed before proceeding.
 
 **Soft-blocked path: malformed-but-written.** A subtle failure mode: the author returns `journey-map-authored` (success), the hook flips `author-dispatched: true` and closes the retry path, but the file is malformed (missing sentinel, missing required sections, structural smells). Phase-validator-4 catches this later as `improvements-needed`. The orchestrator's recovery: delete `journey-map.md`, delete `.phase4-cycle-state.json`, and re-run from cycle 1. The author retry path is closed by design — successful-write commits the run; a malformed write is a re-run, not a re-author.
 
@@ -408,9 +401,7 @@ Every `phase4-prioritise-author:` return **MUST** open with a `handover` envelop
 }
 ```
 
-### Methodology rules (no longer harness-enforced)
-
-Two harness hooks previously gated the protocol mechanically; both were retired in the 0.3.6 cleanup for public-dep cleanliness. The rules themselves still apply:
+### Methodology rules (not harness-enforced)
 
 - **Discovery-draft prerequisite** — any `phase4-cycle-*-section-*:` or `phase4-prioritise-author:` dispatch is forbidden when `tests/e2e/docs/.discovery-draft.json` is missing, lacks the version sentinel, or has empty `cycle-1-targets`.
 - **Cycle gate** — reads `.phase4-cycle-state.json` and forbids:
@@ -418,7 +409,7 @@ Two harness hooks previously gated the protocol mechanically; both were retired 
   - cycle-N+1 dispatches before cycle-N has at least one return
   - `phase4-prioritise-author:` dispatches before either convergence or the 5-cycle hard cap
   - cycle-6+ dispatches outright (the 5-cycle hard cap is enforced).
-  PostToolUse-style bookkeeping previously appended cycle-section returns to `returned-sections` and `new-sections-discovered`; the orchestrator now maintains these fields itself.
+  The orchestrator maintains `returned-sections` and `new-sections-discovered` itself.
 
 ### Concurrency coordination (race-only)
 

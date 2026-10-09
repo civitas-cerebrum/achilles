@@ -328,7 +328,7 @@ After any Stage 4 commit, when the user indicates they are done adding individua
 >
 > Would you like me to proceed to **Stage 5: Coverage Expansion**? I can also:
 > - **Pause here** — I'll stop and you can resume any time by asking
-> - **Jump straight to Bug Discovery (Stage 6)** — only recommended if you already have comprehensive coverage from a previous session
+> - **Jump straight to Bug Discovery (Stage 6)** — only recommended if you already have full coverage from a previous session
 > - **Generate a work summary deck** — produce a stakeholder-facing report of what was built so far
 
 4. **Wait for explicit user choice.** Do NOT auto-proceed. Do NOT assume yes.

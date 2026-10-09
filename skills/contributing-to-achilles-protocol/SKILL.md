@@ -7,8 +7,7 @@ description: >
   contribution intent and dispatches a `contribution-handover-` subagent;
   the subagent loads this skill. Loading this skill into orchestrator
   context is a methodology violation (the skill is heavy enough to
-  contaminate orchestrator context). The previous harness-side guard was
-  retired in 0.3.6; respect the convention by dispatching a subagent.
+  contaminate orchestrator context).
 
   Use this skill when contributing to the @civitas-cerebrum/element-interactions
   package or its skill suite — and, just as importantly, when a consumer hits
@@ -26,8 +25,7 @@ description: >
   (B) **Structural / framework / protocol gap.** A skill, workflow, or
   documented invariant declares a rule that the package's current architecture
   cannot satisfy without changing the package itself, switching its underlying
-  tooling, or relaxing the rule. The MCP→playwright-cli migration (#121, #122)
-  is the canonical example: the parallel-isolation rule was structurally
+  tooling, or relaxing the rule. Example: the parallel-isolation rule was structurally
   unsatisfiable on top of the Playwright MCP plugin and required a tooling
   change at the package layer, not a skill-level workaround. Triggers: "the
   framework can't satisfy", "framework limitation", "this rule cannot be
@@ -90,7 +88,7 @@ Moved to [element-interactions-api.md](references/element-interactions-api.md) �
 
 **Rule.** Any agent preparing to modify files inside this package's contribution surface — `src/`, `hooks/`, `skills/`, `scripts/`, `package.json`, `tsconfig*.json`, `.github/` — MUST first load this skill (`skills/contributing-to-achilles-protocol/SKILL.md`) in the current session. Either invoke it via the `Skill` tool or `Read` the file directly. The skill encodes the architecture, the API-vs-structural-gap distinction, the hard rules, and the design invariants every contribution must respect; an agent that hasn't loaded it is editing blind.
 
-**Methodology rule** — any agent preparing to modify the package's contribution surface MUST first load this skill in the current session. The previous harness pre-read guard (which DENY'd edits when CWD was this package's repo and the skill hadn't been loaded) was retired in the 0.3.6 cleanup for public-dep cleanliness; the rule itself still applies.
+**Methodology rule** — any agent preparing to modify the package's contribution surface MUST first load this skill in the current session.
 
 Editing this SKILL.md itself is exempt — the edit IS the read.
 
@@ -98,7 +96,7 @@ Editing this SKILL.md itself is exempt — the edit IS the read.
 
 **Every PR that adds, modifies, or strengthens a rule, workflow, phase, gate, invariant, or contract in any `skills/*/SKILL.md` (or its referenced files under `references/`) MUST ship a corresponding harness hook in `hooks/` that enforces the rule programmatically — or include an explicit, reviewer-visible note explaining why mechanical enforcement is impossible.**
 
-Markdown is documentation, not enforcement. Under context pressure, an orchestrator reading its own rule will rationalise around it ("this case is different", "given session constraints", "I'll be transparent about the trade-off") and stop / narrow / skip anyway. This is not a hypothetical — it is the documented failure pattern of issues #139, #154, #155, and #156. The harness layer is the only second-reader the orchestrator cannot talk past.
+Markdown is documentation, not enforcement. Under context pressure, an orchestrator reading its own rule will rationalise around it ("this case is different", "given session constraints", "I'll be transparent about the trade-off") and stop / narrow / skip anyway. This failure pattern is common. The harness layer is the only second-reader the orchestrator cannot talk past.
 
 **Decision rule** (apply when you write or edit any SKILL.md rule):
 
@@ -197,7 +195,7 @@ for n in 156 157; do gh issue view $n --json author -q '.number, .author.login' 
 
 **Self-reported / chore caveat.** When the contributor is also the issue author, self-attribution is still appropriate — the audit trail is the value, not the social acknowledgement. For purely-chore commits with no upstream issue, the rule does not apply.
 
-**Harness backstop.** The `PreToolUse:Bash` commit-attribution guardrail that previously surfaced missing `Reported-by:` attribution at commit time was retired in 0.3.6; the rule still applies and PR reviewers enforce it. The live `hooks/commit-message-gate.sh` checks commit-message conventions (type/scope/bypass flags) but does not check attribution trailers. (See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).)
+**Harness backstop.** PR reviewers enforce attribution. The live `hooks/commit-message-gate.sh` checks commit-message conventions (type/scope/bypass flags) but does not check attribution trailers. (See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).)
 
 ### AI assistants don't get `Co-Authored-By:` trailers
 
@@ -223,7 +221,7 @@ Every PR against this repo must produce a populated `.contribution-handover.json
 
 The schema lives at `schemas/contribution-handover.schema.json`. A blank template lives at `.contribution-handover.template.json`. **Copy the template, fill it in, and run the gate at push time. The file is gitignored — DO NOT commit it.** Carrying a previous PR's handover into a new branch is the failure mode the gate exists to catch (each PR's claims must reflect that PR's actual contents, not whatever the prior handover said).
 
-The companion `PreToolUse:Bash` push/PR gate that previously intercepted `git push origin` and `gh pr create` while the handover was missing, malformed, or had unset booleans was retired in 0.3.6; the rule still applies — populate and self-validate the handover before pushing, and PR reviewers enforce it. See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).
+Populate and self-validate the handover before pushing; PR reviewers enforce it. See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).
 
 **Why a handover, not just a checklist:**
 - Structured booleans are machine-checkable. The gate spot-verifies a subset of claims against the actual repo state (e.g. `readmeUpdated: true` is cross-checked against the README diff vs. `origin/main`).
@@ -328,7 +326,7 @@ Stop. The right path:
 
 ## 🧱 When the framework cannot satisfy a documented rule
 
-Sometimes the problem is not a missing method on `Steps` — it's that a skill, workflow, or invariant declares a rule the package's current architecture cannot back. The MCP→playwright-cli migration (#121, #122) is the canonical case: every browser-using skill in this suite required parallel-subagent isolation, but the Playwright MCP plugin shared one browser process across all subagents. The rule was unsatisfiable until the package switched tooling.
+Sometimes the problem is not a missing method on `Steps` — it's that a skill, workflow, or invariant declares a rule the package's current architecture cannot back. Example: every browser-using skill in this suite required parallel-subagent isolation, but the Playwright MCP plugin shared one browser process across all subagents. The rule was unsatisfiable until the package switched tooling.
 
 Distinguishing a structural gap from an API gap:
 
@@ -354,7 +352,7 @@ Distinguishing a structural gap from an API gap:
 
 **Examples that should trigger this skill, not a skill-level workaround:**
 
-- "I need parallel browser isolation, but the package's MCP protocol shares one browser." → File an issue; consider a tool swap. (#121 / #122 — actual case.)
+- "I need parallel browser isolation, but the package's MCP protocol shares one browser." → File an issue; consider a tool swap.
 - "My skill needs auth state to survive a failure boundary, but the package doesn't expose state-save / state-load." → File an issue against the package; do not write a brittle re-login loop in the skill.
 - "The orchestrator's Rule X requires Y before dispatch, but the package can't tell us Y." → File an issue; add the primitive in the package; consume it from the orchestrator.
 
@@ -376,7 +374,7 @@ Before opening a PR on element-interactions:
 - [ ] API reference updated (`skills/achilles-protocol/references/api-reference.md`) — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
 - [ ] README updated under `🛠️ API Reference: Steps` — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
 - [ ] If adding a new method, it has a JSDoc block on the public-facing class
-- [ ] `.contribution-handover.json` populated against `schemas/contribution-handover.schema.json` — every boolean set; every `false` / `"n/a"` paired with a specific `*Reason` field (methodology rule — the harness gate that previously verified this on push / PR-create was retired in 0.3.6 for public-dep cleanliness)
+- [ ] `.contribution-handover.json` populated against `schemas/contribution-handover.schema.json` — every boolean set; every `false` / `"n/a"` paired with a specific `*Reason` field (methodology rule)
 - [ ] **If this PR adds, modifies, or strengthens any `skills/*/SKILL.md` rule, workflow, phase, gate, invariant, or contract, it ALSO ships a hook under `hooks/` that enforces the rule programmatically (Hard rule §"Methodology improvements ship as programmatic hooks"). When mechanical enforcement is genuinely impossible, the PR description includes a paragraph explaining why and the rule is tagged `markdown-only` in `coverage-expansion/references/anti-rationalizations.md`.**
 
 If you're adding to element-repository first:

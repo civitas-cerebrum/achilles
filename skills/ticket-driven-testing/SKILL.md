@@ -13,7 +13,7 @@ A ticket is not a test plan. It is a claim about behaviour, a branch that allege
 
 **Core principle: build understanding by interacting, then assert what you understood.**
 
-Read the diff early — it tells you **where to look** and **what is risky**. It does not tell you
+Read the diff early: it tells you **where to look** and **what is risky**. It does not tell you
 what to assert. Those are different jobs, and conflating them is how you end up with a suite that
 asserts a class token instead of a highlight, `inert` instead of visibility, and an element's
 computed `position` instead of whether the user can see two bars.
@@ -27,14 +27,14 @@ live  →  what actually happens, in what sequence, at what moment
 ```
 
 A test written from the diff binds to the implementation of one branch. A test written from
-observed behaviour survives the implementation changing — and that matters, because the branch you
+observed behaviour survives the implementation changing; and that matters, because the branch you
 are testing may never ship in the form you read.
 
 **REQUIRED SUB-SKILL:** the evidence run itself is `companion-mode`. This skill wraps it with the ticket, branch, and diff context that companion-mode's Phase 1 assumes you already have.
 
 ### The sequence
 
-Whenever you list what you are going to do, list these. All ten, in this order. Mark any you are skipping and say why — an omitted step is a decision, and it belongs in the report.
+Whenever you list what you are going to do, list these. All ten, in this order. Mark any you are skipping and say why; an omitted step is a decision, and it belongs in the report.
 
 ```
 0  RE-ENTER FOR THIS TICKET                 → loaded ≠ performed. One ticket, one run of 0–9
@@ -55,7 +55,7 @@ Whenever you list what you are going to do, list these. All ten, in this order. 
                                             → §8b attacks the tests; this attacks the claims
 ```
 
-Step 8 is the one that gets dropped — an early draft of this skill omitted it 5/5 while an agent with no skill at all named it first. 8b delegates the check as well, so it does not rest on memory alone. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
+Step 8 is the one that gets dropped; an early draft of this skill omitted it 5/5 while an agent with no skill at all named it first. 8b delegates the check as well, so it does not rest on memory alone. A suite nobody has seen fail is not regression cover, and "12/12 green on the branch" is not evidence that it would have caught anything.
 
 ### 0. One ticket, one run — the skill being loaded is not the sequence being performed
 
@@ -63,7 +63,7 @@ Step 8 is the one that gets dropped — an early draft of this skill omitted it 
 mean the sequence has been performed for the ticket in front of you now.**
 
 Activation here is intent-triggered, so the only thing that re-fires it on the second ticket is
-your own judgement — and the second ticket is exactly where that judgement fails. The skill IS in
+your own judgement: and the second ticket is exactly where that judgement fails. The skill IS in
 your transcript. The method IS still there to read. "I'm already in ticket-testing mode" is a
 locally reasonable inference and a globally wrong one, because *mode* is a property of the
 session and *the sequence* is a property of the ticket. Those two came apart the moment the
@@ -71,7 +71,7 @@ operator handed you a second ticket.
 
 What that costs, from the run that produced this rule: a session ran the method properly for one
 ticket, then picked up a second and ran an ad-hoc verification instead. It posted a verdict to
-the tracker with measured numbers and **zero artifacts** — no screenshots, no recording, no
+the tracker with measured numbers and **zero artifacts**; no screenshots, no recording, no
 trace, no bundle. Nothing objected; the user did. When the same work was redone under
 `companion-mode`, the proper run immediately surfaced two things the ad-hoc pass had missed:
 artifact paths that collided so a second environment's run silently overwrote the first's
@@ -82,19 +82,19 @@ Re-enter when **any** of these is true, without waiting to be asked:
 
 - a different ticket key, issue, or branch than the one you last ran the sequence for;
 - the same ticket after the branch moved (new commits, a force-push, a rebase);
-- a ticket you are picking up mid-flight from someone else's work — including one already sitting
+- a ticket you are picking up mid-flight from someone else's work; including one already sitting
   in a QA column with an open PR, which is the shape that most reads as "just confirm it".
 
 Announce the re-entry in one line ("re-entering ticket-driven-testing for <key>") and restate the
 sequence for that ticket. Restating it is cheap; the cost of the wrong inference is a verdict
 with nothing behind it.
 
-**Harness-enforced by [`hooks/evidence-bundle-gate.sh`](../../hooks/evidence-bundle-gate.sh) — and
+**Harness-enforced by [`hooks/evidence-bundle-gate.sh`](../../hooks/evidence-bundle-gate.sh): and
 read what it does NOT do.** The gate cannot see whether you re-ran the sequence; it can only see,
 per ticket, whether the Contract's item-3 evidence bundle exists. That check is bound to the
 ticket key rather than to the session, so a second ticket cannot ride on the first ticket's
 bundle. It **DENIES** a terminal transition or a published PR with no bundle for that ticket.
-On a verdict-shaped **comment** it only **WARNs** — which means the failure described above, where
+On a verdict-shaped **comment** it only **WARNs**; which means the failure described above, where
 the artifact-free verdict was posted as a comment, would have been flagged and not blocked. The
 grading is deliberate (a bundle-less verdict has one honest form, per §"Prerequisites"), but it is
 a trade. Do not read the gate as a reason to stop watching for this yourself.
@@ -103,19 +103,19 @@ a trade. Do not read the gate as a reason to stop watching for this yourself.
 
 Steps 6–9 are identical either way. Only the front half differs, because only the front half
 depends on where the acceptance criteria and the environment come from. "Identical either way"
-means identical between the two *entry points* — not shared across *tickets*. Step 0 still
+means identical between the two *entry points*; not shared across *tickets*. Step 0 still
 applies: each ticket runs its own 1–9 whichever column it arrived in.
 
-| | **A — ticket-driven** | **B — dev-triggered** |
+| | **A: ticket-driven** | **B: dev-triggered** |
 |---|---|---|
 | Trigger | a tracker issue, a PR awaiting sign-off | *"I've finished this, can you test it"* |
 | 1 | ticket + parent → ACs verbatim | **the change set → ACs derived and CONFIRMED (§1b)** |
 | 2 | PR review state is a QA signal | skip if no PR exists; say so |
-| 3 | worktree the branch | **§3b — uncommitted work is not in a worktree** |
+| 3 | worktree the branch | **§3b: uncommitted work is not in a worktree** |
 | 5 | deployed preview, bypass tokens | the dev's local server |
 | 8 | negative control: find an env without the fix | **the merge-base. The strongest form, and nearly free** |
 
-Entry B is not a lighter version. It is the same bar reached by different means — and on two
+Entry B is not a lighter version. It is the same bar reached by different means; and on two
 dimensions it reaches a **higher** one, because a local checkout gives you things a deployed
 preview cannot.
 
@@ -125,11 +125,11 @@ Entry A reads acceptance criteria. Entry B has none: the dev has a diff and an i
 intention is in their head.
 
 Do NOT proceed on ACs you invented. A suite built from assumed criteria is green against *your*
-model of the feature, and its greenness says nothing about theirs — you will have automated your
+model of the feature, and its greenness says nothing about theirs; you will have automated your
 own misunderstanding and reported it as cover.
 
 1. Read the whole diff, then write **3–6 candidate ACs** as observable, user-visible statements.
-   "Clicking Apply closes the drawer and the result count updates" — not "the `useFilters` hook
+   "Clicking Apply closes the drawer and the result count updates": not "the `useFilters` hook
    dispatches correctly".
 2. Put them to the dev **in one message**, numbered, and ask what is missing or wrong. One round
    trip, not an interview.
@@ -159,7 +159,7 @@ Three cases, and you must say which one you are in:
 | State | Do |
 |---|---|
 | clean | worktree normally (§3) |
-| uncommitted changes | **test in place.** Say so, and do not switch branches — the dev is still working here |
+| uncommitted changes | **test in place.** Say so, and do not switch branches; the dev is still working here |
 | dev offers to commit/stash | worktree the commit, and confirm the diff you review matches what they meant to ship |
 
 ### 8·B. The merge-base IS the negative control
@@ -173,7 +173,7 @@ git worktree add ../nofix <that-commit>    # build and run the NEW suite against
 ```
 
 The suite MUST fail there, and you must read it **per test**. Any test that passes in both places
-is not testing the change — it is testing something that was already true.
+is not testing the change; it is testing something that was already true.
 
 This is the strongest form of §8 and it is nearly free here. **A dev-triggered run that skips the
 negative control has no excuse and should not report cover.**
@@ -181,10 +181,10 @@ negative control has no excuse and should not report cover.**
 ### Source-level mutation is available here
 
 `achilles-mutate` injects at the browser because deployed previews cannot be rebuilt. Locally you
-can edit the source, rebuild, and run — which binds the mutation to the actual change rather than
+can edit the source, rebuild, and run; which binds the mutation to the actual change rather than
 to a behaviour that resembles it. Prefer it when the app runs locally. The rules are unchanged: a
 `noop` control, owner-based classification, and proof each mutation applied (**revert every
-mutation before moving on** — a mutation left in the tree is a defect you introduced).
+mutation before moving on**: a mutation left in the tree is a defect you introduced).
 
 ## Prerequisites
 
@@ -198,12 +198,12 @@ State these before starting; each has blocked a real run.
 | A tracker, OR the ACs pasted by hand | phase 1 | paste them; phases 2–9 are unchanged |
 | `jq` on PATH | the harness gate is a shell hook and exits FATAL without it | install it, or disable the gate explicitly |
 | A subagent-capable runtime | §8b dispatches six reviewers | run the probes yourself, serially, and say so in the report |
-| **A second environment WITHOUT the fix** | §8 negative control | see §8's fallbacks — do not silently skip it |
+| **A second environment WITHOUT the fix** | §8 negative control | see §8's fallbacks: do not silently skip it |
 | An `E2E_MUTATION_CSS` / `E2E_MUTATION_INIT` hook in your page fixture | §8b mutation probe (grammar in §8b) | source-level mutation instead, if the app runs locally |
 
 **Code samples in this skill use the `@civitas-cerebrum/element-interactions` `steps` API**
 (`steps.verifyCount('el', 'Page', …)`), which needs that package's fixture and a page-repository.
-On stock Playwright the equivalent is `expect(page.locator(...))` — the method is identical, only
+On stock Playwright the equivalent is `expect(page.locator(...))`; the method is identical, only
 the call shape differs.
 
 **Cost.** One 3-AC ticket run literally costs roughly **6+ full suite runs** (branch baseline,
@@ -215,15 +215,15 @@ negative control, one per mutation, plus the no-op control) and **5+ agent dispa
 Produce all five, **for each ticket**. A run that stops after evidence is half a deliverable, and
 a second ticket that reuses the first ticket's deliverables has produced none of its own.
 
-1. **A ticket brief** — acceptance criteria, the dev branch, the PR and its review state.
-2. **A diff review** — findings ranked by severity, each one a sentinel candidate.
-3. **An evidence bundle** — via `companion-mode`, verdict grounded in the ACs. Named for this
+1. **A ticket brief**: acceptance criteria, the dev branch, the PR and its review state.
+2. **A diff review**: findings ranked by severity, each one a sentinel candidate.
+3. **An evidence bundle**: via `companion-mode`, verdict grounded in the ACs. Named for this
    ticket, containing this ticket's artifacts, redacted per `companion-mode` §"Redaction". Numbers
    in a report are not evidence: evidence is what someone else can re-open and disagree with.
-4. **Verified tests** — one per AC plus one sentinel per confirmed defect, written and proven
+4. **Verified tests**: one per AC plus one sentinel per confirmed defect, written and proven
    against the negative control. Whether they are **committed** to the suite or **discarded**
-   into the evidence bundle is decided in §8d — and discard is the default.
-5. **A negative-control result** — proof the tests fail where the fix is absent (§8). Without it you have tests that pass, not tests that discriminate.
+   into the evidence bundle is decided in §8d; and discard is the default.
+5. **A negative-control result**: proof the tests fail where the fix is absent (§8). Without it you have tests that pass, not tests that discriminate.
 
 ### The sign-off gate
 
@@ -231,11 +231,11 @@ a second ticket that reuses the first ticket's deliverables has produced none of
 
 **You may not report a QA verdict for a ticket that has no evidence bundle of its own.** This is
 item 3 above, restated at the boundary where it gets skipped. If the run genuinely captured
-nothing — an unreachable app, a diff review only — say *that* in the verdict and scope the claim
+nothing (an unreachable app, a diff review only) say *that* in the verdict and scope the claim
 to what you actually did. An unevidenced report labelled unevidenced is honest; the same report
 labelled verified is not.
 
-For entry B the sign-off boundary is **opening the PR**, not a tracker transition — that is the
+For entry B the sign-off boundary is **opening the PR**, not a tracker transition; that is the
 moment the work is presented to others as done. Everything the contract requires applies there
 unchanged.
 
@@ -245,9 +245,9 @@ So, before writing any verdict, answer these three in the report:
 
 - Did the suite run against an environment **without** the fix?
 - Which tests **failed** there, and which **passed**?
-- For each one that passed — is it close-regression cover of pre-existing behaviour (fine), or does it fail to discriminate the feature (worthless as AC cover)?
+- For each one that passed; is it close-regression cover of pre-existing behaviour (fine), or does it fail to discriminate the feature (worthless as AC cover)?
 
-"The tests are green on the branch" answers none of these. If you cannot run the control, say so explicitly in the verdict — an unverified suite reported as unverified is honest; reported as regression cover it is not.
+"The tests are green on the branch" answers none of these. If you cannot run the control, say so explicitly in the verdict; an unverified suite reported as unverified is honest; reported as regression cover it is not.
 
 ## Phases
 
@@ -257,7 +257,7 @@ Read the QA ticket **and its parent**. QA tickets carry the test scope; parent d
 
 Extract four things: the **ACs verbatim**, the **branch**, the **PR**, and the **current status**.
 
-**Tracker-agnostic.** This skill needs six capabilities from whatever tracker is in play. Discover what is actually connected — an MCP server, a CLI, a REST token — and map onto it. Never hard-code one vendor's tool names into the workflow.
+**Tracker-agnostic.** This skill needs six capabilities from whatever tracker is in play. Discover what is actually connected (an MCP server, a CLI, a REST token) and map onto it. Never hard-code one vendor's tool names into the workflow.
 
 | Capability | Linear | Jira | Fallback |
 |---|---|---|---|
@@ -269,15 +269,15 @@ Extract four things: the **ACs verbatim**, the **branch**, the **PR**, and the *
 | Attach evidence | `prepare_attachment_upload` → PUT → `create_attachment_from_upload` | `attachFile` | REST multipart |
 | Move status | `save_issue` with a state | `transitionJiraIssue` | REST |
 
-Two portability rules that bite in practice: **status names are per-project**, so enumerate the available states rather than assuming a "Done" exists; and **the ticket key is the only reliable join** between tracker, branch and PR — expect the branch to carry the *dev* ticket's key while you work the *QA* ticket's, and confirm rather than infer.
+Two portability rules that bite in practice: **status names are per-project**, so enumerate the available states rather than assuming a "Done" exists; and **the ticket key is the only reliable join** between tracker, branch and PR; expect the branch to carry the *dev* ticket's key while you work the *QA* ticket's, and confirm rather than infer.
 
-If no tracker is reachable at all, the workflow still runs — the user pastes the ACs and the branch, and phases 2 onward are unchanged. Losing the tracker costs you intake and reporting, not the method.
+If no tracker is reachable at all, the workflow still runs; the user pastes the ACs and the branch, and phases 2 onward are unchanged. Losing the tracker costs you intake and reporting, not the method.
 
 ### 2. PR state — a first-class QA signal
 
 Check reviews and their timestamps against commit timestamps.
 
-An **unresolved `CHANGES_REQUESTED`** on a ticket sitting in QA Testing is a finding in itself. A later commit may look like the fix, but "plausibly addressed" is not "re-approved" — report the gap rather than assuming it closed. Conversely, an automated reviewer's comment may already be fixed by a later commit; verify against the current code before repeating it as a defect.
+An **unresolved `CHANGES_REQUESTED`** on a ticket sitting in QA Testing is a finding in itself. A later commit may look like the fix, but "plausibly addressed" is not "re-approved"; report the gap rather than assuming it closed. Conversely, an automated reviewer's comment may already be fixed by a later commit; verify against the current code before repeating it as a defect.
 
 ### 3. Isolate the branch in a worktree
 
@@ -291,7 +291,7 @@ Two consequences that bite later, both worth handling now:
 
 - **The verification receipt (§8b) belongs in the SESSION checkout, not the worktree.** The harness
   gate resolves its workspace from the session's git toplevel, so a receipt written inside the
-  worktree is invisible to it — you get denied while holding the receipt.
+  worktree is invisible to it; you get denied while holding the receipt.
 - **A fresh worktree re-stamps every file's mtime**, so any pre-existing receipt is instantly
   "older than the newest spec" and treated as stale. Create the worktree first, then run §8/§8b.
 
@@ -299,8 +299,8 @@ Two consequences that bite later, both worth handling now:
 
 Read every changed file. For each AC, decide what would actually prove it:
 
-- **Structural guarantees beat visual ones.** "Only one sticky bar" is proven by an element computing `position: static` at that breakpoint — it *cannot* pin. A screenshot only shows it *did not* pin this time.
-- **Find the load-bearing attributes.** `data-*` hooks, `inert`, `aria-*`, state-marker classes. These are the stable selectors, and they usually already exist — check before proposing a source change.
+- **Structural guarantees beat visual ones.** "Only one sticky bar" is proven by an element computing `position: static` at that breakpoint; it *cannot* pin. A screenshot only shows it *did not* pin this time.
+- **Find the load-bearing attributes.** `data-*` hooks, `inert`, `aria-*`, state-marker classes. These are the stable selectors, and they usually already exist; check before proposing a source change.
 - **Note what the diff deletes.** Removed feature flags, removed route mappings, removed components each imply a regression surface.
 
 Record findings now, with severity. They become sentinels in phase 7.
@@ -310,7 +310,7 @@ Record findings now, with severity. They become sentinels in phase 7.
 Feature branches deploy to preview URLs that are usually **protection-gated**. Symptom: `curl` returns HTTP 200 with a provider login page, not your app.
 
 - Put the bypass token in a gitignored env file. Verify the gitignore pattern actually covers it.
-- **Do not set the suite's base-URL variable in a shared env file** — it silently retargets every other suite. Pass it per command.
+- **Do not set the suite's base-URL variable in a shared env file**: it silently retargets every other suite. Pass it per command.
 - For a CLI browser session, providers usually accept the token as a query parameter that sets a bypass cookie for the session.
 
 ### 6. Build understanding by interacting — simplest first
@@ -318,20 +318,20 @@ Feature branches deploy to preview URLs that are usually **protection-gated**. S
 **Do not write the acceptance-criteria tests yet.** Work up to them. Each rung earns the next, and
 a rung that surprises you is worth more than the rung that passed.
 
-**6a — Does it exist?** The smallest possible test: the thing renders, and you can click it.
+**6a: Does it exist?** The smallest possible test: the thing renders, and you can click it.
 Nothing about the ACs. If this is awkward to write, the selectors are wrong and everything built on
-them will be too — find that out now, not after twelve tests.
+them will be too: find that out now, not after twelve tests.
 
-**6b — Drive it and watch.** Step through the flow in small increments with a screenshot *and* a
+**6b: Drive it and watch.** Step through the flow in small increments with a screenshot *and* a
 state dump at every step. Small enough to catch transitions: the interesting behaviour is between
 the states, not at them. Record what you did not expect, even when it looks harmless.
 
 > Worked example: stepping a page 0 → 400 → 560 → 700 → 1200px located a window where an element
 > reported itself "stuck" while still `position: static` **and still half-visible and clickable**.
-> No assertion had bounded that window, and no amount of diff-reading would have found it — the
+> No assertion had bounded that window, and no amount of diff-reading would have found it; the
 > code looks correct at every line.
 
-**6c — Derive the test cases from what you observed.** Now write them, and write them against what
+**6c: Derive the test cases from what you observed.** Now write them, and write them against what
 a user would notice. Ask of each assertion: *if this passed but the feature were visibly broken,
 would I still be green?* If yes, you asserted the mechanism instead of the outcome.
 
@@ -341,19 +341,19 @@ would I still be green?* If yes, you asserted the mechanism instead of the outco
 | `inert` attribute is absent | the control is visible **and** focusable |
 | computed `position: static` | only one bar is pinned at the top |
 
-Mechanism assertions are not wrong — they are often the only *stable* form, and the strongest
+Mechanism assertions are not wrong; they are often the only *stable* form, and the strongest
 assertions in a suite are frequently structural. But a mechanism assertion is a **proxy**, and a
 proxy needs the outcome asserted alongside it at least once, or nobody ever checks the proxy still
 tracks the thing.
 
-**6d — Only now, evaluate.** With a working model of the component, judge what is *undesirable*:
+**6d: Only now, evaluate.** With a working model of the component, judge what is *undesirable*:
 jitter, duplicated controls, focus traps, content that clips at a real breakpoint, states the
-design never anticipated. This step is why 6a–6c come first — you cannot recognise "that looks
+design never anticipated. This step is why 6a–6c come first; you cannot recognise "that looks
 wrong" in a component you have only read about.
 
 Then run `companion-mode` for the evidence bundle.
 
-**6e — Inspect every screenshot for design quality.** Evidence screenshots are not just functional
+**6e: Inspect every screenshot for design quality.** Evidence screenshots are not just functional
 proof — they are a visual inspection surface. After capturing them, review each one as a designer
 would. A screenshot that proves "the error alert appeared" can simultaneously reveal that the
 alert's container has broken padding.
@@ -861,7 +861,7 @@ Include one element in every probe that must exist on **any** build of the page 
 When a fix is purely CSS/styling that responds to user interactions (focus rings, hover states,
 active highlights) and **real page data is unavailable** (no orders, no transactions, empty
 accounts), you cannot drive the feature end-to-end. But you can still verify the fix in the real
-CSS environment — Tailwind layers, design tokens, specificity chains, global rules — by injecting
+CSS environment (Tailwind layers, design tokens, specificity chains, global rules) by injecting
 mock DOM and triggering the interaction programmatically.
 
 This is a **fallback**, not a substitute. The report must state that real data was unavailable and
@@ -1029,7 +1029,7 @@ a different output.**
 
 The failure mode is always the same shape, and it is silent by construction: an instrument that
 does not run produces no signal, and *no signal is indistinguishable from no defect*. It fails in
-the direction that looks like success — a clean report — so nothing prompts you to check.
+the direction that looks like success, a clean report, so nothing prompts you to check.
 
 Measured, in this project alone:
 
@@ -1079,7 +1079,7 @@ Each of these cost a failed run or a wrong conclusion in practice.
 | **Late-hydrating components** | Client-rendered regions (search/results grids) are absent when your first assertion runs; your feature gate checked an SSR'd element and passed. | `waitForState` on the client-rendered container before asserting against it. |
 | **Self-consuming observables** | A sentinel watches a session-storage flag; the destination page's effect reads and deletes it before you assert. Test passes, bug is live. | Assert a state that persists — a DOM state marker at the source, not a message in flight. |
 | **Assumed default states** | You click a toggle expecting it to open; it was already open, so you closed it. | Read the initial state, assert the round-trip, don't assume a starting position. |
-| **Unredacted HAR** | Your bypass token appears in the request headers of every entry — hundreds of copies inside a bundle you are about to commit. | Redact by header name and strip response bodies. This also shrinks the HAR by ~20×. `companion-mode` §"Redaction" makes the pass mandatory for **any** captured HAR or console log, bundle or not — an ad-hoc capture is precisely where the pass has no owner. |
+| **Unredacted HAR** | Your bypass token appears in the request headers of every entry; hundreds of copies inside a bundle you are about to commit. | Redact by header name and strip response bodies. This also shrinks the HAR by ~20×. `companion-mode` §"Redaction" makes the pass mandatory for **any** captured HAR or console log, bundle or not; an ad-hoc capture is precisely where the pass has no owner. |
 | **One ticket, two environments, one set of paths** | You verify the same ticket against two environments (preview and production, two viewports, two locales) from one output directory. `video.webm` / `trace.zip` / `network.har` are fixed names, so the second run silently overwrites the first. The report cites both; one exists, and nothing says which. | One bundle per environment, or one named subdirectory per environment inside the bundle. Count the artifacts against the number of runs you are about to claim, before writing the verdict. |
 | **Bundle size** | Trace + video + HAR + an HTML report that duplicates all three easily exceeds 200MB. | Promote trace/video to the bundle root, drop the duplicate report, slim the HAR. Decide deliberately whether the directory is committed or gitignored. |
 | **Blocked postinstall scripts** | pnpm blocks dependency build scripts by default and only prints a warning. A package whose binary is fetched in `postinstall` resolves to a path that does not exist, failing at call time, not install time. | Read the "Ignored build scripts" warning. Add the package to `pnpm.onlyBuiltDependencies`, or run its installer directly. |

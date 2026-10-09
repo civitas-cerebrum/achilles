@@ -11,7 +11,7 @@ Skills that need to drive a real browser — `journey-mapping`, `coverage-expans
 
 The MCP-isolation rule existed because two parallel subagents on one MCP browser fight over the active tab and corrupt each other's snapshots. That risk does not exist with the CLI: every `playwright-cli -s=<name> open` spawns its **own browser process** with its **own user-data directory**. Sessions are OS-isolated, not just labelled.
 
-This has been empirically validated: four parallel sessions opened against four different URLs each reported their own `location.href` and their own snapshot — no last-write-wins, no cross-contamination. Cookies, localStorage, and sessionStorage are per-session.
+Parallel sessions on different URLs each report their own `location.href` and snapshot: no last-write-wins, no cross-contamination. Cookies, localStorage, and sessionStorage are per-session.
 
 Consequence: the orchestrator no longer needs to "confirm per-subagent isolation is achievable" before dispatching. The parent dispatches N subagents in parallel; each subagent issues `playwright-cli -s=<unique-slug> open ...` in its own Bash; the OS provides isolation.
 
@@ -95,7 +95,7 @@ The `composer-` / `reviewer-` / `probe-` prefix on the CLI slug mirrors the role
 
 Slugs use ASCII, lowercase, dash-separated. Do not use `/` — match the dash-separated forms in the table above so `playwright-cli list` reads cleanly.
 
-**Slug-length budget — keep under ~25 chars on darwin.** The CLI opens a Unix domain socket at `$TMPDIR/pw-<8>/cli/<16-hash>-<slug>.sock`. macOS's `sockaddr_un.sun_path` caps at 104 bytes, and after the `pw-XXXXXXXX/cli/<16-hash>-` prefix you have only ~25–30 characters of slug headroom before `listen()` fails with `EINVAL`. The cap is per-socket-path, not per-slug-string, so `$TMPDIR` length matters too. Empirically slugs around 18+ chars have failed on darwin while 10-char slugs work; budget conservatively.
+**Slug-length budget — keep under ~25 chars on darwin.** The CLI opens a Unix domain socket at `$TMPDIR/pw-<8>/cli/<16-hash>-<slug>.sock`. macOS's `sockaddr_un.sun_path` caps at 104 bytes, and after the `pw-XXXXXXXX/cli/<16-hash>-` prefix you have only ~25–30 characters of slug headroom before `listen()` fails with `EINVAL`. The cap is per-socket-path, not per-slug-string, so `$TMPDIR` length matters too. Slugs of 18+ chars have failed on darwin; 10-char slugs work. Budget conservatively.
 
 Practical guidance:
 
