@@ -164,7 +164,10 @@ chdir_named() {
 judge_git() {
   local gi=1 a sub="" gval gkey e
   GBASE="$CMD_CHDIR"
-  for a in "${CMD_ARGS[@]:1}"; do shell_git_exec_option "$a" && UNSAFE="${UNSAFE}git $a"$'\n'; done
+  # An option that makes git run a program or write a file denies whatever the line names.
+  for a in "${CMD_ARGS[@]:1}"; do
+    shell_git_exec_option "$a" && { UNSAFE="${UNSAFE}git $a"$'\n'; NAMED="${NAMED}git $a runs a program or writes a file"$'\n'; }
+  done
   while [ "$gi" -lt "${#CMD_ARGS[@]}" ] && [ -z "$sub" ]; do
     a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
     case "$a" in
@@ -183,8 +186,12 @@ judge_git() {
       -C|--work-tree) shell_dir_join "$GBASE" "${CMD_ARGS[gi]:-}"; GBASE="$SW_JOIN"; gi=$((gi + 1)) ;;
       -C?*) shell_dir_join "$GBASE" "${a#-C}"; GBASE="$SW_JOIN" ;;
       --work-tree=*) shell_dir_join "$GBASE" "${a#*=}"; GBASE="$SW_JOIN" ;;
-      --git-dir|--namespace|--super-prefix) gi=$((gi + 1)) ;;
-      -*) ;;
+      --git-dir|--namespace|--super-prefix|--config-env|--attr-source) gi=$((gi + 1)) ;;
+      --*=*|-p|-P|--paginate|--no-pager|--bare|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|\
+      --noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-advice|--exec-path|--html-path|--man-path|\
+      --info-path|--version|--help|-h|-v) ;;
+      # An option the guard does not know may take the next word, which would then pass for the subcommand.
+      -*) UNSAFE="${UNSAFE}git $a"$'\n'; NAMED="${NAMED}git option $a the guard cannot read"$'\n' ;;
       *) sub="$a" ;;
     esac
   done
@@ -196,6 +203,7 @@ judge_git() {
       for a in "${CMD_ARGS[@]:gi}"; do case "$a" in -*) ;; *) UNSAFE="${UNSAFE}git $sub creating"$'\n'; break ;; esac; done
       return 0 ;;
     stash) case "${CMD_ARGS[gi]:-}" in list|show) return 0 ;; esac ;;
+    sparse-checkout) [ "${CMD_ARGS[gi]:-}" != list ] || return 0 ;;
     rm|checkout|restore|clean|reset|mv|switch|read-tree|checkout-index) ;;
     *) UNSAFE="${UNSAFE}git $sub"$'\n'; return 0 ;;
   esac
@@ -206,12 +214,19 @@ judge_git() {
 # git_targets <subcommand> <index> — the target set of a work-tree or index rewrite, under GBASE: every
 # operand (a new branch name counts as one), and the work tree itself when there is none, when one does not
 # resolve, when an option is not known here (it may take the next word), or when the subcommand takes the
-# whole tree (stash, read-tree, a forced checkout or switch, checkout-index -a, reset --hard|--merge|--keep).
+# whole tree (stash, read-tree, sparse-checkout, a forced checkout or switch, checkout-index -a,
+# reset --hard|--merge|--keep). A short-option cluster ends at the subcommand's own value letter.
 # Only clean, rm, mv and restore stay inside a relative -C directory; the rest act from the repository top.
 git_targets() {
-  local sub="$1" gi="$2" a t ops=() whole=0 open=0
+  local sub="$1" gi="$2" a t ops=() whole=0 open=0 vl=""
   TGT_BASE="$GBASE"
-  case "$sub" in stash|read-tree) whole=1 ;; esac
+  case "$sub" in
+    stash) whole=1; vl=m ;;
+    read-tree|sparse-checkout) whole=1 ;;
+    restore) vl=sU ;;
+    clean) vl=e ;;
+    checkout|switch) vl=bBcC ;;
+  esac
   while [ "$gi" -lt "${#CMD_ARGS[@]}" ]; do
     a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
     case "$a" in
@@ -224,8 +239,8 @@ git_targets() {
       --*=*) ;;
       --*) whole=1 ;;
       -?*)
-        shell_opt_split "$a" bBcCsemU
-        case "$SW_FLAGS" in *[!qfnrkvdxXiuapSWNlt23z]*) whole=1 ;; esac
+        shell_opt_split "$a" "$vl"
+        case "$SW_FLAGS" in *[!qfnrkvdxXiuapmSWNlt23z]*) whole=1 ;; esac
         case "$sub:$SW_FLAGS" in checkout:*f*|switch:*f*|checkout-index:*a*) whole=1 ;; esac
         if [ -n "$SW_VOPT" ] && [ -z "$SW_VAL" ]; then SW_VAL="${CMD_ARGS[gi]:-}"; gi=$((gi + 1)); fi
         case "$SW_VOPT" in [bBcC]) ops+=("$SW_VAL") ;; esac ;;

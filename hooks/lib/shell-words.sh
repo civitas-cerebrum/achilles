@@ -355,9 +355,10 @@ shell__wrapopt() {
 
 # shell_opt_split <cluster> <value-letters> — split a short-option cluster (-qfb x, -sREF) at the first letter
 # that takes a value: SW_FLAGS gets the letters before it, SW_VOPT that letter (empty when none), SW_VAL the
-# rest of the cluster, which is its value (empty: the value is the next word).
+# rest of the cluster, which is its value (empty: the value is the next word). No value letters: all flags.
 shell_opt_split() {
   local l="${1#-}"
+  if [ -z "$2" ]; then SW_FLAGS="$l"; SW_VOPT=""; SW_VAL=""; return 0; fi
   SW_FLAGS="${l%%[$2]*}"; SW_VOPT="${l:${#SW_FLAGS}:1}"; SW_VAL="${l:${#SW_FLAGS}+1}"
 }
 

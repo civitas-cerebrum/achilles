@@ -633,3 +633,35 @@ find src -exec rm {} \;
 pnpm --filter app exec playwright test
 pnpm --silent exec playwright test
 ROUND4_ALLOW
+
+# Value letters are per git subcommand (-m is --merge for restore/checkout); a global option's separate value
+# is not the subcommand; an option that makes git run a program denies on any line; sparse-checkout takes the tree.
+section "protected-bash fail-closed: git per-subcommand value letters, global values, exec options, sparse-checkout"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "git"
+done <<'ROUND5'
+git restore -m tests/e2e src
+git checkout -m tests/e2e src
+git restore -qm tests/e2e src
+git --config-env core.x=HOME rm -r tests
+git --attr-source HEAD rm -r tests
+git --bogus rm -r src/x
+git grep -Orm foo
+git grep --open-files-in-pager=rm foo
+git diff --ext-diff
+git --exec-path=/tmp/x status
+git sparse-checkout set src
+git sparse-checkout add src
+git sparse-checkout reapply
+git sparse-checkout disable
+git sparse-checkout init
+ROUND5
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'ROUND5_ALLOW'
+git restore -m src/x
+git checkout -m src/x
+git restore -s HEAD src
+git --no-pager log
+git sparse-checkout list
+ROUND5_ALLOW
