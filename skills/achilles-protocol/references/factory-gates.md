@@ -180,7 +180,8 @@ does the message of `git commit`, `tag` or `merge` (`-m`, `--message`). Quoted t
 - A word holding a command substitution (`$( )`, backticks) is denied: its body is not read.
 - A wrapper option the splitter does not know is denied.
 
-Armed or not, a line too long to split (over 32 KB) is denied. Obfuscated forms (globs or splices in the name, `$X` prefixes, `sh -c`
+Armed or not, a line too long to split (over 32 KB) is denied, and so is every line when `hooks/lib/shell-words.sh`
+is missing (`[factory]` reason: reinstall). Obfuscated forms (globs or splices in the name, `$X` prefixes, `sh -c`
 strings, shell option games, `HOME`/`CDPATH` tricks) are out of scope: [known-limits.md](known-limits.md) KL-20.
 
 Fields: `stateDir` (missing → allow with a warning on every Bash call, so the gap is visible); the file names come from

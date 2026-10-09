@@ -24,6 +24,9 @@ rule_enabled "$ID"
 [ -n "$COMMAND" ] || exit 0
 STATE_DIR="$(rule_field "$ID" stateDir)"; STATE_DIR="${STATE_DIR%/}"
 [ -n "$STATE_DIR" ] || emit_allow_warn "$ID.stateDir missing in $(rules_rel) — state gate skipped"
+[ -r "$HOOK_IO_DIR/shell-words.sh" ] || { emit_pre_deny_bare "[factory] lib/shell-words.sh is missing, so the state gate cannot read Bash commands.
+→ Do: Reinstall @civitas-cerebrum/achilles (npm install), then retry.
+→ Why/how: skills/achilles-protocol/references/factory-gates.md#process.state"; exit 0; }
 . "$HOOK_IO_DIR/shell-words.sh"
 STAMP="$(rule_field process.evidence stamp)"; MARKER="$(rule_field process.evidence currentChange)"
 STAMP="${STAMP:-verify-stamp}"; STAMP="${STAMP##*/}"; MARKER="${MARKER:-current-change}"; MARKER="${MARKER##*/}"
