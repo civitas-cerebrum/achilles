@@ -349,18 +349,25 @@ FACRULES
   fi
 }
 
-# Upgrade path, driven through the real installer against a throwaway copy of
-# the package whose files carry the 1985 mtimes an npm tarball has.
+# A throwaway copy of the package (installer, hooks without their tests, package.json).
+sim_make_package() {
+  local dir="$1" repo_root="$INSTALL_SIM_REPO_ROOT"
+  mkdir -p "$dir/hooks"
+  cp -R "$repo_root/scripts" "$repo_root/package.json" "$dir/"
+  cp -R "$repo_root"/hooks/* "$dir/hooks/"
+  rm -rf "$dir/hooks/tests"
+}
+
+# Upgrade path, driven through the real installer against a package copy whose
+# files carry the 1985 mtimes an npm tarball has.
 run_upgrade_simulation() {
   local repo_root="$INSTALL_SIM_REPO_ROOT" work pkg claude
   work=$(mktemp -d /tmp/achilles-upgrade-sim-XXXXXX)
   _SIM_UPGRADE_WORK="$work"
   trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK"' EXIT
   pkg="$work/pkg"; claude="$work/project/.claude"
-  mkdir -p "$pkg/hooks" "$work/project"
-  cp -R "$repo_root/scripts" "$repo_root/package.json" "$pkg/"
-  cp -R "$repo_root"/hooks/* "$pkg/hooks/"
-  rm -rf "$pkg/hooks/tests"
+  mkdir -p "$work/project"
+  sim_make_package "$pkg"
   echo "# retired" > "$pkg/hooks/lib/retired-helper.sh"
   find "$pkg" -exec touch -t 198501010000 {} +
   sim_install() {
@@ -485,10 +492,8 @@ run_upgrade_simulation() {
   # Global install: the project root resolves to npm's lib/, which must stay clean.
   local lib="$work/lib" gpkg
   gpkg="$lib/node_modules/@civitas-cerebrum/achilles"
-  mkdir -p "$gpkg/hooks" "$work/ghome"
-  cp -R "$repo_root/scripts" "$repo_root/package.json" "$gpkg/"
-  cp -R "$repo_root"/hooks/* "$gpkg/hooks/"
-  rm -rf "$gpkg/hooks/tests"
+  mkdir -p "$work/ghome"
+  sim_make_package "$gpkg"
   HOME="$work/ghome" npm_config_global=true CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     node "$gpkg/scripts/postinstall.js" >/dev/null 2>&1
   if [ -f "$work/ghome/.claude/achilles-install.json" ] && [ -z "$(find "$lib" -name .claude 2>/dev/null)" ]; then
@@ -498,8 +503,66 @@ run_upgrade_simulation() {
   fi
 }
 
+# Staged mandate: refreshed while unedited, never overwritten once edited.
+run_mandate_simulation() {
+  local work pkg proj dest ledger stamp out
+  work=$(mktemp -d /tmp/achilles-mandate-sim-XXXXXX)
+  _SIM_MANDATE_WORK="$work"
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK"' EXIT
+  pkg="$work/pkg"; proj="$work/project"
+  sim_make_package "$pkg"
+  dest="$proj/.claude/kernel-mandate.json"; ledger="$proj/.claude/kernel-mandate.md"; stamp="$proj/.claude/kernel-mandate.achilles.json"
+  local src="$pkg/hooks/data/achilles-qa.kernel-mandate.json"
+  sim_stage() {
+    CIVITAS_SKIP_HOOK_INSTALL= node -e "require('$INSTALL_SIM_REPO_ROOT/scripts/install/mandate.js').stageProjectMandate('$proj', { packageDir: '$pkg' })" 2>&1
+  }
+
+  sim_stage >/dev/null
+  if cmp -s "$dest" "$src" && cmp -s "$ledger" "$pkg/hooks/data/achilles-qa.kernel-mandate.md" \
+     && [ "$("$JQ" -r .manifestSha256 "$stamp")" = "$(shasum -a 256 "$src" | cut -d' ' -f1)" ]; then
+    sim_pass "fresh project: manifest, ledger and sidecar stamp are staged"
+  else
+    sim_fail "fresh project: manifest, ledger and sidecar stamp are staged" "dest/ledger/stamp mismatch"
+  fi
+
+  "$JQ" '.name = "next-release"' "$src" > "$work/m.json" && mv "$work/m.json" "$src"
+  out=$(sim_stage)
+  if cmp -s "$dest" "$src" && printf '%s' "$out" | grep -q refreshed && [ ! -e "$proj/.claude/kernel-mandate.achilles-new.json" ]; then
+    sim_pass "an unedited staged mandate is refreshed on upgrade"
+  else
+    sim_fail "an unedited staged mandate is refreshed on upgrade" "${out:0:200}"
+  fi
+
+  echo '{"kernelMandateVersion":1,"name":"mine","roles":{}}' > "$dest"
+  local mine; mine=$(cat "$dest")
+  "$JQ" '.name = "release-after"' "$src" > "$work/m.json" && mv "$work/m.json" "$src"
+  out=$(sim_stage)
+  if [ "$(cat "$dest")" = "$mine" ] && cmp -s "$proj/.claude/kernel-mandate.achilles-new.json" "$src" \
+     && [ "$(printf '%s' "$out" | grep -c 'Kept your')" = 1 ]; then
+    sim_pass "an edited mandate is left alone, the new one is written beside it, with one notice"
+  else
+    sim_fail "an edited mandate is left alone, the new one is written beside it, with one notice" "${out:0:200}"
+  fi
+  out=$(sim_stage)
+  if [ -z "$out" ] && [ "$(cat "$dest")" = "$mine" ]; then
+    sim_pass "re-running over an edited mandate is silent"
+  else
+    sim_fail "re-running over an edited mandate is silent" "${out:0:200}"
+  fi
+
+  rm -rf "$proj"
+  mkdir -p "$proj/.claude"; echo "$mine" > "$dest"
+  out=$(sim_stage)
+  if [ "$(cat "$dest")" = "$mine" ] && [ -f "$proj/.claude/kernel-mandate.achilles-new.json" ]; then
+    sim_pass "a manifest with no sidecar (pre-stamp install or hand-written) is kept, new one written beside it"
+  else
+    sim_fail "a manifest with no sidecar (pre-stamp install or hand-written) is kept, new one written beside it" "${out:0:200}"
+  fi
+}
+
 run_install_simulation
 run_upgrade_simulation
+run_mandate_simulation
 
 # Standalone summary (run.sh prints its own).
 if [ "$INSTALL_SIM_STANDALONE" = "1" ]; then

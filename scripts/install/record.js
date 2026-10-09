@@ -7,6 +7,9 @@ const { packageDir } = require('./context.js');
 //   files          — { "<path relative to claudeDir>": "<sha256 of the content written>" }
 //   registrations  — [{ event, matcher, command }] the manifest registers in settings.json
 //   kept           — { "<path>": "<sha256 of the user's content>" } files left alone, so the warning prints once
+// Each installer owns a section — the top-level dir it writes under (hooks, skills,
+// agents) — so installers sharing one claudeDir (and a local install touching the
+// user-level ~/.claude) carry each other's entries through untouched.
 // Copies compare content, not mtime: npm tarballs carry fixed 1985 mtimes, so an
 // mtime check leaves an upgraded hook stale. The recorded hash is also how a
 // file the user edited is told apart from one Achilles wrote.
@@ -16,23 +19,33 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const registrationKey = (r) => JSON.stringify([r.event, r.matcher || null, r.command]);
 
-function openRecord(claudeDir) {
+function openRecord(claudeDir, sections) {
   let prev = null;
   try {
     prev = JSON.parse(fs.readFileSync(path.join(claudeDir, RECORD_FILE), 'utf8'));
   } catch (_) { /* first install, or an unreadable record: nothing is claimed as ours */ }
   if (!isObject(prev)) prev = {};
-  return {
+  const prevFiles = isObject(prev.files) ? prev.files : {};
+  const prevKept = isObject(prev.kept) ? prev.kept : {};
+  const prevRegistrations = Array.isArray(prev.registrations)
+    ? prev.registrations.filter((r) => isObject(r) && typeof r.command === 'string')
+    : [];
+  const rec = {
     claudeDir: path.resolve(claudeDir),
     hadRecord: isObject(prev.files),
-    prev: isObject(prev.files) ? prev.files : {},
-    prevKept: isObject(prev.kept) ? prev.kept : {},
-    prevRegistrations: Array.isArray(prev.registrations)
-      ? prev.registrations.filter((r) => isObject(r) && typeof r.command === 'string')
-      : [],
+    prev: prevFiles,
+    prevKept,
+    prevRegistrations,
     next: { files: {}, registrations: [], kept: {} },
     adopted: 0,
   };
+  if (sections) {
+    const foreign = (rel) => !sections.includes(rel.split('/')[0]);
+    for (const [rel, hash] of Object.entries(prevFiles)) if (foreign(rel)) rec.next.files[rel] = hash;
+    for (const [rel, hash] of Object.entries(prevKept)) if (foreign(rel)) rec.next.kept[rel] = hash;
+    if (!sections.includes('hooks')) rec.next.registrations = [...prevRegistrations];
+  }
+  return rec;
 }
 
 function keep(rec, rel, file, have, recordedHash, why, remedy) {
@@ -62,36 +75,51 @@ function copyTracked(rec, src, dest) {
   return true;
 }
 
-// A regular file whose every directory component is real and inside claudeDir.
-// Paths are checked by real path: a symlinked directory in the tree must not
-// redirect a delete outside it.
-function isOwnRegularFile(claudeDir, file) {
+// The absolute path of a recorded file when it is safe to act on, else null.
+// The key must be the canonical form copyTracked writes (`hooks/./x` would dodge
+// the still-shipped check), name a regular file, and sit under claudeDir by real
+// path: a symlinked directory in the tree must not redirect a delete outside it.
+function ownedFile(claudeDir, rel) {
+  const file = path.resolve(claudeDir, rel);
+  if (path.relative(claudeDir, file) !== rel || rel.startsWith('..')) return null;
   try {
-    if (!fs.lstatSync(file).isFile()) return false;
+    if (!fs.lstatSync(file).isFile()) return null;
     const realDir = fs.realpathSync(path.dirname(file));
-    return (realDir + path.sep).startsWith(fs.realpathSync(claudeDir) + path.sep);
+    return (realDir + path.sep).startsWith(fs.realpathSync(claudeDir) + path.sep) ? file : null;
   } catch (_) {
-    return false;
+    return null;
   }
+}
+
+// Deletes a file ownedFile approved, then the directories it leaves empty (never claudeDir).
+// Check-to-delete is not atomic; exploiting the gap needs concurrent write access to claudeDir.
+function removeFile(claudeDir, file) {
+  fs.unlinkSync(file);
+  for (let dir = path.dirname(file); dir !== claudeDir && dir.startsWith(claudeDir + path.sep); dir = path.dirname(dir)) {
+    try { fs.rmdirSync(dir); } catch (_) { break; }
+  }
+}
+
+// Removes a recorded file unless the user edited it since. Returns 'removed',
+// 'modified' (kept; the file's current hash is in `have`) or 'skipped'
+// (untrusted key, missing, or not a regular file).
+function removeRecorded(claudeDir, rel, hash, dryRun = false) {
+  const file = ownedFile(claudeDir, rel);
+  if (!file) return { state: 'skipped' };
+  const have = sha256(file);
+  if (have !== hash) return { state: 'modified', file, have };
+  if (!dryRun) removeFile(claudeDir, file);
+  return { state: 'removed', file };
 }
 
 // Deletes files a previous install recorded that this package no longer ships,
 // unless the user edited them.
 function pruneStale(rec) {
   for (const [rel, hash] of Object.entries(rec.prev)) {
-    // Only keys in the canonical form copyTracked writes are trusted: `hooks/./x` would
-    // dodge the still-shipped check below and delete a live file.
-    const file = path.resolve(rec.claudeDir, rel);
-    if (path.relative(rec.claudeDir, file) !== rel || rel.startsWith('..')) continue;
-    if (rel in rec.next.files || !isOwnRegularFile(rec.claudeDir, file)) continue;
-    const have = sha256(file);
-    if (have !== hash) {
-      keep(rec, rel, file, have, hash, 'is no longer shipped but was modified', 'delete it if you no longer want it');
-      continue;
-    }
-    // Check-to-delete is not atomic; exploiting the gap needs concurrent write access to claudeDir.
-    fs.unlinkSync(file);
-    console.log(`[civitas-cerebrum] pruned file dropped from the package: ${rel}`);
+    if (rel in rec.next.files) continue;
+    const r = removeRecorded(rec.claudeDir, rel, hash);
+    if (r.state === 'modified') keep(rec, rel, r.file, r.have, hash, 'is no longer shipped but was modified', 'delete it if you no longer want it');
+    else if (r.state === 'removed') console.log(`[civitas-cerebrum] pruned file dropped from the package: ${rel}`);
   }
 }
 
@@ -127,4 +155,4 @@ function writeRecord(rec) {
   fs.writeFileSync(file, text);
 }
 
-module.exports = { openRecord, copyTracked, pruneStale, dropStaleRegistrations, writeRecord };
+module.exports = { RECORD_FILE, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, writeRecord };

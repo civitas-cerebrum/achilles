@@ -157,7 +157,7 @@ function installCivitasHooks(claudeDir) {
     }
   }
 
-  const rec = openRecord(baseDir);
+  const rec = openRecord(baseDir, ['hooks']);
   let copiedCount = 0;
   let registeredCount = 0;
 
