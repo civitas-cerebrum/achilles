@@ -123,7 +123,7 @@ assert_deny() {
   if [ -n "$reason_substr" ]; then
     local reason
     reason=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-    if ! echo "$reason" | grep -qF -- "$reason_substr"; then
+    if ! grep -qF -- "$reason_substr" <<<"$reason"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: deny reason missing substring '${reason_substr}'. reason=${reason:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(deny reason missing substring)${CLR_RST}"
@@ -152,7 +152,7 @@ assert_ask() {
   if [ -n "$reason_substr" ]; then
     local reason
     reason=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-    if ! echo "$reason" | grep -qF -- "$reason_substr"; then
+    if ! grep -qF -- "$reason_substr" <<<"$reason"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: ask reason missing substring '${reason_substr}'. reason=${reason:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(ask reason missing substring)${CLR_RST}"
@@ -178,7 +178,7 @@ assert_warn() {
   if [ -n "$message_substr" ]; then
     local msg
     msg=$(echo "$HOOK_OUT" | "$JQ" -r '.systemMessage' 2>/dev/null)
-    if ! echo "$msg" | grep -qF -- "$message_substr"; then
+    if ! grep -qF -- "$message_substr" <<<"$msg"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: warning message missing substring '${message_substr}'. msg=${msg:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(warn message missing substring)${CLR_RST}"
@@ -222,7 +222,7 @@ assert_block_subagent() {
     return
   fi
   if [ -n "$stderr_substr" ]; then
-    if ! echo "$err" | grep -qF -- "$stderr_substr"; then
+    if ! grep -qF -- "$stderr_substr" <<<"$err"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: stderr missing substring '${stderr_substr}'. stderr=${err:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(stderr missing substring)${CLR_RST}"
@@ -252,7 +252,7 @@ assert_stop_block() {
   if [ -n "$reason_substr" ]; then
     local reason
     reason=$(echo "$HOOK_OUT" | "$JQ" -r '.reason // empty' 2>/dev/null)
-    if ! echo "$reason" | grep -qF -- "$reason_substr"; then
+    if ! grep -qF -- "$reason_substr" <<<"$reason"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: stop-block reason missing substring '${reason_substr}'. reason=${reason:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(stop-block reason missing substring)${CLR_RST}"

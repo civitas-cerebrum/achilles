@@ -415,7 +415,7 @@ assert_allow "$HOOK" "$(bash_payload 'git -cuser.name=x commit -m "fix tests/e2e
 # env -C DIR and sudo -D DIR run the command in DIR: its relative operands are judged there, not in the call's cwd.
 section "protected-bash fail-closed: env -C / --chdir / sudo -D move the directory relative operands resolve in"
 tmp_into CHDIR_TMP
-mkdir -p "$CHDIR_TMP/proj/tests/e2e/docs" "$CHDIR_TMP/proj/src"
+mkdir -p "$CHDIR_TMP/proj/tests/e2e/docs" "$CHDIR_TMP/proj/src" "$CHDIR_TMP/elsewhere"
 chdir_payload() { "$JQ" -n --arg c "$1" --arg d "$CHDIR_TMP/proj" '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}'; }
 while IFS= read -r c; do
   assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
@@ -434,7 +434,10 @@ sudo --chdir=tests rm -r e2e
 sudo -D tests sh -c 'rm -r e2e'
 CHDIR
 assert_allow "$HOOK" "$(chdir_payload 'env -C src cat notes.txt')" "env -C into an unprotected directory, read"
-assert_allow "$HOOK" "$(chdir_payload 'env -C /tmp rm junk.txt')" "env -C elsewhere, unprotected write"
+# "Elsewhere" must be a sibling of proj: on Linux the temp root is under /tmp, so /tmp itself is an ancestor of the
+# protected state and env -C there is (rightly) denied.
+assert_allow "$HOOK" "$(chdir_payload "env -C $CHDIR_TMP/elsewhere rm junk.txt")" "env -C elsewhere, unprotected write"
+assert_deny "$HOOK" "$(chdir_payload "env -C $CHDIR_TMP rm junk.txt")" "env -C into a directory above protected state, write" "protected"
 assert_allow "$HOOK" "$(chdir_payload 'sudo -D src ls')" "sudo -D into an unprotected directory"
 
 # An unrecognised wrapper option denies on any line; git, find and package-manager forms move or widen the
