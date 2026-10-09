@@ -16,7 +16,8 @@
     "sync:kernel-mandate": "node scripts/sync-kernel-mandate.mjs",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
     "test": "node scripts/run-suites.mjs",
-    "prepack": "npm test"
+    "check:pack": "node scripts/check-pack.mjs",
+    "prepack": "npm run build:validator && npm run check:pack && npm test"
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",

@@ -1,0 +1,5 @@
+# Fixtures exercised by npm run schemas:lint; consumers never load them.
+*.fixtures/
+*.fixtures/**
+fixtures/
+fixtures/**
