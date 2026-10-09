@@ -540,6 +540,9 @@ git read-tree -u -m HEAD
 git checkout-index -f -a
 find . -exec rm {} \;
 find . -exec sh -c 'rm x' \;
+git rm --cached tests/e2e/docs/onboarding-status.json
+git -C tests/e2e/docs rm --cached onboarding-status.json
+pnpm --filter x exec sh -c 'rm -r e2e'
 ROUND2
 while IFS= read -r c; do
   assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
@@ -559,4 +562,6 @@ find . -exec grep foo {} \;
 find . -exec grep -l foo {} +
 find . -name '*.ts' -exec cat {} \;
 find . -execdir ls {} \;
+pnpm --filter app exec playwright test
+pnpm -r exec tsc --noEmit
 READONLY

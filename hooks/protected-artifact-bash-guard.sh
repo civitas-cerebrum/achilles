@@ -125,6 +125,9 @@ target() {
     *) [ -z "$TGT_BASE" ] || set -- "$TGT_BASE/$1" ;;
   esac
   case "$1" in
+    '${workspace}'*) HITS="${HITS}a workspace directory: $1 is not resolvable"$'\n'; return 0 ;;
+  esac
+  case "$1" in
     '~'|'~/'*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) ;;
     *'$'*|*'`'*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 does not resolve"$'\n'; return 0 ;;
     *'*'*|*'?'*|*'['*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 is a glob"$'\n' ;;
@@ -142,6 +145,11 @@ target() {
 chdir_named() {
   local e
   [ -n "$LOCATIONS" ] || LOCATIONS=$(protected_locations "$CWD")
+  case "$1" in
+    '${workspace}'*) # a writer's operands deny in target(); only a shell here can run what the guard cannot see
+      case "${CMD_ARGS[0]:-}" in sh|bash|zsh|dash|ksh|eval) NAMED="${NAMED}workspace directory (does not resolve)"$'\n' ;; esac
+      return 0 ;;
+  esac
   if unresolved "$1"; then NAMED="${NAMED}env -C $1 (does not resolve)"$'\n'; return 0; fi
   e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") ||
     e=$(protected_ancestor_match "$1" "$CWD" "$LOCATIONS") || return 0
@@ -215,14 +223,19 @@ judge_git() {
 # its pathspecs, and the directory itself when it takes the whole tree (clean, reset --hard, stash, a
 # forced checkout) without one. Sets GSAFE for the forms that touch only the index or a stash entry.
 git_write_targets() {
-  local t pathspecs=1
+  local t e pathspecs=1
   TGT_BASE="$GBASE"
   case "$1" in
     clean) if [ "$GDRY" = 1 ]; then GSAFE=1; elif [ "${#GPOS[@]}" -eq 0 ]; then target .; fi ;;
     reset) [ "$GHARD" = 0 ] || target . ;;
     stash) pathspecs=0
            case "${GPOS[0]:-}" in list|show|drop|clear|create|store) GSAFE=1 ;; *) target . ;; esac ;;
-    rm) [ "$GCACHED" = 0 ] || GSAFE=1 ;;
+    rm) if [ "$GCACHED" = 1 ]; then
+          GSAFE=1  # index only, but untracking a protected path drops it from the next commit
+          for t in ${GPOS[@]+"${GPOS[@]}"}; do
+            shell_dir_join "$GBASE" "$t"; e=$(protected_bash_match "$SW_JOIN") && HITS="$HITS$e"$'\n'
+          done
+        fi ;;
     restore) [ "$GSTAGED" = 0 ] || [ "$GWT" = 1 ] || GSAFE=1 ;;
     checkout|checkout-index) [ "$GFORCE" = 0 ] || target . ;;
     switch|read-tree) pathspecs=0; [ "$GFORCE" = 0 ] || target . ;;
