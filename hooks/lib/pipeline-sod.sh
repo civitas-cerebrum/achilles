@@ -2,6 +2,7 @@
 # pipeline-sod.sh — who may write a pipeline ledger: separation of duties for
 # approval-class writes (phase/substage approvals, terminal status) and the
 # runMode authoriser. Sourced by pipeline-gate.sh; same config contract.
+# Size: approver registry, TTL, skip stripping and the runMode authoriser are one separation-of-duties check.
 
 # pipeline_check_sod <tmp_proposed> <file_path> <agent_id>
 # Separation-of-duties: any write that newly approves a phase or substage

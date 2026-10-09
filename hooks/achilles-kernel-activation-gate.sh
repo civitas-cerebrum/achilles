@@ -10,7 +10,7 @@ set -uo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-hook_lib achilles-activation.sh
+hook_lib achilles-activation.sh hook-emit.sh
 
 INPUT=$(cat)
 
@@ -52,7 +52,7 @@ References:
   skills/achilles-protocol/references/known-limits.md
   skills/achilles-protocol/references/opt-in-surfaces.md (KERNEL_MANDATE)"
   if [ -n "$JQ_BIN" ]; then
-    "$JQ_BIN" -n --arg r "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+    JQ="$JQ_BIN" emit_pre_deny_bare "$reason"
   else
     # No jq to escape with, so the reason here is static.
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] kernel-mandate cannot run: the kernel gate file is missing or unrunnable, so no role is enforced. Reinstall @civitas-cerebrum/achilles, or set KERNEL_MANDATE=0 in your own shell.\\n\\nReferences:\\n  skills/achilles-protocol/references/known-limits.md"}}\n'

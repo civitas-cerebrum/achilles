@@ -103,7 +103,7 @@ hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-hook_lib achilles-activation.sh
+hook_lib achilles-activation.sh hook-emit.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 
@@ -137,27 +137,9 @@ fi
 
 # Build the DENY payload. The reason text explicitly states the schema
 # path so a human reading the deny can paste it directly into the brief.
-"$JQ" -n \
-  --arg role "$SCHEMA_ROLE" \
-  --arg desc "$DESCRIPTION" \
-  --arg path "$SCHEMA_PATH" \
-  --arg fname "$SCHEMA_FILENAME" \
-  --arg notice "${HOOK_REFS}$(achilles_scope_notice)" \
-  '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": (
-        "[BLOCKED] Subagent dispatch \"" + $desc + "\" maps to schema role \"" + $role + "\" " +
-        "but the brief does not reference its return-shape schema.\n" +
-        "\n" +
-        "A subagent has no way to know what JSON shape to return unless the brief points " +
-        "at the schema. Add a reference to the brief: the bare filename " +
-        "\"" + $fname + "\" or the relative path \"" + $path + "\" anywhere in the prompt.\n" +
-        "\n" +
-        "Pairs with the PostToolUse subagent-return-schema-guard, which validates the " +
-        "actual return against this same schema." + $notice
-      )
-    }
-  }'
+emit_pre_deny "[BLOCKED] Subagent dispatch \"$DESCRIPTION\" maps to schema role \"$SCHEMA_ROLE\" but the brief does not reference its return-shape schema.
+
+A subagent has no way to know what JSON shape to return unless the brief points at the schema. Add a reference to the brief: the bare filename \"$SCHEMA_FILENAME\" or the relative path \"$SCHEMA_PATH\" anywhere in the prompt.
+
+Pairs with the PostToolUse subagent-return-schema-guard, which validates the actual return against this same schema."
 exit 0

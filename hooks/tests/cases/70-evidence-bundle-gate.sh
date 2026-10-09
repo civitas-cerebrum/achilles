@@ -192,17 +192,8 @@ assert_allow "$H" "$(bash_cmd 'grep -rn "gh pr create" hooks/')" \
   "grepping for the trigger → ALLOW (a hook that fires on its own name gets disabled)"
 assert_allow "$H" "$(bash_cmd 'echo gh pr create')" \
   "echoing the trigger → ALLOW"
-# BACKTICKS: a code span in a PR body is not a command boundary.
-# The splitter used to break on ` too, to catch the command-substitution form.
-# It caught that — and also truncated the segment at the first backtick, so a
-# REAL draft PR whose body contains a markdown code span lost its --draft to the
-# split and was denied, with nothing in the message mentioning backticks. Same
-# false-deny class as --draft=True, through a different door, and it blocks the
-# very command the gate exempts on purpose. Substitution stays gated because
-# normalise_segment peels a leading backtick instead — and the assignment arm
-# had to learn about it in the same change (`OUT=`gh pr create`` has no space to
-# peel to). The two edits are only correct as a pair, which is what these three
-# cases pin.
+# A code span in a PR body stays inside its word, so a draft keeps its --draft; a substitution
+# assigned to a variable still publishes.
 assert_allow "$H" "$(bash_cmd 'gh pr create --body "supersedes `gh pr view`" --draft')" \
   "a draft PR whose body holds a code span keeps its exemption → ALLOW"
 assert_allow "$H" "$(bash_cmd 'echo "see `gh pr create` docs"')" \
@@ -485,13 +476,8 @@ assert_allow "$H" "$(tracker mcp__linear__save_issue state Done)" \
   "a scheme with no value → ALLOW (nothing leaked)"
 rm -f "$CLOG"
 
-section "evidence-gate: an '=' inside a gh flag must not peel the gh away"
-# `--base=main --fill` is the form in gh's own documentation. The wrapper-prefix
-# peel was first written with the glob `[A-Za-z_]*=*\ *`, which does NOT mean
-# "starts with a VAR=val assignment" — it means "contains `=` with a space
-# somewhere after it", so it matched the gh command itself and peeled `gh` away
-# word by word. Every one of these silently disabled the gate, on ordinary
-# interactive use rather than on an opt-in scripting form.
+section "evidence-gate: an '=' inside a gh flag is not an assignment"
+# `--base=main --fill` is the form in gh's own documentation: an `=` inside a flag is not an assignment.
 #
 # Both directions are pinned deliberately: the branch bundle is parked so these
 # must DENY, then restored so the SAME commands must ALLOW. A gate that is
@@ -519,12 +505,7 @@ for c in "${EQ_FORMS[@]}"; do
 done
 
 section "evidence-gate: quoting and whitespace do not hide the command"
-# Every form below is valid shell that publishes a PR, and every one silently
-# ALLOWed. The quote arm peeled the OPENING quote only, leaving the closing one
-# glued to the token so the program name was `gh"` and matched nothing — a
-# half-handled quote arm reads as though quoting is covered, which is worse than
-# not peeling at all. The subcommand test was a literal one-space glob, so a tab,
-# a double space or a line continuation between `pr` and `create` walked past it.
+# Every form below is valid shell that publishes a PR.
 park_branch_bundle
 HIDDEN_FORMS=(
   '"gh" pr create --fill'
@@ -587,20 +568,8 @@ assert_deny "$H" "$(bash_cmd 'gh pr create --fill # --draft')" \
   "a # that STARTS a word is still a comment → DENY" "no evidence bundle"
 restore_branch_bundle
 
-section "evidence-gate: every peel arm consumes, so the hook always returns"
-# The first fix for the section above stripped "up to the first space", which is
-# a no-op on a segment that IS the assignment — `A=1` spun forever. A hook that
-# never returns renders no decision at all, so the gate is off AND the tool call
-# is stuck behind it. These bound the run rather than asserting a verdict: a
-# reintroduction fails the suite instead of hanging it.
-#
-# Two independent defences make the hang unreachable — every peel arm consumes,
-# and the loop is capped — so NEITHER is observable on its own; a mutation has
-# to remove both before these assertions have anything to report. That is the
-# point of a belt-and-braces pair, and it is stated here so a future reader does
-# not delete one of them for looking dead. Note also that only `assert_terminates`
-# is bounded: if both defences go, these report the hang and a later unbounded
-# assertion then stalls the runner.
+section "evidence-gate: the hook always returns"
+# A hook that never returns renders no decision, so these bound the run rather than asserting a verdict.
 assert_terminates "$H" "$(bash_cmd 'A=1')" \
   "a bare assignment segment terminates"
 assert_terminates "$H" "$(bash_cmd 'FOO=bar&&gh pr create --fill')" \

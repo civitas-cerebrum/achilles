@@ -7,7 +7,7 @@
 #         unchecked. Edit and Write cover every MultiEdit use.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-hook_lib achilles-activation.sh
+hook_lib achilles-activation.sh hook-emit.sh
 INPUT=$(cat)
 achilles_require_active "$INPUT"
 JQ="$(achilles__jq)"
@@ -16,8 +16,9 @@ REASON="[BLOCKED] MultiEdit is not inspected by the Achilles Write/Edit gates wh
 References:
   skills/achilles-protocol/references/harness-hooks.md"
 if [ -n "$JQ" ]; then
-  "$JQ" -n --arg r "$REASON$(achilles_scope_notice)" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  emit_pre_deny "$REASON"
 else
+  # No jq to escape with, so the reason here is static.
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[BLOCKED] MultiEdit is not inspected by the Achilles Write/Edit gates while the protocol is active. Use Edit or Write."}}\n'
 fi
 exit 0

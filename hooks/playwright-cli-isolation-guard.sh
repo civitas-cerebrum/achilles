@@ -39,7 +39,7 @@
 # ------------------------------------------------------------------------------
 #   test-composer-j-<slug>:  →  composer-j-<slug>-<pass>-c<N>   (slug drops `test-`
 #   test-composer-sj-<slug>: →  composer-sj-<slug>-<pass>-c<N>   to fit the cap)
-#   composer-j-<slug>:    →  composer-j-<slug>-<pass>-c<N>      (pre-kernel spelling)
+#   composer-j-<slug>:    →  composer-j-<slug>-<pass>-c<N>
 #   composer-sj-<slug>:   →  composer-sj-<slug>-<pass>-c<N>
 #   reviewer-j-<slug>:    →  reviewer-j-<slug>-<pass>-c<N>
 #   reviewer-sj-<slug>:   →  reviewer-sj-<slug>-<pass>-c<N>
@@ -50,10 +50,8 @@
 #   cleanup-<scope>:      →  cleanup-<scope>
 #   (companion- and fd- prefixes accepted for companion-mode / failure-diagnosis)
 #
-# Bare `j-<slug>-...` / `sj-<slug>-...` slugs were dropped alongside the
-# matching dispatch-description prefixes — both ends use the role-explicit
-# form (composer-/reviewer-/probe-) so the slug identifies the dispatching
-# subagent role unambiguously.
+# Bare `j-<slug>-...` / `sj-<slug>-...` slugs deny: the slug must name the
+# dispatching subagent's role (composer-/reviewer-/probe-).
 #
 # Failure → action
 # ----------------
@@ -62,7 +60,7 @@
 # - Slug missing role prefix                                    → DENY
 # - Slug shorter than 6 chars                                   → DENY
 # - Slug longer than 28 chars                                   → DENY (length-cap)
-# - playwright-cli behind a wrapper, option or program the guard cannot read → DENY
+# - playwright-cli named where the guard cannot read the invocation, or on a line too long to split → DENY
 # - Session-agnostic subcommand (close-all / kill-all / list / install-browser / etc.) → silent allow
 # - Anything else                                               → silent allow
 
@@ -92,21 +90,11 @@ TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 
-# Judge every command the shell would run (lib/shell-words.sh). Unrecognised = unsafe: a command
-# whose words, assignments, heredoc bodies or directory name playwright-cli (@playwright/cli, a path
-# to it, a name with a suffix, in any letter case: APFS is case-insensitive), quoted or not, is DENY
-# unless it is
-#   (a) playwright-cli itself, directly or behind the wrappers the splitter peels (npx, bunx,
-#       pnpm|yarn exec, env, sudo, nice, time, …) with every wrapper option recognised: its slug is
-#       judged below; or
-#   (b) a shell whose only mention is its script operand (the -c string, or the script file; the
-#       string is judged as nested commands), or eval; or
-#   (c) a reader that does not execute its arguments: echo printf (not -v) cat head tail tee grep
-#       egrep fgrep ls wc which type jq pgrep, `command -v|-V`, `npm ls|view|list|info`,
-#       git commit|log|show|diff|status|add|grep|tag|branch without an option that runs a program.
-# A command word that expands (a variable, command substitution, backtick or glob character) is DENY
-# whatever it names. Any other wrapper (setsid, watch, script, flock, parallel, chroot, env -S …)
-# hides the program. A command string a wrapper runs (env -S, npx -c) is judged as its own command.
+# Judge every command the shell would run (lib/shell-words.sh). A command whose words, assignments or
+# heredoc bodies name playwright-cli (@playwright/cli, in any letter case: APFS is case-insensitive)
+# is DENY unless it is playwright-cli itself, plain or behind the wrappers the splitter peels (npx,
+# bunx, pnpm|yarn exec, env, time, …), whose slug is judged below, or a command that only reads
+# (shell_is_reader). Obfuscated or exotic shell forms are out of scope (known-limits.md KL-15).
 CMD_PREVIEW="$CMD"
 [ ${#CMD} -le 160 ] || CMD_PREVIEW="${CMD:0:160}..."
 
@@ -126,31 +114,6 @@ pw_command_word() {
   return "$rc"
 }
 
-# The command word is a non-executing reader, or a shell/eval whose script is judged separately.
-is_exempt_command() {
-  local a k=1
-  [ "$CMD_ENV" = 0 ] && [ -z "$CMD_PATH" ] || return 1
-  case "${CMD_ARGS[0]:-}" in
-    echo|cat|head|tail|tee|grep|egrep|fgrep|ls|wc|which|type|jq|pgrep|eval) return 0 ;;
-    printf) for a in "${CMD_ARGS[@]:1}"; do case "$a" in -v|-v?*) return 1 ;; --) break ;; esac; done; return 0 ;;
-    command) case "${CMD_ARGS[1]:-}" in -v|-V) return 0 ;; esac ;;
-    npm) case "${CMD_ARGS[1]:-}" in ls|list|view|info) return 0 ;; esac ;;
-    git) case "${CMD_ARGS[1]:-}" in
-           commit|log|show|diff|status|add|grep|tag|branch)
-             for a in "${CMD_ARGS[@]:1}"; do shell_git_exec_option "$a" && return 1; done
-             return 0 ;;
-         esac ;;
-    sh|bash|zsh|dash|ksh)
-      shell_script_arg
-      while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
-        if [ "$k" != "$SW_SCRIPT" ] && pw_mention "${CMD_ARGS[k]}"; then return 1; fi
-        k=$((k + 1))
-      done
-      return 0 ;;
-  esac
-  return 1
-}
-
 deny_unjudgeable() {
   emit_pre_deny "[BLOCKED] Cannot judge this command: $1.
 
@@ -160,24 +123,18 @@ Fix: run playwright-cli as a literal command word, with its slug and no wrapper 
 
   npx playwright-cli -s=<slug> <subcommand> ...
 
-Why: an unrecognised wrapper option or program (setsid, watch, script, flock, npx -c …), a command word that expands (\$x, a glob), or the name passed as text may run playwright-cli without -s=<slug>, and the guard cannot see inside it. Wrappers and options it knows: hooks/lib/shell-words.sh (shell__wrapopt). Readers it lets through: see the header of this hook."
+Why: a wrapper or program the guard does not know (sudo, setsid, sh -c, eval …), an unrecognised wrapper option, or the name passed as text may run playwright-cli without -s=<slug>, and the guard cannot see inside it. Wrappers it peels and readers it lets through: hooks/lib/shell-words.sh."
   exit 0
 }
 
 judge_invocation() {
-  local k=1 a SLUG="" mentioned=0 recognised=0 cmd="${CMD_ARGS[0]:-}"
-  case "$cmd" in '['|'[[') ;; *) shell_word_literal "$cmd" || deny_unjudgeable "the command word $cmd expands" ;; esac
-  for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_HEREDOCS[@]+"${CMD_HEREDOCS[@]}"} "$CMD_PATH"; do
+  local k=1 a SLUG="" mentioned=0
+  for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_HEREDOCS[@]+"${CMD_HEREDOCS[@]}"} ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do
     if pw_mention "$a"; then mentioned=1; break; fi
   done
-  # The body of a substitution in an assignment is split and judged as its own commands.
-  for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do
-    case "$a" in *'$('*|*'`'*) ;; *) if pw_mention "$a"; then mentioned=1; fi ;; esac
-  done
   [ "$mentioned" = 1 ] || return 0
-  if pw_command_word "$cmd" && [ "$CMD_WRAP_BAD" = 0 ] && [ "${#CMD_SNEST[@]}" = 0 ]; then recognised=1; fi
-  if [ "$recognised" = 0 ]; then
-    is_exempt_command && return 0
+  if ! pw_command_word "${CMD_ARGS[0]:-}" || [ "$CMD_WRAP_BAD" = 1 ]; then
+    [ "$CMD_ENV" = 0 ] && shell_is_reader && return 0
     deny_unjudgeable "playwright-cli is named where the guard cannot read the invocation"
   fi
   # Session-agnostic subcommands run without -s= by design; no argument prints the help.
@@ -276,7 +233,7 @@ Why: ≥6 chars + role prefix is required to disambiguate parallel subagents. Se
   # Case 5: slug is too long. The playwright-cli daemon binds a UNIX socket
   # under \$TMPDIR; on macOS the socket path is capped at 104 chars. Slugs
   # longer than ~28 chars push the path over the limit and the daemon
-  # silently fails with EINVAL on bind. Caught by Stage B reviewer in cycle 2.
+  # silently fails with EINVAL on bind.
   if [ ${#SLUG} -gt 28 ]; then
     emit_pre_deny "[BLOCKED] Slug '-s=$SLUG' is too long (${#SLUG} chars; ≤28 allowed).
 
@@ -299,5 +256,6 @@ Why: the playwright-cli daemon binds a UNIX socket under \$TMPDIR. Long slugs pu
 }
 
 shell_words "$CMD"
+if [ "$SW_OVERFLOW" = 1 ]; then pw_mention "$CMD" && deny_unjudgeable "the line is too long to split"; exit 0; fi
 shell_each_command judge_invocation
 exit 0

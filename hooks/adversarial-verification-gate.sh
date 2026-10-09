@@ -63,7 +63,7 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/ticket-driven-testing/SKILL.md
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-hook_lib signoff.sh
+hook_lib signoff.sh hook-emit.sh
 hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_ADVERSARIAL_GATE:-}" = "1" ] && exit 0
@@ -240,8 +240,9 @@ turned off — it needs the report to be accurate."
 # work to others as finished. So it DENIES rather than advises — an entry-B run that only warned
 # here would leave the developer path with no enforcement at all.
 if [ "$IS_TRANSITION" = "1" ] || [ "$IS_PR" = "1" ]; then
-  "$JQ" -n --arg r "$REASON" --arg g "$GUIDANCE" --arg refs "$HOOK_REFS" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("Sign-off blocked. " + $r + "\n\n" + $g + $refs)}}'
+  emit_pre_deny_bare "Sign-off blocked. $REASON
+
+$GUIDANCE$HOOK_REFS"
   exit 0
 fi
 

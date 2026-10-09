@@ -2,6 +2,7 @@
 # standard-mode-first-pass-guard.sh — first-pass / first-cycle strict-dispatch
 #                                     enforcement for coverage-expansion +
 #                                     journey-mapping.
+# Size: the strict-dispatch rules of two pipelines (coverage-expansion, journey-mapping) with their ledger fallbacks.
 #
 # Hook    : PreToolUse:Agent
 # Mode    : DENY (blocks the dispatch before the subagent starts)

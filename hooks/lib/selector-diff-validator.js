@@ -1,4 +1,5 @@
 'use strict';
+// Size: a parser and a flattener per template language (JSX, Vue, Svelte, HTML) feed one element compare.
 
 /**
  * selector-diff-validator.js

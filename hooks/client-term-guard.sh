@@ -60,6 +60,7 @@ set -uo pipefail
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 hook_jq_init silent
+hook_lib hook-emit.sh
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
@@ -151,11 +152,5 @@ References:
   skills/coverage-expansion/references/anti-rationalizations.md §"Client-reference leakage"
 EOF
 
-"$JQ" -n --arg r "$REASON" '{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": $r
-  }
-}'
+emit_pre_deny_bare "$REASON"
 exit 0

@@ -508,7 +508,7 @@ assert_deny "$H" "$(payload tool_name=Read file_path="$KP/src/app.ts" cwd="$KP")
 NOK="$KW_TMP/hooks-without-kernel"
 mkdir -p "$NOK/lib"
 cp "$H" "$NOK/"
-cp "$HOOK_DIR"/lib/hook-io.sh "$HOOK_DIR"/lib/achilles-activation.sh "$HOOK_DIR"/lib/dispatch-prefix.sh "$NOK/lib/"
+cp "$HOOK_DIR"/lib/hook-io.sh "$HOOK_DIR"/lib/hook-emit.sh "$HOOK_DIR"/lib/achilles-activation.sh "$HOOK_DIR"/lib/dispatch-prefix.sh "$NOK/lib/"
 assert_deny "$NOK/achilles-kernel-activation-gate.sh" "$(probe km-act-1)" \
   "marker present, manifest staged, kernel script missing → DENY" "kernel-mandate cannot run"
 
