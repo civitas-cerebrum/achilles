@@ -74,6 +74,8 @@ section "cli-isolation: package specs, wrapper options and shell keywords before
 for c in 'npx @playwright/cli open http://x' 'npx @playwright/cli@1.2.0 open http://x' 'npx playwright-cli@latest open http://x' \
          'npx -p @playwright/cli playwright-cli open http://x' 'npx --package=@playwright/cli playwright-cli open http://x' \
          'npm exec -- playwright-cli open http://x' 'sudo -u me playwright-cli open http://x' 'env -u FOO playwright-cli open http://x' \
+         'env -C /tmp playwright-cli open http://x' 'env --chdir=/tmp playwright-cli open http://x' 'env --chdir /tmp playwright-cli open http://x' \
+         'sudo -D /tmp playwright-cli open http://x' \
          './node_modules/.bin/playwright-cli open http://x' 'if npx playwright-cli open http://x; then echo ok; fi'; do
   assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
 done

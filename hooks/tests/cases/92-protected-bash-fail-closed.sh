@@ -121,8 +121,8 @@ cp -r $SRC .
 ANCESTORS
 
 section "protected-bash fail-closed: git commands that can rewrite worktree files stay unprovable"
-assert_deny "$HOOK" "$(bash_payload 'git checkout -- ~/.claude/settings.json')" "git checkout of a protected path" "Cannot prove"
-assert_deny "$HOOK" "$(bash_payload 'git restore tests/e2e/docs/onboarding-status.json')" "git restore of the ledger" "Cannot prove"
+assert_deny "$HOOK" "$(bash_payload 'git checkout -- ~/.claude/settings.json')" "git checkout of a protected path" "Writes into"
+assert_deny "$HOOK" "$(bash_payload 'git restore tests/e2e/docs/onboarding-status.json')" "git restore of the ledger" "Writes into"
 assert_deny "$HOOK" "$(bash_payload 'git branch topic tests/e2e/docs/journey-map.md')" "git branch creating, on a line naming the journey map" "Cannot prove"
 
 section "protected-bash fail-closed: writes beside, not above, protected paths ALLOW"
@@ -181,7 +181,7 @@ rm -rf ~/.claude/hook{a..z}
 rm -rf tests/e2e/do{c,}s
 BRACES
 assert_deny "$HOOK" "$(bash_payload 'tee ~/.claude/settings{,}.json < x')" "the expanded word is the write target" "Writes into: .claude/settings.json"
-for c in 'rm -rf {dist,build}' 'rm -rf dist/{a,b}' 'mkdir -p dist/{a,b}' "printf '%s\\n' {1..3} > /tmp/n" 'find . -name "*.json" -exec rm {} \;'; do
+for c in 'rm -rf {dist,build}' 'rm -rf dist/{a,b}' 'mkdir -p dist/{a,b}' "printf '%s\\n' {1..3} > /tmp/n" 'find dist -name "*.json" -exec rm {} \;'; do
   assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
 done
 
@@ -411,3 +411,257 @@ assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json;
 section "protected-bash fail-closed F1b: glued git -c<key>=<value>"
 assert_deny "$HOOK" "$(bash_payload 'git -ccore.pager=x log ~/.claude/settings.json')" "glued -c with a non-inert key" "git -c"
 assert_allow "$HOOK" "$(bash_payload 'git -cuser.name=x commit -m "fix tests/e2e/docs/onboarding-status.json"')" "glued -c with an inert key"
+
+# env -C DIR and sudo -D DIR run the command in DIR: its relative operands are judged there, not in the call's cwd.
+section "protected-bash fail-closed: env -C / --chdir / sudo -D move the directory relative operands resolve in"
+tmp_into CHDIR_TMP
+mkdir -p "$CHDIR_TMP/proj/tests/e2e/docs" "$CHDIR_TMP/proj/src"
+chdir_payload() { "$JQ" -n --arg c "$1" --arg d "$CHDIR_TMP/proj" '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}'; }
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'CHDIR'
+env -C tests rm -r e2e
+env -Ctests rm -r e2e
+env -iC tests rm -r e2e
+env --chdir=tests rm -r e2e
+env --chdir tests rm -r e2e
+env -C . -C tests rm -r e2e
+env -C .. rm -r proj
+env -C tests sh -c 'rm -r e2e'
+env -C '$X' rm -r e2e
+sudo -D tests rm -r e2e
+sudo --chdir=tests rm -r e2e
+sudo -D tests sh -c 'rm -r e2e'
+CHDIR
+assert_allow "$HOOK" "$(chdir_payload 'env -C src cat notes.txt')" "env -C into an unprotected directory, read"
+assert_allow "$HOOK" "$(chdir_payload 'env -C /tmp rm junk.txt')" "env -C elsewhere, unprotected write"
+assert_allow "$HOOK" "$(chdir_payload 'sudo -D src ls')" "sudo -D into an unprotected directory"
+
+# An unrecognised wrapper option denies on any line; git, find and package-manager forms move or widen the
+# directory a destructive operand is judged in.
+section "protected-bash fail-closed: abbreviated wrapper options, git/find targets, package-manager -C … exec"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'WIDEN'
+env --c=tests rm -r e2e
+env --chd=tests rm -r e2e
+env --chdi tests rm -r e2e
+env --split='rm -r tests/e2e' x
+sudo --chd=tests rm -r e2e
+sudo --ch=tests rm -r e2e
+env --chd=tests cat notes.txt
+git rm -r tests/e2e
+git -C tests rm -r e2e
+git -Ctests rm -r e2e
+git -C tests/e2e rm -r docs
+git -C src rm -r ../tests/e2e
+git --work-tree=tests checkout -- e2e
+git --work-tree tests checkout -- e2e
+git -C tests restore e2e
+git -C tests mv e2e /tmp/z
+git -C tests stash -u
+git -C tests clean -fdx
+git -C .. clean -fdx
+git clean -fdx
+git clean -fdx tests
+git checkout -- .
+git checkout -- tests/e2e
+git reset --hard
+git stash
+git stash pop
+find . -delete
+find tests -delete
+find tests -exec rm {} \;
+pnpm -C tests exec rm -r e2e
+pnpm --dir=tests exec rm -r e2e
+pnpm --dir tests exec rm -r e2e
+yarn --cwd tests exec rm -r e2e
+npm --prefix tests exec -- rm -r e2e
+npx --prefix tests rm -r e2e
+npx --prefix=tests rm -r e2e
+WIDEN
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'NARROW'
+npx playwright test tests/e2e
+pnpm exec playwright test
+git status
+git diff
+git log
+git -C tests status
+git -C src rm x.txt
+git checkout -b feature
+git add src
+git reset HEAD
+git stash list
+find tests -name x
+find src -delete
+cat tests/e2e/notes.txt
+env -S 'ls'
+env -u X cat y
+timeout -s KILL 5 ls
+NARROW
+
+section "protected-bash fail-closed: git options, forced checkouts, workspace fan-out, find -exec"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'ROUND2'
+git -c core.abbrev=7 -C tests rm -r e2e
+git -c x.y=z -C tests rm -r e2e
+git -c x.y=z rm -r tests/e2e
+git --exec-path=/x -C tests rm -r e2e
+git -C $X rm -r e2e
+git --work-tree=$X rm -r e2e
+git clean -fdx -e foo
+git clean -ffdx -e '!x'
+git clean -fdxe foo
+git clean -fdx --exclude foo
+git reset --keep HEAD~1
+git checkout -f main
+git checkout --force main
+git switch -f main
+git switch --discard-changes main
+git checkout -fb x main
+pnpm --filter x -C tests exec rm -r e2e
+pnpm --filter x exec rm -r e2e
+pnpm -r exec rm -r e2e
+pnpm -w exec rm -r e2e
+pnpm --recursive exec rm -r e2e
+yarn workspace x exec rm -r e2e
+yarn workspaces foreach exec rm -r e2e
+npm x --prefix tests rm -r e2e
+npm -w x exec -- rm -r e2e
+bun x --cwd tests rm -r e2e
+bun exec --cwd tests rm -r e2e
+git -C tests rm -r --pathspec-from-file=- <<< e2e
+git rm -r --pathspec-from-file=/tmp/list
+git read-tree -u --reset HEAD
+git read-tree -u -m HEAD
+git checkout-index -f -a
+find . -exec rm {} \;
+find . -exec sh -c 'rm x' \;
+git rm --cached tests/e2e/docs/onboarding-status.json
+git -C tests/e2e/docs rm --cached onboarding-status.json
+pnpm --filter x exec sh -c 'rm -r e2e'
+ROUND2
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'READONLY'
+git stash list
+git stash show
+git rm --cached x.txt
+git clean -fdx src
+git -C src clean -fdx
+find . -exec grep foo {} \;
+find . -exec grep -l foo {} +
+find . -name '*.ts' -exec cat {} \;
+find . -execdir ls {} \;
+pnpm --filter app exec playwright test
+pnpm -r exec tsc --noEmit
+READONLY
+
+# git index ops, stash and dry runs carry no exemption: the target set (operands, or the work tree when
+# there are none, they do not resolve, or an option is unknown) is judged. find -exec runs its command
+# as a command of its own. An unknown package-manager option before exec leaves the directory unresolvable.
+section "protected-bash fail-closed: git target sets, nested find -exec, package-manager options"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'ROUND4'
+find . -exec rg --pre rm x {} \;
+find . -exec rg --pre=rm x {} +
+find . -exec file -C -m /tmp/m {} \;
+find . -exec ./cat {} \;
+find src -exec sh -c 'rm -r tests' \;
+git stash -m drop
+git stash -m list
+git stash -q list
+git stash drop
+git -C src stash
+git -C src reset --hard
+git -C src checkout -f main
+git restore -sSTAGING .
+git restore --source=STAGING --staged .
+git restore --staged tests/e2e
+git restore --staged .
+git restore -S .
+git clean -fdx -enode_modules
+git clean -fdx -e-n
+git clean -fdx -e.env
+git clean -n
+git clean -nd
+git clean -fdx --dry-run
+git reset --har
+git rm --cached -r tests/e2e
+git rm --cached -r tests
+git rm --cached -r .
+git -C tests rm --cached -r e2e
+git rm -r --cached tests/e2e/docs
+git rm --cached --pathspec-from-file=/tmp/list
+git rm --cached --pathspec-from-file=- <<< tests/e2e/docs/onboarding-status.json
+git rm --cached 'tests/e2e/docs/*'
+git -C $X rm --cached -r e2e
+git rm -n -r tests
+git rm --cached :/tests
+pnpm -r exec git rm --cached -r e2e
+pnpm --resume-from x -C tests exec rm -r e2e
+pnpm -r --resume-from x exec rm -r e2e
+yarn --network-timeout 1000 --cwd tests exec rm -r e2e
+yarn --mutex file:/tmp/m --cwd tests exec rm -r e2e
+npm --tag latest --prefix tests exec rm -r e2e
+pnpm --bogus exec rm -r e2e
+ROUND4
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'ROUND4_ALLOW'
+git status
+git diff
+git log
+git show
+git ls-files
+git blame src/x.ts
+git stash list
+git stash show -p
+git rm --cached src/x.ts
+git restore --staged src/x.ts
+git clean -n src
+git checkout -bfoo
+git switch -c topic
+find . -exec grep foo {} \;
+find . -exec cat {} \;
+find . -exec /bin/cat {} \;
+find src -exec rm {} \;
+pnpm --filter app exec playwright test
+pnpm --silent exec playwright test
+ROUND4_ALLOW
+
+# Value letters are per git subcommand (-m is --merge for restore/checkout); a global option's separate value
+# is not the subcommand; an option that makes git run a program denies on any line; sparse-checkout takes the tree.
+section "protected-bash fail-closed: git per-subcommand value letters, global values, exec options, sparse-checkout"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "git"
+done <<'ROUND5'
+git restore -m tests/e2e src
+git checkout -m tests/e2e src
+git restore -qm tests/e2e src
+git --config-env core.x=HOME rm -r tests
+git --attr-source HEAD rm -r tests
+git --bogus rm -r src/x
+git grep -Orm foo
+git grep --open-files-in-pager=rm foo
+git diff --ext-diff
+git --exec-path=/tmp/x status
+git sparse-checkout set src
+git sparse-checkout add src
+git sparse-checkout reapply
+git sparse-checkout disable
+git sparse-checkout init
+ROUND5
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'ROUND5_ALLOW'
+git restore -m src/x
+git checkout -m src/x
+git restore -s HEAD src
+git --no-pager log
+git sparse-checkout list
+ROUND5_ALLOW

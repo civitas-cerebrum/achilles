@@ -18,7 +18,7 @@
 #   CMD_ARGS    command word (basename; assignments, the shell keywords if/then/else/while/do/!…,
 #               the reserved words { and } of a brace group or function body, `function NAME`,
 #               `coproc [NAME]` and the wrappers env, command, builtin, exec, nohup, time, nice,
-#               sudo, doas, stdbuf, timeout, xargs, npx, bunx and npm|pnpm|yarn exec peeled, with
+#               sudo, doas, stdbuf, timeout, xargs, npx, bunx and npm|pnpm|yarn|bun exec peeled, with
 #               the values of their options; an npx package spec keeps its @scope and drops its @version)
 #               then its arguments
 #   CMD_PATH    the command word's directory when it is not a system bin dir, else empty: a
@@ -28,6 +28,10 @@
 #   CMD_WRITES  targets of the writing redirections (> >> >| &> &>> >&file <>, with any fd number)
 #               and the file named by time -o / --output
 #   CMD_SNEST   strings a known wrapper runs as a command (env -S, npx -c), re-split as nested commands
+#   CMD_CHDIR   the directory env -C / --chdir, sudo -D / --chdir, npx --prefix and the -C / --dir / --cwd /
+#               --prefix of npm|pnpm|yarn before `exec` run the command in (several are joined), else empty:
+#               the command's relative operands resolve there, not in the caller's cwd. ${workspace} when
+#               the package manager's directory cannot be resolved (shell__pm_exec)
 #   CMD_WRAP_BAD 1 when a wrapper carried an option the peeler does not recognise: the command word
 #               is then unknown and the caller must not treat the command as judged
 #   CMD_HEREDOCS heredoc and here-string bodies
@@ -49,6 +53,13 @@ shell_words() {
   SW=(); SW_NESTED=0; SW_OVERFLOW=0
   if [ "${#1}" -gt "$SHELL_WORDS_MAX" ]; then SW_OVERFLOW=1; return 0; fi
   shell__split "$1"
+  shell_each_command shell__expand
+}
+
+# shell_words_args <word>… — as shell_words, for a command already split into words (the one find -exec
+# runs). SW_NESTED and SW_OVERFLOW carry on from the line it came from.
+shell_words_args() {
+  SW=("$@")
   shell_each_command shell__expand
 }
 
@@ -275,7 +286,8 @@ shell_git_exec_option() {
 
 # shell__wrapopt <wrapper> <option> — classify <option> for <wrapper>, inverting to unknown=unsafe.
 # Sets WOPT to: val (value is the next word), self (value glued or a flag), snest / snestnext
-# (env -S, npx -c: a command string, glued in WVAL or the next word), wself / wnext (time -o: a file
+# (env -S, npx -c: a command string, glued in WVAL or the next word), chdir / chdirnext (env -C: the
+# directory the command runs in (sudo -D too), glued in WVAL or the next word), wself / wnext (time -o: a file
 # the wrapper writes, glued in WVAL or the next word), or bad (unrecognised → the command is unsafe).
 # Only options the peeler must skip to reach the real command are listed.
 shell__wrapopt() {
@@ -287,7 +299,8 @@ shell__wrapopt() {
       case "$w:$base" in
         env:--split-string|npx:--call) case "$o" in *=*) WVAL="${o#*=}"; WOPT=snest ;; *) WOPT=snestnext ;; esac; return 0 ;;
         time:--output) case "$o" in *=*) WVAL="${o#*=}"; WOPT=wself ;; *) WOPT=wnext ;; esac; return 0 ;;
-        env:--unset|env:--argv0|env:--chdir|env:--block-signal|env:--default-signal|env:--ignore-signal|\
+        env:--chdir|sudo:--chdir|npx:--prefix) case "$o" in *=*) WVAL="${o#*=}"; WOPT=chdir ;; *) WOPT=chdirnext ;; esac; return 0 ;;
+        env:--unset|env:--argv0|env:--block-signal|env:--default-signal|env:--ignore-signal|\
         nice:--adjustment|time:--format|timeout:--signal|timeout:--kill-after|\
         stdbuf:--input|stdbuf:--output|stdbuf:--error|\
         sudo:--user|sudo:--group|sudo:--close-from|sudo:--host|sudo:--prompt|sudo:--role|sudo:--type|sudo:--other-user|sudo:--command-timeout|\
@@ -313,7 +326,7 @@ shell__wrapopt() {
       while [ "$m" -lt "${#letters}" ]; do
         ch="${letters:m:1}"; m=$((m + 1)); rest="${letters:m}"
         case "$w:$ch" in
-          exec:a|env:u|env:C|env:P|env:a|nice:n|time:f|timeout:s|timeout:k|stdbuf:i|stdbuf:o|stdbuf:e|\
+          exec:a|env:u|env:P|env:a|nice:n|time:f|timeout:s|timeout:k|stdbuf:i|stdbuf:o|stdbuf:e|\
           sudo:u|sudo:g|sudo:C|sudo:h|sudo:p|sudo:r|sudo:t|sudo:U|sudo:T|\
           doas:u|doas:C|\
           xargs:I|xargs:i|xargs:n|xargs:L|xargs:P|xargs:s|xargs:d|xargs:a|xargs:E|xargs:e|xargs:J|xargs:R|xargs:S|\
@@ -321,6 +334,8 @@ shell__wrapopt() {
             if [ -n "$rest" ]; then WOPT=self; else WOPT=val; fi; return 0 ;;
           env:S|npx:c)
             if [ -n "$rest" ]; then WVAL="$rest"; WOPT=snest; else WOPT=snestnext; fi; return 0 ;;
+          env:C|sudo:D)
+            if [ -n "$rest" ]; then WVAL="$rest"; WOPT=chdir; else WOPT=chdirnext; fi; return 0 ;;
           time:o)
             if [ -n "$rest" ]; then WVAL="$rest"; WOPT=wself; else WOPT=wnext; fi; return 0 ;;
           env:i|env:0|env:v|exec:c|exec:l|nice:[0-9]|time:p|time:l|time:a|time:h|time:v|time:q|time:V|\
@@ -338,11 +353,67 @@ shell__wrapopt() {
   esac
 }
 
+# shell_opt_split <cluster> <value-letters> — split a short-option cluster (-qfb x, -sREF) at the first letter
+# that takes a value: SW_FLAGS gets the letters before it, SW_VOPT that letter (empty when none), SW_VAL the
+# rest of the cluster, which is its value (empty: the value is the next word). No value letters: all flags.
+shell_opt_split() {
+  local l="${1#-}"
+  if [ -z "$2" ]; then SW_FLAGS="$l"; SW_VOPT=""; SW_VAL=""; return 0; fi
+  SW_FLAGS="${l%%[$2]*}"; SW_VOPT="${l:${#SW_FLAGS}:1}"; SW_VAL="${l:${#SW_FLAGS}+1}"
+}
+
+# shell_dir_join <base> <dir> — sets SW_JOIN to <dir> under <base>; an absolute, ~ or $ <dir> stands alone.
+shell_dir_join() {
+  case "$2" in
+    /*|'~'*|'$'*) SW_JOIN="$2" ;;
+    *) SW_JOIN="${1:+$1/}${2:-.}" ;;
+  esac
+}
+
+# shell__chdir_add <dir> — fold one env -C value into CMD_CHDIR: a later relative one is under the earlier.
+shell__chdir_add() { shell_dir_join "$CMD_CHDIR" "$1"; CMD_CHDIR="$SW_JOIN"; }
+
+# shell__pm_exec <index> <program> — for npm|pnpm|yarn|bun whose program word precedes SW[<index>]: 0 when
+# `exec` (npm and bun also `x`) follows, past options and directory options (-C, --dir, --cwd, --prefix),
+# which fold into CMD_CHDIR. Workspace selection (-r, -w, --filter, yarn workspace[s]) runs the command in
+# directories only the workspace config names, and an option not listed here may take the next word as a
+# directory: either makes CMD_CHDIR the unresolvable ${workspace}. SW_PM_END is the index after `exec`.
+shell__pm_exec() {
+  local j="$1" prog="$2" w acc="$CMD_CHDIR" open=0
+  while [ "$j" -lt "${#SW[@]}" ]; do
+    w="${SW[j]}"
+    case "$w" in
+      "$SW_SEP"|"$SW_OP"*) return 1 ;;
+      exec) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;;
+      x) case "$prog" in npm|bun) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;; esac
+         [ "$open" = 1 ] || return 1 ;;
+      -C|--dir|--cwd|--prefix)
+        j=$((j + 1)); [ "$j" -lt "${#SW[@]}" ] || return 1
+        case "${SW[j]}" in "$SW_SEP"|"$SW_OP"*) return 1 ;; esac
+        shell_dir_join "$acc" "${SW[j]}"; acc="$SW_JOIN" ;;
+      --dir=*|--cwd=*|--prefix=*) shell_dir_join "$acc" "${w#*=}"; acc="$SW_JOIN" ;;
+      -C?*) shell_dir_join "$acc" "${w#-C}"; acc="$SW_JOIN" ;;
+      --filter|--filter-prod|-F|--workspace) acc='${workspace}'; j=$((j + 1)) ;;
+      -w) acc='${workspace}'; [ "$prog" != npm ] || j=$((j + 1)) ;;
+      --filter=*|--filter-prod=*|--workspace=*|-F?*) acc='${workspace}' ;;
+      -r|--recursive|--workspace-root|--workspaces) acc='${workspace}' ;;
+      --loglevel|--reporter|--registry|--config|--cache|--userconfig|--otp|--workspace-concurrency|--network-concurrency) j=$((j + 1)) ;;
+      -s|--silent|-q|--quiet|-y|--yes|--verbose|--offline|--prefer-offline|--frozen-lockfile|--stream|--parallel|--if-present|--no-bail|--color|--no-color) ;;
+      -*) acc='${workspace}'; open=1 ;;
+      workspace) [ "$prog" = yarn ] || return 1; acc='${workspace}'; j=$((j + 1)) ;;
+      workspaces|foreach) [ "$prog" = yarn ] || return 1; acc='${workspace}' ;;
+      *) [ "$open" = 1 ] || return 1 ;;
+    esac
+    j=$((j + 1))
+  done
+  return 1
+}
+
 shell_each_command() {
-  local fn="$1" k=0 word op wrapped dir peel skip snest_pending write_pending
+  local fn="$1" k=0 word op wrapped dir peel skip snest_pending write_pending chdir_pending
   while [ "$k" -le "${#SW[@]}" ]; do
     CMD_ARGS=(); CMD_WRITES=(); CMD_HEREDOCS=(); CMD_SNEST=(); CMD_ASSIGN=(); CMD_XARGS=0; CMD_ENV=0; CMD_WRAP_BAD=0
-    CMD_PATH=""; wrapped=""; peel=1; skip=0; snest_pending=0; write_pending=0
+    CMD_PATH=""; CMD_CHDIR=""; wrapped=""; peel=1; skip=0; snest_pending=0; write_pending=0; chdir_pending=0
     while [ "$k" -lt "${#SW[@]}" ] && [ "${SW[k]}" != "$SW_SEP" ]; do
       word="${SW[k]}"; k=$((k + 1))
       case "$word" in
@@ -360,6 +431,7 @@ shell_each_command() {
         [ "$skip" = 0 ] || { skip=0; continue; }
         if [ "$snest_pending" = 1 ]; then CMD_SNEST+=("$word"); snest_pending=0; continue; fi
         if [ "$write_pending" = 1 ]; then CMD_WRITES+=("$word"); write_pending=0; continue; fi
+        if [ "$chdir_pending" = 1 ]; then shell__chdir_add "$word"; chdir_pending=0; continue; fi
         case "$word" in
           [A-Za-z_]*=*) case "${word%%=*}" in *[!A-Za-z0-9_]*) ;; *) CMD_ENV=1; CMD_ASSIGN+=("$word"); continue ;; esac ;;
         esac
@@ -380,7 +452,7 @@ shell_each_command() {
             builtin|exec|nohup|time|nice|sudo|doas|stdbuf|timeout) wrapped="${word##*/}"; continue ;;
             npx|bunx) wrapped=npx; continue ;;
             xargs) wrapped=xargs; CMD_XARGS=1; continue ;;
-            npm|pnpm|yarn) if [ "${SW[k]:-}" = exec ]; then k=$((k + 1)); wrapped=npx; continue; fi ;;
+            npm|pnpm|yarn|bun) if shell__pm_exec "$k" "${word##*/}"; then k=$SW_PM_END; wrapped=npx; continue; fi ;;
           esac
         fi
         if [ -n "$wrapped" ]; then
@@ -392,6 +464,8 @@ shell_each_command() {
                   self) continue ;;
                   snest) CMD_SNEST+=("$WVAL"); CMD_WRAP_BAD=1; continue ;;
                   snestnext) snest_pending=1; CMD_WRAP_BAD=1; continue ;;
+                  chdir) shell__chdir_add "$WVAL"; continue ;;
+                  chdirnext) chdir_pending=1; continue ;;
                   wself) CMD_WRITES+=("$WVAL"); continue ;;
                   wnext) write_pending=1; continue ;;
                   *) CMD_WRAP_BAD=1 ;;
