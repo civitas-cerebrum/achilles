@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "cat $HOME/.factory-notes"}}, "expect": "allow", "warn": false}

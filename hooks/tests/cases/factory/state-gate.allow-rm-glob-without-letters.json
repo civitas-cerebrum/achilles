@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "rm -rf dist/*"}}, "expect": "allow", "warn": false}

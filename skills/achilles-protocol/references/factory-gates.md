@@ -163,7 +163,12 @@ stamp, and only when every check passed; `state-gate` blocks hand-written forger
 
 A Bash line is **armed** when some command on it mentions `stateDir`, case folded, as a path component (`.factory`,
 `./.factory/x`, `/abs/.factory/x`) or as a glob that could match one (`.fact*`, `.f[a]ctory`, `.*`; a leading dot needs a
-literal dot, so `*` and `dist/*` do not). The gate reads every word, its `=` value, a glued option value (`-o.factory/x`),
+literal dot, so `*` and `dist/*` do not). The basenames of `process.evidence`'s `stamp` and `currentChange`
+(`verify-stamp`, `current-change` by default) count as naming it too, literal or as a glob component holding a letter
+or digit (`find . -name 'current-*' -delete`, `git clean -fdx -e '*stamp*'`; `docs/verify-stamp.md` and `dist/*` do
+not), so any other file named `verify-stamp` gets the same rules. Each word is also read with every expansion
+(`$X`, `${…}`, `$(…)`, a backtick, `$1`, `$@`) removed and with each replaced by `/`, since an unset variable is empty
+(`rm $X.factory/verify-stamp`). The gate reads every word, its `=` value, a glued option value (`-o.factory/x`),
 redirect targets, and the directory `env -C`/`--chdir`, `sudo -D`, `npx --prefix` or a package manager's
 `-C`/`--dir`/`--prefix` runs the command in. A word that holds shell syntax (a blank, a quote, `\`, a backtick,
 `;&|()<>{}`) is also split as a command line of its own, again and again, so quotes, braces, escapes and `$'…'` in a
@@ -192,12 +197,14 @@ notes, `-m` for stash. On an armed line, unrecognised means unsafe:
 - A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal, is denied. The calling
   shell opens it, so an `env -C` directory does not move it.
 - A `cd`, `pushd` or `popd` the gate cannot resolve exactly counts as entering `stateDir`: a target naming it or not
-  literal, more than one operand (bash 3.2 enters the first), `-`, `~-`, `~+`, `popd`, or a `CDPATH` naming it. Every
+  literal, no operand (`$HOME`) or more than one (bash 3.2 enters the first), `-`, a `~` operand, `+N`, `popd`, or any
+`cd` after an assignment to `HOME`, `CDPATH` or `OLDPWD` on the line. Every
   later segment is then inside it, and a later `cd` does not leave: only readers pass, and a redirect must go to an
   absolute path outside it.
 - A wrapper option the splitter does not know, or a command word that is not literal, is denied.
 
-Armed or not, a line is denied when it cannot be split whole (over 32 KB, 16 nested commands, or 64 words from one brace
+Armed or not, a line is denied when judging it takes over 4 s (a hook that times out allows the command), when it
+cannot be split whole (over 32 KB, 16 nested commands, or 64 words from one brace
 expansion); when a command on it turns `extglob` on (`shopt -s … extglob`, `-O extglob` anywhere in its words, as in
 `find -exec bash -O extglob`, or a `BASHOPTS=` value holding it; a name that is not literal counts);
 or when one turns `dotglob` or `nocaseglob` on the same ways, or assigns `GLOBIGNORE`, and the line holds a glob.
@@ -206,7 +213,8 @@ Mentioning one (`cat docs/extglob.md`) does neither.
 Reading and copying out to a literal path are allowed. What a single line cannot show is in
 [known-limits.md](known-limits.md) KL-20.
 
-Fields: `stateDir` (missing → allow with a warning on every Bash call, so the gap is visible).
+Fields: `stateDir` (missing → allow with a warning on every Bash call, so the gap is visible); the file names come from
+`process.evidence`. `FACTORY_STATE_DEADLINE` (seconds, tests) can lower the deadline, never raise it.
 
 ## Message contract
 

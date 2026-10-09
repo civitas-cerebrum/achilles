@@ -39,9 +39,8 @@
 # "Verified" must mean the tree being committed is the tree that passed, not a tree that passed an
 # hour and three edits ago. A timestamp cannot tell; a content hash can.
 #
-# Known limit: the stamp itself is protected by state-gate.sh (process.state); a forged stamp still has
-# to carry the hash of the current tree, which only a real verify run produces. Shell
-# expansions are not resolved, so `$GIT commit` is not seen, and nesting deeper than one level is not
+# Known limit: the stamp is protected only by state-gate.sh (process.state). <hashCommand> is a repo script
+# anyone can run, so a hand-written stamp can carry the current tree's hash. Shell expansions are not resolved, so `$GIT commit` is not seen, and nesting deeper than one level is not
 # followed.
 #
 # Command splitting is shared with the spend gate (hooks/lib/shell-segments.cjs), so `sh -c 'git commit'`
