@@ -78,3 +78,9 @@ activate_session fc-ctl
 assert_deny "$HOOK_DIR/playwright-cli-isolation-guard.sh" "$(fc_payload fc-ctl PreToolUse tool_name=Bash 'command=npx playwright-cli -s=j-checkout-3 open')" \
   "active session, jq present, unprefixed slug → DENY (JSON decision)" "missing role prefix"
 rm -f "$FC_STATE"/fc-*
+
+section "fail-closed: the no-skip self-test switch in a hook's environment does not make it exit 0"
+activate_session fc-st
+NO_SKIP_MESSAGING_SELFTEST=1 assert_deny "$HOOK_DIR/playwright-cli-isolation-guard.sh" "$(fc_payload fc-st PreToolUse tool_name=Bash 'command=npx playwright-cli -s=j-checkout-3 open')" \
+  "NO_SKIP_MESSAGING_SELFTEST=1 set, unprefixed slug → still DENY" "missing role prefix"
+rm -f "$FC_STATE"/fc-*
