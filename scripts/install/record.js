@@ -127,16 +127,29 @@ function pruneStale(rec) {
   }
 }
 
+// A project install registers "$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>: Claude Code runs a hook command with
+// sh -c and CLAUDE_PROJECT_DIR set to the project root (code.claude.com/docs/en/hooks, "Reference scripts by
+// path"), so a moved or cloned project keeps working. A global install registers the absolute path.
+const PROJECT_HOOK_PREFIX = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/';
+
+// hookScriptPath <command> <claudeDir> — the script one of our registrations runs, else null.
+function hookScriptPath(command, claudeDir) {
+  const hooksDir = path.join(claudeDir, 'hooks') + path.sep;
+  const head = command.trim().split(/\s+/)[0];
+  if (head.startsWith(PROJECT_HOOK_PREFIX)) return path.join(hooksDir, head.slice(PROJECT_HOOK_PREFIX.length));
+  const bare = head.replace(/^["']|["']$/g, '');
+  return bare.startsWith(hooksDir) ? bare : null;
+}
+
 // Removes registrations an earlier install made that the manifest no longer
 // asks for; registrations the user added are not in the record and stay, and a
 // recorded command outside <claudeDir>/hooks/ is not ours to remove.
 // Returns how many were removed.
 function dropStaleRegistrations(rec, settings) {
   const current = new Set(rec.next.registrations.map(registrationKey));
-  const hooksDir = path.join(rec.claudeDir, 'hooks') + path.sep;
   let removed = 0;
   for (const r of rec.prevRegistrations) {
-    if (current.has(registrationKey(r)) || !r.command.startsWith(hooksDir) || !settings.hooks || !Array.isArray(settings.hooks[r.event])) continue;
+    if (current.has(registrationKey(r)) || !hookScriptPath(r.command, rec.claudeDir) || !settings.hooks || !Array.isArray(settings.hooks[r.event])) continue;
     for (const group of settings.hooks[r.event]) {
       if (!group || !Array.isArray(group.hooks) || (group.matcher || null) !== (r.matcher || null)) continue;
       const before = group.hooks.length;
@@ -168,4 +181,4 @@ function writeRecord(rec) {
   fs.writeFileSync(file, text);
 }
 
-module.exports = { RECORD_FILE, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord };
+module.exports = { RECORD_FILE, PROJECT_HOOK_PREFIX, hookScriptPath, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord };

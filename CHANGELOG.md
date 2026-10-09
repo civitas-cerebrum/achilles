@@ -25,6 +25,7 @@
 - Postinstall copies by content instead of file time, so an npm tarball's fixed timestamps no longer leave an upgraded hook stale. A second run changes nothing.
 - Files a newer version no longer ships are pruned, with their registrations, unless you edited them.
 - A global install (`npm i -g`) no longer stages the mandate or writes a `.claude/` under npm's `lib/`.
+- A project install registers its hooks as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`, so a moved or cloned project keeps working; an absolute registration from an earlier install is switched over.
 - Bash guards (`protected-artifact-bash-guard`, `playwright-cli-isolation-guard`, `state-gate`) judge the words a command line runs and the paths it writes after normalisation, treat anything they cannot parse as unsafe, and deny unknown wrapper options. They judge `git` targets (including `git rm --cached` of a protected path) and `find -exec`. See KL-15.
 - While the protocol is active, a PreToolUse call is denied when `jq` or a hook library is missing, with the remedy on stderr.
 - Approval-class ledger writes must come from an approver `agent_type` when the host supplies one.

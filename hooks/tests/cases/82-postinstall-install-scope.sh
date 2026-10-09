@@ -60,8 +60,23 @@ if (mode === 'global-flag') {
     'hook script copied under the target .claude/hooks');
   const settings = JSON.parse(fs.readFileSync(path.join(projClaude, 'settings.json'), 'utf8'));
   const cmds = Object.values(settings.hooks).flat().flatMap(g => (g.hooks || []).map(h => h.command));
-  assert.ok(cmds.length > 0 && cmds.every(c => c.startsWith(path.join(projClaude, 'hooks') + path.sep)),
-    'every registration points into the target hooks dir');
+  const prefix = '"\$CLAUDE_PROJECT_DIR"/.claude/hooks/';
+  assert.ok(cmds.length > 0 && cmds.every(c => c.startsWith(prefix) && fs.existsSync(path.join(projClaude, 'hooks', c.slice(prefix.length)))),
+    'every registration is project-relative and resolves into the target hooks dir');
+  // Claude Code runs the command with sh -c and CLAUDE_PROJECT_DIR set, from any cwd.
+  const { spawnSync } = require('child_process');
+  const ran = spawnSync('sh', ['-c', cmds.find(c => c.endsWith('/commit-message-gate.sh')) + ' </dev/null'],
+    { cwd: require('os').tmpdir(), env: { ...process.env, CLAUDE_PROJECT_DIR: path.join(home, 'project') } });
+  assert.notEqual(ran.status, 127, 'the project-relative command finds its script');
+  // A registration an earlier install wrote as an absolute path is switched over, not duplicated.
+  const abs = path.join(projClaude, 'hooks', 'commit-message-gate.sh');
+  for (const g of Object.values(settings.hooks).flat()) for (const h of g.hooks || []) if (h.command === prefix + 'commit-message-gate.sh') h.command = abs;
+  fs.writeFileSync(path.join(projClaude, 'settings.json'), JSON.stringify(settings));
+  pi.installCivitasHooks(projClaude);
+  const again = Object.values(JSON.parse(fs.readFileSync(path.join(projClaude, 'settings.json'), 'utf8')).hooks).flat().flatMap(g => (g.hooks || []).map(h => h.command));
+  assert.equal(again.filter(c => c.endsWith('/commit-message-gate.sh')).length, cmds.filter(c => c.endsWith('/commit-message-gate.sh')).length,
+    'the absolute registration is migrated in place');
+  assert.ok(!again.includes(abs), 'no absolute registration left');
   assert.ok(!fs.existsSync(path.join(home, '.claude', 'settings.json')),
     'user-level settings.json untouched by a project-scoped install');
   // No-arg call keeps the historical user-level default (sync-hooks.js compat).

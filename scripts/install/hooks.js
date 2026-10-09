@@ -1,7 +1,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { packageDir, userClaudeDir } = require('./context.js');
-const { openRecord, copyTracked, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord } = require('./record.js');
+const { PROJECT_HOOK_PREFIX, hookScriptPath, openRecord, copyTracked, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord } = require('./record.js');
 
 // Install the achilles harness hooks into <claudeDir>/hooks/ and register
 // them in <claudeDir>/settings.json — ~/.claude for a global (-g) install,
@@ -67,9 +67,16 @@ function copyHookSubdir(rec, name, userHooksDir) {
   return copied;
 }
 
-function registerHookInSettings(rec, settings, entry, hookDest) {
+// hookCommand — the settings.json command for an installed hook: project-relative for a project install
+// (see PROJECT_HOOK_PREFIX), the absolute path for a global one.
+function hookCommand(baseDir, hookDest) {
+  if (baseDir === userClaudeDir) return hookDest;
+  return PROJECT_HOOK_PREFIX + path.relative(path.join(baseDir, 'hooks'), hookDest).split(path.sep).join('/');
+}
+
+function registerHookInSettings(rec, settings, entry, command, hookDest) {
   const { event, matcher, timeout, async: isAsync } = entry;
-  rec.next.registrations.push({ event, matcher: matcher || null, command: hookDest });
+  rec.next.registrations.push({ event, matcher: matcher || null, command });
 
   settings.hooks = settings.hooks || {};
   settings.hooks[event] = settings.hooks[event] || [];
@@ -83,14 +90,12 @@ function registerHookInSettings(rec, settings, entry, hookDest) {
   }
   group.hooks = group.hooks || [];
 
-  const alreadyRegistered = group.hooks.some(h =>
-    h && h.type === 'command' && h.command === hookDest
-  );
-  if (alreadyRegistered) {
-    return false;
-  }
+  if (group.hooks.some(h => h && h.type === 'command' && h.command === command)) return false;
+  // An earlier install registered the absolute path: switch that entry over rather than add a second one.
+  const old = command !== hookDest && group.hooks.find(h => h && h.type === 'command' && h.command === hookDest);
+  if (old) { old.command = command; return true; }
 
-  const hookEntry = { type: 'command', command: hookDest };
+  const hookEntry = { type: 'command', command };
   if (typeof timeout === 'number') hookEntry.timeout = timeout;
   if (isAsync === true) hookEntry.async = true;
   group.hooks.push(hookEntry);
@@ -102,7 +107,7 @@ function registerHookInSettings(rec, settings, entry, hookDest) {
 // the "/bin/sh: …: No such file or directory" non-blocking failures. Third-
 // party hooks are preserved; matcher groups left empty are dropped. Returns
 // whether anything was removed.
-function pruneDanglingRegistrations(settings, userHooksDir) {
+function pruneDanglingRegistrations(settings, baseDir) {
   if (!settings || !settings.hooks || typeof settings.hooks !== 'object') return false;
   const legacySet = new Set(manifest.legacyEiHooks);
   let modified = false;
@@ -115,9 +120,8 @@ function pruneDanglingRegistrations(settings, userHooksDir) {
       const before = group.hooks.length;
       group.hooks = group.hooks.filter(h => {
         if (!h || h.type !== 'command' || typeof h.command !== 'string') return true;
-        // A bare leading path is ours, `node "…"` / third-party commands are not.
-        const scriptPath = h.command.trim().split(/\s+/)[0].replace(/^["']|["']$/g, '');
-        if (!scriptPath.startsWith(userHooksDir + path.sep)) return true;
+        const scriptPath = hookScriptPath(h.command, baseDir);
+        if (!scriptPath) return true;
         return !legacySet.has(path.basename(scriptPath)) && fs.existsSync(scriptPath);
       });
       if (group.hooks.length !== before) modified = true;
@@ -167,7 +171,7 @@ function installCivitasHooks(claudeDir) {
     if (!fs.existsSync(hookSrc)) continue;
     const hookDest = path.join(userHooksDir, entry.file);
     if (copyHookFile(rec, hookSrc, hookDest)) copiedCount++;
-    if (registerHookInSettings(rec, settings, entry, hookDest)) registeredCount++;
+    if (registerHookInSettings(rec, settings, entry, hookCommand(baseDir, hookDest), hookDest)) registeredCount++;
   }
 
   const factoryDestDir = path.join(userHooksDir, 'factory');
@@ -177,7 +181,7 @@ function installCivitasHooks(claudeDir) {
     if (!fs.existsSync(hookSrc)) continue;
     const hookDest = path.join(factoryDestDir, entry.file);
     if (copyHookFile(rec, hookSrc, hookDest)) copiedCount++;
-    if (registerHookInSettings(rec, settings, entry, hookDest)) registeredCount++;
+    if (registerHookInSettings(rec, settings, entry, hookCommand(baseDir, hookDest), hookDest)) registeredCount++;
   }
 
   for (const file of manifest.companions) {
@@ -196,7 +200,7 @@ function installCivitasHooks(claudeDir) {
   // Before the dangling-registration prune, so a dropped file's registration goes with it.
   pruneStale(rec);
   const dropped = dropStaleRegistrations(rec, settings);
-  const pruned = pruneDanglingRegistrations(settings, userHooksDir);
+  const pruned = pruneDanglingRegistrations(settings, baseDir);
   if (registeredCount > 0 || pruned || dropped) {
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
