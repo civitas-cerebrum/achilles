@@ -99,6 +99,7 @@ NAMED=""    # protected entries and directories the line names, one per line
 HITS=""     # protected entries or directories a write reaches
 UNSAFE=""   # why a command on the line cannot be proved safe
 OVERFLOW="" # 1 when the line could not be split whole
+GBASE=""; GPOS=(); GHARD=0 # the git command being judged: its -C directory, operands, reset --hard
 TGT_BASE="" # the env -C directory the command being judged runs in
 POISON=0    # a PATH/alias/function/assignment-only command earlier on the line can redefine later ones
 
@@ -145,6 +146,37 @@ chdir_named() {
   e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") ||
     e=$(protected_ancestor_match "$1" "$CWD" "$LOCATIONS") || return 0
   NAMED="$NAMED$e"$'\n'
+}
+
+# git_write_targets <subcommand> — the paths a working-tree-changing git command rewrites: its operands
+# under the git -C / --work-tree directory (GBASE), and the directory itself when it takes the whole
+# tree (clean, reset --hard, stash) without a pathspec.
+git_write_targets() {
+  local t
+  TGT_BASE="$GBASE"
+  case "$1" in
+    clean) [ "${#GPOS[@]}" -gt 0 ] || target . ;;
+    reset) [ "$GHARD" = 0 ] || target . ;;
+    stash) case "${GPOS[0]:-}" in list|show) TGT_BASE="$CMD_CHDIR"; return 0 ;; *) target . ;; esac ;;
+    rm|checkout|restore|mv) ;;
+    *) TGT_BASE="$CMD_CHDIR"; return 0 ;;
+  esac
+  for t in ${GPOS[@]+"${GPOS[@]}"}; do target "$t"; done
+  TGT_BASE="$CMD_CHDIR"
+}
+
+# find_start_targets — find with an action deletes or runs a command under its start paths (. when none).
+find_start_targets() {
+  local k=1 n=0 a
+  while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+    a="${CMD_ARGS[k]}"; k=$((k + 1))
+    case "$a" in
+      -H|-L|-P|-O?|-D*) ;;
+      -*|'('|'!') break ;;
+      *) target "$a"; n=$((n + 1)) ;;
+    esac
+  done
+  [ "$n" -gt 0 ] || target .
 }
 
 # optval <short> <long> — target every value of -<short> X, -<short>X, --<long> X, --<long>=X.
@@ -363,7 +395,7 @@ copy_targets() {
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" a t e gi gkey gval sub="" pos=0
+  local cmd="${CMD_ARGS[0]:-}" a t e gi gkey gval sub="" pos=0 gdd
   TGT_BASE=""
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
   TGT_BASE="$CMD_CHDIR"
@@ -375,7 +407,12 @@ judge_command() {
     return 0
   fi
   [ "$POISON" = 0 ] || UNSAFE="${UNSAFE}a PATH/alias/function/assignment earlier on the line can redefine $cmd"$'\n'
-  [ "${CMD_WRAP_BAD:-0}" = 0 ] || UNSAFE="${UNSAFE}$cmd: a wrapper carried an unrecognised option"$'\n'
+  # A wrapper option the splitter does not know may hide the command's directory (env --chd=DIR), so
+  # the line is denied whatever it names. A nested env -S / npx -c string is judged where it is written.
+  if [ "${CMD_WRAP_BAD:-0}" = 1 ]; then
+    UNSAFE="${UNSAFE}$cmd: a wrapper carried an unrecognised option"$'\n'
+    [ "${#CMD_SNEST[@]}" -gt 0 ] || NAMED="${NAMED}a wrapper option the guard cannot read"$'\n'
+  fi
   [ "$CMD_XARGS" = 1 ] && { UNSAFE="${UNSAFE}xargs $cmd: operands arrive on stdin"$'\n'; return 0; }
   for a in "${CMD_ARGS[@]}"; do
     case "$a" in *'$('*|*'`'*) UNSAFE="$UNSAFE$cmd: command substitution"$'\n'; return 0 ;; esac
@@ -395,10 +432,11 @@ judge_command() {
   case "$READERS" in *" $cmd "*) return 0 ;; esac
   case "$cmd" in
     git)
-      gi=1
+      gi=1; GBASE="$CMD_CHDIR"; GPOS=(); GHARD=0; gdd=0
       while [ "$gi" -lt "${#CMD_ARGS[@]}" ]; do
         a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
         if shell_git_exec_option "$a"; then UNSAFE="${UNSAFE}git $a"$'\n'; return 0; fi
+        if [ -n "$sub" ] && [ "$gdd" = 1 ]; then GPOS+=("$a"); continue; fi
         if [ -z "$sub" ]; then
           case "$a" in
             -c|-c?*)
@@ -413,18 +451,24 @@ judge_command() {
                      e=$(protected_bash_mention "$gval") && NAMED="$NAMED$e"$'\n'
                      UNSAFE="${UNSAFE}git -c"$'\n'; return 0 ;;
                 esac ;;
-            -C|--git-dir|--work-tree|--namespace|--super-prefix) gi=$((gi + 1)) ;;
-            --git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*) ;;
+            -C|--work-tree) shell_dir_join "$GBASE" "${CMD_ARGS[gi]:-}"; GBASE="$SW_JOIN"; gi=$((gi + 1)) ;;
+            -C?*) shell_dir_join "$GBASE" "${a#-C}"; GBASE="$SW_JOIN" ;;
+            --work-tree=*) shell_dir_join "$GBASE" "${a#*=}"; GBASE="$SW_JOIN" ;;
+            --git-dir|--namespace|--super-prefix) gi=$((gi + 1)) ;;
+            --git-dir=*|--namespace=*|--super-prefix=*) ;;
             --*|-*) ;;
             *) sub="$a" ;;
           esac
         else
           case "$a" in
+            --) gdd=1 ;;
+            --hard|--merge) GHARD=1 ;;
             -*) ;;
-            *) pos=$((pos + 1)) ;;
+            *) pos=$((pos + 1)); GPOS+=("$a") ;;
           esac
         fi
       done
+      git_write_targets "$sub"
       case "$sub" in
         commit|add|status|log|show|diff|blame|rev-parse|ls-files|grep|fetch) ;;
         branch|tag) case " ${CMD_ARGS[*]} " in *" -l "*|*" --list "*) ;; *) [ "$pos" = 0 ] || UNSAFE="${UNSAFE}git $sub creating"$'\n' ;; esac ;;
@@ -441,9 +485,14 @@ judge_command() {
       for a in "${CMD_ARGS[@]:1}"; do case "$a" in -s|-s*|--split-exp*) UNSAFE="${UNSAFE}yq $a writes files"$'\n'; return 0 ;; esac; done
       for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
     find)
+      gdd=0
       for a in "${CMD_ARGS[@]}"; do
-        case "$a" in -delete|-exec|-execdir|-ok|-okdir|-fprint|-fprint0|-fprintf|-fls) UNSAFE="${UNSAFE}find $a"$'\n'; return 0 ;; esac
-      done ;;
+        case "$a" in
+          -delete|-exec|-execdir|-ok|-okdir) gdd=1; UNSAFE="${UNSAFE}find $a"$'\n' ;;
+          -fprint|-fprint0|-fprintf|-fls) UNSAFE="${UNSAFE}find $a"$'\n' ;;
+        esac
+      done
+      [ "$gdd" = 0 ] || find_start_targets ;;
     tee|rm|unlink|rmdir|truncate|shred|sponge)
       operands; for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
     touch) operands rdt; for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;

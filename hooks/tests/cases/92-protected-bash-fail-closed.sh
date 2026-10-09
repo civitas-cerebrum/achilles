@@ -121,8 +121,8 @@ cp -r $SRC .
 ANCESTORS
 
 section "protected-bash fail-closed: git commands that can rewrite worktree files stay unprovable"
-assert_deny "$HOOK" "$(bash_payload 'git checkout -- ~/.claude/settings.json')" "git checkout of a protected path" "Cannot prove"
-assert_deny "$HOOK" "$(bash_payload 'git restore tests/e2e/docs/onboarding-status.json')" "git restore of the ledger" "Cannot prove"
+assert_deny "$HOOK" "$(bash_payload 'git checkout -- ~/.claude/settings.json')" "git checkout of a protected path" "Writes into"
+assert_deny "$HOOK" "$(bash_payload 'git restore tests/e2e/docs/onboarding-status.json')" "git restore of the ledger" "Writes into"
 assert_deny "$HOOK" "$(bash_payload 'git branch topic tests/e2e/docs/journey-map.md')" "git branch creating, on a line naming the journey map" "Cannot prove"
 
 section "protected-bash fail-closed: writes beside, not above, protected paths ALLOW"
@@ -181,7 +181,7 @@ rm -rf ~/.claude/hook{a..z}
 rm -rf tests/e2e/do{c,}s
 BRACES
 assert_deny "$HOOK" "$(bash_payload 'tee ~/.claude/settings{,}.json < x')" "the expanded word is the write target" "Writes into: .claude/settings.json"
-for c in 'rm -rf {dist,build}' 'rm -rf dist/{a,b}' 'mkdir -p dist/{a,b}' "printf '%s\\n' {1..3} > /tmp/n" 'find . -name "*.json" -exec rm {} \;'; do
+for c in 'rm -rf {dist,build}' 'rm -rf dist/{a,b}' 'mkdir -p dist/{a,b}' "printf '%s\\n' {1..3} > /tmp/n" 'find dist -name "*.json" -exec rm {} \;'; do
   assert_allow "$HOOK" "$(bash_payload "$c")" "$c"
 done
 
@@ -436,3 +436,68 @@ CHDIR
 assert_allow "$HOOK" "$(chdir_payload 'env -C src cat notes.txt')" "env -C into an unprotected directory, read"
 assert_allow "$HOOK" "$(chdir_payload 'env -C /tmp rm junk.txt')" "env -C elsewhere, unprotected write"
 assert_allow "$HOOK" "$(chdir_payload 'sudo -D src ls')" "sudo -D into an unprotected directory"
+
+# An unrecognised wrapper option denies on any line; git, find and package-manager forms move or widen the
+# directory a destructive operand is judged in.
+section "protected-bash fail-closed: abbreviated wrapper options, git/find targets, package-manager -C … exec"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'WIDEN'
+env --c=tests rm -r e2e
+env --chd=tests rm -r e2e
+env --chdi tests rm -r e2e
+env --split='rm -r tests/e2e' x
+sudo --chd=tests rm -r e2e
+sudo --ch=tests rm -r e2e
+env --chd=tests cat notes.txt
+git rm -r tests/e2e
+git -C tests rm -r e2e
+git -Ctests rm -r e2e
+git -C tests/e2e rm -r docs
+git -C src rm -r ../tests/e2e
+git --work-tree=tests checkout -- e2e
+git --work-tree tests checkout -- e2e
+git -C tests restore e2e
+git -C tests mv e2e /tmp/z
+git -C tests stash -u
+git -C tests clean -fdx
+git -C .. clean -fdx
+git clean -fdx
+git clean -fdx tests
+git checkout -- .
+git checkout -- tests/e2e
+git reset --hard
+git stash
+git stash pop
+find . -delete
+find tests -delete
+find tests -exec rm {} \;
+pnpm -C tests exec rm -r e2e
+pnpm --dir=tests exec rm -r e2e
+pnpm --dir tests exec rm -r e2e
+yarn --cwd tests exec rm -r e2e
+npm --prefix tests exec -- rm -r e2e
+npx --prefix tests rm -r e2e
+npx --prefix=tests rm -r e2e
+WIDEN
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'NARROW'
+npx playwright test tests/e2e
+pnpm exec playwright test
+git status
+git diff
+git log
+git -C tests status
+git -C src rm x.txt
+git checkout -b feature
+git add src
+git reset HEAD
+git stash list
+find tests -name x
+find src -delete
+cat tests/e2e/notes.txt
+env -S 'ls'
+env -u X cat y
+timeout -s KILL 5 ls
+NARROW

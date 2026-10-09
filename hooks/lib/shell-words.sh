@@ -28,7 +28,8 @@
 #   CMD_WRITES  targets of the writing redirections (> >> >| &> &>> >&file <>, with any fd number)
 #               and the file named by time -o / --output
 #   CMD_SNEST   strings a known wrapper runs as a command (env -S, npx -c), re-split as nested commands
-#   CMD_CHDIR   the directory env -C / --chdir (sudo -D / --chdir) runs the command in (several are joined), else empty:
+#   CMD_CHDIR   the directory env -C / --chdir, sudo -D / --chdir, npx --prefix and the -C / --dir / --cwd /
+#               --prefix of npm|pnpm|yarn before `exec` run the command in (several are joined), else empty:
 #               the command's relative operands resolve there, not in the caller's cwd
 #   CMD_WRAP_BAD 1 when a wrapper carried an option the peeler does not recognise: the command word
 #               is then unknown and the caller must not treat the command as judged
@@ -290,7 +291,7 @@ shell__wrapopt() {
       case "$w:$base" in
         env:--split-string|npx:--call) case "$o" in *=*) WVAL="${o#*=}"; WOPT=snest ;; *) WOPT=snestnext ;; esac; return 0 ;;
         time:--output) case "$o" in *=*) WVAL="${o#*=}"; WOPT=wself ;; *) WOPT=wnext ;; esac; return 0 ;;
-        env:--chdir|sudo:--chdir) case "$o" in *=*) WVAL="${o#*=}"; WOPT=chdir ;; *) WOPT=chdirnext ;; esac; return 0 ;;
+        env:--chdir|sudo:--chdir|npx:--prefix) case "$o" in *=*) WVAL="${o#*=}"; WOPT=chdir ;; *) WOPT=chdirnext ;; esac; return 0 ;;
         env:--unset|env:--argv0|env:--block-signal|env:--default-signal|env:--ignore-signal|\
         nice:--adjustment|time:--format|timeout:--signal|timeout:--kill-after|\
         stdbuf:--input|stdbuf:--output|stdbuf:--error|\
@@ -344,12 +345,39 @@ shell__wrapopt() {
   esac
 }
 
-# shell__chdir_add <dir> — fold one env -C value into CMD_CHDIR: a later relative one is under the earlier.
-shell__chdir_add() {
-  case "$1" in
-    /*|'~'*|'$'*) CMD_CHDIR="$1" ;;
-    *) CMD_CHDIR="${CMD_CHDIR:+$CMD_CHDIR/}${1:-.}" ;;
+# shell_dir_join <base> <dir> — sets SW_JOIN to <dir> under <base>; an absolute, ~ or $ <dir> stands alone.
+shell_dir_join() {
+  case "$2" in
+    /*|'~'*|'$'*) SW_JOIN="$2" ;;
+    *) SW_JOIN="${1:+$1/}${2:-.}" ;;
   esac
+}
+
+# shell__chdir_add <dir> — fold one env -C value into CMD_CHDIR: a later relative one is under the earlier.
+shell__chdir_add() { shell_dir_join "$CMD_CHDIR" "$1"; CMD_CHDIR="$SW_JOIN"; }
+
+# shell__pm_exec <index> — for npm|pnpm|yarn whose program word precedes SW[<index>]: 0 when `exec` follows,
+# past only flags and directory options (-C, --dir, --cwd, --prefix), which fold into CMD_CHDIR.
+# SW_PM_END is then the index after `exec`.
+shell__pm_exec() {
+  local j="$1" w acc="$CMD_CHDIR"
+  while [ "$j" -lt "${#SW[@]}" ]; do
+    w="${SW[j]}"
+    case "$w" in
+      "$SW_SEP"|"$SW_OP"*) return 1 ;;
+      exec) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;;
+      -C|--dir|--cwd|--prefix)
+        j=$((j + 1)); [ "$j" -lt "${#SW[@]}" ] || return 1
+        case "${SW[j]}" in "$SW_SEP"|"$SW_OP"*) return 1 ;; esac
+        shell_dir_join "$acc" "${SW[j]}"; acc="$SW_JOIN" ;;
+      --dir=*|--cwd=*|--prefix=*) shell_dir_join "$acc" "${w#*=}"; acc="$SW_JOIN" ;;
+      -C?*) shell_dir_join "$acc" "${w#-C}"; acc="$SW_JOIN" ;;
+      -*) ;;
+      *) return 1 ;;
+    esac
+    j=$((j + 1))
+  done
+  return 1
 }
 
 shell_each_command() {
@@ -395,7 +423,7 @@ shell_each_command() {
             builtin|exec|nohup|time|nice|sudo|doas|stdbuf|timeout) wrapped="${word##*/}"; continue ;;
             npx|bunx) wrapped=npx; continue ;;
             xargs) wrapped=xargs; CMD_XARGS=1; continue ;;
-            npm|pnpm|yarn) if [ "${SW[k]:-}" = exec ]; then k=$((k + 1)); wrapped=npx; continue; fi ;;
+            npm|pnpm|yarn) if shell__pm_exec "$k"; then k=$SW_PM_END; wrapped=npx; continue; fi ;;
           esac
         fi
         if [ -n "$wrapped" ]; then
