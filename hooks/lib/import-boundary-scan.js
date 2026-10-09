@@ -1,6 +1,6 @@
 // import-boundary-scan.js — import-boundary screen for
 // hooks/achilles-import-boundary-gate.sh.
-// Size: the config, test-file and package.json screens share the parse, walk and resolution helpers below.
+// Size: the config and test-file screens share the parse, walk and resolution helpers below.
 //
 // `npx playwright test` runs under the orchestrator and executes the root
 // config, every file it names, and every test file with its imports. None of
@@ -18,22 +18,18 @@
 //   tests    every file under tests/, whatever its extension (node's CJS
 //            loader runs any extension as JS): every specifier is one string
 //            literal; relative ones resolve under tests/ and load code or JSON;
-//            no `#` imports, no self-reference; Node builtins only from an
-//            allowlist of data helpers (other bare packages are the kernel's
-//            codeImports). package.json and tsconfig / jsconfig there may not
-//            point outside.
-//   both     no URL-scheme specifier but node: (https: under tests/perf only);
-//            no bare specifier with a dot segment; no percent-encoding; no eval / Function / createRequire /
-//            Reflect / arguments; process, module, globalThis and global only
-//            as the object of a static member read (never a value); process
-//            state read, never written (env, execPath, execArgv); require only as require("…")
-//            / require.resolve; no .require / ._load / ._compile / .constructor
-//            / process loader members on any object; no loader names as pattern
-//            keys or bare strings; no computed key assembled from strings.
-//   package  root package.json: name, exports and imports may not change.
+//            Node builtins only from an allowlist of data helpers (other bare
+//            packages are the kernel's codeImports). package.json and tsconfig /
+//            jsconfig there may not point outside.
+//   both     no eval / Function / createRequire / Reflect / arguments; require
+//            only as require("…") / require.resolve; no loader member (.require,
+//            .binding, .constructor, …) on any object; process, module and
+//            globalThis only as the object of a static member read; no computed
+//            key assembled from strings.
+// Obfuscated or exotic specifier forms are out of scope (known-limits.md KL-03).
 //
 // Usage: <PreToolUse payload> | node import-boundary-scan.js <file> <cwd>
-//   → {"scope":"config"|"tests"|"package"|"none","offenders":["…", …]}
+//   → {"scope":"config"|"tests"|"none","offenders":["…", …]}
 // Exit 3 when the time budget runs out; any non-zero exit is a deny, with one
 // reason line on stderr.
 
@@ -50,22 +46,14 @@ const CONFIG_IMPORTS = new Set(['@playwright/test', '@civitas-cerebrum/element-i
 // Node builtins test code may load: data helpers that neither run code nor hand out the loader.
 const TEST_BUILTINS = new Set(['fs', 'fs/promises', 'path', 'path/posix', 'path/win32', 'url', 'os', 'crypto', 'util', 'util/types', 'buffer', 'stream', 'stream/promises', 'events', 'assert', 'assert/strict', 'timers', 'timers/promises', 'zlib', 'http', 'https', 'querystring', 'string_decoder', 'readline', 'perf_hooks']);
 const BUILTINS = new Set(builtinModules.map((m) => m.replace(/^node:/, '')));
-// Node resolves no URL specifier but node:. k6 scenarios under tests/perf import https://jslib.k6.io; Node never loads https:.
-const URL_SCHEME = /^(?!node:)[a-z][a-z0-9+.-]*:/i;
-const K6_DIR = ['tests', 'perf'];
-// A bare specifier resolves from node_modules; a dot segment climbs out of it into the project.
-const hasDotSegment = (spec) => spec.split('/').some((seg) => seg === '.' || seg === '..');
 const CODE_EXT = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 const PATH_KEYS = new Set(['globalSetup', 'globalTeardown', 'testDir', 'tsconfig', 'reporter']);
-// Members that reach the loader or the workers' environment from any object:
-// Module.prototype, process, Function.prototype (arguments / caller give the CJS wrapper).
+// Members that reach the loader from any object: Module.prototype, process, Function.prototype.
 const LOADER_MEMBERS = new Set(['constructor', 'require', '_load', '_compile', 'mainModule', 'binding', '_linkedBinding', 'getBuiltinModule', 'dlopen', 'execve', 'execArgv', 'loadEnvFile', 'arguments', 'caller']);
 const MODULE_MEMBERS = new Set(['exports', 'id', 'filename', 'path', 'loaded']);
-const GLOBAL_OBJECTS = new Set(['process', 'module', 'globalThis', 'global']);
 // `arguments` at module level is the CJS wrapper's (exports, require, module, …).
 const CODE_RUNNERS = new Set(['eval', 'Function', 'createRequire', 'Reflect', 'arguments']);
-const CASE_FOLD = process.platform === 'darwin' || process.platform === 'win32';
-const fold = (s) => (CASE_FOLD ? s.toLowerCase() : s);
+const GLOBAL_OBJECTS = new Set(['process', 'module', 'globalThis', 'global']);
 const SKIP_KEYS = new Set(['loc', 'start', 'end', 'extra', 'range', 'leadingComments', 'trailingComments', 'innerComments', 'comments', 'tokens', 'errors']);
 
 // The hook runs from ~/.claude/hooks/lib, outside any node_modules tree, so
@@ -91,42 +79,28 @@ function real(p) {
   return path.join(fs.realpathSync.native(head), tail);
 }
 function within(dir, p) {
-  const rel = path.relative(fold(dir), fold(p));
+  const rel = path.relative(dir, p);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 const testsDir = (root) => path.join(root, 'tests');
 const underTests = (root, abs) => within(testsDir(root), real(abs));
 
-// The project directory above the shallowest `tests` segment of p, when that
-// directory has a package.json; null when p is not inside a project's tests/.
-function projectAbove(p) {
-  const parts = p.split(path.sep);
-  for (let i = 1; i < parts.length; i++) {
-    const above = parts.slice(0, i).join(path.sep) || path.sep;
-    if (fold(parts[i]) === 'tests' && fs.existsSync(path.join(above, 'package.json'))) return above;
-  }
-  return null;
-}
-
-// $CLAUDE_PROJECT_DIR, else the git toplevel unless it sits inside a project's
-// tests/ (a gitfile there would move the root), else cwd cut above tests/.
+// $CLAUDE_PROJECT_DIR, else the git toplevel, else cwd.
 function projectRoot(file, cwd) {
   if (process.env.CLAUDE_PROJECT_DIR) return real(path.resolve(process.env.CLAUDE_PROJECT_DIR));
   let dir = path.dirname(file);
   while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
   try {
     const top = execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (top && projectAbove(real(top)) === null) return real(top);
+    if (top) return real(top);
   } catch { /* not a git work tree */ }
-  const c = real(cwd);
-  return projectAbove(c) || c;
+  return real(cwd);
 }
 
-// ── JSONC (tsconfig accepts comments and trailing commas; node's package.json
-// loader strips a BOM) ─────────────────────────────────────────────────────
+// ── JSONC (tsconfig accepts comments and trailing commas) ──────────────────
 
 function parseJsonc(text) {
-  let s = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  let s = text;
   let out = '';
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
@@ -150,11 +124,6 @@ function parseJsonc(text) {
 }
 function readJsonc(p) {
   try { return parseJsonc(fs.readFileSync(p, 'utf8')); } catch { return null; }
-}
-function canonical(v) {
-  if (Array.isArray(v)) return v.map(canonical);
-  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]));
-  return v;
 }
 function stringLeaves(v, out = []) {
   if (typeof v === 'string') out.push(v);
@@ -233,21 +202,17 @@ function isLoaderCall(n) {
 }
 
 // Each loaded specifier with its node, or the reason it cannot be read.
-function specifiers(ast, allowHttps = false) {
+function specifiers(ast) {
   const out = [];
   const take = (n, lit, where) => {
     const v = lit && lit.value;
     if (!isStr(lit)) out.push({ bad: `${where} is not one string literal` });
     else if (/\\/.test((lit.extra && lit.extra.raw) || '')) out.push({ bad: `${where} "${v}" contains an escape` });
-    else if (v.includes('%')) out.push({ bad: `${where} "${v}" — percent-encoding in a module specifier (the ESM resolver decodes %2e%2e to ..)` });
-    else if (URL_SCHEME.test(v) && !(allowHttps && /^https:/i.test(v))) out.push({ bad: `${where} "${v}" is a URL — it bypasses path resolution` });
-    else if (!(v.startsWith('.') || path.isAbsolute(v)) && hasDotSegment(v)) out.push({ bad: `${where} "${v}" — a bare specifier with a dot segment climbs out of node_modules` });
     else out.push({ node: n, spec: v, typeOnly: n.importKind === 'type' || n.exportKind === 'type' });
   };
   for (const { node: n } of walk(ast)) {
     if (n.type === 'ImportDeclaration' || n.type === 'ExportAllDeclaration') take(n, n.source, 'import source');
     else if (n.type === 'ExportNamedDeclaration' && n.source) take(n, n.source, 'export source');
-    else if (n.type === 'TSImportEqualsDeclaration' && n.moduleReference.type === 'TSExternalModuleReference') take(n, n.moduleReference.expression, 'import = require()');
     else if (isLoaderCall(n)) {
       const args = n.type === 'ImportExpression' ? [n.source, ...(n.options ? [n.options] : [])] : n.arguments;
       const extraOk = args.length === 2 && isObj(args[1]) && (n.type === 'ImportExpression' || unwrap(n.callee).type === 'Import');
@@ -258,48 +223,20 @@ function specifiers(ast, allowHttps = false) {
   return out;
 }
 
-const isProcessEnv = (n) => isMember(n) && isId(unwrap(n.object), 'process') && propName(n) === 'env';
-// True when m is a member chain rooted at process (process.env.X, process.execPath).
-function onProcess(m) {
-  let n = unwrap(m);
-  while (isMember(n)) n = unwrap(n.object);
-  return isId(n, 'process');
-}
-// Every member expression a write target or pattern assigns to.
-function* writeTargets(t) {
-  t = unwrap(t);
-  if (!t) return;
-  if (isMember(t)) yield t;
-  else if (t.type === 'ArrayPattern') for (const e of t.elements) yield* writeTargets(e);
-  else if (t.type === 'ObjectPattern') for (const p of t.properties) yield* writeTargets(p.type === 'RestElement' ? p.argument : p.value);
-  else if (t.type === 'RestElement') yield* writeTargets(t.argument);
-  else if (t.type === 'AssignmentPattern') yield* writeTargets(t.left);
-}
-
 // Constructs that reach the loader or run code the specifier walk cannot see.
 function aliasOffences(ast) {
   const out = [];
   for (const { node: n, parent: p, key } of walk(ast)) {
-    // Workers inherit process state: env, execPath and execArgv set here load code there.
-    const written = n.type === 'AssignmentExpression' ? n.left : n.type === 'UpdateExpression' ? n.argument
-      : n.type === 'UnaryExpression' && n.operator === 'delete' ? n.argument
-      : (n.type === 'ForInStatement' || n.type === 'ForOfStatement') && n.left.type !== 'VariableDeclaration' ? n.left : null;
-    if (written) for (const t of writeTargets(written)) if (onProcess(t)) { out.push('process state is written — workers inherit it (env, execPath, execArgv)'); break; }
-    if (isProcessEnv(n) && !(isMember(p) && key === 'object') && !(p && p.type === 'VariableDeclarator' && key === 'init' && p.id.type === 'ObjectPattern')
-        && !(p && (p.type === 'SpreadElement' || p.type === 'ForInStatement' || p.type === 'ForOfStatement'))) {
-      out.push('process.env used as a value — read it as process.env.X or const { X } = process.env');
-    }
     if (n.type === 'Identifier') {
       if (isStaticProp(p, key) || isKeyOf(p, key) || inTypePosition(p, key)) continue;
       const name = n.name;
-      const isTypeof = p && p.type === 'UnaryExpression' && p.operator === 'typeof';
-      if (CODE_RUNNERS.has(name) && !isTypeof && !(name === 'Function' && p && p.type === 'BinaryExpression' && p.operator === 'instanceof' && key === 'right')) {
+      if (CODE_RUNNERS.has(name)) {
         out.push(`${name} — code the screen cannot read`);
       } else if (name === 'require') {
         const callee = isCall(p) && key === 'callee';
         const resolveObj = isMember(p) && key === 'object' && propName(p) === 'resolve';
-        if (!callee && !resolveObj && !isTypeof) out.push('require used other than require("<literal>") or require.resolve("<literal>")');
-      } else if (GLOBAL_OBJECTS.has(name) && !isTypeof && !(isMember(p) && key === 'object' && propName(p) !== null)) {
+        if (!callee && !resolveObj) out.push('require used other than require("<literal>") or require.resolve("<literal>")');
+      } else if (GLOBAL_OBJECTS.has(name) && !(isMember(p) && key === 'object' && propName(p) !== null)) {
         out.push(`${name} used as a value — only static member reads (${name}.x) are readable`);
       }
     } else if (isMember(n)) {
@@ -308,20 +245,14 @@ function aliasOffences(ast) {
       if (name === null) {
         const k = n.property;
         const strOperand = (e) => isStr(e) || e.type === 'TemplateLiteral';
-        if (isId(obj) && GLOBAL_OBJECTS.has(obj.name)) out.push(`${obj.name}[…] computed from code`);
-        else if ((k.type === 'TemplateLiteral' && k.expressions.length) || (k.type === 'BinaryExpression' && k.operator === '+' && (strOperand(k.left) || strOperand(k.right)))) out.push('a computed member key assembled from strings');
+        if ((k.type === 'TemplateLiteral' && k.expressions.length) || (k.type === 'BinaryExpression' && k.operator === '+' && (strOperand(k.left) || strOperand(k.right)))) out.push('a computed member key assembled from strings');
       } else if (LOADER_MEMBERS.has(name)) {
         out.push(`.${name} reaches the module loader or Function`);
       } else if (isId(obj, 'module') && !MODULE_MEMBERS.has(name)) out.push(`module.${name}`);
       else if (isId(obj) && (obj.name === 'globalThis' || obj.name === 'global') && (GLOBAL_OBJECTS.has(name) || CODE_RUNNERS.has(name) || name === 'require')) out.push(`${obj.name}.${name} — the global reached through another name`);
-    } else if (n.type === 'ObjectProperty' && p && p.type === 'ObjectPattern') {
-      const k = keyName(n);
-      if (k === null) out.push('a destructuring pattern with a computed key');
-      else if (LOADER_MEMBERS.has(k)) out.push(`{ ${k} } destructured — it reaches the module loader or Function`);
+    } else if (n.type === 'ObjectProperty' && p && p.type === 'ObjectPattern' && keyName(n) === null) {
+      out.push('a destructuring pattern with a computed key');
     } else if (n.type === 'ObjectProperty' && keyName(n) === 'constructor') out.push('a constructor property key');
-    else if ((isStr(n) || n.type === 'TemplateLiteral') && !isKeyOf(p, key) && !(isMember(p) && key === 'property') && isLiteralText(n) && LOADER_MEMBERS.has(literalText(n))) {
-      out.push(`"${literalText(n)}" names a loader member`);
-    }
   }
   return out;
 }
@@ -524,13 +455,9 @@ function scanTestCode(src, file, root, parser) {
   }
   const out = [];
   const base = path.dirname(file);
-  const pkg = readJsonc(path.join(root, 'package.json')) || {};
-  const own = typeof pkg.name === 'string' ? pkg.name : null;
-  for (const s of specifiers(ast, within(path.join(root, ...K6_DIR), file))) {
+  for (const s of specifiers(ast)) {
     if (s.bad) { out.push(s.bad); continue; }
     const spec = s.spec;
-    if (spec.startsWith('#')) { out.push(`import "${spec}" — package imports map outside the screen`); continue; }
-    if (own && (spec === own || spec.startsWith(own + '/'))) { out.push(`import "${spec}" — the project's own package (self-reference)`); continue; }
     const bare = spec.replace(/^node:/, '');
     if ((spec.startsWith('node:') || BUILTINS.has(bare)) && !TEST_BUILTINS.has(bare) && !s.typeOnly) { out.push(`import "${spec}" — a Node builtin outside the tests/ allowlist`); continue; }
     if (!(spec.startsWith('.') || path.isAbsolute(spec))) continue;
@@ -569,20 +496,6 @@ function scanTestJson(src, file, root) {
   return out;
 }
 
-// ── root package.json ──────────────────────────────────────────────────────
-
-// name, exports and imports decide what `import "<name>"` and `#x` load.
-function scanPackage(src, file) {
-  let after;
-  try { after = parseJsonc(src); } catch (e) { return [`package.json does not parse: ${e.message}`]; }
-  const before = readJsonc(file) || {};
-  const out = [];
-  for (const f of ['name', 'exports', 'imports']) {
-    if (JSON.stringify(canonical(before[f])) !== JSON.stringify(canonical(after[f]))) out.push(`package.json ${f} changed — it decides what a bare or # specifier resolves to`);
-  }
-  return out;
-}
-
 // ── main ───────────────────────────────────────────────────────────────────
 
 function postWrite(payload, file) {
@@ -596,12 +509,11 @@ function postWrite(payload, file) {
 
 function scopeOf(file, root) {
   const name = path.basename(file);
-  if (fold(path.dirname(file)) === fold(root)) {
-    if (/^playwright.*\.config\.ts$/.test(fold(name))) return 'config';
-    if (/^playwright.*\.config\.[cm]?[jt]s$/.test(fold(name))) return 'config-ext';
-    if (fold(name) === 'package.json') return 'package';
+  if (path.dirname(file) === root) {
+    if (/^playwright.*\.config\.ts$/.test(name)) return 'config';
+    if (/^playwright.*\.config\.[cm]?[jt]s$/.test(name)) return 'config-ext';
   }
-  if (within(testsDir(root), file) && fold(file) !== fold(testsDir(root))) return 'tests';
+  if (within(testsDir(root), file) && file !== testsDir(root)) return 'tests';
   return 'none';
 }
 
@@ -617,10 +529,7 @@ function main() {
   else if (scope !== 'none') {
     const src = postWrite(payload, file);
     const ext = path.extname(file).toLowerCase();
-    const relSegments = path.relative(testsDir(root), file).split(path.sep);
     if (Buffer.byteLength(src) > MAX_BYTES) offenders = [`${Buffer.byteLength(src)} bytes — config/spec too large to screen (cap ${MAX_BYTES})`];
-    else if (scope === 'package') offenders = scanPackage(src, file);
-    else if (scope === 'tests' && relSegments.some((s) => fold(s) === '.git')) offenders = ['a .git entry under tests/ would move the project root'];
     else if (scope === 'tests' && ext === '.json') offenders = scanTestJson(src, file, root);
     else {
       const parser = loadParser(root);

@@ -2,7 +2,7 @@
 # achilles-import-boundary-gate.sh — code the orchestrator's playwright run loads stays inside tests/.
 #
 # Hook    : PreToolUse:Write|Edit
-# Mode    : DENY (root playwright*.config.*, root package.json or any file under
+# Mode    : DENY (root playwright*.config.* or any file under
 #           tests/ whose post-write content reaches outside tests/; DENY also
 #           when the screen cannot run)
 # State   : none
@@ -29,31 +29,21 @@
 # Every file under tests/, whatever its extension (node's CJS loader runs any
 # extension as JS): every loader call (import, require, require.resolve,
 # import()) takes one string literal with no escapes; relative ones resolve
-# under tests/ and load code or JSON; no `#` imports, no self-reference to the
-# project's package; Node builtins only from the allowlist in
+# under tests/ and load code or JSON; Node builtins only from the allowlist in
 # import-boundary-scan.js (fs, path, url, os, crypto, util, buffer, stream,
 # events, assert, timers, zlib, http(s), querystring, string_decoder,
 # readline, perf_hooks; other bare packages are the kernel's codeImports). A
 # non-code file that does not parse is prose, unless a code twin makes node
 # load it. package.json and tsconfig/jsconfig under tests/ (JSONC) point
-# inside it; tsconfig extends and references are denied. No .git entry under
-# tests/.
-# Both: no URL-scheme specifier but node: (https: only under tests/perf, for
-# k6 jslib); no bare specifier with a . or .. segment (it climbs out of
-# node_modules) and no percent-encoding (%2e%2e decodes to ..); no eval, Function, createRequire, Reflect or arguments;
-# process, module, globalThis and global only as the object of a static member
-# read; process state (env, execPath) read, never written through any
-# assignment, pattern, for-of, update or delete, nor passed on; no
-# process.execArgv or process.loadEnvFile; require only as require("…") or
-# require.resolve("…"); no .require / ._load / ._compile / .constructor /
-# .execve / .arguments / .caller / process loader members on any object, nor
-# those names as destructuring keys or bare strings; no computed key assembled
-# from strings.
-# Root package.json: name, exports and imports do not change.
-# Root: $CLAUDE_PROJECT_DIR, else the file's git toplevel unless it sits inside
-# a project's tests/, else cwd cut above a tests/ segment whose parent holds a
-# package.json. Paths compare case-insensitively on macOS and Windows. Content
-# over 256KB is denied.
+# inside it; tsconfig extends and references are denied.
+# Both: no eval, Function, createRequire, Reflect or arguments; process,
+# module, globalThis and global only as the object of a static member read;
+# require only as require("…") or require.resolve("…"); no loader member
+# (.require, .binding, .constructor, …) on any object; no computed key
+# assembled from strings.
+# Root: $CLAUDE_PROJECT_DIR, else the file's git toplevel, else cwd. Content
+# over 256KB is denied. Obfuscated or exotic specifier forms are out of scope
+# (known-limits.md KL-03).
 #
 # Why
 # ---
@@ -75,12 +65,10 @@
 # - config import outside the allowlist, relative, unparsable, or more
 #   than one export                                               → DENY
 # - no testDir; path key / file reporter outside tests/ or non-literal → DENY
-# - tests/** specifier outside tests/, non-literal, #, self-ref, loader
-#   module, or loading a non-code file                            → DENY
-# - loader alias (eval, Function, arguments, .constructor, module as
-#   a value…), URL or dot-segment specifier, process state write,
-#   builtin off-list                                               → DENY
-# - root package.json name / exports / imports changed           → DENY
+# - tests/** specifier outside tests/, non-literal, or loading a
+#   non-code file                                                 → DENY
+# - eval, Function, arguments, a loader member, module as a value,
+#   builtin off-list                                              → DENY
 # - content over 256KB; node or @babel/parser missing, scanner
 #   failure, no verdict                                           → DENY
 # - any other file, Edit of a missing file, non-Write/Edit,

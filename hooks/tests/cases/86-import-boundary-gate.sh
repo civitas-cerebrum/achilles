@@ -274,3 +274,13 @@ GIT_CEILING_DIRECTORIES="$IB_TMP" assert_allow "$INST/achilles-import-boundary-g
 GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$INST/achilles-import-boundary-gate.sh" "$(code tests/e2e/x.spec.ts 'import "../../src/app";')" \
   "installed copy with the parser bundle → DENY on a spec reaching src/" "resolves outside tests/"
 
+
+section "import-boundary-gate: unreadable input denies; the root is CLAUDE_PROJECT_DIR, else git, else cwd"
+assert_deny "$H" "$(code tests/e2e/x.spec.ts "await import('./' + '../../src/app');")" "test import() of a concatenation → DENY" "not one string literal"
+assert_deny "$H" "$(cfg 'export default { testDir: "./tests/\101" };')" "config octal escape → DENY" "does not parse"
+assert_deny "$H" "$(cfg 'module.exports = { testDir: "./tests" }; module.exports = { testDir: "./tests" };')" "two config exports → DENY" "exactly one is readable"
+NG="$IB_TMP/nogit"; mkdir -p "$NG/tests/e2e"; printf '%s' '{"name":"nogit"}' > "$NG/package.json"
+CLAUDE_PROJECT_DIR="$NG" assert_deny "$H" "$(payload tool_name=Write file_path="$NG/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="/")" \
+  "CLAUDE_PROJECT_DIR anchors the root → DENY" "resolves outside tests/"
+GIT_CEILING_DIRECTORIES="$IB_TMP" assert_deny "$H" "$(payload tool_name=Write file_path="$NG/tests/e2e/x.spec.ts" content='import "../../src/app";' cwd="$NG")" \
+  "no git work tree: the root is the cwd → DENY" "resolves outside tests/"
