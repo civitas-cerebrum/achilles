@@ -547,15 +547,9 @@ ROUND2
 while IFS= read -r c; do
   assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
 done <<'READONLY'
-git stash drop
 git stash list
 git stash show
 git rm --cached x.txt
-git -C tests rm --cached -r e2e
-git restore --staged tests/e2e
-git restore --staged .
-git clean -n
-git clean -nd
 git clean -fdx src
 git -C src clean -fdx
 find . -exec grep foo {} \;
@@ -565,3 +559,77 @@ find . -execdir ls {} \;
 pnpm --filter app exec playwright test
 pnpm -r exec tsc --noEmit
 READONLY
+
+# git index ops, stash and dry runs carry no exemption: the target set (operands, or the work tree when
+# there are none, they do not resolve, or an option is unknown) is judged. find -exec runs its command
+# as a command of its own. An unknown package-manager option before exec leaves the directory unresolvable.
+section "protected-bash fail-closed: git target sets, nested find -exec, package-manager options"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'ROUND4'
+find . -exec rg --pre rm x {} \;
+find . -exec rg --pre=rm x {} +
+find . -exec file -C -m /tmp/m {} \;
+find . -exec ./cat {} \;
+find src -exec sh -c 'rm -r tests' \;
+git stash -m drop
+git stash -m list
+git stash -q list
+git stash drop
+git -C src stash
+git -C src reset --hard
+git -C src checkout -f main
+git restore -sSTAGING .
+git restore --source=STAGING --staged .
+git restore --staged tests/e2e
+git restore --staged .
+git restore -S .
+git clean -fdx -enode_modules
+git clean -fdx -e-n
+git clean -fdx -e.env
+git clean -n
+git clean -nd
+git clean -fdx --dry-run
+git reset --har
+git rm --cached -r tests/e2e
+git rm --cached -r tests
+git rm --cached -r .
+git -C tests rm --cached -r e2e
+git rm -r --cached tests/e2e/docs
+git rm --cached --pathspec-from-file=/tmp/list
+git rm --cached --pathspec-from-file=- <<< tests/e2e/docs/onboarding-status.json
+git rm --cached 'tests/e2e/docs/*'
+git -C $X rm --cached -r e2e
+git rm -n -r tests
+git rm --cached :/tests
+pnpm -r exec git rm --cached -r e2e
+pnpm --resume-from x -C tests exec rm -r e2e
+pnpm -r --resume-from x exec rm -r e2e
+yarn --network-timeout 1000 --cwd tests exec rm -r e2e
+yarn --mutex file:/tmp/m --cwd tests exec rm -r e2e
+npm --tag latest --prefix tests exec rm -r e2e
+pnpm --bogus exec rm -r e2e
+ROUND4
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'ROUND4_ALLOW'
+git status
+git diff
+git log
+git show
+git ls-files
+git blame src/x.ts
+git stash list
+git stash show -p
+git rm --cached src/x.ts
+git restore --staged src/x.ts
+git clean -n src
+git checkout -bfoo
+git switch -c topic
+find . -exec grep foo {} \;
+find . -exec cat {} \;
+find . -exec /bin/cat {} \;
+find src -exec rm {} \;
+pnpm --filter app exec playwright test
+pnpm --silent exec playwright test
+ROUND4_ALLOW

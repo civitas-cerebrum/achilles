@@ -30,7 +30,8 @@
 #   CMD_SNEST   strings a known wrapper runs as a command (env -S, npx -c), re-split as nested commands
 #   CMD_CHDIR   the directory env -C / --chdir, sudo -D / --chdir, npx --prefix and the -C / --dir / --cwd /
 #               --prefix of npm|pnpm|yarn before `exec` run the command in (several are joined), else empty:
-#               the command's relative operands resolve there, not in the caller's cwd
+#               the command's relative operands resolve there, not in the caller's cwd. ${workspace} when
+#               the package manager's directory cannot be resolved (shell__pm_exec)
 #   CMD_WRAP_BAD 1 when a wrapper carried an option the peeler does not recognise: the command word
 #               is then unknown and the caller must not treat the command as judged
 #   CMD_HEREDOCS heredoc and here-string bodies
@@ -52,6 +53,13 @@ shell_words() {
   SW=(); SW_NESTED=0; SW_OVERFLOW=0
   if [ "${#1}" -gt "$SHELL_WORDS_MAX" ]; then SW_OVERFLOW=1; return 0; fi
   shell__split "$1"
+  shell_each_command shell__expand
+}
+
+# shell_words_args <word>… — as shell_words, for a command already split into words (the one find -exec
+# runs). SW_NESTED and SW_OVERFLOW carry on from the line it came from.
+shell_words_args() {
+  SW=("$@")
   shell_each_command shell__expand
 }
 
@@ -345,6 +353,14 @@ shell__wrapopt() {
   esac
 }
 
+# shell_opt_split <cluster> <value-letters> — split a short-option cluster (-qfb x, -sREF) at the first letter
+# that takes a value: SW_FLAGS gets the letters before it, SW_VOPT that letter (empty when none), SW_VAL the
+# rest of the cluster, which is its value (empty: the value is the next word).
+shell_opt_split() {
+  local l="${1#-}"
+  SW_FLAGS="${l%%[$2]*}"; SW_VOPT="${l:${#SW_FLAGS}:1}"; SW_VAL="${l:${#SW_FLAGS}+1}"
+}
+
 # shell_dir_join <base> <dir> — sets SW_JOIN to <dir> under <base>; an absolute, ~ or $ <dir> stands alone.
 shell_dir_join() {
   case "$2" in
@@ -357,18 +373,19 @@ shell_dir_join() {
 shell__chdir_add() { shell_dir_join "$CMD_CHDIR" "$1"; CMD_CHDIR="$SW_JOIN"; }
 
 # shell__pm_exec <index> <program> — for npm|pnpm|yarn|bun whose program word precedes SW[<index>]: 0 when
-# `exec` (npm and bun also `x`) follows, past only flags, value options and directory options (-C, --dir,
-# --cwd, --prefix), which fold into CMD_CHDIR. Workspace selection (-r, -w, --filter, yarn workspace[s])
-# runs the command in directories only the workspace config names: CMD_CHDIR becomes the unresolvable
-# ${workspace}. SW_PM_END is the index after `exec`.
+# `exec` (npm and bun also `x`) follows, past options and directory options (-C, --dir, --cwd, --prefix),
+# which fold into CMD_CHDIR. Workspace selection (-r, -w, --filter, yarn workspace[s]) runs the command in
+# directories only the workspace config names, and an option not listed here may take the next word as a
+# directory: either makes CMD_CHDIR the unresolvable ${workspace}. SW_PM_END is the index after `exec`.
 shell__pm_exec() {
-  local j="$1" prog="$2" w acc="$CMD_CHDIR"
+  local j="$1" prog="$2" w acc="$CMD_CHDIR" open=0
   while [ "$j" -lt "${#SW[@]}" ]; do
     w="${SW[j]}"
     case "$w" in
       "$SW_SEP"|"$SW_OP"*) return 1 ;;
       exec) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;;
-      x) case "$prog" in npm|bun) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;; *) return 1 ;; esac ;;
+      x) case "$prog" in npm|bun) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;; esac
+         [ "$open" = 1 ] || return 1 ;;
       -C|--dir|--cwd|--prefix)
         j=$((j + 1)); [ "$j" -lt "${#SW[@]}" ] || return 1
         case "${SW[j]}" in "$SW_SEP"|"$SW_OP"*) return 1 ;; esac
@@ -380,10 +397,11 @@ shell__pm_exec() {
       --filter=*|--filter-prod=*|--workspace=*|-F?*) acc='${workspace}' ;;
       -r|--recursive|--workspace-root|--workspaces) acc='${workspace}' ;;
       --loglevel|--reporter|--registry|--config|--cache|--userconfig|--otp|--workspace-concurrency|--network-concurrency) j=$((j + 1)) ;;
-      -*) ;;
+      -s|--silent|-q|--quiet|-y|--yes|--verbose|--offline|--prefer-offline|--frozen-lockfile|--stream|--parallel|--if-present|--no-bail|--color|--no-color) ;;
+      -*) acc='${workspace}'; open=1 ;;
       workspace) [ "$prog" = yarn ] || return 1; acc='${workspace}'; j=$((j + 1)) ;;
       workspaces|foreach) [ "$prog" = yarn ] || return 1; acc='${workspace}' ;;
-      *) return 1 ;;
+      *) [ "$open" = 1 ] || return 1 ;;
     esac
     j=$((j + 1))
   done
