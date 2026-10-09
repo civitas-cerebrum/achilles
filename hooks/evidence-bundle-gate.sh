@@ -78,30 +78,16 @@
 #   (`Won't Do`, `Duplicate`, `Superseded`, `Cancelled`, `Obsolete`,
 #   `Invalid`) are excluded from the terminal set so the gate does not demand
 #   an evidence bundle for a ticket nobody tested.
-# * **`gh` invocation forms.** Wrapper prefixes (`env`, `command`, `time`,
-#   `nohup`, `exec`, `eval`, `sh -c`, `bash -lc`, leading `VAR=val`
-#   assignments, an absolute or relative path to `gh`, a backslash-escaped
-#   `\gh`, `sudo`, `npx`, `/bin/sh -c`, `/bin/bash -lc`, backticks) ARE stripped
-#   and gated, as are a quoted command name or subcommand (`"gh" pr create`,
-#   `gh pr "create"`) and any whitespace between `pr` and `create` including a
-#   backslash-newline continuation. `--draft` is recognised in its bare form and
-#   in pflag's `=` form over pflag's own truthy vocabulary, case-insensitively
-#   (`--draft=True`); `--draft=false` is not a draft and does not exempt.
-#   Not gated: `gh` reached through an alias, a shell function, a wrapper
-#   script, `xargs`, or a heredoc. A PreToolUse hook sees a command string, not
-#   a resolved process.
-# * **`PEEL_CAP` is a bypass as well as a safety net.** After 32 peels the loop
-#   gives up and judges the segment as it stands, so `eval `×40 or 33 leading
-#   assignments in front of `gh` reach the gate unclassified and allow. That is
-#   opt-in evasion rather than an ordinary form, and the alternative — an
-#   uncapped loop — is a hook that can hang, which takes the tool call with it.
-#   The cap is the cheaper failure.
-# * **A quoted MENTION of a separator plus the command denies.** `strip_quoted`
-#   runs on the matched segment, not before segmentation, so
-#   `echo "step one; gh pr create next"` splits at the `;` and denies. It cannot
-#   run earlier: blanking quoted regions first would erase the command inside
-#   `sh -c "gh pr create"`, which is a real invocation this gate must see. It
-#   fails closed, and rephrasing the echo is the remedy.
+# * **`gh` invocation forms.** The command line is split by lib/shell-words.sh, so
+#   quoting, escapes, line continuations, separators, assignments, a path to `gh`
+#   and the wrappers it peels (`env`, `command`, `time`, `nohup`, `exec`, `npx`)
+#   do not hide `gh pr create|ready`. The script of `sh|bash -c`, an `eval`
+#   string, a `sudo` command and a backtick or `$( )` assignment are split again,
+#   up to 8 strings a line. `--draft` counts as a word, bare or in pflag's `=`
+#   form over pflag's truthy vocabulary, case-insensitively (`--draft=True`);
+#   `--draft=false` is not a draft. Not gated: `gh` reached through an alias, a
+#   shell function, a wrapper script, `xargs`, or a heredoc. A PreToolUse hook
+#   sees a command string, not a resolved process.
 # * **Comment bodies are read from `.body` / `.commentBody` / `.comment` /
 #   `.text`.** A vendor that names the field something else, or sends it as a
 #   structured document rather than a string, is not classifiable and allows.
@@ -177,7 +163,7 @@ set -euo pipefail
 
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
-hook_lib signoff.sh hook-emit.sh
+hook_lib signoff.sh hook-emit.sh shell-words.sh
 hook_jq_init fatal
 
 [ "${CIVITAS_DISABLE_EVIDENCE_GATE:-}" = "1" ] && exit 0
@@ -197,96 +183,46 @@ signoff_classify_tool "$TOOL_NAME" || exit 0
 # abort under `set -e` reads as ALLOW. Fail open, but on purpose.
 ARGS="$(printf '%s' "$INPUT" | "$JQ" -c 'if (.tool_input | type) == "object" then .tool_input else {} end' 2>/dev/null || echo '{}')"
 
-# Strip quoted strings and trailing comments before scanning flags, so a `-d` in
-# a PR title is not read as the flag. `#` starts a comment only at a word
-# boundary (`issue#5` is literal).
-strip_quoted() {
-  printf '%s' "$1" | sed -E "s/'[^']*'/ /g; s/\"[^\"]*\"/ /g; s/(^|[[:space:]])#.*$/\1/"
-}
-
-# Peel wrapper prefixes (`env`, `time`, `sh -c`, `VAR=val`, ...) so the real
-# program is first.
-#
-# The assignment arm matches the FIRST TOKEN only, with identifier characters in
-# the name; a glob over the whole segment matched `gh --base=main` itself and
-# peeled `gh` away. Every arm must consume at least one character before it
-# continues (a bare `A=1` would otherwise spin), and PEEL_CAP bounds the loop so
-# a future arm that fails to consume cannot hang the tool call.
-PEEL_CAP=32
-normalise_segment() {
-  local s="$1" peeled=0 tok name i=0
-  while [ "$i" -lt "$PEEL_CAP" ]; do
-    i=$((i + 1))
-    s="${s#"${s%%[![:space:]]*}"}"
-    case "$s" in
-      \"*|\'*|\\*|\`*) s="${s#?}"; peeled=1; continue ;;
-      env\ *|command\ *|time\ *|nohup\ *|exec\ *|eval\ *|sudo\ *|npx\ *) s="${s#* }"; peeled=1; continue ;;
-      sh\ *|bash\ *|zsh\ *|dash\ *)              s="${s#* }"   ; peeled=1; continue ;;
-      */sh\ *|*/bash\ *|*/zsh\ *|*/dash\ *)      s="${s#* }"   ; peeled=1; continue ;;
+# gh_judge — per command of a line: a non-draft `gh pr create|ready` sets GH_PUBLISH; the script a
+# shell runs with -c, an eval or sudo command and a substitution in an assignment are queued for splitting.
+gh_judge() {
+  local a k=1
+  case "${CMD_ARGS[0]:-}" in
+    gh)
+      case "${CMD_ARGS[*]:1} " in "pr create "*|"pr ready "*) ;; *) return 0 ;; esac
+      shopt -s nocasematch
+      for a in "${CMD_ARGS[@]:1}"; do
+        case "$a" in --draft|-d|--draft=true|--draft=t|--draft=1|--draft=y|--draft=yes|-d=true|-d=t|-d=1|-d=y|-d=yes) shopt -u nocasematch; return 0 ;; esac
+      done
+      shopt -u nocasematch
+      GH_PUBLISH=1 ;;
+    sh|bash|zsh|dash|ksh)
+      while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+        case "${CMD_ARGS[k]}" in -*c*) GH_QUEUE+=("${CMD_ARGS[k + 1]:-}"); break ;; -*) ;; *) break ;; esac
+        k=$((k + 1))
+      done ;;
+    eval|sudo) GH_QUEUE+=("${CMD_ARGS[*]:1}") ;;
+  esac
+  for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do
+    case "$a" in
+      *'`'*) a="${a#*\`}"; GH_QUEUE+=("${a%\`*}") ;;
+      *'$('*) a="${a#*\$(}"; GH_QUEUE+=("${a%")"*}") ;;
     esac
-    tok="${s%%[[:space:]]*}"
-    case "$tok" in
-      [A-Za-z_]*=*)
-        name="${tok%%=*}"
-        case "$name" in
-          *[!A-Za-z0-9_]*) ;;
-          # Strip the token, never "up to the first space" (a no-op when the
-          # segment IS the assignment). When the VALUE opens a quote or
-          # substitution (`OUT=`gh pr create``) strip just `NAME=` and let the
-          # peel arm above take the opener.
-          *)
-            case "${tok#*=}" in
-              \`*|\"*|\'*) s="${s#*=}" ;;
-              *)              s="${s#"$tok"}" ;;
-            esac
-            peeled=1; continue ;;
-        esac
-        ;;
-    esac
-    # A flag can only belong to a wrapper we already peeled (`sh -c`, `bash -lc`).
-    if [ "$peeled" = "1" ]; then
-      case "$s" in -*\ *) s="${s#* }"; continue ;; esac
-    fi
-    break
   done
-  printf '%s' "$s"
 }
 
-GH_SEGMENT=""
 if [ "$IS_PR" = "1" ]; then
   CMD="$(printf '%s' "$ARGS" | "$JQ" -r '.command // empty')"
   [ -n "$CMD" ] || exit 0
-  # Join backslash-newline continuations before segmenting: `gh pr \` + newline +
-  # `create` is one command to the shell and was two segments to the gate, so the
-  # subcommand test never saw `pr create`.
-  CMD_JOINED="$(printf '%s' "$CMD" | sed -e :a -e '/\\$/N; s/\\\n/ /; ta')"
-  while IFS= read -r seg; do
-    [ -n "$seg" ] || continue
-    # A segment with no `gh` substring cannot normalise into one; skip the forks.
-    case "$seg" in *gh*) ;; *) continue ;; esac
-    norm="$(normalise_segment "$seg")"
-    # Classify on a quote-free, whitespace-collapsed PROBE so `"gh" pr create`,
-    # `gh pr "create"` and `gh pr<TAB>create` match. GH_SEGMENT keeps the
-    # ORIGINAL text: the --draft scan needs strip_quoted to blank quoted regions.
-    probe="$(printf '%s' "$norm" | tr -d '"'"'" | tr -s '[:space:]' ' ')"
-    first="${probe%%[[:space:]]*}"
-    case "$first" in
-      gh|*/gh) ;;
-      *) continue ;;
-    esac
-    rest="${probe#"$first"}"
-    rest="${rest#"${rest%%[![:space:]]*}"}"
-    case "$rest" in
-      pr\ create*|pr\ ready*) GH_SEGMENT="$norm"; break ;;
-    esac
-  done < <(printf '%s\n' "$CMD_JOINED" | tr ';&|(){}' '\n')
-
-  [ -n "$GH_SEGMENT" ] || exit 0
-  # Draft PRs are not a verification claim. `--draft=<truthy>` uses pflag's own
-  # vocabulary (strconv.ParseBool, case-insensitive); `--draft=false` is not a
-  # draft.
-  printf '%s' "$(strip_quoted "$GH_SEGMENT")" |
-    grep -qiE '(^|[[:space:]])(--draft|-d)([[:space:]]|$)|(^|[[:space:]])(--draft|-d)=(true|t|1|y|yes)([[:space:]]|$)' && exit 0
+  GH_PUBLISH=0; GH_QUEUE=("$CMD"); n=0
+  while [ "$n" -lt "${#GH_QUEUE[@]}" ] && [ "$n" -lt 8 ]; do
+    shell_words "${GH_QUEUE[n]}"
+    # Too long to split: a line that still reads as `gh … pr create|ready` is a publish.
+    [ "$SW_OVERFLOW" = 0 ] || case "${GH_QUEUE[n]}" in *gh*pr*create*|*gh*pr*ready*) GH_PUBLISH=1 ;; esac
+    n=$((n + 1))
+    shell_each_command gh_judge
+  done
+  [ "$GH_PUBLISH" = 1 ] || exit 0
 fi
 
 # ─── tracker surfaces: is this actually sign-off? ───────────────────────────

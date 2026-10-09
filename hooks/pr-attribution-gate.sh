@@ -73,40 +73,42 @@ hook_read_input
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
 hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
-hook_lib hook-emit.sh
+hook_lib hook-emit.sh shell-words.sh
 
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 [ "$TOOL_NAME" != "Bash" ] && exit 0
 
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 
-# Only fire on the two gh subcommands that author a PR description. The
-# trigger tolerates `command` / `env` wrappers so `command gh pr create` is
-# gated, and allows global flags between `gh` and `pr`.
-GH_PR_TRIGGER='(^|[;&|][[:space:]]*)((command|env)[[:space:]]+)?gh([[:space:]]+--[a-z-]+(=[^[:space:]]+)?)*[[:space:]]+pr[[:space:]]+(create|edit)([[:space:]]|$)'
-if ! echo "$CMD" | grep -qE "$GH_PR_TRIGGER"; then
-  exit 0
-fi
+# Only fire on the two gh subcommands that author a PR description, judged on the words the shell
+# runs (lib/shell-words.sh): global --flags may sit between gh and pr. The scan covers the whole
+# command and every resolvable --body-file / -F, so a body written to a temp file first is checked
+# the same as an inline --body.
+PR=0; BODY_FILES=()
+pr_judge() {
+  local k=1 a want=0
+  [ "${CMD_ARGS[0]:-}" = gh ] || return 0
+  while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+    a="${CMD_ARGS[k]}"; k=$((k + 1))
+    case "$a" in --*) ;; pr) break ;; *) return 0 ;; esac
+  done
+  [ "$a" = pr ] || return 0
+  case "${CMD_ARGS[k]:-}" in create|edit) PR=1 ;; *) return 0 ;; esac
+  for a in "${CMD_ARGS[@]:k+1}"; do
+    [ "$want" = 0 ] || { BODY_FILES+=("$a"); want=0; continue; }
+    case "$a" in --body-file|-F) want=1 ;; --body-file=*|-F=*) BODY_FILES+=("${a#*=}") ;; esac
+  done
+}
+shell_words "$CMD"
+[ "$SW_OVERFLOW" = 0 ] || case "$CMD" in *gh*pr*create*|*gh*pr*edit*) PR=1 ;; esac
+shell_each_command pr_judge
+[ "$PR" = 1 ] || exit 0
 
-# --- AI-attribution scan (full-surface) ---
-# Scans the ENTIRE command string plus the contents of every resolvable
-# `--body-file <file>` / `-F <file>` argument, so a body written to a temp
-# file first is checked the same as an inline `--body`.
 ATTRIB_SCAN="$CMD"
-ATTRIB_FILES=$(echo "$CMD" | grep -oE -- "(--body-file|-F)[[:space:]=][[:space:]]*[^[:space:]]+" \
-  | sed -E "s/^(--body-file|-F)[[:space:]=][[:space:]]*//;s/^['\"]//;s/['\"]\$//" || true)
-if [ -n "$ATTRIB_FILES" ]; then
-  while IFS= read -r af; do
-    [ -z "$af" ] && continue
-    [ "$af" = "-" ] && continue
-    if [ -f "$af" ]; then
-      ATTRIB_SCAN="${ATTRIB_SCAN}
+for af in ${BODY_FILES[@]+"${BODY_FILES[@]}"}; do
+  [ "$af" != "-" ] && [ -f "$af" ] && ATTRIB_SCAN="${ATTRIB_SCAN}
 $(cat "$af" 2>/dev/null || true)"
-    fi
-  done <<EOF
-$ATTRIB_FILES
-EOF
-fi
+done
 
 # Same pattern as commit-message-gate.sh, deliberately: one rule, one shape.
 # The co-authored-by alternative matches the trailer at a line start OR

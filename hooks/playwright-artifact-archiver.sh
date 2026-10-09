@@ -89,7 +89,7 @@ INPUT=$(cat 2>/dev/null || echo "{}")
 
 # Session-scope gate: reporting hooks run while the protocol is active OR
 # after the pipeline completed; plain dev sessions silent-allow.
-hook_lib achilles-activation.sh
+hook_lib achilles-activation.sh shell-words.sh
 achilles_require_active_or_completed "$INPUT"
 
 RETAIN="${ACHILLES_ARTIFACT_RETAIN:-5}"
@@ -115,20 +115,27 @@ ROOT=$(cd "$ROOT" 2>/dev/null && pwd) || exit 0
 # SubagentStop the fingerprint check below is the only gate (an interrupted
 # run's PostToolUse may never fire, but its evidence is still evidence).
 # ---------------------------------------------------------------------------
+# pw_judge — per command (lib/shell-words.sh): `playwright test` (npx, bunx and pm exec|dlx peeled),
+# the self-repair driver, or `npm|pnpm|yarn [run] <script>` whose package.json body runs playwright test.
+pw_judge() {
+  local script body
+  case "${CMD_ARGS[0]:-}:${CMD_ARGS[1]:-}" in
+    playwright:test|achilles-self-repair:*|node:*bin/self-repair.mjs) PW_RUN=1; return 0 ;;
+    npm:*|pnpm:*|yarn:*) ;;
+    *) return 0 ;;
+  esac
+  script="${CMD_ARGS[1]:-}"; [ "$script" != run ] || script="${CMD_ARGS[2]:-}"
+  [ -n "$script" ] && [ -f "$ROOT/package.json" ] || return 0
+  body=$("$JQ" -r --arg s "$script" '.scripts[$s] // ""' "$ROOT/package.json" 2>/dev/null || echo "")
+  case "$body" in *playwright[[:space:]]test*) PW_RUN=1 ;; esac
+  return 0
+}
+
 is_playwright_run() {
-  local c="$1"
-  printf '%s' "$c" | grep -qE '(^|[;&|[:space:]])(npx|bunx|pnpm[[:space:]]+(exec|dlx)|yarn[[:space:]]+(exec|dlx))?[[:space:]]*playwright[[:space:]]+test([[:space:]]|$)' && return 0
-  printf '%s' "$c" | grep -qE 'achilles-self-repair|bin/self-repair\.mjs' && return 0
-  # `npm|pnpm|yarn run <script>` — resolve the script body from package.json.
-  local script
-  script=$(printf '%s' "$c" | grep -oE '(npm|pnpm|yarn)[[:space:]]+(run[[:space:]]+)?[A-Za-z0-9:_-]+' | head -1 \
-             | sed -E 's/^(npm|pnpm|yarn)[[:space:]]+(run[[:space:]]+)?//' || true)
-  if [ -n "$script" ] && [ -f "$ROOT/package.json" ]; then
-    local body
-    body=$("$JQ" -r --arg s "$script" '.scripts[$s] // ""' "$ROOT/package.json" 2>/dev/null || echo "")
-    printf '%s' "$body" | grep -qE 'playwright[[:space:]]+test' && return 0
-  fi
-  return 1
+  PW_RUN=0
+  shell_words "$1"
+  shell_each_command pw_judge
+  [ "$PW_RUN" = 1 ]
 }
 
 if [ "$TOOL" = "Bash" ] || [ "$EVENT" = "PostToolUse" ]; then
