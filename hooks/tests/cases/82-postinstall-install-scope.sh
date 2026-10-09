@@ -71,13 +71,18 @@ if (mode === 'global-flag') {
   console.log('TARGET_DIR_OK');
 } else if (mode === 'agents') {
   // One definition per subagent role lands; a rerun changes nothing; a
-  // user-authored same-name file survives; a retired achilles file is pruned.
-  const dest = path.join(home, 'agents-dest');
+  // user-authored same-name file survives; a file an earlier package shipped
+  // and this one dropped is pruned.
+  const dest = path.join(home, 'agents-dest', 'agents');
+  const oldSrc = path.join(home, 'old-agents-src');
   const roles = Object.keys(JSON.parse(fs.readFileSync(path.join('$REPO_ROOT', 'hooks/data/achilles-qa.kernel-mandate.json'), 'utf8')).roles).filter(r => r !== 'orchestrator');
   assert.ok(pi.agentsDestinations.includes(path.join(home, '.claude', 'agents')), 'user-level agents destination');
   fs.mkdirSync(dest, { recursive: true });
   fs.writeFileSync(path.join(dest, 'fd.md'), 'my own fd agent\n');
-  fs.writeFileSync(path.join(dest, 'retired.md'), 'x\n<!-- installed-by: @civitas-cerebrum/achilles -->\n');
+  fs.mkdirSync(oldSrc, { recursive: true });
+  fs.writeFileSync(path.join(oldSrc, 'retired.md'), 'x\n<!-- installed-by: @civitas-cerebrum/achilles -->\n');
+  pi.installCivitasAgents([dest], oldSrc);
+  assert.ok(fs.existsSync(path.join(dest, 'retired.md')), 'earlier package installed retired.md');
   fs.writeFileSync(path.join(dest, 'mine.md'), 'user file\n');
   const first = pi.installCivitasAgents([dest]);
   for (const r of roles.filter(r => r !== 'fd')) assert.ok(fs.existsSync(path.join(dest, r + '.md')), r + ' installed');
@@ -89,7 +94,7 @@ if (mode === 'global-flag') {
   await new Promise(r => setTimeout(r, 20));
   const second = pi.installCivitasAgents([dest]);
   assert.deepEqual(roles.map(r => fs.statSync(path.join(dest, r + '.md')).mtimeMs), mtimes, 'second run rewrites nothing');
-  assert.deepEqual(second.pruned, [], 'second run prunes nothing');
+  assert.deepEqual(second.skipped, [path.join(dest, 'fd.md')], 'skip still reported');
   console.log('AGENTS_OK');
 }
 EOF

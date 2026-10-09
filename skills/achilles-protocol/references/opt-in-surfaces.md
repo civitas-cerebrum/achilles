@@ -6,7 +6,7 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 |---|---|---|---|
 | `ACHILLES_PROTOCOL` | operator shell | `1` forces the protocol on; `0` stops a new session from activating (an active session stays active) | every Achilles hook, including the kernel wrapper |
 | `KERNEL_MANDATE` | operator shell | `0`, `false` or `off` bypasses the role kernel, including the wrapper's refusal when the kernel file is missing | kernel only; Achilles gates still run |
-| `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it only when absent | kernel only |
+| `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it when absent and refreshes it only while unedited | kernel only |
 | `achilles-factory-rules.json` | project root | committing it opts the project into the factory gates it has rules for; no file, or a rule id absent, makes that gate allow silently ([factory-gates.md](factory-gates.md#opting-in-the-rule-file)) | seven gates registered for every project, no-op without the file |
 | `FACTORY_RULES` | operator shell | path of the rule file, absolute or relative to the project root (`$CLAUDE_PROJECT_DIR`, else the cwd) | the factory gates and the scenario lint |
 | `FACTORY_JQ` | tests only | jq binary the factory gates use | never set it in a real session |
@@ -44,3 +44,4 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 |---|---|
 | `.claude/onboarding-stop-authorized` | authorises an early stop of the onboarding pipeline |
 | deleting the project's `.claude/kernel-mandate.json` | the kernel stops governing the tree |
+| `npx achilles-uninstall [--global] [--project <dir>] [--dry-run]` | removes the hooks, skills, agents and registrations the install record lists (files only while unedited) and an unedited staged mandate; your own settings.json entries stay |

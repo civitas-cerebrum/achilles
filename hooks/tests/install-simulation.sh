@@ -508,7 +508,7 @@ run_mandate_simulation() {
   local work pkg proj dest ledger stamp out
   work=$(mktemp -d /tmp/achilles-mandate-sim-XXXXXX)
   _SIM_MANDATE_WORK="$work"
-  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK"' EXIT
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK"' EXIT
   pkg="$work/pkg"; proj="$work/project"
   sim_make_package "$pkg"
   dest="$proj/.claude/kernel-mandate.json"; ledger="$proj/.claude/kernel-mandate.md"; stamp="$proj/.claude/kernel-mandate.achilles.json"
@@ -560,9 +560,161 @@ run_mandate_simulation() {
   fi
 }
 
+# Skills and agents are copied by content, recorded, and pruned like hooks.
+run_methodology_simulation() {
+  local work claude out
+  work=$(mktemp -d /tmp/achilles-method-sim-XXXXXX)
+  _SIM_METHOD_WORK="$work"
+  claude="$work/home/.claude"
+  local src="$work/skills-src"
+  mkdir -p "$src/alpha/references" "$src/beta"
+  echo "alpha v1" > "$src/alpha/SKILL.md"; echo "ref v1" > "$src/alpha/references/r.md"; echo "beta v1" > "$src/beta/SKILL.md"
+  sim_skills() {
+    HOME="$work/home" node -e "require('$INSTALL_SIM_REPO_ROOT/scripts/install/skills.js').installCivitasSkills(['$claude/skills'], '$src')" 2>&1
+  }
+
+  sim_skills >/dev/null
+  if "$JQ" -e '.files | has("skills/alpha/SKILL.md") and has("skills/alpha/references/r.md") and has("skills/beta/SKILL.md")' "$claude/achilles-install.json" >/dev/null 2>&1; then
+    sim_pass "skills are copied and recorded with hashes"
+  else
+    sim_fail "skills are copied and recorded with hashes" "record: $(head -c 200 "$claude/achilles-install.json" 2>&1)"
+  fi
+
+  echo "alpha v2" > "$src/alpha/SKILL.md"; touch -t 198501010000 "$src/alpha/SKILL.md"
+  sim_skills >/dev/null
+  if [ "$(cat "$claude/skills/alpha/SKILL.md")" = "alpha v2" ]; then
+    sim_pass "a changed skill file is refreshed from a 1985-mtime package"
+  else
+    sim_fail "a changed skill file is refreshed from a 1985-mtime package" "$(cat "$claude/skills/alpha/SKILL.md")"
+  fi
+
+  echo "my alpha" > "$claude/skills/alpha/SKILL.md"; echo "alpha v3" > "$src/alpha/SKILL.md"
+  echo "my beta" > "$claude/skills/beta/SKILL.md"; rm -r "$src/beta"
+  out=$(sim_skills)
+  if [ "$(cat "$claude/skills/alpha/SKILL.md")" = "my alpha" ] && [ "$(cat "$claude/skills/beta/SKILL.md")" = "my beta" ] \
+     && printf '%s' "$out" | grep -q 'alpha/SKILL.md was modified' && printf '%s' "$out" | grep -q 'beta/SKILL.md is no longer shipped but was modified'; then
+    sim_pass "a user-modified skill file is neither overwritten nor pruned"
+  else
+    sim_fail "a user-modified skill file is neither overwritten nor pruned" "${out:0:300}"
+  fi
+
+  echo "beta v1" > "$claude/skills/beta/SKILL.md"
+  "$JQ" --arg h "$(shasum -a 256 "$claude/skills/beta/SKILL.md" | cut -d' ' -f1)" '.files["skills/beta/SKILL.md"] = $h | del(.kept)' \
+    "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
+  sim_skills >/dev/null
+  if [ ! -e "$claude/skills/beta" ]; then
+    sim_pass "an unmodified skill the package dropped is pruned, with its empty directory"
+  else
+    sim_fail "an unmodified skill the package dropped is pruned, with its empty directory" "$(ls "$claude/skills/beta")"
+  fi
+
+  # Agents share the claude dir with skills: neither installer drops the other's entries.
+  local asrc="$work/agents-src"
+  mkdir -p "$asrc"; printf 'role\n<!-- installed-by: @civitas-cerebrum/achilles -->\n' > "$asrc/fd.md"
+  HOME="$work/home" node -e "require('$INSTALL_SIM_REPO_ROOT/scripts/install/agents.js').installCivitasAgents(['$claude/agents'], '$asrc')" >/dev/null 2>&1
+  sim_skills >/dev/null
+  if "$JQ" -e '.files | has("agents/fd.md") and has("skills/alpha/SKILL.md")' "$claude/achilles-install.json" >/dev/null 2>&1; then
+    sim_pass "skills and agents keep each other's record entries"
+  else
+    sim_fail "skills and agents keep each other's record entries" "$(head -c 300 "$claude/achilles-install.json")"
+  fi
+}
+
+# achilles-uninstall reverses the record and nothing else.
+run_uninstall_simulation() {
+  local repo_root="$INSTALL_SIM_REPO_ROOT" work proj claude out rc
+  work=$(mktemp -d /tmp/achilles-uninstall-sim-XXXXXX)
+  _SIM_UNINSTALL_WORK="$work"
+  proj="$work/project"; claude="$proj/.claude"
+  mkdir -p "$work/skills-src/alpha" "$work/home"
+  echo alpha > "$work/skills-src/alpha/SKILL.md"
+  sim_full_install() {
+    HOME="$work/home" CIVITAS_SKIP_JQ_INSTALL=1 CIVITAS_SKIP_HOOK_INSTALL= node -e "
+      const pi = require('$repo_root/scripts/postinstall.js');
+      pi.installCivitasHooks('$claude');
+      pi.installCivitasSkills(['$claude/skills'], '$work/skills-src');
+      pi.stageProjectMandate('$proj');" >/dev/null 2>&1
+  }
+  sim_uninstall() { HOME="$work/home" node "$repo_root/bin/achilles-uninstall.mjs" "$@" 2>&1; }
+  sim_full_install
+  "$JQ" '.hooks.PreToolUse += [{matcher:"Bash", hooks:[{type:"command", command:"echo mine"}]}]' "$claude/settings.json" > "$work/s.json" && mv "$work/s.json" "$claude/settings.json"
+  echo "my edit" >> "$claude/hooks/commit-message-gate.sh"
+
+  # A crafted record: keys that would reach outside .claude, or name a live file non-canonically.
+  local outside="$work/outside" vhash ghash
+  mkdir -p "$outside"; echo victim > "$outside/v"; ln -s "$outside" "$claude/hooks/escdir"
+  vhash=$(shasum -a 256 "$outside/v" | cut -d' ' -f1)
+  echo "user script" > "$claude/hooks/user-owned.sh"
+  ghash=$(shasum -a 256 "$claude/hooks/user-owned.sh" | cut -d' ' -f1)
+  "$JQ" --arg v "$vhash" --arg g "$ghash" --arg abs "$outside/v" \
+    '.files["hooks/escdir/v"] = $v | .files["../../outside/v"] = $v | .files[$abs] = $v | .files["hooks/./user-owned.sh"] = $g' \
+    "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
+  local before; before=$(find "$claude" -type f | sort | shasum)
+
+  out=$(sim_uninstall --project "$proj" --dry-run); rc=$?
+  if [ "$rc" = 0 ] && [ "$before" = "$(find "$claude" -type f | sort | shasum)" ] && printf '%s' "$out" | grep -q '^would remove'; then
+    sim_pass "uninstall --dry-run reports and changes nothing"
+  else
+    sim_fail "uninstall --dry-run reports and changes nothing" "rc=$rc ${out:0:200}"
+  fi
+
+  out=$(sim_uninstall --project "$proj"); rc=$?
+  local achilles_left
+  achilles_left=$("$JQ" '[.. | .command? // empty | select(test("achilles|kernel-mandate|/factory/|/hooks/"))] | length' "$claude/settings.json" 2>/dev/null)
+  if [ "$rc" = 0 ] && [ "$achilles_left" = 0 ] && grep -q 'echo mine' "$claude/settings.json"; then
+    sim_pass "uninstall removes Achilles registrations; a user's registration in the same settings.json survives"
+  else
+    sim_fail "uninstall removes Achilles registrations; a user's registration in the same settings.json survives" "rc=$rc left=$achilles_left ${out:0:200}"
+  fi
+  if [ ! -e "$claude/skills/alpha/SKILL.md" ] && [ ! -e "$claude/hooks/lib/hook-io.sh" ] && [ ! -e "$claude/achilles-install.json" ]; then
+    sim_pass "uninstall deletes recorded hooks and skills and, last, the record"
+  else
+    sim_fail "uninstall deletes recorded hooks and skills and, last, the record" "$(find "$claude" -type f | head -5)"
+  fi
+  if grep -q 'my edit' "$claude/hooks/commit-message-gate.sh" && printf '%s' "$out" | grep -q 'kept .*commit-message-gate.sh'; then
+    sim_pass "uninstall keeps a modified recorded file and says so"
+  else
+    sim_fail "uninstall keeps a modified recorded file and says so" "${out:0:300}"
+  fi
+  if [ ! -e "$claude/kernel-mandate.json" ] && [ ! -e "$claude/kernel-mandate.md" ] && [ ! -e "$claude/kernel-mandate.achilles.json" ]; then
+    sim_pass "uninstall removes an unmodified staged mandate with its stamp"
+  else
+    sim_fail "uninstall removes an unmodified staged mandate with its stamp" "$(ls "$claude")"
+  fi
+  if [ -f "$outside/v" ] && [ -L "$claude/hooks/escdir" ] && [ -f "$claude/hooks/user-owned.sh" ]; then
+    sim_pass "crafted record keys (symlinked dir, .., absolute, non-canonical) delete nothing outside or off the canonical path"
+  else
+    sim_fail "crafted record keys (symlinked dir, .., absolute, non-canonical) delete nothing outside or off the canonical path" "outside=$(ls "$outside") user_file=$(ls "$claude/hooks/user-owned.sh" 2>&1)"
+  fi
+  sim_uninstall --project "$proj" >/dev/null; rc=$?
+  if [ "$rc" = 1 ]; then sim_pass "uninstall exits 1 when nothing is recorded"; else sim_fail "uninstall exits 1 when nothing is recorded" "rc=$rc"; fi
+  sim_uninstall --bogus >/dev/null; rc=$?
+  if [ "$rc" = 2 ]; then sim_pass "uninstall exits 2 on a usage error"; else sim_fail "uninstall exits 2 on a usage error" "rc=$rc"; fi
+
+  # An edited mandate survives uninstall.
+  rm -rf "$proj"; sim_full_install; echo '{"mine":1}' > "$claude/kernel-mandate.json"
+  out=$(sim_uninstall --project "$proj")
+  if [ "$(cat "$claude/kernel-mandate.json")" = '{"mine":1}' ] && [ ! -e "$claude/kernel-mandate.md" ]; then
+    sim_pass "uninstall keeps an edited mandate"
+  else
+    sim_fail "uninstall keeps an edited mandate" "${out:0:300}"
+  fi
+
+  # --global reverses ~/.claude.
+  HOME="$work/home" CIVITAS_SKIP_JQ_INSTALL=1 node -e "require('$repo_root/scripts/postinstall.js').installCivitasHooks('$work/home/.claude')" >/dev/null 2>&1
+  out=$(sim_uninstall --global); rc=$?
+  if [ "$rc" = 0 ] && [ ! -e "$work/home/.claude/achilles-install.json" ] && [ ! -e "$work/home/.claude/hooks/commit-message-gate.sh" ]; then
+    sim_pass "uninstall --global reverses the user-level record"
+  else
+    sim_fail "uninstall --global reverses the user-level record" "rc=$rc ${out:0:300}"
+  fi
+}
+
 run_install_simulation
 run_upgrade_simulation
 run_mandate_simulation
+run_methodology_simulation
+run_uninstall_simulation
 
 # Standalone summary (run.sh prints its own).
 if [ "$INSTALL_SIM_STANDALONE" = "1" ]; then
