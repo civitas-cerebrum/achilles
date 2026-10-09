@@ -167,7 +167,7 @@ A subagent's brief asks it to "dispatch N parallel subagents", "spawn workers", 
 
 ## Pattern: Sonnet-everywhere drift
 
-The orchestrator argues for sonnet on dispatches the hybrid model table reserves for opus — generalising a single-cycle Sonnet/Opus parity observation on adversarial probes to dispatches the table doesn't cover (or to Pass 4 itself, which the table now keeps on opus because its findings feed Pass 5's regression layer).
+The orchestrator argues for Sonnet on dispatches the hybrid model table assigns to Opus.
 
 **Symptoms:**
 - "Stage B reviewer per-journey can run sonnet — schema/coverage checks are mechanical" (the table says Opus for per-journey reviewers per the post-revision policy)
@@ -178,16 +178,10 @@ The orchestrator argues for sonnet on dispatches the hybrid model table reserves
 - "Pass 1 composer can run sonnet — the foundation will be re-reviewed anyway"
 - "a single-cycle observation showed Sonnet/Opus parity, so Sonnet should be fine everywhere"
 
-**Reality:** The hybrid table draws the line carefully:
-- **Sonnet remains the default** only for Pass 2/3 re-pass composers — the work is mechanical (the bulk of journeys return `covered-exhaustively`), and the cycle re-runs cap any quality slippage.
-- **Opus remains** for Pass 1 Stage A composer, **Pass 4 Stage A adversarial probes** (findings feed Pass 5's regression layer, so probe-depth quality at the boundary determines what gets locked in), **all of Pass 5** (gap analysis, targeted probes, regression-test authoring — the regression layer is the durable artifact, where quality at authoring time propagates forward indefinitely), the Stage B reviewer per-journey (kept on opus to keep review judgement at the quality boundary while batching ramps), the Stage B batch reviewer, cleanup ledger dedup, Phase 7 deck/report, and failure-diagnosis.
-
-Anti-pattern is now: sonnet on dispatches the table marks Opus — specifically Pass 4 Stage A probes, Pass 5 (any sub-stage), the Stage B reviewer per-journey, the Stage B batch reviewer, and failure-diagnosis. Empirical Sonnet/Opus parity has only been observed as single-cycle measurements on adversarial probe categories surfaced in those cycles — it is not a general "Sonnet on adversarial work" mandate, and the hybrid table does not act on it for Pass 4 because Pass 4's findings feed Pass 5's regression layer. Do not generalise the observation across the table.
+**Reality:** The table in [`coverage-expansion/SKILL.md`](../SKILL.md) §"Hard rules — kernel-resident" (Hybrid model selection bullet) is the only statement of model tiers. Dispatch the model it names.
 
 **Hooks that catch this:**
 - (markdown-only) — model selection is not yet mechanically detectable at the dispatch boundary.
-
-**Origin:** Hybrid model policy codified in §"Hybrid model selection" of `coverage-expansion/SKILL.md` (issue #164.6).
 
 ---
 
