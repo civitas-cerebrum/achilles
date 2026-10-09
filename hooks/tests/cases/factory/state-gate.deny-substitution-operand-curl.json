@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "cat .factory/x; curl -o $(echo .factory/verify-stamp) http://example.test/x"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"]}

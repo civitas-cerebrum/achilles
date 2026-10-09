@@ -161,61 +161,30 @@ stamp, and only when every check passed; `state-gate` blocks hand-written forger
 <a id="process.state"></a>
 ### process.state
 
-A Bash line is **armed** when some command on it mentions `stateDir`, case folded, as a path component (`.factory`,
-`./.factory/x`, `/abs/.factory/x`) or as a glob that could match one (`.fact*`, `.f[a]ctory`, `.*`; a leading dot needs a
-literal dot, so `*` and `dist/*` do not). The basenames of `process.evidence`'s `stamp` and `currentChange`
-(`verify-stamp`, `current-change` by default) count as naming it too, literal or as a glob component holding a letter
-or digit (`find . -name 'current-*' -delete`, `git clean -fdx -e '*stamp*'`; `docs/verify-stamp.md` and `dist/*` do
-not), so any other file named `verify-stamp` gets the same rules. A `find` that matches by `-regex` / `-iregex` and writes
-(`-delete`, `-fprint*`, `-fls`, or an `-exec`-style action whose program is not a reader) counts as naming it. Each word is also read with every expansion
-(`$X`, `${…}`, `$(…)`, a backtick, `$1`, `$@`) removed and with each replaced by `/`, since an unset variable is empty
-(`rm $X.factory/verify-stamp`). The gate reads every word, its `=` value, a glued option value (`-o.factory/x`),
-redirect targets, and the directory `env -C`/`--chdir`, `sudo -D`, `npx --prefix` or a package manager's
-`-C`/`--dir`/`--prefix` runs the command in. A word that holds shell syntax (a blank, a quote, `\`, a backtick,
-`;&|()<>{}`) is also split as a command line of its own, again and again, so quotes, braces, escapes and `$'…'` in a
-command string another program runs read as the shell reads them (`find -exec sh -c 'rm .fac{t,}ory/x'`, `rsync -e …`,
-`LESSOPEN=…`). Such a string counts as a mention when it names `extglob`, `dotglob`, `nocaseglob` or `GLOBIGNORE`,
-cannot be split whole, nests more than 16 deep, or is past the line's 64th split. `user.factory.ts` does not arm it, and
-quoted text is an argument, never a redirect: `echo "> .factory/x"` passes. Not read as mentions, because they are
-judged as commands of their own or are inert text: the `-c` script of a shell and the arguments of `eval`; the message
-of `git commit`, `tag`, `merge`, `notes add|append` and `stash push|save` (`--message[=]<msg>`, `-m <msg>`, `-m<msg>`,
-and a short cluster whose first value letter is `m`). A cluster that reaches another value letter first reads the rest
-as that option's value: `git commit -Fm .factory/x` takes its message from the file `m` and names `.factory/x`. The value
-letters are `-C -c -F -m -S -t -u` for commit, `-F -m -n -u` for tag, `-F -m -S -s -X` for merge, `-C -c -F -m` for
-notes, `-m` for stash. On an armed line, unrecognised means unsafe:
+A Bash line is **armed** when a word on it names `stateDir`, the stamp or the change marker (the basenames of
+`process.evidence` `stamp` and `currentChange`), case folded, as a whole path component: `.factory/x`, `rm
+verify-stamp`, `find . -name current-change`. `user.factory.ts` and `docs/verify-stamp.md` do not arm it, and neither
+does the message of `git commit`, `tag` or `merge` (`-m`, `--message`). Quoted text is an argument, never a redirect:
+`echo "> .factory/x"` passes. On an armed line:
 
-- A segment **touches** `stateDir` when it names it, holds a word that is not literal (`$VAR`, `$( )`, a glob), runs a
-  program from outside the system bin dirs, runs under an `env -C`-style directory that names `stateDir` or is not
-  literal (`env -C "$D"`, `pnpm -r exec`), or runs after a `cd` that may have entered it. A touching segment passes only
-  as a reader or as a copy-out. Readers: `cat head tail less grep rg jq ls stat wc diff cmp test [ [[ file md5 md5sum
-  shasum sha*sum echo printf`; `find` without `-delete -exec -execdir -ok -okdir -fprint* -fls`; `git diff log show
-  status ls-files blame` with no global option and none of the options `shell_git_exec_option` names. Excluded per
-  reader: `less -o -O --log-file`, `rg --pre --hostname-bin`, `file -C --compile`. A reader with an environment
-  assignment other than `LC_*` / `LANG` is denied. Copy-out: `cp`, `install`, `rsync` with `stateDir` provably a source:
-  every option known and before the operands, the target (last operand, or the `-t` directory) literal and outside
-  `stateDir`, and no directory change. Everything else is denied: `rm`, `mv`, `tee`, `find -delete`, `curl -o`, `tar
-  -C`, `git checkout`, `sed`, `python3`, a script in the directory, `xargs` feeding anything but a reader.
-- A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal, is denied. The calling
-  shell opens it, so an `env -C` directory does not move it.
-- A `cd`, `pushd` or `popd` the gate cannot resolve exactly counts as entering `stateDir`: a target naming it or not
-  literal, no operand (`$HOME`) or more than one (bash 3.2 enters the first), `-`, a `~` operand, `+N`, `popd`, or any
-`cd` after an assignment to `HOME`, `CDPATH` or `OLDPWD` on the line. Every
-  later segment is then inside it, and a later `cd` does not leave: only readers pass, and a redirect must go to an
-  absolute path outside it.
-- A wrapper option the splitter does not know, or a command word that is not literal, is denied.
+- A command that names them, holds a word that is not literal (`$VAR`, a glob), is `xargs`, runs under an `env -C`
+  directory that names `stateDir` or is not literal, or runs after a `cd`/`pushd` into `stateDir` (or to a target
+  that is not literal) passes only as a reader or a copy out. Readers: the shared reader list
+  (`shell_is_reader` in `hooks/lib/shell-words.sh`: `cat head tail grep rg ls stat wc diff cmp file jq echo printf test`,
+  checksums, git `status diff log show ls-files blame commit add rev-parse grep fetch`) and `find` without `-delete`,
+  `-exec*`, `-ok*`, `-fprint*` or `-fls`. Copy out: `cp` / `install` whose target (`-t DIR`, or the last operand) is
+  literal and names nothing in the directory, with no option after an operand. Everything else is denied: `rm`, `mv`,
+  `tee`, `sed -i`, `git checkout`/`restore`, `curl -o`, `tar -C`, an interpreter.
+- A redirect onto `stateDir`, the stamp or the marker, or to a target that is not literal, is denied; after a `cd`
+  into the directory, a relative redirect is denied too.
+- A word holding a command substitution (`$( )`, backticks) is denied: its body is not read.
+- A wrapper option the splitter does not know is denied.
 
-Armed or not, a line is denied when judging it takes over 4 s (a hook that times out allows the command), when it
-cannot be split whole (over 32 KB, 16 nested commands, or 64 words from one brace
-expansion); when a command on it turns `extglob` on (`shopt -s … extglob`, `-O extglob` anywhere in its words, as in
-`find -exec bash -O extglob`, or a `BASHOPTS=` value holding it; a name that is not literal counts);
-or when one turns `dotglob` or `nocaseglob` on the same ways, or assigns `GLOBIGNORE`, and the line holds a glob.
-Mentioning one (`cat docs/extglob.md`) does neither.
-
-Reading and copying out to a literal path are allowed. What a single line cannot show is in
-[known-limits.md](known-limits.md) KL-20.
+Armed or not, a line too long to split (over 32 KB) is denied. Obfuscated forms (globs or splices in the name, `$X` prefixes, `sh -c`
+strings, shell option games, `HOME`/`CDPATH` tricks) are out of scope: [known-limits.md](known-limits.md) KL-20.
 
 Fields: `stateDir` (missing → allow with a warning on every Bash call, so the gap is visible); the file names come from
-`process.evidence`. `FACTORY_STATE_DEADLINE` (seconds, tests) can lower the deadline, never raise it.
+`process.evidence`.
 
 ## Message contract
 

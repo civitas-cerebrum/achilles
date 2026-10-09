@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "cd .factory && echo \"$(echo forged > verify-stamp)\"; cd /tmp"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"]}

@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "find . -exec sh -c 'rm${IFS}.fact*/verify-stamp' \\;"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"]}

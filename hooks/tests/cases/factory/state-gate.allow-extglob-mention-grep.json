@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "grep -r extglob src"}}, "expect": "allow", "warn": false}

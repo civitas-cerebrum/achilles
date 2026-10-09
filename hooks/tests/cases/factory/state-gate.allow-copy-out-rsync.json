@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "rsync -a .factory/ /tmp/state-copy/"}}, "expect": "allow", "warn": false}

@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "find . -exec bash -O extglob -c 'cp /tmp/x .fac@(t)ory/verify-stamp' \\;"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"]}

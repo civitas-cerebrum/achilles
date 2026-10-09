@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "cat .factory/x; ls *"}}, "expect": "allow", "warn": false}

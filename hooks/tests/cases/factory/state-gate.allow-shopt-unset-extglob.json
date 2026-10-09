@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "shopt -u extglob"}}, "expect": "allow", "warn": false}

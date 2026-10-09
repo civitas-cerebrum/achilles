@@ -1,1 +1,0 @@
-{"input": {"tool_name": "Bash", "tool_input": {"command": "find . -regex '.*\\.ts'"}}, "expect": "allow", "warn": false}
