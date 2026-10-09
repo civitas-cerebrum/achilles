@@ -1,7 +1,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { packageDir, userClaudeDir } = require('./context.js');
-const { openRecord, copyTracked, pruneStale, writeRecord } = require('./record.js');
+const { openRecord, copyTracked, pruneStale, dropStaleRegistrations, writeRecord } = require('./record.js');
 
 // Install the achilles harness hooks into <claudeDir>/hooks/ and register
 // them in <claudeDir>/settings.json — ~/.claude for a global (-g) install,
@@ -192,8 +192,9 @@ function installCivitasHooks(claudeDir) {
 
   // Before the dangling-registration prune, so a dropped file's registration goes with it.
   pruneStale(rec);
+  const dropped = dropStaleRegistrations(rec, settings);
   const pruned = pruneDanglingRegistrations(settings, userHooksDir);
-  if (registeredCount > 0 || pruned) {
+  if (registeredCount > 0 || pruned || dropped) {
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
   }

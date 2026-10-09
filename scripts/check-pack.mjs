@@ -7,11 +7,12 @@ const packed = new Set(JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--j
 const manifest = JSON.parse(readFileSync('hooks/data/hook-manifest.json', 'utf8'));
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 
-const required = new Set(['hooks/lib/validator.bundle.mjs', 'scripts/postinstall.js', 'reporter/index.js', 'hooks/data/hook-manifest.json']);
+const required = new Set(['hooks/lib/validator.bundle.mjs', 'hooks/lib/babel-parser.bundle.js', 'scripts/postinstall.js', 'reporter/index.js', 'hooks/data/hook-manifest.json']);
 for (const h of manifest.hooks) required.add(`hooks/${h.file}`);
 for (const c of manifest.companions) required.add(`hooks/${c}`);
 for (const f of manifest.factory) required.add(`hooks/factory/${f.file}`);
-for (const f of readdirSync('hooks/lib')) required.add(`hooks/lib/${f}`);
+for (const f of readdirSync('hooks/lib', { withFileTypes: true })) if (f.isFile()) required.add(`hooks/lib/${f.name}`);
+for (const f of readdirSync('hooks/data')) if (/\.(json|md)$/.test(f)) required.add(`hooks/data/${f}`);
 for (const f of readdirSync('scripts/install')) required.add(`scripts/install/${f}`);
 for (const b of Object.values(pkg.bin)) required.add(b.replace(/^\.\//, ''));
 for (const d of readdirSync('skills')) if (existsSync(`skills/${d}/SKILL.md`)) required.add(`skills/${d}/SKILL.md`);

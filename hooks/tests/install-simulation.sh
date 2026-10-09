@@ -355,6 +355,7 @@ run_upgrade_simulation() {
   local repo_root="$INSTALL_SIM_REPO_ROOT" work pkg claude
   work=$(mktemp -d /tmp/achilles-upgrade-sim-XXXXXX)
   _SIM_UPGRADE_WORK="$work"
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK"' EXIT
   pkg="$work/pkg"; claude="$work/project/.claude"
   mkdir -p "$pkg/hooks" "$work/project"
   cp -R "$repo_root/scripts" "$repo_root/package.json" "$pkg/"
@@ -422,12 +423,62 @@ run_upgrade_simulation() {
     sim_fail "a user-modified file is neither overwritten nor pruned, and the skip is warned" "${out:0:300}"
   fi
 
+  # The warning for a kept file prints once, not on every install.
+  out=$(sim_install "$pkg")
+  if printf '%s' "$out" | grep -q 'was modified\|but was modified'; then
+    sim_fail "a kept user-modified file is warned about once" "second run warned again: ${out:0:200}"
+  else
+    sim_pass "a kept user-modified file is warned about once"
+  fi
+
+  # A recorded path that reaches outside .claude through a symlinked directory is never deleted.
+  local outside="$work/outside"
+  mkdir -p "$outside"; echo victim > "$outside/v2"; ln -s "$outside" "$claude/hooks/escdir"
+  "$JQ" --arg h "$(shasum -a 256 "$outside/v2" | cut -d' ' -f1)" '.files["hooks/escdir/v2"] = $h' \
+    "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
+  sim_install "$pkg" >/dev/null
+  if [ -f "$outside/v2" ]; then
+    sim_pass "prune never follows a symlinked directory out of .claude"
+  else
+    sim_fail "prune never follows a symlinked directory out of .claude" "$outside/v2 was deleted"
+  fi
+  rm -f "$claude/hooks/escdir"
+
+  # A record that parses to something other than an object must not stop the install.
+  local bad ok=1
+  for bad in null '[]' '{"files":null}' '{"files":' 'true'; do
+    printf '%s' "$bad" > "$claude/achilles-install.json"
+    echo "# upgraded $RANDOM" >> "$pkg/hooks/lib/hook-emit.sh"
+    sim_install "$pkg" >/dev/null
+    cmp -s "$pkg/hooks/lib/hook-emit.sh" "$claude/hooks/lib/hook-emit.sh" && "$JQ" -e .files "$claude/achilles-install.json" >/dev/null 2>&1 || ok=0
+  done
+  if [ "$ok" = 1 ]; then
+    sim_pass "an unusable install record (null, array, truncated) is treated as absent"
+  else
+    sim_fail "an unusable install record (null, array, truncated) is treated as absent" "install did not refresh after record '$bad'"
+  fi
+
+  # A registration the record says Achilles made, which the manifest no longer asks for, is dropped
+  # (its script stays); a user's registration in the same group is not touched.
+  local demoted="$claude/hooks/lib/hook-io.sh" mine="/opt/mine/hook.sh"
+  "$JQ" --arg c "$demoted" --arg m "$mine" '.hooks.PreToolUse += [{matcher:"Edit", hooks:[{type:"command", command:$c},{type:"command", command:$m}]}]' \
+    "$claude/settings.json" > "$work/s.json" && mv "$work/s.json" "$claude/settings.json"
+  "$JQ" --arg c "$demoted" '.registrations += [{event:"PreToolUse", matcher:"Edit", command:$c}]' \
+    "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
+  sim_install "$pkg" >/dev/null
+  if [ -f "$demoted" ] && ! grep -q "$demoted" "$claude/settings.json" && grep -q "$mine" "$claude/settings.json"; then
+    sim_pass "a registration no longer in the manifest is dropped; user registrations in the group survive"
+  else
+    sim_fail "a registration no longer in the manifest is dropped; user registrations in the group survive" "settings: $("$JQ" -c '.hooks.PreToolUse[] | select(.matcher=="Edit")' "$claude/settings.json" 2>&1 | head -c 200)"
+  fi
+
   # Global install: the project root resolves to npm's lib/, which must stay clean.
   local lib="$work/lib" gpkg
   gpkg="$lib/node_modules/@civitas-cerebrum/achilles"
   mkdir -p "$gpkg/hooks" "$work/ghome"
-  cp -R "$pkg/scripts" "$pkg/package.json" "$gpkg/"
-  cp -R "$pkg"/hooks/* "$gpkg/hooks/"
+  cp -R "$repo_root/scripts" "$repo_root/package.json" "$gpkg/"
+  cp -R "$repo_root"/hooks/* "$gpkg/hooks/"
+  rm -rf "$gpkg/hooks/tests"
   HOME="$work/ghome" npm_config_global=true CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     node "$gpkg/scripts/postinstall.js" >/dev/null 2>&1
   if [ -f "$work/ghome/.claude/achilles-install.json" ] && [ -z "$(find "$lib" -name .claude 2>/dev/null)" ]; then
@@ -435,7 +486,6 @@ run_upgrade_simulation() {
   else
     sim_fail "global install records into ~/.claude and writes no .claude under npm's lib/" "$(find "$lib" -name .claude 2>&1 | head -3)"
   fi
-  rm -rf "$work"
 }
 
 run_install_simulation
