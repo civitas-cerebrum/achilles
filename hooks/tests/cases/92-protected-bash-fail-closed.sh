@@ -411,3 +411,28 @@ assert_allow "$HOOK" "$(bash_payload 'cat tests/e2e/docs/onboarding-status.json;
 section "protected-bash fail-closed F1b: glued git -c<key>=<value>"
 assert_deny "$HOOK" "$(bash_payload 'git -ccore.pager=x log ~/.claude/settings.json')" "glued -c with a non-inert key" "git -c"
 assert_allow "$HOOK" "$(bash_payload 'git -cuser.name=x commit -m "fix tests/e2e/docs/onboarding-status.json"')" "glued -c with an inert key"
+
+# env -C DIR and sudo -D DIR run the command in DIR: its relative operands are judged there, not in the call's cwd.
+section "protected-bash fail-closed: env -C / --chdir / sudo -D move the directory relative operands resolve in"
+tmp_into CHDIR_TMP
+mkdir -p "$CHDIR_TMP/proj/tests/e2e/docs" "$CHDIR_TMP/proj/src"
+chdir_payload() { "$JQ" -n --arg c "$1" --arg d "$CHDIR_TMP/proj" '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}'; }
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'CHDIR'
+env -C tests rm -r e2e
+env -Ctests rm -r e2e
+env -iC tests rm -r e2e
+env --chdir=tests rm -r e2e
+env --chdir tests rm -r e2e
+env -C . -C tests rm -r e2e
+env -C .. rm -r proj
+env -C tests sh -c 'rm -r e2e'
+env -C '$X' rm -r e2e
+sudo -D tests rm -r e2e
+sudo --chdir=tests rm -r e2e
+sudo -D tests sh -c 'rm -r e2e'
+CHDIR
+assert_allow "$HOOK" "$(chdir_payload 'env -C src cat notes.txt')" "env -C into an unprotected directory, read"
+assert_allow "$HOOK" "$(chdir_payload 'env -C /tmp rm junk.txt')" "env -C elsewhere, unprotected write"
+assert_allow "$HOOK" "$(chdir_payload 'sudo -D src ls')" "sudo -D into an unprotected directory"

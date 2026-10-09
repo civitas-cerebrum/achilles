@@ -99,6 +99,7 @@ NAMED=""    # protected entries and directories the line names, one per line
 HITS=""     # protected entries or directories a write reaches
 UNSAFE=""   # why a command on the line cannot be proved safe
 OVERFLOW="" # 1 when the line could not be split whole
+TGT_BASE="" # the env -C directory the command being judged runs in
 POISON=0    # a PATH/alias/function/assignment-only command earlier on the line can redefine later ones
 
 # unresolved <word> — 0 when <word> holds an unexpanded variable, substitution or glob.
@@ -114,9 +115,14 @@ names() {
 }
 
 # target <word> — a write target: unresolvable (variable, substitution, glob) is unsafe;
-# a protected entry or a protected directory is a hit.
+# a protected entry or a protected directory is a hit. An operand of a command run under env -C
+# (TGT_BASE) is judged under that directory; a redirection target is not (the outer shell opens it).
 target() {
   local e
+  case "$1" in
+    /*|'~'*|'$HOME'*|'${HOME}'*) ;;
+    *) [ -z "$TGT_BASE" ] || set -- "$TGT_BASE/$1" ;;
+  esac
   case "$1" in
     '~'|'~/'*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) ;;
     *'$'*|*'`'*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 does not resolve"$'\n'; return 0 ;;
@@ -126,6 +132,19 @@ target() {
   e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") ||
     e=$(protected_ancestor_match "$1" "$CWD" "$LOCATIONS") || return 0
   HITS="$HITS$e"$'\n'
+}
+
+# chdir_named <dir> — env -C <dir>: a command run there reads its operands under <dir>, so a <dir>
+# that is protected, inside a protected directory, above one or unresolvable counts as naming protected
+# state (env already makes every command on the line unsafe). A nested shell does not carry <dir>
+# into the commands it runs; this covers it.
+chdir_named() {
+  local e
+  [ -n "$LOCATIONS" ] || LOCATIONS=$(protected_locations "$CWD")
+  if unresolved "$1"; then NAMED="${NAMED}env -C $1 (does not resolve)"$'\n'; return 0; fi
+  e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") ||
+    e=$(protected_ancestor_match "$1" "$CWD" "$LOCATIONS") || return 0
+  NAMED="$NAMED$e"$'\n'
 }
 
 # optval <short> <long> — target every value of -<short> X, -<short>X, --<long> X, --<long>=X.
@@ -345,7 +364,10 @@ copy_targets() {
 
 judge_command() {
   local cmd="${CMD_ARGS[0]:-}" a t e gi gkey gval sub="" pos=0
+  TGT_BASE=""
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
+  TGT_BASE="$CMD_CHDIR"
+  [ -z "$CMD_CHDIR" ] || chdir_named "$CMD_CHDIR"
   if [ -z "$cmd" ]; then
     # Assignment-only (PATH=…; ) or a bare env/wrapper: it reshapes the environment of every
     # command that follows on the line.
