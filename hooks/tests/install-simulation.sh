@@ -375,7 +375,14 @@ run_upgrade_simulation() {
   }
   local out gate="$claude/hooks/commit-message-gate.sh"
 
-  sim_install "$pkg" >/dev/null
+  # A 0.1.8 install left a hook behind and no record: the first recorded install replaces it and says how many.
+  mkdir -p "$claude/hooks"; echo "# 0.1.8 copy" > "$gate"
+  out=$(sim_install "$pkg")
+  if printf '%s' "$out" | grep -q 'First install with a record: 1 existing file from an earlier version replaced' && cmp -s "$pkg/hooks/commit-message-gate.sh" "$gate"; then
+    sim_pass "the first recorded install replaces an earlier version's file and prints how many it replaced"
+  else
+    sim_fail "the first recorded install replaces an earlier version's file and prints how many it replaced" "${out:0:300}"
+  fi
   if "$JQ" -e '.files["hooks/commit-message-gate.sh"] and .version and (.registrations | length > 0)' "$claude/achilles-install.json" >/dev/null 2>&1; then
     sim_pass "install record lists the installed files (with hashes), the version and the registrations"
   else
