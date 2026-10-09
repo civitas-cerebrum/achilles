@@ -99,7 +99,7 @@ NAMED=""    # protected entries and directories the line names, one per line
 HITS=""     # protected entries or directories a write reaches
 UNSAFE=""   # why a command on the line cannot be proved safe
 OVERFLOW="" # 1 when the line could not be split whole
-GBASE=""; GPOS=(); GHARD=0 # the git command being judged: its -C directory, operands, reset --hard
+GBASE=""; GPOS=(); GHARD=0; GFORCE=0; GCACHED=0; GSTAGED=0; GWT=0; GDRY=0; GPFF=0; GSAFE=0 # the git command being judged
 TGT_BASE="" # the env -C directory the command being judged runs in
 POISON=0    # a PATH/alias/function/assignment-only command earlier on the line can redefine later ones
 
@@ -148,24 +148,96 @@ chdir_named() {
   NAMED="$NAMED$e"$'\n'
 }
 
-# git_write_targets <subcommand> — the paths a working-tree-changing git command rewrites: its operands
-# under the git -C / --work-tree directory (GBASE), and the directory itself when it takes the whole
-# tree (clean, reset --hard, stash) without a pathspec.
+# judge_git — the options and operands of one git command: -c keys, exec options, the -C / --work-tree
+# directory (GBASE), and what a working-tree-changing subcommand rewrites.
+judge_git() {
+  local gi=1 a sub="" pos=0 dd=0 gval gkey e gvalue=0
+  GBASE="$CMD_CHDIR"; GPOS=(); GHARD=0; GFORCE=0; GCACHED=0; GSTAGED=0; GWT=0; GDRY=0; GPFF=0; GSAFE=0
+  while [ "$gi" -lt "${#CMD_ARGS[@]}" ]; do
+    a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
+    shell_git_exec_option "$a" && UNSAFE="${UNSAFE}git $a"$'\n'
+    if [ -n "$sub" ] && [ "$dd" = 1 ]; then GPOS+=("$a"); continue; fi
+    if [ -z "$sub" ]; then
+      case "$a" in
+        -c|-c?*)
+          if [ "$a" = -c ]; then gval="${CMD_ARGS[gi]:-}"; gi=$((gi + 1)); else gval="${a#-c}"; fi
+          gkey=$(printf '%s' "${gval%%=*}" | tr '[:upper:]' '[:lower:]')
+          case "$gkey" in
+            user.name|user.email|core.quotepath|init.defaultbranch) ;;
+            color.*|advice.*|i18n.*) ;;
+            *) # A non-inert key (alias.X=!body, core.pager=…) runs through git's own sh -c,
+               # which strips a second level of quotes; reveal a protected name hidden that way.
+               gval="${gval//\"/}"; gval="${gval//\'/}"
+               e=$(protected_bash_mention "$gval") && NAMED="$NAMED$e"$'\n'
+               UNSAFE="${UNSAFE}git -c"$'\n' ;;
+          esac ;;
+        -C|--work-tree) shell_dir_join "$GBASE" "${CMD_ARGS[gi]:-}"; GBASE="$SW_JOIN"; gi=$((gi + 1)) ;;
+        -C?*) shell_dir_join "$GBASE" "${a#-C}"; GBASE="$SW_JOIN" ;;
+        --work-tree=*) shell_dir_join "$GBASE" "${a#*=}"; GBASE="$SW_JOIN" ;;
+        --git-dir|--namespace|--super-prefix) gi=$((gi + 1)) ;;
+        --git-dir=*|--namespace=*|--super-prefix=*) ;;
+        --*|-*) ;;
+        *) sub="$a" ;;
+      esac
+    elif [ "$gvalue" = 1 ]; then
+      gvalue=0
+    else
+      case "$a" in
+        --) dd=1 ;;
+        --hard|--merge|--keep) GHARD=1 ;;
+        --force|--discard-changes|--reset) GFORCE=1 ;;
+        --cached) GCACHED=1 ;;
+        --staged) GSTAGED=1 ;;
+        --worktree) GWT=1 ;;
+        --dry-run) GDRY=1 ;;
+        --pathspec-from-file|--pathspec-from-file=*) GPFF=1 ;;
+        --exclude) gvalue=1 ;;
+        --*) ;;
+        -*) case "$a" in *f*|*u*) GFORCE=1 ;; esac
+            case "$a" in *n*) GDRY=1 ;; esac
+            case "$a" in *S*) GSTAGED=1 ;; esac
+            case "$a" in *W*) GWT=1 ;; esac
+            [ "$sub" != clean ] || case "$a" in *e) gvalue=1 ;; esac ;;
+        *) pos=$((pos + 1)); GPOS+=("$a") ;;
+      esac
+    fi
+  done
+  git_write_targets "$sub"
+  [ "$GBASE" = "$CMD_CHDIR" ] || [ "$GSAFE" = 1 ] || chdir_named "$GBASE"
+  case "$sub" in
+    commit|add|status|log|show|diff|blame|rev-parse|ls-files|grep|fetch) ;;
+    branch|tag) case " ${CMD_ARGS[*]} " in *" -l "*|*" --list "*) ;; *) [ "$pos" = 0 ] || UNSAFE="${UNSAFE}git $sub creating"$'\n' ;; esac ;;
+    *) [ "$GSAFE" = 1 ] || UNSAFE="${UNSAFE}git $sub"$'\n' ;;
+  esac
+}
+
+# git_write_targets <subcommand> — the paths a working-tree-changing subcommand rewrites, under GBASE:
+# its pathspecs, and the directory itself when it takes the whole tree (clean, reset --hard, stash, a
+# forced checkout) without one. Sets GSAFE for the forms that touch only the index or a stash entry.
 git_write_targets() {
-  local t
+  local t pathspecs=1
   TGT_BASE="$GBASE"
   case "$1" in
-    clean) [ "${#GPOS[@]}" -gt 0 ] || target . ;;
+    clean) if [ "$GDRY" = 1 ]; then GSAFE=1; elif [ "${#GPOS[@]}" -eq 0 ]; then target .; fi ;;
     reset) [ "$GHARD" = 0 ] || target . ;;
-    stash) case "${GPOS[0]:-}" in list|show) TGT_BASE="$CMD_CHDIR"; return 0 ;; *) target . ;; esac ;;
-    rm|checkout|restore|mv) ;;
+    stash) pathspecs=0
+           case "${GPOS[0]:-}" in list|show|drop|clear|create|store) GSAFE=1 ;; *) target . ;; esac ;;
+    rm) [ "$GCACHED" = 0 ] || GSAFE=1 ;;
+    restore) [ "$GSTAGED" = 0 ] || [ "$GWT" = 1 ] || GSAFE=1 ;;
+    checkout|checkout-index) [ "$GFORCE" = 0 ] || target . ;;
+    switch|read-tree) pathspecs=0; [ "$GFORCE" = 0 ] || target . ;;
+    mv) ;;
     *) TGT_BASE="$CMD_CHDIR"; return 0 ;;
   esac
-  for t in ${GPOS[@]+"${GPOS[@]}"}; do target "$t"; done
+  if [ "$GSAFE" = 0 ]; then
+    [ "$GPFF" = 0 ] || NAMED="${NAMED}git --pathspec-from-file: the paths are not on the line"$'\n'
+    [ "$pathspecs" = 0 ] || for t in ${GPOS[@]+"${GPOS[@]}"}; do target "$t"; done
+  fi
   TGT_BASE="$CMD_CHDIR"
 }
 
-# find_start_targets — find with an action deletes or runs a command under its start paths (. when none).
+# find_start_targets — find with -delete, or with an -exec-style action whose command is not a reader,
+# removes or rewrites files under its start paths (. when none).
 find_start_targets() {
   local k=1 n=0 a
   while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
@@ -395,7 +467,7 @@ copy_targets() {
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" a t e gi gkey gval sub="" pos=0 gdd
+  local cmd="${CMD_ARGS[0]:-}" a t e gi gdd
   TGT_BASE=""
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
   TGT_BASE="$CMD_CHDIR"
@@ -431,49 +503,7 @@ judge_command() {
   esac
   case "$READERS" in *" $cmd "*) return 0 ;; esac
   case "$cmd" in
-    git)
-      gi=1; GBASE="$CMD_CHDIR"; GPOS=(); GHARD=0; gdd=0
-      while [ "$gi" -lt "${#CMD_ARGS[@]}" ]; do
-        a="${CMD_ARGS[gi]}"; gi=$((gi + 1))
-        if shell_git_exec_option "$a"; then UNSAFE="${UNSAFE}git $a"$'\n'; return 0; fi
-        if [ -n "$sub" ] && [ "$gdd" = 1 ]; then GPOS+=("$a"); continue; fi
-        if [ -z "$sub" ]; then
-          case "$a" in
-            -c|-c?*)
-                if [ "$a" = -c ]; then gval="${CMD_ARGS[gi]:-}"; gi=$((gi + 1)); else gval="${a#-c}"; fi
-                gkey=$(printf '%s' "${gval%%=*}" | tr '[:upper:]' '[:lower:]')
-                case "$gkey" in
-                  user.name|user.email|core.quotepath|init.defaultbranch) ;;
-                  color.*|advice.*|i18n.*) ;;
-                  *) # A non-inert key (alias.X=!body, core.pager=…) runs through git's own sh -c,
-                     # which strips a second level of quotes; reveal a protected name hidden that way.
-                     gval="${gval//\"/}"; gval="${gval//\'/}"
-                     e=$(protected_bash_mention "$gval") && NAMED="$NAMED$e"$'\n'
-                     UNSAFE="${UNSAFE}git -c"$'\n'; return 0 ;;
-                esac ;;
-            -C|--work-tree) shell_dir_join "$GBASE" "${CMD_ARGS[gi]:-}"; GBASE="$SW_JOIN"; gi=$((gi + 1)) ;;
-            -C?*) shell_dir_join "$GBASE" "${a#-C}"; GBASE="$SW_JOIN" ;;
-            --work-tree=*) shell_dir_join "$GBASE" "${a#*=}"; GBASE="$SW_JOIN" ;;
-            --git-dir|--namespace|--super-prefix) gi=$((gi + 1)) ;;
-            --git-dir=*|--namespace=*|--super-prefix=*) ;;
-            --*|-*) ;;
-            *) sub="$a" ;;
-          esac
-        else
-          case "$a" in
-            --) gdd=1 ;;
-            --hard|--merge) GHARD=1 ;;
-            -*) ;;
-            *) pos=$((pos + 1)); GPOS+=("$a") ;;
-          esac
-        fi
-      done
-      git_write_targets "$sub"
-      case "$sub" in
-        commit|add|status|log|show|diff|blame|rev-parse|ls-files|grep|fetch) ;;
-        branch|tag) case " ${CMD_ARGS[*]} " in *" -l "*|*" --list "*) ;; *) [ "$pos" = 0 ] || UNSAFE="${UNSAFE}git $sub creating"$'\n' ;; esac ;;
-        *) UNSAFE="${UNSAFE}git $sub"$'\n' ;;
-      esac ;;
+    git) judge_git ;;
     sed)
       sed_parse || return 0
       for a in ${SED_SCRIPTS[@]+"${SED_SCRIPTS[@]}"}; do
@@ -486,9 +516,14 @@ judge_command() {
       for t in ${OPERANDS[@]+"${OPERANDS[@]}"}; do target "$t"; done ;;
     find)
       gdd=0
-      for a in "${CMD_ARGS[@]}"; do
+      for ((gi = 1; gi < ${#CMD_ARGS[@]}; gi++)); do
+        a="${CMD_ARGS[gi]}"
         case "$a" in
-          -delete|-exec|-execdir|-ok|-okdir) gdd=1; UNSAFE="${UNSAFE}find $a"$'\n' ;;
+          -delete) gdd=1; UNSAFE="${UNSAFE}find $a"$'\n' ;;
+          -exec|-execdir|-ok|-okdir)
+            UNSAFE="${UNSAFE}find $a"$'\n'
+            e="${CMD_ARGS[gi+1]:-}"; e="${e##*/}"
+            case "$READERS" in *" $e "*) ;; *) gdd=1 ;; esac ;;
           -fprint|-fprint0|-fprintf|-fls) UNSAFE="${UNSAFE}find $a"$'\n' ;;
         esac
       done

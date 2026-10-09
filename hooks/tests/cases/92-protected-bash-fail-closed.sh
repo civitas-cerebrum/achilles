@@ -501,3 +501,62 @@ env -S 'ls'
 env -u X cat y
 timeout -s KILL 5 ls
 NARROW
+
+section "protected-bash fail-closed: git options, forced checkouts, workspace fan-out, find -exec"
+while IFS= read -r c; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "protected"
+done <<'ROUND2'
+git -c core.abbrev=7 -C tests rm -r e2e
+git -c x.y=z -C tests rm -r e2e
+git -c x.y=z rm -r tests/e2e
+git --exec-path=/x -C tests rm -r e2e
+git -C $X rm -r e2e
+git --work-tree=$X rm -r e2e
+git clean -fdx -e foo
+git clean -ffdx -e '!x'
+git clean -fdxe foo
+git clean -fdx --exclude foo
+git reset --keep HEAD~1
+git checkout -f main
+git checkout --force main
+git switch -f main
+git switch --discard-changes main
+git checkout -fb x main
+pnpm --filter x -C tests exec rm -r e2e
+pnpm --filter x exec rm -r e2e
+pnpm -r exec rm -r e2e
+pnpm -w exec rm -r e2e
+pnpm --recursive exec rm -r e2e
+yarn workspace x exec rm -r e2e
+yarn workspaces foreach exec rm -r e2e
+npm x --prefix tests rm -r e2e
+npm -w x exec -- rm -r e2e
+bun x --cwd tests rm -r e2e
+bun exec --cwd tests rm -r e2e
+git -C tests rm -r --pathspec-from-file=- <<< e2e
+git rm -r --pathspec-from-file=/tmp/list
+git read-tree -u --reset HEAD
+git read-tree -u -m HEAD
+git checkout-index -f -a
+find . -exec rm {} \;
+find . -exec sh -c 'rm x' \;
+ROUND2
+while IFS= read -r c; do
+  assert_allow "$HOOK" "$(chdir_payload "$c")" "$c"
+done <<'READONLY'
+git stash drop
+git stash list
+git stash show
+git rm --cached x.txt
+git -C tests rm --cached -r e2e
+git restore --staged tests/e2e
+git restore --staged .
+git clean -n
+git clean -nd
+git clean -fdx src
+git -C src clean -fdx
+find . -exec grep foo {} \;
+find . -exec grep -l foo {} +
+find . -name '*.ts' -exec cat {} \;
+find . -execdir ls {} \;
+READONLY

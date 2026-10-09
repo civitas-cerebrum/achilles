@@ -18,7 +18,7 @@
 #   CMD_ARGS    command word (basename; assignments, the shell keywords if/then/else/while/do/!…,
 #               the reserved words { and } of a brace group or function body, `function NAME`,
 #               `coproc [NAME]` and the wrappers env, command, builtin, exec, nohup, time, nice,
-#               sudo, doas, stdbuf, timeout, xargs, npx, bunx and npm|pnpm|yarn exec peeled, with
+#               sudo, doas, stdbuf, timeout, xargs, npx, bunx and npm|pnpm|yarn|bun exec peeled, with
 #               the values of their options; an npx package spec keeps its @scope and drops its @version)
 #               then its arguments
 #   CMD_PATH    the command word's directory when it is not a system bin dir, else empty: a
@@ -356,23 +356,33 @@ shell_dir_join() {
 # shell__chdir_add <dir> — fold one env -C value into CMD_CHDIR: a later relative one is under the earlier.
 shell__chdir_add() { shell_dir_join "$CMD_CHDIR" "$1"; CMD_CHDIR="$SW_JOIN"; }
 
-# shell__pm_exec <index> — for npm|pnpm|yarn whose program word precedes SW[<index>]: 0 when `exec` follows,
-# past only flags and directory options (-C, --dir, --cwd, --prefix), which fold into CMD_CHDIR.
-# SW_PM_END is then the index after `exec`.
+# shell__pm_exec <index> <program> — for npm|pnpm|yarn|bun whose program word precedes SW[<index>]: 0 when
+# `exec` (npm and bun also `x`) follows, past only flags, value options and directory options (-C, --dir,
+# --cwd, --prefix), which fold into CMD_CHDIR. Workspace selection (-r, -w, --filter, yarn workspace[s])
+# runs the command in directories only the workspace config names: CMD_CHDIR becomes the unresolvable
+# ${workspace}. SW_PM_END is the index after `exec`.
 shell__pm_exec() {
-  local j="$1" w acc="$CMD_CHDIR"
+  local j="$1" prog="$2" w acc="$CMD_CHDIR"
   while [ "$j" -lt "${#SW[@]}" ]; do
     w="${SW[j]}"
     case "$w" in
       "$SW_SEP"|"$SW_OP"*) return 1 ;;
       exec) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;;
+      x) case "$prog" in npm|bun) CMD_CHDIR="$acc"; SW_PM_END=$((j + 1)); return 0 ;; *) return 1 ;; esac ;;
       -C|--dir|--cwd|--prefix)
         j=$((j + 1)); [ "$j" -lt "${#SW[@]}" ] || return 1
         case "${SW[j]}" in "$SW_SEP"|"$SW_OP"*) return 1 ;; esac
         shell_dir_join "$acc" "${SW[j]}"; acc="$SW_JOIN" ;;
       --dir=*|--cwd=*|--prefix=*) shell_dir_join "$acc" "${w#*=}"; acc="$SW_JOIN" ;;
       -C?*) shell_dir_join "$acc" "${w#-C}"; acc="$SW_JOIN" ;;
+      --filter|--filter-prod|-F|--workspace) acc='${workspace}'; j=$((j + 1)) ;;
+      -w) acc='${workspace}'; [ "$prog" != npm ] || j=$((j + 1)) ;;
+      --filter=*|--filter-prod=*|--workspace=*|-F?*) acc='${workspace}' ;;
+      -r|--recursive|--workspace-root|--workspaces) acc='${workspace}' ;;
+      --loglevel|--reporter|--registry|--config|--cache|--userconfig|--otp|--workspace-concurrency|--network-concurrency) j=$((j + 1)) ;;
       -*) ;;
+      workspace) [ "$prog" = yarn ] || return 1; acc='${workspace}'; j=$((j + 1)) ;;
+      workspaces|foreach) [ "$prog" = yarn ] || return 1; acc='${workspace}' ;;
       *) return 1 ;;
     esac
     j=$((j + 1))
@@ -423,7 +433,7 @@ shell_each_command() {
             builtin|exec|nohup|time|nice|sudo|doas|stdbuf|timeout) wrapped="${word##*/}"; continue ;;
             npx|bunx) wrapped=npx; continue ;;
             xargs) wrapped=xargs; CMD_XARGS=1; continue ;;
-            npm|pnpm|yarn) if shell__pm_exec "$k"; then k=$SW_PM_END; wrapped=npx; continue; fi ;;
+            npm|pnpm|yarn|bun) if shell__pm_exec "$k" "${word##*/}"; then k=$SW_PM_END; wrapped=npx; continue; fi ;;
           esac
         fi
         if [ -n "$wrapped" ]; then
