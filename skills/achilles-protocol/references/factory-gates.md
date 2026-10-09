@@ -166,7 +166,8 @@ A Bash line is **armed** when some command on it mentions `stateDir`, case folde
 literal dot, so `*` and `dist/*` do not). The basenames of `process.evidence`'s `stamp` and `currentChange`
 (`verify-stamp`, `current-change` by default) count as naming it too, literal or as a glob component holding a letter
 or digit (`find . -name 'current-*' -delete`, `git clean -fdx -e '*stamp*'`; `docs/verify-stamp.md` and `dist/*` do
-not), so any other file named `verify-stamp` gets the same rules. Each word is also read with every expansion
+not), so any other file named `verify-stamp` gets the same rules. A `find` that matches by `-regex` / `-iregex` and writes
+(`-delete`, `-fprint*`, `-fls`, or an `-exec`-style action whose program is not a reader) counts as naming it. Each word is also read with every expansion
 (`$X`, `${…}`, `$(…)`, a backtick, `$1`, `$@`) removed and with each replaced by `/`, since an unset variable is empty
 (`rm $X.factory/verify-stamp`). The gate reads every word, its `=` value, a glued option value (`-o.factory/x`),
 redirect targets, and the directory `env -C`/`--chdir`, `sudo -D`, `npx --prefix` or a package manager's

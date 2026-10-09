@@ -45,7 +45,7 @@ STATE_NAMES=("$(basename "${STAMP:-verify-stamp}")" "$(basename "${MARKER:-curre
 NAME_RE="(^|[^[:alnum:]_.-])(${STATE_NAMES[0]//./\\.}|${STATE_NAMES[1]//./\\.})([^[:alnum:]_.-]|\$)"
 EXPANSION_RE='\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\$[A-Za-z_][A-Za-z0-9_]*|\$[0-9@*#?$!-]'
 # A hook that times out allows, so judging stops at a deadline (FACTORY_STATE_DEADLINE, tests, may only lower it).
-DEADLINE="${FACTORY_STATE_DEADLINE:-4}"; case "$DEADLINE" in ''|*[!0-9]*) DEADLINE=4;; esac; [ "$DEADLINE" -le 4 ] || DEADLINE=4
+T0=$SECONDS DEADLINE="${FACTORY_STATE_DEADLINE:-4}"; case "$DEADLINE" in ''|*[!0-9]*) DEADLINE=4;; esac; [ "$DEADLINE" -le 4 ] || DEADLINE=4
 WORD_SYNTAX=$'[\'" \t\n\\\\`;&|()<>{}]' SPLITS=0
 
 # glob_match <name> <pattern> — bash pattern matching with dotglob off: a dot name needs a literal leading dot.
@@ -114,7 +114,7 @@ dir_unjudged() {
   case "$1" in -|\~*|+*) return 0;; esac
   refs_state "$1" || ! shell_word_literal "$1"
 }
-in_time() { [ "$SECONDS" -lt "$DEADLINE" ] || deny_state "took over $DEADLINE s to verify (a hook that times out allows); split it" "$COMMAND"; }
+in_time() { [ $((SECONDS - T0)) -lt "$DEADLINE" ] || deny_state "took over $DEADLINE s to verify (a hook that times out allows); split it" "$COMMAND"; }
 deny_state() { local f="${2//$'\n'/ }"; emit_deny "$ID" "Bash command $1 (\`${f:0:80}\`) — its files are trust anchors written only by the project's own tools."; }
 
 shell_words "$COMMAND"
@@ -178,7 +178,22 @@ scan_command() {
   for ((i = 0; i < ${#CMD_ARGS[@]}; i++)); do
     is_inert "$i" || ! refs_state "${CMD_ARGS[i]}" || ARMED=1
   done
+  ! find_regex_write || ARMED=1
   return 0
+}
+# find_regex_write — 0 when CMD_ARGS is a find that matches by -regex / -iregex, which no name test can read, and
+# writes: -delete, -fprint*, -fls, or an -exec / -execdir / -ok / -okdir whose program is not a reader.
+find_regex_write() {
+  local i re=0 wr=0
+  [ "${CMD_ARGS[0]:-}" = find ] || return 1
+  for ((i = 1; i < ${#CMD_ARGS[@]}; i++)); do
+    case "${CMD_ARGS[i]}" in
+      -regex|-iregex) re=1;;
+      -delete|-fprint*|-fls) wr=1;;
+      -exec|-execdir|-ok|-okdir) case "${CMD_ARGS[i+1]:-}" in cat|head|tail|grep|ls|stat|wc|file|md5|md5sum|shasum|sha*sum|echo|printf) ;; *) wr=1;; esac;;
+    esac
+  done
+  [ "$re$wr" = 11 ]
 }
 shell_each_command scan_command
 [ "$GLOB_MODE" = 0 ] || case "${SW[*]-}" in *[*?[]*) deny_state "changes how globs match while holding one, so $STATE_DIR/ may hide in it" "$COMMAND";; esac

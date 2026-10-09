@@ -40,8 +40,8 @@
 # hour and three edits ago. A timestamp cannot tell; a content hash can.
 #
 # Known limit: the stamp is protected only by state-gate.sh (process.state). <hashCommand> is a repo script
-# anyone can run, so a hand-written stamp can carry the current tree's hash. Shell expansions are not resolved, so `$GIT commit` is not seen, and nesting deeper than one level is not
-# followed.
+# anyone can run, so a hand-written stamp can carry the current tree's hash. Shell expansions are not resolved, so
+# `$GIT commit` is not seen, and nesting deeper than one level is not followed.
 #
 # Command splitting is shared with the spend gate (hooks/lib/shell-segments.cjs), so `sh -c 'git commit'`
 # and `env git commit` are seen as commits.
