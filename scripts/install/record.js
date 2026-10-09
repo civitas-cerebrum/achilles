@@ -143,7 +143,8 @@ function hookScriptPath(command, claudeDir) {
 
 // Removes registrations an earlier install made that the manifest no longer
 // asks for; registrations the user added are not in the record and stay, and a
-// recorded command outside <claudeDir>/hooks/ is not ours to remove.
+// recorded command outside <claudeDir>/hooks/ is not ours to remove. An event
+// left with no matcher group, and a hooks object left empty, go too.
 // Returns how many were removed.
 function dropStaleRegistrations(rec, settings) {
   const current = new Set(rec.next.registrations.map(registrationKey));
@@ -157,7 +158,9 @@ function dropStaleRegistrations(rec, settings) {
       removed += before - group.hooks.length;
     }
     settings.hooks[r.event] = settings.hooks[r.event].filter((g) => !g || !Array.isArray(g.hooks) || g.hooks.length > 0);
+    if (settings.hooks[r.event].length === 0) delete settings.hooks[r.event];
   }
+  if (settings.hooks && Object.keys(settings.hooks).length === 0) delete settings.hooks;
   return removed;
 }
 
@@ -173,7 +176,9 @@ function writeRecord(rec) {
     console.log(`[civitas-cerebrum] First install with a record: ${rec.adopted} existing file${rec.adopted === 1 ? '' : 's'} from an earlier version replaced by the packaged content.`);
   }
   const { version } = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
-  const out = { package: '@civitas-cerebrum/achilles', version, ...rec.next };
+  // Keys sorted, so the installers sharing this record write the same text and a no-op run rewrites nothing.
+  const sorted = (o) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]));
+  const out = { package: '@civitas-cerebrum/achilles', version, ...rec.next, files: sorted(rec.next.files), kept: sorted(rec.next.kept) };
   if (Object.keys(out.kept).length === 0) delete out.kept;
   const text = JSON.stringify(out, null, 2) + '\n';
   const file = path.join(rec.claudeDir, RECORD_FILE);

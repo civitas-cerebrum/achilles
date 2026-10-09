@@ -26,8 +26,7 @@ function installCivitasAgents(dests = agentDestinations, srcDir = path.join(pack
           console.warn(`[@civitas-cerebrum/achilles] ${target} is not managed by achilles — left untouched; \`subagent_type: ${file.slice(0, -3)}\` resolves to your file.`);
           continue;
         }
-        copyTracked(rec, path.join(srcDir, file), target);
-        result.installed++;
+        if (copyTracked(rec, path.join(srcDir, file), target)) result.installed++;
       }
       pruneStale(rec);
       writeRecord(rec);

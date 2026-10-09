@@ -638,6 +638,24 @@ run_uninstall_simulation() {
   sim_uninstall() { HOME="$work/home" node "$repo_root/bin/achilles-uninstall.mjs" "$@" 2>&1; }
   mkdir -p "$claude/hooks/bin"; echo "fake jq" > "$claude/hooks/bin/jq"
   sim_full_install
+
+  # A second install with nothing to change writes nothing and says so.
+  local mtime_before mtime_after rerun
+  mtime_before=$(node -p "require('fs').statSync('$claude/achilles-install.json').mtimeMs")
+  rerun=$(HOME="$work/home" CIVITAS_SKIP_JQ_INSTALL=1 node -e "
+    const pi = require('$repo_root/scripts/postinstall.js');
+    pi.installCivitasHooks('$claude');
+    pi.installCivitasSkills(['$claude/skills'], '$work/skills-src');" 2>&1)
+  mtime_after=$(node -p "require('fs').statSync('$claude/achilles-install.json').mtimeMs")
+  if [ "$mtime_before" = "$mtime_after" ] && ! printf '%s' "$rerun" | grep -q 'skills\? installed' && printf '%s' "$rerun" | grep -q 'Skills unchanged'; then
+    sim_pass "a no-op re-install leaves the record untouched and reports skills unchanged"
+  else
+    sim_fail "a no-op re-install leaves the record untouched and reports skills unchanged" "mtime $mtime_before -> $mtime_after; ${rerun:0:300}"
+  fi
+
+  # Runtime state the kernel wrote, and a user-level record a local install leaves behind.
+  mkdir -p "$claude/kernel-mandate.state" "$work/home/.claude"; echo '{}' > "$claude/kernel-mandate.state/decision-log.jsonl"
+  echo '{"files":{}}' > "$work/home/.claude/achilles-install.json"
   "$JQ" '.hooks.PreToolUse += [{matcher:"Bash", hooks:[{type:"command", command:"echo mine"}]}]' "$claude/settings.json" > "$work/s.json" && mv "$work/s.json" "$claude/settings.json"
   echo "my edit" >> "$claude/hooks/commit-message-gate.sh"
 
@@ -681,6 +699,16 @@ run_uninstall_simulation() {
     sim_pass "uninstall keeps a modified recorded file and says so"
   else
     sim_fail "uninstall keeps a modified recorded file and says so" "${out:0:300}"
+  fi
+  if [ ! -e "$claude/kernel-mandate.state" ] && [ "$("$JQ" '[.hooks[] | select(length == 0)] | length' "$claude/settings.json")" = 0 ]; then
+    sim_pass "uninstall removes the kernel's runtime state and leaves no empty hook arrays"
+  else
+    sim_fail "uninstall removes the kernel's runtime state and leaves no empty hook arrays" "$(ls "$claude"; cat "$claude/settings.json")"
+  fi
+  if printf '%s' "$out" | grep -q 'remain; remove them with: achilles-uninstall --global'; then
+    sim_pass "uninstall --project says user-level copies remain and how to remove them"
+  else
+    sim_fail "uninstall --project says user-level copies remain and how to remove them" "${out:0:300}"
   fi
   if [ ! -e "$claude/kernel-mandate.json" ] && [ ! -e "$claude/kernel-mandate.md" ] && [ ! -e "$claude/kernel-mandate.achilles.json" ]; then
     sim_pass "uninstall removes an unmodified staged mandate with its stamp"

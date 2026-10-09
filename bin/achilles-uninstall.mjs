@@ -2,10 +2,11 @@
 // achilles-uninstall [--global] [--project <dir>] [--dry-run]
 // Reverses what postinstall recorded in <claude dir>/achilles-install.json: its
 // settings.json registrations, then its files (only those still byte-identical to
-// what was written), the staged mandate (only when unedited), and last the record.
+// what was written), the staged mandate (only when unedited), the hooks' runtime
+// state, and last the record.
 // npm >= 7 runs no uninstall lifecycle script, so this is a command.
 import { createRequire } from 'node:module';
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const require = createRequire(import.meta.url);
@@ -77,5 +78,17 @@ if (!flag('--global') && existsSync(stampPath)) {
   if (!dryRun) unlinkSync(stampPath);
 }
 
+// Runtime state the hooks wrote: the kernel's decision log in a project, session markers user-level.
+const state = join(claudeDir, flag('--global') ? 'achilles' : 'kernel-mandate.state');
+if (existsSync(state)) {
+  say('remove', state);
+  if (!dryRun) rmSync(state, { recursive: true, force: true });
+}
+
 say('remove', join(claudeDir, RECORD_FILE));
 if (!dryRun) unlinkSync(join(claudeDir, RECORD_FILE));
+
+// A local install also wrote skills and agents user-level; --project leaves them.
+if (!flag('--global') && existsSync(join(userClaudeDir, RECORD_FILE))) {
+  console.log(`User-level skills and agents in ${userClaudeDir} remain; remove them with: achilles-uninstall --global`);
+}
