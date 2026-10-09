@@ -64,10 +64,14 @@ if (require.main === module) {
       console.warn(`[civitas-cerebrum] Could not install harness hooks: ${err.message}`);
     }
 
-    try {
-      stageProjectMandate();
-    } catch (err) {
-      console.warn(`[civitas-cerebrum] Could not stage the QA role manifest: ${err.message}`);
+    if (context.globalInstall) {
+      console.log('[civitas-cerebrum] Global install: no project to stage the QA mandate into.');
+    } else {
+      try {
+        stageProjectMandate();
+      } catch (err) {
+        console.warn(`[civitas-cerebrum] Could not stage the QA role manifest: ${err.message}`);
+      }
     }
 
     try {

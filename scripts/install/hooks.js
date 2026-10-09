@@ -1,6 +1,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { packageDir, userClaudeDir } = require('./context.js');
+const { openRecord, copyTracked, pruneStale, writeRecord } = require('./record.js');
 
 // Install the achilles harness hooks into <claudeDir>/hooks/ and register
 // them in <claudeDir>/settings.json — ~/.claude for a global (-g) install,
@@ -33,7 +34,11 @@ const { packageDir, userClaudeDir } = require('./context.js');
 // What each hook enforces: skills/achilles-protocol/references/harness-hooks.md.
 //
 // Idempotent:
-//   - Each hook file is copied iff missing or older than the bundled version.
+//   - Each hook file is copied iff its content differs from the bundled version
+//     (mtimes are meaningless in an npm tarball). What was written is recorded
+//     in <claudeDir>/achilles-install.json (see record.js): files a later
+//     package no longer ships are pruned, and a file the user edited since is
+//     never overwritten or pruned.
 //   - Each settings.json entry is added iff a matching {event, matcher, command}
 //     triple is not already registered. Pre-existing user hooks are preserved.
 //
@@ -41,41 +46,29 @@ const { packageDir, userClaudeDir } = require('./context.js');
 // settings where postinstall scripts must not modify ~/.claude/settings.json.
 const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'hooks', 'data', 'hook-manifest.json'), 'utf8'));
 
-function copyIfNewer(src, dest) {
-  let shouldCopy = !fs.existsSync(dest);
-  if (!shouldCopy) {
-    try {
-      shouldCopy = fs.statSync(src).mtimeMs > fs.statSync(dest).mtimeMs;
-    } catch (_) {
-      shouldCopy = true;
-    }
-  }
-  if (shouldCopy) fs.copyFileSync(src, dest);
-  return shouldCopy;
-}
-
-function copyHookFile(hookSrc, hookDest) {
-  const copied = copyIfNewer(hookSrc, hookDest);
+function copyHookFile(rec, hookSrc, hookDest) {
+  const copied = copyTracked(rec, hookSrc, hookDest);
   if (copied) fs.chmodSync(hookDest, 0o755);
   return copied;
 }
 
 // Top-level files of one hooks/ subdirectory (lib/ helpers the hooks shell out
 // to, data/ vocabularies they read); subdirectories are not copied.
-function copyHookSubdir(name, userHooksDir) {
+function copyHookSubdir(rec, name, userHooksDir) {
   const srcDir  = path.join(packageDir, 'hooks', name);
   const destDir = path.join(userHooksDir, name);
   if (!fs.existsSync(srcDir)) return 0;
   fs.mkdirSync(destDir, { recursive: true });
   let copied = 0;
   for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    if (entry.isFile() && copyIfNewer(path.join(srcDir, entry.name), path.join(destDir, entry.name))) copied++;
+    if (entry.isFile() && copyTracked(rec, path.join(srcDir, entry.name), path.join(destDir, entry.name))) copied++;
   }
   return copied;
 }
 
-function registerHookInSettings(settings, entry, hookDest) {
+function registerHookInSettings(rec, settings, entry, hookDest) {
   const { event, matcher, timeout, async: isAsync } = entry;
+  rec.next.registrations.push({ event, matcher: matcher || null, command: hookDest });
 
   settings.hooks = settings.hooks || {};
   settings.hooks[event] = settings.hooks[event] || [];
@@ -163,6 +156,7 @@ function installCivitasHooks(claudeDir) {
     }
   }
 
+  const rec = openRecord(baseDir);
   let copiedCount = 0;
   let registeredCount = 0;
 
@@ -171,8 +165,8 @@ function installCivitasHooks(claudeDir) {
     // Bundled hook missing — skip; don't fail the consumer's npm install.
     if (!fs.existsSync(hookSrc)) continue;
     const hookDest = path.join(userHooksDir, entry.file);
-    if (copyHookFile(hookSrc, hookDest)) copiedCount++;
-    if (registerHookInSettings(settings, entry, hookDest)) registeredCount++;
+    if (copyHookFile(rec, hookSrc, hookDest)) copiedCount++;
+    if (registerHookInSettings(rec, settings, entry, hookDest)) registeredCount++;
   }
 
   const factoryDestDir = path.join(userHooksDir, 'factory');
@@ -181,21 +175,23 @@ function installCivitasHooks(claudeDir) {
     const hookSrc = path.join(packageDir, 'hooks', 'factory', entry.file);
     if (!fs.existsSync(hookSrc)) continue;
     const hookDest = path.join(factoryDestDir, entry.file);
-    if (copyHookFile(hookSrc, hookDest)) copiedCount++;
-    if (registerHookInSettings(settings, entry, hookDest)) registeredCount++;
+    if (copyHookFile(rec, hookSrc, hookDest)) copiedCount++;
+    if (registerHookInSettings(rec, settings, entry, hookDest)) registeredCount++;
   }
 
   for (const file of manifest.companions) {
     const src = path.join(packageDir, 'hooks', file);
     if (!fs.existsSync(src)) continue;
-    if (copyHookFile(src, path.join(userHooksDir, file))) copiedCount++;
+    if (copyHookFile(rec, src, path.join(userHooksDir, file))) copiedCount++;
   }
 
   // Without data/, installed hooks fall back to their hardcoded vocabularies
   // and silently drift from the repo's canonical data.
-  copiedCount += copyHookSubdir('lib', userHooksDir);
-  copiedCount += copyHookSubdir('data', userHooksDir);
+  copiedCount += copyHookSubdir(rec, 'lib', userHooksDir);
+  copiedCount += copyHookSubdir(rec, 'data', userHooksDir);
 
+  // Before the dangling-registration prune, so a dropped file's registration goes with it.
+  pruneStale(rec);
   const pruned = pruneDanglingRegistrations(settings, userHooksDir);
   if (registeredCount > 0 || pruned) {
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
@@ -203,6 +199,7 @@ function installCivitasHooks(claudeDir) {
   }
 
   pruneRetiredHooks(userHooksDir);
+  writeRecord(rec);
 
   console.log(`[civitas-cerebrum] Harness hooks (${baseDir === userClaudeDir ? 'system-wide' : 'this project only'}): ${copiedCount} script${copiedCount === 1 ? '' : 's'} copied to ${userHooksDir}, ${registeredCount} registration${registeredCount === 1 ? '' : 's'} added to ${settingsPath} (others already present). Restart Claude Code to pick them up.`);
 }

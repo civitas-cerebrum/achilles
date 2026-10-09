@@ -349,7 +349,97 @@ FACRULES
   fi
 }
 
+# Upgrade path, driven through the real installer against a throwaway copy of
+# the package whose files carry the 1985 mtimes an npm tarball has.
+run_upgrade_simulation() {
+  local repo_root="$INSTALL_SIM_REPO_ROOT" work pkg claude
+  work=$(mktemp -d /tmp/achilles-upgrade-sim-XXXXXX)
+  _SIM_UPGRADE_WORK="$work"
+  pkg="$work/pkg"; claude="$work/project/.claude"
+  mkdir -p "$pkg/hooks" "$work/project"
+  cp -R "$repo_root/scripts" "$repo_root/package.json" "$pkg/"
+  cp -R "$repo_root"/hooks/* "$pkg/hooks/"
+  rm -rf "$pkg/hooks/tests"
+  echo "# retired" > "$pkg/hooks/lib/retired-helper.sh"
+  find "$pkg" -exec touch -t 198501010000 {} +
+  sim_install() {
+    HOME="$work/home" CIVITAS_SKIP_JQ_INSTALL=1 node -e "require('$1/scripts/postinstall.js').installCivitasHooks('$claude')" 2>&1
+  }
+  local out gate="$claude/hooks/commit-message-gate.sh"
+
+  sim_install "$pkg" >/dev/null
+  if "$JQ" -e '.files["hooks/commit-message-gate.sh"] and .version and (.registrations | length > 0)' "$claude/achilles-install.json" >/dev/null 2>&1; then
+    sim_pass "install record lists the installed files (with hashes), the version and the registrations"
+  else
+    sim_fail "install record lists the installed files (with hashes), the version and the registrations" "no usable record at $claude/achilles-install.json"
+  fi
+
+  local settings_before record_before
+  settings_before=$(cat "$claude/settings.json"); record_before=$(cat "$claude/achilles-install.json")
+  out=$(sim_install "$pkg")
+  if [ "$settings_before" = "$(cat "$claude/settings.json")" ] && [ "$record_before" = "$(cat "$claude/achilles-install.json")" ] \
+     && printf '%s' "$out" | grep -q ': 0 scripts copied'; then
+    sim_pass "second install copies nothing and leaves settings.json and the record byte-identical"
+  else
+    sim_fail "second install copies nothing and leaves settings.json and the record byte-identical" "${out:0:200}"
+  fi
+
+  echo "# upgraded" >> "$pkg/hooks/commit-message-gate.sh"; touch -t 198501010000 "$pkg/hooks/commit-message-gate.sh"
+  sim_install "$pkg" >/dev/null
+  if cmp -s "$pkg/hooks/commit-message-gate.sh" "$gate"; then
+    sim_pass "upgrade from a 1985-mtime tarball refreshes a changed hook"
+  else
+    sim_fail "upgrade from a 1985-mtime tarball refreshes a changed hook" "installed hook still differs from the packaged one"
+  fi
+
+  # A previous package shipped retired-helper.sh and a registered retired-gate.sh;
+  # the current one ships neither.
+  local retired_gate="$claude/hooks/retired-gate.sh"
+  printf '#!/bin/bash\n' > "$retired_gate"
+  "$JQ" --arg c "$retired_gate" '.hooks.PreToolUse += [{matcher:"Bash", hooks:[{type:"command", command:$c}]}]' \
+    "$claude/settings.json" > "$work/s.json" && mv "$work/s.json" "$claude/settings.json"
+  "$JQ" --arg h "$(shasum -a 256 "$retired_gate" | cut -d' ' -f1)" '.files["hooks/retired-gate.sh"] = $h' \
+    "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
+  rm "$pkg/hooks/lib/retired-helper.sh"
+  sim_install "$pkg" >/dev/null
+  if [ ! -e "$claude/hooks/lib/retired-helper.sh" ] && [ ! -e "$retired_gate" ] \
+     && ! grep -q retired-gate "$claude/settings.json" && ! grep -q retired "$claude/achilles-install.json"; then
+    sim_pass "files the new package dropped are pruned, with their registration and record entry"
+  else
+    sim_fail "files the new package dropped are pruned, with their registration and record entry" "a dropped file, registration or record entry survived"
+  fi
+
+  # A user edit survives both an upgrade and a prune.
+  echo "# mine" >> "$gate"
+  echo "# upgraded again" >> "$pkg/hooks/commit-message-gate.sh"
+  echo "# mine too" >> "$claude/hooks/lib/hook-io.sh"; rm "$pkg/hooks/lib/hook-io.sh"
+  out=$(sim_install "$pkg")
+  if grep -q '^# mine$' "$gate" && ! grep -q 'upgraded again' "$gate" && grep -q 'mine too' "$claude/hooks/lib/hook-io.sh" \
+     && printf '%s' "$out" | grep -q 'commit-message-gate.sh was modified' \
+     && printf '%s' "$out" | grep -q 'hook-io.sh is no longer shipped but was modified'; then
+    sim_pass "a user-modified file is neither overwritten nor pruned, and the skip is warned"
+  else
+    sim_fail "a user-modified file is neither overwritten nor pruned, and the skip is warned" "${out:0:300}"
+  fi
+
+  # Global install: the project root resolves to npm's lib/, which must stay clean.
+  local lib="$work/lib" gpkg
+  gpkg="$lib/node_modules/@civitas-cerebrum/achilles"
+  mkdir -p "$gpkg/hooks" "$work/ghome"
+  cp -R "$pkg/scripts" "$pkg/package.json" "$gpkg/"
+  cp -R "$pkg"/hooks/* "$gpkg/hooks/"
+  HOME="$work/ghome" npm_config_global=true CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    node "$gpkg/scripts/postinstall.js" >/dev/null 2>&1
+  if [ -f "$work/ghome/.claude/achilles-install.json" ] && [ -z "$(find "$lib" -name .claude 2>/dev/null)" ]; then
+    sim_pass "global install records into ~/.claude and writes no .claude under npm's lib/"
+  else
+    sim_fail "global install records into ~/.claude and writes no .claude under npm's lib/" "$(find "$lib" -name .claude 2>&1 | head -3)"
+  fi
+  rm -rf "$work"
+}
+
 run_install_simulation
+run_upgrade_simulation
 
 # Standalone summary (run.sh prints its own).
 if [ "$INSTALL_SIM_STANDALONE" = "1" ]; then
