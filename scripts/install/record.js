@@ -77,11 +77,15 @@ function copyTracked(rec, src, dest) {
 
 // The absolute path of a recorded file when it is safe to act on, else null.
 // The key must be the canonical form copyTracked writes (`hooks/./x` would dodge
-// the still-shipped check), name a regular file, and sit under claudeDir by real
-// path: a symlinked directory in the tree must not redirect a delete outside it.
+// the still-shipped check), sit in a section Achilles installs into (a crafted
+// record must not reach settings.json or CLAUDE.md), name a regular file, and
+// sit under claudeDir by real path: a symlinked directory in the tree must not
+// redirect a delete outside it.
+const SECTIONS = ['hooks', 'skills', 'agents'];
+
 function ownedFile(claudeDir, rel) {
   const file = path.resolve(claudeDir, rel);
-  if (path.relative(claudeDir, file) !== rel || rel.startsWith('..')) return null;
+  if (path.relative(claudeDir, file) !== rel || !rel.includes('/') || !SECTIONS.includes(rel.split('/')[0])) return null;
   try {
     if (!fs.lstatSync(file).isFile()) return null;
     const realDir = fs.realpathSync(path.dirname(file));
@@ -124,22 +128,31 @@ function pruneStale(rec) {
 }
 
 // Removes registrations an earlier install made that the manifest no longer
-// asks for; registrations the user added are not in the record and stay.
-// Returns whether settings changed.
+// asks for; registrations the user added are not in the record and stay, and a
+// recorded command outside <claudeDir>/hooks/ is not ours to remove.
+// Returns how many were removed.
 function dropStaleRegistrations(rec, settings) {
   const current = new Set(rec.next.registrations.map(registrationKey));
-  let changed = false;
+  const hooksDir = path.join(rec.claudeDir, 'hooks') + path.sep;
+  let removed = 0;
   for (const r of rec.prevRegistrations) {
-    if (current.has(registrationKey(r)) || !settings.hooks || !Array.isArray(settings.hooks[r.event])) continue;
+    if (current.has(registrationKey(r)) || !r.command.startsWith(hooksDir) || !settings.hooks || !Array.isArray(settings.hooks[r.event])) continue;
     for (const group of settings.hooks[r.event]) {
       if (!group || !Array.isArray(group.hooks) || (group.matcher || null) !== (r.matcher || null)) continue;
       const before = group.hooks.length;
       group.hooks = group.hooks.filter((h) => !(h && h.type === 'command' && h.command === r.command));
-      if (group.hooks.length !== before) changed = true;
+      removed += before - group.hooks.length;
     }
     settings.hooks[r.event] = settings.hooks[r.event].filter((g) => !g || !Array.isArray(g.hooks) || g.hooks.length > 0);
   }
-  return changed;
+  return removed;
+}
+
+// Records a file written outside copyTracked (the bundled jq, downloaded earlier in the install).
+function recordInstalled(rec, file) {
+  try {
+    if (fs.lstatSync(file).isFile()) rec.next.files[path.relative(rec.claudeDir, file)] = sha256(file);
+  } catch (_) { /* not installed: nothing to record */ }
 }
 
 function writeRecord(rec) {
@@ -155,4 +168,4 @@ function writeRecord(rec) {
   fs.writeFileSync(file, text);
 }
 
-module.exports = { RECORD_FILE, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, writeRecord };
+module.exports = { RECORD_FILE, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord };

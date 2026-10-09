@@ -32,13 +32,18 @@ if (!existsSync(join(claudeDir, RECORD_FILE))) {
   process.exit(1);
 }
 const rec = openRecord(claudeDir);
+if (!rec.hadRecord && rec.prevRegistrations.length === 0) {
+  console.error(`achilles-uninstall: ${join(claudeDir, RECORD_FILE)} is unusable; left in place.`);
+  process.exit(1);
+}
 
 const settingsPath = join(claudeDir, 'settings.json');
 if (existsSync(settingsPath) && rec.prevRegistrations.length > 0) {
   try {
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
-    if (dropStaleRegistrations(rec, settings)) {
-      say('remove', `${rec.prevRegistrations.length} recorded registrations from ${settingsPath}`);
+    const removed = dropStaleRegistrations(rec, settings);
+    if (removed > 0) {
+      say('remove', `${removed} registration${removed === 1 ? '' : 's'} from ${settingsPath}`);
       if (!dryRun) writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
     }
   } catch (err) {

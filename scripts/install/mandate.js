@@ -19,7 +19,8 @@ const STAMP_FILE = 'kernel-mandate.achilles.json';
 //   a pre-stamp install)               → left byte for byte; the package's version is
 //                                        written beside it as <name>.achilles-new.<ext>
 // The mandate encodes the operator's intent about separation of duties; an installer
-// has no business editing it. Returns [outcome, hash to stamp] with outcome one of
+// has no business editing it. A staged mandate that is a symlink is refreshed through the link,
+// like any copy onto an existing path. Returns [outcome, hash to stamp] with outcome one of
 // 'staged' | 'refreshed' | 'kept' | 'same'.
 function stageOne(src, dest, stamped, version) {
   const want = sha256(src);

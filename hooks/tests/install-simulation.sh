@@ -636,6 +636,7 @@ run_uninstall_simulation() {
       pi.stageProjectMandate('$proj');" >/dev/null 2>&1
   }
   sim_uninstall() { HOME="$work/home" node "$repo_root/bin/achilles-uninstall.mjs" "$@" 2>&1; }
+  mkdir -p "$claude/hooks/bin"; echo "fake jq" > "$claude/hooks/bin/jq"
   sim_full_install
   "$JQ" '.hooks.PreToolUse += [{matcher:"Bash", hooks:[{type:"command", command:"echo mine"}]}]' "$claude/settings.json" > "$work/s.json" && mv "$work/s.json" "$claude/settings.json"
   echo "my edit" >> "$claude/hooks/commit-message-gate.sh"
@@ -649,6 +650,11 @@ run_uninstall_simulation() {
   "$JQ" --arg v "$vhash" --arg g "$ghash" --arg abs "$outside/v" \
     '.files["hooks/escdir/v"] = $v | .files["../../outside/v"] = $v | .files[$abs] = $v | .files["hooks/./user-owned.sh"] = $g' \
     "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
+  # Keys outside hooks/, skills/ and agents/ with matching hashes, and a forged registration of the user's.
+  echo "my notes" > "$claude/CLAUDE.md"
+  "$JQ" --arg s "$(shasum -a 256 "$claude/settings.json" | cut -d' ' -f1)" --arg c "$(shasum -a 256 "$claude/CLAUDE.md" | cut -d' ' -f1)" \
+    '.files["settings.json"] = $s | .files["CLAUDE.md"] = $c | .registrations += [{event:"PreToolUse", matcher:"Bash", command:"echo mine"}]' \
+    "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
   local before; before=$(find "$claude" -type f | sort | shasum)
 
   out=$(sim_uninstall --project "$proj" --dry-run); rc=$?
@@ -661,7 +667,7 @@ run_uninstall_simulation() {
   out=$(sim_uninstall --project "$proj"); rc=$?
   local achilles_left
   achilles_left=$("$JQ" '[.. | .command? // empty | select(test("achilles|kernel-mandate|/factory/|/hooks/"))] | length' "$claude/settings.json" 2>/dev/null)
-  if [ "$rc" = 0 ] && [ "$achilles_left" = 0 ] && grep -q 'echo mine' "$claude/settings.json"; then
+  if [ "$rc" = 0 ] && [ "$achilles_left" = 0 ] && grep -q 'echo mine' "$claude/settings.json" && printf '%s' "$out" | grep -Eq 'remove [0-9]+ registrations? from'; then
     sim_pass "uninstall removes Achilles registrations; a user's registration in the same settings.json survives"
   else
     sim_fail "uninstall removes Achilles registrations; a user's registration in the same settings.json survives" "rc=$rc left=$achilles_left ${out:0:200}"
@@ -681,6 +687,16 @@ run_uninstall_simulation() {
   else
     sim_fail "uninstall removes an unmodified staged mandate with its stamp" "$(ls "$claude")"
   fi
+  if [ -f "$claude/settings.json" ] && [ -f "$claude/CLAUDE.md" ]; then
+    sim_pass "a record listing settings.json and CLAUDE.md with matching hashes deletes neither"
+  else
+    sim_fail "a record listing settings.json and CLAUDE.md with matching hashes deletes neither" "$(ls "$claude")"
+  fi
+  if [ ! -e "$claude/hooks/bin/jq" ] && [ ! -d "$claude/hooks/bin" ]; then
+    sim_pass "the bundled jq is recorded and removed with its empty directory"
+  else
+    sim_fail "the bundled jq is recorded and removed with its empty directory" "$(ls -R "$claude/hooks" 2>&1 | head -5)"
+  fi
   if [ -f "$outside/v" ] && [ -L "$claude/hooks/escdir" ] && [ -f "$claude/hooks/user-owned.sh" ]; then
     sim_pass "crafted record keys (symlinked dir, .., absolute, non-canonical) delete nothing outside or off the canonical path"
   else
@@ -690,6 +706,15 @@ run_uninstall_simulation() {
   if [ "$rc" = 1 ]; then sim_pass "uninstall exits 1 when nothing is recorded"; else sim_fail "uninstall exits 1 when nothing is recorded" "rc=$rc"; fi
   sim_uninstall --bogus >/dev/null; rc=$?
   if [ "$rc" = 2 ]; then sim_pass "uninstall exits 2 on a usage error"; else sim_fail "uninstall exits 2 on a usage error" "rc=$rc"; fi
+
+  # An unusable record is reported, not acted on, and kept.
+  printf 'null' > "$claude/achilles-install.json"
+  out=$(sim_uninstall --project "$proj"); rc=$?
+  if [ "$rc" = 1 ] && [ -f "$claude/achilles-install.json" ] && printf '%s' "$out" | grep -q unusable; then
+    sim_pass "an unusable record exits 1 and is left in place"
+  else
+    sim_fail "an unusable record exits 1 and is left in place" "rc=$rc ${out:0:200}"
+  fi
 
   # An edited mandate survives uninstall.
   rm -rf "$proj"; sim_full_install; echo '{"mine":1}' > "$claude/kernel-mandate.json"
