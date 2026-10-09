@@ -163,32 +163,45 @@ stamp, and only when every check passed; `state-gate` blocks hand-written forger
 
 A Bash line is **armed** when some command on it mentions `stateDir`, case folded, as a path component (`.factory`,
 `./.factory/x`, `/abs/.factory/x`) or as a glob that could match one (`.fact*`, `.f[a]ctory`, `.*`; a leading dot needs a
-literal dot, so `*` and `dist/*` do not). Each word is read whole, by its `=` values, and as tokens cut at spaces, quotes
-and `;|&<>()`, so quoted command strings and environment values count (`sh -c 'rm .fact*/x'`, `rsync -e …`, `LESSOPEN=…`).
-`user.factory.ts` does not arm it, and quoted text is an argument, never a redirect: `echo "> .factory/x"` passes. Not
-read as mentions, because they are judged as commands of their own or are inert text: the `-c` script of a shell and the
-arguments of `eval`; the message of `git commit`, `tag`, `merge`, `notes add|append` and `stash push|save` (`-m <msg>`,
-`-m<msg>`, `--message[=]<msg>`, a short-flag cluster ending in `m`). `-F` and `--file` values are paths and are judged. On
-an armed line, unrecognised means unsafe:
+literal dot, so `*` and `dist/*` do not). The gate reads every word, its `=` value, a glued option value (`-o.factory/x`),
+redirect targets, and the directory `env -C`/`--chdir`, `sudo -D`, `npx --prefix` or a package manager's
+`-C`/`--dir`/`--prefix` runs the command in. A word that holds shell syntax (a blank, a quote, `\`, a backtick,
+`;&|()<>{}`) is also split as a command line of its own, again and again, so quotes, braces, escapes and `$'…'` in a
+command string another program runs read as the shell reads them (`find -exec sh -c 'rm .fac{t,}ory/x'`, `rsync -e …`,
+`LESSOPEN=…`). Such a string counts as a mention when it names `extglob`, `dotglob`, `nocaseglob` or `GLOBIGNORE`,
+cannot be split whole, nests more than 16 deep, or is past the line's 64th split. `user.factory.ts` does not arm it, and
+quoted text is an argument, never a redirect: `echo "> .factory/x"` passes. Not read as mentions, because they are
+judged as commands of their own or are inert text: the `-c` script of a shell and the arguments of `eval`; the message
+of `git commit`, `tag`, `merge`, `notes add|append` and `stash push|save` (`--message[=]<msg>`, `-m <msg>`, `-m<msg>`,
+and a short cluster whose first value letter is `m`). A cluster that reaches another value letter first reads the rest
+as that option's value: `git commit -Fm .factory/x` takes its message from the file `m` and names `.factory/x`. The value
+letters are `-C -c -F -m -S -t -u` for commit, `-F -m -n -u` for tag, `-F -m -S -s -X` for merge, `-C -c -F -m` for
+notes, `-m` for stash. On an armed line, unrecognised means unsafe:
 
 - A segment **touches** `stateDir` when it names it, holds a word that is not literal (`$VAR`, `$( )`, a glob), runs a
-  program from outside the system bin dirs, or runs after a `cd` that may have entered it. A touching segment passes
-  only as a reader or as a copy-out. Readers: `cat head tail less grep rg jq ls stat wc diff cmp test [ [[ file md5
-  md5sum shasum sha*sum echo printf`; `find` without `-delete -exec -execdir -ok -okdir -fprint* -fls`; `git diff log
-  show status ls-files blame` with no global option and none of the options `shell_git_exec_option` names. Excluded
-  per reader: `less -o -O --log-file`, `rg --pre --hostname-bin`, `file -C --compile`. A reader with an environment
+  program from outside the system bin dirs, runs under an `env -C`-style directory that names `stateDir` or is not
+  literal (`env -C "$D"`, `pnpm -r exec`), or runs after a `cd` that may have entered it. A touching segment passes only
+  as a reader or as a copy-out. Readers: `cat head tail less grep rg jq ls stat wc diff cmp test [ [[ file md5 md5sum
+  shasum sha*sum echo printf`; `find` without `-delete -exec -execdir -ok -okdir -fprint* -fls`; `git diff log show
+  status ls-files blame` with no global option and none of the options `shell_git_exec_option` names. Excluded per
+  reader: `less -o -O --log-file`, `rg --pre --hostname-bin`, `file -C --compile`. A reader with an environment
   assignment other than `LC_*` / `LANG` is denied. Copy-out: `cp`, `install`, `rsync` with `stateDir` provably a source:
   every option known and before the operands, the target (last operand, or the `-t` directory) literal and outside
-  `stateDir`. Everything else is denied: `rm`, `mv`, `tee`, `find -delete`, `curl -o`, `tar -C`, `git checkout`, `sed`,
-  `python3`, a script in the directory, `xargs` feeding anything but a reader.
-- A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal, is denied.
+  `stateDir`, and no directory change. Everything else is denied: `rm`, `mv`, `tee`, `find -delete`, `curl -o`, `tar
+  -C`, `git checkout`, `sed`, `python3`, a script in the directory, `xargs` feeding anything but a reader.
+- A redirect (`>`, `>>`, `>|`, `&>`, `n>`) onto `stateDir`, or to a target that is not literal, is denied. The calling
+  shell opens it, so an `env -C` directory does not move it.
 - A `cd`, `pushd` or `popd` the gate cannot resolve exactly counts as entering `stateDir`: a target naming it or not
   literal, more than one operand (bash 3.2 enters the first), `-`, `~-`, `~+`, `popd`, or a `CDPATH` naming it. Every
-  later segment is then inside it, and a later `cd` does not leave: only readers pass, and a redirect must go to an absolute path outside it.
+  later segment is then inside it, and a later `cd` does not leave: only readers pass, and a redirect must go to an
+  absolute path outside it.
 - A wrapper option the splitter does not know, or a command word that is not literal, is denied.
-- A line that sets `extglob` is denied; one that sets `dotglob`, `nocaseglob` or `GLOBIGNORE` and holds a glob is
-  denied, armed or not.
-- A line too long to split that names `stateDir` is denied.
+
+Armed or not, a line is denied when it cannot be split whole (over 32 KB, 16 nested commands, or 64 words from one brace
+expansion); when a command on it turns `extglob` on (`shopt -s … extglob`, `-O extglob` anywhere in its words, as in
+`find -exec bash -O extglob`, or a `BASHOPTS=` value holding it; a name that is not literal counts);
+or when one turns `dotglob` or `nocaseglob` on the same ways, or assigns `GLOBIGNORE`, and the line holds a glob.
+Mentioning one (`cat docs/extglob.md`) does neither.
 
 Reading and copying out to a literal path are allowed. What a single line cannot show is in
 [known-limits.md](known-limits.md) KL-20.

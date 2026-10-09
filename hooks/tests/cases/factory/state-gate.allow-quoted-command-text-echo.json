@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "echo \"rm .fac{t,}ory/x\""}}, "expect": "allow", "warn": false}

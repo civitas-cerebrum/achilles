@@ -9,29 +9,13 @@
 #
 # Rule
 # ----
-# The command is split as the shell would (lib/shell-words.sh: quotes, `sh -c`, `eval`, `$( )`, braces, wrappers), so
-# quoted text is an argument, never a redirect. A line is ARMED when a command on it mentions <stateDir>: as a path
-# component, literal or as a glob that could match it (`.fact*`, `.f[a]ctory`; a leading dot needs a literal dot), case
-# folded, in a whole word, an `=` value or a token cut at spaces, quotes and `;|&<>()` (`sh -c 'cp x .factory/y'`, an
-# env value). Not mentions: a shell's `-c` script and eval's arguments (judged as commands of their own), and the message
-# of git commit|tag|merge|notes add|append|stash push|save. `user.factory.ts` does not arm it. On an armed line
-# unrecognised = unsafe:
-#   * a segment that touches <stateDir> (names it, holds a non-literal word, or runs after a `cd` that may have entered
-#     it) passes only when its command is
-#       - a reader: cat head tail less grep rg jq ls stat wc diff cmp test [ [[ file md5 md5sum sha*sum shasum echo
-#         printf; find without -delete -exec -execdir -ok -okdir -fprint* -fls; git diff|log|show|status|ls-files|blame
-#         with no global option and no exec option; none with an assignment other than LC_* / LANG; or
-#       - cp / install / rsync with <stateDir> provably a SOURCE: every option known and before the operands, the
-#         target (last operand or -t directory) literal and outside <stateDir>;
-#     everything else is denied, whatever it is;
-#   * a redirect target (> >> >| &> n>) naming <stateDir>, or not literal, is denied;
-#   * `cd` / `pushd` / `popd` the gate cannot resolve exactly (a state or non-literal target, several operands, `-`,
-#     `~-`, a CDPATH naming it) makes every later segment of the line count as inside it: only readers pass, and a
-#     redirect must go to an absolute path outside it;
-#   * a wrapper option the splitter does not know, or a command word that is not literal, is denied;
-#   * xargs feeding anything but a reader is denied;
-#   * a line too long to split is denied when it names <stateDir>;
-#   * a line that sets extglob, or dotglob / nocaseglob / GLOBIGNORE beside a glob, is denied whether armed or not.
+# The line is split as the shell would (lib/shell-words.sh). It is ARMED when a command names <stateDir> (case folded,
+# literal or as a glob that could match it) in a word, an `=` value, a glued option value, an env -C directory, or a
+# command string split again as the shell would read it. On an armed line unrecognised = unsafe: a command touching
+# <stateDir> passes only as a listed reader or a provable copy-out, a redirect into it or to a target that does not
+# resolve is denied, and a `cd` the gate cannot resolve puts the rest of the line inside it. Any line that cannot be
+# split whole, or that turns on extglob (or dotglob / nocaseglob / GLOBIGNORE beside a glob), is denied. Grammar,
+# reader list and copy-out conditions: the canonical reference below.
 #
 # Why
 # ---
@@ -55,6 +39,7 @@ STATE_DIR="$(rule_field "$ID" stateDir)"; STATE_DIR="${STATE_DIR%/}"
 [ -n "$STATE_DIR" ] || emit_allow_warn "$ID.stateDir missing in $(rules_rel) — state gate skipped"
 STATE_TOKEN_RE="(^|[^[:alnum:]_.-])${STATE_DIR//./\\.}([^[:alnum:]_.-]|\$)"
 IFS=/ read -r -a STATE_COMP <<< "$STATE_DIR"
+WORD_SYNTAX=$'[\'" \t\n\\\\`;&|()<>{}]' SPLITS=0
 
 # glob_names_state <word> — 0 when a window of the word's path components matches <stateDir>'s components under
 # bash pattern matching. With dotglob off, a pattern component matches a dot name only if it starts with a literal dot.
@@ -72,65 +57,70 @@ glob_names_state() {
   done
   return 1
 }
-# state_word <word> — 0 when the word, its `=` values or a path-like token of it names <stateDir>. Tokens are cut at
-# characters a path cannot hold, so a command string (`sh -c 'rm .fact*/x'`, `rsync -e …`, LESSOPEN) is read too.
+# state_word <word> — 0 when the word, an `=` value or a glued option value (-o.factory/x) names <stateDir>, or the
+# word holds shell syntax and names it once split (state_text).
 state_word() {
-  local w="$1" cands t o
-  case "$w" in *[*?[]*) ;; *) [[ "$w" == *"$STATE_DIR"* ]] || return 1;; esac
-  w="${w//[\'\"\;\|\&\<\>\(\)\`=,@\\ $'\t'$'\n']/ }"
-  read -r -a cands <<< "$w"
-  for t in "$1" "${1#*=}" "${1##*=}" ${cands[@]+"${cands[@]}"}; do
-    o=""
-    case "$t" in -?*) o="${t#-}"; while [[ "$o" == [A-Za-z]* ]]; do o="${o#?}"; done;; esac
+  local t o
+  for t in "$1" "${1#*=}" "${1##*=}"; do
+    o=""; case "$t" in -?*) o="${t#-}"; while [[ "$o" == [A-Za-z]* ]]; do o="${o#?}"; done;; esac
     for t in "$t" "$o"; do
       [[ "$t" == *"$STATE_DIR"* && "$t" =~ $STATE_TOKEN_RE ]] && return 0
       case "$t" in *[*?[]*) glob_names_state "$t" && return 0;; esac
     done
   done
+  case "$1" in *$WORD_SYNTAX*) state_text "$1";; *) return 1;; esac
+}
+# state_text <word> — 0 when the word, split as a command line of its own, holds a word that names <stateDir> or a
+# glob-changing option, or cannot be split whole; past 64 splits a line (~1.6 ms each, and a hook that times out
+# allows) every further one counts. The split fills locals, so the command being judged is kept.
+state_text() {
+  [ $((SPLITS += 1)) -le 64 ] && [ "${SPLIT_DEPTH:-0}" -lt "$SHELL_WORDS_NEST_CAP" ] || return 0
+  local SW SW_NESTED SW_OVERFLOW CMD_ARGS CMD_ASSIGN CMD_WRITES CMD_HEREDOCS CMD_SNEST CMD_PATH CMD_CHDIR CMD_ENV \
+    CMD_XARGS CMD_WRAP_BAD SPLIT_DEPTH=$((${SPLIT_DEPTH:-0} + 1)) w
+  shopt -u nocasematch; shell_words "$1"; shopt -s nocasematch
+  [ "$SW_OVERFLOW" = 0 ] || return 0
+  for w in ${SW[@]+"${SW[@]}"}; do
+    case "$w" in "$SW_SEP"|"$SW_OP"*|"$1") continue;; *extglob*|*dotglob*|*nocaseglob*|*GLOBIGNORE*) return 0;; esac
+    state_word "$w" && return 0
+  done
   return 1
 }
 # refs_state <word> — state_word, case folded (APFS ignores case).
-refs_state() {
-  local r=1
-  shopt -s nocasematch
-  state_word "$1" && r=0
-  shopt -u nocasematch
-  return $r
+refs_state() { local r; shopt -s nocasematch; state_word "$1"; r=$?; shopt -u nocasematch; return $r; }
+# dir_unjudged <dir> — 0 when the shell may be inside <stateDir> after entering <dir>: it names it, is not literal, or
+# is resolved at run time (-, ~-, ~+, ~N, +N).
+dir_unjudged() {
+  case "$1" in -|\~-*|\~+*|\~[0-9]*|+*) return 0;; esac
+  refs_state "$1" || ! shell_word_literal "$1"
 }
 deny_state() { local f="${2//$'\n'/ }"; emit_deny "$ID" "Bash command $1 (\`${f:0:80}\`) — its files are trust anchors written only by the project's own tools."; }
 
 shell_words "$COMMAND"
-if [ "$SW_OVERFLOW" = 1 ]; then
-  shopt -s nocasematch
-  [[ "$COMMAND" == *"$STATE_DIR"* ]] && deny_state "is too long to verify and names $STATE_DIR/" "$COMMAND"
-  exit 0
-fi
-joined="${SW[*]-}"
-case "$joined" in
-  *extglob*) deny_state "turns on extglob, whose patterns the gate cannot read, so $STATE_DIR/ may hide in one" "$COMMAND";;
-  *[*?[]*) case "$joined" in *dotglob*|*nocaseglob*|*GLOBIGNORE*) deny_state "changes how globs match while holding one, so $STATE_DIR/ may hide in it" "$COMMAND";; esac;;
-esac
+[ "$SW_OVERFLOW" = 0 ] || deny_state "cannot be split whole (over 32 KB, 16 nested commands or 64 brace words), so it may reach $STATE_DIR/" "$COMMAND"
 
 # mark_inert — INERT lists the indices of CMD_ARGS that are text another command judges or that no path can come from:
 # the -c script of a shell and the arguments of eval (split and judged as commands of their own), and the message of
-# git commit / tag / merge / notes add|append / stash push|save. -F and --file stay: their value is a path.
+# git commit / tag / merge / notes add|append / stash push|save: --message, or a short cluster whose first value letter
+# (per subcommand) is m. -F, -C and the other value letters name files or commits and stay.
 mark_inert() {
-  local cmd="${CMD_ARGS[0]:-}" n=${#CMD_ARGS[@]} i=2 a
-  INERT=" "
-  case "$cmd" in
+  local n=${#CMD_ARGS[@]} i=2 a vl; INERT=" "
+  case "${CMD_ARGS[0]:-}" in
     sh|bash|zsh|dash|ksh) shell_script_arg; [ "$SW_SCRIPT_C" = 0 ] || INERT="$INERT$SW_SCRIPT ";;
     eval) for ((i = 1; i < n; i++)); do INERT="$INERT$i "; done;;
     git)
-      case "${CMD_ARGS[1]:-}" in
-        commit|tag|merge) ;;
-        notes|stash) case "${CMD_ARGS[2]:-}" in add|append|push|save) i=3;; *) return 0;; esac;;
+      case "${CMD_ARGS[1]:-}:${CMD_ARGS[2]:-}" in
+        commit:*) vl=CcFmStu;; tag:*) vl=Fmnu;; merge:*) vl=FmSsX;;
+        notes:add|notes:append) vl=CcFm; i=3;; stash:push|stash:save) vl=m; i=3;;
         *) return 0;;
       esac
       for ((; i < n; i++)); do
         a="${CMD_ARGS[i]}"
         case "$a" in
-          --message=*|-m?*) INERT="$INERT$i ";;
-          --message|-m|-[!-]*m) i=$((i + 1)); INERT="$INERT$i ";;
+          --) break;;
+          --message=*) INERT="$INERT$i ";;
+          --message) i=$((i + 1)); INERT="$INERT$i ";;
+          -[!-]*) shell_opt_split "$a" "$vl"; [ "$SW_VOPT" = m ] || continue
+                  [ -n "$SW_VAL" ] || i=$((i + 1)); INERT="$INERT$i ";;
         esac
       done;;
   esac
@@ -138,12 +128,28 @@ mark_inert() {
 }
 is_inert() { [[ "$INERT" == *" $1 "* ]]; }
 
-ARMED=0
-arm_command() {
-  local a i
+ARMED=0 GLOB_MODE=0
+# scan_command — first pass: deny a command that turns extglob on (shopt -s, `-O` anywhere as in `find -exec bash -O`,
+# BASHOPTS=; a name that is not literal counts), note dotglob / nocaseglob / GLOBIGNORE=, and arm the line on a mention.
+scan_command() {
+  local a i prev="" on=0 opts=":"
+  for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"} ${CMD_ARGS[@]+"${CMD_ARGS[@]}"}; do
+    case "${CMD_ARGS[0]:-}:$a" in
+      *:BASHOPTS=*) opts="$opts${a#*=}:";;
+      *:GLOBIGNORE=*) opts="${opts}GLOBIGNORE:";;
+      shopt:-*s*) on=1;;
+      shopt:[!-]*) [ "$on" = 0 ] || opts="$opts$a:";;
+      *) [ "$prev" != -O ] || opts="$opts$a:";;
+    esac
+    prev="$a"
+  done
+  case "$opts" in
+    *:extglob:*|*[\$\`*?[]*) deny_state "turns on extglob, whose patterns the gate cannot read, so $STATE_DIR/ may hide in one" "${CMD_ASSIGN[*]+${CMD_ASSIGN[*]} }${CMD_ARGS[*]-}";;
+    *:dotglob:*|*:nocaseglob:*|*:GLOBIGNORE:*) GLOB_MODE=1;;
+  esac
   [ "$ARMED" = 0 ] || return 0
   mark_inert
-  for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"} ${CMD_WRITES[@]+"${CMD_WRITES[@]}"} ${CMD_PATH:+"$CMD_PATH"}; do
+  for a in ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"} ${CMD_WRITES[@]+"${CMD_WRITES[@]}"} ${CMD_PATH:+"$CMD_PATH"} ${CMD_CHDIR:+"$CMD_CHDIR"}; do
     refs_state "$a" && ARMED=1
   done
   for ((i = 0; i < ${#CMD_ARGS[@]}; i++)); do
@@ -151,7 +157,8 @@ arm_command() {
   done
   return 0
 }
-shell_each_command arm_command
+shell_each_command scan_command
+[ "$GLOB_MODE" = 0 ] || case "${SW[*]-}" in *[*?[]*) deny_state "changes how globs match while holding one, so $STATE_DIR/ may hide in it" "$COMMAND";; esac
 [ "$ARMED" = 1 ] || exit 0
 
 # reader_ok — 0 when CMD_ARGS is a read-only command.
@@ -176,12 +183,12 @@ reader_ok() {
   return 0
 }
 
-# copy_option <option> — classifies one cp / install / rsync option word: sets COPT to none (consumes nothing),
-# next (its value is the next word) or bad (unknown: the copy cannot be judged), and TDIR_SET / TDIR for -t.
+# copy_option <option> — classifies one cp / install / rsync option word: sets COPT to none (consumes nothing or
+# its value) or bad (unknown: the copy cannot be judged), and TDIR_SET / TDIR for -t.
 copy_option() {
-  local o="$1" cmd="${CMD_ARGS[0]}" name letters ch rest noval val longs longval
+  local o="$1" name noval val longs longval
   COPT=bad
-  case "$cmd" in
+  case "${CMD_ARGS[0]}" in
     cp)      noval=abdfHiLnPpRrTuvxZ;  val=St;    longs=" archive attributes-only backup copy-contents debug dereference force interactive no-clobber no-dereference no-preserve no-target-directory one-file-system parents preserve recursive reflink remove-destination sparse strip-trailing-slashes suffix target-directory update verbose "; longval=" suffix target-directory ";;
     install) noval=bCDpTUv;            val=mogSt; longs=" backup compare create-leading debug group mode owner preserve-timestamps suffix target-directory no-target-directory verbose "; longval=" group mode owner suffix target-directory ";;
     rsync)   noval=acdDgHilLnoOpPqrRtuvxzh; val=;  longs=" archive checksum compress dirs dry-run exclude human-readable include itemize-changes links one-file-system partial perms progress quiet recursive stats times update verbose "; longval=" exclude include ";;
@@ -197,17 +204,12 @@ copy_option() {
          refs_state "$o" && return 0
          COPT=none; return 0;;
   esac
-  letters="${o#-}"
-  while [ -n "$letters" ]; do
-    ch="${letters:0:1}"; letters="${letters:1}"
-    case "$ch" in
-      [$noval]) ;;
-      [$val]) if [ -n "$letters" ]; then rest="$letters"; else CI=$((CI + 1)); rest="${CMD_ARGS[CI]:-}"; fi
-              if [ "$ch" = t ]; then TDIR_SET=1; TDIR="$rest"; elif refs_state "$rest"; then return 0; fi
-              letters="";;
-      *) return 0;;
-    esac
-  done
+  shell_opt_split "$o" "$val"
+  case "$SW_FLAGS" in *[!$noval]*) return 0;; esac
+  if [ -n "$SW_VOPT" ]; then
+    [ -n "$SW_VAL" ] || { CI=$((CI + 1)); SW_VAL="${CMD_ARGS[CI]:-}"; }
+    if [ "$SW_VOPT" = t ]; then TDIR_SET=1; TDIR="$SW_VAL"; elif refs_state "$SW_VAL"; then return 0; fi
+  fi
   COPT=none
 }
 
@@ -215,7 +217,7 @@ copy_option() {
 cp_source_only() {
   local ops=() target a
   TDIR=""; TDIR_SET=0; CI=1
-  [ "$IN_STATE" = 0 ] && [ "$CMD_XARGS" = 0 ] && [ -z "$CMD_PATH" ] || return 1
+  [ "$CMD_XARGS" = 0 ] && [ -z "$CMD_PATH" ] || return 1
   while [ "$CI" -lt "${#CMD_ARGS[@]}" ]; do
     a="${CMD_ARGS[CI]}"
     case "$a" in
@@ -233,28 +235,23 @@ cp_source_only() {
   return 0
 }
 
-CDPATH_BAD=0
-IN_STATE=0
+CDPATH_BAD=0 IN_STATE=0
 # cd_into_state — 0 when the cd / pushd / popd in CMD_ARGS may leave the shell inside <stateDir>.
 cd_into_state() {
   local i a operands=0
-  [ "$CDPATH_BAD" = 0 ] || return 0
-  [ "${CMD_ARGS[0]}" != popd ] || return 0
+  [ "$CDPATH_BAD" = 0 ] && [ "${CMD_ARGS[0]}" != popd ] || return 0
   for ((i = 1; i < ${#CMD_ARGS[@]}; i++)); do
     a="${CMD_ARGS[i]}"
-    case "$a" in --) continue;; -?*) continue;; esac
+    case "$a" in -?*) continue;; esac
     operands=$((operands + 1))
-    refs_state "$a" && return 0
-    shell_word_literal "$a" || return 0
-    case "$a" in -|\~-*|\~+*|\~[0-9]*|+*) return 0;; esac
+    dir_unjudged "$a" && return 0
   done
-  [ "$operands" -le 1 ] || return 0
-  [ "$operands" -eq 1 ] || [ "${CMD_ARGS[0]}" != pushd ] || return 0
-  return 1
+  case "$operands:${CMD_ARGS[0]}" in 1:*|0:cd) return 1;; esac
+  return 0
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" n=${#CMD_ARGS[@]} frag="${CMD_ARGS[*]-}" a t touches=0
+  local cmd="${CMD_ARGS[0]:-}" n=${#CMD_ARGS[@]} frag="${CMD_ARGS[*]-}" a t touches=0 inside=$IN_STATE
   [ "$CMD_WRAP_BAD" = 0 ] || deny_state "runs behind a wrapper option the gate cannot read while naming $STATE_DIR/" "${frag:-$COMMAND}"
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do
     refs_state "$t" && deny_state "redirects output into $STATE_DIR/" "$t"
@@ -269,7 +266,9 @@ judge_command() {
   case "$cmd" in
     cd|pushd|popd) ! cd_into_state || IN_STATE=1; return 0;;
   esac
-  [ "$IN_STATE" = 0 ] || touches=1
+  # env -C, sudo -D and a package manager's directory move only this command; its redirects are the caller's.
+  [ -z "$CMD_CHDIR" ] || ! dir_unjudged "$CMD_CHDIR" || inside=1
+  [ "$inside" = 0 ] || touches=1
   [ -z "$CMD_PATH" ] || touches=1
   mark_inert
   for ((t = 1; t < n; t++)); do
@@ -287,7 +286,7 @@ judge_command() {
     done
     return 0
   fi
-  case "$cmd" in cp|install|rsync) cp_source_only && return 0;; esac
+  case "$cmd" in cp|install|rsync) [ "$inside" = 0 ] && cp_source_only && return 0;; esac
   deny_state "runs $cmd on $STATE_DIR/, which only readers and copying out of it may do" "$frag"
 }
 shell_each_command judge_command

@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "cat docs/extglob.md"}}, "expect": "allow", "warn": false}

@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "env -C .factory cat verify-stamp"}}, "expect": "allow", "warn": false}
