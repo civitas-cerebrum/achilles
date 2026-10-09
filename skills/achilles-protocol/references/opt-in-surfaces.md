@@ -11,6 +11,11 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 | `FACTORY_RULES` | operator shell | path of the rule file, absolute or relative to the project root (`$CLAUDE_PROJECT_DIR`, else the cwd) | the factory gates and the scenario lint |
 | `FACTORY_JQ` | tests only | jq binary the factory gates use | never set it in a real session |
 | `FACTORY_NODE` | tests only | node binary `spend-gate` and `commit-gate` use | never set it in a real session |
+| `FACTORY_SCHEMA` | tests only | rule-file schema `repository-evidence-gate` reads its `evidenceDir` default from | replaces where that gate looks for evidence notes; never set it in a real session |
+| `SPEND_OPT_IN` | the command line, per run | `SPEND_OPT_IN=1` in front of a run of a spend-incurring spec is the owner's opt-in (the variable is the `spend.opt-in` rule's `optInEnv`) | `spend-gate`, for that one command |
+| `NODE_BIN` | hook environment | node binary the ledger write gates validate the schema with; default `node` on PATH | replaces the validator runtime of the onboarding and perf ledger gates; never set it in a real session |
+| `WORKSPACE_ROOT` | hook environment | root `adversarial-verification-gate` and `evidence-bundle-gate` search; default the git top level, else the cwd | those two gates |
+| `NO_SKIP_MESSAGING_SELFTEST` | maintainer shell | `1` with `bash hooks/lib/hook-emit.sh` checks and prints the shared deny texts | none: read only when the file is run directly, never by a hook that sources it |
 | `CIVITAS_SKIP_HOOK_INSTALL` | install env | `1` skips hook install and mandate staging | all hooks |
 | `CIVITAS_SKIP_JQ_INSTALL` | install env | `1` skips the bundled jq download | hooks then need jq on PATH; without it, PreToolUse gates deny while the protocol is active |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` | install env | `1` skips the Chromium download | browser-driven skills |
