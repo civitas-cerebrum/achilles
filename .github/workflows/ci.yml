@@ -1,6 +1,6 @@
 name: ✅ CI
 
-# Every suite the package owns, on Linux and macOS, as separate steps.
+# Every suite the package owns, as separate steps, on Linux and macOS with Node 20 and 24, plus a root job.
 
 on:
   pull_request:
@@ -16,12 +16,13 @@ concurrency:
 
 jobs:
   test:
-    name: test (${{ matrix.os }})
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
     # BSD userland on macOS is the point: the kernel hooks must hold on both.
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        node: ['20', '24']
     runs-on: ${{ matrix.os }}
     steps:
       - name: 🗂️  Checkout
@@ -30,7 +31,7 @@ jobs:
       - name: ⚙️  Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: ${{ matrix.node }}
 
       # Dev deps included: test:hooks → build:validator imports esbuild (devDep)
       # to bundle the self-contained validator. --ignore-scripts skips the
@@ -60,7 +61,7 @@ jobs:
       # Hooks use #!/bin/bash, which is 3.2 on macOS; the default PATH bash
       # there is newer (Homebrew) so the first run does not cover 3.2.
       - name: 🍎  Hook tests under /bin/bash 3.2
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' && runner.os == 'macOS' && matrix.node == '24' }}
         run: |
           PATH=/bin:$PATH
           bash -c 'echo "bash $BASH_VERSION"; [[ $BASH_VERSION == 3.* ]]'
@@ -83,3 +84,30 @@ jobs:
       - name: 🤖  Generated agents up to date
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:agents
+
+      - name: 📦  Tarball contents
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' && matrix.os == 'ubuntu-latest' && matrix.node == '24' }}
+        run: node scripts/check-pack.mjs
+
+  # uid 0: the hook cases must not depend on file-permission denials a non-root user gets.
+  root:
+    name: root (node 24)
+    runs-on: ubuntu-latest
+    container: node:24
+    steps:
+      - name: 🗂️  Checkout
+        uses: actions/checkout@v4
+
+      - name: 🧩  Install jq and dependencies
+        run: |
+          apt-get update && apt-get install -y jq
+          npm ci --ignore-scripts
+
+      - name: 🧪  Hook tests
+        run: |
+          [ "$(id -u)" = 0 ]
+          npm run test:hooks
+
+      - name: 🏭  Factory gate cases
+        if: ${{ !cancelled() }}
+        run: npm run test:factory
