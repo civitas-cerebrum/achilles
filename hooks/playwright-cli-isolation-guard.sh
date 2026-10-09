@@ -60,7 +60,7 @@
 # - Slug missing role prefix                                    → DENY
 # - Slug shorter than 6 chars                                   → DENY
 # - Slug longer than 28 chars                                   → DENY (length-cap)
-# - playwright-cli named where the guard cannot read the invocation → DENY
+# - playwright-cli named where the guard cannot read the invocation, or on a line too long to split → DENY
 # - Session-agnostic subcommand (close-all / kill-all / list / install-browser / etc.) → silent allow
 # - Anything else                                               → silent allow
 
@@ -93,8 +93,8 @@ CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 # Judge every command the shell would run (lib/shell-words.sh). A command whose words, assignments or
 # heredoc bodies name playwright-cli (@playwright/cli, in any letter case: APFS is case-insensitive)
 # is DENY unless it is playwright-cli itself, plain or behind the wrappers the splitter peels (npx,
-# bunx, pnpm|yarn exec, env, time, …), whose slug is judged below, or a reader that does not execute
-# its arguments (is_exempt_command). Obfuscated or exotic shell forms are out of scope (known-limits.md KL-15).
+# bunx, pnpm|yarn exec, env, time, …), whose slug is judged below, or a command that only reads
+# (shell_is_reader). Obfuscated or exotic shell forms are out of scope (known-limits.md KL-15).
 CMD_PREVIEW="$CMD"
 [ ${#CMD} -le 160 ] || CMD_PREVIEW="${CMD:0:160}..."
 
@@ -114,20 +114,6 @@ pw_command_word() {
   return "$rc"
 }
 
-# The command word is a reader that does not execute its arguments.
-is_exempt_command() {
-  local a
-  [ "$CMD_ENV" = 0 ] || return 1
-  case "${CMD_ARGS[0]:-}" in
-    echo|cat|head|tail|tee|grep|egrep|fgrep|ls|wc|which|type|jq|pgrep) return 0 ;;
-    printf) for a in "${CMD_ARGS[@]:1}"; do case "$a" in -v|-v?*) return 1 ;; --) break ;; esac; done; return 0 ;;
-    command) case "${CMD_ARGS[1]:-}" in -v|-V) return 0 ;; esac ;;
-    npm) case "${CMD_ARGS[1]:-}" in ls|list|view|info) return 0 ;; esac ;;
-    git) case "${CMD_ARGS[1]:-}" in commit|log|show|diff|status|add|grep|tag|branch) return 0 ;; esac ;;
-  esac
-  return 1
-}
-
 deny_unjudgeable() {
   emit_pre_deny "[BLOCKED] Cannot judge this command: $1.
 
@@ -137,7 +123,7 @@ Fix: run playwright-cli as a literal command word, with its slug and no wrapper 
 
   npx playwright-cli -s=<slug> <subcommand> ...
 
-Why: a wrapper or program the guard does not know (sudo, setsid, sh -c, eval …), an unrecognised wrapper option, or the name passed as text may run playwright-cli without -s=<slug>, and the guard cannot see inside it. Wrappers it peels: hooks/lib/shell-words.sh. Readers it lets through: is_exempt_command in this hook."
+Why: a wrapper or program the guard does not know (sudo, setsid, sh -c, eval …), an unrecognised wrapper option, or the name passed as text may run playwright-cli without -s=<slug>, and the guard cannot see inside it. Wrappers it peels and readers it lets through: hooks/lib/shell-words.sh."
   exit 0
 }
 
@@ -148,7 +134,7 @@ judge_invocation() {
   done
   [ "$mentioned" = 1 ] || return 0
   if ! pw_command_word "${CMD_ARGS[0]:-}" || [ "$CMD_WRAP_BAD" = 1 ]; then
-    is_exempt_command && return 0
+    [ "$CMD_ENV" = 0 ] && shell_is_reader && return 0
     deny_unjudgeable "playwright-cli is named where the guard cannot read the invocation"
   fi
   # Session-agnostic subcommands run without -s= by design; no argument prints the help.
@@ -270,5 +256,6 @@ Why: the playwright-cli daemon binds a UNIX socket under \$TMPDIR. Long slugs pu
 }
 
 shell_words "$CMD"
+if [ "$SW_OVERFLOW" = 1 ]; then pw_mention "$CMD" && deny_unjudgeable "the line is too long to split"; exit 0; fi
 shell_each_command judge_invocation
 exit 0

@@ -4,7 +4,7 @@ H="$HOOK_DIR/achilles-kernel-activation-gate.sh"
 with_tmp_project_into KW_TMP .claude src; KP="$KW_TMP/proj"
 cp "$HOOK_DIR/data/achilles-qa.kernel-mandate.json" "$KP/.claude/kernel-mandate.json"
 FAKE_HOOKS="$KW_TMP/hooks"; mkdir -p "$FAKE_HOOKS/lib"
-cp "$H" "$FAKE_HOOKS/"; cp "$HOOK_DIR/lib/hook-io.sh" "$HOOK_DIR/lib/achilles-activation.sh" "$HOOK_DIR/lib/dispatch-prefix.sh" "$FAKE_HOOKS/lib/"
+cp "$H" "$FAKE_HOOKS/"; cp "$HOOK_DIR/lib/hook-io.sh" "$HOOK_DIR/lib/hook-emit.sh" "$HOOK_DIR/lib/achilles-activation.sh" "$HOOK_DIR/lib/dispatch-prefix.sh" "$FAKE_HOOKS/lib/"
 W="$FAKE_HOOKS/achilles-kernel-activation-gate.sh"
 in_scope() { payload tool_name=Read file_path="$KP/package.json" cwd="$KP"; }
 

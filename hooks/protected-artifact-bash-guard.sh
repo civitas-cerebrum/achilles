@@ -15,7 +15,7 @@
 #     mv switch stash operands, or the work tree when there is none; find -delete start paths.
 #     mkdir hits only a protected entry, so `mkdir -p .claude` for the sanctioned early stop passes.
 #   - On a line that names protected state, any other command denies unless it only reads
-#     (READERS, git reads, sed and yq without -i): the guard cannot prove it does not write.
+#     (shell_is_reader, git reads, sed and yq without -i): the guard cannot prove it does not write.
 #     A write target holding $, a backtick or a glob is unproved; so is a command substitution.
 #   - A line too long to split denies.
 # Obfuscated or exotic shell forms are out of scope (known-limits.md KL-15).
@@ -55,9 +55,6 @@ HITS=""     # protected entries or directories a write reaches
 UNSAFE=""   # why a command on the line cannot be proved safe
 OVERFLOW="" # 1 when the line could not be split whole
 TGT_BASE="" # the directory relative operands of the command being judged resolve in
-# No pagers: less and more run $LESSOPEN.
-READERS=' cat head tail grep egrep fgrep rg ls stat wc diff cmp file sha256sum shasum md5 md5sum jq echo printf test [ '
-GIT_READS=' status diff log show ls-files blame commit add rev-parse grep fetch '
 
 # unresolved <word> — 0 when <word> holds an unexpanded variable, substitution or glob.
 unresolved() { case "$1" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*) return 0 ;; esac; return 1; }
@@ -119,7 +116,7 @@ judge_git() {
       *) sub="$a" ;;
     esac
   done
-  case "$GIT_READS" in *" $sub "*) return 0 ;; esac
+  case "$SHELL_GIT_READS" in *" $sub "*) return 0 ;; esac
   [ "$sub:${CMD_ARGS[gi]:-}" = stash:list ] || [ "$sub:${CMD_ARGS[gi]:-}" = stash:show ] && return 0
   UNSAFE="${UNSAFE}git $sub"$'\n'
   case "$sub" in checkout|restore|reset|clean|rm|mv|switch|stash) ;; *) return 0 ;; esac
@@ -200,7 +197,7 @@ judge_find() {
   for a in "${CMD_ARGS[@]:1}"; do
     case "$next" in
       file) target "$a" ;;
-      exec) case "$READERS" in *" $a "*) ;; *) writes=1 ;; esac ;;
+      exec) case "$SHELL_READERS" in *" $a "*) ;; *) writes=1 ;; esac ;;
     esac
     next=""
     case "$a" in
@@ -227,7 +224,7 @@ judge_command() {
   done
   [ -n "$cmd" ] || return 0
   [ "$CMD_WRAP_BAD" = 0 ] || UNSAFE="${UNSAFE}$cmd: a wrapper carried an unrecognised option"$'\n'
-  case "$READERS" in *" $cmd "*) return 0 ;; esac
+  shell_is_reader && return 0
   case "$cmd" in
     git) judge_git ;;
     sed|yq) judge_in_place ;;

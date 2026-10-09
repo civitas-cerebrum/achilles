@@ -64,6 +64,7 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/work-summary-deck/SKILL.md §\
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
 hook_jq_init silent
+hook_lib hook-emit.sh
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
@@ -245,13 +246,7 @@ issues before dispatching any agent or considering the task complete.
 
 To clear this gate after inspection:  rm \"${SENTINEL}\""
 
-  "$JQ" -n --arg r "$REASON${HOOK_REFS}" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }' 2>/dev/null || true
+  emit_pre_deny_bare "$REASON${HOOK_REFS}"
 
   exit 0
 fi

@@ -52,7 +52,7 @@ input=$(cat)
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-hook_lib achilles-activation.sh
+hook_lib achilles-activation.sh hook-emit.sh
 achilles_require_active "$input"
 tool_name=$(echo "$input" | "$JQ" -r '.tool_name // empty')
 file_path=$(echo "$input" | "$JQ" -r '.tool_input.file_path // empty')
@@ -147,7 +147,5 @@ if [ "$ok" = "true" ]; then
 fi
 
 suffix="The only allowed edit is appending exactly one ${convention} attribute (kebab-case value) to one opening tag, with no other byte changes."
-echo "$result" | "$JQ" -c \
-  --arg sfx "$suffix${HOOK_REFS}$(achilles_scope_notice)" \
-  '{hookSpecificOutput:{permissionDecision:"deny",permissionDecisionReason:("selector-development-inertness-guard: " + .reason + ". " + (.detail // "") + ". " + $sfx)}}'
+emit_pre_deny "$(echo "$result" | "$JQ" -r '"selector-development-inertness-guard: " + .reason + ". " + (.detail // "") + ". "')$suffix"
 exit 0

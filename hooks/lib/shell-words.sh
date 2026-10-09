@@ -19,6 +19,8 @@
 #   CMD_WRITES   targets of > >> >| &> &>> >&file <> (with any fd number)
 #   CMD_HEREDOCS heredoc and here-string bodies
 # The arrays can be empty: read them as ${A[@]+"${A[@]}"} (bash 3.2 under set -u).
+#
+# shell_is_reader is the one allowlist of commands that only read.
 
 SW_SEP=$'\036'
 SW_OP=$'\037'
@@ -27,6 +29,11 @@ SHELL_WORDS_MAX=32768
 SW__STOP=$'[\'" \t\n\\\\$`;&|()<>#]'
 SW__DQ_STOP=$'["\\\\$`]'
 SW__CB='}'
+# Programs that read their operands and run nothing they are handed, and the git subcommands that
+# write only under .git.
+SHELL_READERS=' cat head tail grep egrep fgrep rg ls stat wc diff cmp file sha256sum shasum md5 md5sum jq echo printf test [ which type pgrep '
+SHELL_GIT_READS=' status diff log show ls-files blame commit add rev-parse grep fetch '
+
 shell_words() {
   SW=(); SW_OVERFLOW=0
   if [ "${#1}" -gt "$SHELL_WORDS_MAX" ]; then SW_OVERFLOW=1; return 0; fi
@@ -146,6 +153,17 @@ shell__backtick() {
     k=$((k + 2))
   done
   w="$w${t:i:k-i+1}"; have=1; i=$((k + 1))
+}
+
+# shell_is_reader — 0 when CMD_ARGS only reads: a SHELL_READERS program, command -v|-V,
+# npm ls|list|view|info, or git with a SHELL_GIT_READS subcommand.
+shell_is_reader() {
+  case "$SHELL_READERS" in *" ${CMD_ARGS[0]:-} "*) return 0 ;; esac
+  case "${CMD_ARGS[0]:-}:${CMD_ARGS[1]:-}" in
+    command:-v|command:-V|npm:ls|npm:list|npm:view|npm:info) return 0 ;;
+    git:?*) case "$SHELL_GIT_READS" in *" ${CMD_ARGS[1]} "*) return 0 ;; esac ;;
+  esac
+  return 1
 }
 
 shell_each_command() {

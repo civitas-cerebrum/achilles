@@ -64,7 +64,7 @@ hook_jq_init fatal
 
 hook_read_input
 
-hook_lib achilles-activation.sh protected-paths.sh
+hook_lib achilles-activation.sh protected-paths.sh hook-emit.sh
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 
@@ -91,7 +91,7 @@ case "$NORM" in
   *) exit 0 ;;
 esac
 
-"$JQ" -n --arg r "[BLOCKED] Write|Edit to the installed harness surface is forbidden.
+emit_pre_deny "[BLOCKED] Write|Edit to the installed harness surface is forbidden.
 
 File: ${FILE_PATH}
 
@@ -111,11 +111,5 @@ pipeline completes, or dies with the session.
 
 Project-local .claude/skills/* writes are NOT gated by this guard.
 
-See: skills/achilles-protocol/references/harness-hooks.md${HOOK_REFS}$(achilles_scope_notice)" '{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": $r
-  }
-}'
+See: skills/achilles-protocol/references/harness-hooks.md"
 exit 0

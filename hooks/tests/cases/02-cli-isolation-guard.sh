@@ -98,3 +98,8 @@ assert_allow "$H" "$(payload tool_name=Bash command='cat playwright-cli-notes.md
 assert_allow "$H" "$(payload tool_name=Bash command='which playwright-cli')" "which → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='git log --grep playwright-cli')" "git log --grep → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "npx playwright-cli open"')" "printf of a usage line → silent allow"
+
+section "cli-isolation: a line too long to split fails closed"
+PAD=$(printf 'w%.0s ' $(seq 1 17000))
+assert_deny "$H" "$(payload tool_name=Bash command="echo $PAD; npx playwright-cli open http://x")" "33 KB line naming playwright-cli → DENY" "too long to split"
+assert_allow "$H" "$(payload tool_name=Bash command="echo $PAD")" "33 KB line not naming it → silent allow"

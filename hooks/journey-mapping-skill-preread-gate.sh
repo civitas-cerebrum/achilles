@@ -83,7 +83,7 @@ hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-hook_lib achilles-activation.sh
+hook_lib achilles-activation.sh hook-emit.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 
@@ -203,11 +203,5 @@ See: skills/onboarding/SKILL.md §\"Phase 4 — Journey mapping\""
     ;;
 esac
 
-"$JQ" -n --arg r "$REASON${HOOK_REFS}$(achilles_scope_notice)" '{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": $r
-  }
-}'
+emit_pre_deny "$REASON"
 exit 0
