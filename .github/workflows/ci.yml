@@ -98,9 +98,11 @@ jobs:
       - name: 🗂️  Checkout
         uses: actions/checkout@v4
 
+      # jq 1.7.1, the version postinstall bundles: Debian's 1.6 prints 250.0 as 250, which the perf-summary cases pin.
       - name: 🧩  Install jq and dependencies
         run: |
-          apt-get update && apt-get install -y jq
+          curl -fsSL -o /usr/local/bin/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
+          chmod +x /usr/local/bin/jq
           npm ci --ignore-scripts
 
       - name: 🧪  Hook tests
