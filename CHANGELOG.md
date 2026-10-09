@@ -26,7 +26,8 @@
 - Files a newer version no longer ships are pruned, with their registrations, unless you edited them.
 - A global install (`npm i -g`) no longer stages the mandate or writes a `.claude/` under npm's `lib/`.
 - A project install registers its hooks as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`, so a moved or cloned project keeps working; an absolute registration from an earlier install is switched over.
-- Bash guards (`protected-artifact-bash-guard`, `playwright-cli-isolation-guard`, `state-gate`) judge the words a command line runs and the paths it writes after normalisation, treat anything they cannot parse as unsafe, and deny unknown wrapper options. They judge `git` targets (including `git rm --cached` of a protected path) and `find -exec`. See KL-15.
+- Bash guards (`protected-artifact-bash-guard`, `playwright-cli-isolation-guard`, `state-gate`) split a command line with one shared parser and judge the primary ways an agent writes: redirects, `tee`, `cp`/`mv`/`rm`, `sed -i`, and `git checkout`/`restore`/`reset --hard`/`clean`/`rm` on protected paths. A line they cannot split, or an unknown wrapper option, is denied. Obfuscated forms are out of scope. See KL-15 and KL-20.
+- The bundled jq is checked against a pinned sha256 before it is made executable; a mismatch deletes it unrun.
 - While the protocol is active, a PreToolUse call is denied when `jq` or a hook library is missing, with the remedy on stderr.
 - Approval-class ledger writes must come from an approver `agent_type` when the host supplies one.
 - Phase 7 is dispatched as `secrets-sweep-phase7:` with `subagent_type: secrets-sweep`.
