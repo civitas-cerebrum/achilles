@@ -382,7 +382,7 @@ denied without `uiReviewed: true` in the adversarial verification receipt.
 
 When the evidence run is tied to a ticket (the user named an issue key, or the task maps to one),
 post a **brief** comment to the tracker with inline screenshots. Follow the format in
-`ticket-driven-testing` §"Posting to the tracker":
+`ticket-driven-testing/references/reporting.md` §"Posting to the tracker":
 
 1. **What was tested** — one or two sentences per AC.
 2. **Evidence** — screenshots uploaded and embedded inline as markdown images (not as separate

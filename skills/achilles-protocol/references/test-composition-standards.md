@@ -47,13 +47,13 @@ One row per shared composing concern. "Canonical home" is where the full rule te
 | Subagent return + ledger shapes | [`subagent-return-schema.md`](subagent-return-schema.md) |
 | Selector conventions | `../../selector-development/references/selector-convention.md` |
 | Skill names + sentinel strings | [`skill-registry.md`](skill-registry.md) |
-| `test.fail()` policy (one sanctioned use; see §3.2) | `../../ticket-driven-testing/SKILL.md` §7 |
+| `test.fail()` policy (one sanctioned use; see §3.2) | `../../ticket-driven-testing/references/phase-7-durable-tests.md` |
 | Smoke-vs-e2e depth doctrine | §5 of this file |
 | Stage 4c composition-judge loop | §4 of this file |
 | Orchestrator dispatch discipline (specialist task families) | §6 of this file (precedent: `../../coverage-expansion/SKILL.md` §"Orchestrator context budget" → "Hard rules — kernel-resident") |
 | Test-identity conventions (test IDs on every case; `@known-defect` intentional reds: no heal, no rerun, passed = anomaly) | [`test-identity.md`](test-identity.md) (§1 stable IDs; §2 `@known-defect`) |
-| Style-interaction verification (mock-DOM styling tests as a documented fallback) | `../../ticket-driven-testing/SKILL.md` §"Style-interaction verification — mock the page, test the styling" |
-| Commit-or-discard gate (CX/revenue impact) + brief-report contract | `../../ticket-driven-testing/SKILL.md` §8d "Commit or discard — the CX/revenue impact gate" |
+| Style-interaction verification (mock-DOM styling tests as a documented fallback) | `../../ticket-driven-testing/references/style-interaction-verification.md` |
+| Commit-or-discard gate (CX/revenue impact) + brief-report contract | `../../ticket-driven-testing/references/phase-8c-8e-scoring-and-commit.md` §"8d. Commit or discard" |
 | Deck print-safety rules | `../../work-summary-deck/SKILL.md` §"Print-safety rules" |
 | Stage-4b compliance sweep as every mode's exit gate | [`stages-protocol.md`](stages-protocol.md) §"Stage 4b is every mode's exit gate" (harness-backed by `hooks/compliance-sweep-exit-gate.sh`) |
 
@@ -63,7 +63,7 @@ The diffs in the citing files are the enforcement; this section is the rationale
 
 **3.1 Inline selectors.** Durable suite specs: **hard ban**: every selector lives in `page-repository.json`; inline selectors in committed spec files are a hard-rule violation (kernel rule in `../SKILL.md`). The one documented exception: `companion-mode` evidence bundles may carry bundle-scoped inline selector proposals (the bundle is not the suite); those proposals graduate to repo entries at Stage-3 graduation. The former "this is a preference, not a hard ban" language in Rule 6 was the contradiction and has been replaced with this scope-based rule.
 
-**3.2 `test.fail()`.** Legal **only** as a defect sentinel tied to a tracked ticket with a removed-when-fixed lifecycle; `../../ticket-driven-testing/SKILL.md` §7 owns it. Banned everywhere no ticket owns the marker: coverage-expansion / adversarial passes never commit `test.fail()` (suspected bugs stay ledger-only). Both sides cross-cite.
+**3.2 `test.fail()`.** Legal **only** as a defect sentinel tied to a tracked ticket with a removed-when-fixed lifecycle; `../../ticket-driven-testing/references/phase-7-durable-tests.md` owns it. Banned everywhere no ticket owns the marker: coverage-expansion / adversarial passes never commit `test.fail()` (suspected bugs stay ledger-only). Both sides cross-cite.
 
 **3.3 Stability runs.** The "3-5 consecutive runs" range collapsed to a two-number rule: **3 consecutive green minimum for any new or edited test; 5 consecutive green for a heal of a previously-flaky test** (suite order for flaky heals, per `test-repair`). Canonical text: `../../failure-diagnosis/SKILL.md` §"Stability Validation Protocol".
 
