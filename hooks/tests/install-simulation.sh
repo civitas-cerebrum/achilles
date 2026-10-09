@@ -444,6 +444,16 @@ run_upgrade_simulation() {
   fi
   rm -f "$claude/hooks/escdir"
 
+  # A non-canonical record key for a file the package still ships must not get it deleted.
+  "$JQ" --arg h "$(shasum -a 256 "$gate" | cut -d' ' -f1)" '.files["hooks/./commit-message-gate.sh"] = $h' \
+    "$claude/achilles-install.json" > "$work/r.json" && mv "$work/r.json" "$claude/achilles-install.json"
+  sim_install "$pkg" >/dev/null
+  if [ -f "$gate" ]; then
+    sim_pass "a non-canonical record key never deletes a file the package still ships"
+  else
+    sim_fail "a non-canonical record key never deletes a file the package still ships" "$gate was deleted"
+  fi
+
   # A record that parses to something other than an object must not stop the install.
   local bad ok=1
   for bad in null '[]' '{"files":null}' '{"files":' 'true'; do

@@ -35,10 +35,10 @@ function openRecord(claudeDir) {
   };
 }
 
-function keep(rec, rel, file, have, recordedHash, why) {
+function keep(rec, rel, file, have, recordedHash, why, remedy) {
   rec.next.files[rel] = recordedHash;
   rec.next.kept[rel] = have;
-  if (rec.prevKept[rel] !== have) console.warn(`[civitas-cerebrum] ${file} ${why} — left untouched.`);
+  if (rec.prevKept[rel] !== have) console.warn(`[civitas-cerebrum] ${file} ${why} — left untouched; ${remedy}.`);
 }
 
 // Copies src to dest when the content differs and returns whether it did. A
@@ -53,7 +53,7 @@ function copyTracked(rec, src, dest) {
     return false;
   }
   if (have !== null && rec.prev[rel] && rec.prev[rel] !== have) {
-    keep(rec, rel, dest, have, rec.prev[rel], 'was modified after install');
+    keep(rec, rel, dest, have, rec.prev[rel], 'was modified after install', 'delete it to take the packaged version');
     return false;
   }
   if (have !== null && !rec.prev[rel]) rec.adopted++;
@@ -79,14 +79,17 @@ function isOwnRegularFile(claudeDir, file) {
 // unless the user edited them.
 function pruneStale(rec) {
   for (const [rel, hash] of Object.entries(rec.prev)) {
-    if (rel in rec.next.files) continue;
+    // Only keys in the canonical form copyTracked writes are trusted: `hooks/./x` would
+    // dodge the still-shipped check below and delete a live file.
     const file = path.resolve(rec.claudeDir, rel);
-    if (!file.startsWith(rec.claudeDir + path.sep) || !isOwnRegularFile(rec.claudeDir, file)) continue;
+    if (path.relative(rec.claudeDir, file) !== rel || rel.startsWith('..')) continue;
+    if (rel in rec.next.files || !isOwnRegularFile(rec.claudeDir, file)) continue;
     const have = sha256(file);
     if (have !== hash) {
-      keep(rec, rel, file, have, hash, 'is no longer shipped but was modified');
+      keep(rec, rel, file, have, hash, 'is no longer shipped but was modified', 'delete it if you no longer want it');
       continue;
     }
+    // Check-to-delete is not atomic; exploiting the gap needs concurrent write access to claudeDir.
     fs.unlinkSync(file);
     console.log(`[civitas-cerebrum] pruned file dropped from the package: ${rel}`);
   }

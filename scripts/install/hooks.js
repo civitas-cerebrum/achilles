@@ -46,6 +46,7 @@ const { openRecord, copyTracked, pruneStale, dropStaleRegistrations, writeRecord
 // settings where postinstall scripts must not modify ~/.claude/settings.json.
 const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'hooks', 'data', 'hook-manifest.json'), 'utf8'));
 
+// An existing symlinked or hard-linked hook is written through, like any copy onto an existing path.
 function copyHookFile(rec, hookSrc, hookDest) {
   const copied = copyTracked(rec, hookSrc, hookDest);
   if (copied) fs.chmodSync(hookDest, 0o755);
