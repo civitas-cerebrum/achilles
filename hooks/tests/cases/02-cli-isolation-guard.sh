@@ -49,6 +49,8 @@ section "cli-isolation: command-line forms"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s composer-j-x-1-c1 open --browser=chromium http://app')" "-s <slug> space form → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='bunx playwright-cli -s=composer-j-x-1-c1 open --browser=chromium http://app')" "bunx runner → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='pnpm exec playwright-cli -s=composer-j-x-1-c1 open --browser=chromium http://app')" "pnpm exec runner → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='npx --no-install playwright-cli --version')" "npx --no-install precondition check → ALLOW"
+assert_deny "$H" "$(payload tool_name=Bash command='npx --no-install playwright-cli open http://app')" "npx --no-install without a slug → DENY" "Missing -s=<slug> flag"
 
 section "cli-isolation: noise (playwright-cli mentioned inside string)"
 assert_allow "$H" "$(payload tool_name=Bash command='echo \"playwright-cli is great\"')" "playwright-cli inside echo → silent allow"
@@ -90,6 +92,8 @@ assert_allow "$H" "$(payload tool_name=Bash command='jq ".dependencies[\"@playwr
 assert_allow "$H" "$(payload tool_name=Bash command='pgrep -f playwright-cli')" "pgrep → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='npm ls @playwright/cli')" "npm ls → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='npm view @playwright/cli version')" "npm view → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npm i -D @playwright/cli')" "npm i -D @playwright/cli → silent allow (an install runs nothing)"
+assert_allow "$H" "$(payload tool_name=Bash command='npm install --save-dev @playwright/cli playwright-cli')" "npm install naming the package → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='bash hooks/tests/cases/02-cli-isolation-guard.sh')" "a shell running a script whose path names the guard → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "x=playwright-cli"')" "printf of an assignment-shaped string → silent allow"
 

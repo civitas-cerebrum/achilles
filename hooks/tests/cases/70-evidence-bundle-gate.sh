@@ -204,9 +204,7 @@ assert_allow "$H" "$(bash_cmd 'echo /opt/homebrew/bin/gh pr create')" \
   "echoing a PATH-qualified trigger → ALLOW"
 
 section "evidence-gate: wrapper forms are how people actually script gh"
-# Every one of these was an ALLOW before review. None is an evasion — they are
-# ordinary scripting, and treating them as unreachable left the entry-B surface
-# open by default.
+# None of these is an evasion: each is ordinary scripting that publishes a PR.
 for c in \
   'env gh pr create --fill' \
   'GH_TOKEN=x gh pr create --fill' \

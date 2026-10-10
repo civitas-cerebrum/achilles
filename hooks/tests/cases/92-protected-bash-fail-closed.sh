@@ -151,6 +151,7 @@ done <<'SAFE'
 sed -i '' 's/LEDGER_APPROVERS_NAME=.*/LEDGER_APPROVERS_NAME=".workflow-approvers.json"/' hooks/lib/ledger.sh
 printf 'see ~/.claude/settings.json and tests/e2e/docs/journey-map.md\n'
 cat ~/.claude/settings.json | grep hooks > /tmp/hooks.txt
+cat ~/.claude/settings.json | tee /tmp/out
 jq .currentPhase tests/e2e/docs/onboarding-status.json
 git -C ~/.claude log --oneline -3
 git diff -- tests/e2e/docs/journey-map.md
@@ -261,6 +262,7 @@ git clean -fdx tests
 git checkout -- .
 git checkout -- tests/e2e
 git reset --hard
+git reset --hard HEAD~1
 git stash
 git stash pop
 find . -delete
@@ -350,3 +352,28 @@ assert_deny "$HOOK" "$(chdir_payload 'git switch -f main')" "git switch -f" "Wri
 else_payload() { "$JQ" -n --arg c "$1" --arg d "$CHDIR_TMP/elsewhere" '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}'; }
 assert_deny "$HOOK" "$(else_payload "git -C $CHDIR_TMP/proj reset --hard")" "git -C <project> reset --hard from another directory" "Writes into"
 assert_deny "$HOOK" "$(else_payload 'git -C ../proj clean -fd')" "git -C <project> clean -fd from another directory" "Writes into"
+
+# A literal cd on the line moves the directory later commands resolve in; a cd that does not resolve unproves
+# the writes after it.
+section "protected-bash fail-closed: a same-line cd"
+for c in 'cd tests/e2e && rm -rf docs' 'cd tests && rm -rf e2e' 'cd tests/e2e && git checkout -- docs' 'cd tests/e2e && git restore docs' 'cd "$D" && rm -rf docs'; do
+  assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "Writes into"
+done
+assert_allow "$HOOK" "$(chdir_payload 'cd src && rm x')" "cd src && rm x"
+
+# Claude Code's commit form: the message is read from a quoted heredoc, so it is text, not a command.
+section "protected-bash fail-closed: a commit message from a quoted heredoc"
+HEREDOC_COMMIT="git commit -m \"\$(cat <<'EOF'
+docs: refresh journey-map.md
+
+Keeps \`onboarding-status.json\` in step.
+EOF
+)\""
+assert_allow "$HOOK" "$(bash_payload "$HEREDOC_COMMIT")" "git commit -m \"\$(cat <<'EOF' … EOF)\" naming a protected file → ALLOW"
+assert_deny "$HOOK" "$(bash_payload "git commit -m \"\$(cat <<EOF
+docs: \$(rm -rf tests) journey-map.md
+EOF
+)\"")" "an unquoted heredoc expands its body → DENY" "command substitution"
+
+section "protected-bash fail-closed: tee writes its operands, not what it reads"
+assert_deny "$HOOK" "$(bash_payload 'cat x | tee .claude/hooks/x')" "tee into the hook install → DENY" "Writes into: .claude/hooks"

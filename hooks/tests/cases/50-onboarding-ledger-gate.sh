@@ -256,11 +256,9 @@ clear_ledger
 
 # ---------------------------------------------------------------------------
 section "ledger-gate: any reviewer scope is allow-listed (unified reviewer-prefix)"
-# The allow-list previously hardcoded (phase[1-8]|pass[1-5]|cycle[1-5]) — a
-# legitimate workflow-reviewer-pass9: dispatch (long coverage runs exceed 5
-# passes) was denied at transition points while the approver registry
-# accepted it. The shared is_reviewer_description helper (lib/dispatch-prefix.sh) widens the
-# allow-list to any reviewer scope.
+# A workflow-reviewer-pass9: dispatch (long coverage runs exceed 5 passes) is
+# accepted at transition points as the approver registry accepts it: the shared
+# is_reviewer_description helper (lib/dispatch-prefix.sh) allow-lists any reviewer scope.
 write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
   .currentPhase = 2 |
   .phases[0].status = "completed" |

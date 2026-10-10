@@ -155,9 +155,8 @@ jobs:
           echo "count=${opened}" >> "$GITHUB_OUTPUT"
           echo "Open PRs on $FIX_BRANCH after dispatch: ${opened:-<lookup failed>}"
 
-      # The honest verdict. Green means either nothing was found, or something
-      # was found AND there is now an open PR to fix it. Red means a finding is
-      # sitting unactioned and needs a human.
+      # Green: nothing was found, or a finding has an open PR fixing it.
+      # Red: a finding sits unactioned and needs a human.
       - name: 📋 Report status
         if: always()
         run: |

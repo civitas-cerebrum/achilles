@@ -196,7 +196,7 @@ shell_each_command() {
           env:-C?*) CMD_CHDIR="${word#-C}"; continue ;;
           env:--chdir=*) CMD_CHDIR="${word#*=}"; continue ;;
           env:-u) skip=value; continue ;;
-          env:-i|time:-p|npx:-y|npx:--yes|timeout:[0-9]*) continue ;;
+          env:-i|time:-p|npx:-y|npx:--yes|npx:--no|npx:--no-install|timeout:[0-9]*) continue ;;
           env:-*|exec:-*|nohup:-*|time:-*|timeout:-*|npx:-*) CMD_WRAP_BAD=1; continue ;;
         esac
         case "${word##*/}" in

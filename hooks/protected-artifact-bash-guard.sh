@@ -43,7 +43,9 @@ CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""' 2>/dev/null || echo "
 [ -n "$CMD" ] || exit 0
 CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // empty' 2>/dev/null || echo "")
 [ -n "$CWD" ] || CWD="$PWD"
-LOCATIONS=""  # protected_locations "$CWD", computed at the first write target
+CWD0="$CWD"   # the call's cwd; CWD follows a literal cd on the line
+CD_UNSURE=0   # 1 after a cd whose directory does not resolve
+LOCATIONS=""  # protected_locations "$CWD0", computed at the first write target
 
 NAMED=""    # protected entries and directories the line names, one per line
 HITS=""     # protected entries or directories a write reaches
@@ -69,14 +71,15 @@ target() {
   local e loc
   case "$1" in
     /*|'~'*|'$HOME'*|'${HOME}'*) ;;
-    *) [ -z "$TGT_BASE" ] || set -- "$TGT_BASE/$1" ;;
+    *) [ "$CD_UNSURE" = 0 ] || { HITS="${HITS}$1 after a cd that does not resolve"$'\n'; return 0; }
+       [ -z "$TGT_BASE" ] || set -- "$TGT_BASE/$1" ;;
   esac
   case "$1" in
     '~'|'~/'*|'$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) ;;
     *'$'*|*'`'*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 does not resolve"$'\n'; return 0 ;;
     *'*'*|*'?'*|*'['*) UNSAFE="$UNSAFE${CMD_ARGS[0]:-redirect}: write target $1 is a glob"$'\n' ;;
   esac
-  [ -n "$LOCATIONS" ] || LOCATIONS=$(protected_locations "$CWD")
+  [ -n "$LOCATIONS" ] || LOCATIONS=$(protected_locations "$CWD0")
   loc="$LOCATIONS"; [ -z "$TGT_BASE" ] || loc="$loc"$'\n'"$(base_locations)"
   e=$(protected_bash_match "$1") || e=$(protected_parent_match "$1") ||
     e=$(protected_ancestor_match "$1" "$CWD" "$loc") || return 0
@@ -222,11 +225,15 @@ judge_find() {
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" a t e
+  local cmd="${CMD_ARGS[0]:-}" a t e prev="" msg=0
   TGT_BASE=""
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
   TGT_BASE="$CMD_CHDIR"
+  # A git commit|tag|merge message read from a quoted heredoc, -m "$(cat <<'EOF' … EOF)", is inert text.
+  [ "$cmd" = git ] && case " ${CMD_ARGS[*]:1:4} " in *" commit "*|*" tag "*|*" merge "*) msg=1 ;; esac
   for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do
+    case "$msg:$prev:$a" in 1:-m:'$(cat <<'[\'\"]*|1:--message:'$(cat <<'[\'\"]*) prev="$a"; continue ;; esac
+    prev="$a"
     case "$a" in *'$('*|*'`'*) UNSAFE="$UNSAFE${cmd:-assignment}: command substitution"$'\n'; return 0 ;; esac
   done
   [ -n "$cmd" ] || return 0
@@ -248,6 +255,10 @@ judge_command() {
     dd) for a in "${CMD_ARGS[@]}"; do case "$a" in of=*) target "${a#of=}" ;; esac; done ;;
     # Writers whose targets are read, but whose effect is not only on those.
     chmod|chown|chgrp) operands; [ "${#OPERANDS[@]}" = 0 ] || OPERANDS=("${OPERANDS[@]:1}"); target_operands; UNSAFE="$UNSAFE$cmd"$'\n' ;;
+    # A literal cd moves the directory later commands on the line resolve in; any other cd unproves their writes.
+    cd) a="${CMD_ARGS[1]:-$HOME}"
+        if unresolved "$a"; then CD_UNSURE=1
+        else case "$a" in -*) CD_UNSURE=1 ;; /*) CWD="$a" ;; '~'|'~/'*) CWD="$HOME${a#\~}" ;; *) CWD="$CWD/$a" ;; esac; fi ;;
     *) UNSAFE="$UNSAFE$cmd"$'\n' ;;
   esac
   return 0
