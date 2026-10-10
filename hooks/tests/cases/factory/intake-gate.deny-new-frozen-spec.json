@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/legacy/zz-new.legacy.spec.ts","content":"test('x', async () => {});\n"}},"expect":"deny","messageContains":["[specs.shape]","creates a new file under the frozen tests/e2e/legacy/ directory","factory-gates.md#specs.shape"]}

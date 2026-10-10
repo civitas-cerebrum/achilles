@@ -1,22 +1,31 @@
 {
   "name": "@civitas-cerebrum/achilles",
-  "version": "0.1.8",
-  "description": "Autonomous quality-assurance methodology \u2014 agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
+  "version": "0.2.0",
+  "description": "Autonomous quality-assurance methodology — agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "build:validator": "node scripts/build-validator.mjs",
-    "test:hooks": "npm run build:validator && hooks/tests/self/run-sh.sh && hooks/tests/run.sh",
-    "test:reporter": "node --test --test-concurrency=1 \"reporter/tests/*.test.mjs\"",
+    "test:hooks": "npm run build:validator && { hooks/tests/self/run-sh.sh; a=$?; hooks/tests/run.sh; b=$?; exit $((a | b)); }",
+    "test:lock": "node scripts/sync-kernel-mandate.mjs --check",
+    "test:lint": "node scripts/lint-doc-drift.mjs",
+    "test:agents": "node scripts/build-agents.mjs --check",
+    "test:bin": "node --test tests/bin/*.test.mjs",
+    "test:factory": "CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project node hooks/tests/factory-run.mjs",
+    "test:reporter": "node --test --test-concurrency=1 reporter/tests/*.test.mjs",
     "sync-hooks": "node scripts/sync-hooks.js",
     "sync:kernel-mandate": "node scripts/sync-kernel-mandate.mjs",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
-    "test": "npm run schemas:lint && node scripts/sync-kernel-mandate.mjs --check && node scripts/build-agents.mjs --check && node scripts/lint-doc-drift.mjs && npm run test:hooks && npm run test:reporter",
-    "prepack": "npm test"
+    "test": "node scripts/run-suites.mjs",
+    "check:pack": "node scripts/check-pack.mjs",
+    "prepack": "npm run build:validator && npm run check:pack && npm test"
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",
     "achilles-show": "bin/show.mjs",
-    "achilles-mutate": "bin/mutate.mjs"
+    "achilles-uninstall": "bin/achilles-uninstall.mjs",
+    "achilles-mutate": "bin/mutate.mjs",
+    "achilles-scenario-lint": "bin/scenario-lint.mjs",
+    "achilles-selector-evidence": "bin/selector-evidence.mjs"
   },
   "exports": {
     "./reporter": "./reporter/index.js",
@@ -83,5 +92,8 @@
     "html-to-text": "10.0.1"
   },
   "author": "Umut Ay Bora",
+  "engines": {
+    "node": ">=20"
+  },
   "license": "MIT"
 }

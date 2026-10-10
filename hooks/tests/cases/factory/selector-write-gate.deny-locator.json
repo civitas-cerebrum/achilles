@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/north/zz-case.spec.ts","content":"await page.locator('[data-testid=\"pay\"]').click();\n"}},"expect":"deny","messageContains":["[selectors.no-inline]","factory-gates.md#selectors.no-inline","Write to tests/e2e/north/zz-case.spec.ts"]}

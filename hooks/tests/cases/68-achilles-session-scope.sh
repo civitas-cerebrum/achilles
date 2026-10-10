@@ -116,6 +116,10 @@ section "session-scope: transcript scan does not false-positive on adjacent traf
 PROSE_TRANSCRIPT="$SCOPE_TMP/prose-transcript.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":[{"type":"text","text":"our test-composer microservice and the coverage-expansion roadmap doc"}]}}' > "$PROSE_TRANSCRIPT"
 assert_allow "$COMMIT_GATE" "$(payload session_id=dev-s10 transcript_path="$PROSE_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "prose mention of skill names → ALLOW"
+# A SKILL.md path in a tool result (a grep hit, a file listing) is a mention, not a Read.
+LISTING_TRANSCRIPT="$SCOPE_TMP/listing-transcript.jsonl"
+printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","content":"skills/onboarding/SKILL.md\nskills/achilles-protocol/SKILL.md"}]}}' > "$LISTING_TRANSCRIPT"
+assert_allow "$COMMIT_GATE" "$(payload session_id=dev-s10a transcript_path="$LISTING_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "SKILL.md path listed in a tool result → ALLOW"
 
 section "session-scope: negative cache holds for 60s, marker overrides it"
 NC_TRANSCRIPT="$SCOPE_TMP/nc-transcript.jsonl"

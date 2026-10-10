@@ -23,6 +23,31 @@ case "${KERNEL_MANDATE:-}" in 0|false|off) exit 0 ;; esac
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
 JQ_BIN="$(achilles__jq)"
 
+# True when the kernel's own discovery (lib/kernel-mandate.sh) would find a manifest: any one
+# walking up from the session cwd (a broken one is its repair state), else the main checkout's
+# of the worktree the cwd sits in, which it takes only when it parses.
+project_manifest() {
+  local dir common main
+  dir=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  while :; do
+    [ -f "$dir/.claude/kernel-mandate.json" ] && return 0
+    [ "$dir" = / ] && break
+    dir=$(dirname "$dir")
+  done
+  common=$(cd "$1" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || return 1
+  main="${common%/.git}/.claude/kernel-mandate.json"
+  [ -f "$main" ] && [ -n "$JQ_BIN" ] &&
+    "$JQ_BIN" -e 'type == "object" and (.roles | type == "object")' < "$main" >/dev/null 2>&1
+}
+
+# A global install stages the QA mandate beside its hooks dir (scripts/install/mandate.js):
+# it governs a project that has no manifest of its own.
+GLOBAL_MANDATE="${HOOK_DIR%/hooks}/achilles-qa.kernel-mandate.json"
+if [ -z "${KERNEL_MANDATE_MANIFEST:-}" ] && [ -f "$GLOBAL_MANDATE" ]; then
+  SESSION_CWD=$(hook_json_str "$INPUT" .cwd)
+  project_manifest "${SESSION_CWD:-$PWD}" || export KERNEL_MANDATE_MANIFEST="$GLOBAL_MANDATE"
+fi
+
 # True when this project has staged a manifest, i.e. the kernel is expected to govern it.
 manifest_staged() {
   local cwd="" top="" root

@@ -3,3 +3,8 @@ tests/
 tests/**
 test/
 test/**
+
+# Schema fixtures for hooks/data/factory-rules.schema.json — exercised by
+# npm run schemas:lint, no use to a consumer at runtime.
+data/factory-rules.fixtures/
+data/factory-rules.fixtures/**

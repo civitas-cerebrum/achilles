@@ -13,27 +13,21 @@ const projectRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
 const homeDir = os.homedir();
 const userClaudeDir = path.join(homeDir, '.claude');
 
-// Install scope — decided by how npm was invoked:
+// Install scope, decided by how npm was invoked:
 //
 //   npm install -g @civitas-cerebrum/achilles
-//     → GLOBAL install. The harness (hooks + settings.json registrations +
-//       bundled jq) lands system-wide under ~/.claude/, and the methodology
-//       (skills) lands user-level under ~/.claude/skills/. There is no
-//       consumer project in a global install — projectRoot resolves to npm's
-//       own lib/ directory, which must never receive a .claude/ tree.
+//     GLOBAL: the whole harness lands in ~/.claude (hooks, settings.json
+//     registrations, skills, agents, the staged mandate, the record). There is
+//     no consumer project: projectRoot is npm's lib/, which never receives a
+//     .claude/ tree.
 //
 //   npm install @civitas-cerebrum/achilles          (no -g)
-//     → LOCAL install. The harness lands in the CURRENT PROJECT ONLY
-//       (<project>/.claude/hooks + <project>/.claude/settings.json), so the
-//       hooks exist for sessions in this project and nowhere else. The
-//       methodology is still installed system-wide as well (project +
-//       user-level skills), because skills are inert instructions — they
-//       activate only when invoked — while hooks are live processes that
-//       belong to the scope that opted in.
+//     LOCAL: everything lands in <project>/.claude except one routing skill,
+//     ~/.claude/skills/achilles (user-trigger.js), so a test request in any
+//     project finds Achilles and, where it is not installed, says how to get it.
 //
-// Either way the hooks themselves enforce nothing outside an
-// achilles-activated session: every gate silent-allows until the achilles
-// protocol activates in the session (see hooks/lib/achilles-activation.sh).
+// Either way the hooks enforce nothing outside an achilles-activated session
+// (hooks/lib/achilles-activation.sh).
 function isGlobalInstall() {
   // npm exports every config flag as npm_config_*; -g sets global=true.
   if (process.env.npm_config_global === 'true') return true;
@@ -50,14 +44,8 @@ const globalInstall = isGlobalInstall();
 // Base .claude/ directory the HARNESS (hooks + settings + jq) installs into.
 const harnessClaudeDir = globalInstall ? userClaudeDir : path.join(projectRoot, '.claude');
 
-// Methodology (skills, agent definitions) destinations. Local installs write
-// project-level (the correct version for this project) AND user-level
-// (overwrites stale copies from older installs so outdated user-level files
-// never take precedence). Global installs write user-level only — projectRoot
-// is npm's lib/ dir.
-const methodologyDestinations = (sub) => globalInstall
-  ? [path.join(userClaudeDir, sub)]
-  : [path.join(projectRoot, '.claude', sub), path.join(userClaudeDir, sub)];
+// Skills and agent definitions follow the harness.
+const methodologyDestinations = (sub) => [path.join(harnessClaudeDir, sub)];
 
 module.exports = {
   packageDir,

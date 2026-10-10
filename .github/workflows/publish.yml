@@ -3,7 +3,8 @@ name: 🚀 Publish Package
 on:
   push:
     tags:
-      - '*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
 
 permissions:
   id-token: write
@@ -23,29 +24,25 @@ jobs:
           node-version: '24'
           registry-url: https://registry.npmjs.org
 
-      # npm ci is strict-lockfile-enforced and matches the install idiom
-      # used by sibling publishing workflows (@civitas-cerebrum/element-repository,
-      # @civitas-cerebrum/element-interactions). package-lock.json is committed
-      # to the repo so the deterministic install works on the CI runner.
-      # Dev deps ARE installed: the pre-publish `test:hooks` step runs
-      # `build:validator`, which imports `esbuild` (a devDependency) to bundle
-      # the self-contained validator. Omitting dev deps breaks that build. Dev
-      # deps never reach the published tarball anyway — `files:` in package.json
-      # governs the tarball, not node_modules.
-      # --ignore-scripts skips the package's own postinstall (which copies
-      # hooks + skills into ~/.claude/ — not what we want on the CI runner).
-      - name: 🧩  Install dependencies (incl. dev — esbuild needed to build the validator)
+      # Dev deps are needed: build:validator imports esbuild. --ignore-scripts keeps
+      # the package's own postinstall from writing into the runner's ~/.claude.
+      - name: 🧩  Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: 🔎  Schemas lint
-        run: npm run schemas:lint
+      - name: 🏷️  Tag matches package.json
+        run: |
+          v=$(node -p "require('./package.json').version")
+          [ "$GITHUB_REF_NAME" = "$v" ] || { echo "tag $GITHUB_REF_NAME ≠ package.json $v"; exit 1; }
 
-      - name: 🧪  Hook tests
-        run: npm run test:hooks
+      # All eight suites: schemas, kernel lock, doc-drift lint, hooks, factory gates, CLIs, reporter, agents.
+      - name: ✅  Suites (npm test)
+        run: npm test
 
-      # --ignore-scripts skips prepack (which would re-run test:hooks)
-      # and any other lifecycle scripts on the publisher side.
-      - name: 📦  Publish Package
+      - name: 📦  Tarball contents
+        run: node scripts/check-pack.mjs
+
+      # --ignore-scripts: prepack would re-run the suites.
+      - name: 🚀  Publish
         run: npm publish --ignore-scripts --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

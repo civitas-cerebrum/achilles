@@ -1,6 +1,6 @@
 name: ✅ CI
 
-# Every suite the package owns, on Linux and macOS, as separate steps.
+# Every suite the package owns, as separate steps, on Linux and macOS with Node 20 and 24, plus a root job.
 
 on:
   pull_request:
@@ -16,12 +16,13 @@ concurrency:
 
 jobs:
   test:
-    name: test (${{ matrix.os }})
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
     # BSD userland on macOS is the point: the kernel hooks must hold on both.
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        node: ['20', '24']
     runs-on: ${{ matrix.os }}
     steps:
       - name: 🗂️  Checkout
@@ -30,7 +31,7 @@ jobs:
       - name: ⚙️  Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: ${{ matrix.node }}
 
       # Dev deps included: test:hooks → build:validator imports esbuild (devDep)
       # to bundle the self-contained validator. --ignore-scripts skips the
@@ -39,23 +40,19 @@ jobs:
         id: install
         run: npm ci --ignore-scripts
 
-      # Every suite runs even when an earlier one fails, so one push reports
-      # all breakage; any red step still fails the job.
-      - name: 🔎  Schemas lint
+      # One step per suite; each runs even when an earlier one fails, so one push reports
+      # all breakage. The list matches scripts/run-suites.mjs (`npm test`).
+      - name: 🔎  Schemas
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run schemas:lint
 
       - name: 🔒  Vendored kernel lock
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: node scripts/sync-kernel-mandate.mjs --check
+        run: npm run test:lock
 
       - name: 📐  Doc-drift lint
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: node scripts/lint-doc-drift.mjs
-
-      - name: 🤖  Generated agents up to date
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: node scripts/build-agents.mjs --check
+        run: npm run test:lint
 
       - name: 🧪  Hook tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
@@ -64,13 +61,55 @@ jobs:
       # Hooks use #!/bin/bash, which is 3.2 on macOS; the default PATH bash
       # there is newer (Homebrew) so the first run does not cover 3.2.
       - name: 🍎  Hook tests under /bin/bash 3.2
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' && runner.os == 'macOS' && matrix.node == '24' }}
         run: |
           PATH=/bin:$PATH
           bash -c 'echo "bash $BASH_VERSION"; [[ $BASH_VERSION == 3.* ]]'
           npm run build:validator
+          hooks/tests/self/run-sh.sh
           bash hooks/tests/run.sh
+
+      - name: 🏭  Factory gate cases
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:factory
+
+      - name: 🛠️  CLI tests
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:bin
 
       - name: 📊  Reporter tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:reporter
+
+      - name: 🤖  Generated agents up to date
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:agents
+
+      - name: 📦  Tarball contents
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' && matrix.os == 'ubuntu-latest' && matrix.node == '24' }}
+        run: node scripts/check-pack.mjs
+
+  # uid 0: the hook cases must not depend on file-permission denials a non-root user gets.
+  root:
+    name: root (node 24)
+    runs-on: ubuntu-latest
+    container: node:24
+    steps:
+      - name: 🗂️  Checkout
+        uses: actions/checkout@v4
+
+      # jq 1.7.1, the version postinstall bundles: Debian's 1.6 prints 250.0 as 250, which the perf-summary cases pin.
+      - name: 🧩  Install jq and dependencies
+        run: |
+          curl -fsSL -o /usr/local/bin/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
+          chmod +x /usr/local/bin/jq
+          npm ci --ignore-scripts
+
+      - name: 🧪  Hook tests
+        run: |
+          [ "$(id -u)" = 0 ]
+          npm run test:hooks
+
+      - name: 🏭  Factory gate cases
+        if: ${{ !cancelled() }}
+        run: npm run test:factory

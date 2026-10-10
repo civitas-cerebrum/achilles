@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "find .factory -name 'verify-*' -type f"}}, "expect": "allow", "warn": false}

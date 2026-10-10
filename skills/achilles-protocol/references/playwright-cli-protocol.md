@@ -3,7 +3,7 @@
 **Status:** single source of truth for live browser automation across the `@civitas-cerebrum/element-interactions` skill suite.
 **Supersedes and forbids:** the prior `mcp__plugin_playwright_playwright__*` MCP-tool protocol. The MCP browser tools are not an acceptable fallback when the CLI is unavailable, when the harness still surfaces them in a subagent's tool list, or when a brief is unclear about which channel to use. The CLI is the only sanctioned channel for browser automation across every skill in this suite. A subagent that finds itself reaching for an MCP browser tool has a malformed dispatch brief, not a permitted alternative.
 
-Skills that need to drive a real browser — `journey-mapping`, `coverage-expansion`, `test-composer`, `bug-discovery`, `failure-diagnosis`, `companion-mode`, `achilles-protocol` (Stages 1–2), `onboarding` (Phases 2/3/5/6) — invoke `@playwright/cli` from the Bash tool. Sessions are isolated by design: there is no Rule-11-style prereq check, no `[mcp-isolation: serializing]` fallback, no `.mcp.json` to write.
+Skills that need to drive a real browser (`journey-mapping`, `coverage-expansion`, `test-composer`, `bug-discovery`, `failure-diagnosis`, `companion-mode`, `achilles-protocol` (Stages 1–2), `onboarding` (Phases 2/3/5/6)) invoke `@playwright/cli` from the Bash tool. Sessions are isolated by design: there is no Rule-11-style prereq check, no `[mcp-isolation: serializing]` fallback, no `.mcp.json` to write.
 
 ---
 
@@ -11,13 +11,13 @@ Skills that need to drive a real browser — `journey-mapping`, `coverage-expans
 
 The MCP-isolation rule existed because two parallel subagents on one MCP browser fight over the active tab and corrupt each other's snapshots. That risk does not exist with the CLI: every `playwright-cli -s=<name> open` spawns its **own browser process** with its **own user-data directory**. Sessions are OS-isolated, not just labelled.
 
-This has been empirically validated: four parallel sessions opened against four different URLs each reported their own `location.href` and their own snapshot — no last-write-wins, no cross-contamination. Cookies, localStorage, and sessionStorage are per-session.
+Parallel sessions on different URLs each report their own `location.href` and snapshot: no last-write-wins, no cross-contamination. Cookies, localStorage, and sessionStorage are per-session.
 
 Consequence: the orchestrator no longer needs to "confirm per-subagent isolation is achievable" before dispatching. The parent dispatches N subagents in parallel; each subagent issues `playwright-cli -s=<unique-slug> open ...` in its own Bash; the OS provides isolation.
 
 ### 1.1 Empirical parallelism (G4 — what to expect)
 
-Reference benchmark (4 sessions × {open, snapshot, close} on a developer laptop, single-host docker stack — your numbers will vary by hardware):
+Reference benchmark (4 sessions × {open, snapshot, close} on a developer laptop, single-host docker stack; your numbers will vary by hardware):
 
 ```
 serial wall-clock:   ~45s    (4 sequential iterations × ~11s avg)
@@ -25,9 +25,9 @@ parallel wall-clock: ~21s    (all 4 backgrounded; finished within ~70ms of each 
 speedup:             ~2x     (ideal: 4.00x)
 ```
 
-**Read the numbers honestly.** Parallel is genuinely concurrent — all four iterations finish close together, bounded by the slowest. The ~2x speedup (well below 4.00x) is hardware contention, not a serialization defect: four chromium-headless-shell processes share one laptop's CPU and memory, and a single backend container handles four concurrent connections, so each parallel iteration takes roughly 2× the serial-average per-iteration time. On hardware with more cores or a horizontally-scaled backend, the ratio approaches the ideal.
+**Read the numbers with their limits.** Parallel is concurrent: all four iterations finish close together, bounded by the slowest. The ~2x speedup (well below 4.00x) is hardware contention, not a serialization defect: four chromium-headless-shell processes share one laptop's CPU and memory, and a single backend container handles four concurrent connections, so each parallel iteration takes roughly 2× the serial-average per-iteration time. On hardware with more cores or a horizontally-scaled backend, the ratio approaches the ideal.
 
-**Implication for orchestrator design.** Cap parallel dispatch at the point where contention erases speedup — for `coverage-expansion` on a single-host stack, that's typically `P=4`. Going wider (P=8, P=16) on the same host adds no wall-clock benefit and risks chromium OOM. The `coverage-expansion` skill parallelises across independent journeys, not across subagent count; if you find yourself wanting `P>4` on a single-host setup, scale the stack first.
+**Implication for orchestrator design.** Cap parallel dispatch at the point where contention erases speedup; for `coverage-expansion` on a single-host stack, that's typically `P=4`. Going wider (P=8, P=16) on the same host adds no wall-clock benefit and risks chromium OOM. The `coverage-expansion` skill parallelises across independent journeys, not across subagent count; if you find yourself wanting `P>4` on a single-host setup, scale the stack first.
 
 ---
 
@@ -35,13 +35,13 @@ speedup:             ~2x     (ideal: 4.00x)
 
 ### 2.1 Package install — automatic
 
-`@playwright/cli` is a **hard `dependencies` entry** of `@civitas-cerebrum/achilles`. After `npm install @civitas-cerebrum/achilles`, the CLI binary is reachable via `npx playwright-cli ...` immediately — no extra `npm install -D @playwright/cli` step. The postinstall script confirms reachability and prints the version.
+`@playwright/cli` is a **hard `dependencies` entry** of `@civitas-cerebrum/achilles`. After `npm install @civitas-cerebrum/achilles`, the CLI binary is reachable via `npx playwright-cli ...` immediately; no extra `npm install -D @playwright/cli` step. The postinstall script confirms reachability and prints the version.
 
 If `npx --no-install playwright-cli --version` ever returns non-zero in a project where this package is installed, treat it as a corrupted install (consumer's `node_modules` is incomplete). The fix is `npm install`, not a separate dep add.
 
 ### 2.2 Browser binary — one-shot, manual
 
-Even with the CLI package installed, the browser binary is **not** fetched automatically — Playwright's `playwright-core` postinstall doesn't download chromium-headless-shell until requested. The first session against an uninstalled browser fails with a clear error. Pre-warm once per dev machine:
+Even with the CLI package installed, the browser binary is **not** fetched automatically; Playwright's `playwright-core` postinstall doesn't download chromium-headless-shell until requested. The first session against an uninstalled browser fails with a clear error. Pre-warm once per dev machine:
 
 ```bash
 npx playwright-cli install-browser chromium
@@ -51,7 +51,7 @@ This downloads `chromium-headless-shell` (~93 MiB) into the Playwright browsers 
 
 ### 2.3 Workspace artifacts
 
-The CLI writes timestamped snapshot YAMLs to `.playwright-cli/` in the cwd at runtime. This directory **must** be in `.gitignore` — see Phase F of the migration. The scaffolded `.gitignore` shipped by `onboarding` includes it.
+The CLI writes timestamped snapshot YAMLs to `.playwright-cli/` in the cwd at runtime. This directory **must** be in `.gitignore`: see Phase F of the migration. The scaffolded `.gitignore` shipped by `onboarding` includes it.
 
 ---
 
@@ -91,22 +91,22 @@ Use `<phase>-<role>-<slug>` so `playwright-cli list` reads as a workflow summary
 | `failure-diagnosis` per-failure debug session | `fd-<short-slug>` | `fd-<short-slug>` |
 | `companion-mode` single-task verification | `companion-<task-slug>` | `companion-<task-slug>` |
 
-The `composer-` / `reviewer-` / `probe-` prefix on the CLI slug mirrors the role-explicit Agent description prefix that dispatched the subagent (`test-composer-j-<slug>:`, `reviewer-j-<slug>:`, `probe-j-<slug>:`) — same role on both ends, so `.playwright-cli/<slug>*` artifacts trace 1:1 to the dispatching subagent's role + journey. The composer's slug drops the `test-` of its description prefix (the role kernel's name for the role) to stay inside the length budget below; the guard accepts `test-composer-` slugs too. Bare `j-<slug>-...` / `sj-<slug>-...` slugs are deprecated; use the role-explicit form.
+The `composer-` / `reviewer-` / `probe-` prefix on the CLI slug mirrors the role-explicit Agent description prefix that dispatched the subagent (`test-composer-j-<slug>:`, `reviewer-j-<slug>:`, `probe-j-<slug>:`): same role on both ends, so `.playwright-cli/<slug>*` artifacts trace 1:1 to the dispatching subagent's role + journey. The composer's slug drops the `test-` of its description prefix (the role kernel's name for the role) to stay inside the length budget below; the guard accepts `test-composer-` slugs too. Bare `j-<slug>-...` / `sj-<slug>-...` slugs are deprecated; use the role-explicit form.
 
-Slugs use ASCII, lowercase, dash-separated. Do not use `/` — match the dash-separated forms in the table above so `playwright-cli list` reads cleanly.
+Slugs use ASCII, lowercase, dash-separated. Do not use `/`; match the dash-separated forms in the table above so `playwright-cli list` reads cleanly.
 
-**Slug-length budget — keep under ~25 chars on darwin.** The CLI opens a Unix domain socket at `$TMPDIR/pw-<8>/cli/<16-hash>-<slug>.sock`. macOS's `sockaddr_un.sun_path` caps at 104 bytes, and after the `pw-XXXXXXXX/cli/<16-hash>-` prefix you have only ~25–30 characters of slug headroom before `listen()` fails with `EINVAL`. The cap is per-socket-path, not per-slug-string, so `$TMPDIR` length matters too. Empirically slugs around 18+ chars have failed on darwin while 10-char slugs work; budget conservatively.
+**Slug-length budget: keep under ~25 chars on darwin.** The CLI opens a Unix domain socket at `$TMPDIR/pw-<8>/cli/<16-hash>-<slug>.sock`. macOS's `sockaddr_un.sun_path` caps at 104 bytes, and after the `pw-XXXXXXXX/cli/<16-hash>-` prefix you have only ~25–30 characters of slug headroom before `listen()` fails with `EINVAL`. The cap is per-socket-path, not per-slug-string, so `$TMPDIR` length matters too. Slugs of 18+ chars have failed on darwin; 10-char slugs work. Budget conservatively.
 
 Practical guidance:
 
 - Compose phase prefixes from short tokens: `phase1-`, `fd-`, `companion-`, plus `composer-`, `reviewer-`, `probe-` for coverage-expansion / bug-discovery.
-- Keep journey slugs to ≤12 chars where you can — pick a short journey slug per the journey-map convention. With the role prefix, `composer-j-<short-slug>-1-c1` (≤24 chars) is within budget; longer journey slugs push the prefixed form past the cap and need shortening.
+- Keep journey slugs to ≤12 chars where you can: pick a short journey slug per the journey-map convention. With the role prefix, `composer-j-<short-slug>-1-c1` (≤24 chars) is within budget; longer journey slugs push the prefixed form past the cap and need shortening.
 - Compose the slug, then `wc -c <<< "<slug>"`; abort and shorten if it crosses 25 chars.
 - Linux's 108-byte limit is slightly more forgiving but the same discipline keeps cross-OS portability cheap.
 
-If a longer slug is unavoidable, set `TMPDIR=/tmp` for the run — a shorter base path buys back a few characters — but treat that as a workaround, not a fix.
+If a longer slug is unavoidable, set `TMPDIR=/tmp` for the run: a shorter base path buys back a few characters; but treat that as a workaround, not a fix.
 
-**These prefixes are hook-enforced.** `playwright-cli-isolation-guard.sh` (a `PreToolUse`/`Bash` hook in `hooks/data/hook-manifest.json`) inspects every `playwright-cli` invocation and **denies** any `-s=` slug that does not match `phase1-|phase2-|phase4-|stage2-|test-composer-|composer-|reviewer-|probe-|cleanup-|companion-|fd-` (full regex: `^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*`). Bare `j-`/`sj-` slugs are rejected — use the role-explicit forms. Session-agnostic subcommands (`close-all`, `kill-all`, `list`, `install-browser`, …) are allowed without a slug. See [`harness-hooks.md`](harness-hooks.md) for the full hook catalogue.
+**These prefixes are hook-enforced.** `playwright-cli-isolation-guard.sh` (a `PreToolUse`/`Bash` hook in `hooks/data/hook-manifest.json`) inspects every `playwright-cli` invocation and **denies** any `-s=` slug that does not match `phase1-|phase2-|phase4-|stage2-|test-composer-|composer-|reviewer-|probe-|cleanup-|companion-|fd-` (full regex: `^(phase1|phase2|phase4|stage2|test-composer|composer|reviewer|probe|cleanup|companion|fd)-[a-z0-9][a-z0-9-]*`). Bare `j-`/`sj-` slugs are rejected; use the role-explicit forms. Session-agnostic subcommands (`close-all`, `kill-all`, `list`, `install-browser`, …) are allowed without a slug. See [`harness-hooks.md`](harness-hooks.md) for the full hook catalogue.
 
 ### 3.2 Quarantine on start
 
@@ -137,7 +137,7 @@ Strips the wrapper and returns only the result value. Use it whenever a downstre
 | `--raw localstorage-get theme` | `theme=dark` |
 | `--raw snapshot` | YAML-ish ARIA tree (see §5) |
 
-Subagent return validators (`subagent-return-schema.md`) keep their grep-based shape — `--raw` outputs are stable line-oriented strings that grep cleanly.
+Subagent return validators (`subagent-return-schema.md`) keep their grep-based shape: `--raw` outputs are stable line-oriented strings that grep cleanly.
 
 ### 4.3 `--json`
 
@@ -155,7 +155,7 @@ playwright-cli list --json
 
 ## 5. Snapshots and ref-IDs
 
-`playwright-cli snapshot` emits the same ARIA-role + ref-ID format as the prior `mcp__playwright__browser_snapshot` tool. **No translation layer is required** — every skill that previously consumed MCP snapshots reads CLI snapshots unchanged.
+`playwright-cli snapshot` emits the same ARIA-role + ref-ID format as the prior `mcp__playwright__browser_snapshot` tool. **No translation layer is required**: every skill that previously consumed MCP snapshots reads CLI snapshots unchanged.
 
 Format:
 
@@ -179,7 +179,7 @@ playwright-cli fill e4 "user@example.com"
 playwright-cli press Enter
 ```
 
-CSS selectors and Playwright locators are also accepted (`playwright-cli click "#submit"`, `playwright-cli click "getByRole('button', { name: 'Submit' })"`). Prefer refs from a fresh snapshot for stability — refs change across snapshots, so always re-snapshot before a chain of clicks.
+CSS selectors and Playwright locators are also accepted (`playwright-cli click "#submit"`, `playwright-cli click "getByRole('button', { name: 'Submit' })"`). Prefer refs from a fresh snapshot for stability: refs change across snapshots, so always re-snapshot before a chain of clicks.
 
 ### 5.1 Snapshot scoping
 
@@ -225,7 +225,7 @@ The state file is the standard Playwright `storageState` JSON: cookies + per-ori
 
 | Command | When |
 |---|---|
-| `playwright-cli list` | "What is currently open?" — diagnostic, before-and-after. |
+| `playwright-cli list` | "What is currently open?": diagnostic, before-and-after. |
 | `playwright-cli -s=<name> close` | End-of-task per-session cleanup. |
 | `playwright-cli close-all` | End-of-phase orchestrator cleanup; safe to run from a parent that has dispatched parallel subagents. |
 | `playwright-cli kill-all` | Only when `close-all` leaves zombie chromium processes (see troubleshooting). |
@@ -268,7 +268,7 @@ The orchestrator picks the slug per the convention in §3.1 and substitutes it.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `The browser '<name>' is not open, please run open first` | Session was never opened, or was closed (e.g. by a sibling running `close-all`). | `playwright-cli -s=<name> open ...` first. Never run `close-all` while siblings are working. |
-| `Error: listen EINVAL` on `playwright-cli -s=<long-slug> open` | Unix-socket path under `$TMPDIR/pw-<8>/cli/<16-hash>-<slug>.sock` exceeds `sockaddr_un.sun_path` (104 bytes on darwin). | Shorten the slug — see §3.1's slug-length budget. As a workaround, `TMPDIR=/tmp` shortens the base path. |
+| `Error: listen EINVAL` on `playwright-cli -s=<long-slug> open` | Unix-socket path under `$TMPDIR/pw-<8>/cli/<16-hash>-<slug>.sock` exceeds `sockaddr_un.sun_path` (104 bytes on darwin). | Shorten the slug; see §3.1's slug-length budget. As a workaround, `TMPDIR=/tmp` shortens the base path. |
 | Stale chromium processes after `close-all` | Crash mid-run; `close-all` reaps gracefully but a hung process can survive. | `playwright-cli kill-all` then `ps aux | grep chrome-headless` to confirm. |
 | `cannot read state file` on `state-load` | Path is relative to cwd, not to the session's user-data dir. | Use absolute paths or paths relative to the project root, and verify with `ls`. |
 | Snapshot contains stale `[ref=eN]`s after a click | Refs are scoped to the most recent snapshot. | Re-run `playwright-cli snapshot` after every navigation/state change before the next ref-based command. |
@@ -279,7 +279,7 @@ The orchestrator picks the slug per the convention in §3.1 and substitutes it.
 
 ## 10. Out-of-scope / known constraints
 
-- **`@playwright/cli` is alpha (v0.1.x as of 2026-05-01).** It is shipped as a hard `dependencies` entry of `@civitas-cerebrum/achilles`, pinned to a specific patch version (currently `0.1.17`). When the CLI ships a breaking change, this package's pin is bumped on the same release that absorbs the change — consumers never have to think about CLI versions. The pin tightens (caret → exact) precisely *because* it's alpha; let it become `^X.Y.Z` only after 1.0.
-- **Adopting Playwright's `init-agents --loop claude` planner/generator/healer agents** is out of scope for this protocol — those overlap with `journey-mapping`, `test-composer`, and `failure-diagnosis` and need a separate architectural discussion.
-- **`playwright-cli attach --cdp=...`** (attach mode) is **not** isolated when sessions share a CDP endpoint — only `open` mode gives per-session browser-process isolation. Attach mode is fine for single-failure debug sessions in `failure-diagnosis` but must not be used by parallel-dispatch skills.
+- **`@playwright/cli` is alpha (v0.1.x as of 2026-05-01).** It is shipped as a hard `dependencies` entry of `@civitas-cerebrum/achilles`, pinned to a specific patch version (currently `0.1.17`). When the CLI ships a breaking change, this package's pin is bumped on the same release that absorbs the change; consumers never have to think about CLI versions. The pin tightens (caret → exact) precisely *because* it's alpha; let it become `^X.Y.Z` only after 1.0.
+- **Adopting Playwright's `init-agents --loop claude` planner/generator/healer agents** is out of scope for this protocol; those overlap with `journey-mapping`, `test-composer`, and `failure-diagnosis` and need a separate architectural discussion.
+- **`playwright-cli attach --cdp=...`** (attach mode) is **not** isolated when sessions share a CDP endpoint; only `open` mode gives per-session browser-process isolation. Attach mode is fine for single-failure debug sessions in `failure-diagnosis` but must not be used by parallel-dispatch skills.
 - **Persistent profiles (`--persistent`).** Use only when a brief explicitly requires it (e.g. testing extension state). Default to in-memory user-data dirs so concurrent runs don't trample each other.

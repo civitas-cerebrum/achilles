@@ -6,7 +6,15 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 |---|---|---|---|
 | `ACHILLES_PROTOCOL` | operator shell | `1` forces the protocol on; `0` stops a new session from activating (an active session stays active) | every Achilles hook, including the kernel wrapper |
 | `KERNEL_MANDATE` | operator shell | `0`, `false` or `off` bypasses the role kernel, including the wrapper's refusal when the kernel file is missing | kernel only; Achilles gates still run |
-| `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it only when absent | kernel only |
+| `.claude/kernel-mandate.json` | project | presence makes the kernel govern this tree; postinstall stages it when absent and refreshes it only while unedited | kernel only |
+| `~/.claude/achilles-qa.kernel-mandate.json` | user, staged by `npm i -g` | governs, while the protocol is active, every project with no `.claude/kernel-mandate.json` of its own; refreshed only while unedited | kernel only, every project on the machine |
+| `npm i -g` | install command | installs hooks, registrations, skills, agents and the mandate in `~/.claude`; without `-g` they go to the project's `.claude/` and only the routing skill `~/.claude/skills/achilles` is user-level | every project on the machine, or this project |
+| `achilles-factory-rules.json` | project root | committing it opts the project into the factory gates it has rules for; no file, or a rule id absent, makes that gate allow silently ([factory-gates.md](factory-gates.md#opting-in-the-rule-file)) | seven gates registered for every project, no-op without the file |
+| `FACTORY_RULES` | operator shell | path of the rule file, absolute or relative to the project root (`$CLAUDE_PROJECT_DIR`, else the cwd) | the factory gates and the scenario lint |
+| `FACTORY_JQ` | tests only | jq binary the factory gates use | never set it in a real session |
+| `FACTORY_NODE` | tests only | node binary `spend-gate` and `commit-gate` use | never set it in a real session |
+| `FACTORY_SCHEMA` | tests only | rule-file schema `repository-evidence-gate` reads its `evidenceDir` default from | replaces where that gate looks for evidence notes; never set it in a real session |
+| `SPEND_OPT_IN` | the command line, per run | `SPEND_OPT_IN=1` in front of a run of a spend-incurring spec is the owner's opt-in (the variable is the `spend.opt-in` rule's `optInEnv`) | `spend-gate`, for that one command |
 | `CIVITAS_SKIP_HOOK_INSTALL` | install env | `1` skips hook install and mandate staging | all hooks |
 | `CIVITAS_SKIP_JQ_INSTALL` | install env | `1` skips the bundled jq download | hooks then need jq on PATH; without it, PreToolUse gates deny while the protocol is active |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` | install env | `1` skips the Chromium download | browser-driven skills |
@@ -43,3 +51,4 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 |---|---|
 | `.claude/onboarding-stop-authorized` | authorises an early stop of the onboarding pipeline |
 | deleting the project's `.claude/kernel-mandate.json` | the kernel stops governing the tree |
+| `npx achilles-uninstall [--global \| --project [dir]] [--dry-run]` | removes the hooks, skills, agents and registrations the install record lists (files only while unedited) and an unedited staged mandate; your own settings.json entries stay. `--project` (the default, dir defaults to the cwd) reverses the project's `.claude/`; `--global` reverses `~/.claude`: a global install, or the routing skill a local install wrote |

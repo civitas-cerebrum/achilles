@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/scripts/zz-case.ts","content":"await page.locator(sel).first();\n"}},"expect":"allow","warn":false}

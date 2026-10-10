@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"node scripts/tree-hash.mjs | tee \"$CLAUDE_PROJECT_DIR/.factory/verify-stamp\""}},"expect":"deny","messageContains":["[process.state]","trust anchors","npm run verify","factory-gates.md#process.state"]}

@@ -31,7 +31,7 @@ probe- probe
 process-validator- <envelope>
 contribution-handover- <unmapped>'
 
-SKILLS='achilles-protocol agents-vs-agents bug-discovery bug-report companion-mode ticket-driven-testing self-repair contract-testing contributing-to-achilles-protocol coverage-expansion database-testing element-interactions failure-diagnosis journey-mapping onboarding perf-onboarding performance-testing secrets-sweep selector-development test-catalogue test-composer test-data-conventions test-repair work-summary-deck workflow-reviewer'
+SKILLS='achilles-protocol agents-vs-agents bug-discovery bug-report companion-mode ticket-driven-testing self-repair contract-testing contributing-to-achilles-protocol coverage-expansion database-testing element-interactions failure-diagnosis journey-mapping onboarding perf-onboarding performance-testing requirement-intake secrets-sweep selector-development test-catalogue test-composer test-data-conventions test-repair work-summary-deck workflow-reviewer'
 
 section "dispatch prefixes: the alternation is exactly the listed set"
 LISTED=$(printf '%s\n' "$DISPATCH_PREFIXES" | cut -d' ' -f1 | sort | tr '\n' ' ')

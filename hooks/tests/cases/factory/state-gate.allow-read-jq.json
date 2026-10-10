@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "jq . .factory/verify-stamp"}}, "expect": "allow", "warn": false}

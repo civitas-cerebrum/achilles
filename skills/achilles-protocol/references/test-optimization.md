@@ -8,7 +8,7 @@
 
 ## When this protocol runs
 
-Stage 4a runs after a test reaches passing state in stabilization, **before** Stage 4b (API Compliance Review). It reviews the freshly-written tests against seven best-practice checks — four reliability checks, two speed checks, one DRY check — and applies fixes before handing off to 4b.
+Stage 4a runs after a test reaches passing state in stabilization, **before** Stage 4b (API Compliance Review). It reviews the freshly-written tests against seven best-practice checks: four reliability checks, two speed checks, one DRY check, and applies fixes before handing off to 4b.
 
 The protocol assumes:
 
@@ -18,7 +18,7 @@ The protocol assumes:
 
 Missing any of these three → stop the protocol, return an error pointing the caller at the missing prerequisite. Do not synthesize the missing artifact.
 
-**Single-spec mode.** If `journey-map.md` exists and has the sentinel but no journey blocks are populated with `UI-covers:` fields yet (e.g. during onboarding's Phase 3 happy-path before Phase 4 produces the full map), Stage 4a runs in **single-spec mode**: §4 (API shortcuts) is skipped entirely — no UI-covers registry to consult, so all prerequisites stay UI-driven. Checks §1, §2, §3, §3b, §5, §6 still apply. The `next_stage` of the structured return notes `mode: single-spec`.
+**Single-spec mode.** If `journey-map.md` exists and has the sentinel but no journey blocks are populated with `UI-covers:` fields yet (e.g. during onboarding's Phase 3 happy-path before Phase 4 produces the full map), Stage 4a runs in **single-spec mode**: §4 (API shortcuts) is skipped entirely: no UI-covers registry to consult, so all prerequisites stay UI-driven. Checks §1, §2, §3, §3b, §5, §6 still apply. The `next_stage` of the structured return notes `mode: single-spec`.
 
 ## Placeholder convention
 
@@ -43,12 +43,12 @@ A template with any unresolved `«…»` placeholder MUST NOT be written into `b
 | 1 | Reliability | State isolation (`beforeEach(resetState)`) | yes (per-spec insert) |
 | 2 | Reliability | Hardcoded shared resources | yes (per-spec rotate or fall through to #1) |
 | 3 | Reliability | Per-run uniqueness (`Date.now()`/`crypto.randomUUID()`) | yes (per-spec rewrite literal) |
-| 3b | Reliability | Assertion robustness — oracle audit | yes (per-spec rewrite assertion) / flag-only for copy-churn |
+| 3b | Reliability | Assertion strength: oracle audit | yes (per-spec rewrite assertion) / flag-only for copy-churn |
 | 4 | Speed | API shortcuts for tested prerequisites | yes (per-spec replace UI prereq with helper call; populate helper in `base.ts` if absent) |
 | 5 | Speed | Cookie banner / persistent modal handling | yes (per-spec strip duplicated dismiss; populate `dismissBanners` in `base.ts`) |
 | 6 | DRY | Serial mode discipline | flag-only (do not silently strip `mode: 'serial'`) |
 
-The detailed rules for each check are in §1 through §6 below; §3b sits between §3 and §4 (numbering is frozen — §7/§8 are cross-referenced externally).
+The detailed rules for each check are in §1 through §6 below; §3b sits between §3 and §4 (numbering is frozen; §7/§8 are cross-referenced externally).
 
 ## §1 State isolation
 
@@ -58,7 +58,7 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 
 ### §1.A — Per-test-user isolation (mandatory when `global-reset:cross-test-race` tag is present)
 
-**Trigger:** the onboarding shared-resource audit reported `global-reset:cross-test-race` — the discovered reset endpoint touches global (non-tenanted) collections, and `beforeEach(reset)` would race across Playwright workers.
+**Trigger:** the onboarding shared-resource audit reported `global-reset:cross-test-race`: the discovered reset endpoint touches global (non-tenanted) collections, and `beforeEach(reset)` would race across Playwright workers.
 
 **Rule:** the spec MUST NOT call `beforeEach(resetState)` or any equivalent global-wipe hook. Instead:
 
@@ -133,13 +133,13 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 
 **Banned in this branch:** `test.beforeEach(resetState)`, `test.beforeAll(resetState)` (in non-serial mode), and any direct call to the discovered reset endpoint inside a spec body. The banned forms produce cross-worker races (worker A's reset wipes worker B's mid-test state).
 
-**Why:** a shared-DB SaaS-style app where every test calls `/api/reset` in `beforeEach` *appears* isolated but actually serialises every worker through one global mutation. Workers never run in parallel — `workers=4` becomes `workers=1` in practice. The per-test-user pattern is the only way to keep `workers=N` real.
+**Why:** a shared-DB SaaS-style app where every test calls `/api/reset` in `beforeEach` *appears* isolated but actually serialises every worker through one global mutation. Workers never run in parallel: `workers=4` becomes `workers=1` in practice. The per-test-user pattern is the only way to keep `workers=N` real.
 
 ### §1.B — Global reset isolation (default when no global-reset tag is present)
 
 **Trigger:** `app-context.md`'s `Reset / seed endpoints` is non-empty AND the audit did NOT report `global-reset:cross-test-race`. This means the reset is either tenanted (per-user-or-tenant scope) or the suite is mono-worker by design.
 
-**Rule:** every mutating spec MUST have `test.beforeEach(resetState)` (or `test.beforeAll` for serial-mode describes — see §6).
+**Rule:** every mutating spec MUST have `test.beforeEach(resetState)` (or `test.beforeAll` for serial-mode describes; see §6).
 
 **Auto-fix:**
 
@@ -171,9 +171,9 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 
 | audit tag                      | reset endpoint discovered | applies | beforeEach(reset) |
 |---|---|---|---|
-| `global-reset:cross-test-race` | yes                       | §1.A    | **forbidden** — use freshUser + globalSetup |
+| `global-reset:cross-test-race` | yes                       | §1.A    | **forbidden**: use freshUser + globalSetup |
 | (none)                         | yes                       | §1.B    | **mandatory** |
-| (none)                         | no — `none discovered`    | mark spec `// stage4a:no-reset-endpoint`, fall through to §2 | n/a |
+| (none)                         | no: `none discovered`    | mark spec `// stage4a:no-reset-endpoint`, fall through to §2 | n/a |
 | `single-tenant-global-state`   | (independent of reset)    | overlay on §1.A or §1.B | rewrite global-state assertions to per-user-scoped views |
 
 **No-reset-discovered branch:** if the Test Infrastructure section's `Reset / seed endpoints` entry reads `none discovered`, mark the spec with a `// stage4a:no-reset-endpoint` top-of-file comment and proceed. Stage 4a's §2 (hardcoded shared resources) becomes the strict gate instead.
@@ -184,7 +184,7 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 
 **Rule:** either (a) rotate via a per-test counter / random-index lookup against the seed catalog, OR (b) ensure `beforeEach(resetState)` is in place (rule §1).
 
-**Auto-fix preference:** if §1 applies (reset endpoint discovered), prefer §1 — it's stronger isolation than rotation. Apply rotation only when §1's no-reset-discovered branch was taken.
+**Auto-fix preference:** if §1 applies (reset endpoint discovered), prefer §1; it's stronger isolation than rotation. Apply rotation only when §1's no-reset-discovered branch was taken.
 
 **Rotation pattern:**
 
@@ -222,28 +222,28 @@ const email = `new-user-${Date.now()}@test.com`;
 
 For values that participate in case-sensitivity tests, prefer `crypto.randomUUID().slice(0, 8)` to avoid timing collisions.
 
-**Allowance — duplicate-detection tests:** if the spec is *about* duplicate detection (file name or describe title contains `duplicate` / `already-exists` / `taken`), the literal stays — the test is verifying the duplicate path. Add a `// stage4a:duplicate-deliberate` comment for human review and skip the auto-fix.
+**Allowance: duplicate-detection tests:** if the spec is *about* duplicate detection (file name or describe title contains `duplicate` / `already-exists` / `taken`), the literal stays: the test is verifying the duplicate path. Add a `// stage4a:duplicate-deliberate` comment for human review and skip the auto-fix.
 
-## §3b Assertion robustness — oracle audit
+## §3b Assertion strength — oracle audit
 
-**Trigger:** the spec asserts an expected value that is *volatile* — a value the app legitimately changes between runs even when behaviour is correct. A passing assertion against a volatile value is a flake waiting to happen (and a re-baseline tax every time the data moves). This is the per-spec **oracle audit**: every assertion in the spec is graded for whether it pins a *stable* truth or an *incidental* one.
+**Trigger:** the spec asserts an expected value that is *volatile*: a value the app legitimately changes between runs even when behaviour is correct. A passing assertion against a volatile value is a flake waiting to happen (and a re-baseline tax every time the data moves). This is the per-spec **oracle audit**: every assertion in the spec is graded for whether it pins a *stable* truth or an *incidental* one.
 
 Volatile values to flag:
 
-- **Timestamps / dates** — `'2026-06-12'`, `'2 minutes ago'`, anything derived from "now".
-- **Server-assigned IDs** — auto-increment row IDs, UUIDs minted by the backend, order numbers.
-- **Seed-dependent counts** — `verifyCount(..., { exactly: 14 })` where `14` is "however many rows the seed happens to have today".
-- **Locale / currency formatting** — `'$1,234.56'` vs `'1234.56'` vs `'1.234,56 €'`; thousands separators and decimal marks drift with locale config.
-- **Computed aggregates** — totals, averages, "X of Y" summaries that depend on other rows.
-- **Positional list reads** — `getText` of "the 3rd row" when row order is not guaranteed stable.
+- **Timestamps / dates**: `'2026-06-12'`, `'2 minutes ago'`, anything derived from "now".
+- **Server-assigned IDs**: auto-increment row IDs, UUIDs minted by the backend, order numbers.
+- **Seed-dependent counts**: `verifyCount(..., { exactly: 14 })` where `14` is "however many rows the seed happens to have today".
+- **Locale / currency formatting**: `'$1,234.56'` vs `'1234.56'` vs `'1.234,56 €'`; thousands separators and decimal marks drift with locale config.
+- **Computed aggregates**: totals, averages, "X of Y" summaries that depend on other rows.
+- **Positional list reads**: `getText` of "the 3rd row" when row order is not guaranteed stable.
 
 **Rule:** rewrite the assertion to a **stable oracle** instead of a hardcoded incidental value:
 
-- **Round-trip oracle** — assert the value the test *itself* produced, not a literal. A listing created with `title = 'My item-${Date.now()}'` is asserted by matching the same captured string, not a frozen literal.
-- **Delta oracle** — capture `getCount`/`getText` before the action, act, then assert the *change* (count + 1, total + price), not the absolute post-state.
-- **Shape oracle** — assert the value *matches a pattern* rather than equals a literal: `text.toMatch(/^\$\d[\d,]*\.\d{2}$/)` for currency, `.satisfy(el => Number(el.text) > 0)` for a positive count, `verifyListOrder` for ordering instead of a fixed positional read.
+- **Round-trip oracle**: assert the value the test *itself* produced, not a literal. A listing created with `title = 'My item-${Date.now()}'` is asserted by matching the same captured string, not a frozen literal.
+- **Delta oracle**: capture `getCount`/`getText` before the action, act, then assert the *change* (count + 1, total + price), not the absolute post-state.
+- **Shape oracle**: assert the value *matches a pattern* rather than equals a literal: `text.toMatch(/^\$\d[\d,]*\.\d{2}$/)` for currency, `.satisfy(el => Number(el.text) > 0)` for a positive count, `verifyListOrder` for ordering instead of a fixed positional read.
 
-**Auto-fix?** Yes when the robust rewrite is mechanical (round-trip against a captured value, delta capture, pattern match) — apply it per-spec. **Flag-only** when the assertion looks like *copy-churn* — a hand-written human expectation (e.g. a marketing string, a fixed business rule) where rewriting to a pattern would weaken the test's intent. In that case add a `// stage4a:assertion-volatile-review` comment and surface it as `review`, do not auto-rewrite.
+**Auto-fix?** Yes when the stronger rewrite is mechanical (round-trip against a captured value, delta capture, pattern match); apply it per-spec. **Flag-only** when the assertion looks like *copy-churn*: a hand-written human expectation (e.g. a marketing string, a fixed business rule) where rewriting to a pattern would weaken the test's intent. In that case add a `// stage4a:assertion-volatile-review` comment and surface it as `review`, do not auto-rewrite.
 
 **Examples:**
 
@@ -261,9 +261,9 @@ await steps.click('addRowButton', 'PageName');
 await steps.verifyCount('rows', 'PageName', { exactly: before + 1 });
 ```
 
-**Cross-reference:** this is the authoring-time analogue of `failure-diagnosis`'s heal step (d) *assertion re-baseline* — §3b prevents the volatile assertion from being written in the first place, so the suite never reaches the re-baseline churn that (d) cleans up after.
+**Cross-reference:** this is the authoring-time analogue of `failure-diagnosis`'s heal step (d) *assertion re-baseline*; §3b prevents the volatile assertion from being written in the first place, so the suite never reaches the re-baseline churn that (d) cleans up after.
 
-**Relationship to the oracle strength ladder:** §3b's round-trip / delta / shape oracles are **assertion forms** for volatile values *within* a rung of the L0–L3 strength ladder (canonical in `test-composer` §"Oracle strength ladder") — the ladder picks which layer confirms the effect; §3b picks the form that keeps the assertion stable at that layer. Orthogonal, per `test-composition-standards.md` §3.6.
+**Relationship to the oracle strength ladder:** §3b's round-trip / delta / shape oracles are **assertion forms** for volatile values *within* a rung of the L0–L3 strength ladder (canonical in `test-composer` §"Oracle strength ladder"); the ladder picks which layer confirms the effect; §3b picks the form that keeps the assertion stable at that layer. Orthogonal, per `test-composition-standards.md` §3.6.
 
 ## §4 API shortcuts for tested prerequisites
 
@@ -386,7 +386,7 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
 
    Example substitution: `'[data-testid="cookie-accept"]', '[data-testid="welcome-close"]'`.
 
-2. Populate the `HELPER SLOT: beforeEach` slot in `base.ts` (NOT a freeform region — the slot is the single contracted insertion point for fixture-level `beforeEach` hooks):
+2. Populate the `HELPER SLOT: beforeEach` slot in `base.ts` (NOT a freeform region; the slot is the single contracted insertion point for fixture-level `beforeEach` hooks):
 
    ```typescript
    // In tests/fixtures/base.ts (HELPER SLOT: beforeEach)
@@ -395,7 +395,7 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
    });
    ```
 
-   If the slot already contains other `test.beforeEach` blocks (e.g., from a prior Stage 4a run that populated `resetState` here), append the new block to the slot — do NOT overwrite. The slot is additive across protocol runs.
+   If the slot already contains other `test.beforeEach` blocks (e.g., from a prior Stage 4a run that populated `resetState` here), append the new block to the slot. Do NOT overwrite. The slot is additive across protocol runs.
 
 3. Strip duplicated `await steps.click('cookieAccept', …)` / `await page.locator(...)` dismiss calls from each spec body. The fixture handles it now.
 
@@ -407,7 +407,7 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
 
 **Rule:** allowed only when both (a) AND (b) hold:
 
-- **(a)** Serial dependency is intentional — i.e. test N+1 deliberately depends on the side-effects of test N. (Most well-isolated tests do not need this.)
+- **(a)** Serial dependency is intentional; i.e. test N+1 deliberately depends on the side-effects of test N. (Most well-isolated tests do not need this.)
 - **(b)** The first test in the block is a **cheap, fast-failing sentinel** that surfaces real env breakage cleanly. Examples:
   - A single `await steps.verifyPresence('homeRoot', 'HomePage');` after a navigate.
   - An API health-check via `request.get('/api/health')`.
@@ -422,7 +422,7 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
 2. Append a `// stage4a:serial-mode-review` comment above the `configure` line.
 3. Surface the finding in the structured return as `{ rule: '§6', severity: 'review', spec: <path>, reason: '…' }`.
 
-The agent does not auto-flip `mode: 'serial'` to per-test isolation because doing so can break tests that genuinely need serial state. Human review or a follow-up coverage-expansion pass takes the call.
+The agent does not auto-flip `mode: 'serial'` to per-test isolation because doing so can break tests that need serial state. Human review or a follow-up coverage-expansion pass takes the call.
 
 **Sentinel example (compliant):**
 
@@ -446,7 +446,7 @@ test.describe('j-<slug> — <one-sentence journey title>', () => {
 
 ## §7 Whole-suite re-run gate (orchestrator-level)
 
-This rule is enforced by **orchestrators**, not by Stage 4a itself. Stage 4a runs per-spec; the gate runs per-pass / per-phase exit and verifies that the whole suite — not just the just-written tests — is still green.
+This rule is enforced by **orchestrators**, not by Stage 4a itself. Stage 4a runs per-spec; the gate runs per-pass / per-phase exit and verifies that the whole suite (not just the just-written tests) is still green.
 
 **Where it runs:**
 
@@ -465,9 +465,9 @@ This rule is enforced by **orchestrators**, not by Stage 4a itself. Stage 4a run
      ```
      `grep -r` recurses; `--include` filters by glob without depending on shell `**` (which only works with `globstar` enabled in bash and is not portable).
 3. On refusal, return `{ status: 'whole-suite-gate-failed', stats: { unexpected, skipped, expected, flaky }, failures: [...], skips_unexplained: <skipped-stats minus marker-count> }` to the caller. The caller is responsible for deciding whether to halt the whole pipeline or continue with reduced scope; the gate itself does not decide.
-4. Delete `.stage4a-suite.json` after parsing — it does not get committed.
+4. Delete `.stage4a-suite.json` after parsing; it does not get committed.
 
-**Why this exists:** per-pass `stabilize` confirms the just-written tests pass but does not guarantee the suite as a whole still passes after accumulated state. Cumulative state changes — DB pollution, port collisions, fixture drift, shared-resource depletion — only surface when the whole suite runs together. The whole-suite gate moves that surfacing forward from end-of-pipeline to per-pass-exit.
+**Why this exists:** per-pass `stabilize` confirms the just-written tests pass but does not guarantee the suite as a whole still passes after accumulated state. Cumulative state changes (DB pollution, port collisions, fixture drift, shared-resource depletion) only surface when the whole suite runs together. The whole-suite gate moves that surfacing forward from end-of-pipeline to per-pass-exit.
 
 ## §8 Output format
 
@@ -494,10 +494,10 @@ Stage 4a returns a structured JSON-shaped block back to its caller. The block is
 
 **Severity values:**
 
-- `fixed` — auto-fix applied, test re-run, still passing.
-- `review` — flagged for human read; no auto-fix taken.
-- `gap-flagged` — coverage gap surfaced to a sibling skill (journey-mapping for §4 A-fails); the spec under review is unchanged.
-- `blocked` — auto-fix attempted but caused a regression; reverted; flagged for human read.
+- `fixed`: auto-fix applied, test re-run, still passing.
+- `review`: flagged for human read; no auto-fix taken.
+- `gap-flagged`: coverage gap surfaced to a sibling skill (journey-mapping for §4 A-fails); the spec under review is unchanged.
+- `blocked`: auto-fix attempted but caused a regression; reverted; flagged for human read.
 
 **Markdown render (for interactive Stage 4a):**
 

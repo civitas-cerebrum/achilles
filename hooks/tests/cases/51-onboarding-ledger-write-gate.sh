@@ -498,8 +498,8 @@ assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$
 # hook (closes the node-missing bypass: prior to 5549c1d the hook
 # silent-allowed everything on `command -v node` failure, letting an
 # orchestrator on a host with no node-on-PATH skip the actor-identity
-# check). Probe by invoking the hook with PATH=/bin:/usr/bin — on macOS
-# that has jq but not node.
+# check). Probe by invoking the hook with PATH=<dir holding only jq>:/bin:/usr/bin,
+# which has no node on macOS or in a node image (node lives in /usr/local/bin).
 section "ledger-write-gate: node-missing bypass closed (actor-identity still fires)"
 rm -f "$LEDGER_PATH"
 DIRECT_APPROVAL=$(echo "$VALID_FRESH" | "$JQ" '
@@ -510,9 +510,11 @@ DIRECT_APPROVAL=$(echo "$VALID_FRESH" | "$JQ" '
   . + {modeAuthorizer: "user chose standard mode at front-load gate"}
 ')
 PAYLOAD_DIRECT=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$DIRECT_APPROVAL")
-if [ -x /usr/bin/jq ] && ! /usr/bin/env -i PATH=/bin:/usr/bin command -v node >/dev/null 2>&1; then
+tmp_into JQ_ONLY_BIN
+ln -s "$JQ" "$JQ_ONLY_BIN/jq"
+if ! /usr/bin/env -i PATH=/bin:/usr/bin command -v node >/dev/null 2>&1; then
   TESTS_RUN=$((TESTS_RUN + 1))
-  OUT_NO_NODE=$(printf '%s' "$PAYLOAD_DIRECT" | env PATH=/bin:/usr/bin "$H" 2>&1)
+  OUT_NO_NODE=$(printf '%s' "$PAYLOAD_DIRECT" | env PATH="$JQ_ONLY_BIN:/bin:/usr/bin" "$H" 2>&1)
   if echo "$OUT_NO_NODE" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"' \
      && echo "$OUT_NO_NODE" | grep -q 'orchestrator context'; then
     echo "${CLR_PASS}  ✓${CLR_RST} no-node + orchestrator-direct reviewerVerdict:approved write → DENY (actor-identity check fires)"
@@ -521,7 +523,7 @@ if [ -x /usr/bin/jq ] && ! /usr/bin/env -i PATH=/bin:/usr/bin command -v node >/
     echo "${CLR_FAIL}  ✗${CLR_RST} no-node bypass test ${CLR_DIM}(expected deny with 'orchestrator context'; got: ${OUT_NO_NODE})${CLR_RST}"
   fi
 else
-  skip_test "/usr/bin layout does not match the macOS shape this test needs (jq present, node absent)"
+  skip_test "node is on /bin:/usr/bin, so a no-node PATH cannot be built"
 fi
 
 # ---- Phase 6 ----

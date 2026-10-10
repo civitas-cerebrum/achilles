@@ -32,6 +32,8 @@ export function run(report) {
       if (!ordinaryEnv.test(m[1]) && !new RegExp(`(^|[^\\w])${m[1]}=`).test(before)) names.add(m[1]);
     }
   }
+  // The variable a factory rule names as the command's opt-in (optInEnv) in the shipped example.
+  for (const m of readFileSync('hooks/data/factory-rules.example.json', 'utf8').matchAll(/"optInEnv"\s*:\s*"([A-Z][A-Z0-9_]*)"/g)) names.add(m[1]);
   const doc = existsSync(OPT_IN_DOC) ? readFileSync(OPT_IN_DOC, 'utf8') : '';
   const missing = [...names].filter((n) => !doc.includes('`' + n + '`')).sort();
   if (!doc) detail.push(`${OPT_IN_DOC} is missing`);

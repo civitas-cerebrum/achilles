@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","cwd":"{{ROOT}}","tool_input":{"file_path":"tests/e2e/legacy/nested/zz-new.ts","content":"export {};\n"}},"expect":"deny","messageContains":["[specs.shape]","frozen tests/e2e/legacy/ directory","factory-gates.md#specs.shape"]}

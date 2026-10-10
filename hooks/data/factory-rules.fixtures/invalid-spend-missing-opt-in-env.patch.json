@@ -1,0 +1,5 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [ { "op": "remove", "path": "/rules/spend.opt-in/optInEnv" } ],
+  "expectError": "/rules/spend.opt-in: must have required property 'optInEnv'"
+}

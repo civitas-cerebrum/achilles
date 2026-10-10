@@ -1,0 +1,5 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [ { "op": "remove", "path": "/rules/selectors.no-inline/forbidden/10" } ],
+  "expectError": "/rules/selectors.no-inline/forbidden: must contain at least 1 valid item(s)"
+}

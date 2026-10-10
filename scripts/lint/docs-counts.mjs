@@ -7,8 +7,7 @@ const DOCS_DIR = 'docs';
 // Check 6 — hand-written counts in docs/*.html  ↔  the filesystem
 // The published pages quote concrete figures ("37 hooks ship with the
 // package — 28 are enforcement gates", "24 Agent Skills"). Nothing else in
-// this lint reads docs/, so those figures drifted silently twice before this
-// check existed. Each pattern below captures the number the page claims; the
+// this lint reads docs/, so without this check the figures drift silently. Each pattern below captures the number the page claims; the
 // check asserts it equals the number on disk.
 export function run(report) {
   const detail = [];
@@ -17,7 +16,8 @@ export function run(report) {
     return;
   }
 
-  const hookFiles = readdirSync('hooks').filter((f) => f.endsWith('.sh'));
+  const factoryFiles = existsSync('hooks/factory') ? readdirSync('hooks/factory').filter((f) => f.endsWith('.sh')) : [];
+  const hookFiles = [...readdirSync('hooks').filter((f) => f.endsWith('.sh')), ...factoryFiles];
   const gateFiles = hookFiles.filter((f) => f.endsWith('-gate.sh') || f.endsWith('-guard.sh'));
   const skillDirs = readdirSync(SKILLS_DIR).filter((d) => statSync(join(SKILLS_DIR, d)).isDirectory());
 

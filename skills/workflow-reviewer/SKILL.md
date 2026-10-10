@@ -12,7 +12,7 @@ description: >
   the skill in a Skill-tool invocation.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Workflow reviewer — pipeline state-machine gate
@@ -20,7 +20,7 @@ description: >
 > **Subagent-only.** This skill is dispatched by the onboarding
 > orchestrator (or by an external automated CLI driver) at every phase,
 > pass, and cycle transition. Loading it in the orchestrator's context is a
-> methodology violation — the methodology itself lives in
+> methodology violation; the methodology itself lives in
 > `skills/onboarding/SKILL.md`, `skills/coverage-expansion/SKILL.md`,
 > and `skills/journey-mapping/SKILL.md`.
 
@@ -28,16 +28,16 @@ The reviewer's job is to read the closing handover envelope of the
 last unit of work (phase / pass / cycle), check it against the
 methodology's exit criteria, and return either:
 
-- `verdict: approve` — the orchestrator may advance to the next unit
-- `verdict: reject` — the orchestrator surgically fixes per the findings
+- `verdict: approve`: the orchestrator may advance to the next unit
+- `verdict: reject`: the orchestrator surgically fixes per the findings
   and re-dispatches the same reviewer (cap 3 cycles)
-- `verdict: escalate` — the 3rd consecutive reject; the orchestrator
+- `verdict: escalate`: the 3rd consecutive reject; the orchestrator
   surfaces all three reviewer returns to the user for manual triage
 
 The reviewer is a thin, fast read-only critic. No code edits. No
 spec writes. No further dispatching. The whole skill exists so
 markdown-text contract enforcement no longer permits silent scope
-compression at transition points — see §"Empirical origin" below.
+compression at transition points; see §"Empirical origin" below.
 
 ---
 
@@ -59,20 +59,20 @@ transitions (Phase 4 inner loop).
 
 The brief's first line is `<<kernel-mandate-role: workflow-reviewer#<nonce>>>` (`perf-reviewer` or `phase-validator` for those dispatches; grammar in [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md)). Then the brief should give the reviewer:
 
-1. **The ledger** at `tests/e2e/docs/onboarding-status.json` — the
+1. **The ledger** at `tests/e2e/docs/onboarding-status.json`: the
    current phase / pass / cycle row + the prior unit's row for context.
 2. **The canonical methodology section** for the unit being reviewed
    (see the table above). The brief includes either the section text
    inline or a file:line citation.
-3. **The deliverables actually produced** — discovered via
+3. **The deliverables actually produced**; discovered via
    `git log --since=<unit start time>` plus reads of the named spec /
    doc files. The reviewer reads these directly; the orchestrator
    does not pre-digest.
 4. **The closing handover envelope** of the last subagent of the unit
    being reviewed (matches `schemas/subagent-returns/handover.schema.json`).
 5. **The return-schema citation.** The dispatching brief MUST cite the
-   reviewer's return-schema path —
-   `schemas/subagent-returns/workflow-reviewer.schema.json` — so the
+   reviewer's return-schema path:
+   `schemas/subagent-returns/workflow-reviewer.schema.json`, so the
    reviewer knows the exact shape to return. Harness-enforced: the
    `subagent-schema-preread-gate.sh` hook (PreToolUse:Agent, DENY)
    rejects `workflow-reviewer-*` dispatches whose brief omits the
@@ -126,7 +126,7 @@ the return.
 ### Phase 8 — Report (`workflow-reviewer-phase8`)
 - `qa-summary-deck.html` + `qa-summary-deck.pdf` exist at the project root
 - Numbers in the deck match the actual state of the suite (no stale figures)
-- Staleness gate honoured: the deck's report-JSON `stats.startTime` + test count match the current suite (`git log -1 --format=%cI -- tests/` + the computed `test()` count), OR every results-derived slide carries the "results as of `<date>`; suite has changed since" annotation — verify the annotation or the freshness, not vibes
+- Staleness gate honoured: the deck's report-JSON `stats.startTime` + test count match the current suite (`git log -1 --format=%cI -- tests/` + the computed `test()` count), OR every results-derived slide carries the "results as of `<date>`; suite has changed since" annotation; verify the annotation or the freshness, not vibes
 
 ### Per coverage-expansion pass (`workflow-reviewer-pass<N>`)
 - Every journey in the roster dispatched AND returned for this pass
@@ -151,13 +151,13 @@ The perf-reviewer gate mirrors the onboarding workflow-reviewer but is scoped to
 
 ### Perf Phase 2 — Readiness (`perf-reviewer-phase2`)
 - `tests/perf/docs/readiness.md` exists and records: cascade-detector result, capture presence, journey-map presence, derive-vs-bootstrap decision, targets, and SLO source
-- Each of those six items is present as a named section or labelled line — no silent omission
+- Each of those six items is present as a named section or labelled line; no silent omission
 
 ### Perf Phase 3 — Scenario-model (`perf-reviewer-phase3`)
 - `tests/perf/docs/scenario-model.md` exists with the sentinel `<!-- perf-onboarding:scenario-model -->` on line 1
 - The document lists scenarios, load profiles, SLO targets, and priority ordering
 - At least one `tests/perf/scenarios/*.js` file exists
-- SLO targets in the document are traced to a documented source (a referenced SLA, a baseline measurement, or a stated business requirement) — invented ceilings are not acceptable
+- SLO targets in the document are traced to a documented source (a referenced SLA, a baseline measurement, or a stated business requirement); invented ceilings are not acceptable
 
 ### Perf Phase 4 — Baseline (`perf-reviewer-phase4`)
 - Every scenario listed in `tests/perf/docs/scenario-model.md` has been smoke-run at 1 VU (evidence: a run entry per scenario)
@@ -174,7 +174,7 @@ Reviews one load-test pass (load / stress / spike / soak); dispatched as `perf-r
 ### Perf Phase 6 — Threshold-gate (`perf-reviewer-phase6`)
 - `tests/perf/docs/threshold-verdict.json` exists with a non-empty `deliberateBreach` block (demonstrating that threshold rules are enforced, not decorative)
 - The document contains per-scenario verdicts (pass / breach / skip-with-authorizer for each scenario)
-- A regression-vs-baseline comparison is included — each scenario's p95/error-rate is compared against the Phase 4 baseline and any statistically significant regression is called out explicitly
+- A regression-vs-baseline comparison is included; each scenario's p95/error-rate is compared against the Phase 4 baseline and any statistically significant regression is called out explicitly
 
 ### Perf Phase 7 — Report (`perf-reviewer-phase7`)
 - `tests/perf/docs/perf-report.md` exists with the sentinel `<!-- perf-onboarding:report -->` on line 1
@@ -182,7 +182,7 @@ Reviews one load-test pass (load / stress / spike / soak); dispatched as `perf-r
 - Numeric figures in the report (p95 values, error rates, VU counts) are consistent with the result artefacts in `tests/perf/results/`
 
 ### Per load-test pass (`perf-reviewer-pass-<load|stress|spike|soak>`)
-- The named pass (load / stress / spike / soak) completed — k6 process exit code was 0 or threshold-only-failure (not a crash or config error)
+- The named pass (load / stress / spike / soak) completed; k6 process exit code was 0 or threshold-only-failure (not a crash or config error)
 - At least one result artefact (`tests/perf/results/<pass>-*.json`) written for the pass
 - Correlation verified: no literal credentials or hardcoded tokens visible in any `tests/perf/scenarios/*.js` file consumed by this pass
 - Threshold assertions defined for the pass; any breach is recorded in a findings entry (not silently ignored)
@@ -268,7 +268,7 @@ follows the same shape:
 | `methodology-ref` | `file:section` pointer the orchestrator can cite back to the operator |
 | `fix-instruction` | One concrete action the orchestrator should take next |
 
-The fix must be *surgical* — name a specific dispatch / file edit /
+The fix must be *surgical*: name a specific dispatch / file edit /
 state-file update. "Re-do the whole phase" is not a surgical fix; if
 the unit's work is structurally wrong, return `verdict: escalate` even
 on cycle 1.
@@ -279,7 +279,7 @@ on cycle 1.
 
 The reviewer is the **only** legitimate path for skipping a phase or
 stopping a pipeline early. It may approve a skip / early-stop **only**
-when the brief carries an explicit `authorizer` — either a verbatim
+when the brief carries an explicit `authorizer`: either a verbatim
 user quote from the in-flight conversation, or a documented structural
 exception.
 
@@ -291,9 +291,9 @@ Examples that count as legitimate authorisation:
 
 Examples that do NOT count:
 
-- `"session-length"` / `"budget"` / `"auto-mode"` — self-imposed reasons
-- `"the suite already looks decent"` — orchestrator judgement
-- `"inferred-pref"` / `"reasonable-stop"` — guessed user intent
+- `"session-length"` / `"budget"` / `"auto-mode"`: self-imposed reasons
+- `"the suite already looks decent"`: orchestrator judgement
+- `"inferred-pref"` / `"reasonable-stop"`: guessed user intent
 
 When the reviewer approves a skip / early-stop, the return's
 `authorizer` field carries the quote / attestation, and the orchestrator
@@ -314,11 +314,11 @@ or that skips/rewinds the cycle count, is denied), and
 `onboarding-ledger-gate.sh` denies any further `workflow-reviewer-*`
 dispatch for a unit whose `reviewerCycles` is already at the cap.
 
-- **Cycle 1** — first review. Approve → advance; reject → record
+- **Cycle 1**: first review. Approve → advance; reject → record
   findings + surgical fix + re-dispatch.
-- **Cycle 2** — second review after the surgical fix. Approve → advance;
+- **Cycle 2**: second review after the surgical fix. Approve → advance;
   reject → record findings + surgical fix + re-dispatch.
-- **Cycle 3** — third review. Approve → advance; reject → escalate.
+- **Cycle 3**: third review. Approve → advance; reject → escalate.
 
 The 3rd reject is the **escalation point**. The reviewer's return
 sets `verdict: escalate`, `handover.status: escalated-to-user`,
@@ -334,34 +334,23 @@ package (see `skills/achilles-protocol/references/stages-protocol.md`).
 
 ## Cross-references
 
-- `schemas/onboarding-status.schema.json` — the ledger the reviewer reads
-- `schemas/subagent-returns/workflow-reviewer.schema.json` — return shape
-- `schemas/subagent-returns/handover.schema.json` — envelope baseline
-- `skills/onboarding/SKILL.md` §"Status ledger + workflow reviewer" — orchestrator-side contract
-- `skills/coverage-expansion/SKILL.md` §"Authoritative state file" — pass-transition reviewer context
-- `skills/journey-mapping/SKILL.md` §"Iterative discovery cycles" — cycle-transition reviewer context
-- `skills/achilles-protocol/references/harness-hooks.md` — `onboarding-ledger-gate.sh` + `onboarding-ledger-write-gate.sh`
+- `schemas/onboarding-status.schema.json`: the ledger the reviewer reads
+- `schemas/subagent-returns/workflow-reviewer.schema.json`: return shape
+- `schemas/subagent-returns/handover.schema.json`: envelope baseline
+- `skills/onboarding/SKILL.md` §"Status ledger + workflow reviewer": orchestrator-side contract
+- `skills/coverage-expansion/SKILL.md` §"Authoritative state file": pass-transition reviewer context
+- `skills/journey-mapping/SKILL.md` §"Iterative discovery cycles": cycle-transition reviewer context
+- `skills/achilles-protocol/references/harness-hooks.md`: `onboarding-ledger-gate.sh` + `onboarding-ledger-write-gate.sh`
 
 ---
 
 ## Empirical origin
 
-A 21-journey benchmark onboarding run demonstrated that markdown-text
-contract enforcement alone permits silent scope compression even when
-the rules are crisp. Observed failure modes:
+The reviewer blocks four silent scope compressions:
 
-- The orchestrator skipped a phase entirely without a documented
-  authorisation.
-- The orchestrator stopped early after Phase 5 Pass 1 with no
-  in-flight dispatch (treating Exit #2 as a starting position).
-- Subagents returned `status: complete` with handover envelopes whose
-  deliverables list was missing required sub-deliverables.
-- Phase-boundary handovers omitted the `.discovery-draft.json` write
-  that Phase 4 depends on.
+- skipping a phase without a documented authorisation;
+- stopping early after Phase 5 Pass 1 with no dispatch in flight (Exit #2 is not a starting position);
+- accepting `status: complete` handovers that lack required sub-deliverables;
+- omitting the `.discovery-draft.json` write that Phase 4 depends on at a phase boundary.
 
-The `standard-mode-first-pass-guard.sh` hook addresses the most
-egregious dispatch-shape compressions. The workflow-reviewer + ledger
-addresses the structural compressions: the orchestrator now cannot
-advance a phase / pass / cycle without an `approve` verdict from the
-matching reviewer, and the reviewer's checklist is the methodology
-itself.
+No phase, pass or cycle advances without an `approve` verdict from the matching reviewer, whose checklist is the methodology itself. `standard-mode-first-pass-guard.sh` covers dispatch-shape compression.

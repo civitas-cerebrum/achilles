@@ -57,6 +57,20 @@ run_hook_without_lib "$HOOK_DIR/protected-artifact-bash-guard.sh" protected-path
   "$(fc_payload fc-active PreToolUse tool_name=Bash command='echo x > /tmp/y')"
 assert_eq "$HOOK_EXIT:$HOOK_OUT" "2:" "no protected-paths.sh, active → exit 2"
 
+section "fail-closed: the deny-text self-test switch does not reach a hook that sources hook-emit.sh"
+FC_OUT=$(fc_payload fc-active PreToolUse tool_name=Bash command='rm tests/e2e/docs/onboarding-status.json' | NO_SKIP_MESSAGING_SELFTEST=1 bash "$HOOK_DIR/protected-artifact-bash-guard.sh" 2>/dev/null)
+assert_eq "$(printf '%s' "$FC_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" deny "NO_SKIP_MESSAGING_SELFTEST=1 in the hook environment → still DENY"
+
+section "fail-closed: the factory state gate without lib/shell-words.sh"
+FC_DIR=$(mktemp -d); mkdir -p "$FC_DIR/hooks/factory" "$FC_DIR/proj"
+cp -R "$HOOK_DIR/lib" "$FC_DIR/hooks/lib"; rm -f "$FC_DIR/hooks/lib/shell-words.sh"
+cp "$HOOK_DIR/factory/state-gate.sh" "$FC_DIR/hooks/factory/"
+cp "$HOOK_DIR/data/factory-rules.example.json" "$FC_DIR/proj/achilles-factory-rules.json"
+FC_OUT=$(payload tool_name=Bash command='rm .factory/verify-stamp' | CLAUDE_PROJECT_DIR="$FC_DIR/proj" bash "$FC_DIR/hooks/factory/state-gate.sh" 2>/dev/null)
+assert_eq "$(printf '%s' "$FC_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecision')" deny "no shell-words.sh → deny"
+assert_eq "$(printf '%s' "$FC_OUT" | grep -c '\[factory\] lib/shell-words.sh is missing')" 1 "the reason names the missing lib"
+rm -rf "${FC_DIR:?}"
+
 rm -f "$FC_STATE"/fc-*
 
 section "fail-closed: control — with jq present the same gate refuses by decision, not by crash"

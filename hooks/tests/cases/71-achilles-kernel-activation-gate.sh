@@ -43,7 +43,7 @@ section "kernel wiring: the role ledger ships and is staged beside the mandate"
 # ---------------------------------------------------------------------------
 # A manifest is the machine's copy of the QA operating system; nobody
 # reviews an OS by reading path globs. The ledger is the human copy — the
-# eighteen roles, what each is REFUSED, the handovers and the review loops —
+# twenty-three roles, what each is REFUSED, the handovers and the review loops —
 # staged by postinstall beside the manifest it describes. Achilles does not
 # vendor the `kernel-mandate doc` renderer, so the role inventory is
 # hand-maintained and held to the manifest by lint-doc-drift's
@@ -54,10 +54,11 @@ LEDGER="$HOOK_DIR/data/achilles-qa.kernel-mandate.md"
 assert_eq "$([ -f "$LEDGER" ] && echo present || echo missing)" "present" "hooks/data/achilles-qa.kernel-mandate.md ships"
 for ROLE in orchestrator scaffolder test-composer workflow-reviewer \
             phase-validator process-validator perf-reviewer \
-            probe reviewer phase1 phase2 phase4 stage2 cleanup companion fd contribution-handover; do
+            probe reviewer phase1 phase2 phase4 stage2 cleanup companion fd contribution-handover \
+            implementer task-reviewer verifier live-inspector doc-author; do
   assert_eq "$(grep -c "^### \`$ROLE\`" "$LEDGER")" "1" "ledger documents the $ROLE role exactly once"
 done
-assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "18" "every role carries a refusal list — the half a manifest states only by omission"
+assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "23" "every role carries a refusal list — the half a manifest states only by omission"
 assert_eq "$(grep -c 'Snapshot of the upstream render' "$LEDGER")" "0" "the ledger carries no unregenerated snapshot sections"
 assert_eq "$("$JQ" -r '.roles | keys | map(select(. == "batch-reviewer" or . == "in-flight-composer" or . == "selector-diff-validator")) | length' "$MANDATE")" "0" "orphan roles with no dispatch site are gone"
 # The approver roles hold no shell. The ledger must SAY so, in the section
@@ -511,6 +512,32 @@ cp "$HOOK_DIR"/lib/hook-io.sh "$HOOK_DIR"/lib/hook-emit.sh "$HOOK_DIR"/lib/achil
 assert_deny "$NOK/achilles-kernel-activation-gate.sh" "$(probe km-act-1)" \
   "marker present, manifest staged, kernel script missing → DENY" "kernel-mandate cannot run"
 
+# A global install stages the mandate as <claude>/achilles-qa.kernel-mandate.json beside its hooks dir.
+unset KERNEL_MANDATE_MANIFEST
+GLOBAL_CLAUDE="$KW_TMP/ghome/.claude"
+mkdir -p "$GLOBAL_CLAUDE/hooks" "$KW_TMP/bare/src" "$KW_TMP/own/.claude" "$KW_TMP/own/src"
+cp "$H" "$KERNEL" "$GLOBAL_CLAUDE/hooks/"
+cp -R "$HOOK_DIR/lib" "$HOOK_DIR/data" "$GLOBAL_CLAUDE/hooks/"
+cp "$MANDATE" "$GLOBAL_CLAUDE/achilles-qa.kernel-mandate.json"
+echo '{"kernelMandateVersion":1,"name":"own","roles":{}}' > "$KW_TMP/own/.claude/kernel-mandate.json"
+assert_deny "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-act-1 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/bare/src/app.ts" cwd="$KW_TMP/bare")" \
+  "global install, project without a manifest: the staged global mandate governs → DENY" "outside the role's read scope"
+assert_allow "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-act-1 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/own/src/app.ts" cwd="$KW_TMP/own")" \
+  "global install, project with its own manifest: the project's manifest governs → ALLOW"
+assert_allow "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-dev-3 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/bare/src/app.ts" cwd="$KW_TMP/bare")" \
+  "global install, inactive session: dormant → ALLOW"
+# A worktree whose main checkout holds an unparseable manifest: the kernel skips that manifest, so the global one governs.
+git init -q "$KW_TMP/wtmain" && git -C "$KW_TMP/wtmain" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$KW_TMP/wtmain" worktree add -q "$KW_TMP/wt" 2>/dev/null
+mkdir -p "$KW_TMP/wtmain/.claude" "$KW_TMP/wt/src"
+echo '{broken' > "$KW_TMP/wtmain/.claude/kernel-mandate.json"
+assert_deny "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-act-1 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/wt/src/app.ts" cwd="$KW_TMP/wt")" \
+  "global install, worktree whose main checkout's manifest does not parse: the global mandate governs → DENY" "outside the role's read scope"
+
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR ACHILLES_SESSION_STATE_DIR
 
 # ---------------------------------------------------------------------------
@@ -549,9 +576,9 @@ pi.installCivitasHooks();
 const after = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 const star = after.hooks.PreToolUse.filter(g => g.matcher === '.*');
 const starCmds = star.flatMap(g => (g.hooks || []).map(h => h.command));
-assert.ok(starCmds.some(c => c.endsWith('achilles-kernel-activation-gate.sh')), 'wrapper registered on PreToolUse:.*');
+assert.ok(starCmds.some(c => /achilles-kernel-activation-gate\.sh"?$/.test(c)), 'wrapper registered on PreToolUse:.*');
 const allCmds = after.hooks.PreToolUse.flatMap(g => (g.hooks || []).map(h => h.command));
-assert.ok(!allCmds.some(c => c.endsWith('kernel-mandate-role-gate.sh')), 'kernel not registered');
+assert.ok(!allCmds.some(c => /kernel-mandate-role-gate\.sh"?$/.test(c)), 'kernel not registered');
 const kernelOnDisk = path.join(userHooks, 'kernel-mandate-role-gate.sh');
 assert.ok(fs.existsSync(kernelOnDisk), 'kernel still on disk (companion)');
 assert.ok(fs.statSync(kernelOnDisk).size > 1000, 'companion copy is the real kernel, not the stub');

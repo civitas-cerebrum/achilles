@@ -23,7 +23,7 @@ Before prompting the user for any field, read everything already provided:
 | Test output / assertion | Failing assertion message word-for-word → becomes Actual result |
 | Written description | Flow being tested, what was expected, what happened |
 
-Extract everything available first. Only ask for what is genuinely missing.
+Extract everything available first. Only ask for what is missing.
 
 ---
 
@@ -223,7 +223,7 @@ Reference the credential, never the value. Point at the credential store or the 
 ```
 
 ### Traceability
-Four fields that link the ticket back to its origin so it can be deduplicated, regression-checked, and closed against the right build. Use `n/a` / `none` honestly — a missing field is better than a guessed one.
+Four fields that link the ticket back to its origin so it can be deduplicated, regression-checked, and closed against the right build. Use `n/a` / `none` when a field is missing: a missing field is better than a guessed one.
 
 - **Finding ID**: the canonical bug-discovery FINDING-ID (`<journey-slug>-<nn>` standalone, `<journey-slug>-<pass>-<nn>` from coverage-expansion). `n/a` if the report did not come from bug-discovery. Never invent a `BUG-NNN`.
 - **Journey**: `j-<slug>` plus its priority tier (`P0`–`P3`), or `n/a`.

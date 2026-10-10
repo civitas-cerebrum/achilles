@@ -11,7 +11,7 @@
 # a name missing here activates nothing (scripts/lint-doc-drift.mjs check 9 parses
 # this line). `element-interactions` is the orchestrator's pre-rename skill name
 # (not the npm package), kept so installs still carrying the old directory activate.
-ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-achilles-protocol|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|secrets-sweep|selector-development|test-catalogue|test-composer|test-data-conventions|test-repair|work-summary-deck|workflow-reviewer'
+ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-achilles-protocol|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|requirement-intake|secrets-sweep|selector-development|test-catalogue|test-composer|test-data-conventions|test-repair|work-summary-deck|workflow-reviewer'
 
 # Pre-kernel description and CLI-slug spelling of the composer role; activates
 # gates, never grants (the kernel resolves no role from it). Kept because sessions

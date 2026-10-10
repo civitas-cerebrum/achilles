@@ -1,6 +1,7 @@
 #!/bin/bash
 # hook-io.sh — jq bootstrap, lib loading and hook-input access shared by every Achilles hook.
-HOOK_IO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Builtins only: the factory gates load this with PATH emptied.
+case "${BASH_SOURCE[0]}" in */*) HOOK_IO_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)";; *) HOOK_IO_DIR="$PWD";; esac
 
 # hook_jq_init <fatal|silent|empty|continue> — set JQ (bundled, else PATH). Without jq a
 # PreToolUse call in an active session is denied (hook_fail_closed); otherwise the mode applies:
@@ -63,11 +64,17 @@ hook_is_pre_tool_use() {
 # scanner walks the document (strings and escapes respected) and prints the value whose key path
 # is <jq-path>, escapes kept, `{` or `[` for an object or array: enough for the ids, names and
 # paths the fail-closed and activation checks read, and not fooled by the same key nested deeper
-# or inside a string value.
+# or inside a string value. A JQ that cannot run (exit 126 and up: not executable, killed, as
+# macOS does to an unsigned binary) falls to the scanner too: read as "no session_id", an
+# unrunnable jq would activate the protocol in every session.
 hook_json_str() {
   if [ -n "${JQ:-}" ]; then
-    printf '%s' "$1" | "$JQ" -r "$2 // empty" 2>/dev/null || true
-    return 0
+    local hook__out hook__rc
+    hook__out=$(printf '%s' "$1" | "$JQ" -r "$2 // empty" 2>/dev/null); hook__rc=$?
+    if [ "$hook__rc" -lt 126 ]; then
+      [ -z "$hook__out" ] || printf '%s\n' "$hook__out"
+      return 0
+    fi
   fi
   printf '%s' "$1" | LC_ALL=C awk -v path="${2#.}" '
     BEGIN { n = split(path, want, "."); RS = "\001" }

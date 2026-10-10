@@ -1,7 +1,7 @@
 const fs    = require('fs');
 const path  = require('path');
 const https = require('https');
-const { spawnSync } = require('child_process');
+const crypto = require('crypto');
 const { userClaudeDir } = require('./context.js');
 
 // Bundle a pinned `jq` binary alongside the harness hooks. The hooks parse
@@ -11,14 +11,23 @@ const { userClaudeDir } = require('./context.js');
 //
 // Approach (mirrors the @playwright/cli + chromium delivery idiom):
 //   - Fetch jq 1.7.1 from the official jqlang/jq GitHub release.
-//   - Land it at ~/.claude/hooks/bin/jq (chmod +x).
+//   - Check its sha256 against the pinned value, then land it at
+//     ~/.claude/hooks/bin/jq (chmod +x). A mismatch deletes it unrun.
 //   - Hooks resolve via `${BASH_SOURCE[0]}/bin/jq` with system-jq fallback
 //     so the in-repo test suite still works before postinstall has run.
 //
 // Opt-out: set CIVITAS_SKIP_JQ_INSTALL=1 — useful for enterprise managed
 // installs where postinstall scripts must not download external binaries.
 const JQ_VERSION = '1.7.1';
-const JQ_MIN_SIZE_BYTES = 100 * 1024; // anything smaller is a truncated download
+// sha256 of each release asset, from https://github.com/jqlang/jq/releases/download/jq-1.7.1/sha256sum.txt.
+// A download is checked against this before it is made executable; it is never run unverified.
+const JQ_SHA256 = {
+  'jq-macos-arm64':       '0bbe619e663e0de2c550be2fe0d240d076799d6f8a652b70fa04aea8a8362e8a',
+  'jq-macos-amd64':       '4155822bbf5ea90f5c79cf254665975eb4274d426d0709770c21774de5407443',
+  'jq-linux-amd64':       '5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5',
+  'jq-linux-arm64':       '4dd2d8a0661df0b22f1bb9a1f9830f06b6f3b8f7d91211a1ef5d7c4f06a8b4a5',
+  'jq-windows-amd64.exe': '7451fbbf37feffb9bf262bd97c54f0da558c63f0748e64152dd87b0a07b6d6ab',
+};
 
 function jqAssetForPlatform() {
   const p = process.platform;
@@ -69,14 +78,21 @@ function downloadToFile(url, destPath, done) {
   });
 }
 
-function jqVersionAtPath(jqPath) {
-  try {
-    const probe = spawnSync(jqPath, ['--version'], { encoding: 'utf8' });
-    if (probe.status !== 0) return null;
-    return (probe.stdout || '').trim();
-  } catch (_) {
-    return null;
+function sha256File(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+// finalizeJq — move a downloaded jq into place only when its sha256 is the pinned one. On a mismatch the
+// download is deleted without being made executable or run. Returns { ok, message }.
+function finalizeJq(tmpPath, dest, expectedSha) {
+  const got = sha256File(tmpPath);
+  if (got !== expectedSha) {
+    fs.unlinkSync(tmpPath);
+    return { ok: false, message: `jq download failed its checksum (sha256 ${got}, expected ${expectedSha}); it was deleted, not run. Hooks will fall back to system jq.` };
   }
+  fs.chmodSync(tmpPath, 0o755);
+  fs.renameSync(tmpPath, dest); // atomic replace
+  return { ok: true, message: `✔ Bundled jq ${JQ_VERSION} installed at ${dest} (sha256 verified).` };
 }
 
 // claudeDir — same contract as installCivitasHooks(): the .claude/ base the
@@ -90,7 +106,6 @@ async function installBundledJq(claudeDir) {
   const asset = jqAssetForPlatform();
   if (!asset) {
     console.warn(`[civitas-cerebrum] No bundled jq available for ${process.platform}/${process.arch}. Hooks will fall back to system jq; install jq manually if it isn't already on PATH. See https://jqlang.github.io/jq/download/.`);
-    process.exitCode = 1;
     return;
   }
 
@@ -102,13 +117,10 @@ async function installBundledJq(claudeDir) {
   const binDir       = path.join(userHooksDir, 'bin');
   const dest         = path.join(binDir, process.platform === 'win32' ? 'jq.exe' : 'jq');
 
-  // Idempotent: if already on the right version, skip.
-  if (fs.existsSync(dest)) {
-    const ver = jqVersionAtPath(dest);
-    if (ver && ver === `jq-${JQ_VERSION}`) {
-      console.log(`[civitas-cerebrum] Bundled jq ${ver} already present at ${dest}.`);
-      return;
-    }
+  // Idempotent: the pinned binary is already in place.
+  if (fs.existsSync(dest) && sha256File(dest) === JQ_SHA256[asset]) {
+    console.log(`[civitas-cerebrum] Bundled jq ${JQ_VERSION} already present at ${dest}.`);
+    return;
   }
 
   fs.mkdirSync(binDir, { recursive: true });
@@ -120,34 +132,19 @@ async function installBundledJq(claudeDir) {
     downloadToFile(url, dest, (err, tmpPath) => {
       if (err) {
         console.warn(`[civitas-cerebrum] Could not download jq from ${url}: ${err.message}. Hooks will fall back to system jq.`);
-        process.exitCode = 1;
         return resolve();
       }
       try {
-        const size = fs.statSync(tmpPath).size;
-        if (size < JQ_MIN_SIZE_BYTES) {
-          fs.unlinkSync(tmpPath);
-          console.warn(`[civitas-cerebrum] jq download from ${url} was truncated (${size} bytes < ${JQ_MIN_SIZE_BYTES}). Aborting; hooks will fall back to system jq.`);
-          process.exitCode = 1;
-          return resolve();
-        }
-        fs.chmodSync(tmpPath, 0o755);
-        fs.renameSync(tmpPath, dest); // atomic replace
-        const ver = jqVersionAtPath(dest);
-        if (!ver || ver !== `jq-${JQ_VERSION}`) {
-          console.warn(`[civitas-cerebrum] Bundled jq landed at ${dest} but reports version '${ver || '(unknown)'}'. Hooks will still try the bundled path first.`);
-          process.exitCode = 1;
-        } else {
-          console.log(`[civitas-cerebrum] ✔ Bundled jq ${ver} installed at ${dest}.`);
-        }
+        const r = finalizeJq(tmpPath, dest, JQ_SHA256[asset]);
+        if (r.ok) console.log(`[civitas-cerebrum] ${r.message}`);
+        else console.warn(`[civitas-cerebrum] ${r.message}`);
       } catch (e) {
         try { fs.unlinkSync(tmpPath); } catch (_) { /* ignore */ }
         console.warn(`[civitas-cerebrum] Failed to finalize bundled jq at ${dest}: ${e.message}. Hooks will fall back to system jq.`);
-        process.exitCode = 1;
       }
       resolve();
     });
   });
 }
 
-module.exports = { installBundledJq };
+module.exports = { installBundledJq, finalizeJq };

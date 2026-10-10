@@ -2,19 +2,19 @@
 
 Every subagent dispatched by `coverage-expansion` during pass 4 or pass 5 follows this contract. It is analogous to the compositional-pass subagent contract in SKILL.md but covers adversarial probing specifics.
 
-**Role under dual-stage.** This is the **Stage A contract for adversarial passes** (4 and 5). Stage A adversarial subagents probe the live app, write findings to the adversarial-findings ledger, and — in pass 5 — write regression tests for verified boundaries.
+**Role under dual-stage.** This is the **Stage A contract for adversarial passes** (4 and 5). Stage A adversarial subagents probe the live app, write findings to the adversarial-findings ledger, and (in pass 5) write regression tests for verified boundaries.
 
-The **Stage B contract for adversarial passes** — the reviewer's role — is in `reviewer-subagent-contract.md`. A Stage B reviewer does NOT append to the ledger and does NOT write regression tests; it reads the Stage A output and the live app, judges adversarial surface coverage + ledger craft + regression-lock quality, and returns `greenlight` or `improvements-needed`. If the reviewer's `improvements-needed` list includes adversarial-missed findings, Stage A addresses them on the next cycle — the reviewer never appends its own probe findings to the ledger directly.
+The **Stage B contract for adversarial passes** (the reviewer's role) is in `reviewer-subagent-contract.md`. A Stage B reviewer does NOT append to the ledger and does NOT write regression tests; it reads the Stage A output and the live app, judges adversarial surface coverage + ledger craft + regression-lock quality, and returns `greenlight` or `improvements-needed`. If the reviewer's `improvements-needed` list includes adversarial-missed findings, Stage A addresses them on the next cycle; the reviewer never appends its own probe findings to the ledger directly.
 
 ## Canonical return + ledger schema
 
 Every return and every ledger append produced under this contract MUST conform to the canonical subagent schema in [`../../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md). Specifically:
 
-- **Finding-return format** — every finding emitted by the subagent (in its return, in the ledger, or both) uses the `- **<FINDING-ID>** [<severity>] — <title>` block with `scope` / `expected` / `observed` / `coverage` sub-bullets.
-- **FINDING-ID scheme** — `<journey-slug>-<pass>-<nn>` for all Pass-4 and Pass-5 findings. Do not use legacy schemes (`AF-*`, `BUG-*`, `P4-*-BUG-NN`, `REG-*`).
-- **Severities** — the single rubric in [`../../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md) §1. Do not restate the enum inline.
-- **Return states** — if a subagent dispatch ends without new findings, it returns `status: covered-exhaustively` with the per-expectation mapping table from §2 of the reference file. `status: no-new-tests-by-rationalisation` is **not a valid return**.
-- **Ledger schema** — the exact Markdown schema for `tests/e2e/docs/adversarial-findings.md` (see §3 of the reference file). Validate every append in-memory against that schema before releasing the lockfile.
+- **Finding-return format**: every finding emitted by the subagent (in its return, in the ledger, or both) uses the `- **<FINDING-ID>** [<severity>] — <title>` block with `scope` / `expected` / `observed` / `coverage` sub-bullets.
+- **FINDING-ID scheme**: `<journey-slug>-<pass>-<nn>` for all Pass-4 and Pass-5 findings. Do not use legacy schemes (`AF-*`, `BUG-*`, `P4-*-BUG-NN`, `REG-*`).
+- **Severities**: the single rubric in [`../../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md) §1. Do not restate the enum inline.
+- **Return states**: if a subagent dispatch ends without new findings, it returns `status: covered-exhaustively` with the per-expectation mapping table from §2 of the reference file. `status: no-new-tests-by-rationalisation` is **not a valid return**.
+- **Ledger schema**: the exact Markdown schema for `tests/e2e/docs/adversarial-findings.md` (see §3 of the reference file). Validate every append in-memory against that schema before releasing the lockfile.
 
 The dispatch brief written by the `coverage-expansion` orchestrator includes a pointer to the reference file. The subagent reads the reference file; it does NOT rely on the schema being re-pasted inside the brief.
 
@@ -24,20 +24,20 @@ The dispatch brief written by the `coverage-expansion` orchestrator includes a p
 2. Any `sj-<slug>` sub-journey blocks referenced by the journey.
 3. The current `page-repository.json` slice for the pages the journey touches.
 4. The pass number (4 or 5).
-5. Path to `tests/e2e/docs/adversarial-findings.md` — MAY NOT YET EXIST on first pass-4 invocation; subagent is responsible for creating it from the schema if absent.
-6. Path to `tests/e2e/docs/.adversarial-findings.lock` — advisory lockfile for parallel appends (see below).
+5. Path to `tests/e2e/docs/adversarial-findings.md`: MAY NOT YET EXIST on first pass-4 invocation; subagent is responsible for creating it from the schema if absent.
+6. Path to `tests/e2e/docs/.adversarial-findings.lock`: advisory lockfile for parallel appends (see below).
 7. App credentials from `app-context.md`.
 8. Live docker stack URL + any secondary user accounts needed for cross-account probing.
-9. **App-wide pattern catalogue** at `tests/e2e/docs/app-wide-patterns.md` — established by the one-time `probe-app-wide:` scan that runs before Pass-4 per-journey probes. The brief MUST cite app-wide patterns via `coverage: app-wide:<pattern-id>` rather than re-deriving them. Full spec: [`app-wide-scan.md`](app-wide-scan.md). Stage B reviewer flags `craft-issues` finding `re-derived-app-wide-pattern` when a per-journey probe re-finds a catalogued pattern instead of citing.
+9. **App-wide pattern catalogue** at `tests/e2e/docs/app-wide-patterns.md`: established by the one-time `probe-app-wide:` scan that runs before Pass-4 per-journey probes. The brief MUST cite app-wide patterns via `coverage: app-wide:<pattern-id>` rather than re-deriving them. Full spec: [`app-wide-scan.md`](app-wide-scan.md). Stage B reviewer flags `craft-issues` finding `re-derived-app-wide-pattern` when a per-journey probe re-finds a catalogued pattern instead of citing.
 
 ## Behavior
 
-1. Open your dedicated `playwright-cli` session: `npx playwright-cli -s=probe-j-<slug>-<pass> open --browser=chromium <baseURL>` (pass = 4 or 5). Sessions are OS-isolated by construction — one browser process per `-s=<name> open` — so there is no isolation-prerequisite check to run before dispatching (see [`../../achilles-protocol/references/playwright-cli-protocol.md`](../../achilles-protocol/references/playwright-cli-protocol.md) §1). Receive an isolated context window — no prior session content. Close the session at the end with `npx playwright-cli -s=<your-slug> close`. Do NOT run `close-all` (the parent owns that).
-2. **Pass 4:** read the map block + page-repo slice + any existing composed tests for the journey. Before invoking `bug-discovery`, derive a **negative-case matrix** for the journey — one negative-case complement per `Test expectations:` entry, plus the standard cross-cutting negatives (auth, tenant isolation, idempotency, session expiry) (see §"Negative-case matrix — full QA scope" below). Invoke the `bug-discovery` skill scoped to this one journey, passing the matrix in the dispatch brief alongside the journey block and page-repo slice. The subagent's probing MUST cover every entry in the matrix in addition to the open-ended adversarial probe-categories that `bug-discovery` drives from live observation. Classify every finding as `Boundaries verified`, `Suspected bugs`, or `Ambiguous`. Do NOT write any tests.
-3. **Pass 5:** additionally read the journey's existing section in `adversarial-findings.md` (pass-4 findings). Re-invoke `bug-discovery` with instructions to (a) resolve `Ambiguous` findings where possible, (b) attempt compound probes pass 4 did not try, (c) probe follow-ups implied by pass-4 boundary verifications, and (d) re-probe any negative-case-matrix entries that returned `Ambiguous` in pass 4 — the matrix is the deterministic floor across both adversarial passes. Write a passing regression test for every `Boundaries verified` finding (pass 4 + pass 5 combined) into `tests/e2e/j-<slug>-regression.spec.ts`. Never write tests for `Suspected bugs` or `Ambiguous` findings.
-4. Append all new findings to the journey's section of the ledger, using the canonical ledger schema in [`../../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md) §3. Probe-category vocabulary: subagent-return-schema.md §3.6; structure and severities: §1 + §3. Create the journey section if absent. Create the ledger file with its header if absent. Validate the append in-memory against the canonical schema BEFORE releasing the lockfile — if validation fails, fix the append and re-validate.
-5. Stabilize any regression tests written in pass 5 to 3× green using the normal test-composer stabilization loop. If stabilization fails after 3 cycles, DO NOT commit a `test.fail()` marker; instead move the finding to `Suspected bugs` with note `deterministic-test-not-feasible` and continue. (`test.fail()` is sanctioned only as a ticketed defect sentinel — see `ticket-driven-testing` §7 for the one exception; adversarial-pass findings have no owning ticket.)
-6. **If your verdict is `findings-emitted` (the §2.0 envelope status when the probe surfaces ≥1 finding), apply the §2.6 spillover contract** — write the full `findings:` sub-list with sub-bullets (`scope:` / `expected:` / `observed:` / `coverage:`) to `tests/e2e/docs/.subagent-returns/probe-<journey-slug>-<pass>-c<cycle>.md` (start the file with the sentinel `<!-- subagent-returns:probe:<journey-slug>:pass-<N>:cycle-<C> -->`). Your return body inlines only the index-level fields — `status: findings-emitted`, `journey`, `pass`, `cycle`, `spill: <path>`, `probes: <count>`, `boundaries: <count>`, and a `findings:` list of finding-IDs (no inline blocks). The harness `SubagentStop` rewrite-gate that previously enforced this was retired in 0.3.6; the rule still applies — the live `subagent-return-schema-guard.sh` WARNs on returns that fail `probe.schema.json` (see [harness-hooks.md](../../achilles-protocol/references/harness-hooks.md)). `clean` and `blocked` returns are exempt from spillover (no findings to spill / one-line reason). The probe also writes findings to the cross-pass canonical ledger at `tests/e2e/docs/adversarial-findings.md` (per §3 of the canonical schema) — the ledger is the cross-cycle authoritative log; the spill file is per-cycle-and-orchestrator-context isolation. Both coexist.
+1. Open your dedicated `playwright-cli` session: `npx playwright-cli -s=probe-j-<slug>-<pass> open --browser=chromium <baseURL>` (pass = 4 or 5). Sessions are OS-isolated by construction: one browser process per `-s=<name> open`, so there is no isolation-prerequisite check to run before dispatching (see [`../../achilles-protocol/references/playwright-cli-protocol.md`](../../achilles-protocol/references/playwright-cli-protocol.md) §1). Receive an isolated context window; no prior session content. Close the session at the end with `npx playwright-cli -s=<your-slug> close`. Do NOT run `close-all` (the parent owns that).
+2. **Pass 4:** read the map block + page-repo slice + any existing composed tests for the journey. Before invoking `bug-discovery`, derive a **negative-case matrix** for the journey: one negative-case complement per `Test expectations:` entry, plus the standard cross-cutting negatives (auth, tenant isolation, idempotency, session expiry) (see §"Negative-case matrix — full QA scope" below). Invoke the `bug-discovery` skill scoped to this one journey, passing the matrix in the dispatch brief alongside the journey block and page-repo slice. The subagent's probing MUST cover every entry in the matrix in addition to the open-ended adversarial probe-categories that `bug-discovery` drives from live observation. Classify every finding as `Boundaries verified`, `Suspected bugs`, or `Ambiguous`. Do NOT write any tests.
+3. **Pass 5:** additionally read the journey's existing section in `adversarial-findings.md` (pass-4 findings). Re-invoke `bug-discovery` with instructions to (a) resolve `Ambiguous` findings where possible, (b) attempt compound probes pass 4 did not try, (c) probe follow-ups implied by pass-4 boundary verifications, and (d) re-probe any negative-case-matrix entries that returned `Ambiguous` in pass 4: the matrix is the deterministic floor across both adversarial passes. Write a passing regression test for every `Boundaries verified` finding (pass 4 + pass 5 combined) into `tests/e2e/j-<slug>-regression.spec.ts`. Never write tests for `Suspected bugs` or `Ambiguous` findings.
+4. Append all new findings to the journey's section of the ledger, using the canonical ledger schema in [`../../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md) §3. Probe-category vocabulary: subagent-return-schema.md §3.6; structure and severities: §1 + §3. Create the journey section if absent. Create the ledger file with its header if absent. Validate the append in-memory against the canonical schema BEFORE releasing the lockfile; if validation fails, fix the append and re-validate.
+5. Stabilize any regression tests written in pass 5 to 3× green using the normal test-composer stabilization loop. If stabilization fails after 3 cycles, DO NOT commit a `test.fail()` marker; instead move the finding to `Suspected bugs` with note `deterministic-test-not-feasible` and continue. (`test.fail()` is sanctioned only as a ticketed defect sentinel: see `ticket-driven-testing/references/phase-7-durable-tests.md` for the one exception; adversarial-pass findings have no owning ticket.)
+6. **If your verdict is `findings-emitted` (the §2.0 envelope status when the probe surfaces ≥1 finding), apply the §2.6 spillover contract**: write the full `findings:` sub-list with sub-bullets (`scope:` / `expected:` / `observed:` / `coverage:`) to `tests/e2e/docs/.subagent-returns/probe-<journey-slug>-<pass>-c<cycle>.md` (start the file with the sentinel `<!-- subagent-returns:probe:<journey-slug>:pass-<N>:cycle-<C> -->`). Your return body inlines only the index-level fields: `status: findings-emitted`, `journey`, `pass`, `cycle`, `spill: <path>`, `probes: <count>`, `boundaries: <count>`, and a `findings:` list of finding-IDs (no inline blocks). The live `subagent-return-schema-guard.sh` WARNs on returns that fail `probe.schema.json` (see [harness-hooks.md](../../achilles-protocol/references/harness-hooks.md)). `clean` and `blocked` returns are exempt from spillover (no findings to spill / one-line reason). The probe also writes findings to the cross-pass canonical ledger at `tests/e2e/docs/adversarial-findings.md` (per §3 of the canonical schema); the ledger is the cross-cycle authoritative log; the spill file is per-cycle-and-orchestrator-context isolation. Both coexist.
 7. Return a structured discovery report to the orchestrator. No probe transcripts, no DOM snapshots, no test source.
 
 ## Negative-case matrix — full QA scope
@@ -50,7 +50,7 @@ Before dispatch, the orchestrator (or the subagent itself, when running standalo
 
 The matrix is built in two layers:
 
-**Layer A — per-expectation complement.** For every entry in the journey's `Test expectations:` list, derive at least one negative complement. Common transforms:
+**Layer A: per-expectation complement.** For every entry in the journey's `Test expectations:` list, derive at least one negative complement. Common transforms:
 
 | Positive expectation | Negative complement |
 |---|---|
@@ -68,15 +68,15 @@ The matrix is built in two layers:
 | Wizard step N completes | User navigates back to step N-1 and resubmits → state consistent, no orphaned record |
 | Action runs to completion | User cancels / closes tab mid-action → no partial state, expected rollback or resumption |
 
-**Layer B — cross-cutting negatives (always present).** Independent of the journey's expectations, every matrix MUST include:
+**Layer B: cross-cutting negatives (always present).** Independent of the journey's expectations, every matrix MUST include:
 
-- **Authorisation tamper** — unauthenticated request to a state-changing endpoint, expired-token request, role-downgrade access (e.g., regular user hitting an admin-only flow).
-- **Tenant isolation** — cross-tenant resource access via direct ID (URL param, hidden form field, API path), cross-tenant list-leak via filter manipulation.
-- **Idempotency / replay** — double-submit of any mutating action, request replay with a stale CSRF token, request replay after network retry.
-- **Session boundary** — action attempted at session expiry, action attempted after explicit logout from a second tab, action attempted with a forged session cookie.
-- **Input boundaries** — empty / whitespace / max-length / overflow / unicode / null-byte for every free-text and numeric field on the journey.
+- **Authorisation tamper**: unauthenticated request to a state-changing endpoint, expired-token request, role-downgrade access (e.g., regular user hitting an admin-only flow).
+- **Tenant isolation**: cross-tenant resource access via direct ID (URL param, hidden form field, API path), cross-tenant list-leak via filter manipulation.
+- **Idempotency / replay**: double-submit of any mutating action, request replay with a stale CSRF token, request replay after network retry.
+- **Session boundary**: action attempted at session expiry, action attempted after explicit logout from a second tab, action attempted with a forged session cookie.
+- **Input boundaries**: empty / whitespace / max-length / overflow / unicode / null-byte for every free-text and numeric field on the journey.
 
-These are illustrative — the subagent applies the same "what is the negative of this expectation, and what cross-cutting negatives apply to this surface" transform to every journey. An empty matrix is a contract violation; no journey has zero negative cases.
+These are illustrative; the subagent applies the same "what is the negative of this expectation, and what cross-cutting negatives apply to this surface" transform to every journey. An empty matrix is a contract violation; no journey has zero negative cases.
 
 ### Matrix format (passed in the dispatch brief)
 
@@ -105,7 +105,7 @@ negative-case matrix:
 
 ### Coexistence with open-ended probing
 
-The matrix sets a deterministic floor. `bug-discovery`'s open-ended probing categories (boundary inputs, race conditions, cross-feature, cumulative state, etc.) extend above it. Neither replaces the other — the subagent runs both and merges findings under the canonical schema.
+The matrix sets a deterministic floor. `bug-discovery`'s open-ended probing categories (boundary inputs, race conditions, cross-feature, cumulative state, etc.) extend above it. Neither replaces the other; the subagent runs both and merges findings under the canonical schema.
 
 The matrix entries are NOT findings on their own; they are probe targets. A matrix entry produces a finding when the probed behaviour deviates from the expected complement. An entry whose probe confirms the negative case is correctly handled is recorded as a `Boundaries verified` finding (pass 5 then writes the regression test).
 
@@ -135,9 +135,9 @@ Holding the lock should take under 500ms per subagent. Read the file, compute th
 
 ## Return shape
 
-The return is JSON, conformant with `schemas/subagent-returns/probe.schema.json` and the Behaviour-item-6 spillover contract. The `handover` envelope is the **first key** (`role: probe-j-<slug>`, `cycle`, `status`, `next-action` per §2.0 of the canonical schema); `status` is `findings-emitted` (≥1 finding), `clean` (no findings), or `blocked`. Index-level fields follow at the top level — never inside `handover`. Per-finding detail does NOT inline in the return: it spills to `tests/e2e/docs/.subagent-returns/probe-<journey-slug>-<pass>-c<cycle>.md` (per Behaviour item 6) and is referenced by `spill:` + the `finding-ids:` list (per the schema's `finding-ids` field). Any per-finding block that does appear anywhere MUST follow the canonical §1 finding-return block in the reference file — do not invent alternative finding shapes.
+The return is JSON, conformant with `schemas/subagent-returns/probe.schema.json` and the Behaviour-item-6 spillover contract. The `handover` envelope is the **first key** (`role: probe-j-<slug>`, `cycle`, `status`, `next-action` per §2.0 of the canonical schema); `status` is `findings-emitted` (≥1 finding), `clean` (no findings), or `blocked`. Index-level fields follow at the top level; never inside `handover`. Per-finding detail does NOT inline in the return: it spills to `tests/e2e/docs/.subagent-returns/probe-<journey-slug>-<pass>-c<cycle>.md` (per Behaviour item 6) and is referenced by `spill:` + the `finding-ids:` list (per the schema's `finding-ids` field). Any per-finding block that does appear anywhere MUST follow the canonical §1 finding-return block in the reference file; do not invent alternative finding shapes.
 
-**Worked example — `findings-emitted` (pass 4):**
+**Worked example: `findings-emitted` (pass 4):**
 
 ```json
 {

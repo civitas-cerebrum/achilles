@@ -1,0 +1,1 @@
+{"cwd":"temp","copy":["achilles-factory-rules.json"],"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test tests/e2e/south/checkout-order.spec.ts"}},"expect":"allow","stderrContains":["[factory] tests/spend-list.json missing"]}

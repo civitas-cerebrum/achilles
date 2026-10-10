@@ -8,14 +8,14 @@ description: >
   `tests/e2e/docs/journey-map.md` and at least one spec file to be present.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Test Catalogue — Stakeholder-Ready Scenario Inventory PDF
 
 Generate a printable, stakeholder-facing catalogue that answers the question **"what scenarios are we running, and why?"** at a glance. The audience is non-technical: a product owner, a manager, a sponsor. They want to see coverage organised by primary section and priority, with a short human-readable line per scenario and a transparent list of anything explicitly deferred.
 
-Output is an A4-landscape PDF (and its HTML source), cover page first, sectioned by primary structural axis, sorted by priority, with a dedicated adversarial-regression section and a skipped-with-reason section at the end. The primary structural axis is **derived per project at runtime** from the journey map (URL-prefix clusters or file-name clusters) — the skill is a renderer, not a domain model, so it does not hardcode any app's section names.
+Output is an A4-landscape PDF (and its HTML source), cover page first, sectioned by primary structural axis, sorted by priority, with a dedicated adversarial-regression section and a skipped-with-reason section at the end. The primary structural axis is **derived per project at runtime** from the journey map (URL-prefix clusters or file-name clusters); the skill is a renderer, not a domain model, so it does not hardcode any app's section names.
 
 ---
 
@@ -30,7 +30,7 @@ Activation phrases:
 - "client-ready catalogue"
 - "export the scenario inventory"
 
-It does NOT activate during test writing, coverage expansion, repair, or debugging — those belong to the primary `achilles-protocol` stages. It is a paired document to `work-summary-deck`: the deck tells the narrative, the catalogue lists the inventory.
+It does NOT activate during test writing, coverage expansion, repair, or debugging: those belong to the primary `achilles-protocol` stages. It is a paired document to `work-summary-deck`: the deck tells the narrative, the catalogue lists the inventory.
 
 ---
 
@@ -41,7 +41,7 @@ It does NOT activate during test writing, coverage expansion, repair, or debuggi
 | Spec files | `tests/e2e/**/*.spec.ts` | Scenario extraction |
 | Journey map | `tests/e2e/docs/journey-map.md` | Must start with `<!-- journey-mapping:generated -->` sentinel. Cross-referenced for priority / category / entry / section. |
 
-If either input is missing, stop and tell the user — do not fabricate a journey map.
+If either input is missing, stop and tell the user; do not fabricate a journey map.
 
 ### Optional Inputs
 
@@ -67,7 +67,7 @@ For every `tests/e2e/**/*.spec.ts`:
 
 1. Parse the file content.
 2. Capture each `test.describe(...)` context (nesting allowed).
-3. For each `test(...)`, `test.skip(...)`, or `test.fail(...)` that appears at statement position (ignore inner `test.skip(condition, 'msg')` calls inside test bodies — those are runtime skips, not structural skips):
+3. For each `test(...)`, `test.skip(...)`, or `test.fail(...)` that appears at statement position (ignore inner `test.skip(condition, 'msg')` calls inside test bodies: those are runtime skips, not structural skips):
    - File path (relative to repo root)
    - Enclosing describe chain
    - Test name (the first string argument)
@@ -77,7 +77,7 @@ For every `tests/e2e/**/*.spec.ts`:
    - The outer `describe` name if it starts with `j-` or `sj-`, or
    - The file-name convention: `<section-prefix>-<slug>.spec.ts` → attempt matching `j-<section-prefix>-<slug>` against journey-map headings.
 
-Implementation hint: a tolerant regex-based walk is sufficient. You do not need a real AST — spec files in this framework follow predictable patterns (see `references/spec-parsing.md`).
+Implementation hint: a tolerant regex-based walk is sufficient. You do not need a real AST; spec files in this framework follow predictable patterns (see `references/spec-parsing.md`).
 
 ### Phase 2 — Cross-reference
 
@@ -89,17 +89,17 @@ For each extracted test:
 - If the enclosing describe starts with `sj-` → mark as `structural` (these are composed into journeys rather than being user-facing journeys themselves).
 - If the test is `test.skip` at statement position → keep the skip + capture any human-readable reason from a nearby comment on the preceding lines (best-effort).
 - If the test name carries an `@flaky` tag OR the test has an entry with `Status: quarantined` in `tests/e2e/docs/flake-quarantine.md` (when that ledger exists) → mark the status `Quarantined`. Quarantined tests must not render as Active.
-- If the test name or its enclosing describe carries a `@known-defect` tag → mark the status `Failing-expected` and, when the spec's header comment names the defect report or ticket, attach that reference. A `@known-defect` test is an intentional red guarding a filed defect ([`test-identity.md`](../achilles-protocol/references/test-identity.md) §2); it must never render as Active, and it is not a `test.fail` prerequisite — the tag alone is the signal.
+- If the test name or its enclosing describe carries a `@known-defect` tag → mark the status `Failing-expected` and, when the spec's header comment names the defect report or ticket, attach that reference. A `@known-defect` test is an intentional red guarding a filed defect ([`test-identity.md`](../achilles-protocol/references/test-identity.md) §2); it must never render as Active, and it is not a `test.fail` prerequisite; the tag alone is the signal.
 - If the test title begins with a test ID (`TCXX-NNNNNN`, e.g. `TCLG-000420`) → capture the ID as the row's identifier and render the remaining title as the scenario name. The ID is the stable handle a reader quotes back at the suite; a catalogue that drops it forces them to quote a whole sentence instead.
 
-Unmatched tests go into an "Unmapped" bucket in the catalogue — visible so the user sees what needs mapping.
+Unmatched tests go into an "Unmapped" bucket in the catalogue; visible so the user sees what needs mapping.
 
 ### Phase 3 — Categorise
 
-The catalogue is grouped on **two axes**, both derived from the journey map at runtime — neither is hardcoded by the skill:
+The catalogue is grouped on **two axes**, both derived from the journey map at runtime; neither is hardcoded by the skill:
 
-1. **Primary (outer) grouping — section.** The top-level structural axis: the highest-level cohorts the app naturally splits into (different portals / different user roles / different host names — whatever the journey map's `Entry:` URLs reveal). Derived per project per §"Deriving the primary section axis" below. The skill does NOT carry a built-in list of sections; the cluster labels are whatever the data yields.
-2. **Secondary (inner) grouping — page area.** Within each primary section, group by the part of the application the scenarios exercise. Derived per project per §"Deriving the page-area taxonomy" below. **Never group by priority tier.** Stakeholders care about "what parts of the app are covered," not "which priority bucket does the test sit in." Priority stays visible as a per-scenario chip (see below) — it does not drive the grouping.
+1. **Primary (outer) grouping: section.** The top-level structural axis: the highest-level cohorts the app naturally splits into (different portals / different user roles / different host names: whatever the journey map's `Entry:` URLs reveal). Derived per project per §"Deriving the primary section axis" below. The skill does NOT carry a built-in list of sections; the cluster labels are whatever the data yields.
+2. **Secondary (inner) grouping: page area.** Within each primary section, group by the part of the application the scenarios exercise. Derived per project per §"Deriving the page-area taxonomy" below. **Never group by priority tier.** Stakeholders care about "what parts of the app are covered," not "which priority bucket does the test sit in." Priority stays visible as a per-scenario chip (see below); it does not drive the grouping.
 
 Within a page area, sort **alphabetically by journey ID**.
 
@@ -107,10 +107,10 @@ Within a page area, sort **alphabetically by journey ID**.
 
 1. Read every journey's `Entry:` URL from `journey-map.md`.
 2. Extract the host + first path segment (`https://<host>/<first-segment>/...`).
-3. Cluster journeys by that prefix — one cluster per distinct prefix.
+3. Cluster journeys by that prefix: one cluster per distinct prefix.
 4. The cluster label IS the prefix (or the journey-map's explicit `Section:` field if present). The skill does not canonicalise to friendly names; the data's own grouping IS the grouping.
 5. If `Entry:` is absent across the map, fall back to clustering by the first hyphen-separated token of each spec file's name.
-6. If the result is a single cluster (the app is all one host + path), the catalogue uses no primary axis — just one section with the page-area axis underneath.
+6. If the result is a single cluster (the app is all one host + path), the catalogue uses no primary axis: just one section with the page-area axis underneath.
 
 Cross-cutting journeys (sub-journeys, regression-only specs spanning multiple primary sections) go into a final "Cross-cutting" section regardless of the cluster algorithm's output.
 
@@ -119,18 +119,18 @@ Cross-cutting journeys (sub-journeys, regression-only specs spanning multiple pr
 1. Enumerate every distinct URL path / page name from `Pages touched:` across all journeys.
 2. Cluster by URL-path prefix (e.g., `/<area-A>/*`, `/<area-B>/*`). One cluster = one candidate page area.
 3. For each cluster, assign the human label from `app-context.md` if available, otherwise infer from the URL segment (e.g., `/<area-name>` → titlecase the segment).
-4. Fold singleton clusters (≤1 journey) into the closest sibling area — or into a catch-all "Miscellaneous" area if none fits. Do not leave an area with a single journey unless the project genuinely has a standalone area.
+4. Fold singleton clusters (≤1 journey) into the closest sibling area, or into a catch-all "Miscellaneous" area if none fits. Do not leave an area with a single journey unless the project has a standalone area.
 5. Target **10–14 total areas** across the catalogue. Fewer than 8 means the taxonomy is too coarse to be useful; more than 18 means it's too granular to scan. Adjust by merging adjacent singletons or splitting overly broad areas.
 
 The result is a derived, project-specific taxonomy. Write it out in the skill's return summary so reviewers can see what was chosen. Present the final area list on the catalogue's contents page with journey count per area, so a reader can see coverage density at a glance.
 
-If the journey map is sparse or missing, fall back to clustering by spec-file name prefix — this is less accurate but produces a usable taxonomy without the map.
+If the journey map is sparse or missing, fall back to clustering by spec-file name prefix; this is less accurate but produces a usable taxonomy without the map.
 
 #### Per-scenario labels (chips)
 
 Each scenario row shows:
-- **Priority chip** — P0 (crit red), P1 (high orange), P2 (medium yellow), P3 (low grey). Always visible, never the grouping axis.
-- **Type chip** — inferred from test-name keywords:
+- **Priority chip**: P0 (crit red), P1 (high orange), P2 (medium yellow), P3 (low grey). Always visible, never the grouping axis.
+- **Type chip**: inferred from test-name keywords:
   - happy path (the first non-error test in a non-regression spec)
   - error state (name contains `error`, `invalid`, `reject`, `blank`, `duplicate`, `unauthorized`, `401`, `403`)
   - edge case (name contains `edge`, `boundary`, `empty`, `max`, `min`, `overflow`, `timeout`, `concurrent`)
@@ -139,8 +139,8 @@ Each scenario row shows:
   - regression (file in `-regression.spec.ts`)
   
   When a test matches more than one rule, pick the **most specific** one (mobile > edge > error > structural > regression > happy path).
-- **Test ID** — the stable `TCXX-NNNNNN` identifier from the head of the title, rendered as its own column so a reader can grep, cite, or `--grep` it.
-- **Status chip** — Active / Skipped (with reason) / Failing-expected (sourced from `@known-defect` tags + `test.fail`) / Quarantined (sourced from `@flaky` tags + `flake-quarantine.md` entries).
+- **Test ID**: the stable `TCXX-NNNNNN` identifier from the head of the title, rendered as its own column so a reader can grep, cite, or `--grep` it.
+- **Status chip**: Active / Skipped (with reason) / Failing-expected (sourced from `@known-defect` tags + `test.fail`) / Quarantined (sourced from `@flaky` tags + `flake-quarantine.md` entries).
 
 ### Phase 4 — Render HTML
 
@@ -150,13 +150,13 @@ Every page has a header (brand wordmark + section micro-label + page-number `NN 
 
 Page order:
 
-1. **Cover page** — app name, date, headline totals (total scenarios, journeys covered, primary-section breakdown, active-vs-skipped count).
-2. **Contents page** — section list with starting page numbers.
+1. **Cover page**: app name, date, headline totals (total scenarios, journeys covered, primary-section breakdown, active-vs-skipped count).
+2. **Contents page**: section list with starting page numbers.
 3. **One or more pages per primary section.** For each section:
    - Section header page (section name, section one-liner, scenario count, priority distribution).
    - Table pages grouped by priority tier. Columns: `Journey` · `Scenario` · `Type` · `Status`. When the table overflows, continue on the next page with the same headers.
 4. **Adversarial regression section.** Table of every boundary-lock test with file, test name, verified-boundary code (if extractable), and category.
-5. **Skipped-with-reason section.** Full list of every skipped test grouped by reason (env, blocked by tenant data, known bug, etc). This page is the transparency commitment — it must exist even when empty (rendering an explicit "No scenarios deferred" block).
+5. **Skipped-with-reason section.** Full list of every skipped test grouped by reason (env, blocked by tenant data, known bug, etc). This page is the transparency commitment; it must exist even when empty (rendering an explicit "No scenarios deferred" block).
 
 Styling rules:
 - A4 landscape: `1123 × 794 px` at 96dpi. CSS must declare `@page { size: A4 landscape; margin: 0; }` and every page must be `page-break-after: always`.
@@ -170,7 +170,7 @@ Styling rules:
 
 ### Phase 5 — Render PDF
 
-Chromium's single-pass PDF engine truncates documents that push past its rendering limits — observed in practice at ~25–30k CSS pixels of stacked content (e.g., a 37-slide catalogue truncates to 8 PDF pages). **Always render in small batches and merge.** A monolithic `page.pdf()` call is unsafe for any catalogue longer than ~15 slides.
+Chromium's single-pass PDF engine truncates documents that push past its rendering limits; observed in practice at ~25–30k CSS pixels of stacked content (e.g., a 37-slide catalogue truncates to 8 PDF pages). **Always render in small batches and merge.** A monolithic `page.pdf()` call is unsafe for any catalogue longer than ~15 slides.
 
 **Required approach:** per-slide rendering + PDF merge.
 
@@ -184,7 +184,7 @@ Chromium's single-pass PDF engine truncates documents that push past its renderi
    - For each `data-slide-id`, injects a style tag that hides every other slide (`display: none !important`) and shows only the current slide (`display: flex !important`). Then calls `page.pdf()` with explicit `width: '1123px', height: '794px'` → single-page PDF buffer.
    - Removes the injected style tag before the next iteration.
    - Merges every single-page buffer into one output PDF via `pdf-lib`'s `PDFDocument.create()` / `copyPages()` / `addPage()`.
-4. **Verification (mandatory):** after merge, read the output PDF's page count and compare against the slide count. If they differ, throw — the render is corrupt. This catches the truncation bug in CI and prevents shipping a broken deliverable.
+4. **Verification (mandatory):** after merge, read the output PDF's page count and compare against the slide count. If they differ, throw; the render is corrupt. This catches the truncation bug in CI and prevents shipping a broken deliverable.
 
 Example skeleton (`scripts/render-catalogue-pdf.js`):
 
@@ -230,17 +230,17 @@ const fs = require('fs');
 })();
 ```
 
-Do not fall back to a monolithic `page.pdf()` call even for small catalogues — keep one code path. The per-slide approach is equally fast at small sizes (each render is sub-second) and is the only approach that scales.
+Do not fall back to a monolithic `page.pdf()` call even for small catalogues; keep one code path. The per-slide approach is equally fast at small sizes (each render is sub-second) and is the only approach that scales.
 
-After the page-count check passes, proceed to **Phase 6 — Exhaustive Visual Inspection** before delivering the catalogue. Phase 5 confirms the PDF is *structurally* complete (right number of pages); Phase 6 confirms each page is *visually* correct. Both gates are mandatory.
+After the page-count check passes, proceed to **Phase 6: Exhaustive Visual Inspection** before delivering the catalogue. Phase 5 confirms the PDF is *structurally* complete (right number of pages); Phase 6 confirms each page is *visually* correct. Both gates are mandatory.
 
 ### Phase 6 — Exhaustive Visual Inspection (mandatory, before delivery)
 
-The catalogue is a stakeholder-facing deliverable; the stakeholder cannot proof it themselves. Every page must be visually inspected by you before the catalogue is reported as ready. Sampling a handful of pages is not enough — a single broken page in a 30-slide catalogue undermines the whole inventory and the transparency contract that drives this skill.
+The catalogue is a stakeholder-facing deliverable; the stakeholder cannot proof it themselves. Every page must be visually inspected by you before the catalogue is reported as ready. Sampling a handful of pages is not enough; a single broken page in a 30-slide catalogue undermines the whole inventory and the transparency contract that drives this skill.
 
 #### Process
 
-1. **Read every page** of the rendered PDF using the `Read` tool with the `pages:` parameter. The tool accepts ranges (`1-5`, `12`, `20-30`) and is capped at 20 pages per request — for catalogues longer than 20 slides, batch the reads (`pages: "1-20"`, then `pages: "21-40"`, etc.) so every page is actually opened.
+1. **Read every page** of the rendered PDF using the `Read` tool with the `pages:` parameter. The tool accepts ranges (`1-5`, `12`, `20-30`) and is capped at 20 pages per request; for catalogues longer than 20 slides, batch the reads (`pages: "1-20"`, then `pages: "21-40"`, etc.) so every page is actually opened.
 2. **Walk pages in order.** For each page, run the per-page-type checks below. Maintain a one-line note per page so you can cite specific failures in the return summary.
 3. **Per-page checks:**
 
@@ -251,7 +251,7 @@ The catalogue is a stakeholder-facing deliverable; the stakeholder cannot proof 
    | Primary section header | Section name + one-liner present; per-section scenario count matches the section split shown on the cover; priority-distribution chips render. |
    | Primary section table page | Header row `Journey · Scenario · Type · Status` visible; rows aligned, no horizontal overflow; priority and type chips coloured per palette; zebra striping present; no truncated cells; no "—" in a column that should be populated. |
    | Adversarial regression section | One row per `*-regression.spec.ts` test that exists in the source; boundary-lock codes attached when `adversarial-findings.md` lists them; no "Unknown boundary" rows that should have been resolved upstream in Phase 2. |
-   | Skipped-with-reason section | When empty: an explicit "No scenarios deferred" block, not a blank page. When non-empty: every row has a human-readable reason — no `TODO`, `tbd`, blank, or `?` reasons. Reasons grouped consistently. |
+   | Skipped-with-reason section | When empty: an explicit "No scenarios deferred" block, not a blank page. When non-empty: every row has a human-readable reason; no `TODO`, `tbd`, blank, or `?` reasons. Reasons grouped consistently. |
    | Every page (cross-cutting) | Page-number footer `NN / TOTAL` monotonically increasing, `TOTAL` constant across every page; brand palette consistent; no page falls back to Chromium light-mode default while neighbours stay dark; header micro-label matches the section the page belongs to. |
 
 4. **Per-page failure handling.** If any check fails, **do NOT deliver**. Diagnose by failure pattern:
@@ -263,23 +263,23 @@ The catalogue is a stakeholder-facing deliverable; the stakeholder cannot proof 
    | Overlapping rows / content past the page bottom | Table overflowed without pagination | Split the table in the HTML generator (one journey set per slide) and re-render |
    | Truncated / clipped text mid-cell | Row height too tight or text exceeds column width | Adjust the column width or wrap the cell in the template; re-render |
    | Stat tile shows `NaN` / `undefined` | Phase 1 extraction missed a code path or Phase 2 lookup returned null | Fix the extractor / lookup, regenerate HTML, re-render |
-   | Skipped-with-reason row has blank reason | Phase 1 didn't capture a nearby comment for a `test.skip(...)` | Either add the comment to the spec, or accept the gap and surface it in the return summary — do not ship a blank-reason row |
+   | Skipped-with-reason row has blank reason | Phase 1 didn't capture a nearby comment for a `test.skip(...)` | Either add the comment to the spec, or accept the gap and surface it in the return summary; do not ship a blank-reason row |
 
-   After fixing, re-run Phase 5 (which re-runs the page-count check) and then Phase 6 in full — partial re-inspection of only the changed pages is not sufficient because a fix can perturb pagination upstream.
+   After fixing, re-run Phase 5 (which re-runs the page-count check) and then Phase 6 in full; partial re-inspection of only the changed pages is not sufficient because a fix can perturb pagination upstream.
 
-5. **Return-summary obligation.** When Phase 6 passes, the skill's return summary must include the line `visual-inspection: PASS (<N> pages reviewed)`. When Phase 6 surfaces an unfixable issue (e.g., a missing journey-map entry that produced an Unmapped row that cannot be resolved without `journey-mapping` re-running), **deliver the catalogue with the issue still present AND surface it explicitly** — for example, `visual-inspection: WARN — 3 Unmapped rows in cross-cutting section, journey-map.md is stale (run journey-mapping)`. Silently shipping a known-broken page violates the catalogue's transparency contract.
+5. **Return-summary obligation.** When Phase 6 passes, the skill's return summary must include the line `visual-inspection: PASS (<N> pages reviewed)`. When Phase 6 surfaces an unfixable issue (e.g., a missing journey-map entry that produced an Unmapped row that cannot be resolved without `journey-mapping` re-running), **deliver the catalogue with the issue still present AND surface it explicitly**: for example, `visual-inspection: WARN — 3 Unmapped rows in cross-cutting section, journey-map.md is stale (run journey-mapping)`. Silently shipping a known-broken page violates the catalogue's transparency contract.
 
-6. **Hard rule.** Phase 6 runs every time, including for re-renders after a fix. There is no "I already inspected most of this last iteration" shortcut — repagination from a fix can shift content onto previously-clean pages.
+6. **Hard rule.** Phase 6 runs every time, including for re-renders after a fix. There is no "I already inspected most of this last iteration" shortcut; repagination from a fix can shift content onto previously-clean pages.
 
 #### Rationalizations to reject (Phase 6)
 
 | Excuse | Reality |
 |--------|---------|
 | "I already spot-checked the cover and a mid-document table; it'll be fine" | Spot-checking is what Phase 5 does; Phase 6 is exhaustive precisely because spot-checking has shipped truncated PDFs and palette regressions in past runs. The cost of reading 30 pages is seconds; the cost of shipping a broken stakeholder deliverable is the engagement. |
-| "The page-count check passed, so the PDF is fine" | The page-count check confirms the merge produced the right number of pages. It cannot detect a blank page, a palette regression, a `NaN` stat tile, or an overflowed table — those are page-content failures, not page-count failures. |
+| "The page-count check passed, so the PDF is fine" | The page-count check confirms the merge produced the right number of pages. It cannot detect a blank page, a palette regression, a `NaN` stat tile, or an overflowed table; those are page-content failures, not page-count failures. |
 | "Re-rendering after the fix is wasteful — I'll just re-inspect the page I changed" | A fix that splits one overflowed table into two slides shifts every downstream page-number footer by one; a fix that adds a missing `data-slide-id` changes the slide ordering. Inspection has to be exhaustive on every render or the contract isn't held. |
-| "The Unmapped section has rows but the user said to ship today, so I'll skip Phase 6" | Phase 6 is non-negotiable — but its outcome can be a `WARN` summary that ships the catalogue WITH the known issues surfaced, rather than a `PASS`. Skipping the inspection altogether destroys the transparency signal; running it and surfacing the warning preserves it. |
-| "Reading 30 pages with the Read tool is slow" | Each `Read` call is sub-second; even a 60-page catalogue is two `Read` calls (one for `1-20`, one for `21-40`, etc.). The slow path is shipping a broken catalogue and re-issuing — measure the cost there. |
+| "The Unmapped section has rows but the user said to ship today, so I'll skip Phase 6" | Phase 6 always runs, but its outcome can be a `WARN` summary that ships the catalogue WITH the known issues surfaced, rather than a `PASS`. Skipping the inspection altogether destroys the transparency signal; running it and surfacing the warning preserves it. |
+| "Reading 30 pages with the Read tool is slow" | Each `Read` call is sub-second; even a 60-page catalogue is two `Read` calls (one for `1-20`, one for `21-40`, etc.). The slow path is shipping a broken catalogue and re-issuing; measure the cost there. |
 
 ---
 
@@ -298,7 +298,7 @@ The catalogue is a stakeholder-facing deliverable; the stakeholder cannot proof 
 | `--low` | `#9CA3AF` | P3 chips |
 | `--ok` | `#34D399` | Active-status chips |
 
-Brand overrides ride in via PR — append a row above with the override values (`--brand`, `--accent`, `--bg`). The skill does not infer brand from project name or hostname.
+Brand overrides ride in via PR; append a row above with the override values (`--brand`, `--accent`, `--bg`). The skill does not infer brand from project name or hostname.
 
 ---
 
@@ -306,7 +306,7 @@ Brand overrides ride in via PR — append a row above with the override values (
 
 This skill is a **single-run** skill. No parallel subagents. No orchestration. No live browser sessions (`playwright-cli` or otherwise). It reads spec files and the journey map, writes HTML + PDF, and exits.
 
-If spec parsing produces an Unmapped bucket with > 10 tests, **warn the user** that the journey map is stale — do not try to auto-repair it. Repair belongs to the `journey-mapping` skill.
+If spec parsing produces an Unmapped bucket with > 10 tests, **warn the user** that the journey map is stale; do not try to auto-repair it. Repair belongs to the `journey-mapping` skill.
 
 This skill does not read `autonomousMode: true`. It is never invoked by another skill's pipeline; it is only invoked directly by the user on demand.
 
@@ -318,7 +318,7 @@ This skill is registered in `skills/achilles-protocol/references/skill-registry.
 | `test-catalogue` | `test-catalogue` | — (user-invoked, on-demand) | "produce a test catalogue", "generate a scenario report", "catalogue the suite", "client-ready catalogue", "export the scenario inventory"; never auto-invoked by any other skill. |
 ```
 
-The registry row is a hard dependency of this skill's discoverability — if the registry exists and this skill isn't in it, agents will reconstruct the name from memory and the case-exact invocation string will drift.
+The registry row is a hard dependency of this skill's discoverability: if the registry exists and this skill isn't in it, agents will reconstruct the name from memory and the case-exact invocation string will drift.
 
 ---
 
@@ -334,12 +334,12 @@ The registry row is a hard dependency of this skill's discoverability — if the
 
 | Excuse | Reality |
 |--------|---------|
-| "The client asked how long it took, so I'll add a runtime/velocity section" | Answer the client directly in chat or in the deck narrative — the catalogue is an inventory document, not an engagement report. Velocity language in the catalogue signals "we're selling effort, not coverage" to the client's procurement team. |
-| "The journey map is missing but I can infer from specs" | Stop and ask the user to run `journey-mapping` first. An inferred map makes up priority / section / purpose data — the catalogue then ships with authoritative-looking but fabricated metadata. |
+| "The client asked how long it took, so I'll add a runtime/velocity section" | Answer the client directly in chat or in the deck narrative; the catalogue is an inventory document, not an engagement report. Velocity language in the catalogue signals "we're selling effort, not coverage" to the client's procurement team. |
+| "The journey map is missing but I can infer from specs" | Stop and ask the user to run `journey-mapping` first. An inferred map makes up priority / section / purpose data; the catalogue then ships with authoritative-looking but fabricated metadata. |
 | "I'll combine the deck and the catalogue to save effort" | They are deliberately paired but distinct: deck = narrative, catalogue = inventory. Merging them produces a document that is too long to present and too abstract to audit. |
-| "Light-mode for clients who print B&W" | Dark-mode is the skill's contract; adding a light-mode toggle doubles the rendering surface and the brand-palette matrix without the client having asked. If a specific engagement needs light-mode, land a branded-override row in the skill's palette table — not an ad-hoc fork at render time. |
-| "PDF verification is slow / fails on corner cases — comment it out to ship" | Verification is non-negotiable. A catalogue that ships with a silently-truncated PDF is a broken deliverable to a stakeholder who cannot verify it themselves; the verification IS the guarantee. Fix the root cause (usually an HTML slide without a `data-slide-id`) rather than removing the check. |
-| "The Unmapped bucket has 15 entries — I'll quietly drop them" | The Unmapped bucket is the honest signal that journey-mapping is stale. Dropping entries hides the drift from the next onboarding run and the next client. Surface it. |
+| "Light-mode for clients who print B&W" | Dark-mode is the skill's contract; adding a light-mode toggle doubles the rendering surface and the brand-palette matrix without the client having asked. If a specific engagement needs light-mode, land a branded-override row in the skill's palette table; not an ad-hoc fork at render time. |
+| "PDF verification is slow / fails on corner cases — comment it out to ship" | Verification always runs. A catalogue that ships with a silently-truncated PDF is a broken deliverable to a stakeholder who cannot verify it themselves; the verification IS the guarantee. Fix the root cause (usually an HTML slide without a `data-slide-id`) rather than removing the check. |
+| "The Unmapped bucket has 15 entries — I'll quietly drop them" | The Unmapped bucket is the signal that journey-mapping is stale. Dropping entries hides the drift from the next onboarding run and the next client. Surface it. |
 
 ---
 
@@ -349,7 +349,7 @@ The registry row is a hard dependency of this skill's discoverability — if the
 1. Parse `tests/e2e/**/*.spec.ts`.
 2. Cross-reference `journey-map.md`.
 3. Render `test-catalogue.html` and `test-catalogue.pdf` at repo root (per-slide render + page-count verify).
-4. **Phase 6: exhaustive visual inspection** — read every page of the PDF in order, run the per-page-type checks, fix and re-render until every page passes.
+4. **Phase 6: exhaustive visual inspection**: read every page of the PDF in order, run the per-page-type checks, fix and re-render until every page passes.
 5. Report headline numbers (total scenarios, journeys covered, primary-section breakdown, skipped count) plus the `visual-inspection:` line (PASS or WARN with surfaced issues).
 
 **User says:** "catalogue the suite, brand: <brand-name>, output: <filename>.pdf"
@@ -358,4 +358,4 @@ The registry row is a hard dependency of this skill's discoverability — if the
 3. Report the headline + `visual-inspection:` line.
 
 **User says:** "scenario report including regression coverage"
-1. Same flow. The adversarial-regression section is always included — it is not opt-in. Phase 6 inspects it like any other section.
+1. Same flow. The adversarial-regression section is always included; it is not opt-in. Phase 6 inspects it like any other section.
