@@ -42,51 +42,29 @@ if (require.main === module) {
       ? 'Global install (-g): the harness → ~/.claude (every project).'
       : `Local install: the harness → ${context.harnessClaudeDir} (this project only); the routing skill → ~/.claude/skills/achilles.`}`);
 
-    try {
-      installCivitasSkills();
-    } catch (err) {
-      console.warn(`[@civitas-cerebrum/achilles] Could not install skills: ${err.message}`);
-    }
-
-    try {
-      installCivitasAgents();
-    } catch (err) {
-      console.warn(`[@civitas-cerebrum/achilles] Could not install agent definitions: ${err.message}`);
-    }
-
-    try {
-      await installBundledJq(context.harnessClaudeDir);
-    } catch (err) {
-      console.warn(`[civitas-cerebrum] Could not install bundled jq: ${err.message}`);
-      process.exitCode = 1;
-    }
-
-    try {
-      installCivitasHooks(context.harnessClaudeDir);
-    } catch (err) {
-      console.warn(`[civitas-cerebrum] Could not install harness hooks: ${err.message}`);
-    }
-
-    try {
-      if (context.globalInstall) stageGlobalMandate();
-      else stageProjectMandate();
-    } catch (err) {
-      console.warn(`[civitas-cerebrum] Could not stage the QA role manifest: ${err.message}`);
-    }
-
-    if (!context.globalInstall) {
+    // Every step writes and records its own files before the next starts, and none fails the
+    // install: a non-zero exit makes npm remove the package, and achilles-uninstall with it, after
+    // the harness is already on disk.
+    const steps = [
+      ['skills', () => installCivitasSkills()],
+      ['agent definitions', () => installCivitasAgents()],
+      ['bundled jq', () => installBundledJq(context.harnessClaudeDir)],
+      ['harness hooks', () => installCivitasHooks(context.harnessClaudeDir)],
+      ['the QA role manifest', () => (context.globalInstall ? stageGlobalMandate() : stageProjectMandate())],
+      ...(context.globalInstall ? [] : [['the user-level routing skill', () => installUserTrigger()]]),
+      ['chromium', () => installChromium()],
+    ];
+    let failed = 0;
+    for (const [what, step] of steps) {
       try {
-        installUserTrigger();
+        await step();
       } catch (err) {
-        console.warn(`[@civitas-cerebrum/achilles] Could not install the user-level routing skill: ${err.message}`);
+        failed++;
+        console.warn(`[@civitas-cerebrum/achilles] Could not install ${what}: ${err.message}`);
       }
     }
-
-    try {
-      installChromium();
-    } catch (err) {
-      console.warn(`[@civitas-cerebrum/achilles] Could not install chromium: ${err.message}`);
-      process.exitCode = 1;
+    if (failed > 0) {
+      console.warn(`[@civitas-cerebrum/achilles] Installed with ${failed} step${failed === 1 ? '' : 's'} failed. What was written is recorded; undo it with \`npx achilles-uninstall ${context.globalInstall ? '--global' : '--project'}\`.`);
     }
   })();
 }

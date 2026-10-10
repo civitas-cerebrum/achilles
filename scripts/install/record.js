@@ -1,12 +1,13 @@
 const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
-const { packageDir } = require('./context.js');
+const { packageDir, userClaudeDir } = require('./context.js');
 
 // <claudeDir>/achilles-install.json records what postinstall wrote:
 //   files          — { "<path relative to claudeDir>": "<sha256 of the content written>" }
 //   registrations  — [{ event, matcher, command }] the manifest registers in settings.json
 //   kept           — { "<path>": "<sha256 of the user's content>" } files left alone, so the warning prints once
+//   scope          — "global" (npm i -g) or "local" (a project install, or the routing skill it writes user-level)
 // Each installer owns a section — the top-level dir it writes under (hooks, skills,
 // agents) — so installers sharing one claudeDir (and a local install touching the
 // user-level ~/.claude) carry each other's entries through untouched.
@@ -33,6 +34,8 @@ function openRecord(claudeDir, sections) {
   const rec = {
     claudeDir: path.resolve(claudeDir),
     hadRecord: isObject(prev.files),
+    prevScope: prev.scope === 'global' || prev.scope === 'local' ? prev.scope : null,
+    scope: null,
     prev: prevFiles,
     prevKept,
     prevRegistrations,
@@ -138,13 +141,19 @@ function pruneStale(rec, { quiet = false } = {}) {
 const PROJECT_HOOK_PREFIX = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/';
 
 // hookScriptPath <command> <claudeDir> — the script one of our registrations runs, else null.
+// A global install registers the absolute path double-quoted (shellQuote), so a HOME with a
+// space stays one word; earlier installs registered it bare.
 function hookScriptPath(command, claudeDir) {
   const hooksDir = path.join(claudeDir, 'hooks') + path.sep;
-  const head = command.trim().split(/\s+/)[0];
-  if (head.startsWith(PROJECT_HOOK_PREFIX)) return path.join(hooksDir, head.slice(PROJECT_HOOK_PREFIX.length));
-  const bare = head.replace(/^["']|["']$/g, '');
+  const cmd = command.trim();
+  if (cmd.startsWith(PROJECT_HOOK_PREFIX)) return path.join(hooksDir, cmd.slice(PROJECT_HOOK_PREFIX.length).split(/\s+/)[0]);
+  const quoted = cmd.match(/^"((?:[^"\\]|\\.)*)"/);
+  const bare = quoted ? quoted[1].replace(/\\(.)/g, '$1') : cmd.split(/\s+/)[0].replace(/^'|'$/g, '');
   return bare.startsWith(hooksDir) ? bare : null;
 }
+
+// shellQuote <path>: the path as one double-quoted sh word.
+const shellQuote = (p) => `"${p.replace(/["\\$`]/g, '\\$&')}"`;
 
 // Removes registrations an earlier install made that the manifest no longer
 // asks for; registrations the user added are not in the record and stay, and a
@@ -183,7 +192,9 @@ function writeRecord(rec) {
   const { version } = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
   // Keys sorted, so the installers sharing this record write the same text and a no-op run rewrites nothing.
   const sorted = (o) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]));
-  const out = { package: '@civitas-cerebrum/achilles', version, ...rec.next, files: sorted(rec.next.files), kept: sorted(rec.next.kept) };
+  // ~/.claude holds hooks, skills or agents only for a global install; the routing skill sets 'local'.
+  const scope = rec.scope || (rec.claudeDir === path.resolve(userClaudeDir) ? 'global' : 'local');
+  const out = { package: '@civitas-cerebrum/achilles', version, scope, ...rec.next, files: sorted(rec.next.files), kept: sorted(rec.next.kept) };
   if (Object.keys(out.kept).length === 0) delete out.kept;
   const text = JSON.stringify(out, null, 2) + '\n';
   const file = path.join(rec.claudeDir, RECORD_FILE);
@@ -191,4 +202,4 @@ function writeRecord(rec) {
   fs.writeFileSync(file, text);
 }
 
-module.exports = { RECORD_FILE, PROJECT_HOOK_PREFIX, hookScriptPath, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord };
+module.exports = { RECORD_FILE, PROJECT_HOOK_PREFIX, hookScriptPath, shellQuote, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord };

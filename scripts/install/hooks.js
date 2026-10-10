@@ -1,7 +1,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { packageDir, userClaudeDir } = require('./context.js');
-const { PROJECT_HOOK_PREFIX, hookScriptPath, openRecord, copyTracked, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord } = require('./record.js');
+const { PROJECT_HOOK_PREFIX, hookScriptPath, shellQuote, openRecord, copyTracked, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord } = require('./record.js');
 
 // Install the achilles harness hooks into <claudeDir>/hooks/ and register
 // them in <claudeDir>/settings.json — ~/.claude for a global (-g) install,
@@ -68,9 +68,9 @@ function copyHookSubdir(rec, name, userHooksDir) {
 }
 
 // hookCommand — the settings.json command for an installed hook: project-relative for a project install
-// (see PROJECT_HOOK_PREFIX), the absolute path for a global one.
+// (see PROJECT_HOOK_PREFIX), the quoted absolute path for a global one.
 function hookCommand(baseDir, hookDest) {
-  if (baseDir === userClaudeDir) return hookDest;
+  if (baseDir === userClaudeDir) return shellQuote(hookDest);
   return PROJECT_HOOK_PREFIX + path.relative(path.join(baseDir, 'hooks'), hookDest).split(path.sep).join('/');
 }
 
@@ -91,7 +91,7 @@ function registerHookInSettings(rec, settings, entry, command, hookDest) {
   group.hooks = group.hooks || [];
 
   if (group.hooks.some(h => h && h.type === 'command' && h.command === command)) return false;
-  // An earlier install registered the absolute path: switch that entry over rather than add a second one.
+  // An earlier install registered the bare absolute path: switch that entry over rather than add a second one.
   const old = command !== hookDest && group.hooks.find(h => h && h.type === 'command' && h.command === hookDest);
   if (old) { old.command = command; return true; }
 

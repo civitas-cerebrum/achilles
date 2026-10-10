@@ -106,7 +106,6 @@ async function installBundledJq(claudeDir) {
   const asset = jqAssetForPlatform();
   if (!asset) {
     console.warn(`[civitas-cerebrum] No bundled jq available for ${process.platform}/${process.arch}. Hooks will fall back to system jq; install jq manually if it isn't already on PATH. See https://jqlang.github.io/jq/download/.`);
-    process.exitCode = 1;
     return;
   }
 
@@ -133,17 +132,15 @@ async function installBundledJq(claudeDir) {
     downloadToFile(url, dest, (err, tmpPath) => {
       if (err) {
         console.warn(`[civitas-cerebrum] Could not download jq from ${url}: ${err.message}. Hooks will fall back to system jq.`);
-        process.exitCode = 1;
         return resolve();
       }
       try {
         const r = finalizeJq(tmpPath, dest, JQ_SHA256[asset]);
         if (r.ok) console.log(`[civitas-cerebrum] ${r.message}`);
-        else { console.warn(`[civitas-cerebrum] ${r.message}`); process.exitCode = 1; }
+        else console.warn(`[civitas-cerebrum] ${r.message}`);
       } catch (e) {
         try { fs.unlinkSync(tmpPath); } catch (_) { /* ignore */ }
         console.warn(`[civitas-cerebrum] Failed to finalize bundled jq at ${dest}: ${e.message}. Hooks will fall back to system jq.`);
-        process.exitCode = 1;
       }
       resolve();
     });

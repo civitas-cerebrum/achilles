@@ -251,18 +251,19 @@ FACRULES
   # --- Assertion: upgrade path leaves settings.json unchanged -------------
   # The fixture is the settings.json the pre-split installer wrote (hooks dir
   # as @HOOKS@). Re-running the installer over it must change nothing except
-  # adding the factory gates, which that installer did not register.
+  # quoting each bare path in place and adding the factory gates, which that
+  # installer did not register.
   local up="$work/upgrade" fixture="$repo_root/hooks/tests/fixtures/settings-0.1.8-pre-split.json" up_diff
   mkdir -p "$up/.claude"
   sed "s#@HOOKS@#$up/.claude/hooks#g" "$fixture" > "$up/.claude/settings.json"
   cp "$up/.claude/settings.json" "$work/settings-expected.json"
   HOME="$up" CIVITAS_SKIP_JQ_INSTALL=1 node -e "require('$repo_root/scripts/postinstall.js').installCivitasHooks('$up/.claude')" >/dev/null 2>&1
-  up_diff=$(diff <("$JQ" -S . "$work/settings-expected.json") \
+  up_diff=$(diff <("$JQ" -S --arg h "$up/.claude/hooks/" '.hooks |= map_values(map(.hooks |= map(if (.command | startswith($h)) then .command |= "\"" + . + "\"" else . end)))' "$work/settings-expected.json") \
     <("$JQ" -S '.hooks |= map_values(map(.hooks |= map(select(.command | contains("/hooks/factory/") | not))) | map(select(.hooks | length > 0)))' "$up/.claude/settings.json") 2>&1)
   if [ -z "$up_diff" ]; then
-    sim_pass "re-install over the pre-split settings.json leaves it unchanged"
+    sim_pass "re-install over the pre-split settings.json only quotes each path in place"
   else
-    sim_fail "re-install over the pre-split settings.json leaves it unchanged" "$up_diff"
+    sim_fail "re-install over the pre-split settings.json only quotes each path in place" "$up_diff"
   fi
 
   # What the upgrade added: exactly manifest.factory, one registration each.
@@ -270,7 +271,7 @@ FACRULES
   factory_want=$("$JQ" -r '.factory[] | "\(.event) \(.matcher) \(.file)"' "$manifest" | sort)
   factory_have=$("$JQ" -r '.hooks | to_entries[] | .key as $e | .value[] | (.matcher // "") as $m
     | .hooks[] | select(.command | contains("/hooks/factory/"))
-    | "\($e) \($m) \(.command | split("/") | last)"' "$up/.claude/settings.json" | sort)
+    | "\($e) \($m) \(.command | split("/") | last | rtrimstr("\""))"' "$up/.claude/settings.json" | sort)
   if [ "$factory_want" = "$factory_have" ]; then
     sim_pass "re-install registers exactly manifest.factory (event, matcher, file; once each)"
   else
@@ -782,19 +783,20 @@ run_scope_simulation() {
   sim_uninstall() { HOME="$1" node "$repo_root/bin/achilles-uninstall.mjs" "${@:2}" 2>&1; }
   sim_files() { (cd "$1" 2>/dev/null && find . -type f | LC_ALL=C sort); }
   sim_commands() { "$JQ" -r '[.hooks[]?[]?.hooks[]?.command] | .[]' "$1" 2>/dev/null; }
-  # sim_unresolved <settings> <prefix> <hooks dir>: commands not of the form <prefix><script in hooks dir>.
+  # sim_unresolved <settings> <prefix> <hooks dir> [suffix]: commands not of the form <prefix><script in hooks dir><suffix>.
   sim_unresolved() {
-    local c
-    sim_commands "$1" | while read -r c; do
-      if [ "${c#"$2"}" = "$c" ] || [ ! -f "$3/${c#"$2"}" ]; then echo "$c"; fi
+    local c s
+    sim_commands "$1" | while IFS= read -r c; do
+      s=${c#"$2"}; s=${s%"${4:-}"}
+      if [ "${c#"$2"}" = "$c" ] || { [ -n "${4:-}" ] && [ "${c%"$4"}" = "$c" ]; } || [ ! -f "$3/$s" ]; then echo "$c"; fi
     done
   }
   local skills_n agents_n
   skills_n=$(ls "$repo_root"/skills/*/SKILL.md | wc -l | tr -d ' ')
   agents_n=$(ls "$repo_root"/agents/*.md | wc -l | tr -d ' ')
 
-  # --- global ---
-  local ghome="$work/ghome" gpkg="$work/lib/node_modules/@civitas-cerebrum/achilles" gclaude="$work/ghome/.claude"
+  # --- global (a HOME with a space: registrations must stay one sh word) ---
+  local ghome="$work/g home" gpkg="$work/lib/node_modules/@civitas-cerebrum/achilles" gclaude="$work/g home/.claude"
   mkdir -p "$ghome"; sim_make_package "$gpkg"
   sim_postinstall "$ghome" true "$gpkg" >/dev/null
   # A copied system binary can be killed on macOS; a link stands in for the downloaded jq.
@@ -811,20 +813,32 @@ run_scope_simulation() {
   else
     sim_fail "-g: hooks, every skill and agent, the staged mandate and the record land in ~/.claude; nothing under npm's lib/" "skills=$g_skills/$skills_n agents=$g_agents/$agents_n $(ls "$gclaude" | tr '\n' ' ')"
   fi
-  bad_cmds=$(sim_unresolved "$gclaude/settings.json" "$gclaude/hooks/" "$gclaude/hooks")
-  if [ -n "$(sim_commands "$gclaude/settings.json")" ] && [ -z "$bad_cmds" ]; then
-    sim_pass "-g: every registration is an absolute path into ~/.claude/hooks"
+  bad_cmds=$(sim_unresolved "$gclaude/settings.json" "\"$gclaude/hooks/" "$gclaude/hooks" '"')
+  if [ -n "$(sim_commands "$gclaude/settings.json")" ] && [ -z "$bad_cmds" ] \
+     && "$JQ" -e '.scope == "global"' "$gclaude/achilles-install.json" >/dev/null; then
+    sim_pass "-g: every registration is a double-quoted absolute path into ~/.claude/hooks; the record says scope global"
   else
-    sim_fail "-g: every registration is an absolute path into ~/.claude/hooks" "$(printf '%s' "$bad_cmds" | head -3)"
+    sim_fail "-g: every registration is a double-quoted absolute path into ~/.claude/hooks; the record says scope global" "$(printf '%s' "$bad_cmds" | head -3)"
   fi
   local elsewhere="$work/elsewhere" cmd
   mkdir -p "$elsewhere"
-  cmd=$(sim_commands "$gclaude/settings.json" | grep '/commit-message-gate.sh$' | head -1)
+  cmd=$(sim_commands "$gclaude/settings.json" | grep '/commit-message-gate.sh"$' | head -1)
   (cd "$elsewhere" && env -u CLAUDE_PROJECT_DIR HOME="$ghome" sh -c "$cmd" </dev/null >/dev/null 2>&1); rc=$?
   if [ -n "$cmd" ] && [ "$rc" != 127 ]; then
-    sim_pass "-g: a registration runs from a directory that is no project"
+    sim_pass "-g: a registration runs, with a space in HOME, from a directory that is no project"
   else
-    sim_fail "-g: a registration runs from a directory that is no project" "rc=$rc cmd=$cmd"
+    sim_fail "-g: a registration runs, with a space in HOME, from a directory that is no project" "rc=$rc cmd=$cmd"
+  fi
+  # An earlier install registered the bare path; a reinstall switches it to the quoted form in place.
+  local bare="$gclaude/hooks/commit-message-gate.sh"
+  "$JQ" --arg q "\"$bare\"" --arg b "$bare" '(.hooks[][].hooks[] | select(.command == $q) | .command) = $b' \
+    "$gclaude/settings.json" > "$work/s.json" && mv "$work/s.json" "$gclaude/settings.json"
+  sim_postinstall "$ghome" true "$gpkg" >/dev/null
+  if [ "$(sim_commands "$gclaude/settings.json" | grep -c 'commit-message-gate.sh')" = "$(echo "$cmd" | wc -l | tr -d ' ')" ] \
+     && ! sim_commands "$gclaude/settings.json" | grep -qx "$bare"; then
+    sim_pass "-g: a bare absolute registration from an earlier install is quoted in place, not duplicated"
+  else
+    sim_fail "-g: a bare absolute registration from an earlier install is quoted in place, not duplicated" "$(sim_commands "$gclaude/settings.json" | grep commit-message-gate)"
   fi
 
   # --- an inactive session in an unrelated directory leaves no trace ---
@@ -886,7 +900,7 @@ run_scope_simulation() {
   else
     sim_fail "local: the routing skill and its record are the only files written user-level" "$(printf '%s' "$user_files" | head -5 | tr '\n' ' ')"
   fi
-  bad_cmds=$(sim_unresolved "$lclaude/settings.json" '"$CLAUDE_PROJECT_DIR"/.claude/hooks/' "$lclaude/hooks")
+  bad_cmds=$(sim_unresolved "$lclaude/settings.json" '"$CLAUDE_PROJECT_DIR"/.claude/hooks/' "$lclaude/hooks" '')
   if [ "$l_skills" = "$skills_n" ] && [ "$l_agents" = "$agents_n" ] && [ -f "$lclaude/kernel-mandate.json" ] && [ -f "$lclaude/achilles-install.json" ] \
      && [ -n "$(sim_commands "$lclaude/settings.json")" ] && [ -z "$bad_cmds" ] && [ ! -e "$lclaude/skills/achilles" ]; then
     sim_pass "local: hooks, project-relative registrations, every skill and agent, the mandate and the record land in the project"
@@ -899,10 +913,10 @@ run_scope_simulation() {
   mkdir -p "$other"
   if grep -qF "\`$probe\`" "$trigger" && [ -f "$proj/$probe" ] && [ ! -e "$other/$probe" ] \
      && grep -qF 'npm i -D @civitas-cerebrum/achilles' "$trigger" && grep -qF 'npm i -g @civitas-cerebrum/achilles' "$trigger" \
-     && grep -qF 'Do not invoke `achilles-protocol`' "$trigger"; then
-    sim_pass "routing skill: routes where the project has Achilles; elsewhere names both installs and does not run the protocol"
+     && grep -qF 'with Glob or' "$trigger" && grep -qF 'handle the request as you would without this skill' "$trigger"; then
+    sim_pass "routing skill: routes where the project has Achilles; elsewhere mentions both installs once and handles the request"
   else
-    sim_fail "routing skill: routes where the project has Achilles; elsewhere names both installs and does not run the protocol" "probe=$probe"
+    sim_fail "routing skill: routes where the project has Achilles; elsewhere mentions both installs once and handles the request" "probe=$probe"
   fi
 
   # A local install beside a global one leaves the global user-level files alone.
@@ -911,10 +925,22 @@ run_scope_simulation() {
   sim_make_package "$proj2/node_modules/@civitas-cerebrum/achilles"
   gbefore=$(sim_files "$gclaude")
   out=$(sim_postinstall "$ghome" false "$proj2/node_modules/@civitas-cerebrum/achilles")
-  if [ "$gbefore" = "$(sim_files "$gclaude")" ] && [ -f "$proj2/.claude/skills/achilles-protocol/SKILL.md" ] && printf '%s' "$out" | grep -q 'holds a global install'; then
+  if [ "$gbefore" = "$(sim_files "$gclaude")" ] && [ -f "$proj2/.claude/skills/achilles-protocol/SKILL.md" ] && printf '%s' "$out" | grep -q 'holds a global Achilles install'; then
     sim_pass "local install beside a global one: ~/.claude untouched, the project gets its own copy"
   else
     sim_fail "local install beside a global one: ~/.claude untouched, the project gets its own copy" "${out:0:300}"
+  fi
+
+  # A global install without hooks (CIVITAS_SKIP_HOOK_INSTALL=1) is still a global install: the record's scope says so.
+  local hhome="$work/hhome" hbefore
+  mkdir -p "$hhome"
+  CIVITAS_SKIP_HOOK_INSTALL=1 sim_postinstall "$hhome" true "$gpkg" >/dev/null
+  hbefore=$(sim_files "$hhome/.claude")
+  out=$(sim_postinstall "$hhome" false "$proj2/node_modules/@civitas-cerebrum/achilles")
+  if [ -n "$hbefore" ] && [ "$hbefore" = "$(sim_files "$hhome/.claude")" ] && printf '%s' "$out" | grep -q 'holds a global Achilles install'; then
+    sim_pass "local install beside a hookless global one: the scope field keeps ~/.claude untouched"
+  else
+    sim_fail "local install beside a hookless global one: the scope field keeps ~/.claude untouched" "${out:0:300}"
   fi
 
   # --- migration from the pre-0.2.0 local layout (every skill and agent user-level) ---
@@ -952,12 +978,15 @@ run_scope_simulation() {
   else
     sim_fail "uninstall --project removes the project scope and leaves the routing skill" "rc=$rc $(sim_files "$lclaude" | head -3 | tr '\n' ' ')"
   fi
+  # Session markers serve the hooks of every project that still has Achilles installed.
+  mkdir -p "$lhome/.claude/achilles/sessions"; : > "$lhome/.claude/achilles/sessions/s.active"
   out=$(sim_uninstall "$lhome" --global); rc=$?
-  if [ "$rc" = 0 ] && [ -z "$(sim_files "$lhome")" ]; then
-    sim_pass "uninstall --global after a local install removes the routing skill and its record"
+  if [ "$rc" = 0 ] && [ "$(sim_files "$lhome")" = "./.claude/achilles/sessions/s.active" ]; then
+    sim_pass "uninstall --global after a local install removes the routing skill and its record, and keeps the session markers"
   else
-    sim_fail "uninstall --global after a local install removes the routing skill and its record" "rc=$rc $(sim_files "$lhome" | head -3 | tr '\n' ' ')"
+    sim_fail "uninstall --global after a local install removes the routing skill and its record, and keeps the session markers" "rc=$rc $(sim_files "$lhome" | head -3 | tr '\n' ' ')"
   fi
+  mkdir -p "$gclaude/achilles/sessions"; : > "$gclaude/achilles/sessions/s.active"
   out=$(sim_uninstall "$ghome" --global); rc=$?
   local left
   left=$(sim_files "$gclaude" | grep -v '^\./settings\.json$')
@@ -968,12 +997,59 @@ run_scope_simulation() {
   fi
 }
 
+# A real `npm i -g` of the packed tarball into a fake prefix and HOME must exit 0, and a postinstall
+# step that throws must neither fail the install nor strand what was already written.
+run_npm_global_simulation() {
+  local repo_root="$INSTALL_SIM_REPO_ROOT" work out rc cache
+  work=$(mktemp -d /tmp/achilles-npm-sim-XXXXXX)
+  _SIM_NPM_WORK="$work"
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK" "$_SIM_SCOPE_WORK" "$_SIM_NPM_WORK"' EXIT
+  cache=$(npm config get cache 2>/dev/null)
+
+  # A step that throws: the install still exits 0, says so, and the record lets uninstall reverse it.
+  local fhome="$work/fhome" fpkg="$work/flib/node_modules/@civitas-cerebrum/achilles"
+  mkdir -p "$fhome"; sim_make_package "$fpkg"
+  printf 'module.exports = { installChromium() { throw new Error("simulated failure"); } };\n' > "$fpkg/scripts/install/chromium.js"
+  out=$(HOME="$fhome" npm_config_global=true CIVITAS_SKIP_JQ_INSTALL=1 node "$fpkg/scripts/postinstall.js" 2>&1); rc=$?
+  local uout urc
+  uout=$(HOME="$fhome" node "$repo_root/bin/achilles-uninstall.mjs" --global 2>&1); urc=$?
+  if [ "$rc" = 0 ] && printf '%s' "$out" | grep -q 'simulated failure' && printf '%s' "$out" | grep -q 'achilles-uninstall --global' \
+     && [ "$urc" = 0 ] && [ ! -e "$fhome/.claude/hooks/commit-message-gate.sh" ] && [ ! -e "$fhome/.claude/achilles-install.json" ]; then
+    sim_pass "a postinstall step that throws: exit 0, the failure and the undo command are printed, uninstall reverses the rest"
+  else
+    sim_fail "a postinstall step that throws: exit 0, the failure and the undo command are printed, uninstall reverses the rest" "rc=$rc urc=$urc ${out:0:200}"
+  fi
+
+  # The real thing. SQL_CLIENT_SKIP_SKILLS: a dependency's own postinstall writes outside this scope (KL-22).
+  local tgz home="$work/home" prefix="$work/prefix"
+  mkdir -p "$home" "$prefix"
+  tgz=$(cd "$repo_root" && npm pack --ignore-scripts --silent --pack-destination "$work" 2>/dev/null | tail -1)
+  out=$(cd "$work" && HOME="$home" npm_config_cache="$cache" npm_config_prefix="$prefix" SQL_CLIENT_SKIP_SKILLS=1 \
+    CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -g --no-audit --no-fund --foreground-scripts "$work/$tgz" 2>&1); rc=$?
+  local lib="$prefix/lib/node_modules/@civitas-cerebrum/achilles"
+  if [ "$rc" = 0 ] && [ -f "$lib/package.json" ] && [ -f "$home/.claude/hooks/commit-message-gate.sh" ] \
+     && "$JQ" -e '.scope == "global"' "$home/.claude/achilles-install.json" >/dev/null 2>&1 \
+     && [ -z "$(find "$prefix/lib" -name .claude -not -path '*/node_modules/*/node_modules/*' 2>/dev/null)" ] \
+     && printf '%s' "$out" | grep -q 'playwright/cli .* reachable'; then
+    sim_pass "real npm i -g of the packed tarball: exit 0, package kept, harness in ~/.claude, the playwright CLI found, no .claude under lib/"
+  else
+    sim_fail "real npm i -g of the packed tarball: exit 0, package kept, harness in ~/.claude, the playwright CLI found, no .claude under lib/" "rc=$rc tgz=$tgz $(printf '%s' "$out" | grep -i 'error\|warn\|achilles' | head -5)"
+  fi
+  out=$(HOME="$home" "$prefix/bin/achilles-uninstall" --global 2>&1); rc=$?
+  if [ "$rc" = 0 ] && [ ! -e "$home/.claude/achilles-install.json" ] && [ ! -e "$home/.claude/hooks/commit-message-gate.sh" ]; then
+    sim_pass "real npm i -g: the installed achilles-uninstall --global reverses it"
+  else
+    sim_fail "real npm i -g: the installed achilles-uninstall --global reverses it" "rc=$rc ${out:0:200}"
+  fi
+}
+
 run_install_simulation
 run_upgrade_simulation
 run_mandate_simulation
 run_methodology_simulation
 run_uninstall_simulation
 run_scope_simulation
+run_npm_global_simulation
 
 # Standalone summary (run.sh prints its own).
 if [ "$INSTALL_SIM_STANDALONE" = "1" ]; then

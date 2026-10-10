@@ -14,13 +14,20 @@ const { packageDir, projectRoot, homeDir } = require('./context.js');
 // env var) to skip the browser fetch — useful for offline installs and
 // container builds that mount a pre-warmed browser cache.
 
-function probePlaywrightCli() {
-  const probe = spawnSync('npx', ['--no-install', 'playwright-cli', '--version'], {
-    cwd: projectRoot,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  });
-  return { ok: probe.status === 0, version: (probe.stdout || '').trim() };
+// The CLI is resolved from this package, not run through npx from projectRoot: in a
+// global install projectRoot is npm's lib/, where npx finds no CLI.
+function playwrightCliEntry() {
+  try {
+    const pkgJson = require.resolve('@playwright/cli/package.json', { paths: [packageDir, projectRoot] });
+    const bin = JSON.parse(fs.readFileSync(pkgJson, 'utf8')).bin;
+    return path.join(path.dirname(pkgJson), typeof bin === 'string' ? bin : bin['playwright-cli']);
+  } catch (_) {
+    return null;
+  }
+}
+
+function runCli(entry, args, stdio) {
+  return spawnSync(process.execPath, [entry, ...args], { cwd: packageDir, encoding: 'utf8', stdio });
 }
 
 // Resolve the playwright-core package directory (relative to the consumer's
@@ -73,34 +80,31 @@ function chromiumAlreadyCached() {
   }
 }
 
+// Never fails the install: a non-zero postinstall makes npm remove the package, and
+// with it achilles-uninstall, after the harness has already been written.
 function installChromium() {
-  const cliProbe = probePlaywrightCli();
-  if (!cliProbe.ok) {
-    // Fail loudly — npm 7+ swallows postinstall stdout on success, but a
-    // non-zero exit code surfaces the warning so the consumer learns
-    // chromium was NOT fetched.
-    console.warn('[@civitas-cerebrum/achilles] @playwright/cli not reachable via `npx`. The CLI is shipped as a dependency — re-run `npm install` if this is unexpected. Chromium was NOT fetched; subsequent skill activations may need to run `npx playwright-cli install-browser chromium` manually.');
-    process.exitCode = 1;
+  const manual = 'Before driving a browser, run `npx playwright-cli install-browser chromium`.';
+  const entry = playwrightCliEntry();
+  const probe = entry && runCli(entry, ['--version'], ['ignore', 'pipe', 'ignore']);
+  if (!probe || probe.status !== 0) {
+    console.warn(`[@civitas-cerebrum/achilles] @playwright/cli not found beside this package; chromium was not fetched. ${manual}`);
     return;
   }
+  const version = (probe.stdout || '').trim();
   if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === '1') {
-    console.log(`[@civitas-cerebrum/achilles] @playwright/cli ${cliProbe.version} reachable. Browser fetch skipped (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).`);
+    console.log(`[@civitas-cerebrum/achilles] @playwright/cli ${version} reachable. Browser fetch skipped (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1).`);
     return;
   }
   if (chromiumAlreadyCached()) {
-    console.log(`[@civitas-cerebrum/achilles] @playwright/cli ${cliProbe.version} reachable. Chromium already cached — skipping download.`);
+    console.log(`[@civitas-cerebrum/achilles] @playwright/cli ${version} reachable. Chromium already cached — skipping download.`);
     return;
   }
-  console.log(`[@civitas-cerebrum/achilles] @playwright/cli ${cliProbe.version} reachable. Ensuring chromium is installed…`);
-  const browserInstall = spawnSync('npx', ['--no-install', 'playwright-cli', 'install-browser', 'chromium'], {
-    cwd: projectRoot,
-    stdio: 'inherit',
-  });
+  console.log(`[@civitas-cerebrum/achilles] @playwright/cli ${version} reachable. Ensuring chromium is installed…`);
+  const browserInstall = runCli(entry, ['install-browser', 'chromium'], 'inherit');
   if (browserInstall.status === 0) {
     console.log('[@civitas-cerebrum/achilles] ✔ chromium ready (cached or freshly installed).');
   } else {
-    console.warn(`[@civitas-cerebrum/achilles] chromium install exited with status ${browserInstall.status}. You may need to run \`npx playwright-cli install-browser chromium\` manually before driving a browser.`);
-    process.exitCode = 1;
+    console.warn(`[@civitas-cerebrum/achilles] chromium install exited with status ${browserInstall.status}. ${manual}`);
   }
 }
 

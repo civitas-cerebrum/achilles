@@ -1,24 +1,20 @@
 ---
 name: achilles
 description: >
-  Use whenever the user asks for testing work: "test the app", "test this", "write tests", "add tests",
-  "e2e tests", "Playwright tests", "browser testing", "QA", "smoke test", "regression test", "test coverage",
-  "the test failed", "CI is red", "find bugs", or names @civitas-cerebrum/element-interactions. Routes the
-  request to the Achilles QA protocol when this project has Achilles installed, and otherwise tells the user
-  how to install it.
+  Use when the user asks for end-to-end or browser test automation: "test the app", "e2e tests",
+  "end-to-end tests", "browser testing", "UI testing", "Playwright tests", "test automation", "smoke test",
+  "regression test", "test coverage", or names @civitas-cerebrum/element-interactions, the Steps API or
+  page-repository.json. Routes to the Achilles QA protocol where the project has it installed.
 ---
 
 # Achilles (router)
 
 A local `npm i -D @civitas-cerebrum/achilles` installs Achilles into that project's `.claude/` and only this
-routing skill user-level. It decides whether the protocol can run here.
+routing skill user-level.
 
-1. From the project root, check whether `.claude/skills/achilles-protocol/SKILL.md` exists.
-2. It exists: invoke the `achilles-protocol` skill now and follow it. This skill adds nothing further.
-3. It does not: Achilles is not installed in this project, so its hooks are absent and nothing it requires
-   would be enforced. Do not invoke `achilles-protocol` or any other Achilles skill. Tell the user:
-
-   > Achilles is not installed in this project. Install it here with `npm i -D @civitas-cerebrum/achilles`,
-   > or for every project with `npm i -g @civitas-cerebrum/achilles`, then restart Claude Code.
-
-   Then handle the request without Achilles only if the user asks you to.
+1. Check whether `.claude/skills/achilles-protocol/SKILL.md` exists in the project root, with Glob or
+   `test -f`. Do not Read it.
+2. It exists: invoke the `achilles-protocol` skill and follow it.
+3. It does not: mention once in this conversation that Achilles can drive this kind of work if installed
+   (`npm i -D @civitas-cerebrum/achilles` in this project, or `npm i -g @civitas-cerebrum/achilles` for every
+   project), then handle the request as you would without this skill.

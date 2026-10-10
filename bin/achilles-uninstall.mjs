@@ -82,8 +82,11 @@ if (existsSync(stampPath)) {
 }
 
 // Runtime state the hooks wrote: the kernel's decision log in a project, session markers user-level.
-const state = join(claudeDir, flag('--global') ? 'achilles' : 'kernel-mandate.state');
-if (existsSync(state)) {
+// The markers serve every project's hooks, so they stay while the user-level record is a local
+// install's (the routing skill): projects with Achilles installed remain.
+const localRouting = rec.prevScope ? rec.prevScope === 'local' : !Object.keys(rec.prev).some((rel) => rel.startsWith('hooks/'));
+const state = flag('--global') ? (localRouting ? null : join(claudeDir, 'achilles')) : join(claudeDir, 'kernel-mandate.state');
+if (state && existsSync(state)) {
   say('remove', state);
   if (!dryRun) rmSync(state, { recursive: true, force: true });
 }
