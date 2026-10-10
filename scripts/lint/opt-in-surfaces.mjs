@@ -13,7 +13,7 @@ export function run(report) {
   ];
   // Operator-facing switch names: project prefixes plus the *_GATE/_GUARD/_OVERRIDE
   // suffixes the gates use. Ordinary environment is excluded by the deny-list.
-  const switchShape = /^(ACHILLES_|CIVITAS_|KERNEL_MANDATE|SCHEMA_RETURN_GUARD|DECK_INSPECTION_GATE|FAKE_|DISABLE_|SKIP_)|(_GATE|_GUARD|_OVERRIDE)$/;
+  const switchShape = /^(ACHILLES_|CIVITAS_|KERNEL_MANDATE|FACTORY_|SPEND_|NO_SKIP_|SCHEMA_RETURN_GUARD|DECK_INSPECTION_GATE|FAKE_|DISABLE_|SKIP_)|(_GATE|_GUARD|_OVERRIDE)$/;
   const ordinaryEnv = /^(HOME|PATH|TMPDIR|CLAUDE_.*|XDG_.*|PLAYWRIGHT_(?!SKIP_).*|PWD|USER|SHELL|LANG)$/;
   const readShapes = [
     /\$\{([A-Z][A-Z0-9_]*):?[-=?+]/g, // ${NAME:-default}: a read with a default is how hooks consume env; bare $NAME is also a local
@@ -25,6 +25,12 @@ export function run(report) {
     const text = readFileSync(f, 'utf8');
     for (const re of readShapes)
       for (const m of text.matchAll(re)) if (switchShape.test(m[1]) && !ordinaryEnv.test(m[1])) names.add(m[1]);
+    // A self-default, x="${x:-…}" in capitals, lets the environment replace the variable unless it was just set
+    // (an assignment on that line or the three before it: a local given a default).
+    for (const m of text.matchAll(/\b([A-Z][A-Z0-9_]*)="?\$\{\1:?-/g)) {
+      const before = text.slice(0, m.index).split('\n').slice(-4).join('\n');
+      if (!ordinaryEnv.test(m[1]) && !new RegExp(`(^|[^\\w])${m[1]}=`).test(before)) names.add(m[1]);
+    }
   }
   const doc = existsSync(OPT_IN_DOC) ? readFileSync(OPT_IN_DOC, 'utf8') : '';
   const missing = [...names].filter((n) => !doc.includes('`' + n + '`')).sort();

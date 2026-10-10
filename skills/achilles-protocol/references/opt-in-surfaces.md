@@ -33,6 +33,9 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 | `KERNEL_MANDATE_SRC` | maintainer shell | path of the canonical kernel-mandate checkout; `sync-kernel-mandate` copies from it, and `--check` also compares against it | vendored kernel files in this repo |
 | `CONVENTION_OVERRIDE` | tests only | replaces the cached selector convention | `selector-development-inertness-guard`; never set it in a real session |
 | `FAKE_STAGED_HASH` | tests only | replaces the staged-tree hash the stepper trusts | never set it in a real session |
+| `NODE_BIN` | hook environment | node binary the ledger write gates validate the schema with; default `node` on PATH | replaces the validator runtime of the onboarding and perf ledger gates; never set it in a real session |
+| `WORKSPACE_ROOT` | hook environment | project root the evidence, adversarial-verification, test-id and selector-development hooks work in; default the git top level, else the cwd (the selector-development stepper requires it) | those hooks |
+| `NO_SKIP_MESSAGING_SELFTEST` | maintainer shell | `1` with `bash hooks/lib/hook-emit.sh` checks and prints the shared deny texts | none: read only when the file is run directly, never by a hook that sources it |
 
 ## Kill switches that are not environment variables
 
