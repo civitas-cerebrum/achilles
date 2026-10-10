@@ -45,7 +45,7 @@ compression at transition points — see §"Empirical origin" below.
 
 | Prefix | Fires between | Mapped to methodology section |
 |---|---|---|
-| `workflow-reviewer-phase<N>:` | onboarding phase N completion and phase N+1 start | `skills/onboarding/SKILL.md` §"Phase N" exit criteria (one per phase 1-8) |
+| `workflow-reviewer-phase<N>:` | onboarding phase N completion and phase N+1 start | the exit criteria of each `## Phase <N>` section of `skills/onboarding/SKILL.md` (phases 1-8) |
 | `workflow-reviewer-pass<N>:` | coverage-expansion pass N completion and pass N+1 start | `skills/coverage-expansion/SKILL.md` §"Per-pass completion criteria" |
 | `workflow-reviewer-cycle<N>:` | journey-mapping cycle N completion and cycle N+1 start | `skills/journey-mapping/SKILL.md` §"Iterative discovery cycles" |
 
@@ -57,7 +57,7 @@ transitions (Phase 4 inner loop).
 
 ## Inputs the reviewer receives in its brief
 
-Every dispatch brief should give the reviewer:
+The brief's first line is `<<kernel-mandate-role: workflow-reviewer#<nonce>>>` (`perf-reviewer` or `phase-validator` for those dispatches; grammar in [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md)). Then the brief should give the reviewer:
 
 1. **The ledger** at `tests/e2e/docs/onboarding-status.json` — the
    current phase / pass / cycle row + the prior unit's row for context.
@@ -115,7 +115,7 @@ the return.
 - `coverage-expansion-state.json` records all five passes + cleanup (deletion happens post-approval)
 
 ### Phase 6 — Bug-discovery (`workflow-reviewer-phase6`)
-- Every probe terminal (`clean` | `findings-emitted` | `blocked`); blocked probes require a ledger deferral entry with an `authorizer` or a re-dispatch
+- Every probe terminal (a [probe](../../schemas/subagent-returns/probe.schema.json) status); blocked probes require a ledger deferral entry with an `authorizer` or a re-dispatch
 - Every `findings-emitted` return has a regression spec OR an explicit `app-bug` flag
 
 ### Phase 7 — Secrets-sweep (`workflow-reviewer-phase7`)
@@ -233,7 +233,7 @@ findings:
   - checklist-item: tests/e2e/docs/.discovery-draft.json exists
     what-missing: file is absent
     methodology-ref: skills/onboarding/SKILL.md §"Phase 3" + achilles-protocol Stage 3
-    fix-instruction: dispatch composer-discovery-draft: to author the draft from the happy-path runs
+    fix-instruction: dispatch test-composer-discovery-draft: to author the draft from the happy-path runs
 ```
 
 Escalate example (3rd consecutive reject):
@@ -251,7 +251,7 @@ findings:
   - checklist-item: every P2/P3 journey has a spec
     what-missing: 7 journeys still uncovered after two surgical-fix cycles
     methodology-ref: skills/coverage-expansion/SKILL.md §"Per-pass completion criteria"
-    fix-instruction: re-dispatch composer-j-<slug>: for each of the 7 — but this is a 3rd cycle, escalating instead
+    fix-instruction: re-dispatch test-composer-j-<slug>: for each of the 7 — but this is a 3rd cycle, escalating instead
 ```
 
 ---

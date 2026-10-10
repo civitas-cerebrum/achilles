@@ -28,6 +28,14 @@ Stage 5 of the achilles-protocol workflow as the atomic unit of coverage. Given 
 
 **Pre-empting reviewer must-fix items.** Skim §"Must-fix calibration" in `reviewer-subagent-contract.md` before composing — the reviewer will demand: (a) every `Test expectations:` item has a covering test, (b) tests use the Steps API correctly with page-repo selectors (no inline selectors), (c) file-level serial mode on tenant-mutating specs, (d) mobile variant on P0/P1 journeys, (e) test assertions match what the live DOM exposes. Meeting that bar in cycle 1 is the difference between a 1-cycle journey and a 4-cycle journey. The reviewer is not antagonistic — it is consistent, and you can know in advance what it will check.
 
+**Dispatch.** Dispatched as role `test-composer`: `description: test-composer-j-<slug>: <task>` (sub-journeys `test-composer-sj-<slug>:`), `subagent_type: test-composer`, first prompt line:
+
+~~~
+<<kernel-mandate-role: test-composer#<nonce>>>
+~~~
+
+Grammar and nonce: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar". The `playwright-cli` session slug keeps the short `composer-j-<slug>-<pass>-c<N>` form and the spill file `composer-<journey>-<pass>-c<N>.md`.
+
 ---
 
 ## When to Use
@@ -362,9 +370,9 @@ Every composer return **MUST** open with a `handover` envelope as its first key.
 
 | Field | Rule |
 |---|---|
-| `role` | Kebab-case slug, e.g. `composer-j-login-flow`. |
+| `role` | Kebab-case slug, e.g. `test-composer-j-login-flow`. |
 | `cycle` | Integer ≥ 1. The cycle number within this journey's dispatch loop. |
-| `status` | One of `new-tests-landed`, `covered-exhaustively`, `blocked`, `skipped`. |
+| `status` | Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". |
 | `next-action` | One-line directive for the orchestrator. |
 
 `phase` and `summary` are **top-level** fields — they MUST NOT appear inside `handover`.
@@ -376,7 +384,7 @@ JSON is preferred over YAML. YAML's compact-mapping form silently breaks when a 
 ```json
 {
   "handover": {
-    "role": "composer-j-login-flow",
+    "role": "test-composer-j-login-flow",
     "cycle": 1,
     "status": "new-tests-landed",
     "next-action": "reviewer-inloop to review pass 1 cycle 1 for login-flow"
@@ -400,7 +408,7 @@ When the verdict is `covered-exhaustively`, the per-expectation mapping table mo
 ```json
 {
   "handover": {
-    "role": "composer-j-login-flow",
+    "role": "test-composer-j-login-flow",
     "cycle": 1,
     "status": "covered-exhaustively",
     "next-action": "reviewer-inloop to verify exhaustive coverage for login-flow pass 1"
@@ -465,22 +473,7 @@ Within a journey, variants (happy path, error states, edge cases, mobile, negati
 
 ## Commit-message conventions
 
-Every test this skill commits MUST use the compositional-pass template:
-
-```
-test(<j-slug>): <variant>
-```
-
-- `<j-slug>` is the journey ID (the `j-<slug>` from `journey-map.md`, without angle brackets).
-- `<variant>` names the variant just committed: `happy-path`, `error-states`, `edge-cases`, `mobile`, `negative-flows`, `data-lifecycle`, or a specific sub-variant (e.g. `happy-path-returning-user`).
-- One journey per commit, one variant per commit. Do not batch multiple variants into a single commit; do not batch multiple journeys into a single commit.
-
-Examples:
-- `test(j-<slug>): happy-path`
-- `test(j-<slug>): error-states`
-- `test(j-add-<entity>): data-lifecycle`
-
-Do NOT use `test(pass<N>): …`, `feat(e2e): …`, or `test(<j1>, <j2>): …` — see the **Commit-message conventions** table in `coverage-expansion/SKILL.md` for the full list of anti-patterns across all passes.
+Commit subjects: [depth-mode-pipeline.md](../coverage-expansion/references/depth-mode-pipeline.md) §"Commit-message conventions". Compositional passes use `test(<j-slug>): <variant>`, one journey and one variant per commit.
 
 ---
 

@@ -10,8 +10,7 @@
 # Canonical rule: skills/achilles-protocol/references/test-identity.md §2.
 DRIVER="$(cd "$HOOK_DIR/.." && pwd)/bin/self-repair.mjs"
 
-TMP_KD=$(mktemp -d /tmp/self-repair-known-defect-XXXXXX)
-trap 'rm -rf "$TMP_KD"' EXIT
+tmp_into TMP_KD /tmp/self-repair-known-defect-XXXXXX
 
 # A Playwright JSON report: one green case, one untagged deterministic
 # failure, one failing case whose DESCRIBE carries @known-defect, and one

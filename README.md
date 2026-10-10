@@ -199,7 +199,7 @@ Inside the package:
 | `skills/` | 15+ Claude Code skill packs covering scaffold, journey-mapping, test-composer, bug-discovery, secrets-sweep, coverage-expansion, and the orchestrator's onboarding workflow | Claude Code (auto-discovered) |
 | `hooks/` | Harness hooks that enforce contract discipline at the tool boundary — phase-ordering, dispatch-shape validation, return-schema validation, ledger integrity, parent-only-orchestrator policies, playwright-cli session isolation | Claude Code (registered by postinstall in `<project>/.claude/settings.json`, or `~/.claude/settings.json` for `-g` installs) |
 | `schemas/` | JSON Schemas for subagent return shapes + the onboarding-status ledger; fixtures for both the valid and invalid cases | Subagent return validators + reviewer subagents |
-| `scripts/` | `postinstall.js` is the only script shipped in the tarball (skill+hook copy + chromium fetch); the lint/build/sync scripts live in the repo only — `compile-schemas.mjs` + `validate-schema-fixtures.mjs` (schemas:lint), `build-validator.mjs` (regenerates the bundled validator), `lint-doc-drift.mjs` (doc-surface drift), `sync-hooks.js` (dev convenience) | npm install, CI |
+| `scripts/` | `postinstall.js` and the `install/` modules it runs are the only scripts shipped in the tarball (skill, agent and hook copy, jq and chromium fetch); the lint/build/sync scripts live in the repo only — `compile-schemas.mjs` + `validate-schema-fixtures.mjs` (schemas:lint), `build-validator.mjs` (regenerates the bundled validator), `lint-doc-drift.mjs` (doc-surface drift), `sync-hooks.js` (dev convenience) | npm install, CI |
 | `reporter/` | The Achilles Playwright reporter — cross-run flakiness history, per-attempt evidence copying, and the end-of-run summary | Your `playwright.config` (`reporter: [...]`) |
 | `bin/` | `self-repair.mjs` — the `achilles-self-repair` CLI driver behind `npm run test:repair`: baselines the suite, classifies flake vs deterministic failures, spawns one Claude Code worker subprocess per red spec file, verifies heals, writes the session report | You (or your CI), via `npm run test:repair` |
 
@@ -226,6 +226,18 @@ Other entry phrases that route to the right subskill:
 > *"perf-onboard this project."*
 
 See [`skills/onboarding/SKILL.md`](skills/onboarding/SKILL.md) for the full eight-phase contract.
+
+---
+
+## Role kernel
+
+While an Achilles skill is active in a session, a role kernel checks every tool call. The main session is the `orchestrator`; each subagent is bound to the role its dispatch names, with its own read/write scopes, commands and imports. A role that authors specs does not approve them, and the role that writes runner config does not run the runner.
+
+- **Roles and grants:** [role ledger](hooks/data/achilles-qa.kernel-mandate.md). Dispatch grammar: [roles-and-dispatch.md](skills/achilles-protocol/references/roles-and-dispatch.md).
+- **Where it applies:** postinstall stages `.claude/kernel-mandate.json` and `.claude/kernel-mandate.md` into the project when none exists. An existing manifest is never overwritten (KL-11).
+- **Check it is on:** in a session where an Achilles skill ran, ask the agent to write `playwright.contracts.config.ts`; the call is denied with `outside the role's write scope`. From a checkout: `bash hooks/tests/run.sh 85-qa-mandate-scopes`.
+- **Switch it off:** `KERNEL_MANDATE=0` in your own shell (kernel only) or `ACHILLES_PROTOCOL=0` (stops new sessions activating). Every switch: [opt-in-surfaces.md](skills/achilles-protocol/references/opt-in-surfaces.md).
+- **Limits:** [known-limits.md](skills/achilles-protocol/references/known-limits.md). The orchestrator can still write `tests/**` (KL-13).
 
 ---
 

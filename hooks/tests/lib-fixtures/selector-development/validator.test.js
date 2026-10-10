@@ -50,9 +50,8 @@ const cases = [
     expected: 'data-testid', file: 'jsx-expr-change.tsx',
     pass: false, reason: 'modifies-existing-attribute' },
 
-  // Svelte 5 parser (change #17). These depend on the svelte ^5.55.9 bump
-  // (P7) — the TS-aware parser handles <script lang="ts"> directly and a
-  // literal </script> inside a template string no longer cuts the file
+  // Svelte 5 parser (svelte ^5.55.9): it handles <script lang="ts"> directly,
+  // and a literal </script> inside a template string does not cut the file
   // short.
   // (1) lang="ts" baseline → additive data-testid → ALLOW.
   { name: 'svelte5 lang=ts additive data-testid → ALLOW',

@@ -61,12 +61,9 @@ set -euo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/test-identity.md §1 \"Every test case carries a stable ID\"\n  skills/achilles-protocol/references/test-identity.md §2 \"@known-defect marks an intentional red\""
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 HOOK_LIB="$HOOK_DIR/lib"
@@ -74,18 +71,9 @@ HOOK_LIB="$HOOK_DIR/lib"
 input=$(cat)
 
 # Session-scope gate: achilles-activated sessions only (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$input"
-
-emit_deny() {
-  "$JQ" -n --arg r "$1" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
+hook_lib hook-emit.sh
 
 [ "${CIVITAS_DISABLE_TEST_ID_GATE:-0}" = "1" ] && exit 0
 
@@ -203,5 +191,5 @@ How this is supposed to be done — load the skill, don't improvise:
   Skill('test-catalogue') → renders the ID as the row identifier, which is what
     makes a catalogue citable."
 
-emit_deny "$reason${HOOK_REFS}$(achilles_scope_notice)"
+emit_pre_deny_bare "$reason${HOOK_REFS}$(achilles_scope_notice)"
 exit 0

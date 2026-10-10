@@ -45,25 +45,24 @@
 
 set -uo pipefail
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || exit 0
-
-HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
 # shellcheck disable=SC1091
-. "$HOOK_LIB_DIR/achilles-activation.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib ledger.sh
+hook_jq_init silent
+
+hook_lib achilles-activation.sh
 
 # Hard off — never mark.
 case "${ACHILLES_PROTOCOL:-}" in
   0|false|off|OFF) exit 0 ;;
 esac
 
-INPUT=$(cat)
-SESSION_ID=$(printf '%s' "$INPUT" | "$JQ" -r '.session_id // empty' 2>/dev/null || echo "")
+hook_read_input
+SESSION_ID=$(hook_field .session_id)
 [ -n "$SESSION_ID" ] || exit 0
 
-EVENT=$(printf '%s' "$INPUT" | "$JQ" -r '.hook_event_name // empty' 2>/dev/null || echo "")
-TOOL_NAME=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
+EVENT=$(hook_field .hook_event_name)
+TOOL_NAME=$(hook_field .tool_name)
 
 # ── Pipeline-completion detection (PostToolUse:Write|Edit) ──
 # A sanctioned Write/Edit that lands a terminal status on a pipeline
@@ -75,11 +74,11 @@ TOOL_NAME=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null ||
 if [ "$EVENT" = "PostToolUse" ]; then
   case "$TOOL_NAME" in
     Write|Edit)
-      FILE_PATH=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
+      FILE_PATH=$(hook_field .tool_input.file_path)
       case "$FILE_PATH" in
         */onboarding-status.json|onboarding-status.json|*/perf-onboarding-status.json|perf-onboarding-status.json)
           if [ -f "$FILE_PATH" ]; then
-            LEDGER_STATUS=$("$JQ" -r '.status // empty' "$FILE_PATH" 2>/dev/null || echo "")
+            LEDGER_STATUS=$(ledger_get "$FILE_PATH" .status)
             case "$LEDGER_STATUS" in
               complete|aborted)
                 achilles_mark_session_completed "$SESSION_ID" "$(basename "$FILE_PATH"):${LEDGER_STATUS}"
@@ -107,13 +106,13 @@ if [ "$EVENT" = "UserPromptSubmit" ]; then
 else
   case "$TOOL_NAME" in
     Skill)
-      SKILL_NAME=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.skill // empty' 2>/dev/null || echo "")
+      SKILL_NAME=$(hook_field .tool_input.skill)
       if printf '%s' "$SKILL_NAME" | grep -qE "(^|:)(${ACHILLES_SKILL_ALT})$"; then
         MATCHED=1
       fi
       ;;
     Agent)
-      DESCRIPTION=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_input.description // empty' 2>/dev/null || echo "")
+      DESCRIPTION=$(hook_field .tool_input.description)
       if printf '%s' "$DESCRIPTION" | grep -qE "$ACHILLES_DISPATCH_PREFIX_RE"; then
         MATCHED=1
       fi

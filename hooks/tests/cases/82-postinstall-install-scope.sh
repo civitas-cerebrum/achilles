@@ -11,14 +11,11 @@
 # scope decision is computed at module load from npm_config_global.
 # CIVITAS_SKIP_JQ_INSTALL=1 keeps everything offline.
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping postinstall scope tests)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+require_tool node || return 0
 
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 SCOPE_TEST=$(mktemp /tmp/scope-test-XXXXXX.mjs)
-SCOPE_HOME=$(mktemp -d /tmp/scope-home-XXXXXX)
+tmp_into SCOPE_HOME /tmp/scope-home-XXXXXX
 
 echo
 echo "── postinstall: install scope follows the -g flag ──"
@@ -72,6 +69,28 @@ if (mode === 'global-flag') {
   assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', 'commit-message-gate.sh')),
     'no-arg call still installs user-level');
   console.log('TARGET_DIR_OK');
+} else if (mode === 'agents') {
+  // One definition per subagent role lands; a rerun changes nothing; a
+  // user-authored same-name file survives; a retired achilles file is pruned.
+  const dest = path.join(home, 'agents-dest');
+  const roles = Object.keys(JSON.parse(fs.readFileSync(path.join('$REPO_ROOT', 'hooks/data/achilles-qa.kernel-mandate.json'), 'utf8')).roles).filter(r => r !== 'orchestrator');
+  assert.ok(pi.agentsDestinations.includes(path.join(home, '.claude', 'agents')), 'user-level agents destination');
+  fs.mkdirSync(dest, { recursive: true });
+  fs.writeFileSync(path.join(dest, 'fd.md'), 'my own fd agent\n');
+  fs.writeFileSync(path.join(dest, 'retired.md'), 'x\n<!-- installed-by: @civitas-cerebrum/achilles -->\n');
+  fs.writeFileSync(path.join(dest, 'mine.md'), 'user file\n');
+  const first = pi.installCivitasAgents([dest]);
+  for (const r of roles.filter(r => r !== 'fd')) assert.ok(fs.existsSync(path.join(dest, r + '.md')), r + ' installed');
+  assert.equal(fs.readFileSync(path.join(dest, 'fd.md'), 'utf8'), 'my own fd agent\n', 'user-authored file untouched');
+  assert.deepEqual(first.skipped, [path.join(dest, 'fd.md')], 'skip reported');
+  assert.ok(!fs.existsSync(path.join(dest, 'retired.md')), 'retired marked file pruned');
+  assert.ok(fs.existsSync(path.join(dest, 'mine.md')), 'unmarked file never pruned');
+  const mtimes = roles.map(r => fs.statSync(path.join(dest, r + '.md')).mtimeMs);
+  await new Promise(r => setTimeout(r, 20));
+  const second = pi.installCivitasAgents([dest]);
+  assert.deepEqual(roles.map(r => fs.statSync(path.join(dest, r + '.md')).mtimeMs), mtimes, 'second run rewrites nothing');
+  assert.deepEqual(second.pruned, [], 'second run prunes nothing');
+  console.log('AGENTS_OK');
 }
 EOF
 
@@ -108,5 +127,15 @@ else
   echo "${CLR_FAIL}  ✗${CLR_RST} installCivitasHooks(dir) targets that dir; no-arg default stays user-level ${CLR_DIM}(${OUT:0:160})${CLR_RST}"
 fi
 
+TESTS_RUN=$((TESTS_RUN + 1))
+OUT=$(HOME="$SCOPE_HOME" node "$SCOPE_TEST" agents 2>&1 || true)
+if echo "$OUT" | grep -q AGENTS_OK; then
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+  echo "${CLR_PASS}  ✓${CLR_RST} agents: one per role installed, rerun is a no-op, user file kept, retired file pruned"
+else
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+  FAIL_DETAILS+=("postinstall-scope agents: ${OUT:0:300}")
+  echo "${CLR_FAIL}  ✗${CLR_RST} agents install ${CLR_DIM}(${OUT:0:160})${CLR_RST}"
+fi
+
 rm -f "$SCOPE_TEST"
-rm -rf "$SCOPE_HOME"

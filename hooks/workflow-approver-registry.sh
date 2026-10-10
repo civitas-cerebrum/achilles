@@ -40,25 +40,22 @@
 
 set -uo pipefail
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found." >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 [ "$TOOL_NAME" = "Agent" ] || exit 0
 
 DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/null || echo "")
 
-# Only register approver-prefixed dispatches. Detection is shared with the
-# ledger-gate / brief-gate / attestation-gate via lib/reviewer-prefix.sh.
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/reviewer-prefix.sh"
+# Only act on approver-role dispatches (is_reviewer_description, lib/dispatch-prefix.sh).
 is_reviewer_description "$DESCRIPTION" || exit 0
 
 # Role extraction (after the boolean check) — which approver family.
@@ -81,7 +78,8 @@ if [ "$APPROVER_ROLE" = "perf-reviewer" ]; then
 else
   REGISTRY_DIR="$REPO_ROOT/tests/e2e/docs"
 fi
-REGISTRY_FILE="$REGISTRY_DIR/.workflow-approvers.json"
+hook_lib ledger.sh
+REGISTRY_FILE="$REGISTRY_DIR/${LEDGER_APPROVERS_NAME}"
 
 # Best-effort: if the docs dir doesn't exist yet (early in Phase 1), the
 # write-gate will find no registry and deny any approval write — which is

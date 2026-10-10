@@ -7,7 +7,7 @@
 // `test-results/` keep working. Attempt attribution lives in the manifest's
 // `attempts[]`, and a second attempt writing to a path a first attempt already
 // claimed lands beside it as `<name>.attempt<N><ext>` rather than over it —
-// attempt 0 is usually the honest failure and the retry is what passed, so a
+// attempt 0 is usually the real failure and the retry is what passed, so a
 // diagnosis needs both.
 
 const fs = require('node:fs');

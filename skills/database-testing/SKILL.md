@@ -165,14 +165,14 @@ writes data.
 ## Return Shape
 
 When invoked as a subagent, returns conform to `schemas/subagent-returns/composer.schema.json`.
-Status enum: `new-tests-landed | covered-exhaustively | blocked | skipped`. Every return MUST open
+Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". Every return MUST open
 with a `handover` envelope whose required fields are `role`, `status`, and `next-action` (plus
 `cycle`, an integer ≥ 1) — see `schemas/subagent-returns/handover.schema.json`. The body names the
 specs created, scenarios covered, tables/relationships exercised, and any gaps (no silent truncation).
 
 ```json
 {
-  "handover": { "role": "composer-db-orders", "cycle": 1, "status": "new-tests-landed", "next-action": "orchestrator to record DB coverage for orders" },
+  "handover": { "role": "test-composer-db-orders", "cycle": 1, "status": "new-tests-landed", "next-action": "orchestrator to record DB coverage for orders" },
   "tests-added": 6,
   "summary": "Created tests/e2e/db/orders.spec.ts — CRUD round-trip on orders, transaction commit/rollback across orders+order_items, FK join orders→users; uncovered: audit_log (no deterministic seed)."
 }

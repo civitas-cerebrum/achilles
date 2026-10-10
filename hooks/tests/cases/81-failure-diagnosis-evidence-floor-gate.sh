@@ -8,8 +8,7 @@
 # spec), the same write after any single evidence read, and non-gated paths.
 H="$HOOK_DIR/failure-diagnosis-evidence-floor-gate.sh"
 
-TMP_DIR=$(mktemp -d /tmp/fd-evidence-floor-XXXXXX)
-trap 'rm -rf "$TMP_DIR"' EXIT
+tmp_into TMP_DIR /tmp/fd-evidence-floor-XXXXXX
 
 # --- transcripts ------------------------------------------------------------
 

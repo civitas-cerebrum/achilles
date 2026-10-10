@@ -18,6 +18,7 @@
 H="$HOOK_DIR/playwright-artifact-archiver.sh"
 
 # --- scaffolding -----------------------------------------------------------
+PA_MARK_SEQ=0
 # pa_project <dir> [outputDir] [reportDir] — a project with a playwright
 # config and one failing test's worth of artifacts. Deliberately NON-default
 # directory names so a hook that hardcodes `test-results/` fails these tests.
@@ -31,7 +32,7 @@ export default defineConfig({
   reporter: [['html', { outputFolder: './$rep' }]],
 });
 EOF
-  printf 'run-marker-%s\n' "$(date +%s%N)" > "$d/$out/spec-failing-test/trace.zip"
+  printf 'run-marker-%s-%s\n' "$$" "$((PA_MARK_SEQ += 1))" > "$d/$out/spec-failing-test/trace.zip"
   printf '# Error context\n\n- page snapshot\n' > "$d/$out/spec-failing-test/error-context.md"
   printf 'PNGDATA' > "$d/$out/spec-failing-test/test-failed-1.png"
   printf 'WEBMDATA' > "$d/$out/spec-failing-test/video.webm"
@@ -56,6 +57,27 @@ pa_payload() { # pa_payload <dir> [command]
 
 pa_fire() { # pa_fire <dir> [command] — run the hook, capture stdout in PA_OUT
   PA_OUT=$(printf '%s' "$(pa_payload "$1" "${2:-npx playwright test}")" | bash "$H" 2>/dev/null)
+}
+
+# pa_fire_failing_cp <dir> <basename> — fire the hook with a `cp` that refuses one file.
+# Root can read a chmod-000 file, so permission bits cannot simulate a short copy.
+pa_fire_failing_cp() {
+  local shim real_cp
+  shim=$(mktemp -d); real_cp=$(command -v cp)
+  cat > "$shim/cp" <<EOF
+#!/bin/bash
+# The hook copies whole directories (cp -R), so the file is dropped from the
+# destination after the real copy rather than matched on the argument list.
+"$real_cp" "\$@"; rc=\$?
+for d in "\$@"; do :; done
+if [ -n "\$(find "\$d" -name '$2' -type f -print -delete 2>/dev/null)" ]; then
+  echo "cp: $2: simulated read error" >&2; exit 1
+fi
+exit \$rc
+EOF
+  chmod +x "$shim/cp"
+  PA_OUT=$(printf '%s' "$(pa_payload "$1" "npx playwright test")" | PATH="$shim:$PATH" bash "$H" 2>/dev/null)
+  rm -rf "$shim"
 }
 
 pa_runs() { find "$1/.achilles/runs" -maxdepth 1 -mindepth 1 -type d ! -name latest 2>/dev/null | wc -l | tr -d ' '; }
@@ -210,15 +232,13 @@ assert_eq "$([ -f "$PA_BROKE/pw-artifacts/spec-failing-test/trace.zip" ] && echo
 # complete archive, and it must not stamp the fingerprint — otherwise the run is
 # permanently marked archived and the next run wipes the originals.
 PA_PART=$(pa_mktemp); pa_project "$PA_PART"
-chmod 000 "$PA_PART/pw-artifacts/spec-failing-test/trace.zip"
-pa_fire "$PA_PART"
+pa_fire_failing_cp "$PA_PART" trace.zip
 PA_PART_RUN=$(pa_newest "$PA_PART")
 assert_eq "$("$JQ" -r '.incomplete' "$PA_PART_RUN/manifest.json")" "true" "a short copy is marked incomplete in the manifest"
 assert_eq "$([ "$("$JQ" -r '.counts.archivedFiles' "$PA_PART_RUN/manifest.json")" -lt "$("$JQ" -r '.counts.expectedFiles' "$PA_PART_RUN/manifest.json")" ] && echo yes)" "yes" "manifest reconciles archived against expected file counts"
 assert_eq "$(printf '%s' "$PA_OUT" | "$JQ" -r '.systemMessage' 2>/dev/null | grep -c 'INCOMPLETE')" "1" "a short copy is announced, never silent"
 assert_eq "$([ -f "$PA_PART/.achilles/runs/.last-archive.json" ] && echo yes)" "" "an incomplete archive does not stamp the fingerprint"
 assert_eq "$([ -f "$PA_PART_RUN/artifacts/pw-artifacts/spec-failing-test/error-context.md" ] && echo yes)" "yes" "the files that COULD be copied are still archived"
-chmod 644 "$PA_PART/pw-artifacts/spec-failing-test/trace.zip"
 pa_fire "$PA_PART"
 assert_eq "$(pa_runs "$PA_PART")" "2" "the unstamped fingerprint makes the next invocation retry"
 assert_eq "$("$JQ" -r '.incomplete' "$(pa_newest "$PA_PART")/manifest.json")" "false" "the retry archives completely"

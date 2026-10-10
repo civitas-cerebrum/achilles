@@ -23,7 +23,7 @@ BRIEF_GATE="$HOOK_DIR/workflow-reviewer-brief-gate.sh"
 WATCHER="$HOOK_DIR/achilles-protocol-activation-watcher.sh"
 RUN_SUMMARY="$HOOK_DIR/run-summary-writer.sh"
 
-SCOPE_TMP=$(mktemp -d)
+tmp_into SCOPE_TMP
 export ACHILLES_SESSION_STATE_DIR="$SCOPE_TMP/sessions"
 
 # A transcript with NO achilles content (realistic dev traffic).
@@ -65,7 +65,7 @@ section "session-scope: ACHILLES_PROTOCOL env override (activation-side only)"
 export ACHILLES_PROTOCOL=1
 assert_deny "$COMMIT_GATE" "$(dev_payload dev-s2 tool_name=Bash command="$TRAILER_CMD")" "ACHILLES_PROTOCOL=1: trailer commit → DENY" "AI-attribution"
 unset ACHILLES_PROTOCOL
-mkdir -p "$ACHILLES_SESSION_STATE_DIR" && : > "$ACHILLES_SESSION_STATE_DIR/dev-s3.active"
+activate_session dev-s3
 export ACHILLES_PROTOCOL=0
 # One-way lifecycle: an existing activation marker WINS over env-off —
 # once active, only pipeline completion or session death deactivate.
@@ -124,7 +124,7 @@ assert_allow "$COMMIT_GATE" "$(payload session_id=dev-s11 transcript_path="$NC_T
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/dev-s11.nohit" ] && echo stamped || echo missing)" "stamped" "negative cache stamped after miss"
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"onboarding"}}]}}' >> "$NC_TRANSCRIPT"
 assert_allow "$COMMIT_GATE" "$(payload session_id=dev-s11 transcript_path="$NC_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "within cache TTL: transcript-only activation deferred → ALLOW"
-: > "$ACHILLES_SESSION_STATE_DIR/dev-s11.active"
+activate_session dev-s11
 assert_deny "$COMMIT_GATE" "$(payload session_id=dev-s11 transcript_path="$NC_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "marker (watcher path) overrides negative cache → DENY" "AI-attribution"
 
 section "activation-watcher: Skill invocations"
@@ -144,10 +144,14 @@ assert_allow "$WATCHER" "$(payload session_id=w3a hook_event_name=PreToolUse too
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3a.active" ] && echo marked || echo unmarked)" "marked" "watcher marked session on Skill(achilles-protocol)"
 assert_allow "$WATCHER" "$(payload session_id=w3b hook_event_name=PreToolUse tool_name=Skill skill=achilles:achilles-protocol)" "watcher: plugin-prefixed achilles-protocol → silent, marks"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3b.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on prefixed achilles-protocol"
+assert_allow "$WATCHER" "$(payload session_id=w3c hook_event_name=PreToolUse tool_name=Skill skill=test-data-conventions)" "watcher: test-data-conventions → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w3c.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on Skill(test-data-conventions)"
 
 section "activation-watcher: Agent dispatch prefixes"
 assert_allow "$WATCHER" "$(payload session_id=w4 hook_event_name=PreToolUse tool_name=Agent description='composer-j-login: build the variant set')" "watcher: composer- dispatch → silent, marks"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w4.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on composer- dispatch"
+assert_allow "$WATCHER" "$(payload session_id=w4k hook_event_name=PreToolUse tool_name=Agent description='test-composer-j-login: build the variant set')" "watcher: test-composer- dispatch (kernel-mandate spelling) → silent, marks"
+assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w4k.active" ] && echo marked || echo unmarked)" "marked" "watcher marked on test-composer- dispatch"
 assert_allow "$WATCHER" "$(payload session_id=w5 hook_event_name=PreToolUse tool_name=Agent description='cleanup-temp-files: remove build artifacts')" "watcher: generic cleanup- dispatch → no mark"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/w5.active" ] && echo marked || echo unmarked)" "unmarked" "generic-sounding prefix does NOT activate"
 
@@ -170,7 +174,7 @@ unset ACHILLES_PROTOCOL
 assert_allow "$WATCHER" "$(payload hook_event_name=PreToolUse tool_name=Skill skill=onboarding)" "watcher without session_id → silent, no mark"
 
 section "session-scope: active session still enforces everything (regression)"
-: > "$ACHILLES_SESSION_STATE_DIR/active-s1.active"
+activate_session active-s1
 assert_deny "$COMMIT_GATE" "$(dev_payload active-s1 tool_name=Bash command="git commit --no-verify -m 'wip'")" "active session: --no-verify → DENY" "bypass hooks"
 assert_deny "$BASH_GUARD" "$(dev_payload active-s1 tool_name=Bash command="$LEDGER_CLOBBER")" "active session: ledger clobber → DENY" "protected pipeline-state"
 assert_deny "$SENTINEL_GATE" "$(dev_payload active-s1 tool_name=Write file_path=/repo/tests/e2e/docs/journey-map.md content='no sentinel here')" "active session: sentinel-free journey-map write → DENY"
@@ -182,7 +186,7 @@ section "lifecycle: activation state is tamper-proof (unconditional, both direct
 assert_deny "$BASH_GUARD" "$(dev_payload dev-s12 tool_name=Bash command='rm -f ~/.claude/achilles/sessions/dev-s12.active')" "inactive session: rm own activation marker → DENY" "protected pipeline-state"
 assert_deny "$BASH_GUARD" "$(dev_payload dev-s12 tool_name=Bash command='rm -rf ~/.claude/achilles')" "inactive session: rm -rf state dir → DENY" "protected pipeline-state"
 assert_allow "$BASH_GUARD" "$(dev_payload dev-s12 tool_name=Bash command='ls ~/.claude/achilles/sessions')" "read-only ls of state dir → ALLOW"
-: > "$ACHILLES_SESSION_STATE_DIR/dev-s13.active"
+activate_session dev-s13
 assert_deny "$BASH_GUARD" "$(dev_payload dev-s13 tool_name=Bash command='rm -f ~/.claude/achilles/sessions/dev-s13.active')" "active session: rm own activation marker → DENY" "protected pipeline-state"
 assert_deny "$SELF_GUARD" "$(dev_payload dev-s12 tool_name=Write file_path="$HOME/.claude/achilles/sessions/dev-s13.active" content='')" "inactive session: Write into state dir → DENY" "session-activation state"
 assert_deny "$SELF_GUARD" "$(dev_payload dev-s13 tool_name=Edit file_path="$HOME/.claude/achilles/sessions/dev-s13.active" content='')" "active session: Edit marker → DENY" "session-activation state"
@@ -196,7 +200,7 @@ LEDGER_DIR="$SCOPE_TMP/proj/tests/e2e/docs"; mkdir -p "$LEDGER_DIR"
 LEDGER="$LEDGER_DIR/onboarding-status.json"
 wpost() { "$JQ" -n --arg sid "$1" --arg t "$2" --arg f "$3" '{session_id:$sid, hook_event_name:"PostToolUse", tool_name:$t, tool_input:{file_path:$f}}'; }
 
-: > "$ACHILLES_SESSION_STATE_DIR/pipe-s1.active"
+activate_session pipe-s1
 printf '%s' '{"status":"in-progress","currentPhase":5}' > "$LEDGER"
 run_hook "$WATCHER" "$(wpost pipe-s1 Write "$LEDGER")"
 assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s1.active" ] && echo active || echo retired)" "active" "non-terminal ledger status keeps the session active"
@@ -219,7 +223,7 @@ assert_eq "$([ -f "$ACHILLES_SESSION_STATE_DIR/pipe-s1.completed" ] && echo stal
 assert_deny "$COMMIT_GATE" "$(payload session_id=pipe-s1 transcript_path="$COMPLETED_TRANSCRIPT" tool_name=Bash command="$TRAILER_CMD")" "re-activated session enforces again" "AI-attribution"
 
 # 'aborted' is terminal too; perf ledger path is equally recognised.
-: > "$ACHILLES_SESSION_STATE_DIR/pipe-s2.active"
+activate_session pipe-s2
 PERF_LEDGER_DIR="$SCOPE_TMP/proj/tests/perf/docs"; mkdir -p "$PERF_LEDGER_DIR"
 PERF_LEDGER="$PERF_LEDGER_DIR/perf-onboarding-status.json"
 printf '%s' '{"status":"aborted"}' > "$PERF_LEDGER"
@@ -237,4 +241,3 @@ assert_eq "$([ -d "$DEV_PROJ2/.achilles" ] && echo polluted || echo clean)" "cle
 
 # Cleanup — later case files and install-simulation must not inherit scope state.
 unset ACHILLES_SESSION_STATE_DIR
-rm -rf "$SCOPE_TMP"

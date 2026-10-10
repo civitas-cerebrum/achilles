@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // mutate.mjs — behavioural mutation testing: prove the suite can FAIL.
+// Size: one CLI for config loading, mutation apply/revert, calibration, flake repeats and the parallel runner.
 //
 // Consumers reach this through the `achilles-mutate` bin:
 //

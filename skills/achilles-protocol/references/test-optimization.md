@@ -94,6 +94,7 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
    ```typescript
    // playwright.config.ts
    export default defineConfig({
+     testDir: './tests/e2e',
      globalSetup: require.resolve('./tests/fixtures/global-setup'),
      // ...
    });

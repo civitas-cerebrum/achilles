@@ -74,18 +74,16 @@ set -uo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/journey-mapping/SKILL.md\n  skills/onboarding/SKILL.md §\"Phase 4 — Journey mapping\""
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 
@@ -123,17 +121,8 @@ CYCLE_STATE_PATH="$PROJECT_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
 
 # Helper: emit a DENY decision. The hook framework reads decisions from
 # `hookSpecificOutput.permissionDecision` (PreToolUse contract).
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-  exit 0
-}
+# A deny ends the hook.
+emit_deny() { emit_pre_deny "$1"; exit 0; }
 
 # --- Coverage matrix rule (Rule 3) ---
 if [ "$IS_COVERAGE" -eq 1 ]; then

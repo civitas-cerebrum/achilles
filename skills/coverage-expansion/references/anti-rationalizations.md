@@ -47,7 +47,7 @@ The orchestrator decides — before dispatching — to batch P0/P1/P2 journeys i
 **Reality:** Stage A is one composer per journey, in parallel up to host max — never N composer agents each covering N/k journeys sequentially. The only batching exception is P3 peripheral journeys, capped at 7 per brief, with cycle-1 split-out semantics. P0/P1/P2 NEVER batch. The diagnostic for getting this wrong: every Stage B reviewer for batched journeys returns `improvements-needed` because the batched composer rationed attention across siblings.
 
 **Hooks that catch this:**
-- Dispatch-discipline rule: dispatches whose prompt references 2+ distinct `j-<slug>` IDs require a `[P3-batch]` description prefix. (The harness-enforcement hook was retired in 0.3.6; the rule remains.)
+- Dispatch-discipline rule: dispatches whose prompt references 2+ distinct `j-<slug>` IDs require a grouped-dispatch prefix (`coverage-expansion/SKILL.md` §"Grouped dispatch").
 
 **Origin:** the no-skip contract + role-prefix tightening, reinforced by brief-cleanup BLOCK promotion.
 
@@ -221,7 +221,7 @@ When the 7-cycle Stage A↔B retry loop reaches cycle 7 without greenlight, the 
 **Reality:** `blocked-cycle-exhausted` is the correct terminal state. Marking exhausted journeys greenlit corrupts the state file, lies to telemetry, and breaks the next pass's trigger-4 input (which depends on the unresolved must-fix list being faithfully recorded).
 
 **Hooks that catch this:**
-- State-file schema rule: malformed `review_status` values are invalid; the four valid values are `greenlight | blocked-cycle-stalled | blocked-cycle-exhausted | blocked-dispatch-failure`. (The harness schema guard that previously flagged malformed values was retired in 0.3.6; the rule still applies.)
+- State-file schema rule: malformed `review_status` values are invalid; valid values: [state-file-schema.md](state-file-schema.md).
 
 **Origin:** Dual-stage retry-loop design.
 
@@ -258,7 +258,7 @@ The parent orchestrator's brief to a subagent contains pipeline meta-content (de
 **Reality:** A composer / reviewer / probe brief only needs: journey block + must-fix list + slug + return-shape pointer. The pipeline structure belongs to the parent orchestrator's context, not the subagent's.
 
 **Hooks that catch this:**
-- Brief-cleanup rule (anti-pattern B): pipeline meta-content in subagent briefs is forbidden for `composer-`, `reviewer-`, `probe-` prefixes; soft WARN preserved for `cleanup-`/`phase1-`/`phase2-`/`stage2-`. (The harness dispatch-guard hook that previously enforced the BLOCK/WARN promotion was retired in 0.3.6; the rule still applies.)
+- Brief-cleanup rule (anti-pattern B): pipeline meta-content in subagent briefs is forbidden for `test-composer-`, `reviewer-`, `probe-` prefixes; soft WARN preserved for `cleanup-`/`phase1-`/`phase2-`/`stage2-`.
 
 **Origin:** Codified alongside the dispatch-discipline rules.
 
@@ -286,13 +286,13 @@ The orchestrator pushes past the 70% auto-compaction threshold ("one more pass b
 
 ## Pattern: Orchestrator-direct composition (subagent dispatch dodged)
 
-The orchestrator absorbs `composer-j-<slug>:` (or probe / reviewer) work into its own context — reads the journey block, drives `playwright-cli` for selector inspection itself, writes the spec inline, runs the test, commits — instead of dispatching a subagent. Often justified by a real concern (parallelism risk, shared-DB contention) that's then resolved by absorbing the work serially rather than fixing the parallelism issue.
+The orchestrator absorbs `test-composer-j-<slug>:` (or probe / reviewer) work into its own context — reads the journey block, drives `playwright-cli` for selector inspection itself, writes the spec inline, runs the test, commits — instead of dispatching a subagent. Often justified by a real concern (parallelism risk, shared-DB contention) that's then resolved by absorbing the work serially rather than fixing the parallelism issue.
 
 **Scope — the full specialist task-family list, not just composing.** The same pattern covers an orchestrator inlining ANY of the suite's dedicated-dispatch families: UI inspection / page-repository building (`stage2-*:` / `phase1-*:`), test composing (`composer-*:`), journey-mapping sections (`phase4-cycle-*:`), adversarial probing / bug discovery (`probe-*:`), failure diagnosis (`fd-*`, subagent-only skill), repair workers (`repair-worker-*:`), composition judging (`composition-judge-*:` — an author "judging" its own output inline is this pattern AND "Self-certifying greenlight"), and workflow review (`workflow-reviewer-*:`). The canonical statement of the discipline and the per-family prefix table is `../../achilles-protocol/references/test-composition-standards.md` §6. The rule of thumb: catching yourself STARTING one of these inline means stop and dispatch.
 
 **Symptoms:**
-- "I am the composer. For each journey I read its block from journey-map.md, drive playwright-cli myself for selector inspection, write the spec inline, run it, commit. No Agent tool calls, no composer-j-<slug>: subagent dispatches."
-- "earlier-turn analysis concluded that 22 parallel composer-j-<slug>: Agent dispatches against a shared MongoDB would race on /api/reset"
+- "I am the composer. For each journey I read its block from journey-map.md, drive playwright-cli myself for selector inspection, write the spec inline, run it, commit. No Agent tool calls, no test-composer-j-<slug>: subagent dispatches."
+- "earlier-turn analysis concluded that 22 parallel test-composer-j-<slug>: Agent dispatches against a shared MongoDB would race on /api/reset"
 - "I'm violating that rule deliberately because [concern]"
 - "test runtime is parallelized [via workers], but only at the Playwright-worker level — that's test execution parallelism, not journey-composition parallelism"
 - "journey composition itself is serial. I work through journeys one at a time"
@@ -306,7 +306,7 @@ The cost the orchestrator pays for the dodge:
 - Stage B disappears: direct composition has no reviewer pass, so the dual-stage no-skip contract is silently broken.
 
 **Hooks that catch this:**
-- Direct-compose-block rule: PostToolUse:Write|Edit on `tests/e2e/j-*.spec.ts` / `tests/e2e/sj-*.spec.ts` (incl. `-regression`) when `coverage-expansion-state.json` exists is a **hard violation** unless the writer is a legitimate composer subagent (slug in-flight from a recent `composer-j-<slug>:` / `probe-j-<slug>:` Agent dispatch). Orchestrator-direct writes break the dual-stage contract — see `test-optimization.md` §1.A (per-test-user pattern) for the upstream parallelism fix. (The harness in-flight-composer-registry hooks that previously enforced this were retired in 0.3.6; the rule still applies.)
+- Direct-compose-block rule: PostToolUse:Write|Edit on `tests/e2e/j-*.spec.ts` / `tests/e2e/sj-*.spec.ts` (incl. `-regression`) when `coverage-expansion-state.json` exists is a **hard violation** unless the writer is a legitimate composer subagent (slug in-flight from a recent `test-composer-j-<slug>:` / `probe-j-<slug>:` Agent dispatch). Orchestrator-direct writes break the dual-stage contract — see `test-optimization.md` §1.A (per-test-user pattern) for the upstream parallelism fix.
 - (markdown-only for the generalised task-family scope) — mechanically distinguishing "orchestrator absorbing" from "subagent working" needs the retired in-flight-registry pattern (`contributing-to-achilles-protocol` §"Approximating `is_subagent`"); until it is revived, partial per-family backing exists via `playwright-cli-isolation-guard.sh` (slug shape), `subagent-schema-preread-gate.sh` (schema-mapped briefs), `composition-judge-gate.sh` (judge-loop leash), and the `workflow-reviewer-pass<N>:` dispatch cross-checks. Reviewer-visible note: the general rule is reviewer-enforced.
 
 **Origin:** v0.3.4 onboarding test surfaced this as a follow-on consequence of "Pre-emptive scope reduction" — the agent identified parallelism risk correctly, then absorbed the work to avoid the risk instead of fixing the risk's upstream cause. Hook + Stage 4a §1.A added in v0.3.5.
@@ -357,7 +357,7 @@ The "Batch reviewer mode" rule lives in `skills/coverage-expansion/references/re
 
 ## Pattern: `markdown-only` deferral — app-wide-scan sentinel + citation contract
 
-The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" + `references/app-wide-scan.md` + `adversarial-subagent-contract.md` §"Inputs" #9. The output file `tests/e2e/docs/app-wide-patterns.md` carries the sentinel `<!-- app-wide-scan:generated -->`, but no hook validates that writes preserve the sentinel or that new entries follow the per-pattern catalogue schema (`<pattern-id>` + `Cite as: coverage: app-wide:<pattern-id>` line).
+The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" + `references/app-wide-scan.md` + `adversarial-subagent-contract.md` §"Inputs (given at dispatch time)" #9. The output file `tests/e2e/docs/app-wide-patterns.md` carries the sentinel `<!-- app-wide-scan:generated -->`, but no hook validates that writes preserve the sentinel or that new entries follow the per-pattern catalogue schema (`<pattern-id>` + `Cite as: coverage: app-wide:<pattern-id>` line).
 
 **Tag:** `markdown-only`.
 **Deferred hook:** sentinel-validation hook for `tests/e2e/docs/app-wide-patterns.md` (the analogous sentinel-guard hook for `journey-map.md` was retired in 0.3.6; if revived, this pattern would mirror its sentinel-and-citation contract).

@@ -72,7 +72,7 @@ The envelope has exactly **four** required fields — no others are allowed insi
 
 | Field | Type | Rule |
 |---|---|---|
-| `role` | string | Kebab-case slug identifying the dispatched role (e.g. `composer-j-login-flow`, `reviewer-inloop`, `probe`, `phase-validator`, `section-agent`, `phase4-prioritise-author`). |
+| `role` | string | Kebab-case slug identifying the dispatched role (e.g. `test-composer-j-login-flow`, `reviewer-inloop`, `probe`, `phase-validator`, `section-agent`, `phase4-prioritise-author`). |
 | `cycle` | integer ≥ 1 | Cycle number within the role's dispatch loop. |
 | `status` | string | Role-specific terminal-or-continuation status. Constrained by the per-role schema. |
 | `next-action` | string (non-empty) | One-line directive for the orchestrator — what should happen after this return. |
@@ -87,7 +87,7 @@ Full schema: `schemas/subagent-returns/phase-validator.schema.json`.
 
 The phase-validator is dispatched at the end of each pipeline phase to verify exit criteria before the orchestrator advances.
 
-**Status enum:** `greenlight` | `improvements-needed`
+Status words: [ledger-vocabulary.md](ledger-vocabulary.md) §"Subagent returns".
 
 **Required top-level fields on `greenlight`:** `handover`, `phase` (integer 1–7), `exit-criteria-checked` (array, ≥1 item), `summary`.
 
@@ -285,8 +285,8 @@ Callers do not run a parser — they grep the return for a short, fixed list of 
 - **`covered-exhaustively` returns:** the literal string `status: covered-exhaustively`, a table header row `| Expectation | Covering spec | Test name |`, and at least one data row per `Test expectations:` entry in the journey block.
 - **Banned tokens:** the literal strings `no-new-tests-by-rationalisation`, `no-new-tests` (unqualified), `AF-`, `P4-`, `REG-` (legacy finding-ID prefixes — note: the `-R-` infix in reviewer IDs is NOT a prefix and is allowed), and any `[p0]` / `[blocker]` / `[no-impact]` severity bracket.
 - **Ledger append:** the `**Pass <N> — <kind> (YYYY-MM-DD)**` header line, the `Scope:` line, and the closing `**Pass <N> summary:** probes=…, boundaries=…, suspected-bugs=…` line, in that order, bracketing the finding blocks.
-- **Reviewer returns (see `coverage-expansion/references/reviewer-subagent-contract.md` § "Return shape"):** the top-level `status:` is one of `greenlight` or `improvements-needed`. Finding blocks (when present under `missing-scenarios:`, `craft-issues:`, or `verification-misses:` sub-lists) match `^ {2}- \*\*[a-z0-9-]+-\d+-\d+-R-\d+\*\* \[must-fix\]`. **A `summary:` line is REQUIRED on `greenlight` returns** — a `greenlight` status without a `summary:` is a contract violation; treat as `improvements-needed` and re-dispatch. `greenlight` carries `summary:` and no finding blocks; `improvements-needed` has at least one `must-fix` finding and no `summary:` line. Returns containing the literal tokens `nice-to-have`, `greenlight-with-notes`, or a `notes:` sub-list are contract violations from a prior schema revision; reject and re-dispatch with a brief that quotes the banned token. The Stage A regex in the previous bullet does NOT apply to reviewer returns.
-- **Phase-validator returns (§2.5):** the top-level `status:` is one of `greenlight` or `improvements-needed`. `phase:` line carries an integer 1-7 (anchored on end-of-line / non-digit so `phase: 12`, `phase: 71`, `phase: 8a` fail). `exit-criteria-checked:` array has ≥1 `- criterion:` row (the array cannot be empty). **A `summary:` line is REQUIRED on both statuses.** On `improvements-needed`, finding blocks match `^ {2}- \*\*pv-[1-7]-\d{2,}\*\* \[must-fix\]` with sub-bullets `criterion:` / `issue:` / `fix:`. Banned tokens: `nice-to-have`, `greenlight-with-notes`, top-level `notes:`. The reviewer regex from the previous bullet does NOT apply to phase-validator returns.
+- **Reviewer returns (see `coverage-expansion/references/reviewer-subagent-contract.md` § "Return shape"):** the top-level `status:` is a [reviewer-inloop](../../../schemas/subagent-returns/reviewer-inloop.schema.json) word. Finding blocks (when present under `missing-scenarios:`, `craft-issues:`, or `verification-misses:` sub-lists) match `^ {2}- \*\*[a-z0-9-]+-\d+-\d+-R-\d+\*\* \[must-fix\]`. **A `summary:` line is REQUIRED on `greenlight` returns** — a `greenlight` status without a `summary:` is a contract violation; treat as `improvements-needed` and re-dispatch. `greenlight` carries `summary:` and no finding blocks; `improvements-needed` has at least one `must-fix` finding and no `summary:` line. Returns containing the literal tokens `nice-to-have`, `greenlight-with-notes`, or a `notes:` sub-list are contract violations from a prior schema revision; reject and re-dispatch with a brief that quotes the banned token. The Stage A regex in the previous bullet does NOT apply to reviewer returns.
+- **Phase-validator returns (§2.5):** the top-level `status:` is a [phase-validator](../../../schemas/subagent-returns/phase-validator.schema.json) word. `phase:` line carries an integer 1-7 (anchored on end-of-line / non-digit so `phase: 12`, `phase: 71`, `phase: 8a` fail). `exit-criteria-checked:` array has ≥1 `- criterion:` row (the array cannot be empty). **A `summary:` line is REQUIRED on both statuses.** On `improvements-needed`, finding blocks match `^ {2}- \*\*pv-[1-7]-\d{2,}\*\* \[must-fix\]` with sub-bullets `criterion:` / `issue:` / `fix:`. Banned tokens: `nice-to-have`, `greenlight-with-notes`, top-level `notes:`. The reviewer regex from the previous bullet does NOT apply to phase-validator returns.
 
 If any of the above is missing or a banned token is present, the caller re-dispatches with a brief that quotes the specific violation. The grep-based check is sufficient — no AST, no JSON, no parser.
 
@@ -296,7 +296,7 @@ The same grep-based shape signals are enforced at the harness layer by a `PostTo
 
 ### 4.3 Harness validator — handover-envelope leash + deregistration
 
-The same return-schema guard also enforces the §2.0 handover envelope and drives the registry leash. On every `composer-` / `reviewer-` / `probe-` / `process-validator-` / `phase-validator-` return it parses the envelope, looks up the in-flight registry entry by slug, cycle-matches, and removes the slug on a terminal status (or leaves it in place for a non-terminal redispatch). Missing envelope or cycle-mismatch emits a fix-message WARN; the registry slot stays held until the TTL failsafe expires. **Deregistration itself fires regardless of validation mode** — the registry update is mechanical bookkeeping, not validation, so the leash works correctly even when envelope-validation is in WARN mode.
+The same return-schema guard also enforces the §2.0 handover envelope and drives the registry leash. On every `test-composer-` (or legacy `composer-`) / `reviewer-` / `probe-` / `process-validator-` / `phase-validator-` return it parses the envelope, looks up the in-flight registry entry by slug, cycle-matches, and removes the slug on a terminal status (or leaves it in place for a non-terminal redispatch). Missing envelope or cycle-mismatch emits a fix-message WARN; the registry slot stays held until the TTL failsafe expires. **Deregistration itself fires regardless of validation mode** — the registry update is mechanical bookkeeping, not validation, so the leash works correctly even when envelope-validation is in WARN mode.
 
 Explicit deregistration via terminal-status handover is the primary cleanup path; the registry TTL is the secondary one for crashed / abandoned dispatches that never return an envelope. (Hook index: [harness-hooks.md](harness-hooks.md).)
 
@@ -304,8 +304,9 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 
 | Description prefix | Validation target |
 |---|---|
-| `composer-<j-slug>:` | Stage A — `status:` enum (new-tests-landed \| covered-exhaustively \| blocked \| skipped) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
-| `reviewer-<j-slug>:` | Stage B (§2.4) — `status:` (greenlight \| improvements-needed) + journey/pass/cycle + summary on greenlight \| findings sub-list on improvements-needed |
+| `test-composer-<j-slug>:` (kernel-mandate role name; the legacy `composer-<j-slug>:` routes identically) | Stage A — `status:` ([composer schema](../../../schemas/subagent-returns/composer.schema.json)) + per-status fields (tests-added / run-time; mapping table; reason; reason+authorizer) |
+| `secrets-sweep-<slug>:` | Same `composer` schema as `test-composer-` — the Phase 7 sweep returns the Stage A envelope (`status:` + per-status fields); the sweep must report variable names and counts, never the literal values |
+| `reviewer-<j-slug>:` | Stage B (§2.4) — `status:` + journey/pass/cycle + summary on greenlight \| findings sub-list on improvements-needed |
 | `composition-judge-<scope>:` | Stage 4c composition judge (`test-composition-standards.md` §4) — reuses `reviewer-inloop.schema.json` (no dedicated schema): `status: greenlight` ⇔ SATISFIED; `status: improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED. Briefs must cite the schema path (preread gate). |
 | `probe-<j-slug>:` | Adversarial — `probes:` + `boundaries:` + `findings:` count or list |
 | `phase-validator-<N>:` | Phase-exit checkpoint (§2.5) — `status:` + `phase:` + `exit-criteria-checked:` array + `summary:` (REQUIRED on both statuses) + `findings: []` literal on greenlight \| ≥1 `pv-<phase>-<nn>` must-fix on improvements-needed |

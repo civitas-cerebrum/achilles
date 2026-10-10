@@ -20,6 +20,9 @@
 #     briefs that list >= 3 j-slugs / section names but must ALLOW.
 
 set -uo pipefail   # not -e — individual cases are allowed to fail without aborting the runner
+# bash 3.2 brace-expands the `{a,\n b}` inside a double-quoted "$(cmd "...")" argument, splitting a JS fixture into
+# several words and eating its braces (macOS /bin/bash). Case files build such fixtures inline.
+set +B
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
@@ -29,6 +32,32 @@ if [ -z "$JQ" ]; then
   echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH. Reinstall the package or install jq manually." >&2
   exit 1
 fi
+
+# run_hook_nojq <hook-script> <stdin-payload>
+# Runs the hook from a copy with no bundled jq and a PATH that has none either
+# (system jq, e.g. macOS /usr/bin/jq, is masked). Sets HOOK_EXIT, HOOK_OUT and HOOK_ERR.
+run_hook_nojq() { run_hook_copied "$1" "$2" nojq; }
+
+# run_hook_without_lib <hook-script> <lib-file> <stdin-payload>
+# Runs the hook from a copy whose lib/ lacks <lib-file>. Sets HOOK_EXIT, HOOK_OUT and HOOK_ERR.
+run_hook_without_lib() { run_hook_copied "$1" "$3" "$2"; }
+
+# run_hook_copied <hook-script> <stdin-payload> <nojq | lib-file to delete>
+run_hook_copied() {
+  local hook="$1" stdin="$2" d t path="$PATH"
+  d=$(mktemp -d); mkdir -p "$d/hooks" "$d/path"
+  cp -R "$(dirname "$hook")/lib" "$d/hooks/lib"; cp "$hook" "$d/hooks/"
+  if [ "$3" = nojq ]; then
+    for t in /bin/* /usr/bin/*; do [ "${t##*/}" = jq ] || [ -e "$d/path/${t##*/}" ] || ln -s "$t" "$d/path/${t##*/}"; done
+    path="$d/path"
+  else
+    rm -f "$d/hooks/lib/$3"
+  fi
+  HOOK_EXIT=0
+  HOOK_OUT=$(printf '%s' "$stdin" | PATH="$path" bash "$d/hooks/$(basename "$hook")" 2>"$d/err") || HOOK_EXIT=$?
+  HOOK_ERR=$(cat "$d/err")
+  rm -rf "${d:?}"
+}
 
 # Colour helpers (no-op if NO_COLOR is set or stdout is not a terminal).
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -94,7 +123,7 @@ assert_deny() {
   if [ -n "$reason_substr" ]; then
     local reason
     reason=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-    if ! echo "$reason" | grep -qF -- "$reason_substr"; then
+    if ! grep -qF -- "$reason_substr" <<<"$reason"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: deny reason missing substring '${reason_substr}'. reason=${reason:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(deny reason missing substring)${CLR_RST}"
@@ -123,7 +152,7 @@ assert_ask() {
   if [ -n "$reason_substr" ]; then
     local reason
     reason=$(echo "$HOOK_OUT" | "$JQ" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-    if ! echo "$reason" | grep -qF -- "$reason_substr"; then
+    if ! grep -qF -- "$reason_substr" <<<"$reason"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: ask reason missing substring '${reason_substr}'. reason=${reason:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(ask reason missing substring)${CLR_RST}"
@@ -149,7 +178,7 @@ assert_warn() {
   if [ -n "$message_substr" ]; then
     local msg
     msg=$(echo "$HOOK_OUT" | "$JQ" -r '.systemMessage' 2>/dev/null)
-    if ! echo "$msg" | grep -qF -- "$message_substr"; then
+    if ! grep -qF -- "$message_substr" <<<"$msg"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: warning message missing substring '${message_substr}'. msg=${msg:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(warn message missing substring)${CLR_RST}"
@@ -193,7 +222,7 @@ assert_block_subagent() {
     return
   fi
   if [ -n "$stderr_substr" ]; then
-    if ! echo "$err" | grep -qF -- "$stderr_substr"; then
+    if ! grep -qF -- "$stderr_substr" <<<"$err"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: stderr missing substring '${stderr_substr}'. stderr=${err:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(stderr missing substring)${CLR_RST}"
@@ -223,7 +252,7 @@ assert_stop_block() {
   if [ -n "$reason_substr" ]; then
     local reason
     reason=$(echo "$HOOK_OUT" | "$JQ" -r '.reason // empty' 2>/dev/null)
-    if ! echo "$reason" | grep -qF -- "$reason_substr"; then
+    if ! grep -qF -- "$reason_substr" <<<"$reason"; then
       TESTS_FAILED=$((TESTS_FAILED + 1))
       FAIL_DETAILS+=("${name}: stop-block reason missing substring '${reason_substr}'. reason=${reason:0:200}")
       echo "${CLR_FAIL}  ✗${CLR_RST} ${name} ${CLR_DIM}(stop-block reason missing substring)${CLR_RST}"
@@ -238,6 +267,37 @@ assert_stop_block() {
 section() {
   echo
   echo "── $* ──"
+}
+
+# Approver-registry timestamps. The hooks read the real clock with no seam, so cases pin ts to
+# values that are fresh/expired for any plausible clock (year 2100 is never older than the TTL).
+REGISTRY_TS_FRESH=4102444800
+REGISTRY_TS_EXPIRED=1
+
+# require_tool <name>… — a missing dependency fails the case file; it never skips it.
+# Caller: `require_tool node || return 0`.
+require_tool() {
+  local t rc=0
+  for t in "$@"; do
+    command -v "$t" >/dev/null 2>&1 && continue
+    TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1))
+    FAIL_DETAILS+=("$(basename "${BASH_SOURCE[1]}"): required tool '$t' missing")
+    echo "${CLR_FAIL}  ✗${CLR_RST} required tool '$t' missing"
+    rc=1
+  done
+  return $rc
+}
+# skip_test <reason> — the one sanctioned skip: a counted failure unless ACHILLES_TEST_ALLOW_SKIP=1.
+# Returns 0 when the skip is permitted, 1 when it was recorded as a failure.
+skip_test() {
+  if [ "${ACHILLES_TEST_ALLOW_SKIP:-}" = 1 ]; then
+    echo "${CLR_DIM}  (SKIP, permitted by ACHILLES_TEST_ALLOW_SKIP=1: $1)${CLR_RST}"
+    return 0
+  fi
+  TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAILED=$((TESTS_FAILED + 1))
+  FAIL_DETAILS+=("$(basename "${BASH_SOURCE[1]}"): skipped without ACHILLES_TEST_ALLOW_SKIP=1: $1")
+  echo "${CLR_FAIL}  ✗${CLR_RST} skipped: $1"
+  return 1
 }
 
 # Helper: build a JSON payload from inline kv args. Each kv is "key=value".
@@ -257,24 +317,57 @@ payload() {
     local v="${kv#*=}"
     case "$k" in
       tool_name)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '. + {tool_name: $v}') ;;
-      description|prompt|command|file_path|content|old_string|new_string|skill|args)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" --arg k "$k" '.tool_input = ((.tool_input // {}) + {($k): $v})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '. + {tool_name: $v}') ;;
+      description|prompt|command|file_path|content|old_string|new_string|skill|args|path|pattern|glob)
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") --arg k "$k" '.tool_input = ((.tool_input // {}) + {($k): $v})') ;;
       response_text)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '.tool_response = ((.tool_response // {}) + {output: $v})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '.tool_response = ((.tool_response // {}) + {output: $v})') ;;
       response_content)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '.tool_response = ((.tool_response // {}) + {content: [{type: "text", text: $v}]})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '.tool_response = ((.tool_response // {}) + {content: [{type: "text", text: $v}]})') ;;
       exit_code|stdout)
         local field="exitCode"; [ "$k" = "stdout" ] && field="stdout"
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" --arg f "$field" '.tool_response = ((.tool_response // {}) + {($f): $v})') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") --arg f "$field" '.tool_response = ((.tool_response // {}) + {($f): $v})') ;;
       cwd)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '. + {cwd: $v}') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '. + {cwd: $v}') ;;
       hook_event_name)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" '. + {hook_event_name: $v}') ;;
-      last_assistant_message|agent_id|agent_type|session_id|transcript_path|parent_tool_use_id)
-        out=$(printf '%s' "$out" | "$JQ" -c --arg v "$v" --arg k "$k" '. + {($k): $v}') ;;
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") '. + {hook_event_name: $v}') ;;
+      last_assistant_message|agent_id|agent_type|session_id|transcript_path|parent_tool_use_id|tool_use_id)
+        out=$(printf '%s' "$out" | "$JQ" -c --rawfile v <(printf '%s' "$v") --arg k "$k" '. + {($k): $v}') ;;
       *) echo "payload: unknown key $k" >&2; return 1 ;;
     esac
   done
   printf '%s' "$out"
+}
+
+# ---------------------------------------------------------------------------
+# Temp-project and session fixtures. Each case file runs in its own subshell (run.sh), so the
+# EXIT trap below fires per file.
+ACHILLES_TEST_TMPS=()
+# tmp_into <var> [mktemp-template] — <var> = fresh temp dir, removed when the case file ends.
+# It owns the EXIT trap: a case file that sets its own EXIT trap after calling it drops this cleanup.
+# Pass a /tmp/<name>-XXXXXX template where the hook's behaviour depends on the path.
+tmp_into() {
+  local __d; __d=$(mktemp -d ${2:+"$2"}) || return
+  ACHILLES_TEST_TMPS+=("$__d")
+  trap 'rm -rf "${ACHILLES_TEST_TMPS[@]}"' EXIT
+  printf -v "$1" '%s' "$__d"
+}
+# with_tmp_project_into <var> [subdir…] — <var> = temp root holding proj/<subdir…>.
+with_tmp_project_into() {
+  local __var="$1" __d; shift
+  tmp_into "$__var"
+  mkdir -p "${!__var}/proj"
+  for __d in "$@"; do mkdir -p "${!__var}/proj/$__d"; done
+}
+# init_repo <dir> [--commit] — git repo the hooks resolve as toplevel; --commit adds an empty first commit.
+init_repo() {
+  ( cd "$1" && git init -q && git config user.email t@t && git config user.name t \
+    && { [ "${2:-}" != --commit ] || git commit -q --allow-empty -m init; } ) >/dev/null 2>&1
+}
+# activate_session <session-id> — mark the session protocol-active.
+activate_session() { mkdir -p "$ACHILLES_SESSION_STATE_DIR"; : > "$ACHILLES_SESSION_STATE_DIR/$1.active"; }
+# stage_qa_mandate <project-dir> — the shipped QA mandate governs that project; state lives beside the project dir.
+stage_qa_mandate() {
+  mkdir -p "$1/.claude"; cp "$HOOK_DIR/data/achilles-qa.kernel-mandate.json" "$1/.claude/kernel-mandate.json"
+  export KERNEL_MANDATE_MANIFEST="$1/.claude/kernel-mandate.json" KERNEL_MANDATE_STATE_DIR="${1%/*}/state"
 }

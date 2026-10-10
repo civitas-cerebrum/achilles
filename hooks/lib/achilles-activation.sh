@@ -4,7 +4,7 @@
 # Why
 # ---
 # The harness hooks are installed GLOBALLY (~/.claude/settings.json), so
-# historically they fired in every Claude Code session on the machine —
+# without this lib they would fire in every Claude Code session on the machine,
 # including plain development sessions that never touch the achilles
 # methodology. That is wrong scoping: the guardrails exist to protect the
 # METHODOLOGY's artifacts and conventions (ledgers, journey maps, commit
@@ -84,40 +84,16 @@
 #   achilles_require_active_or_completed "$INPUT"
 #
 # The lib uses $JQ when the caller has already resolved it, otherwise
-# resolves its own (bundled bin/jq, then PATH).
+# resolves its own (bundled bin/jq, then PATH); with neither, it reads the
+# input through hook_json_str's jq-free fallback.
 
-# Skill names bundled by this package (skills/<name>/). Any Skill
-# invocation of one of these — bare or plugin/path-prefixed — activates
-# the protocol for the session.
-#
-# Orchestrator aliases. This alternation is the ONLY place any skill name
-# keys activation (both the Skill-name match in
-# achilles__current_call_signature and the `skills/<name>/SKILL.md`
-# transcript grep read it), so a name the alternation does not know is a
-# name that silently activates nothing — every guard in the suite stays
-# off, which is a fail-open.
-#
-# `achilles-protocol` is the orchestrator skill's name as of the rename
-# from `element-interactions`. `element-interactions` is retained below
-# as a backward-compat alias so installs still carrying the old skill
-# directory keep activating — do not drop it. An install that predates
-# the rename would otherwise lose every guard silently, and losing
-# guards silently is precisely the failure this alternation exists to
-# prevent.
-#
-# NOTE: `element-interactions` in this list is the OLD SKILL name, not
-# the npm package. `@civitas-cerebrum/element-interactions` is the
-# Playwright interaction library — a separate thing, not renamed.
-ACHILLES_SKILL_ALT='achilles-protocol|agents-vs-agents|bug-discovery|bug-report|companion-mode|ticket-driven-testing|self-repair|contract-testing|contributing-to-achilles-protocol|coverage-expansion|database-testing|element-interactions|failure-diagnosis|journey-mapping|onboarding|perf-onboarding|performance-testing|secrets-sweep|selector-development|test-catalogue|test-composer|test-repair|work-summary-deck|workflow-reviewer'
-
-# Distinctly-achilles subagent description prefixes (backstop for briefs
-# issued without a prior Skill call, e.g. external CLI drivers). Kept to
-# prefixes that are unambiguous protocol vocabulary — generic-sounding
-# ones from schema-role-map.sh (cleanup-, companion-, phase1-, stage2-,
-# reviewer-, fd-) are deliberately excluded: a dev's "cleanup-temp:" agent
-# must not switch the guards on. Genuine protocol runs activate via the
-# skill signals anyway.
-ACHILLES_DISPATCH_PREFIX_RE='^[[:space:]]*(workflow-reviewer-|perf-reviewer-|phase-validator-|phase4-cycle-|phase4-prioritise-author|composer-|probe-|process-validator-|contribution-handover-)'
+# shellcheck source=hook-io.sh
+declare -F hook_lib >/dev/null || . "$(dirname "${BASH_SOURCE[0]}")/hook-io.sh"
+# ACHILLES_SKILL_ALT and ACHILLES_DISPATCH_PREFIX_RE: the activation signals. A failure to load
+# them leaves the activation state unknown, which hook_fail_closed treats as active.
+HOOK_ACTIVATION_LOADING=1
+hook_lib dispatch-prefix.sh
+unset HOOK_ACTIVATION_LOADING
 
 achilles__jq() {
   if [ -n "${JQ:-}" ] && [ -x "${JQ:-}" ]; then
@@ -186,22 +162,14 @@ achilles_mark_session_completed() {
   return 0
 }
 
-# achilles__current_call_signature <input-json> <jq-bin>
+# achilles__current_call_signature <input-json>
 # Returns 0 when the current tool call is protocol-shaped.
 achilles__current_call_signature() {
-  local input="$1" jq_bin="$2" tool_name skill_name description
-  tool_name=$(printf '%s' "$input" | "$jq_bin" -r '.tool_name // empty' 2>/dev/null || echo "")
-  case "$tool_name" in
-    Skill)
-      skill_name=$(printf '%s' "$input" | "$jq_bin" -r '.tool_input.skill // empty' 2>/dev/null || echo "")
-      printf '%s' "$skill_name" | grep -qE "(^|:)(${ACHILLES_SKILL_ALT})$" && return 0
-      ;;
-    Agent)
-      description=$(printf '%s' "$input" | "$jq_bin" -r '.tool_input.description // empty' 2>/dev/null || echo "")
-      printf '%s' "$description" | grep -qE "$ACHILLES_DISPATCH_PREFIX_RE" && return 0
-      ;;
+  case "$(hook_json_str "$1" .tool_name)" in
+    Skill) hook_json_str "$1" .tool_input.skill | grep -qE "(^|:)(${ACHILLES_SKILL_ALT})$" ;;
+    Agent) hook_json_str "$1" .tool_input.description | grep -qE "$ACHILLES_DISPATCH_PREFIX_RE" ;;
+    *) return 1 ;;
   esac
-  return 1
 }
 
 # achilles_session_active <hook-input-json>
@@ -209,21 +177,15 @@ achilles__current_call_signature() {
 # 1 when this is a plain (non-achilles) session or a completed run.
 achilles_session_active() {
   local input="$1"
-  local jq_bin sid transcript env_off=0
+  local JQ sid transcript env_off=0
 
   case "${ACHILLES_PROTOCOL:-}" in
     1|true|on|ON|active) return 0 ;;
     0|false|off|OFF) env_off=1 ;;
   esac
 
-  jq_bin="$(achilles__jq)"
-  # No jq → cannot inspect the input; stay protective (unless env-off).
-  if [ -z "$jq_bin" ]; then
-    [ "$env_off" = "1" ] && return 1
-    return 0
-  fi
-
-  sid=$(printf '%s' "$input" | "$jq_bin" -r '.session_id // empty' 2>/dev/null || echo "")
+  JQ="$(achilles__jq)"
+  sid=$(hook_json_str "$input" .session_id)
 
   # Unidentifiable session context → fail closed (guards on), except under
   # the explicit env-off (test fixtures / synthetic payloads).
@@ -244,7 +206,7 @@ achilles_session_active() {
   # Completed run: only an explicit fresh protocol-shaped call re-opens
   # the protocol; historical transcript signatures do not.
   if [ -f "$(achilles__state_dir)/${sid}.completed" ]; then
-    if achilles__current_call_signature "$input" "$jq_bin"; then
+    if achilles__current_call_signature "$input"; then
       achilles_mark_session_active "$sid"
       return 0
     fi
@@ -252,7 +214,7 @@ achilles_session_active() {
   fi
 
   # Current call is itself protocol-shaped.
-  if achilles__current_call_signature "$input" "$jq_bin"; then
+  if achilles__current_call_signature "$input"; then
     achilles_mark_session_active "$sid"
     return 0
   fi
@@ -273,7 +235,7 @@ achilles_session_active() {
       return 1
     fi
   fi
-  transcript=$(printf '%s' "$input" | "$jq_bin" -r '.transcript_path // empty' 2>/dev/null || echo "")
+  transcript=$(hook_json_str "$input" .transcript_path)
   if [ -n "$transcript" ] && [ -f "$transcript" ]; then
     if grep -qE "\"skill\"[[:space:]]*:[[:space:]]*\"([a-z0-9./_-]+:)?(${ACHILLES_SKILL_ALT})\"|<command-name>/(${ACHILLES_SKILL_ALT})<|skills/(${ACHILLES_SKILL_ALT})/SKILL\.md" "$transcript" 2>/dev/null; then
       achilles_mark_session_active "$sid"
@@ -301,16 +263,14 @@ achilles_require_active() {
 # when the session is active OR carries a completion marker; silent-allows
 # (exit 0) in plain dev sessions.
 achilles_require_active_or_completed() {
-  local input="$1" jq_bin sid
+  local input="$1" JQ sid
   if achilles_session_active "$input"; then
     return 0
   fi
-  jq_bin="$(achilles__jq)"
-  if [ -n "$jq_bin" ]; then
-    sid=$(printf '%s' "$input" | "$jq_bin" -r '.session_id // empty' 2>/dev/null || echo "")
-    if [ -n "$sid" ] && [ -f "$(achilles__state_dir)/${sid}.completed" ]; then
-      return 0
-    fi
+  JQ="$(achilles__jq)"
+  sid=$(hook_json_str "$input" .session_id)
+  if [ -n "$sid" ] && [ -f "$(achilles__state_dir)/${sid}.completed" ]; then
+    return 0
   fi
   exit 0
 }

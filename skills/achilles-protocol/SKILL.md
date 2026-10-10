@@ -26,7 +26,7 @@ description: >
 > **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
-# @civitas-cerebrum/element-interactions — Agent Skill
+# Achilles protocol
 
 A two-package Playwright framework that decouples **element acquisition** (`@civitas-cerebrum/element-repository`) from **element interaction** (`@civitas-cerebrum/element-interactions`). Tests reference elements by plain strings (`'HomePage'`, `'submitButton'`); raw selectors never appear in test code.
 
@@ -47,6 +47,7 @@ This file is the rules-and-pointers kernel. The heavy spec lives in `references/
 | [`references/autonomous-mode-callers.md`](references/autonomous-mode-callers.md) | Per-caller `autonomousMode: true` contracts. |
 | [`references/skill-registry.md`](references/skill-registry.md) | Canonical skill name registry. |
 | [`references/cascade-detector.md`](references/cascade-detector.md) | Canonical onboarding-state probe (Levels A/B/C/None) and per-caller responses. |
+| [`references/roles-and-dispatch.md`](references/roles-and-dispatch.md) | Role kernel binding, dispatch grammar, nonce, switches and limits. |
 
 ## Stage ladder (canonical)
 

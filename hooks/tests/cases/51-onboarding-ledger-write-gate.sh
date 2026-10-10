@@ -4,23 +4,17 @@
 # PreToolUse:Write|Edit. DENY mode.
 H="$HOOK_DIR/onboarding-ledger-write-gate.sh"
 
-# Skip the suite if `node` or the package's ajv dependency isn't available
-# — the hook silent-allows in that situation, so the deny-expectation
-# tests below would not be meaningful. We probe both before running.
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+# The hook silent-allows without node or ajv, which would make every deny case below pass
+# vacuously — so a missing tool fails this file (require_tool) rather than skipping it.
+require_tool node || return 0
 NODE_BIN=$(command -v node)
-if ! "$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(ajv/ajv-formats not available — skipping onboarding-ledger-write-gate cases)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+# ajv is a package dependency; without it the hook silent-allows and every deny case below is meaningless.
+assert_eq "$("$NODE_BIN" -e "require('ajv/dist/2020.js'); require('ajv-formats');" >/dev/null 2>&1; echo $?)" "0" \
+  "ajv and ajv-formats resolve from the package"
 
-TMP_REPO=$(mktemp -d /tmp/onboarding-ledger-write-XXXXXX)
+tmp_into TMP_REPO /tmp/onboarding-ledger-write-XXXXXX
 mkdir -p "$TMP_REPO/tests/e2e/docs"
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 LEDGER_PATH="$TMP_REPO/tests/e2e/docs/onboarding-status.json"
 
@@ -199,30 +193,37 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$I
 
 # Test: subagent context (agent_id present) but no approver registry → DENY
 P_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_NOREG=$(echo "$P_NOREG" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+P_NOREG=$(echo "$P_NOREG" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "workflow-reviewer"}')
 assert_deny "$H" "$P_NOREG" "Subagent context but no registry → DENY" "no approver registry exists"
 
 # Seed the approver registry next to the ledger, then re-test.
-NOW=$(date +%s)
 REGISTRY="$TMP_REPO/tests/e2e/docs/.workflow-approvers.json"
-printf '{"toolu_approved":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$NOW" > "$REGISTRY"
+printf '{"toolu_approved":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
 
 # Test: subagent context + fresh non-empty approver registry → ALLOW
 P_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+P_OK=$(echo "$P_OK" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "workflow-reviewer"}')
 assert_allow "$H" "$P_OK" "Subagent context + fresh approver registry → ALLOW"
+P_PROBE=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
+P_PROBE=$(echo "$P_PROBE" | "$JQ" -c '. + {agent_id: "subagent-probe", agent_type: "probe"}')
+assert_deny "$H" "$P_PROBE" "probe agent_type approves a phase while an approver is registered → DENY" "not an approver role"
+P_GP=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "general-purpose"')
+assert_deny "$H" "$P_GP" "general-purpose agent_type approves a phase → DENY" "not an approver role"
+P_NOTYPE=$(echo "$P_PROBE" | "$JQ" -c 'del(.agent_type)')
+assert_deny "$H" "$P_NOTYPE" "subagent write with no agent_type approves a phase → DENY (fail closed)" "not an approver role"
+P_PV=$(echo "$P_PROBE" | "$JQ" -c '.agent_type = "process-validator"')
+assert_allow "$H" "$P_PV" "another approver type (process-validator) with a fresh registry → ALLOW"
 
 # Test: subagent context but the approver registry is empty → DENY
 printf '{}' > "$REGISTRY"
 P_EMPTY=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_EMPTY=$(echo "$P_EMPTY" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+P_EMPTY=$(echo "$P_EMPTY" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "workflow-reviewer"}')
 assert_deny "$H" "$P_EMPTY" "Subagent context but empty registry → DENY" "approver registry is empty"
 
 # Test: most-recent approver registration expired (> 30 min) → DENY
-EXPIRED_TS=$((NOW - 3600))
-printf '{"toolu_expired":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$EXPIRED_TS" > "$REGISTRY"
+printf '{"toolu_expired":{"role":"workflow-reviewer","description":"workflow-reviewer-phase1","ts":%d}}' "$REGISTRY_TS_EXPIRED" > "$REGISTRY"
 P_EXP=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$IN_ORDER")
-P_EXP=$(echo "$P_EXP" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "general-purpose"}')
+P_EXP=$(echo "$P_EXP" | "$JQ" -c '. + {agent_id: "subagent-abc123", agent_type: "workflow-reviewer"}')
 assert_deny "$H" "$P_EXP" "Expired approver registration → DENY" "has expired"
 
 # Test: write that does NOT transition any reviewerVerdict → ALLOW even from orchestrator
@@ -235,6 +236,59 @@ assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$
 rm -f "$LEDGER_PATH" "$REGISTRY"
 
 # ---------------------------------------------------------------------------
+section "ledger-write-gate: terminal .status is an approval-class write (the off-switch)"
+# A write landing top-level status complete|aborted is what the activation
+# watcher keys on to retire the session marker — and with the marker goes
+# every achilles gate and the kernel-mandate role binding. So it is held to
+# the same identity as an approval: subagent context + registered approver.
+# The orchestrator (no agent_id) may not end its own governance.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+rm -f "$REGISTRY"
+TERMINAL_COMPLETE=$(echo "$VALID_FRESH" | "$JQ" '.status = "complete"')
+TERMINAL_ABORTED=$(echo "$VALID_FRESH" | "$JQ" '.status = "aborted"')
+
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")" \
+  "Orchestrator direct write status → complete → DENY" "OFF-SWITCH"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")" \
+  "…the deny says why (approval-class write)" "approval-class write"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_ABORTED")" \
+  "Orchestrator direct write status → aborted → DENY" "OFF-SWITCH"
+
+# Subagent context without a registry → DENY (same registry rules as approvals).
+P_T_NOREG=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")
+P_T_NOREG=$(echo "$P_T_NOREG" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type: "workflow-reviewer"}')
+assert_deny "$H" "$P_T_NOREG" "Subagent status → complete but no registry → DENY" "no approver registry exists"
+
+# Registered, unexpired approver → the existing behaviour (ALLOW).
+printf '{"toolu_final":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$REGISTRY_TS_FRESH" > "$REGISTRY"
+P_T_OK=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")
+P_T_OK=$(echo "$P_T_OK" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type: "workflow-reviewer"}')
+assert_allow "$H" "$P_T_OK" "Registered approver subagent status → complete → ALLOW"
+P_T_COMP=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_COMPLETE")
+P_T_COMP=$(echo "$P_T_COMP" | "$JQ" -c '. + {agent_id: "subagent-comp", agent_type: "test-composer"}')
+assert_deny "$H" "$P_T_COMP" "composer agent_type writes status → complete while an approver is registered → DENY" "not an approver role"
+P_T_PV=$(echo "$P_T_COMP" | "$JQ" -c '.agent_type = "phase-validator"')
+assert_allow "$H" "$P_T_PV" "phase-validator agent_type writes status → complete → ALLOW"
+P_T_AB=$(payload tool_name=Write file_path="$LEDGER_PATH" content="$TERMINAL_ABORTED")
+P_T_AB=$(echo "$P_T_AB" | "$JQ" -c '. + {agent_id: "subagent-final", agent_type: "workflow-reviewer"}')
+assert_allow "$H" "$P_T_AB" "Registered approver subagent status → aborted → ALLOW"
+
+# Expired registration → DENY, as for approvals.
+printf '{"toolu_stale":{"role":"workflow-reviewer","description":"workflow-reviewer-final","ts":%d}}' "$REGISTRY_TS_EXPIRED" > "$REGISTRY"
+assert_deny "$H" "$P_T_OK" "Expired approver registration for status → complete → DENY" "has expired"
+rm -f "$REGISTRY"
+
+# Non-terminal statuses and non-transitions are not gated.
+NON_TERMINAL=$(echo "$VALID_FRESH" | "$JQ" '.status = "blocked"')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$NON_TERMINAL")" \
+  "Orchestrator status → blocked (non-terminal) → ALLOW"
+printf '%s' "$TERMINAL_COMPLETE" > "$LEDGER_PATH"
+SAME_TERMINAL=$(echo "$TERMINAL_COMPLETE" | "$JQ" '.phases[0].deliverables = ["playwright.config.ts"]')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$SAME_TERMINAL")" \
+  "Orchestrator write leaving an already-terminal status in place (no transition) → ALLOW"
+
+rm -f "$LEDGER_PATH" "$REGISTRY"
+
 section "ledger-write-gate: mode-authorisation"
 # `runMode` is required by the schema; this gate forces it to be set
 # WITH an audit-trail `modeAuthorizer` field naming the user's explicit
@@ -467,7 +521,7 @@ if [ -x /usr/bin/jq ] && ! /usr/bin/env -i PATH=/bin:/usr/bin command -v node >/
     echo "${CLR_FAIL}  ✗${CLR_RST} no-node bypass test ${CLR_DIM}(expected deny with 'orchestrator context'; got: ${OUT_NO_NODE})${CLR_RST}"
   fi
 else
-  echo "${CLR_DIM}  (skipped — /usr/bin layout doesn't match the macOS shape used for this test)${CLR_RST}"
+  skip_test "/usr/bin layout does not match the macOS shape this test needs (jq present, node absent)"
 fi
 
 # ---- Phase 6 ----

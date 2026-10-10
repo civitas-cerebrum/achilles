@@ -24,7 +24,7 @@ Adversarial passes never use batch mode — the per-journey live-app probe + mat
 
 **Two precedence rules override the batch default** (both also mirrored in `coverage-expansion/SKILL.md` §"Reviewer parallelism is non-negotiable"):
 
-1. **Any journey in a `[group]` / `[P3-batch]` Stage A dispatch gets a per-journey cycle-1 reviewer**, not the cross-pass batch reviewer. A grouped Stage A always produces per-journey cycle-1 Stage B reviewers (see `depth-mode-pipeline.md` §"Relevance grouping for compositional passes" — "Stage B remains per-journey within a group"); the batch reviewer path is for individually-dispatched journeys' cycle-1 reviews only. The two do not compose.
+1. **Any journey in a grouped Stage A dispatch gets a per-journey cycle-1 reviewer**, not the cross-pass batch reviewer. A grouped Stage A always produces per-journey cycle-1 Stage B reviewers (see `depth-mode-pipeline.md` §"Relevance grouping for compositional passes" — "Stage B remains per-journey within a group"); the batch reviewer path is for individually-dispatched journeys' cycle-1 reviews only. The two do not compose.
 2. **`mode: depth` → per-journey reviewers on every cycle of every pass.** Batch reviewer mode is a standard-mode economy; under depth, Stage B is per-journey throughout — cycle-1 included, no batch reviewer on any pass.
 
 A `mode: batch` reviewer that wants per-journey depth on a flagged journey returns `improvements-needed` for that journey in its return; the orchestrator then dispatches a follow-up cycle-2 per-journey reviewer for that journey only. Subagents do not switch modes mid-flight.
@@ -87,7 +87,7 @@ Every reviewer return **MUST** open with a `handover` envelope as its first key.
 |---|---|
 | `role` | `reviewer-inloop` (per-journey) or `reviewer-batch-pass-<N>` (batch mode). |
 | `cycle` | Integer ≥ 1. |
-| `status` | One of `greenlight`, `improvements-needed` (per-journey); `batch-complete` (batch mode). |
+| `status` | Per-journey: see [reviewer-inloop schema](../../../schemas/subagent-returns/reviewer-inloop.schema.json); `batch-complete` in batch mode. |
 | `next-action` | One-line directive for the orchestrator. |
 
 `phase` and `summary` are **top-level** fields — they MUST NOT appear inside `handover`. Banned tokens inside any reviewer return: `nice-to-have`, `greenlight-with-notes`, top-level `notes:`.
@@ -176,7 +176,7 @@ The cross-journey synthesis is a real upgrade, not just a cost optimisation: a s
    - **`status: covered-exhaustively`** → the brief points at the §2.6 spill file at `tests/e2e/docs/.subagent-returns/composer-<JOURNEY>-<pass>-c1.md`. The reviewer reads the spill for the full per-expectation mapping table.
 
    The reviewer reads whichever form is provided; the brief construction is the orchestrator's responsibility.
-5. **Per-journey gated-skip evidence**: journeys flagged `gated_skip: true` in the state file (per `coverage-expansion/SKILL.md` §"Trigger-gated re-pass") are excluded from the batch reviewer's roster — no review needed. The roster is the journeys whose Stage A actually dispatched this cycle.
+5. **Per-journey gated-skip evidence**: journeys flagged `gated_skip: true` in the state file (per `coverage-expansion/SKILL.md` §"Trigger-gated re-pass for Passes 2 & 3") are excluded from the batch reviewer's roster — no review needed. The roster is the journeys whose Stage A actually dispatched this cycle.
 6. **App-context slice**: the consolidated `app-context.md` sections for every page touched.
 7. **No live app** — see §"Behavior" item 2 below for why the batch reviewer is a static reader.
 
