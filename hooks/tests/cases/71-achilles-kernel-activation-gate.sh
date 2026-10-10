@@ -529,6 +529,14 @@ assert_allow "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
 assert_allow "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
   "$(payload session_id=km-dev-3 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/bare/src/app.ts" cwd="$KW_TMP/bare")" \
   "global install, inactive session: dormant → ALLOW"
+# A worktree whose main checkout holds an unparseable manifest: the kernel skips that manifest, so the global one governs.
+git init -q "$KW_TMP/wtmain" && git -C "$KW_TMP/wtmain" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$KW_TMP/wtmain" worktree add -q "$KW_TMP/wt" 2>/dev/null
+mkdir -p "$KW_TMP/wtmain/.claude" "$KW_TMP/wt/src"
+echo '{broken' > "$KW_TMP/wtmain/.claude/kernel-mandate.json"
+assert_deny "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-act-1 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/wt/src/app.ts" cwd="$KW_TMP/wt")" \
+  "global install, worktree whose main checkout's manifest does not parse: the global mandate governs → DENY" "outside the role's read scope"
 
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR ACHILLES_SESSION_STATE_DIR
 

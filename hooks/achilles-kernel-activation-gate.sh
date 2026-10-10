@@ -23,10 +23,11 @@ case "${KERNEL_MANDATE:-}" in 0|false|off) exit 0 ;; esac
 KERNEL="$HOOK_DIR/kernel-mandate-role-gate.sh"
 JQ_BIN="$(achilles__jq)"
 
-# True when the kernel's own discovery would find a manifest: walking up from the
-# session cwd, or in the main checkout of the worktree the cwd sits in.
+# True when the kernel's own discovery (lib/kernel-mandate.sh) would find a manifest: any one
+# walking up from the session cwd (a broken one is its repair state), else the main checkout's
+# of the worktree the cwd sits in, which it takes only when it parses.
 project_manifest() {
-  local dir common
+  local dir common main
   dir=$(cd "$1" 2>/dev/null && pwd -P) || return 1
   while :; do
     [ -f "$dir/.claude/kernel-mandate.json" ] && return 0
@@ -34,7 +35,9 @@ project_manifest() {
     dir=$(dirname "$dir")
   done
   common=$(cd "$1" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || return 1
-  [ -f "${common%/.git}/.claude/kernel-mandate.json" ]
+  main="${common%/.git}/.claude/kernel-mandate.json"
+  [ -f "$main" ] && [ -n "$JQ_BIN" ] &&
+    "$JQ_BIN" -e 'type == "object" and (.roles | type == "object")' < "$main" >/dev/null 2>&1
 }
 
 # A global install stages the QA mandate beside its hooks dir (scripts/install/mandate.js):
