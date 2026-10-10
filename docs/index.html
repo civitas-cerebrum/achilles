@@ -644,9 +644,9 @@
 
       <div class="hero-stats">
         <div class="stat"><div class="stat-value grad">25</div><div class="stat-label">Agent Skills</div></div>
-        <div class="stat"><div class="stat-value grad">48</div><div class="stat-label">Hook Scripts (7 opt-in)</div></div>
+        <div class="stat"><div class="stat-value grad">46</div><div class="stat-label">Hook Scripts (7 opt-in)</div></div>
         <div class="stat"><div class="stat-value grad">9</div><div class="stat-label">Modes and Capabilities</div></div>
-        <div class="stat"><div class="stat-value grad">23</div><div class="stat-label">Kernel Roles</div></div>
+        <div class="stat"><div class="stat-value grad">23</div><div class="stat-label">Roles</div></div>
       </div>
 
     </div>
@@ -837,7 +837,7 @@
   <div class="container">
     <div class="quote-block reveal">
       <div class="quote-mark">“</div>
-      <p class="quote-text">While a session is active, the gates apply to every tool call the same way. A hook that blocks sign-off without evidence blocks it on the ten-thousandth call as on the first, until the operator switches the protocol or the kernel off.</p>
+      <p class="quote-text">While a session is active, the gates apply to every tool call the same way. A hook that blocks sign-off without evidence blocks it on the ten-thousandth call as on the first, until the operator switches the protocol off.</p>
       <div class="quote-caption">Agentic Shift-Left Doctrine · §IV Enforcement</div>
     </div>
   </div>
@@ -856,7 +856,7 @@
       <div class="diff-card reveal">
         <div class="diff-icon">⚡</div>
         <h4 class="diff-title">Hook-Enforced Discipline</h4>
-        <p class="diff-desc">48 hook scripts, including 7 opt-in factory gates, run before and after Claude Code tool calls. 39 are enforcement gates, meaning scripts named <code>*-gate.sh</code> or <code>*-guard.sh</code>. They deny scope compression, phase skipping and sign-off without negative-control and adversarial-review evidence. A role kernel (23 roles) also limits which tools, commands and paths each dispatched role may use. The kernel and the hooks act only while an Achilles skill runs. The operator can switch the kernel off (<code>KERNEL_MANDATE=0</code>) or stop new sessions from activating the protocol (<code>ACHILLES_PROTOCOL=0</code>). Factory gates apply only when the project commits an <code>achilles-factory-rules.json</code>.</p>
+        <p class="diff-desc">46 hook scripts, including 7 opt-in factory gates, run before and after Claude Code tool calls. 37 are enforcement gates, meaning scripts named <code>*-gate.sh</code> or <code>*-guard.sh</code>. They deny scope compression, phase skipping and sign-off without negative-control and adversarial-review evidence. This build ships without the role kernel: the 23 roles are methodology, not enforced. The hooks act only while an Achilles skill runs. The operator can stop new sessions from activating the protocol (<code>ACHILLES_PROTOCOL=0</code>). Factory gates apply only when the project commits an <code>achilles-factory-rules.json</code>.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🎯</div>
@@ -893,19 +893,19 @@
     <div class="section-header reveal">
       <div class="section-tag">Scope</div>
       <h2 class="section-title">What it is not,<br /><span class="grad">and how to operate it</span></h2>
-      <p class="section-desc">Version 0.2.0. Limits are listed in <code>known-limits.md</code> (22 entries, KL-01 to KL-22).</p>
+      <p class="section-desc">Version 0.2.0. Limits are listed in <code>known-limits.md</code> (10 entries, IDs up to KL-22; retired IDs are not reused).</p>
     </div>
 
     <div class="diffs-grid">
       <div class="diff-card reveal">
         <div class="diff-icon">🚫</div>
         <h4 class="diff-title">What it is not</h4>
-        <p class="diff-desc">Claude Code only: hooks and the role kernel register as Claude Code hooks, and the skills are plain markdown. No hosted runner. No native mobile; viewport emulation only. No runtime self-healing: repair runs offline against a red suite. No published benchmark.</p>
+        <p class="diff-desc">Claude Code only: the hooks register as Claude Code hooks, and the skills are plain markdown. No hosted runner. No native mobile; viewport emulation only. No runtime self-healing: repair runs offline against a red suite. No published benchmark.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🛡️</div>
         <h4 class="diff-title">Scope of enforcement</h4>
-        <p class="diff-desc">The role kernel is active only while an Achilles skill runs. The operator can switch it off with <code>KERNEL_MANDATE=0</code>. Factory gates are opt-in per project. The Bash guards cover common agent commands, not obfuscated shell (KL-15).</p>
+        <p class="diff-desc">This build ships without the role kernel; roles are methodology, not enforced. The hooks act only while an Achilles skill runs. Factory gates are opt-in per project. The Bash guards cover common agent commands, not obfuscated shell (KL-15).</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">⌨️</div>
@@ -915,7 +915,7 @@
       <div class="diff-card reveal">
         <div class="diff-icon">🧹</div>
         <h4 class="diff-title">Uninstall</h4>
-        <p class="diff-desc"><code>npx achilles-uninstall [--global] [--project &lt;dir&gt;] [--dry-run]</code> reverses what postinstall recorded in <code>achilles-install.json</code>: hook registrations, unedited files and the staged mandate. npm runs no uninstall script, so this is a command.</p>
+        <p class="diff-desc"><code>npx achilles-uninstall [--global] [--project &lt;dir&gt;] [--dry-run]</code> reverses what postinstall recorded in <code>achilles-install.json</code>: hook registrations, unedited files and an unedited mandate an earlier install staged. npm runs no uninstall script, so this is a command.</p>
       </div>
     </div>
   </div>

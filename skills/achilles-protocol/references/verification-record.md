@@ -66,8 +66,8 @@ A controller may override a FAIL only with a recorded ruling that names the evid
 
 **Status** is `in verification` until every run and proof is recorded, then `complete`, and `complete` only with PASS
 or PASS with notes. `complete` is approver-class: only the independent verifier writes it, never the author or the
-controller that drove the change. The path gate does not read the verdict (KL-16 in
-[known-limits.md](known-limits.md)).
+controller that drove the change. This build ships without the role kernel, so no hook enforces who writes it
+([roles-and-dispatch.md](roles-and-dispatch.md)).
 
 ## The stamp
 

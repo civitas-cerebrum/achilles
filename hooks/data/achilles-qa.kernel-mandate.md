@@ -1,6 +1,6 @@
 # achilles-qa — role ledger
 
-Human copy of `hooks/data/achilles-qa.kernel-mandate.json`. The manifest is enforced; this file is not. `lint-doc-drift` fails when the role names or the stated count here disagree with the manifest.
+Human copy of `hooks/data/achilles-qa.kernel-mandate.json`. This build ships without the role kernel, so neither the manifest nor this file is enforced: the grants and refusals below are methodology. `lint-doc-drift` fails when the role names or the stated count here disagree with the manifest.
 
 ## What this is
 

@@ -64,12 +64,12 @@ run_install_simulation() {
 
   # --- Mirror the postinstall copy set ------------------------------------
   # 1. Hook scripts: every registered hook and every companion (copied beside
-  #    the registered hooks, never registered — the kernel, exec'd by the
-  #    activation-gate wrapper), read from the manifest the installer reads.
+  #    the registered hooks, never registered; none in this build), read from
+  #    the manifest the installer reads.
   local manifest="$repo_root/hooks/data/hook-manifest.json" manifest_files companion_files f
   manifest_files=$("$JQ" -r '[.hooks[].file] | unique | .[]' "$manifest" 2>/dev/null)
-  companion_files=$("$JQ" -r '.companions[]' "$manifest" 2>/dev/null)
-  if [ -z "$manifest_files" ] || [ -z "$companion_files" ]; then
+  companion_files=$("$JQ" -r '.companions[]' "$manifest" 2>/dev/null) || companion_files="<unreadable>"
+  if [ -z "$manifest_files" ] || [ "$companion_files" = "<unreadable>" ]; then
     sim_fail "manifest parse" "could not read .hooks[].file / .companions[] from $manifest"
     return
   fi
@@ -226,17 +226,6 @@ FACRULES
     fi
   done
 
-  # --- Assertion: the kernel wrapper AND its exec target both land --------
-  # The wrapper is registered; the kernel is a companion copy. Either one
-  # missing means the mandate is silently unenforced from an install.
-  for f in achilles-kernel-activation-gate.sh kernel-mandate-role-gate.sh; do
-    if [ -x "$fake_hooks/$f" ]; then
-      sim_pass "$f lands in the copy set (wrapper + kernel companion)"
-    else
-      sim_fail "$f lands in the copy set (wrapper + kernel companion)" "not found or not executable at $fake_hooks/$f"
-    fi
-  done
-
   # --- Assertion: hooks/data vocabulary lands in the copy set -------------
   # standard-mode-first-pass-guard.sh reads data/canonical-sections.txt; the
   # install must ship it so installed hooks don't run on the hardcoded
@@ -251,19 +240,20 @@ FACRULES
   # --- Assertion: upgrade path leaves settings.json unchanged -------------
   # The fixture is the settings.json the pre-split installer wrote (hooks dir
   # as @HOOKS@). Re-running the installer over it must change nothing except
-  # quoting each bare path in place and adding the factory gates, which that
-  # installer did not register.
+  # quoting each bare path in place, adding the factory gates, which that
+  # installer did not register, and dropping the kernel wrapper's registration
+  # (this build ships no kernel, so it would point at a missing file).
   local up="$work/upgrade" fixture="$repo_root/hooks/tests/fixtures/settings-0.1.8-pre-split.json" up_diff
   mkdir -p "$up/.claude"
   sed "s#@HOOKS@#$up/.claude/hooks#g" "$fixture" > "$up/.claude/settings.json"
   cp "$up/.claude/settings.json" "$work/settings-expected.json"
   HOME="$up" CIVITAS_SKIP_JQ_INSTALL=1 node -e "require('$repo_root/scripts/postinstall.js').installCivitasHooks('$up/.claude')" >/dev/null 2>&1
-  up_diff=$(diff <("$JQ" -S --arg h "$up/.claude/hooks/" '.hooks |= map_values(map(.hooks |= map(if (.command | startswith($h)) then .command |= "\"" + . + "\"" else . end)))' "$work/settings-expected.json") \
+  up_diff=$(diff <("$JQ" -S --arg h "$up/.claude/hooks/" '.hooks |= map_values(map(.hooks |= map(select(.command | endswith("/achilles-kernel-activation-gate.sh") | not) | if (.command | startswith($h)) then .command |= "\"" + . + "\"" else . end)) | map(select(.hooks | length > 0)))' "$work/settings-expected.json") \
     <("$JQ" -S '.hooks |= map_values(map(.hooks |= map(select(.command | contains("/hooks/factory/") | not))) | map(select(.hooks | length > 0)))' "$up/.claude/settings.json") 2>&1)
   if [ -z "$up_diff" ]; then
-    sim_pass "re-install over the pre-split settings.json only quotes each path in place"
+    sim_pass "re-install over the pre-split settings.json only quotes each path in place and drops the kernel wrapper"
   else
-    sim_fail "re-install over the pre-split settings.json only quotes each path in place" "$up_diff"
+    sim_fail "re-install over the pre-split settings.json only quotes each path in place and drops the kernel wrapper" "$up_diff"
   fi
 
   # What the upgrade added: exactly manifest.factory, one registration each.
@@ -510,63 +500,6 @@ run_upgrade_simulation() {
   fi
 }
 
-# Staged mandate: refreshed while unedited, never overwritten once edited.
-run_mandate_simulation() {
-  local work pkg proj dest ledger stamp out
-  work=$(mktemp -d /tmp/achilles-mandate-sim-XXXXXX)
-  _SIM_MANDATE_WORK="$work"
-  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK"' EXIT
-  pkg="$work/pkg"; proj="$work/project"
-  sim_make_package "$pkg"
-  dest="$proj/.claude/kernel-mandate.json"; ledger="$proj/.claude/kernel-mandate.md"; stamp="$proj/.claude/kernel-mandate.achilles.json"
-  local src="$pkg/hooks/data/achilles-qa.kernel-mandate.json"
-  sim_stage() {
-    CIVITAS_SKIP_HOOK_INSTALL= node -e "require('$INSTALL_SIM_REPO_ROOT/scripts/install/mandate.js').stageProjectMandate('$proj', { packageDir: '$pkg' })" 2>&1
-  }
-
-  sim_stage >/dev/null
-  if cmp -s "$dest" "$src" && cmp -s "$ledger" "$pkg/hooks/data/achilles-qa.kernel-mandate.md" \
-     && [ "$("$JQ" -r .manifestSha256 "$stamp")" = "$(shasum -a 256 "$src" | cut -d' ' -f1)" ]; then
-    sim_pass "fresh project: manifest, ledger and sidecar stamp are staged"
-  else
-    sim_fail "fresh project: manifest, ledger and sidecar stamp are staged" "dest/ledger/stamp mismatch"
-  fi
-
-  "$JQ" '.name = "next-release"' "$src" > "$work/m.json" && mv "$work/m.json" "$src"
-  out=$(sim_stage)
-  if cmp -s "$dest" "$src" && printf '%s' "$out" | grep -q refreshed && [ ! -e "$proj/.claude/kernel-mandate.achilles-new.json" ]; then
-    sim_pass "an unedited staged mandate is refreshed on upgrade"
-  else
-    sim_fail "an unedited staged mandate is refreshed on upgrade" "${out:0:200}"
-  fi
-
-  echo '{"kernelMandateVersion":1,"name":"mine","roles":{}}' > "$dest"
-  local mine; mine=$(cat "$dest")
-  "$JQ" '.name = "release-after"' "$src" > "$work/m.json" && mv "$work/m.json" "$src"
-  out=$(sim_stage)
-  if [ "$(cat "$dest")" = "$mine" ] && cmp -s "$proj/.claude/kernel-mandate.achilles-new.json" "$src" \
-     && [ "$(printf '%s' "$out" | grep -c 'Kept your')" = 1 ]; then
-    sim_pass "an edited mandate is left alone, the new one is written beside it, with one notice"
-  else
-    sim_fail "an edited mandate is left alone, the new one is written beside it, with one notice" "${out:0:200}"
-  fi
-  out=$(sim_stage)
-  if [ -z "$out" ] && [ "$(cat "$dest")" = "$mine" ]; then
-    sim_pass "re-running over an edited mandate is silent"
-  else
-    sim_fail "re-running over an edited mandate is silent" "${out:0:200}"
-  fi
-
-  rm -rf "$proj"
-  mkdir -p "$proj/.claude"; echo "$mine" > "$dest"
-  out=$(sim_stage)
-  if [ "$(cat "$dest")" = "$mine" ] && [ -f "$proj/.claude/kernel-mandate.achilles-new.json" ]; then
-    sim_pass "a manifest with no sidecar (pre-stamp install or hand-written) is kept, new one written beside it"
-  else
-    sim_fail "a manifest with no sidecar (pre-stamp install or hand-written) is kept, new one written beside it" "${out:0:200}"
-  fi
-}
-
 # Skills and agents are copied by content, recorded, and pruned like hooks.
 run_methodology_simulation() {
   local work claude out
@@ -639,8 +572,13 @@ run_uninstall_simulation() {
     HOME="$work/home" CIVITAS_SKIP_JQ_INSTALL=1 CIVITAS_SKIP_HOOK_INSTALL= node -e "
       const pi = require('$repo_root/scripts/postinstall.js');
       pi.installCivitasHooks('$claude');
-      pi.installCivitasSkills(['$claude/skills'], '$work/skills-src');
-      pi.stageProjectMandate('$proj');" >/dev/null 2>&1
+      pi.installCivitasSkills(['$claude/skills'], '$work/skills-src');" >/dev/null 2>&1
+    # A mandate and stamp as an earlier install staged them; this build stages none, uninstall still cleans them up.
+    cp "$repo_root/hooks/data/achilles-qa.kernel-mandate.json" "$claude/kernel-mandate.json"
+    cp "$repo_root/hooks/data/achilles-qa.kernel-mandate.md" "$claude/kernel-mandate.md"
+    printf '{"manifestSha256":"%s","ledgerSha256":"%s"}\n' \
+      "$(shasum -a 256 "$claude/kernel-mandate.json" | cut -d' ' -f1)" "$(shasum -a 256 "$claude/kernel-mandate.md" | cut -d' ' -f1)" \
+      > "$claude/kernel-mandate.achilles.json"
   }
   sim_uninstall() { HOME="$work/home" node "$repo_root/bin/achilles-uninstall.mjs" "$@" 2>&1; }
   mkdir -p "$claude/hooks/bin"; echo "fake jq" > "$claude/hooks/bin/jq"
@@ -776,7 +714,7 @@ run_scope_simulation() {
   local repo_root="$INSTALL_SIM_REPO_ROOT" work out rc
   work=$(mktemp -d /tmp/achilles-scope-sim-XXXXXX)
   _SIM_SCOPE_WORK="$work"
-  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK" "$_SIM_SCOPE_WORK"' EXIT
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK" "$_SIM_SCOPE_WORK"' EXIT
   sim_postinstall() {  # sim_postinstall <home> <global:true|false> <package dir>
     HOME="$1" npm_config_global="$2" npm_config_cache="$work/npm-cache" CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 node "$3/scripts/postinstall.js" 2>&1
   }
@@ -805,13 +743,13 @@ run_scope_simulation() {
   g_skills=$(ls "$gclaude"/skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
   g_agents=$(ls "$gclaude"/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
   if [ "$g_skills" = "$skills_n" ] && [ "$g_agents" = "$agents_n" ] && [ -f "$gclaude/hooks/commit-message-gate.sh" ] \
-     && [ -f "$gclaude/achilles-qa.kernel-mandate.json" ] && [ -f "$gclaude/kernel-mandate.achilles.json" ] \
+     && [ ! -e "$gclaude/achilles-qa.kernel-mandate.json" ] && [ ! -e "$gclaude/kernel-mandate.achilles.json" ] \
      && [ ! -e "$gclaude/kernel-mandate.json" ] && [ ! -e "$gclaude/skills/achilles" ] \
      && "$JQ" -e '.files["skills/achilles-protocol/SKILL.md"] and .files["hooks/commit-message-gate.sh"] and (.registrations | length > 0)' "$gclaude/achilles-install.json" >/dev/null 2>&1 \
      && [ -z "$(find "$work/lib" -name .claude)" ]; then
-    sim_pass "-g: hooks, every skill and agent, the staged mandate and the record land in ~/.claude; nothing under npm's lib/"
+    sim_pass "-g: hooks, every skill and agent and the record land in ~/.claude, no mandate is staged; nothing under npm's lib/"
   else
-    sim_fail "-g: hooks, every skill and agent, the staged mandate and the record land in ~/.claude; nothing under npm's lib/" "skills=$g_skills/$skills_n agents=$g_agents/$agents_n $(ls "$gclaude" | tr '\n' ' ')"
+    sim_fail "-g: hooks, every skill and agent and the record land in ~/.claude, no mandate is staged; nothing under npm's lib/" "skills=$g_skills/$skills_n agents=$g_agents/$agents_n $(ls "$gclaude" | tr '\n' ' ')"
   fi
   bad_cmds=$(sim_unresolved "$gclaude/settings.json" "\"$gclaude/hooks/" "$gclaude/hooks" '"')
   if [ -n "$(sim_commands "$gclaude/settings.json")" ] && [ -z "$bad_cmds" ] \
@@ -868,7 +806,7 @@ run_scope_simulation() {
         '{session_id:$sid, transcript_path:$t, cwd:$cwd, hook_event_name:$ev, prompt:"tidy the readme", stop_hook_active:false}
          + (if $tool == "" then {} else {tool_name:$tool, tool_input:$input} end)
          + (if $ev == "PostToolUse" then {tool_response:{}} else {} end)')
-      (cd "$plain" && printf '%s' "$payload" | env -u ACHILLES_SESSION_STATE_DIR -u KERNEL_MANDATE_STATE_DIR -u ACHILLES_PROTOCOL \
+      (cd "$plain" && printf '%s' "$payload" | env -u ACHILLES_SESSION_STATE_DIR -u ACHILLES_PROTOCOL \
         HOME="$ghome" CLAUDE_PROJECT_DIR="$plain" sh -c "$cmd" >/dev/null 2>&1)
       if [ "$?" = 127 ] || [ -z "$cmd" ]; then unrun="$unrun $ev:$cmd"; else ran=$((ran + 1)); fi
     done < <("$JQ" -r '.hooks | to_entries[] | .key as $ev | .value[] | (.matcher // "") as $m | .hooks[] | [$ev, $m, .command] | join("\u001f")' "$gclaude/settings.json")
@@ -901,11 +839,13 @@ run_scope_simulation() {
     sim_fail "local: the routing skill and its record are the only files written user-level" "$(printf '%s' "$user_files" | head -5 | tr '\n' ' ')"
   fi
   bad_cmds=$(sim_unresolved "$lclaude/settings.json" '"$CLAUDE_PROJECT_DIR"/.claude/hooks/' "$lclaude/hooks" '')
-  if [ "$l_skills" = "$skills_n" ] && [ "$l_agents" = "$agents_n" ] && [ -f "$lclaude/kernel-mandate.json" ] && [ -f "$lclaude/achilles-install.json" ] \
+  if [ "$l_skills" = "$skills_n" ] && [ "$l_agents" = "$agents_n" ] && [ ! -e "$lclaude/kernel-mandate.json" ] && [ -f "$lclaude/achilles-install.json" ] \
+     && [ ! -e "$lclaude/hooks/achilles-kernel-activation-gate.sh" ] && [ ! -e "$lclaude/hooks/kernel-mandate-role-gate.sh" ] \
+     && ! grep -q 'kernel' "$lclaude/settings.json" \
      && [ -n "$(sim_commands "$lclaude/settings.json")" ] && [ -z "$bad_cmds" ] && [ ! -e "$lclaude/skills/achilles" ]; then
-    sim_pass "local: hooks, project-relative registrations, every skill and agent, the mandate and the record land in the project"
+    sim_pass "local: hooks, project-relative registrations, every skill and agent and the record land in the project; no kernel hook, no mandate"
   else
-    sim_fail "local: hooks, project-relative registrations, every skill and agent, the mandate and the record land in the project" "skills=$l_skills agents=$l_agents bad=$(printf '%s' "$bad_cmds" | head -2)"
+    sim_fail "local: hooks, project-relative registrations, every skill and agent and the record land in the project; no kernel hook, no mandate" "skills=$l_skills agents=$l_agents bad=$(printf '%s' "$bad_cmds" | head -2)"
   fi
 
   # The routing skill decides by a path the local install writes and a project without Achilles lacks.
@@ -1003,7 +943,7 @@ run_npm_global_simulation() {
   local repo_root="$INSTALL_SIM_REPO_ROOT" work out rc cache
   work=$(mktemp -d /tmp/achilles-npm-sim-XXXXXX)
   _SIM_NPM_WORK="$work"
-  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK" "$_SIM_SCOPE_WORK" "$_SIM_NPM_WORK"' EXIT
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK" "$_SIM_SCOPE_WORK" "$_SIM_NPM_WORK"' EXIT
   cache=$(npm config get cache 2>/dev/null)
 
   # A step that throws: the install still exits 0, says so, and the record lets uninstall reverse it.
@@ -1060,7 +1000,6 @@ run_npm_global_simulation() {
 
 run_install_simulation
 run_upgrade_simulation
-run_mandate_simulation
 run_methodology_simulation
 run_uninstall_simulation
 run_scope_simulation

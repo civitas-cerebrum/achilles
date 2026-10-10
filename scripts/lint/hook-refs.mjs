@@ -15,10 +15,6 @@ import { join } from 'node:path';
 // silently orphan a hook's pointers.
 export function run(report) {
   const detail = [];
-  // The vendored kernel runtime (the files scripts/kernel-mandate.lock.json
-  // pins) is exempt from both halves: its messages cite the kernel's own docs
-  // and schemas, which live upstream and are not shipped here.
-  const VENDORED = new Set(Object.keys(JSON.parse(readFileSync('scripts/kernel-mandate.lock.json', 'utf8')).files));
   const hooks = readdirSync('hooks')
     .filter((f) => f.endsWith('.sh'))
     .map((f) => join('hooks', f));
@@ -35,7 +31,6 @@ export function run(report) {
   let citedPaths = 0;
 
   for (const h of [...hooks, ...libs]) {
-    if (VENDORED.has(h)) continue;
     const raw = readFileSync(h, 'utf8');
     // Strip full-line comments: the message-producing region is what remains.
     const code = raw

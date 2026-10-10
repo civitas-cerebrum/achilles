@@ -14,7 +14,6 @@ if (require.main === module && !context.packageDir.includes('node_modules')) {
 const { installCivitasSkills } = require('./install/skills.js');
 const { installCivitasAgents } = require('./install/agents.js');
 const { installCivitasHooks }  = require('./install/hooks.js');
-const { stageProjectMandate, stageGlobalMandate } = require('./install/mandate.js');
 const { installUserTrigger }   = require('./install/user-trigger.js');
 const { installBundledJq }     = require('./install/jq.js');
 const { installChromium }      = require('./install/chromium.js');
@@ -23,8 +22,6 @@ module.exports = {
   installCivitasSkills,
   installCivitasAgents,
   installCivitasHooks,
-  stageProjectMandate,
-  stageGlobalMandate,
   installUserTrigger,
   installBundledJq,
   installChromium,
@@ -50,7 +47,6 @@ if (require.main === module) {
       ['agent definitions', () => installCivitasAgents()],
       ['bundled jq', () => installBundledJq(context.harnessClaudeDir)],
       ['harness hooks', () => installCivitasHooks(context.harnessClaudeDir)],
-      ['the QA role manifest', () => (context.globalInstall ? stageGlobalMandate() : stageProjectMandate())],
       ...(context.globalInstall ? [] : [['the user-level routing skill', () => installUserTrigger()]]),
       ['chromium', () => installChromium()],
     ];

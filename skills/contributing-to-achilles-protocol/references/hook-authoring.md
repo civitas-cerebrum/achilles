@@ -212,14 +212,6 @@ When you ship a new harness pattern that needs the same distinction, register at
 
 ---
 
-## Vendored kernel
-
-`hooks/kernel-mandate-role-gate.sh` and `hooks/lib/kernel-mandate.sh` are copied verbatim from [civitas-cerebrum/kernel-mandate](https://github.com/civitas-cerebrum/kernel-mandate). Never edit them here.
-
-1. Land the change upstream first.
-2. Re-copy: `KERNEL_MANDATE_SRC=<upstream checkout> npm run sync:kernel-mandate`. Without `KERNEL_MANDATE_SRC` it exits 2.
-3. Commit the copied files with the regenerated `scripts/kernel-mandate.lock.json`. CI runs `node scripts/sync-kernel-mandate.mjs --check` against the lock.
-
 ## Changing a QA role
 
 Edit all three in one commit:
@@ -228,7 +220,7 @@ Edit all three in one commit:
 2. `hooks/data/achilles-qa.kernel-mandate.md` (the ledger, hand-kept).
 3. `agents/*.md`, regenerated with `node scripts/build-agents.mjs`.
 
-Then run `node scripts/lint-doc-drift.mjs` (checks 7 ledger inventory, 10 agents, 12 role dispatch sites) and `bash hooks/tests/run.sh 85-qa-mandate-scopes`.
+Then run `node scripts/lint-doc-drift.mjs` (checks 7 ledger inventory, 10 agents, 12 role dispatch sites). This build ships without the role kernel, so no hook enforces the manifest's grants.
 
 ## Conventions (factory)
 

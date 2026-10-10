@@ -8,16 +8,13 @@ Achilles (`@civitas-cerebrum/achilles`, MIT) is a QA methodology for Claude Code
 
 ## Why
 
-The rules are enforced by hooks and a role kernel, not by prompt text. Each row names the case file that pins the behaviour.
+The rules are enforced by hooks, not by prompt text. This build ships without the role kernel, so role scopes are methodology, not enforced. Each row names the case file that pins the behaviour.
 
 | Rule | Enforced by | Case |
 |---|---|---|
-| The orchestrator cannot write runner config | role kernel | `hooks/tests/cases/71-achilles-kernel-activation-gate.sh` |
-| Secrets-sweep cannot read `.env` or write config | role kernel | `hooks/tests/cases/85-qa-mandate-scopes.sh` |
 | A phase cannot be marked approved without a reviewer envelope | `onboarding-ledger-write-gate` | `hooks/tests/cases/51-onboarding-ledger-write-gate.sh` |
 | MultiEdit is refused while the protocol is active | `achilles-multiedit-gate` | `hooks/tests/cases/88-achilles-multiedit-gate.sh` |
 | A grouped first pass is refused | `standard-mode-first-pass-guard` | `hooks/tests/cases/49-standard-mode-first-pass-guard.sh` |
-| Vendored kernel bytes must match the lock | `sync-kernel-mandate --check` | `hooks/tests/cases/84-sync-kernel-mandate-check.sh` |
 
 Gates stay silent until a session activates the protocol (an Achilles skill runs, a protocol-role subagent is dispatched, or an Achilles `/<skill>` command is typed). Operators can switch them off; see [Switches](#switches-and-uninstall).
 
@@ -39,15 +36,14 @@ Then type `/onboarding` and give the app URL. Start Claude Code from the project
 |---|---|
 | `.claude/skills/` | 25 Achilles skills (plus `sql-client`, a dependency's skill; KL-22) |
 | `.claude/agents/` | 22 role agents |
-| `.claude/hooks/` | 41 hook scripts, plus 7 opt-in factory gates in `hooks/factory/` |
+| `.claude/hooks/` | 39 hook scripts, plus 7 opt-in factory gates in `hooks/factory/` |
 | `.claude/settings.json` | hook registrations, as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`; existing hooks kept |
-| `.claude/kernel-mandate.json`, `.claude/kernel-mandate.md` | the role manifest and its human-readable ledger; an existing manifest is never overwritten (KL-11) |
 | `.claude/achilles-install.json` | install record, used by `achilles-uninstall` |
 | `~/.claude/skills/achilles/SKILL.md` | the only user-level file Achilles writes: a routing skill that sends an e2e test request to the project's Achilles or, in a project without it, mentions the install once and lets Claude carry on (recorded in `~/.claude/achilles-install.json`) |
 
 A local install also fetches a jq binary into `.claude/hooks/bin/` (pinned by sha256) and the Chromium used for live-DOM inspection. An earlier local install's user-level skills and agents are removed while unedited.
 
-To install for every project instead, run `npm i -g @civitas-cerebrum/achilles`. Everything in the table then lands in `~/.claude/` with no routing skill: registrations are quoted absolute paths into `~/.claude/hooks/`, and the mandate is staged as `~/.claude/achilles-qa.kernel-mandate.json`, which governs any project that has no `.claude/kernel-mandate.json` of its own. A local install beside a global one leaves `~/.claude` alone; user-level skills then win over the project's copies of the same name.
+To install for every project instead, run `npm i -g @civitas-cerebrum/achilles`. Everything in the table then lands in `~/.claude/` with no routing skill: registrations are quoted absolute paths into `~/.claude/hooks/`. A local install beside a global one leaves `~/.claude` alone; user-level skills then win over the project's copies of the same name.
 
 Onboarding runs eight phases: scaffold, groundwork, happy path, journey map, coverage, bug hunt, secrets sweep, summary deck. It dispatches many subagents. Expect it to consume a large share of a Claude plan's usage window; no cost or duration figure is published yet. Phase contract: [`skills/onboarding/SKILL.md`](skills/onboarding/SKILL.md). Other entry phrases: "increase coverage", "find bugs", "repair the suite", "verify the checkout flow with evidence", "QA this ticket", "perf-onboard this project".
 
@@ -88,24 +84,24 @@ Adjust the variable names to the keys in your `.env`. The snippet shards two way
 
 ## Verify it works
 
-In a session where an Achilles skill is active, ask the agent to write `playwright.config.ts`. The call is refused:
+In a session where an Achilles skill is active, ask the agent to change a file with MultiEdit. The call is refused:
 
 ```text
-[BLOCKED] Role 'orchestrator' may not write 'playwright.config.ts' — it is outside the role's write scope.
+[BLOCKED] MultiEdit is not inspected by the Achilles Write/Edit gates while the protocol is active; use Edit or Write: re-issue the change as one Edit per replacement, or one Write with the full file.
 ```
 
-Case: `hooks/tests/cases/71-achilles-kernel-activation-gate.sh`. Without an active Achilles session the same write is allowed, because the gates are dormant. To run the refusal without a session, pipe a payload to the installed gate:
+Case: `hooks/tests/cases/88-achilles-multiedit-gate.sh`. Without an active Achilles session the same call is allowed, because the gates are dormant. To run the refusal without a session, pipe a payload to the installed gate:
 
 ```bash
-printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"%s/playwright.config.ts","content":"x"}}' "$PWD" "$PWD" \
-  | CLAUDE_PROJECT_DIR=$PWD ACHILLES_PROTOCOL=1 .claude/hooks/achilles-kernel-activation-gate.sh
+printf '{"session_id":"s1","cwd":"%s","hook_event_name":"PreToolUse","tool_name":"MultiEdit","tool_input":{"file_path":"%s/tests/e2e/a.spec.ts","edits":[]}}' "$PWD" "$PWD" \
+  | CLAUDE_PROJECT_DIR=$PWD ACHILLES_PROTOCOL=1 .claude/hooks/achilles-multiedit-gate.sh
 ```
 
-From a repository checkout, `npm test` runs every suite (schemas, kernel lock, doc-drift lint, hooks, factory gates, CLIs, reporter, agents) and exits non-zero on any failure. `npm run test:hooks` runs the hook suite alone.
+From a repository checkout, `npm test` runs every suite (schemas, doc-drift lint, hooks, factory gates, CLIs, reporter, agents) and exits non-zero on any failure. `npm run test:hooks` runs the hook suite alone.
 
 ## Governance model
 
-While an Achilles skill is active, a role kernel checks every tool call. The main session is the `orchestrator`; each subagent is bound to the role its dispatch brief names. The manifest defines 23 roles, each with read and write scopes, command patterns and imports. Full grants: [role ledger](hooks/data/achilles-qa.kernel-mandate.md). Dispatch grammar (`<role>-<slug>:` description, `<<kernel-mandate-role: ROLE#nonce>>` first line of the brief): [roles-and-dispatch.md](skills/achilles-protocol/references/roles-and-dispatch.md).
+This build ships without the role kernel: no hook checks a tool call against a role's scope, so the roles below are methodology, not enforced. The main session is the `orchestrator`; each subagent takes the role its dispatch brief names. The manifest defines 23 roles, each with read and write scopes, command patterns and imports. Full grants: [role ledger](hooks/data/achilles-qa.kernel-mandate.md). Dispatch grammar (`<role>-<slug>:` description, `<<kernel-mandate-role: ROLE#nonce>>` first line of the brief): [roles-and-dispatch.md](skills/achilles-protocol/references/roles-and-dispatch.md).
 
 | Role family | Writes | Does not |
 |---|---|---|
@@ -116,39 +112,25 @@ While an Achilles skill is active, a role kernel checks every tool call. The mai
 | approvers (`workflow-reviewer`, `phase-validator`, `process-validator`, `perf-reviewer`) | one verdict file | author the deliverables; run commands |
 | change loop (`implementer`, `live-inspector`, `task-reviewer`, `verifier`, `doc-author`) | per-change artifacts under `docs/evidence/`, `tests/**` | `verifier` alone sets `Status: complete` on its note |
 
-Real refusals, from the installed gate:
-
-```text
-[BLOCKED] Role 'orchestrator' may not write 'playwright.config.ts' — it is outside the role's write scope.
-[BLOCKED] Role 'orchestrator' may not run this command — the segment 'npm test' matches none of the role's permitted command patterns.
-```
-
-The first is pinned by `71-achilles-kernel-activation-gate.sh`, the second by `85-qa-mandate-scopes.sh` ("orchestrator npm test").
-
 ## Switches and uninstall
 
 | Switch | Effect |
 |---|---|
-| `KERNEL_MANDATE=0` | bypasses the role kernel; Achilles gates still run |
 | `ACHILLES_PROTOCOL=0` | a new session does not activate the protocol |
 | `achilles-factory-rules.json` in the project root | opts into the 7 factory gates; absent, they allow |
-| `npx achilles-uninstall --project [dir]` | removes hooks, registrations, skills, agents and mandate files recorded at install in the project; `--global` instead reverses `~/.claude` (a global install, or the routing skill) |
+| `npx achilles-uninstall --project [dir]` | removes hooks, registrations, skills and agents recorded at install in the project, and an unedited mandate an earlier install staged; `--global` instead reverses `~/.claude` (a global install, or the routing skill) |
 
-The 42 switches and opt-in files, with blast radius (lint checks the 35 the code reads): [opt-in-surfaces.md](skills/achilles-protocol/references/opt-in-surfaces.md). The kernel is an operator-controlled guard, not a barrier against the operator.
+The 36 switches and opt-in files, with blast radius (lint checks the 31 the code reads): [opt-in-surfaces.md](skills/achilles-protocol/references/opt-in-surfaces.md).
 
-Counts: 48 hook scripts (41 in `hooks/` plus 7 factory gates), 39 of them named `*-gate.sh` or `*-guard.sh`.
+Counts: 46 hook scripts (39 in `hooks/` plus 7 factory gates), 37 of them named `*-gate.sh` or `*-guard.sh`.
 
 ## Known limits
 
-Full table (22 rows): [known-limits.md](skills/achilles-protocol/references/known-limits.md).
+Full table (10 rows): [known-limits.md](skills/achilles-protocol/references/known-limits.md).
 
 | ID | Limit |
 |---|---|
 | KL-03 | the import-boundary gate is a static floor, not a sandbox |
-| KL-05 | `k6 run` and perf worker dispatches are refused under an active kernel; run perf-onboarding with `KERNEL_MANDATE=0` |
-| KL-06 | ticket sign-off on a tracker is refused until the tracker's tools are added to the mandate |
-| KL-07 | `repair-worker-*` dispatches and contribution `gh pr create` are refused under an active kernel |
-| KL-13 | the orchestrator may write anything under `tests/**`; delegation is methodology there |
 | KL-15 | Bash guards judge the plain words of one command line, not aliases or scripts |
 
 ## What Achilles is not
@@ -165,7 +147,7 @@ As of 2026-10; competitor facts come from public pages and third-party summaries
 
 | Alternative | What it does | Where Achilles differs | Where Achilles is behind |
 |---|---|---|---|
-| Playwright MCP or the Playwright planner/generator/healer agents, used directly | Agent explores the live DOM and writes Playwright; process is whatever you prompt | Hooks enforce phase order, role scopes and review envelopes; mutation verdicts check tests can fail | More setup and subagent cost; Playwright's own agents are first-party |
+| Playwright MCP or the Playwright planner/generator/healer agents, used directly | Agent explores the live DOM and writes Playwright; process is whatever you prompt | Hooks enforce phase order and review envelopes; mutation verdicts check tests can fail | More setup and subagent cost; Playwright's own agents are first-party |
 | QA skill packs (for example qaskills.sh) | Advisory skills installed into an agent | Enforced by hooks rather than advisory | Smaller catalogue; no one-command install of third-party skills |
 | TesterArmy e2e (Apache-2.0, launched July 2026) | Plain-English steps recorded and replayed without a model; web and mobile; JUnit and a GitHub Action | Plain Playwright output; role separation | No run-time replay, no mobile, Claude Code only, CI recipe untested here |
 | Hosted AI testing (Momentic, QA Wolf, Octomind and others) | Managed or SaaS authoring and maintenance with dashboards | Local, MIT, no vendor-held tests | No hosted runner, no dashboard, no vendor support, no benchmark |
@@ -190,7 +172,7 @@ History goes to `.achilles/history/tests.ndjson` (`failed 6 of last 10 runs` app
 
 ## Contributing
 
-Read [`skills/contributing-to-achilles-protocol/`](skills/contributing-to-achilles-protocol/SKILL.md) and [`hook-authoring.md`](skills/contributing-to-achilles-protocol/references/hook-authoring.md). Run `npm test` before opening a PR. The vendored role kernel is maintained upstream; change it there, then `node scripts/sync-kernel-mandate.mjs`.
+Read [`skills/contributing-to-achilles-protocol/`](skills/contributing-to-achilles-protocol/SKILL.md) and [`hook-authoring.md`](skills/contributing-to-achilles-protocol/references/hook-authoring.md). Run `npm test` before opening a PR.
 
 ## License
 

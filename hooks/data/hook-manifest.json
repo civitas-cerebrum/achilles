@@ -25,12 +25,6 @@
       "timeout": 5
     },
     {
-      "file": "achilles-kernel-activation-gate.sh",
-      "event": "PreToolUse",
-      "matcher": ".*",
-      "timeout": 10
-    },
-    {
       "file": "playwright-cli-isolation-guard.sh",
       "event": "PreToolUse",
       "matcher": "Bash",
@@ -370,9 +364,7 @@
       "timeout": 10
     }
   ],
-  "companions": [
-    "kernel-mandate-role-gate.sh"
-  ],
+  "companions": [],
   "legacyEiHooks": [
     "contribution-handover-gate.sh",
     "coverage-expansion-direct-compose-block.sh",

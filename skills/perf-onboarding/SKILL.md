@@ -17,8 +17,6 @@ description: >
 
 # Perf-onboarding — seven-phase performance bootstrap
 
-Under an active role kernel some steps are refused: see [known-limits.md](../achilles-protocol/references/known-limits.md) KL-05.
-
 This is the umbrella methodology for taking a project from zero performance
 tests to a maintained k6 suite with gated SLOs. Once you invoke it with a
 target origin it runs end-to-end without further prompts, surfacing blockers

@@ -46,14 +46,13 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 HOOK_DIR="$HOOKS_DIR"
 
 # Per-run sandbox: cases never touch the operator's ~/.claude, and two runs on one
-# machine never share session markers, kernel bindings or temp files.
+# machine never share session markers or temp files.
 RUN_SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/achilles-hooktests.XXXXXX")"
 trap 'rm -rf "$RUN_SANDBOX"' EXIT
 export HOME="$RUN_SANDBOX/home"
 export TMPDIR="$RUN_SANDBOX/tmp"
 export ACHILLES_SESSION_STATE_DIR="$HOME/.claude/achilles/sessions"
-export KERNEL_MANDATE_STATE_DIR="$HOME/.claude/kernel-mandate-state"
-mkdir -p "$HOME" "$TMPDIR" "$ACHILLES_SESSION_STATE_DIR" "$KERNEL_MANDATE_STATE_DIR"
+mkdir -p "$HOME" "$TMPDIR" "$ACHILLES_SESSION_STATE_DIR"
 
 # Runs one case file in a subshell so exports, cwd and counters cannot leak into the next file;
 # results come back through $RUN_SANDBOX. A file that exits before finishing is a harness error.
@@ -110,7 +109,6 @@ ALLOW_ONLY_OK=(
   62-postinstall-prune-dangling.sh        # not a hook: installer behaviour, checked by state
   75-self-repair-known-defect.sh          # not a hook: classifier output
   82-postinstall-install-scope.sh         # not a hook: installer behaviour, checked by state
-  84-sync-kernel-mandate-check.sh         # not a hook: a CLI whose refusals are exit codes
 )
 for f in ${selected[@]+"${selected[@]}"}; do
   name="$(basename "$f")"

@@ -34,7 +34,7 @@ jobs:
           v=$(node -p "require('./package.json').version")
           [ "$GITHUB_REF_NAME" = "$v" ] || { echo "tag $GITHUB_REF_NAME ≠ package.json $v"; exit 1; }
 
-      # All eight suites: schemas, kernel lock, doc-drift lint, hooks, factory gates, CLIs, reporter, agents.
+      # All seven suites: schemas, doc-drift lint, hooks, factory gates, CLIs, reporter, agents.
       - name: ✅  Suites (npm test)
         run: npm test
 

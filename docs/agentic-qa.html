@@ -770,7 +770,7 @@
     </div>
 
     <div class="prose reveal">
-      <p>48 hooks ship with the package. That count is the 41 top-level hook scripts plus 7 opt-in factory gates under <code class="inline-code">hooks/factory/</code>. 39 are enforcement gates, defined as scripts whose name ends in <code class="inline-code">-gate.sh</code> or <code class="inline-code">-guard.sh</code>; the rest record state or write summaries. 47 are registered in <code class="inline-code">hooks/data/hook-manifest.json</code>; the 48th, <code class="inline-code">kernel-mandate-role-gate</code>, is run by the kernel wrapper (see the role kernel below). Hooks register with Claude Code at <code class="inline-code">npm postinstall</code>: per project with a plain install, system-wide with <code class="inline-code">npm install -g</code>.</p>
+      <p>46 hooks ship with the package. That count is the 39 top-level hook scripts plus 7 opt-in factory gates under <code class="inline-code">hooks/factory/</code>. 37 are enforcement gates, defined as scripts whose name ends in <code class="inline-code">-gate.sh</code> or <code class="inline-code">-guard.sh</code>; the rest record state or write summaries. All 46 are registered in <code class="inline-code">hooks/data/hook-manifest.json</code>. Hooks register with Claude Code at <code class="inline-code">npm postinstall</code>: per project with a plain install, system-wide with <code class="inline-code">npm install -g</code>.</p>
       <p>Hooks pass through unless the protocol is active in the session. Activation comes from <code class="inline-code">ACHILLES_PROTOCOL=1</code>, an Achilles skill call, a typed <code class="inline-code">/&lt;skill&gt;</code> or an Achilles-shaped dispatch. <code class="inline-code">ACHILLES_PROTOCOL=0</code> stops a new session from activating; it does not deactivate a session that is already active. A few hooks have their own scope and run regardless (the four ledger gates, <code class="inline-code">client-term-guard</code>, <code class="inline-code">deck-inspection-gate</code>).</p>
     </div>
 
@@ -788,11 +788,6 @@
         <div class="gate-name">achilles-import-boundary-gate</div>
         <div class="gate-blocks">PreToolUse:Edit|Write<br />Static screen: nothing the orchestrator's <code class="inline-code">npx playwright test</code> loads may import or point outside <code class="inline-code">tests/</code> (allowlisted packages and Node builtins only; dynamic or unparseable constructs deny).</div>
         <div class="gate-pre">none</div>
-      </div>
-      <div class="gate-row">
-        <div class="gate-name">achilles-kernel-activation-gate</div>
-        <div class="gate-blocks">PreToolUse:.*<br />Registered wrapper: runs the vendored kernel only while the protocol is active and relays its verdict and exit status unchanged.</div>
-        <div class="gate-pre"><code class="inline-code">KERNEL_MANDATE=0</code> in the operator shell</div>
       </div>
       <div class="gate-row">
         <div class="gate-name">achilles-multiedit-gate</div>
@@ -1035,10 +1030,7 @@
 
     <div class="prose reveal">
       <h3>The role kernel</h3>
-      <p>The role kernel gives each dispatched role its own grants: allowed tools, Bash command patterns, readable paths and writable paths. The package ships 23 roles in <code class="inline-code">hooks/data/achilles-qa.kernel-mandate.json</code>. Postinstall stages that file as <code class="inline-code">.claude/kernel-mandate.json</code> and never overwrites a project copy; an upgrade writes the new mandate beside it as <code class="inline-code">kernel-mandate.achilles-new.json</code> (KL-11). The kernel is vendored and maintained upstream. Decisions are logged to <code class="inline-code">.claude/kernel-mandate.state/decision-log.jsonl</code>.</p>
-      <p><strong>When it binds.</strong> The registered hook is <code class="inline-code">achilles-kernel-activation-gate</code>, a wrapper that runs the kernel only while an Achilles skill is running. A project that only installed the package is not governed until a skill starts. If the kernel script is missing, the wrapper denies when the project has a <code class="inline-code">kernel-mandate.json</code> and allows otherwise.</p>
-      <p><strong>How to switch it off.</strong> Set <code class="inline-code">KERNEL_MANDATE=0</code> (or <code class="inline-code">false</code> or <code class="inline-code">off</code>) in the operator shell. This bypasses the kernel only; the Achilles gates above keep running. It exists because some work is refused under an active kernel: perf-onboarding, <code class="inline-code">repair-worker-*</code> dispatches and contribution handovers (KL-05, KL-07).</p>
-      <p><strong>What it does not do.</strong> It does not read dispatch briefs (KL-01), it screens code that roles write rather than sandboxing it (KL-02), and the orchestrator may still write under <code class="inline-code">tests/**</code> (KL-13). Denials are pinned by <code class="inline-code">hooks/tests/cases/85-qa-mandate-scopes.sh</code>.</p>
+      <p>This build ships without the role kernel. The 23 roles in <code class="inline-code">hooks/data/achilles-qa.kernel-mandate.json</code> describe each role's tools, commands and paths, and the agent definitions are generated from them, but no hook enforces those grants and postinstall stages no mandate. Roles are methodology; the Achilles gates above still run.</p>
     </div>
     <div class="code-block reveal" style="color: var(--muted);">
       <span style="color: #ef4444;">&#x276F; [BLOCKED]</span> Role 'orchestrator' may not write 'playwright.config.ts' &mdash; it is outside the role's write scope.<br />
@@ -1088,7 +1080,7 @@
       <p>What is <strong>not</strong> here yet is the rest of the lifecycle. The agent skills, the harness gates, and the self-repair driver all assume a Playwright browser session today. <strong>Mobile support is on the roadmap, not in the package.</strong> Until it lands, treat everything on this page as a doctrine for web applications &mdash; the methodology generalises, the tooling does not yet.</p>
 
       <div class="sub-tag" style="margin-top: 40px;">What Achilles Is Not</div>
-      <p>It is not a hosted runner: suites run on your machine or your CI. It runs on Claude Code only. It does not cover native mobile. It does not heal tests at runtime: <code class="inline-code">achilles-self-repair</code> works offline on a red suite. No benchmark of detection or flake rates is published. The 22 known limits (KL-01 to KL-22) are in <code class="inline-code">known-limits.md</code>.</p>
+      <p>It is not a hosted runner: suites run on your machine or your CI. It runs on Claude Code only. It does not cover native mobile. It does not heal tests at runtime: <code class="inline-code">achilles-self-repair</code> works offline on a red suite. No benchmark of detection or flake rates is published. The 10 known limits (IDs up to KL-22; retired IDs are not reused) are in <code class="inline-code">known-limits.md</code>.</p>
     </div>
   </div>
 </section>
@@ -1126,8 +1118,8 @@
 
     <div class="prose reveal">
       <p>Install the two npm packages. The harness hooks register automatically via <code class="inline-code">postinstall</code>. Point the page repository at your application's selectors. Write new tests through the Steps API &mdash; existing Playwright tests continue to run unchanged alongside them.</p>
-      <p>Achilles runs on <strong>Claude Code only</strong>, version 0.2.0: <code class="inline-code">postinstall</code> registers the hooks and the role kernel as Claude Code hooks. The hook scripts are plain shell that read a tool call on stdin and return an allow or deny decision, but nothing else registers them, and the skills assume Claude Code tools.</p>
-      <p>After install, the 39 enforcement gates act in any session where an Achilles skill runs; they pass through otherwise. The 7 factory gates are separate and start only when you commit a rule file. Sign-off then requires an evidence bundle and an adversarial review receipt. To remove Achilles, run <code class="inline-code">npx achilles-uninstall</code> (<code class="inline-code">--global</code>, <code class="inline-code">--project &lt;dir&gt;</code> and <code class="inline-code">--dry-run</code> are accepted); it reverses what postinstall recorded in <code class="inline-code">achilles-install.json</code>. Other CLIs in the package: <code class="inline-code">achilles-mutate</code>, <code class="inline-code">achilles-show</code>, <code class="inline-code">achilles-self-repair</code>, <code class="inline-code">achilles-scenario-lint</code>, <code class="inline-code">achilles-selector-evidence</code>.</p>
+      <p>Achilles runs on <strong>Claude Code only</strong>, version 0.2.0: <code class="inline-code">postinstall</code> registers the hooks as Claude Code hooks. The hook scripts are plain shell that read a tool call on stdin and return an allow or deny decision, but nothing else registers them, and the skills assume Claude Code tools.</p>
+      <p>After install, the 37 enforcement gates act in any session where an Achilles skill runs; they pass through otherwise. The 7 factory gates are separate and start only when you commit a rule file. Sign-off then requires an evidence bundle and an adversarial review receipt. To remove Achilles, run <code class="inline-code">npx achilles-uninstall</code> (<code class="inline-code">--global</code>, <code class="inline-code">--project &lt;dir&gt;</code> and <code class="inline-code">--dry-run</code> are accepted); it reverses what postinstall recorded in <code class="inline-code">achilles-install.json</code>. Other CLIs in the package: <code class="inline-code">achilles-mutate</code>, <code class="inline-code">achilles-show</code>, <code class="inline-code">achilles-self-repair</code>, <code class="inline-code">achilles-scenario-lint</code>, <code class="inline-code">achilles-selector-evidence</code>.</p>
     </div>
   </div>
 </section>

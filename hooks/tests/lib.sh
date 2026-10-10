@@ -366,8 +366,3 @@ init_repo() {
 }
 # activate_session <session-id> — mark the session protocol-active.
 activate_session() { mkdir -p "$ACHILLES_SESSION_STATE_DIR"; : > "$ACHILLES_SESSION_STATE_DIR/$1.active"; }
-# stage_qa_mandate <project-dir> — the shipped QA mandate governs that project; state lives beside the project dir.
-stage_qa_mandate() {
-  mkdir -p "$1/.claude"; cp "$HOOK_DIR/data/achilles-qa.kernel-mandate.json" "$1/.claude/kernel-mandate.json"
-  export KERNEL_MANDATE_MANIFEST="$1/.claude/kernel-mandate.json" KERNEL_MANDATE_STATE_DIR="${1%/*}/state"
-}

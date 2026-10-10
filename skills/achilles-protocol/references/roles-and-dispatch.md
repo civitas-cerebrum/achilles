@@ -2,7 +2,7 @@
 
 ## How the kernel binds in Achilles
 
-[`achilles-kernel-activation-gate.sh`](../../../hooks/achilles-kernel-activation-gate.sh) (PreToolUse, every tool) runs the vendored kernel only while the Achilles protocol is active in the session. It relays the kernel's verdict unchanged; with no active session the kernel is not consulted. The kernel reads `.claude/kernel-mandate.json` (staged from `hooks/data/achilles-qa.kernel-mandate.json`); under a global install, a project without one is governed by `~/.claude/achilles-qa.kernel-mandate.json`. The main session is the `orchestrator` role. Roles and grants: [role ledger](../../../hooks/data/achilles-qa.kernel-mandate.md). Kernel internals: the upstream [kernel-mandate](https://github.com/civitas-cerebrum/kernel-mandate) repo.
+This build ships without the role kernel. No hook checks a tool call against a role's grants, and postinstall stages no `.claude/kernel-mandate.json`. Roles, their grants and the dispatch grammar below are methodology, not enforcement: where this page or the role ledger says something is refused or binds, no kernel does it in this build. The Achilles gates in [harness-hooks.md](harness-hooks.md) still run. The main session is the `orchestrator` role. Roles and grants: [role ledger](../../../hooks/data/achilles-qa.kernel-mandate.md), kept as data; `scripts/build-agents.mjs` generates `agents/*.md` from `hooks/data/achilles-qa.kernel-mandate.json`.
 
 Prerequisite: postinstall installs one agent definition per role into the project's `.claude/agents/` (`~/.claude/agents/` with `npm i -g`).
 
@@ -47,7 +47,7 @@ The orchestrator dispatches every step and each note has one writer, so these ar
 
 ## Verify, switch off, limits
 
-- Verify: `bash hooks/tests/run.sh 85-qa-mandate-scopes`.
+- Verify: `node scripts/lint-doc-drift.mjs` (role inventory, agents, role dispatch sites).
 - Switches: [opt-in-surfaces.md](opt-in-surfaces.md).
 - Deactivation: a terminal ledger write (`complete`/`aborted`) by an approver, or session end; no mid-session off switch ([harness-hooks.md](harness-hooks.md) §"Session-scoped activation").
-- Limits, including KL-13 (the orchestrator may write `tests/**`; delegating scaffold and specs is methodology): [known-limits.md](known-limits.md).
+- Limits: [known-limits.md](known-limits.md).

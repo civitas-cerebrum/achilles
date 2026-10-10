@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
-    # BSD userland on macOS is the point: the kernel hooks must hold on both.
+    # BSD userland on macOS is the point: the hooks must hold on both.
     strategy:
       fail-fast: false
       matrix:
@@ -45,10 +45,6 @@ jobs:
       - name: 🔎  Schemas
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run schemas:lint
-
-      - name: 🔒  Vendored kernel lock
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: npm run test:lock
 
       - name: 📐  Doc-drift lint
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}

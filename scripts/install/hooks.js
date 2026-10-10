@@ -25,10 +25,7 @@ const { PROJECT_HOOK_PREFIX, hookScriptPath, shellQuote, openRecord, copyTracked
 //                    achilles-factory-rules.json, and every gate exits 0 when
 //                    that file or the rule's id is absent.
 //   companions     — scripts copied beside the hooks but NEVER registered: a
-//                    registered hook execs them. The kernel is
-//                    one — achilles-kernel-activation-gate.sh execs it only while
-//                    the achilles protocol is active; registered directly it
-//                    would govern every session in the project unconditionally.
+//                    registered hook execs them. Empty in this build.
 //   legacyEiHooks  — hooks this package once shipped and dropped; an
 //                    upgrade deletes them and their registrations.
 // What each hook enforces: skills/achilles-protocol/references/harness-hooks.md.

@@ -17,8 +17,6 @@ description: >
 
 # Self-Repair — autonomous per-file suite repair
 
-Under an active role kernel some steps are refused: see [known-limits.md](../achilles-protocol/references/known-limits.md) KL-07.
-
 One pipeline, two front doors:
 
 | Mode | Trigger | Workers | Logging surface |

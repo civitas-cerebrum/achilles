@@ -5,7 +5,6 @@ import { spawnSync } from 'node:child_process';
 
 const SUITES = [
   ['schemas', 'schemas:lint'],
-  ['lock', 'test:lock'],
   ['lint', 'test:lint'],
   ['hooks', 'test:hooks'],
   ['factory', 'test:factory'],
