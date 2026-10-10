@@ -37,21 +37,23 @@ Then type `/onboarding` and give the app URL. Start Claude Code from the project
 
 | Path | What |
 |---|---|
-| `.claude/skills/` | 25 Achilles skills (plus `sql-client`, a dependency's skill) |
+| `.claude/skills/` | 25 Achilles skills (plus `sql-client`, a dependency's skill; KL-22) |
 | `.claude/agents/` | 22 role agents |
 | `.claude/hooks/` | 41 hook scripts, plus 7 opt-in factory gates in `hooks/factory/` |
 | `.claude/settings.json` | hook registrations, as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`; existing hooks kept |
 | `.claude/kernel-mandate.json`, `.claude/kernel-mandate.md` | the role manifest and its human-readable ledger; an existing manifest is never overwritten (KL-11) |
 | `.claude/achilles-install.json` | install record, used by `achilles-uninstall` |
-| `~/.claude/skills/achilles/SKILL.md` | the only user-level file: a routing skill that sends a test request to the project's Achilles or, in a project without it, says how to install it (recorded in `~/.claude/achilles-install.json`) |
+| `~/.claude/skills/achilles/SKILL.md` | the only user-level file Achilles writes: a routing skill that sends an e2e test request to the project's Achilles or, in a project without it, mentions the install once and lets Claude carry on (recorded in `~/.claude/achilles-install.json`) |
 
 A local install also fetches a jq binary into `.claude/hooks/bin/` (pinned by sha256) and the Chromium used for live-DOM inspection. An earlier local install's user-level skills and agents are removed while unedited.
 
-To install for every project instead, run `npm i -g @civitas-cerebrum/achilles`. Everything in the table then lands in `~/.claude/` with no routing skill: registrations are absolute paths into `~/.claude/hooks/`, and the mandate is staged as `~/.claude/achilles-qa.kernel-mandate.json`, which governs any project that has no `.claude/kernel-mandate.json` of its own. A local install beside a global one leaves `~/.claude` alone; user-level skills then win over the project's copies of the same name.
+To install for every project instead, run `npm i -g @civitas-cerebrum/achilles`. Everything in the table then lands in `~/.claude/` with no routing skill: registrations are quoted absolute paths into `~/.claude/hooks/`, and the mandate is staged as `~/.claude/achilles-qa.kernel-mandate.json`, which governs any project that has no `.claude/kernel-mandate.json` of its own. A local install beside a global one leaves `~/.claude` alone; user-level skills then win over the project's copies of the same name.
 
 Onboarding runs eight phases: scaffold, groundwork, happy path, journey map, coverage, bug hunt, secrets sweep, summary deck. It dispatches many subagents. Expect it to consume a large share of a Claude plan's usage window; no cost or duration figure is published yet. Phase contract: [`skills/onboarding/SKILL.md`](skills/onboarding/SKILL.md). Other entry phrases: "increase coverage", "find bugs", "repair the suite", "verify the checkout flow with evidence", "QA this ticket", "perf-onboard this project".
 
-Opt-outs, set before install: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, `CIVITAS_SKIP_HOOK_INSTALL=1`, `CIVITAS_SKIP_JQ_INSTALL=1` (hooks then need `jq` on PATH).
+Opt-outs, set before install: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, `CIVITAS_SKIP_HOOK_INSTALL=1`, `CIVITAS_SKIP_JQ_INSTALL=1` (hooks then need `jq` on PATH), `SQL_CLIENT_SKIP_SKILLS=1` (KL-22). A step that fails prints a warning and the install still succeeds; what was written stays recorded for `achilles-uninstall`.
+
+If npm 11 reports the install script as not approved, run `npm install-scripts approve @civitas-cerebrum/achilles` and install again.
 
 ### Run in CI
 
@@ -138,7 +140,7 @@ Counts: 48 hook scripts (41 in `hooks/` plus 7 factory gates), 39 of them named 
 
 ## Known limits
 
-Full table (21 rows): [known-limits.md](skills/achilles-protocol/references/known-limits.md).
+Full table (22 rows): [known-limits.md](skills/achilles-protocol/references/known-limits.md).
 
 | ID | Limit |
 |---|---|
