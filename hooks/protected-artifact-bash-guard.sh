@@ -234,7 +234,7 @@ judge_command() {
   for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do
     case "$msg:$prev:$a" in 1:-m:'$(cat <<'[\'\"]*|1:--message:'$(cat <<'[\'\"]*) prev="$a"; continue ;; esac
     prev="$a"
-    case "$a" in *'$('*|*'`'*) UNSAFE="$UNSAFE${cmd:-assignment}: command substitution"$'\n'; return 0 ;; esac
+    case "$a" in *'$('*|*'`'*) [ "$cmd" != cd ] || CD_UNSURE=1; UNSAFE="$UNSAFE${cmd:-assignment}: command substitution"$'\n'; return 0 ;; esac
   done
   [ -n "$cmd" ] || return 0
   [ "$CMD_WRAP_BAD" = 0 ] || UNSAFE="${UNSAFE}$cmd: a wrapper carried an unrecognised option"$'\n'

@@ -356,7 +356,7 @@ assert_deny "$HOOK" "$(else_payload 'git -C ../proj clean -fd')" "git -C <projec
 # A literal cd on the line moves the directory later commands resolve in; a cd that does not resolve unproves
 # the writes after it.
 section "protected-bash fail-closed: a same-line cd"
-for c in 'cd tests/e2e && rm -rf docs' 'cd tests && rm -rf e2e' 'cd tests/e2e && git checkout -- docs' 'cd tests/e2e && git restore docs' 'cd "$D" && rm -rf docs'; do
+for c in 'cd tests/e2e && rm -rf docs' 'cd tests && rm -rf e2e' 'cd tests/e2e && git checkout -- docs' 'cd tests/e2e && git restore docs' 'cd "$D" && rm -rf docs' 'cd "$(git rev-parse --show-toplevel)/tests/e2e" && rm -rf docs'; do
   assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "Writes into"
 done
 assert_allow "$HOOK" "$(chdir_payload 'cd src && rm x')" "cd src && rm x"
