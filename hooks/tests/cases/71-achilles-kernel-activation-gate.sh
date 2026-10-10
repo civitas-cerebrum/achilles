@@ -4,8 +4,8 @@
 # puts it there and the QA mandate it consults.
 #
 # Contract under test:
-#   - postinstall registers the WRAPPER on PreToolUse:.* and no longer
-#     registers the raw kernel; the kernel is copied beside the wrapper as
+#   - postinstall registers the WRAPPER on PreToolUse:.*, not the raw
+#     kernel; the kernel is copied beside the wrapper as
 #     a companion (the wrapper execs it), replacing a stale copy.
 #   - hooks/data/achilles-qa.kernel-mandate.json LOADS in the vendored
 #     kernel with the intended boundaries (no role reads src/**

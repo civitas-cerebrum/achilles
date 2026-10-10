@@ -4,7 +4,7 @@
 # Why
 # ---
 # The harness hooks are installed GLOBALLY (~/.claude/settings.json), so
-# historically they fired in every Claude Code session on the machine —
+# without this lib they would fire in every Claude Code session on the machine,
 # including plain development sessions that never touch the achilles
 # methodology. That is wrong scoping: the guardrails exist to protect the
 # METHODOLOGY's artifacts and conventions (ledgers, journey maps, commit

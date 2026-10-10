@@ -228,9 +228,8 @@ run_install_simulation() {
   fi
 
   # --- Assertion: attestation-gate WARNs on an evidence-free approve from a
-  # fake install with NO `yaml` module hoisted. The gate now converts YAML
-  # via the bundle's `tojson` subcommand (P7), so it must not silently
-  # no-op the way the old require('yaml') path did at un-hoisted installs.
+  # fake install with NO `yaml` module hoisted. The gate converts YAML via
+  # the bundle's `tojson` subcommand, so it must not silently no-op there.
   local attest_out attest_msg ev_free_payload
   if ! command -v node >/dev/null 2>&1; then
     sim_fail "attestation-gate WARNs on evidence-free approve from a no-yaml install (tojson path)" "required tool 'node' missing"

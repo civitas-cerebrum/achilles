@@ -727,7 +727,7 @@ export WORKSPACE_ROOT="$WS_GIT"
 
 # The commit gate must ALLOW — the receipt hash matches the per-file diff,
 # even though the full staging area (which includes package-lock.json) has a
-# different hash.  This would have BLOCKED under the old unscoped hash logic.
+# different hash.
 assert_allow "$H" \
   "$(payload tool_name=Bash command="git commit -m 'feat: add testid'" hook_event_name=PreToolUse cwd="$WS_GIT")" \
   "commit gate: extra staged file present but hash scoped to receipt files → ALLOW"
