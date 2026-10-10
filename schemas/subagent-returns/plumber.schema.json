@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/subagent-returns/plumber.schema.json",
+  "title": "Plumber return",
+  "description": "Return shape for a `plumber-<slug>:` dispatch: the user-approved harness repair role (skills/plumber/SKILL.md). Every change it made is listed with how it was verified, so the orchestrator and the user can audit the repair against the plumber log.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["handover", "approval", "diagnosis", "changes", "verification"],
+  "properties": {
+    "handover": {
+      "allOf": [
+        { "$ref": "handover.schema.json" },
+        {
+          "type": "object",
+          "properties": {
+            "role": { "type": "string", "pattern": "^plumber-[a-z0-9-]+$" },
+            "status": { "enum": ["repaired", "partially-repaired", "blocked", "no-change-needed"] }
+          }
+        }
+      ]
+    },
+    "approval": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The user's approval this grant was opened with, verbatim."
+    },
+    "diagnosis": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What was broken, and the evidence for it (hashes, file contents, hook output)."
+    },
+    "changes": {
+      "type": "array",
+      "description": "Every file written, deleted or regenerated, and every installer run. Empty only when status is no-change-needed or blocked.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["target", "action", "why"],
+        "properties": {
+          "target": { "type": "string", "minLength": 1 },
+          "action": { "enum": ["edited", "rewritten", "deleted", "reinstalled", "re-sanctioned", "command"] },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "verification": {
+      "type": "string",
+      "minLength": 1,
+      "description": "How the repair was proved: the gate that was blocking now allows, the chain hash matches, the installed hooks diff clean against the package."
+    },
+    "ledgerRow": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "The approvedDeviations[] entry added to the ledger, when a ledger was repaired."
+    },
+    "followUps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Anything the plumber could not or would not fix, for the user."
+    }
+  }
+}

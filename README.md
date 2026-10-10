@@ -4,7 +4,7 @@
 
 ## What
 
-Achilles (`@civitas-cerebrum/achilles`, MIT) is a QA methodology for Claude Code: 25 skills that take a web app from no tests to a Playwright suite, with hooks that enforce the process at the tool boundary. The output is plain Playwright specs on [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions); they run without the agent. Design background: [Agentic Shift-Left](docs/agentic-shift-left.md).
+Achilles (`@civitas-cerebrum/achilles`, MIT) is a QA methodology for Claude Code: 26 skills that take a web app from no tests to a Playwright suite, with hooks that enforce the process at the tool boundary. The output is plain Playwright specs on [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions); they run without the agent. Design background: [Agentic Shift-Left](docs/agentic-shift-left.md).
 
 ## Why
 
@@ -101,7 +101,7 @@ From a repository checkout, `npm test` runs every suite (schemas, kernel lock, d
 
 ## Governance model
 
-While an Achilles skill is active, a role kernel checks every tool call. The main session is the `orchestrator`; each subagent is bound to the role its dispatch brief names. The manifest defines 23 roles, each with read and write scopes, command patterns and imports. Full grants: [role ledger](hooks/data/achilles-qa.kernel-mandate.md). Dispatch grammar (`<role>-<slug>:` description, `<<kernel-mandate-role: ROLE#nonce>>` first line of the brief): [roles-and-dispatch.md](skills/achilles-protocol/references/roles-and-dispatch.md).
+While an Achilles skill is active, a role kernel checks every tool call. The main session is the `orchestrator`; each subagent is bound to the role its dispatch brief names. The manifest defines 24 roles, each with read and write scopes, command patterns and imports. Full grants: [role ledger](hooks/data/achilles-qa.kernel-mandate.md). Dispatch grammar (`<role>-<slug>:` description, `<<kernel-mandate-role: ROLE#nonce>>` first line of the brief): [roles-and-dispatch.md](skills/achilles-protocol/references/roles-and-dispatch.md).
 
 | Role family | Writes | Does not |
 |---|---|---|

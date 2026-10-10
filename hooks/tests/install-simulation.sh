@@ -251,14 +251,15 @@ FACRULES
   # --- Assertion: upgrade path leaves settings.json unchanged -------------
   # The fixture is the settings.json the pre-split installer wrote (hooks dir
   # as @HOOKS@). Re-running the installer over it must change nothing except
-  # adding the factory gates, which that installer did not register.
+  # adding the hooks that installer did not register: the factory gates and the
+  # plumber hooks (plumber-approval-gate, plumber-audit-log).
   local up="$work/upgrade" fixture="$repo_root/hooks/tests/fixtures/settings-0.1.8-pre-split.json" up_diff
   mkdir -p "$up/.claude"
   sed "s#@HOOKS@#$up/.claude/hooks#g" "$fixture" > "$up/.claude/settings.json"
   cp "$up/.claude/settings.json" "$work/settings-expected.json"
   HOME="$up" CIVITAS_SKIP_JQ_INSTALL=1 node -e "require('$repo_root/scripts/postinstall.js').installCivitasHooks('$up/.claude')" >/dev/null 2>&1
   up_diff=$(diff <("$JQ" -S . "$work/settings-expected.json") \
-    <("$JQ" -S '.hooks |= map_values(map(.hooks |= map(select(.command | contains("/hooks/factory/") | not))) | map(select(.hooks | length > 0)))' "$up/.claude/settings.json") 2>&1)
+    <("$JQ" -S '.hooks |= map_values(map(.hooks |= map(select((.command | contains("/hooks/factory/")) or (.command | test("/hooks/plumber-[a-z-]+\\.sh$")) | not))) | map(select(.hooks | length > 0)))' "$up/.claude/settings.json") 2>&1)
   if [ -z "$up_diff" ]; then
     sim_pass "re-install over the pre-split settings.json leaves it unchanged"
   else

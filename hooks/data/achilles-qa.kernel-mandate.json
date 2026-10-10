@@ -431,6 +431,7 @@
         "phase1",
         "phase2",
         "phase4",
+        "plumber",
         "probe",
         "process-validator",
         "reviewer",
@@ -678,6 +679,64 @@
         "allow": [
           "achilles-protocol",
           "journey-mapping"
+        ]
+      }
+    },
+    "plumber": {
+      "description": "Harness repair role (`plumber-<slug>:`), dispatched only after the user explicitly approves it in their own message (plumber-approval-gate.sh): repairs pipeline state the lock gates refuse to every other role, such as a ledger whose integrity chain drifted, the approver registry, and cycle or coverage state, and reinstalls the harness when the installed hooks drifted from the package. Records every repair as a plumber-repair row in the ledger's approvedDeviations[]; the plumber audit log records every call it makes. Never touches application source, secrets or the session-activation state, and dispatches nothing.",
+      "agentTypes": [
+        "plumber"
+      ],
+      "tools": {
+        "allow": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write"
+        ]
+      },
+      "read": {
+        "allow": [
+          "**",
+          "~/.claude/hooks/**",
+          "~/.claude/settings.json"
+        ],
+        "deny": [
+          "**/.env",
+          "**/.env.*",
+          ".claude/achilles/**"
+        ]
+      },
+      "write": {
+        "allow": [
+          ".achilles/**",
+          "package-lock.json",
+          "package.json",
+          "tests/e2e/docs/**",
+          "tests/perf/docs/**"
+        ],
+        "codeImports": [],
+        "deny": [
+          ".claude/achilles/**"
+        ]
+      },
+      "bash": {
+        "groups": [
+          "plumber-runs"
+        ]
+      },
+      "network": {
+        "allow": [
+          "localhost"
+        ]
+      },
+      "skills": {
+        "allow": [
+          "achilles-protocol",
+          "plumber"
         ]
       }
     },
@@ -1169,6 +1228,20 @@
       "^npx playwright-cli (close-all|kill-all|list)\\b",
       "^npm run verify\\b",
       "^npm run change:start\\b"
+    ],
+    "plumber-runs": [
+      "^npm install\\b",
+      "^npm ci\\b",
+      "^npm rebuild\\b",
+      "^npm run sync-hooks\\b",
+      "^npx achilles-[a-z-]+\\b",
+      "^git status\\b",
+      "^git log\\b",
+      "^git diff\\b",
+      "^git show\\b",
+      "^rm (-f )?tests/(e2e|perf)/docs/\\.ledger-integrity\\.json$",
+      "^shasum\\b",
+      "^sha256sum\\b"
     ],
     "suite-runs": [
       "^npx playwright test\\b"

@@ -45,6 +45,10 @@ The orchestrator dispatches every step and each note has one writer, so these ar
 - Instruction changes: `doc-author` writes `docs/proposals/<topic>.md`; the operator (a human) reviews it and applies it to `CLAUDE.md` or `.claude/skills/**`. No role is granted those paths.
 - The round cap and resuming the same implementer are protocol rules, not path scopes.
 
+## Plumber
+
+`plumber-<slug>:` with `subagent_type: plumber` is the one dispatch the user must approve first: an explicit message of their own that names the plumber. It repairs the harness when a gate has locked it (a ledger "mutated out of band", a stuck dispatch lock, installed hooks that drifted) and records the repair in the ledger and the plumber log. One approval, one dispatch. When to ask and how: [skills/plumber/SKILL.md](../../plumber/SKILL.md). Hooks: [harness-hooks.md](harness-hooks.md) §"Plumber".
+
 ## Verify, switch off, limits
 
 - Verify: `bash hooks/tests/run.sh 85-qa-mandate-scopes`.

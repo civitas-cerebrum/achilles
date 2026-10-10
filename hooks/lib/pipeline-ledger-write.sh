@@ -117,6 +117,16 @@ Fix: re-author the JSON, run \`jq . <<< '<contents>'\` locally to confirm it par
     fi
   fi
 
+  # The user-approved plumber (lib/plumber.sh) repairs a ledger the state machine would refuse.
+  # The shape is still validated above; in place of the transition and approver checks, the
+  # repair must leave its own audit row.
+  hook_lib plumber.sh
+  if plumber_caller_is_plumber "$INPUT"; then
+    pipeline_plumber_audit_row "$TMP_PROPOSED" "$FILE_PATH" && exit 0
+    plumber_audit "$INPUT" ledger-repair "$FILE_PATH"
+    exit 0
+  fi
+
   pipeline_validate_transition "$TMP_PROPOSED" "$FILE_PATH" && exit 0
   AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
   AGENT_TYPE=$(echo "$INPUT" | "$JQ" -r '.agent_type // empty' 2>/dev/null || echo "")
@@ -159,4 +169,38 @@ Fix: $3
 
 See: $4"
   exit 0
+}
+
+# pipeline_plumber_audit_row <proposed> <file_path>
+# A plumber write must ADD an approvedDeviations[] entry whose deviation starts with
+# "plumber-repair:" and whose authorizer is the user's approval, verbatim, and must keep every
+# entry already there. Returns 0 + emits deny when it does not; 1 when the row is in place.
+# Requires: JQ  plumber_live_grant (lib/plumber.sh)
+pipeline_plumber_audit_row() {
+  local proposed="$1" file="$2" approval prior="[]" ok
+  approval=$(plumber_live_grant) || approval=""
+  [ -f "$file" ] && prior=$("$JQ" -c '.approvedDeviations // []' "$file" 2>/dev/null || echo "[]")
+  ok=$("$JQ" -r --argjson prior "$prior" --arg a "$approval" '
+    (.approvedDeviations // []) as $now
+    | ($prior | all(. as $p | $now | index([$p]) != null))
+      and ([$now[] | select(. as $e | $prior | index([$e]) == null)
+            | select((.deviation // "" | startswith("plumber-repair:")) and (.authorizer // "") == $a)]
+           | length > 0)' "$proposed" 2>/dev/null || echo false)
+  [ "$ok" = "true" ] && return 1
+  emit_pre_deny "[BLOCKED] Plumber ledger repair without its audit row.
+
+File: ${file}
+
+A plumber write to a pipeline ledger must add one approvedDeviations[] entry, and keep
+every entry already there:
+
+  { \"phase\": <currentPhase>,
+    \"deviation\": \"plumber-repair: <what was wrong and what you changed>\",
+    \"authorizer\": <the user's approval, verbatim — below> }
+
+The user's approval for this grant:
+${approval}
+
+Fix: add that entry in the same write and re-issue it."
+  return 0
 }

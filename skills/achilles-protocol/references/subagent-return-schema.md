@@ -315,6 +315,7 @@ Explicit deregistration via terminal-status handover is the primary cleanup path
 | `phase4-prioritise-author*` | Phase-4 prioritise-author (`phase4-prioritise-author.schema.json`): convergence + authored journeys |
 | `phase4-cycle-<N>:` | Phase-4 section agent (`section-agent.schema.json`) |
 | `repair-worker-<file-slug>:` | Self-repair worker (`repair-worker.schema.json`): `file:` + `tests[]` with per-test `outcome:` enum (already-green \| known-defect \| healed \| app-bug \| quarantined \| operator-pending \| unresolved), healed requires `fix` + `stability-runs`, app-bug requires `bug-report`; `stage-log[]` mirrors the worker's per-stage announcements. Same schema validates the JSON report a script-mode (`achilles-self-repair`) worker subprocess writes to disk. |
+| `plumber-<slug>:` | Plumber (`plumber.schema.json`): `approval:` verbatim + `diagnosis:` + `changes[]` (target / action / why) + `verification:`; `ledgerRow` when a ledger was repaired. The user must approve the dispatch first ([skills/plumber/SKILL.md](../../plumber/SKILL.md)). |
 | `process-validator-` / `phase1-` / `stage2-` / `cleanup-` / `companion-` / `fd-` | Envelope-sanity only: the §2.0 handover envelope is parsed; no per-role JSON-Schema validation |
 | bare `j-` / bare `sj-` | Silent allow: free-form or unstructured returns; no validation |
 

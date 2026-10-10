@@ -106,7 +106,7 @@ See: ${PIPELINE_MSG_REVIEWER_SKILL} §\"Reject cap\" (3-cycle limit)"
 pipeline_ledger_integrity_check() {
   if [ ! -f "$PIPELINE_LEDGER" ]; then
     if [ -f "$PIPELINE_SIDECAR" ] && [ -n "$("$JQ" -r '.records[-1].sha256 // empty' "$PIPELINE_SIDECAR" 2>/dev/null)" ]; then
-      pipeline_emit_deny "[BLOCKED] ${PIPELINE_MSG_LEDGER_NAME} is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing ${PIPELINE_MSG_SIDECAR_REL} in their own terminal."
+      pipeline_emit_deny "[BLOCKED] ${PIPELINE_MSG_LEDGER_NAME} is missing but its integrity sidecar survives — the ledger appears to have been deleted out of band. Dispatches are blocked until the operator confirms the reset by removing ${PIPELINE_MSG_SIDECAR_REL} in their own terminal, or approves the plumber in their own words so a \`plumber-<slug>:\` dispatch can repair it (skills/plumber/SKILL.md)."
       return 0
     fi
     return 1
@@ -116,7 +116,7 @@ pipeline_ledger_integrity_check() {
     CHAIN_PREV=$("$JQ" -r '.records[-2].sha256 // empty' "$PIPELINE_SIDECAR" 2>/dev/null || echo "")
     LEDGER_HASH=$(file_sha256 "$PIPELINE_LEDGER")
     if [ -n "$CHAIN_LATEST" ] && [ -n "$LEDGER_HASH" ] && [ "$LEDGER_HASH" != "$CHAIN_LATEST" ] && [ "$LEDGER_HASH" != "$CHAIN_PREV" ]; then
-      pipeline_emit_deny "[BLOCKED] ${PIPELINE_MSG_LEDGER_NAME} does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete ${PIPELINE_MSG_SIDECAR_REL} in their own terminal)."
+      pipeline_emit_deny "[BLOCKED] ${PIPELINE_MSG_LEDGER_NAME} does not match its sanctioned hash chain (out-of-band mutation detected). Dispatches are blocked. Surface this to the user — recovery is an operator action (restore the ledger or delete ${PIPELINE_MSG_SIDECAR_REL} in their own terminal), or the user approves the plumber in their own words and you dispatch \`plumber-<slug>:\` to repair it (skills/plumber/SKILL.md)."
       return 0
     fi
   fi

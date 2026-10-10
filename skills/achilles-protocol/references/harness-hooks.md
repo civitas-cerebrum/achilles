@@ -12,6 +12,15 @@ Every hook below acts only in sessions where the protocol is active, except `cli
 
 - **[achilles-protocol-activation-watcher](../../../hooks/achilles-protocol-activation-watcher.sh)**: `PreToolUse:Skill|Agent`, `UserPromptSubmit`, `PostToolUse:Write|Edit`. Observe-only. Writes the session marker `~/.claude/achilles/sessions/<session_id>.active` on an Achilles Skill call, a distinctly Achilles role-prefixed dispatch, or a typed `/<skill>`; retires it on a terminal ledger write; prunes markers older than 7 days. The gates re-check the signatures themselves, so it is a cache. [escape hatch: none; `ACHILLES_PROTOCOL=0` suppresses marking]
 
+### Plumber
+
+The plumber is the user-approved repair role ([skills/plumber/SKILL.md](../../plumber/SKILL.md), role `plumber` in the [QA mandate](../../../hooks/data/achilles-qa.kernel-mandate.md)). It exists so a harness that has locked itself can be repaired inside the session. Shared logic: [`hooks/lib/plumber.sh`](../../../hooks/lib/plumber.sh).
+
+- **[plumber-approval-gate](../../../hooks/plumber-approval-gate.sh)**: `UserPromptSubmit`, `PreToolUse:Agent`. On a prompt the user typed that names the plumber and approves it, with no negation, records one pending approval for the session (pasted blocks are ignored). Denies a plumber dispatch (`plumber-<slug>:`, `subagent_type: plumber`, or a plumber role tag) without a pending approval; allowing one consumes the approval and opens a one-hour grant. Denies a plumber role tag inside any other dispatch. [escape hatch: none; the user's own message is the only way in]
+- **[plumber-audit-log](../../../hooks/plumber-audit-log.sh)**: `PostToolUse:Bash|Write|Edit`. Appends every call the plumber makes to `<project>/.claude/achilles/plumber-log.jsonl`, beside the approval, the dispatch and every exemption a gate granted. Record only. [escape hatch: none]
+
+While a grant is open, a caller the role kernel resolves to `plumber` is exempt from `ledger-integrity-chain` (its Edit re-sanctions the chain), the dispatch ledger gates (a `plumber-<slug>:` dispatch passes the lock), `protected-artifact-bash-guard`, `hook-authored-state-guard` and `harness-self-protection-guard`. `onboarding-ledger-write-gate` still validates the shape, and requires the write to add an `approvedDeviations[]` row whose deviation starts `plumber-repair:` and whose authorizer is the user's approval verbatim. Never exempt: the session-activation state (`.claude/achilles/`) and the kernel's control surfaces. The plumber is recognised only through the kernel, so with `KERNEL_MANDATE=0` or no staged manifest no caller is the plumber.
+
 ## PreToolUse
 
 ### All tools (kernel mandate)

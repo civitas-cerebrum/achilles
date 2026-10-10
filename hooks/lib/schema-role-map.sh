@@ -60,6 +60,7 @@ resolve_schema_role() {
     composition-judge-*)      echo "reviewer-inloop";        return 0 ;;
     probe-*)                  echo "probe";                  return 0 ;;
     repair-worker-*)          echo "repair-worker";          return 0 ;;
+    plumber-*)                echo "plumber";                return 0 ;;
     phase-validator-*)        echo "phase-validator";        return 0 ;;
     # phase4-prioritise-author* is checked BEFORE phase4-cycle-* so the
     # author role wins its dedicated schema; both anchor at string start

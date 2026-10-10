@@ -58,7 +58,7 @@ for ROLE in orchestrator scaffolder test-composer workflow-reviewer \
             implementer task-reviewer verifier live-inspector doc-author; do
   assert_eq "$(grep -c "^### \`$ROLE\`" "$LEDGER")" "1" "ledger documents the $ROLE role exactly once"
 done
-assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "23" "every role carries a refusal list — the half a manifest states only by omission"
+assert_eq "$(grep -c '^\*\*May not\*\*' "$LEDGER")" "24" "every role carries a refusal list — the half a manifest states only by omission"
 assert_eq "$(grep -c 'Snapshot of the upstream render' "$LEDGER")" "0" "the ledger carries no unregenerated snapshot sections"
 assert_eq "$("$JQ" -r '.roles | keys | map(select(. == "batch-reviewer" or . == "in-flight-composer" or . == "selector-diff-validator")) | length' "$MANDATE")" "0" "orphan roles with no dispatch site are gone"
 # The approver roles hold no shell. The ledger must SAY so, in the section

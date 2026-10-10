@@ -38,6 +38,12 @@ pipeline_dispatch_main() {
     exit 0
   fi
 
+  # The plumber repairs the locks this gate enforces, so the locks cannot hold it back.
+  # plumber-approval-gate.sh denies any plumber dispatch the user has not approved.
+  if printf '%s' "$DESCRIPTION" | grep -qE '^[[:space:]]*plumber-[a-z0-9-]+:'; then
+    exit 0
+  fi
+
   pipeline_ledger_integrity_check
   LEDGER_STATE=$?
   [ "$LEDGER_STATE" -eq 2 ] || exit 0

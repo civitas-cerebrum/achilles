@@ -71,6 +71,11 @@ case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 [ -n "$FILE_PATH" ] || exit 0
 
+# The user-approved plumber (lib/plumber.sh) may repair hook-authored state and
+# rewrite progress state; its writes land in the plumber audit log.
+hook_lib plumber.sh
+plumber_targets_root_of_trust "$FILE_PATH" || { plumber_exempt "$INPUT" hook-authored-state-guard && exit 0; }
+
 # A deny ends the hook.
 emit_deny() { emit_pre_deny "$1"; exit 0; }
 

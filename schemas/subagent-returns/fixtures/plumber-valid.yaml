@@ -1,0 +1,20 @@
+handover:
+  role: plumber-ledger-chain
+  cycle: 1
+  status: repaired
+  next-action: resume the pipeline; dispatch workflow-reviewer-phase2 next
+approval: "approve the plumber to repair the ledger"
+diagnosis: >
+  The ledger's sha256 differed from the last sanctioned hash: a reviewer had
+  edited phases[0] from the shell. The content itself was valid and matched
+  the reviewer's returned verdict.
+changes:
+  - target: tests/e2e/docs/onboarding-status.json
+    action: re-sanctioned
+    why: rewrote the verified content through Edit so the integrity chain recorded its hash
+verification: the next ledger Edit and an Agent dispatch both passed the integrity check
+ledgerRow:
+  phase: 2
+  deviation: "plumber-repair: re-sanctioned the ledger after an out-of-band reviewer edit"
+  authorizer: "approve the plumber to repair the ledger"
+followUps: []

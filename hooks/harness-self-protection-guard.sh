@@ -87,6 +87,10 @@ case "$NORM" in
     # achilles-activated sessions; plain dev sessions manage their own
     # hooks/settings freely (lib/achilles-activation.sh).
     achilles_require_active "$INPUT"
+    # The user-approved plumber may repair the installed hooks and settings
+    # (lib/plumber.sh). Never the activation state above.
+    hook_lib plumber.sh
+    plumber_exempt "$INPUT" harness-self-protection-guard && exit 0
     ;;
   *) exit 0 ;;
 esac

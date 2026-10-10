@@ -48,5 +48,6 @@ Every switch that changes what Achilles enforces. `lint-doc-drift` check 8 fails
 | Switch | Effect |
 |---|---|
 | `.claude/onboarding-stop-authorized` | authorises an early stop of the onboarding pipeline |
+| a message you type that names the plumber and approves it ("approve the plumber to repair the ledger") | authorises ONE `plumber-<slug>:` dispatch, which may repair locked pipeline state and reinstall the harness for one hour ([harness-hooks.md](harness-hooks.md) §"Plumber"); a negation in the message, or text you did not type, authorises nothing |
 | deleting the project's `.claude/kernel-mandate.json` | the kernel stops governing the tree |
 | `npx achilles-uninstall [--global] [--project <dir>] [--dry-run]` | removes the hooks, skills, agents and registrations the install record lists (files only while unedited) and an unedited staged mandate; your own settings.json entries stay |

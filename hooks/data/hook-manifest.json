@@ -19,6 +19,24 @@
       "timeout": 5
     },
     {
+      "file": "plumber-approval-gate.sh",
+      "event": "UserPromptSubmit",
+      "matcher": null,
+      "timeout": 5
+    },
+    {
+      "file": "plumber-approval-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "plumber-audit-log.sh",
+      "event": "PostToolUse",
+      "matcher": "Bash|Write|Edit",
+      "timeout": 10
+    },
+    {
       "file": "achilles-protocol-activation-watcher.sh",
       "event": "PostToolUse",
       "matcher": "Write|Edit",

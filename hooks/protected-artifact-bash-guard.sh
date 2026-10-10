@@ -293,6 +293,13 @@ fi
 # nor the active one may strip a marker.
 case "$NAMED$HITS" in *.claude/achilles*) ;; *) achilles_require_active "$INPUT" ;; esac
 
+# The user-approved plumber (lib/plumber.sh) may read and repair protected state from the shell,
+# except the activation state that holds its own approval, grant and audit trail.
+case "$NAMED$HITS" in
+  *.claude/achilles*) ;;
+  *) hook_lib plumber.sh; plumber_exempt "$INPUT" protected-artifact-bash-guard && exit 0 ;;
+esac
+
 if [ -n "$HITS" ]; then
   WHY="Writes into: $(printf '%s' "$HITS" | sort -u | tr '\n' ' ')"
 elif [ -n "$OVERFLOW" ]; then

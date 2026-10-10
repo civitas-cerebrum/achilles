@@ -113,6 +113,17 @@ LATEST=$("$JQ" -r "${CHAIN_FILTER_GET}[-1].sha256 // empty" "$SIDECAR" 2>/dev/nu
 PREVIOUS=$("$JQ" -r "${CHAIN_FILTER_GET}[-2].sha256 // empty" "$SIDECAR" 2>/dev/null || echo "")
 [ -n "$LATEST" ] || exit 0   # malformed sidecar / no chain for this file — bootstrap
 
+# The user-approved plumber (lib/plumber.sh) re-sanctions a drifted chain: its
+# Write/Edit is allowed here, and the Post path above records the new hash.
+hook_lib plumber.sh
+plumber_exempt "$INPUT" ledger-integrity-chain && exit 0
+
+PLUMBER_FIX="Or, without leaving the session: tell the user what drifted and ask them
+to approve the plumber in their own words (e.g. \"approve the plumber to
+repair the ledger\"), then dispatch \`plumber-<slug>:\`. The plumber verifies
+the content, rewrites the file through Edit (re-sanctioning the chain) and
+records the repair in approvedDeviations[]. See skills/plumber/SKILL.md."
+
 if [ ! -f "$FILE_PATH" ]; then
   emit_pre_deny "[BLOCKED] ${CHAIN_KEY} has been deleted out of band — the integrity sidecar still holds its sanctioned hash chain.
 
@@ -122,7 +133,9 @@ that is an operator decision, not an agent action.
 Fix: ask the user to confirm the reset. The user removes BOTH files in
 their own terminal:
   rm tests/e2e/docs/${CHAIN_KEY} tests/e2e/docs/.ledger-integrity.json
-Until then, writes and dispatches that depend on it stay blocked."
+Until then, writes and dispatches that depend on it stay blocked.
+
+${PLUMBER_FIX}"
   exit 0
 fi
 
@@ -141,7 +154,9 @@ Every sanctioned write (Write/Edit through the gates) records its hash in
 Fix: surface this to the user. Recovery is an operator action: the user
 either restores the file's sanctioned content or, to accept the
 out-of-band state, deletes tests/e2e/docs/.ledger-integrity.json in their
-own terminal. The agent cannot self-clear this block."
+own terminal. The agent cannot self-clear this block.
+
+${PLUMBER_FIX}"
   exit 0
 fi
 exit 0
