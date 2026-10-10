@@ -346,21 +346,11 @@ package (see `skills/achilles-protocol/references/stages-protocol.md`).
 
 ## Empirical origin
 
-Markdown-text contract enforcement alone permits silent scope
-compression even when the rules are crisp. Failure modes:
+The reviewer blocks four silent scope compressions:
 
-- The orchestrator skipped a phase entirely without a documented
-  authorisation.
-- The orchestrator stopped early after Phase 5 Pass 1 with no
-  in-flight dispatch (treating Exit #2 as a starting position).
-- Subagents returned `status: complete` with handover envelopes whose
-  deliverables list was missing required sub-deliverables.
-- Phase-boundary handovers omitted the `.discovery-draft.json` write
-  that Phase 4 depends on.
+- skipping a phase without a documented authorisation;
+- stopping early after Phase 5 Pass 1 with no dispatch in flight (Exit #2 is not a starting position);
+- accepting `status: complete` handovers that lack required sub-deliverables;
+- omitting the `.discovery-draft.json` write that Phase 4 depends on at a phase boundary.
 
-The `standard-mode-first-pass-guard.sh` hook addresses the most
-egregious dispatch-shape compressions. The workflow-reviewer + ledger
-addresses the structural compressions: the orchestrator now cannot
-advance a phase / pass / cycle without an `approve` verdict from the
-matching reviewer, and the reviewer's checklist is the methodology
-itself.
+No phase, pass or cycle advances without an `approve` verdict from the matching reviewer, whose checklist is the methodology itself. `standard-mode-first-pass-guard.sh` covers dispatch-shape compression.

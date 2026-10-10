@@ -30,8 +30,6 @@ The orchestrator decides — before dispatching — that running fewer than the 
 - `commit-message-gate.sh` — blocks commits with phase-progression messages on pre-emptively-reduced runs.
 - (markdown-only for novel framings) — the registry's symptom list grows reactively as new framings appear; the failure-mode category is what the orchestrator must recognise.
 
-**Origin:** Recurring failure across multiple onboarding runs — most often surfaced as "evening-or-overnight" framing that dressed scope reduction up as candour. Codified as the §"Two valid exits" rule and the dual-stage no-skip extension; mechanical enforcement followed.
-
 ---
 
 ## Pattern: Self-authorised batching (Stage A grouping)
@@ -48,8 +46,6 @@ The orchestrator decides — before dispatching — to batch P0/P1/P2 journeys i
 
 **Hooks that catch this:**
 - Dispatch-discipline rule: dispatches whose prompt references 2+ distinct `j-<slug>` IDs require a grouped-dispatch prefix (`coverage-expansion/SKILL.md` §"Grouped dispatch").
-
-**Origin:** the no-skip contract + role-prefix tightening, reinforced by brief-cleanup BLOCK promotion.
 
 ---
 
@@ -69,8 +65,6 @@ A subagent (composer, reviewer, or probe) skips the work and self-certifies succ
 **Hooks that catch this:**
 - `subagent-return-schema-guard.sh` — warns (will block) when a `covered-exhaustively` return lacks the per-expectation mapping table; warns when banned tokens (`no-new-tests-by-rationalisation`) appear.
 
-**Origin:** the no-skip contract + the dual-stage contract. Re-pass mode triggers (1–4) exist precisely to force evidence into the certifying-greenlight return.
-
 ---
 
 ## Pattern: Spirit-vs-letter argument
@@ -88,8 +82,6 @@ The orchestrator argues that the rule's spirit is satisfied even though the lett
 **Hooks that catch this:**
 - (markdown-only) — the framing is not mechanically detectable.
 
-**Origin:** Recurring across discipline-failure incidents.
-
 ---
 
 ## Pattern: Compress findings into summary
@@ -105,8 +97,6 @@ A subagent or orchestrator compresses Stage B findings into a "summary string" b
 
 **Hooks that catch this:**
 - (markdown-only) — finding compression happens inside orchestrator briefs, not at the dispatch boundary.
-
-**Origin:** Dual-stage retry-loop design.
 
 ---
 
@@ -124,8 +114,6 @@ The orchestrator infers from earlier-in-the-run telemetry that a given pass / jo
 **Hooks that catch this:**
 - State-file schema rule: the state-file shape must be valid on every Write/Edit, catching stale-state writes.
 
-**Origin:** the no-skip contract + auto-compaction design.
-
 ---
 
 ## Pattern: "MCP tool was in my list, so it must be allowed"
@@ -141,8 +129,6 @@ A subagent reaches for an MCP browser tool surfaced by the harness, on the impli
 
 **Hooks that catch this:**
 - MCP-browser-redirect rule: MCP browser tool calls are forbidden; use the `playwright-cli` equivalent instead.
-
-**Origin:** the MCP→playwright-cli migration, reinforced by the role-prefix tightening.
 
 ---
 
@@ -161,7 +147,7 @@ A subagent's brief asks it to "dispatch N parallel subagents", "spawn workers", 
 **Hooks that catch this:**
 - Subagent-fan-out rule (anti-pattern A): subagent briefs whose body contains "dispatch N parallel subagents", "fan out", "use the Agent tool to dispatch" are forbidden.
 
-**Origin:** Environment constraint surfaced during the MCP→playwright-cli migration. Codified as the recursive-dispatch impossibility in `coverage-expansion/SKILL.md` §"Recursive dispatch is impossible".
+**Rule:** `coverage-expansion/SKILL.md` §"Recursive dispatch is impossible".
 
 ---
 
@@ -199,8 +185,6 @@ The orchestrator decides a journey is "trivial enough" to skip its cycle-1 Stage
 **Hooks that catch this:**
 - State-file schema rule: `review_status: greenlight` entries with `stage_b_cycles: 0` are invalid (the minimum for an actually-dispatched Stage B is 1).
 
-**Origin:** Dual-stage no-skip extension.
-
 ---
 
 ## Pattern: Cycle-7 exhausted → call-it-greenlit
@@ -217,8 +201,6 @@ When the 7-cycle Stage A↔B retry loop reaches cycle 7 without greenlight, the 
 **Hooks that catch this:**
 - State-file schema rule: malformed `review_status` values are invalid; valid values: [state-file-schema.md](state-file-schema.md).
 
-**Origin:** Dual-stage retry-loop design.
-
 ---
 
 ## Pattern: Reviewer-disagreement cherry-picking
@@ -234,8 +216,6 @@ Two consecutive reviewers in cycles N and N+1 disagree about what's must-fix; th
 
 **Hooks that catch this:**
 - (markdown-only) — cherry-picking happens inside orchestrator briefs.
-
-**Origin:** Dual-stage retry-loop design.
 
 ---
 
@@ -254,8 +234,6 @@ The parent orchestrator's brief to a subagent contains pipeline meta-content (de
 **Hooks that catch this:**
 - Brief-cleanup rule (anti-pattern B): pipeline meta-content in subagent briefs is forbidden for `test-composer-`, `reviewer-`, `probe-` prefixes; soft WARN preserved for `cleanup-`/`phase1-`/`phase2-`/`stage2-`.
 
-**Origin:** Codified alongside the dispatch-discipline rules.
-
 ---
 
 ## Pattern: Auto-compact threshold creep
@@ -273,8 +251,6 @@ The orchestrator pushes past the 70% auto-compaction threshold ("one more pass b
 
 **Hooks that catch this:**
 - (markdown-only) — context-percentage decisions are inside the orchestrator's reasoning loop.
-
-**Origin:** §"Auto-compaction between passes" in `references/depth-mode-pipeline.md`.
 
 ---
 
@@ -303,8 +279,6 @@ The cost the orchestrator pays for the dodge:
 - Direct-compose-block rule: PostToolUse:Write|Edit on `tests/e2e/j-*.spec.ts` / `tests/e2e/sj-*.spec.ts` (incl. `-regression`) when `coverage-expansion-state.json` exists is a **hard violation** unless the writer is a legitimate composer subagent (slug in-flight from a recent `test-composer-j-<slug>:` / `probe-j-<slug>:` Agent dispatch). Orchestrator-direct writes break the dual-stage contract — see `test-optimization.md` §1.A (per-test-user pattern) for the upstream parallelism fix.
 - (markdown-only for the generalised task-family scope) — mechanically distinguishing "orchestrator absorbing" from "subagent working" needs an in-flight-registry pattern (`contributing-to-achilles-protocol` §"Approximating `is_subagent`"); until it is revived, partial per-family backing exists via `playwright-cli-isolation-guard.sh` (slug shape), `subagent-schema-preread-gate.sh` (schema-mapped briefs), `composition-judge-gate.sh` (judge-loop leash), and the `workflow-reviewer-pass<N>:` dispatch cross-checks. Reviewer-visible note: the general rule is reviewer-enforced.
 
-**Origin:** v0.3.4 onboarding test surfaced this as a follow-on consequence of "Pre-emptive scope reduction" — the agent identified parallelism risk correctly, then absorbed the work to avoid the risk instead of fixing the risk's upstream cause. Hook + Stage 4a §1.A added in v0.3.5.
-
 ---
 
 ## Pattern: Session state mistaken for per-unit-of-work state ("the skill is already loaded")
@@ -327,7 +301,7 @@ A methodology skill is invoked and followed correctly for one unit of work. The 
 - `adversarial-verification-gate.sh` — the same per-ticket binding on the §8/§8b receipt, with the same DENY/WARN split.
 - (markdown-only for the re-entry act itself) — a hook can observe that a per-unit deliverable is absent at the sign-off boundary; it cannot observe whether the sequence was re-run. The consequence is mechanically detectable; the decision is not. Both gates above are also authored by the same actor they judge, so they raise the cost of forgetting far more than the cost of faking.
 
-**Origin:** A ticket-driven QA session that ran the method properly for one ticket, then posted a tracker verdict for a second ticket with measured numbers and zero artifacts. Redone under `companion-mode`, the proper run immediately surfaced two defects the ad-hoc pass had missed — colliding artifact paths across two environments, and a live deployment protection-bypass token unredacted in the captured HARs. Codified as `ticket-driven-testing` §0.
+**Rule:** `ticket-driven-testing` §0.
 
 ---
 
@@ -395,8 +369,6 @@ Two rules in `skills/ticket-driven-testing/` ship without harness backing. §8d 
 - `test-id-compliance-gate.sh` — `PreToolUse:Write|Edit`. Denies a spec write that adds a case with no stable test ID, or that duplicates an ID inside one file.
 - `bin/self-repair.mjs` — classifies `@known-defect` reds as terminal, so tagging one is cheaper than silencing it and the incentive points the right way.
 
-**Origin:** Codified alongside the test-identity conventions (`skills/achilles-protocol/references/test-identity.md`) when the sweep was made every test-developing mode's exit gate rather than the authoring pipeline's private step.
-
 ---
 
 ## Pattern: Diagnosis from log text alone (evidence floor skipped)
@@ -424,7 +396,7 @@ The diagnoser reads the terminal error, the CI job log, or the stack trace, reco
 
 **Residual (markdown-only):** the hook proves evidence was *accessed*, not that it was *understood* — an agent that opens a trace and then ignores it still passes. Nor can it read the written observation for each floor item, or tell attempt 0's trace from the retry's. Those remain enforced by the skill text and by reviewers.
 
-**Origin:** observed live across three independent diagnosis sessions — one classified three CI regression failures from `gh run view --log-failed` output alone and never downloaded the run artifacts; two others independently reached a wrong root cause by reading framework source from a local tree one patch version ahead of the version CI resolved. Codified as `failure-diagnosis` §"Evidence floor — non-negotiable, both entrypoints, both conclusions", §"Stage 0a — Pin to the run's commit and dependency tree", and §"Stage 0b — Pipeline evidence retrieval".
+**Rule:** `failure-diagnosis` §"Evidence floor — non-negotiable, both entrypoints, both conclusions", §"Stage 0a — Pin to the run's commit and dependency tree", and §"Stage 0b — Pipeline evidence retrieval".
 
 ---
 
@@ -447,8 +419,6 @@ The author of freshly-composed tests decides the mandatory Stage 4c composition 
 - `hooks/subagent-schema-preread-gate.sh` / `subagent-return-schema-guard.sh` — `composition-judge-*` is schema-mapped to `reviewer-inloop.schema.json`, so malformed judge briefs/returns are caught mechanically.
 - (markdown-only for the arming half) — see the deferral entry below: never dispatching a judge at all is not mechanically detectable.
 
-**Origin:** designed-in with the Stage 4c contract (`test-composition-standards.md` §4) — the pattern is the composing-exit analogue of "Self-certifying greenlight" above.
-
 ---
 
 ## Pattern: Test-data feasibility rationalisation ("the content rarely changes")
@@ -467,8 +437,6 @@ A composer pins current environment content — today's top item, the demo tenan
 
 **Hooks that catch this:**
 - (markdown-only) — distinguishing a pinned incidental literal from a legitimate assertion constant requires the scenario's intent; not mechanically detectable at the tool boundary. Judge dimension 4 and the Stage-B reviewer's test-data feasibility calibration bullet are the enforcing readers.
-
-**Origin:** production-suite failures recorded generically in `test-data-conventions` (retry-collision from module-scope identities, shared-account throttling, content-drift false alarms); codified with that skill.
 
 ---
 
@@ -498,8 +466,6 @@ A contributor to the universal achilles repo pastes engagement material — a br
 - `hooks/client-term-guard.sh` (`PreToolUse:Write|Edit`, DENY) — scans writes into this package's repo against the operator-local, gitignored denylist at `<repo-root>/.achilles/client-terms.local.txt`. The term list itself must never live in the repo (the terms ARE client references), so coverage is per-operator opt-in.
 - (markdown-only beyond the denylist) — leakage in vocabulary the operator has not listed, and in commit messages / PR bodies (which do not pass the Write|Edit boundary), is reviewer-enforced.
 
-**Origin:** codified with the universality rule; the leak vector is the worked-example paste from the engagement where a finding was made.
-
 ---
 
 ## Adding a new pattern
@@ -507,7 +473,7 @@ A contributor to the universal achilles repo pastes engagement material — a br
 When a novel rationalisation framing appears that doesn't fit an existing pattern:
 
 1. Match it to an existing pattern first (90% of the time it does fit — the categories are deliberately broad).
-2. If new, add a new section to this file with the same shape (name, symptoms, reality, hooks, origin).
+2. If new, add a new section to this file with the same shape (name, symptoms, reality, hooks).
 3. Update SKILL.md only if the new pattern needs surfacing in the kernel (rare — most patterns belong here).
 4. Open a follow-up issue if the pattern is markdown-only and a hook would close the loophole.
 
