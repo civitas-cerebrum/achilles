@@ -59,7 +59,7 @@
 #      depending on watcher ordering.
 #   7. The session transcript contains an activation signature (a Skill
 #      tool_use naming an achilles skill, a typed /<skill> command, or a
-#      Read of an achilles SKILL.md) → ACTIVE. Covers subagent contexts
+#      tool_use whose file_path is an achilles SKILL.md) → ACTIVE. Covers subagent contexts
 #      and resumed sessions where the activating call predates the
 #      current one. Negative results are cached for 60s per session.
 #   8. Otherwise → INACTIVE (dev session; every gate silent-allows).
@@ -237,14 +237,17 @@ achilles_session_active() {
   fi
   transcript=$(hook_json_str "$input" .transcript_path)
   if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-    if grep -qE "\"skill\"[[:space:]]*:[[:space:]]*\"([a-z0-9./_-]+:)?(${ACHILLES_SKILL_ALT})\"|<command-name>/(${ACHILLES_SKILL_ALT})<|skills/(${ACHILLES_SKILL_ALT})/SKILL\.md" "$transcript" 2>/dev/null; then
+    # The SKILL.md signature is a Read's file_path key, not any mention of the path: a grep
+    # result or file listing that names it would otherwise activate an unrelated session.
+    if grep -qE "\"skill\"[[:space:]]*:[[:space:]]*\"([a-z0-9./_-]+:)?(${ACHILLES_SKILL_ALT})\"|<command-name>/(${ACHILLES_SKILL_ALT})<|\"file_path\"[[:space:]]*:[[:space:]]*\"[^\"]*skills/(${ACHILLES_SKILL_ALT})/SKILL\.md\"" "$transcript" 2>/dev/null; then
       achilles_mark_session_active "$sid"
       return 0
     fi
   fi
 
-  # Plain dev session — stamp the negative cache (best-effort).
-  mkdir -p "$(achilles__state_dir)" 2>/dev/null && date +%s > "$nohit" 2>/dev/null || true
+  # Plain dev session: stamp the negative cache, but only in a state dir an activation
+  # already created. A machine where the protocol never ran keeps no trace of a session.
+  [ -d "$(achilles__state_dir)" ] && date +%s > "$nohit" 2>/dev/null || true
   return 1
 }
 

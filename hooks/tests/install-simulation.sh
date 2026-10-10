@@ -827,6 +827,48 @@ run_scope_simulation() {
     sim_fail "-g: a registration runs from a directory that is no project" "rc=$rc cmd=$cmd"
   fi
 
+  # --- an inactive session in an unrelated directory leaves no trace ---
+  # Every registration in the global settings.json runs, as Claude Code runs it, for a session that
+  # never used Achilles; its transcript only mentions an achilles SKILL.md path in a tool result.
+  local transcript="$work/plain-transcript.jsonl"
+  printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","content":"skills/onboarding/SKILL.md\nskills/test-composer/SKILL.md"}]}}' > "$transcript"
+  sim_plain_session() {  # sim_plain_session <session id> <label>; each session gets a fresh project
+    local plain="$work/plain-$1" before after ev matcher cmd tool input payload ran=0 unrun=""
+    mkdir -p "$plain"; git -C "$plain" init -q; echo "x" > "$plain/a.ts"
+    sim_tree() {
+      find "$ghome" "$plain" -path "$plain/.git" -prune -o -print | LC_ALL=C sort
+      find "$ghome" "$plain" -path "$plain/.git" -prune -o -type f -exec shasum {} + | LC_ALL=C sort
+    }
+    before=$(sim_tree)
+    while IFS=$'\x1f' read -r ev matcher cmd; do
+      tool=${matcher%%|*}
+      case "$tool" in '.*') tool=Bash ;; mcp__*) tool=mcp__x__y ;; esac
+      case "$tool" in
+        Bash) input='{"command":"npx playwright test"}' ;;
+        Write|Edit|MultiEdit) input="{\"file_path\":\"$plain/a.ts\",\"content\":\"y\",\"old_string\":\"x\",\"new_string\":\"y\"}" ;;
+        Agent) input='{"description":"look around","prompt":"x"}' ;;
+        Skill) input='{"skill":"simplify"}' ;;
+        *) input='{}' ;;
+      esac
+      payload=$("$JQ" -nc --arg sid "$1" --arg ev "$ev" --arg tool "$tool" --argjson input "$input" --arg cwd "$plain" --arg t "$transcript" \
+        '{session_id:$sid, transcript_path:$t, cwd:$cwd, hook_event_name:$ev, prompt:"tidy the readme", stop_hook_active:false}
+         + (if $tool == "" then {} else {tool_name:$tool, tool_input:$input} end)
+         + (if $ev == "PostToolUse" then {tool_response:{}} else {} end)')
+      (cd "$plain" && printf '%s' "$payload" | env -u ACHILLES_SESSION_STATE_DIR -u KERNEL_MANDATE_STATE_DIR -u ACHILLES_PROTOCOL \
+        HOME="$ghome" CLAUDE_PROJECT_DIR="$plain" sh -c "$cmd" >/dev/null 2>&1)
+      if [ "$?" = 127 ] || [ -z "$cmd" ]; then unrun="$unrun $ev:$cmd"; else ran=$((ran + 1)); fi
+    done < <("$JQ" -r '.hooks | to_entries[] | .key as $ev | .value[] | (.matcher // "") as $m | .hooks[] | [$ev, $m, .command] | join("\u001f")' "$gclaude/settings.json")
+    after=$(sim_tree)
+    if [ "$before" = "$after" ] && [ "$ran" -gt 0 ] && [ -z "$unrun" ]; then
+      sim_pass "$2: every registered hook runs; the project and ~/.claude stay byte-identical (no .achilles)"
+    else
+      sim_fail "$2: every registered hook runs; the project and ~/.claude stay byte-identical (no .achilles)" "ran=$ran unrun=${unrun:0:120} $(diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | grep '^[<>]' | head -5)"
+    fi
+  }
+  sim_plain_session plain-s1 "inactive session"
+  # The bundled jq present but unrunnable must not read as "no session_id" (which fails closed to active).
+  rm "$gclaude/hooks/bin/jq"; printf '#!/bin/sh\nkill -9 $$\n' > "$gclaude/hooks/bin/jq"; chmod +x "$gclaude/hooks/bin/jq"
+  sim_plain_session plain-s2 "inactive session, unrunnable bundled jq"
   rm -r "$gclaude/hooks/bin"
 
   # --- local ---
