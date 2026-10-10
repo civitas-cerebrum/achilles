@@ -135,6 +135,8 @@ judge_invocation() {
   [ "$mentioned" = 1 ] || return 0
   if ! pw_command_word "${CMD_ARGS[0]:-}" || [ "$CMD_WRAP_BAD" = 1 ]; then
     [ "$CMD_ENV" = 0 ] && shell_is_reader && return 0
+    # Installing the package does not run it.
+    case "${CMD_ARGS[0]:-}:${CMD_ARGS[1]:-}" in npm:install|npm:i|npm:add|pnpm:add|pnpm:install|pnpm:i|yarn:add|bun:add) return 0 ;; esac
     deny_unjudgeable "playwright-cli is named where the guard cannot read the invocation"
   fi
   # Session-agnostic subcommands run without -s= by design; no argument prints the help.

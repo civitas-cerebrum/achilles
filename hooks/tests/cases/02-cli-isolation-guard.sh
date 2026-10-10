@@ -92,6 +92,8 @@ assert_allow "$H" "$(payload tool_name=Bash command='jq ".dependencies[\"@playwr
 assert_allow "$H" "$(payload tool_name=Bash command='pgrep -f playwright-cli')" "pgrep → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='npm ls @playwright/cli')" "npm ls → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='npm view @playwright/cli version')" "npm view → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npm i -D @playwright/cli')" "npm i -D @playwright/cli → silent allow (an install runs nothing)"
+assert_allow "$H" "$(payload tool_name=Bash command='npm install --save-dev @playwright/cli playwright-cli')" "npm install naming the package → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='bash hooks/tests/cases/02-cli-isolation-guard.sh')" "a shell running a script whose path names the guard → silent allow"
 assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "x=playwright-cli"')" "printf of an assignment-shaped string → silent allow"
 
