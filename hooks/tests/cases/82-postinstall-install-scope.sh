@@ -1,9 +1,9 @@
 #!/bin/bash
 # Tests for scripts/postinstall.js install scoping:
-#   - `npm install -g`  → harness system-wide (~/.claude), skills user-level
-#     only — npm's lib/ dir must NEVER receive a .claude/ tree.
-#   - `npm install`     → harness in the consuming project only
-#     (<project>/.claude/hooks + settings.json), skills project + user.
+#   - `npm install -g`  → harness, skills and agents in ~/.claude only; npm's
+#     lib/ dir must NEVER receive a .claude/ tree.
+#   - `npm install`     → harness, skills and agents in the consuming project
+#     only; user-level gets the routing skill (install-simulation.sh).
 #   - installCivitasHooks(claudeDir) honours an explicit target, and the
 #     no-arg call keeps installing user-level (sync-hooks.js compat).
 #
@@ -33,23 +33,24 @@ const pi = require(path.join('$REPO_ROOT', 'scripts', 'postinstall.js'));
 const mode = process.argv[2];
 
 if (mode === 'global-flag') {
-  // npm_config_global=true (set by the wrapper) → global scope: harness under
-  // ~/.claude, skills user-level ONLY — no project-level destination that
-  // would land a .claude/ tree in npm's lib/ dir.
+  // npm_config_global=true (set by the wrapper) → global scope: everything under
+  // ~/.claude, no project-level destination that would land a .claude/ tree in
+  // npm's lib/ dir.
   assert.equal(pi.isGlobalInstall(), true, '-g detected');
   assert.equal(pi.harnessClaudeDir, path.join(home, '.claude'), 'harness → ~/.claude');
   assert.deepEqual(pi.skillsDestinations, [path.join(home, '.claude', 'skills')],
     'skills → user-level only');
+  assert.deepEqual(pi.agentsDestinations, [path.join(home, '.claude', 'agents')],
+    'agents → user-level only');
   console.log('GLOBAL_SCOPE_OK');
 } else if (mode === 'local-flag') {
-  // npm_config_global unset/false in-repo → local scope: harness pinned to
-  // the project, skills to project + user (methodology stays system-wide).
+  // npm_config_global unset/false in-repo → local scope: harness, skills and
+  // agents pinned to the project.
   assert.equal(pi.isGlobalInstall(), false, 'no -g → local');
   assert.ok(!pi.harnessClaudeDir.startsWith(path.join(home, '.claude')),
     'harness dir is NOT user-level on a local install');
-  assert.equal(pi.skillsDestinations.length, 2, 'skills → project + user');
-  assert.ok(pi.skillsDestinations.includes(path.join(home, '.claude', 'skills')),
-    'user-level skills destination kept');
+  assert.deepEqual(pi.skillsDestinations, [path.join(pi.harnessClaudeDir, 'skills')], 'skills → project only');
+  assert.deepEqual(pi.agentsDestinations, [path.join(pi.harnessClaudeDir, 'agents')], 'agents → project only');
   console.log('LOCAL_SCOPE_OK');
 } else if (mode === 'target-dir') {
   // installCivitasHooks(claudeDir) honours the explicit target: hooks +
@@ -91,7 +92,6 @@ if (mode === 'global-flag') {
   const dest = path.join(home, 'agents-dest', 'agents');
   const oldSrc = path.join(home, 'old-agents-src');
   const roles = Object.keys(JSON.parse(fs.readFileSync(path.join('$REPO_ROOT', 'hooks/data/achilles-qa.kernel-mandate.json'), 'utf8')).roles).filter(r => r !== 'orchestrator');
-  assert.ok(pi.agentsDestinations.includes(path.join(home, '.claude', 'agents')), 'user-level agents destination');
   fs.mkdirSync(dest, { recursive: true });
   fs.writeFileSync(path.join(dest, 'fd.md'), 'my own fd agent\n');
   fs.mkdirSync(oldSrc, { recursive: true });
@@ -118,22 +118,22 @@ TESTS_RUN=$((TESTS_RUN + 1))
 OUT=$(HOME="$SCOPE_HOME" npm_config_global=true node "$SCOPE_TEST" global-flag 2>&1 || true)
 if echo "$OUT" | grep -q GLOBAL_SCOPE_OK; then
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  echo "${CLR_PASS}  ✓${CLR_RST} -g install → harness system-wide, skills user-level only"
+  echo "${CLR_PASS}  ✓${CLR_RST} -g install → harness, skills and agents user-level only"
 else
   TESTS_FAILED=$((TESTS_FAILED + 1))
   FAIL_DETAILS+=("postinstall-scope global-flag: ${OUT:0:300}")
-  echo "${CLR_FAIL}  ✗${CLR_RST} -g install → harness system-wide, skills user-level only ${CLR_DIM}(${OUT:0:160})${CLR_RST}"
+  echo "${CLR_FAIL}  ✗${CLR_RST} -g install → harness, skills and agents user-level only ${CLR_DIM}(${OUT:0:160})${CLR_RST}"
 fi
 
 TESTS_RUN=$((TESTS_RUN + 1))
 OUT=$(HOME="$SCOPE_HOME" node "$SCOPE_TEST" local-flag 2>&1 || true)
 if echo "$OUT" | grep -q LOCAL_SCOPE_OK; then
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  echo "${CLR_PASS}  ✓${CLR_RST} local install → harness project-scoped, skills project + user"
+  echo "${CLR_PASS}  ✓${CLR_RST} local install → harness, skills and agents project-scoped"
 else
   TESTS_FAILED=$((TESTS_FAILED + 1))
   FAIL_DETAILS+=("postinstall-scope local-flag: ${OUT:0:300}")
-  echo "${CLR_FAIL}  ✗${CLR_RST} local install → harness project-scoped, skills project + user ${CLR_DIM}(${OUT:0:160})${CLR_RST}"
+  echo "${CLR_FAIL}  ✗${CLR_RST} local install → harness, skills and agents project-scoped ${CLR_DIM}(${OUT:0:160})${CLR_RST}"
 fi
 
 TESTS_RUN=$((TESTS_RUN + 1))

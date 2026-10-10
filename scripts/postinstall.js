@@ -14,7 +14,8 @@ if (require.main === module && !context.packageDir.includes('node_modules')) {
 const { installCivitasSkills } = require('./install/skills.js');
 const { installCivitasAgents } = require('./install/agents.js');
 const { installCivitasHooks }  = require('./install/hooks.js');
-const { stageProjectMandate }  = require('./install/mandate.js');
+const { stageProjectMandate, stageGlobalMandate } = require('./install/mandate.js');
+const { installUserTrigger }   = require('./install/user-trigger.js');
 const { installBundledJq }     = require('./install/jq.js');
 const { installChromium }      = require('./install/chromium.js');
 
@@ -23,6 +24,8 @@ module.exports = {
   installCivitasAgents,
   installCivitasHooks,
   stageProjectMandate,
+  stageGlobalMandate,
+  installUserTrigger,
   installBundledJq,
   installChromium,
   isGlobalInstall: context.isGlobalInstall,
@@ -36,8 +39,8 @@ module.exports = {
 if (require.main === module) {
   (async () => {
     console.log(`[@civitas-cerebrum/achilles] ${context.globalInstall
-      ? 'Global install (-g): harness → ~/.claude (system-wide), methodology → user-level skills.'
-      : `Local install: harness → ${context.harnessClaudeDir} (this project only), methodology → project + user-level skills.`}`);
+      ? 'Global install (-g): the harness → ~/.claude (every project).'
+      : `Local install: the harness → ${context.harnessClaudeDir} (this project only); the routing skill → ~/.claude/skills/achilles.`}`);
 
     try {
       installCivitasSkills();
@@ -64,13 +67,18 @@ if (require.main === module) {
       console.warn(`[civitas-cerebrum] Could not install harness hooks: ${err.message}`);
     }
 
-    if (context.globalInstall) {
-      console.log('[civitas-cerebrum] Global install: no project to stage the QA mandate into.');
-    } else {
+    try {
+      if (context.globalInstall) stageGlobalMandate();
+      else stageProjectMandate();
+    } catch (err) {
+      console.warn(`[civitas-cerebrum] Could not stage the QA role manifest: ${err.message}`);
+    }
+
+    if (!context.globalInstall) {
       try {
-        stageProjectMandate();
+        installUserTrigger();
       } catch (err) {
-        console.warn(`[civitas-cerebrum] Could not stage the QA role manifest: ${err.message}`);
+        console.warn(`[@civitas-cerebrum/achilles] Could not install the user-level routing skill: ${err.message}`);
       }
     }
 

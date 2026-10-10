@@ -1,6 +1,6 @@
 const fs     = require('fs');
 const path   = require('path');
-const { packageDir: ownPackageDir, projectRoot } = require('./context.js');
+const { packageDir: ownPackageDir, projectRoot, userClaudeDir } = require('./context.js');
 const { sha256 } = require('./record.js');
 
 // The achilles QA role manifest, read by the kernel at <project>/.claude/kernel-mandate.json,
@@ -43,18 +43,26 @@ function stageOne(src, dest, stamped, version) {
   return ['kept', stamped];
 }
 
-// Project-scoped and DORMANT: the kernel is reached only through
-// achilles-kernel-activation-gate.sh, which consults it while the achilles
-// protocol is active in a session and passes through otherwise. Writes nowhere
-// but <project>/.claude/.
-function stageProjectMandate(projectDir = projectRoot, { packageDir = ownPackageDir } = {}) {
+// Where each scope stages the mandate and its ledger. A project's copy is the
+// kernel's own manifest. A global install's copy has a name the kernel's
+// walk-up discovery never matches: found as ~/.claude/kernel-mandate.json it
+// would root every project under $HOME at $HOME. achilles-kernel-activation-gate.sh
+// hands it to the kernel for a project that has no manifest of its own.
+const MANDATE_FILES = {
+  project: { manifest: 'kernel-mandate.json', ledger: 'kernel-mandate.md' },
+  global: { manifest: 'achilles-qa.kernel-mandate.json', ledger: 'achilles-qa.kernel-mandate.md' },
+};
+
+// DORMANT: the kernel is reached only through achilles-kernel-activation-gate.sh,
+// which consults it while the achilles protocol is active in a session and
+// passes through otherwise. Writes nowhere but destDir.
+function stageMandate(destDir, names, packageDir) {
   if (process.env.CIVITAS_SKIP_HOOK_INSTALL === '1') {
     // No hooks → no kernel to read it; staging would be a stray file.
     return;
   }
   const manifestSrc = path.join(packageDir, 'hooks', 'data', QA_MANDATE_FILE);
   if (!fs.existsSync(manifestSrc)) return;
-  const destDir = path.join(projectDir, '.claude');
   fs.mkdirSync(destDir, { recursive: true });
   const stampPath = path.join(destDir, STAMP_FILE);
   let stamp = null;
@@ -63,7 +71,7 @@ function stageProjectMandate(projectDir = projectRoot, { packageDir = ownPackage
   const version = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')).version;
 
   const staged = { version };
-  const [manifestOutcome, manifestHash] = stageOne(manifestSrc, path.join(destDir, 'kernel-mandate.json'), stamp.manifestSha256, version);
+  const [manifestOutcome, manifestHash] = stageOne(manifestSrc, path.join(destDir, names.manifest), stamp.manifestSha256, version);
   if (manifestHash) staged.manifestSha256 = manifestHash;
   const note = (outcome, what) => {
     if (outcome === 'staged') console.log(`[civitas-cerebrum] ${what} staged in ${destDir} — dormant until the achilles protocol activates in a session (main session then binds as \`orchestrator\`).`);
@@ -72,7 +80,7 @@ function stageProjectMandate(projectDir = projectRoot, { packageDir = ownPackage
   note(manifestOutcome, 'QA mandate');
   const ledgerSrc = path.join(packageDir, 'hooks', 'data', QA_LEDGER_FILE);
   if (fs.existsSync(ledgerSrc)) {
-    const [ledgerOutcome, ledgerHash] = stageOne(ledgerSrc, path.join(destDir, 'kernel-mandate.md'), stamp.ledgerSha256, version);
+    const [ledgerOutcome, ledgerHash] = stageOne(ledgerSrc, path.join(destDir, names.ledger), stamp.ledgerSha256, version);
     if (ledgerHash) staged.ledgerSha256 = ledgerHash;
     note(ledgerOutcome, 'Role ledger');
   }
@@ -80,4 +88,12 @@ function stageProjectMandate(projectDir = projectRoot, { packageDir = ownPackage
   if (!fs.existsSync(stampPath) || fs.readFileSync(stampPath, 'utf8') !== text) fs.writeFileSync(stampPath, text);
 }
 
-module.exports = { stageProjectMandate, STAMP_FILE };
+function stageProjectMandate(projectDir = projectRoot, { packageDir = ownPackageDir } = {}) {
+  stageMandate(path.join(projectDir, '.claude'), MANDATE_FILES.project, packageDir);
+}
+
+function stageGlobalMandate(claudeDir = userClaudeDir, { packageDir = ownPackageDir } = {}) {
+  stageMandate(claudeDir, MANDATE_FILES.global, packageDir);
+}
+
+module.exports = { stageProjectMandate, stageGlobalMandate, MANDATE_FILES, STAMP_FILE };

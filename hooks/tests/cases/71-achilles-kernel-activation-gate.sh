@@ -512,6 +512,24 @@ cp "$HOOK_DIR"/lib/hook-io.sh "$HOOK_DIR"/lib/hook-emit.sh "$HOOK_DIR"/lib/achil
 assert_deny "$NOK/achilles-kernel-activation-gate.sh" "$(probe km-act-1)" \
   "marker present, manifest staged, kernel script missing → DENY" "kernel-mandate cannot run"
 
+# A global install stages the mandate as <claude>/achilles-qa.kernel-mandate.json beside its hooks dir.
+unset KERNEL_MANDATE_MANIFEST
+GLOBAL_CLAUDE="$KW_TMP/ghome/.claude"
+mkdir -p "$GLOBAL_CLAUDE/hooks" "$KW_TMP/bare/src" "$KW_TMP/own/.claude" "$KW_TMP/own/src"
+cp "$H" "$KERNEL" "$GLOBAL_CLAUDE/hooks/"
+cp -R "$HOOK_DIR/lib" "$HOOK_DIR/data" "$GLOBAL_CLAUDE/hooks/"
+cp "$MANDATE" "$GLOBAL_CLAUDE/achilles-qa.kernel-mandate.json"
+echo '{"kernelMandateVersion":1,"name":"own","roles":{}}' > "$KW_TMP/own/.claude/kernel-mandate.json"
+assert_deny "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-act-1 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/bare/src/app.ts" cwd="$KW_TMP/bare")" \
+  "global install, project without a manifest: the staged global mandate governs → DENY" "outside the role's read scope"
+assert_allow "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-act-1 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/own/src/app.ts" cwd="$KW_TMP/own")" \
+  "global install, project with its own manifest: the project's manifest governs → ALLOW"
+assert_allow "$GLOBAL_CLAUDE/hooks/achilles-kernel-activation-gate.sh" \
+  "$(payload session_id=km-dev-3 transcript_path="$DEV_TRANSCRIPT" tool_name=Read file_path="$KW_TMP/bare/src/app.ts" cwd="$KW_TMP/bare")" \
+  "global install, inactive session: dormant → ALLOW"
+
 unset KERNEL_MANDATE_MANIFEST KERNEL_MANDATE_STATE_DIR ACHILLES_SESSION_STATE_DIR
 
 # ---------------------------------------------------------------------------

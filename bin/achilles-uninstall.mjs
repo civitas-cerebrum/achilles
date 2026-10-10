@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// achilles-uninstall [--global] [--project <dir>] [--dry-run]
+// achilles-uninstall [--global | --project [dir]] [--dry-run]
 // Reverses what postinstall recorded in <claude dir>/achilles-install.json: its
 // settings.json registrations, then its files (only those still byte-identical to
 // what was written), the staged mandate (only when unedited), the hooks' runtime
-// state, and last the record.
+// state, and last the record. --project (the default; dir defaults to the cwd)
+// reverses <dir>/.claude; --global reverses ~/.claude: a global install, or the
+// routing skill a local install writes there.
 // npm >= 7 runs no uninstall lifecycle script, so this is a command.
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, rmSync } from 'node:fs';
@@ -11,20 +13,21 @@ import { join, resolve } from 'node:path';
 
 const require = createRequire(import.meta.url);
 const { RECORD_FILE, sha256, openRecord, removeRecorded, dropStaleRegistrations } = require('../scripts/install/record.js');
-const { STAMP_FILE } = require('../scripts/install/mandate.js');
+const { STAMP_FILE, MANDATE_FILES } = require('../scripts/install/mandate.js');
 const { userClaudeDir } = require('../scripts/install/context.js');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const projectAt = args.indexOf('--project');
-const unknown = args.filter((a, i) => !['--global', '--dry-run', '--project'].includes(a) && args[i - 1] !== '--project');
-if (unknown.length || (projectAt >= 0 && !args[projectAt + 1]) || (flag('--global') && projectAt >= 0)) {
-  console.error('usage: achilles-uninstall [--global | --project <dir>] [--dry-run]');
+const projectArg = projectAt >= 0 && args[projectAt + 1] && !args[projectAt + 1].startsWith('--') ? args[projectAt + 1] : null;
+const unknown = args.filter((a, i) => !['--global', '--dry-run', '--project'].includes(a) && !(projectArg && i === projectAt + 1));
+if (unknown.length || (flag('--global') && projectAt >= 0)) {
+  console.error('usage: achilles-uninstall [--global | --project [dir]] [--dry-run]');
   process.exit(2);
 }
 
 const dryRun = flag('--dry-run');
-const projectDir = resolve(projectAt >= 0 ? args[projectAt + 1] : process.cwd());
+const projectDir = resolve(projectArg ?? process.cwd());
 const claudeDir = flag('--global') ? userClaudeDir : join(projectDir, '.claude');
 const say = (verb, what) => console.log(`${dryRun ? 'would ' : ''}${verb} ${what}`);
 
@@ -59,12 +62,12 @@ for (const [rel, hash] of Object.entries(rec.prev)) {
   else if (probe.state === 'modified') console.warn(`kept ${file}: modified after install`);
 }
 
-// The staged mandate lives in the project, not beside the hooks of a global install.
 const stampPath = join(claudeDir, STAMP_FILE);
-if (!flag('--global') && existsSync(stampPath)) {
+if (existsSync(stampPath)) {
+  const names = MANDATE_FILES[flag('--global') ? 'global' : 'project'];
   let stamp = {};
   try { stamp = JSON.parse(readFileSync(stampPath, 'utf8')) ?? {}; } catch { /* unreadable stamp: keep the mandate */ }
-  for (const [name, key] of [['kernel-mandate.json', 'manifestSha256'], ['kernel-mandate.md', 'ledgerSha256']]) {
+  for (const [name, key] of [[names.manifest, 'manifestSha256'], [names.ledger, 'ledgerSha256']]) {
     const file = join(claudeDir, name);
     if (!existsSync(file)) continue;
     if (stamp[key] === sha256(file)) {
@@ -88,7 +91,7 @@ if (existsSync(state)) {
 say('remove', join(claudeDir, RECORD_FILE));
 if (!dryRun) unlinkSync(join(claudeDir, RECORD_FILE));
 
-// A local install also wrote skills and agents user-level; --project leaves them.
+// A local install also wrote the routing skill user-level; --project leaves it, as other projects may use it.
 if (!flag('--global') && existsSync(join(userClaudeDir, RECORD_FILE))) {
-  console.log(`User-level skills and agents in ${userClaudeDir} remain; remove them with: achilles-uninstall --global`);
+  console.log(`Achilles files in ${userClaudeDir} remain; remove them with: achilles-uninstall --global`);
 }

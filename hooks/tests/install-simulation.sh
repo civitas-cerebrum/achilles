@@ -348,11 +348,11 @@ FACRULES
   fi
 }
 
-# A throwaway copy of the package (installer, hooks without their tests, package.json).
+# A throwaway copy of the package (installer, hooks without their tests, skills, agents, package.json).
 sim_make_package() {
   local dir="$1" repo_root="$INSTALL_SIM_REPO_ROOT"
   mkdir -p "$dir/hooks"
-  cp -R "$repo_root/scripts" "$repo_root/package.json" "$dir/"
+  cp -R "$repo_root/scripts" "$repo_root/skills" "$repo_root/agents" "$repo_root/package.json" "$dir/"
   cp -R "$repo_root"/hooks/* "$dir/hooks/"
   rm -rf "$dir/hooks/tests"
 }
@@ -769,11 +769,169 @@ run_uninstall_simulation() {
   fi
 }
 
+# Install scope, driven through the real postinstall: -g puts the whole harness in ~/.claude;
+# a local install puts it in the project and only the routing skill user-level.
+run_scope_simulation() {
+  local repo_root="$INSTALL_SIM_REPO_ROOT" work out rc
+  work=$(mktemp -d /tmp/achilles-scope-sim-XXXXXX)
+  _SIM_SCOPE_WORK="$work"
+  trap 'rm -rf "$_SIM_WORK" "$_SIM_ERRFILE" "$_SIM_UPGRADE_WORK" "$_SIM_MANDATE_WORK" "$_SIM_METHOD_WORK" "$_SIM_UNINSTALL_WORK" "$_SIM_SCOPE_WORK"' EXIT
+  sim_postinstall() {  # sim_postinstall <home> <global:true|false> <package dir>
+    HOME="$1" npm_config_global="$2" npm_config_cache="$work/npm-cache" CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 node "$3/scripts/postinstall.js" 2>&1
+  }
+  sim_uninstall() { HOME="$1" node "$repo_root/bin/achilles-uninstall.mjs" "${@:2}" 2>&1; }
+  sim_files() { (cd "$1" 2>/dev/null && find . -type f | LC_ALL=C sort); }
+  sim_commands() { "$JQ" -r '[.hooks[]?[]?.hooks[]?.command] | .[]' "$1" 2>/dev/null; }
+  # sim_unresolved <settings> <prefix> <hooks dir>: commands not of the form <prefix><script in hooks dir>.
+  sim_unresolved() {
+    local c
+    sim_commands "$1" | while read -r c; do
+      if [ "${c#"$2"}" = "$c" ] || [ ! -f "$3/${c#"$2"}" ]; then echo "$c"; fi
+    done
+  }
+  local skills_n agents_n
+  skills_n=$(ls "$repo_root"/skills/*/SKILL.md | wc -l | tr -d ' ')
+  agents_n=$(ls "$repo_root"/agents/*.md | wc -l | tr -d ' ')
+
+  # --- global ---
+  local ghome="$work/ghome" gpkg="$work/lib/node_modules/@civitas-cerebrum/achilles" gclaude="$work/ghome/.claude"
+  mkdir -p "$ghome"; sim_make_package "$gpkg"
+  sim_postinstall "$ghome" true "$gpkg" >/dev/null
+  # A copied system binary can be killed on macOS; a link stands in for the downloaded jq.
+  mkdir -p "$gclaude/hooks/bin"; ln -s "$JQ" "$gclaude/hooks/bin/jq"
+  local g_skills g_agents bad_cmds
+  g_skills=$(ls "$gclaude"/skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+  g_agents=$(ls "$gclaude"/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$g_skills" = "$skills_n" ] && [ "$g_agents" = "$agents_n" ] && [ -f "$gclaude/hooks/commit-message-gate.sh" ] \
+     && [ -f "$gclaude/achilles-qa.kernel-mandate.json" ] && [ -f "$gclaude/kernel-mandate.achilles.json" ] \
+     && [ ! -e "$gclaude/kernel-mandate.json" ] && [ ! -e "$gclaude/skills/achilles" ] \
+     && "$JQ" -e '.files["skills/achilles-protocol/SKILL.md"] and .files["hooks/commit-message-gate.sh"] and (.registrations | length > 0)' "$gclaude/achilles-install.json" >/dev/null 2>&1 \
+     && [ -z "$(find "$work/lib" -name .claude)" ]; then
+    sim_pass "-g: hooks, every skill and agent, the staged mandate and the record land in ~/.claude; nothing under npm's lib/"
+  else
+    sim_fail "-g: hooks, every skill and agent, the staged mandate and the record land in ~/.claude; nothing under npm's lib/" "skills=$g_skills/$skills_n agents=$g_agents/$agents_n $(ls "$gclaude" | tr '\n' ' ')"
+  fi
+  bad_cmds=$(sim_unresolved "$gclaude/settings.json" "$gclaude/hooks/" "$gclaude/hooks")
+  if [ -n "$(sim_commands "$gclaude/settings.json")" ] && [ -z "$bad_cmds" ]; then
+    sim_pass "-g: every registration is an absolute path into ~/.claude/hooks"
+  else
+    sim_fail "-g: every registration is an absolute path into ~/.claude/hooks" "$(printf '%s' "$bad_cmds" | head -3)"
+  fi
+  local elsewhere="$work/elsewhere" cmd
+  mkdir -p "$elsewhere"
+  cmd=$(sim_commands "$gclaude/settings.json" | grep '/commit-message-gate.sh$' | head -1)
+  (cd "$elsewhere" && env -u CLAUDE_PROJECT_DIR HOME="$ghome" sh -c "$cmd" </dev/null >/dev/null 2>&1); rc=$?
+  if [ -n "$cmd" ] && [ "$rc" != 127 ]; then
+    sim_pass "-g: a registration runs from a directory that is no project"
+  else
+    sim_fail "-g: a registration runs from a directory that is no project" "rc=$rc cmd=$cmd"
+  fi
+
+  rm -r "$gclaude/hooks/bin"
+
+  # --- local ---
+  local lhome="$work/lhome" proj="$work/proj" lclaude="$work/proj/.claude" lpkg="$work/proj/node_modules/@civitas-cerebrum/achilles"
+  mkdir -p "$lhome" "$proj"; echo '{"name":"consumer"}' > "$proj/package.json"
+  sim_make_package "$lpkg"
+  sim_postinstall "$lhome" false "$lpkg" >/dev/null
+  local user_files l_skills l_agents
+  user_files=$(sim_files "$lhome")
+  l_skills=$(ls "$lclaude"/skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+  l_agents=$(ls "$lclaude"/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$user_files" = "$(printf './.claude/achilles-install.json\n./.claude/skills/achilles/SKILL.md')" ] \
+     && cmp -s "$repo_root/scripts/install/trigger-skill.md" "$lhome/.claude/skills/achilles/SKILL.md"; then
+    sim_pass "local: the routing skill and its record are the only files written user-level"
+  else
+    sim_fail "local: the routing skill and its record are the only files written user-level" "$(printf '%s' "$user_files" | head -5 | tr '\n' ' ')"
+  fi
+  bad_cmds=$(sim_unresolved "$lclaude/settings.json" '"$CLAUDE_PROJECT_DIR"/.claude/hooks/' "$lclaude/hooks")
+  if [ "$l_skills" = "$skills_n" ] && [ "$l_agents" = "$agents_n" ] && [ -f "$lclaude/kernel-mandate.json" ] && [ -f "$lclaude/achilles-install.json" ] \
+     && [ -n "$(sim_commands "$lclaude/settings.json")" ] && [ -z "$bad_cmds" ] && [ ! -e "$lclaude/skills/achilles" ]; then
+    sim_pass "local: hooks, project-relative registrations, every skill and agent, the mandate and the record land in the project"
+  else
+    sim_fail "local: hooks, project-relative registrations, every skill and agent, the mandate and the record land in the project" "skills=$l_skills agents=$l_agents bad=$(printf '%s' "$bad_cmds" | head -2)"
+  fi
+
+  # The routing skill decides by a path the local install writes and a project without Achilles lacks.
+  local trigger="$lhome/.claude/skills/achilles/SKILL.md" probe=".claude/skills/achilles-protocol/SKILL.md" other="$work/other"
+  mkdir -p "$other"
+  if grep -qF "\`$probe\`" "$trigger" && [ -f "$proj/$probe" ] && [ ! -e "$other/$probe" ] \
+     && grep -qF 'npm i -D @civitas-cerebrum/achilles' "$trigger" && grep -qF 'npm i -g @civitas-cerebrum/achilles' "$trigger" \
+     && grep -qF 'Do not invoke `achilles-protocol`' "$trigger"; then
+    sim_pass "routing skill: routes where the project has Achilles; elsewhere names both installs and does not run the protocol"
+  else
+    sim_fail "routing skill: routes where the project has Achilles; elsewhere names both installs and does not run the protocol" "probe=$probe"
+  fi
+
+  # A local install beside a global one leaves the global user-level files alone.
+  local proj2="$work/proj2" gbefore
+  mkdir -p "$proj2"; echo '{"name":"second"}' > "$proj2/package.json"
+  sim_make_package "$proj2/node_modules/@civitas-cerebrum/achilles"
+  gbefore=$(sim_files "$gclaude")
+  out=$(sim_postinstall "$ghome" false "$proj2/node_modules/@civitas-cerebrum/achilles")
+  if [ "$gbefore" = "$(sim_files "$gclaude")" ] && [ -f "$proj2/.claude/skills/achilles-protocol/SKILL.md" ] && printf '%s' "$out" | grep -q 'holds a global install'; then
+    sim_pass "local install beside a global one: ~/.claude untouched, the project gets its own copy"
+  else
+    sim_fail "local install beside a global one: ~/.claude untouched, the project gets its own copy" "${out:0:300}"
+  fi
+
+  # --- migration from the pre-0.2.0 local layout (every skill and agent user-level) ---
+  local mhome="$work/mhome" mclaude="$work/mhome/.claude" mproj="$work/mproj" h1 h2 h3
+  mkdir -p "$mclaude/skills/onboarding" "$mclaude/skills/test-composer" "$mclaude/agents" "$mclaude/skills/mine" "$mproj"
+  echo '{"name":"migrating"}' > "$mproj/package.json"
+  echo "old onboarding" > "$mclaude/skills/onboarding/SKILL.md"
+  echo "old composer" > "$mclaude/skills/test-composer/SKILL.md"
+  printf 'old fd\n<!-- installed-by: @civitas-cerebrum/achilles -->\n' > "$mclaude/agents/fd.md"
+  echo "my own skill" > "$mclaude/skills/mine/SKILL.md"
+  mkdir -p "$mclaude/skills/bug-report"; echo "0.1.8 copy, no record" > "$mclaude/skills/bug-report/SKILL.md"
+  h1=$(shasum -a 256 "$mclaude/skills/onboarding/SKILL.md" | cut -d' ' -f1)
+  h2=$(shasum -a 256 "$mclaude/skills/test-composer/SKILL.md" | cut -d' ' -f1)
+  h3=$(shasum -a 256 "$mclaude/agents/fd.md" | cut -d' ' -f1)
+  "$JQ" -n --arg h1 "$h1" --arg h2 "$h2" --arg h3 "$h3" \
+    '{package:"@civitas-cerebrum/achilles", version:"0.1.9", files:{"skills/onboarding/SKILL.md":$h1, "skills/test-composer/SKILL.md":$h2, "agents/fd.md":$h3}, registrations:[]}' > "$mclaude/achilles-install.json"
+  echo "edited by me" >> "$mclaude/skills/test-composer/SKILL.md"
+  sim_make_package "$mproj/node_modules/@civitas-cerebrum/achilles"
+  out=$(sim_postinstall "$mhome" false "$mproj/node_modules/@civitas-cerebrum/achilles")
+  if [ ! -e "$mclaude/skills/onboarding" ] && [ ! -e "$mclaude/agents/fd.md" ] && grep -q 'edited by me' "$mclaude/skills/test-composer/SKILL.md" \
+     && [ -f "$mclaude/skills/mine/SKILL.md" ] && [ -f "$mclaude/skills/achilles/SKILL.md" ] && [ -f "$mclaude/skills/bug-report/SKILL.md" ] \
+     && printf '%s' "$out" | grep -q 'skills holds bug-report, not recorded' \
+     && printf '%s' "$out" | grep -q 'Removed 2 user-level skill and agent files' && printf '%s' "$out" | grep -q 'test-composer/SKILL.md is no longer shipped but was modified' \
+     && "$JQ" -e '.files | has("skills/achilles/SKILL.md") and has("skills/test-composer/SKILL.md") and (has("skills/onboarding/SKILL.md") | not)' "$mclaude/achilles-install.json" >/dev/null; then
+    sim_pass "migration: unedited user-level copies an old local install recorded are pruned; edited and unrecorded files stay, unrecorded Achilles names are warned about"
+  else
+    sim_fail "migration: unedited user-level copies an old local install recorded are pruned; edited and unrecorded files stay, unrecorded Achilles names are warned about" "${out:0:300}"
+  fi
+
+  # --- uninstall, both scopes ---
+  out=$(sim_uninstall "$lhome" --project "$proj"); rc=$?
+  if [ "$rc" = 0 ] && [ ! -e "$lclaude/hooks" ] && [ ! -e "$lclaude/skills" ] && [ ! -e "$lclaude/agents" ] && [ ! -e "$lclaude/kernel-mandate.json" ] \
+     && [ ! -e "$lclaude/achilles-install.json" ] && [ -f "$lhome/.claude/skills/achilles/SKILL.md" ] && printf '%s' "$out" | grep -q 'achilles-uninstall --global'; then
+    sim_pass "uninstall --project removes the project scope and leaves the routing skill"
+  else
+    sim_fail "uninstall --project removes the project scope and leaves the routing skill" "rc=$rc $(sim_files "$lclaude" | head -3 | tr '\n' ' ')"
+  fi
+  out=$(sim_uninstall "$lhome" --global); rc=$?
+  if [ "$rc" = 0 ] && [ -z "$(sim_files "$lhome")" ]; then
+    sim_pass "uninstall --global after a local install removes the routing skill and its record"
+  else
+    sim_fail "uninstall --global after a local install removes the routing skill and its record" "rc=$rc $(sim_files "$lhome" | head -3 | tr '\n' ' ')"
+  fi
+  out=$(sim_uninstall "$ghome" --global); rc=$?
+  local left
+  left=$(sim_files "$gclaude" | grep -v '^\./settings\.json$')
+  if [ "$rc" = 0 ] && [ -z "$left" ] && [ -z "$(sim_commands "$gclaude/settings.json")" ]; then
+    sim_pass "uninstall --global after -g removes hooks, registrations, skills, agents, the mandate and the record"
+  else
+    sim_fail "uninstall --global after -g removes hooks, registrations, skills, agents, the mandate and the record" "rc=$rc left=$(printf '%s' "$left" | head -3 | tr '\n' ' ')"
+  fi
+}
+
 run_install_simulation
 run_upgrade_simulation
 run_mandate_simulation
 run_methodology_simulation
 run_uninstall_simulation
+run_scope_simulation
 
 # Standalone summary (run.sh prints its own).
 if [ "$INSTALL_SIM_STANDALONE" = "1" ]; then

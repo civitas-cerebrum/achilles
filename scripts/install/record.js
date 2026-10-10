@@ -116,15 +116,20 @@ function removeRecorded(claudeDir, rel, hash, dryRun = false) {
   return { state: 'removed', file };
 }
 
-// Deletes files a previous install recorded that this package no longer ships,
-// unless the user edited them.
-function pruneStale(rec) {
+// Deletes files a previous install recorded that this install no longer writes,
+// unless the user edited them. `quiet` drops the per-file line; returns how many it removed.
+function pruneStale(rec, { quiet = false } = {}) {
+  let removed = 0;
   for (const [rel, hash] of Object.entries(rec.prev)) {
     if (rel in rec.next.files) continue;
     const r = removeRecorded(rec.claudeDir, rel, hash);
     if (r.state === 'modified') keep(rec, rel, r.file, r.have, hash, 'is no longer shipped but was modified', 'delete it if you no longer want it');
-    else if (r.state === 'removed') console.log(`[civitas-cerebrum] pruned file dropped from the package: ${rel}`);
+    else if (r.state === 'removed') {
+      removed++;
+      if (!quiet) console.log(`[civitas-cerebrum] pruned file dropped from the package: ${rel}`);
+    }
   }
+  return removed;
 }
 
 // A project install registers "$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>: Claude Code runs a hook command with
