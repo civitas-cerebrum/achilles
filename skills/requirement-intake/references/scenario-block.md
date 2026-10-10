@@ -8,13 +8,13 @@ value. The test that implements the block is titled `'<ID> — <title>'`.
 ```markdown
 #### <ID> — <title>
 
-- **Contexts**: <one or more context names — whatever the project shards runs by, e.g. region-1, region-2>
-- **Type**: <tags from specs.shape.blockEnums.type (else specs.shape.tags) — e.g. @e2e @checkout>
+- **Contexts**: <one or more context names, whatever the project shards runs by, e.g. region-1, region-2>
+- **Type**: <tags from specs.shape.blockEnums.type (else specs.shape.tags), e.g. @e2e @checkout>
 - **Purpose**: <one sentence: the behaviour under test, in user terms>
 - **Preconditions / test data**: <what must be true before step 1, stated as requirements (merchant purpose, item
   count, minimum basket, payment option offered, account constraints); env variable NAMES only, never values>
 - **Steps**:
-  1. <user-language action — "Add an item to the basket", "Choose the wallet provider">
+  1. <user-language action: "Add an item to the basket", "Choose the wallet provider">
   2. <next action; name the observable condition, never a selector and never a fixed wait ("the modal closes",
      not "wait 30 s")>
 - **Expected**: <observable outcomes; UI copy in quotes where it matters; amounts as rules (total = subtotal −
@@ -47,8 +47,8 @@ turns spaces into hyphens before matching, so `green 3× (2026-09-12)` matches `
 matches `one-confirming-run`. The token must be followed by the end of the value or a character that is not a letter or
 digit.
 
-Optional bullets the lint ignores: **Spec** (spec file, test title, tags — first bullet once implemented) and
-**Corrected (<date>)** (what live behaviour contradicted, keeping the old claim visible — last bullet).
+Optional bullets the lint ignores: **Spec** (spec file, test title, tags; first bullet once implemented) and
+**Corrected (<date>)** (what live behaviour contradicted, keeping the old claim visible; last bullet).
 
 A block whose Status is `omitted-by-ruling (<date>, <reason>)` needs only Contexts, Purpose and Status: it describes
 no executable test and keeps its heading so the decision stays on record. A project that sets its own

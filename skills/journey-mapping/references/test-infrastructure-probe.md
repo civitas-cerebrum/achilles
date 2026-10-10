@@ -6,19 +6,19 @@
 
 ## When this protocol runs
 
-The probe runs in two coordinated layers — observation during the crawl + a dedicated post-crawl subagent dispatch:
+The probe runs in two coordinated layers: observation during the crawl + a dedicated post-crawl subagent dispatch:
 
-1. **In parallel with the crawl** (per-entry-point `phase1-<entry>:` subagents already in flight): each crawl subagent records the **observed** items it sees while visiting pages — Category A (auth model: when it visits `/login` / `/signup`, captures the auth shape from network traffic) and Category E (mutation endpoints: every POST/PUT/PATCH/DELETE the browser fires while crawling). These are emitted as part of each crawl subagent's structured return.
+1. **In parallel with the crawl** (per-entry-point `phase1-<entry>:` subagents already in flight): each crawl subagent records the **observed** items it sees while visiting pages: Category A (auth model: when it visits `/login` / `/signup`, captures the auth shape from network traffic) and Category E (mutation endpoints: every POST/PUT/PATCH/DELETE the browser fires while crawling). These are emitted as part of each crawl subagent's structured return.
 
-2. **After the crawl completes** the orchestrator dispatches a single **`phase1-test-infra:` subagent** that runs the **deliberate post-crawl probes** — Category B (reset/seed endpoint probe — fires the fixed list of `POST /api/reset` etc. against the host), Category C (banner / modal selector resolution — replays one of the homepage hits and resolves dismissal selectors), and Category D (stable seed resource enumeration — visits each catalog-style page once and records first-render IDs). The subagent also reconciles the per-entry-point Categories A + E into a single deduplicated list, then writes the canonical `## Test Infrastructure` section to `tests/e2e/docs/app-context.md`.
+2. **After the crawl completes** the orchestrator dispatches a single **`phase1-test-infra:` subagent** that runs the **deliberate post-crawl probes**: Category B (reset/seed endpoint probe: fires the fixed list of `POST /api/reset` etc. against the host), Category C (banner / modal selector resolution: replays one of the homepage hits and resolves dismissal selectors), and Category D (stable seed resource enumeration: visits each catalog-style page once and records first-render IDs). The subagent also reconciles the per-entry-point Categories A + E into a single deduplicated list, then writes the canonical `## Test Infrastructure` section to `tests/e2e/docs/app-context.md`.
 
-**Why this split.** The deliberate probe (B / C / D + the A/E reconciliation) is several thousand tokens of network output, DOM snapshots, and parsing. Running it inline in the orchestrator's context puts that load on every downstream phase. Dispatching it as a subagent confines the load to a single throwaway context — the orchestrator only sees the subagent's structured return (the `## Test Infrastructure` markdown block + a list of constraint tags for the audit). This is the same context-discipline rule coverage-expansion enforces for composer/probe work, applied to journey-mapping Phase 1.
+**Why this split.** The deliberate probe (B / C / D + the A/E reconciliation) is several thousand tokens of network output, DOM snapshots, and parsing. Running it inline in the orchestrator's context puts that load on every downstream phase. Dispatching it as a subagent confines the load to a single throwaway context; the orchestrator only sees the subagent's structured return (the `## Test Infrastructure` markdown block + a list of constraint tags for the audit). This is the same context-discipline rule coverage-expansion enforces for composer/probe work, applied to journey-mapping Phase 1.
 
-**Dispatch slug:** `phase1-test-infra:` (the `phase1-` family is a conventional free-form role prefix). Single dispatch — not per-entry-point. Runs after the crawl roster reports complete. CLI session slug: `phase1-test-infra` (same prefix, isolated session).
+**Dispatch slug:** `phase1-test-infra:` (the `phase1-` family is a conventional free-form role prefix). Single dispatch; not per-entry-point. Runs after the crawl roster reports complete. CLI session slug: `phase1-test-infra` (same prefix, isolated session).
 
-**Subagent return shape:** structured Markdown matching the canonical `## Test Infrastructure` template below + a top-of-return `tags:` array carrying the constraint tags surfaced for the onboarding shared-resource audit (`global-reset:cross-test-race`, `single-tenant-global-state`, `csrf-session-bound`, etc. — see `onboarding/SKILL.md` §"Shared-resource audit").
+**Subagent return shape:** structured Markdown matching the canonical `## Test Infrastructure` template below + a top-of-return `tags:` array carrying the constraint tags surfaced for the onboarding shared-resource audit (`global-reset:cross-test-race`, `single-tenant-global-state`, `csrf-session-bound`, etc.; see `onboarding/SKILL.md` §"Shared-resource audit").
 
-**Remit extension — data-dependency serving facts.** `test-data-conventions` Step 0 (see [`../../test-data-conventions/SKILL.md`](../../test-data-conventions/SKILL.md)) extends this probe's remit: for each data dependency the crawl surfaces, also record the **serving source** (app-owned DB / third-party search index / CMS / external API / client state), whether a **write path** exists (seeding API, DB access, UI-only, none), and the **environment class** (isolated test env / shared / production-like). These facts land in the same `## Test Infrastructure` section; composing sessions that hit an uncovered dependency probe just that dependency and append.
+**Remit extension: data-dependency serving facts.** `test-data-conventions` Step 0 (see [`../../test-data-conventions/SKILL.md`](../../test-data-conventions/SKILL.md)) extends this probe's remit: for each data dependency the crawl surfaces, also record the **serving source** (app-owned DB / third-party search index / CMS / external API / client state), whether a **write path** exists (seeding API, DB access, UI-only, none), and the **environment class** (isolated test env / shared / production-like). These facts land in the same `## Test Infrastructure` section; composing sessions that hit an uncovered dependency probe just that dependency and append.
 
 ## Inputs
 
@@ -34,7 +34,7 @@ Observed during the crawl when the agent visits `/login`, `/signup`, `/logout`, 
 Capture:
 
 - **Type:** `JWT in cookie` / `Session cookie` / `Bearer header` / `Basic auth` / `none-discovered`.
-- **Cookie name** (if cookie-based) — read from `Set-Cookie` headers.
+- **Cookie name** (if cookie-based): read from `Set-Cookie` headers.
 - **Endpoints:** login, signup (if separate), logout. Path + method + observed request body shape (keys only, values redacted).
 
 ### B. Reset / seed endpoints (deliberate post-crawl probe)
@@ -49,7 +49,7 @@ POST /api/test/setup
 POST /__test/reset
 ```
 
-For each: record HTTP code and any short response body. The first 200 / 204 response wins — log its path and call shape.
+For each: record HTTP code and any short response body. The first 200 / 204 response wins: log its path and call shape.
 
 **Safety:** the probe runs only against `localhost`, `127.0.0.1`, `::1`, or `*.local` hosts, OR a host explicitly listed in `journey-map.md`'s frontmatter under `journey-mapping:reset-probe-allowlist`. Any other host short-circuits the probe with `reset-endpoint: skipped (host not in allowlist)`.
 
@@ -61,9 +61,9 @@ Capture: selector for the banner itself + selector for its dismissal action (clo
 
 ### D. Stable seed resources
 
-Observed during the crawl on catalog-style pages (book lists, marketplace, etc.). For each catalog page: record the IDs/names of resources visible at first render — these are candidates for "rotate through" rather than hardcode.
+Observed during the crawl on catalog-style pages (book lists, marketplace, etc.). For each catalog page: record the IDs/names of resources visible at first render; these are candidates for "rotate through" rather than hardcode.
 
-**Do NOT** record stock counts, quantities, or other per-resource state — that requires a privileged read journey-mapping does not perform. The list is "stable IDs visible at first render", nothing more.
+**Do NOT** record stock counts, quantities, or other per-resource state; that requires a privileged read journey-mapping does not perform. The list is "stable IDs visible at first render", nothing more.
 
 ### E. Mutation endpoints (UI-driven)
 
@@ -78,7 +78,7 @@ This is the inventory Stage 4a §4 uses to gate API shortcut helpers.
 
 ## `## Test Infrastructure` section format (canonical)
 
-This is the exact Markdown template the probe writes into `tests/e2e/docs/app-context.md`. Stage 4a parses the tables — keep column structure stable.
+This is the exact Markdown template the probe writes into `tests/e2e/docs/app-context.md`. Stage 4a parses the tables; keep column structure stable.
 
 ````markdown
 ## Test Infrastructure

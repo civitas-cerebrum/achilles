@@ -3,13 +3,13 @@
 Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
 
 **Written is not committed.** Whether these tests land in the suite or stay in the evidence
-bundle is §8d's decision, made after they have proven themselves in §8–8c — and the default is
+bundle is §8d's decision, made after they have proven themselves in §8–8c, and the default is
 that they stay. Write them to committable standard either way; a test that would embarrass the
 suite proves nothing as evidence either.
 
-For each confirmed defect, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug — which is the signal to delete it.
+For each confirmed defect, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug, which is the signal to delete it.
 
-**Scope of the `test.fail()` licence.** This section is the ONE sanctioned use of `test.fail()` in the whole suite: a defect sentinel **tied to a tracked ticket**, with a removed-when-fixed lifecycle (the "flips loud → delete" mechanism above IS the lifecycle). Where no ticket owns the marker it is banned — coverage-expansion and its adversarial passes never commit `test.fail()`; their suspected bugs stay ledger-only (see `coverage-expansion/SKILL.md` §"Non-goals"; resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.2).
+**Scope of the `test.fail()` licence.** This section is the ONE sanctioned use of `test.fail()` in the whole suite: a defect sentinel **tied to a tracked ticket**, with a removed-when-fixed lifecycle (the "flips loud → delete" mechanism above IS the lifecycle). Where no ticket owns the marker it is banned: coverage-expansion and its adversarial passes never commit `test.fail()`; their suspected bugs stay ledger-only (see `coverage-expansion/SKILL.md` §"Non-goals"; resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.2).
 
 ```ts
 test('TCSG-000110 · [SENTINEL <TICKET>-D1] <correct behaviour> @known-defect', async ({ steps }) => {
@@ -18,12 +18,12 @@ test('TCSG-000110 · [SENTINEL <TICKET>-D1] <correct behaviour> @known-defect', 
 })
 ```
 
-Sentinels carry the `@known-defect` tag (canonical: `../achilles-protocol/references/test-identity.md` §2) so `self-repair` / `test-repair` / `failure-diagnosis` exempt them from heal and rerun cycles — the tag marks the intentional relationship to a filed defect; `test.fail()` only inverts the reporting. The title's leading test ID follows `test-identity.md` §1.
+Sentinels carry the `@known-defect` tag (canonical: `../achilles-protocol/references/test-identity.md` §2) so `self-repair` / `test-repair` / `failure-diagnosis` exempt them from heal and rerun cycles; the tag marks the intentional relationship to a filed defect; `test.fail()` only inverts the reporting. The title's leading test ID follows `test-identity.md` §1.
 
-**Pick a durable observable.** A sentinel is worthless if the app erases its own evidence — see the session-storage trap below.
+**Pick a durable observable.** A sentinel is worthless if the app erases its own evidence; see the session-storage trap below.
 
 **Feature gates must ask the ENVIRONMENT, never the page.** A gate that probes the feature's own
-selector and skips when it is missing cannot distinguish "not deployed yet" from "regressed" —
+selector and skips when it is missing cannot distinguish "not deployed yet" from "regressed":
 they look identical. Measured: with the feature's root element hidden, a page-probing gate turned a
 total AC regression into `2 skipped` instead of `2 failed`. The gate that keeps the nightly green
 also blinds the suite to the thing it exists to catch.
@@ -44,9 +44,9 @@ tests at release, and is a one-line change rather than an edit to every spec.
 **Every absence assertion needs a positive control in the same test.** `count === 0`,
 `toBeHidden` (which passes on ZERO matches) and "element not present" all pass on a 404, an
 unhydrated page, a challenge page, and an environment where the feature never existed. Assert the
-page is alive first — then absence means something.
+page is alive first, then absence means something.
 
-If the suite runs against an environment where the feature is not deployed yet, gate it — with
+If the suite runs against an environment where the feature is not deployed yet, gate it: with
 **this** implementation, not one of your own. Copy it verbatim; §8's negative control depends on
 the `GATE_OFF` escape being present.
 
@@ -82,12 +82,12 @@ test.beforeEach(async ({ steps }, testInfo) => {
 | `FEATURE_EXPECTED` | feature present | outcome |
 |---|---|---|
 | true | yes | run |
-| true | **no** | **FAIL** — the regression |
+| true | **no** | **FAIL**: the regression |
 | false | no | skip, annotated |
-| false | **yes** | **FAIL** — shipped where it should not have |
+| false | **yes** | **FAIL**: shipped where it should not have |
 
 The environment lacking the feature sets `E2E_FEATURE_<KEY>=absent` explicitly. **Removing that one
-line is what arms the tests at release** — no spec edits.
+line is what arms the tests at release**: no spec edits.
 
 Why not probe the page and skip? Because that cannot tell "not deployed" from "regressed". Measured:
 with the feature's root element hidden, a page-probing gate turned a total AC regression into

@@ -1,6 +1,6 @@
 # Selector evidence
 
-Every entry in `page-repository.json` is backed by a committed evidence note **or** carries `"provisional": true` —
+Every entry in `page-repository.json` is backed by a committed evidence note **or** carries `"provisional": true`;
 never both, never neither. The note turns rule 4 ("inspect the live site") from a sentence in a transcript into a
 reviewable artefact, and it is what lets rule 2's standing authorisation work: a live-verified entry with a note
 needs no approval round (see [Standing authorisation](#standing-authorisation)).
@@ -11,15 +11,15 @@ regions `north` (session of `shopper-a`) and `south` (session of `shopper-b`).
 
 ## The sequence
 
-The **only** sanctioned sequence for a new or changed entry — all four steps in the same change:
+The **only** sanctioned sequence for a new or changed entry: all four steps in the same change:
 
-1. **Inspect live** — `playwright-cli` session (rule 11) or a temporary inspection spec. Record per element: URL path,
+1. **Inspect live**: `playwright-cli` session (rule 11) or a temporary inspection spec. Record per element: URL path,
    context, how the state was reached, tag, role, accessible name, test attribute, the count of matches for the
    candidate selector, the frame title if framed.
-2. **Insert provisional** — add the entry with `"provisional": true`. The tool reads only committed entries (it takes
+2. **Insert provisional**: add the entry with `"provisional": true`. The tool reads only committed entries (it takes
    no selector argument), and the repository-evidence gate accepts a flagged entry without a note.
-3. **Evidence** — run the tool for the entry; it writes `<Page>.<element>.md` and `.png` into the evidence directory.
-4. **Drop the flag** — a flag-only edit. The gate now sees the note and checks it against the selector.
+3. **Evidence**: run the tool for the entry; it writes `<Page>.<element>.md` and `.png` into the evidence directory.
+4. **Drop the flag**: a flag-only edit. The gate now sees the note and checks it against the selector.
 
 A flag that exists only between steps 2 and 4 is **not** a "never seen live" claim and needs no known-issues row.
 
@@ -37,7 +37,7 @@ npx achilles-selector-evidence --page <Page> --element <element> \
   [--url <path>] [--out <dir>] [--repository <file>] [--mask <css>]… [--anonymous] [--help]
 ```
 
-- Reads the **committed** entry and resolves it with `@civitas-cerebrum/element-repository` `get()` — exactly the
+- Reads the **committed** entry and resolves it with `@civitas-cerebrum/element-repository` `get()`, exactly the
   framework's resolution, frames included. Both packages are resolved from the project, not from Achilles.
 - **Count semantics**: exactly 1 match; at least 1 for an entry marked `"list": true` (the first match is outlined and
   the note says `(list entry)`). Count 0 → the message names the URL path, and for a framed page the iframe titles
@@ -45,10 +45,10 @@ npx achilles-selector-evidence --page <Page> --element <element> \
 - On success: outlines the element in red with a `<Page>.<element>` label, screenshots the viewport (clipped around the
   element when the PNG would exceed 300 KB) and writes the note. The note is rendered and validated **before** any
   file is written, so a refused run never replaces a committed note or PNG.
-- **Masking**: `--mask <css>` (repeatable) masks personal data in the screenshot. Default: none — the project knows
+- **Masking**: `--mask <css>` (repeatable) masks personal data in the screenshot. Default: none; the project knows
   where its personal data renders; Achilles does not. The mask is the tool's only raw locator.
 - `--anonymous` opens the page signed out (for example `HomePage.searchBox`, which a signed-in session may redirect away
-  from). Otherwise a storage state is required; the tool never logs in — the project's auth setup produces the file.
+  from). Otherwise a storage state is required; the tool never logs in; the project's auth setup produces the file.
 - Never clicks, types or submits. An element that only renders after an interaction (a dialog behind a button) cannot
   be evidenced by the tool; see [Provisional entries](#provisional-entries).
 - Every refusal uses the three-line [message contract](factory-gates.md#message-contract).
@@ -82,9 +82,9 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
 - Relative paths (`--repository`, `--out`, `--storage-state`) resolve against the project root (`$CLAUDE_PROJECT_DIR`,
   else the cwd), like the rules file.
 - **Schema fields the tool reads** (`hooks/data/factory-rules.schema.json`, all optional):
-  - `contexts` — optional top-level map `{ "<name>": { "baseUrl": string, "storageState": string } }`;
-  - `rules["selectors.evidence"].evidenceDir` — the evidence directory (default `--out`);
-  - `rules["selectors.evidence"].provisionalKey` — the entry flag name (`provisional`), read by the gate; the tool
+  - `contexts`: optional top-level map `{ "<name>": { "baseUrl": string, "storageState": string } }`;
+  - `rules["selectors.evidence"].evidenceDir`: the evidence directory (default `--out`);
+  - `rules["selectors.evidence"].provisionalKey`: the entry flag name (`provisional`), read by the gate; the tool
     itself does not change entries.
 
   A project that shards by another dimension (locale, tenant, device) names its contexts after it.
@@ -144,7 +144,7 @@ never touches a `source: live` note and is idempotent. Running the tool later re
 An entry may **stay** provisional only when the code needs it and its state never occurred live, or the tool cannot
 reach it without an interaction. Every such entry is **listed in the project's known-issues file** (for example
 `tests/e2e/docs/known-issues.md`): the entry, its selector, where it is referenced, and what fails if it is wrong.
-Note XOR flag; flag ⇒ known-issues row. When the state is met live: run the tool, drop the flag, delete the row — in
+Note XOR flag; flag ⇒ known-issues row. When the state is met live: run the tool, drop the flag, delete the row, in
 the same change.
 
 ## Standing authorisation
@@ -154,7 +154,7 @@ authorisation** in the form: *live-verified entries with an evidence note need n
 do.* Under it:
 
 - an entry inspected live (step 1) and evidenced by the tool (step 3) is inserted without a separate approval round;
-- an entry inferred from frontend source, docs or another suite — anything not seen live — is shown to the user as
+- an entry inferred from frontend source, docs or another suite (anything not seen live) is shown to the user as
   JSON and waits for "yes", exactly as rule 2 says.
 
 The authorisation is recorded where the project records its decisions; without it, rule 2 applies unchanged.

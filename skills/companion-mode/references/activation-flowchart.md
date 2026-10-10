@@ -45,8 +45,8 @@ digraph companion_mode {
 
     "Skill activated" -> "Phase 1: Task intake";
     "Phase 1: Task intake" -> "Args have all\nrequired fields?";
-    "Args have all\nrequired fields?" -> "Phase 2: Quick discovery" [label="yes — autonomous"];
-    "Args have all\nrequired fields?" -> "Prompt user for\nmissing fields" [label="no — interactive"];
+    "Args have all\nrequired fields?" -> "Phase 2: Quick discovery" [label="yes: autonomous"];
+    "Args have all\nrequired fields?" -> "Prompt user for\nmissing fields" [label="no: interactive"];
     "Prompt user for\nmissing fields" -> "Phase 2: Quick discovery";
     "Phase 2: Quick discovery" -> "playwright-cli available?";
     "playwright-cli available?" -> "Snapshot page(s)\non task path" [label="yes"];
@@ -61,7 +61,7 @@ digraph companion_mode {
     "Phase 4: Run with capture" -> "Execute with\ntrace+video+HAR+console";
     "Execute with\ntrace+video+HAR+console" -> "Run passed?";
     "Run passed?" -> "Phase 5: Bundle" [label="yes"];
-    "Run passed?" -> "Phase 5: Bundle" [label="no — failure is valid"];
+    "Run passed?" -> "Phase 5: Bundle" [label="no: failure is valid"];
     "Phase 5: Bundle" -> "Assemble bundle\nverdict=PASSED" [label="passed"];
     "Phase 5: Bundle" -> "Assemble bundle\nverdict=FAILED" [label="failed"];
     "Assemble bundle\nverdict=PASSED" -> "Phase 6: Report";
@@ -85,8 +85,8 @@ digraph companion_mode {
     "User answer?" -> "vague reply" [label="ambiguous"];
     "Re-prompt count\n< 2?" [shape=diamond];
     "vague reply" -> "Re-prompt count\n< 2?";
-    "Re-prompt count\n< 2?" -> "Re-prompt for clear\nanswer" [label="yes — clarify"];
-    "Re-prompt count\n< 2?" -> "no / declined" [label="no — treat as no"];
+    "Re-prompt count\n< 2?" -> "Re-prompt for clear\nanswer" [label="yes: clarify"];
+    "Re-prompt count\n< 2?" -> "no / declined" [label="no: treat as no"];
     "Re-prompt for clear\nanswer" -> "User answer?";
     "yes / (a)" -> "Level needs scaffold?";
     "Level needs scaffold?" -> "Level A/B remediation\nminimum scaffold" [label="A or B"];

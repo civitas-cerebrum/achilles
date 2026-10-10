@@ -11,7 +11,7 @@ description: >
   variant set.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Test Composer — Stage 5 Atom: One Journey's Full Test Portfolio
@@ -24,9 +24,9 @@ Stage 5 of the achilles-protocol workflow as the atomic unit of coverage. Given 
 
 **Coverage ownership:** this skill is responsible for achieving exhaustive test coverage of its assigned journey. Every step, every branch, and every applicable state variation in the journey's map block must have a corresponding test before this skill returns. The orchestrator (typically `coverage-expansion`) trusts this contract and does not re-check per-journey coverage itself.
 
-**Role under dual-stage.** When `coverage-expansion` runs in depth mode, this skill is **Stage A** of a per-journey-per-pass dual-stage pipeline. After this skill returns, a fresh staff-level-QA reviewer (Stage B, see `skills/coverage-expansion/references/reviewer-subagent-contract.md`) inspects the output and either greenlights or returns `improvements-needed` with `must-fix` findings. If improvements are needed, `coverage-expansion` re-dispatches this skill in cycle 2 with the findings appended to the brief — up to 7 A↔B cycles per journey per pass. Nothing about this skill's contract changes; you compose, stabilize, API-review, verify coverage, and return as before.
+**Role under dual-stage.** When `coverage-expansion` runs in depth mode, this skill is **Stage A** of a per-journey-per-pass dual-stage pipeline. After this skill returns, a fresh staff-level-QA reviewer (Stage B, see `skills/coverage-expansion/references/reviewer-subagent-contract.md`) inspects the output and either greenlights or returns `improvements-needed` with `must-fix` findings. If improvements are needed, `coverage-expansion` re-dispatches this skill in cycle 2 with the findings appended to the brief; up to 7 A↔B cycles per journey per pass. Nothing about this skill's contract changes; you compose, stabilize, API-review, verify coverage, and return as before.
 
-**Pre-empting reviewer must-fix items.** Skim §"Must-fix calibration" in `reviewer-subagent-contract.md` before composing — the reviewer will demand: (a) every `Test expectations:` item has a covering test, (b) tests use the Steps API correctly with page-repo selectors (no inline selectors), (c) file-level serial mode on tenant-mutating specs, (d) mobile variant on P0/P1 journeys, (e) test assertions match what the live DOM exposes. Meeting that bar in cycle 1 is the difference between a 1-cycle journey and a 4-cycle journey. The reviewer is not antagonistic — it is consistent, and you can know in advance what it will check.
+**Pre-empting reviewer must-fix items.** Skim §"Must-fix calibration" in `reviewer-subagent-contract.md` before composing: the reviewer will demand: (a) every `Test expectations:` item has a covering test, (b) tests use the Steps API correctly with page-repo selectors (no inline selectors), (c) file-level serial mode on tenant-mutating specs, (d) mobile variant on P0/P1 journeys, (e) test assertions match what the live DOM exposes. Meeting that bar in cycle 1 is the difference between a 1-cycle journey and a 4-cycle journey. The reviewer is not antagonistic; it is consistent, and you can know in advance what it will check.
 
 **Dispatch.** Dispatched as role `test-composer`: `description: test-composer-j-<slug>: <task>` (sub-journeys `test-composer-sj-<slug>:`), `subagent_type: test-composer`, first prompt line:
 
@@ -54,12 +54,12 @@ Do NOT use this for:
 
 Every invocation performs these stages in order, inside this subagent's own context. Do not return to the caller until all five complete cleanly.
 
-1. **Compose** (Steps 2–3 below) — write the full variant set for the journey, adding selectors to `page-repository.json` as needed.
-2. **Stabilize** (Step 4) — run, fix, re-run until 100% of new tests pass.
-3. **Test Optimization** (Step 6a) — load `../achilles-protocol/references/test-optimization.md` and run its 7-check protocol on the freshly-written tests. Apply auto-fixes; re-stabilize if any auto-fix regresses a test.
-4. **API compliance review** (Step 6b) — run the Stage 4b API review protocol on the freshly-written tests. Fix any non-compliance and re-stabilize if needed.
-5. **Composition judge** (Step 6c) — dispatch the independent `composition-judge-` subagent per `../achilles-protocol/references/test-composition-standards.md` §4 (skipped when this invocation runs under `coverage-expansion` dual-stage — see Step 6c).
-6. **Coverage verification + whole-suite gate** (Step 7) — check every step, branch, and applicable state variation from the journey's map block against the composed tests. Loop back to Compose for any missing coverage. After coverage is exhaustive, run the whole-suite re-run gate (see Step 7); only return to the caller when the gate passes.
+1. **Compose** (Steps 2–3 below): write the full variant set for the journey, adding selectors to `page-repository.json` as needed.
+2. **Stabilize** (Step 4): run, fix, re-run until 100% of new tests pass.
+3. **Test Optimization** (Step 6a): load `../achilles-protocol/references/test-optimization.md` and run its 7-check protocol on the freshly-written tests. Apply auto-fixes; re-stabilize if any auto-fix regresses a test.
+4. **API compliance review** (Step 6b): run the Stage 4b API review protocol on the freshly-written tests. Fix any non-compliance and re-stabilize if needed.
+5. **Composition judge** (Step 6c): dispatch the independent `composition-judge-` subagent per `../achilles-protocol/references/test-composition-standards.md` §4 (skipped when this invocation runs under `coverage-expansion` dual-stage; see Step 6c).
+6. **Coverage verification + whole-suite gate** (Step 7): check every step, branch, and applicable state variation from the journey's map block against the composed tests. Loop back to Compose for any missing coverage. After coverage is exhaustive, run the whole-suite re-run gate (see Step 7); only return to the caller when the gate passes.
 
 The multi-journey iterative cycle (inventory, cross-app gap analysis, multi-pass decide) is documented in `coverage-expansion`. This skill owns the per-journey work items only.
 
@@ -77,10 +77,10 @@ The caller (user or `coverage-expansion`) passes `journey=<id>` referencing an e
    - **P2** → happy-path + one error-state + one data-verification check.
    - **P3** → smoke test (loads, key elements present).
 
-   Depth per variant follows the smoke-vs-e2e doctrine — the journey's UI walk is the subject of exactly one e2e test; derivatives shortcut prerequisites via API/state injection and assert only their own surface (`../achilles-protocol/references/test-composition-standards.md` §5).
-4. List existing tests that already cover any step of this journey (from `npx playwright test --list`). These are the starting point — add variants, do not duplicate.
+   Depth per variant follows the smoke-vs-e2e doctrine: the journey's UI walk is the subject of exactly one e2e test; derivatives shortcut prerequisites via API/state injection and assert only their own surface (`../achilles-protocol/references/test-composition-standards.md` §5).
+4. List existing tests that already cover any step of this journey (from `npx playwright test --list`). These are the starting point: add variants, do not duplicate.
 
-Do NOT read other journey blocks. Do NOT hold the whole map in context. Do NOT compute cross-app priority or gap analysis — that is the caller's job.
+Do NOT read other journey blocks. Do NOT hold the whole map in context. Do NOT compute cross-app priority or gap analysis; that is the caller's job.
 
 ---
 
@@ -107,33 +107,33 @@ For each uncovered page or feature, use `@playwright/cli` (see [`../achilles-pro
 - empty state: "No items found"
 ```
 
-**CRITICAL:** Every page you visit and every component you discover MUST be saved to `tests/e2e/docs/app-context.md` per Rule 8. This is not optional — it is the primary way knowledge is preserved between sessions. If you discover a page and don't save it, the next session will re-discover it from scratch.
+**CRITICAL:** Every page you visit and every component you discover MUST be saved to `tests/e2e/docs/app-context.md` per Rule 8. This is the primary way knowledge is preserved between sessions. If you discover a page and don't save it, the next session will re-discover it from scratch.
 
 ---
 
 ## Step 3: Implement
 
-A spec file contains exactly the tests its journey expectations and partition analysis demand — never pad toward a count, never stop at one. Split files by area when they exceed ~200 lines.
+A spec file contains exactly the tests its journey expectations and partition analysis demand: never pad toward a count, never stop at one. Split files by area when they exceed ~200 lines.
 
 **Implementation rules:**
 - Every test must use the Steps API from `./fixtures/base`
-- Every element selector goes in `page-repository.json` — no inline selectors in test code (kernel mirror — canon: `../achilles-protocol/SKILL.md` §"Hard rules — kernel-resident"; scope + exception: `../achilles-protocol/references/test-composition-standards.md` §3.1)
+- Every element selector goes in `page-repository.json`; no inline selectors in test code (kernel mirror: canon: `../achilles-protocol/SKILL.md` §"Hard rules — kernel-resident"; scope + exception: `../achilles-protocol/references/test-composition-standards.md` §3.1)
 - Use `test.describe.configure({ timeout: 60_000 })` on every describe block
-- **File-level serial mode is mandatory for tenant-mutating specs — and carries a `// serial-deliberate: <reason>` comment.** If the spec issues any POST / PUT / PATCH / DELETE to a mutable endpoint, the file **must** open with `test.describe.configure({ mode: 'serial' })` at the top of the file — before any `test.describe(...)` or `test(...)` block — with a `// serial-deliberate: <reason>` comment on the line above it stating why serial is required. Stage 4a's §6 review treats that annotation as satisfying review (no `stage4a:serial-mode-review` flag — see `../achilles-protocol/references/test-optimization.md` §6; resolution record: `test-composition-standards.md` §3.4). Rationale: parallel Playwright workers sharing a credential against a single tenant produce random CSRF-token invalidations when concurrent mutating requests race against the session-bound token. Serial mode at the file level eliminates the race without capping global parallelism. Follow-up (not landed in this PR): add a lint rule or pre-commit check that rejects any spec with a mutating request that lacks the serial directive.
+- **File-level serial mode is mandatory for tenant-mutating specs, and carries a `// serial-deliberate: <reason>` comment.** If the spec issues any POST / PUT / PATCH / DELETE to a mutable endpoint, the file **must** open with `test.describe.configure({ mode: 'serial' })` at the top of the file (before any `test.describe(...)` or `test(...)` block) with a `// serial-deliberate: <reason>` comment on the line above it stating why serial is required. Stage 4a's §6 review treats that annotation as satisfying review (no `stage4a:serial-mode-review` flag; see `../achilles-protocol/references/test-optimization.md` §6; resolution record: `test-composition-standards.md` §3.4). Rationale: parallel Playwright workers sharing a credential against a single tenant produce random CSRF-token invalidations when concurrent mutating requests race against the session-bound token. Serial mode at the file level eliminates the race without capping global parallelism. Follow-up (not landed in this PR): add a lint rule or pre-commit check that rejects any spec with a mutating request that lacks the serial directive.
 
-  **What counts as a mutable endpoint.** Any request whose server response represents a persistence change against tenant or user data — entity create / update / delete, state transitions (publish, archive, submit), role or permission mutations, file uploads that persist, password or MFA changes. Read-only methods (GET / HEAD / OPTIONS) do NOT trigger the rule, even when they tunnel through a POST for query-payload reasons, **provided** the handler is idempotent and server-side writes are limited to audit-log entries. When in doubt, apply the rule: the cost is one line of configuration per file; the cost of missing it is non-deterministic CI failures that surface later as "flaky auth".
+  **What counts as a mutable endpoint.** Any request whose server response represents a persistence change against tenant or user data: entity create / update / delete, state transitions (publish, archive, submit), role or permission mutations, file uploads that persist, password or MFA changes. Read-only methods (GET / HEAD / OPTIONS) do NOT trigger the rule, even when they tunnel through a POST for query-payload reasons, **provided** the handler is idempotent and server-side writes are limited to audit-log entries. When in doubt, apply the rule: the cost is one line of configuration per file; the cost of missing it is non-deterministic CI failures that surface later as "flaky auth".
 - Tests that depend on data from other tests must handle both states (e.g., job status could be "draft" or "published")
-- Tests that need specific data should use `test.skip()` when that data isn't found, not fail — skip **by name** per the premise/app-state/infra taxonomy in `../test-data-conventions/SKILL.md` Rule 3 (only a premise is skippable; a broken rendering or transport failure still fails)
-- **If any variant emits `steps.api*` calls, invoke the `contract-testing` skill** and apply its minimum obligations (status + error-envelope assertion) to each endpoint touched. This is what makes an L2 oracle real (see §"Oracle strength ladder" below) — an unasserted `apiGet` is not an oracle.
+- Tests that need specific data should use `test.skip()` when that data isn't found, not fail; skip **by name** per the premise/app-state/infra taxonomy in `../test-data-conventions/SKILL.md` Rule 3 (only a premise is skippable; a broken rendering or transport failure still fails)
+- **If any variant emits `steps.api*` calls, invoke the `contract-testing` skill** and apply its minimum obligations (status + error-envelope assertion) to each endpoint touched. This is what makes an L2 oracle real (see §"Oracle strength ladder" below); an unasserted `apiGet` is not an oracle.
 
 **Prioritize by test type:**
-1. **Functional tests** — verify things work when clicked/submitted (highest value)
-2. **Data verification** — verify displayed values match expected data
-3. **Navigation tests** — verify routing between pages
-4. **Presence tests** — verify elements exist (lowest value, but fast to write)
-5. **Negative tests** — verify error states and validation
-6. **Responsive tests** — verify layout at different viewports
-7. **Security tests** — XSS, injection, session handling
+1. **Functional tests**: verify things work when clicked/submitted (highest value)
+2. **Data verification**: verify displayed values match expected data
+3. **Navigation tests**: verify routing between pages
+4. **Presence tests**: verify elements exist (lowest value, but fast to write)
+5. **Negative tests**: verify error states and validation
+6. **Responsive tests**: verify layout at different viewports
+7. **Security tests**: XSS, injection, session handling
 
 ### Implementation order within this journey
 
@@ -145,22 +145,22 @@ Compose variants in this order so selectors build up cleanly and each variant in
 4. **Mobile variant** (P0/P1 only). The happy path at mobile viewport (375x812).
 5. **Negative flows.** Permission-denied, unauthorized access, out-of-order step execution.
 6. **Data-lifecycle variants** (where `Test expectations:` lists them): create → read → update → delete across sessions, draft persistence, bulk operations.
-7. **Visual-regression variants — when the surface is design-locked.** For pages or components whose visual layout the team treats as a contract (marketing landing pages, settled design-system components, dashboard layouts in a stable product), add one `verifyVisualMatch` test. Reference dynamic regions (clocks, generated ids, live counters, "updated N minutes ago" badges, user avatars, charts that re-render) by `{ elementName, pageName }` in the `mask` option so the pixel diff stays stable across runs. **Skip this variant for surfaces still under active design churn** — visual regression on a moving target is pure noise, and the right call there is to come back to it after the design settles. See `achilles-protocol/SKILL.md` §16 (visual regression — `verifyVisualMatch` with masks, not animation-freezing hacks) for the full policy.
+7. **Visual-regression variants: when the surface is design-locked.** For pages or components whose visual layout the team treats as a contract (marketing landing pages, settled design-system components, dashboard layouts in a stable product), add one `verifyVisualMatch` test. Reference dynamic regions (clocks, generated ids, live counters, "updated N minutes ago" badges, user avatars, charts that re-render) by `{ elementName, pageName }` in the `mask` option so the pixel diff stays stable across runs. **Skip this variant for surfaces still under active design churn**: visual regression on a moving target is pure noise, and the right call there is to come back to it after the design settles. See `achilles-protocol/SKILL.md` §16 (visual regression: `verifyVisualMatch` with masks, not animation-freezing hacks) for the full policy.
 
 Each variant is its own `test(...)`; spec shape: [`spec-shape.md`](../achilles-protocol/references/spec-shape.md). A journey whose variants form several families gets one spec file per family. The readability check in that reference is what Step 6c's judge and the independent verifier apply.
 
 ### Oracle strength ladder
 
-Every test proves its claim through an **oracle** — the assertion that would fail if the app regressed. Oracles vary in strength, and a variant's required strength is set by the journey's priority and whether the step mutates state. This subsection is the canonical ladder definition; `achilles-protocol/SKILL.md`'s kernel rule and the reviewer calibration in `../coverage-expansion/references/reviewer-subagent-contract.md` mirror it in one line each.
+Every test proves its claim through an **oracle**: the assertion that would fail if the app regressed. Oracles vary in strength, and a variant's required strength is set by the journey's priority and whether the step mutates state. This subsection is the canonical ladder definition; `achilles-protocol/SKILL.md`'s kernel rule and the reviewer calibration in `../coverage-expansion/references/reviewer-subagent-contract.md` mirror it in one line each.
 
 The ladder is orthogonal to `test-optimization.md` §3b's round-trip / delta / shape oracles: L0–L3 picks **which layer** confirms the effect; §3b picks the **assertion form** that stays stable against volatile values within that layer (relationship recorded in `../achilles-protocol/references/test-composition-standards.md` §3.6).
 
 | Level | Oracle | What it proves |
 |---|---|---|
 | **L0** | Visibility (toast, heading, success banner) | The UI *said* it worked. |
-| **L1** | UI round-trip — reload or re-navigate, then re-verify the persisted state via extraction | The app *renders* the mutation after a fresh load. |
-| **L2** | API oracle — `steps.apiGet` of the mutated resource + status/shape assertions per `contract-testing`'s minimum obligations | The backend *serves* the mutation. |
-| **L3** | DB oracle — `steps.sql*` via the `database-testing` skill (gated on the framework version shipping `steps.sql*`; see that skill's preflight) | The mutation *persisted* to the database. |
+| **L1** | UI round-trip: reload or re-navigate, then re-verify the persisted state via extraction | The app *renders* the mutation after a fresh load. |
+| **L2** | API oracle: `steps.apiGet` of the mutated resource + status/shape assertions per `contract-testing`'s minimum obligations | The backend *serves* the mutation. |
+| **L3** | DB oracle: `steps.sql*` via the `database-testing` skill (gated on the framework version shipping `steps.sql*`; see that skill's preflight) | The mutation *persisted* to the database. |
 
 **Required strength:**
 
@@ -170,32 +170,32 @@ The ladder is orthogonal to `test-optimization.md` §3b's round-trip / delta / s
 | P1 | ≥ L1 | L0 acceptable |
 | P2/P3 | L0 acceptable | L0 acceptable |
 
-**Reciprocal rule:** any variant whose strongest oracle is L0 on a P0 mutating step is a coverage gap — loop back in Step 7.
+**Reciprocal rule:** any variant whose strongest oracle is L0 on a P0 mutating step is a coverage gap; loop back in Step 7.
 
 **UI bite-check** (analogue of `contract-testing` Rule 8): for each journey, mutate the expected value of one L1+ assertion, confirm the test fails with a useful diff, then revert. A round-trip assertion that cannot fail is L0 wearing an L1 costume.
 
 ### Tenant cleanup hooks are non-negotiable for add-* journeys
 
-Any journey whose happy path creates a persistent tenant entity (typically `j-*-add-<entity-type>` journeys — users, records, teams, resources, admins, etc.) **must** include an explicit `test.afterAll` teardown attempt in the spec. Accumulated test records across many passes pollute shared tenants and eventually obscure real behaviour.
+Any journey whose happy path creates a persistent tenant entity (typically `j-*-add-<entity-type>` journeys: users, records, teams, resources, admins, etc.) **must** include an explicit `test.afterAll` teardown attempt in the spec. Accumulated test records across many passes pollute shared tenants and eventually obscure real behaviour.
 
 Two cases, both mandatory:
 
 1. **UI exposes a Delete affordance.** The spec's `test.afterAll` uses the Steps API to delete every entity the suite created. If the teardown step itself fails, the spec must surface that failure in the subagent's structured return rather than swallowing it.
-2. **UI lacks a Delete affordance.** The spec calls `cleanupViaApiBackdoor(<entity-type>, <id>)` from the local stub `tests/e2e/utils/cleanup-backdoor.ts` — see contract below. While the real helper is unshipped (or unavailable in the current project, e.g., per-tenant API credentials not configured), the subagent does **not** silently skip cleanup. It records the `cleanup-blocked` annotation and returns `cleanup: blocked` in its structured summary so the orchestrator can log the tenant-pollution risk explicitly instead of having it hide in the spec.
+2. **UI lacks a Delete affordance.** The spec calls `cleanupViaApiBackdoor(<entity-type>, <id>)` from the local stub `tests/e2e/utils/cleanup-backdoor.ts`; see contract below. While the real helper is unshipped (or unavailable in the current project, e.g., per-tenant API credentials not configured), the subagent does **not** silently skip cleanup. It records the `cleanup-blocked` annotation and returns `cleanup: blocked` in its structured summary so the orchestrator can log the tenant-pollution risk explicitly instead of having it hide in the spec.
 
 **Rationalizations to reject:**
 
 | Excuse | Reality |
 |--------|---------|
 | "Cleanup hook errored but the main tests passed, move on" | A swallowed cleanup failure is silent tenant pollution. Surface it in the subagent return; the orchestrator decides. |
-| "I don't have API credentials so I'll log in as the shared admin and call the UI delete" | That bypasses the reason the backdoor exists (UI has no Delete). If the UI has no Delete path, an admin-UI Delete doesn't exist either — you are inventing a workflow the app does not expose. Return `cleanup: blocked`. |
+| "I don't have API credentials so I'll log in as the shared admin and call the UI delete" | That bypasses the reason the backdoor exists (UI has no Delete). If the UI has no Delete path, an admin-UI Delete doesn't exist either; you are inventing a workflow the app does not expose. Return `cleanup: blocked`. |
 | "One record per test doesn't matter, the tenant is big" | Per pass × per journey × per variant × 5 compositional passes × 2 adversarial passes = hundreds of records per run. Pollution compounds across runs. |
-| "I'll skip cleanup and add a TODO" | A TODO in a committed spec is a silent commitment to do the work later. It rarely gets done. Return `cleanup: blocked` — the orchestrator's log of blocked cleanups IS the follow-up ledger. |
+| "I'll skip cleanup and add a TODO" | A TODO in a committed spec is a silent commitment to do the work later. It rarely gets done. Return `cleanup: blocked`; the orchestrator's log of blocked cleanups IS the follow-up ledger. |
 | "The backdoor helper isn't implemented yet so I'll skip" | Correct response: create/import the local stub (`tests/e2e/utils/cleanup-backdoor.ts`, contract below), call it as documented, catch the `CleanupBackdoorUnavailableError`, annotate, and return `cleanup: blocked`. Do NOT inline ad-hoc cleanup that circumvents the contract. |
 
 #### `cleanupViaApiBackdoor` contract (local stub until the framework ships the real helper)
 
-> **⚠ Not-yet-shipped helper.** The framework does not expose `cleanupViaApiBackdoor` yet. Specs do NOT call a phantom framework export and let it crash — they create (or import, if a sibling spec already created it) a **local stub** at `tests/e2e/utils/cleanup-backdoor.ts` that throws a named error, so the `test.afterAll` catch path is typed, deterministic, and leaves a per-run signal in the test report. Do NOT substitute an inline ad-hoc cleanup to make the call succeed; that would mask the pollution risk the return value is meant to surface. When the framework ships the real helper, pin the dependency to that named framework version and replace the stub's body with a re-export — the call sites do not change.
+> **⚠ Not-yet-shipped helper.** The framework does not expose `cleanupViaApiBackdoor` yet. Specs do NOT call a phantom framework export and let it crash; they create (or import, if a sibling spec already created it) a **local stub** at `tests/e2e/utils/cleanup-backdoor.ts` that throws a named error, so the `test.afterAll` catch path is typed, deterministic, and leaves a per-run signal in the test report. Do NOT substitute an inline ad-hoc cleanup to make the call succeed; that would mask the pollution risk the return value is meant to surface. When the framework ships the real helper, pin the dependency to that named framework version and replace the stub's body with a re-export; the call sites do not change.
 
 **The stub:**
 
@@ -213,7 +213,7 @@ export async function cleanupViaApiBackdoor(entityType: string, id: string): Pro
 }
 ```
 
-**The call site** — the spec's `test.afterAll` catches the error and records a `cleanup-blocked` annotation so every future run carries the per-run signal:
+**The call site**: the spec's `test.afterAll` catches the error and records a `cleanup-blocked` annotation so every future run carries the per-run signal:
 
 ```ts
 test.afterAll(async ({}, testInfo) => {
@@ -272,9 +272,9 @@ Save to `docs/e2e-test-scenarios.md` (or a path the user specifies).
 
 ### Step 6a: Test Optimization
 
-Load `../achilles-protocol/references/test-optimization.md` and run the 7-check protocol against the freshly-written tests for this journey. Apply auto-fixes per the protocol; re-stabilize (Step 4) if any auto-fix causes a regression (follow Rule 7 — failure-diagnosis).
+Load `../achilles-protocol/references/test-optimization.md` and run the 7-check protocol against the freshly-written tests for this journey. Apply auto-fixes per the protocol; re-stabilize (Step 4) if any auto-fix causes a regression (follow Rule 7; failure-diagnosis).
 
-Emit the structured return per `../achilles-protocol/references/test-optimization.md` §8 as part of this skill's per-journey return block (under a new top-level `stage_4a` key — see Step 8's Canonical return schema for the addition).
+Emit the structured return per `../achilles-protocol/references/test-optimization.md` §8 as part of this skill's per-journey return block (under a new top-level `stage_4a` key; see Step 8's Canonical return schema for the addition).
 
 ### Step 6b: API Compliance Review
 
@@ -285,17 +285,17 @@ If any non-compliance is found (wrong argument order, deprecated APIs, missing o
 A lightweight self-review checklist for this journey only:
 
 - Every test uses the Steps API from `./fixtures/base` (no raw `page.locator(...)` in test files).
-- Every element selector lives in `page-repository.json` — no inline selectors in spec files (citation — canon: `../achilles-protocol/references/test-composition-standards.md` §3.1).
+- Every element selector lives in `page-repository.json`: no inline selectors in spec files (citation: canon: `../achilles-protocol/references/test-composition-standards.md` §3.1).
 - Verification methods use correct option shapes (`{ exactly, greaterThan, lessThan }` for `verifyCount`; bare `verifyText()` for "not empty").
 - No use of deprecated methods or option shapes flagged in the API reference.
-- Every test ends with a verification that proves the action's effect — not a tautology.
+- Every test ends with a verification that proves the action's effect; not a tautology.
 - `test.describe.configure({ timeout: 60_000 })` on every describe block composed for this journey.
 
 ### Step 6c: Composition Judge
 
-Once 6a + 6b are clean, dispatch the independent `composition-judge-` subagent per the canonical charter in [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4 — four dimensions (scenario-intent coverage, oracle strength, API-compliance spot-check, test-data feasibility), `reviewer-inloop` return shape, fresh judge per cycle, 3 consecutive NOT SATISFIED → escalate to the caller/operator. Fix must-fix findings, re-run 6a/6b if code changed, re-judge.
+Once 6a + 6b are clean, dispatch the independent `composition-judge-` subagent per the canonical charter in [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4: four dimensions (scenario-intent coverage, oracle strength, API-compliance spot-check, test-data feasibility), `reviewer-inloop` return shape, fresh judge per cycle, 3 consecutive NOT SATISFIED → escalate to the caller/operator. Fix must-fix findings, re-run 6a/6b if code changed, re-judge.
 
-**Not double-imposed under dual-stage.** When this invocation runs under `coverage-expansion`'s dual-stage pipeline, the Stage-B reviewer cycle (`../coverage-expansion/references/reviewer-subagent-contract.md`) satisfies Stage 4c **provided its brief includes the test-data feasibility dimension** — skip Step 6c and let the caller's reviewer own the verdict. Standalone invocations (user-direct, `onboarding` Phase 3, whole-rewrite heals from `test-repair`/`self-repair`) run Step 6c themselves.
+**Not double-imposed under dual-stage.** When this invocation runs under `coverage-expansion`'s dual-stage pipeline, the Stage-B reviewer cycle (`../coverage-expansion/references/reviewer-subagent-contract.md`) satisfies Stage 4c **provided its brief includes the test-data feasibility dimension**: skip Step 6c and let the caller's reviewer own the verdict. Standalone invocations (user-direct, `onboarding` Phase 3, whole-rewrite heals from `test-repair`/`self-repair`) run Step 6c themselves.
 
 ---
 
@@ -304,7 +304,7 @@ Once 6a + 6b are clean, dispatch the independent `composition-judge-` subagent p
 Before returning, verify the journey is exhaustively covered. This is the coverage-ownership contract:
 
 1. Re-read the assigned journey block's `Steps:`, `Branches:`, and `State variations:` lists.
-2. Build a coverage matrix: each listed item × the tests that exercise it, plus a **partitions covered** column mapping each input's equivalence classes and boundary pairs (from the spec file's partition table — see `references/input-domain-analysis.md`) to the tests that exercise them.
+2. Build a coverage matrix: each listed item × the tests that exercise it, plus a **partitions covered** column mapping each input's equivalence classes and boundary pairs (from the spec file's partition table; see `references/input-domain-analysis.md`) to the tests that exercise them.
 3. If any step, branch, or applicable state variation has zero tests, loop back to Step 3 (Implement) to add missing coverage, then re-stabilize (Step 4) and re-review (Step 6).
 4. Only exit the loop when every item is covered or each remaining gap has an explicit justification (e.g., "branch X requires a seeded database row that cannot be created in tests — documented as external-setup gap").
 
@@ -322,11 +322,11 @@ After coverage verification confirms the journey is `covered-exhaustively`, run 
 
 ## Step 8: Return
 
-**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate: the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
 Step 6b's sweep is that gate for this skill: a return that reports composed tests without it is incomplete, and the stop gate will say so.
 
-Emit a structured report to the caller. Do not paste test source, DOM snapshots, or `playwright-cli` transcripts into the return — the caller will not read them.
+Emit a structured report to the caller. Do not paste test source, DOM snapshots, or `playwright-cli` transcripts into the return; the caller will not read them.
 
 ### Canonical return schema
 
@@ -348,8 +348,8 @@ Every finding reported in the return block (coverage gaps, app-bug flags, new-di
 
 If this invocation produced **zero** new tests, pick one of the states defined in `schemas/subagent-returns/composer.schema.json`:
 
-- **`status: covered-exhaustively`** — only valid when the subagent inspected the journey. Required evidence: a per-expectation mapping table (one row per item in the journey's `Test expectations:` list, each mapped to a spec file + test name). Every row must name concrete coverage — no `coverage: none` rows are tolerated under this status.
-- **`status: no-new-tests-by-rationalisation`** — **not a valid return** from any compositional pass. If the only justification is "tests would be redundant" without an inspection, perform the inspection. Orchestrators will reject this return and re-dispatch with a stricter brief.
+- **`status: covered-exhaustively`**: only valid when the subagent inspected the journey. Required evidence: a per-expectation mapping table (one row per item in the journey's `Test expectations:` list, each mapped to a spec file + test name). Every row must name concrete coverage; no `coverage: none` rows are tolerated under this status.
+- **`status: no-new-tests-by-rationalisation`**: **not a valid return** from any compositional pass. If the only justification is "tests would be redundant" without an inspection, perform the inspection. Orchestrators will reject this return and re-dispatch with a stricter brief.
 
 When invoked by `coverage-expansion` as a re-pass subagent (Pass 2 or 3), the mapping table MUST also include an explicit check against every re-pass trigger:
 
@@ -375,11 +375,11 @@ Every composer return **MUST** open with a `handover` envelope as its first key.
 | `status` | Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". |
 | `next-action` | One-line directive for the orchestrator. |
 
-`phase` and `summary` are **top-level** fields — they MUST NOT appear inside `handover`.
+`phase` and `summary` are **top-level** fields; they MUST NOT appear inside `handover`.
 
 JSON is preferred over YAML. YAML's compact-mapping form silently breaks when a value contains `:`, causing schema validation to fail.
 
-**Worked example — `new-tests-landed`:**
+**Worked example: `new-tests-landed`:**
 
 ```json
 {
@@ -403,7 +403,7 @@ The orchestrator uses the table to audit that the "no new tests" claim is suppor
 
 ### Spillover contract (`covered-exhaustively`)
 
-When the verdict is `covered-exhaustively`, the per-expectation mapping table moves to disk. The return body inlines only the index-level fields — `handover` envelope + `journey`, `pass`, `cycle`, `spill`, `tests-added: 0`, and `summary`. Example (JSON):
+When the verdict is `covered-exhaustively`, the per-expectation mapping table moves to disk. The return body inlines only the index-level fields: `handover` envelope + `journey`, `pass`, `cycle`, `spill`, `tests-added: 0`, and `summary`. Example (JSON):
 
 ```json
 {
@@ -423,7 +423,7 @@ When the verdict is `covered-exhaustively`, the per-expectation mapping table mo
 
 The spill file starts with the sentinel `<!-- subagent-returns:composer:<slug>:pass-<N>:cycle-<C> -->`. The full `| Expectation | Covering spec | Test name |` table (with one row per `Test expectations:` entry) goes in the spill body, NOT inline in the return.
 
-Reviewer dispatches enforce this: keep the verbose mapping table in the spill file so it never reaches the parent's transcript. The live `hooks/subagent-return-schema-guard.sh` (`PostToolUse:Agent`) WARNs on returns that fail `composer.schema.json`. Other composer statuses (`new-tests-landed`, `blocked`, `skipped`) are exempt from spillover (small bodies — counts + reasons, no large block). See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).
+Reviewer dispatches enforce this: keep the verbose mapping table in the spill file so it never reaches the parent's transcript. The live `hooks/subagent-return-schema-guard.sh` (`PostToolUse:Agent`) WARNs on returns that fail `composer.schema.json`. Other composer statuses (`new-tests-landed`, `blocked`, `skipped`) are exempt from spillover (small bodies: counts + reasons, no large block). See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).
 
 ---
 

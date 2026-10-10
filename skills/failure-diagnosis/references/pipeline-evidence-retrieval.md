@@ -2,7 +2,7 @@
 
 ## Stage 0a — Pin to the run's commit and dependency tree (Entrypoint C — mandatory)
 
-**Before reading a single line of source, establish which code actually ran.** Your working tree is not the run under diagnosis. It is on a different branch, at a different commit, with a different `node_modules` — and the framework or app source you read from it may be the *fixed* implementation of the very defect that produced the failure. Reading local source against a CI failure is how a diagnoser spends a session hunting a phantom app bug for a defect that was already fixed upstream.
+**Before reading a single line of source, establish which code actually ran.** Your working tree is not the run under diagnosis. It is on a different branch, at a different commit, with a different `node_modules`, and the framework or app source you read from it may be the *fixed* implementation of the very defect that produced the failure. Reading local source against a CI failure is how a diagnoser spends a session hunting a phantom app bug for a defect that was already fixed upstream.
 
 1. **Resolve the run's commit.**
 
@@ -37,9 +37,9 @@
    npm ls @civitas-cerebrum/element-interactions @civitas-cerebrum/element-repository 2>/dev/null
    ```
 
-   Write the comparison down explicitly — `CI: element-interactions@0.3.8 / local: 0.3.9` is a finding on its own. **When the versions differ, the local framework source is inadmissible as evidence about the run.** Read the CI-resolved version's source instead (`npm view <pkg>@<version>`, or unpack that exact version into a scratch directory), and check the package's changelog / releases between the two versions before proposing any heal. A defect fixed between the run's version and yours is classified under Stage 3's **framework / dependency defect** branch and healed with strategy **(i)**, not worked around in the test.
+   Write the comparison down explicitly: `CI: element-interactions@0.3.8 / local: 0.3.9` is a finding on its own. **When the versions differ, the local framework source is inadmissible as evidence about the run.** Read the CI-resolved version's source instead (`npm view <pkg>@<version>`, or unpack that exact version into a scratch directory), and check the package's changelog / releases between the two versions before proposing any heal. A defect fixed between the run's version and yours is classified under Stage 3's **framework / dependency defect** branch and healed with strategy **(i)**, not worked around in the test.
 
-4. **Record the pinning in the evidence package** — run id, `headSha`, branch, and the resolved framework versions. Every source citation from here on is a citation *at that commit*.
+4. **Record the pinning in the evidence package**: run id, `headSha`, branch, and the resolved framework versions. Every source citation from here on is a citation *at that commit*.
 
 ## Stage 0b — Pipeline evidence retrieval (Entrypoint C — mandatory)
 
@@ -61,22 +61,22 @@ gh run view <run-id> --json conclusion,workflowName,headBranch,headSha,jobs
 
 Identify the job whose `conclusion` is `failure` and the step inside it that failed (usually the `Run tests` step). The failing job's `databaseId` is what the log commands take. `headSha` is what Stage 0a pins to.
 
-**2. Read the failing step's log — for the failure *list*, not the diagnosis.**
+**2. Read the failing step's log: for the failure *list*, not the diagnosis.**
 
 ```bash
 gh run view <run-id> --job <job-id> --log-failed
 ```
 
-This tells you *which* tests failed and the shape of the error line. It does **not** tell you why — that is what the trace, DOM and console are for (Stage 1's evidence floor). Do not stop here.
+This tells you *which* tests failed and the shape of the error line. It does **not** tell you why; that is what the trace, DOM and console are for (Stage 1's evidence floor). Do not stop here.
 
-**3. List the artifacts before downloading — sizes matter.**
+**3. List the artifacts before downloading: sizes matter.**
 
 ```bash
 gh api repos/<owner>/<repo>/actions/runs/<run-id>/artifacts \
   --jq '.artifacts[] | "\(.name)  \(.size_in_bytes)  expired=\(.expired)"'
 ```
 
-`expired=true` means GitHub has garbage-collected the artifact (default retention is 90 days, often shortened per-repo). An expired artifact is a hard evidence gap — record it and say so in the report rather than silently substituting a local re-run.
+`expired=true` means GitHub has garbage-collected the artifact (default retention is 90 days, often shortened per-repo). An expired artifact is a hard evidence gap: record it and say so in the report rather than silently substituting a local re-run.
 
 **4. Download.**
 
@@ -91,9 +91,9 @@ gh run download <run-id> --name <artifact-name> --dir <dest>
 gh run download <run-id> --pattern '*mobile*' --dir <dest>
 ```
 
-Add `--repo <owner>/<repo>` when the run is not in the current working directory's repo. Download to a scratch directory, never over the workspace's own `test-results/` — mixing run artifacts with local ones is how a stale screenshot ends up in an app-bug report.
+Add `--repo <owner>/<repo>` when the run is not in the current working directory's repo. Download to a scratch directory, never over the workspace's own `test-results/`; mixing run artifacts with local ones is how a stale screenshot ends up in an app-bug report.
 
-**5. Map the layout — and mind the attempt/retry split.** A Playwright artifact unpacks to:
+**5. Map the layout: and mind the attempt/retry split.** A Playwright artifact unpacks to:
 
 ```
 <dest>/[<artifact-name>/]
@@ -113,7 +113,7 @@ Add `--repo <owner>/<repo>` when the run is not in the current working directory
         └── error-context.md
 ```
 
-**The attempt directories are siblings with different contents, and the trace is frequently on the wrong one.** Under `trace: 'on-first-retry'`, attempt 0 — the attempt that actually failed — has the screenshot, the video and `error-context.md` but **no trace**, while `-retry1/` carries the only `trace.zip`. On a flaky test the retry *passed*, so that trace shows a clean, fast, uneventful run. A diagnoser who opens the only `trace.zip` they can find, sees a 2.1s successful click, and writes "cannot reproduce" has read the wrong attempt. Flaky-on-CI is the most common CI-only shape, so this is the default trap, not an edge case:
+**The attempt directories are siblings with different contents, and the trace is frequently on the wrong one.** Under `trace: 'on-first-retry'`, attempt 0 (the attempt that actually failed) has the screenshot, the video and `error-context.md` but **no trace**, while `-retry1/` carries the only `trace.zip`. On a flaky test the retry *passed*, so that trace shows a clean, fast, uneventful run. A diagnoser who opens the only `trace.zip` they can find, sees a 2.1s successful click, and writes "cannot reproduce" has read the wrong attempt. Flaky-on-CI is the most common CI-only shape, so this is the default trap, not an edge case:
 
 ```bash
 ls -d <dest>/test-results/*/                                    # every attempt directory
@@ -149,12 +149,12 @@ jq -r '.. | objects | select(has("status") and has("annotations"))
        | "\(.status): \(.annotations)"' <dest>/test-results/<shard>-results.json
 ```
 
-**6. Establish whether a trace exists before you go looking for one.** Read the project's `playwright.config.ts` **at the run's commit** (Stage 0a) — `use.trace` decides this, and the answer differs per project and per branch:
+**6. Establish whether a trace exists before you go looking for one.** Read the project's `playwright.config.ts` **at the run's commit** (Stage 0a): `use.trace` decides this, and the answer differs per project and per branch:
 
 | `use.trace` | `retries` on CI | Is there a `trace.zip`? |
 |---|---|---|
-| `retain-on-failure` | any | **Yes** — in every failed test's directory, first attempt included. |
-| `on-first-retry` | `>= 1` | **Only in the `-retry1` directory** — i.e. on the attempt that may well have passed. The failing first attempt has screenshot + video + `error-context.md` and no trace. |
+| `retain-on-failure` | any | **Yes**: in every failed test's directory, first attempt included. |
+| `on-first-retry` | `>= 1` | **Only in the `-retry1` directory**: i.e. on the attempt that may well have passed. The failing first attempt has screenshot + video + `error-context.md` and no trace. |
 | `on-first-retry` | `0` | **No.** No retry ran, so nothing was recorded. This is the usual reason a local failure has no trace. |
 | `off` / unset | any | **No.** |
 
@@ -165,7 +165,7 @@ git show <headSha>:playwright.config.ts | grep -nE "trace:|retries:|video:|scree
 grep -nE "trace:|retries:|video:|screenshot:" playwright.config.ts   # your working tree, for the diff
 ```
 
-**When no trace exists for the failing attempt**, do not treat that as permission to diagnose from the log. Work the rest of the evidence floor — `test-failed-1.png`, `error-context.md` (which carries the full aria page snapshot at the moment of failure), `video.webm`, and the JSON reporter's `stderr` / `annotations` — and state in the report that the trace was unavailable and why. Then, separately from the diagnosis, flag the config: `trace: 'on-first-retry'` is a known evidence gap and `retain-on-failure` is this suite's documented default (see `achilles-protocol/SKILL.md` Rule 8). Fixing it is a follow-up item, not a substitute for this session's evidence.
+**When no trace exists for the failing attempt**, do not treat that as permission to diagnose from the log. Work the rest of the evidence floor: `test-failed-1.png`, `error-context.md` (which carries the full aria page snapshot at the moment of failure), `video.webm`, and the JSON reporter's `stderr` / `annotations`, and state in the report that the trace was unavailable and why. Then, separately from the diagnosis, flag the config: `trace: 'on-first-retry'` is a known evidence gap and `retain-on-failure` is this suite's documented default (see `achilles-protocol/SKILL.md` Rule 8). Fixing it is a follow-up item, not a substitute for this session's evidence.
 
 **7. Open the trace.** Interactive, when a human is watching:
 
@@ -173,7 +173,7 @@ grep -nE "trace:|retries:|video:|screenshot:" playwright.config.ts   # your work
 npx playwright show-trace <dest>/test-results/<test-slug>-retry1/trace.zip
 ```
 
-Headless — a `trace.zip` is a plain zip of JSONL streams and resources, so it reads programmatically without a browser:
+Headless: a `trace.zip` is a plain zip of JSONL streams and resources, so it reads programmatically without a browser:
 
 ```bash
 unzip -o -q trace.zip -d ./trace-x
@@ -190,15 +190,15 @@ jq -r 'select(.type == "frame-snapshot") | .snapshot.frameUrl'          ./trace-
 
 Useful shapes inside the archive:
 
-- `test.trace` — the runner stream. `before` entries carry `class`, `method`, `title`; the matching `after` entry carries `error.message` with Playwright's full call log (including the resolved element's outerHTML). This is where "which action failed, against what element" is answered without ambiguity.
-- `0-trace.trace` — the browser stream: `console`, `frame-snapshot`, `screencast-frame`, `input`, `log`.
-- `0-trace.network` — every request/response of the run.
-- `resources/page@*.jpeg` — the screencast frames. Read the last few with the Read tool to see the UI at the moment of failure without launching the viewer.
-- `resources/*.txt` / hashed files — captured page resources (scripts, stylesheets, HTML) as served during the run.
+- `test.trace`: the runner stream. `before` entries carry `class`, `method`, `title`; the matching `after` entry carries `error.message` with Playwright's full call log (including the resolved element's outerHTML). This is where "which action failed, against what element" is answered without ambiguity.
+- `0-trace.trace`: the browser stream: `console`, `frame-snapshot`, `screencast-frame`, `input`, `log`.
+- `0-trace.network`: every request/response of the run.
+- `resources/page@*.jpeg`: the screencast frames. Read the last few with the Read tool to see the UI at the moment of failure without launching the viewer.
+- `resources/*.txt` / hashed files: captured page resources (scripts, stylesheets, HTML) as served during the run.
 
 `frame-snapshot.snapshot.html` is Playwright's delta-encoded DOM format (nested arrays, not raw HTML). For a readable DOM at failure, prefer `error-context.md`'s aria page snapshot; use the trace viewer when you need the live DOM tree.
 
-**8. Watch the video when the trace is missing or the failure is motion-dependent.** `video.webm` sits beside the screenshot in each attempt directory and is often the only timeline available for the failing attempt — it answers "did the drawer ever open", "how long did the spinner stay up", "did the element move under the cursor". Extract frames with `ffmpeg` when present:
+**8. Watch the video when the trace is missing or the failure is motion-dependent.** `video.webm` sits beside the screenshot in each attempt directory and is often the only timeline available for the failing attempt; it answers "did the drawer ever open", "how long did the spinner stay up", "did the element move under the cursor". Extract frames with `ffmpeg` when present:
 
 ```bash
 ffmpeg -i video.webm -vf fps=1 frame-%03d.png    # ~1fps sampling is enough for a timeline
@@ -206,4 +206,4 @@ ffmpeg -i video.webm -vf fps=1 frame-%03d.png    # ~1fps sampling is enough for 
 
 **When `ffmpeg` is absent** (common on a locked-down machine), do not skip the video. Fall back to a browser: write a tiny `file://` HTML wrapper that loads the `.webm` in a `<video>` element, drive it with Playwright's bundled chromium, seek in ~1s steps, and screenshot each step. It is slower than `ffmpeg` and entirely sufficient for a timeline.
 
-**9. Record the provenance.** Every artifact path you cite from here on is a *downloaded CI path*, not a workspace path. Note the run id, `headSha`, job name, branch, browser/project, and **which attempt directory** each artifact came from — a diagnosis attached to the wrong run, or to the passing retry, is worse than no diagnosis.
+**9. Record the provenance.** Every artifact path you cite from here on is a *downloaded CI path*, not a workspace path. Note the run id, `headSha`, job name, branch, browser/project, and **which attempt directory** each artifact came from: a diagnosis attached to the wrong run, or to the passing retry, is worse than no diagnosis.

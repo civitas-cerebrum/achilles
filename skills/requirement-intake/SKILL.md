@@ -13,7 +13,7 @@ description: >
   change (ticket-driven-testing).
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 # Requirement intake
 
@@ -32,10 +32,10 @@ Gate semantics: `../achilles-protocol/references/factory-gates.md#specs.shape`.
 ## The rule
 
 1. **No block, no spec.** The intake gate (`hooks/factory/intake-gate.sh`) refuses a new spec file whose `test(`
-   titles do not start with an ID that has a block in `scenarioDocs` and — when `lint` is set — passes it. It judges
+   titles do not start with an ID that has a block in `scenarioDocs` and (when `lint` is set) passes it. It judges
    NEW files only (intake is not a retrofit), so the same drift in a file that already exists is caught by the
    **project's own** verify step, which should run this lint over every spec. Achilles ships no verify-step guard of
-   its own — see `../achilles-protocol/references/factory-gates.md#opting-in-the-rule-file`, "Who detects a missing or
+   its own; see `../achilles-protocol/references/factory-gates.md#opting-in-the-rule-file`, "Who detects a missing or
    weakened rule file". Without that step, an edit to an existing spec can drift from its block unnoticed.
 2. **The block is the requirement.** The spec implements the block's Steps and asserts its Expected through its
    Oracle. When live behaviour contradicts the block, the block gets a `Corrected (<date>)` bullet in the same
@@ -48,7 +48,7 @@ Gate semantics: `../achilles-protocol/references/factory-gates.md#specs.shape`.
 Template, fields and enums: [`references/scenario-block.md`](references/scenario-block.md).
 
 IDs follow `titleIdPattern` and are unique **per context** (the same ID may name the same scenario in `region-1` and
-`region-2`). Env variable NAMES only — never values.
+`region-2`). Env variable NAMES only. Never values.
 
 ## The lint contract
 
@@ -57,8 +57,8 @@ IDs follow `titleIdPattern` and are unique **per context** (the same ID may name
 - Files default to `specs.shape.scenarioDocs`; file arguments are relative to the project root. The rule file and the
   root (`$CLAUDE_PROJECT_DIR`, else the cwd) are resolved as in
   [opt-in-surfaces.md](../achilles-protocol/references/opt-in-surfaces.md) (`FACTORY_RULES`).
-- **Exit 0** — every selected block passes. **Exit 1** — a block is rejected or `--id` matched no block.
-  **Exit 2** — usage or configuration: unknown flag, missing rule file, no document, document not found.
+- **Exit 0**: every selected block passes. **Exit 1**: a block is rejected or `--id` matched no block.
+  **Exit 2**: usage or configuration: unknown flag, missing rule file, no document, document not found.
 - Errors use the three-line [message contract](../achilles-protocol/references/factory-gates.md#message-contract).
 - `--json` prints `{ ok, blocks: [{ id, title, line, file, fields, errors }], skipped }` for tools; with `--id`,
   `blocks` holds only the match while `skipped` still lists every non-block `####` heading of the given files.
@@ -68,7 +68,7 @@ IDs follow `titleIdPattern` and are unique **per context** (the same ID may name
 ## How people propose a scenario
 
 1. Add the block to a scenario document with `Status: proposed`; the lint must be green.
-2. Name the contexts and the oracle you expect; leave Steps free of selectors — the implementer finds the elements.
+2. Name the contexts and the oracle you expect; leave Steps free of selectors; the implementer finds the elements.
 3. Open a pull request. The change loop picks the block up: brief → implement → review → verify.
 
 ## Deriving the spec (agent)
@@ -83,7 +83,7 @@ IDs follow `titleIdPattern` and are unique **per context** (the same ID may name
 ## Status updates after verification
 
 1. From the verify note ([`verification-record.md`](../achilles-protocol/references/verification-record.md)): `green N× (<date>)`, `green 1× (<date>, confirming run)`,
-   `red-by-design (<reason>)`, `blocked (<reason, missing variable or owner action>)` — the count after `green` is
+   `red-by-design (<reason>)`, `blocked (<reason, missing variable or owner action>)`; the count after `green` is
    free text for the reader; the lint matches the token.
 2. Add `Corrected (<date>)` when live behaviour contradicted the block; keep the old claim visible.
 3. Anything red or blocked also gets a known-issues row.

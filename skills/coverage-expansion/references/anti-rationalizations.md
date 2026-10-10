@@ -9,7 +9,7 @@ Why categories, not symptoms: enumerating tactical excuses can't keep up with ne
 
 ## Pattern: Pre-emptive scope reduction
 
-The orchestrator decides — before dispatching — that running fewer than the contracted set of passes / journeys is the "responsible" choice given inferred constraints (session length, context budget, perceived user preference).
+The orchestrator decides (before dispatching) that running fewer than the contracted set of passes / journeys is the "responsible" choice given inferred constraints (session length, context budget, perceived user preference).
 
 **Symptoms** (phrasings that signal this pattern):
 - "pragmatic Pass 1 only" / "honest Pass 1 only" / "transparent Pass 1 only"
@@ -17,32 +17,32 @@ The orchestrator decides — before dispatching — that running fewer than the 
 - "I'll be honest with the user that I'm reducing scope"
 - "the user clearly wants results, not hours of subagent dispatch"
 - "running all 5 passes is excessive for this app"
-- "I'll run [subset] and report state — that's resume-friendly"
+- "I'll run [subset] and report state, that's resume-friendly"
 - "the realistic depth-mode contract for this app is an evening-or-overnight wall-clock run"
 - "the honest stopping point right now is to write state and resume in a fresh conversation"
 - "I want to be honest with you before burning a multi-hour budget"
 - "the design of coverage-expansion makes this a multi-conversation operation by exit #2"
 
-**Reality:** Budget pressure is not scope authorisation. Tone does not change the contract: a "transparent" scope reduction is still a scope reduction. The valid mid-run response to actual budget pressure is exit #2 (commit + state-file + stop), NOT pre-emptive reduction. **Exit #2 requires at least one dispatch in flight** — invoking it before any subagent has been dispatched is not exit #2, it is refusing to start. Onboarding's Phase 3 (happy path) is not a Phase 5 (coverage-expansion) dispatch — they're different phases, different subagents, different work; covering one journey via the happy-path scaffold does not satisfy Pass 1's "every journey, every pass" contract.
+**Reality:** Budget pressure is not scope authorisation. Tone does not change the contract: a "transparent" scope reduction is still a scope reduction. The valid mid-run response to actual budget pressure is exit #2 (commit + state-file + stop), NOT pre-emptive reduction. **Exit #2 requires at least one dispatch in flight**: invoking it before any subagent has been dispatched is not exit #2, it is refusing to start. Onboarding's Phase 3 (happy path) is not a Phase 5 (coverage-expansion) dispatch; they're different phases, different subagents, different work; covering one journey via the happy-path scaffold does not satisfy Pass 1's "every journey, every pass" contract.
 
 **Hooks that catch this:**
-- State-file schema rule (extended for this pattern): state-file writes where `currentPass >= 1` and zero dispatches are recorded across all passes are silent scope narrowing — the "write state-file then stop" form.
-- `commit-message-gate.sh` — blocks commits with phase-progression messages on pre-emptively-reduced runs.
-- (markdown-only for novel framings) — the registry's symptom list grows reactively as new framings appear; the failure-mode category is what the orchestrator must recognise.
+- State-file schema rule (extended for this pattern): state-file writes where `currentPass >= 1` and zero dispatches are recorded across all passes are silent scope narrowing: the "write state-file then stop" form.
+- `commit-message-gate.sh`: blocks commits with phase-progression messages on pre-emptively-reduced runs.
+- (markdown-only for novel framings): the registry's symptom list grows reactively as new framings appear; the failure-mode category is what the orchestrator must recognise.
 
 ---
 
 ## Pattern: Self-authorised batching (Stage A grouping)
 
-The orchestrator decides — before dispatching — to batch P0/P1/P2 journeys into multi-journey composer briefs ("composer-auth covering 4 journeys", "composer-cart-orders covering 3"), citing efficiency or natural clustering.
+The orchestrator decides (before dispatching) to batch P0/P1/P2 journeys into multi-journey composer briefs ("composer-auth covering 4 journeys", "composer-cart-orders covering 3"), citing efficiency or natural clustering.
 
 **Symptoms:**
-- "16 individual Stage A composer dispatches is too many — I'll group them by area"
-- "these 4 journeys naturally cluster — 1 agent can handle them efficiently"
-- "the journeys share most pages, same project, roughly P3 — skip the 'shared Playwright project' check"
+- "16 individual Stage A composer dispatches is too many, I'll group them by area"
+- "these 4 journeys naturally cluster, 1 agent can handle them efficiently"
+- "the journeys share most pages, same project, roughly P3, skip the 'shared Playwright project' check"
 - "batching is faster so I'll batch everything that isn't explicitly forbidden"
 
-**Reality:** Stage A is one composer per journey, in parallel up to host max — never N composer agents each covering N/k journeys sequentially. The only batching exception is P3 peripheral journeys, capped at 7 per brief, with cycle-1 split-out semantics. P0/P1/P2 NEVER batch. The diagnostic for getting this wrong: every Stage B reviewer for batched journeys returns `improvements-needed` because the batched composer rationed attention across siblings.
+**Reality:** Stage A is one composer per journey, in parallel up to host max; never N composer agents each covering N/k journeys sequentially. The only batching exception is P3 peripheral journeys, capped at 7 per brief, with cycle-1 split-out semantics. P0/P1/P2 NEVER batch. The diagnostic for getting this wrong: every Stage B reviewer for batched journeys returns `improvements-needed` because the batched composer rationed attention across siblings.
 
 **Hooks that catch this:**
 - Dispatch-discipline rule: dispatches whose prompt references 2+ distinct `j-<slug>` IDs require a grouped-dispatch prefix (`coverage-expansion/SKILL.md` §"Grouped dispatch").
@@ -51,25 +51,25 @@ The orchestrator decides — before dispatching — to batch P0/P1/P2 journeys i
 
 ## Pattern: Self-certifying greenlight
 
-A subagent (composer, reviewer, or probe) skips the work and self-certifies success — composer returns `covered-exhaustively` without inspecting, reviewer self-greenlights a journey it didn't review, probe skips boundaries it judged "trivial".
+A subagent (composer, reviewer, or probe) skips the work and self-certifies success: composer returns `covered-exhaustively` without inspecting, reviewer self-greenlights a journey it didn't review, probe skips boundaries it judged "trivial".
 
 **Symptoms:**
-- "obvious no-op — I'll mark `covered-exhaustively` without reading Pass-1 returns"
-- "Stage A returned `covered-exhaustively` — no need to dispatch Stage B"
+- "obvious no-op, I'll mark `covered-exhaustively` without reading Pass-1 returns"
+- "Stage A returned `covered-exhaustively`, no need to dispatch Stage B"
 - "cycle 1 Stage B will obviously greenlight this trivial journey, I'll skip it"
-- "the journey was greenlit last pass — skip the whole A↔B for this pass"
+- "the journey was greenlit last pass, skip the whole A↔B for this pass"
 - "the mapping table is obvious, I'll shorthand it"
 
-**Reality:** `covered-exhaustively` requires evidence — a per-expectation mapping table, not a self-assessment. Stage B is the verification, not Stage A's self-certification. Every journey gets both stages every pass. A `review_status` written without a Stage B dispatch having occurred is fabricated state.
+**Reality:** `covered-exhaustively` requires evidence: a per-expectation mapping table, not a self-assessment. Stage B is the verification, not Stage A's self-certification. Every journey gets both stages every pass. A `review_status` written without a Stage B dispatch having occurred is fabricated state.
 
 **Hooks that catch this:**
-- `subagent-return-schema-guard.sh` — warns (will block) when a `covered-exhaustively` return lacks the per-expectation mapping table; warns when banned tokens (`no-new-tests-by-rationalisation`) appear.
+- `subagent-return-schema-guard.sh`: warns (will block) when a `covered-exhaustively` return lacks the per-expectation mapping table; warns when banned tokens (`no-new-tests-by-rationalisation`) appear.
 
 ---
 
 ## Pattern: Spirit-vs-letter argument
 
-The orchestrator argues that the rule's spirit is satisfied even though the letter is not — typically used to rationalise a small contract violation as "consistent with the intent".
+The orchestrator argues that the rule's spirit is satisfied even though the letter is not, typically used to rationalise a small contract violation as "consistent with the intent".
 
 **Symptoms:**
 - "spirit of the contract is satisfied"
@@ -80,7 +80,7 @@ The orchestrator argues that the rule's spirit is satisfied even though the lett
 **Reality:** The contract's letter IS its spirit. If a rule covers situation X and you find yourself in situation Y, that's either a real gap to surface to the user (open an issue, propose an extension) or the rule actually does cover Y and you're trying to wriggle out. Tone does not change the contract.
 
 **Hooks that catch this:**
-- (markdown-only) — the framing is not mechanically detectable.
+- (markdown-only): the framing is not mechanically detectable.
 
 ---
 
@@ -90,13 +90,13 @@ A subagent or orchestrator compresses Stage B findings into a "summary string" b
 
 **Symptoms:**
 - "I'll compact findings from cycles 1–4 into one summary string for cycle 5's input"
-- "the must-fix list is small — I'll skip the retry"
+- "the must-fix list is small, I'll skip the retry"
 - "compressed findings are easier to read"
 
 **Reality:** Pass full findings through verbatim. Compressed findings lose the surgical specificity. A single `must-fix` item is enough to block greenlight; "small list" is not authorisation to skip.
 
 **Hooks that catch this:**
-- (markdown-only) — finding compression happens inside orchestrator briefs, not at the dispatch boundary.
+- (markdown-only): finding compression happens inside orchestrator briefs, not at the dispatch boundary.
 
 ---
 
@@ -105,9 +105,9 @@ A subagent or orchestrator compresses Stage B findings into a "summary string" b
 The orchestrator infers from earlier-in-the-run telemetry that a given pass / journey will be cheap or no-op, and skips re-reading the state file or the journey block before dispatch.
 
 **Symptoms:**
-- "Pass 4 finished cleanly — Pass 5 will be a no-op, I'll skip the re-dispatch check"
-- "this journey was greenlit last pass with no map delta — skip the inspection"
-- "no point reading state — I remember where we are"
+- "Pass 4 finished cleanly, Pass 5 will be a no-op, I'll skip the re-dispatch check"
+- "this journey was greenlit last pass with no map delta, skip the inspection"
+- "no point reading state, I remember where we are"
 
 **Reality:** Re-read the state file at every pass boundary. The orchestrator must not reason about "where did we leave off" from chat history. Memory is diagnostic, not authoritative.
 
@@ -125,7 +125,7 @@ A subagent reaches for an MCP browser tool surfaced by the harness, on the impli
 - "playwright-cli isn't installed yet, I'll use the MCP fallback"
 - "the harness still surfaces these tools, so they're an option"
 
-**Reality:** The harness surfaces tools the consumer's environment has registered, not tools the skill suite sanctions. The MCP browser tools are explicitly forbidden — `playwright-cli` is the only sanctioned channel. A subagent that reaches for an MCP browser tool has a malformed dispatch brief, not a permitted alternative.
+**Reality:** The harness surfaces tools the consumer's environment has registered, not tools the skill suite sanctions. The MCP browser tools are explicitly forbidden; `playwright-cli` is the only sanctioned channel. A subagent that reaches for an MCP browser tool has a malformed dispatch brief, not a permitted alternative.
 
 **Hooks that catch this:**
 - MCP-browser-redirect rule: MCP browser tool calls are forbidden; use the `playwright-cli` equivalent instead.
@@ -134,15 +134,15 @@ A subagent reaches for an MCP browser tool surfaced by the harness, on the impli
 
 ## Pattern: Subagent fan-out anti-pattern
 
-A subagent's brief asks it to "dispatch N parallel subagents", "spawn workers", "fan out", or "use the Agent tool to coordinate". Subagents in this environment cannot recursively dispatch other subagents — the Agent / Task tool is parent-only.
+A subagent's brief asks it to "dispatch N parallel subagents", "spawn workers", "fan out", or "use the Agent tool to coordinate". Subagents in this environment cannot recursively dispatch other subagents; the Agent / Task tool is parent-only.
 
 **Symptoms (in subagent briefs, not subagent self-talk):**
-- "you are an orchestrator — dispatch 4 parallel composers"
+- "you are an orchestrator, dispatch 4 parallel composers"
 - "fan out the work to N subagents"
 - "use the Agent tool to spawn workers"
 - "coordinate the wave by dispatching its constituents"
 
-**Reality:** Two valid patterns: (a) parent dispatches the wave directly (default for composer / reviewer / probe waves); (b) sub-orchestrator returns a manifest (the parent reads the manifest and dispatches). The sub-orchestrator NEVER tries to fire its own children — see `process-validator-workflow.md`.
+**Reality:** Two valid patterns: (a) parent dispatches the wave directly (default for composer / reviewer / probe waves); (b) sub-orchestrator returns a manifest (the parent reads the manifest and dispatches). The sub-orchestrator NEVER tries to fire its own children; see `process-validator-workflow.md`.
 
 **Hooks that catch this:**
 - Subagent-fan-out rule (anti-pattern A): subagent briefs whose body contains "dispatch N parallel subagents", "fan out", "use the Agent tool to dispatch" are forbidden.
@@ -156,18 +156,18 @@ A subagent's brief asks it to "dispatch N parallel subagents", "spawn workers", 
 The orchestrator argues for Sonnet on dispatches the hybrid model table assigns to Opus.
 
 **Symptoms:**
-- "Stage B reviewer per-journey can run sonnet — schema/coverage checks are mechanical" (the table says Opus for per-journey reviewers per the post-revision policy)
-- "the batch reviewer is just aggregating per-journey reviews — sonnet is fine"
-- "Pass 5 targeted probes / regression authoring is mechanical enough for sonnet" (the regression layer is the durable artifact — quality at authoring time propagates forward indefinitely)
+- "Stage B reviewer per-journey can run sonnet, schema/coverage checks are mechanical" (the table says Opus for per-journey reviewers per the post-revision policy)
+- "the batch reviewer is just aggregating per-journey reviews, sonnet is fine"
+- "Pass 5 targeted probes / regression authoring is mechanical enough for sonnet" (the regression layer is the durable artifact; quality at authoring time propagates forward indefinitely)
 - "gap analysis between passes is mechanical enough for sonnet"
 - "failure-diagnosis is small enough to run sonnet"
-- "Pass 1 composer can run sonnet — the foundation will be re-reviewed anyway"
+- "Pass 1 composer can run sonnet, the foundation will be re-reviewed anyway"
 - "a single-cycle observation showed Sonnet/Opus parity, so Sonnet should be fine everywhere"
 
 **Reality:** The table in [`coverage-expansion/SKILL.md`](../SKILL.md) §"Hard rules — kernel-resident" (Hybrid model selection bullet) is the only statement of model tiers. Dispatch the model it names.
 
 **Hooks that catch this:**
-- (markdown-only) — model selection is not yet mechanically detectable at the dispatch boundary.
+- (markdown-only): model selection is not yet mechanically detectable at the dispatch boundary.
 
 ---
 
@@ -176,11 +176,11 @@ The orchestrator argues for Sonnet on dispatches the hybrid model table assigns 
 The orchestrator decides a journey is "trivial enough" to skip its cycle-1 Stage B reviewer dispatch entirely, recording `greenlight` in the state file without a reviewer dispatch having occurred.
 
 **Symptoms:**
-- "this journey is trivial — Stage B will obviously greenlight, skip it"
-- "previous pass greenlit, this pass will too — record greenlight directly"
+- "this journey is trivial, Stage B will obviously greenlight, skip it"
+- "previous pass greenlit, this pass will too, record greenlight directly"
 - "saving a dispatch on the trivial cases is fine"
 
-**Reality:** Self-certifying greenlights without a reviewer dispatch is the failure mode the dual-stage design exists to close. The fast path for trivial journeys is the cycle-1 batch reviewer (`references/reviewer-subagent-contract.md` §"Batch reviewer mode (cycle-1 compositional only)") — one Opus reviewer cross-synthesises every in-flight journey's cycle-1 review in a single dispatch — NOT skipping the dispatch.
+**Reality:** Self-certifying greenlights without a reviewer dispatch is the failure mode the dual-stage design exists to close. The fast path for trivial journeys is the cycle-1 batch reviewer (`references/reviewer-subagent-contract.md` §"Batch reviewer mode (cycle-1 compositional only)"): one Opus reviewer cross-synthesises every in-flight journey's cycle-1 review in a single dispatch; NOT skipping the dispatch.
 
 **Hooks that catch this:**
 - State-file schema rule: `review_status: greenlight` entries with `stage_b_cycles: 0` are invalid (the minimum for an actually-dispatched Stage B is 1).
@@ -209,13 +209,13 @@ Two consecutive reviewers in cycles N and N+1 disagree about what's must-fix; th
 
 **Symptoms:**
 - "reviewer disagrees with itself between cycles 1 and 2; I'll pick the more lenient one"
-- "cycle 2's reviewer was more thorough — I'll discard cycle 1's findings"
+- "cycle 2's reviewer was more thorough, I'll discard cycle 1's findings"
 - "consensus across cycles is what matters"
 
 **Reality:** Each cycle's reviewer is fresh and independent. Take each cycle's output as-is; the retry-loop logic handles divergence via the stalled/exhausted checks. Cherry-picking defeats the fresh-eyes property.
 
 **Hooks that catch this:**
-- (markdown-only) — cherry-picking happens inside orchestrator briefs.
+- (markdown-only): cherry-picking happens inside orchestrator briefs.
 
 ---
 
@@ -250,25 +250,25 @@ The orchestrator pushes past the 70% auto-compaction threshold ("one more pass b
 **Reality:** 70% is a floor, not a guideline. Below it the seam costs more than it saves; above it the next pass often lands at 95%+ and forces an in-pass compact that loses roster state. State-file write happens BEFORE compaction, not after. Auto-compact failure → fall back to manual-compaction safe-seam, never silent progression.
 
 **Hooks that catch this:**
-- (markdown-only) — context-percentage decisions are inside the orchestrator's reasoning loop.
+- (markdown-only): context-percentage decisions are inside the orchestrator's reasoning loop.
 
 ---
 
 ## Pattern: Orchestrator-direct composition (subagent dispatch dodged)
 
-The orchestrator absorbs `test-composer-j-<slug>:` (or probe / reviewer) work into its own context — reads the journey block, drives `playwright-cli` for selector inspection itself, writes the spec inline, runs the test, commits — instead of dispatching a subagent. Often justified by a real concern (parallelism risk, shared-DB contention) that's then resolved by absorbing the work serially rather than fixing the parallelism issue.
+The orchestrator absorbs `test-composer-j-<slug>:` (or probe / reviewer) work into its own context (reads the journey block, drives `playwright-cli` for selector inspection itself, writes the spec inline, runs the test, commits) instead of dispatching a subagent. Often justified by a real concern (parallelism risk, shared-DB contention) that's then resolved by absorbing the work serially rather than fixing the parallelism issue.
 
-**Scope — the full specialist task-family list, not just composing.** The same pattern covers an orchestrator inlining ANY of the suite's dedicated-dispatch families: UI inspection / page-repository building (`stage2-*:` / `phase1-*:`), test composing (`composer-*:`), journey-mapping sections (`phase4-cycle-*:`), adversarial probing / bug discovery (`probe-*:`), failure diagnosis (`fd-*`, subagent-only skill), repair workers (`repair-worker-*:`), composition judging (`composition-judge-*:` — an author "judging" its own output inline is this pattern AND "Self-certifying greenlight"), and workflow review (`workflow-reviewer-*:`). The canonical statement of the discipline and the per-family prefix table is `../../achilles-protocol/references/test-composition-standards.md` §6. The rule of thumb: catching yourself STARTING one of these inline means stop and dispatch.
+**Scope: the full specialist task-family list, not just composing.** The same pattern covers an orchestrator inlining ANY of the suite's dedicated-dispatch families: UI inspection / page-repository building (`stage2-*:` / `phase1-*:`), test composing (`composer-*:`), journey-mapping sections (`phase4-cycle-*:`), adversarial probing / bug discovery (`probe-*:`), failure diagnosis (`fd-*`, subagent-only skill), repair workers (`repair-worker-*:`), composition judging (`composition-judge-*:`: an author "judging" its own output inline is this pattern AND "Self-certifying greenlight"), and workflow review (`workflow-reviewer-*:`). The canonical statement of the discipline and the per-family prefix table is `../../achilles-protocol/references/test-composition-standards.md` §6. The rule of thumb: catching yourself STARTING one of these inline means stop and dispatch.
 
 **Symptoms:**
 - "I am the composer. For each journey I read its block from journey-map.md, drive playwright-cli myself for selector inspection, write the spec inline, run it, commit. No Agent tool calls, no test-composer-j-<slug>: subagent dispatches."
 - "earlier-turn analysis concluded that 22 parallel test-composer-j-<slug>: Agent dispatches against a shared MongoDB would race on /api/reset"
 - "I'm violating that rule deliberately because [concern]"
-- "test runtime is parallelized [via workers], but only at the Playwright-worker level — that's test execution parallelism, not journey-composition parallelism"
+- "test runtime is parallelized [via workers], but only at the Playwright-worker level, that's test execution parallelism, not journey-composition parallelism"
 - "journey composition itself is serial. I work through journeys one at a time"
 - "the orchestrator (me) holds the full journey-map content as I read each block, the playwright-cli snapshot output and DOM eval results, each spec's source as I write it, each test run's output for verification"
 
-**Reality:** §"Orchestrator context discipline" mandates that DOM snapshots, test source, CLI transcripts, and stabilization output live in dispatched-subagent contexts. The orchestrator stays at index-level state (map index, independence graph, pass counter, structured-return summaries) — *only*. Direct composition violates that discipline regardless of the concern that motivated it. If parallel dispatch feels unsafe, the right fix is upstream (audit + per-test-user pattern), not "do the work myself serially". The audit's `global-reset:cross-test-race` tag exists precisely so Stage 4a §1 inverts to per-test-user isolation, which makes parallel composer dispatch safe.
+**Reality:** §"Orchestrator context discipline" mandates that DOM snapshots, test source, CLI transcripts, and stabilization output live in dispatched-subagent contexts. The orchestrator stays at index-level state (map index, independence graph, pass counter, structured-return summaries), *only*. Direct composition violates that discipline regardless of the concern that motivated it. If parallel dispatch feels unsafe, the right fix is upstream (audit + per-test-user pattern), not "do the work myself serially". The audit's `global-reset:cross-test-race` tag exists precisely so Stage 4a §1 inverts to per-test-user isolation, which makes parallel composer dispatch safe.
 
 The cost the orchestrator pays for the dodge:
 - Speed: serial composition is ~3× slower than parallel dispatch with `P_dispatch` composers per wave.
@@ -276,30 +276,30 @@ The cost the orchestrator pays for the dodge:
 - Stage B disappears: direct composition has no reviewer pass, so the dual-stage no-skip contract is silently broken.
 
 **Hooks that catch this:**
-- Direct-compose-block rule: PostToolUse:Write|Edit on `tests/e2e/j-*.spec.ts` / `tests/e2e/sj-*.spec.ts` (incl. `-regression`) when `coverage-expansion-state.json` exists is a **hard violation** unless the writer is a legitimate composer subagent (slug in-flight from a recent `test-composer-j-<slug>:` / `probe-j-<slug>:` Agent dispatch). Orchestrator-direct writes break the dual-stage contract — see `test-optimization.md` §1.A (per-test-user pattern) for the upstream parallelism fix.
-- (markdown-only for the generalised task-family scope) — mechanically distinguishing "orchestrator absorbing" from "subagent working" needs an in-flight-registry pattern (`contributing-to-achilles-protocol` §"Approximating `is_subagent`"); until it is revived, partial per-family backing exists via `playwright-cli-isolation-guard.sh` (slug shape), `subagent-schema-preread-gate.sh` (schema-mapped briefs), `composition-judge-gate.sh` (judge-loop leash), and the `workflow-reviewer-pass<N>:` dispatch cross-checks. Reviewer-visible note: the general rule is reviewer-enforced.
+- Direct-compose-block rule: PostToolUse:Write|Edit on `tests/e2e/j-*.spec.ts` / `tests/e2e/sj-*.spec.ts` (incl. `-regression`) when `coverage-expansion-state.json` exists is a **hard violation** unless the writer is a legitimate composer subagent (slug in-flight from a recent `test-composer-j-<slug>:` / `probe-j-<slug>:` Agent dispatch). Orchestrator-direct writes break the dual-stage contract; see `test-optimization.md` §1.A (per-test-user pattern) for the upstream parallelism fix.
+- (markdown-only for the generalised task-family scope): mechanically distinguishing "orchestrator absorbing" from "subagent working" needs an in-flight-registry pattern (`contributing-to-achilles-protocol` §"Approximating `is_subagent`"); until it is revived, partial per-family backing exists via `playwright-cli-isolation-guard.sh` (slug shape), `subagent-schema-preread-gate.sh` (schema-mapped briefs), `composition-judge-gate.sh` (judge-loop leash), and the `workflow-reviewer-pass<N>:` dispatch cross-checks. Reviewer-visible note: the general rule is reviewer-enforced.
 
 ---
 
 ## Pattern: Session state mistaken for per-unit-of-work state ("the skill is already loaded")
 
-A methodology skill is invoked and followed correctly for one unit of work. The agent then moves to the NEXT unit — a second ticket, a second branch — and does not re-enter the skill, because the skill is visibly still in its transcript. It runs an ad-hoc version of the method from memory instead of the sequence, and the deliverables the sequence would have produced silently do not exist.
+A methodology skill is invoked and followed correctly for one unit of work. The agent then moves to the NEXT unit (a second ticket, a second branch) and does not re-enter the skill, because the skill is visibly still in its transcript. It runs an ad-hoc version of the method from memory instead of the sequence, and the deliverables the sequence would have produced silently do not exist.
 
 **Symptoms:**
 - "I'm already in ticket-testing mode" / "already in companion mode"
 - "the skill is loaded, no need to re-invoke it"
 - "I've already read the methodology this session"
-- "this one is smaller — it just needs a quick confirmation"
+- "this one is smaller, it just needs a quick confirmation"
 - "the PR is already in QA, I only need to sign it off"
 - "same project, same suite, same approach as the last one"
 - a verdict, report, or handover carrying measured numbers but naming no artifact
 
-**Reality:** Skill activation is a property of the **session**; the sequence is a property of the **unit of work**. Those come apart the moment a second unit arrives, and every intent-triggered skill re-fires on judgement alone — which is exactly the faculty a second, apparently-smaller unit erodes. Loaded ≠ performed. The tell is not in the reasoning, which reads fine; it is in the deliverables, which are missing. Re-entry is cheap: announce it in one line and restate the sequence for the new unit.
+**Reality:** Skill activation is a property of the **session**; the sequence is a property of the **unit of work**. Those come apart the moment a second unit arrives, and every intent-triggered skill re-fires on judgement alone, which is exactly the faculty a second, apparently-smaller unit erodes. Loaded ≠ performed. The tell is not in the reasoning, which reads fine; it is in the deliverables, which are missing. Re-entry is cheap: announce it in one line and restate the sequence for the new unit.
 
 **Hooks that catch this:**
-- `evidence-bundle-gate.sh` — binds `ticket-driven-testing`'s contract item 3 (the evidence bundle) to the **ticket key**, not the session, so a second ticket cannot sign off on the first ticket's bundle. DENY on terminal transition / published PR; **WARN only** on a verdict-shaped comment, which is the surface the origin failure actually used.
-- `adversarial-verification-gate.sh` — the same per-ticket binding on the receipt written by phases 8 and 8b of `ticket-driven-testing`, with the same DENY/WARN split.
-- (markdown-only for the re-entry act itself) — a hook can observe that a per-unit deliverable is absent at the sign-off boundary; it cannot observe whether the sequence was re-run. The consequence is mechanically detectable; the decision is not. Both gates above are also authored by the same actor they judge, so they raise the cost of forgetting far more than the cost of faking.
+- `evidence-bundle-gate.sh`: binds `ticket-driven-testing`'s contract item 3 (the evidence bundle) to the **ticket key**, not the session, so a second ticket cannot sign off on the first ticket's bundle. DENY on terminal transition / published PR; **WARN only** on a verdict-shaped comment, which is the surface the origin failure actually used.
+- `adversarial-verification-gate.sh`: the same per-ticket binding on the receipt written by phases 8 and 8b of `ticket-driven-testing`, with the same DENY/WARN split.
+- (markdown-only for the re-entry act itself); a hook can observe that a per-unit deliverable is absent at the sign-off boundary; it cannot observe whether the sequence was re-run. The consequence is mechanically detectable; the decision is not. Both gates above are also authored by the same actor they judge, so they raise the cost of forgetting far more than the cost of faking.
 
 **Rule:** `ticket-driven-testing` §0.
 
@@ -307,7 +307,7 @@ A methodology skill is invoked and followed correctly for one unit of work. The 
 
 ## Pattern: `markdown-only` deferral — companion-mode per-environment artifact paths
 
-`companion-mode` §"Phase 5: Bundle" requires one bundle (or one named subdirectory) per environment when a single verification spans more than one environment, viewport, or locale — `video.webm` / `trace.zip` / `network.har` are fixed names, so a second run overwrites the first silently. No hook validates the artifact count against the number of runs a summary claims: the claim lives in prose inside `summary.md`, and parsing an English sentence for "how many runs is this asserting" is not a mechanical check.
+`companion-mode` §"Phase 5: Bundle" requires one bundle (or one named subdirectory) per environment when a single verification spans more than one environment, viewport, or locale: `video.webm` / `trace.zip` / `network.har` are fixed names, so a second run overwrites the first silently. No hook validates the artifact count against the number of runs a summary claims: the claim lives in prose inside `summary.md`, and parsing an English sentence for "how many runs is this asserting" is not a mechanical check.
 
 **Tag:** `markdown-only`.
 **Deferred hook:** a `summary.md` shape contract (a machine-readable run list) would make the count checkable; until that exists the rule is reviewer-enforced.
@@ -316,7 +316,7 @@ A methodology skill is invoked and followed correctly for one unit of work. The 
 
 ## Pattern: `markdown-only` deferral — batch-reviewer mode (cycle-1 compositional)
 
-The "Batch reviewer mode" rule lives in `skills/coverage-expansion/references/reviewer-subagent-contract.md` §"Batch reviewer mode (cycle-1 compositional only)". The structural backstop — extending the surviving `subagent-return-schema-guard.sh` to recognise the `reviewer-batch-pass-<N>:` role-prefix and the `verdicts:` array shape — remains deferred.
+The "Batch reviewer mode" rule lives in `skills/coverage-expansion/references/reviewer-subagent-contract.md` §"Batch reviewer mode (cycle-1 compositional only)". The structural backstop (extending the surviving `subagent-return-schema-guard.sh` to recognise the `reviewer-batch-pass-<N>:` role-prefix and the `verdicts:` array shape) remains deferred.
 
 **Tag:** `markdown-only`.
 **Deferred hook:** `subagent-return-schema-guard.sh` extension for `reviewer-batch-pass-<N>:` / `verdicts:`.
@@ -334,7 +334,7 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 ## Pattern: `markdown-only` deferral: ticket-driven-testing commit-or-discard + report contract
 
-Two rules in `ticket-driven-testing/references/phase-8c-8e-scoring-and-commit.md` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle) — but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW — a level-of-detail judgement over free prose, not a mechanical check.
+Two rules in `ticket-driven-testing/references/phase-8c-8e-scoring-and-commit.md` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle), but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW: a level-of-detail judgement over free prose, not a mechanical check.
 
 **Tag:** `markdown-only`.
 **Deferred hook:** a `commitDecision` field (`discarded` | `proposed` | `confirmed-by:<human>`) in the adversarial-verification receipt (phase 8b) would let `adversarial-verification-gate.sh` deny a spec commit with no recorded confirmation; the report-contract rule remains reviewer-enforced.
@@ -354,29 +354,29 @@ Two rules in `ticket-driven-testing/references/phase-8c-8e-scoring-and-commit.md
 
 **Symptoms** (phrasings that signal this pattern):
 - "the test passes, the compliance review would be a rubber stamp"
-- "this was a bug reproduction / a heal / a ticket fix, not authoring — the sweep doesn't apply"
+- "this was a bug reproduction / a heal / a ticket fix, not authoring, the sweep doesn't apply"
 - "the subagent already reviewed its own output"
 - "I'll sweep at the end of the batch" (and the batch never ends)
 - "it's one small test, the sweep is overkill"
-- "an ID is bookkeeping — the title already says what it does"
+- "an ID is bookkeeping, the title already says what it does"
 - "this test fails on purpose, I'll just `.skip()` it so the run is green"
 - "I'll tighten the assertion so the suite goes green and file the bug separately"
 
-**Reality:** The sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds are caught — and passing is exactly the state in which all four survive unnoticed. Modes that write tests as a *means* to something else (reproducing a bug, healing a red, closing a ticket) are the ones that skip it, because their own goal reads as met the moment the test exists; and because tests are written by copying the last one, one unswept file propagates the wrong model into everything written after it. The same instinct rewrites a deliberate red into a pass: a test weakened or skipped to make a run green is a test that can no longer detect the defect it was written for. The sanctioned move is `@known-defect` plus a filed report — the red stays red, and the repair pipeline stops re-deriving it.
+**Reality:** The sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds are caught, and passing is exactly the state in which all four survive unnoticed. Modes that write tests as a *means* to something else (reproducing a bug, healing a red, closing a ticket) are the ones that skip it, because their own goal reads as met the moment the test exists; and because tests are written by copying the last one, one unswept file propagates the wrong model into everything written after it. The same instinct rewrites a deliberate red into a pass: a test weakened or skipped to make a run green is a test that can no longer detect the defect it was written for. The sanctioned move is `@known-defect` plus a filed report; the red stays red, and the repair pipeline stops re-deriving it.
 
 **Hooks that catch this:**
-- `compliance-sweep-exit-gate.sh` — `Stop` + `SubagentStop`. Blocks the stop when the transcript shows a spec-file Write/Edit with no compliance sweep after it. Delegation does not release it: either the subagent swept and said so, or the orchestrator sweeps what came back.
-- `test-id-compliance-gate.sh` — `PreToolUse:Write|Edit`. Denies a spec write that adds a case with no stable test ID, or that duplicates an ID inside one file.
-- `bin/self-repair.mjs` — classifies `@known-defect` reds as terminal, so tagging one is cheaper than silencing it and the incentive points the right way.
+- `compliance-sweep-exit-gate.sh`: `Stop` + `SubagentStop`. Blocks the stop when the transcript shows a spec-file Write/Edit with no compliance sweep after it. Delegation does not release it: either the subagent swept and said so, or the orchestrator sweeps what came back.
+- `test-id-compliance-gate.sh`: `PreToolUse:Write|Edit`. Denies a spec write that adds a case with no stable test ID, or that duplicates an ID inside one file.
+- `bin/self-repair.mjs`: classifies `@known-defect` reds as terminal, so tagging one is cheaper than silencing it and the incentive points the right way.
 
 ---
 
 ## Pattern: Diagnosis from log text alone (evidence floor skipped)
 
-The diagnoser reads the terminal error, the CI job log, or the stack trace, recognises a familiar-looking error string, and ships a root cause — or a heal — without ever opening the trace, looking at the UI/DOM state at the moment of failure, or reading the browser console. The pipeline-failure variant is worse: the run's artifacts are never downloaded at all, and the "diagnosis" is a paraphrase of the log line. Two sub-shapes travel with it: reading the *retry* attempt's trace (which passed) and concluding "not reproducible", and reading framework source from the local `node_modules` rather than the version CI actually resolved.
+The diagnoser reads the terminal error, the CI job log, or the stack trace, recognises a familiar-looking error string, and ships a root cause (or a heal) without ever opening the trace, looking at the UI/DOM state at the moment of failure, or reading the browser console. The pipeline-failure variant is worse: the run's artifacts are never downloaded at all, and the "diagnosis" is a paraphrase of the log line. Two sub-shapes travel with it: reading the *retry* attempt's trace (which passed) and concluding "not reproducible", and reading framework source from the local `node_modules` rather than the version CI actually resolved.
 
 **Symptoms:**
-- "the error message is obvious — it's a timeout on \<element\>"
+- "the error message is obvious, it's a timeout on \<element\>"
 - "it's clearly a timeout, the trace won't add anything"
 - "I can tell from the stack trace exactly which locator failed"
 - "the call log already shows the resolved element, so I've effectively seen the DOM"
@@ -386,15 +386,15 @@ The diagnoser reads the terminal error, the CI job log, or the stack trace, reco
 - "I'll form the hypothesis first and only check the trace if it doesn't hold"
 - "three tests failed the same way, one log line covers all three"
 - "this is the same error I diagnosed earlier in the session"
-- "the trace shows a clean 2.1s pass — cannot reproduce" (that was the retry, not the failing attempt)
+- "the trace shows a clean 2.1s pass, cannot reproduce" (that was the retry, not the failing attempt)
 - "I read the framework's source, so I know what it does" (from the local tree, not the version the run resolved)
 
-**Reality:** the error message says *where execution stopped*; the trace says *what the page was doing*. They are different questions, which is why the trace exists. One `Timeout … waiting for element to be visible, enabled and stable` is emitted identically by an intercepting overlay, a sticky consent banner, a never-settling animation, a mid-flight client navigation, a 500 behind a skeleton, a framework-side retry defect, and a absent element — seven different classifications, seven different heals. Recognising the error *shape* from a previous diagnosis is precisely the condition under which the previous session's answer gets stapled to a different root cause. Cost is not a defence: `unzip` + `jq` reads a trace headlessly in seconds and the screencast frames are readable images. For a pipeline failure, a local re-run is a *different execution* on a different commit and a different dependency tree — it cannot answer why that run failed. The evidence floor (trace + UI/DOM at failure + browser console, each with a written observation, gaps named with reasons) is a precondition of **every** classification — test issue as much as app bug — not a nice-to-have; every heal downstream of a skipped floor inherits the guess.
+**Reality:** the error message says *where execution stopped*; the trace says *what the page was doing*. They are different questions, which is why the trace exists. One `Timeout … waiting for element to be visible, enabled and stable` is emitted identically by an intercepting overlay, a sticky consent banner, a never-settling animation, a mid-flight client navigation, a 500 behind a skeleton, a framework-side retry defect, and a absent element: seven different classifications, seven different heals. Recognising the error *shape* from a previous diagnosis is precisely the condition under which the previous session's answer gets stapled to a different root cause. Cost is not a defence: `unzip` + `jq` reads a trace headlessly in seconds and the screencast frames are readable images. For a pipeline failure, a local re-run is a *different execution* on a different commit and a different dependency tree; it cannot answer why that run failed. The evidence floor (trace + UI/DOM at failure + browser console, each with a written observation, gaps named with reasons) is a precondition of **every** classification (test issue as much as app bug), not a nice-to-have; every heal downstream of a skipped floor inherits the guess.
 
 **Hooks that catch this:**
-- [`failure-diagnosis-evidence-floor-gate.sh`](../../../hooks/failure-diagnosis-evidence-floor-gate.sh) — `PreToolUse:Write|Edit`. In a session where the `failure-diagnosis` skill is loaded (or an `fd-*` / `repair-worker-*` role is in play), denies writes to a spec file or the element repository when the transcript shows no evidence access at all — no Read of a trace / `error-context.md` / failure screenshot / video / JSON reporter output, and no `show-trace` / `unzip … trace.zip` / `gh run download` / `show-report` Bash call. Escape hatch: `FD_EVIDENCE_FLOOR_GATE=off`.
+- [`failure-diagnosis-evidence-floor-gate.sh`](../../../hooks/failure-diagnosis-evidence-floor-gate.sh): `PreToolUse:Write|Edit`. In a session where the `failure-diagnosis` skill is loaded (or an `fd-*` / `repair-worker-*` role is in play), denies writes to a spec file or the element repository when the transcript shows no evidence access at all: no Read of a trace / `error-context.md` / failure screenshot / video / JSON reporter output, and no `show-trace` / `unzip … trace.zip` / `gh run download` / `show-report` Bash call. Escape hatch: `FD_EVIDENCE_FLOOR_GATE=off`.
 
-**Residual (markdown-only):** the hook proves evidence was *accessed*, not that it was *understood* — an agent that opens a trace and then ignores it still passes. Nor can it read the written observation for each floor item, or tell attempt 0's trace from the retry's. Those remain enforced by the skill text and by reviewers.
+**Residual (markdown-only):** the hook proves evidence was *accessed*, not that it was *understood*: an agent that opens a trace and then ignores it still passes. Nor can it read the written observation for each floor item, or tell attempt 0's trace from the retry's. Those remain enforced by the skill text and by reviewers.
 
 **Rule:** `failure-diagnosis` §"Evidence floor — non-negotiable, both entrypoints, both conclusions", §"Stage 0a — Pin to the run's commit and dependency tree", and §"Stage 0b — Pipeline evidence retrieval".
 
@@ -402,47 +402,47 @@ The diagnoser reads the terminal error, the CI job log, or the stack trace, reco
 
 ## Pattern: Judge-loop skipping (Stage 4c self-exemption)
 
-The author of freshly-composed tests decides the mandatory Stage 4c composition judge (`skills/achilles-protocol/references/test-composition-standards.md` §4) is unnecessary for this particular exit — the tests pass, the session is long, a second reader "adds latency without adding information".
+The author of freshly-composed tests decides the mandatory Stage 4c composition judge (`skills/achilles-protocol/references/test-composition-standards.md` §4) is unnecessary for this particular exit: the tests pass, the session is long, a second reader "adds latency without adding information".
 
 **Symptoms:**
 - "the tests obviously pass, a judge adds latency"
-- "4a and 4b were both clean — a third review is redundant"
+- "4a and 4b were both clean, a third review is redundant"
 - "this is a trivial scenario; the judge would greenlight it anyway"
 - "I already reviewed the specs carefully myself"
 - "I'll commit now and judge in a follow-up session"
 - an author declaring SATISFIED on its own work with no `composition-judge-` dispatch in the transcript
 
-**Reality:** 4a/4b are author-side self-review; the judge is the second reader the author cannot be — the same separation-of-duties argument as Stage B and `ticket-driven-testing/references/phase-8b-adversarial-review.md`, and "obviously fine" is precisely the state self-review cannot distinguish from "looks fine to its author". Passing tests are the judge's *precondition*, not its substitute: three of its four dimensions (intent coverage, oracle strength, data feasibility) are invisible to a green run. The commit gate is judge-SATISFIED, not tests-green.
+**Reality:** 4a/4b are author-side self-review; the judge is the second reader the author cannot be: the same separation-of-duties argument as Stage B and `ticket-driven-testing/references/phase-8b-adversarial-review.md`, and "obviously fine" is precisely the state self-review cannot distinguish from "looks fine to its author". Passing tests are the judge's *precondition*, not its substitute: three of its four dimensions (intent coverage, oracle strength, data feasibility) are invisible to a green run. The commit gate is judge-SATISFIED, not tests-green.
 
 **Hooks that catch this:**
-- `hooks/composition-judge-gate.sh` — records `composition-judge-` dispatches and their verdicts per session; blocks Stop (`decision: block`, single-shot via `stop_hook_active`) while a judge loop stands open on a NOT-SATISFIED verdict below the 3-reject cap (abandoning an in-flight loop); at the cap Stop is allowed — operator escalation is the sanctioned exit.
-- `hooks/subagent-schema-preread-gate.sh` / `subagent-return-schema-guard.sh` — `composition-judge-*` is schema-mapped to `reviewer-inloop.schema.json`, so malformed judge briefs/returns are caught mechanically.
-- (markdown-only for the arming half) — see the deferral entry below: never dispatching a judge at all is not mechanically detectable.
+- `hooks/composition-judge-gate.sh`: records `composition-judge-` dispatches and their verdicts per session; blocks Stop (`decision: block`, single-shot via `stop_hook_active`) while a judge loop stands open on a NOT-SATISFIED verdict below the 3-reject cap (abandoning an in-flight loop); at the cap Stop is allowed; operator escalation is the sanctioned exit.
+- `hooks/subagent-schema-preread-gate.sh` / `subagent-return-schema-guard.sh`: `composition-judge-*` is schema-mapped to `reviewer-inloop.schema.json`, so malformed judge briefs/returns are caught mechanically.
+- (markdown-only for the arming half): see the deferral entry below: never dispatching a judge at all is not mechanically detectable.
 
 ---
 
 ## Pattern: Test-data feasibility rationalisation ("the content rarely changes")
 
-A composer pins current environment content — today's top item, the demo tenant's seeded record, the fixture's shared user — instead of running the `test-data-conventions` strategy decision ladder (seed your own data, or declare-and-resolve requirements), because the content "won't move".
+A composer pins current environment content (today's top item, the demo tenant's seeded record, the fixture's shared user) instead of running the `test-data-conventions` strategy decision ladder (seed your own data, or declare-and-resolve requirements), because the content "won't move".
 
 **Symptoms:**
 - "the content rarely changes"
-- "I'll pin today's top item — it's obviously stable"
+- "I'll pin today's top item, it's obviously stable"
 - "the fixture already has a user I can reuse"
 - "cleanup can be a follow-up"
 - "retry will regenerate anyway" (module-scope generation)
 - "no seeding API, so I'll just use whatever data is live"
 
-**Reality:** "rarely" is a delivery date for a false alarm. Data feasibility is a composing gate (`test-data-conventions` Rule 12): every dependency is either seeded per-attempt with hooked cleanup, or declared-and-resolved at runtime with the resolved facts as the oracle — and a dependency that can do neither blocks the scenario and lands in `tests/e2e/docs/test-data-plan.md` as a gap, never inside a fragile spec. The Stage 4c judge's dimension 4 rejects hardcoded-current-content specs as must-fix.
+**Reality:** "rarely" is a delivery date for a false alarm. Data feasibility is a composing gate (`test-data-conventions` Rule 12): every dependency is either seeded per-attempt with hooked cleanup, or declared-and-resolved at runtime with the resolved facts as the oracle, and a dependency that can do neither blocks the scenario and lands in `tests/e2e/docs/test-data-plan.md` as a gap, never inside a fragile spec. The Stage 4c judge's dimension 4 rejects hardcoded-current-content specs as must-fix.
 
 **Hooks that catch this:**
-- (markdown-only) — distinguishing a pinned incidental literal from a legitimate assertion constant requires the scenario's intent; not mechanically detectable at the tool boundary. Judge dimension 4 and the Stage-B reviewer's test-data feasibility calibration bullet are the enforcing readers.
+- (markdown-only): distinguishing a pinned incidental literal from a legitimate assertion constant requires the scenario's intent; not mechanically detectable at the tool boundary. Judge dimension 4 and the Stage-B reviewer's test-data feasibility calibration bullet are the enforcing readers.
 
 ---
 
 ## Pattern: `markdown-only` deferral — judge-loop arming
 
-Stage 4c's "dispatch a judge at every composing exit" rule (`test-composition-standards.md` §4) has a mechanically enforceable half and an unenforceable half. `hooks/composition-judge-gate.sh` covers the enforceable half: once a `composition-judge-` dispatch exists, the session's Stop is warned while the loop stands open on NOT SATISFIED below the cap. The unenforceable half is **arming**: no hook can reliably detect that "a composing session happened and never dispatched a judge" — spec-file writes also occur in repair, diagnosis, and companion-evidence contexts that legitimately never judge, and the harness cannot distinguish orchestrator from subagent writers at hook-fire time (the documented `is_subagent` gap).
+Stage 4c's "dispatch a judge at every composing exit" rule (`test-composition-standards.md` §4) has a mechanically enforceable half and an unenforceable half. `hooks/composition-judge-gate.sh` covers the enforceable half: once a `composition-judge-` dispatch exists, the session's Stop is warned while the loop stands open on NOT SATISFIED below the cap. The unenforceable half is **arming**: no hook can reliably detect that "a composing session happened and never dispatched a judge"; spec-file writes also occur in repair, diagnosis, and companion-evidence contexts that legitimately never judge, and the harness cannot distinguish orchestrator from subagent writers at hook-fire time (the documented `is_subagent` gap).
 
 **Tag:** `markdown-only` (the arming half only).
 **Deferred hook:** an in-flight-registry variant (register composing dispatches at `PreToolUse:Agent`, require a matching `composition-judge-` dispatch before Stop) could close the loophole for orchestrated composing; free-form Stage-1-4 sessions would still evade it. Revisit if judge-skipping is observed in practice.
@@ -451,7 +451,7 @@ Stage 4c's "dispatch a judge at every composing exit" rule (`test-composition-st
 
 ## Pattern: Client-reference leakage ("the client name makes the example clearer")
 
-A contributor to the universal achilles repo pastes engagement material — a brand or product name, a real slug or test ID, a ticket prefix, domain copy — into a skill, hook, fixture, example, commit message, or PR body, because the concrete instance feels clearer than a genericised mechanism.
+A contributor to the universal achilles repo pastes engagement material (a brand or product name, a real slug or test ID, a ticket prefix, domain copy) into a skill, hook, fixture, example, commit message, or PR body, because the concrete instance feels clearer than a genericised mechanism.
 
 **Symptoms:**
 - "it's just one product name in an example"
@@ -460,11 +460,11 @@ A contributor to the universal achilles repo pastes engagement material — a br
 - "I'll genericise it later, before the PR" (it ships in the first commit and survives)
 - worked examples whose slugs, copy, or ticket keys did not come from the «placeholder» convention
 
-**Reality:** Achilles is a universal QA medium serving many clients; the repo is consumed by other engagements. Client findings are welcome ONLY after genericisation — describe the MECHANISM ("a controlled form resets its inputs on mount"), never the instance. The generic form is also the only form other consumers can use. Canonical rule: `../../contributing-to-achilles-protocol/SKILL.md` §"Universality — no client references". Reviewers reject violations; there is no one-name carve-out.
+**Reality:** Achilles is a universal QA medium serving many clients; the repo is consumed by other engagements. Client findings are welcome ONLY after genericisation: describe the MECHANISM ("a controlled form resets its inputs on mount"), never the instance. The generic form is also the only form other consumers can use. Canonical rule: `../../contributing-to-achilles-protocol/SKILL.md` §"Universality — no client references". Reviewers reject violations; there is no one-name carve-out.
 
 **Hooks that catch this:**
-- `hooks/client-term-guard.sh` (`PreToolUse:Write|Edit`, DENY) — scans writes into this package's repo against the operator-local, gitignored denylist at `<repo-root>/.achilles/client-terms.local.txt`. The term list itself must never live in the repo (the terms ARE client references), so coverage is per-operator opt-in.
-- (markdown-only beyond the denylist) — leakage in vocabulary the operator has not listed, and in commit messages / PR bodies (which do not pass the Write|Edit boundary), is reviewer-enforced.
+- `hooks/client-term-guard.sh` (`PreToolUse:Write|Edit`, DENY): scans writes into this package's repo against the operator-local, gitignored denylist at `<repo-root>/.achilles/client-terms.local.txt`. The term list itself must never live in the repo (the terms ARE client references), so coverage is per-operator opt-in.
+- (markdown-only beyond the denylist): leakage in vocabulary the operator has not listed, and in commit messages / PR bodies (which do not pass the Write|Edit boundary), is reviewer-enforced.
 
 ---
 
@@ -472,9 +472,9 @@ A contributor to the universal achilles repo pastes engagement material — a br
 
 When a novel rationalisation framing appears that doesn't fit an existing pattern:
 
-1. Match it to an existing pattern first (90% of the time it does fit — the categories are deliberately broad).
+1. Match it to an existing pattern first (90% of the time it does fit; the categories are deliberately broad).
 2. If new, add a new section to this file with the same shape (name, symptoms, reality, hooks).
-3. Update SKILL.md only if the new pattern needs surfacing in the kernel (rare — most patterns belong here).
+3. Update SKILL.md only if the new pattern needs surfacing in the kernel (rare; most patterns belong here).
 4. Open a follow-up issue if the pattern is markdown-only and a hook would close the loophole.
 
 The registry succeeds when readers can match novel framings to known patterns instead of needing this file to grow yet another row. Anti-rationalization is a category problem, not a phrasing problem.

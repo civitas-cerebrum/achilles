@@ -33,12 +33,12 @@ scenario block it implements is defined by `requirement-intake`.
 8. **About 60 lines per test at most.** A longer test is usually two scenarios, or a chore that two tests already
    share and that should be a verb.
 
-## Before / after — the neutral example application
+## Before / after: the neutral example application
 
 Scenario block `CHK-03 — Cancelling the payment modal returns to checkout without an order` (see
 `../../requirement-intake/references/scenario-block.md`).
 
-**Before** — layered, generated, oracle hidden:
+**Before**: layered, generated, oracle hidden:
 
 ```ts
 // tests/e2e/payments.spec.ts
@@ -61,10 +61,10 @@ for (const region of ['region-1', 'region-2']) {
 }
 ```
 
-**After** — flat, one scenario, oracle and evidence visible:
+**After**: flat, one scenario, oracle and evidence visible:
 
 ```ts
-// tests/e2e/wallet-payments.spec.ts — family: wallet payments
+// tests/e2e/wallet-payments.spec.ts (family: wallet payments)
 test('CHK-03 — Cancelling the payment modal returns to checkout without an order',
   { tag: ['@e2e', '@checkout', '@negative'] }, async ({ steps, checkout, orders }) => {
   const req: Requirements = { payment: 'wallet', items: { count: 1 } };
@@ -77,7 +77,7 @@ test('CHK-03 — Cancelling the payment modal returns to checkout without an ord
   await steps.verifyUrlContains('/checkout');                              // step 4: checkout shown again
   await steps.verifyOrder('basketItems', 'CheckoutPage', order.plannedItemNames);
 
-  await orders.expectStatus(order, 'pending');                             // oracle: api — never `placed`
+  await orders.expectStatus(order, 'pending');                             // oracle: api, never `placed`
   await checkout.attachEvidence(order, 'after-cancel');                    // evidence in the report
 });
 ```

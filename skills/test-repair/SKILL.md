@@ -9,20 +9,20 @@ description: >
   one, the run's artifacts are pulled down first (`failure-diagnosis` Stage 0b) so clustering starts from
   evidence, not from log lines. Also auto-escalates from
   `failure-diagnosis`, `test-composer`, or `bug-discovery` when a single run produces many failures
-  (≥5 failures or ≥30% of executed tests) or when failures repeat across diagnostic attempts — batch
+  (≥5 failures or ≥30% of executed tests) or when failures repeat across diagnostic attempts; batch
   clustering finds shared root causes faster than per-failure diagnosis at scale. Those callers
   explicitly invoke this skill via the Skill tool when their own escalation criteria fire (no
-  always-load reliance). Do NOT use for a single failing test — that stays with `failure-diagnosis`.
-  Do NOT use to find new bugs adversarially — that is `bug-discovery`. Do NOT use to write new tests —
+  always-load reliance). Do NOT use for a single failing test; that stays with `failure-diagnosis`.
+  Do NOT use to find new bugs adversarially; that is `bug-discovery`. Do NOT use to write new tests;
   that is `test-composer`.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Test Repair
 
-Batch orchestrator for repairing a rotted suite. Runs the suite, clusters failures by emergent patterns, verifies each hypothesis with targeted smaller batches, then delegates atomic heal-or-classify work to `failure-diagnosis`. Returns only when every test is passing stably or explicitly escalated — no silent skips, no silent deletes, no healing around app bugs.
+Batch orchestrator for repairing a rotted suite. Runs the suite, clusters failures by emergent patterns, verifies each hypothesis with targeted smaller batches, then delegates atomic heal-or-classify work to `failure-diagnosis`. Returns only when every test is passing stably or explicitly escalated: no silent skips, no silent deletes, no healing around app bugs.
 
 ---
 
@@ -34,7 +34,7 @@ Batch orchestrator for repairing a rotted suite. Runs the suite, clusters failur
 - "restore green", "heal the suite", "heal my tests"
 - "the suite is broken", "the suite rotted", "my tests are broken"
 - "triage the failures", "diagnose the whole suite", "my suite is flaky"
-- "the nightly is red across the suite", "the regression pipeline is failing everywhere", "triage the CI failures" — a **pipeline-sourced** repair; see Stage 0b below, which runs before Stage 1
+- "the nightly is red across the suite", "the regression pipeline is failing everywhere", "triage the CI failures": a **pipeline-sourced** repair; see Stage 0b below, which runs before Stage 1
 
 ### Auto-escalation from other skills
 
@@ -43,20 +43,20 @@ When a failure-centric workflow is already in flight, these conditions hand off 
 | Trigger | Signal | Why batch mode wins |
 |---|---|---|
 | **Volume** | A single run has ≥5 failures or ≥30% of executed tests failed | Per-failure diagnosis stops scaling; clustering finds the shared root cause faster |
-| **Repetition** | `failure-diagnosis` has been invoked 3+ times in one session on distinct tests | A pattern across failures is likely — worth detecting before healing more in isolation |
+| **Repetition** | `failure-diagnosis` has been invoked 3+ times in one session on distinct tests | A pattern across failures is likely, worth detecting before healing more in isolation |
 | **Post-heal regression** | A heal from `failure-diagnosis` caused previously-passing tests to start failing | Cross-test interaction is invisible to single-failure mode; test-repair's post-heal verification stage is designed for this |
 | **Caller-initiated batch** | `test-composer` or `bug-discovery` produced a run with multiple failures at once | Delegating per-failure would redo work; cluster once, fix once |
 
 **Escalation announcement** (to the user, once):
 
-> Detected <reason> — <N> failures. Escalating from per-failure diagnosis to the test-repair batch pipeline so we can cluster root causes before healing individually. Starting with a 3-run baseline. Reply "stay single-failure" to override.
+> Detected <reason>: <N> failures. Escalating from per-failure diagnosis to the test-repair batch pipeline so we can cluster root causes before healing individually. Starting with a 3-run baseline. Reply "stay single-failure" to override.
 
 ### Do not activate
 
-- **A single failure** — stays with `failure-diagnosis`. Batch orchestration is overkill for one data point.
-- **Compile or type errors** — out of scope; these are build-time failures, not runtime.
-- **Infrastructure failures** (app server down, CI runner OOM, DNS) — report and stop; this skill does not retry around infra.
-- **User explicitly scoped to one test** ("fix the login test", with the file named) — respect scope; stay single-failure.
+- **A single failure**: stays with `failure-diagnosis`. Batch orchestration is overkill for one data point.
+- **Compile or type errors**: out of scope; these are build-time failures, not runtime.
+- **Infrastructure failures** (app server down, CI runner OOM, DNS): report and stop; this skill does not retry around infra.
+- **User explicitly scoped to one test** ("fix the login test", with the file named): respect scope; stay single-failure.
 
 ---
 
@@ -66,19 +66,19 @@ Six stages, executed in order (plus Stage 5.5, which runs whenever the quarantin
 
 ### Stage 0b — Pipeline evidence retrieval (pipeline-sourced repairs only)
 
-When the repair was triggered by a red CI run rather than a local one, pull the run's artifacts **before** the baseline. The procedure is owned by `failure-diagnosis` — follow [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md) §"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b — Pipeline evidence retrieval" verbatim (`gh run view --json headSha` → `gh api .../artifacts` → `gh run download`), and do not restate or fork them here.
+When the repair was triggered by a red CI run rather than a local one, pull the run's artifacts **before** the baseline. The procedure is owned by `failure-diagnosis`: follow [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md) §"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b — Pipeline evidence retrieval" verbatim (`gh run view --json headSha` → `gh api .../artifacts` → `gh run download`), and do not restate or fork them here.
 
 What this stage buys the batch pipeline:
 
 - **The red set is known before you spend three suite runs finding it.** The run's JSON reporter output names the failing specs and their error signatures directly, which is Stage 2's clustering input.
-- **Clustering starts from evidence.** Each cluster's representative already has a trace, a failure screenshot, an `error-context.md`, and console output from the run that actually failed — so Stage 4's delegated `failure-diagnosis` call opens with its evidence floor already half-satisfied. Note which *attempt* each artifact came from; under `trace: 'on-first-retry'` the only trace belongs to the retry, which may have passed.
-- **The environment is recorded.** Base URL, browser project, viewport env, the run's `headSha`, the framework versions it resolved, and the exact `playwright test` command line come out of the failing job's log; Stage 3's targeted re-runs should mirror them or the verification proves nothing about CI. A version delta between the run and the local tree is itself a cluster — one whose heal is a dependency bump, not a spec edit.
+- **Clustering starts from evidence.** Each cluster's representative already has a trace, a failure screenshot, an `error-context.md`, and console output from the run that actually failed, so Stage 4's delegated `failure-diagnosis` call opens with its evidence floor already half-satisfied. Note which *attempt* each artifact came from; under `trace: 'on-first-retry'` the only trace belongs to the retry, which may have passed.
+- **The environment is recorded.** Base URL, browser project, viewport env, the run's `headSha`, the framework versions it resolved, and the exact `playwright test` command line come out of the failing job's log; Stage 3's targeted re-runs should mirror them or the verification proves nothing about CI. A version delta between the run and the local tree is itself a cluster: one whose heal is a dependency bump, not a spec edit.
 
-Then run Stage 1 as normal. The local baseline is still required — it is what separates "broken everywhere" from "broken only in CI", and that distinction is itself a cluster.
+Then run Stage 1 as normal. The local baseline is still required; it is what separates "broken everywhere" from "broken only in CI", and that distinction is itself a cluster.
 
 ### Stage 1 — Baseline (3 full suite runs)
 
-Three is the minimum floor to distinguish deterministic from flaky — not a ceiling. A single run tells you what failed this time; three runs tell you what's repeatable.
+Three is the minimum floor to distinguish deterministic from flaky, not a ceiling. A single run tells you what failed this time; three runs tell you what's repeatable.
 
 ```bash
 for i in 1 2 3; do
@@ -88,7 +88,7 @@ done
 
 Record per-test, per-run outcome. The resulting matrix is the dataset for Stage 2.
 
-**Quarantined tests run in the baseline.** Tests tagged `@flaky` with an entry in `tests/e2e/docs/flake-quarantine.md` are NOT filtered out of the three baseline runs — their per-run outcomes are the evidence Stage 5.5 (quarantine review) uses to decide release, still-flaking annotation, or escalation. Do not grep-invert the `@flaky` tag.
+**Quarantined tests run in the baseline.** Tests tagged `@flaky` with an entry in `tests/e2e/docs/flake-quarantine.md` are NOT filtered out of the three baseline runs; their per-run outcomes are the evidence Stage 5.5 (quarantine review) uses to decide release, still-flaking annotation, or escalation. Do not grep-invert the `@flaky` tag.
 
 Why 3 and not 5 upfront: running 5× full suites when the suite is truly broken wastes time on tests that will need healing regardless. Three runs catch the dominant patterns; more runs are spent adaptively in Stage 3, targeted at specific hypotheses.
 
@@ -98,21 +98,21 @@ For every test, determine its run-pattern:
 
 | Pattern | Signal | What it means |
 |---|---|---|
-| **Green** | 3/3 pass | Stable — skip |
-| **Known-defect** | Any failure, test or describe tagged `@known-defect` | Intentional red guarding a *filed* defect — terminal, skip |
-| **Deterministic-fail** | 3/3 fail with same error signature | Repeatable failure — deterministic cause |
+| **Green** | 3/3 pass | Stable: skip |
+| **Known-defect** | Any failure, test or describe tagged `@known-defect` | Intentional red guarding a *filed* defect: terminal, skip |
+| **Deterministic-fail** | 3/3 fail with same error signature | Repeatable failure: deterministic cause |
 | **Flaky-consistent** | Mixed pass/fail, same error when failing | Timing or race condition with a stable target |
-| **Flaky-chaotic** | Mixed pass/fail, different errors each run | Unclear cause — needs more data |
+| **Flaky-chaotic** | Mixed pass/fail, different errors each run | Unclear cause: needs more data |
 
 **`@known-defect` failures are excluded from clustering.** The tag says the
 failure is already understood and filed; a cluster, a hypothesis batch, or a
 heal attempt only re-derives a written-down conclusion and burns baseline
-runs doing it. List them in the session summary under known defects — never
-under anything awaiting a heal — and note any whose *error signature* changed,
+runs doing it. List them in the session summary under known defects; never
+under anything awaiting a heal, and note any whose *error signature* changed,
 because a different error behind the tag is a second, unfiled problem. A
 `@known-defect` test that passes is an anomaly, never a silent green: prove
 the fix with the two-number stability bar (3/3 targeted + 5/5 suite-order,
-all green) and drop the tag — or, on any red inside that bar, retag `@flaky`
+all green) and drop the tag, or, on any red inside that bar, retag `@flaky`
 with a quarantine-ledger entry. Contract: [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
 
 Then cluster the remaining non-green tests by shared signal. A few of the clusters you will commonly see:
@@ -130,9 +130,9 @@ Pattern-driven, not count-driven. For each cluster, form a hypothesis and verify
 
 | Hypothesis | Verification batch |
 |---|---|
-| "All 8 failures share missing `CheckoutPage.payment-section`" | Run just those 8 tests in isolation — if they still fail identically, confirmed |
-| "State leaks from the login test into the dashboard tests" | Re-run affected tests with a fresh context each — if they pass in isolation, confirmed |
-| "Timing dependency on the `/products` page" | Re-run at slower network profile (`--slow-mo` or throttled CDP) — if failure rate increases, confirmed |
+| "All 8 failures share missing `CheckoutPage.payment-section`" | Run just those 8 tests in isolation: if they still fail identically, confirmed |
+| "State leaks from the login test into the dashboard tests" | Re-run affected tests with a fresh context each: if they pass in isolation, confirmed |
+| "Timing dependency on the `/products` page" | Re-run at slower network profile (`--slow-mo` or throttled CDP): if failure rate increases, confirmed |
 | "Flow changed — app now shows a consent modal between login and dashboard" | Open a `playwright-cli` session against the live app and step through the failing flow manually (`-s=test-repair-<short> open / goto / snapshot / click ...`); compare actual page steps to expected |
 
 **Adaptive iteration rule** (not hardcoded):
@@ -141,7 +141,7 @@ Pattern-driven, not count-driven. For each cluster, form a hypothesis and verify
 - If **ambiguous** (several flaky-chaotic clusters, or clusters disagree with each other) → run 2 more full suite passes and re-cluster
 - If **still ambiguous at 5 runs** → escalate to the operator with the raw pattern data. Do NOT force a classification. Operator escalation beats a wrong heal.
 
-Targeted batches matter because they disambiguate coincidence from shared root cause without the cost of another full suite pass. A confirmed hypothesis also makes the handoff to `failure-diagnosis` cheaper — it starts with the cluster's cause pre-identified instead of re-deriving it.
+Targeted batches matter because they disambiguate coincidence from shared root cause without the cost of another full suite pass. A confirmed hypothesis also makes the handoff to `failure-diagnosis` cheaper; it starts with the cluster's cause pre-identified instead of re-deriving it.
 
 ### Stage 4 — Delegate per cluster to failure-diagnosis
 
@@ -151,13 +151,13 @@ For each verified cluster, invoke `failure-diagnosis` with:
 - The pattern hypothesis (e.g. "selector drift on `CheckoutPage.payment-section`")
 - The cluster's member list, so a single fix can apply once and benefit all
 
-`failure-diagnosis` runs its standard pipeline — evidence, classify, edge-case check, heal strategy selection (its Stage 4a, upgraded), fix, 5× stability — and returns one of:
+`failure-diagnosis` runs its standard pipeline: evidence, classify, edge-case check, heal strategy selection (its Stage 4a, upgraded), fix, 5× stability, and returns one of:
 
-- **Healed** — fix applied, 5× stability confirmed
-- **App bug** — evidence shows wrong UI; escalated with report. Test is NOT modified.
-- **Operator-pending** — a proposed heal (flow drift, assertion re-baseline) awaiting approval
-- **Quarantined** — flake that resisted two heal strategies; tagged `@flaky`, documented
-- **Known defect** — `@known-defect`: reported already, excluded from repair, test untouched
+- **Healed**: fix applied, 5× stability confirmed
+- **App bug**: evidence shows wrong UI; escalated with report. Test is NOT modified.
+- **Operator-pending**: a proposed heal (flow drift, assertion re-baseline) awaiting approval
+- **Quarantined**: flake that resisted two heal strategies; tagged `@flaky`, documented
+- **Known defect**: `@known-defect`: reported already, excluded from repair, test untouched
 
 Record each cluster's outcome. Carry forward to Stage 5.
 
@@ -182,10 +182,10 @@ If any post-heal run fails, identify which heal introduced the regression, rever
 Runs whenever `tests/e2e/docs/flake-quarantine.md` has entries with `Status: quarantined`. The ledger is written by `failure-diagnosis` heal (f); this stage is the only release path.
 
 1. **Identify release candidates.** Every ledger entry whose test went 3/3 green in the Stage-1 baseline is a candidate; entries with any baseline failure are not.
-2. **Confirm with 5× suite-order runs.** Run each candidate 5× in suite order (not isolation — suite order is what exposed the flake). All 5 must pass.
-3. **Release.** For confirmed candidates, flip the ledger entry to `Status: unquarantined (YYYY-MM-DD — 3/3 baseline + 5/5 suite-order green)` and remove the `@flaky` tag. The dated evidence is mandatory — an undated release is a silent skip in reverse.
+2. **Confirm with 5× suite-order runs.** Run each candidate 5× in suite order (not isolation; suite order is what exposed the flake). All 5 must pass.
+3. **Release.** For confirmed candidates, flip the ledger entry to `Status: unquarantined (YYYY-MM-DD — 3/3 baseline + 5/5 suite-order green)` and remove the `@flaky` tag. The dated evidence is mandatory: an undated release is a silent skip in reverse.
 4. **Annotate still-flaking entries.** For entries that failed the baseline or the 5× confirmation, append a dated observation line to the entry's `Observations:` field (e.g. "YYYY-MM-DD: still flaking 1/3 in baseline"). Never rewrite prior observations.
-5. **Escalate stale entries.** Any entry still `quarantined` after 3+ repair sessions (count its dated observations) goes to the operator for a decision — deeper investigation, scenario rewrite via heal (g), or deliberate retirement. Stage 6's summary lists these explicitly.
+5. **Escalate stale entries.** Any entry still `quarantined` after 3+ repair sessions (count its dated observations) goes to the operator for a decision: deeper investigation, scenario rewrite via heal (g), or deliberate retirement. Stage 6's summary lists these explicitly.
 
 ### Stage 6 — Repair summary
 
@@ -210,24 +210,24 @@ Write `test-results/repair-session-<ISO-timestamp>.md` with a clear audit trail:
 - Still green: <count>
 
 ## Healed (auto)
-- `tests/checkout.spec.ts::TC-0004` — selector drift on `submit-btn` (renamed to `place-order-btn`); updated page-repository.json
+- `tests/checkout.spec.ts::TC-0004`: selector drift on `submit-btn` (renamed to `place-order-btn`); updated page-repository.json
 - ...
 
 ## Reported bugs
-- `tests/cart.spec.ts::TC-0012` — dashboard shows 500 after successful login. Screenshot: test-results/.../screenshot.png. Reproducible via manual `playwright-cli` navigation. Test left unchanged.
+- `tests/cart.spec.ts::TC-0012`: dashboard shows 500 after successful login. Screenshot: test-results/.../screenshot.png. Reproducible via manual `playwright-cli` navigation. Test left unchanged.
 - ...
 
 ## Operator-pending
-- `tests/pricing.spec.ts::TC-0003` — assertion value drifted from "Total: $42" to "Total: $45". Needs human judgment: intentional price change or cart miscalculation?
+- `tests/pricing.spec.ts::TC-0003`: assertion value drifted from "Total: $42" to "Total: $45". Needs human judgment: intentional price change or cart miscalculation?
 - ...
 
 ## Quarantined
-- `tests/flaky-thing.spec.ts::TC-0007` — intermittent timeout on `result-panel`; pattern persisted after timing-hardening heal. Tagged `@flaky` pending deeper investigation.
+- `tests/flaky-thing.spec.ts::TC-0007`: intermittent timeout on `result-panel`; pattern persisted after timing-hardening heal. Tagged `@flaky` pending deeper investigation.
 
 ## Quarantine review (Stage 5.5)
-- Released: `tests/search.spec.ts::TC-0009` — 3/3 baseline + 5/5 suite-order green; ledger entry flipped to `unquarantined (<date>)`, `@flaky` tag removed.
-- Still flaking: `tests/flaky-thing.spec.ts::TC-0007` — failed 1/3 in baseline; dated observation appended to its ledger entry.
-- Escalated (stale, 3+ sessions): `tests/upload.spec.ts::TC-0015` — operator decision needed (investigate deeper, rewrite via heal (g), or retire deliberately).
+- Released: `tests/search.spec.ts::TC-0009`: 3/3 baseline + 5/5 suite-order green; ledger entry flipped to `unquarantined (<date>)`, `@flaky` tag removed.
+- Still flaking: `tests/flaky-thing.spec.ts::TC-0007`: failed 1/3 in baseline; dated observation appended to its ledger entry.
+- Escalated (stale, 3+ sessions): `tests/upload.spec.ts::TC-0015`: operator decision needed (investigate deeper, rewrite via heal (g), or retire deliberately).
 ```
 
 Present the summary in chat with counts; link the file for the full audit trail.
@@ -244,15 +244,15 @@ Every cluster decision must respect these. Together they preserve the framework'
 
 3. **No silent skip.** Flakes that resist healing are quarantined with a `@flaky` tag and documented in the repair summary. They are never `.skip()`'d silently. A quarantined flake is a surfaced problem awaiting investigation, not a hidden one.
 
-4. **5× stability validates every heal.** Applied by `failure-diagnosis` in Stage 5 of its own pipeline. If a heal destabilizes, it gets reverted — instability means the heal was incomplete.
+4. **5× stability validates every heal.** Applied by `failure-diagnosis` in Stage 5 of its own pipeline. If a heal destabilizes, it gets reverted; instability means the heal was incomplete.
 
-5. **Whole-test rewrites require operator alignment.** If a test no longer maps to the current app flow (scenario itself obsolete), do NOT silently regenerate. Present to the operator; on approval, invoke `test-composer` with journey context. Respect that the operator owns the scope of what's being tested. The rewrite is a composing exit: `test-composer`'s Step 6c composition judge applies to it (`../achilles-protocol/references/test-composition-standards.md` §4). Incremental heals do NOT trigger the judge — their gate is the stability rule above.
+5. **Whole-test rewrites require operator alignment.** If a test no longer maps to the current app flow (scenario itself obsolete), do NOT silently regenerate. Present to the operator; on approval, invoke `test-composer` with journey context. Respect that the operator owns the scope of what's being tested. The rewrite is a composing exit: `test-composer`'s Step 6c composition judge applies to it (`../achilles-protocol/references/test-composition-standards.md` §4). Incremental heals do NOT trigger the judge: their gate is the stability rule above.
 
 ---
 
 ## Scope boundaries (YAGNI)
 
-- **The quarantine ledger is the only cross-session state.** `tests/e2e/docs/flake-quarantine.md` carries quarantined tests between sessions (written by `failure-diagnosis` heal (f), released by Stage 5.5). Everything else is stateless per session — the repair summary is the record; long-term trending lives elsewhere.
+- **The quarantine ledger is the only cross-session state.** `tests/e2e/docs/flake-quarantine.md` carries quarantined tests between sessions (written by `failure-diagnosis` heal (f), released by Stage 5.5). Everything else is stateless per session; the repair summary is the record; long-term trending lives elsewhere.
 - **No CI retry policies.** Infra concerns (flaky network, runner OOM) are out of scope; report and stop.
 - **No test deletion.** Every test ends in one of: passing stably, reported as bug, operator-pending, quarantined. Deletion is a separate operator decision.
 - **No new test authoring beyond (g) operator-approved rewrites.** New coverage is `test-composer`'s job.
@@ -265,11 +265,11 @@ Every cluster decision must respect these. Together they preserve the framework'
 
 | Skill | Relationship |
 |---|---|
-| `failure-diagnosis` | **Called per cluster in Stage 4.** The atomic heal-or-classify unit. Its contract is unchanged for all its other callers — this skill is an additional caller, not a replacement. |
+| `failure-diagnosis` | **Called per cluster in Stage 4.** The atomic heal-or-classify unit. Its contract is unchanged for all its other callers; this skill is an additional caller, not a replacement. |
 | `test-composer` | **Called only in operator-approved whole-test rewrite (heal type g).** Not invoked for normal heals. |
 | `bug-discovery` | Separate concern. This skill reports bugs it finds incidentally; it does not probe for new ones. `bug-discovery` may auto-escalate TO this skill if its adversarial run produces a batch of failures. |
-| `self-repair` | Sibling entrypoint: fan-out-first (one worker per red spec file, runs unattended via `achilles-self-repair` / `npm run test:repair`) where this skill is cluster-first (in-session, shared-root-cause batching). This skill's Bug-vs-Heal Discipline is normative for `self-repair` workers. Quarantine-ledger release (Stage 5.5) remains exclusively this skill's job — `self-repair` workers may add entries, never release them. |
-| `journey-mapping` | Not called directly. When `test-composer` is invoked for a (g) rewrite, that chain may reach `journey-mapping` — but test-repair does not re-map. |
+| `self-repair` | Sibling entrypoint: fan-out-first (one worker per red spec file, runs unattended via `achilles-self-repair` / `npm run test:repair`) where this skill is cluster-first (in-session, shared-root-cause batching). This skill's Bug-vs-Heal Discipline is normative for `self-repair` workers. Quarantine-ledger release (Stage 5.5) remains exclusively this skill's job: `self-repair` workers may add entries, never release them. |
+| `journey-mapping` | Not called directly. When `test-composer` is invoked for a (g) rewrite, that chain may reach `journey-mapping`, but test-repair does not re-map. |
 | `achilles-protocol` | Uses the Steps API to execute tests. No direct skill-level interaction. |
 | `onboarding` | Out of scope; assumes a scaffolded project exists. If the project isn't onboarded, this skill reports that and stops. |
 | `work-summary-deck` | May consume the repair-session summary as input data for a stakeholder report. |
@@ -278,7 +278,7 @@ Every cluster decision must respect these. Together they preserve the framework'
 
 ## Exit gate — compliance sweep
 
-**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate: the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
 ## Success criteria
 
@@ -290,7 +290,7 @@ A repair session is complete when:
 4. The repair-session summary has been written to `test-results/repair-session-<timestamp>.md`, including the "Quarantine review (Stage 5.5)" block when the ledger had entries.
 5. Zero tests were silently skipped or deleted.
 
-If any of these cannot be achieved, the session is NOT complete. Report the blocker to the operator and stop — an incomplete repair that claims success is worse than one that clearly escalates.
+If any of these cannot be achieved, the session is NOT complete. Report the blocker to the operator and stop: an incomplete repair that claims success is worse than one that clearly escalates.
 
 ---
 

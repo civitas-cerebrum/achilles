@@ -33,24 +33,24 @@ References:
   <canonical docs — file paths or URLs>
 ```
 
-`[WARN]` replaces `[BLOCKED]` for `systemMessage`-style soft warnings. Box-drawing characters are U+2500 — copy them from this file, not from any other hook (existing hooks predate this standard and use ad-hoc formatting; they'll be normalized in a separate cleanup PR).
+`[WARN]` replaces `[BLOCKED]` for `systemMessage`-style soft warnings. Box-drawing characters are U+2500: copy them from this file, not from any other hook (existing hooks predate this standard and use ad-hoc formatting; they'll be normalized in a separate cleanup PR).
 
 **Why these sections exist:**
-- *Headline* — the contributor sees the failure in one line in their terminal. Don't bury the rule in paragraph two.
-- *Do this instead* — concrete, copy-pasteable. At least two options when there are two valid resolutions (fix the work vs. update the claim). One option when there's only one path (e.g. file-corruption → repair the file).
-- *What was wrong* — observed state, including the file path, the claim, and the actual value. This is the audit-log section; without it, contributors can't tell which check fired.
-- *If <motivation>* — the empathy line. Anticipates the most common reason a contributor hit this gate ("you ticked the box without updating the file") and routes them to the right fix path. Skip this section if there's no common motivation worth naming.
-- *References* — the canonical docs for the rule. Always include the SKILL.md section that defines the rule, plus the schema / config file the contributor will edit. Two to four lines.
+- *Headline*: the contributor sees the failure in one line in their terminal. Don't bury the rule in paragraph two.
+- *Do this instead*: concrete, copy-pasteable. At least two options when there are two valid resolutions (fix the work vs. update the claim). One option when there's only one path (e.g. file-corruption → repair the file).
+- *What was wrong*: observed state, including the file path, the claim, and the actual value. This is the audit-log section; without it, contributors can't tell which check fired.
+- *If <motivation>*: the empathy line. Anticipates the most common reason a contributor hit this gate ("you ticked the box without updating the file") and routes them to the right fix path. Skip this section if there's no common motivation worth naming.
+- *References*: the canonical docs for the rule. Always include the SKILL.md section that defines the rule, plus the schema / config file the contributor will edit. Two to four lines.
 
-The `commit-message-gate.sh` hook is the canonical implementation — copy its message-extraction block (the `MSG=`/`SCAN=` section handling `-m`, `--message=`, `-F`/`--file`, with the raw-command fallback that never denies blind on extraction failure) and its rich-error-context deny messages when writing a new hook.
+The `commit-message-gate.sh` hook is the canonical implementation; copy its message-extraction block (the `MSG=`/`SCAN=` section handling `-m`, `--message=`, `-F`/`--file`, with the raw-command fallback that never denies blind on extraction failure) and its rich-error-context deny messages when writing a new hook.
 
 ---
 
 ## 🪝 Workflow: adding a harness hook
 
-Hooks live in `hooks/<name>.sh`, are installed into `~/.claude/hooks/` by `scripts/postinstall.js`, and are registered in `~/.claude/settings.json` from the `hooks` array of `hooks/data/hook-manifest.json`. They run at PreToolUse / PostToolUse / SubagentStop / Stop boundaries to enforce skill contracts mechanically — markdown rules can be rationalised away mid-run, hooks cannot.
+Hooks live in `hooks/<name>.sh`, are installed into `~/.claude/hooks/` by `scripts/postinstall.js`, and are registered in `~/.claude/settings.json` from the `hooks` array of `hooks/data/hook-manifest.json`. They run at PreToolUse / PostToolUse / SubagentStop / Stop boundaries to enforce skill contracts mechanically; markdown rules can be rationalised away mid-run, hooks cannot.
 
-This section is the **how**. The **when** is fixed by the Hard rule §"Methodology improvements ship as programmatic hooks": every SKILL.md rule edit comes paired with a hook unless the rule is unenforceable mechanically. Re-read that hard rule first if you're authoring a SKILL.md change — its decision table maps each rule shape to a concrete hook surface.
+This section is the **how**. The **when** is fixed by the Hard rule §"Methodology improvements ship as programmatic hooks": every SKILL.md rule edit comes paired with a hook unless the rule is unenforceable mechanically. Re-read that hard rule first if you're authoring a SKILL.md change; its decision table maps each rule shape to a concrete hook surface.
 
 When to add a hook (vs declaring the rule `markdown-only`):
 
@@ -104,7 +104,7 @@ Every hook starts with a structured comment block. Readers should be able to sca
 # - Anything else                                     → silent allow
 ```
 
-This pattern is followed by every hook in `hooks/`. Adding a new hook with a different shape regresses scannability — match the existing template. Examples to read first: `hooks/playwright-cli-isolation-guard.sh` (DENY with multi-case classification), `hooks/commit-message-gate.sh` (DENY with rich error context), `hooks/subagent-return-schema-guard.sh` (PostToolUse observer + state-file deregister).
+This pattern is followed by every hook in `hooks/`. Adding a new hook with a different shape regresses scannability; match the existing template. Examples to read first: `hooks/playwright-cli-isolation-guard.sh` (DENY with multi-case classification), `hooks/commit-message-gate.sh` (DENY with rich error context), `hooks/subagent-return-schema-guard.sh` (PostToolUse observer + state-file deregister).
 
 #### 2. Helper functions — consistent shape
 
@@ -129,11 +129,11 @@ emit_warn() {
 }
 ```
 
-Define only what the hook actually uses (a deny-only hook doesn't need `emit_warn`). Don't inline a fresh `jq -n` in each call site — use the unified helpers instead.
+Define only what the hook actually uses (a deny-only hook doesn't need `emit_warn`). Don't inline a fresh `jq -n` in each call site; use the unified helpers instead.
 
 #### 3. Action-first error message template — guide the agent back on track
 
-Hook deny / warn messages are read by an agent under context pressure. The agent's next action is what matters most — not the diagnosis, not the references. Lead with the action.
+Hook deny / warn messages are read by an agent under context pressure. The agent's next action is what matters most: not the diagnosis, not the references. Lead with the action.
 
 Template:
 
@@ -173,10 +173,10 @@ Why this shape:
 - **Action first.** The agent reading the message under context pressure should see the next step in the first ~10 lines. References at the end are for follow-up, not primary action.
 - **Show, don't describe.** A concrete `Agent({...})` template, command, or option-list beats prose. Substitute extracted values where possible (slug from file path, count from JSON, etc.) so the agent can copy-paste.
 - **Named symptoms.** When the violation has a recognisable internal-monologue framing ("honest stopping point", "I'll be transparent", "given session constraints"), name it verbatim in the diagnosis. Future agents recognise their own self-talk.
-- **Underlying concern + upstream fix.** When a violation is driven by a real concern (e.g., parallel dispatch felt unsafe due to shared-DB races), acknowledge the concern and point at the upstream fix (per-test-user pattern in test-optimization §1.A) — NOT the symptom-level workaround. Otherwise the agent re-violates as soon as the same concern recurs.
+- **Underlying concern + upstream fix.** When a violation is driven by a real concern (e.g., parallel dispatch felt unsafe due to shared-DB races), acknowledge the concern and point at the upstream fix (per-test-user pattern in test-optimization §1.A): NOT the symptom-level workaround. Otherwise the agent re-violates as soon as the same concern recurs.
 - **References last.** Two to four canonical doc paths. Don't bury them in prose; list them.
 
-**The `References:` block is MANDATORY on every runtime deny / warn / Stop-block message — not just recommended by the template.** Every message a hook can emit at runtime (a PreToolUse `permissionDecision: deny`/`ask` reason, a `systemMessage` warn, a Stop `decision: block` reason, a strict-mode `exit 2` stderr block) MUST end with a `References:` block of 1–3 repo-relative paths naming the canonical rule(s) the hook enforces — `skills/.../<file>.md` (optionally with a §section); when the hook enforces a machine-readable schema, cite the schema file AND the skill section that mandates it. A blocked agent must learn not just what to do next but which methodology section governs the rule. The reference implementation is `hooks/composition-judge-gate.sh`'s block; the house pattern is a single `HOOK_REFS` constant defined near the top of the hook and appended by the `emit_deny` / `emit_warn` helpers (before `achilles_scope_notice`, when the hook uses it), so every emission carries the block without per-site duplication. Mechanically enforced by the hook-references check in `scripts/lint-doc-drift.mjs` (runs in `prepack`): a deny/warn-capable hook with no runtime `References:` block or a cited path that does not resolve in the repo fails the lint. Pure writer/archiver hooks that never emit a user-facing message need nothing.
+**The `References:` block is MANDATORY on every runtime deny / warn / Stop-block message, not just recommended by the template.** Every message a hook can emit at runtime (a PreToolUse `permissionDecision: deny`/`ask` reason, a `systemMessage` warn, a Stop `decision: block` reason, a strict-mode `exit 2` stderr block) MUST end with a `References:` block of 1–3 repo-relative paths naming the canonical rule(s) the hook enforces: `skills/.../<file>.md` (optionally with a §section); when the hook enforces a machine-readable schema, cite the schema file AND the skill section that mandates it. A blocked agent must learn not just what to do next but which methodology section governs the rule. The reference implementation is `hooks/composition-judge-gate.sh`'s block; the house pattern is a single `HOOK_REFS` constant defined near the top of the hook and appended by the `emit_deny` / `emit_warn` helpers (before `achilles_scope_notice`, when the hook uses it), so every emission carries the block without per-site duplication. Mechanically enforced by the hook-references check in `scripts/lint-doc-drift.mjs` (runs in `prepack`): a deny/warn-capable hook with no runtime `References:` block or a cited path that does not resolve in the repo fails the lint. Pure writer/archiver hooks that never emit a user-facing message need nothing.
 
 Examples to read: `hooks/subagent-schema-preread-gate.sh` (PreToolUse gate citing a schema) and `hooks/commit-message-gate.sh` (DENY with rich error context; Option A / Option B layout). The in-flight composer registry pattern is documented below for future contributors.
 
@@ -185,9 +185,9 @@ Examples to read: `hooks/subagent-schema-preread-gate.sh` (PreToolUse gate citin
 When opening a PR that adds or modifies a hook:
 
 - [ ] Documentation header follows the unified template (Hook / Mode / State / Env / Rule / Why / Canonical reference / Failure → action).
-- [ ] `emit_deny` / `emit_warn` helpers used consistently — no inline `jq -n --arg` calls in the body.
+- [ ] `emit_deny` / `emit_warn` helpers used consistently; no inline `jq -n --arg` calls in the body.
 - [ ] Error messages follow the action-first template (headline → Do this instead → What was wrong → upstream fix → References).
-- [ ] **Every runtime deny / warn / Stop-block message ends with a `References:` block** of 1–3 repo-relative `skills/.../<file>.md` paths (plus the schema file, when the hook enforces one) naming the canonical rule — typically via a single `HOOK_REFS` constant appended in the emit helpers. `scripts/lint-doc-drift.mjs` fails the build otherwise, and also fails on cited paths that don't resolve.
+- [ ] **Every runtime deny / warn / Stop-block message ends with a `References:` block** of 1–3 repo-relative `skills/.../<file>.md` paths (plus the schema file, when the hook enforces one) naming the canonical rule, typically via a single `HOOK_REFS` constant appended in the emit helpers. `scripts/lint-doc-drift.mjs` fails the build otherwise, and also fails on cited paths that don't resolve.
 - [ ] Test cases added to `hooks/tests/cases/<NN>-<topic>.sh` covering: happy-path allow, each rule's deny/warn path, exempt cases, edge cases (empty inputs, special characters, alternate runner forms, etc.).
 - [ ] `bash hooks/tests/run.sh` reports green on the new case file plus all existing cases.
 - [ ] If the hook records state, the state-file path and shape are documented in the canonical reference.
@@ -197,16 +197,16 @@ When opening a PR that adds or modifies a hook:
 
 ### Approximating `is_subagent` — the in-flight-registry pattern
 
-The Claude Code harness payload doesn't include an `is_subagent` field on hook input — `Write` calls from a dispatched subagent and `Write` calls from the orchestrator are indistinguishable at hook-fire time.
+The Claude Code harness payload doesn't include an `is_subagent` field on hook input: `Write` calls from a dispatched subagent and `Write` calls from the orchestrator are indistinguishable at hook-fire time.
 
 When a hook needs to distinguish "was this tool call made by a legitimately-dispatched subagent doing its expected work" from "was this the orchestrator absorbing work that should have been delegated", use the **in-flight-registry pattern**:
 
 1. **PreToolUse:Agent (the dispatch-guard)** writes a registration entry to a state file (e.g. `tests/e2e/docs/.in-flight-composers.json`) when the dispatch matches a known role-prefix that produces specific tool calls (e.g. `composer-j-<slug>:` produces a `Write tests/e2e/j-<slug>.spec.ts`).
-2. **PostToolUse / PreToolUse on the produced tool call** reads the registry and gates the call: if the slug is in-flight (within a TTL window), the writer is the legitimate subagent — ALLOW. If not in-flight, it's the orchestrator absorbing — DENY with a redirect to dispatch the right subagent.
-3. **TTL / cleanup as a failsafe**: the registry uses a rolling 30-min TTL — entries that aren't deregistered explicitly (see point 4) expire on the next dispatch-guard run, so stale registrations don't accumulate when a subagent crashes or is abandoned mid-flight.
-4. **Explicit deregistration on terminal handover (the primary cleanup path).** Each subagent return is prefaced with a `handover:` envelope (`role`, `cycle`, `status`, `next-action` — schema in [`../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md) §2.0). In this pattern, a PostToolUse:Agent consumer parses the envelope, cycle-matches against the registry entry, and **deregisters the slot immediately on terminal status** instead of waiting for TTL. Cycle-mismatch (envelope claims a different cycle than the registered dispatch) refuses to deregister and asks the orchestrator to redispatch under the correct cycle. This shorter leash matters because the orchestrator's redispatch under the same slug can race with stale handovers from a slow / auto-compacted prior cycle — the cycle-match contract pins the deregistration to one specific dispatch.
+2. **PostToolUse / PreToolUse on the produced tool call** reads the registry and gates the call: if the slug is in-flight (within a TTL window), the writer is the legitimate subagent: ALLOW. If not in-flight, it's the orchestrator absorbing: DENY with a redirect to dispatch the right subagent.
+3. **TTL / cleanup as a failsafe**: the registry uses a rolling 30-min TTL; entries that aren't deregistered explicitly (see point 4) expire on the next dispatch-guard run, so stale registrations don't accumulate when a subagent crashes or is abandoned mid-flight.
+4. **Explicit deregistration on terminal handover (the primary cleanup path).** Each subagent return is prefaced with a `handover:` envelope (`role`, `cycle`, `status`, `next-action`: schema in [`../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md) §2.0). In this pattern, a PostToolUse:Agent consumer parses the envelope, cycle-matches against the registry entry, and **deregisters the slot immediately on terminal status** instead of waiting for TTL. Cycle-mismatch (envelope claims a different cycle than the registered dispatch) refuses to deregister and asks the orchestrator to redispatch under the correct cycle. This shorter leash matters because the orchestrator's redispatch under the same slug can race with stale handovers from a slow / auto-compacted prior cycle; the cycle-match contract pins the deregistration to one specific dispatch.
 
-The pattern pairs a dispatch-guard registrar (registering `composer-j-*` / `composer-sj-*` / `probe-j-*` / `probe-sj-*` dispatches with a `cycle` field) with a direct-compose-block consumer (gating `tests/e2e/{j,sj}-*.spec.ts` writes against the registry) and `hooks/subagent-return-schema-guard.sh` (parses the handover envelope, cycle-matches, deregisters terminal handovers). `subagent-return-schema-guard.sh` today only validates returns against the role schemas via the bundled validator; it does not parse or deregister registry entries. The pattern avoids false positives that would otherwise force a WARN — the gate runs as a hard DENY because the registry mechanically distinguishes legitimate from violation, and the leash is bounded by the explicit handover instead of the looser 30-min window.
+The pattern pairs a dispatch-guard registrar (registering `composer-j-*` / `composer-sj-*` / `probe-j-*` / `probe-sj-*` dispatches with a `cycle` field) with a direct-compose-block consumer (gating `tests/e2e/{j,sj}-*.spec.ts` writes against the registry) and `hooks/subagent-return-schema-guard.sh` (parses the handover envelope, cycle-matches, deregisters terminal handovers). `subagent-return-schema-guard.sh` today only validates returns against the role schemas via the bundled validator; it does not parse or deregister registry entries. The pattern avoids false positives that would otherwise force a WARN; the gate runs as a hard DENY because the registry mechanically distinguishes legitimate from violation, and the leash is bounded by the explicit handover instead of the looser 30-min window.
 
 When you ship a new harness pattern that needs the same distinction, register at the dispatch boundary, gate at the produced-tool-call boundary, deregister on the canonical handover envelope, and keep the TTL as a failsafe. Use a hidden state file under `tests/e2e/docs/.<topic>-<scope>.json` to keep the registry alongside other coverage-expansion state.
 
@@ -239,8 +239,8 @@ Rules for a PreToolUse hook an agent hits hundreds of times a day. The factory g
    on stderr, exit 0. A hook that denies because *it* is broken bricks the session for a fault the agent cannot fix. Pair
    every such branch with a detector that runs where the environment is guaranteed (the project's verify step, an
    integrity chain) and fails closed there.
-2. **Fail closed on your own undecidable input.** When the hook can see the input but cannot judge it — a spec argument
-   that is a shell expansion (`"$SPEC"`) on a command that may spend money — deny and ask for the decidable form (a
+2. **Fail closed on your own undecidable input.** When the hook can see the input but cannot judge it; a spec argument
+   that is a shell expansion (`"$SPEC"`) on a command that may spend money: deny and ask for the decidable form (a
    literal path): "I could not tell" is not "allowed". A gate script never exits non-zero by accident (`set -uo
    pipefail`, every external call guarded): Claude Code treats a crashing hook as a non-blocking error, which is an
    allow nobody chose.
@@ -251,7 +251,7 @@ Rules for a PreToolUse hook an agent hits hundreds of times a day. The factory g
 4. **Quote-aware Bash with one level of nesting.** Split the command into segments at unquoted `&& || ; | &` and
    newlines, and each segment into tokens honouring `'…'`, `"…"` and `\` escapes. Classify one level of
    `bash|sh|zsh|dash|ksh -c '…'` and `eval '…'` as a command of its own, inheriting the outer segment's leading assignments.
-   Deeper nesting, aliases, functions and scripts are out of reach — say so in the header's known limits and name the
+   Deeper nesting, aliases, functions and scripts are out of reach; say so in the header's known limits and name the
    detector that covers them. A naive `grep` over the whole command both misses `sh -c` payloads and denies on text
    inside a `--grep "…"` argument.
 5. **Opt-ins are per segment.** An opt-in (`SPEND_OPT_IN=1` prefix, `--include-spend` flag) counts only for the segment
@@ -279,16 +279,16 @@ Rules for a PreToolUse hook an agent hits hundreds of times a day. The factory g
 
 **Adding a rule**
 
-1. **Row** — add the rule object to `achilles-factory-rules.json` (id `<area>.<name>`, `doc`, `action`, fields) and its
+1. **Row**: add the rule object to `achilles-factory-rules.json` (id `<area>.<name>`, `doc`, `action`, fields) and its
    definition to the schema; ship a floor if weakening the list is the risk.
-2. **Checker** — a gate under `hooks/factory/` that sources `../lib/factory-common.sh`, calls `factory_guard_ready;
+2. **Checker**: a gate under `hooks/factory/` that sources `../lib/factory-common.sh`, calls `factory_guard_ready;
    factory_read_input`, reads its fields with `rule_field` / `rule_array`, and ends in `emit_deny <id> "<what>"` or
    `exit 0`. Header in the hook style (Hook / Mode / State / Env / Rule / Why / Canonical reference). Register it in the
    `factory` list of `hooks/data/hook-manifest.json`; the gate needs a bullet in
    [harness-hooks.md](../../achilles-protocol/references/harness-hooks.md#factory-gates-opt-in).
-3. **Doc anchor** — a section in [factory-gates.md](../../achilles-protocol/references/factory-gates.md) headed by
+3. **Doc anchor**: a section in [factory-gates.md](../../achilles-protocol/references/factory-gates.md) headed by
    `<a id="<rule-id>"></a>`, and the rule's `doc` pointing at it.
-4. **Case** — fixture cases under `hooks/tests/cases/factory/<gate>.<name>.json`: at least one deny with
+4. **Case**: fixture cases under `hooks/tests/cases/factory/<gate>.<name>.json`: at least one deny with
    `messageContains` for the id, the offending literal and the anchor; one clean allow with `"warn": false`; one
    allow-with-warning for the missing-field path.
 

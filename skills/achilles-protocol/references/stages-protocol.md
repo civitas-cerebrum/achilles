@@ -26,7 +26,7 @@ When the user provides a URL, a vague idea, or needs help figuring out what to t
 
 1. **Get the app URL or acceptance criteria.** The user may provide a URL, a description of the scenario, or both. If they provide a URL, use `playwright-cli` (see [`playwright-cli-protocol.md`](playwright-cli-protocol.md)) to navigate and explore.
 2. **Discover the app.** Use `playwright-cli` to navigate to the app, take snapshots (`playwright-cli snapshot`), and understand what the application does. Explore the pages relevant to the scenario.
-3. **Ask clarifying questions — one at a time.** Focus on understanding:
+3. **Ask clarifying questions: one at a time.** Focus on understanding:
    - What is the user flow being tested?
    - What are the preconditions (logged in? specific data state?)
    - What constitutes success vs failure?
@@ -65,7 +65,7 @@ For complex flows, break into multiple scenarios.
 2. **Take snapshots** (`npx playwright-cli -s=stage2-<scenario-slug> snapshot`) and inspect the DOM to find reliable selectors for each element referenced in the scenario.
 3. **Prefer selectors in this order:** `data-test` / `data-testid` attributes > `id` > stable CSS selectors > text > XPath.
 4. **Build the page-repository entries.** For each element, determine the best selector strategy.
-5. **Check existing `page-repository.json`** — if some elements already exist, note which ones are new vs already covered.
+5. **Check existing `page-repository.json`**: if some elements already exist, note which ones are new vs already covered.
 6. **Close the session** when done: `npx playwright-cli -s=stage2-<scenario-slug> close`.
 
 ### When `playwright-cli` cannot reach the live app
@@ -80,7 +80,7 @@ Use whatever the user provides to build the page-repository entries. Do NOT gues
 
 If DOM inspection completes but yields only fragile candidates (position-dependent CSS, bare text that drifts, role/name collisions, nth-child chains), apply the following branch **before** presenting selectors to the user:
 
-**Check workspace shape** — does this workspace contain the frontend source?
+**Check workspace shape**: does this workspace contain the frontend source?
 
 A workspace contains frontend source when **both** of these are true:
 1. `package.json` lists the UI framework as a dependency (e.g. `react`, `vue`, `@angular/core`, `svelte`).
@@ -95,15 +95,15 @@ The `selector-development` skill will:
 2. Validate via its 8-step pipeline that the change is functionally and visually inert.
 3. Return the new selector.
 
-After it returns, resume Stage 2 with the new `data-testid`-based selector available. Use it as the page-repository entry — it is now the most stable selector possible.
+After it returns, resume Stage 2 with the new `data-testid`-based selector available. Use it as the page-repository entry; it is now the most stable selector possible.
 
 ---
 
 **Frontend source is NOT in this workspace** → fall back to the best available selector from inspection and attach a warning:
 
-> ⚠️ **Fragile selector recorded.** The selector for `<element-key>` relies on [text / CSS position / role collision] — there is no `data-test` attribute and the frontend source is not in this workspace, so `selector-development` cannot add one here. Record this as test debt: the selector may break if the UI text, layout, or role assignment changes.
+> ⚠️ **Fragile selector recorded.** The selector for `<element-key>` relies on [text / CSS position / role collision]; there is no `data-test` attribute and the frontend source is not in this workspace, so `selector-development` cannot add one here. Record this as test debt: the selector may break if the UI text, layout, or role assignment changes.
 
-Do NOT attempt to harden the locator with compound selectors or nth-child chains — that adds brittleness without adding stability.
+Do NOT attempt to harden the locator with compound selectors or nth-child chains, that adds brittleness without adding stability.
 
 ---
 
@@ -140,29 +140,29 @@ Show the user the exact JSON entries you want to add:
 
 ### Writing Process
 
-1. **Check project setup.** Read `tests/fixtures/base.ts` and `playwright.config.ts` — create or update only if missing or broken. Also verify that `.gitignore` includes `.claude/` and `CLAUDE.md` to prevent Claude Code configuration from being pushed to the repository — add them if missing.
+1. **Check project setup.** Read `tests/fixtures/base.ts` and `playwright.config.ts`: create or update only if missing or broken. Also verify that `.gitignore` includes `.claude/` and `CLAUDE.md` to prevent Claude Code configuration from being pushed to the repository: add them if missing.
 2. **Add approved selectors** to `page-repository.json` (if not already done).
-3. **Read `api-reference.md`** — load the full API reference before writing any test code. Do not write from memory.
-4. **Write the test file** using the Steps API. Every interaction goes through `steps.*` methods — no raw `page.locator()` calls.
-5. **Every test MUST end with a verification that proves the ACTION's EFFECT.** A test that performs actions (click, fill, drag, hover, check, upload, setSliderValue, etc.) and never asserts a resulting state is not a test — it's a smoke call that only catches thrown exceptions. Before declaring a test done, confirm the final meaningful statement is a `verify*`, a matcher-tree assertion (`.text.toBe`, `.visible.toBeTrue`, `.satisfy`, …), or a typed `expect(extractedValue)` that reflects what the action was supposed to change.
+3. **Read `api-reference.md`**: load the full API reference before writing any test code. Do not write from memory.
+4. **Write the test file** using the Steps API. Every interaction goes through `steps.*` methods: no raw `page.locator()` calls.
+5. **Every test MUST end with a verification that proves the ACTION's EFFECT.** A test that performs actions (click, fill, drag, hover, check, upload, setSliderValue, etc.) and never asserts a resulting state is not a test: it's a smoke call that only catches thrown exceptions. Before declaring a test done, confirm the final meaningful statement is a `verify*`, a matcher-tree assertion (`.text.toBe`, `.visible.toBeTrue`, `.satisfy`, …), or a typed `expect(extractedValue)` that reflects what the action was supposed to change.
 
-   **The verification must be causally tied to the action, not a tautology.** An assertion that would pass whether the action ran or not is not a verification — it's noise. Common anti-patterns to catch:
-   - **Clicking a list item and asserting the list is still present.** `clickListedElement('rows', {text:'Alice'})` followed by `verifyPresence('rows')` proves nothing — the rows were present before the click too. Instead: verify the specific effect (navigation, selected-state change, status update, row-specific `data-selected` attribute, `stateSummary` text, etc.).
+   **The verification must be causally tied to the action, not a tautology.** An assertion that would pass whether the action ran or not is not a verification; it's noise. Common anti-patterns to catch:
+   - **Clicking a list item and asserting the list is still present.** `clickListedElement('rows', {text:'Alice'})` followed by `verifyPresence('rows')` proves nothing: the rows were present before the click too. Instead: verify the specific effect (navigation, selected-state change, status update, row-specific `data-selected` attribute, `stateSummary` text, etc.).
    - **Hovering an element and asserting it's still visible.** The element was visible to be hovered. Verify hover feedback (tooltip text, popover visibility, CSS color change, aria-expanded toggle).
    - **Filling an input and asserting the input exists.** Inputs don't disappear when filled. Verify `verifyInputValue(expected)` or a dependent element that reflects the filled value (error/success message, submit-button enabled state).
-   - **Clicking a button and asserting the button is enabled/visible.** Verify the button's ACTION — a result element updating, a modal opening, a URL change, a disabled state after submission.
+   - **Clicking a button and asserting the button is enabled/visible.** Verify the button's ACTION: a result element updating, a modal opening, a URL change, a disabled state after submission.
    - **Filter by text `{regex: 'A|B|C'}` then assert the parent collection is present.** Verify the FILTERED RESULT reflects the regex: extract text via `getListedElementData` and match the same pattern, or navigate to one of N alternatives and assert URL/state matches one of N expected outcomes.
 
-   When picking a verification, ask: **"If the action had silently done nothing, would this assertion still pass?"** If yes, the assertion is tautological — find one that would fail under a no-op.
+   When picking a verification, ask: **"If the action had silently done nothing, would this assertion still pass?"** If yes, the assertion is tautological: find one that would fail under a no-op.
 
-   Only in rare, explicitly documented cases where the action has no observable effect at any layer (e.g. a framework-level smoke exercise of an API's call shape) may you fall back to `verifyState('visible')` on the target element — and the reason must be stated in a one-line comment. Never leave a test trailing on an action.
+   Only in rare, explicitly documented cases where the action has no observable effect at any layer (e.g. a framework-level smoke exercise of an API's call shape) may you fall back to `verifyState('visible')` on the target element; and the reason must be stated in a one-line comment. Never leave a test trailing on an action.
 6. **Run the test** with `npx playwright test <test-file>`.
-7. **If the test fails:** invoke the `failure-diagnosis` protocol — collect evidence (screenshot, DOM, error context), group failures by root cause, classify (test issue vs app bug vs ambiguous), check edge cases, then fix test issues autonomously with stability validation (3 consecutive green for a new/edited test; 5 consecutive for a heal of a previously-flaky test) or report app bugs with full evidence. If the fix requires new selectors, use `playwright-cli` to inspect the DOM, propose the new entry, and get approval before editing.
+7. **If the test fails:** invoke the `failure-diagnosis` protocol: collect evidence (screenshot, DOM, error context), group failures by root cause, classify (test issue vs app bug vs ambiguous), check edge cases, then fix test issues autonomously with stability validation (3 consecutive green for a new/edited test; 5 consecutive for a heal of a previously-flaky test) or report app bugs with full evidence. If the fix requires new selectors, use `playwright-cli` to inspect the DOM, propose the new entry, and get approval before editing.
 8. **If the test passes:** commit immediately.
 
 ### Skip-to-Stage-3 (Fix/Edit Mode)
 
-When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `api-reference.md`, then read the existing test, understand the issue, and proceed directly to fixing and running. If fixing requires new selectors, use the mini-inspection flow described above — do NOT silently add selectors.
+When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `api-reference.md`, then read the existing test, understand the issue, and proceed directly to fixing and running. If fixing requires new selectors, use the mini-inspection flow described above. Do NOT silently add selectors.
 
 ---
 
@@ -176,50 +176,50 @@ When the user asks to fix or edit an existing test, skip Stages 1 and 2. Read `a
 
 **Process:**
 
-1. Read `test-optimization.md` — load the full protocol (all sections §1–§8, including §3b).
+1. Read `test-optimization.md`: load the full protocol (all sections §1–§8, including §3b).
 2. Read every test file written or modified in this session, plus `tests/fixtures/base.ts` and `tests/e2e/docs/app-context.md`'s `## Test Infrastructure` section.
 3. Run the 7 checks against each spec.
 4. Apply auto-fixes (per-test patterns, §1–§5 with auto-fix). Write proactive helpers into `base.ts` (cross-test patterns) only when both gates apply (UI-covered + API discovered, see §4). Re-run the affected tests; confirm they still pass.
 5. Emit the structured return per `test-optimization.md` §8.
 6. Proceed to Stage 4b.
 
-If Stage 4a's auto-fixes cause a previously-passing test to fail, follow Rule 7 (failure-diagnosis protocol) — inspect the screenshot, classify, fix or revert. Do not advance to Stage 4b until Stage 4a's tests are green again.
+If Stage 4a's auto-fixes cause a previously-passing test to fail, follow Rule 7 (failure-diagnosis protocol): inspect the screenshot, classify, fix or revert. Do not advance to Stage 4b until Stage 4a's tests are green again.
 
 ### Stage 4b: API Compliance Review
 
 **Goal:** Review test code against the API Reference to ensure correct usage of the `@civitas-cerebrum/element-interactions` package.
 
-**This stage triggers automatically every time Stage 4a returns clean.** Do NOT batch — review each test case immediately after Stage 4a clears, before moving on to the next scenario. Even if the tests pass, they may be using the API incorrectly (wrong argument order, deprecated methods, missing options, incorrect types). Catching issues early prevents the same mistake from propagating into subsequent test cases.
+**This stage triggers automatically every time Stage 4a returns clean.** Do NOT batch: review each test case immediately after Stage 4a clears, before moving on to the next scenario. Even if the tests pass, they may be using the API incorrectly (wrong argument order, deprecated methods, missing options, incorrect types). Catching issues early prevents the same mistake from propagating into subsequent test cases.
 
 ### Review Checklist
 
 For each test file, verify:
 
-1. **Method signatures** — every `steps.*` call matches the exact signature in the API Reference (correct argument count, correct argument order, correct types).
-2. **Imports** — all types used (`DropdownSelectType`, `EmailFilterType`, `FillFormValue`, etc.) are imported from `@civitas-cerebrum/element-interactions` (or `@civitas-cerebrum/email-client` for email types). No invented imports.
-3. **Page/element naming** — `pageName` uses PascalCase, `elementName` uses camelCase, and both match entries in `page-repository.json`.
-4. **Listed element options** — `child` uses `{ pageName, elementName }` repo references where possible instead of inline selectors (per Rule 6).
-5. **Dropdown select usage** — `DropdownSelectType.RANDOM`, `.VALUE`, or `.INDEX` with the correct companion field (`value` or `index`).
-6. **Email API usage** — `steps.sendEmail` / `steps.receiveEmail` / `steps.receiveAllEmails` / `steps.cleanEmails` match the documented signatures. Filter types use `EmailFilterType` enum.
-7. **No raw Playwright calls** — no `page.locator()`, `page.click()`, `page.fill()`, or other raw Playwright methods where a `steps.*` equivalent exists.
-8. **Fixture usage** — the test destructures only fixtures provided by `baseFixture` (`steps`, `repo`, `interactions`, `contextStore`, `page`) plus any custom fixtures defined in the project's `base.ts`.
-9. **Waiting methods** — correct state strings (`'visible'`, `'hidden'`, `'attached'`, `'detached'`) and correct usage of `waitForResponse` callback pattern.
-10. **Verification methods** — correct option shapes (`{ exactly }`, `{ greaterThan }`, `{ lessThan }` for `verifyCount`; `verifyText()` with no args asserts not empty). The 4-arg form `verifyText(el, page, undefined, { notEmpty: true })` and the `TextVerifyOptions.notEmpty` flag are deprecated — use `verifyText(el, page)` (or `.on(el, page).verifyText()` fluent) instead.
-11. **Every test ends with a verification — and that verification proves the action's effect, not a tautology.** (This checklist item is the review-side form of the canonical doctrine in Stage 3 item 5 above — that item is the canon; this one cites it.) Two sub-checks:
+1. **Method signatures**: every `steps.*` call matches the exact signature in the API Reference (correct argument count, correct argument order, correct types).
+2. **Imports**: all types used (`DropdownSelectType`, `EmailFilterType`, `FillFormValue`, etc.) are imported from `@civitas-cerebrum/element-interactions` (or `@civitas-cerebrum/email-client` for email types). No invented imports.
+3. **Page/element naming**: `pageName` uses PascalCase, `elementName` uses camelCase, and both match entries in `page-repository.json`.
+4. **Listed element options**: `child` uses `{ pageName, elementName }` repo references where possible instead of inline selectors (per Rule 6).
+5. **Dropdown select usage**: `DropdownSelectType.RANDOM`, `.VALUE`, or `.INDEX` with the correct companion field (`value` or `index`).
+6. **Email API usage**: `steps.sendEmail` / `steps.receiveEmail` / `steps.receiveAllEmails` / `steps.cleanEmails` match the documented signatures. Filter types use `EmailFilterType` enum.
+7. **No raw Playwright calls**: no `page.locator()`, `page.click()`, `page.fill()`, or other raw Playwright methods where a `steps.*` equivalent exists.
+8. **Fixture usage**: the test destructures only fixtures provided by `baseFixture` (`steps`, `repo`, `interactions`, `contextStore`, `page`) plus any custom fixtures defined in the project's `base.ts`.
+9. **Waiting methods**: correct state strings (`'visible'`, `'hidden'`, `'attached'`, `'detached'`) and correct usage of `waitForResponse` callback pattern.
+10. **Verification methods**: correct option shapes (`{ exactly }`, `{ greaterThan }`, `{ lessThan }` for `verifyCount`; `verifyText()` with no args asserts not empty). The 4-arg form `verifyText(el, page, undefined, { notEmpty: true })` and the `TextVerifyOptions.notEmpty` flag are deprecated; use `verifyText(el, page)` (or `.on(el, page).verifyText()` fluent) instead.
+11. **Every test ends with a verification, and that verification proves the action's effect, not a tautology.** (This checklist item is the review-side form of the canonical doctrine in Stage 3 item 5 above; that item is the canon; this one cites it.) Two sub-checks:
    - **Presence.** No test may finish on an action with no trailing assertion. If the last meaningful statement is `click`, `fill`, `drag`, `hover`, `check`, `upload`, `setSliderValue`, etc., flag it.
    - **Causal meaning.** Even with a trailing assertion, flag it if it would pass whether the action ran or not. Examples to catch: `verifyPresence('rows')` after `clickListedElement('rows', {text:'X'})` (the list was there before the click); `verifyState('visible')` on the hovered element (it was visible to be hovered); `verifyInputValue('anything')` where no causal link to the fill exists.
 
-   When reviewing, ask: *"If the action had silently done nothing, would this assertion still pass?"* If yes, the verification is tautological — replace it with one that reflects the action's specific observable effect (navigation, text update, state-summary change, attribute flip, modal open, URL change, dependent-element reaction). Pure framework-smoke cases may fall back to a weak check but require a one-line comment justifying it. "The action didn't throw" is not a verification.
+   When reviewing, ask: *"If the action had silently done nothing, would this assertion still pass?"* If yes, the verification is tautological: replace it with one that reflects the action's specific observable effect (navigation, text update, state-summary change, attribute flip, modal open, URL change, dependent-element reaction). Pure framework-smoke cases may fall back to a weak check but require a one-line comment justifying it. "The action didn't throw" is not a verification.
 
-12. **Every test case carries a stable test ID — and an intentional red carries `@known-defect`.** Two sub-checks:
-   - **Identity.** The title of every `test(...)` / `test.only|skip|fail|fixme(...)` begins with `TCXX-NNNNNN` (bracketed form accepted), followed by the behaviour sentence: `test('TCLG-000420 · a wrong password is rejected', …)` — `TC` plus up to three more letters of area code, a dash, and a 4-6 digit ordinal; another scheme is pinnable with `CIVITAS_TEST_ID_PATTERN`. Describe titles are exempt — the case is the unit of identity. IDs are unique within the suite and belong to the scenario, not the wording: reword freely, move files freely, never recycle a retired ID. Flag any case added in this session without one.
-   - **Intentional reds.** A test that asserts the behaviour the app *should* have while a filed defect makes it fail today carries `@known-defect` (on the title or its describe) plus a comment naming the report. Flag a red test in this session that has neither — an unexplained red is either a test issue to fix or an unfiled bug to report, and both belong in the same review. The tag is what keeps `self-repair` / `test-repair` / `failure-diagnosis` from spending reruns re-deriving a conclusion that is already written down.
+12. **Every test case carries a stable test ID, and an intentional red carries `@known-defect`.** Two sub-checks:
+   - **Identity.** The title of every `test(...)` / `test.only|skip|fail|fixme(...)` begins with `TCXX-NNNNNN` (bracketed form accepted), followed by the behaviour sentence: `test('TCLG-000420 · a wrong password is rejected', …)`: `TC` plus up to three more letters of area code, a dash, and a 4-6 digit ordinal; another scheme is pinnable with `CIVITAS_TEST_ID_PATTERN`. Describe titles are exempt: the case is the unit of identity. IDs are unique within the suite and belong to the scenario, not the wording: reword freely, move files freely, never recycle a retired ID. Flag any case added in this session without one.
+   - **Intentional reds.** A test that asserts the behaviour the app *should* have while a filed defect makes it fail today carries `@known-defect` (on the title or its describe) plus a comment naming the report. Flag a red test in this session that has neither: an unexplained red is either a test issue to fix or an unfiled bug to report, and both belong in the same review. The tag is what keeps `self-repair` / `test-repair` / `failure-diagnosis` from spending reruns re-deriving a conclusion that is already written down.
 
    Full convention, consumers, and the no-rerun contract: [`test-identity.md`](test-identity.md). Identity is harness-enforced by [`hooks/test-id-compliance-gate.sh`](../../../hooks/test-id-compliance-gate.sh), which denies a spec write that adds an untitled-by-ID case or duplicates an ID inside one file.
 
-13. **Unnecessary timeouts — strip when no performance fatigue is recorded.** If the website shows no visible or recorded signs of performance fatigue, custom timeout overrides are unnecessary padding and must be removed. The framework defaults (30 000 ms element timeout, 15 000 ms repo timeout) are deliberately generous — an explicit override is only justified when observed evidence proves the default is insufficient for a specific interaction.
+13. **Unnecessary timeouts: strip when no performance fatigue is recorded.** If the website shows no visible or recorded signs of performance fatigue, custom timeout overrides are unnecessary padding and must be removed. The framework defaults (30 000 ms element timeout, 15 000 ms repo timeout) are deliberately generous: an explicit override is only justified when observed evidence proves the default is insufficient for a specific interaction.
 
-   **Performance-fatigue evidence** — any of these present means the timeout is justified; keep it and skip this check for that call site:
+   **Performance-fatigue evidence**: any of these present means the timeout is justified; keep it and skip this check for that call site:
    - Stage 3 stabilization produced timeout-class failures (`TimeoutError`, `waiting for selector … timeout …`, `exceeded … ms`) that were resolved by adding the override.
    - `app-context.md` `## Test Infrastructure` documents slow-loading pages, heavy SPA hydration, SSR delays, or known-slow third-party widgets.
    - The timeout has an explicit `// perf:` or `// slow:` comment explaining why it exists.
@@ -230,20 +230,20 @@ For each test file, verify:
    - Custom `timeout` in `test.describe.configure({ … timeout: X })` that exceeds the fixture-level default without justification.
 
    **What is NOT stripped:**
-   - The fixture-level `timeout` in `baseFixture(…, { timeout: … })` — that is a project-level decision, not a per-test concern.
-   - `test.setTimeout()` calls — test-runner level, outside the Steps API scope.
+   - The fixture-level `timeout` in `baseFixture(…, { timeout: … })`; that is a project-level decision, not a per-test concern.
+   - `test.setTimeout()` calls: test-runner level, outside the Steps API scope.
    - Any timeout with an accompanying `// perf:` or `// slow:` justification comment.
 
-   **Auto-fix:** yes. Remove the timeout argument / option-object key. If the option object becomes empty after removal (e.g. `{ timeout: 5000 }` was the only key), remove the entire options argument. Re-run the affected tests after stripping — if any test then fails with a timeout, the app *does* have performance fatigue for that interaction: revert the strip for that call and add a `// perf: <element> requires extended timeout — <observed evidence>` comment to protect it from future sweeps.
+   **Auto-fix:** yes. Remove the timeout argument / option-object key. If the option object becomes empty after removal (e.g. `{ timeout: 5000 }` was the only key), remove the entire options argument. Re-run the affected tests after stripping: if any test then fails with a timeout, the app *does* have performance fatigue for that interaction: revert the strip for that call and add a `// perf: <element> requires extended timeout — <observed evidence>` comment to protect it from future sweeps.
 
 ### Process
 
-1. **Read `api-reference.md`** — load the full API reference. Do not review from memory.
+1. **Read `api-reference.md`**: load the full API reference. Do not review from memory.
 2. **Read each test file** written or modified in this session.
 3. **Cross-reference every API call** against the API Reference.
-4. **Report findings** to the user — list any issues found with the specific line, what's wrong, and the correct usage.
-5. **If issues are found:** investigate *why* the non-compliant code was written — was the API misunderstood? Was a method signature wrong in the scenario? Did a previous stage produce incorrect assumptions? Understanding the root cause prevents the same mistake from recurring in the next scenario. Then fix, re-run the tests, and confirm they still pass.
-6. **If fixes cause a test failure:** follow Rule 7 — inspect the failure screenshot first before attempting any further fix. Do NOT guess from the error message alone.
+4. **Report findings** to the user: list any issues found with the specific line, what's wrong, and the correct usage.
+5. **If issues are found:** investigate *why* the non-compliant code was written: was the API misunderstood? Was a method signature wrong in the scenario? Did a previous stage produce incorrect assumptions? Understanding the root cause prevents the same mistake from recurring in the next scenario. Then fix, re-run the tests, and confirm they still pass.
+6. **If fixes cause a test failure:** follow Rule 7: inspect the failure screenshot first before attempting any further fix. Do NOT guess from the error message alone.
 7. **If no issues are found:** confirm compliance and proceed to commit.
 
 ### Output Format
@@ -254,8 +254,8 @@ Present the review as:
 >
 > Reviewed: `tests/example.spec.ts`, `tests/login.spec.ts`
 >
-> - **`example.spec.ts:15`** — `steps.verifyText(el, page, undefined, { notEmpty: true })` is the deprecated 4-arg form — use `steps.verifyText(el, page)` (no-args asserts not empty)
-> - **`login.spec.ts:8`** — missing import for `DropdownSelectType`
+> - **`example.spec.ts:15`**: `steps.verifyText(el, page, undefined, { notEmpty: true })` is the deprecated 4-arg form; use `steps.verifyText(el, page)` (no-args asserts not empty)
+> - **`login.spec.ts:8`**: missing import for `DropdownSelectType`
 >
 > [number] issue(s) found. Fixing now.
 
@@ -271,7 +271,7 @@ Or if clean:
 
 **Goal:** an independent, adversarial review of the composed tests by a subagent that is not the author. Stages 4a/4b are author-side self-review; 4c is the second reader.
 
-**This stage triggers automatically once Stage 4b returns clean, before commit.** The full charter — dispatch shape (`composition-judge-` prefix, fresh context, brief citing `schemas/subagent-returns/reviewer-inloop.schema.json`), the four review dimensions (scenario-intent coverage, oracle strength, API compliance spot-check, test-data feasibility), the SATISFIED / NOT SATISFIED verdict loop, and the 3-consecutive-NOT-SATISFIED operator-escalation bound — is canonical in [`test-composition-standards.md`](test-composition-standards.md) §4. This section is deliberately short: read the charter there; do not improvise the judge's brief from this summary.
+**This stage triggers automatically once Stage 4b returns clean, before commit.** The full charter (dispatch shape (`composition-judge-` prefix, fresh context, brief citing `schemas/subagent-returns/reviewer-inloop.schema.json`), the four review dimensions (scenario-intent coverage, oracle strength, API compliance spot-check, test-data feasibility), the SATISFIED / NOT SATISFIED verdict loop, and the 3-consecutive-NOT-SATISFIED operator-escalation bound) is canonical in [`test-composition-standards.md`](test-composition-standards.md) §4. This section is deliberately short: read the charter there; do not improvise the judge's brief from this summary.
 
 Process:
 
@@ -284,32 +284,32 @@ Process:
 
 ## Stage 4b is every mode's exit gate
 
-**Rule.** Any working mode that writes or edits test code runs the Stage-4b compliance sweep over what it touched, before it returns or stops. Not only the authoring pipeline — every mode:
+**Rule.** Any working mode that writes or edits test code runs the Stage-4b compliance sweep over what it touched, before it returns or stops. Not only the authoring pipeline: every mode:
 
 | Mode | When the sweep runs |
 |---|---|
 | `achilles-protocol` Stages 1-4 | Inline, after Stage 4a returns clean (the original home of the sweep). |
-| `test-composer` | Step 6b, over the journey's freshly-composed variants — before the coverage gate and the return. |
+| `test-composer` | Step 6b, over the journey's freshly-composed variants, before the coverage gate and the return. |
 | `coverage-expansion` | Per journey per pass, through the composer it dispatches; a pass whose composer return shows no sweep is an incomplete pass. |
 | `bug-discovery` | Over every reproduction test written in the pass, including `@dom-only` ones. A reproduction test is still test code. |
-| `ticket-driven-testing` | Before the ticket's QA sign-off — the tests that back a verdict are reviewed like any others. |
+| `ticket-driven-testing` | Before the ticket's QA sign-off: the tests that back a verdict are reviewed like any others. |
 | `companion-mode` | On graduation, when the bundle's scenario becomes a durable spec. |
 | `self-repair`, `test-repair`, `failure-diagnosis` | Over every spec a heal edited. A fix that reintroduces raw Playwright or a tautological assertion is a heal that made the suite worse. |
-| `contract-testing`, `database-testing`, `agents-vs-agents` | Over the specs they add — the API surface differs, the sweep does not. |
+| `contract-testing`, `database-testing`, `agents-vs-agents` | Over the specs they add: the API surface differs, the sweep does not. |
 
-**Why it is not optional.** Modes that write tests as a *means* to something else — reproducing a bug, healing a red, closing a ticket — are exactly the ones that skip the sweep, because their own goal reads as met the moment the test exists and passes. That is where API misuse, tautological assertions, missing test IDs, and untagged intentional reds enter the suite; and because tests are written by copying the last one, a single unswept file propagates the wrong model into everything written after it.
+**Why it is not optional.** Modes that write tests as a *means* to something else (reproducing a bug, healing a red, closing a ticket) are exactly the ones that skip the sweep, because their own goal reads as met the moment the test exists and passes. That is where API misuse, tautological assertions, missing test IDs, and untagged intentional reds enter the suite; and because tests are written by copying the last one, a single unswept file propagates the wrong model into everything written after it.
 
-**Harness-enforced by [`hooks/compliance-sweep-exit-gate.sh`](../../../hooks/compliance-sweep-exit-gate.sh)** — `Stop` + `SubagentStop`. A session whose transcript shows a spec-file Write/Edit with no sweep after it is blocked from stopping, with the checklist in the block message. Announce the sweep with its documented output block (the **API Compliance Review** heading) so the evidence is unambiguous. Delegation moves the work, not the obligation: either the subagent swept and said so in its return, or the orchestrator sweeps what came back.
+**Harness-enforced by [`hooks/compliance-sweep-exit-gate.sh`](../../../hooks/compliance-sweep-exit-gate.sh)**: `Stop` + `SubagentStop`. A session whose transcript shows a spec-file Write/Edit with no sweep after it is blocked from stopping, with the checklist in the block message. Announce the sweep with its documented output block (the **API Compliance Review** heading) so the evidence is unambiguous. Delegation moves the work, not the obligation: either the subagent swept and said so in its return, or the orchestrator sweeps what came back.
 
 ---
 
 ## Onboarding Completion Gate
 
-**Goal:** When the user signals they have no more individual scenarios to add (the "onboarding cycle" — Stages 1-4 — is complete), explicitly offer Stage 5 (Coverage Expansion) instead of silently ending the session.
+**Goal:** When the user signals they have no more individual scenarios to add (the "onboarding cycle", Stages 1-4, is complete), explicitly offer Stage 5 (Coverage Expansion) instead of silently ending the session.
 
 ### When this gate triggers
 
-After any Stage 4 commit, when the user indicates they are done adding individual scenarios — for example by saying "that's all", "we're done", "no more for now", or by simply not requesting another scenario after a reasonable pause.
+After any Stage 4 commit, when the user indicates they are done adding individual scenarios, for example by saying "that's all", "we're done", "no more for now", or by simply not requesting another scenario after a reasonable pause.
 
 ### What to do
 
@@ -319,17 +319,17 @@ After any Stage 4 commit, when the user indicates they are done adding individua
    - `page-repository.json` is valid JSON and matches the tests
    - `tests/e2e/docs/app-context.md` exists and reflects the pages discovered so far
    - No open API compliance issues from Stage 4
-   - If any check fails, fix it first — do NOT offer Stage 5 with a broken baseline
+   - If any check fails, fix it first. Do NOT offer Stage 5 with a broken baseline
 3. **Present the offer to the user verbatim:**
 
 > **Onboarding cycle complete.**
 >
-> You now have an initial test suite that covers the scenarios you described. The next stage is **Coverage Expansion** — I would systematically probe the rest of the application, identify uncovered pages and flows, and build out the suite until every page and interactive element has test coverage. This typically takes multiple iteration cycles and runs more autonomously than the staged onboarding flow.
+> You now have an initial test suite that covers the scenarios you described. The next stage is **Coverage Expansion**: I would systematically probe the rest of the application, identify uncovered pages and flows, and build out the suite until every page and interactive element has test coverage. This typically takes multiple iteration cycles and runs more autonomously than the staged onboarding flow.
 >
 > Would you like me to proceed to **Stage 5: Coverage Expansion**? I can also:
-> - **Pause here** — I'll stop and you can resume any time by asking
-> - **Jump straight to Bug Discovery (Stage 6)** — only recommended if you already have full coverage from a previous session
-> - **Generate a work summary deck** — produce a stakeholder-facing report of what was built so far
+> - **Pause here**: I'll stop and you can resume any time by asking
+> - **Jump straight to Bug Discovery (Stage 6)**: only recommended if you already have full coverage from a previous session
+> - **Generate a work summary deck**: produce a stakeholder-facing report of what was built so far
 
 4. **Wait for explicit user choice.** Do NOT auto-proceed. Do NOT assume yes.
 5. **On user approval of Stage 5:** invoke the `coverage-expansion` skill via the Skill tool, passing the readiness-check results and the list of pages already covered so coverage-expansion starts from a known baseline. (`coverage-expansion` owns iterative journey-by-journey suite growth and dispatches `test-composer` per journey; do not invoke `test-composer` directly here.)
@@ -337,7 +337,7 @@ After any Stage 4 commit, when the user indicates they are done adding individua
 
 ### Hard rule
 
-Do NOT silently end the session after Stage 4. The onboarding cycle was an entry point — the user may not realize Stage 5 exists. Always surface it.
+Do NOT silently end the session after Stage 4. The onboarding cycle was an entry point; the user may not realize Stage 5 exists. Always surface it.
 
 ---
 

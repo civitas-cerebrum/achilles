@@ -53,8 +53,8 @@ git merge-base HEAD origin/main            # the without-fix commit
 git worktree add ../nofix <that-commit>    # build and run the NEW suite against OLD code
 ```
 
-The suite MUST fail there, and you must read it **per test**. Any test that passes in both places
-is not testing the change; it is testing something that was already true.
+The suite MUST fail there, and you must read it **per test**. A test that passes in both places
+tests something that was already true, not the change.
 
 This is the strongest form of §8 and it is nearly free here. **A dev-triggered run that skips the
 negative control has no excuse and should not report cover.**

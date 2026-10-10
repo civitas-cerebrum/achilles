@@ -61,7 +61,7 @@ description: >
   implies work *on the package itself* rather than *with it*.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Contributing to Achilles
@@ -71,7 +71,7 @@ Under an active role kernel some steps are refused: see [known-limits.md](../ach
 This package is a Playwright-on-top facade. Every API decision should preserve the framework's two promises:
 
 1. **No raw selectors in user test files.** Tests refer to elements by name (`'submitButton'`, `'CheckoutPage'`), never by CSS/XPath/locator strings.
-2. **No raw Playwright `Locator.*` calls in user test files.** Every interaction, verification, and extraction goes through `Steps`, `ElementAction`, or the matcher tree — never `await page.locator('x').click()` directly.
+2. **No raw Playwright `Locator.*` calls in user test files.** Every interaction, verification, and extraction goes through `Steps`, `ElementAction`, or the matcher tree; never `await page.locator('x').click()` directly.
 
 If a contribution undermines either promise, it doesn't ship.
 
@@ -86,15 +86,15 @@ Moved to [element-interactions-api.md](references/element-interactions-api.md) �
 
 ### Read this skill before editing the package
 
-**Rule.** Any agent preparing to modify files inside this package's contribution surface — `src/`, `hooks/`, `skills/`, `scripts/`, `package.json`, `tsconfig*.json`, `.github/` — MUST first load this skill (`skills/contributing-to-achilles-protocol/SKILL.md`) in the current session. Either invoke it via the `Skill` tool or `Read` the file directly. The skill encodes the architecture, the API-vs-structural-gap distinction, the hard rules, and the design invariants every contribution must respect; an agent that hasn't loaded it is editing blind.
+**Rule.** Any agent preparing to modify files inside this package's contribution surface (`src/`, `hooks/`, `skills/`, `scripts/`, `package.json`, `tsconfig*.json`, `.github/`) MUST first load this skill (`skills/contributing-to-achilles-protocol/SKILL.md`) in the current session. Either invoke it via the `Skill` tool or `Read` the file directly. The skill encodes the architecture, the API-vs-structural-gap distinction, the hard rules, and the design invariants every contribution must respect; an agent that hasn't loaded it is editing blind.
 
-**Methodology rule** — any agent preparing to modify the package's contribution surface MUST first load this skill in the current session.
+**Methodology rule**: any agent preparing to modify the package's contribution surface MUST first load this skill in the current session.
 
-Editing this SKILL.md itself is exempt — the edit IS the read.
+Editing this SKILL.md itself is exempt; the edit IS the read.
 
 ### Methodology improvements ship as programmatic hooks, not just markdown
 
-**Every PR that adds, modifies, or strengthens a rule, workflow, phase, gate, invariant, or contract in any `skills/*/SKILL.md` (or its referenced files under `references/`) MUST ship a corresponding harness hook in `hooks/` that enforces the rule programmatically — or include an explicit, reviewer-visible note explaining why mechanical enforcement is impossible.**
+**Every PR that adds, modifies, or strengthens a rule, workflow, phase, gate, invariant, or contract in any `skills/*/SKILL.md` (or its referenced files under `references/`) MUST ship a corresponding harness hook in `hooks/` that enforces the rule programmatically; or include an explicit, reviewer-visible note explaining why mechanical enforcement is impossible.**
 
 Markdown is documentation, not enforcement. Under context pressure, an orchestrator reading its own rule will rationalise around it ("this case is different", "given session constraints", "I'll be transparent about the trade-off") and stop / narrow / skip anyway. This failure pattern is common. The harness layer is the only second-reader the orchestrator cannot talk past.
 
@@ -119,7 +119,7 @@ If none of these apply because the rule is unenforceable mechanically (e.g. "use
 
 Two duplicate-prevention checks are **mandatory** before creating any new GitHub issue or PR. Skipping them wastes maintainer time and has produced duplicate issues / PRs against already-fixed code.
 
-**1. Search existing issues and PRs first.** Both open AND closed — a closed issue often contains the resolution you need:
+**1. Search existing issues and PRs first.** Both open AND closed: a closed issue often contains the resolution you need:
 
 ```bash
 # Issues matching the topic
@@ -131,7 +131,7 @@ gh pr list --state all --search "<keyword>" --repo civitas-cerebrum/element-inte
 gh pr list --state all --search "<keyword>" --repo civitas-cerebrum/element-repository
 ```
 
-If a matching **open** issue/PR exists, comment on it — don't open a duplicate. If a matching **closed** one exists, read the resolution first; the fix may already be on `main` (see check #2).
+If a matching **open** issue/PR exists, comment on it; don't open a duplicate. If a matching **closed** one exists, read the resolution first; the fix may already be on `main` (see check #2).
 
 **2. Diff local vs. latest upstream before claiming a gap.** "Missing API" / "this is broken" reports filed from stale local branches are the single largest source of false-positive issues. Before filing anything:
 
@@ -157,7 +157,7 @@ npm view @civitas-cerebrum/element-interactions version
 npm view @civitas-cerebrum/element-repository versions --json
 ```
 
-If the capability landed in a newer version, bump the dep and re-verify — don't file "missing" against an outdated pin.
+If the capability landed in a newer version, bump the dep and re-verify; don't file "missing" against an outdated pin.
 
 **Report the check results in the issue/PR body** so maintainers don't have to redo them. One line each:
 
@@ -183,7 +183,7 @@ The contract:
 
 - The PR description repeats the same attribution near the top, before the rest of the summary.
 
-**Why:** issue-driven improvements are the load-bearing input that makes this package's methodology improve faster than any internal review process could. The minimum acknowledgement is a verifiable line in the commit body — it travels with the merge commit, survives squash-merge, surfaces in `git log`, and is mechanically detectable. Without it, the issue author's contribution silently disappears into the maintainer's PR description and the credit graph rots over time.
+**Why:** issue-driven improvements are the load-bearing input that makes this package's methodology improve faster than any internal review process could. The minimum acknowledgement is a verifiable line in the commit body; it travels with the merge commit, survives squash-merge, surfaces in `git log`, and is mechanically detectable. Without it, the issue author's contribution silently disappears into the maintainer's PR description and the credit graph rots over time.
 
 **How to find the author:**
 
@@ -193,7 +193,7 @@ gh issue view <N> --json author -q .author.login
 for n in 156 157; do gh issue view $n --json author -q '.number, .author.login' --jq @csv; done
 ```
 
-**Self-reported / chore caveat.** When the contributor is also the issue author, self-attribution is still appropriate — the audit trail is the value, not the social acknowledgement. For purely-chore commits with no upstream issue, the rule does not apply.
+**Self-reported / chore caveat.** When the contributor is also the issue author, self-attribution is still appropriate; the audit trail is the value, not the social acknowledgement. For purely-chore commits with no upstream issue, the rule does not apply.
 
 **Harness backstop.** PR reviewers enforce attribution. The live `hooks/commit-message-gate.sh` checks commit-message conventions (type/scope/bypass flags) but does not check attribution trailers. (See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).)
 
@@ -201,7 +201,7 @@ for n in 156 157; do gh issue view $n --json author -q '.number, .author.login' 
 
 **Rule.** Every commit's sole author is the human contributor. AI assistants (Claude, Anthropic, borealis.local, anything similar) MUST NOT appear as a `Co-Authored-By:` trailer in the commit body. Real-human co-author lines (`Co-Authored-By: Jane Doe <jane@example.com>`) are unaffected.
 
-The Anthropic CLAUDE.md template appends `Co-Authored-By: borealis.local …` to every commit Claude generates — that is the single source of these trailers. The upstream fix is to remove the trailer instruction from your project `CLAUDE.md` or `~/.claude/CLAUDE.md` so it stops being suggested.
+The Anthropic CLAUDE.md template appends `Co-Authored-By: borealis.local …` to every commit Claude generates; that is the single source of these trailers. The upstream fix is to remove the trailer instruction from your project `CLAUDE.md` or `~/.claude/CLAUDE.md` so it stops being suggested.
 
 The API-specific hard rules (no raw `locator.*()`, presence-detect, API coverage, smoke tests, no mocked unit tests) are in [element-interactions-api.md](references/element-interactions-api.md) §"API hard rules".
 
@@ -219,23 +219,23 @@ Moved to [element-interactions-api.md](references/element-interactions-api.md) �
 
 Every PR against this repo must produce a populated `.contribution-handover.json` at the repo root before push. The handover captures one boolean per guardrail in this skill, plus a small set of free-form fields (PR title, summary, version delta).
 
-The schema lives at `schemas/contribution-handover.schema.json`. A blank template lives at `.contribution-handover.template.json`. **Copy the template, fill it in, and run the gate at push time. The file is gitignored — DO NOT commit it.** Carrying a previous PR's handover into a new branch is the failure mode the gate exists to catch (each PR's claims must reflect that PR's actual contents, not whatever the prior handover said).
+The schema lives at `schemas/contribution-handover.schema.json`. A blank template lives at `.contribution-handover.template.json`. **Copy the template, fill it in, and run the gate at push time. The file is gitignored. DO NOT commit it.** Carrying a previous PR's handover into a new branch is the failure mode the gate exists to catch (each PR's claims must reflect that PR's actual contents, not whatever the prior handover said).
 
 Populate and self-validate the handover before pushing; PR reviewers enforce it. See [harness-hooks.md](../achilles-protocol/references/harness-hooks.md).
 
 **Why a handover, not just a checklist:**
 - Structured booleans are machine-checkable. The gate spot-verifies a subset of claims against the actual repo state (e.g. `readmeUpdated: true` is cross-checked against the README diff vs. `origin/main`).
-- The local handover is the contributor's pre-push sign-off. The gate validates the contributor's working-tree claims against the working-tree diff at push time — no chance of a stale handover travelling with the branch and being mistaken for a fresh one.
+- The local handover is the contributor's pre-push sign-off. The gate validates the contributor's working-tree claims against the working-tree diff at push time; no chance of a stale handover travelling with the branch and being mistaken for a fresh one.
 - The shape evolves with the rules. When a new hard rule lands in this skill, it gets a new field in the schema. Old handovers fail validation and contributors can't push until they review the new rule. The schema is the rule index.
 
 **Field families:**
-- `preflight` — duplicate-search, branch sync, dependency version checks (Hard Rule "Before filing").
-- `design` — argument order, async, no-raw-locator, action-presence-detect, lightweight Steps, naming, error format, logging, TypeScript discipline (Design Rules 1–18).
-- `tests` — implementation, real-Vue-app, non-tautological assertions, passing (Hard Rules "no mocked", "must verify causally").
-- `build` — TypeScript build clean, full suite green, knownFailures (free-form for legitimate skips).
-- `coverage` — 100% API coverage gate (Hard Rule).
-- `docs` — README, api-reference, skill files (Rule 19).
-- `version` — single patch bump (Rule 15).
+- `preflight`: duplicate-search, branch sync, dependency version checks (Hard Rule "Before filing").
+- `design`: argument order, async, no-raw-locator, action-presence-detect, lightweight Steps, naming, error format, logging, TypeScript discipline (Design Rules 1–18).
+- `tests`: implementation, real-Vue-app, non-tautological assertions, passing (Hard Rules "no mocked", "must verify causally").
+- `build`: TypeScript build clean, full suite green, knownFailures (free-form for legitimate skips).
+- `coverage`: 100% API coverage gate (Hard Rule).
+- `docs`: README, api-reference, skill files (Rule 19).
+- `version`: single patch bump (Rule 15).
 
 For any boolean set to `false` or `"n/a"`, the corresponding `*Reason` field must be populated. Vague reasons ("not applicable", "didn't need it") fail the gate; specific reasons ("change is internal-only on Verifications, no public Steps surface added — Rule 19 doesn't apply") pass.
 
@@ -260,7 +260,7 @@ Moved to [hook-authoring.md](references/hook-authoring.md) §"Workflow: adding a
 
 All three must hold:
 
-1. **The shape misclassifies in practice.** Stage 0 + Stage 4 of `failure-diagnosis/SKILL.md` weren't enough to land the right answer cleanly — the diagnoser went the wrong direction (or was visibly close to). The catalogue is for traps, not for failures whose classification was obvious.
+1. **The shape misclassifies in practice.** Stage 0 + Stage 4 of `failure-diagnosis/SKILL.md` weren't enough to land the right answer cleanly; the diagnoser went the wrong direction (or was visibly close to). The catalogue is for traps, not for failures whose classification was obvious.
 2. **The disambiguating probe was non-obvious.** The thing that flipped the classification (a specific tool call, DOM read, evidence grab) is what the next diagnoser most needs. "Look at the screenshot more carefully" is not a probe.
 3. **The shape is reproducible across consumers.** A bug in *this app's* checkout flow is a project finding (goes in that project's bug ledger). A bug shape any consumer of the package could plausibly hit (modal-fetch hangs, stale page-repo entry resolves to a hidden duplicate, role-attribute serialisation breaking implicit ARIA roles, etc.) is catalogue-worthy.
 
@@ -268,7 +268,7 @@ If any criterion fails: don't add an entry. The catalogue's value is in being sk
 
 ### Entry shape
 
-Five fields per entry — Symptom / Why LLMs struggle / Disambiguating probe / Classification / Cross-link. One paragraph per field is the target. The full template + worked examples live in `niche-edge-cases.md`'s §"Adding an entry" — read it once before authoring your first entry; it's the single source of truth for the structure.
+Five fields per entry: Symptom / Why LLMs struggle / Disambiguating probe / Classification / Cross-link. One paragraph per field is the target. The full template + worked examples live in `niche-edge-cases.md`'s §"Adding an entry"; read it once before authoring your first entry; it's the single source of truth for the structure.
 
 ### How to ship the addition
 
@@ -276,20 +276,20 @@ Three pathways depending on what you're already shipping:
 
 | Situation | PR shape |
 |---|---|
-| **You're already mid-PR for something else** (a hook fix, a skill rule edit, etc.) | Add the catalogue entry to the same PR — one extra commit, scope-clean (purely additive to a docs file). Mention in the PR description that the entry was discovered while debugging the PR's own work. Reviewers expect this path; it doesn't trigger a scope-split flag. |
+| **You're already mid-PR for something else** (a hook fix, a skill rule edit, etc.) | Add the catalogue entry to the same PR: one extra commit, scope-clean (purely additive to a docs file). Mention in the PR description that the entry was discovered while debugging the PR's own work. Reviewers expect this path; it doesn't trigger a scope-split flag. |
 | **You hit the niche shape outside any PR** (during a normal coverage / authoring / debugging session) | Open a small standalone PR titled `docs(failure-diagnosis): catalogue <shape-name> in niche-edge-cases`. Single-commit, single-file (this catalogue). The `docs(...)` commit-message convention from coverage-expansion's commit table applies; no version bump per Rule 15. |
-| **You hit it inside a dispatched subagent** (e.g. `failure-diagnosis` sub-skill, `bug-discovery` per-journey probe) | Surface the find in the subagent's return — name the shape, the probe, and the classification. The parent orchestrator either appends to the catalogue inline (if mid-PR) or opens the standalone PR above. **Subagents do NOT push commits directly to this catalogue**, the same way they don't push commits directly to other source files; the parent owns the write. |
+| **You hit it inside a dispatched subagent** (e.g. `failure-diagnosis` sub-skill, `bug-discovery` per-journey probe) | Surface the find in the subagent's return: name the shape, the probe, and the classification. The parent orchestrator either appends to the catalogue inline (if mid-PR) or opens the standalone PR above. **Subagents do NOT push commits directly to this catalogue**, the same way they don't push commits directly to other source files; the parent owns the write. |
 
 ### Cross-link discipline
 
-When a new entry refines an existing Stage 4 / 4a row in `failure-diagnosis/SKILL.md`, update that row to point at the new entry — short citation only (`see [\`references/niche-edge-cases.md\`](../failure-diagnosis/references/niche-edge-cases.md) entry (N)`), don't duplicate the entry's prose into the SKILL.md table cell. The table is the skim path; the catalogue carries the depth.
+When a new entry refines an existing Stage 4 / 4a row in `failure-diagnosis/SKILL.md`, update that row to point at the new entry: short citation only (`see [\`references/niche-edge-cases.md\`](../failure-diagnosis/references/niche-edge-cases.md) entry (N)`), don't duplicate the entry's prose into the SKILL.md table cell. The table is the skim path; the catalogue carries the depth.
 
 When a new entry is a brand-new shape with no existing Stage 4 / 4a row, leave the cross-link as `(none — new shape)`. Don't fabricate a Stage 4 row to point back at the entry; let the table remain stable until the shape is well-trodden enough to deserve a row.
 
 ### What does NOT belong in the catalogue
 
 - Project-specific failure shapes (those go in the project's adversarial-findings ledger or its own bug tracker).
-- War stories from a long debugging session (the catalogue is the *answer* — the trap and the probe and the classification, nothing more).
+- War stories from a long debugging session (the catalogue is the *answer*: the trap and the probe and the classification, nothing more).
 - Failure shapes whose Stage 4 row already covers them adequately (extending the existing row is sufficient).
 - Anything that contradicts the canonical `subagent-return-schema.md` finding-block shape (the catalogue lives alongside the finding format, not as an alternative to it).
 
@@ -311,14 +311,14 @@ Stop. The right path:
 
 1. **Check if the framework already supports it.** Read `skills/achilles-protocol/references/api-reference.md` end-to-end. The matcher tree, predicate form, `.css(prop)`, and `interactions` raw escape hatch cover most needs.
 
-2. **Run the duplicate-prevention checks** from the "Before filing an issue or opening a PR" hard rule above — search existing issues/PRs (open + closed) in both repos, diff local vs. `origin/main`, and confirm your pinned dependency version is the latest. A large share of "missing API" reports are already fixed on main or in a newer published version.
+2. **Run the duplicate-prevention checks** from the "Before filing an issue or opening a PR" hard rule above: search existing issues/PRs (open + closed) in both repos, diff local vs. `origin/main`, and confirm your pinned dependency version is the latest. A large share of "missing API" reports are already fixed on main or in a newer published version.
 
 3. **If it's missing after those checks:**
    - Open an issue on `civitas-cerebrum/element-interactions` describing the use case. Include the check results (see the hard rule's reporting template).
    - If it's a generic element capability (CSS variable, custom property, drag with timing), it belongs in element-repository's `Element` interface first.
    - If it's an assertion shape, it belongs on the matcher tree.
 
-4. **If you need to ship NOW**, the documented escape hatch is `interactions.interact.*`, `interactions.verify.*`, `interactions.extract.*` — they accept either `Locator` or `Element`. Use these for the one-off, but file the issue so the proper API can land.
+4. **If you need to ship NOW**, the documented escape hatch is `interactions.interact.*`, `interactions.verify.*`, `interactions.extract.*`; they accept either `Locator` or `Element`. Use these for the one-off, but file the issue so the proper API can land.
 
 5. **Never** check raw `locator.*()` calls into a test file or into the element-interactions src/. The audit grep above will catch it in code review.
 
@@ -326,7 +326,7 @@ Stop. The right path:
 
 ## 🧱 When the framework cannot satisfy a documented rule
 
-Sometimes the problem is not a missing method on `Steps` — it's that a skill, workflow, or invariant declares a rule the package's current architecture cannot back. Example: every browser-using skill in this suite required parallel-subagent isolation, but the Playwright MCP plugin shared one browser process across all subagents. The rule was unsatisfiable until the package switched tooling.
+Sometimes the problem is not a missing method on `Steps`: it's that a skill, workflow, or invariant declares a rule the package's current architecture cannot back. Example: every browser-using skill in this suite required parallel-subagent isolation, but the Playwright MCP plugin shared one browser process across all subagents. The rule was unsatisfiable until the package switched tooling.
 
 Distinguishing a structural gap from an API gap:
 
@@ -344,9 +344,9 @@ Distinguishing a structural gap from an API gap:
 
 2. **Don't relax the invariant in the consuming skill.** The rest of the suite is built on it. Patching around it locally hides the structural problem and creates inconsistencies between skills that respect the rule and skills that don't.
 
-3. **Open an issue on `civitas-cerebrum/element-interactions`** (the package, not the consuming skill repo, even if you found the gap while writing a skill) — with the duplicate-prevention checks above and a "smallest credible structural fix" sketch. Examples of "smallest fix": switch underlying tool, expose a new primitive, change a protocol shape. If the fix is large, that's fine — name it; don't hide it.
+3. **Open an issue on `civitas-cerebrum/element-interactions`** (the package, not the consuming skill repo, even if you found the gap while writing a skill): with the duplicate-prevention checks above and a "smallest credible structural fix" sketch. Examples of "smallest fix": switch underlying tool, expose a new primitive, change a protocol shape. If the fix is large, that's fine: name it; don't hide it.
 
-4. **The PR that fixes it lands in the package**, not in the consuming skill. The consuming skill only updates once the new primitive is published — and at that point, the consuming skill's job is to *delete* its workaround and trust the new contract.
+4. **The PR that fixes it lands in the package**, not in the consuming skill. The consuming skill only updates once the new primitive is published; and at that point, the consuming skill's job is to *delete* its workaround and trust the new contract.
 
 5. **Decide between "block the rollout" and "ship a documented workaround."** A structural gap blocks the rollout when the invariant is safety-critical (data corruption, cross-tenant leakage, false-pass tests). A documented workaround is acceptable when (a) the workaround is local and reversible, (b) the cost of waiting exceeds the cost of the workaround, and (c) the issue is filed and the cleanup is tracked.
 
@@ -364,22 +364,22 @@ If a skill's prereq check is consistently failing because the package can't sati
 
 Before opening a PR on element-interactions:
 
-- [ ] Searched existing issues + PRs (both repos, open + closed) for duplicates — none found, or linked to related work in the PR body
+- [ ] Searched existing issues + PRs (both repos, open + closed) for duplicates: none found, or linked to related work in the PR body
 - [ ] Local branch is up-to-date with `origin/main` (`git fetch && git log HEAD..origin/main` is empty, or rebased)
-- [ ] Dependency versions (`@civitas-cerebrum/element-repository`) checked against `npm view` — pinned to latest or intentionally older with a reason
+- [ ] Dependency versions (`@civitas-cerebrum/element-repository`) checked against `npm view`: pinned to latest or intentionally older with a reason
 - [ ] Tests pass: `npm run test` shows all tests passing
 - [ ] Coverage 100%: `npx test-coverage --format=github-plain` shows ✅
 - [ ] No raw Playwright leak: `grep -rn "locator\.\(click\|fill\|...\)" src/ --include="*.ts"` returns zero matches in non-`Element`-impl code
-- [ ] **No version bump in this PR** (Rule 15 — versioning is release-time, not per-PR). Bump only when the user has explicitly authorised it in the conversation.
-- [ ] API reference updated (`skills/achilles-protocol/references/api-reference.md`) — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
-- [ ] README updated under `🛠️ API Reference: Steps` — mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
+- [ ] **No version bump in this PR** (Rule 15: versioning is release-time, not per-PR). Bump only when the user has explicitly authorised it in the conversation.
+- [ ] API reference updated (`skills/achilles-protocol/references/api-reference.md`): mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
+- [ ] README updated under `🛠️ API Reference: Steps`: mandatory for any new public method on Steps / ElementAction / matcher tree (Rule 19)
 - [ ] If adding a new method, it has a JSDoc block on the public-facing class
-- [ ] `.contribution-handover.json` populated against `schemas/contribution-handover.schema.json` — every boolean set; every `false` / `"n/a"` paired with a specific `*Reason` field (methodology rule)
+- [ ] `.contribution-handover.json` populated against `schemas/contribution-handover.schema.json`: every boolean set; every `false` / `"n/a"` paired with a specific `*Reason` field (methodology rule)
 - [ ] **If this PR adds, modifies, or strengthens any `skills/*/SKILL.md` rule, workflow, phase, gate, invariant, or contract, it ALSO ships a hook under `hooks/` that enforces the rule programmatically (Hard rule §"Methodology improvements ship as programmatic hooks"). When mechanical enforcement is impossible, the PR description includes a paragraph explaining why and the rule is tagged `markdown-only` in `coverage-expansion/references/anti-rationalizations.md`.**
 
 If you're adding to element-repository first:
 
-- [ ] Searched existing issues + PRs on `civitas-cerebrum/element-repository` (open + closed) — no duplicate
+- [ ] Searched existing issues + PRs on `civitas-cerebrum/element-repository` (open + closed): no duplicate
 - [ ] Local branch is up-to-date with `origin/main` on element-repository
 - [ ] New method on `Element` interface (cross-platform) OR `WebElement` only (with rationale comment)
 - [ ] `WebElement` implementation included
@@ -387,5 +387,5 @@ If you're adding to element-repository first:
 - [ ] Action methods include the `ensureAttached(timeout)` preamble
 - [ ] Live test added in `tests/live-element-location.spec.ts`
 - [ ] Coverage 100% (`npx test-coverage`)
-- [ ] **No version bump in this PR** — release-time only, per Rule 15. Bump happens on the release branch when the maintainer publishes.
+- [ ] **No version bump in this PR**: release-time only, per Rule 15. Bump happens on the release branch when the maintainer publishes.
 - [ ] README updated if adding to the public surface

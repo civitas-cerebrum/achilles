@@ -134,7 +134,7 @@ Co-residence on pages is the only dependency signal. Two journeys that both touc
 #### Intra-group pipelining (dual-stage)
 
 Within an independence group:
-- **Both stages are parallel by default.** Stage B is not a serial follow-up to Stage A; it is dispatched per-journey-as-soon-as-Stage-A-returns, sharing the parallel pool with sibling journeys' Stage A retries. An orchestrator that finishes Stage A for the whole pass and then begins Stage B serially is implementing a different (slower, contract-violating) protocol.
+- **Both stages are parallel by default.** Stage B is dispatched per journey as soon as that journey's Stage A returns, sharing the parallel pool with sibling journeys' Stage A retries. An orchestrator that finishes Stage A for the whole pass and then begins Stage B serially is implementing a different (slower, contract-violating) protocol.
 - All journeys in the group start Stage A concurrently (subject to the parallel cap; see below).
 - Each journey's Stage B fires **as soon as that journey's Stage A returns** and the parallel cap has a slot; not after the whole group's Stage A completes.
 - Each journey's Stage A retry fires **as soon as that journey's Stage B returns with `improvements-needed`** and the cap has a slot.
@@ -207,11 +207,11 @@ Framing: this is a platform-aware seam for long runs. It is not a cost-reduction
 
 ### Re-pass mode for compositional passes 2–3
 
-Passes 2 and 3 dispatch `test-composer` with an explicit `mode: re-pass` argument **when at least one of the orchestrator's three per-journey triggers fires** (per `coverage-expansion/SKILL.md` §"Trigger-gated re-pass for Passes 2 & 3"). When all three triggers are false, the orchestrator writes a gated-skip entry to the state file and never dispatches — Pass 1 already composed the journey's full variant set, and the orchestrator-side three-trigger check is sufficient evidence that no re-pass work is needed.
+Passes 2 and 3 dispatch `test-composer` with an explicit `mode: re-pass` argument **when at least one of the orchestrator's three per-journey triggers fires** (per `coverage-expansion/SKILL.md` §"Trigger-gated re-pass for Passes 2 & 3"). When all three triggers are false, the orchestrator writes a gated-skip entry to the state file and never dispatches; Pass 1 already composed the journey's full variant set, and the orchestrator-side three-trigger check is sufficient evidence that no re-pass work is needed.
 
-The §"Trigger-gated re-pass" content below describes the **dispatched path** — what the subagent does once a trigger has fired and the orchestrator has decided to invoke it.
+The §"Trigger-gated re-pass" content below describes the **dispatched path**: what the subagent does once a trigger has fired and the orchestrator has decided to invoke it.
 
-**Orchestrator-side triggers vs subagent-preamble triggers** — when the orchestrator's gating fires, the dispatched subagent runs the legacy four-trigger discipline (full-inspection-and-confirm). The mapping:
+**Orchestrator-side triggers vs subagent-preamble triggers**: when the orchestrator's gating fires, the dispatched subagent runs the legacy four-trigger discipline (full-inspection-and-confirm). The mapping:
 
 - Orchestrator `map_delta` → subagent triggers 1+2 (delta markers + Pass-1 coverage-gaps).
 - Orchestrator `sibling_ledger_update` → subagent trigger 3 (sibling-bug regression candidates).
@@ -225,16 +225,16 @@ The orchestrator's three triggers are pre-dispatch evidence; the subagent's four
 > - The journey map was materially enriched since Pass 1 (look for delta markers against the pre-pass journey block).
 > - The journey's Pass-1 return reported `coverage-gaps: [...]` or `stabilization: deferred`.
 > - A sibling journey surfaced a bug that should be regressed here too.
-> - The prior pass's Stage B reviewer flagged `must-fix` items that Stage A did not resolve (the journey's `review_status` was `blocked-cycle-stalled` or `blocked-cycle-exhausted` last pass). Those unresolved findings are embedded in your brief — address them.
+> - The prior pass's Stage B reviewer flagged `must-fix` items that Stage A did not resolve (the journey's `review_status` was `blocked-cycle-stalled` or `blocked-cycle-exhausted` last pass). Those unresolved findings are embedded in your brief: address them.
 >
-> You must perform the full inspection regardless — read the current journey block, read the Pass-1 return, read any sibling-bug ledger entries. Only *after* inspection may you return `status: covered-exhaustively` with:
+> You must perform the full inspection regardless: read the current journey block, read the Pass-1 return, read any sibling-bug ledger entries. Only *after* inspection may you return `status: covered-exhaustively` with:
 > - a per-expectation mapping table showing which test covers which Pass-1 expectation,
 > - an explicit check against each of the four triggers above ("trigger 1: no delta markers since Pass 1", "trigger 2: Pass-1 return reported no gaps or deferred stabilization", "trigger 3: sibling-bug ledger contains no regression candidates for this journey", "trigger 4: no unresolved review findings carried forward from the prior pass"),
 > - no unexplained shorthand.
 >
 > **No tool-use budget. No tool-use cap.** Cost is not the optimisation target; signal quality is. The value of a re-pass is disciplined evidence that Pass 1 was exhaustive. An undisciplined cheap no-op is worse than a thorough no-op.
 
-The re-pass mode's contribution is **disciplined justification**, not speed. Every return becomes an auditable artifact — either new tests with their rationale, or `covered-exhaustively` with the full mapping table and the three-trigger check. The orchestrator rejects any pass-2 / pass-3 return that does not include the per-expectation mapping and the three-trigger check, and re-dispatches that journey.
+The re-pass mode's contribution is **disciplined justification**, not speed. Every return becomes an auditable artifact: either new tests with their rationale, or `covered-exhaustively` with the full mapping table and the three-trigger check. The orchestrator rejects any pass-2 / pass-3 return that does not include the per-expectation mapping and the three-trigger check, and re-dispatches that journey.
 
 **Rationalizations to reject (subagent side):**
 
@@ -242,34 +242,34 @@ The re-pass mode's contribution is **disciplined justification**, not speed. Eve
 
 | Excuse | Reality |
 |--------|---------|
-| "Obvious no-op — I'll mark `covered-exhaustively` without reading Pass-1 returns" | The three-trigger check requires evidence. Fabricating "Pass-1 reported no gaps" without reading the return is the exact failure the orchestrator's rejection-and-redispatch step is designed to catch; the redispatch wastes more time than reading the return would have. |
-| "The mapping table is obvious, I'll shorthand it" | Shorthand fails the orchestrator's check. The mapping table enumerates each expectation with the specific test covering it — not "all covered by existing tests". One-line-per-expectation or redispatch. |
+| "Obvious no-op, I'll mark `covered-exhaustively` without reading Pass-1 returns" | The three-trigger check requires evidence. Fabricating "Pass-1 reported no gaps" without reading the return is the exact failure the orchestrator's rejection-and-redispatch step is designed to catch; the redispatch wastes more time than reading the return would have. |
+| "The mapping table is obvious, I'll shorthand it" | Shorthand fails the orchestrator's check. The mapping table enumerates each expectation with the specific test covering it, not "all covered by existing tests". One-line-per-expectation or redispatch. |
 | "Sibling-bug ledger is probably empty for this journey, skip it" | The check is "I read the ledger and found no regression candidates for this journey", not "I assumed there are none". Skipping the read is skipping the trigger. |
 | "No tool-use budget means I can spam tool calls freely" | "No budget" is a signal that signal quality matters more than cost; it is NOT an invitation to over-probe. Use the tools needed to satisfy the three triggers and no more. |
-| "Pass 1 was thorough so Pass 2/3 is always `covered-exhaustively`" | The three triggers explicitly include "map delta since Pass 1" and "sibling-bug regression candidate" — conditions that can only be evaluated at Pass 2/3 time, not inherited from Pass 1's confidence. The returning-it-without-inspection shortcut voids the pass. |
+| "Pass 1 was thorough so Pass 2/3 is always `covered-exhaustively`" | The three triggers explicitly include "map delta since Pass 1" and "sibling-bug regression candidate": conditions that can only be evaluated at Pass 2/3 time, not inherited from Pass 1's confidence. The returning-it-without-inspection shortcut voids the pass. |
 
-**Orchestrator-side rejection check.** When a pass-2 or pass-3 return arrives, the orchestrator greps the return for (a) the literal strings "trigger 1", "trigger 2", "trigger 3", "trigger 4", (b) a mapping-table header row, and (c) per-expectation entries. If any is missing the orchestrator re-dispatches the journey with a brief explicitly quoting the rejected parts. The orchestrator does NOT accept partial returns as a concession to save re-dispatch cost — the discipline holds on both sides.
+**Orchestrator-side rejection check.** When a pass-2 or pass-3 return arrives, the orchestrator greps the return for (a) the literal strings "trigger 1", "trigger 2", "trigger 3", "trigger 4", (b) a mapping-table header row, and (c) per-expectation entries. If any is missing the orchestrator re-dispatches the journey with a brief explicitly quoting the rejected parts. The orchestrator does NOT accept partial returns as a concession to save re-dispatch cost; the discipline holds on both sides.
 
 ### Relevance grouping for compositional passes
 
 **Trigger.** A priority tier in scope for a compositional pass (**2 or 3**. Pass 1 is strict per-journey under `mode: standard`, no grouping; see `coverage-expansion/SKILL.md` §"Stage A per-journey dispatch is non-negotiable" for the first-pass strict rule) has **more than 5 journeys**. When the trigger fires, the orchestrator MAY group those journeys for Stage A dispatch instead of dispatching one subagent per journey. Grouping is allowed regardless of priority (P0/P1/P2/P3 all eligible once the >5 threshold is crossed for that tier). Adversarial Passes 4 and 5 have their own grouping path (`coverage-expansion/SKILL.md` §"Adversarial grouping for Passes 4 and 5"); default `probe-group-<id>:` cap-7, opt back into per-journey with `args: "strict-adversarial: true"`.
 
 **Relationship to P3-batch.** Two distinct batching paths coexist:
-- **P3-batch** (cap 7): narrow, P3-only, shared Playwright project, no gap flags. See §"Batched dispatch for P3 peripheral journeys" below — its criteria are unchanged.
+- **P3-batch** (cap 7): narrow, P3-only, shared Playwright project, no gap flags. See §"Batched dispatch for P3 peripheral journeys" below; its criteria are unchanged.
 - **Relevance group** (cap 7): broader, any priority once the >5 threshold is crossed, compositional passes only.
 
 A pass MAY use both paths in the same wave (one or more `test-composer-p3batch-<id>:` dispatches alongside one or more `test-composer-group-<id>:` dispatches), but a single dispatch belongs to exactly one path. Priorities below P3 fall under the relevance-group path; the P3-batch path remains the right shape for shared-project P3 sweeps.
 
 **Group composition rules.**
-- **Same priority.** A relevance group's journeys must all share a priority tier — never mix P1 and P2 in one group. Priority is load-bearing for the orchestrator's pass-level decisions; mixing tiers in one brief erases that signal.
-- **Same section / shared `Pages touched`.** Group by relevance: prefer journeys that share a section identifier (e.g., all auth-section journeys, all cart-section journeys). When section alone leaves a tier with too few groupable journeys, fall back to overlapping `Pages touched` from the journey-map block — journeys that touch the same routes share page-repository entries and app-context knowledge, which is the cost saving the path is built around.
-- **No pending gap flags.** A journey carrying any of the three re-pass triggers (coverage gap, deferred stabilization, refined map block) is dispatched per-journey, not in a group. Same rule as P3-batch — flagged journeys need the brief's full attention.
-- **No elevated-risk journeys.** A journey whose map block carries 2+ `Risk factors:` tags (`risk: elevated` per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is dispatched per-journey, never in a group — concentrated failure surfaces are what grouped attention-rationing misses. Journeys without the field default to `risk: baseline` and group normally. Methodology rule, not hook-enforced.
-- **Cap 7.** Maximum 7 journeys per group. A tier of 28 journeys at the same priority becomes ⌈28/7⌉ = 4 groups. If a relevance cluster has 9 journeys, split it into 7+2 (the 2-journey group is fine — singleton and small groups are valid).
+- **Same priority.** A relevance group's journeys must all share a priority tier: never mix P1 and P2 in one group. Priority is load-bearing for the orchestrator's pass-level decisions; mixing tiers in one brief erases that signal.
+- **Same section / shared `Pages touched`.** Group by relevance: prefer journeys that share a section identifier (e.g., all auth-section journeys, all cart-section journeys). When section alone leaves a tier with too few groupable journeys, fall back to overlapping `Pages touched` from the journey-map block; journeys that touch the same routes share page-repository entries and app-context knowledge, which is the cost saving the path is built around.
+- **No pending gap flags.** A journey carrying any of the three re-pass triggers (coverage gap, deferred stabilization, refined map block) is dispatched per-journey, not in a group. Same rule as P3-batch: flagged journeys need the brief's full attention.
+- **No elevated-risk journeys.** A journey whose map block carries 2+ `Risk factors:` tags (`risk: elevated` per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is dispatched per-journey, never in a group; concentrated failure surfaces are what grouped attention-rationing misses. Journeys without the field default to `risk: baseline` and group normally. Methodology rule, not hook-enforced.
+- **Cap 7.** Maximum 7 journeys per group. A tier of 28 journeys at the same priority becomes ⌈28/7⌉ = 4 groups. If a relevance cluster has 9 journeys, split it into 7+2 (the 2-journey group is fine: singleton and small groups are valid).
 
-**Parallelism preserved.** Each group dispatches as ONE Stage A subagent as a `test-composer-group-<id>:` dispatch; multiple groups dispatch in parallel up to the host-max cap. With 28 journeys grouped 7-per (4 groups) the wave size is 4 — comparable to N parallel single-journey dispatches but with roughly one seventh of the brief overhead per dispatch. Across-tier ordering (P0 first, then P1, then P2, then P3) is unchanged.
+**Parallelism preserved.** Each group dispatches as ONE Stage A subagent as a `test-composer-group-<id>:` dispatch; multiple groups dispatch in parallel up to the host-max cap. With 28 journeys grouped 7-per (4 groups) the wave size is 4; comparable to N parallel single-journey dispatches but with roughly one seventh of the brief overhead per dispatch. Across-tier ordering (P0 first, then P1, then P2, then P3) is unchanged.
 
-**Stage B remains per-journey within a group.** Each journey in a grouped Stage A dispatch receives its own dedicated cycle-1 Stage B reviewer — same contract as the P3-batch path. The compositional-cycle-1 batch-reviewer exception (one cross-pass reviewer) is independent of grouping and does NOT compose with it; a grouped Stage A always produces per-journey cycle-1 Stage B reviewers.
+**Stage B remains per-journey within a group.** Each journey in a grouped Stage A dispatch receives its own dedicated cycle-1 Stage B reviewer; same contract as the P3-batch path. The compositional-cycle-1 batch-reviewer exception (one cross-pass reviewer) is independent of grouping and does NOT compose with it; a grouped Stage A always produces per-journey cycle-1 Stage B reviewers.
 
 **Cycle-1 split-out.** A group is accepted only when every journey's cycle-1 Stage B returns `greenlight`. If any journey returns `improvements-needed`, that journey breaks out and runs its own per-journey Stage A from cycle 2 onward (with the cycle-1 group return retained as history input). The remaining greenlit journeys stay accepted at cycle 1 and proceed.
 
@@ -281,11 +281,11 @@ A pass MAY use both paths in the same wave (one or more `test-composer-p3batch-<
 
 | Excuse | Reality |
 |--------|---------|
-| "Only 4 journeys at this priority — let's group anyway, it's neater" | Trigger is >5 journeys at the tier. With ≤5, per-journey dispatch is the rule; the saving doesn't pay for the attention-rationing risk. |
+| "Only 4 journeys at this priority, let's group anyway, it's neater" | Trigger is >5 journeys at the tier. With ≤5, per-journey dispatch is the rule; the saving doesn't pay for the attention-rationing risk. |
 | "Group of 8, only one extra over the cap, I'll bend the rule" | Cap 7 is not negotiable. Split into 7+1, or 4+4 if the cluster shape supports it. |
-| "Two journeys are P1 and three are P2, but they share pages — group them" | Same priority is required. Mixing erases the priority signal the orchestrator relies on for pass-level decisions. |
-| "Journey X has a coverage-gap flag, but the gap is small — keep it in the group" | Any of the three re-pass triggers kicks the journey out into per-journey dispatch. Same rule as P3-batch. The flag's verdict is the subagent's, after reading prior-pass returns; which a grouped brief cannot do. |
-| "Group cycle-1 had 4 of 7 return improvements-needed — keep grouping next pass anyway, the saving is too good" | The pattern is the rationing failure mode. Stop grouping for the rest of this pass and the next; revisit only if the pass-level review spread improves. |
+| "Two journeys are P1 and three are P2, but they share pages, group them" | Same priority is required. Mixing erases the priority signal the orchestrator relies on for pass-level decisions. |
+| "Journey X has a coverage-gap flag, but the gap is small, keep it in the group" | Any of the three re-pass triggers kicks the journey out into per-journey dispatch. Same rule as P3-batch. The flag's verdict is the subagent's, after reading prior-pass returns; which a grouped brief cannot do. |
+| "Group cycle-1 had 4 of 7 return improvements-needed, keep grouping next pass anyway, the saving is too good" | The pattern is the rationing failure mode. Stop grouping for the rest of this pass and the next; revisit only if the pass-level review spread improves. |
 | "Adversarial Pass 4 has 8 journeys — group them too" | Permitted under `mode: standard` default. See `coverage-expansion/SKILL.md` §"Adversarial grouping for Passes 4 and 5": `probe-group-<id>:` cap-7 is the default; opt back into per-journey with `args: "strict-adversarial: true"`. (Prior versions of this row forbade adversarial grouping outright; that rule was relaxed once the app-wide-pattern catalogue made per-journey isolation less load-bearing on the adversarial layer.) |
 
 ### Batched dispatch for P3 peripheral journeys
@@ -306,15 +306,15 @@ Dual-stage narrows this:
 | Excuse | Reality |
 |--------|---------|
 | "This 8th journey is almost identical to the 7 in the batch, I'll include it" | Cap 7 is not negotiable. Split the batch (5 + 3, etc). The cap bounds brief size and per-journey attention. |
-| "All these journeys are P3 and share a project, and this admin journey *could* be grouped — skip the P1 carve-out" | P0 / P1 always dispatch individually. Priority is load-bearing; a journey at P1 deserves its own brief even if it happens to share pages with P3 siblings. |
-| "The journeys share most pages, same project, roughly P3 — skip the 'shared Playwright project' check" | Different Playwright projects require different `playwright-cli` sessions; batching across projects introduces session-swap complexity that defeats the dispatch optimisation. |
+| "All these journeys are P3 and share a project, and this admin journey *could* be grouped, skip the P1 carve-out" | P0 / P1 always dispatch individually. Priority is load-bearing; a journey at P1 deserves its own brief even if it happens to share pages with P3 siblings. |
+| "The journeys share most pages, same project, roughly P3, skip the 'shared Playwright project' check" | Different Playwright projects require different `playwright-cli` sessions; batching across projects introduces session-swap complexity that defeats the dispatch optimisation. |
 | "Batching is faster so I'll batch everything that isn't explicitly forbidden" | Batching is allowed, not preferred. P0/P1 individual dispatch is the default; batching is specifically for P3 peripheral sweeps. Defaulting to batch on P2 quietly compresses scope. |
-| "One journey in the batch has a coverage-gap flag from Pass 1, but the gap is trivial" | Any flag in the three re-pass triggers kicks the journey out of the batch into individual dispatch. "Trivial" is the subagent's judgement after reading Pass-1 returns — which cannot happen inside a batched brief. |
-| "All P3 same project, I'll batch Stage B too to save a dispatch" | The P3-batch path's Stage B is per-journey — that's the rule the rationalization is trying to evade. The compositional-cycle-1 batch-reviewer exception (`reviewer-subagent-contract.md` §"Batch reviewer mode") does NOT extend to P3-batch-A; mixing the two is rubber-stamping. |
+| "One journey in the batch has a coverage-gap flag from Pass 1, but the gap is trivial" | Any flag in the three re-pass triggers kicks the journey out of the batch into individual dispatch. "Trivial" is the subagent's judgement after reading Pass-1 returns, which cannot happen inside a batched brief. |
+| "All P3 same project, I'll batch Stage B too to save a dispatch" | The P3-batch path's Stage B is per-journey: that's the rule the rationalization is trying to evade. The compositional-cycle-1 batch-reviewer exception (`reviewer-subagent-contract.md` §"Batch reviewer mode") does NOT extend to P3-batch-A; mixing the two is rubber-stamping. |
 | "I'll batch Stage B for cycle-2+ to save a dispatch" | Cycle-2+ Stage B is per-journey by hard rule (`reviewer-subagent-contract.md` §"Mode selection"). Cycle-2 already knows which specific journeys need attention; batching it would defeat the purpose. The cycle-1 batch-reviewer exception does not extend to cycle-2+, which has a different signal-to-noise profile. |
 | "Cycle-1 Stage B greenlit 6 of 7 journeys, I'll greenlight the 7th too since it's similar" | The 7th journey's reviewer returned `improvements-needed` for a reason. Split out cycle-2 for that journey; the reason does not carry to the greenlit 6. |
-| "Any flag on any journey kills the whole batch — too expensive, I'll keep batching" | Only the flagged journey breaks out. The greenlit journeys stay batched-and-accepted; no rework for them. |
-| "I'll batch Stage A across P1+P3 journeys if they share a project" | The P3-batch path is P3-only; mixing in P1 here is the rationalization. P1 grouping has its own path (`test-composer-group-<id>:`, see §"Relevance grouping for compositional passes") with its own criteria — it does not compose with P3-batch. |
+| "Any flag on any journey kills the whole batch, too expensive, I'll keep batching" | Only the flagged journey breaks out. The greenlit journeys stay batched-and-accepted; no rework for them. |
+| "I'll batch Stage A across P1+P3 journeys if they share a project" | The P3-batch path is P3-only; mixing in P1 here is the rationalization. P1 grouping has its own path (`test-composer-group-<id>:`, see §"Relevance grouping for compositional passes") with its own criteria; it does not compose with P3-batch. |
 
 ---
 
@@ -330,9 +330,9 @@ Inputs to the cleanup subagent:
 - The current `coverage-expansion-state.json`.
 
 Task:
-1. Identify semantically equivalent test cases across the journeys committed in this pass — same negative-case (e.g., "submit empty form rejected"), same boundary check, same error-state assertion.
+1. Identify semantically equivalent test cases across the journeys committed in this pass; same negative-case (e.g., "submit empty form rejected"), same boundary check, same error-state assertion.
 2. Keep one canonical version per equivalence class. Cross-reference the others via a one-line comment in the consumer journey's spec (`// dedup: see j-<canonical>.spec.ts § <test name>`).
-3. Do NOT touch tests authored in earlier passes — within-pass scope only.
+3. Do NOT touch tests authored in earlier passes; within-pass scope only.
 4. Do NOT alter test semantics or coverage. If two tests look similar but exercise different invariants, keep both.
 5. Commit: `docs(ledger): pass <N> test dedup` per the **Commit-message conventions** table.
 
@@ -343,7 +343,7 @@ Inputs to the cleanup subagent:
 - The current ledger.
 
 Task:
-1. Within-pass: identify duplicate findings across journeys in this pass — same boundary, same root cause, different journey contexts.
+1. Within-pass: identify duplicate findings across journeys in this pass; same boundary, same root cause, different journey contexts.
 2. Consolidate duplicates into a single canonical entry under the relevant section, cross-referenced from each journey's section.
 3. Do NOT drop or edit substantive finding content. Do NOT re-classify findings.
 4. Commit: `docs(ledger): pass <N> findings dedup` per the **Commit-message conventions** table.
@@ -375,7 +375,7 @@ After pass 5 commits, the orchestrator dispatches one additional, non-per-journe
 ### Cleanup subagent constraints
 
 - Model: **opus** (per the Cleanup ledger dedup row of `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet); the kernel table wins). Semantic clustering of near-duplicate findings across journey sections is judgement work, not mechanical text editing.
-- Single dispatch — NOT per-journey. Just one subagent, handed the full ledger file path.
+- Single dispatch: NOT per-journey. Just one subagent, handed the full ledger file path.
 - Isolated context. No prior session content.
 - Does not modify the journey-map, the page-repository, or any test files. Only the ledger.
 

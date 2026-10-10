@@ -24,7 +24,7 @@ with real data, and the gap belongs in the report.
 All six steps run inside a single Playwright test via the project's CLI (`pnpm exec playwright
 test`), so `playwright.config.ts` headers, device presets, and bypass tokens all apply.
 
-**1. Navigate to the real page.** The full CSS environment must be loaded — Tailwind's generated
+**1. Navigate to the real page.** The full CSS environment must be loaded: Tailwind's generated
 stylesheet, design tokens, global rules (e.g. `.is-tabbing a:focus-visible`). Use the page where
 the component would normally appear, logged in if required.
 
@@ -36,7 +36,7 @@ browsers don't trigger automatically. Inject them via `page.evaluate()`:
 await page.evaluate(() => document.documentElement.classList.add('is-tabbing'))
 ```
 
-State the injected classes in the report — they are assumptions, not observations.
+State the injected classes in the report; they are assumptions, not observations.
 
 **3. Inject mock DOM** via `page.evaluate()` using the **exact CSS classes from the PR diff**.
 Insert into `<main>` so the element inherits the page's full cascade. Give the mock a unique `id`
@@ -87,7 +87,7 @@ const hasShadow = styles.boxShadow !== 'none'
 expect(hasRing || hasShadow).toBe(true)
 ```
 
-**6. Capture evidence screenshots.** Two shots — viewport for context, closeup for detail:
+**6. Capture evidence screenshots.** Two shots: viewport for context, closeup for detail:
 
 ```ts
 // Full viewport — shows the page, the mock element, and the focus state
@@ -109,13 +109,13 @@ if (rect) {
 
 Follow the brief comment format from §9's "Posting to the tracker": what was tested (mention mock
 injection and which classes), evidence screenshots inline, and the verdict. Caveats (no real data,
-single browser, injected state classes) go as one-liners under the verdict — not as separate
+single browser, injected state classes) go as one-liners under the verdict, not as separate
 sections.
 
 ## Negative control caveat
 
-The standard negative control (§8) — running the same test against an environment without the fix
-— may not work for style-interaction tests. CSS specificity and Tailwind's layer ordering mean
+The standard negative control (§8), running the same test against an environment without the fix,
+may not work for style-interaction tests. CSS specificity and Tailwind's layer ordering mean
 that injecting old classes into a page does not replicate the cascade the old component experienced.
 When the negative control is not feasible via injection, state this explicitly and cite the
 ticket's own audit evidence (screenshots, screen recordings) as the pre-fix baseline.

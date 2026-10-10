@@ -22,12 +22,12 @@ description: >
   level, or failing-test diagnosis — those route to their own skills.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Contract Testing — API Surface Verification
 
-A structured protocol for writing **contract-style** tests against HTTP backends using the Steps API (`steps.apiGet/Post/Put/Delete/Patch/Head` + `verifyApiStatus`/`verifyApiHeader`). These tests lock the *contract* between a client and a service — status codes, headers, response schema, error shape — without testing business logic or UI.
+A structured protocol for writing **contract-style** tests against HTTP backends using the Steps API (`steps.apiGet/Post/Put/Delete/Patch/Head` + `verifyApiStatus`/`verifyApiHeader`). These tests lock the *contract* between a client and a service (status codes, headers, response schema, error shape) without testing business logic or UI.
 
 ## Scope & Boundaries — Read Before Starting
 
@@ -54,9 +54,9 @@ If the user wants a true Pact broker workflow, tell them upfront: *"This framewo
 
 Before starting, verify ALL of these. If any are missing, stop and ask the user.
 
-- Target backend(s) have a reachable URL — staging, sandbox, or local. **Never production without explicit ack.**
+- Target backend(s) have a reachable URL: staging, sandbox, or local. **Never production without explicit ack.**
 - Authentication mechanism is known (none / Bearer / Basic / API key / cookie) AND credentials live in env vars, not source.
-- A source of truth for the contract exists — OpenAPI spec, Postman collection, README, or a backend engineer available to confirm shape. Without one, Phase 2 becomes discovery-style and must be confirmed with the user obligation-by-obligation.
+- A source of truth for the contract exists: OpenAPI spec, Postman collection, README, or a backend engineer available to confirm shape. Without one, Phase 2 becomes discovery-style and must be confirmed with the user obligation-by-obligation.
 - `@civitas-cerebrum/element-interactions` is the project's test framework (check `package.json`).
 - `baseFixture` is already wired in `tests/fixtures/base.ts`. If not, Phase 3 covers setup.
 - **If `@civitas-cerebrum/element-interactions` is installed via `file:` / `npm link` (local framework development), verify Playwright is not installed twice.** Node's resolver can load `@playwright/test` both from the consuming project and from the linked framework's own `node_modules`, which trips Playwright's singleton guard ("Requiring @playwright/test second time") and produces `No tests found`. Fix: either delete the framework's nested `node_modules/@playwright*` + `node_modules/playwright*`, or add `NODE_OPTIONS=--preserve-symlinks` to your test script.
@@ -67,15 +67,15 @@ If the endpoint is unreachable, stop and tell the user: *"Contract tests must hi
 
 ## 🚨 Absolute Rules
 
-1. **Always read `../achilles-protocol/references/api-reference.md` → "HTTP API Steps" first.** Do not invent API step signatures. Do not write `steps.apiX` calls from memory. Do NOT reach for Playwright's raw `request.newContext` / `page.request` instead — you lose multi-provider routing, auth header layering, the `tester:api` log channel, and consistency with the rest of the Steps API. If you're tempted because "it's simpler," that's the loophole; close it.
-2. **Never hardcode a base URL — and that includes env-var fallbacks.** Base URLs live on `baseFixture` options (`apiBaseUrl` / `apiProviders`), which read env vars at fixture-construction time. Writing `process.env.X ?? 'http://localhost:8080'` inside a test file is a Rule 2 violation in disguise: the fallback ships the hardcoded URL into the repo and survives missing config. Tests address paths (`/users/42`), never origins.
-3. **One contract obligation per test.** A test asserts either status, or schema, or a header contract — not a mixed bag. Red flag: a single test that checks status AND envelope fields AND `totalElements === 50` AND item shape is four obligations fused. Split it. Fused tests hide which obligation broke.
-4. **Assert shape, not values — and seeded data is still data.** Contract tests check `id: expect.any(Number)`, `title: expect.any(String)`. They do NOT check `title === 'To Kill a Mockingbird'` or `totalElements === 50` just because the seed makes it true today. The moment the seed changes — or the fixture runs against a different environment — the "contract" test fails for a data reason, not a contract reason. Values are data; shape is contract. If you find yourself writing a string literal on the right of `toBe`, stop. The data-lifecycle doctrine for the seed itself — who creates it, per-attempt uniqueness, cleanup — is [`test-data-conventions`](../test-data-conventions/SKILL.md); its strategy decision ladder is what the Stage 4c judge's data-feasibility dimension reviews contract fixtures against.
+1. **Always read `../achilles-protocol/references/api-reference.md` → "HTTP API Steps" first.** Do not invent API step signatures. Do not write `steps.apiX` calls from memory. Do NOT reach for Playwright's raw `request.newContext` / `page.request` instead; you lose multi-provider routing, auth header layering, the `tester:api` log channel, and consistency with the rest of the Steps API. If you're tempted because "it's simpler," that's the loophole; close it.
+2. **Never hardcode a base URL, and that includes env-var fallbacks.** Base URLs live on `baseFixture` options (`apiBaseUrl` / `apiProviders`), which read env vars at fixture-construction time. Writing `process.env.X ?? 'http://localhost:8080'` inside a test file is a Rule 2 violation in disguise: the fallback ships the hardcoded URL into the repo and survives missing config. Tests address paths (`/users/42`), never origins.
+3. **One contract obligation per test.** A test asserts either status, or schema, or a header contract; not a mixed bag. Red flag: a single test that checks status AND envelope fields AND `totalElements === 50` AND item shape is four obligations fused. Split it. Fused tests hide which obligation broke.
+4. **Assert shape, not values, and seeded data is still data.** Contract tests check `id: expect.any(Number)`, `title: expect.any(String)`. They do NOT check `title === 'To Kill a Mockingbird'` or `totalElements === 50` just because the seed makes it true today. The moment the seed changes (or the fixture runs against a different environment), the "contract" test fails for a data reason, not a contract reason. Values are data; shape is contract. If you find yourself writing a string literal on the right of `toBe`, stop. The data-lifecycle doctrine for the seed itself (who creates it, per-attempt uniqueness, cleanup) is [`test-data-conventions`](../test-data-conventions/SKILL.md); its strategy decision ladder is what the Stage 4c judge's data-feasibility dimension reviews contract fixtures against.
 5. **Never mock the endpoint under test.** Contract tests need to hit a real (staging/sandbox) service. If no real endpoint is reachable, stop and tell the user.
 6. **Credentials come from env vars.** Never commit tokens, passwords, or API keys into test code.
-7. **Type the response.** Always use `steps.apiGet<T>(...)` with an explicit `T` — an untyped contract test is an oxymoron. Note: `await res.json()` on a raw Playwright response returns `Promise<any>`; TypeScript cannot infer the shape. Either use `steps.apiGet<T>` (typed) or declare an interface and cast at the boundary. Inline `(b: { id: string }) => ...` casts on `.map` don't fix the root.
-8. **Deliberate-failure check is mandatory before declaring Phase 6 complete.** All green on first run proves nothing — you may have built a vacuous assertion. You MUST mutate one schema field name or status expectation, confirm the test fails with a useful error, then revert. If you skip this, you don't know whether your tests bite. See Phase 6.
-9. **Only test documented behavior.** If a query param isn't in the OpenAPI/README/spec, don't assert on it — even if it "seems to work". Undocumented endpoints that coincidentally pass give false confidence, and the moment the backend cleans up the coincidence your contract test breaks on non-contractual behavior. If the user wants it locked, get it documented first.
+7. **Type the response.** Always use `steps.apiGet<T>(...)` with an explicit `T`: an untyped contract test is an oxymoron. Note: `await res.json()` on a raw Playwright response returns `Promise<any>`; TypeScript cannot infer the shape. Either use `steps.apiGet<T>` (typed) or declare an interface and cast at the boundary. Inline `(b: { id: string }) => ...` casts on `.map` don't fix the root.
+8. **Deliberate-failure check is mandatory before declaring Phase 6 complete.** All green on first run proves nothing; you may have built a vacuous assertion. You MUST mutate one schema field name or status expectation, confirm the test fails with a useful error, then revert. If you skip this, you don't know whether your tests bite. See Phase 6.
+9. **Only test documented behavior.** If a query param isn't in the OpenAPI/README/spec, don't assert on it; even if it "seems to work". Undocumented endpoints that coincidentally pass give false confidence, and the moment the backend cleans up the coincidence your contract test breaks on non-contractual behavior. If the user wants it locked, get it documented first.
 
 ---
 
@@ -117,10 +117,10 @@ digraph contract_testing {
 
 Before writing any code, establish these facts. If any are unknown, ask the user:
 
-1. **Target API(s).** One backend or several? Collect a name and base URL for each. Multi-backend is first-class — each becomes an entry in `apiProviders`.
+1. **Target API(s).** One backend or several? Collect a name and base URL for each. Multi-backend is first-class: each becomes an entry in `apiProviders`.
 2. **Authentication.** None? Bearer token? Basic? API key header? Cookie? Where do credentials come from (env vars, login call, fixture)?
-3. **Environment.** Staging, sandbox, local dev? Never run contract tests against production unless the user explicitly confirms — contract tests are safe (read-only / tested data), but a `POST /users` loop against prod is not.
-4. **Source of truth.** OpenAPI spec? README? A Postman collection? Someone's head? Get the user to point at the document that defines the contract — every assertion must trace back to it.
+3. **Environment.** Staging, sandbox, local dev? Never run contract tests against production unless the user explicitly confirms; contract tests are safe (read-only / tested data), but a `POST /users` loop against prod is not.
+4. **Source of truth.** OpenAPI spec? README? A Postman collection? Someone's head? Get the user to point at the document that defines the contract: every assertion must trace back to it.
 5. **Scope.** All endpoints? A subset? A single endpoint? Default to the endpoints the user names; do not expand scope without asking.
 
 Record the intake in a short checklist and confirm with the user before moving on.
@@ -143,9 +143,9 @@ GET /users/:id
     - 400 on malformed id, body: { error: string }
 ```
 
-Group obligations by endpoint. Do NOT combine endpoints. Do NOT pre-write tests — this is a checklist that gates Phase 5.
+Group obligations by endpoint. Do NOT combine endpoints. Do NOT pre-write tests; this is a checklist that gates Phase 5.
 
-If the user has an OpenAPI spec, derive the inventory from it. If not, probe the live endpoint(s) for actual responses and confirm each obligation with the user before testing it — you are **discovering** the contract, not inventing one.
+If the user has an OpenAPI spec, derive the inventory from it. If not, probe the live endpoint(s) for actual responses and confirm each obligation with the user before testing it; you are **discovering** the contract, not inventing one.
 
 **Implied-but-not-enumerated shape.** Specs often say "returns a paginated list" without enumerating the envelope fields, or document field `foo` without mentioning that the response is actually `{ data: foo }`. Lock only what the spec explicitly names. For the surrounding shape:
 
@@ -157,7 +157,7 @@ If the user has an OpenAPI spec, derive the inventory from it. If not, probe the
 
 ### Phase 3 — Fixture Setup
 
-Add / extend `baseFixture` to wire the API client(s). All API fixture params are optional — only add what's needed.
+Add / extend `baseFixture` to wire the API client(s). All API fixture params are optional; only add what's needed.
 
 ```ts
 // tests/fixtures/base.ts
@@ -175,7 +175,7 @@ export { expect };
 ```
 
 - If tests need auth, fold token acquisition into a custom fixture (extend `baseFixture`'s return) or a `beforeAll` that calls `apiPost('auth', '/login', …)` and stores the token in `contextStore` / a closure. Inject it via `headers: { Authorization: 'Bearer …' }` on every request.
-- If the target has no public sandbox, tell the user upfront — the test suite will need `API_BASE_URL` pointed at a reachable instance.
+- If the target has no public sandbox, tell the user upfront: the test suite will need `API_BASE_URL` pointed at a reachable instance.
 
 ---
 
@@ -216,7 +216,7 @@ export const ErrorSchema = {
 };
 ```
 
-**File layout.** Put contract tests under `tests/contracts/` — one file per endpoint or one file per resource.
+**File layout.** Put contract tests under `tests/contracts/`: one file per endpoint or one file per resource.
 
 ```
 tests/
@@ -226,7 +226,7 @@ tests/
     invoices.spec.ts
 ```
 
-**Playwright config for contract tests.** If the existing `playwright.config.ts`'s `testDir` doesn't include `tests/contracts/`, **do NOT widen the shared `testDir`** — that couples UI and API runs (parallelism, retries, reporter, `use.baseURL` all collide). Create a dedicated config instead:
+**Playwright config for contract tests.** If the existing `playwright.config.ts`'s `testDir` doesn't include `tests/contracts/`, **do NOT widen the shared `testDir`**; that couples UI and API runs (parallelism, retries, reporter, `use.baseURL` all collide). Create a dedicated config instead:
 
 ```ts
 // playwright.contracts.config.ts
@@ -241,13 +241,13 @@ export default defineConfig({
 });
 ```
 
-Run with `npx playwright test --config=playwright.contracts.config.ts`. Add an npm script (`test:contracts`) for convenience. Never run contract tests inside the UI suite's config — they have different timing, retry, and parallelism characteristics.
+Run with `npx playwright test --config=playwright.contracts.config.ts`. Add an npm script (`test:contracts`) for convenience. Never run contract tests inside the UI suite's config; they have different timing, retry, and parallelism characteristics.
 
 ---
 
 ### Phase 5 — Implementation
 
-Canonical patterns — copy, do not improvise. Every pattern below already appears in `api-reference.md` → "HTTP API Steps"; read that first if anything looks unfamiliar.
+Canonical patterns: copy, do not improvise. Every pattern below already appears in `api-reference.md` → "HTTP API Steps"; read that first if anything looks unfamiliar.
 
 **5a. Status check (happy path):**
 
@@ -311,7 +311,7 @@ test('POST /users accepts valid payload and echoes it', async ({ steps }) => {
 });
 ```
 
-**5g. Multi-backend cross-check — single test, two providers:**
+**5g. Multi-backend cross-check: single test, two providers:**
 
 ```ts
 test('billing invoice references a real auth user', async ({ steps }) => {
@@ -323,11 +323,11 @@ test('billing invoice references a real auth user', async ({ steps }) => {
 });
 ```
 
-**5h. Unknown shape — discover first, then lock:**
+**5h. Unknown shape: discover first, then lock:**
 
 If no OpenAPI exists, run the endpoint once, log `res.body`, design the schema with the user, commit the schema. Don't assert against a shape you haven't confirmed with the user.
 
-**5i. List-shape — array of typed objects:**
+**5i. List-shape: array of typed objects:**
 
 ```ts
 // Envelope shape: content is an array of Book-like objects
@@ -348,23 +348,23 @@ test('each item in content matches the Book schema', async ({ steps }) => {
 });
 ```
 
-Do NOT assert `expect(res.body.content).toHaveLength(50)` — that's a value assertion on seed size, not a contract. If the spec says "at least one", assert `toBeGreaterThan(0)`. If the spec gives bounds, assert bounds (`toBeGreaterThanOrEqual` / `toBeLessThanOrEqual`). Never lock exact counts.
+Do NOT assert `expect(res.body.content).toHaveLength(50)`; that's a value assertion on seed size, not a contract. If the spec says "at least one", assert `toBeGreaterThan(0)`. If the spec gives bounds, assert bounds (`toBeGreaterThanOrEqual` / `toBeLessThanOrEqual`). Never lock exact counts.
 
 ---
 
 ### Phase 6 — Run & Verify
 
-1. **Run the suite.** `npx playwright test --config=playwright.contracts.config.ts` (or `tests/contracts/` against the shared config if the project is single-mode). Every test should pass on first run against a known-good environment. If they don't, it means either (a) the contract was misread in Phase 2, or (b) the service is already breaking its contract — both are interesting findings, neither is a "flaky test."
-2. **Deliberate-failure check — HARD GATE.** Before advancing to Phase 7, you MUST prove the tests actually bite:
-   - Pick one mutation. Either one field in one test (change `id: expect.any(Number)` → `id: expect.any(String)`), OR one shared schema field (change `BookSchema.price: Number` → `String` — expect this to cascade to every test using `BookSchema`, which is correct and healthy), OR one status expectation (`200` → `201`).
-   - Run the suite. Confirm that every test that depends on the mutated field fails, with useful error messages (diffs showing the expected-vs-actual type). Tests that don't touch the mutated field should stay green — that's the signal that your obligations are properly split per Rule 3.
+1. **Run the suite.** `npx playwright test --config=playwright.contracts.config.ts` (or `tests/contracts/` against the shared config if the project is single-mode). Every test should pass on first run against a known-good environment. If they don't, it means either (a) the contract was misread in Phase 2, or (b) the service is already breaking its contract; both are interesting findings, neither is a "flaky test."
+2. **Deliberate-failure check: HARD GATE.** Before advancing to Phase 7, you MUST prove the tests actually bite:
+   - Pick one mutation. Either one field in one test (change `id: expect.any(Number)` → `id: expect.any(String)`), OR one shared schema field (change `BookSchema.price: Number` → `String`; expect this to cascade to every test using `BookSchema`, which is correct and healthy), OR one status expectation (`200` → `201`).
+   - Run the suite. Confirm that every test that depends on the mutated field fails, with useful error messages (diffs showing the expected-vs-actual type). Tests that don't touch the mutated field should stay green; that's the signal that your obligations are properly split per Rule 3.
    - Revert the mutation. Run again. Confirm all green.
    - Document in the Phase 7 report: *"Deliberate-failure check: mutated [field] → [N] tests failed as expected with [error summary]; unaffected tests stayed green; mutation reverted and full suite re-ran green."*
    - Why this is a hard gate: a green-on-first-run suite with no bite-check is indistinguishable from an empty suite. Skipping this step invalidates Phase 7.
-3. **Fail-loudly on shape drift.** If a real test fails with "expected `name` to be a String, got undefined," the contract has drifted. Escalate to the user — do NOT "fix" the test by loosening the assertion. Contract tests break on purpose.
+3. **Fail-loudly on shape drift.** If a real test fails with "expected `name` to be a String, got undefined," the contract has drifted. Escalate to the user: do NOT "fix" the test by loosening the assertion. Contract tests break on purpose.
 4. **No retries.** Contract tests must not be marked `test.retry()` / `retries: 3`. They are deterministic. If they flake, the endpoint is flaky, which is itself a contract violation.
 
-If a test fails unexpectedly, escalate to the `failure-diagnosis` skill — do NOT silently adjust the schema.
+If a test fails unexpectedly, escalate to the `failure-diagnosis` skill: do NOT silently adjust the schema.
 
 ---
 
@@ -375,7 +375,7 @@ Produce a short summary for the user:
 - Endpoints covered: `GET /users/:id`, `POST /users`, `GET /invoices/:id` (billing provider), …
 - Obligations asserted per endpoint: status, content-type, happy-shape, error-shape, auth-shape
 - Environment: staging (`https://staging-api.example.com`)
-- **Deliberate-failure check:** which test was mutated, what the failure message was, confirmation that it was reverted. (No report ships without this line — see Phase 6 Step 2.)
+- **Deliberate-failure check:** which test was mutated, what the failure message was, confirmation that it was reverted. (No report ships without this line; see Phase 6 Step 2.)
 - Any contract gaps found during Phase 2 that the user needs to decide on (undocumented fields, undocumented error shapes, status mismatches)
 - Any undocumented behavior you declined to test, with justification (per Rule 9)
 
@@ -385,29 +385,29 @@ If any shape was discovered rather than derived from a spec, flag it: *"This sch
 
 ## Exit gate — compliance sweep
 
-**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate: the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
-**Composing SSOT + Stage 4c.** Shared composing rules are single-homed in [`test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) (canon index §2 — cite, never fork). A **standalone** invocation of this skill (direct user request, outside any composer / ticket-driven flow) is a composing exit: after the compliance sweep, dispatch the independent `composition-judge-` subagent per §4 of that file and return only on SATISFIED (3 consecutive NOT SATISFIED → operator). Specs authored **inside** a `test-composer` / `coverage-expansion` / `ticket-driven-testing` flow are covered by that flow's judge or its documented equivalence — do not impose a second judge (same non-double-imposition pattern as the dual-stage equivalence).
+**Composing SSOT + Stage 4c.** Shared composing rules are single-homed in [`test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) (canon index §2: cite, never fork). A **standalone** invocation of this skill (direct user request, outside any composer / ticket-driven flow) is a composing exit: after the compliance sweep, dispatch the independent `composition-judge-` subagent per §4 of that file and return only on SATISFIED (3 consecutive NOT SATISFIED → operator). Specs authored **inside** a `test-composer` / `coverage-expansion` / `ticket-driven-testing` flow are covered by that flow's judge or its documented equivalence; do not impose a second judge (same non-double-imposition pattern as the dual-stage equivalence).
 
 ## Integration with Other Skills
 
 | Skill | When it applies |
 |---|---|
 | `achilles-protocol` | Parent orchestrator. Routes to this skill per its companion-skills table when contract-testing intent is detected. |
-| `failure-diagnosis` | Invoke on an unexpected contract-test failure. Do NOT "fix" by loosening the schema — use `failure-diagnosis` to determine test issue vs. real contract drift (app bug). |
+| `failure-diagnosis` | Invoke on an unexpected contract-test failure. Do NOT "fix" by loosening the schema; use `failure-diagnosis` to determine test issue vs. real contract drift (app bug). |
 | `test-composer` | Adjacent for UI+API hybrid journeys. If the journey under composition touches an endpoint already locked here, reuse the schema from `tests/contracts/schemas.ts`. |
 | `test-repair` | Auto-escalates here if contract tests rot in batch (e.g., backend bumped and multiple schemas drifted simultaneously). |
-| `journey-mapping` | Read the journey map to discover which endpoints the UI touches — prioritize those for contract coverage. |
+| `journey-mapping` | Read the journey map to discover which endpoints the UI touches: prioritize those for contract coverage. |
 | `bug-discovery` | Unrelated. Bug-discovery targets UI adversarial probing, not API surface. |
 
 ## Invocation Options
 
 Orchestrators and users can invoke this skill with optional arguments. Unspecified arguments are resolved in Phase 1 Intake with the user.
 
-- `endpoints` — comma-separated list of endpoints in scope (e.g., `GET /users/:id, POST /users`). Default: whatever the user names during intake.
-- `provider` — which configured API provider to target (matches an `apiProviders` key, or `default` for `apiBaseUrl`). Default: `default`.
-- `mode` — `full` (status + header + schema + error + auth obligations) or `shape-only` (status + schema only). Default: `full`.
-- `environment` — `staging` | `sandbox` | `local` | `production`. Production requires explicit user confirmation for every run. Default: `staging`.
+- `endpoints`: comma-separated list of endpoints in scope (e.g., `GET /users/:id, POST /users`). Default: whatever the user names during intake.
+- `provider`: which configured API provider to target (matches an `apiProviders` key, or `default` for `apiBaseUrl`). Default: `default`.
+- `mode`: `full` (status + header + schema + error + auth obligations) or `shape-only` (status + schema only). Default: `full`.
+- `environment`: `staging` | `sandbox` | `local` | `production`. Production requires explicit user confirmation for every run. Default: `staging`.
 
 ---
 
@@ -427,7 +427,7 @@ Orchestrators and users can invoke this skill with optional arguments. Unspecifi
 | Failing test "fix" would loosen the schema | Stop. The contract is drifting. Escalate to user. |
 | Request to test production | Confirm explicitly. Prefer read-only endpoints. Never run write operations against prod without an explicit ack. |
 | Credentials in request body / code | Move to env vars. |
-| Endpoint returns HTML, not JSON | This isn't a JSON contract test. Either the endpoint is wrong, or you're testing the wrong thing — ask. |
+| Endpoint returns HTML, not JSON | This isn't a JSON contract test. Either the endpoint is wrong, or you're testing the wrong thing; ask. |
 | About to assert on a query param / field not in the spec | Stop. Undocumented behavior isn't contract. Either get it documented first, or don't assert on it. |
 | About to assert `toHaveLength(N)` on a list response | Stop. Exact counts are values, not contracts. Use `toBeGreaterThan(0)` or spec-stated bounds. |
 | Using `arrayContaining([...])` to assert "all items match" | That only proves *at least one* item matches, which masks rogue elements. Loop over items and `toMatchObject` each. |

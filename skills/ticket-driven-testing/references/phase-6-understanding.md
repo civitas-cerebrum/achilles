@@ -39,27 +39,27 @@ wrong" in a component you have only read about.
 Then run `companion-mode` for the evidence bundle.
 
 **6e: Inspect every screenshot for design quality.** Evidence screenshots are not just functional
-proof — they are a visual inspection surface. After capturing them, review each one as a designer
+proof; they are a visual inspection surface. After capturing them, review each one as a designer
 would. A screenshot that proves "the error alert appeared" can simultaneously reveal that the
 alert's container has broken padding.
 
 Check for:
 
-- **Padding and spacing symmetry** — are horizontal/vertical insets consistent between the left
+- **Padding and spacing symmetry**: are horizontal/vertical insets consistent between the left
   and right edges? Between the top and bottom? Compare the element's spacing to its siblings and
   to the container edges.
-- **Alignment** — do elements that should be aligned (buttons, labels, icons) actually line up?
+- **Alignment**: do elements that should be aligned (buttons, labels, icons) actually line up?
   Is text baseline-aligned where it should be?
-- **Clipping and overflow** — is any content cut off by a parent's `overflow: hidden`? Are
+- **Clipping and overflow**: is any content cut off by a parent's `overflow: hidden`? Are
   rounded corners rendering correctly at the edges?
-- **Visual hierarchy** — does the layout still read correctly? Is the primary action visually
+- **Visual hierarchy**: does the layout still read correctly? Is the primary action visually
   dominant? Are secondary elements appropriately subdued?
-- **State transitions** — compare the "before" and "after" screenshots. Does the layout degrade
+- **State transitions**: compare the "before" and "after" screenshots. Does the layout degrade
   when the component changes state (expanding, showing an error, loading)?
-- **Responsive integrity** — at the tested viewport, does the layout look intentional or does it
+- **Responsive integrity**: at the tested viewport, does the layout look intentional or does it
   look like it squeezed to fit?
 
-This step catches defects that no functional assertion will find — the test that asserts
+This step catches defects that no functional assertion will find; the test that asserts
 "the error alert is visible" passes identically whether the alert has correct padding or is
 flush against the edge. Report design findings separately from AC results: they are not AC
 failures, but they are findings that belong in the QA comment.

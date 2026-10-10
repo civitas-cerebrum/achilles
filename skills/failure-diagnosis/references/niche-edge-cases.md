@@ -16,9 +16,9 @@ Entry shape (use this for new entries):
 
 ## (1) Modal opens but content hangs
 
-**Symptom.** The modal-trigger interaction succeeds — a `<div role="dialog">` (or equivalent modal container) is added to the DOM and the screenshot shows the modal frame on screen. But the modal's content area never resolves: it shows only a placeholder/skeleton component (the spinner-sentinel element documented in `app-context.md` for the page in question), none of the expected `data-qa` keys inside the modal ever match, and the URL hash (or other documented post-open marker) never advances. The test eventually fails on a wait-for-element-inside-modal step, not on the open step itself.
+**Symptom.** The modal-trigger interaction succeeds: a `<div role="dialog">` (or equivalent modal container) is added to the DOM and the screenshot shows the modal frame on screen. But the modal's content area never resolves: it shows only a placeholder/skeleton component (the spinner-sentinel element documented in `app-context.md` for the page in question), none of the expected `data-qa` keys inside the modal ever match, and the URL hash (or other documented post-open marker) never advances. The test eventually fails on a wait-for-element-inside-modal step, not on the open step itself.
 
-**Why LLMs struggle.** The screenshot shows the modal trigger looking normal and the modal frame visible — leading the LLM to assume the modal opened correctly and the test must be using the wrong selector inside. The reasoning chain "frame visible → opened → content must be there → selector wrong" is plausible and almost always wrong here. The actual root cause is the backend feed for the modal options failing or timing out, leaving the frame mounted but its content suspended on a spinner sentinel.
+**Why LLMs struggle.** The screenshot shows the modal trigger looking normal and the modal frame visible, leading the LLM to assume the modal opened correctly and the test must be using the wrong selector inside. The reasoning chain "frame visible → opened → content must be there → selector wrong" is plausible and almost always wrong here. The actual root cause is the backend feed for the modal options failing or timing out, leaving the frame mounted but its content suspended on a spinner sentinel.
 
 **Disambiguating probe.** Capture `outerHTML` of the modal container (`role="dialog"` or the documented modal wrapper) and grep for the spinner-sentinel custom element documented in `app-context.md`. If the spinner sentinel is present and none of the documented inner `data-qa` keys are, the modal content is hanging. Cross-reference: a 5xx in the network capture for the modal-options endpoint, or any of the degradation-banner copy strings from `app-context.md`'s documented-banners list visible above the modal trigger.
 
@@ -30,7 +30,7 @@ Entry shape (use this for new entries):
 
 ## (2) Reduced-option-set false-positive (graceful-degradation masking)
 
-**Symptom.** A list-of-options widget (payment methods, shipping carriers, locale switcher, available add-ons — any documented multi-option list) renders a *strict subset* of the documented options. A degradation-banner element from `app-context.md`'s documented-banners list is visible nearby. The test fails because it expected the full set to be present / selectable.
+**Symptom.** A list-of-options widget (payment methods, shipping carriers, locale switcher, available add-ons, any documented multi-option list) renders a *strict subset* of the documented options. A degradation-banner element from `app-context.md`'s documented-banners list is visible nearby. The test fails because it expected the full set to be present / selectable.
 
 **Why LLMs struggle.** Two plausible-looking classifications converge on the wrong answer. Either (a) "this configuration legitimately offers a smaller set — update the test's expectation" (treats the reduced set as documented per-configuration variance); or (b) "the test expects more options than exist, so it's a stale assertion — re-baseline" (treats it as drift). Both mask a real outage. The reasoning chain "smaller list + something that *looks* like a generic notification → app is in a documented degraded-but-correct state" is plausible and almost always wrong here. The actual root cause is the same upstream-fetch failure shape as entry #1, with the frontend gracefully degrading to a fallback subset rather than showing an empty list.
 
@@ -44,13 +44,13 @@ Entry shape (use this for new entries):
 
 ## (3) Stale page-repository entry that resolves but produces wrong-state interaction
 
-**Symptom.** Selector resolves successfully — no `Locator.click: element not found` error, no timeout on resolution. But the subsequent assertion fails: a click that should open a modal silently does nothing, a fill that should populate a visible field populates an offscreen one, or the test's URL-after-click expectation is wrong. The screenshot shows the page in the *pre-interaction* state even though the interaction's logs show it ran.
+**Symptom.** Selector resolves successfully: no `Locator.click: element not found` error, no timeout on resolution. But the subsequent assertion fails: a click that should open a modal silently does nothing, a fill that should populate a visible field populates an offscreen one, or the test's URL-after-click expectation is wrong. The screenshot shows the page in the *pre-interaction* state even though the interaction's logs show it ran.
 
-**Why LLMs struggle.** Most LLMs treat "selector resolved" as "test fine on the locator side, problem is elsewhere" and pivot to assertion-re-baseline, timing hardening, or app-bug. The trap: a stale `page-repository.json` selector can match a *different* element than intended — typically a hidden duplicate (a mobile-only button still in the DOM at desktop viewport, an off-screen `aria-hidden="true"` clone in a collapsed drawer, a previous-page leftover before client-side navigation finished). The selector resolves, the click fires, but on the wrong element, so nothing visible happens.
+**Why LLMs struggle.** Most LLMs treat "selector resolved" as "test fine on the locator side, problem is elsewhere" and pivot to assertion-re-baseline, timing hardening, or app-bug. The trap: a stale `page-repository.json` selector can match a *different* element than intended: typically a hidden duplicate (a mobile-only button still in the DOM at desktop viewport, an off-screen `aria-hidden="true"` clone in a collapsed drawer, a previous-page leftover before client-side navigation finished). The selector resolves, the click fires, but on the wrong element, so nothing visible happens.
 
 **Disambiguating probe.** Two checks, either is sufficient:
-1. `count(selector)` against the live DOM — if it returns ≥2, the selector is ambiguous and the test is interacting with whichever element matches first, which may be the hidden duplicate.
-2. Screenshot-vs-DOM cross-reference — take a screenshot at the moment of the failed interaction and ask: is the element the locator resolved to actually visible on screen at the screenshot's viewport? If the bounding box is offscreen, hidden, or `display: none`, the locator is matching a phantom.
+1. `count(selector)` against the live DOM: if it returns ≥2, the selector is ambiguous and the test is interacting with whichever element matches first, which may be the hidden duplicate.
+2. Screenshot-vs-DOM cross-reference: take a screenshot at the moment of the failed interaction and ask: is the element the locator resolved to actually visible on screen at the screenshot's viewport? If the bounding box is offscreen, hidden, or `display: none`, the locator is matching a phantom.
 
 **Classification.** `test-issue`. Stage 4a heal: `(a) Selector re-learn`: tighten the page-repository entry to disambiguate (add a visibility filter, scope to a stable landmark, switch to role+name, or anchor on the visible-only branch of the duplicated component tree). Do NOT just add a wait; the timing isn't the problem.
 
@@ -62,9 +62,9 @@ Entry shape (use this for new entries):
 
 The catalogue is meant to grow. When a diagnostic session resolves a failure whose shape isn't already documented here, append a new entry **before closing out the session**. The criteria + entry template below are the contract.
 
-### When to add (criteria — must hold ALL)
+### When to add (criteria: must hold ALL)
 
-1. **You actually misclassified at first** (or were close to). The catalogue is for shapes that *trap* the diagnoser — not for failures whose classification was obvious from the screenshot. If Stage 0 + Stage 4 got you to the right answer cleanly, no entry needed.
+1. **You actually misclassified at first** (or were close to). The catalogue is for shapes that *trap* the diagnoser, not for failures whose classification was obvious from the screenshot. If Stage 0 + Stage 4 got you to the right answer cleanly, no entry needed.
 2. **The disambiguating probe was non-obvious.** The thing you ended up doing (the specific tool call, DOM read, or evidence grab that flipped the classification) is what the next diagnoser most needs. If your probe was just "look at the screenshot more carefully", that's not catalogue-worthy.
 3. **The shape is reproducible across consumers**, not project-specific. A bug in *this app's checkout flow* is a project finding, not a niche-edges entry. A bug shape that any consumer of the package could plausibly hit (modal-fetch hangs, role-attribute serialisation, page-repo entry resolves but matches a hidden duplicate, etc.) is.
 
@@ -73,9 +73,9 @@ If any criterion fails: don't add an entry. Project-specific findings go in the 
 ### Entry template
 
 ```markdown
-## (N) <one-line shape name — reads like a row title in Stage 4 of SKILL.md>
+## (N) <one-line shape name: reads like a row title in Stage 4 of SKILL.md>
 
-**Symptom.** What the failure looks like in the screenshot / error log / DOM at the moment of failure. Concrete observables only — no diagnosis yet.
+**Symptom.** What the failure looks like in the screenshot / error log / DOM at the moment of failure. Concrete observables only; no diagnosis yet.
 
 **Why LLMs struggle.** The specific reasoning trap. What does the LLM *assume* from the symptom that turns out to be wrong? Name the wrong-direction conclusion explicitly so the next diagnoser recognises their own reasoning.
 
@@ -83,7 +83,7 @@ If any criterion fails: don't add an entry. Project-specific findings go in the 
 
 **Classification.** `test-issue` / `app-bug` / `ambiguous-by-design`. If it's a test-issue, name the Stage 4a heal strategy that applies. If it's an app-bug, name the heal strategy `(h)` (documented-quirk, no heal) and note evidence-capture moves.
 
-**Cross-link.** Stage 4 / 4a row(s) in `SKILL.md` this entry refines, if any. If it's a brand new shape, leave as "(none — new shape)". If it cross-references a sibling entry in this catalogue, name the entry number.
+**Cross-link.** Stage 4 / 4a row(s) in `SKILL.md` this entry refines, if any. If it's a brand new shape, leave as "(none, new shape)". If it cross-references a sibling entry in this catalogue, name the entry number.
 ```
 
 Number sections sequentially. If your new entry refines a Stage 4 / 4a row in `SKILL.md`, also update that row to point at the new entry.
@@ -92,7 +92,7 @@ Number sections sequentially. If your new entry refines a Stage 4 / 4a row in `S
 
 The contribution pathway depends on what you're already shipping:
 
-- **You're already mid-PR for something else** (e.g. a hook fix, a skill change). Add the catalogue entry to the same PR — one extra commit, scope-clean (purely additive to a docs file). Mention in the PR description that the entry was discovered while debugging the PR's own work.
+- **You're already mid-PR for something else** (e.g. a hook fix, a skill change). Add the catalogue entry to the same PR: one extra commit, scope-clean (purely additive to a docs file). Mention in the PR description that the entry was discovered while debugging the PR's own work.
 - **You hit the niche shape outside any PR** (e.g. during a normal coverage / authoring session). Open a small standalone PR titled `docs(failure-diagnosis): catalogue <shape-name> in niche-edge-cases`. Single-commit, single-file (this file). The contributing-skill `docs(...)` commit-message convention applies; no version bump (per the no-bump rule).
 - **You hit it inside a dispatched subagent** (e.g. failure-diagnosis sub-skill). The subagent surfaces the find in its return; the parent orchestrator either appends inline or opens the standalone PR above. Subagents do NOT push commits directly to this catalogue.
 
@@ -100,4 +100,4 @@ The full criteria + ship path is also documented in `skills/contributing-to-achi
 
 ### Keep entries tight
 
-One paragraph per field is the target. The reference is meant to be skimmable during a live diagnosis, not exhaustive. War stories, project-specific incident details, and broader debugging philosophy belong elsewhere — the catalogue is the trap and the probe and the classification, nothing more.
+One paragraph per field is the target. The reference is meant to be skimmable during a live diagnosis, not exhaustive. War stories, project-specific incident details, and broader debugging philosophy belong elsewhere: the catalogue is the trap and the probe and the classification, nothing more.

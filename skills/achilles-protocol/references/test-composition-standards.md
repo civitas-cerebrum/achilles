@@ -67,11 +67,11 @@ The diffs in the citing files are the enforcement; this section is the rationale
 
 **3.3 Stability runs.** The "3-5 consecutive runs" range collapsed to a two-number rule: **3 consecutive green minimum for any new or edited test; 5 consecutive green for a heal of a previously-flaky test** (suite order for flaky heals, per `test-repair`). Canonical text: `../../failure-diagnosis/SKILL.md` §"Stability Validation Protocol".
 
-**3.4 Serial mode.** Tenant-mutating specs use file-level `test.describe.configure({ mode: 'serial' })` AND carry a `// serial-deliberate: <reason>` comment above the configure line. Stage 4a's §6 review treats that annotation as satisfying review — no `stage4a:serial-mode-review` flag for annotated files. Unannotated serial mode is still flag-only per `test-optimization.md` §6.
+**3.4 Serial mode.** Tenant-mutating specs use file-level `test.describe.configure({ mode: 'serial' })` AND carry a `// serial-deliberate: <reason>` comment above the configure line. Stage 4a's §6 review treats that annotation as satisfying review; no `stage4a:serial-mode-review` flag for annotated files. Unannotated serial mode is still flag-only per `test-optimization.md` §6.
 
 **3.5 Test-data shape.** `tests/fixtures/test-data.ts` may hold **env-sourced durable identities**: accounts that exist by design (an admin account, a seeded catalog user), loaded from `process.env`. Any identity a test **creates** is generated per-attempt **inside the test body**; module-scope generation is banned because retries reuse the module value and collide. Full doctrine: `../../test-data-conventions/SKILL.md`; the fixture carve-out is stated in `../SKILL.md` Rule 15.
 
-**3.6 Oracle taxonomies.** L0–L3 (`../../test-composer/SKILL.md` §"Oracle strength ladder") is the **strength ladder** — which layer confirms the effect (UI paint / UI round-trip / API / DB). `test-optimization.md` §3b's round-trip / delta / shape oracles are **assertion forms** for volatile values *within* a rung. They are orthogonal: first pick the rung the priority table demands, then pick the §3b form that keeps the assertion stable at that rung. Both files carry a one-line cross-citation.
+**3.6 Oracle taxonomies.** L0–L3 (`../../test-composer/SKILL.md` §"Oracle strength ladder") is the **strength ladder**: which layer confirms the effect (UI paint / UI round-trip / API / DB). `test-optimization.md` §3b's round-trip / delta / shape oracles are **assertion forms** for volatile values *within* a rung. They are orthogonal: first pick the rung the priority table demands, then pick the §3b form that keeps the assertion stable at that rung. Both files carry a one-line cross-citation.
 
 **3.7 Dangling references.** `test-optimization.md`'s prerequisites (HELPER SLOT markers in `base.ts`; the onboarding shared-resource audit tags) now resolve: `onboarding/SKILL.md` Phase 1 scaffolds `base.ts` with the HELPER SLOT markers, and its §"Shared-resource audit" subsection (delegating to `../../journey-mapping/references/test-infrastructure-probe.md`) owns the audit-tag surface.
 
@@ -82,20 +82,20 @@ Stages 4a (optimization) and 4b (API compliance) are author-side self-review. **
 ### Dispatch
 
 - Runs **after 4a + 4b are clean** (tests green, optimized, API-compliant).
-- Dispatch an independent judge subagent with description prefix **`composition-judge-<scope>:`** — fresh context, never the author, never a reused prior judge (fresh-eyes property per `../../coverage-expansion/references/reviewer-subagent-contract.md` §"Hard constraints").
+- Dispatch an independent judge subagent with description prefix **`composition-judge-<scope>:`**: fresh context, never the author, never a reused prior judge (fresh-eyes property per `../../coverage-expansion/references/reviewer-subagent-contract.md` §"Hard constraints").
 - The brief gives the judge: the specs under review, the scenario source (approved scenario / journey block / ticket ACs), `page-repository.json` slice, `tests/e2e/docs/test-data-plan.md`, and the four review dimensions below. The brief MUST cite the return schema `schemas/subagent-returns/reviewer-inloop.schema.json` (the harness preread gate denies schema-mapped dispatches whose brief omits the citation).
 - The judge's charter is adversarial: its job is to find defects in the composition, not to approve it. A vague approval is a failed dispatch.
 
 ### Review dimensions
 
-1. **Acceptance-criteria / scenario-intent coverage.** Every stated AC, `Test expectations:` item, or approved-scenario clause maps to ≥1 test — and every test maps back to a stated intent. Orphans in either direction are findings.
-2. **Coverage & oracle strength.** Causal verification on every test (no vacuous or tautological asserts — per `stages-protocol.md` Stage 3 item 5), oracle-ladder calibration per priority (the must-fix calibration rubric in `reviewer-subagent-contract.md` §"Behavior" step 6 applies: an L0-only oracle on a P0 mutating step is a verification miss).
-3. **API compliance spot-check.** Sampled cross-reference against [`api-reference.md`](api-reference.md) — signatures, option shapes, no raw Playwright where a Steps equivalent exists.
+1. **Acceptance-criteria / scenario-intent coverage.** Every stated AC, `Test expectations:` item, or approved-scenario clause maps to ≥1 test, and every test maps back to a stated intent. Orphans in either direction are findings.
+2. **Coverage & oracle strength.** Causal verification on every test (no vacuous or tautological asserts, per `stages-protocol.md` Stage 3 item 5), oracle-ladder calibration per priority (the must-fix calibration rubric in `reviewer-subagent-contract.md` §"Behavior" step 6 applies: an L0-only oracle on a P0 mutating step is a verification miss).
+3. **API compliance spot-check.** Sampled cross-reference against [`api-reference.md`](api-reference.md): signatures, option shapes, no raw Playwright where a Steps equivalent exists.
 4. **Test-data feasibility** per [`../../test-data-conventions/SKILL.md`](../../test-data-conventions/SKILL.md). Each spec's data strategy sits on a rung of that skill's **strategy decision ladder**; seeded-own-data or content-resilient handling; hardcoded current content is a must-fix. Check: data generated per-attempt inside the test body? per-worker isolated? cleanup hooked and idempotent? premises declared with the named-skip discipline? no reliance on current content as the oracle? And the **test data plan** (`tests/e2e/docs/test-data-plan.md`) exists and reflects the specs under review; new dependencies and gaps the specs introduce appear in it. (Creation owner: `onboarding` Phase-1 scaffold, or the first composing session creates it from the template; `test-data-conventions` §"The test data plan". A missing plan is a must-fix directed at the author, who creates it; never grounds to fail a fresh project outright.)
 
 ### Verdict + loop
 
-- Verdict is **SATISFIED | NOT SATISFIED**, carried in the `reviewer-inloop` return shape (`schemas/subagent-returns/reviewer-inloop.schema.json`): `status: greenlight` ⇔ SATISFIED; `status: improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED with required changes. Returns open with the §2.0 handover envelope of [`subagent-return-schema.md`](subagent-return-schema.md). No new schema — the judge reuses the existing reviewer verdict shape.
+- Verdict is **SATISFIED | NOT SATISFIED**, carried in the `reviewer-inloop` return shape (`schemas/subagent-returns/reviewer-inloop.schema.json`): `status: greenlight` ⇔ SATISFIED; `status: improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED with required changes. Returns open with the §2.0 handover envelope of [`subagent-return-schema.md`](subagent-return-schema.md). No new schema: the judge reuses the existing reviewer verdict shape.
 - On NOT SATISFIED: the **author** fixes the must-fix items, re-runs 4a and 4b if code changed, then re-dispatches a **fresh** judge.
 - **Bound: 3 consecutive NOT SATISFIED verdicts → stop and escalate to the operator** with the accumulated must-fix lists. This mirrors `workflow-reviewer`'s 3-cycle reject cap (`../../workflow-reviewer/SKILL.md` §"3-cycle reject cap"); an author↔judge loop that cannot converge in 3 cycles has a disagreement only the operator can settle.
 - Harness backstop: `hooks/composition-judge-gate.sh` records `composition-judge-` dispatches and verdicts per session and blocks Stop (`decision: block`; single-shot via `stop_hook_active`) while a judge loop is open on a NOT-SATISFIED verdict below the cap; at the cap, Stop is allowed because operator escalation is the sanctioned exit. Arming the loop in the first place (dispatching the judge at all) is not mechanically detectable and stays markdown-only; tagged in `../../coverage-expansion/references/anti-rationalizations.md` §"Pattern: `markdown-only` deferral — judge-loop arming".
@@ -104,26 +104,26 @@ Stages 4a (optimization) and 4b (API compliance) are author-side self-review. **
 
 | Composing exit | How the judge loop lands |
 |---|---|
-| `achilles-protocol` Stage 4 (interactive + autonomous) | 4c after 4a/4b, before commit — see `stages-protocol.md` §"Stage 4c" |
-| `test-composer` Step 6 | Step 6c after 6a/6b. Under `coverage-expansion` dual-stage, the Stage-B reviewer cycle satisfies 4c **provided its brief includes dimension 4** — the loop is not double-imposed |
+| `achilles-protocol` Stage 4 (interactive + autonomous) | 4c after 4a/4b, before commit; see `stages-protocol.md` §"Stage 4c" |
+| `test-composer` Step 6 | Step 6c after 6a/6b. Under `coverage-expansion` dual-stage, the Stage-B reviewer cycle satisfies 4c **provided its brief includes dimension 4**: the loop is not double-imposed |
 | `onboarding` Phase 3 exit | Each happy-path spec's composing cycle ends with 4c (via `test-composer` Step 6c) |
-| `ticket-driven-testing/references/phase-7-durable-tests.md` | Its phase 8/8b adversarial machinery (six probe missions + negative control) **counts as the judge loop** — do not impose a second 4c on top; §8b's dispatch discipline is the equivalence |
-| `companion-mode` Stage-3 graduation | Graduated specs pass through `achilles-protocol` Stage 4, which now includes 4c. Evidence bundles themselves are NOT composing exits — no judge on a bundle |
+| `ticket-driven-testing/references/phase-7-durable-tests.md` | Its phase 8/8b adversarial machinery (six probe missions + negative control) **counts as the judge loop**: do not impose a second 4c on top; §8b's dispatch discipline is the equivalence |
+| `companion-mode` Stage-3 graduation | Graduated specs pass through `achilles-protocol` Stage 4, which now includes 4c. Evidence bundles themselves are NOT composing exits: no judge on a bundle |
 | `bug-discovery` Phase 6 | Reproduction specs get a 4c judge before the Phase 7 report cites them |
-| `test-repair` / `self-repair` whole-rewrite heals (heal type g) | The operator-approved rewrite goes through `test-composer`, whose Step 6c applies. Incremental heals do NOT trigger 4c — their gate is the stability rule (§3.3) |
-| `contract-testing` / `database-testing` standalone runs | A standalone authoring session (direct user invocation) ends in a 4c judge dispatch after its Stage-4b exit sweep; specs authored inside a composer / ticket-driven flow are covered by that flow's judge — not double-imposed |
-| `performance-testing` / `perf-onboarding` | The perf pipeline's `perf-reviewer-*` phase gates (approve \| reject \| escalate per `schemas/subagent-returns/perf-reviewer.schema.json`) **count as the judge loop** for k6 scenario composition — do not impose a second 4c. Write-load data hygiene (`../../performance-testing/references/test-data.md` §"Write-load data hygiene") is the perf instantiation of `test-data-conventions` Rule 9 |
+| `test-repair` / `self-repair` whole-rewrite heals (heal type g) | The operator-approved rewrite goes through `test-composer`, whose Step 6c applies. Incremental heals do NOT trigger 4c: their gate is the stability rule (§3.3) |
+| `contract-testing` / `database-testing` standalone runs | A standalone authoring session (direct user invocation) ends in a 4c judge dispatch after its Stage-4b exit sweep; specs authored inside a composer / ticket-driven flow are covered by that flow's judge; not double-imposed |
+| `performance-testing` / `perf-onboarding` | The perf pipeline's `perf-reviewer-*` phase gates (approve \| reject \| escalate per `schemas/subagent-returns/perf-reviewer.schema.json`) **count as the judge loop** for k6 scenario composition; do not impose a second 4c. Write-load data hygiene (`../../performance-testing/references/test-data.md` §"Write-load data hygiene") is the perf instantiation of `test-data-conventions` Rule 9 |
 
 ## §5 Smoke vs e2e depth doctrine
 
 Two spec depths, chosen per test by what the test is *about*:
 
-- **e2e spec — the journey IS the subject.** Walk the journey through the UI end-to-end; no state-injection shortcuts on the path under test. A journey's full UI walk is the subject of **exactly one** e2e test.
-- **smoke / derivative spec — a surface is the subject.** Reach the target view via API / state injection (`test-optimization.md` §4's two-of-two gate; `setAuthCookie` / seed helpers), and put UI assertions ONLY on the surface under test. Everything upstream of the subject is setup, and setup goes through the fastest safe channel.
+- **e2e spec: the journey IS the subject.** Walk the journey through the UI end-to-end; no state-injection shortcuts on the path under test. A journey's full UI walk is the subject of **exactly one** e2e test.
+- **smoke / derivative spec: a surface is the subject.** Reach the target view via API / state injection (`test-optimization.md` §4's two-of-two gate; `setAuthCookie` / seed helpers), and put UI assertions ONLY on the surface under test. Everything upstream of the subject is setup, and setup goes through the fastest safe channel.
 - **Auth:** session/cookie injection everywhere **except** the tests whose subject IS login/signup; those keep the UI walk. Authentication is a *precondition*, not a step of the journeys it unlocks, so injecting it does not breach the e2e no-shortcut rule (the gate-first regression/smoke/e2e architecture this section instantiates is defined in `../../../docs/agentic-shift-left.md` §"Stage 4 — Gate / Heal").
 - **Organisation:** specs are organised by user journey (one spec file per journey / feature area holding its scenarios); suites split e2e vs smoke so the depth choice is visible in the tree. Derivatives shortcut; the one e2e walk does not.
 
-Rationale: duplicated UI walks multiply run time and flake surface without multiplying signal — the walk is already locked by its one e2e test; derivatives re-walking it re-test the walk, not their own subject.
+Rationale: duplicated UI walks multiply run time and flake surface without multiplying signal; the walk is already locked by its one e2e test; derivatives re-walking it re-test the walk, not their own subject.
 
 ## §6 Orchestrator dispatch discipline
 
@@ -154,5 +154,5 @@ Citing skills may mirror these lines in their own `### Hard rules — kernel-res
 - **Stability is 3×/5×.** 3 consecutive green for new/edited tests; 5 for a heal of a previously-flaky test.
 - **`test.fail()` only as a ticketed defect sentinel** (`ticket-driven-testing/references/phase-7-durable-tests.md`); never in coverage/adversarial passes.
 - **One e2e walk per journey; derivatives shortcut** via API/state injection and assert only their own surface (§5).
-- **Data feasibility is a composing gate** — a scenario whose data cannot be generated, isolated, and cleaned up is blocked/flagged per `test-data-conventions`, never written against whatever is live.
-- **Specialist task families dispatch; orchestrators never absorb** (§6) — UI inspection, composing, probing, diagnosis, repair, and judging each run as role-prefixed subagent dispatches; an orchestrator catching itself starting one inline stops and dispatches.
+- **Data feasibility is a composing gate**: a scenario whose data cannot be generated, isolated, and cleaned up is blocked/flagged per `test-data-conventions`, never written against whatever is live.
+- **Specialist task families dispatch; orchestrators never absorb** (§6): UI inspection, composing, probing, diagnosis, repair, and judging each run as role-prefixed subagent dispatches; an orchestrator catching itself starting one inline stops and dispatches.

@@ -359,19 +359,19 @@ The declaration also serves as the auditable record of *why* a partial run, if a
 
 ## Authoritative state file — read first, always
 
-The skill's first action on entry is to read `tests/e2e/docs/coverage-expansion-state.json`. The full schema (top-level fields, per-journey `dispatches[]` entry shape including dual-stage fields, journey-roster mutability rules, and the corrupt-state-refusal protocol) is specified in [`references/state-file-schema.md`](references/state-file-schema.md). Resumption is a contract, not a convention — read it before authoring or modifying any state-file-touching code.
+The skill's first action on entry is to read `tests/e2e/docs/coverage-expansion-state.json`. The full schema (top-level fields, per-journey `dispatches[]` entry shape including dual-stage fields, journey-roster mutability rules, and the corrupt-state-refusal protocol) is specified in [`references/state-file-schema.md`](references/state-file-schema.md). Resumption is a contract, not a convention; read it before authoring or modifying any state-file-touching code.
 
-> **Pass transitions are now reviewer-gated (additive).** When this skill is invoked as Phase 5 of the onboarding pipeline, every Pass N → Pass N+1 transition is gated by a `workflow-reviewer-pass<N>:` subagent reading the onboarding-status ledger (`tests/e2e/docs/onboarding-status.json`). The existing `coverage-expansion-state.json` is unchanged and remains the authoritative per-pass / per-journey resume marker; the new gate is additive — the orchestrator must dispatch `workflow-reviewer-pass<N>:` between passes, and the harness `onboarding-ledger-gate.sh` denies pass-N+1 composer / probe dispatches until the prior pass's `reviewerVerdict` is `approved`. See `skills/workflow-reviewer/SKILL.md` and `skills/onboarding/SKILL.md` §"Status ledger + workflow reviewer".
+> **Pass transitions are now reviewer-gated (additive).** When this skill is invoked as Phase 5 of the onboarding pipeline, every Pass N → Pass N+1 transition is gated by a `workflow-reviewer-pass<N>:` subagent reading the onboarding-status ledger (`tests/e2e/docs/onboarding-status.json`). The existing `coverage-expansion-state.json` is unchanged and remains the authoritative per-pass / per-journey resume marker; the new gate is additive; the orchestrator must dispatch `workflow-reviewer-pass<N>:` between passes, and the harness `onboarding-ledger-gate.sh` denies pass-N+1 composer / probe dispatches until the prior pass's `reviewerVerdict` is `approved`. See `skills/workflow-reviewer/SKILL.md` and `skills/onboarding/SKILL.md` §"Status ledger + workflow reviewer".
 
 ### Hard rules — kernel-resident
 
 - **Read first, before anything else.** If currentPass is set, resume from that pass; if absent or `status == "complete"`, start Pass 1 from scratch.
-- **The file is authoritative.** Do not reason about "where did we leave off" from chat history, commit log, or journey-map deltas — those are diagnostic, not authoritative. If the file says currentPass=3 with 22 of 45 journeys complete, Pass 3 resumes with the remaining 23.
-- **Write after every per-pass commit AND every auto-compaction trigger.** A state file written without the dual-stage fields (`stage_a_cycles`, `stage_b_cycles`, `review_status`, `final_must_fix`) is incomplete — resume cannot reconstruct mid-A↔B-cycle journeys.
+- **The file is authoritative.** Do not reason about "where did we leave off" from chat history, commit log, or journey-map deltas; those are diagnostic, not authoritative. If the file says currentPass=3 with 22 of 45 journeys complete, Pass 3 resumes with the remaining 23.
+- **Write after every per-pass commit AND every auto-compaction trigger.** A state file written without the dual-stage fields (`stage_a_cycles`, `stage_b_cycles`, `review_status`, `final_must_fix`) is incomplete; resume cannot reconstruct mid-A↔B-cycle journeys.
 - **Delete only after `workflow-reviewer-phase5` approval, as the final act.** The cross-pass cleanup commit RECORDS all five passes + cleanup in the state file (it does not delete it); the reviewer verifies the recorded state; the orchestrator deletes the file after approval, then writes the Phase-5 ledger completion. Deleting at cleanup-commit time (before approval) is a contract violation; see §"Non-negotiables for standard mode" State-file lifecycle. Otherwise the next invocation mistakes a completed run for a resume.
 - **Roster is frozen at the start of each pass.** Journeys discovered mid-pass go to the NEXT pass's roster, not retroactively to the current pass's. Reconciliation commits write the new roster at the same commit that appends new map blocks.
-- **Missing dual-stage fields = corrupt state.** A state file lacking `stage_a_cycles`, `stage_b_cycles`, or `review_status` for any journey that ran this pass is corrupt — stop and report; never silently proceed.
-- **Corrupt-state stops the run.** Self-repair is out of scope — surface the mismatch to the caller. State referencing journeys not in `journey-map.md`, or `completedJourneys` ⊋ `journeyRoster`, both qualify.
+- **Missing dual-stage fields = corrupt state.** A state file lacking `stage_a_cycles`, `stage_b_cycles`, or `review_status` for any journey that ran this pass is corrupt: stop and report; never silently proceed.
+- **Corrupt-state stops the run.** Self-repair is out of scope: surface the mismatch to the caller. State referencing journeys not in `journey-map.md`, or `completedJourneys` ⊋ `journeyRoster`, both qualify.
 
 ## Modes
 
@@ -391,9 +391,9 @@ Standard mode is the default for non-quick-pass coverage growth. Pass 1 fidelity
 
 `mode: depth` selects the strict-parallel contract on **every** pass of the five-pass pipeline. The pass-by-pass execution shape is identical to standard mode (three compositional passes + two adversarial passes + ledger dedup); the difference is purely the dispatch-shape contract:
 
-- **No grouping anywhere.** Grouped dispatches are FORBIDDEN on Passes 1, 2, 3, 4, AND 5 — every Stage A composer/probe dispatch is per-journey, in parallel waves up to the host-max cap.
+- **No grouping anywhere.** Grouped dispatches are FORBIDDEN on Passes 1, 2, 3, 4, AND 5: every Stage A composer/probe dispatch is per-journey, in parallel waves up to the host-max cap.
 - **Adversarial Passes 4-5 strict by default.** The `strict-adversarial: true` opt-in described in §"Adversarial grouping for Passes 4 and 5" is implicit under depth mode; the per-journey contract already holds, so explicit declaration is a no-op.
-- **Per-journey reviewers on every cycle of every pass.** The cycle-1 batch reviewer is a standard-mode economy; under depth, Stage B is per-journey throughout — there is no batch reviewer on any pass. (See §"Reviewer parallelism is non-negotiable" and `references/reviewer-subagent-contract.md` §"Mode selection".)
+- **Per-journey reviewers on every cycle of every pass.** The cycle-1 batch reviewer is a standard-mode economy; under depth, Stage B is per-journey throughout: there is no batch reviewer on any pass. (See §"Reviewer parallelism is non-negotiable" and `references/reviewer-subagent-contract.md` §"Mode selection".)
 - **State-file marker.** The orchestrator writes `"runMode": "depth"` into `tests/e2e/docs/coverage-expansion-state.json` on the first state-file write. The `standard-mode-first-pass-guard.sh` hook reads this field and denies any grouped dispatch on any pass when the mode is `depth`.
 - **Cost.** Up to ~20× more subagent dispatches and token spend than `mode: standard`. The orchestrator emits one `[coverage-expansion] mode: depth — strict-per-journey on every pass (~20× cost vs standard)` declaration line on entry so the operator sees the trade-off acknowledged.
 - **Pipeline shape unchanged.** All other pipeline rules (5-passes-+-cleanup, per-pass dedup, no-skip contract, hybrid model selection, auto-compaction, P3 adversarial opt-out, gated-skip logic for Passes 2-3) hold identically under both modes.
@@ -404,11 +404,11 @@ The full per-pass pipeline (steps 1–8), pass differences, commit-message conve
 
 ### Hard rules — kernel-resident
 
-- **Five passes + per-pass dedup + cross-pass cleanup, in order, every run.** Three compositional (1–3) + two adversarial (4–5). Each pass ends with a single per-pass dedup subagent (test dedup for compositional, findings dedup for adversarial). After pass 5, one additional cross-pass cleanup subagent runs to synthesise cross-cutting findings. "Pass 1 only" is one-fifth of the pipeline, never a valid completion state for `mode: standard` (or the `mode: depth` alias). A pass is incomplete until its per-pass dedup commit lands (with empty diff + a "no consolidation" log entry if nothing was merged — silent skipping is forbidden).
-- **Every journey, every pass.** Pass N is complete only when every journey in the map has been dispatched AND returned. Not "enough journeys", not "the P0/P1 tier", not "the journeys that fit the budget" — every journey. Pass 4 with 0 journeys is not Pass 4.
+- **Five passes + per-pass dedup + cross-pass cleanup, in order, every run.** Three compositional (1–3) + two adversarial (4–5). Each pass ends with a single per-pass dedup subagent (test dedup for compositional, findings dedup for adversarial). After pass 5, one additional cross-pass cleanup subagent runs to synthesise cross-cutting findings. "Pass 1 only" is one-fifth of the pipeline, never a valid completion state for `mode: standard` (or the `mode: depth` alias). A pass is incomplete until its per-pass dedup commit lands (with empty diff + a "no consolidation" log entry if nothing was merged; silent skipping is forbidden).
+- **Every journey, every pass.** Pass N is complete only when every journey in the map has been dispatched AND returned. Not "enough journeys", not "the P0/P1 tier", not "the journeys that fit the budget": every journey. Pass 4 with 0 journeys is not Pass 4.
 - **One journey per commit, per pass kind.** Templates: [depth-mode-pipeline.md](references/depth-mode-pipeline.md) §"Commit-message conventions".
 - **Stage B never commits.** Reviewer judgements live in the state file's `review_status` and `final_must_fix` fields, never as commits. `review(j-…)` and any review-tagged commit form is forbidden.
-- **Stage A and B are parallel by default.** A journey's Stage B fires as soon as that journey's Stage A returns and the cap has a slot — not after every Stage A in the pass completes. Finishing all Stage A first then starting all Stage B is contract-violating.
+- **Stage A and B are parallel by default.** A journey's Stage B fires as soon as that journey's Stage A returns and the cap has a slot: not after every Stage A in the pass completes. Finishing all Stage A first then starting all Stage B is contract-violating.
 - **Parallel cap counts A and B jointly.** One pool of in-flight slots; A, B, and A-retry compete. A journey's own A and B never overlap (sequential within a journey); across journeys any A/B interleaving is possible. Queue order is FIFO.
 - **Hybrid model selection: Pass 1, 4 and 5 and all review on Opus; Pass 2/3 re-pass composers on Sonnet.** This bullet and the table below are the only statement of model tiers; other files point here. Pass 1 sets the suite foundation. Pass 4 findings feed Pass 5's regression layer, and Pass 5 authors the durable regression tests, so quality at both propagates downstream. Pass 2/3 are mechanical re-passes where most journeys return `covered-exhaustively`. Review judgement stays on Opus: per-journey while batching ramps, one cross-synthesising batch reviewer once it is steady. Default by dispatch type:
 
@@ -421,22 +421,22 @@ The full per-pass pipeline (steps 1–8), pass differences, commit-message conve
   | Pass 4 Stage A probe (adversarial) | **opus** | Findings feed Pass 5's regression layer; probe-depth quality at the boundary determines what gets locked in downstream |
   | Pass 5 gap analysis | **opus** | Cross-journey synthesis (orchestrator-level, not per-journey) |
   | Pass 5 targeted probes | **opus** | Regression layer is the durable artifact; quality at probe time determines what gets locked in |
-  | Pass 5 regression-test authoring | **opus** | Same — assertion shape + edge nuance in regression tests propagates forward indefinitely |
-  | Stage B reviewer — per-journey (passes 2-5) | **opus** | Review judgement boundary; per-journey while batching ramps |
+  | Pass 5 regression-test authoring | **opus** | Same: assertion shape + edge nuance in regression tests propagates forward indefinitely |
+  | Stage B reviewer: per-journey (passes 2-5) | **opus** | Review judgement boundary; per-journey while batching ramps |
   | Stage B batch reviewer (when used) | **opus** | Cross-journey synthesis is where Opus shines |
   | Cleanup ledger dedup | **opus** | Semantic clustering quality matters |
   | Phase 7 deck / report | **opus** | Client-facing narrative quality |
   | Failure-diagnosis | **opus** | Root-cause reasoning depth |
 
-  The orchestrator passes the model hint via `model: <opus|sonnet|haiku>` in the dispatch brief. Subagents honour the hint when constructing their `subagent_type` — `general-purpose-sonnet` / `general-purpose-opus` etc., or whatever the harness exposes.
+  The orchestrator passes the model hint via `model: <opus|sonnet|haiku>` in the dispatch brief. Subagents honour the hint when constructing their `subagent_type`: `general-purpose-sonnet` / `general-purpose-opus` etc., or whatever the harness exposes.
 
   **Override paths:**
   - The user may request Opus for everything (e.g. `mode: standard, model: opus-all`) for a high-stakes audit; document the override in the front-load gate.
   - A pass with `final_must_fix` carry-overs from the prior pass forces that journey's next Stage A composer onto Opus regardless of the table (the must-fix is hard; a mechanical Sonnet re-pass won't resolve it). The override applies to Pass 2/3 Stage A composers only; Stage B reviewers are already Opus.
 
-- **Pass 1 strict per-journey, no grouping (standard) / every pass strict (depth).** Under `mode: standard`, grouped dispatches are FORBIDDEN on Pass 1 only; once Pass 1 has landed the baseline at maximum quality, Passes 2-5 may relax (subject to the documented grouping paths). Under `mode: depth`, grouped dispatches are FORBIDDEN on **every** pass (1, 2, 3, 4, AND 5) — strict-per-journey holds throughout the pipeline, and adversarial Passes 4-5 are strict-per-journey by default (the `strict-adversarial: true` opt-in is implicit). Hook-denied: the `standard-mode-first-pass-guard.sh` hook reads `runMode` + `currentPhase` + `currentSubStage` from the workflow ledger `tests/e2e/docs/onboarding-status.json` (default `"standard"` when absent, with `coverage-expansion-state.json` as a fallback for bare invocations outside onboarding) and denies grouping per-pass according to mode. The strict-on-first-pass rule (standard) captures the fidelity moment where it pays the most; the strict-on-every-pass rule (depth) captures the ~20×-cost exhaustive-fidelity contract for high-stakes audits.
+- **Pass 1 strict per-journey, no grouping (standard) / every pass strict (depth).** Under `mode: standard`, grouped dispatches are FORBIDDEN on Pass 1 only; once Pass 1 has landed the baseline at maximum quality, Passes 2-5 may relax (subject to the documented grouping paths). Under `mode: depth`, grouped dispatches are FORBIDDEN on **every** pass (1, 2, 3, 4, AND 5): strict-per-journey holds throughout the pipeline, and adversarial Passes 4-5 are strict-per-journey by default (the `strict-adversarial: true` opt-in is implicit). Hook-denied: the `standard-mode-first-pass-guard.sh` hook reads `runMode` + `currentPhase` + `currentSubStage` from the workflow ledger `tests/e2e/docs/onboarding-status.json` (default `"standard"` when absent, with `coverage-expansion-state.json` as a fallback for bare invocations outside onboarding) and denies grouping per-pass according to mode. The strict-on-first-pass rule (standard) captures the fidelity moment where it pays the most; the strict-on-every-pass rule (depth) captures the ~20×-cost exhaustive-fidelity contract for high-stakes audits.
 - **Stage A always per-journey on Pass 1; Passes 2-5 may use grouping per the documented batching paths: (a) the P3-batch ≤7 path for shared-project P3 peripherals (`test-composer-p3batch-<id>:`); (b) the relevance-group ≤7 path for compositional Passes 2-3 when a priority tier has >5 journeys (`test-composer-group-<id>:`, all priorities eligible); (c) the adversarial-group ≤7 path for Passes 4-5 (`probe-group-<id>:`, all priorities eligible). Stage B per-journey except the documented compositional-cycle-1 batch-reviewer exception (one reviewer per pass; never adversarial; never cycle-2+).** P0/P1/P2 NEVER use the P3-batch Stage A exception. P3-only path, capped at 7 per brief; sharing pages with P3 siblings is not authorisation for the P3-batch path, priority is load-bearing. The relevance-group + adversarial-group paths apply to ALL priorities (P0/P1/P2/P3) once their trigger conditions hold; groups must be priority-pure (no mixing of tiers) and capped at 7. Adversarial Passes 4-5 grouping is the default for `mode: standard`; the per-journey contract becomes an opt-in via `args: "strict-adversarial: true"`. Cycle-2+ ALWAYS uses per-journey reviewers regardless of pass; by cycle 2 the orchestrator already knows which journeys need attention.
-- **P3 small-surface journeys may opt OUT of adversarial passes (Passes 4 & 5).** P3 logout / role-chooser / modal-only journeys produce few unique adversarial findings; their entire adversarial surface is already covered via app-wide pattern citations from larger journeys. The skip is **opt-in per project**, declared up-front in the state file's `adversarialSkippedJourneys: []` field with rationale per entry. Default is "include all" — the orchestrator never silently skips a P3 from adversarial work; the operator opts the journey out by name. Compositional passes (1–3) ALWAYS run on every journey including P3. **Exclusion criteria** (must hold for a journey to qualify for opt-out):
+- **P3 small-surface journeys may opt OUT of adversarial passes (Passes 4 & 5).** P3 logout / role-chooser / modal-only journeys produce few unique adversarial findings; their entire adversarial surface is already covered via app-wide pattern citations from larger journeys. The skip is **opt-in per project**, declared up-front in the state file's `adversarialSkippedJourneys: []` field with rationale per entry. Default is "include all": the orchestrator never silently skips a P3 from adversarial work; the operator opts the journey out by name. Compositional passes (1–3) ALWAYS run on every journey including P3. **Exclusion criteria** (must hold for a journey to qualify for opt-out):
   - Priority is P3.
   - The journey's `Pages touched` list is a subset of pages already adversarial-probed by a larger journey AND covered by a app-wide pattern entry.
   - The journey has zero unique adversarial findings in any prior pass-4 ledger entry (or has no prior entries).
@@ -444,7 +444,7 @@ The full per-pass pipeline (steps 1–8), pass differences, commit-message conve
 
   Any opt-out that doesn't meet ALL four criteria is silent scope narrowing. The state-file schema validates the field shape (per `references/state-file-schema.md`).
 - **Auto-compaction at 70%.** State written first, then `/compact`, then resume from state. Mid-cycle Stage A returns persist to a scratch file (`tests/e2e/docs/.coverage-expansion-cycle-<slug>-cycle-<N>.json`) before compacting; mid-cycle restart from a fresh Stage A dispatch is NOT acceptable.
-- **`blocked-cycle-stalled`, `blocked-cycle-exhausted`, `blocked-dispatch-failure` are valid terminals**, not pass failures. Mark them faithfully — calling cycle-7-exhausted "greenlit" corrupts the state file and the next pass's trigger-4 input.
+- **`blocked-cycle-stalled`, `blocked-cycle-exhausted`, `blocked-dispatch-failure` are valid terminals**, not pass failures. Mark them faithfully: calling cycle-7-exhausted "greenlit" corrupts the state file and the next pass's trigger-4 input.
 
 ### Trigger-gated re-pass for Passes 2 & 3
 
@@ -452,9 +452,9 @@ Pass 2 and Pass 3 are **conditional** on per-journey triggers checked at the orc
 
 **Per-journey triggers (orchestrator checks before dispatching):**
 
-1. **Map-delta** — has the journey's block in `tests/e2e/docs/journey-map.md` changed since Pass 1's reconciliation commit? Compute via `git diff <pass-1-commit> -- tests/e2e/docs/journey-map.md` filtered to the journey's section.
-2. **Sibling-ledger update** — does any finding added to `tests/e2e/docs/adversarial-findings.md` since Pass 1 list this journey as a regression candidate? When the finding schema supports cross-references, read those; otherwise substring-search the journey ID in ledger entries since the Pass-1 commit.
-3. **Must-fix carry-over** — does the prior pass's `dispatches[journey == this].final_must_fix` array in `coverage-expansion-state.json` carry any unresolved finding-IDs for this journey? Read directly from the state file.
+1. **Map-delta**: has the journey's block in `tests/e2e/docs/journey-map.md` changed since Pass 1's reconciliation commit? Compute via `git diff <pass-1-commit> -- tests/e2e/docs/journey-map.md` filtered to the journey's section.
+2. **Sibling-ledger update**: does any finding added to `tests/e2e/docs/adversarial-findings.md` since Pass 1 list this journey as a regression candidate? When the finding schema supports cross-references, read those; otherwise substring-search the journey ID in ledger entries since the Pass-1 commit.
+3. **Must-fix carry-over**: does the prior pass's `dispatches[journey == this].final_must_fix` array in `coverage-expansion-state.json` carry any unresolved finding-IDs for this journey? Read directly from the state file.
 
 **If ALL THREE are false → write a gated-skip entry; do NOT dispatch:**
 
@@ -477,11 +477,11 @@ Pass 2 and Pass 3 are **conditional** on per-journey triggers checked at the orc
 **Contract:**
 - The orchestrator MUST record `triggers_checked` with all three booleans for every gated-skip entry. A skip without that evidence is silent scope narrowing.
 - A gated-skip entry with any trigger == true is a contract violation (the orchestrator should have dispatched).
-- Gated-skip entries count as "work done" for the §"Two valid exits" pre-emptive-stop check — a Pass 2 with all 30 journeys gated-skipped is legitimately complete.
+- Gated-skip entries count as "work done" for the §"Two valid exits" pre-emptive-stop check: a Pass 2 with all 30 journeys gated-skipped is legitimately complete.
 - This rule applies to **Passes 2 and 3 only**. Pass 1 dispatches every journey unconditionally; Passes 4 and 5 remain dispatch-driven.
-- The orchestrator never inferentially batches gated skips into one entry — one entry per journey, with that journey's three triggers explicitly checked.
+- The orchestrator never inferentially batches gated skips into one entry: one entry per journey, with that journey's three triggers explicitly checked.
 
-The §"Re-pass mode for compositional passes 2–3" reference (depth-mode-pipeline.md) describes the dispatched-path's brief contents and rejection rules. Trigger-gating sits ABOVE that — only when at least one trigger fires does the dispatched-path apply.
+The §"Re-pass mode for compositional passes 2–3" reference (depth-mode-pipeline.md) describes the dispatched-path's brief contents and rejection rules. Trigger-gating sits ABOVE that: only when at least one trigger fires does the dispatched-path apply.
 
 ### Adversarial grouping for Passes 4 and 5
 
@@ -494,9 +494,9 @@ The §"Re-pass mode for compositional passes 2–3" reference (depth-mode-pipeli
 - **All priorities eligible.** P0/P1/P2/P3 all qualify once any tier crosses the >5 threshold.
 - **Same-section preferred.** Group by section or overlapping `Pages touched`; cross-section grouping is allowed when section clusters are sparse.
 - **`adversarialSkippedJourneys[]` honoured.** Opted-out P3 journeys (per §"Hard rules — kernel-resident" on P3 small-surface opt-out) are excluded from group composition.
-- **No elevated-risk journeys.** A journey whose map block carries 2+ `Risk factors:` tags (`risk: elevated` per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is probed per-journey, never in a group — concentrated failure surfaces are what grouped attention-rationing misses. Journeys without the field default to `risk: baseline` and group normally. Methodology rule, not hook-enforced.
+- **No elevated-risk journeys.** A journey whose map block carries 2+ `Risk factors:` tags (`risk: elevated` per `../journey-mapping/references/phases.md` §"Defect-likelihood risk factors") is probed per-journey, never in a group; concentrated failure surfaces are what grouped attention-rationing misses. Journeys without the field default to `risk: baseline` and group normally. Methodology rule, not hook-enforced.
 - **Role-prefix:** `probe-group-<id>: j-a, j-b, …` (§"Grouped dispatch"). Adversarial probes return Stage A finding shape + ledger appends per `references/adversarial-subagent-contract.md`.
-- **Stage B remains per-journey** within a Pass-4/5 group — the cycle-1 batch-reviewer exception is compositional-only and does NOT extend to adversarial passes.
+- **Stage B remains per-journey** within a Pass-4/5 group: the cycle-1 batch-reviewer exception is compositional-only and does NOT extend to adversarial passes.
 
 **Quality safeguard.** Same attention-rationing trend trigger as compositional groups: if ≥3 of 7 per-journey Stage B reviews in one adversarial group return `improvements-needed` for missed adversarial categories, the orchestrator stops grouping for the remainder of that pass and falls back to per-journey adversarial dispatch. Persistent rationing across multiple groups within a pass forces strict-adversarial mode for the next pass.
 
@@ -523,7 +523,7 @@ Every subagent dispatched by this skill (compositional `test-composer`, adversar
 
 - **Every subagent has an isolated context window.** No prior session content, no other journey's data, no orchestrator scratch.
 - **Every browser-using subagent has its own `playwright-cli` session** named per the role-prefix convention (`composer-j-<slug>-<pass>-c<N>`, `reviewer-j-<slug>-<pass>-c<N>`, `probe-j-<slug>-<pass>`, `cleanup-<scope>`). Sessions are OS-isolated; the subagent opens at start and closes at end.
-- **The orchestrator NEVER holds subagent payload content.** Not in steady state, not at dispatch boundaries, not during reconciliation. Forbidden in orchestrator context: full journey blocks (only the indexed fields), DOM snapshots, test source, stabilization transcripts, ledger bodies — modulo the **single bounded exception**: when dispatching a pass-5 subagent, the orchestrator reads that journey's pass-4 ledger section into the brief and releases it from context immediately after dispatch.
+- **The orchestrator NEVER holds subagent payload content.** Not in steady state, not at dispatch boundaries, not during reconciliation. Forbidden in orchestrator context: full journey blocks (only the indexed fields), DOM snapshots, test source, stabilization transcripts, ledger bodies: modulo the **single bounded exception**: when dispatching a pass-5 subagent, the orchestrator reads that journey's pass-4 ledger section into the brief and releases it from context immediately after dispatch.
 - **Returns are structured summaries only.** No pasted test source, no DOM snapshots, no CLI transcripts. All returns conform to `subagent-return-schema.md` and are validated at the harness layer (see [`../achilles-protocol/references/harness-hooks.md`](../achilles-protocol/references/harness-hooks.md)).
 
 ## Progress output
@@ -559,17 +559,17 @@ Emit one line per significant event, prefixed `[coverage-expansion]`:
   Structural-only / skipped-placeholder tests: 1 — [j-admin-seed (tests/e2e/j-admin-seed.spec.ts)]
 ```
 
-The `Pass <N>/5, journey j-<slug>: cycle <c>/7, review <status>` per-cycle line is the user-facing visibility into the dual-stage retry loop. Emit one such line whenever a journey's A↔B cycle reaches a terminal `review_status` ([state-file-schema.md](references/state-file-schema.md)). Skip per-cycle lines for cycles that complete with `improvements-needed` and trigger an immediate retry — only emit on terminal states or notable retries (cycle ≥ 2).
+The `Pass <N>/5, journey j-<slug>: cycle <c>/7, review <status>` per-cycle line is the user-facing visibility into the dual-stage retry loop. Emit one such line whenever a journey's A↔B cycle reaches a terminal `review_status` ([state-file-schema.md](references/state-file-schema.md)). Skip per-cycle lines for cycles that complete with `improvements-needed` and trigger an immediate retry; only emit on terminal states or notable retries (cycle ≥ 2).
 
 **Pass-5 added-runtime line (required).** The Pass-5 completion line MUST report the estimated added suite runtime contributed by that pass's regression tests (`+<N>s added suite runtime`), so the operator can weigh the regression layer's cost against its value. The figure comes from the Pass-5 gap-analysis dispatch's pass summary.
 
-**Mandatory final `[coverage-expansion] residual-risk:` block (required at run end).** After the cleanup commit and before returning to the caller, the orchestrator emits a `residual-risk:` block enumerating the five residual-risk sources with counts + journey IDs (the same five sources the Phase-5 coverage-checkpoint `## Residual Risk` table records — see `../journey-mapping/SKILL.md` §"Phase 5: Coverage Checkpoint"):
+**Mandatory final `[coverage-expansion] residual-risk:` block (required at run end).** After the cleanup commit and before returning to the caller, the orchestrator emits a `residual-risk:` block enumerating the five residual-risk sources with counts + journey IDs (the same five sources the Phase-5 coverage-checkpoint `## Residual Risk` table records: see `../journey-mapping/SKILL.md` §"Phase 5: Coverage Checkpoint"):
 
-- **Gated Areas not mapped** — from the journey-map's `## Gated Areas (Not Mapped)` heading.
-- **Adversarial opt-outs** — `adversarialSkippedJourneys[]`.
-- **Blocked journeys** — `blocked-cycle-exhausted` / `blocked-cycle-stalled` journeys with unresolved `final_must_fix` (count + journey IDs + finding-IDs).
-- **Ambiguous ledger findings** — finding-IDs classified `ambiguous` in the ledger.
-- **Structural-only / skipped-placeholder tests** — journey IDs + spec paths.
+- **Gated Areas not mapped**: from the journey-map's `## Gated Areas (Not Mapped)` heading.
+- **Adversarial opt-outs**: `adversarialSkippedJourneys[]`.
+- **Blocked journeys**: `blocked-cycle-exhausted` / `blocked-cycle-stalled` journeys with unresolved `final_must_fix` (count + journey IDs + finding-IDs).
+- **Ambiguous ledger findings**: finding-IDs classified `ambiguous` in the ledger.
+- **Structural-only / skipped-placeholder tests**: journey IDs + spec paths.
 
 Every source is emitted with a `0` count and `—` when empty. The cleanup/dedup subagent's completion criterion includes emitting this block; a run that returns without it is incomplete.
 
@@ -581,7 +581,7 @@ Hold in context:
 - Journey map **index only** (IDs, names, priorities, `Pages touched`, `Test expectations`). Never the full step lists, branches, or state variations.
 - Independence graph (ids + edges).
 - Pass counter, subagent dispatch roster, aggregated return summaries.
-- **Adversarial totals counter** (passes 4–5): journeys probed, boundaries verified across all journeys, suspected-bug count by severity, regression tests added. Counts only — never per-finding detail.
+- **Adversarial totals counter** (passes 4–5): journeys probed, boundaries verified across all journeys, suspected-bug count by severity, regression tests added. Counts only; never per-finding detail.
 
 Never hold in context:
 - Any journey's full `### j-<slug>` block contents beyond the indexed fields.
@@ -596,7 +596,7 @@ If orchestrator context approaches a budget boundary, follow the auto-compaction
 
 ### Hard rules — kernel-resident
 
-- **The orchestrator does NOT compose tests directly.** Spec writes for `tests/e2e/j-<slug>.spec.ts` and `tests/e2e/sj-<slug>.spec.ts` (and their `-regression` variants) come from a dispatched `test-composer-j-<slug>:` / `test-composer-sj-<slug>:` / `probe-j-<slug>:` subagent — never from direct orchestrator action. No hook enforces this; reviewer dispatches do (the `workflow-reviewer-pass<N>:` checklist cross-checks spec files against recorded composer dispatches). `tests/e2e/happy-path.spec.ts` is exempt (Phase 3 of onboarding writes it before coverage-expansion's Pass 1). See [`../achilles-protocol/references/harness-hooks.md`](../achilles-protocol/references/harness-hooks.md).
+- **The orchestrator does NOT compose tests directly.** Spec writes for `tests/e2e/j-<slug>.spec.ts` and `tests/e2e/sj-<slug>.spec.ts` (and their `-regression` variants) come from a dispatched `test-composer-j-<slug>:` / `test-composer-sj-<slug>:` / `probe-j-<slug>:` subagent; never from direct orchestrator action. No hook enforces this; reviewer dispatches do (the `workflow-reviewer-pass<N>:` checklist cross-checks spec files against recorded composer dispatches). `tests/e2e/happy-path.spec.ts` is exempt (Phase 3 of onboarding writes it before coverage-expansion's Pass 1). See [`../achilles-protocol/references/harness-hooks.md`](../achilles-protocol/references/harness-hooks.md).
 
   **Handover envelope.** Every composer / reviewer / probe / process-validator / phase-validator return MUST be prefaced with `handover: { role, cycle, status, next-action }` per [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) §2.0. The live `hooks/subagent-return-schema-guard.sh` (`PostToolUse:Agent`, WARN) validates the envelope as part of the role's JSON Schema and sanity-checks the `cycle` field. Reviewer / process-validator / phase-validator handovers also carry the envelope for orchestrator-side `next-action` routing. See [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) §2.0 + §4.3.
 
@@ -609,20 +609,20 @@ If orchestrator context approaches a budget boundary, follow the auto-compaction
 
 ## Integration with other skills
 
-- **`journey-mapping`** — produces the precisely-embeddable journey map this skill reads. Map must be sentinel-bearing. No schema change required for adversarial passes. **Completion contract:** after the cross-pass cleanup commit (and, in the onboarding pipeline, after `workflow-reviewer-phase5` approval and state-file deletion), the orchestrator invokes `journey-mapping` with `args: "phases: phase-5-only"` so the coverage checkpoint + `## Residual Risk` section are always produced against the composed suite.
-- **`test-composer`** — called once per journey per compositional pass (1–3) with `args: "journey=<j-id>"`. Owns compose, stabilize, API compliance, coverage verification. NOT called during adversarial passes.
-- **`bug-discovery`** — invoked from **inside** each adversarial-pass subagent, scoped to one journey. No change to the skill itself; it accepts a scoped invocation. Subagents decide probe-category selection autonomously based on live observation.
-- **`failure-diagnosis`** — invoked inside any subagent (compositional or adversarial) when stabilization fails. The orchestrator does not call it directly.
+- **`journey-mapping`**: produces the precisely-embeddable journey map this skill reads. Map must be sentinel-bearing. No schema change required for adversarial passes. **Completion contract:** after the cross-pass cleanup commit (and, in the onboarding pipeline, after `workflow-reviewer-phase5` approval and state-file deletion), the orchestrator invokes `journey-mapping` with `args: "phases: phase-5-only"` so the coverage checkpoint + `## Residual Risk` section are always produced against the composed suite.
+- **`test-composer`**: called once per journey per compositional pass (1–3) with `args: "journey=<j-id>"`. Owns compose, stabilize, API compliance, coverage verification. NOT called during adversarial passes.
+- **`bug-discovery`**: invoked from **inside** each adversarial-pass subagent, scoped to one journey. No change to the skill itself; it accepts a scoped invocation. Subagents decide probe-category selection autonomously based on live observation.
+- **`failure-diagnosis`**: invoked inside any subagent (compositional or adversarial) when stabilization fails. The orchestrator does not call it directly.
 - **`onboarding`**: calls this skill as its Phase 5 with `mode: standard` (default, recommended) OR `mode: depth` (strict-parallel-everywhere, ~20× more dispatches) depending on the operator's front-load gate selection (see `skills/onboarding/SKILL.md` §"Step 0 — Mode selection"). Onboarding writes the chosen mode into `coverage-expansion-state.json` as `runMode` on the first state-file write so the hook layer can enforce the depth-mode strict-everywhere semantics. Phase 5 now produces adversarial-findings as a side effect. Onboarding's Phase 6 (standalone `bug-discovery`) remains in place as a wider, cross-app adversarial sweep; per-journey adversarial coverage is handled earlier inside Phase 5.
 
 ---
 
 ## Non-goals
 
-- Mapping new journeys from scratch — that's `journey-mapping`.
-- Composing a single journey's tests — that's `test-composer`.
-- Cross-application coverage — one invocation covers one app.
+- Mapping new journeys from scratch: that's `journey-mapping`.
+- Composing a single journey's tests: that's `test-composer`.
+- Cross-application coverage: one invocation covers one app.
 - Running adversarial probing in breadth mode. Breadth stays one horizontal sweep; users who want adversarial coverage explicitly want standard (formerly `depth`) mode.
 - Writing regression tests for findings classified as `Suspected bugs` or `Ambiguous`. Never lock buggy behavior into a passing suite. Never use `test.fail()` markers: they rot into permanent CI noise. (See `ticket-driven-testing/references/phase-7-durable-tests.md` for the one sanctioned exception: a defect sentinel tied to a tracked ticket with a removed-when-fixed lifecycle; no such ticket owns a coverage-pass finding, so the ban here is absolute. Resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.2.)
 - Growing the journey map during adversarial passes. Map growth is for compositional passes only.
-- Broad cross-app adversarial sweeps — that's still the job of the standalone `bug-discovery` skill. This skill's adversarial passes are strictly per-journey.
+- Broad cross-app adversarial sweeps: that's still the job of the standalone `bug-discovery` skill. This skill's adversarial passes are strictly per-journey.

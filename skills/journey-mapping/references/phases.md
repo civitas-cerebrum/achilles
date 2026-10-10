@@ -3,13 +3,13 @@
 **Status:** authoritative spec for the discovery → identification → prioritization → redundancy-revision phases of journey-mapping. Cited from `journey-mapping/SKILL.md`.
 **Scope:** Phase 1 (Page Discovery + Test Infrastructure probe), Phase 2 (Flow Identification), Phase 3 (Journey Prioritization), Phase 3.5 (Redundancy Revision). Per-phase process, parallel-discovery model, output formats.
 
-For Phase 4 (Journey Map document) and Phase 5 (Coverage Checkpoint), see `journey-mapping/SKILL.md` directly — those phases' outputs are tightly coupled to the SKILL.md's signature-marker and hard-gate rules.
+For Phase 4 (Journey Map document) and Phase 5 (Coverage Checkpoint), see `journey-mapping/SKILL.md` directly; those phases' outputs are tightly coupled to the SKILL.md's signature-marker and hard-gate rules.
 For the canonical browser-automation primitive used in Phase 1 discovery, see `../achilles-protocol/references/playwright-cli-protocol.md`.
 
 **Cycle strictness note.** The iterative discovery cycle protocol that drives Phases 2 / 3 / 3.5 (in both `full` and `phases-2-4` modes) honours an optional `cycle-strictness` parameter:
-- `cycle-strictness: standard` (default) — cycle 1 strict per-section parallel; cycle 2+ may be single-subagent sequential when the orchestrator chooses.
-- `cycle-strictness: depth` — every cycle (including edge-probe and any additional discovery cycles) is strict per-section parallel; single-subagent walkthroughs are forbidden in every cycle. The state-file field `cycleStrictness: "depth"` in `.phase4-cycle-state.json` records the selection so the `standard-mode-first-pass-guard.sh` hook can enforce the every-cycle-strict semantics. Selected via `onboarding`'s `runMode: depth` front-load gate.
-The Phase 1 parallel-discovery model below is unaffected — Phase 1 already mandates parallel dispatch per entry point and does not relax across runs.
+- `cycle-strictness: standard` (default): cycle 1 strict per-section parallel; cycle 2+ may be single-subagent sequential when the orchestrator chooses.
+- `cycle-strictness: depth`: every cycle (including edge-probe and any additional discovery cycles) is strict per-section parallel; single-subagent walkthroughs are forbidden in every cycle. The state-file field `cycleStrictness: "depth"` in `.phase4-cycle-state.json` records the selection so the `standard-mode-first-pass-guard.sh` hook can enforce the every-cycle-strict semantics. Selected via `onboarding`'s `runMode: depth` front-load gate.
+The Phase 1 parallel-discovery model below is unaffected; Phase 1 already mandates parallel dispatch per entry point and does not relax across runs.
 
 ---
 
@@ -22,16 +22,16 @@ Visit every reachable page in the application via `@playwright/cli` (see [`../ac
 Page discovery **must** be performed through `@playwright/cli` from the Bash tool (`playwright-cli open`, `playwright-cli snapshot`, `playwright-cli click`, `playwright-cli eval`, etc.). This is mandatory:
 
 - **Do not** infer pages from reading source files, route tables, router configs, sitemaps, or existing tests. Static inspection misses runtime-only routes, feature flags, auth-gated redirects, and client-side navigation state.
-- **Do not** use `fetch`/`curl`/WebFetch to scrape HTML — those bypass client-side rendering and produce a false map.
+- **Do not** use `fetch`/`curl`/WebFetch to scrape HTML; those bypass client-side rendering and produce a false map.
 - **Do not** substitute a headless Playwright test runner or shell scripts for the CLI. Discovery runs in a live `playwright-cli` session so snapshots, console errors, and navigation timing are observable and recordable.
-- **Every URL in the site map must have a corresponding `playwright-cli` snapshot** taken during this phase. If a page appears in the map without a CLI visit, it was guessed — remove it and visit it, or mark it gated.
-- **Do not** call the `mcp__plugin_playwright_playwright__browser_*` MCP tools, even when the harness lists them as available. They run a separate Chrome process, write to a separate `.playwright-mcp/` directory, and share no state with the CLI's session model — using them at any point in discovery (parent or subagent) silently breaks the per-session OS-isolation guarantee documented in `../achilles-protocol/references/playwright-cli-protocol.md`. The CLI is the only sanctioned discovery channel.
+- **Every URL in the site map must have a corresponding `playwright-cli` snapshot** taken during this phase. If a page appears in the map without a CLI visit, it was guessed: remove it and visit it, or mark it gated.
+- **Do not** call the `mcp__plugin_playwright_playwright__browser_*` MCP tools, even when the harness lists them as available. They run a separate Chrome process, write to a separate `.playwright-mcp/` directory, and share no state with the CLI's session model; using them at any point in discovery (parent or subagent) silently breaks the per-session OS-isolation guarantee documented in `../achilles-protocol/references/playwright-cli-protocol.md`. The CLI is the only sanctioned discovery channel.
 
-`@playwright/cli` ships as a hard dependency of `@civitas-cerebrum/achilles`, so it is always reachable via `npx playwright-cli` after the package is installed. If the binary is somehow unreachable, the install is corrupted — `npm install` fixes it. If the browser binary is missing on the dev machine, the first `... open` call exits with a clear error; run `npx playwright-cli install-browser chromium` once, then retry. Do not fall back to static analysis.
+`@playwright/cli` ships as a hard dependency of `@civitas-cerebrum/achilles`, so it is always reachable via `npx playwright-cli` after the package is installed. If the binary is somehow unreachable, the install is corrupted: `npm install` fixes it. If the browser binary is missing on the dev machine, the first `... open` call exits with a clear error; run `npx playwright-cli install-browser chromium` once, then retry. Do not fall back to static analysis.
 
 ### Process
 
-1. **Start at the entry point** — usually the homepage or login page
+1. **Start at the entry point**: usually the homepage or login page
 2. **Take a snapshot** of each page
 3. **Record to app-context.md** immediately (per Rule 9 of achilles-protocol):
    - URL pattern
@@ -40,9 +40,9 @@ Page discovery **must** be performed through `@playwright/cli` from the Bash too
    - Interactive elements (buttons, links, forms, tabs)
    - Where this page links to (outbound navigation)
    - Where this page is reached from (inbound navigation)
-4. **Follow every link** — navigate breadth-first through the app. Click nav items, CTAs, footer links, card links. Every reachable URL gets visited.
-5. **Note state variations** — does the page look different when empty, loading, errored, or with different data? Document each state.
-6. **Note gated pages** — pages behind login, roles, or paywalls. Document what's gated and what credentials/setup would be needed to access them.
+4. **Follow every link**: navigate breadth-first through the app. Click nav items, CTAs, footer links, card links. Every reachable URL gets visited.
+5. **Note state variations**: does the page look different when empty, loading, errored, or with different data? Document each state.
+6. **Note gated pages**: pages behind login, roles, or paywalls. Document what's gated and what credentials/setup would be needed to access them.
 
 ### Parallel discovery
 
@@ -55,7 +55,7 @@ For apps with multiple known entry points, Phase 1 parallelizes. **Parallel is t
 3. For each entry point, dispatch a discovery subagent in parallel. Each subagent gets:
    - Its assigned entry point URL.
    - A unique session slug (`phase1-<entry-slug>`, per `playwright-cli-protocol.md` §3.1).
-   - Its own fresh context window — no prior session content.
+   - Its own fresh context window; no prior session content.
    - A terse brief: crawl the subtree breadth-first, capture snapshots, return a structured list of discovered pages + interactive elements.
 4. Parent journey-mapping agent merges each subagent's returned page list into `tests/e2e/docs/app-context.md` and the flat site map. Parent does **not** paste raw DOM snapshots or CLI transcripts into its own context.
 5. Deduplicate pages discovered by multiple subagents (common boundary pages show up twice; keep one entry with merged metadata).
@@ -91,7 +91,7 @@ dispatchSubagent({
 
 Dispatch one subagent per entry point, all in parallel. Each dispatched subagent opens its own browser session via `-s=<slug> open`. The parent does **not** drive its own browser during the parallel phase.
 
-**Parallelism:** dispatch as many subagents in parallel as the independence graph allows — there is no fixed cap and no isolation-driven serialization. In Phase 1, every entry point is an independent root, so dispatch N subagents for N entry points.
+**Parallelism:** dispatch as many subagents in parallel as the independence graph allows; there is no fixed cap and no isolation-driven serialization. In Phase 1, every entry point is an independent root, so dispatch N subagents for N entry points.
 
 ### Discovery Scope Rules
 
@@ -103,7 +103,7 @@ Dispatch one subagent per entry point, all in parallel. Each dispatched subagent
 
 ### Output
 
-An updated `tests/e2e/docs/app-context.md` with every discovered page documented. Plus a **site map** — a flat list of all discovered URLs:
+An updated `tests/e2e/docs/app-context.md` with every discovered page documented. Plus a **site map**: a flat list of all discovered URLs:
 
 ```markdown
 ## Site Map
@@ -119,14 +119,14 @@ Gated: Y pages behind authentication
 
 ### Test Infrastructure probe (split: per-entry observation + post-crawl `phase1-test-infra:` subagent)
 
-Phase 1 captures the application's test-infrastructure surface — auth model, reset endpoint, persistent banners, mutation endpoints, stable seed resources — for downstream consumption by Stage 4a of the test-composition pipeline.
+Phase 1 captures the application's test-infrastructure surface: auth model, reset endpoint, persistent banners, mutation endpoints, stable seed resources; for downstream consumption by Stage 4a of the test-composition pipeline.
 
 Load `references/test-infrastructure-probe.md` and run the protocol described there. The probe runs in **two coordinated layers**:
 
-1. **In parallel with the crawl** — each per-entry-point `phase1-<entry>:` subagent records observed items (auth-model network shapes, mutation endpoints fired by the browser) in its structured return.
-2. **After the crawl completes** — the orchestrator dispatches a single **`phase1-test-infra:` subagent** that runs the deliberate post-crawl probes (reset-endpoint detection, banner / modal selector resolution, stable-seed enumeration) AND reconciles the per-entry-point observations into a single deduplicated list, then writes the canonical `## Test Infrastructure` section to `tests/e2e/docs/app-context.md`.
+1. **In parallel with the crawl**: each per-entry-point `phase1-<entry>:` subagent records observed items (auth-model network shapes, mutation endpoints fired by the browser) in its structured return.
+2. **After the crawl completes**: the orchestrator dispatches a single **`phase1-test-infra:` subagent** that runs the deliberate post-crawl probes (reset-endpoint detection, banner / modal selector resolution, stable-seed enumeration) AND reconciles the per-entry-point observations into a single deduplicated list, then writes the canonical `## Test Infrastructure` section to `tests/e2e/docs/app-context.md`.
 
-**Why a subagent for the post-crawl probe.** The deliberate probe generates several thousand tokens of network output and DOM snapshots. Confining it to a throwaway subagent context keeps the orchestrator at index-level state — the orchestrator only sees the structured return (the `## Test Infrastructure` Markdown block + the audit-tag list). Same context-discipline rule coverage-expansion enforces for composer/probe work, applied here.
+**Why a subagent for the post-crawl probe.** The deliberate probe generates several thousand tokens of network output and DOM snapshots. Confining it to a throwaway subagent context keeps the orchestrator at index-level state; the orchestrator only sees the structured return (the `## Test Infrastructure` Markdown block + the audit-tag list). Same context-discipline rule coverage-expansion enforces for composer/probe work, applied here.
 
 **Output:** a `## Test Infrastructure` section appended to `tests/e2e/docs/app-context.md`, in the canonical format documented in `references/test-infrastructure-probe.md`.
 
@@ -149,12 +149,12 @@ Read the completed app-context.md and trace every path a user can take through t
 
 | Category | Description | Example |
 |---|---|---|
-| **Conversion flows** | Paths that lead to business outcomes — signups, purchases, contact submissions, bookings | Homepage → Services → Contact → Book meeting |
-| **Content consumption flows** | Paths through informational content — reading articles, case studies, guides | Homepage → Guides → Read article → Related articles |
-| **Navigation flows** | How users move between major sections — top nav, footer, breadcrumbs, CTAs | Nav dropdown → Service page → CTA → Contact |
+| **Conversion flows** | Paths that lead to business outcomes: signups, purchases, contact submissions, bookings | Homepage → Services → Contact → Book meeting |
+| **Content consumption flows** | Paths through informational content: reading articles, case studies, guides | Homepage → Guides → Read article → Related articles |
+| **Navigation flows** | How users move between major sections: top nav, footer, breadcrumbs, CTAs | Nav dropdown → Service page → CTA → Contact |
 | **Account flows** | Authentication, profile management, settings | Login → Dashboard → Settings → Change password |
-| **Error recovery flows** | What happens when things go wrong — 404, expired sessions, invalid input | Submit invalid form → Error state → Correct input → Success |
-| **Return visitor flows** | Users who come back — bookmarks, email links, saved state | Email link → Deep page → Navigate to related content |
+| **Error recovery flows** | What happens when things go wrong: 404, expired sessions, invalid input | Submit invalid form → Error state → Correct input → Success |
+| **Return visitor flows** | Users who come back: bookmarks, email links, saved state | Email link → Deep page → Navigate to related content |
 
 ### Output
 
@@ -188,10 +188,10 @@ Assign a priority to each identified flow based on business impact. Priority det
 
 | Priority | Criteria | Coverage expectation |
 |---|---|---|
-| **P0 — Revenue / Core conversion** | Directly leads to business outcomes: purchases, signups, bookings, lead submissions. If this flow breaks, the business loses money or customers. | Full journey test, error states, edge cases, mobile viewport, performance baseline |
-| **P1 — Core experience** | Features most users interact with. Defines what the product is. If broken, users leave. | Full journey test, key error states, data verification |
-| **P2 — Supporting content** | Resources, guides, blog, about pages, informational flows. Enhances experience but not critical path. | Page loads, links work, content present, one journey test |
-| **P3 — Peripheral** | Legal pages, footer links, settings that rarely change, admin tools used internally. | Smoke test: page loads, no broken links |
+| **P0: Revenue / Core conversion** | Directly leads to business outcomes: purchases, signups, bookings, lead submissions. If this flow breaks, the business loses money or customers. | Full journey test, error states, edge cases, mobile viewport, performance baseline |
+| **P1: Core experience** | Features most users interact with. Defines what the product is. If broken, users leave. | Full journey test, key error states, data verification |
+| **P2: Supporting content** | Resources, guides, blog, about pages, informational flows. Enhances experience but not critical path. | Page loads, links work, content present, one journey test |
+| **P3: Peripheral** | Legal pages, footer links, settings that rarely change, admin tools used internally. | Smoke test: page loads, no broken links |
 
 ### Prioritization Questions
 
@@ -206,34 +206,34 @@ If the app's business purpose is unclear, ask the user:
 
 ### Defect-likelihood risk factors (second axis)
 
-Priority (P0–P3) captures **business impact** — what it costs if a flow breaks. It says nothing about **how likely a flow is to break**. A stable P1 marketing page and a hot, recently-rewritten P1 checkout wizard get the same P-tier, yet the wizard is far likelier to harbour a defect. The risk axis is the second, orthogonal signal: it captures defect *likelihood* so coverage-expansion can spend adversarial attention where defects actually concentrate.
+Priority (P0–P3) captures **business impact**: what it costs if a flow breaks. It says nothing about **how likely a flow is to break**. A stable P1 marketing page and a hot, recently-rewritten P1 checkout wizard get the same P-tier, yet the wizard is far likelier to harbour a defect. The risk axis is the second, orthogonal signal: it captures defect *likelihood* so coverage-expansion can spend adversarial attention where defects actually concentrate.
 
-Risk is assessed from **observed evidence only** — signals the section agents already recorded during Phases 1–2, or that the workspace makes mechanically available. Do not guess, intuit, or infer risk from a flow's name; if the evidence for a factor is not in hand, that factor is absent.
+Risk is assessed from **observed evidence only**: signals the section agents already recorded during Phases 1–2, or that the workspace makes mechanically available. Do not guess, intuit, or infer risk from a flow's name; if the evidence for a factor is not in hand, that factor is absent.
 
 For every journey, count how many of the following eight factors are present. Each factor names the evidence that establishes it:
 
 | # | Risk factor | Present when (observed evidence) |
 |---|---|---|
-| 1 | **Input-heavy surface** | The journey's recorded steps include a multi-field form (≥3 user-supplied fields), a wizard, or a file upload — `input-tamper` / `boundary-values` surface. |
-| 2 | **Mutating / state-changing** | The journey fires a state-changing request (POST/PUT/PATCH/DELETE observed in Phase 1 network capture, or a persisted record in the flow) — `replay` / idempotency surface. |
-| 3 | **Auth / permission boundary** | The journey crosses an authentication or role boundary (login-gated route, role-gated action, tenant-scoped resource) — `auth-tamper` / `idor` / `priv-esc` surface. |
-| 4 | **Payment / money path** | The journey touches pricing, checkout, billing, balances, or refunds — `price-tamper` / `qty-tamper` / `balance-bypass` surface. |
+| 1 | **Input-heavy surface** | The journey's recorded steps include a multi-field form (≥3 user-supplied fields), a wizard, or a file upload: `input-tamper` / `boundary-values` surface. |
+| 2 | **Mutating / state-changing** | The journey fires a state-changing request (POST/PUT/PATCH/DELETE observed in Phase 1 network capture, or a persisted record in the flow): `replay` / idempotency surface. |
+| 3 | **Auth / permission boundary** | The journey crosses an authentication or role boundary (login-gated route, role-gated action, tenant-scoped resource): `auth-tamper` / `idor` / `priv-esc` surface. |
+| 4 | **Payment / money path** | The journey touches pricing, checkout, billing, balances, or refunds: `price-tamper` / `qty-tamper` / `balance-bypass` surface. |
 | 5 | **Third-party / external integration** | The journey depends on an external service (payment processor, calendar/booking embed, OAuth provider, webhook) observed in the crawl. |
 | 6 | **High state-variation count** | The section agent recorded ≥3 distinct `State variations:` (empty / loading / errored / data / role) on the journey's pages. |
 | 7 | **Prior defect history** | A prior `tests/e2e/docs/adversarial-findings.md` (if present) records ≥1 `Suspected bugs` or `Ambiguous` finding whose fingerprint routes to a page this journey touches. |
-| 8 | **Recent churn** | Optional, only when the workspace contains the frontend source (same workspace detection `selector-development` uses): `git log --since=90.days -- <component paths the journey touches>` shows commits in the window. Absent when source is unavailable — never a guess. |
+| 8 | **Recent churn** | Optional, only when the workspace contains the frontend source (same workspace detection `selector-development` uses): `git log --since=90.days -- <component paths the journey touches>` shows commits in the window. Absent when source is unavailable; never a guess. |
 
-**Derived tier.** A journey with **2 or more factors present** is `risk: elevated`. A journey with 0 or 1 factor — and any journey whose `Risk factors:` block field is absent — is `risk: baseline` (the default).
+**Derived tier.** A journey with **2 or more factors present** is `risk: elevated`. A journey with 0 or 1 factor (and any journey whose `Risk factors:` block field is absent) is `risk: baseline` (the default).
 
-**What risk does — and does not — do.**
+**What risk does and does not do.**
 
 - **Does** order dispatch *within* a priority tier in coverage-expansion: `risk: elevated` journeys dispatch before `risk: baseline` ones in the same P-tier.
-- **Does** exclude `risk: elevated` journeys from grouped dispatch — they are never folded into a grouped brief (compositional grouping, adversarial grouping, AND P3-batch eligibility). Concentrated failure surfaces are exactly what grouped attention-rationing misses.
-- **Does NOT** change the P-tier. Risk is a second axis, never a priority modifier — an elevated P2 journey stays P2; it does not get promoted to P1.
+- **Does** exclude `risk: elevated` journeys from grouped dispatch: they are never folded into a grouped brief (compositional grouping, adversarial grouping, AND P3-batch eligibility). Concentrated failure surfaces are exactly what grouped attention-rationing misses.
+- **Does NOT** change the P-tier. Risk is a second axis, never a priority modifier: an elevated P2 journey stays P2; it does not get promoted to P1.
 - **Does NOT** add or remove test expectations. Expectations are priority-conditional (§"Priority Framework" coverage-expectation column); risk leaves them untouched.
 - **Backward-compatible.** A journey block with no `Risk factors:` field is `risk: baseline` and groups normally. No existing map breaks.
 
-This is a **methodology rule, not hook-enforced** — no harness hook reads or validates the `Risk factors:` field; the discipline lives in this protocol and in the consuming skills (`coverage-expansion`, `bug-discovery`). The probe categories named above are the canonical vocabulary in `../achilles-protocol/references/subagent-return-schema.md` §3.6.
+This is a **methodology rule, not hook-enforced**; no harness hook reads or validates the `Risk factors:` field; the discipline lives in this protocol and in the consuming skills (`coverage-expansion`, `bug-discovery`). The probe categories named above are the canonical vocabulary in `../achilles-protocol/references/subagent-return-schema.md` §3.6.
 
 ### Output
 
@@ -254,7 +254,7 @@ The `Risk` column is the derived tier (`elevated` when ≥2 factors, else `basel
 
 ## Phase 3.5: Redundancy Revision
 
-Before writing the journey map, scan the prioritised journey list for redundancy. Overlap between journeys is expected — real users traverse shared pages — but unmanaged overlap bloats the map and makes downstream parallel test composition harder. Revision rebalances the list.
+Before writing the journey map, scan the prioritised journey list for redundancy. Overlap between journeys is expected; real users traverse shared pages, but unmanaged overlap bloats the map and makes downstream parallel test composition harder. Revision rebalances the list.
 
 ### Checks
 

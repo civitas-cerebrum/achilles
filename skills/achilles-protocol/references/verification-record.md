@@ -13,7 +13,7 @@ A test the suite keeps is **stable** only when both hold:
    `--output` directory, so a failure's artefacts are never overwritten. `flaky` (green only on retry) does not count:
    pass `--retries=0` on the verification invocation. An order-placing test on the `one-confirming-run` spend policy
    (`test-data-conventions`, spend budgets) counts one audited run instead and is never re-run to reach N.
-2. **One can-fail proof per family** — the negative control, or a mutation (`E2E_MUTATION=<hook>` honoured by a
+2. **One can-fail proof per family**: the negative control, or a mutation (`E2E_MUTATION=<hook>` honoured by a
    fixture, or `achilles-mutate --only <id>` after `--calibrate`) that turns the intended assertion red **with the
    intended message**. Red for another reason is not a proof.
 
@@ -24,7 +24,7 @@ verify notes must match on the pair.
 
 ## The verify note
 
-The verifier — an agent that did not write or review the change — writes `docs/evidence/<change>/verify.md`:
+The verifier, an agent that did not write or review the change, writes `docs/evidence/<change>/verify.md`:
 
 ```markdown
 # Verify — <change>
@@ -39,7 +39,7 @@ The verifier — an agent that did not write or review the change — writes `do
 ## Gates
 - <type check, unit + conventions guard, hook fixture cases, scenario lint: result and counts>
 - Secrets: <evidence dirs scanned by env variable NAME; no values printed>
-- Readability: <spec-shape.md check — flat, steps visible, oracle call present, no test that cannot fail>
+- Readability: <spec-shape.md check: flat, steps visible, oracle call present, no test that cannot fail>
 
 ## Runs
 | Spec file | Context | Run label (`--output`) | Result | Resources (id → final state) |
@@ -53,7 +53,7 @@ The verifier — an agent that did not write or review the change — writes `do
 - <context> <ID> — green N× (runs above) | one-confirming-run (audited); proof: <mutation>
 
 ## Findings
-<defects, flakiness, weak oracles, residual gaps; unverified, skipped or blocked ids as bare ids — they do not count>
+<defects, flakiness, weak oracles, residual gaps; unverified, skipped or blocked ids as bare ids; they do not count>
 ```
 
 | Verdict | Means |
