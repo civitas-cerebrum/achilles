@@ -54,7 +54,7 @@ Each caller consumes the same level but responds on its own contract. The author
 
 ### `companion-mode` (Phase 6 — automation offer after a PASSED verdict)
 
-Offer shapes are verbatim in `skills/companion-mode/SKILL.md` §"Next-step offer matrix"; minimum-scaffold writes are in its §"Phase-6 minimum-scaffold writes" table. Summary:
+Offer shapes are verbatim in `skills/companion-mode/references/phase-6-report-and-offers.md` §"Next-step offer matrix"; minimum-scaffold writes are in `skills/companion-mode/references/graduation-and-boundaries.md` §"Phase-6 minimum-scaffold writes". Summary:
 
 | Level | Offer | If user picks "(a) just this task" |
 |---|---|---|

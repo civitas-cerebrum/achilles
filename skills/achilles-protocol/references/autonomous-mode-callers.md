@@ -136,7 +136,7 @@ When `entry: "stage3"` is set, the orchestrator MUST read the following from `<b
 
 If `<bundlePath>` is missing, unreadable, or its `summary.md` does not match the schema above (no task heading, no pass-criterion line, no app-URL line), the orchestrator stops and returns `{ status: 'failed', error: 'malformed-bundle', bundlePath }` to the caller without writing a durable test.
 
-Companion-mode's Phase 5 produces the bundle in the schema documented at `skills/companion-mode/SKILL.md` §"`summary.md` — required sections". If that schema changes, this file MUST be updated in the same commit.
+Companion-mode's Phase 5 produces the bundle in the schema documented at `skills/companion-mode/references/bundle-and-summary.md` §"`summary.md` — required sections". If that schema changes, this file MUST be updated in the same commit.
 
 ---
 

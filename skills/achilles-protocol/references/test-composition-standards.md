@@ -25,7 +25,7 @@ One row per shared composing concern. "Canonical home" is where the full rule te
 | Stages 1–4 process, hard gates, fix/edit mode | [`stages-protocol.md`](stages-protocol.md) |
 | Steps API surface (signatures, options, selector formats) | [`api-reference.md`](api-reference.md) |
 | Causal-verification / tautology doctrine ("would this assertion pass under a no-op?") | [`stages-protocol.md`](stages-protocol.md) Stage 3 item 5 (Stage 4b item 11 is the review-side checklist form and cites it) |
-| No-inline-selectors rule + its one scope exception | `../SKILL.md` §"Hard rules — kernel-resident" + Rule 6 (exception documented in `../../companion-mode/SKILL.md` §"Selector handling"; see §3.1) |
+| No-inline-selectors rule + its one scope exception | `../SKILL.md` §"Hard rules — kernel-resident" + Rule 6 (exception documented in `../../companion-mode/references/phases-3-4-compose-and-capture.md` §"Selector handling"; see §3.1) |
 | App bugs reported, never worked around | `../SKILL.md` Rule 9 |
 | App-context write-back on every page visit / discovery | `../SKILL.md` Rule 10 |
 | Visual-regression variants (`verifyVisualMatch` + masks) | `../SKILL.md` Rule 16 |
