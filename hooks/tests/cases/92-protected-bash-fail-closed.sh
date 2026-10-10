@@ -358,3 +358,17 @@ for c in 'cd tests/e2e && rm -rf docs' 'cd tests && rm -rf e2e' 'cd tests/e2e &&
   assert_deny "$HOOK" "$(chdir_payload "$c")" "$c" "Writes into"
 done
 assert_allow "$HOOK" "$(chdir_payload 'cd src && rm x')" "cd src && rm x"
+
+# Claude Code's commit form: the message is read from a quoted heredoc, so it is text, not a command.
+section "protected-bash fail-closed: a commit message from a quoted heredoc"
+HEREDOC_COMMIT="git commit -m \"\$(cat <<'EOF'
+docs: refresh journey-map.md
+
+Keeps \`onboarding-status.json\` in step.
+EOF
+)\""
+assert_allow "$HOOK" "$(bash_payload "$HEREDOC_COMMIT")" "git commit -m \"\$(cat <<'EOF' … EOF)\" naming a protected file → ALLOW"
+assert_deny "$HOOK" "$(bash_payload "git commit -m \"\$(cat <<EOF
+docs: \$(rm -rf tests) journey-map.md
+EOF
+)\"")" "an unquoted heredoc expands its body → DENY" "command substitution"

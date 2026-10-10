@@ -225,11 +225,15 @@ judge_find() {
 }
 
 judge_command() {
-  local cmd="${CMD_ARGS[0]:-}" a t e
+  local cmd="${CMD_ARGS[0]:-}" a t e prev="" msg=0
   TGT_BASE=""
   for t in ${CMD_WRITES[@]+"${CMD_WRITES[@]}"}; do target "$t"; done
   TGT_BASE="$CMD_CHDIR"
+  # A git commit|tag|merge message read from a quoted heredoc, -m "$(cat <<'EOF' … EOF)", is inert text.
+  [ "$cmd" = git ] && case " ${CMD_ARGS[*]:1:4} " in *" commit "*|*" tag "*|*" merge "*) msg=1 ;; esac
   for a in ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} ${CMD_ASSIGN[@]+"${CMD_ASSIGN[@]}"}; do
+    case "$msg:$prev:$a" in 1:-m:'$(cat <<'[\'\"]*|1:--message:'$(cat <<'[\'\"]*) prev="$a"; continue ;; esac
+    prev="$a"
     case "$a" in *'$('*|*'`'*) UNSAFE="$UNSAFE${cmd:-assignment}: command substitution"$'\n'; return 0 ;; esac
   done
   [ -n "$cmd" ] || return 0
