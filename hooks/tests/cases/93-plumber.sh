@@ -26,9 +26,9 @@ APPROVE='approve the plumber to repair the ledger'
 
 submit() { payload hook_event_name=UserPromptSubmit session_id=s1 cwd="$P" | "$JQ" -c --arg p "$1" '. + {prompt: $p}'; }
 pending() { [ -f "$APPROVAL_FILE" ] && echo pending || echo none; }
-# dispatch <description> <subagent_type> <tag-role>
+# dispatch <description> <subagent_type> <tag-role> [tool_use_id]
 dispatch() {
-  payload hook_event_name=PreToolUse tool_name=Agent session_id=s1 cwd="$P" tool_use_id="tu-$RANDOM" \
+  payload hook_event_name=PreToolUse tool_name=Agent session_id=s1 cwd="$P" tool_use_id="${4:-tu-$RANDOM}" \
     description="$1" prompt="<<kernel-mandate-role: $3#pl4mbr>>
 repair the harness" | "$JQ" -c --arg t "$2" '.tool_input.subagent_type = $t'
 }
@@ -60,7 +60,8 @@ assert_deny "$GATE" "$(dispatch 'plumber-ledger: re-sanction the ledger' plumber
 assert_deny "$GATE" "$(dispatch 'repair the ledger' general-purpose plumber)" "plumber tag in a non-plumber dispatch → DENIED" "not a plumber dispatch"
 assert_allow "$GATE" "$(dispatch 'test-composer-j-login: compose' test-composer test-composer)" "ordinary dispatch → untouched"
 bash "$GATE" <<<"$(submit "$APPROVE")" >/dev/null 2>&1
-assert_allow "$GATE" "$(dispatch 'plumber-ledger: re-sanction the ledger' plumber plumber)" "approval pending → plumber dispatch ALLOWED"
+assert_allow "$GATE" "$(dispatch 'plumber-ledger: re-sanction the ledger' plumber plumber tu-fixed)" "approval pending → plumber dispatch ALLOWED"
+assert_allow "$GATE" "$(dispatch 'plumber-ledger: re-sanction the ledger' plumber plumber tu-fixed)" "the same dispatch seen again (gate registered twice) → still ALLOWED"
 assert_eq "$(pending)" "none" "…and the approval is consumed"
 assert_eq "$("$JQ" -r 'last.approval' "$GRANTS" 2>/dev/null)" "$APPROVE" "…and a grant opens carrying the approval verbatim"
 assert_deny "$GATE" "$(dispatch 'plumber-again: one more' plumber plumber)" "second dispatch on one approval → DENIED" "without the user's approval"

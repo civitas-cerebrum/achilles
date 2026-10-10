@@ -105,6 +105,15 @@ plumber_live_grant() {
   printf '%s' "$text"
 }
 
+# plumber_grant_for <dispatch-id> — 0 when an open grant was opened by this dispatch.
+plumber_grant_for() {
+  local grants
+  grants="$(plumber__dir)/plumber-grants.json"
+  [ -n "$1" ] && [ -f "$grants" ] || return 1
+  "$JQ" -e --arg id "$1" --argjson now "$(date +%s)" --argjson ttl "$PLUMBER_TTL_S" '
+    any(.[]?; .id == $id and (.ts // 0) >= ($now - $ttl))' "$grants" >/dev/null 2>&1
+}
+
 # plumber_caller_role <input-json> — the role the vendored kernel resolves for this call, or
 # nothing. Runs in a subshell: the kernel library may emit its own deny and exit, which must not
 # leak into the calling gate.

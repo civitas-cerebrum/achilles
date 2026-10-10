@@ -73,6 +73,11 @@ dispatch and dispatch it as \`plumber-<slug>:\`."
   exit 0
 fi
 
+ID=$(hook_field .tool_use_id)
+# The same dispatch seen twice (the gate registered at two scopes, or a retried hook) is the
+# grant it already opened, not a second use of the approval.
+plumber_grant_for "$ID" && exit 0
+
 PENDING=$(plumber_pending_approval "$SESSION_ID") || PENDING=""
 if [ -z "$PENDING" ]; then
   emit_pre_deny "[BLOCKED] Plumber dispatch without the user's approval.
@@ -92,7 +97,6 @@ One approval covers one dispatch."
   exit 0
 fi
 
-ID=$(hook_field .tool_use_id)
 [ -n "$ID" ] || ID="dispatch-$(date +%s)"
 APPROVAL=$(plumber_consume_approval "$SESSION_ID" "$ID") || {
   emit_pre_deny "[BLOCKED] The user's plumber approval could not be recorded as a grant (session state not writable), so the plumber would run without its exemptions. Fix: check that $(plumber__dir) is writable, then retry the dispatch."
