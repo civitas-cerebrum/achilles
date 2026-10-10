@@ -49,6 +49,8 @@ section "cli-isolation: command-line forms"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s composer-j-x-1-c1 open --browser=chromium http://app')" "-s <slug> space form → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='bunx playwright-cli -s=composer-j-x-1-c1 open --browser=chromium http://app')" "bunx runner → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='pnpm exec playwright-cli -s=composer-j-x-1-c1 open --browser=chromium http://app')" "pnpm exec runner → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='npx --no-install playwright-cli --version')" "npx --no-install precondition check → ALLOW"
+assert_deny "$H" "$(payload tool_name=Bash command='npx --no-install playwright-cli open http://app')" "npx --no-install without a slug → DENY" "Missing -s=<slug> flag"
 
 section "cli-isolation: noise (playwright-cli mentioned inside string)"
 assert_allow "$H" "$(payload tool_name=Bash command='echo \"playwright-cli is great\"')" "playwright-cli inside echo → silent allow"
