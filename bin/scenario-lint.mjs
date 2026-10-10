@@ -15,6 +15,8 @@
 //
 // Exit 0 = every (selected) block passes; exit 1 = a block is rejected or `--id` matched no block; exit 2 = usage or
 // configuration. Messages have three lines: `[specs.shape] <file>:<line> <ID>: <what>` / `→ Do: …` / `→ Why/how: <doc>`.
+// Size: one file on purpose. Parser, field checks and CLI share one block model and ship as a single bin entry, with
+// no importable second module to keep in step.
 // `--json` prints { ok, blocks: [{ id, title, line, file, fields, errors }], skipped }: `blocks` holds the selected
 // blocks (only the `--id` match when given); `skipped` always lists every non-block `####` heading of the given files.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';

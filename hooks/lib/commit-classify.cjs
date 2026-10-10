@@ -20,7 +20,7 @@
 //
 // A commit inside the project is gated; a commit in another repository is not ours to gate.
 //
-// Known limits (unchanged, and documented in references/factory-gates.md): no expansion of $VAR
+// Known limits (documented in references/factory-gates.md): no expansion of $VAR
 // or $(…), so `$GIT commit` is not seen; nesting deeper than one level is not followed; a `cd`
 // inside a nested shell correctly does not escape it, but a `cd` inside a subshell at the SAME
 // level does leak forward, because the splitter treats `(`/`)` as plain command boundaries.
@@ -37,8 +37,7 @@ if (typeof command !== 'string' || typeof rootArg !== 'string' || !rootArg) {
 const root = path.resolve(rootArg);
 const home = process.env.HOME || '/';
 
-// Lexical only, like the bash normalize_path it replaces: symlinks are not followed, so a
-// symlinked directory is judged by its link path.
+// Lexical only: symlinks are not followed, so a symlinked directory is judged by its link path.
 function resolveDir(base, target) {
   let t = target;
   if (t === '~') t = home;
@@ -48,8 +47,7 @@ function resolveDir(base, target) {
 
 const inside = (d) => d === root || d.startsWith(root + path.sep);
 
-// Peeled before the command word. `env` is here because `env git commit` is a real thing an agent
-// writes and the old tokeniser's "token 0 must be git" test let it through untouched.
+// Peeled before the command word; `env git commit` is a commit.
 const PREFIXES = new Set(['env', 'command', 'builtin', 'exec', 'sudo', 'nice', 'nohup', 'stdbuf', 'time', '{', '}']);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 

@@ -10,6 +10,7 @@
 'use strict';
 
 const { execFileSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 // shell-words.sh is the one shell parser; this asks it. Words arrive NUL-separated: SW_SEP (\036) ends
@@ -19,19 +20,22 @@ const SPLIT = 'source "$1"; shell_words "$2"; [ "$SW_OVERFLOW" = 1 ] && exit 3; 
 
 /**
  * Splits a command line into segments of tokens, as hooks/lib/shell-words.sh reads it. An empty
- * argument ('' or "") survives as an empty string. A line over the parser's size cap is unusable:
- * the process exits 2, which the gates turn into an allow-with-warning.
+ * argument ('' or "") survives as an empty string. A line the parser cannot split (over its
+ * size cap, a parse error, or shell-words.sh missing) is unusable: the process names the cause on stderr
+ * and exits 2, which the gates turn into an allow-with-warning.
  *
  * @param {string} s the command line
  * @returns {string[][]}
  */
 function segments(s) {
+  const lib = path.join(__dirname, 'shell-words.sh');
+  const unusable = (why) => { process.stderr.write(`cannot classify the command: ${why}\n`); process.exit(2); };
+  if (!fs.existsSync(lib)) unusable(`${lib} is missing`);
   let out;
   try {
-    out = execFileSync('bash', ['-c', SPLIT, 'bash', path.join(__dirname, 'shell-words.sh'), s], { encoding: 'utf8' });
+    out = execFileSync('bash', ['-c', SPLIT, 'bash', lib, s], { encoding: 'utf8' });
   } catch (e) {
-    process.stderr.write('command too long to classify\n');
-    process.exit(2);
+    unusable(e.status === 3 ? 'longer than the shell parser accepts' : `shell parser failed (${e.code || `exit ${e.status}`})`);
   }
   const segs = [];
   let toks = [];
