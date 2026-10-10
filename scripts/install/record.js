@@ -185,6 +185,25 @@ function recordInstalled(rec, file) {
   } catch (_) { /* not installed: nothing to record */ }
 }
 
+// withRecord <rec> <fn>: runs an installer's copy phase and writes the record whatever happens, so a
+// file copied before a throw stays recorded for achilles-uninstall. A phase that did not finish
+// also keeps every earlier entry it had not reached; nothing was pruned.
+function withRecord(rec, fn) {
+  let done = false;
+  try {
+    const out = fn();
+    done = true;
+    return out;
+  } finally {
+    if (!done) {
+      for (const [rel, hash] of Object.entries(rec.prev)) if (!(rel in rec.next.files)) rec.next.files[rel] = hash;
+      const have = new Set(rec.next.registrations.map(registrationKey));
+      for (const r of rec.prevRegistrations) if (!have.has(registrationKey(r))) rec.next.registrations.push(r);
+    }
+    writeRecord(rec);
+  }
+}
+
 function writeRecord(rec) {
   if (!rec.hadRecord && rec.adopted > 0) {
     console.log(`[civitas-cerebrum] First install with a record: ${rec.adopted} existing file${rec.adopted === 1 ? '' : 's'} from an earlier version replaced by the packaged content.`);
@@ -202,4 +221,4 @@ function writeRecord(rec) {
   fs.writeFileSync(file, text);
 }
 
-module.exports = { RECORD_FILE, PROJECT_HOOK_PREFIX, hookScriptPath, shellQuote, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, recordInstalled, writeRecord };
+module.exports = { RECORD_FILE, PROJECT_HOOK_PREFIX, hookScriptPath, shellQuote, sha256, openRecord, copyTracked, removeRecorded, pruneStale, dropStaleRegistrations, recordInstalled, withRecord, writeRecord };

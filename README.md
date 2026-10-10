@@ -53,7 +53,7 @@ Onboarding runs eight phases: scaffold, groundwork, happy path, journey map, cov
 
 Opt-outs, set before install: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, `CIVITAS_SKIP_HOOK_INSTALL=1`, `CIVITAS_SKIP_JQ_INSTALL=1` (hooks then need `jq` on PATH), `SQL_CLIENT_SKIP_SKILLS=1` (KL-22). A step that fails prints a warning and the install still succeeds; what was written stays recorded for `achilles-uninstall`.
 
-If npm 11 reports the install script as not approved, run `npm install-scripts approve @civitas-cerebrum/achilles` and install again.
+If npm 11 reports the install script as not approved, run `npm install-scripts approve @civitas-cerebrum/achilles` and install again. For `-g`, which has no project to record the approval, pass it at install time with `npm i -g --allow-scripts=@civitas-cerebrum/achilles @civitas-cerebrum/achilles`, or persist it with `npm config set allow-scripts=@civitas-cerebrum/achilles --location=user`.
 
 ### Run in CI
 

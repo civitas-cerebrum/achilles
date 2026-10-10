@@ -1041,6 +1041,21 @@ run_npm_global_simulation() {
   else
     sim_fail "real npm i -g: the installed achilles-uninstall --global reverses it" "rc=$rc ${out:0:200}"
   fi
+
+  # The hooks step fails part-way (hooks/lib is a file, so copying the libraries throws after the
+  # scripts landed): what it copied is still recorded, and the uninstaller leaves no hook behind.
+  local phome="$work/phome" pprefix="$work/pprefix" left
+  mkdir -p "$phome/.claude/hooks" "$pprefix"; echo "mine" > "$phome/.claude/hooks/lib"
+  out=$(cd "$work" && HOME="$phome" npm_config_cache="$cache" npm_config_prefix="$pprefix" SQL_CLIENT_SKIP_SKILLS=1 \
+    CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -g --no-audit --no-fund --foreground-scripts "$work/$tgz" 2>&1); rc=$?
+  HOME="$phome" "$pprefix/bin/achilles-uninstall" --global >/dev/null 2>&1
+  left=$(cd "$phome/.claude/hooks" 2>/dev/null && find . -type f ! -path ./lib | head -3)
+  if [ "$rc" = 0 ] && printf '%s' "$out" | grep -q 'Could not install harness hooks' && [ -z "$left" ] \
+     && [ "$(cat "$phome/.claude/hooks/lib")" = "mine" ]; then
+    sim_pass "real npm i -g, hooks step failing part-way: exit 0, and uninstall --global removes every hook it copied"
+  else
+    sim_fail "real npm i -g, hooks step failing part-way: exit 0, and uninstall --global removes every hook it copied" "rc=$rc left=$(printf '%s' "$left" | tr '\n' ' ')"
+  fi
 }
 
 run_install_simulation

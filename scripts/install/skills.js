@@ -1,7 +1,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { packageDir, destinations } = require('./context.js');
-const { openRecord, copyTracked, pruneStale, writeRecord } = require('./record.js');
+const { openRecord, copyTracked, pruneStale, withRecord } = require('./record.js');
 
 // Auto-discover every skill under skills/. A skill is any direct subdirectory
 // of skills/ that contains a SKILL.md at its root. This keeps installs in sync
@@ -41,12 +41,13 @@ function installCivitasSkills(dests = destinations, skillsDir = path.join(packag
     let written = 0;
     for (const skillsDestBase of dests) {
       const rec = openRecord(path.dirname(skillsDestBase), ['skills']);
-      for (const skill of skills) {
-        written += copyDirRecursive(rec, path.join(skillsDir, skill), path.join(skillsDestBase, skill));
-        installedSkills.add(skill);
-      }
-      pruneStale(rec);
-      writeRecord(rec);
+      withRecord(rec, () => {
+        for (const skill of skills) {
+          written += copyDirRecursive(rec, path.join(skillsDir, skill), path.join(skillsDestBase, skill));
+          installedSkills.add(skill);
+        }
+        pruneStale(rec);
+      });
     }
     if (installedSkills.size > 0 && written === 0) {
       console.log(`[@civitas-cerebrum/achilles] Skills unchanged (${installedSkills.size} already current in ${dests.length} location${dests.length > 1 ? 's' : ''}).`);

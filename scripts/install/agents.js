@@ -1,7 +1,7 @@
 const fs   = require('fs');
 const path = require('path');
 const { packageDir, agentDestinations } = require('./context.js');
-const { openRecord, copyTracked, pruneStale, writeRecord } = require('./record.js');
+const { openRecord, copyTracked, pruneStale, withRecord } = require('./record.js');
 
 // Agent definitions (agents/<role>.md): Claude Code resolves a typed
 // `subagent_type: <role>` only when <claudeDir>/agents/<role>.md exists. Same
@@ -18,18 +18,19 @@ function installCivitasAgents(dests = agentDestinations, srcDir = path.join(pack
     try {
       fs.mkdirSync(dest, { recursive: true });
       const rec = openRecord(path.dirname(dest), ['agents']);
-      for (const file of shipped) {
-        const target = path.join(dest, file);
-        const unrecorded = !rec.prev[path.relative(rec.claudeDir, target)];
-        if (unrecorded && fs.existsSync(target) && !fs.readFileSync(target, 'utf8').includes(AGENT_MARKER)) {
-          result.skipped.push(target);
-          console.warn(`[@civitas-cerebrum/achilles] ${target} is not managed by achilles — left untouched; \`subagent_type: ${file.slice(0, -3)}\` resolves to your file.`);
-          continue;
+      withRecord(rec, () => {
+        for (const file of shipped) {
+          const target = path.join(dest, file);
+          const unrecorded = !rec.prev[path.relative(rec.claudeDir, target)];
+          if (unrecorded && fs.existsSync(target) && !fs.readFileSync(target, 'utf8').includes(AGENT_MARKER)) {
+            result.skipped.push(target);
+            console.warn(`[@civitas-cerebrum/achilles] ${target} is not managed by achilles — left untouched; \`subagent_type: ${file.slice(0, -3)}\` resolves to your file.`);
+            continue;
+          }
+          if (copyTracked(rec, path.join(srcDir, file), target)) result.installed++;
         }
-        if (copyTracked(rec, path.join(srcDir, file), target)) result.installed++;
-      }
-      pruneStale(rec);
-      writeRecord(rec);
+        pruneStale(rec);
+      });
     } catch (err) {
       console.warn(`[@civitas-cerebrum/achilles] Could not install agent definitions to ${dest}: ${err.message}`);
     }
