@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { walk, SKILLS_DIR } from './util.mjs';
 
 const MANDATE_LEDGER = 'hooks/data/achilles-qa.kernel-mandate.md';
-const MAX_DASHES_PER_100_LINES = 30;
+const MAX_DASHES_PER_100_LINES = 8;
 const MIN_LINES = 40;
 const TELLS = /\b(genuinely|robust\w*|seamless\w*|comprehensive|it'?s worth noting|stated plainly)\b/gi;
 // 'honest' and 'non-negotiable' are terms inside headings, quoted rationalisations and code; elsewhere they are filler.
