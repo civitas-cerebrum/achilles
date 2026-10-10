@@ -650,7 +650,7 @@
         <div class="stage-num">04</div>
         <span class="stage-label auto">Autonomous</span>
         <h3 class="stage-title">Guard / Heal</h3>
-        <p class="stage-desc">Gated releases, layered verification. Self-repair establishes a baseline by running the failing scope three times, then classifies each failure from its own evidence &mdash; trace, console, network: fails every run, it's a <strong>deterministic failure</strong> (an app bug, filed with evidence; the test is left alone); passes sometimes, it's a <strong>flake</strong> (quarantined with evidence); mechanical drift, it's <strong>healed</strong> autonomously. Every test ends green or explained &mdash; never silently skipped.</p>
+        <p class="stage-desc">Gated releases, layered verification. Self-repair establishes a baseline by running the failing scope three times, then classifies each failure from its own evidence &mdash; trace, console, network: fails every run, it's a <strong>deterministic failure</strong> (an app bug, filed with evidence; the test is left alone); passes sometimes, it's a <strong>flake</strong> (quarantined with evidence); mechanical drift, it's <strong>healed</strong> autonomously. Each test ends green, quarantined or explained.</p>
       </div>
     </div>
 
@@ -734,7 +734,7 @@
     <div class="section-header reveal">
       <div class="section-tag">Part III</div>
       <h2 class="section-title">Commit or<br /><span class="grad">Discard</span></h2>
-      <p class="section-desc">Tests are discardable by default. The verification work always happens. But committing to the permanent suite is a separate decision with a separate gate.</p>
+      <p class="section-desc">Tests are discardable by default. The verification work is still required. But committing to the permanent suite is a separate decision with a separate gate.</p>
     </div>
 
     <div class="prose reveal">
@@ -766,39 +766,288 @@
     <div class="section-header reveal">
       <div class="section-tag">Part IV</div>
       <h2 class="section-title">Enforcement, Not<br /><span class="grad">Instructions</span></h2>
-      <p class="section-desc">The distinction between a methodology and a best-practices document is enforcement. Every critical rule is backed by a harness hook that programmatically blocks the action when a precondition is not met.</p>
+      <p class="section-desc">The distinction between a methodology and a best-practices document is enforcement. The critical rules are backed by Claude Code hooks that deny the action when a precondition is not met. The hooks act while an Achilles skill is running, and the operator can switch parts of the enforcement off. The sections below list what runs, what each part denies, and how to turn it off.</p>
     </div>
 
+    <div class="prose reveal">
+      <p>48 hooks ship with the package. That count is the 41 top-level hook scripts plus 7 opt-in factory gates under <code class="inline-code">hooks/factory/</code>. 39 are enforcement gates, defined as scripts whose name ends in <code class="inline-code">-gate.sh</code> or <code class="inline-code">-guard.sh</code>; the rest record state or write summaries. 47 are registered in <code class="inline-code">hooks/data/hook-manifest.json</code>; the 48th, <code class="inline-code">kernel-mandate-role-gate</code>, is run by the kernel wrapper (see the role kernel below). Hooks register with Claude Code at <code class="inline-code">npm postinstall</code>: per project with a plain install, system-wide with <code class="inline-code">npm install -g</code>.</p>
+      <p>Hooks pass through unless the protocol is active in the session. Activation comes from <code class="inline-code">ACHILLES_PROTOCOL=1</code>, an Achilles skill call, a typed <code class="inline-code">/&lt;skill&gt;</code> or an Achilles-shaped dispatch. <code class="inline-code">ACHILLES_PROTOCOL=0</code> stops a new session from activating; it does not deactivate a session that is already active. A few hooks have their own scope and run regardless (the four ledger gates, <code class="inline-code">client-term-guard</code>, <code class="inline-code">deck-inspection-gate</code>).</p>
+    </div>
+
+    <div class="prose reveal">
+      <h3>Protocol hooks (40)</h3>
+      <p>Names, events and escape hatches are generated from <code class="inline-code">hook-manifest.json</code> and <code class="inline-code">harness-hooks.md</code> in the package.</p>
+    </div>
     <div class="gate-table-wrap reveal">
       <div class="gate-row gate-header">
-        <div>Gate</div>
-        <div>What It Blocks</div>
-        <div>Precondition</div>
+        <div>Hook</div>
+        <div>Event and effect</div>
+        <div>Escape hatch</div>
       </div>
       <div class="gate-row">
-        <div class="gate-name">Evidence bundle</div>
-        <div class="gate-blocks">Ticket transition; non-draft PR creation</div>
-        <div class="gate-pre">Evidence bundle with summary, screenshots, and verification artifacts</div>
+        <div class="gate-name">achilles-import-boundary-gate</div>
+        <div class="gate-blocks">PreToolUse:Edit|Write<br />Static screen: nothing the orchestrator's <code class="inline-code">npx playwright test</code> loads may import or point outside <code class="inline-code">tests/</code> (allowlisted packages and Node builtins only; dynamic or unparseable constructs deny).</div>
+        <div class="gate-pre">none</div>
       </div>
       <div class="gate-row">
-        <div class="gate-name">Adversarial verification</div>
-        <div class="gate-blocks">Same surfaces as above</div>
-        <div class="gate-pre">Review receipt carrying both a <code class="inline-code">negativeControl</code> and a <code class="inline-code">review</code> object, newer than the newest spec edit</div>
+        <div class="gate-name">achilles-kernel-activation-gate</div>
+        <div class="gate-blocks">PreToolUse:.*<br />Registered wrapper: runs the vendored kernel only while the protocol is active and relays its verdict and exit status unchanged.</div>
+        <div class="gate-pre"><code class="inline-code">KERNEL_MANDATE=0</code> in the operator shell</div>
       </div>
       <div class="gate-row">
-        <div class="gate-name">Schema validation</div>
-        <div class="gate-blocks">Subagent returns</div>
-        <div class="gate-pre">Every sub-agent return must conform to its role's JSON Schema</div>
+        <div class="gate-name">achilles-multiedit-gate</div>
+        <div class="gate-blocks">PreToolUse:MultiEdit<br />Denies MultiEdit while the protocol is active; the Write/Edit gates do not inspect it.</div>
+        <div class="gate-pre">none</div>
       </div>
       <div class="gate-row">
-        <div class="gate-name">Dual-stage review</div>
-        <div class="gate-blocks">Journey completion</div>
-        <div class="gate-pre">Composer and reviewer must be separate dispatches with isolated context</div>
+        <div class="gate-name">achilles-protocol-activation-watcher</div>
+        <div class="gate-blocks">PreToolUse:Skill|Agent, UserPromptSubmit<br />Observe-only. Writes the per-session marker that switches the protocol on when an Achilles skill is called.</div>
+        <div class="gate-pre">none; <code class="inline-code">ACHILLES_PROTOCOL=0</code> suppresses marking</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">adversarial-verification-gate</div>
+        <div class="gate-blocks">PreToolUse:mcp__.*<br />Denies a transition to a completed state (<code class="inline-code">done|complete|closed|resolved|shipped|released</code>) or a published PR; warns on a verdict-shaped comment.</div>
+        <div class="gate-pre"><code class="inline-code">CIVITAS_DISABLE_ADVERSARIAL_GATE=1</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">client-term-guard</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />Denies content or paths matching a term in the operator-local <code class="inline-code">&lt;repo-root&gt;/.achilles/client-terms.local.txt</code> (gitignored; the terms must never ship).</div>
+        <div class="gate-pre">edit or remove the denylist</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">commit-message-gate</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Denies scoped-convention violations, --no-verify, and any commit carrying AI-attribution metadata.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">compliance-sweep-exit-gate</div>
+        <div class="gate-blocks">Stop<br />Blocks the stop when a spec was written and no Stage-4b compliance sweep followed.</div>
+        <div class="gate-pre"><code class="inline-code">CIVITAS_DISABLE_COMPLIANCE_SWEEP_GATE=1</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">composition-judge-gate</div>
+        <div class="gate-blocks">PreToolUse:Agent<br />Records <code class="inline-code">composition-judge-*</code> dispatches and verdicts in <code class="inline-code">~/.claude/achilles/composition-judge/</code>.</div>
+        <div class="gate-pre">none; self-clears at the cap, on <code class="inline-code">greenlight</code>, or on a repeat Stop</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">deck-inspection-gate</div>
+        <div class="gate-blocks">PostToolUse:Bash<br />After a deck PDF export, denies Agent dispatches until the rendered pages have been inspected.</div>
+        <div class="gate-pre"><code class="inline-code">DECK_INSPECTION_GATE=0</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">evidence-bundle-gate</div>
+        <div class="gate-blocks">PreToolUse:mcp__.*<br />Denies a terminal tracker transition or published PR without an evidence bundle for the ticket.</div>
+        <div class="gate-pre"><code class="inline-code">CIVITAS_DISABLE_EVIDENCE_GATE=1</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">failure-diagnosis-evidence-floor-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />In a failure-diagnosis session, denies a spec write when the transcript shows no access to failure evidence.</div>
+        <div class="gate-pre"><code class="inline-code">FD_EVIDENCE_FLOOR_GATE=off</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">harness-self-protection-guard</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />Denies writes under <code class="inline-code">*/.claude/hooks/*</code> and to <code class="inline-code">settings.json</code> / <code class="inline-code">settings.local.json</code>, after path normalisation.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">hook-authored-state-guard</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />Denies direct writes to the approver registry and integrity sidecar, and roster-shrinking writes to cycle state.</div>
+        <div class="gate-pre">operator-only</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">journey-map-sentinel-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />Denies a journey-map write that lacks the generated sentinel or the cycle-1 dispatch record.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">journey-mapping-skill-preread-gate</div>
+        <div class="gate-blocks">PreToolUse:Agent|Write|Edit<br />Denies journey-map cycle dispatches and writes unless the journey-mapping skill was read.</div>
+        <div class="gate-pre"><code class="inline-code">JOURNEY_MAPPING_PREREAD_GATE=off</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">ledger-integrity-chain</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />Hash chain in <code class="inline-code">tests/e2e/docs/.ledger-integrity.json</code> over the onboarding ledger and the two orchestrator-written progress files.</div>
+        <div class="gate-pre">operator-only, restore the file or delete the sidecar in a human terminal</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">onboarding-ledger-gate</div>
+        <div class="gate-blocks">PreToolUse:Agent<br />Reads the ledger and denies non-reviewer dispatches while the prior phase's <code class="inline-code">reviewerVerdict</code> is <code class="inline-code">pending</code>, and out-of-order phase, pass or cycle dispatches.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">onboarding-ledger-write-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />Validates the ledger schema and state-machine transitions: mode changes, phase skips, approvals, reviewer cycles and deliverables.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">perf-load-safety-gate</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Fixed ceilings, not read from config: VUs at most 1000, duration at most 3600 s, origin in the <code class="inline-code">perf-onboarding.config.json</code> allowlist, production only when <code class="inline-code">production.allowed</code> is <code class="inline-code">true</code>.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">perf-onboarding-ledger-gate</div>
+        <div class="gate-blocks">PreToolUse:Agent<br />Same gate for <code class="inline-code">tests/perf/docs/perf-onboarding-status.json</code>: pending verdicts, out-of-order phases, and Phase-5 passes out of order (load, stress, spike, soak).</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">perf-onboarding-ledger-write-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit<br />Validates the schema and state-machine transitions, approver identity, mode authorisation, <code class="inline-code">reviewerCycles</code>, and the per-phase deliverables.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">perf-summary-writer</div>
+        <div class="gate-blocks">Stop<br />Writes <code class="inline-code">&lt;project&gt;/.achilles/perf-summary.json</code> from the perf ledger, scenarios, k6 summaries and baselines; no-op without <code class="inline-code">perf-onboarding-status.json</code>; metrics null when no result exists.</div>
+        <div class="gate-pre">n/a</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">playwright-artifact-archiver</div>
+        <div class="gate-blocks">PostToolUse:Bash<br />Copies each run's traces, videos, screenshots and <code class="inline-code">error-context.md</code> to <code class="inline-code">&lt;project&gt;/.achilles/runs/&lt;runId&gt;/artifacts/</code> with a <code class="inline-code">manifest.json</code>, because the next run wipes <code class="inline-code">outputDir</code>.</div>
+        <div class="gate-pre"><code class="inline-code">ACHILLES_ARTIFACT_RETAIN=0</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">playwright-cli-cleanup-on-stop</div>
+        <div class="gate-blocks">SubagentStop<br />Runs <code class="inline-code">playwright-cli close-all</code> to reap orphaned subagent browser sessions, except while <code class="inline-code">tests/e2e/docs/.phase4-cycle-state.json</code> exists (parallel cycle agents own their sessions).</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">playwright-cli-isolation-guard</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Denies a call without the role-prefixed <code class="inline-code">-s=&lt;slug&gt;</code> flag, also through <code class="inline-code">npx</code>, <code class="inline-code">bunx</code>, <code class="inline-code">pnpm exec</code>; a shell, wrapper or program it cannot read that names <code class="inline-code">playwright-cli</code> denies.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">pr-attribution-gate</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Same attribution match as <code class="inline-code">commit-message-gate</code>, over the command and <code class="inline-code">--body-file</code> / <code class="inline-code">-F</code> contents; a PR body never passes through git.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">protected-artifact-bash-guard</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Fails closed: a command naming a protected path (registry: <code class="inline-code">hooks/lib/protected-paths.sh</code>) is denied unless every command on it is a known read-only command or a known writer with unprotected targets.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">run-summary-writer</div>
+        <div class="gate-blocks">Stop<br />Writes <code class="inline-code">&lt;project&gt;/.achilles/run-summary.json</code> from the ledger, adversarial findings, journey map and newest <code class="inline-code">results.json</code>; the tests block is null when no result file exists.</div>
+        <div class="gate-pre">n/a</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">selector-development-activation-gate</div>
+        <div class="gate-blocks">PreToolUse:Edit|Write<br />Denies selector-development edits when the workspace lacks a recognised frontend framework dependency or a <code class="inline-code">tests/e2e/*.spec.ts</code> directory.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">selector-development-inertness-guard</div>
+        <div class="gate-blocks">PreToolUse:Edit|Write<br />Denies a selector-development edit unless it is a single additive attribute matching the project's selector convention.</div>
+        <div class="gate-pre">env override, see hook header</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">selector-development-pipeline-stepper</div>
+        <div class="gate-blocks">PreToolUse:Bash|Edit|Write<br />Enforces the 8-step order (before-snapshot, patch, typecheck, unit, e2e, after-snapshot, visual-diff, commit); records each step's outcome on the scope receipt.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">selector-development-revert-on-stop</div>
+        <div class="gate-blocks">Stop<br />Warns when a selector-development scope is active and its last passing step is not <code class="inline-code">visual_diff</code> or <code class="inline-code">commit</code>.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">standard-mode-first-pass-guard</div>
+        <div class="gate-blocks">PreToolUse:Agent<br />Under standard mode, denies grouped first-pass dispatches and single-subagent journey-mapping walkthroughs.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">subagent-return-schema-guard</div>
+        <div class="gate-blocks">PostToolUse:Agent<br />Validates the return against <code class="inline-code">schemas/subagent-returns/&lt;role&gt;.schema.json</code> and checks the handover envelope's <code class="inline-code">cycle</code>.</div>
+        <div class="gate-pre"><code class="inline-code">SCHEMA_RETURN_GUARD=strict</code> makes it block; the default is non-blocking</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">subagent-schema-preread-gate</div>
+        <div class="gate-blocks">PreToolUse:Agent<br />Denies a schema-validated role dispatch whose brief omits the schema citation.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">test-id-compliance-gate</div>
+        <div class="gate-blocks">PreToolUse:Edit|Write<br />Denies a newly added test whose title lacks a leading ID, or repeats one in the file.</div>
+        <div class="gate-pre"><code class="inline-code">CIVITAS_DISABLE_TEST_ID_GATE=1</code></div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">workflow-approver-registry</div>
+        <div class="gate-blocks">PreToolUse:Agent<br />Records each <code class="inline-code">workflow-reviewer-*</code> / <code class="inline-code">phase-validator-*</code> dispatch by <code class="inline-code">tool_use_id</code> in <code class="inline-code">tests/e2e/docs/.workflow-approvers.json</code>, so the ledger gate can check who approves.</div>
+        <div class="gate-pre">n/a</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">workflow-reviewer-attestation-gate</div>
+        <div class="gate-blocks">PostToolUse:Agent<br />Warns when a <code class="inline-code">workflow-reviewer-*</code> approve cites no file path, or paths that do not exist.</div>
+        <div class="gate-pre">none</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">workflow-reviewer-brief-gate</div>
+        <div class="gate-blocks">PreToolUse:Agent<br />Denies a <code class="inline-code">workflow-reviewer-*</code> brief that lacks the <code class="inline-code">onboarding-status.json</code> reference, a verification verb (<code class="inline-code">Read</code> / <code class="inline-code">verify</code> / <code class="inline-code">inspect</code>), or 400 characters of substance.</div>
+        <div class="gate-pre"><code class="inline-code">WORKFLOW_REVIEWER_BRIEF_GATE=off</code></div>
       </div>
     </div>
 
     <div class="prose reveal">
-      <p>48 hooks ship with the package &mdash; 39 are enforcement gates. They are installed globally by <code class="inline-code">npm postinstall</code> and registered in the harness configuration. They cannot be bypassed through the agent's own actions. The enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session.</p>
+      <h3>Factory gates (7, opt-in)</h3>
+      <p>Factory gates apply only when the project commits an <code class="inline-code">achilles-factory-rules.json</code>. With no rule file, or a rule id the file omits, the gate allows. The escape hatch for each is dropping the rule. They read the written text, not the program (KL-18), and normalise paths lexically (KL-19).</p>
+    </div>
+    <div class="gate-table-wrap reveal">
+      <div class="gate-row gate-header">
+        <div>Hook</div>
+        <div>Event and effect</div>
+        <div>Escape hatch</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">commit-gate</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Denies a <code class="inline-code">git commit</code> without a verify stamp whose <code class="inline-code">treeHash</code> matches the tree, and (with a current-change marker) without that change's evidence files.</div>
+        <div class="gate-pre">drop the rule</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">intake-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit|MultiEdit<br />Denies a new spec whose test titles do not trace to a linted scenario block, and any new file in a frozen directory.</div>
+        <div class="gate-pre">drop the rule</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">repository-evidence-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit|MultiEdit<br />Denies a new or changed page-repository selector with neither an evidence note under <code class="inline-code">evidenceDir</code> nor <code class="inline-code">"provisional": true</code>.</div>
+        <div class="gate-pre">drop the rule</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">secrets-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit|MultiEdit<br />Denies an email address, phone number or token in a committed project file; quotes only the first three characters of the match.</div>
+        <div class="gate-pre">drop the rule</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">selector-write-gate</div>
+        <div class="gate-blocks">PreToolUse:Write|Edit|MultiEdit<br />Denies an inline selector or raw locator/navigation call in a source file under <code class="inline-code">scope</code>.</div>
+        <div class="gate-pre">drop the rule</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">spend-gate</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Denies a test run that would execute a spend-incurring spec without that segment's own opt-in.</div>
+        <div class="gate-pre">drop the rule</div>
+      </div>
+      <div class="gate-row">
+        <div class="gate-name">state-gate</div>
+        <div class="gate-blocks">PreToolUse:Bash<br />Denies Bash writes into the project's process-state directory; reads and copies out pass.</div>
+        <div class="gate-pre">drop the rule</div>
+      </div>
+    </div>
+
+    <div class="prose reveal">
+      <h3>The role kernel</h3>
+      <p>The role kernel gives each dispatched role its own grants: allowed tools, Bash command patterns, readable paths and writable paths. The package ships 23 roles in <code class="inline-code">hooks/data/achilles-qa.kernel-mandate.json</code>. Postinstall stages that file as <code class="inline-code">.claude/kernel-mandate.json</code> and never overwrites a project copy; an upgrade writes the new mandate beside it as <code class="inline-code">kernel-mandate.achilles-new.json</code> (KL-11). The kernel is vendored and maintained upstream. Decisions are logged to <code class="inline-code">.claude/kernel-mandate.state/decision-log.jsonl</code>.</p>
+      <p><strong>When it binds.</strong> The registered hook is <code class="inline-code">achilles-kernel-activation-gate</code>, a wrapper that runs the kernel only while an Achilles skill is running. A project that only installed the package is not governed until a skill starts. If the kernel script is missing, the wrapper denies when the project has a <code class="inline-code">kernel-mandate.json</code> and allows otherwise.</p>
+      <p><strong>How to switch it off.</strong> Set <code class="inline-code">KERNEL_MANDATE=0</code> (or <code class="inline-code">false</code> or <code class="inline-code">off</code>) in the operator shell. This bypasses the kernel only; the Achilles gates above keep running. It exists because some work is refused under an active kernel: perf-onboarding, <code class="inline-code">repair-worker-*</code> dispatches and contribution handovers (KL-05, KL-07).</p>
+      <p><strong>What it does not do.</strong> It does not read dispatch briefs (KL-01), it screens code that roles write rather than sandboxing it (KL-02), and the orchestrator may still write under <code class="inline-code">tests/**</code> (KL-13). Denials are pinned by <code class="inline-code">hooks/tests/cases/85-qa-mandate-scopes.sh</code>.</p>
+    </div>
+    <div class="code-block reveal" style="color: var(--muted);">
+      <span style="color: #ef4444;">&#x276F; [BLOCKED]</span> Role 'orchestrator' may not write 'playwright.config.ts' &mdash; it is outside the role's write scope.<br />
+      <span style="color: var(--muted);">  write scope: .achilles/**, .gitignore, docs/evidence/*/brief.md, tests/**, ...</span>
+    </div>
+
+    <div class="prose reveal">
+      <h3>What the Bash guards cover</h3>
+      <p><code class="inline-code">protected-artifact-bash-guard</code>, <code class="inline-code">playwright-cli-isolation-guard</code> and the factory <code class="inline-code">state-gate</code> and <code class="inline-code">spend-gate</code> judge the plain words of one command line. They cover common agent commands: plain writes, redirects, <code class="inline-code">tee</code>, <code class="inline-code">sed -i</code>, <code class="inline-code">cp</code>/<code class="inline-code">mv</code>/<code class="inline-code">rm</code> and the usual git restore forms. Obfuscated or exotic shell is out of scope (KL-15, KL-17, KL-20), and a script staged by an earlier call is not followed. <code class="inline-code">ledger-integrity-chain</code> detects an out-of-band ledger change after the fact.</p>
     </div>
 
     <div class="prose reveal">
@@ -813,7 +1062,7 @@
       <span style="color: var(--muted);">  surface&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; PreToolUse</span><br />
       <span style="color: var(--muted);">  ticket&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; PROJ-1042</span><br />
       <br />
-      <span style="color: var(--muted);">  The agent cannot proceed until the evidence directory</span><br />
+      <span style="color: var(--muted);">  The ticket transition is denied until the evidence directory</span><br />
       <span style="color: var(--muted);">  contains a summary, screenshots, and verification artifacts.</span>
     </div>
   </div>
@@ -836,6 +1085,9 @@
       <div class="sub-tag" style="margin-top: 40px;">Platform Coverage</div>
       <p>The second constraint is platform. The element layer is already platform-agnostic by design: <code class="inline-code">Element</code> is an interface, <code class="inline-code">WebElement</code> is its Playwright implementation, and <code class="inline-code">PlatformElement</code> is the Appium/WebDriverIO implementation beside it. The page repository resolves the same named selector through <code class="inline-code">UiSelector</code> on Android and predicate strings on iOS.</p>
       <p>What is <strong>not</strong> here yet is the rest of the lifecycle. The agent skills, the harness gates, and the self-repair driver all assume a Playwright browser session today. <strong>Mobile support is on the roadmap, not in the package.</strong> Until it lands, treat everything on this page as a doctrine for web applications &mdash; the methodology generalises, the tooling does not yet.</p>
+
+      <div class="sub-tag" style="margin-top: 40px;">What Achilles Is Not</div>
+      <p>It is not a hosted runner: suites run on your machine or your CI. It runs on Claude Code only. It does not cover native mobile. It does not heal tests at runtime: <code class="inline-code">achilles-self-repair</code> works offline on a red suite. No benchmark of detection or flake rates is published. The 20 known limits (KL-01 to KL-20) are in <code class="inline-code">known-limits.md</code>.</p>
     </div>
   </div>
 </section>
@@ -852,11 +1104,11 @@
     <div class="stage-grid reveal">
       <div class="stage-card">
         <h3 class="stage-title">Prompt-driven testing</h3>
-        <p class="stage-desc">Ask your copilot to write Playwright tests. You get tests &mdash; with hard-coded selectors, no negative control, no evidence bundle, and no gate preventing a flaky test from merging. The agent follows instructions. Nothing enforces them.</p>
+        <p class="stage-desc">Ask your copilot to write Playwright tests. You get tests &mdash; with hard-coded selectors, no negative control, no evidence bundle, and no gate preventing a flaky test from merging. The agent follows instructions. Nothing enforces them in the session.</p>
       </div>
       <div class="stage-card">
         <h3 class="stage-title">Achilles</h3>
-        <p class="stage-desc">The agent writes tests through a three-layer architecture that isolates selectors from logic. Enforcement hooks block ticket sign-off without an evidence bundle, and non-draft pull requests without an adversarial review receipt. The methodology is the codebase, not a wiki page the agent never reads.</p>
+        <p class="stage-desc">The agent writes tests through a three-layer architecture that isolates selectors from logic. Enforcement hooks deny ticket sign-off without an evidence bundle, and non-draft pull requests without an adversarial review receipt, while an Achilles skill runs. The methodology is the codebase, not a wiki page the agent never reads.</p>
       </div>
     </div>
   </div>
@@ -873,8 +1125,8 @@
 
     <div class="prose reveal">
       <p>Install the two npm packages. The harness hooks register automatically via <code class="inline-code">postinstall</code>. Point the page repository at your application's selectors. Write new tests through the Steps API &mdash; existing Playwright tests continue to run unchanged alongside them.</p>
-      <p>Achilles runs in <strong>Claude Code</strong> today: <code class="inline-code">postinstall</code> registers the gates as Claude Code hooks in <code class="inline-code">.claude/settings.json</code>. The gates themselves are plain shell scripts that read a tool invocation on stdin and return an allow/deny decision &mdash; so any harness that can run a script before a tool call can adopt them. The enforcement layer sits below the agent: it doesn't care who wrote the test, only whether the methodology's preconditions are met.</p>
-      <p>The 39 enforcement gates activate immediately. From the first test written through Achilles, evidence bundles are required, adversarial review is enforced, and negative control must pass before sign-off. No configuration phase, no gradual rollout &mdash; the methodology is either installed or it isn't.</p>
+      <p>Achilles runs on <strong>Claude Code only</strong>, version 0.2.0: <code class="inline-code">postinstall</code> registers the hooks and the role kernel as Claude Code hooks. The hook scripts are plain shell that read a tool call on stdin and return an allow or deny decision, but nothing else registers them, and the skills assume Claude Code tools.</p>
+      <p>After install, the 39 enforcement gates act in any session where an Achilles skill runs; they pass through otherwise. The 7 factory gates are separate and start only when you commit a rule file. Sign-off then requires an evidence bundle and an adversarial review receipt. To remove Achilles, run <code class="inline-code">npx achilles-uninstall</code> (<code class="inline-code">--global</code>, <code class="inline-code">--project &lt;dir&gt;</code> and <code class="inline-code">--dry-run</code> are accepted); it reverses what postinstall recorded in <code class="inline-code">achilles-install.json</code>. Other CLIs in the package: <code class="inline-code">achilles-mutate</code>, <code class="inline-code">achilles-show</code>, <code class="inline-code">achilles-self-repair</code>, <code class="inline-code">achilles-scenario-lint</code>, <code class="inline-code">achilles-selector-evidence</code>.</p>
     </div>
   </div>
 </section>
@@ -884,7 +1136,7 @@
   <div class="container">
     <div class="reveal">
       <h2 class="cta-title">Built on<br /><span class="grad">open source</span></h2>
-      <p class="cta-sub">Start with the flows you can control today. Both packages are public on npm &mdash; version-pinned, auditable, reproducible.</p>
+      <p class="cta-sub">Start with the flows you can control today. Both packages are public on npm and version-pinned.</p>
       <div class="hero-actions" style="justify-content:center">
         <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
           Achilles on npm
