@@ -261,6 +261,7 @@ git clean -fdx tests
 git checkout -- .
 git checkout -- tests/e2e
 git reset --hard
+git reset --hard HEAD~1
 git stash
 git stash pop
 find . -delete
