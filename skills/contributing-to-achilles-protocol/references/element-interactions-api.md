@@ -169,7 +169,7 @@ const element = toElement(target) as WebElement;
 await element.selectOption(...);
 ```
 
-Don't smuggle web-only methods onto `Element` with throw-stubs on `PlatformElement`. The cast makes the web-only intent explicit and keeps the cross-platform contract honest.
+Don't smuggle web-only methods onto `Element` with throw-stubs on `PlatformElement`. The cast makes the web-only intent explicit and keeps the cross-platform contract accurate.
 
 ### Maintain 100% API coverage
 
@@ -437,7 +437,7 @@ const element = toElement(target) as WebElement;
 await element.selectOption(...);
 ```
 
-Don't smuggle web-only methods onto `Element` with throw-stubs on `PlatformElement`. The cast makes the web-only intent explicit at the call site and keeps the cross-platform contract honest.
+Don't smuggle web-only methods onto `Element` with throw-stubs on `PlatformElement`. The cast makes the web-only intent explicit at the call site and keeps the cross-platform contract accurate.
 
 ### 12. Error message format
 

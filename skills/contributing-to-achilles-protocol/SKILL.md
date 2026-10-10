@@ -68,7 +68,7 @@ description: >
 
 Under an active role kernel some steps are refused: see [known-limits.md](../achilles-protocol/references/known-limits.md) KL-07.
 
-This package is a Playwright-on-top facade. Every API decision should preserve the framework's two non-negotiable promises:
+This package is a Playwright-on-top facade. Every API decision should preserve the framework's two promises:
 
 1. **No raw selectors in user test files.** Tests refer to elements by name (`'submitButton'`, `'CheckoutPage'`), never by CSS/XPath/locator strings.
 2. **No raw Playwright `Locator.*` calls in user test files.** Every interaction, verification, and extraction goes through `Steps`, `ElementAction`, or the matcher tree — never `await page.locator('x').click()` directly.
@@ -111,7 +111,7 @@ Markdown is documentation, not enforcement. Under context pressure, an orchestra
 
 If none of these apply because the rule is unenforceable mechanically (e.g. "use the right level of detail in the brief", "be honest about uncertainty"), the SKILL.md edit MUST add a `markdown-only` tag to the relevant entry in `coverage-expansion/references/anti-rationalizations.md` so the registry continues to track the failure surface even without harness backing.
 
-**Why this is non-negotiable:** every markdown-only methodology rule that survives a release is a future incident waiting to happen. The cost of writing the hook is hours; the cost of debugging a wrong-classification incident the rule was meant to prevent is days plus the operator trust the package is supposed to earn. The asymmetry is the rule.
+**Why this is mandatory:** every markdown-only methodology rule that survives a release is a future incident waiting to happen. The cost of writing the hook is hours; the cost of debugging a wrong-classification incident the rule was meant to prevent is days plus the operator trust the package is supposed to earn. The asymmetry is the rule.
 
 **Reference:** [hook-authoring.md](references/hook-authoring.md) details the hook authoring patterns, test-case expectations, and registration in `hooks/data/hook-manifest.json`. Read it before authoring any SKILL.md edit so the hook is designed alongside the rule rather than retro-fitted.
 

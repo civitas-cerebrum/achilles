@@ -183,7 +183,7 @@ If the orchestrator's context is **>70% consumed**:
 1. Write full state to `tests/e2e/docs/coverage-expansion-state.json` (journey roster, completed IDs, in-flight IDs, pass counter, adversarial totals, AND the dual-stage `dispatches[]` per-journey fields (`stage_a_cycles`, `stage_b_cycles`, `review_status`, `final_must_fix`) the shape documented in [`state-file-schema.md`](state-file-schema.md) (the canonical schema; kernel-resident invariants are in `coverage-expansion/SKILL.md` §"Authoritative state file")). The dual-stage fields MUST be written before the compaction crosses; without them the post-compact resume cannot reconstruct which journeys are mid-A↔B-cycle, which are blocked, or which are greenlit.
 2. Emit exactly one line: `[coverage-expansion] context approaching budget — auto-compacting and resuming from state file`.
 3. Invoke `/compact` (or the platform-equivalent compaction primitive exposed to the orchestrator).
-4. On the post-compact turn, the skill's first action, reading the state file, picks up the run exactly where it left off, including any in-flight A↔B cycles. That's why [`state-file-schema.md`](state-file-schema.md)'s "read first, always" rule is non-negotiable.
+4. On the post-compact turn, the skill's first action, reading the state file, picks up the run exactly where it left off, including any in-flight A↔B cycles. That's why [`state-file-schema.md`](state-file-schema.md)'s "read first, always" rule is mandatory.
 
 **Mid-cycle compaction.** The 70% threshold is checked between passes by default, but if a single journey's A↔B retry loop pushes context past 70% mid-pass, the same flow applies: write state with the in-progress `stage_a_cycles` / `stage_b_cycles` / latest reviewer findings, then compact.
 

@@ -360,7 +360,7 @@ When invoked by `coverage-expansion` as a re-pass subagent (Pass 2 or 3), the ma
 - trigger 4 (unresolved review findings carried forward from prior pass): <none|<finding-ID list>>
 ```
 
-The four-trigger format is non-negotiable — the orchestrator's rejection check (§"Re-pass mode for compositional passes 2–3" in `coverage-expansion/SKILL.md`) greps for the literals "trigger 1" through "trigger 4" and re-dispatches any return missing one of them.
+The four-trigger format is mandatory: the orchestrator's rejection check (§"Re-pass mode for compositional passes 2–3" in `coverage-expansion/SKILL.md`) greps for the literals "trigger 1" through "trigger 4" and re-dispatches any return missing one of them.
 
 ### Return shape (composer)
 

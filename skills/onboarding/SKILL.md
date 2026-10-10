@@ -442,7 +442,7 @@ order), plus per-pass dedup.
 > completed.
 >
 > - The five-pass pipeline (3 compositional + 2 adversarial + cleanup)
->   is non-negotiable for `mode: standard` and `mode: depth`. Pass 1
+>   is required for `mode: standard` and `mode: depth`. Pass 1
 >   alone is one-fifth of the phase, not the whole phase. Stopping
 >   after Pass 1 is exit #2 (commit + state-file + "resume needed"),
 >   not Phase-5 completion.

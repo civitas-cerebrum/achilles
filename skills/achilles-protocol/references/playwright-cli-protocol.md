@@ -25,7 +25,7 @@ parallel wall-clock: ~21s    (all 4 backgrounded; finished within ~70ms of each 
 speedup:             ~2x     (ideal: 4.00x)
 ```
 
-**Read the numbers honestly.** Parallel is concurrent — all four iterations finish close together, bounded by the slowest. The ~2x speedup (well below 4.00x) is hardware contention, not a serialization defect: four chromium-headless-shell processes share one laptop's CPU and memory, and a single backend container handles four concurrent connections, so each parallel iteration takes roughly 2× the serial-average per-iteration time. On hardware with more cores or a horizontally-scaled backend, the ratio approaches the ideal.
+**Read the numbers with their limits.** Parallel is concurrent — all four iterations finish close together, bounded by the slowest. The ~2x speedup (well below 4.00x) is hardware contention, not a serialization defect: four chromium-headless-shell processes share one laptop's CPU and memory, and a single backend container handles four concurrent connections, so each parallel iteration takes roughly 2× the serial-average per-iteration time. On hardware with more cores or a horizontally-scaled backend, the ratio approaches the ideal.
 
 **Implication for orchestrator design.** Cap parallel dispatch at the point where contention erases speedup — for `coverage-expansion` on a single-host stack, that's typically `P=4`. Going wider (P=8, P=16) on the same host adds no wall-clock benefit and risks chromium OOM. The `coverage-expansion` skill parallelises across independent journeys, not across subagent count; if you find yourself wanting `P>4` on a single-host setup, scale the stack first.
 

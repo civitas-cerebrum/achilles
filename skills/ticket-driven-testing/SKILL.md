@@ -89,7 +89,7 @@ ticket key rather than to the session, so a second ticket cannot ride on the fir
 bundle. It **DENIES** a terminal transition or a published PR with no bundle for that ticket.
 On a verdict-shaped **comment** it only **WARNs**; which means the failure described above, where
 the artifact-free verdict was posted as a comment, would have been flagged and not blocked. The
-grading is deliberate (a bundle-less verdict has one honest form, per §"Prerequisites"), but it is
+grading is deliberate (a bundle-less verdict has one permitted form, per §"Prerequisites"), but it is
 a trade. Do not read the gate as a reason to stop watching for this yourself.
 
 ## Two entry points, one method
@@ -160,8 +160,7 @@ a second ticket that reuses the first ticket's deliverables has produced none of
 **You may not report a QA verdict for a ticket that has no evidence bundle of its own.** This is
 item 3 above, restated at the boundary where it gets skipped. If the run captured
 nothing (an unreachable app, a diff review only) say *that* in the verdict and scope the claim
-to what you actually did. An unevidenced report labelled unevidenced is honest; the same report
-labelled verified is not.
+to what you actually did. Label an unevidenced report unevidenced; labelling it verified misreports the run.
 
 For entry B the sign-off boundary is **opening the PR**, not a tracker transition; that is the
 moment the work is presented to others as done. Everything the contract requires applies there
@@ -173,7 +172,7 @@ So, before writing any verdict, answer these three in the report:
 - Which tests **failed** there, and which **passed**?
 - For each one that passed; is it close-regression cover of pre-existing behaviour (fine), or does it fail to discriminate the feature (worthless as AC cover)?
 
-"The tests are green on the branch" answers none of these. If you cannot run the control, say so explicitly in the verdict; an unverified suite reported as unverified is honest; reported as regression cover it is not.
+"The tests are green on the branch" answers none of these. If you cannot run the control, say so explicitly in the verdict; report an unverified suite as unverified, never as regression cover.
 
 ## Phases
 

@@ -15,7 +15,7 @@ safe. In order of preference:
 4. **Feature-flag the fix off**, if it is flagged.
 
 If none is available, say so in the verdict: *"suite is green but unverified — not regression
-cover"*. That is honest. Silently skipping the control and reporting regression cover is not.
+cover"*. Silently skipping the control and reporting regression cover is not.
 
 A gated suite will skip there, which proves only that the gate works. So give the gate an explicit off switch and use it:
 

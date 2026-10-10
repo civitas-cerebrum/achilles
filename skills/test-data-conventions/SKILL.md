@@ -27,7 +27,7 @@ description: >
 
 > **Skill names: see `../achilles-protocol/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
 
-Every flaky suite autopsy eventually reaches the same organ: data. Tests that pinned yesterday's content, shared one account across parallel workers, created records nothing deleted, or assumed a backend setting that flipped mid-day. This skill is the single source of truth for how tests in this suite relate to data — discovery first, then a two-strategy ladder, then the rules that keep both strategies honest. It is the standard the Stage 4c composition judge's data-feasibility dimension reviews against (see [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4).
+Every flaky suite autopsy eventually reaches the same organ: data. Tests that pinned yesterday's content, shared one account across parallel workers, created records nothing deleted, or assumed a backend setting that flipped mid-day. This skill is the single source of truth for how tests in this suite relate to data — discovery first, then a two-strategy ladder, then the rules that keep both strategies sound. It is the standard the Stage 4c composition judge's data-feasibility dimension reviews against (see [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4).
 
 Evidence lines below are stated generically — each was observed in production suites.
 
@@ -236,7 +236,7 @@ Three sections per data dependency / journey:
 
 ## Layering — when UI, API, and DB clients are all available
 
-**Generation preference: API > DB seed > UI.** The API exercises the app's own validation and stays honest to what a client can create; a DB seed (via the `database-testing` surface) is faster but bypasses validation — use it when the API path doesn't exist; the UI is the last resort for generation (slow, flaky, and already covered by the journey's own e2e walk). **Cleanup mirrors generation** — clean through the same layer that created, or lower. When a DB oracle exists, **DB-verified cleanup** closes the loop: after the cleanup call, a `steps.sql*` read confirms the row is gone, so silent cleanup failures cannot accumulate.
+**Generation preference: API > DB seed > UI.** The API exercises the app's own validation and stays within what a client can create; a DB seed (via the `database-testing` surface) is faster but bypasses validation — use it when the API path doesn't exist; the UI is the last resort for generation (slow, flaky, and already covered by the journey's own e2e walk). **Cleanup mirrors generation** — clean through the same layer that created, or lower. When a DB oracle exists, **DB-verified cleanup** closes the loop: after the cleanup call, a `steps.sql*` read confirms the row is gone, so silent cleanup failures cannot accumulate.
 
 ---
 

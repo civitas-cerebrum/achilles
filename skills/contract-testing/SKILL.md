@@ -41,7 +41,7 @@ A structured protocol for writing **contract-style** tests against HTTP backends
 **What this skill is NOT for:**
 - **End-to-end UI flows** → use `achilles-protocol` / `test-composer`
 - **Deep business logic validation** of internal services → belongs in the service's own test suite
-- **True consumer-driven contract testing with brokers** (Pact, Spring Cloud Contract) → this framework doesn't produce/consume pact files. These tests are *contract-style integration tests*, not CDC-with-a-broker. Be honest with the user about this distinction if they ask.
+- **True consumer-driven contract testing with brokers** (Pact, Spring Cloud Contract) → this framework doesn't produce/consume pact files. These tests are *contract-style integration tests*, not CDC-with-a-broker. Tell the user about this distinction if they ask.
 - **Load / performance** testing → wrong tool
 - **Security testing** → out of scope
 - **Asserting that a mutation persisted to the database** → use `database-testing` (the DB-as-oracle companion to API contract tests).

@@ -111,7 +111,7 @@ Hooks may extend this with additional structural validation in a follow-up issue
 
 ## What if a per-journey probe finds a app-wide pattern not in the catalogue?
 
-Emit the finding normally with `coverage: none` (the canonical "no covering pattern" form per `subagent-return-schema.md` §1). The orchestrator records the finding-ID for the next cycle's catalogue update PR; the catalogue itself never updates mid-cycle — additions ride in via PR per the Hard constraint above. Treating the finding as `coverage: none` keeps the citation discipline honest while flagging the catalogue gap for human review. Stage B reviewer does NOT flag `re-derived-app-wide-pattern` for these findings (the pattern wasn't in the catalogue at scan time, so the per-journey probe couldn't have cited it).
+Emit the finding normally with `coverage: none` (the canonical "no covering pattern" form per `subagent-return-schema.md` §1). The orchestrator records the finding-ID for the next cycle's catalogue update PR; the catalogue itself never updates mid-cycle — additions ride in via PR per the Hard constraint above. Treating the finding as `coverage: none` keeps the citation discipline intact while flagging the catalogue gap for human review. Stage B reviewer does NOT flag `re-derived-app-wide-pattern` for these findings (the pattern wasn't in the catalogue at scan time, so the per-journey probe couldn't have cited it).
 
 ---
 

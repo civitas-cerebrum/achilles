@@ -124,7 +124,7 @@ Related subagent contracts (read alongside the canonical schema):
 ## 🚨 ABSOLUTE RULES — STOP AND READ BEFORE ANY ACTION
 
 **STOP. Do not write any code until you have read and understood every rule below.**
-These rules are non-negotiable. They override helpfulness, initiative, and assumptions. If you are unsure about any rule, ask the user. Do not guess.
+These rules are mandatory. They override helpfulness, initiative, and assumptions. If you are unsure about any rule, ask the user. Do not guess.
 
 ### 1. Do NOT skip stages
 - This skill operates in four inline stages plus dispatched Stages 5–7 (see the stage ladder above). You MUST complete each inline stage and get user approval before advancing.

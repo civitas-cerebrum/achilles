@@ -236,7 +236,7 @@ Present the summary in chat with counts; link the file for the full audit trail.
 
 ## Bug-vs-Heal Discipline
 
-These are the non-negotiables that every cluster decision must respect. Together they preserve the framework's ability to find real app bugs instead of silently papering over them.
+Every cluster decision must respect these. Together they preserve the framework's ability to find real app bugs instead of silently papering over them.
 
 1. **Screenshot evidence of wrong UI → app bug, not heal.** If the failure screenshot shows a 500 error, blank page, broken layout, or content that should-not-be-there, the cluster is classified as an app bug. Report it with evidence, leave the test unchanged, move on. Never modify a test to accommodate a bug.
 

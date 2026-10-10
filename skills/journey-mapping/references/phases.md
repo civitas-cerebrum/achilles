@@ -19,7 +19,7 @@ Visit every reachable page in the application via `@playwright/cli` (see [`../ac
 
 ### Discovery Tool Rule — `playwright-cli` only
 
-Page discovery **must** be performed through `@playwright/cli` from the Bash tool (`playwright-cli open`, `playwright-cli snapshot`, `playwright-cli click`, `playwright-cli eval`, etc.). This is non-negotiable:
+Page discovery **must** be performed through `@playwright/cli` from the Bash tool (`playwright-cli open`, `playwright-cli snapshot`, `playwright-cli click`, `playwright-cli eval`, etc.). This is mandatory:
 
 - **Do not** infer pages from reading source files, route tables, router configs, sitemaps, or existing tests. Static inspection misses runtime-only routes, feature flags, auth-gated redirects, and client-side navigation state.
 - **Do not** use `fetch`/`curl`/WebFetch to scrape HTML — those bypass client-side rendering and produce a false map.

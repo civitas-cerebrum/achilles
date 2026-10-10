@@ -353,7 +353,7 @@ Each one gets an explicit written observation, even when it is negative — "con
 
 **Reality:** the error message tells you *where execution stopped*. It does not tell you *what the page was doing*, and those are different questions — which is the entire reason the trace exists. `Timeout ... waiting for element to be visible, enabled and stable` is emitted identically by an overlay intercepting pointer events, a sticky cookie banner, an element animating forever, a mid-flight client-side navigation, a 500 behind a skeleton, a framework-side retry defect, and a absent element. The call log's resolved-element `outerHTML` proves the element *matched*; it says nothing about what was painted on top of it. Recognising the error *shape* from a previous diagnosis is exactly the condition under which a different root cause gets the previous session's answer stapled to it. Cost is not a reason: `unzip` + `jq` reads a trace headlessly in seconds, and the screencast frames are readable images.
 
-A root cause proposed without the evidence floor is a guess, and Stage 4a's preconditions cannot be honestly evaluated against a guess — every heal that follows inherits the guess.
+A root cause proposed without the evidence floor is a guess, and Stage 4a's preconditions cannot be evaluated against a guess, and every heal that follows inherits the guess.
 
 #### Steps
 
@@ -501,7 +501,7 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 9. If two heal strategies have been attempted and the test still flakes → (f) quarantine
 10. If the test scenario no longer maps to the app flow → (g) rewrite → operator-align
 
-The precondition columns exist to keep you honest: any heal applied without meeting its precondition is a guess, and guesses mask bugs.
+The precondition columns exist so that no heal runs unqualified: any heal applied without meeting its precondition is a guess, and guesses mask bugs.
 
 ### Quarantine ledger (heal (f) only)
 

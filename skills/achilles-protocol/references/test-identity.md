@@ -74,7 +74,7 @@ Concretely, every consumer treats it as its own terminal classification, distinc
 
 ### A passing `@known-defect` is never silently green
 
-The tag predicts red, so a pass is an anomaly with exactly two honest readings — and the consumer's job is to establish which, never to fold the pass into the green count:
+The tag predicts red, so a pass is an anomaly with exactly two valid readings; and the consumer's job is to establish which, never to fold the pass into the green count:
 
 - **The defect is actually fixed.** Prove it with the stability bar — two-number evidence adapted from the bar `test-repair` Stage 5.5 demands before releasing a quarantined flake: **3/3 targeted isolation reruns first (cheap reproduction), then 5/5 suite-order runs (confirmation under real conditions), all green** (Stage 5.5's first number is suite-order; the adaptation reverses the order, not the evidence). Then drop the tag, change nothing else, and surface the filed ticket for closing. The test continues as an ordinary regression guard.
 - **The pass is nondeterministic.** Any red inside that bar means the tag is lying about determinism: retag `@known-defect` → `@flaky` (the suite's quarantine tag), append a quarantine-ledger entry to `tests/e2e/docs/flake-quarantine.md` per the `failure-diagnosis` template, and carry the original defect pointer into the entry — the filed defect may still be real; what changed is that the red is no longer deterministic.
