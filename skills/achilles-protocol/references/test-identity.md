@@ -55,7 +55,7 @@ This is the regression-guard pattern: the test is not weakened to agree with the
 
 **Every `@known-defect` test points at a filed defect.** A tag with no report behind it is indistinguishable from a broken test that someone silenced. The pointer lives in a comment at the top of the spec (bug report path, ticket key, or `adversarial-findings.md` anchor).
 
-`ticket-driven-testing` §7's `test.fail()` defect sentinels are the authoring-time counterpart of this tag: a sentinel asserts the *correct* behaviour against a ticketed defect and is deleted the day the fix flips it loud. Sentinels carry `@known-defect` alongside `test.fail()` so the no-rerun contract below exempts them the same way — the repair drivers key on the tag, not on the reported status, and `test.fail()` inverts only the reporting.
+The `test.fail()` defect sentinels of `ticket-driven-testing/references/phase-7-durable-tests.md` are the authoring-time counterpart of this tag: a sentinel asserts the *correct* behaviour against a ticketed defect and is deleted the day the fix flips it loud. Sentinels carry `@known-defect` alongside `test.fail()` so the no-rerun contract below exempts them the same way — the repair drivers key on the tag, not on the reported status, and `test.fail()` inverts only the reporting.
 
 ### The no-rerun contract
 

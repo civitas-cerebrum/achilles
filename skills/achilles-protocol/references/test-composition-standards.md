@@ -107,7 +107,7 @@ Stages 4a (optimization) and 4b (API compliance) are author-side self-review. **
 | `achilles-protocol` Stage 4 (interactive + autonomous) | 4c after 4a/4b, before commit — see `stages-protocol.md` §"Stage 4c" |
 | `test-composer` Step 6 | Step 6c after 6a/6b. Under `coverage-expansion` dual-stage, the Stage-B reviewer cycle satisfies 4c **provided its brief includes dimension 4** — the loop is not double-imposed |
 | `onboarding` Phase 3 exit | Each happy-path spec's composing cycle ends with 4c (via `test-composer` Step 6c) |
-| `ticket-driven-testing` §7 | Its §8/§8b adversarial machinery (six probe missions + negative control) **counts as the judge loop** — do not impose a second 4c on top; §8b's dispatch discipline is the equivalence |
+| `ticket-driven-testing/references/phase-7-durable-tests.md` | Its phase 8/8b adversarial machinery (six probe missions + negative control) **counts as the judge loop** — do not impose a second 4c on top; §8b's dispatch discipline is the equivalence |
 | `companion-mode` Stage-3 graduation | Graduated specs pass through `achilles-protocol` Stage 4, which now includes 4c. Evidence bundles themselves are NOT composing exits — no judge on a bundle |
 | `bug-discovery` Phase 6 | Reproduction specs get a 4c judge before the Phase 7 report cites them |
 | `test-repair` / `self-repair` whole-rewrite heals (heal type g) | The operator-approved rewrite goes through `test-composer`, whose Step 6c applies. Incremental heals do NOT trigger 4c — their gate is the stability rule (§3.3) |
@@ -152,7 +152,7 @@ Citing skills may mirror these lines in their own `### Hard rules — kernel-res
 - **Composing rules are single-homed.** Shared rules live at their canon-index home (`test-composition-standards.md` §2); cite, never fork, no one-extra-clause extensions.
 - **Stage 4c is mandatory at every composing exit.** After 4a + 4b: independent `composition-judge-` subagent, four dimensions (intent coverage, oracle strength, API compliance, test-data feasibility), fresh judge per cycle, 3 consecutive NOT SATISFIED → operator.
 - **Stability is 3×/5×.** 3 consecutive green for new/edited tests; 5 for a heal of a previously-flaky test.
-- **`test.fail()` only as a ticketed defect sentinel** (`ticket-driven-testing` §7); never in coverage/adversarial passes.
+- **`test.fail()` only as a ticketed defect sentinel** (`ticket-driven-testing/references/phase-7-durable-tests.md`); never in coverage/adversarial passes.
 - **One e2e walk per journey; derivatives shortcut** via API/state injection and assert only their own surface (§5).
 - **Data feasibility is a composing gate** — a scenario whose data cannot be generated, isolated, and cleaned up is blocked/flagged per `test-data-conventions`, never written against whatever is live.
 - **Specialist task families dispatch; orchestrators never absorb** (§6) — UI inspection, composing, probing, diagnosis, repair, and judging each run as role-prefixed subagent dispatches; an orchestrator catching itself starting one inline stops and dispatches.

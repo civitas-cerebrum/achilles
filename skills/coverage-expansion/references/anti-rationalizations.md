@@ -298,7 +298,7 @@ A methodology skill is invoked and followed correctly for one unit of work. The 
 
 **Hooks that catch this:**
 - `evidence-bundle-gate.sh` — binds `ticket-driven-testing`'s contract item 3 (the evidence bundle) to the **ticket key**, not the session, so a second ticket cannot sign off on the first ticket's bundle. DENY on terminal transition / published PR; **WARN only** on a verdict-shaped comment, which is the surface the origin failure actually used.
-- `adversarial-verification-gate.sh` — the same per-ticket binding on the §8/§8b receipt, with the same DENY/WARN split.
+- `adversarial-verification-gate.sh` — the same per-ticket binding on the receipt written by phases 8 and 8b of `ticket-driven-testing`, with the same DENY/WARN split.
 - (markdown-only for the re-entry act itself) — a hook can observe that a per-unit deliverable is absent at the sign-off boundary; it cannot observe whether the sequence was re-run. The consequence is mechanically detectable; the decision is not. Both gates above are also authored by the same actor they judge, so they raise the cost of forgetting far more than the cost of faking.
 
 **Rule:** `ticket-driven-testing` §0.
@@ -332,12 +332,12 @@ The "Pass-4 prelude — app-wide pattern scan" rule lives in `skills/coverage-ex
 
 ---
 
-## Pattern: `markdown-only` deferral — ticket-driven-testing §8d commit-or-discard + report contract
+## Pattern: `markdown-only` deferral: ticket-driven-testing commit-or-discard + report contract
 
-Two rules in `skills/ticket-driven-testing/` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle) — but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW — a level-of-detail judgement over free prose, not a mechanical check.
+Two rules in `ticket-driven-testing/references/phase-8c-8e-scoring-and-commit.md` ship without harness backing. §8d requires an explicit CX/revenue impact rationale plus a human confirmation before durable tests are committed (default: discard into the evidence bundle) — but the confirmation lives in the conversation, and no hook can distinguish "a human confirmed" from "the agent decided". §"One contract, every surface" requires ticket comments and PR descriptions to state WHAT was tested and never HOW — a level-of-detail judgement over free prose, not a mechanical check.
 
 **Tag:** `markdown-only`.
-**Deferred hook:** a `commitDecision` field (`discarded` | `proposed` | `confirmed-by:<human>`) in the §8b adversarial-verification receipt would let `adversarial-verification-gate.sh` deny a spec commit with no recorded confirmation; the report-contract rule remains reviewer-enforced.
+**Deferred hook:** a `commitDecision` field (`discarded` | `proposed` | `confirmed-by:<human>`) in the adversarial-verification receipt (phase 8b) would let `adversarial-verification-gate.sh` deny a spec commit with no recorded confirmation; the report-contract rule remains reviewer-enforced.
 
 ---
 
@@ -412,7 +412,7 @@ The author of freshly-composed tests decides the mandatory Stage 4c composition 
 - "I'll commit now and judge in a follow-up session"
 - an author declaring SATISFIED on its own work with no `composition-judge-` dispatch in the transcript
 
-**Reality:** 4a/4b are author-side self-review; the judge is the second reader the author cannot be — the same separation-of-duties argument as Stage B and `ticket-driven-testing` §8b, and "obviously fine" is precisely the state self-review cannot distinguish from "looks fine to its author". Passing tests are the judge's *precondition*, not its substitute: three of its four dimensions (intent coverage, oracle strength, data feasibility) are invisible to a green run. The commit gate is judge-SATISFIED, not tests-green.
+**Reality:** 4a/4b are author-side self-review; the judge is the second reader the author cannot be — the same separation-of-duties argument as Stage B and `ticket-driven-testing/references/phase-8b-adversarial-review.md`, and "obviously fine" is precisely the state self-review cannot distinguish from "looks fine to its author". Passing tests are the judge's *precondition*, not its substitute: three of its four dimensions (intent coverage, oracle strength, data feasibility) are invisible to a green run. The commit gate is judge-SATISFIED, not tests-green.
 
 **Hooks that catch this:**
 - `hooks/composition-judge-gate.sh` — records `composition-judge-` dispatches and their verdicts per session; blocks Stop (`decision: block`, single-shot via `stop_hook_active`) while a judge loop stands open on a NOT-SATISFIED verdict below the 3-reject cap (abandoning an in-flight loop); at the cap Stop is allowed — operator escalation is the sanctioned exit.

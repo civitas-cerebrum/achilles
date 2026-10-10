@@ -12,7 +12,7 @@ description: >
   (skills/achilles-protocol/references/test-composition-standards.md §4,
   dimension 4) and whenever a composing skill (achilles-protocol Stages 1-4,
   test-composer, coverage-expansion, bug-discovery Phase 6,
-  ticket-driven-testing §7, companion-mode graduation) touches an
+  ticket-driven-testing phase 7, companion-mode graduation) touches an
   entity-creating flow — signup, record creation, uploads, orders, anything
   that persists tenant or user data. Do NOT use for secrets handling alone —
   credential extraction to .env is owned by achilles-protocol Rule 15 and

@@ -368,13 +368,13 @@ misalignment, or visual inconsistency that no assertion catches.
 
 Check each screenshot for: padding/spacing symmetry, alignment of sibling elements, clipping or
 overflow, visual hierarchy, and whether state transitions (expand, error, loading) degrade the
-layout. See `ticket-driven-testing` §6e for the full checklist.
+layout. See `ticket-driven-testing/references/phase-6-understanding.md` (6e) for the full checklist.
 
 Report design findings in the tracker comment alongside the AC results — they are not AC failures,
 but they are findings. A QA comment that shows a screenshot with visible padding issues and doesn't
 mention them is incomplete.
 
-When the run is wrapped by `ticket-driven-testing`, §8b dispatches `probe-visual` — a subagent
+When the run is wrapped by `ticket-driven-testing`, phase 8b (`ticket-driven-testing/references/phase-8b-adversarial-review.md`) dispatches `probe-visual` — a subagent
 that reviews every evidence screenshot against this checklist. The gate enforces it: sign-off is
 denied without `uiReviewed: true` in the adversarial verification receipt.
 
