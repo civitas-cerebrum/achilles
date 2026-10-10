@@ -151,6 +151,7 @@ done <<'SAFE'
 sed -i '' 's/LEDGER_APPROVERS_NAME=.*/LEDGER_APPROVERS_NAME=".workflow-approvers.json"/' hooks/lib/ledger.sh
 printf 'see ~/.claude/settings.json and tests/e2e/docs/journey-map.md\n'
 cat ~/.claude/settings.json | grep hooks > /tmp/hooks.txt
+cat ~/.claude/settings.json | tee /tmp/out
 jq .currentPhase tests/e2e/docs/onboarding-status.json
 git -C ~/.claude log --oneline -3
 git diff -- tests/e2e/docs/journey-map.md
@@ -373,3 +374,6 @@ assert_deny "$HOOK" "$(bash_payload "git commit -m \"\$(cat <<EOF
 docs: \$(rm -rf tests) journey-map.md
 EOF
 )\"")" "an unquoted heredoc expands its body → DENY" "command substitution"
+
+section "protected-bash fail-closed: tee writes its operands, not what it reads"
+assert_deny "$HOOK" "$(bash_payload 'cat x | tee .claude/hooks/x')" "tee into the hook install → DENY" "Writes into: .claude/hooks"
