@@ -23,6 +23,10 @@
 
 ### Changed
 
+- The role kernel holds a runner config's `testDir` to the read scope as a directory, not to the write scope (kernel-mandate `9c4a73c`). Before, the scaffolder could not name any test directory while `achilles-import-boundary-gate` required one, so Phase 1 could not write `playwright.config.ts`.
+- Every role may read the Achilles skills (`.claude/skills/**`, `~/.claude/skills/**`), which the skills tell them to read. No role may write them.
+- The orchestrator reaches the app under test on any localhost port, like the subagents, instead of only ports 3000 and 4173.
+
 - Postinstall copies by content instead of file time, so an npm tarball's fixed timestamps no longer leave an upgraded hook stale. A second run changes nothing.
 - Files a newer version no longer ships are pruned, with their registrations, unless you edited them.
 - A global install (`npm i -g`) no longer stages the mandate or writes a `.claude/` under npm's `lib/`.

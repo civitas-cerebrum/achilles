@@ -1,10 +1,10 @@
 {
   "upstream": {
     "repo": "civitas-cerebrum/kernel-mandate",
-    "commit": "c21c95ad5db6482b6b1a79ee9826edd3c2e72d59"
+    "commit": "9c4a73c372768a9b3e0c4b5187df02432e171583"
   },
   "files": {
-    "hooks/kernel-mandate-role-gate.sh": "01ebbbde3e276eec36769f688dc2e31aa652e42cb05b88501a264494238acee3",
+    "hooks/kernel-mandate-role-gate.sh": "7b3e97b39f4447af29a8c9fa7ef3c3f82ec3f1acb880c15e744be907894a18cd",
     "hooks/lib/kernel-mandate.sh": "85e13c2fb6910d364e7956c0040fbb2124e4dc302686195163691b8621d6d0c9"
   }
 }

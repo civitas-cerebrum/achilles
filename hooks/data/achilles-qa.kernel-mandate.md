@@ -20,30 +20,30 @@ reviewer only reads the deliverable") are tool-call denials here.
 
 | role | mandate | reads | writes | runs | dispatches |
 |---|---|---|---|---|---|
-| **cleanup** | Cleanup / dedup worker for the coverage-expansion cleanup pass (`cleanup-<scope>:`): removes redundant specs under tests/e2e/** and re-runs the suite to prove the remainder is still green. | `docs/**`<br>`tests/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
-| **companion** | companion-mode verification worker (`companion-<task-slug>:`): verifies one task against the live app in its own playwright-cli session and lands the evidence bundle under tests/e2e/evidence/**. | `docs/**`<br>`tests/**` | `tests/e2e/evidence/**`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
-| **contribution-handover** | Pre-push handover author (`contribution-handover-<slug>:`): fills .contribution-handover.json from the contributing skill's guardrail checklist by reading this repo's own documentation and the branch diff. | `.contribution-handover.template.json`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`schemas/**`<br>`skills/**` | `.contribution-handover.json` | `^git status\b`<br>`^git log\b`<br>`^git diff\b` | none |
+| **cleanup** | Cleanup / dedup worker for the coverage-expansion cleanup pass (`cleanup-<scope>:`): removes redundant specs under tests/e2e/** and re-runs the suite to prove the remainder is still green. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
+| **companion** | companion-mode verification worker (`companion-<task-slug>:`): verifies one task against the live app in its own playwright-cli session and lands the evidence bundle under tests/e2e/evidence/**. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/evidence/**`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
+| **contribution-handover** | Pre-push handover author (`contribution-handover-<slug>:`): fills .contribution-handover.json from the contributing skill's guardrail checklist by reading this repo's own documentation and the branch diff. | `.contribution-handover.template.json`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`schemas/**`<br>`skills/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `.contribution-handover.json` | `^git status\b`<br>`^git log\b`<br>`^git diff\b` | none |
 | **doc-author** | Writes documentation only: docs/** (except the evidence trail docs/evidence/**). Changes to CLAUDE.md and project skills are proposals under docs/proposals/ that the operator applies. | `.claude/skills/**`<br>`CLAUDE.md`<br>`README.md`<br>`docs/**`<br>`tests/**` | `docs/**`<br>*except* `docs/evidence/**` | none | none |
-| **fd** | failure-diagnosis worker (`fd-<test-slug>:`, `fd-ci-<run-id>:`): reproduces one failing spec against the live app in its own playwright-cli session, classifies deterministic vs flaky, and lands the diagnosis plus any heal under tests/e2e/**. | `docs/**`<br>`tests/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
-| **implementer** | Writes one change: specs, fixtures and support code under tests/** (never the page repository, which live inspection owns) and the change report (report.md in the change's folder under docs/evidence/). | `docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/**` | `docs/evidence/*/report.md`<br>`tests/**`<br>*except* `**/page-repository*.json`<br>`tests/e2e/docs/onboarding-status.json` | `^npx playwright test\b`<br>`^npx tsc --noEmit\b`<br>`^npm run test:unit\b` | none |
-| **live-inspector** | Inspects the running app before any selector exists: writes throwaway inspection specs under the inspect dir (tests/e2e/inspect/**, deleted before hand-back), selector evidence under docs/evidence/selectors/** and a proposal note in the change's folder under docs/evidence/. | `docs/**`<br>`tests/**`<br>`tests/e2e/page-repository.json` | `docs/evidence/*/proposal-*.md`<br>`docs/evidence/selectors/**`<br>`tests/e2e/inspect/**` | `^npx playwright test --config tests/e2e/inspect\b`<br>`^npx achilles-selector-evidence\b` | none |
-| **orchestrator**<br>*(main session)* | The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. | `.achilles/**`<br>`.gitignore`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`playwright*.config.ts`<br>`tests/**` | `.achilles/**`<br>`.gitignore`<br>`docs/evidence/*/brief.md`<br>`docs/evidence/*/review-package.md`<br>`tests/**` | `^npx playwright test --list\b`<br>`^git status\b`<br>`^git log\b`<br>`^git diff\b`<br>`^git add\b`<br>`^git commit\b`<br>`^npx playwright test\b`<br>`^npx playwright-cli (close-all\|kill-all\|list)\b`<br>`^npm run verify\b`<br>`^npm run change:start\b` | `cleanup`<br>`companion`<br>`contribution-handover`<br>`doc-author`<br>`fd`<br>`implementer`<br>`live-inspector`<br>`perf-reviewer`<br>`phase-validator`<br>`phase1`<br>`phase2`<br>`phase4`<br>`plumber`<br>`probe`<br>`process-validator`<br>`reviewer`<br>`scaffolder`<br>`secrets-sweep`<br>`stage2`<br>`task-reviewer`<br>`test-composer`<br>`verifier`<br>`workflow-reviewer` |
-| **perf-reviewer** | Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. | `docs/**`<br>`tests/perf/**` | `tests/perf/docs/perf-onboarding-status.json` | none | none |
-| **phase-validator** | Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. | `docs/**`<br>`tests/**` | `tests/e2e/docs/onboarding-status.json` | none | none |
-| **phase1** | journey-mapping Phase 1 discovery worker (`phase1-<entry>:`): crawls one entry-point subtree in its own playwright-cli session and returns the page + element list. | `docs/**`<br>`tests/**` | `tests/e2e/docs/app-context.md`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
-| **phase2** | journey-mapping Phase 2 flow-identification worker (`phase2-<scope>:`): walks one scope's flows in its own playwright-cli session and returns the flow list, appending only its discovery notes. | `docs/**`<br>`tests/**` | `tests/e2e/docs/app-context.md`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
-| **phase4** | journey-mapping Phase 4 worker: `phase4-cycle-<N>:` section agents discover one section of the map in their own playwright-cli session, and `phase4-prioritise-author:` is the only legitimate author of tests/e2e/docs/journey-map.md and its `<!-- journey-mapping:generated -->` sentinel. | `docs/**`<br>`tests/**` | `tests/e2e/docs/.phase4-cycle-state.json`<br>`tests/e2e/docs/.subagent-returns/**`<br>`tests/e2e/docs/journey-map.md` | `^npx playwright-cli\b` | none |
+| **fd** | failure-diagnosis worker (`fd-<test-slug>:`, `fd-ci-<run-id>:`): reproduces one failing spec against the live app in its own playwright-cli session, classifies deterministic vs flaky, and lands the diagnosis plus any heal under tests/e2e/**. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
+| **implementer** | Writes one change: specs, fixtures and support code under tests/** (never the page repository, which live inspection owns) and the change report (report.md in the change's folder under docs/evidence/). | `docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `docs/evidence/*/report.md`<br>`tests/**`<br>*except* `**/page-repository*.json`<br>`tests/e2e/docs/onboarding-status.json` | `^npx playwright test\b`<br>`^npx tsc --noEmit\b`<br>`^npm run test:unit\b` | none |
+| **live-inspector** | Inspects the running app before any selector exists: writes throwaway inspection specs under the inspect dir (tests/e2e/inspect/**, deleted before hand-back), selector evidence under docs/evidence/selectors/** and a proposal note in the change's folder under docs/evidence/. | `docs/**`<br>`tests/**`<br>`tests/e2e/page-repository.json`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `docs/evidence/*/proposal-*.md`<br>`docs/evidence/selectors/**`<br>`tests/e2e/inspect/**` | `^npx playwright test --config tests/e2e/inspect\b`<br>`^npx achilles-selector-evidence\b` | none |
+| **orchestrator**<br>*(main session)* | The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. | `.achilles/**`<br>`.gitignore`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`playwright*.config.ts`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `.achilles/**`<br>`.gitignore`<br>`docs/evidence/*/brief.md`<br>`docs/evidence/*/review-package.md`<br>`tests/**` | `^npx playwright test --list\b`<br>`^git status\b`<br>`^git log\b`<br>`^git diff\b`<br>`^git add\b`<br>`^git commit\b`<br>`^npx playwright test\b`<br>`^npx playwright-cli (close-all\|kill-all\|list)\b`<br>`^npm run verify\b`<br>`^npm run change:start\b` | `cleanup`<br>`companion`<br>`contribution-handover`<br>`doc-author`<br>`fd`<br>`implementer`<br>`live-inspector`<br>`perf-reviewer`<br>`phase-validator`<br>`phase1`<br>`phase2`<br>`phase4`<br>`plumber`<br>`probe`<br>`process-validator`<br>`reviewer`<br>`scaffolder`<br>`secrets-sweep`<br>`stage2`<br>`task-reviewer`<br>`test-composer`<br>`verifier`<br>`workflow-reviewer` |
+| **perf-reviewer** | Approver for the perf pipeline: reviews tests/perf/** deliverables and records the verdict in tests/perf/docs/perf-onboarding-status.json. | `docs/**`<br>`tests/perf/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/perf/docs/perf-onboarding-status.json` | none | none |
+| **phase-validator** | Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.json after checking the phase's deliverables on disk. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/docs/onboarding-status.json` | none | none |
+| **phase1** | journey-mapping Phase 1 discovery worker (`phase1-<entry>:`): crawls one entry-point subtree in its own playwright-cli session and returns the page + element list. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/docs/app-context.md`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
+| **phase2** | journey-mapping Phase 2 flow-identification worker (`phase2-<scope>:`): walks one scope's flows in its own playwright-cli session and returns the flow list, appending only its discovery notes. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/docs/app-context.md`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
+| **phase4** | journey-mapping Phase 4 worker: `phase4-cycle-<N>:` section agents discover one section of the map in their own playwright-cli session, and `phase4-prioritise-author:` is the only legitimate author of tests/e2e/docs/journey-map.md and its `<!-- journey-mapping:generated -->` sentinel. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/docs/.phase4-cycle-state.json`<br>`tests/e2e/docs/.subagent-returns/**`<br>`tests/e2e/docs/journey-map.md` | `^npx playwright-cli\b` | none |
 | **plumber** | Harness repair role (`plumber-<slug>:`), dispatched only after the user explicitly approves it in their own message: repairs pipeline state the lock gates refuse to every other role and reinstalls the harness when the installed hooks drifted. | `**`<br>`~/.claude/hooks/**`<br>`~/.claude/settings.json`<br>*except* `**/.env`<br>`**/.env.*`<br>`.claude/achilles/**` | `.achilles/**`<br>`package-lock.json`<br>`package.json`<br>`tests/e2e/docs/**`<br>`tests/perf/docs/**`<br>*except* `.claude/achilles/**` | `^npm install\b`<br>`^npm ci\b`<br>`^npm rebuild\b`<br>`^npm run sync-hooks\b`<br>`^npx achilles-[a-z-]+\b`<br>`^git status\b`<br>`^git log\b`<br>`^git diff\b`<br>`^git show\b`<br>`^rm (-f )?tests/(e2e\|perf)/docs/\.ledger-integrity\.json$`<br>`^shasum\b`<br>`^sha256sum\b` | none |
-| **probe** | Stage A adversarial prober (`probe-j-<slug>:` for coverage-expansion passes 4-5 and bug-discovery, `probe-app-wide:` for the pass-4 pattern scan): probes the live app in its own playwright-cli session, appends findings to tests/e2e/docs/adversarial-findings.md under the advisory lock, and in pass 5 writes regression specs for verified boundaries. | `docs/**`<br>`tests/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
-| **process-validator** | Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. | `docs/**`<br>`tests/**` | `tests/e2e/docs/onboarding-status.json` | none | none |
-| **reviewer** | Stage B in-loop reviewer (`reviewer-j-<slug>:` per journey, `reviewer-batch-pass-<N>:` for the cycle-1 compositional batch): reads Stage A's output and the live app in its own playwright-cli session and returns greenlight or improvements-needed. | `docs/**`<br>`tests/**` | `tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
-| **scaffolder** | Write-only author of the Phase 1-2 scaffold and the Phase 7 env wiring: playwright.config.ts, package.json scripts, .gitignore entries, .env and .env.example, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. | `.env`<br>`.env.example`<br>`.gitignore`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`playwright*.config.ts`<br>`tests/e2e/**` | `.env`<br>`.env.example`<br>`.gitignore`<br>`package.json`<br>`playwright*.config.ts`<br>`tests/e2e/.gitignore`<br>`tests/e2e/docs/app-context.md`<br>`tests/e2e/fixtures/**`<br>`tests/e2e/page-repository.json`<br>`tests/e2e/playwright.setup.ts` | none | none |
-| **secrets-sweep** | Phase 7 secrets sweep: rewrites hard-coded credentials, keys, PII and app URLs in specs and fixtures under tests/** to process.env references. It writes no .env or config (the scaffolder wires those) and has no shell; the orchestrator re-runs the suite after it returns. | `tests/**` | `tests/**` | none | none |
-| **stage2** | Stage 2 element-inspection worker (`stage2-<scenario>:`): inspects the pages of one approved scenario in its own playwright-cli session and RETURNS proposed page-repository entries; the page repository itself stays the scaffolder's file. | `docs/**`<br>`tests/**` | `tests/e2e/.auth/**`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
-| **task-reviewer** | Approver: reads the brief, the implementer's report and the review package for one change and records findings (Critical / Important / Minor, each with file:line and a fix) in review.md in the change's folder under docs/evidence/. | `docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/**` | `docs/evidence/*/review.md` | `^npx tsc --noEmit\b`<br>`^npm run test:unit\b`<br>`^npm run test:hooks\b` | none |
-| **test-composer** | Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. | `docs/**`<br>`tests/**`<br>`tests/e2e/page-repository.json` | `tests/e2e/**`<br>`tests/e2e/page-repository.json` | `^npx playwright test\b` | none |
-| **verifier** | Approver: independently runs a change and records the verdict in verify.md in the change's folder under docs/evidence/; only it may set that note's Status: complete. | `docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/**` | `docs/evidence/*/verify.md` | `^npx playwright test\b`<br>`^npx tsc --noEmit\b`<br>`^npm run test:unit\b`<br>`^npm run test:hooks\b` | none |
-| **workflow-reviewer** | Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. | `docs/**`<br>`tests/**` | `tests/e2e/docs/onboarding-status.json` | none | none |
+| **probe** | Stage A adversarial prober (`probe-j-<slug>:` for coverage-expansion passes 4-5 and bug-discovery, `probe-app-wide:` for the pass-4 pattern scan): probes the live app in its own playwright-cli session, appends findings to tests/e2e/docs/adversarial-findings.md under the advisory lock, and in pass 5 writes regression specs for verified boundaries. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/**` | `^npx playwright-cli\b`<br>`^npx playwright test\b` | none |
+| **process-validator** | Approver: validates that the pipeline followed the documented process and records the finding in tests/e2e/docs/onboarding-status.json. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/docs/onboarding-status.json` | none | none |
+| **reviewer** | Stage B in-loop reviewer (`reviewer-j-<slug>:` per journey, `reviewer-batch-pass-<N>:` for the cycle-1 compositional batch): reads Stage A's output and the live app in its own playwright-cli session and returns greenlight or improvements-needed. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
+| **scaffolder** | Write-only author of the Phase 1-2 scaffold and the Phase 7 env wiring: playwright.config.ts, package.json scripts, .gitignore entries, .env and .env.example, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/**, tests/e2e/docs/app-context.md and tests/e2e/page-repository.json. | `.env`<br>`.env.example`<br>`.gitignore`<br>`README.md`<br>`docs/**`<br>`package.json`<br>`playwright*.config.ts`<br>`tests/e2e/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `.env`<br>`.env.example`<br>`.gitignore`<br>`package.json`<br>`playwright*.config.ts`<br>`tests/e2e/.gitignore`<br>`tests/e2e/docs/app-context.md`<br>`tests/e2e/fixtures/**`<br>`tests/e2e/page-repository.json`<br>`tests/e2e/playwright.setup.ts` | none | none |
+| **secrets-sweep** | Phase 7 secrets sweep: rewrites hard-coded credentials, keys, PII and app URLs in specs and fixtures under tests/** to process.env references. It writes no .env or config (the scaffolder wires those) and has no shell; the orchestrator re-runs the suite after it returns. | `tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/**` | none | none |
+| **stage2** | Stage 2 element-inspection worker (`stage2-<scenario>:`): inspects the pages of one approved scenario in its own playwright-cli session and RETURNS proposed page-repository entries; the page repository itself stays the scaffolder's file. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/.auth/**`<br>`tests/e2e/docs/.subagent-returns/**` | `^npx playwright-cli\b` | none |
+| **task-reviewer** | Approver: reads the brief, the implementer's report and the review package for one change and records findings (Critical / Important / Minor, each with file:line and a fix) in review.md in the change's folder under docs/evidence/. | `docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `docs/evidence/*/review.md` | `^npx tsc --noEmit\b`<br>`^npm run test:unit\b`<br>`^npm run test:hooks\b` | none |
+| **test-composer** | Authors Playwright specs under tests/e2e/** from a journey brief and self-verifies them with the runner. | `docs/**`<br>`tests/**`<br>`tests/e2e/page-repository.json`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/**`<br>`tests/e2e/page-repository.json` | `^npx playwright test\b` | none |
+| **verifier** | Approver: independently runs a change and records the verdict in verify.md in the change's folder under docs/evidence/; only it may set that note's Status: complete. | `docs/**`<br>`package.json`<br>`playwright.config.ts`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `docs/evidence/*/verify.md` | `^npx playwright test\b`<br>`^npx tsc --noEmit\b`<br>`^npm run test:unit\b`<br>`^npm run test:hooks\b` | none |
+| **workflow-reviewer** | Approver: reviews a phase's deliverables against the ledger and records the verdict in tests/e2e/docs/onboarding-status.json. | `docs/**`<br>`tests/**`<br>`.claude/skills/**`<br>`~/.claude/skills/**` | `tests/e2e/docs/onboarding-status.json` | none | none |
 
 ## Each role, and what it is refused
 
@@ -53,7 +53,7 @@ Cleanup / dedup worker for the coverage-expansion cleanup pass (`cleanup-<scope>
 
 - **Binds when** the host dispatches an agent of type `cleanup`, or when the brief carries `<<kernel-mandate-role: cleanup#<nonce>>>` and the description begins `cleanup-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/**`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright-cli\b`, `^npx playwright test\b`: anchored patterns; a command that does not match is refused.
@@ -71,7 +71,7 @@ companion-mode verification worker (`companion-<task-slug>:`): verifies one task
 
 - **Binds when** the host dispatches an agent of type `companion`, or when the brief carries `<<kernel-mandate-role: companion#<nonce>>>` and the description begins `companion-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/evidence/**`, `tests/e2e/docs/.subagent-returns/**`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright-cli\b`, `^npx playwright test\b`: anchored patterns; a command that does not match is refused.
@@ -89,7 +89,7 @@ Pre-push handover author (`contribution-handover-<slug>:`): fills .contribution-
 
 - **Binds when** the host dispatches an agent of type `contribution-handover`, or when the brief carries `<<kernel-mandate-role: contribution-handover#<nonce>>>` and the description begins `contribution-handover-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `.contribution-handover.template.json`, `README.md`, `docs/**`, `package.json`, `schemas/**`, `skills/**`
+- **Reads** `.contribution-handover.template.json`, `README.md`, `docs/**`, `package.json`, `schemas/**`, `skills/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `.contribution-handover.json`
 - **Runs** `^git status\b`, `^git log\b`, `^git diff\b`: anchored patterns; a command that does not match is refused.
 - **Skills** `contributing-to-achilles-protocol`
@@ -138,7 +138,7 @@ failure-diagnosis worker (`fd-<test-slug>:`, `fd-ci-<run-id>:`): reproduces one 
 
 - **Binds when** the host dispatches an agent of type `fd`, or when the brief carries `<<kernel-mandate-role: fd#<nonce>>>` and the description begins `fd-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/**`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright-cli\b`, `^npx playwright test\b`: anchored patterns; a command that does not match is refused.
@@ -156,7 +156,7 @@ Writes one change: specs, fixtures and support code under tests/** (never the pa
 
 - **Binds when** the host dispatches an agent of type `implementer`, or when the brief carries `<<kernel-mandate-role: implementer#<nonce>>>` and the description begins `implementer-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `package.json`, `playwright.config.ts`, `tests/**`
+- **Reads** `docs/**`, `package.json`, `playwright.config.ts`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `docs/evidence/*/report.md`, `tests/**`
 - **Never writes** `**/page-repository*.json`, `tests/e2e/docs/onboarding-status.json`: carved out of the write scope; deny beats allow.
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
@@ -175,7 +175,7 @@ Inspects the running app before any selector exists: writes throwaway inspection
 
 - **Binds when** the host dispatches an agent of type `live-inspector`, or when the brief carries `<<kernel-mandate-role: live-inspector#<nonce>>>` and the description begins `live-inspector-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`, `tests/e2e/page-repository.json`
+- **Reads** `docs/**`, `tests/**`, `tests/e2e/page-repository.json`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `docs/evidence/*/proposal-*.md`, `docs/evidence/selectors/**`, `tests/e2e/inspect/**`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright test --config tests/e2e/inspect\b`, `^npx achilles-selector-evidence\b`: anchored patterns; a command that does not match is refused.
@@ -189,15 +189,15 @@ Inspects the running app before any selector exists: writes throwaway inspection
 
 ### `orchestrator` — the main session
 
-The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config: playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Never touches application source or secrets.
+The main session driving the achilles QA pipeline: walks the app, records pipeline state under tests/** and .achilles/**, runs the suite, commits, and dispatches every subagent role. It authors no runner or resolution config: playwright.config.ts, package.json and the Phase 1-2 scaffold (fixtures, setup, page repository, app context) are written by the scaffolder role it dispatches. Reaches the app under test on the local machine (any localhost port). Never touches application source or secrets.
 
 - **Binds as** the main session (`mainSessionRole`); it is never dispatched.
 - **Tools** `Agent`, `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `.achilles/**`, `.gitignore`, `README.md`, `docs/**`, `package.json`, `playwright*.config.ts`, `tests/**`
+- **Reads** `.achilles/**`, `.gitignore`, `README.md`, `docs/**`, `package.json`, `playwright*.config.ts`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `.achilles/**`, `.gitignore`, `docs/evidence/*/brief.md`, `docs/evidence/*/review-package.md`, `tests/**`
 - **Authored code may import** **nothing by name** (relative imports inside its own scope still work)
 - **Runs** `^npx playwright test --list\b`, `^git status\b`, `^git log\b`, `^git diff\b`, `^git add\b`, `^git commit\b`, `^npx playwright test\b`, `^npx playwright-cli (close-all|kill-all|list)\b`, `^npm run verify\b`, `^npm run change:start\b`: anchored patterns; a command that does not match is refused.
-- **Reaches** `localhost:3000`, `localhost:4173`
+- **Reaches** `127.0.0.1`, `localhost`
 - **Skills** `achilles-protocol`, `agents-vs-agents`, `bug-discovery`, `bug-report`, `companion-mode`, `contract-testing`, `contributing-to-achilles-protocol`, `coverage-expansion`, `database-testing`, `failure-diagnosis`, `journey-mapping`, `onboarding`, `perf-onboarding`, `performance-testing`, `requirement-intake`, `secrets-sweep`, `selector-development`, `self-repair`, `test-catalogue`, `test-composer`, `test-data-conventions`, `test-repair`, `ticket-driven-testing`, `work-summary-deck`, `workflow-reviewer`
 - **Dispatches** `cleanup`, `companion`, `contribution-handover`, `doc-author`, `fd`, `implementer`, `live-inspector`, `perf-reviewer`, `phase-validator`, `phase1`, `phase2`, `phase4`, `plumber`, `probe`, `process-validator`, `reviewer`, `scaffolder`, `secrets-sweep`, `stage2`, `task-reviewer`, `test-composer`, `verifier`, `workflow-reviewer`
 
@@ -210,7 +210,7 @@ Approver for the perf pipeline: reviews tests/perf/** deliverables and records t
 
 - **Binds when** the host dispatches an agent of type `perf-reviewer`, or when the brief carries `<<kernel-mandate-role: perf-reviewer#<nonce>>>` and the description begins `perf-reviewer-<slug>:`.
 - **Tools** `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/perf/**`
+- **Reads** `docs/**`, `tests/perf/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/perf/docs/perf-onboarding-status.json`
 - **Skills** `workflow-reviewer`
 
@@ -241,7 +241,7 @@ Approver: emits the per-phase greenlight into tests/e2e/docs/onboarding-status.j
 
 - **Binds when** the host dispatches an agent of type `phase-validator`, or when the brief carries `<<kernel-mandate-role: phase-validator#<nonce>>>` and the description begins `phase-validator-<slug>:`.
 - **Tools** `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/docs/onboarding-status.json`
 - **Skills** `workflow-reviewer`
 
@@ -258,7 +258,7 @@ journey-mapping Phase 1 discovery worker (`phase1-<entry>:`): crawls one entry-p
 
 - **Binds when** the host dispatches an agent of type `phase1`, or when the brief carries `<<kernel-mandate-role: phase1#<nonce>>>` and the description begins `phase1-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/docs/app-context.md`, `tests/e2e/docs/.subagent-returns/**`
 - **Runs** `^npx playwright-cli\b`: anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`
@@ -275,7 +275,7 @@ journey-mapping Phase 2 flow-identification worker (`phase2-<scope>:`): walks on
 
 - **Binds when** the host dispatches an agent of type `phase2`, or when the brief carries `<<kernel-mandate-role: phase2#<nonce>>>` and the description begins `phase2-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/docs/app-context.md`, `tests/e2e/docs/.subagent-returns/**`
 - **Runs** `^npx playwright-cli\b`: anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`
@@ -292,7 +292,7 @@ journey-mapping Phase 4 worker: `phase4-cycle-<N>:` section agents discover one 
 
 - **Binds when** the host dispatches an agent of type `phase4`, or when the brief carries `<<kernel-mandate-role: phase4#<nonce>>>` and the description begins `phase4-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/docs/.phase4-cycle-state.json`, `tests/e2e/docs/.subagent-returns/**`, `tests/e2e/docs/journey-map.md`
 - **Runs** `^npx playwright-cli\b`: anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`
@@ -329,7 +329,7 @@ Stage A adversarial prober (`probe-j-<slug>:` for coverage-expansion passes 4-5 
 
 - **Binds when** the host dispatches an agent of type `probe`, or when the brief carries `<<kernel-mandate-role: probe#<nonce>>>` and the description begins `probe-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/**`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright-cli\b`, `^npx playwright test\b`: anchored patterns; a command that does not match is refused.
@@ -347,7 +347,7 @@ Approver: validates that the pipeline followed the documented process and record
 
 - **Binds when** the host dispatches an agent of type `process-validator`, or when the brief carries `<<kernel-mandate-role: process-validator#<nonce>>>` and the description begins `process-validator-<slug>:`.
 - **Tools** `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/docs/onboarding-status.json`
 - **Skills** `workflow-reviewer`
 
@@ -364,7 +364,7 @@ Stage B in-loop reviewer (`reviewer-j-<slug>:` per journey, `reviewer-batch-pass
 
 - **Binds when** the host dispatches an agent of type `reviewer`, or when the brief carries `<<kernel-mandate-role: reviewer#<nonce>>>` and the description begins `reviewer-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/docs/.subagent-returns/**`
 - **Runs** `^npx playwright-cli\b`: anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`
@@ -381,7 +381,7 @@ Write-only author of the Phase 1-2 scaffold and the Phase 7 env wiring: playwrig
 
 - **Binds when** the host dispatches an agent of type `scaffolder`, or when the brief carries `<<kernel-mandate-role: scaffolder#<nonce>>>` and the description begins `scaffolder-<slug>:`.
 - **Tools** `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `.env`, `.env.example`, `.gitignore`, `README.md`, `docs/**`, `package.json`, `playwright*.config.ts`, `tests/e2e/**`
+- **Reads** `.env`, `.env.example`, `.gitignore`, `README.md`, `docs/**`, `package.json`, `playwright*.config.ts`, `tests/e2e/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `.env`, `.env.example`, `.gitignore`, `package.json`, `playwright*.config.ts`, `tests/e2e/.gitignore`, `tests/e2e/docs/app-context.md`, `tests/e2e/fixtures/**`, `tests/e2e/page-repository.json`, `tests/e2e/playwright.setup.ts`
 - **Skills** `achilles-protocol`
 
@@ -399,7 +399,7 @@ Phase 7 secrets sweep: rewrites hard-coded credentials, keys, PII and app URLs i
 
 - **Binds when** the host dispatches an agent of type `secrets-sweep`, or when the brief carries `<<kernel-mandate-role: secrets-sweep#<nonce>>>` and the description begins `secrets-sweep-<slug>:`.
 - **Tools** `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `tests/**`
+- **Reads** `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/**`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`, `dotenv`
 - **Skills** `achilles-protocol`, `secrets-sweep`
@@ -420,7 +420,7 @@ Stage 2 element-inspection worker (`stage2-<scenario>:`): inspects the pages of 
 
 - **Binds when** the host dispatches an agent of type `stage2`, or when the brief carries `<<kernel-mandate-role: stage2#<nonce>>>` and the description begins `stage2-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/.auth/**`, `tests/e2e/docs/.subagent-returns/**`
 - **Runs** `^npx playwright-cli\b`: anchored patterns; a command that does not match is refused.
 - **Reaches** `localhost`
@@ -437,7 +437,7 @@ Approver: reads the brief, the implementer's report and the review package for o
 
 - **Binds when** the host dispatches an agent of type `task-reviewer`, or when the brief carries `<<kernel-mandate-role: task-reviewer#<nonce>>>` and the description begins `task-reviewer-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `package.json`, `playwright.config.ts`, `tests/**`
+- **Reads** `docs/**`, `package.json`, `playwright.config.ts`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `docs/evidence/*/review.md`
 - **Authored code may import** **nothing by name** (relative imports inside its own scope still work)
 - **Runs** `^npx tsc --noEmit\b`, `^npm run test:unit\b`, `^npm run test:hooks\b`: anchored patterns; a command that does not match is refused.
@@ -455,7 +455,7 @@ Authors Playwright specs under tests/e2e/** from a journey brief and self-verifi
 
 - **Binds when** the host dispatches an agent of type `test-composer`, or when the brief carries `<<kernel-mandate-role: test-composer#<nonce>>>` and the description begins `test-composer-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`, `tests/e2e/page-repository.json`
+- **Reads** `docs/**`, `tests/**`, `tests/e2e/page-repository.json`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/**`, `tests/e2e/page-repository.json`
 - **Authored code may import** `@civitas-cerebrum/element-interactions`, `@playwright/test`
 - **Runs** `^npx playwright test\b`: anchored patterns; a command that does not match is refused.
@@ -473,7 +473,7 @@ Approver: independently runs a change and records the verdict in verify.md in th
 
 - **Binds when** the host dispatches an agent of type `verifier`, or when the brief carries `<<kernel-mandate-role: verifier#<nonce>>>` and the description begins `verifier-<slug>:`.
 - **Tools** `Bash`, `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `package.json`, `playwright.config.ts`, `tests/**`
+- **Reads** `docs/**`, `package.json`, `playwright.config.ts`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `docs/evidence/*/verify.md`
 - **Authored code may import** **nothing by name** (relative imports inside its own scope still work)
 - **Runs** `^npx playwright test\b`, `^npx tsc --noEmit\b`, `^npm run test:unit\b`, `^npm run test:hooks\b`: anchored patterns; a command that does not match is refused.
@@ -492,7 +492,7 @@ Approver: reviews a phase's deliverables against the ledger and records the verd
 
 - **Binds when** the host dispatches an agent of type `workflow-reviewer`, or when the brief carries `<<kernel-mandate-role: workflow-reviewer#<nonce>>>` and the description begins `workflow-reviewer-<slug>:`.
 - **Tools** `Edit`, `Glob`, `Grep`, `Read`, `Skill`, `Write`
-- **Reads** `docs/**`, `tests/**`
+- **Reads** `docs/**`, `tests/**`, `.claude/skills/**`, `~/.claude/skills/**`
 - **Writes** `tests/e2e/docs/onboarding-status.json`
 - **Skills** `workflow-reviewer`
 

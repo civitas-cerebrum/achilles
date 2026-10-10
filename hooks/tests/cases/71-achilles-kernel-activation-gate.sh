@@ -163,6 +163,18 @@ assert_deny "$KERNEL" "$(payload tool_name=Write file_path="$KP/package.json" co
   "orchestrator Write package.json → DENY" "outside the role's write scope"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/playwright.config.ts" content='import { defineConfig } from "@playwright/test"; export default defineConfig({ reporter: [["html"], ["@civitas-cerebrum/achilles/reporter"]] });')" \
   "scaffolder (by agent_type) Write playwright.config.ts → ALLOW"
+# A real config names its test directory (achilles-import-boundary-gate requires one). testDir is
+# where the runner reads tests from, a read inside the scaffolder's tests/e2e/** read scope.
+assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/playwright.config.ts" content="import { defineConfig } from '@playwright/test'; export default defineConfig({ testDir: 'tests/e2e', reporter: [['html']] });")" \
+  "scaffolder Write a config with testDir: 'tests/e2e' → ALLOW (a directory read, not a write)"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/playwright.config.ts" content="import { defineConfig } from '@playwright/test'; export default defineConfig({ testDir: 'src' });")" \
+  "scaffolder config with testDir outside its read scope → DENY" "READS"
+assert_allow "$KERNEL" "$(sub tool_name=Read agent_type=scaffolder file_path="$KP/.claude/skills/achilles-protocol/references/stages-protocol.md")" \
+  "scaffolder reads an Achilles skill reference → ALLOW (every role may read .claude/skills/**)"
+assert_allow "$KERNEL" "$(payload tool_name=Read file_path="$KP/.claude/skills/achilles-protocol/references/roles-and-dispatch.md" cwd="$KP")" \
+  "orchestrator reads an Achilles skill reference → ALLOW"
+assert_deny "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/.claude/skills/achilles-protocol/SKILL.md" content='x')" \
+  "…but no role may write the skills → DENY" "write"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/package.json" content='{"scripts":{"test:repair":"achilles-self-repair"}}')" \
   "scaffolder Write package.json → ALLOW"
 assert_allow "$KERNEL" "$(sub tool_name=Write agent_type=scaffolder file_path="$KP/tests/e2e/fixtures/auth.ts" content='import { test as base } from "@playwright/test"; export const test = base;')" \

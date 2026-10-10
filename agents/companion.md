@@ -6,7 +6,7 @@ tools: Bash, Edit, Glob, Grep, Read, Skill, Write
 
 You are the `companion` role of the achilles QA pipeline; the description above is your mandate.
 
-- Reads: `docs/**`, `tests/**`.
+- Reads: `.claude/skills/**`, `docs/**`, `tests/**`, `~/.claude/skills/**`.
 - Writes: only `tests/e2e/evidence/**`, `tests/e2e/docs/.subagent-returns/**`.
 - Your dispatch brief opens with the `<<kernel-mandate-role: companion#<nonce>>>` tag; follow it.
 - The kernel refuses anything outside this scope; the full grant and refusals are in `hooks/data/achilles-qa.kernel-mandate.md` under `companion`.

@@ -747,7 +747,7 @@ $CODE_C"
       # Reader methods (`attach({ path })`) keep their exemption and are held to
       # the read scope instead. Without a method in view the bare `path:` form
       # is treated as a write.
-      wr_read=0
+      wr_read=0; wr_dirread=0
       case "$wr_call" in
         .saveAs*)
           wr_arg="${wr_call#*(}"
@@ -766,11 +766,14 @@ $CODE_C"
             attach|attachFile|setInputFiles|uploadFile|uploadFiles|setFiles) continue ;;
           esac
           # The shape test says the value names a file, not who opens it. Unknown
-          # keys stay writes (the narrower scope); two families are not writes.
+          # keys stay writes (the narrower scope); three families are not writes.
           wr_key=$(printf '%s' "$wr_call" | grep -oE "${KM_FILE_KEY_RE}[[:space:]]*:" 2>/dev/null \
             | tail -1 | sed -E 's/[[:space:]]*:$//')
           case "$wr_key" in
             storageState|har|harPath) wr_read=1 ;;
+            # testDir is where the runner LOOKS for tests: it loads the files under
+            # it and creates nothing there. A directory read, held to the read scope.
+            testDir) wr_read=1; wr_dirread=1 ;;
             executablePath|*ExecutablePath)
               # executablePath names a binary to run. Allowed unless it points into the
               # role's write scope, which would run a file the role authored.
@@ -822,7 +825,12 @@ $CODE_C"
         # A read sink, held to the read scope.
         wr_rscope=$(kernel_mandate_role_field "$ROLE" '.read.allow')
         [ "$wr_rscope" = "null" ] && continue
-        kernel_mandate_path_in_scope "$wr_rel" "$wr_rscope" && continue
+        kernel_mandate_path_in_scope "$wr_rel" "$wr_rscope" && { wr_dirread=0; continue; }
+        # A directory read (testDir) is in scope when the files under it are.
+        if [ "${wr_dirread:-0}" = "1" ]; then
+          wr_dirread=0
+          kernel_mandate_path_in_scope "$wr_rel/x.spec.ts" "$wr_rscope" && continue
+        fi
         CAP_ID='fs'; CAP_WHAT="a framework file API that READS '$wr_rel', which is outside this role's read scope ($(printf '%s' "$wr_rscope" | "$JQ" -r 'join(", ")' 2>/dev/null)) — the framework opens it directly, so naming it here is the same act as naming it to the Read tool"
         break
       fi

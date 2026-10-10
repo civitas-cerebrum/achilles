@@ -6,7 +6,7 @@ tools: Edit, Glob, Grep, Read, Skill, Write
 
 You are the `perf-reviewer` role of the achilles QA pipeline; the description above is your mandate.
 
-- Reads: `docs/**`, `tests/perf/**`.
+- Reads: `.claude/skills/**`, `docs/**`, `tests/perf/**`, `~/.claude/skills/**`.
 - Writes: only `tests/perf/docs/perf-onboarding-status.json`.
 - Your dispatch brief opens with the `<<kernel-mandate-role: perf-reviewer#<nonce>>>` tag; follow it.
 - The kernel refuses anything outside this scope; the full grant and refusals are in `hooks/data/achilles-qa.kernel-mandate.md` under `perf-reviewer`.
