@@ -5,8 +5,7 @@ LEDGER_PERF_REL='tests/perf/docs/perf-onboarding-status.json'
 LEDGER_APPROVERS_NAME='.workflow-approvers.json'
 
 # ledger_path <project-root> <onboarding|perf>
-# The root is joined verbatim: a trailing slash stays visible in the path,
-# as it did in the hand-built paths this replaces.
+# The root is joined verbatim: a trailing slash on the root stays visible in the path.
 ledger_path() {
   case "$2" in
     onboarding) printf '%s/%s' "$1" "$LEDGER_ONBOARDING_REL" ;;
