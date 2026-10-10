@@ -620,9 +620,9 @@
 
       <p class="hero-sub">
         Achilles is an autonomous quality assurance solution that builds, grows,
-        guards, and repairs web test suites at agent speed — and proves every
-        result with evidence. One sentence kicks off a complete eight-phase
-        pipeline — no babysitting required.
+        guards, and repairs web test suites, and records evidence for each
+        result. One sentence starts an eight-phase onboarding pipeline that
+        runs without intermediate confirmations. It runs on Claude Code only.
       </p>
 
       <div class="hero-actions">
@@ -644,9 +644,9 @@
 
       <div class="hero-stats">
         <div class="stat"><div class="stat-value grad">25</div><div class="stat-label">Agent Skills</div></div>
-        <div class="stat"><div class="stat-value grad">35</div><div class="stat-label">Harness Hooks</div></div>
+        <div class="stat"><div class="stat-value grad">48</div><div class="stat-label">Hook Scripts (7 opt-in)</div></div>
         <div class="stat"><div class="stat-value grad">9</div><div class="stat-label">Working Modes</div></div>
-        <div class="stat"><div class="stat-value grad">4</div><div class="stat-label">Verification Stages</div></div>
+        <div class="stat"><div class="stat-value grad">23</div><div class="stat-label">Kernel Roles</div></div>
       </div>
 
     </div>
@@ -674,21 +674,21 @@
       <div class="mode-card c-cyan reveal">
         <div class="mode-icon c-cyan">📈</div>
         <h3 class="mode-title">Coverage Expansion</h3>
-        <p class="mode-desc">Grows the suite journey by journey, running independent journeys in parallel. Three compositional passes and two adversarial passes deliver rigorous coverage — and every state-changing step is proven by an API or database oracle, not just a toast. Depth mode enforces strict per-journey parallelism for high-stakes audits.</p>
+        <p class="mode-desc">Grows the suite journey by journey, running independent journeys in parallel. Three compositional passes and two adversarial passes add coverage, and each state-changing step is checked against an API or database oracle, not just a toast. Depth mode enforces strict per-journey parallelism for high-stakes audits.</p>
         <span class="mode-tag c-cyan">Expansion</span>
       </div>
 
       <div class="mode-card c-orange reveal">
         <div class="mode-icon c-orange">🐛</div>
         <h3 class="mode-title">Adversarial Bug Discovery</h3>
-        <p class="mode-desc">Probes the live app fresh — before reading any context — to catch what familiarity blinds you to. Returns a deduplicated bug ledger where every finding is evidence-backed, ranked by severity and business priority, and tracked through a triage lifecycle — with reproduction tests, IDOR probes, race conditions, and state-skip vulnerabilities.</p>
+        <p class="mode-desc">Probes the live app fresh — before reading any context — to catch what familiarity blinds you to. Returns a deduplicated bug ledger where each finding carries evidence, ranked by severity and business priority, and tracked through a triage lifecycle — with reproduction tests, IDOR probes, race conditions, and state-skip vulnerabilities.</p>
         <span class="mode-tag c-orange">Bug Discovery</span>
       </div>
 
       <div class="mode-card c-green reveal">
         <div class="mode-icon c-green">🔧</div>
         <h3 class="mode-title">Automated Suite Repair</h3>
-        <p class="mode-desc">Batch-clusters failures by shared root cause and heals entire clusters at once — or runs hands-off from a terminal: <code>npm run test:repair</code> baselines the suite, separates flake from deterministic failure, spawns one repair worker per red spec file, and ends with every test green or explained.</p>
+        <p class="mode-desc">Batch-clusters failures by shared root cause and heals entire clusters at once — or runs hands-off from a terminal: <code>npm run test:repair</code> baselines the suite, separates flake from deterministic failure, spawns one repair worker per red spec file, and ends with each test green or explained.</p>
         <span class="mode-tag c-green">Suite Repair</span>
       </div>
 
@@ -709,14 +709,14 @@
       <div class="mode-card c-purple reveal">
         <div class="mode-icon c-purple">🎫</div>
         <h3 class="mode-title">Ticket-Driven Testing</h3>
-        <p class="mode-desc">The entry point for developers and QA engineers alike: hand it a ticket, a PR, or "test what I just built". It reads the diff for risk, observes the live app for what to assert, proves every test can fail with a negative control, and delivers a per-ticket evidence bundle — with sign-off harness-gated on that evidence and on an adversarial review of the testing itself. Every confirmed defect gets a sentinel test.</p>
+        <p class="mode-desc">The entry point for developers and QA engineers alike: hand it a ticket, a PR, or "test what I just built". It reads the diff for risk, observes the live app for what to assert, runs a negative control to show each test can fail, and delivers a per-ticket evidence bundle. Sign-off is gated on that evidence and on an adversarial review of the testing itself. Each confirmed defect gets a sentinel test.</p>
         <span class="mode-tag c-purple">Shift-Left</span>
       </div>
 
       <div class="mode-card c-green reveal">
         <div class="mode-icon c-green">🗄️</div>
         <h3 class="mode-title">API &amp; Database Oracles</h3>
-        <p class="mode-desc">Locks the backend surface against drift — status codes, response schemas, error envelopes, critical headers — and asserts persisted state directly in SQL: row counts, cell values, transactions. Every persisted mutation is proven by an API or database oracle, because a test that only watches the UI silently passes when the write regresses.</p>
+        <p class="mode-desc">Locks the backend surface against drift — status codes, response schemas, error envelopes, critical headers — and asserts persisted state directly in SQL: row counts, cell values, transactions. Persisted mutations are checked against an API or database oracle, because a test that only watches the UI passes when the write regresses.</p>
         <span class="mode-tag c-green">Contract &amp; DB</span>
       </div>
 
@@ -736,7 +736,7 @@
     <div class="section-header centered reveal">
       <div class="section-tag">Zero to Suite</div>
       <h2 class="section-title">Eight phases. One command.<br /><span class="grad">Fully autonomous.</span></h2>
-      <p class="section-desc">The onboarding pipeline runs end-to-end without intermediate confirmations. Harness hooks gate every phase transition — the agent finishes the contract or surfaces a blocker for human triage.</p>
+      <p class="section-desc">The onboarding pipeline runs end-to-end without intermediate confirmations. Hooks gate the phase transitions of the onboarding ledger. The agent finishes the phase or surfaces a blocker for human triage.</p>
     </div>
 
     <div class="phases reveal">
@@ -767,7 +767,7 @@
       <div class="phase">
         <div class="phase-num">05 —</div>
         <div class="phase-name">Coverage</div>
-        <div class="phase-desc">Multi-tiered compositional and adversarial passes expand coverage across every journey.</div>
+        <div class="phase-desc">Multi-tiered compositional and adversarial passes expand coverage across the mapped journeys.</div>
         <div class="phase-arrow">→</div>
       </div>
       <div class="phase">
@@ -816,13 +816,13 @@
       <div class="phase">
         <div class="phase-num">03 — Human + Harness</div>
         <div class="phase-name">Confirm</div>
-        <div class="phase-desc">The tests get tested: negative controls prove each test can fail; adversarial review challenges every assertion. Hooks block sign-off without the evidence.</div>
+        <div class="phase-desc">The tests get tested: negative controls prove each test can fail; adversarial review challenges the assertions. Hooks block sign-off without the evidence.</div>
         <div class="phase-arrow">→</div>
       </div>
       <div class="phase">
         <div class="phase-num">04 — Autonomous</div>
         <div class="phase-name">Gate / Heal</div>
-        <div class="phase-desc">Regression gates the release in the go-live pipeline; smoke runs on every PR; e2e verifies full browser journeys. Self-repair heals drift, quarantines flakes, and files app bugs with evidence.</div>
+        <div class="phase-desc">Regression gates the release in the go-live pipeline; smoke runs per PR; e2e covers full browser journeys. Self-repair heals drift, quarantines flakes, and files app bugs with evidence.</div>
       </div>
     </div>
 
@@ -849,39 +849,73 @@
     <div class="section-header reveal">
       <div class="section-tag">Differentiators</div>
       <h2 class="section-title">Built different,<br /><span class="grad">by design</span></h2>
-      <p class="section-desc">Achilles isn't a test generator — it's a full autonomous QA methodology with deterministic phase enforcement and structured data contracts baked in.</p>
+      <p class="section-desc">Achilles is a QA methodology for Claude Code with hook-enforced phase ordering and JSON-Schema return contracts. It outputs Playwright suites you run without the agent.</p>
     </div>
 
     <div class="diffs-grid">
       <div class="diff-card reveal">
         <div class="diff-icon">⚡</div>
-        <h4 class="diff-title">Harness-Enforced Discipline</h4>
-        <p class="diff-desc">48 hook scripts (39 enforcement gates) sit between every tool invocation. They prevent scope compression, phase skipping, and silent scope reduction &mdash; and block sign-off until negative-control and adversarial-review evidence exists. Enforcement, not instructions.</p>
+        <h4 class="diff-title">Hook-Enforced Discipline</h4>
+        <p class="diff-desc">48 hook scripts, including 7 opt-in factory gates, run before and after Claude Code tool calls. 39 are enforcement gates, meaning scripts named <code>*-gate.sh</code> or <code>*-guard.sh</code>. They deny scope compression, phase skipping and sign-off without negative-control and adversarial-review evidence. A role kernel (23 roles) also limits which tools, commands and paths each dispatched role may use. The kernel and the hooks act only while an Achilles skill runs. The operator can switch the kernel off (<code>KERNEL_MANDATE=0</code>) or stop new sessions from activating the protocol (<code>ACHILLES_PROTOCOL=0</code>). Factory gates apply only when the project commits an <code>achilles-factory-rules.json</code>.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🎯</div>
-        <h4 class="diff-title">Senior-Grade Judgment</h4>
-        <p class="diff-desc">Probes run fresh — fresh eyes catch what familiarity blinds you to — then findings are risk-weighted by defect likelihood, ranked by severity and business priority, and held to an oracle stronger than a passing toast. The calls a senior QA engineer makes, not just green or red.</p>
+        <h4 class="diff-title">Risk-Ranked Findings</h4>
+        <p class="diff-desc">Probes run before the agent reads context, then findings are risk-weighted by defect likelihood, ranked by severity and business priority, and checked against an oracle stronger than a passing toast.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">📐</div>
         <h4 class="diff-title">Declarative Steps API</h4>
-        <p class="diff-desc">Tests reference elements by name, never raw selectors. Selectors live in a page repository and are validated against the live DOM before any test runs — zero flakiness from stale locators.</p>
+        <p class="diff-desc">Tests reference elements by name, not raw selectors. Selectors live in a page repository, and <code>achilles-selector-evidence</code> records live-DOM evidence for an entry. This removes stale-locator flakiness from test code; it does not remove other flake sources.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">📦</div>
         <h4 class="diff-title">Structured Data Contracts</h4>
-        <p class="diff-desc">Every schema-bearing dispatch is gated against a JSON-Schema return contract — cited in the brief before dispatch, validated on return. Composer, probe, and reviewer returns carry a typed handover envelope for deterministic phase-to-phase handovers.</p>
+        <p class="diff-desc">Schema-bearing dispatches cite a JSON-Schema return contract in the brief, and the return is validated (warn by default, blocking with <code>SCHEMA_RETURN_GUARD=strict</code>). Composer, probe and reviewer returns carry a typed handover envelope.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🔄</div>
-        <h4 class="diff-title">Autonomous CI/CD Mode</h4>
-        <p class="diff-desc">External CLI drivers invoke Achilles hands-off in CI — regression as a release gate in the go-live pipeline, smoke on every pull request, or scheduled runs. The pipeline finishes the contract or surfaces a blocker — it never silently truncates.</p>
+        <h4 class="diff-title">CI Drivers</h4>
+        <p class="diff-desc">External CLI drivers invoke Achilles hands-off in CI — regression as a release gate in the go-live pipeline, smoke per pull request, or scheduled runs. The pipeline finishes the phase or surfaces a blocker. Achilles does not host a runner: CI runs on your own infrastructure.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">📊</div>
-        <h4 class="diff-title">Stakeholder-Ready Output</h4>
-        <p class="diff-desc">Not just test code. Journey maps, test catalogues, bug ledgers, and branded summary decks communicate QA value to product owners and executives — automatically.</p>
+        <h4 class="diff-title">Stakeholder Output</h4>
+        <p class="diff-desc">Not just test code. Journey maps, test catalogues, bug ledgers and summary decks, generated from the run.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── LIMITS & OPERATING ───────────────────────────────────────────────── -->
+<section id="limits">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-tag">Scope</div>
+      <h2 class="section-title">What it is not,<br /><span class="grad">and how to operate it</span></h2>
+      <p class="section-desc">Version 0.2.0. Limits are listed in <code>known-limits.md</code> (20 entries, KL-01 to KL-20).</p>
+    </div>
+
+    <div class="diffs-grid">
+      <div class="diff-card reveal">
+        <div class="diff-icon">🚫</div>
+        <h4 class="diff-title">What it is not</h4>
+        <p class="diff-desc">Claude Code only: hooks and the role kernel register as Claude Code hooks, and the skills are plain markdown. No hosted runner. No native mobile; viewport emulation only. No runtime self-healing: repair runs offline against a red suite. No published benchmark.</p>
+      </div>
+      <div class="diff-card reveal">
+        <div class="diff-icon">🛡️</div>
+        <h4 class="diff-title">Scope of enforcement</h4>
+        <p class="diff-desc">The role kernel is active only while an Achilles skill runs. The operator can switch it off with <code>KERNEL_MANDATE=0</code>. Factory gates are opt-in per project. The Bash guards cover common agent commands, not obfuscated shell (KL-15).</p>
+      </div>
+      <div class="diff-card reveal">
+        <div class="diff-icon">⌨️</div>
+        <h4 class="diff-title">CLIs</h4>
+        <p class="diff-desc"><code>achilles-mutate</code>, <code>achilles-show</code>, <code>achilles-self-repair</code>, <code>achilles-scenario-lint</code>, <code>achilles-selector-evidence</code> and <code>achilles-uninstall</code>: the 6 bins in <code>package.json</code>.</p>
+      </div>
+      <div class="diff-card reveal">
+        <div class="diff-icon">🧹</div>
+        <h4 class="diff-title">Uninstall</h4>
+        <p class="diff-desc"><code>npx achilles-uninstall [--global] [--project &lt;dir&gt;] [--dry-run]</code> reverses what postinstall recorded in <code>achilles-install.json</code>: hook registrations, unedited files and the staged mandate. npm runs no uninstall script, so this is a command.</p>
       </div>
     </div>
   </div>
@@ -905,8 +939,8 @@
 <section class="cta-section">
   <div class="container">
     <div class="reveal">
-      <h2 class="cta-title">Ready to automate<br /><span class="grad">everything?</span></h2>
-      <p class="cta-sub">One install. One sentence. A complete test suite by morning.</p>
+      <h2 class="cta-title">Try it on<br /><span class="grad">one project</span></h2>
+      <p class="cta-sub">One install, one sentence. A full onboarding run uses a large share of a Claude plan window.</p>
       <div class="hero-actions" style="justify-content:center">
         <a class="btn-primary" href="https://www.npmjs.com/package/@civitas-cerebrum/achilles" target="_blank" rel="noopener">
           Get Started
@@ -918,7 +952,8 @@
       <div class="cta-badges">
         <span class="cta-badge">MIT License</span>
         <span class="cta-badge">Built on Playwright</span>
-        <span class="cta-badge">Driven by Agents</span>
+        <span class="cta-badge">Claude Code</span>
+        <span class="cta-badge">v0.2.0</span>
         <span class="cta-badge">25 Agent Skills</span>
       </div>
     </div>
