@@ -7,7 +7,7 @@
 
 ## Background
 
-Subagents in this environment cannot dispatch their own sub-subagents — the Agent / Task tool is parent-only. The sub-orchestrator pattern works around that constraint: a fresh subagent with the relevant skill loaded reviews the parent orchestrator's planned dispatch wave **before** the wave fires, and returns a structured greenlight / improvements-needed verdict. The parent reads the verdict and either fans out the wave or revises the manifest.
+Subagents in this environment cannot dispatch their own sub-subagents; the Agent / Task tool is parent-only. The sub-orchestrator pattern works around that constraint: a fresh subagent with the relevant skill loaded reviews the parent orchestrator's planned dispatch wave **before** the wave fires, and returns a structured greenlight / improvements-needed verdict. The parent reads the verdict and either fans out the wave or revises the manifest.
 
 Same shape as the Stage B reviewer applied one level up. The validator does NOT execute any of the planned dispatches; it only inspects the manifest.
 
@@ -15,15 +15,15 @@ Same shape as the Stage B reviewer applied one level up. The validator does NOT 
 
 ## 1. When to invoke
 
-Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold:
+Invoke a `process-validator-<scope>:` subagent before fanning out a wave when ANY of the following hold. (Dispatched with `subagent_type: process-validator` and first line `<<kernel-mandate-role: process-validator#<nonce>>>`: [roles-and-dispatch.md](../../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar".)
 
 | Trigger | Threshold |
 |---|---|
-| Wave size | ≥ 3 parallel non-trivial dispatches in one message (composer / reviewer / probe). Phase-1 / phase-2 discovery waves don't count — those have a separate isolation contract. |
+| Wave size | ≥ 3 parallel non-trivial dispatches in one message (composer / reviewer / probe). Phase-1 / phase-2 discovery waves don't count; those have a separate isolation contract. |
 | Pass boundary | First wave of a new pass (Pass 1 → Pass 2, Pass 2 → Pass 3, etc.). The pass-1 → pass-2 boundary is the highest-leverage validator invocation in the depth-mode pipeline. |
 | Scope change | Any wave that introduces a new role-prefix mapping, a new slug-naming pattern, or a new must-fix-list shape vs. the previous wave. |
 | Recovery | After ≥ 1 cycle of `improvements-needed` returns from Stage B reviewers in the previous wave. The pattern signals systematic brief-quality drift; a validator catches it before the next wave repeats the mistake. |
-| Re-pass mode | Any compositional re-pass (Passes 2 / 3) — the re-pass triggers (1–4) shape the manifest in non-obvious ways and benefit from review. |
+| Re-pass mode | Any compositional re-pass (Passes 2 / 3); the re-pass triggers (1–4) shape the manifest in non-obvious ways and benefit from review. |
 
 Skip the validator when ALL of the following hold:
 - The wave is < 3 dispatches.
@@ -37,7 +37,7 @@ The validator costs one extra Agent call per wave. The break-even is roughly: va
 
 ## 2. Manifest shape (what the parent passes in)
 
-The parent dispatches the validator with a **manifest** of the planned wave. The manifest is enough to validate the *shape* of the wave — it does NOT include test source, full briefs, or pasted journey blocks. Those would defeat the validator's isolation.
+The parent dispatches the validator with a **manifest** of the planned wave. The manifest is enough to validate the *shape* of the wave; it does NOT include test source, full briefs, or pasted journey blocks. Those would defeat the validator's isolation.
 
 ### Manifest template
 
@@ -52,14 +52,14 @@ The parent dispatches the validator with a **manifest** of the planned wave. The
 
 | # | description prefix | journey-id | slug | model-hint | must-fix-list summary |
 |---|---|---|---|---|---|
-| 1 | composer-j-a: cycle 1 | j-a | composer-j-a-2-c1 | sonnet | (n/a — pass 1) |
-| 2 | composer-j-b: cycle 1 | j-b | composer-j-b-2-c1 | sonnet | (n/a — pass 1) |
-| 3 | composer-j-c: cycle 1 | j-c | composer-j-c-2-c1 | opus   | (n/a — pass 1) |
+| 1 | test-composer-j-a: cycle 1 | j-a | composer-j-a-2-c1 | sonnet | (n/a — pass 1) |
+| 2 | test-composer-j-b: cycle 1 | j-b | composer-j-b-2-c1 | sonnet | (n/a — pass 1) |
+| 3 | test-composer-j-c: cycle 1 | j-c | composer-j-c-2-c1 | opus   | (n/a — pass 1) |
 
 (continue for all N rows)
 
 ## Pre-checks performed by parent before manifest emission
-- [ ] All description prefixes use role-explicit form (composer-/reviewer-/probe-/process-validator-).
+- [ ] All description prefixes use role-explicit form (test-composer-/reviewer-/probe-/process-validator-).
 - [ ] All slugs ≤ 28 chars.
 - [ ] No two rows share a slug.
 - [ ] Journey-ids drawn from the current journey-map.md (sentinel-verified).
@@ -70,10 +70,10 @@ The parent dispatches the validator with a **manifest** of the planned wave. The
 
 | Field | Rule |
 |---|---|
-| `description prefix` | Begins with `composer-` / `reviewer-` / `probe-` / `process-validator-`. Bare `j-` / `sj-` are forbidden — they're role-ambiguous. |
-| `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the validator checks (the dispatch-guard hook that previously checked it mechanically was retired in 0.3.6). |
-| `slug` | The CLI session slug for this dispatch. Pattern matches the role (composer-j-… / reviewer-j-… / probe-j-…) and respects the 28-char cap. |
-| `model-hint` | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. |
+| `description prefix` | Begins with `test-composer-` / `reviewer-` / `probe-` / `process-validator-`. Bare `j-` / `sj-` are forbidden; they're role-ambiguous. |
+| `journey-id` | Slug from `journey-map.md`. The mapping description-prefix → journey-id is what the validator checks. |
+| `slug` | The CLI session slug for this dispatch. Pattern matches the role (composer-j-… / reviewer-j-… / probe-j-…; the composer slug drops the `test-` of its description prefix) and respects the 28-char cap. |
+| `model-hint` | Model hint per `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet): validate the manifest's model field matches the table for each dispatch's role-prefix and pass. |
 | `must-fix-list summary` | One-line summary of the Stage B feedback this Stage A retry must address, OR `(n/a)` for fresh-cycle composer dispatches. |
 
 ### What the manifest does NOT contain
@@ -93,16 +93,16 @@ The validator runs the following checks against the manifest. Each check produce
 
 | Check | What to look for | Failure → finding |
 |---|---|---|
-| **Slug-length** | Every slug ≤ 28 chars. | `slug-length-cap-violation` — name the offending row. |
-| **Role-prefix consistency** | Every description prefix matches the role-explicit set (composer-/reviewer-/probe-/process-validator-). | `forbidden-prefix` — name the row + suggested prefix. |
-| **Description ↔ slug 1:1** | Every row's description prefix and slug share the same role-prefix (`composer-j-…` description ↔ `composer-j-…` slug). | `description-slug-mismatch` — name the row + show diff. |
-| **Journey-coverage completeness** | For composer/reviewer waves: the wave covers every journey listed in the current pass's roster (or the must-fix-list's journey-set for retry waves). | `journey-coverage-gap` — list missing journeys. |
-| **No duplicates** | No two rows share a slug or a journey-id. | `duplicate-slug` / `duplicate-journey` — name the conflicting rows. |
-| **Brief-minimalism (proxied via must-fix-list summary)** | The must-fix-list summary ≤ 240 chars; no orchestrator meta-content (`depth mode`, `5-pass pipeline`, `Pass 4/5`, etc.). | `brief-leak` — name the row + leaked phrase. |
-| **Parallelism cap** | Wave size ≤ the effective cap = user override (`parallel-cap: N`) if any, else shared-resource-audit credential caps if any, else unlimited (host max). Flag `parallelism-cap-violation` ONLY when a declared override or audit cap is exceeded — never against a fixed numeric default. | `parallelism-cap-violation` — name the planned size + the override/audit cap it exceeded. |
-| **Hook-rule pre-checks** | All bullets in the manifest's "Pre-checks performed by parent" section are checked. | `pre-check-not-acknowledged` — name the unchecked bullet. |
-| **Model-hint sanity** | Model hint per `coverage-expansion/SKILL.md` §"Hybrid model selection" — validate the manifest's model field matches the table for each dispatch's role-prefix and pass. | `model-mismatch` — name the row + suggested model. |
-| **Pass-boundary fit** | The wave's pass + stage match the coverage-expansion-state.json's pending state. | `state-misalignment` — quote the conflict. |
+| **Slug-length** | Every slug ≤ 28 chars. | `slug-length-cap-violation`: name the offending row. |
+| **Role-prefix consistency** | Every description prefix matches the role-explicit set (test-composer-/reviewer-/probe-/process-validator-). | `forbidden-prefix`: name the row + suggested prefix. |
+| **Description ↔ slug 1:1** | Every row's description prefix and slug name the same role (`test-composer-j-…` description ↔ `composer-j-…` slug; `reviewer-j-…` ↔ `reviewer-j-…`). | `description-slug-mismatch`: name the row + show diff. |
+| **Journey-coverage completeness** | For composer/reviewer waves: the wave covers every journey listed in the current pass's roster (or the must-fix-list's journey-set for retry waves). | `journey-coverage-gap`: list missing journeys. |
+| **No duplicates** | No two rows share a slug or a journey-id. | `duplicate-slug` / `duplicate-journey`: name the conflicting rows. |
+| **Brief-minimalism (proxied via must-fix-list summary)** | The must-fix-list summary ≤ 240 chars; no orchestrator meta-content (`depth mode`, `5-pass pipeline`, `Pass 4/5`, etc.). | `brief-leak`: name the row + leaked phrase. |
+| **Parallelism cap** | Wave size ≤ the effective cap = user override (`parallel-cap: N`) if any, else shared-resource-audit credential caps if any, else unlimited (host max). Flag `parallelism-cap-violation` ONLY when a declared override or audit cap is exceeded; never against a fixed numeric default. | `parallelism-cap-violation`: name the planned size + the override/audit cap it exceeded. |
+| **Hook-rule pre-checks** | All bullets in the manifest's "Pre-checks performed by parent" section are checked. | `pre-check-not-acknowledged`: name the unchecked bullet. |
+| **Model-hint sanity** | Model hint per `coverage-expansion/SKILL.md` §"Hard rules — kernel-resident" (Hybrid model selection bullet): validate the manifest's model field matches the table for each dispatch's role-prefix and pass. | `model-mismatch`: name the row + suggested model. |
+| **Pass-boundary fit** | The wave's pass + stage match the coverage-expansion-state.json's pending state. | `state-misalignment`: quote the conflict. |
 
 ### Finding-block shape
 
@@ -134,7 +134,7 @@ findings: []
 summary: <one sentence — e.g., "16 dispatches conform; slugs ≤ 24 chars; role prefixes role-explicit; journey roster fully covered.">
 ````
 
-The `summary:` line is REQUIRED on greenlight — without it, the harness validator hook flags the return as malformed and the parent re-dispatches. The `findings: []` line is also required (empty array, explicit) so parsers don't have to distinguish "no findings field" from "no findings value".
+The `summary:` line is REQUIRED on greenlight; without it, the harness validator hook flags the return as malformed and the parent re-dispatches. The `findings: []` line is also required (empty array, explicit) so parsers don't have to distinguish "no findings field" from "no findings value".
 
 ### `improvements-needed` (≥1 finding)
 
@@ -177,11 +177,11 @@ findings:
 
 The spill file starts with the sentinel `<!-- subagent-returns:process-validator:<scope>:cycle-<C> -->`. Per-violation blocks (with `manifest-row:` / `issue:` / `fix:` sub-bullets) go in the spill body, NOT inline in the return.
 
-The `SubagentStop` rewrite-gate that previously enforced this contract was retired in 0.3.6; the rule still applies — keep the verbose violation blocks in the spill file so they never reach the parent's transcript. `greenlight` returns are exempt (already index-only).
+Keep the verbose violation blocks in the spill file so they never reach the parent's transcript. `greenlight` returns are exempt (already index-only).
 
 ### Banned tokens
 
-The validator's return MUST NOT contain `nice-to-have`, `greenlight-with-notes`, or a top-level `notes:` sub-list — those are banned by `subagent-return-schema.md` §4.1 (this file follows the same vocabulary). Findings that don't meet must-fix calibration are not surfaced; if the validator noticed it and recorded it, the parent retries.
+The validator's return MUST NOT contain `nice-to-have`, `greenlight-with-notes`, or a top-level `notes:` sub-list; those are banned by `subagent-return-schema.md` §4.1 (this file follows the same vocabulary). Findings that don't meet must-fix calibration are not surfaced; if the validator noticed it and recorded it, the parent retries.
 
 ---
 
@@ -192,7 +192,7 @@ On receipt of the validator's return:
 ### Greenlight path
 
 1. The parent reads `status: greenlight` and the `summary:` line.
-2. The parent fans out the wave **as planned in the manifest** — no edits between greenlight and dispatch.
+2. The parent fans out the wave **as planned in the manifest**; no edits between greenlight and dispatch.
 3. The parent records a one-line entry in the run progress log: `[coverage-expansion] Pass <N>/5 wave-<scope>: process-validator greenlight (N=<wave-size>)`.
 
 ### Improvements-needed path
@@ -204,18 +204,18 @@ On receipt of the validator's return:
    - `journey-coverage-gap` → add the missing rows.
    - `brief-leak` → rewrite the must-fix-list summary.
    - …etc.
-3. The parent re-emits the revised manifest and re-dispatches the validator. **The parent does NOT fan out the wave on `improvements-needed` — only after a subsequent greenlight.**
-4. Cycle cap: 3 validator dispatches per wave. After cycle 3 of `improvements-needed`, the parent escalates to the user with the validator's last set of findings — the run is `blocked-validator-stalled` until the user resolves the conflict (or explicitly authorises a workaround).
+3. The parent re-emits the revised manifest and re-dispatches the validator. **The parent does NOT fan out the wave on `improvements-needed`; only after a subsequent greenlight.**
+4. Cycle cap: 3 validator dispatches per wave. After cycle 3 of `improvements-needed`, the parent escalates to the user with the validator's last set of findings; the run is `blocked-validator-stalled` until the user resolves the conflict (or explicitly authorises a workaround).
 
 ### Cycle counting
 
-Validator cycles count toward the wave's overall budget but do NOT consume the 7-cycle Stage A↔B retry-loop budget — the validator runs *before* Stage A fires, so the 7-cycle clock starts after greenlight.
+Validator cycles count toward the wave's overall budget but do NOT consume the 7-cycle Stage A↔B retry-loop budget; the validator runs *before* Stage A fires, so the 7-cycle clock starts after greenlight.
 
 ---
 
 ## 6. Optional: harness enforcement (deferred)
 
-A PreToolUse:Agent hook could detect "wave size ≥ 3 with composer-/reviewer-/probe- prefix" and require an immediate-prior `process-validator-` dispatch in conversation history (state-file driven, similar to the suite-gate ratchet). This is deferred to a follow-up issue — the workflow documented above is sufficient as markdown-only enforcement initially. When the harness layer is added, it cites this file as its source of truth.
+A PreToolUse:Agent hook could detect "wave size ≥ 3 with composer-/reviewer-/probe- prefix" and require an immediate-prior `process-validator-` dispatch in conversation history (state-file driven, similar to the suite-gate ratchet). This is deferred to a follow-up issue; the workflow documented above is sufficient as markdown-only enforcement initially. When the harness layer is added, it cites this file as its source of truth.
 
 ---
 
@@ -236,11 +236,11 @@ A pass-2 wave of 5 composer dispatches:
 
 | # | description prefix | journey-id | slug | model-hint | must-fix-list summary |
 |---|---|---|---|---|---|
-| 1 | composer-j-a: cycle 1     | j-a     | composer-j-a-2-c1       | sonnet | address Stage B finding j-a-1-1-R-01 (mobile variant) |
-| 2 | composer-j-b: cycle 1     | j-b     | composer-j-b-2-c1       | sonnet | (n/a — re-pass trigger 3, no prior must-fix) |
-| 3 | composer-j-c: cycle 1     | j-c     | composer-j-c-2-c1       | opus   | address Stage B findings j-c-1-2-R-{01,02,03} |
-| 4 | composer-sj-d-1: cycle 1  | sj-d-1  | composer-sj-d-1-2-c1    | sonnet | address Stage B finding sj-d-1-1-1-R-01 (error state) |
-| 5 | composer-j-e: cycle 1     | j-e     | composer-j-e-2-c1       | sonnet | (n/a) |
+| 1 | test-composer-j-a: cycle 1     | j-a     | composer-j-a-2-c1       | sonnet | address Stage B finding j-a-1-1-R-01 (mobile variant) |
+| 2 | test-composer-j-b: cycle 1     | j-b     | composer-j-b-2-c1       | sonnet | (n/a — re-pass trigger 3, no prior must-fix) |
+| 3 | test-composer-j-c: cycle 1     | j-c     | composer-j-c-2-c1       | opus   | address Stage B findings j-c-1-2-R-{01,02,03} |
+| 4 | test-composer-sj-d-1: cycle 1  | sj-d-1  | composer-sj-d-1-2-c1    | sonnet | address Stage B finding sj-d-1-1-1-R-01 (error state) |
+| 5 | test-composer-j-e: cycle 1     | j-e     | composer-j-e-2-c1       | sonnet | (n/a) |
 
 ## Pre-checks performed by parent before manifest emission
 - [x] All description prefixes use role-explicit form.

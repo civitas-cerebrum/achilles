@@ -5,11 +5,10 @@
 H="$HOOK_DIR/standard-mode-first-pass-guard.sh"
 
 # Set up a temp repo-root so the hook can locate state files relative to cwd.
-TMP_REPO=$(mktemp -d /tmp/std-mode-first-pass-XXXXXX)
+tmp_into TMP_REPO /tmp/std-mode-first-pass-XXXXXX
 mkdir -p "$TMP_REPO/tests/e2e/docs"
 # Initialise git so `git rev-parse --show-toplevel` returns this dir.
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 write_cov_state() {
   echo "$1" > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
@@ -48,6 +47,10 @@ assert_deny "$H" "$(payload tool_name=Agent description='[group] composer-j-cart
   "[group] with no state file → DENY (implicit Pass 1)" "Pass-1 grouping forbidden"
 assert_deny "$H" "$(payload tool_name=Agent description='[P3-batch] composer-j-logout,composer-j-role:' prompt='Compose.' cwd="$TMP_REPO")" \
   "[P3-batch] with no state file → DENY (implicit Pass 1)" "Pass-1 grouping forbidden"
+assert_deny "$H" "$(payload tool_name=Agent description='test-composer-group-p1-cart: j-cart, j-checkout' prompt='Compose.' cwd="$TMP_REPO")" \
+  "role-first group spelling with no state file → DENY (implicit Pass 1)" "Pass-1 grouping forbidden"
+assert_deny "$H" "$(payload tool_name=Agent description='test-composer-p3batch-p1-misc: j-logout, j-role' prompt='Compose.' cwd="$TMP_REPO")" \
+  "role-first P3 batch with no state file → DENY" "Pass-1 grouping forbidden"
 write_cov_state '{"currentPass":1,"completedJourneys":[],"journeyRoster":["j-cart"]}'
 assert_deny "$H" "$(payload tool_name=Agent description='[group] composer-j-cart,composer-j-checkout:' prompt='Compose.' cwd="$TMP_REPO")" \
   "[group] with currentPass=1 → DENY" "Pass-1 grouping forbidden"
@@ -62,12 +65,20 @@ assert_allow "$H" "$(payload tool_name=Agent description='[P3-batch] composer-j-
 write_cov_state '{"currentPass":4,"completedJourneys":[],"journeyRoster":["j-cart"]}'
 assert_allow "$H" "$(payload tool_name=Agent description='[group] probe-j-cart,probe-j-checkout:' prompt='Probe.' cwd="$TMP_REPO")" \
   "[group] adversarial probe with currentPass=4 → ALLOW"
+write_cov_state '{"currentPass":2,"completedJourneys":["j-cart"],"journeyRoster":["j-cart","j-checkout"]}'
+assert_allow "$H" "$(payload tool_name=Agent description='test-composer-group-p2-cart: j-cart, j-checkout' prompt='Compose.' cwd="$TMP_REPO")" \
+  "role-first test-composer-group with currentPass=2 → ALLOW"
+write_cov_state '{"currentPass":4,"completedJourneys":[],"journeyRoster":["j-cart"]}'
+assert_allow "$H" "$(payload tool_name=Agent description='probe-group-p4-auth: j-login, j-signup' prompt='Probe.' cwd="$TMP_REPO")" \
+  "role-first probe-group with currentPass=4 → ALLOW"
 clear_cov_state
 
 section "first-pass-guard: Rule 1 — per-journey composer always ALLOWED"
 clear_cov_state
 assert_allow "$H" "$(payload tool_name=Agent description='composer-j-cart-1-c1:' prompt='Compose. composer.schema.json.' cwd="$TMP_REPO")" \
   "per-journey composer with no state file → ALLOW (not [group])"
+assert_allow "$H" "$(payload tool_name=Agent description='test-composer-j-cart: compose' prompt='Compose. composer.schema.json.' cwd="$TMP_REPO")" \
+  "per-journey test-composer (kernel-mandate spelling) → ALLOW"
 
 section "first-pass-guard: Rule 2 — author without ≥2 cycle-1 sections DENIED"
 clear_cycle_state
@@ -159,6 +170,8 @@ assert_deny "$H" "$(payload tool_name=Agent description='[group] probe-j-cart,pr
 write_cov_state '{"currentPass":5,"runMode":"depth","completedJourneys":[],"journeyRoster":["j-cart"]}'
 assert_deny "$H" "$(payload tool_name=Agent description='[group] probe-j-a,probe-j-b,probe-j-c:' prompt='Probe.' cwd="$TMP_REPO")" \
   "[group] adversarial Pass 5 with runMode=depth → DENY" "depth"
+assert_deny "$H" "$(payload tool_name=Agent description='probe-group-p5-auth: j-login, j-signup' prompt='Probe.' cwd="$TMP_REPO")" \
+  "role-first probe-group with runMode=depth → DENY" "depth"
 
 section "first-pass-guard: Rule 1 — runMode=standard preserves existing Pass-2+ ALLOW path"
 write_cov_state '{"currentPass":2,"runMode":"standard","completedJourneys":["j-cart"],"journeyRoster":["j-cart","j-checkout"]}'

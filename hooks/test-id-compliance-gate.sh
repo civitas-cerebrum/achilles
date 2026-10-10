@@ -8,9 +8,24 @@
 # Env     : CIVITAS_DISABLE_TEST_ID_GATE=1 disables the hook (kill-switch for
 #           consumers who do not use the ID convention)
 #           CIVITAS_TEST_ID_PATTERN=<regex source> swaps in another ID shape,
-#           anchored at the start of the title with the ID in group 1
-#           (e.g. '^\s*([A-Z]{2,4}-[0-9]{2,4})'). Default is the house shape:
-#           TC + up to three more letters, dash, 4-6 digits.
+#           anchored at the start of the title, with the ID in group 1 when the
+#           pattern captures and the whole match otherwise
+#           (e.g. '^\s*([A-Z]{2,4}-[0-9]{2,4})').
+#           FACTORY_RULES=<path> the project rule file to read titleIdPattern
+#           from (default <project>/achilles-factory-rules.json).
+#
+# Where the ID shape comes from (first that is set wins)
+# -----------------------------------------------------
+#   1. CIVITAS_TEST_ID_PATTERN — an explicit operator override.
+#   2. rules["specs.shape"].titleIdPattern in the project's factory rule file —
+#      the project's OWN declared shape, which the factory intake gate
+#      (hooks/factory/intake-gate.sh) already enforces on every new spec.
+#   3. The house shape: TC + up to three more letters, dash, 4-6 digits.
+#
+# Step 2 keeps the two gates on one shape: the documented authoring flow (spec-shape.md, requirement-intake,
+# hooks/data/factory-rules.example.json) teaches `test('CHK-03 — …')`, so this gate reads the project's pattern
+# instead of enforcing the TC shape. This gate checks that an ID is present and unique; the intake gate checks that
+# the ID names a written, linted scenario.
 #
 # Rule
 # ----
@@ -61,12 +76,9 @@ set -euo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/test-identity.md §1 \"Every test case carries a stable ID\"\n  skills/achilles-protocol/references/test-identity.md §2 \"@known-defect marks an intentional red\""
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 HOOK_LIB="$HOOK_DIR/lib"
@@ -74,20 +86,39 @@ HOOK_LIB="$HOOK_DIR/lib"
 input=$(cat)
 
 # Session-scope gate: achilles-activated sessions only (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$input"
-
-emit_deny() {
-  "$JQ" -n --arg r "$1" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
+hook_lib hook-emit.sh project-root.sh
 
 [ "${CIVITAS_DISABLE_TEST_ID_GATE:-0}" = "1" ] && exit 0
+
+# Adopt the project's declared test-id shape when the operator has not pinned
+# one. jq is already resolved above; a rule file that is absent, unreadable or
+# has no specs.shape rule leaves the house default in place, so this can only
+# ever widen what the gate accepts for a project that asked for it.
+if [ -z "${CIVITAS_TEST_ID_PATTERN:-}" ]; then
+  _tid_rules="$(achilles_rules_file "$(achilles_project_root)")"
+  if [ -f "$_tid_rules" ]; then
+    _tid_pattern="$("$JQ" -r '.rules["specs.shape"].titleIdPattern // empty' "$_tid_rules" 2>/dev/null || true)"
+    [ -n "$_tid_pattern" ] && export CIVITAS_TEST_ID_PATTERN="$_tid_pattern"
+  fi
+fi
+
+# The shape sentence of the deny, written from whichever source won above: a
+# message that quotes the house shape at a project on its own scheme tells the
+# agent to break the title it just wrote correctly.
+if [ -n "${CIVITAS_TEST_ID_PATTERN:-}" ]; then
+  SHAPE_LINES="    Shape: this project pins its own ID pattern — ${CIVITAS_TEST_ID_PATTERN}
+    (from rules[\"specs.shape\"].titleIdPattern in its factory rule file, or
+    CIVITAS_TEST_ID_PATTERN). Match it exactly, e.g. 'CHK-03 — place an order'
+    for the pattern the shipped example uses."
+else
+  SHAPE_LINES="    Shape: TC + up to three more letters of area code (2-5 letters total), a
+    dash, and a 4-6 digit ordinal — TC-0042, TCLG-000420, [TCSG-0012] · … .
+    A suite on another scheme declares rules[\"specs.shape\"].titleIdPattern in
+    its factory rule file (hooks/data/factory-rules.example.json), or sets
+    CIVITAS_TEST_ID_PATTERN."
+fi
 
 tool_name=$(echo "$input" | "$JQ" -r '.tool_name // empty')
 file_path=$(echo "$input" | "$JQ" -r '.tool_input.file_path // empty')
@@ -150,6 +181,13 @@ offenders=$(echo "$result" | "$JQ" -r '
 headline="test-id-compliance-gate: this write adds test case(s) without a stable test ID"
 [ "$untagged_count" = "0" ] && headline="test-id-compliance-gate: this write introduces a duplicate test ID"
 
+# The grep knows only the house shape; a pinned pattern is a different grammar.
+if [ -n "${CIVITAS_TEST_ID_PATTERN:-}" ]; then
+  ID_LISTING="list the IDs the titles in $(dirname "$file_path")/*.spec.* already carry (the pattern above)"
+else
+  ID_LISTING="grep -ohE 'TC[A-Z]{0,3}-[0-9]{4,6}' $(dirname "$file_path")/*.spec.* | sort -u"
+fi
+
 reason="[BLOCKED] $headline
 
 ──────────────────────────
@@ -157,11 +195,9 @@ Do this instead:
 ──────────────────────────
   Option A — the case is new: give it an ID as the first token of the title
     test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { … });
-    Shape: TC + up to three more letters of area code (2-5 letters total), a
-    dash, and a 4-6 digit ordinal — TC-0042, TCLG-000420, [TCSG-0012] · … .
-    A suite on another scheme sets CIVITAS_TEST_ID_PATTERN instead.
+$SHAPE_LINES
   Option B — the ID is already taken in this file: mint the next free one
-    grep -ohE 'TC[A-Z]{0,3}-[0-9]{4,6}' $(dirname "$file_path")/*.spec.* | sort -u
+    $ID_LISTING
     Retired IDs are never reused; take the next ordinal, don't fill a gap.
 
 ──────────────────────────
@@ -203,5 +239,5 @@ How this is supposed to be done — load the skill, don't improvise:
   Skill('test-catalogue') → renders the ID as the row identifier, which is what
     makes a catalogue citable."
 
-emit_deny "$reason${HOOK_REFS}$(achilles_scope_notice)"
+emit_pre_deny_bare "$reason${HOOK_REFS}$(achilles_scope_notice)"
 exit 0

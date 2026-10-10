@@ -12,7 +12,8 @@
 # the subagent is expected to conform to. The role→schema mapping mirrors
 # subagent-return-schema-guard.sh exactly:
 #
-#   composer-<slug>            → composer.schema.json
+#   test-composer-<slug>       → composer.schema.json
+#   composer-<slug>            → composer.schema.json  (pre-kernel spelling)
 #   reviewer-<slug>            → reviewer-inloop.schema.json
 #   probe-<slug>               → probe.schema.json
 #   phase-validator-<N>        → phase-validator.schema.json
@@ -36,7 +37,7 @@
 # Substring match is intentionally syntactic, not semantic. A brief that
 # says "DO NOT use <role>.schema.json; use the other one" satisfies the
 # gate; so does a stale "in the old contract we used <role>.schema.json"
-# reference that no longer reflects what the subagent should follow. The
+# reference that is outdated for what the subagent should follow. The
 # gate is a "forgot to cite the schema at all" check, not a semantic
 # enforcement — semantic checks would require NLP-grade negation
 # detection, which is well outside scope for a public-package hook. If
@@ -90,25 +91,19 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/achilles-protocol/references/s
 
 
 # Resolve jq (matches the resolution pattern used by sibling hooks).
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
 # Shared role-mapping. Single source of truth — same file is sourced by
 # the PostToolUse half of the contract (subagent-return-schema-guard.sh).
-# shellcheck source=lib/schema-role-map.sh
-HOOK_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")/lib"
-# shellcheck disable=SC1091
-. "$HOOK_LIB_DIR/schema-role-map.sh"
+hook_lib schema-role-map.sh
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh hook-emit.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 
@@ -142,27 +137,9 @@ fi
 
 # Build the DENY payload. The reason text explicitly states the schema
 # path so a human reading the deny can paste it directly into the brief.
-"$JQ" -n \
-  --arg role "$SCHEMA_ROLE" \
-  --arg desc "$DESCRIPTION" \
-  --arg path "$SCHEMA_PATH" \
-  --arg fname "$SCHEMA_FILENAME" \
-  --arg notice "${HOOK_REFS}$(achilles_scope_notice)" \
-  '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": (
-        "[BLOCKED] Subagent dispatch \"" + $desc + "\" maps to schema role \"" + $role + "\" " +
-        "but the brief does not reference its return-shape schema.\n" +
-        "\n" +
-        "A subagent has no way to know what JSON shape to return unless the brief points " +
-        "at the schema. Add a reference to the brief: the bare filename " +
-        "\"" + $fname + "\" or the relative path \"" + $path + "\" anywhere in the prompt.\n" +
-        "\n" +
-        "Pairs with the PostToolUse subagent-return-schema-guard, which validates the " +
-        "actual return against this same schema." + $notice
-      )
-    }
-  }'
+emit_pre_deny "[BLOCKED] Subagent dispatch \"$DESCRIPTION\" maps to schema role \"$SCHEMA_ROLE\" but the brief does not reference its return-shape schema.
+
+A subagent has no way to know what JSON shape to return unless the brief points at the schema. Add a reference to the brief: the bare filename \"$SCHEMA_FILENAME\" or the relative path \"$SCHEMA_PATH\" anywhere in the prompt.
+
+Pairs with the PostToolUse subagent-return-schema-guard, which validates the actual return against this same schema."
 exit 0

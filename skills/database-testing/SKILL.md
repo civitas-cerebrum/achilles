@@ -18,15 +18,15 @@ description: >
   or pure UI assertions — those route elsewhere.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared. Subagents (which return structured data) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared. Subagents (which return structured data) are exempt.
 
 # Database Testing — Persistence-Layer Verification
 
-> **Surface shipped in `@civitas-cerebrum/element-interactions` ≥ 0.3.7.** The `steps.sql*` methods and `verifySql*` matchers this skill governs are available from framework **0.3.7** onward — the minimum this package now depends on. The framework does **not** bundle SQL drivers: the engine driver (`pg`/`mysql2`/`better-sqlite3`/`mssql`/`oracledb`) is an optional peer dep you install in Phase 0. The Phase-0 preflight still runs to confirm the *installed* framework actually exposes `steps.sql*` (a project pinning an older version returns `status: blocked`). Do NOT fall back to raw `pg`/`mysql` clients in specs to work around a version gap.
+> **Surface shipped in `@civitas-cerebrum/element-interactions` ≥ 0.3.7.** The `steps.sql*` methods and `verifySql*` matchers this skill governs are available from framework **0.3.7** onward: the minimum this package now depends on. The framework does **not** bundle SQL drivers: the engine driver (`pg`/`mysql2`/`better-sqlite3`/`mssql`/`oracledb`) is an optional peer dep you install in Phase 0. The Phase-0 preflight still runs to confirm the *installed* framework actually exposes `steps.sql*` (a project pinning an older version returns `status: blocked`). Do NOT fall back to raw `pg`/`mysql` clients in specs to work around a version gap.
 
 A structured protocol for writing **database-backed** tests using the Steps API
 (`steps.sqlQuery/sqlExecute/sqlTransaction` + `sqlSelect/Insert/Update/Delete` + `verifySql*`).
-These tests verify what actually persisted — the oracle that closes the loop on UI and API actions.
+These tests verify what actually persisted: the oracle that closes the loop on UI and API actions.
 
 ## Scope & Boundaries — Read Before Starting
 
@@ -49,9 +49,9 @@ Verify ALL before starting; if any is missing, stop and ask.
 
 - A reachable non-production SQL database (local/staging) with a known connection string in an env var.
 - `baseFixture` is wired with `dbUrl` (and any `dbProviders`) in the test fixture.
-- `@civitas-cerebrum/element-interactions` **≥ 0.3.7** is the test framework (check `package.json`) — it ships `steps.sql*`; the Phase-0 preflight confirms the *installed* version exposes them.
-- The engine driver for the database under test is installed (Phase 0) — the framework bundles none.
-- A source of truth for expected data — a deterministic seed, a fixture, or known reference values.
+- `@civitas-cerebrum/element-interactions` **≥ 0.3.7** is the test framework (check `package.json`); it ships `steps.sql*`; the Phase-0 preflight confirms the *installed* version exposes them.
+- The engine driver for the database under test is installed (Phase 0); the framework bundles none.
+- A source of truth for expected data: a deterministic seed, a fixture, or known reference values.
 - **Local `file:`/`npm link` of the framework** can load `@playwright/test` twice → `No tests found`.
   Fix: remove the framework's nested `node_modules/@playwright*`, or set `NODE_OPTIONS=--preserve-symlinks`.
 
@@ -83,9 +83,9 @@ Before any other phase, verify the installed framework actually exposes `steps.s
 - grep the package's type declarations: `grep -r "sqlQuery" node_modules/@civitas-cerebrum/element-interactions/**/*.d.ts`, or
 - check at runtime in a scratch spec: `typeof steps.sqlQuery === 'function'`.
 
-If absent, return `status: blocked` with a `blocked-reason` naming the version gap (the installed version vs. the framework version that ships `steps.sql*`). Do NOT fall back to raw `pg`/`mysql` clients in specs — that bypasses the Steps API's provider routing, logging, and assertion surface, and produces specs the framework can never validate.
+If absent, return `status: blocked` with a `blocked-reason` naming the version gap (the installed version vs. the framework version that ships `steps.sql*`). Do NOT fall back to raw `pg`/`mysql` clients in specs; that bypasses the Steps API's provider routing, logging, and assertion surface, and produces specs the framework can never validate.
 
-**Then ensure the engine driver is installed.** element-interactions and sql-client do **not** bundle SQL drivers — you must install the driver for the database under test, or the first `steps.sql*` call throws `UnsupportedEngineException` naming the missing package. Match the driver to the `dbUrl` scheme and install it as a devDependency:
+**Then ensure the engine driver is installed.** element-interactions and sql-client do **not** bundle SQL drivers: you must install the driver for the database under test, or the first `steps.sql*` call throws `UnsupportedEngineException` naming the missing package. Match the driver to the `dbUrl` scheme and install it as a devDependency:
 
 | `dbUrl` scheme | Driver to install |
 |---|---|
@@ -95,7 +95,7 @@ If absent, return `status: blocked` with a `blocked-reason` naming the version g
 | `mssql://` · `sqlserver://` | `npm i -D mssql` |
 | `oracle://` · `oracledb://` | `npm i -D oracledb` |
 
-Verify it resolves (`node -e "require('pg')"`) before proceeding. This is a one-time setup per project/engine — skip it if the driver is already present.
+Verify it resolves (`node -e "require('pg')"`) before proceeding. This is a one-time setup per project/engine: skip it if the driver is already present.
 
 ### Phase 1 — Discover the schema (introspection)
 
@@ -130,7 +130,7 @@ For each discovered structure, emit the canonical scenario set:
 - **Ordering** → an ORDER BY query verified with `verifySqlColumn`.
 - **Edge** → empty result (`verifySqlEmpty`), boundary values, and an invalid query (expect throw).
   Derive boundary values from the partition discipline in
-  `../test-composer/references/input-domain-analysis.md` — one test per equivalence class, pairs at
+  `../test-composer/references/input-domain-analysis.md`: one test per equivalence class, pairs at
   each partition edge, not ad-hoc "weird values".
 
 ### Phase 3 — DB-as-oracle for UI/API actions (the cross-skill bridge)
@@ -158,21 +158,21 @@ writes data.
 
 ## Exit gate — compliance sweep
 
-**Exit gate — the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate: the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
-**Composing SSOT + Stage 4c.** Shared composing rules are single-homed in [`test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) (canon index §2 — cite, never fork). A **standalone** invocation of this skill (direct user request, outside any composer / ticket-driven flow) is a composing exit: after the compliance sweep, dispatch the independent `composition-judge-` subagent per §4 of that file and return only on SATISFIED (3 consecutive NOT SATISFIED → operator). Specs authored **inside** a `test-composer` / `coverage-expansion` / `ticket-driven-testing` flow are covered by that flow's judge or its documented equivalence — do not impose a second judge (same non-double-imposition pattern as the dual-stage equivalence).
+**Composing SSOT + Stage 4c.** Shared composing rules are single-homed in [`test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) (canon index §2: cite, never fork). A **standalone** invocation of this skill (direct user request, outside any composer / ticket-driven flow) is a composing exit: after the compliance sweep, dispatch the independent `composition-judge-` subagent per §4 of that file and return only on SATISFIED (3 consecutive NOT SATISFIED → operator). Specs authored **inside** a `test-composer` / `coverage-expansion` / `ticket-driven-testing` flow are covered by that flow's judge or its documented equivalence; do not impose a second judge (same non-double-imposition pattern as the dual-stage equivalence).
 
 ## Return Shape
 
 When invoked as a subagent, returns conform to `schemas/subagent-returns/composer.schema.json`.
-Status enum: `new-tests-landed | covered-exhaustively | blocked | skipped`. Every return MUST open
+Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". Every return MUST open
 with a `handover` envelope whose required fields are `role`, `status`, and `next-action` (plus
-`cycle`, an integer ≥ 1) — see `schemas/subagent-returns/handover.schema.json`. The body names the
+`cycle`, an integer ≥ 1): see `schemas/subagent-returns/handover.schema.json`. The body names the
 specs created, scenarios covered, tables/relationships exercised, and any gaps (no silent truncation).
 
 ```json
 {
-  "handover": { "role": "composer-db-orders", "cycle": 1, "status": "new-tests-landed", "next-action": "orchestrator to record DB coverage for orders" },
+  "handover": { "role": "test-composer-db-orders", "cycle": 1, "status": "new-tests-landed", "next-action": "orchestrator to record DB coverage for orders" },
   "tests-added": 6,
   "summary": "Created tests/e2e/db/orders.spec.ts — CRUD round-trip on orders, transaction commit/rollback across orders+order_items, FK join orders→users; uncovered: audit_log (no deterministic seed)."
 }

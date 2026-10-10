@@ -4,8 +4,7 @@
 # transcript shows the journey-mapping skill was never loaded.
 H="$HOOK_DIR/journey-mapping-skill-preread-gate.sh"
 
-TMP_DIR=$(mktemp -d /tmp/jm-preread-gate-XXXXXX)
-trap 'rm -rf "$TMP_DIR"' EXIT
+tmp_into TMP_DIR /tmp/jm-preread-gate-XXXXXX
 
 EMPTY_TRANSCRIPT="$TMP_DIR/empty.jsonl"
 : > "$EMPTY_TRANSCRIPT"

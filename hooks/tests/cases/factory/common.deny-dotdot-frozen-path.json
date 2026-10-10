@@ -1,0 +1,1 @@
+{"hook":"intake-gate","input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/north/../legacy/zz-new.legacy.spec.ts","content":"export {};\n"}},"expect":"deny","messageContains":["[specs.shape]","tests/e2e/legacy/zz-new.legacy.spec.ts"],"_comment":"\"..\" is resolved before the scope decision."}

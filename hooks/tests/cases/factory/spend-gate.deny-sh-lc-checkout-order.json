@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"sh -lc 'cd tests && npx playwright test e2e/south/checkout-order.spec.ts'"}},"expect":"deny","messageContains":["checkout-order.spec.ts"]}

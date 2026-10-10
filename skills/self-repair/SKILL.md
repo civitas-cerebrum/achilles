@@ -13,7 +13,7 @@ description: >
   use to find new bugs adversarially — that is `bug-discovery`.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 # Self-Repair — autonomous per-file suite repair
 
@@ -25,20 +25,20 @@ One pipeline, two front doors:
 | **Interactive** | User asks for self repair in a Claude Code session | One Agent-tool subagent per red spec file (`repair-worker-<file-slug>:` dispatch) | The orchestrator emits the same `[self-repair]` stage lines in chat; workers report per-stage via `stage-log` in their schema-validated returns |
 
 Both modes follow the same baseline structure (discovery run + focused
-failure reruns — see Stage 1) and execute the same stages against the same
+failure reruns: see Stage 1) and execute the same stages against the same
 worker contract
 (`schemas/subagent-returns/repair-worker.schema.json`) and write the same
 run-dir artifacts under `.achilles/self-repair/<run-id>/`, ending with
 `report.md` + `report.json`
 (`schemas/self-repair-report.schema.json`, `mode: script | interactive`).
 
-Relationship to the siblings: `test-repair` is cluster-first — it triages a
+Relationship to the siblings: `test-repair` is cluster-first; it triages a
 rotted suite *inside one session* by grouping failures that share a root
-cause. Self-repair is fan-out-first — it gives every red file its own worker
+cause. Self-repair is fan-out-first; it gives every red file its own worker
 with its own context window, which is what lets it run unattended and in
 parallel. Both delegate the atomic heal-or-classify work to
 `failure-diagnosis` and both obey the same Bug-vs-Heal discipline
-(`skills/test-repair/SKILL.md` §"Bug-vs-Heal Discipline" — normative for
+(`skills/test-repair/SKILL.md` §"Bug-vs-Heal Discipline": normative for
 this skill too, not restated here).
 
 ---
@@ -47,11 +47,11 @@ this skill too, not restated here).
 
 ### Stage 1 — Baseline: discovery run + focused failure reruns
 
-Detect first, analyse before fixing. N baseline runs total (default 3 —
+Detect first, analyse before fixing. N baseline runs total (default 3,
 the minimum floor to distinguish deterministic from flaky), but only the
 first covers the full scope:
 
-1. **Discovery run** (1 of N) — full scope, the suite's own timeouts,
+1. **Discovery run** (1 of N): full scope, the suite's own timeouts,
    JSON reporter:
 
    ```bash
@@ -62,7 +62,7 @@ first covers the full scope:
    Its red files define the failure-rerun scope. Discovery green → skip
    the reruns and report.
 
-2. **Failure reruns** (2..N of N) — scoped to the red files only, with
+2. **Failure reruns** (2..N of N): scoped to the red files only, with
    `--trace on` (workers start from real evidence, not a bare error
    line) and the **analysis timeout cap** (default 60s per test,
    `--timeout-cap`, 0 disables):
@@ -73,33 +73,33 @@ first covers the full scope:
    ```
 
 **Why these standards are universal.** A deterministically broken test is
-the slowest thing in any suite — it burns every assertion timeout in full
+the slowest thing in any suite; it burns every assertion timeout in full
 on every run (observed: a broken logout test at 73s vs a 13s suite
 median). Scoping reruns to red files makes baseline cost scale with
 failure count, not suite size; the timeout cap bounds the burn on any
 suite regardless of how generous its production timeouts are. The cap
-applies ONLY to analysis reruns — discovery and verification always run
+applies ONLY to analysis reruns: discovery and verification always run
 with the suite's own timeouts, because a heal is only proven under real
 conditions, and a cap on discovery could misclassify legitimately slow
 tests app-wide.
 
-**Pipeline-sourced runs — pull the CI evidence first.** When the session
+**Pipeline-sourced runs: pull the CI evidence first.** When the session
 was triggered by a red CI run rather than a local one (interactive mode:
 the user said "the nightly failed" / "CI is red"; script mode: the driver
 was handed a run id), download the run's artifacts before the discovery
 run, following [`../failure-diagnosis/SKILL.md`](../failure-diagnosis/SKILL.md)
 §"Stage 0a — Pin to the run's commit and dependency tree" and §"Stage 0b
-— Pipeline evidence retrieval" — do not fork the procedures here. The
+— Pipeline evidence retrieval": do not fork the procedures here. The
 run's JSON reporter output gives the red-file set without waiting for
 discovery, and each red file's downloaded `trace.zip` /
 `test-failed-1.png` / `error-context.md` goes into that file's worker
 brief (naming which attempt each artifact came from) so the worker's
 `failure-diagnosis` evidence floor starts from the execution that
 actually failed. The run's `headSha` and the framework versions it
-resolved go into every brief too — a worker reading framework source
+resolved go into every brief too; a worker reading framework source
 from the local `node_modules` when CI resolved an older version will
 diagnose a defect that is already fixed. The local discovery run still
-happens — a red file that is green locally is a CI-only failure, which
+happens; a red file that is green locally is a CI-only failure, which
 is a classification, not a pass.
 
 **Incident-shape spacing.** A 3/3-red baseline captured in one tight
@@ -113,7 +113,7 @@ reproduction before healing (failure-diagnosis discipline).
 
 **Focus-mode trade-off (explicit).** A flaky test that happens to pass
 the single discovery run escapes the failure reruns and is classified
-green this session — focus mode optimises for detecting and analysing
+green this session; focus mode optimises for detecting and analysing
 *observed* failures cheaply, not for exhaustive flake hunting. Two
 recovery paths exist by construction: the suite-order verification runs
 re-expose late flake in red files, and any test that fails a future
@@ -124,7 +124,7 @@ flake sweep rather than repair of known failures, use
 **Escape hatch.** Suites with cross-file state coupling (a red file's
 failure depends on state left by earlier green files) also need
 `--baseline-mode full`: every run covers the full scope with suite
-timeouts — the original 3× behaviour. `fullyParallel` suites with
+timeouts; the original 3× behaviour. `fullyParallel` suites with
 isolated files (the framework's own scaffold default) are safe in
 `focus` mode.
 
@@ -135,10 +135,10 @@ Announce each run: `[self-repair] stage=baseline run <i>/<N> done: <T> tests, <F
 Per test, from the per-run outcome matrix (same taxonomy as `test-repair`
 Stage 2): **green** (all pass) / **known-defect** (test or describe tagged
 `@known-defect`, red in every run) / **known-defect-passed** (tagged, but
-with ANY baseline pass — an anomaly, see below) / **deterministic-fail**
+with ANY baseline pass: an anomaly, see below) / **deterministic-fail**
 (all fail, same signature) / **flaky-consistent** (mixed, one signature) /
 **flaky-chaotic** (mixed, several signatures). Aggregate non-green,
-non-known-defect tests into the **red-file set** — `known-defect-passed`
+non-known-defect tests into the **red-file set**: `known-defect-passed`
 is in scope, `known-defect` is not. Log one `[self-repair] stage=classify` line with the
 totals and one per red file.
 
@@ -150,11 +150,11 @@ reruns, from the fan-out, and from verification; they appear in the report
 under their own `known-defect` outcome, and they never count as `unresolved`,
 so they cannot hold the exit code red.
 
-**A `@known-defect` test with any baseline pass is `known-defect-passed` —
+**A `@known-defect` test with any baseline pass is `known-defect-passed`:
 never silently green.** The tag predicts red, so a pass is an anomaly the
 session must resolve, not a green to tally. The pattern is non-terminal: the
 file enters the fan-out with a purpose-built stability-probe brief instead of
-the failure-diagnosis pipeline — the worker runs a two-number stability bar
+the failure-diagnosis pipeline: the worker runs a two-number stability bar
 adapted from `test-repair` Stage 5.5's quarantine-release bar (3/3 targeted
 isolation reruns first, then 5/5 suite-order runs; Stage 5.5 runs suite-order
 first) and then either (a) all green → the defect is fixed: drop the
@@ -162,7 +162,7 @@ first) and then either (a) all green → the defect is fixed: drop the
 ticket for closing; or (b) any red → the pass is nondeterministic: retag
 `@known-defect` → `@flaky`, append the quarantine-ledger entry, report
 `quarantined`. Either way the tag is edited only at a site scoping solely the
-anomalous test — a shared describe/file tag site is re-scoped onto the
+anomalous test: a shared describe/file tag site is re-scoped onto the
 individual tests first, so still-red siblings keep `@known-defect`. Contract:
 [`test-identity.md`](../achilles-protocol/references/test-identity.md) §2.
 Enforced in `bin/self-repair.mjs` (script mode, classification pinned by
@@ -174,23 +174,23 @@ plus any `known-defect`) and stop.
 
 ### Stage 3 — Fan-out (one worker per red file)
 
-Dispatch one worker per red file, bounded concurrency (default 2 — workers
+Dispatch one worker per red file, bounded concurrency (default 2: workers
 share the app server and `page-repository.json`; higher values increase
 shared-file race risk).
 
 **Interactive dispatch contract.** Description MUST use the
 `repair-worker-<file-slug>:` prefix, and the brief MUST cite the return
-schema path `schemas/subagent-returns/repair-worker.schema.json` — the
+schema path `schemas/subagent-returns/repair-worker.schema.json`; the
 `subagent-schema-preread-gate.sh` hook denies briefs for schema-validated
 prefixes that omit the citation. The brief carries:
 
 1. The single spec file in scope (the worker must not touch other spec files).
 2. The per-test baseline evidence: pattern + per-run outcomes + first error
-   line — plus, in focus mode, the failure-rerun traces already on disk
+   line, plus, in focus mode, the failure-rerun traces already on disk
    (`test-results/<test-slug>/trace.zip`), so analysis starts from recorded
    evidence instead of a fresh reproduction run.
 3. The pipeline contract: follow the staged worker pipeline in
-   [`references/worker-pipeline.md`](references/worker-pipeline.md) —
+   [`references/worker-pipeline.md`](references/worker-pipeline.md):
    `reproduce → evidence-analysis → context-probe → experiment →
    understand → fix → verify → done`, with the **understand gate**
    one-way: no fix attempt before expected-vs-actual behaviour and the
@@ -207,21 +207,21 @@ prefixes that omit the citation. The brief carries:
    `stage-log` array of the return.
 5. The return contract: every briefed test appears in `tests[]` with an
    outcome of `already-green | known-defect | healed | app-bug |
-   quarantined | operator-pending | unresolved` — no silent drops, no
+   quarantined | operator-pending | unresolved`; no silent drops, no
    `.skip()`. (`known-defect` is normally assigned at classification, before
    any worker is dispatched; a worker uses it only when it discovers the tag
    on a test the baseline could not see it on.)
 6. The bug-evidence contract (below): app-bug outcomes require the full
-   evidence bundle — including a slow-motion screen recording of a
-   reproduction — copied to `bug-evidence/` before the worker returns.
+   evidence bundle; including a slow-motion screen recording of a
+   reproduction; copied to `bug-evidence/` before the worker returns.
 
 **Bug-evidence standard (app-bug outcomes).** An app bug leaves the repair
-session as a report other people act on — its evidence must be complete,
+session as a report other people act on: its evidence must be complete,
 watchable, and findable long after run dirs rotate:
 
 - **Bundle contents:** failure screenshot, error context / trace, the
   failing run's video, AND a **slow-motion screen recording of a
-  reproduction run**. The slow-down happens at the source — the
+  reproduction run**. The slow-down happens at the source: the
   browser's `launchOptions.slowMo` paces the actions themselves, so the
   native real-time recording is watchable with no post-processing.
   Standard: **`slowMo` ≥ 1500ms per action**; if individual actions
@@ -231,8 +231,8 @@ watchable, and findable long after run dirs rotate:
   actions in review. For action-by-action stepping beyond any video,
   the captured `trace.zip` opened with `npx playwright show-trace` is
   the engineer's artifact; the recording is for humans and bug tickets.
-- **Canonical location:** `<e2e-root>/bug-evidence/<TEST-ID>/<compact-ISO-UTC>-<label>/`
-  — timestamp as `20260805T133000Z`, since colons are illegal in Windows paths.
+- **Canonical location:** `<e2e-root>/bug-evidence/<TEST-ID>/<compact-ISO-UTC>-<label>/`;
+  timestamp as `20260805T133000Z`, since colons are illegal in Windows paths.
   Copy evidence there IMMEDIATELY on capture: Playwright reuses per-test
   `test-results/` directories, so a later rerun silently overwrites
   failure artifacts, and run dirs under `.achilles/` rotate per session.
@@ -243,9 +243,9 @@ watchable, and findable long after run dirs rotate:
   Harness backstop: `hooks/playwright-artifact-archiver.sh` copies every
   run's artifacts to `.achilles/runs/<runId>/`, so evidence you forgot to
   copy stays recoverable for the last few runs. Safety net, not a
-  substitute — those run dirs rotate, `bug-evidence/` does not.
-- **Intermittent bugs:** reproduce in a loop (bounded attempts — default
-  12 — announced per attempt) until the recording is captured. If the
+  substitute; those run dirs rotate, `bug-evidence/` does not.
+- **Intermittent bugs:** reproduce in a loop (bounded attempts, default
+  12, announced per attempt) until the recording is captured. If the
   window stays healthy, record the attempt count + window in the report
   and either schedule a recording monitor or hand the loop command to
   the operator; the app-bug classification stands on the already-captured
@@ -262,12 +262,12 @@ worker start/finish: `[self-repair] stage=fan-out worker finished file=<f> …`.
 ### Stage 4 — Verify
 
 After a round's workers finish, re-run the previously-red files ×3 in suite
-order (catches heals that break neighbours and heal-introduced flake — same
+order (catches heals that break neighbours and heal-introduced flake; same
 rationale as `test-repair` Stage 5). Tests still failing **without** an
 explained classification (`app-bug` / `quarantined` / `operator-pending` /
 `known-defect`)
 re-enter Stage 3 for another round, up to the round cap (default 2). Tests
-still red at the cap are reported `unresolved` — never silently dropped.
+still red at the cap are reported `unresolved`; never silently dropped.
 
 ### Stage 5 — Report
 
@@ -285,7 +285,7 @@ unresolved tests remain, `1` = driver error.
 ## Logging contract (both modes)
 
 - Every stage transition emits exactly one
-  `[self-repair] <ISO-timestamp> stage=<stage> <message>` line — stdout in
+  `[self-repair] <ISO-timestamp> stage=<stage> <message>` line; stdout in
   script mode, chat in interactive mode.
 - Every event is also appended as NDJSON to
   `.achilles/self-repair/<run-id>/events.ndjson`.
@@ -304,17 +304,17 @@ unresolved tests remain, `1` = driver error.
   for one data point.
 - **In-session cluster-first triage** → `test-repair`. Prefer it when
   failures obviously share one root cause (one missing page-repo entry
-  breaking 20 files) — self-repair's per-file workers would each rediscover
+  breaking 20 files); self-repair's per-file workers would each rediscover
   the shared cause; cross-file duplication of one fix is the known cost of
   fan-out. Workers surfacing the same root cause is itself a signal the
   session report must call out under observations.
-- **Compile/type errors, infra failures** (server down, OOM, DNS) — report
+- **Compile/type errors, infra failures** (server down, OOM, DNS): report
   and stop; nothing to fan out.
 - **No test deletion, no `.skip()`, no adversarial probing, no new test
-  authoring** — same boundaries as `test-repair`.
+  authoring**; same boundaries as `test-repair`.
 - The quarantine ledger (`tests/e2e/docs/flake-quarantine.md`) is the only
   cross-session state, written per `failure-diagnosis` heal (f). Ledger
-  review/release remains `test-repair` Stage 5.5's job — self-repair
+  review/release remains `test-repair` Stage 5.5's job; self-repair
   workers may add entries, never release them.
 
 ---
@@ -324,28 +324,28 @@ unresolved tests remain, `1` = driver error.
 Achilles targets any Playwright-tested UI application. Self-repair's only
 assumptions, kept deliberately minimal:
 
-- **A Playwright project in cwd** — `npx playwright test` resolves the
+- **A Playwright project in cwd**; `npx playwright test` resolves the
   locally installed runner regardless of package manager (npm, pnpm, yarn);
   the JSON reporter is forced per-run via `PLAYWRIGHT_JSON_OUTPUT_NAME`, so
   the suite's own reporter config never matters.
-- **The default config** — flows using `--config=…` (perf configs, custom
+- **The default config**: flows using `--config=…` (perf configs, custom
   harnesses) are out of scope for repair and excluded by preset derivation.
-- **Run artifacts under `.achilles/`** — outside Playwright's `outputDir`
+- **Run artifacts under `.achilles/`**: outside Playwright's `outputDir`
   (which Playwright wipes at run start) and gitignored by the scaffold.
   Each run's `outputDir` + report output is archived to
   `.achilles/runs/<runId>/` by `hooks/playwright-artifact-archiver.sh`
   (newest 5 kept; `ACHILLES_ARTIFACT_RETAIN` / `ACHILLES_ARTIFACT_MAX_MB`
   tune retention), so a later baseline run cannot destroy an earlier
   failure's evidence before a worker is dispatched to diagnose it.
-- **File-isolated specs for focus mode** — the scaffold's `fullyParallel`
+- **File-isolated specs for focus mode**: the scaffold's `fullyParallel`
   default guarantees this; suites with cross-file state coupling use
   `--baseline-mode full` (documented escape hatch, Stage 1).
-- **No app-specific knowledge** — selectors come from the project's own
+- **No app-specific knowledge**: selectors come from the project's own
   page repository; timeouts, projects, and viewports come from the
   project's own config; the repair standards (timeout cap, failure-rerun
   scoping, incident spacing) are ratios and structure, not app constants.
 
-Anything beyond this list is a methodology bug — report it against the
+Anything beyond this list is a methodology bug; report it against the
 package rather than special-casing a project.
 
 ---
@@ -356,7 +356,7 @@ Consumers scope their suites through `package.json` run scripts
 (`test:e2e:regression`, `test:e2e:smoke:desktop`, …). Self-repair mirrors
 that surface autonomously: every suite-scoped Playwright run script gets a
 matching repair preset, so repairing one flow is
-`npm run test:repair:<flow>` — no hand-written scoping.
+`npm run test:repair:<flow>`; no hand-written scoping.
 
 **Derivation rules** (implemented by `achilles-self-repair --init-scripts`;
 the interactive orchestrator applies the same rules with Write/Edit):
@@ -364,7 +364,7 @@ the interactive orchestrator applies the same rules with Write/Edit):
 1. A script qualifies when it invokes `playwright test` with the default
    config, non-interactively. Scripts using `--config=…`, `--ui`,
    `--headed`, shell chaining (`&&`, `||`), or command substitution are
-   skipped — perf configs and interactive runners are not repair targets.
+   skipped: perf configs and interactive runners are not repair targets.
 2. The preset preserves the script's scope verbatim: leading `VAR=VALUE`
    env prefixes (including `${VAR:-default}` shell expansions), positional
    path filters, `--project`, `--grep`, `--grep-invert`. Any other flag
@@ -378,12 +378,12 @@ the interactive orchestrator applies the same rules with Write/Edit):
 
 **When presets are (re)generated:**
 
-- **Onboarding Phase 1 scaffold** — seeds `test:repair` (the suite may not
+- **Onboarding Phase 1 scaffold**: seeds `test:repair` (the suite may not
   have per-flow scripts yet).
-- **First self-repair activation in a project** (either mode) — run the
+- **First self-repair activation in a project** (either mode): run the
   derivation before Stage 1 and announce additions with a
   `[self-repair] stage=init-scripts added: <name>` line per preset.
-- **On demand** — `npx achilles-self-repair --init-scripts` after new suite
+- **On demand**: `npx achilles-self-repair --init-scripts` after new suite
   scripts are added.
 
 ---
@@ -391,11 +391,11 @@ the interactive orchestrator applies the same rules with Write/Edit):
 ## Prerequisites
 
 - The project is scaffolded (Playwright config + specs exist). If not,
-  report and stop — onboarding is a different entrypoint.
+  report and stop; onboarding is a different entrypoint.
 - The app under test is reachable: either the Playwright config's
   `webServer` handles it (with `reuseExistingServer`) or the operator
   started the app and set the base URL. Parallel workers share one app
-  instance by design — the driver does not start one server per worker.
+  instance by design; the driver does not start one server per worker.
 - Script mode runs workers with `--dangerously-skip-permissions` by default
   (unattended operation); `--keep-permissions` opts out for allowlisted
   environments.
@@ -408,7 +408,7 @@ the interactive orchestrator applies the same rules with Write/Edit):
 |---|---|
 | `failure-diagnosis` | Loaded by every worker for the atomic heal-or-classify work. Its contract is unchanged. |
 | `test-repair` | Sibling entrypoint (cluster-first, in-session). Its Bug-vs-Heal Discipline is normative here. Prefer it when one shared root cause dominates. |
-| `bug-discovery` | Separate concern — self-repair reports bugs it encounters, it does not probe for new ones. |
+| `bug-discovery` | Separate concern: self-repair reports bugs it encounters, it does not probe for new ones. |
 | `achilles-protocol` | Workers use the Steps API + page repository when healing selectors. |
 | `onboarding` | Phase 1 scaffold wires `"test:repair": "achilles-self-repair"` into the consumer's `package.json`; per-flow presets are derived from suite scripts via `--init-scripts` (see "Per-flow repair presets"). |
 | `work-summary-deck` | May consume `report.json` as input data for a stakeholder deck. |
@@ -417,7 +417,7 @@ the interactive orchestrator applies the same rules with Write/Edit):
 
 ## Exit gate — compliance sweep
 
-**Exit gate — the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate: the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
 
 ## Success criteria
 
@@ -425,13 +425,13 @@ A self-repair session is complete when:
 
 1. Every test in scope is `already-green`, `known-defect` (tagged
    `@known-defect`, excluded from repair by contract), `healed` (verified in
-   suite order), `app-bug` (HIGH confidence — expected behaviour, actual
+   suite order), `app-bug` (HIGH confidence: expected behaviour, actual
    behaviour, and causal mechanism stated; evidence complete; test
    unmodified), `quarantined` (with ledger entry), `operator-pending`
    (with the proposed change and its stage-5 understanding attached), or
-   `unresolved` (probe budget exhausted, exclusion list recorded — never
+   `unresolved` (probe budget exhausted, exclusion list recorded; never
    silent).
-1a. Every non-green test's `stage-log` shows the pipeline order held —
+1a. Every non-green test's `stage-log` shows the pipeline order held:
    in particular, an `understand` entry precedes any `fix` entry, and
    behavioural discoveries were written back to `app-context.md`.
 2. `report.md` + `report.json` exist under

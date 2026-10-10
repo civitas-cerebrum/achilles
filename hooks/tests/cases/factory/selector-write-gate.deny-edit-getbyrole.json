@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Edit","tool_input":{"file_path":"{{ROOT}}/tests/fixtures/zz-case.ts","old_string":"a","new_string":"await page.getByRole('button').click();"}},"expect":"deny","messageContains":["[selectors.no-inline]","factory-gates.md#selectors.no-inline","Edit of tests/fixtures/zz-case.ts"]}

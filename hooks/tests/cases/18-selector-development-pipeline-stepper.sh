@@ -659,7 +659,7 @@ ALL_7_S14=$(_steps_json \
   "visual_diff:pass")
 
 # Build a bare git repo so we can stage real files
-WS_GIT=$(mktemp -d)
+tmp_into WS_GIT
 git -C "$WS_GIT" init -q
 git -C "$WS_GIT" config user.email "test@test.com"
 git -C "$WS_GIT" config user.name "Test"
@@ -727,7 +727,7 @@ export WORKSPACE_ROOT="$WS_GIT"
 
 # The commit gate must ALLOW — the receipt hash matches the per-file diff,
 # even though the full staging area (which includes package-lock.json) has a
-# different hash.  This would have BLOCKED under the old unscoped hash logic.
+# different hash.
 assert_allow "$H" \
   "$(payload tool_name=Bash command="git commit -m 'feat: add testid'" hook_event_name=PreToolUse cwd="$WS_GIT")" \
   "commit gate: extra staged file present but hash scoped to receipt files → ALLOW"
@@ -815,7 +815,7 @@ ALL_7_S16=$(_steps_json \
   "visual_diff:pass")
 
 # Build a git repo with a file path containing a space
-WS_SPACE=$(mktemp -d)
+tmp_into WS_SPACE
 git -C "$WS_SPACE" init -q
 git -C "$WS_SPACE" config user.email "test@test.com"
 git -C "$WS_SPACE" config user.name "Test"

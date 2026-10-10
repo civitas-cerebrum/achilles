@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/north/zz-case.mts","content":"await page.locator(\"x\").click();\n"}},"expect":"deny","messageContains":["[selectors.no-inline]","Write to tests/e2e/north/zz-case.mts"],"_comment":".mts/.cts/.js/.mjs/.cjs under the scope are judged like .ts."}

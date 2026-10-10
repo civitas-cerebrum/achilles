@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"export SPEND_OPT_IN=1; node scripts/run-suite.mjs --dry-run --include-spend && npx playwright test tests/e2e/south/wallet-order.spec.ts --project=south"}},"expect":"deny","messageContains":["wallet-order.spec.ts","without SPEND_OPT_IN=1"]}

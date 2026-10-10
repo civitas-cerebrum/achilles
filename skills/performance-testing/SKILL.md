@@ -16,14 +16,14 @@ description: >
   to its own skill.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents are exempt.
 
 > **Skill names: see `../achilles-protocol/references/skill-registry.md`.** Copy skill names verbatim.
 
 # Performance Testing — k6 Load & SLO Verification
 
 A structured protocol for writing **k6** performance tests against HTTP backends. These tests
-verify *performance contracts* — latency percentiles, error rate under load, throughput — using
+verify *performance contracts* (latency percentiles, error rate under load, throughput) using
 k6 thresholds as the machine oracle. They do not test UI flows, API shape, or business logic.
 
 > **Why k6 and not the Steps API.** k6 runs in its own JavaScript runtime (goja), **not Node**. A k6
@@ -52,9 +52,9 @@ probing, not load. The boundary:
 ## 🚨 Absolute Rules
 
 1. **Read `references/k6-reference.md` first.** Never invent k6 API / threshold syntax from memory.
-2. **Never hardcode a base URL** — including `__ENV.X || 'http://localhost'` fallbacks. Origins come from `tests/perf/lib/config.js` reading env vars; scenarios address paths.
+2. **Never hardcode a base URL**; including `__ENV.X || 'http://localhost'` fallbacks. Origins come from `tests/perf/lib/config.js` reading env vars; scenarios address paths.
 3. **One scenario per script; one workload intent per run.**
-4. **Thresholds are the oracle.** On breach, never loosen the threshold to go green — a breach is a finding (escalate), exactly like contract drift.
+4. **Thresholds are the oracle.** On breach, never loosen the threshold to go green: a breach is a finding (escalate), exactly like contract drift.
 5. **SLO targets must trace to a documented source** (SLA, journey-map priority, or user-confirmed). Never invent latency budgets.
 6. **Smoke at 1 VU before ramping.** Correlate dynamic tokens; never hardcode a captured session id.
 7. **Credentials from env vars only.**
@@ -66,7 +66,7 @@ probing, not load. The boundary:
 Verify all before starting; if any is missing, stop and ask the user.
 
 - k6 is installed (`k6 version` succeeds on PATH). If not, stop: *"Performance tests need k6. Install it — `brew install k6` (macOS), `choco install k6` (Windows), or see grafana.com/docs/k6. Then re-run."*
-- A reachable target — staging / sandbox / local. **Never production without explicit per-run ack.**
+- A reachable target: staging / sandbox / local. **Never production without explicit per-run ack.**
 - Auth mechanism known; credentials in env vars, not source.
 - SLO targets exist or can be sourced (SLA doc, journey-map priority, or user confirmation).
 
@@ -76,7 +76,7 @@ Verify all before starting; if any is missing, stop and ask the user.
 2. **Scenario inventory.** *Derive when present, else ask.* Read `tests/e2e/docs/journey-map.md` (critical flows → workload mix) and `tests/contracts/` (endpoints, auth, env config) to draft scenarios + SLO targets; fall back to intake conversation when absent. **Gate on user approval.**
 3. **Scaffold helpers.** Write `tests/perf/lib/` (config, profiles, thresholds, correlation, summary) per `references/k6-reference.md`.
 4. **Workload & SLO design.** Pick profile(s) per scenario; set thresholds from documented SLOs (`references/workload-design.md`). **Gate on user approval.**
-5. **Implementation.** Generate `tests/perf/scenarios/*.js` importing the helpers — one scenario per script.
+5. **Implementation.** Generate `tests/perf/scenarios/*.js` importing the helpers: one scenario per script.
 6. **Run & verify.** Smoke at 1 VU (`k6 run` with the `smoke` profile) to catch script/correlation errors cheaply, then run the chosen profile. **Deliberate-breach check (HARD GATE):** tighten one threshold to an impossible value, confirm `k6 run` exits non-zero and reports the breach, then revert. A green run whose thresholds cannot bite is vacuous.
 7. **Report + ledger.** Write `tests/perf/docs/perf-report.md`; feed SLO breaches/regressions into `tests/e2e/docs/adversarial-findings.md` using the canonical finding format and the severity ladder in `references/results-analysis.md`.
 
@@ -97,5 +97,5 @@ tests/perf/
 | `achilles-protocol` | Parent orchestrator; routes here on perf intent. |
 | `journey-mapping` | Source of critical flows → workload mix (Phase 2). |
 | `contract-testing` | Source of endpoints / auth / env config (Phase 2); reuse its `baseFixture` env conventions. |
-| `bug-discovery` | Boundary, not overlap — see the router carve-out above. |
-| `failure-diagnosis` | Invoke on an unexpected k6 script failure (not on a threshold breach — a breach is a real finding). |
+| `bug-discovery` | Boundary, not overlap; see the router carve-out above. |
+| `failure-diagnosis` | Invoke on an unexpected k6 script failure (not on a threshold breach; a breach is a real finding). |

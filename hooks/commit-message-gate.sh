@@ -10,7 +10,7 @@
 # ----
 # `git commit` invocations during coverage-expansion / journey-mapping work
 # must follow the conventions documented in
-#   skills/coverage-expansion/SKILL.md §"Commit-message conventions"
+#   skills/coverage-expansion/references/depth-mode-pipeline.md §"Commit-message conventions"
 #
 # This gate enforces only the most common anti-patterns (coverage expansion
 # is never `feat`; multi-journey commits are forbidden; hook bypass is
@@ -27,22 +27,7 @@
 #
 # Canonical reference
 # -------------------
-# skills/coverage-expansion/SKILL.md §"Commit-message conventions"
-# (Convention reproduced in the comment block below for at-a-glance
-#  scanning; the SKILL.md section is canonical.)
-#
-# Conventions
-# -----------
-#   chore: scaffold element-interactions framework
-#   docs: initial app-context and site map
-#   test: happy path — <name>
-#   docs: journey map — <N> journeys prioritized
-#   test(j-<slug>): <variant>                 [compositional pass 1-3]
-#   docs(ledger): j-<slug> — N probes, ...    [adversarial pass 4]
-#   test(j-<slug>-regression): lock <desc>    [adversarial pass 5]
-#   docs(ledger): dedupe cross-cutting findings
-#   docs(coverage-expansion-state): ...
-#   chore: ...                                [infrastructure]
+# skills/coverage-expansion/references/depth-mode-pipeline.md §"Commit-message conventions"
 #
 # AI-attribution rule
 # -------------------
@@ -53,8 +38,8 @@
 # the `-m` subject extraction, so a second `-m` trailer, a heredoc body,
 # or a message file all get caught.
 #
-# Canonical reference: contributing/SKILL.md §"AI assistants don't get
-# Co-Authored-By trailers". The upstream fix when this fires is to remove
+# Canonical reference: contributing-to-achilles-protocol/SKILL.md §"AI assistants don't get
+# Co-Authored-By: trailers". The upstream fix when this fires is to remove
 # the trailer instruction from CLAUDE.md (do not re-add it per-commit).
 #
 # Failure → action
@@ -77,67 +62,65 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/references/
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH. Reinstall the package or install jq manually." >&2
-  exit 1
-fi
-
-# --- helpers ---
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh shell-words.sh
+hook_jq_init fatal
 
 # --- input ---
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty')
 [ "$TOOL_NAME" != "Bash" ] && exit 0
 
 CMD=$(echo "$INPUT" | "$JQ" -r '.tool_input.command // ""')
 
-# Only fire on git commit invocations. The trigger tolerates `command` /
-# `env` wrappers and `-c key=val` / `--long[=val]` global flags between
-# `git` and `commit`, so wrapped invocations like `git -c user.name=x
-# commit` and `command git commit` are gated.
-GIT_COMMIT_TRIGGER='(^|[;&|][[:space:]]*)((command|env)[[:space:]]+)?git([[:space:]]+(-[cC][[:space:]]+[^[:space:]]+|--[a-z-]+(=[^[:space:]]+)?))*[[:space:]]+commit([[:space:]]|$)'
-if ! echo "$CMD" | grep -qE "$GIT_COMMIT_TRIGGER"; then
-  exit 0
+# Only fire on git commit, judged on the words the shell runs (lib/shell-words.sh), so a message that
+# documents --no-verify is not the flag. commit_judge reads the bypass flags, the first message
+# (-m, --message) and every message file (-F, --file).
+COMMIT=0; BYPASS=0; MSG=""; MSG_FILES=()
+commit_judge() {
+  local k=1 a want=""
+  [ "${CMD_ARGS[0]:-}" = git ] || return 0
+  while [ "$k" -lt "${#CMD_ARGS[@]}" ]; do
+    a="${CMD_ARGS[k]}"; k=$((k + 1))
+    case "$a" in
+      -c|-C) [ "${CMD_ARGS[k]:-}" != commit.gpgsign=false ] || BYPASS=1; k=$((k + 1)) ;;
+      -*) ;;
+      commit) COMMIT=1; break ;;
+      *) return 0 ;;
+    esac
+  done
+  [ "$a" = commit ] || return 0
+  for a in "${CMD_ARGS[@]:k}"; do
+    case "$want" in m) [ -n "$MSG" ] || MSG="$a"; want=""; continue ;; F) MSG_FILES+=("$a"); want=""; continue ;; esac
+    case "$a" in
+      --no-verify|--no-gpg-sign) BYPASS=1 ;;
+      -m|--message) want=m ;;
+      --message=*) [ -n "$MSG" ] || MSG="${a#*=}" ;;
+      -m?*) [ -n "$MSG" ] || MSG="${a#-m}" ;;
+      -F|--file) want=F ;;
+      --file=*) MSG_FILES+=("${a#*=}") ;;
+      -F?*) MSG_FILES+=("${a#-F}") ;;
+    esac
+  done
+}
+shell_words "$CMD"
+if [ "$SW_OVERFLOW" = 1 ]; then
+  # Too long to split: judge the raw text.
+  case "$CMD" in *git*commit*) COMMIT=1 ;; esac
+  case "$CMD" in *--no-verify*|*--no-gpg-sign*|*commit.gpgsign=false*) BYPASS=1 ;; esac
 fi
+shell_each_command commit_judge
+[ "$COMMIT" = 1 ] || exit 0
 
-# Strip quoted substrings from the command before scanning for bypass flags.
-# Otherwise a commit *message* that documents these flags (e.g.
-# `-m "blocks --no-verify"`) would false-positive — the flags must be detected
-# only when they appear as actual git arguments, not as message content.
-# Replace single- and double-quoted regions with placeholders.
-CMD_NO_QUOTES=$(echo "$CMD" | python3 -c "
-import sys, re
-s = sys.stdin.read()
-# Remove double-quoted strings (with possible escaped quotes inside).
-s = re.sub(r'\"(?:[^\"\\\\]|\\\\.)*\"', '\"___MSG___\"', s)
-# Remove single-quoted strings.
-s = re.sub(r\"'(?:[^'\\\\]|\\\\.)*'\", \"'___MSG___'\", s)
-# Remove backtick-quoted command substitutions.
-s = re.sub(r'\`(?:[^\`\\\\]|\\\\.)*\`', '\`___SUBST___\`', s)
-# Remove \$(...) command substitutions (non-greedy, single level).
-s = re.sub(r'\\\$\\([^)]*\\)', '\\\$(___SUBST___)', s)
-sys.stdout.write(s)
-" 2>/dev/null || echo "$CMD")
-
-# Anti-pattern: --no-verify / --no-gpg-sign / -c commit.gpgsign=false as args
-if echo "$CMD_NO_QUOTES" | grep -qE '(^|[[:space:]])(--no-verify|--no-gpg-sign|commit\.gpgsign=false)([[:space:]]|$)'; then
-  emit_deny "[BLOCKED] git commit cannot bypass hooks or signing.
+# Anti-pattern: --no-verify / --no-gpg-sign / -c commit.gpgsign=false as git arguments.
+if [ "$BYPASS" = 1 ]; then
+  emit_pre_deny "[BLOCKED] git commit cannot bypass hooks or signing.
 
 Command contains one of: --no-verify, --no-gpg-sign, commit.gpgsign=false (as a git argument, not as message content).
 
@@ -147,30 +130,18 @@ fi
 
 # --- AI-attribution scan (full-surface, independent of -m extraction) ---
 # Scans the ENTIRE command string plus the contents of every resolvable
-# `-F <file>` / `--file <file>` argument. This is deliberately independent
-# of the single-subject `-m` extraction below: a second `-m` trailer, a
-# heredoc body, a message file, or a `--message=` body all land in
-# ATTRIB_SCAN and get checked. The match targets attribution TRAILERS and
-# MARKERS specifically (a Co-Authored-By: line naming an AI identity, a
-# "Generated with [Claude Code]" marker, or a claude.ai/code URL) — NOT
-# any prose mention of the word "claude", so a commit fixing a typo that
-# quotes "claude" in its subject still ALLOWs.
+# message file. This is deliberately independent of the single-subject
+# message below: a second `-m` trailer, a heredoc body, a message file, or a
+# `--message=` body all land in ATTRIB_SCAN and get checked. The match targets
+# attribution TRAILERS and MARKERS specifically (a Co-Authored-By: line naming
+# an AI identity, a "Generated with [Claude Code]" marker, or a claude.ai/code
+# URL) — NOT any prose mention of the word "claude", so a commit fixing a typo
+# that quotes "claude" in its subject still ALLOWs.
 ATTRIB_SCAN="$CMD"
-# Resolve EVERY -F / --file argument's contents and append them.
-ATTRIB_FILES=$(echo "$CMD" | grep -oE -- "(-F|--file)[[:space:]=][[:space:]]*[^[:space:]]+" \
-  | sed -E "s/^(-F|--file)[[:space:]=][[:space:]]*//;s/^['\"]//;s/['\"]\$//" || true)
-if [ -n "$ATTRIB_FILES" ]; then
-  while IFS= read -r af; do
-    [ -z "$af" ] && continue
-    [ "$af" = "-" ] && continue
-    if [ -f "$af" ]; then
-      ATTRIB_SCAN="${ATTRIB_SCAN}
+for af in ${MSG_FILES[@]+"${MSG_FILES[@]}"}; do
+  [ "$af" != "-" ] && [ -f "$af" ] && ATTRIB_SCAN="${ATTRIB_SCAN}
 $(cat "$af" 2>/dev/null || true)"
-    fi
-  done <<EOF
-$ATTRIB_FILES
-EOF
-fi
+done
 
 # The co-authored-by alternative matches the trailer at a line start OR
 # immediately after a quote (covers a second inline `-m 'Co-Authored-By:
@@ -178,7 +149,7 @@ fi
 # generated-with / claude.ai-code alternatives are markers/URLs that are
 # never legitimate in a commit message, so they match anywhere.
 if echo "$ATTRIB_SCAN" | grep -qiE '(^|['"'"'"])[[:space:]]*co-authored-by:.*(claude|anthropic|noreply@anthropic\.com)|generated with.*claude([[:space:]]+code)?\b|claude\.ai/code'; then
-  emit_deny "[BLOCKED] git commit carries AI-attribution metadata.
+  emit_pre_deny "[BLOCKED] git commit carries AI-attribution metadata.
 
 Command/message surface contains one of:
   - a \`Co-Authored-By:\` trailer naming claude / anthropic / noreply@anthropic.com
@@ -195,20 +166,9 @@ it stops being added in the first place (do not re-append it per commit)."
   exit 0
 fi
 
-# Extract the commit message. Recognised sources, in order:
-#   -m "..." / -m '...'            (first -m flag)
-#   --message="..." / --message='...'
-#   -F <path> / --file <path>      (message read from the file when it exists)
-MSG=$(echo "$CMD" | grep -oE -- "-m[[:space:]]*['\"][^'\"]+['\"]" | head -1 | sed -E "s/^-m[[:space:]]*['\"]//;s/['\"]$//" || true)
-if [ -z "$MSG" ]; then
-  MSG=$(echo "$CMD" | grep -oE -- "--message=['\"][^'\"]+['\"]" | head -1 | sed -E "s/^--message=['\"]//;s/['\"]$//" || true)
-fi
-if [ -z "$MSG" ]; then
-  MSG_FILE=$(echo "$CMD" | grep -oE -- "(-F|--file)[[:space:]=][[:space:]]*[^[:space:]]+" | head -1 \
-    | sed -E "s/^(-F|--file)[[:space:]=][[:space:]]*//;s/^['\"]//;s/['\"]$//" || true)
-  if [ -n "$MSG_FILE" ] && [ "$MSG_FILE" != "-" ] && [ -f "$MSG_FILE" ]; then
-    MSG=$(cat "$MSG_FILE" 2>/dev/null || true)
-  fi
+# The message: the first -m / --message, else the first message file when it exists.
+if [ -z "$MSG" ] && [ "${#MSG_FILES[@]}" -gt 0 ] && [ "${MSG_FILES[0]}" != "-" ] && [ -f "${MSG_FILES[0]}" ]; then
+  MSG=$(cat "${MSG_FILES[0]}" 2>/dev/null || true)
 fi
 
 # When the message source is unparseable (heredoc via `-F -`, command
@@ -222,11 +182,11 @@ fi
 
 # Anti-pattern: multi-journey commit shape  test(j-a,j-b,...): ...
 if echo "$SCAN" | grep -qE 'test\([^)]*j-[a-z0-9-]+[[:space:]]*,'; then
-  emit_deny "[BLOCKED] Multi-journey commit detected.
+  emit_pre_deny "[BLOCKED] Multi-journey commit detected.
 
 Message: \"${SCAN}\"
 
-Fix: split into one commit per journey. The convention from coverage-expansion §\"Commit-message conventions\" is one journey per commit, no exceptions:
+Fix: split into one commit per journey. The convention from coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\" is one journey per commit, no exceptions:
 
   test(j-checkout): cycle-2 — multi-item variant
   test(j-signup): cycle-2 — long-input edge
@@ -237,11 +197,11 @@ fi
 
 # Anti-pattern: feat(e2e): ... — coverage expansion / e2e tests are never `feat`.
 if echo "$SCAN" | grep -qiE '^feat\((e2e|tests|test|coverage|journey|onboarding)\)'; then
-  emit_deny "[BLOCKED] Test/coverage commits are 'test:' not 'feat:'.
+  emit_pre_deny "[BLOCKED] Test/coverage commits are 'test:' not 'feat:'.
 
 Message: \"${SCAN}\"
 
-Fix: use the convention from coverage-expansion §\"Commit-message conventions\":
+Fix: use the convention from coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\":
 
   test(<j-slug>): <variant>          for compositional passes
   docs(ledger): <j-slug> — ...       for adversarial pass 4
@@ -253,11 +213,12 @@ Why: the convention makes commits filterable by type. 'feat(...)' is for product
 fi
 
 # Anti-pattern: review(...) or any review-tagged commit — Stage B never
-# commits per coverage-expansion/SKILL.md §"Commit-message conventions"
-# and §"Dual-stage per-pass contract". Reviewer judgements live in the
-# state file, not the git log.
+# commits per coverage-expansion/references/depth-mode-pipeline.md
+# §"Commit-message conventions" and coverage-expansion/SKILL.md
+# §"Dual-stage per-pass contract". Reviewer judgements live in the state
+# file, not the git log.
 if echo "$SCAN" | grep -qiE '^review\('; then
-  emit_deny "[BLOCKED] Review-tagged commits are forbidden.
+  emit_pre_deny "[BLOCKED] Review-tagged commits are forbidden.
 
 Message: \"${SCAN}\"
 
@@ -269,7 +230,7 @@ If you intended a tests-from-Stage-A commit, the right form is:
   docs(ledger): <j-slug> — ...       for adversarial pass 4
   test(<j-slug>-regression): ...     for adversarial pass 5
 
-See coverage-expansion §\"Commit-message conventions\"."
+See coverage-expansion/references/depth-mode-pipeline.md §\"Commit-message conventions\"."
   exit 0
 fi
 

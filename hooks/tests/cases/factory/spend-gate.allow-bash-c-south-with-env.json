@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"SPEND_OPT_IN=1 bash -c 'npx playwright test tests/e2e/south/checkout-order.spec.ts --project=south'"}},"expect":"allow","warn":false,"_comment":"The outer assignment is inherited by the nested command (as the shell does)."}

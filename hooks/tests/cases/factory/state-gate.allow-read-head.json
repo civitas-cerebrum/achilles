@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "head -c 10 .factory/verify-stamp"}}, "expect": "allow", "warn": false}

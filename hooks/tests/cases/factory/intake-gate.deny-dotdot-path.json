@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/api/../north/zz-intake.spec.ts","content":"test('no id here', async () => {});\n"}},"expect":"deny","messageContains":["New spec tests/e2e/north/zz-intake.spec.ts"]}

@@ -19,7 +19,7 @@ rsw_run() {
 
 # ---------------------------------------------------------------------------
 section "run-summary-writer: full fixture project"
-RSW_TMP_A=$(mktemp -d /tmp/run-summary-a-XXXXXX)
+tmp_into RSW_TMP_A /tmp/run-summary-a-XXXXXX
 cp -R "$FIXTURE/." "$RSW_TMP_A/"
 rsw_run "$RSW_TMP_A"
 SUMMARY="$RSW_TMP_A/.achilles/run-summary.json"
@@ -44,30 +44,15 @@ assert_eq "$("$JQ" -r '.meta.schema' "$SUMMARY")" "run-summary/v2" "schema is ru
 section "run-summary-writer: output validates against run-summary schema (#18)"
 # The writer's output must conform to schemas/run-summary.schema.json
 # (authored + bundled by P7). Validate the produced file through the same
-# bundle the other gates use. Skip gracefully if the schema isn't in the
-# bundle yet (P7 dependency).
+# bundle the other gates use.
+require_tool node || return 0
 RSW_VALIDATOR="$HOOK_DIR/lib/validator.bundle.mjs"
-RSW_NODE=$(command -v node 2>/dev/null || true)
-if [ -n "$RSW_NODE" ] && [ -f "$RSW_VALIDATOR" ] \
-   && ! "$RSW_NODE" "$RSW_VALIDATOR" validate run-summary "$SUMMARY" 2>&1 | grep -q 'No schema for id'; then
-  TESTS_RUN=$((TESTS_RUN + 1))
-  RSW_VAL_OUT=$("$RSW_NODE" "$RSW_VALIDATOR" validate run-summary "$SUMMARY" 2>&1)
-  RSW_VAL_EC=$?
-  if [ "$RSW_VAL_EC" = "0" ] && [ -z "$RSW_VAL_OUT" ]; then
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-    echo "${CLR_PASS}  ✓${CLR_RST} run-summary output validates against run-summary schema"
-  else
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-    FAIL_DETAILS+=("run-summary schema validation: ${RSW_VAL_OUT:0:200}")
-    echo "${CLR_FAIL}  ✗${CLR_RST} run-summary output validates against run-summary schema ${CLR_DIM}(${RSW_VAL_OUT:0:120})${CLR_RST}"
-  fi
-else
-  echo "${CLR_DIM}  (run-summary schema not in validator bundle — skipping schema validation; ships with P7)${CLR_RST}"
-fi
+RSW_VAL_OUT=$(node "$RSW_VALIDATOR" validate run-summary "$SUMMARY" 2>&1)
+assert_eq "$?:$RSW_VAL_OUT" "0:" "run-summary output validates against run-summary schema"
 
 # ---------------------------------------------------------------------------
 section "run-summary-writer: empty project never fakes a pass"
-RSW_TMP_B=$(mktemp -d /tmp/run-summary-b-XXXXXX)
+tmp_into RSW_TMP_B /tmp/run-summary-b-XXXXXX
 rsw_run "$RSW_TMP_B"
 SUMMARY="$RSW_TMP_B/.achilles/run-summary.json"
 
@@ -77,7 +62,7 @@ assert_eq "$("$JQ" -c '.bugs.ids' "$SUMMARY")" "[]" "no findings ledger → empt
 
 # ---------------------------------------------------------------------------
 section "run-summary-writer: stats-less results.json falls back to per-test walk"
-RSW_TMP_C=$(mktemp -d /tmp/run-summary-c-XXXXXX)
+tmp_into RSW_TMP_C /tmp/run-summary-c-XXXXXX
 cp -R "$FIXTURE/." "$RSW_TMP_C/"
 "$JQ" 'del(.stats)' "$FIXTURE/playwright-report/results.json" \
   > "$RSW_TMP_C/playwright-report/results.json"
@@ -90,4 +75,7 @@ assert_eq "$("$JQ" -r '.tests.status' "$SUMMARY")" "failing" "fallback: status f
 assert_eq "$("$JQ" -r '.tests.flaky' "$SUMMARY")" "null" "fallback: flaky unknowable → null"
 assert_eq "$("$JQ" -r '.tests.total' "$SUMMARY")" "3" "fallback: total from test count"
 
-rm -rf "$RSW_TMP_A" "$RSW_TMP_B" "$RSW_TMP_C"
+
+section "run-summary-writer: jq missing (empty)"
+run_hook_nojq "$HOOK_DIR/run-summary-writer.sh" '{}'
+assert_eq "$HOOK_EXIT:$HOOK_OUT" "0:{}" "no jq anywhere → {} and exit 0"

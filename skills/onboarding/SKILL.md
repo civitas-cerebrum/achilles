@@ -9,7 +9,7 @@ description: >
   from an external automated CLI driver for a hands-off run.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Onboarding — eight-phase e2e bootstrap
@@ -33,8 +33,8 @@ through Claude Code's normal tool surface.
 
 | # | Phase | What it produces | Skill |
 |---|---|---|---|
-| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `achilles-protocol` (Stage 1) |
-| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `achilles-protocol` (Stage 2) |
+| 1 | Scaffold | `playwright.config.ts`, `tests/e2e/{fixtures,docs}/`, `.gitignore` additions | `achilles-protocol` (Stage 1), authored by a dispatched `scaffolder` |
+| 2 | Groundwork | `app-context.md`, `page-repository.json`, runtime self-credentialing fixture | `achilles-protocol` (Stage 2), authored by a dispatched `scaffolder` |
 | 3 | Happy-path | One `tests/e2e/<journey>.spec.ts` per primary user flow that exercises sign-in + the critical action | `achilles-protocol` (Stages 3–4), `test-composer` |
 | 4 | Journey mapping | `tests/e2e/docs/journey-map.md`, `tests/e2e/docs/journey-map-coverage.md` | `journey-mapping` |
 | 5 | Coverage expansion | One `tests/e2e/<journey>.spec.ts` per priority-2/3 journey, grouped passes 2–5 with cleanup dedup | `coverage-expansion`, `test-composer` |
@@ -51,7 +51,7 @@ the phase, not the run.
 ## Status ledger + workflow reviewer (state-machine enforcement)
 
 The pipeline runs on top of a structured status ledger at
-`tests/e2e/docs/onboarding-status.json` (gitignored — same pattern as
+`tests/e2e/docs/onboarding-status.json` (gitignored: same pattern as
 `tests/e2e/docs/.phase4-cycle-state.json` and
 `tests/e2e/docs/coverage-expansion-state.json`). The orchestrator
 (interactive) or an external automated CLI driver **MUST** update
@@ -64,17 +64,18 @@ section, returns `verdict: approve | reject | escalate`, and the
 orchestrator only advances when the verdict is `approve`. Every
 `workflow-reviewer-*` dispatching brief MUST cite the reviewer's
 return-schema path
-(`schemas/subagent-returns/workflow-reviewer.schema.json`) — the
+(`schemas/subagent-returns/workflow-reviewer.schema.json`), the
 `subagent-schema-preread-gate.sh` hook denies briefs that omit the
-citation.
+citation, and MUST open with the binding tag (§"Dispatch grammar" below). The same holds for `phase-validator-<N>:` dispatches with the
+`phase-validator` role.
 
 The contract is harness-enforced:
 
-- `onboarding-ledger-gate.sh` (PreToolUse:Agent, DENY) — denies any
+- `onboarding-ledger-gate.sh` (PreToolUse:Agent, DENY): denies any
   non-reviewer Agent dispatch at a transition point until the matching
   `workflow-reviewer-*` has approved; also denies out-of-order phase
   / pass / cycle dispatches (e.g. `phase4-*` while `currentPhase=2`).
-- `onboarding-ledger-write-gate.sh` (PreToolUse:Write|Edit, DENY) —
+- `onboarding-ledger-write-gate.sh` (PreToolUse:Write|Edit, DENY):
   validates every ledger write against
   `schemas/onboarding-status.schema.json` and denies phase-skip
   transitions that lack a `status: skipped` row + an
@@ -85,7 +86,7 @@ pipeline stopped early) **only** when the workflow-reviewer for the
 prior phase approves the deviation, with the `authorizer` field on the
 reviewer return carrying either a verbatim user quote OR a documented
 structural exception. Self-imposed reasons (`session-length`,
-`budget-cap`, `auto-mode`, `inferred-pref`) are not authorisation —
+`budget-cap`, `auto-mode`, `inferred-pref`) are not authorisation;
 the harness rejects ledger writes that lack a proper authorizer.
 
 **3-cycle reject cap.** A workflow-reviewer that rejects three
@@ -95,17 +96,22 @@ row's `status` becomes `blocked`. This mirrors the existing
 3-cycle process-validator pattern.
 
 **Canonical references:**
-- `schemas/onboarding-status.schema.json` — ledger shape (v1)
-- `schemas/subagent-returns/workflow-reviewer.schema.json` — reviewer return shape
-- `skills/workflow-reviewer/SKILL.md` — reviewer methodology
-- `skills/achilles-protocol/references/harness-hooks.md` — both new hooks indexed
+- `schemas/onboarding-status.schema.json`: ledger shape (v1)
+- `schemas/subagent-returns/workflow-reviewer.schema.json`: reviewer return shape
+- `skills/workflow-reviewer/SKILL.md`: reviewer methodology
+- `skills/achilles-protocol/references/harness-hooks.md`: both new hooks indexed
 
-The ledger + reviewer layer was added because empirical observation (a
-21-journey benchmark, Run 5) demonstrated that markdown-text contract
+The ledger + reviewer layer exists because markdown-text contract
 enforcement alone permits silent scope compression: orchestrators
 could skip phases entirely, stop early, or accept subagent "complete"
 returns whose deliverables were missing. The state-machine layer
 makes those failure modes harness-denied rather than instruction-only.
+
+---
+
+## Dispatch grammar (role kernel)
+
+Grammar, nonce, grouping (`test-composer-group-<id>: j-a, j-b`) and verification: [roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md). Phase dispatch templates stay in each phase below.
 
 ---
 
@@ -121,11 +127,11 @@ verbatim:
 
 > "Before starting, choose the run mode:
 >
-> - **standard** (default, recommended) — first-pass / first-cycle is
+> - **standard** (default, recommended): first-pass / first-cycle is
 >   strict parallel; subsequent passes / cycles may use grouping or
 >   single-agent dispatches for efficiency. Best for everyday onboarding
 >   runs.
-> - **depth** — strict parallel per-journey on every compositional pass
+> - **depth**: strict parallel per-journey on every compositional pass
 >   and strict parallel per-section on every discovery cycle. Up to ~20×
 >   more subagent dispatches and token spend than standard. Best for
 >   high-stakes audits, package-quality benchmarks, and first-time
@@ -140,8 +146,8 @@ propagates through the rest of the onboarding pipeline as follows:
 
 | Phase / dispatch | `runMode: standard` | `runMode: depth` |
 |---|---|---|
-| **Phase 4 — `journey-mapping`** | `args: "phases: full"` (default cycle-1 strict, cycle-2+ relaxed — the existing rule already coded into `journey-mapping/SKILL.md` §"First-cycle strict / later-cycle relaxed") | `args: "phases: full, cycle-strictness: depth"` — strict per-section parallel on every cycle (including edge-probe and any additional discovery cycles); single-subagent walkthroughs forbidden in every cycle |
-| **Phase 5 — `coverage-expansion`** | `args: "mode: standard"` (Pass 1 strict, Passes 2-5 may group; adversarial grouping permitted; `strict-adversarial: true` is opt-in) | `args: "mode: depth"` — strict per-journey parallel on every pass (no `[group]`, no `[P3-batch]` on any of Passes 1-5); adversarial Passes 4-5 are strict-per-journey by default (the `strict-adversarial: true` opt-in is implicit under depth) |
+| **Phase 4: `journey-mapping`** | `args: "phases: full"` (default cycle-1 strict, cycle-2+ relaxed: the existing rule already coded into `journey-mapping/SKILL.md` §"First-cycle strict / later-cycle relaxed") | `args: "phases: full, cycle-strictness: depth"`: strict per-section parallel on every cycle (including edge-probe and any additional discovery cycles); single-subagent walkthroughs forbidden in every cycle |
+| **Phase 5: `coverage-expansion`** | `args: "mode: standard"` (Pass 1 strict, Passes 2-5 may group; adversarial grouping permitted; `strict-adversarial: true` is opt-in) | `args: "mode: depth"`: strict per-journey parallel on every pass (no grouping on any of Passes 1-5); adversarial Passes 4-5 are strict-per-journey by default (the `strict-adversarial: true` opt-in is implicit under depth) |
 | **State files** | The workflow ledger `tests/e2e/docs/onboarding-status.json` is written with `runMode: "standard"` at the front-load gate (the primary source the harness reads). Phase-5 `coverage-expansion-state.json` mirrors `runMode: "standard"` on its first write (fallback for bare invocations); Phase-4 `.phase4-cycle-state.json` is written with `cycleStrictness: "standard"`. | The workflow ledger is written with `runMode: "depth"`; Phase-5 `coverage-expansion-state.json` mirrors `runMode: "depth"` on first write; Phase-4 `.phase4-cycle-state.json` is written with `cycleStrictness: "depth"`. The `standard-mode-first-pass-guard.sh` hook reads `runMode` + `currentPhase` + `currentSubStage` from the workflow ledger first (with `coverage-expansion-state.json` as fallback) and enforces the depth-mode strict-everywhere semantics. Reading the workflow ledger means the depth contract still holds on Phase-6 grouped probes after `coverage-expansion-state.json` is deleted at Pass-5 cleanup. |
 
 The orchestrator emits one declaration line at the start of each phase
@@ -178,7 +184,7 @@ Once the run mode is captured, confirm three preconditions:
    the relevant phase skill directly.
 
 If the project already runs `playwright` end-to-end with substantial
-coverage, do not run onboarding — it's designed for zero-to-suite, not
+coverage, do not run onboarding; it's designed for zero-to-suite, not
 augmentation.
 
 ---
@@ -186,6 +192,25 @@ augmentation.
 ## Phase 1 — Scaffold
 
 **Goal.** Land the Playwright config and the shared file tree.
+
+**Who writes it.** Not the orchestrator. Under the role kernel
+`playwright.config.ts` and `package.json` are outside the orchestrator's
+write scope (the role that runs the runner must not author the runner's
+config), so the orchestrator dispatches the `scaffolder` role (write-only:
+no shell, no dispatch) with the exact file list, then verifies the result
+itself. The dispatch, per §"Dispatch grammar":
+
+~~~
+description:   scaffolder-phase1: land playwright.config.ts, package.json (test:repair script), .gitignore (.achilles/), tests/e2e/.gitignore, tests/e2e/playwright.setup.ts, tests/e2e/fixtures/, tests/e2e/docs/
+subagent_type: scaffolder
+prompt:        <<kernel-mandate-role: scaffolder#<nonce>>>
+               Create exactly these files: <steps 1-4 below, verbatim, plus the
+               element-interactions Stage 1 file shapes>. Do not run anything —
+               the orchestrator runs `npx playwright test --list` after you return.
+~~~
+
+Steps 1–4 are the scaffolder's brief; step 5 and the exit-criteria check
+are the orchestrator's.
 
 **Steps.**
 
@@ -197,39 +222,40 @@ augmentation.
 2. Create `tests/e2e/fixtures/`, `tests/e2e/docs/`, and `tests/e2e/playwright.setup.ts`.
    Spec files themselves live at `tests/e2e/<journey>.spec.ts` (root of
    `tests/e2e/`, no `specs/` subdirectory). The fixtures directory's
-   `base.ts` is scaffolded **with `HELPER SLOT` comment markers** — one
+   `base.ts` is scaffolded **with `HELPER SLOT` comment markers**: one
    per contracted insertion point (`resetState`, `freshUser`,
    `setAuthCookie`, `seedCart`-style seed helpers, `dismissBanners`,
    `beforeEach`). The slots start empty; Stage 4a of the composition
    pipeline populates them from discovered infrastructure (see
    `achilles-protocol/references/test-optimization.md` §"Placeholder
-   convention" — the protocol errors out if the markers are missing).
+   convention"; the protocol errors out if the markers are missing).
    Also seed `tests/e2e/docs/test-data-plan.md` from the template in
    `skills/test-data-conventions/SKILL.md` §"The test data plan" (header
-   + empty Dependencies/Roadmap sections) — the Stage 4c composition
+   + empty Dependencies/Roadmap sections): the Stage 4c composition
    judge checks this file at every composing exit, so the scaffold owns
    its creation and composing sessions own keeping it current.
 3. Add `tests/e2e/.gitignore` entries for `playwright-report/`,
    `test-results/`, `.last-run.json`, `bug-evidence/` (the stable
-   bug-evidence home used by `self-repair` — binary media, gitignored
+   bug-evidence home used by `self-repair`: binary media, gitignored
    by default; teams that want evidence in VCS remove the entry
-   deliberately). Also add `.achilles/` to the **repo-root** `.gitignore`
-   — the harness writes run summaries and archived run artifacts there,
+   deliberately). Also add `.achilles/` to the **repo-root** `.gitignore`:
+   the harness writes run summaries and archived run artifacts there,
    and `tests/e2e/.gitignore` cannot cover a repo-root directory.
 4. Add `"test:repair": "achilles-self-repair"` to the project's
-   `package.json` scripts — the `self-repair` entrypoint's script-mode
+   `package.json` scripts: the `self-repair` entrypoint's script-mode
    front door (`npm run test:repair`, served by this package's
    `bin/self-repair.mjs`). When the project later gains suite-scoped run
    scripts (`test:e2e:<flow>`), per-flow repair presets are derived from
-   them autonomously — `achilles-self-repair --init-scripts`, or the
+   them autonomously: `achilles-self-repair --init-scripts`, or the
    `self-repair` skill applies the same derivation on first activation
    (see `skills/self-repair/SKILL.md` §"Per-flow repair presets").
 5. Commit as `chore: scaffold e2e suite`.
 
-**Exit criteria.**
+**Exit criteria** (checked by the orchestrator once the scaffolder returns).
 - `npx playwright test --list` lists zero specs without error.
 - The scaffold files exist on disk (config, setup, fixtures tree with HELPER-SLOT-bearing `base.ts`, and the seeded `tests/e2e/docs/test-data-plan.md`).
 - `package.json` scripts include `test:repair`.
+- The orchestrator reads the config diff for `webServer.command` before the first run (nothing screens it: known-limits KL-03).
 
 Load `achilles-protocol` (Stage 1) for the exact file shapes.
 
@@ -238,6 +264,22 @@ Load `achilles-protocol` (Stage 1) for the exact file shapes.
 ## Phase 2 — Groundwork
 
 **Goal.** Capture project context so later phases don't re-discover it.
+
+**Who writes it.** The same `scaffolder` role as Phase 1: the three
+artefacts are in its write scope and outside the orchestrator's authored-
+code budget (`tests/e2e/fixtures/auth.ts` imports the test framework).
+The orchestrator supplies what it knows about the app (from `README.md`,
+`docs/**`, the Phase 1 config, and its walk of the running app) in the
+brief; the scaffolder turns it into the files:
+
+~~~
+description:   scaffolder-phase2: author tests/e2e/docs/app-context.md, tests/e2e/page-repository.json, tests/e2e/fixtures/auth.ts
+subagent_type: scaffolder
+prompt:        <<kernel-mandate-role: scaffolder#<nonce>>>
+               <steps 1-3 below, with the app facts and page list filled in>
+~~~
+
+The orchestrator re-runs `npx playwright test --list` after the return.
 
 **Steps.**
 
@@ -274,12 +316,12 @@ the self-credentialing pattern.
    self-verifies with `npx playwright test`.
 3. The composer skill internally runs an in-loop reviewer pass that
    catches craft issues, missing scenarios, and stale assertions
-   before declaring the cycle done — its return shape is the
+   before declaring the cycle done: its return shape is the
    `reviewer-inloop` schema (see `schemas/subagent-returns/`). You
    don't load this reviewer as a separate skill; it is part of the
    composer's cycle. The composer's Step 6c composition judge
    (`achilles-protocol/references/test-composition-standards.md`
-   §4) is likewise part of that cycle — each happy-path spec exits
+   §4) is likewise part of that cycle; each happy-path spec exits
    composing only on a judge-SATISFIED verdict.
 4. Commit each spec individually: `test(j-<journey>): happy path`.
 
@@ -290,7 +332,8 @@ the self-credentialing pattern.
 
 Load `test-composer` for the dispatch contract; consult
 `schemas/subagent-returns/composer.schema.json` and
-`reviewer-inloop.schema.json` for return shapes.
+`reviewer-inloop.schema.json` for return shapes. Each composer is
+dispatched as `test-composer-j-<slug>: <task>` (§"Dispatch grammar").
 
 ---
 
@@ -307,8 +350,8 @@ prioritised P0 / P1 / P2 / P3 (per `journey-mapping`'s priority framework).
 > session pass over the SPA bundle). That shortcut is harness-blocked
 > AND methodologically forbidden:
 >
-> - The map MUST carry `<!-- journey-mapping:generated -->` as line 1
->   — the only legitimate author of that sentinel is the skill's
+> - The map MUST carry `<!-- journey-mapping:generated -->` as line 1;
+>   the only legitimate author of that sentinel is the skill's
 >   `phase4-prioritise-author:` subagent. The `journey-map-sentinel-
 >   gate.sh` hook denies any other write.
 > - `tests/e2e/docs/.phase4-cycle-state.json` must exist with cycle 1
@@ -323,7 +366,7 @@ prioritised P0 / P1 / P2 / P3 (per `journey-mapping`'s priority framework).
 >   denying any session that doesn't show the preread.
 >
 > If you're tempted to inline-author because "the discovery-draft is
-> already in hand, this saves 6 subagent dispatches" — that is the
+> already in hand, this saves 6 subagent dispatches", that is the
 > failure mode the gates exist to block. Dispatch the skill.
 
 **Steps.**
@@ -334,8 +377,8 @@ prioritised P0 / P1 / P2 / P3 (per `journey-mapping`'s priority framework).
    depth` (every cycle strict per-section, single-subagent walkthroughs
    forbidden in every cycle). The skill enforces an *iterative cycle*
    protocol: at least one discovery cycle (`cycle 1` strict per-section
-   parallel — one subagent per section) plus exactly one edge-probe
-   cycle (`cycle 2` — re-walks the same sections under an adversarial
+   parallel: one subagent per section) plus exactly one edge-probe
+   cycle (`cycle 2`: re-walks the same sections under an adversarial
    lens). Shallow single-pass exploration is not accepted.
 2. Produce `tests/e2e/docs/journey-map.md` (priority-grouped, with the
    line-1 sentinel `<!-- journey-mapping:generated -->`) and
@@ -359,28 +402,28 @@ the priority-tier rubric.
 ### Shared-resource audit
 
 Phase 4's test-infrastructure probe (dispatched by `journey-mapping`
-Phase 1 — full protocol:
+Phase 1: full protocol:
 `skills/journey-mapping/references/test-infrastructure-probe.md`) returns
 a `tags:` array of **constraint tags** describing how the app's shared
 state behaves under parallel test workers. Recording those tags is the
 shared-resource audit; the orchestrator appends them verbatim to the
 `## Test Infrastructure` section of `tests/e2e/docs/app-context.md` so
 downstream consumers can read them without re-probing. The tag
-vocabulary and probing mechanics live in the probe reference — this
+vocabulary and probing mechanics live in the probe reference; this
 section only owns where the tags land and who consumes them:
 
-- `global-reset:cross-test-race` — the discovered reset endpoint touches
+- `global-reset:cross-test-race`: the discovered reset endpoint touches
   global (non-tenanted) collections. Consumer: Stage 4a §1 picks the
   per-test-user branch (§1.A) and **forbids** `beforeEach(reset)`.
-- `single-tenant-global-state` — assertions against global views race
+- `single-tenant-global-state`: assertions against global views race
   across workers. Consumer: Stage 4a §1's overlay rewrites assertions to
   per-user-scoped views.
-- `csrf-session-bound` — concurrent mutations against one session
+- `csrf-session-bound`: concurrent mutations against one session
   invalidate CSRF tokens. Consumer: `test-composer` Step 3's file-level
   serial-mode rule.
 
 Absence of a tag is itself a recorded outcome (the probe ran and found
-no constraint) — Stage 4a's branch selection depends on the difference
+no constraint); Stage 4a's branch selection depends on the difference
 between "no tag" and "not audited".
 
 ---
@@ -399,19 +442,19 @@ order), plus per-pass dedup.
 > completed.
 >
 > - The five-pass pipeline (3 compositional + 2 adversarial + cleanup)
->   is non-negotiable for `mode: standard` and `mode: depth`. Pass 1
+>   is required for `mode: standard` and `mode: depth`. Pass 1
 >   alone is one-fifth of the phase, not the whole phase. Stopping
 >   after Pass 1 is exit #2 (commit + state-file + "resume needed"),
 >   not Phase-5 completion.
 > - `tests/e2e/docs/coverage-expansion-state.json` must exist with at
 >   minimum a `pass-1` record before the ledger will permit Phase 5 →
 >   completed. The write-gate denies the transition otherwise.
-> - Pass 1 is strict per-journey under both modes. `[group]` and
->   `[P3-batch]` markers on Pass 1 are harness-blocked by
+> - Pass 1 is strict per-journey under both modes. Grouped
+>   dispatches on Pass 1 are harness-blocked by
 >   `standard-mode-first-pass-guard.sh`.
 >
 > If you're tempted to inline-author specs because dispatching N
-> composers feels expensive — that is the failure mode the contract
+> composers feels expensive; that is the failure mode the contract
 > exists to block. Dispatch the skill.
 
 **Steps.**
@@ -420,7 +463,7 @@ order), plus per-pass dedup.
    `runMode: standard` (Pass 1 strict per-journey, Passes 2-5 may
    group; adversarial grouping is default and `strict-adversarial:
    true` is opt-in) or `args: "mode: depth"` under `runMode: depth`
-   (strict per-journey on every pass — `[group]` and `[P3-batch]`
+   (strict per-journey on every pass: grouped dispatches
    forbidden across all 5 passes; adversarial Passes 4-5 are
    strict-per-journey by default). The skill defines three
    compositional passes (1-3), two adversarial passes (4-5), plus a
@@ -434,14 +477,14 @@ order), plus per-pass dedup.
    Project-agnostic clustering vocabulary: browse / transact / account
    / mutate / errors / auth. Avoid project-specific tokens.
 3. **First pass is opus-tier.** Reserve the most capable model for the
-   first compositional pass — the breadth scaffolding done here drives
+   first compositional pass: the breadth scaffolding done here drives
    every later pass.
 4. **Per-pass dedup.** Run one cleanup subagent at the end of every pass
    to consolidate duplicate scenarios within the pass.
 5. **Adversarial passes.** Pass 4 (first adversarial) and pass 5 (second
    adversarial) emit findings. If Pass 5 emits any critical/high finding
    after dedup, flag the affected journeys for a focused Phase-6
-   `bug-discovery` probe (pass the finding-IDs in the Phase-6 brief) —
+   `bug-discovery` probe (pass the finding-IDs in the Phase-6 brief):
    there is no Pass 6.
 
 **Exit criteria.**
@@ -455,14 +498,14 @@ order), plus per-pass dedup.
   duplicate-scenario findings open.
 
 Load `coverage-expansion` for the full pass protocol and the
-`[group]` dispatch marker syntax.
+grouped dispatch syntax (§"Grouped dispatch").
 
 ---
 
 ## Phase 6 — Bug discovery
 
-**Goal.** Surface adversarial findings — flows that *should* break the
-application — and lock the failure modes with regression specs.
+**Goal.** Surface adversarial findings (flows that *should* break the
+application), and lock the failure modes with regression specs.
 
 > **Phase 6 cannot be done in-orchestrator.** "Load `bug-discovery`"
 > means invoke the Skill tool with skill name `bug-discovery` and
@@ -474,7 +517,7 @@ application — and lock the failure modes with regression specs.
 >   transition otherwise.
 > - Every probe must complete with a terminal status (`clean` or
 >   `findings-emitted`). A probe whose findings have no regression
->   spec must carry an explicit `app-bug` flag — the orchestrator
+>   spec must carry an explicit `app-bug` flag; the orchestrator
 >   cannot silently discard findings.
 >
 > Dispatch the skill.
@@ -489,7 +532,7 @@ application — and lock the failure modes with regression specs.
    specs; they go into `tests/e2e/docs/adversarial-findings.md`.
 
 **Exit criteria.**
-- Every probe terminal (`clean` | `findings-emitted` | `blocked`);
+- Every probe terminal (a [probe](../../schemas/subagent-returns/probe.schema.json) status);
   blocked probes require a ledger deferral entry with an `authorizer`
   or a re-dispatch.
 - All `findings-emitted` returns have a corresponding regression spec
@@ -510,22 +553,28 @@ should be portable across local / CI / staging targets.
 
 1. Load `secrets-sweep`. The skill defines the four literal classes
    (credentials, API keys, PII, URLs) and the extraction playbook.
-   Phase 7 dispatches `secrets-sweep` with the
-   `composer-secrets-sweep:` description prefix.
-2. Scan `tests/**/*.{ts,json}` and root `playwright*.config.ts` per
-   the `secrets-sweep` skill's scope.
+   Scan `tests/**/*.{ts,json}` and root `playwright*.config.ts`
+   yourself and build the `NAME=value` pairs.
    *Do not* touch application source under `src/` or `app/`. Evidence
-   bundles (`tests/e2e/evidence/`) are NOT swept by Phase 7 — they are
+   bundles (`tests/e2e/evidence/`) are NOT swept by Phase 7; they are
    redacted by `companion-mode`'s Phase-5 redaction step.
-3. Replace literals with `process.env.<NAME>`; write `.env` (real
-   values, gitignored) and `.env.example` (placeholders, committed);
-   ensure `.gitignore` covers `.env`.
+2. Two dispatches (§"Dispatch grammar"), neither with a shell:
+   1. `scaffolder-phase7:`: brief: the `NAME=value` pairs and any
+      config literal to move; writes `.env`, `.env.example`, the
+      `.gitignore` entry, `dotenv` in `playwright*.config.ts`.
+   2. `secrets-sweep-phase7:` (`subagent_type: secrets-sweep`): brief:
+      `NAME (one-word role label)` pairs, e.g. `TEST_USER_EMAIL
+      (login email)`, "use exactly these names"; rewrites `tests/**`.
+3. The sweep replaces literals in `tests/**` with `process.env.<NAME>`;
+   the scaffolder writes `.env` (real values, gitignored),
+   `.env.example` (placeholders, committed) and the `.gitignore` entry.
 
 **Exit criteria.**
-- A re-scan of `tests/**` (plus root `playwright*.config.ts`) surfaces
-  no literal credentials.
+- You re-scan `tests/**` and root `playwright*.config.ts` (you can Read
+  both): zero literal credentials, apart from JSON literals the sweep
+  reported (your decision).
 - `.env`, `.env.example`, and the `.gitignore` entry are all in place.
-- `npx playwright test` still passes against the now-env-driven suite.
+- `npx playwright test`, run by you after both return, still passes against the now-env-driven suite.
 
 Load `secrets-sweep` for the full playbook and the strict edit-scope
 rules.
@@ -568,6 +617,13 @@ when the exit criteria are technically met.
 - **Return-shape conformance.** Every subagent dispatch you run must
   return a schema-conformant envelope (see
   `schemas/subagent-returns/`).
+
+### Completion rule
+
+- The pipeline ends only at full greenlight (phases 1–7) or an operator-authorised early stop. No other framing skips a phase.
+- NOT authorisation: "honest partial reporting", "pragmatic Pass N", "context-budget exit #2", "user's final-step instruction".
+- Authorised early stop: `mkdir -p .claude && touch .claude/onboarding-stop-authorized`.
+- Canonical: §"Status ledger + workflow reviewer"; enforced by `protected-artifact-bash-guard.sh` and `subagent-return-schema-guard.sh`.
 
 ---
 

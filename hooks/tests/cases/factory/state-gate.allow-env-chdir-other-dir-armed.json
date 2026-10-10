@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "cat .factory/x; env -C sub rm notes.txt"}}, "expect": "allow", "warn": false}

@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "cp -rt /tmp/state-copy .factory"}}, "expect": "allow", "warn": false}

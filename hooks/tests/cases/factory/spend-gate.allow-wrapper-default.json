@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"node scripts/run-suite.mjs --continue --grep \u0040smoke"}},"expect":"allow","warn":false}

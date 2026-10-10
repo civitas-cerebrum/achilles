@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"node scripts/run-suite.mjs --include-spend --grep CHK-06"}},"expect":"allow","warn":false}

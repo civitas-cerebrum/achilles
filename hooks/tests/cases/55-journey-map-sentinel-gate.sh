@@ -5,9 +5,8 @@
 # PreToolUse:Write|Edit. DENY mode.
 H="$HOOK_DIR/journey-map-sentinel-gate.sh"
 
-TMP_REPO=$(mktemp -d /tmp/journey-map-sentinel-XXXXXX)
+tmp_into TMP_REPO /tmp/journey-map-sentinel-XXXXXX
 mkdir -p "$TMP_REPO/tests/e2e/docs"
-trap 'rm -rf "$TMP_REPO"' EXIT
 
 MAP_PATH="$TMP_REPO/tests/e2e/docs/journey-map.md"
 COVERAGE_PATH="$TMP_REPO/tests/e2e/docs/journey-map-coverage.md"
