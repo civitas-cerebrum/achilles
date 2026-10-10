@@ -15,7 +15,7 @@ The rules are enforced by hooks and a role kernel, not by prompt text. Each row 
 | The orchestrator cannot write runner config | role kernel | `hooks/tests/cases/71-achilles-kernel-activation-gate.sh` |
 | Secrets-sweep cannot read `.env` or write config | role kernel | `hooks/tests/cases/85-qa-mandate-scopes.sh` |
 | A phase cannot be marked approved without a reviewer envelope | `onboarding-ledger-write-gate` | `hooks/tests/cases/51-onboarding-ledger-write-gate.sh` |
-| MultiEdit is refused while the protocol is active | `achilles-multiedit-gate` | `hooks/tests/cases/88-multiedit-gate.sh` |
+| MultiEdit is refused while the protocol is active | `achilles-multiedit-gate` | `hooks/tests/cases/88-achilles-multiedit-gate.sh` |
 | A grouped first pass is refused | `standard-mode-first-pass-guard` | `hooks/tests/cases/49-standard-mode-first-pass-guard.sh` |
 | Vendored kernel bytes must match the lock | `sync-kernel-mandate --check` | `hooks/tests/cases/84-sync-kernel-mandate-check.sh` |
 
@@ -130,7 +130,7 @@ The first is pinned by `71-achilles-kernel-activation-gate.sh`, the second by `8
 | `achilles-factory-rules.json` in the project root | opts into the 7 factory gates; absent, they allow |
 | `npx achilles-uninstall --project <dir>` | removes hooks, registrations, skills, agents and mandate files recorded at install; `--global` instead removes the user-level copies |
 
-All 35 switches the code reads, with blast radius: [opt-in-surfaces.md](skills/achilles-protocol/references/opt-in-surfaces.md). The kernel is an operator-controlled guard, not a barrier against the operator.
+The 40 switches and opt-in files, with blast radius (lint checks the 35 the code reads): [opt-in-surfaces.md](skills/achilles-protocol/references/opt-in-surfaces.md). The kernel is an operator-controlled guard, not a barrier against the operator.
 
 Counts: 48 hook scripts (41 in `hooks/` plus 7 factory gates), 39 of them named `*-gate.sh` or `*-guard.sh`.
 
@@ -190,4 +190,4 @@ Read [`skills/contributing-to-achilles-protocol/`](skills/contributing-to-achill
 
 ## License
 
-MIT
+MIT. The package bundles a pinned `jq` 1.7.1 binary, fetched at install from <https://github.com/jqlang/jq/releases/tag/jq-1.7.1> and licensed MIT (copyright Stephen Dolan and jq contributors); see <https://github.com/jqlang/jq/blob/jq-1.7.1/COPYING>.
