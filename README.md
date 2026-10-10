@@ -43,9 +43,11 @@ Then type `/onboarding` and give the app URL. Start Claude Code from the project
 | `.claude/settings.json` | hook registrations, as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`; existing hooks kept |
 | `.claude/kernel-mandate.json`, `.claude/kernel-mandate.md` | the role manifest and its human-readable ledger; an existing manifest is never overwritten (KL-11) |
 | `.claude/achilles-install.json` | install record, used by `achilles-uninstall` |
-| `~/.claude/skills/`, `~/.claude/agents/` | user-level copies of the skills and agents |
+| `~/.claude/skills/achilles/SKILL.md` | the only user-level file: a routing skill that sends a test request to the project's Achilles or, in a project without it, says how to install it (recorded in `~/.claude/achilles-install.json`) |
 
-A local install also fetches a jq binary into `.claude/hooks/bin/` (pinned by sha256) and the Chromium used for live-DOM inspection. A global install (`-g`) writes hooks to `~/.claude/` instead.
+A local install also fetches a jq binary into `.claude/hooks/bin/` (pinned by sha256) and the Chromium used for live-DOM inspection. An earlier local install's user-level skills and agents are removed while unedited.
+
+To install for every project instead, run `npm i -g @civitas-cerebrum/achilles`. Everything in the table then lands in `~/.claude/` with no routing skill: registrations are absolute paths into `~/.claude/hooks/`, and the mandate is staged as `~/.claude/achilles-qa.kernel-mandate.json`, which governs any project that has no `.claude/kernel-mandate.json` of its own. A local install beside a global one leaves `~/.claude` alone; user-level skills then win over the project's copies of the same name.
 
 Onboarding runs eight phases: scaffold, groundwork, happy path, journey map, coverage, bug hunt, secrets sweep, summary deck. It dispatches many subagents. Expect it to consume a large share of a Claude plan's usage window; no cost or duration figure is published yet. Phase contract: [`skills/onboarding/SKILL.md`](skills/onboarding/SKILL.md). Other entry phrases: "increase coverage", "find bugs", "repair the suite", "verify the checkout flow with evidence", "QA this ticket", "perf-onboard this project".
 
@@ -128,15 +130,15 @@ The first is pinned by `71-achilles-kernel-activation-gate.sh`, the second by `8
 | `KERNEL_MANDATE=0` | bypasses the role kernel; Achilles gates still run |
 | `ACHILLES_PROTOCOL=0` | a new session does not activate the protocol |
 | `achilles-factory-rules.json` in the project root | opts into the 7 factory gates; absent, they allow |
-| `npx achilles-uninstall --project <dir>` | removes hooks, registrations, skills, agents and mandate files recorded at install; `--global` instead removes the user-level copies |
+| `npx achilles-uninstall --project [dir]` | removes hooks, registrations, skills, agents and mandate files recorded at install in the project; `--global` instead reverses `~/.claude` (a global install, or the routing skill) |
 
-The 40 switches and opt-in files, with blast radius (lint checks the 35 the code reads): [opt-in-surfaces.md](skills/achilles-protocol/references/opt-in-surfaces.md). The kernel is an operator-controlled guard, not a barrier against the operator.
+The 42 switches and opt-in files, with blast radius (lint checks the 35 the code reads): [opt-in-surfaces.md](skills/achilles-protocol/references/opt-in-surfaces.md). The kernel is an operator-controlled guard, not a barrier against the operator.
 
 Counts: 48 hook scripts (41 in `hooks/` plus 7 factory gates), 39 of them named `*-gate.sh` or `*-guard.sh`.
 
 ## Known limits
 
-Full table (20 rows): [known-limits.md](skills/achilles-protocol/references/known-limits.md).
+Full table (21 rows): [known-limits.md](skills/achilles-protocol/references/known-limits.md).
 
 | ID | Limit |
 |---|---|

@@ -2,9 +2,9 @@
 
 ## How the kernel binds in Achilles
 
-[`achilles-kernel-activation-gate.sh`](../../../hooks/achilles-kernel-activation-gate.sh) (PreToolUse, every tool) runs the vendored kernel only while the Achilles protocol is active in the session. It relays the kernel's verdict unchanged; with no active session the kernel is not consulted. The kernel reads `.claude/kernel-mandate.json` (staged from `hooks/data/achilles-qa.kernel-mandate.json`). The main session is the `orchestrator` role. Roles and grants: [role ledger](../../../hooks/data/achilles-qa.kernel-mandate.md). Kernel internals: the upstream [kernel-mandate](https://github.com/civitas-cerebrum/kernel-mandate) repo.
+[`achilles-kernel-activation-gate.sh`](../../../hooks/achilles-kernel-activation-gate.sh) (PreToolUse, every tool) runs the vendored kernel only while the Achilles protocol is active in the session. It relays the kernel's verdict unchanged; with no active session the kernel is not consulted. The kernel reads `.claude/kernel-mandate.json` (staged from `hooks/data/achilles-qa.kernel-mandate.json`); under a global install, a project without one is governed by `~/.claude/achilles-qa.kernel-mandate.json`. The main session is the `orchestrator` role. Roles and grants: [role ledger](../../../hooks/data/achilles-qa.kernel-mandate.md). Kernel internals: the upstream [kernel-mandate](https://github.com/civitas-cerebrum/kernel-mandate) repo.
 
-Prerequisite: postinstall installs one agent definition per role into `~/.claude/agents/`.
+Prerequisite: postinstall installs one agent definition per role into the project's `.claude/agents/` (`~/.claude/agents/` with `npm i -g`).
 
 ## Dispatch grammar
 
