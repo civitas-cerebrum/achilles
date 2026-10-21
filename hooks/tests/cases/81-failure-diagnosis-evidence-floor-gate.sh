@@ -130,10 +130,12 @@ assert_deny "$H" "$(write_payload "$SPEC_PATH" "$FD_PREFIXED_SKILL")" \
   "plugin-prefixed Skill(achilles:failure-diagnosis) → DENY" "Evidence-floor violation"
 assert_deny "$H" "$(write_payload "$SPEC_PATH" "$FD_SKILL_READ")" \
   "fd context via Read of failure-diagnosis/SKILL.md → DENY" "Evidence-floor violation"
-assert_deny "$H" "$(write_payload "$SPEC_PATH" "$FD_ROLE_DISPATCH")" \
-  "fd context via fd-ci-* dispatch → DENY" "Evidence-floor violation"
-assert_deny "$H" "$(write_payload "$SPEC_PATH" "$REPAIR_WORKER")" \
-  "fd context via repair-worker-* dispatch → DENY" "Evidence-floor violation"
+# Dispatching an fd worker is not diagnosing: the dispatcher's own writes are
+# not gated by it.
+assert_allow "$H" "$(write_payload "$SPEC_PATH" "$FD_ROLE_DISPATCH")" \
+  "orchestrator that dispatched fd-ci-* writes a spec → silent allow"
+assert_allow "$H" "$(write_payload "$SPEC_PATH" "$REPAIR_WORKER")" \
+  "orchestrator that dispatched repair-worker-* writes a spec → silent allow"
 
 # Deny message must carry the actionable remediation, not just the diagnosis.
 run_hook "$H" "$(write_payload "$SPEC_PATH" "$FD_NO_EVIDENCE")"
@@ -202,3 +204,55 @@ else
   TESTS_RUN=$((TESTS_RUN + 1))
   echo "${CLR_PASS}  ✓${CLR_RST} FD_EVIDENCE_FLOOR_GATE=off bypass"
 fi
+
+# ---------------------------------------------------------------------------
+# A subagent's call carries agent_id + agent_type while transcript_path names
+# the PARENT session; the gate reads the writer's own transcript at
+# <session>/subagents/agent-<agent_id>.jsonl.
+section "fd-evidence-floor: subagent writes are judged on their own transcript"
+SESSION="$TMP_DIR/session.jsonl"
+SUBS="$TMP_DIR/session/subagents"
+mkdir -p "$SUBS"
+# Parent session: dispatched an fd- worker in an earlier pass, never read
+# evidence itself (the worker did, in its own transcript).
+cp "$FD_ROLE_DISPATCH" "$SESSION"
+# Pass-5 probe: bug-discovery, live probing, then a regression spec.
+cat > "$SUBS/agent-aprobe5.jsonl" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"bug-discovery"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/repo/tests/e2e/docs/adversarial-findings.md"}}]}}
+EOF
+# fd worker healing from log text alone.
+cat > "$SUBS/agent-afdlog.jsonl" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"npx playwright test tests/e2e/checkout.spec.ts 2>&1 | tail -20"}}]}}
+EOF
+# fd worker that opened the evidence.
+cat > "$SUBS/agent-afdev.jsonl" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"failure-diagnosis"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/repo/test-results/checkout-chromium/error-context.md"}}]}}
+EOF
+# A probe whose regression spec failed, so it loaded failure-diagnosis itself.
+cp "$FD_NO_EVIDENCE" "$SUBS/agent-aprobefd.jsonl"
+# An fd worker whose first tool call is the heal.
+: > "$SUBS/agent-afdfirst.jsonl"
+
+sub_payload() {
+  write_payload "$SPEC_PATH" "$SESSION" | "$JQ" --arg id "$1" --arg ty "$2" '. + {agent_id: $id, agent_type: $ty}'
+}
+
+assert_allow "$H" "$(sub_payload aprobe5 probe)" \
+  "fd dispatched earlier in the session, pass-5 probe writes a regression spec → ALLOW"
+assert_allow "$H" "$(sub_payload aprobe5 test-composer)" \
+  "fd dispatched earlier in the session, composer writes a spec → ALLOW"
+assert_deny "$H" "$(sub_payload afdlog fd)" \
+  "fd worker heals from log text alone → DENY" "Evidence-floor violation"
+assert_deny "$H" "$(sub_payload afdlog achilles:fd)" \
+  "plugin-prefixed fd agent_type, no evidence → DENY" "Evidence-floor violation"
+assert_deny "$H" "$(sub_payload afdfirst fd)" \
+  "fd worker whose first tool call is the heal → DENY" "Evidence-floor violation"
+assert_deny "$H" "$(sub_payload aprobefd probe)" \
+  "probe that loaded failure-diagnosis, no evidence → DENY" "Evidence-floor violation"
+assert_allow "$H" "$(sub_payload afdev fd)" \
+  "fd worker read error-context.md in its own transcript → ALLOW"
+assert_allow "$H" "$(sub_payload amissing fd)" \
+  "subagent transcript not on disk → silent allow (fail open)"
+
