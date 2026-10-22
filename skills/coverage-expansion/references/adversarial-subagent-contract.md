@@ -123,13 +123,12 @@ If the matrix is shorter than the open-ended probing surfaces (e.g., the journey
 Parallel subagents may try to append to `adversarial-findings.md` simultaneously. Use an advisory lockfile at `tests/e2e/docs/.adversarial-findings.lock`:
 
 ```bash
-# pseudo — actual implementation uses node's lockfile package or flock
-while ! mkdir tests/e2e/docs/.adversarial-findings.lock 2>/dev/null; do
-  sleep 0.2
-done
-# ... append to adversarial-findings.md ...
+mkdir tests/e2e/docs/.adversarial-findings.lock   # fails while another subagent holds the lock; run it again
+# ... append to adversarial-findings.md with the Edit tool ...
 rmdir tests/e2e/docs/.adversarial-findings.lock
 ```
+
+Run each command on its own, with the relative path exactly as written: the QA mandate grants the probe role these two commands and nothing else on the lock path (no loop, no `-p`, no absolute path). If `mkdir` fails, another subagent holds the lock: retry it rather than appending without it.
 
 Holding the lock should take under 500ms per subagent. Read the file, compute the append, write, release. Do not hold the lock during probing or any `playwright-cli` calls.
 
