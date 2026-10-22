@@ -101,7 +101,7 @@
           },
           "reviewerVerdict": {
             "type": ["string", "null"],
-            "enum": ["pending", "approved", "rejected", "escalated-to-user", null]
+            "enum": ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
           },
           "reviewerCycles": {
             "type": "integer",
@@ -149,7 +149,7 @@
                 },
                 "reviewerVerdict": {
                   "type": ["string", "null"],
-                  "enum": ["pending", "approved", "rejected", "escalated-to-user", null]
+                  "enum": ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
                 },
                 "reviewerCycles": {
                   "type": "integer",

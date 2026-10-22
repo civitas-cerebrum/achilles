@@ -16250,7 +16250,7 @@ var onboarding_status_schema_default = {
           },
           reviewerVerdict: {
             type: ["string", "null"],
-            enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+            enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
           },
           reviewerCycles: {
             type: "integer",
@@ -16298,7 +16298,7 @@ var onboarding_status_schema_default = {
                 },
                 reviewerVerdict: {
                   type: ["string", "null"],
-                  enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+                  enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
                 },
                 reviewerCycles: {
                   type: "integer",
@@ -16450,7 +16450,7 @@ var perf_onboarding_status_schema_default = {
           },
           reviewerVerdict: {
             type: ["string", "null"],
-            enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+            enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
           },
           reviewerCycles: {
             type: "integer",
@@ -16498,7 +16498,7 @@ var perf_onboarding_status_schema_default = {
                 },
                 reviewerVerdict: {
                   type: ["string", "null"],
-                  enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+                  enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
                 },
                 reviewerCycles: {
                   type: "integer",

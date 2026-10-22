@@ -76,7 +76,8 @@ pipeline_reviewer_cap_check() {
       CAP_VERDICT=$("$JQ" -r --argjson id "$CAP_PHASE" \
         '[.phases[]? | select(.id == $id)] | .[0].reviewerVerdict // "pending"' "$PIPELINE_LEDGER" 2>/dev/null || echo "pending")
       case "$CAP_CYCLES" in ''|*[!0-9]*) CAP_CYCLES=0 ;; esac
-      if [ "$CAP_CYCLES" -ge 3 ] && [ "$CAP_VERDICT" != "escalated-to-user" ]; then
+      # `escalate` is the reviewer's own word for the same verdict; neither is approval.
+      if [ "$CAP_CYCLES" -ge 3 ] && [ "$CAP_VERDICT" != "escalated-to-user" ] && [ "$CAP_VERDICT" != "escalate" ]; then
         pipeline_emit_deny "[BLOCKED] Reviewer dispatch for phase ${CAP_PHASE} denied — reviewerCycles is already ${CAP_CYCLES} (cap is 3) and the verdict is \"${CAP_VERDICT}\", not \"escalated-to-user\".
 
 Description: \"${DESCRIPTION}\"
