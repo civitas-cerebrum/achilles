@@ -5,10 +5,32 @@ const os   = require('os');
 // __dirname is `<package>/scripts/install/`.
 const packageDir = path.resolve(__dirname, '..', '..');
 
-// When installed as a dependency, __dirname is:
-//   <project>/node_modules/@civitas-cerebrum/achilles/scripts/install
-// so five levels up reaches the consumer's project root.
-const projectRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
+// npm runs a dependency's install script with cwd at the package's real path
+// and INIT_CWD at the directory npm was invoked from. A registry install puts
+// the package at <project>/node_modules/@civitas-cerebrum/achilles, so five
+// levels up from __dirname is the consumer's project. `npm install <folder>`
+// links the folder instead, so its real path has no node_modules in it and
+// only INIT_CWD names the consuming project.
+const underNodeModules = packageDir.split(path.sep).includes('node_modules');
+const initCwd = process.env.INIT_CWD ? path.resolve(process.env.INIT_CWD) : '';
+const projectRoot = (underNodeModules || !initCwd)
+  ? path.resolve(__dirname, '..', '..', '..', '..', '..')
+  : initCwd;
+
+function realDir(p) {
+  try { return fs.realpathSync(p); } catch { return path.resolve(p); }
+}
+
+// A developer's `npm install` inside this package's own checkout: npm was run
+// in the package dir (or below it) and the package is not a dependency of
+// anything. Nothing should be installed then. With no INIT_CWD at all, npm did
+// not start this run, so there is no consuming project either.
+function isOwnCheckout() {
+  if (underNodeModules) return false;
+  if (!initCwd) return true;
+  const rel = path.relative(realDir(packageDir), realDir(initCwd));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
 
 const homeDir = os.homedir();
 const userClaudeDir = path.join(homeDir, '.claude');
@@ -62,6 +84,7 @@ const methodologyDestinations = (sub) => globalInstall
 module.exports = {
   packageDir,
   projectRoot,
+  isOwnCheckout,
   homeDir,
   userClaudeDir,
   isGlobalInstall,
