@@ -36,6 +36,12 @@
 - Approval-class ledger writes must come from an approver `agent_type` when the host supplies one.
 - Phase 7 is dispatched as `secrets-sweep-phase7:` with `subagent_type: secrets-sweep`.
 - The package declares `"engines": { "node": ">=20" }` and its tarball no longer includes schema fixtures.
+- QA mandate: the `probe` role may author code that uses `network` (`write.codeCapabilities`), so pass-5 regression specs can lock ID-tamper navigation built at run time and foreign-Origin (CORS) boundaries. No other role gains it.
+- QA mandate: the `probe` role may run `mkdir` and `rmdir` on `tests/e2e/docs/.adversarial-findings.lock`, the advisory lock for appending to the findings ledger; only that relative path, and the lock procedure now runs them as single commands.
+- Pass 5 commits one per journey, `test(<j-slug>-regression): lock <N> boundaries`, with one `lock <boundary>` line per lock in the body. The commit table asked for one commit per lock, which contradicted step 8 and the Pass 5 completion criteria and needs partial staging that no granted command does.
+- QA mandate: `orchestrator`, `test-composer`, `probe`, `fd` and `companion`, the roles that run the Stage-4b compliance sweep, may read `achilles-protocol/references/**` in the project's and the user's `.claude/skills/`, which holds the `stages-protocol.md` and `api-reference.md` checklists.
+- The status ledgers accept `escalate`, the workflow-reviewer's verdict word, as the same verdict as `escalated-to-user`. Neither counts as approval, and either satisfies the 3-round reject cap.
+- Postinstall runs for `npm install <folder>`. A folder install links the package, so its path has no `node_modules`, and the own-repo guard skipped it silently; the guard now skips only a developer's `npm install` inside the Achilles checkout (`INIT_CWD` is the package dir), and the consuming project is taken from `INIT_CWD`.
 
 ### Known limits
 

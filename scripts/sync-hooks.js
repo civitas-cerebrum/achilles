@@ -5,7 +5,7 @@
 // Why this exists
 // ---------------
 // scripts/postinstall.js short-circuits when run from the package's own
-// repo (the `!packageDir.includes('node_modules')` guard) — that's correct
+// repo (the own-checkout guard: INIT_CWD is the package dir) — that's correct
 // for `npm install` here, where you don't want a dev `npm i` to clobber
 // your global hook config. But when you're actively editing a hook in this
 // repo and want the change live in your existing Claude Code session, you

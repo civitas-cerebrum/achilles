@@ -2,12 +2,13 @@
 
 const context = require('./install/context.js');
 
-// Skip when running in the package's own repo (local dev `npm install`).
-// The guard only fires when this file is executed directly via `node
-// scripts/postinstall.js`. When require()'d (e.g. by scripts/sync-hooks.js
-// for an in-repo dev sync), the guard is bypassed and the installers are
-// exposed via module.exports for callers to invoke selectively.
-if (require.main === module && !context.packageDir.includes('node_modules')) {
+// Skip a developer's `npm install` inside this package's own checkout, where
+// INIT_CWD is the package dir. A folder install (`npm install <path>`) links
+// the package, so its path has no node_modules in it, yet it is a consumer
+// install and must run; a global install always runs. The guard only fires
+// when this file is executed directly; when require()'d (e.g. by
+// scripts/sync-hooks.js), the installers are exposed via module.exports.
+if (require.main === module && context.isOwnCheckout() && !context.globalInstall) {
   process.exit(0);
 }
 

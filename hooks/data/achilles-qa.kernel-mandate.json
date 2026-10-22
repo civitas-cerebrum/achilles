@@ -82,8 +82,10 @@
       },
       "read": {
         "allow": [
+          ".claude/skills/achilles-protocol/references/**",
           "docs/**",
-          "tests/**"
+          "tests/**",
+          "~/.claude/skills/achilles-protocol/references/**"
         ]
       },
       "write": {
@@ -217,8 +219,10 @@
       },
       "read": {
         "allow": [
+          ".claude/skills/achilles-protocol/references/**",
           "docs/**",
-          "tests/**"
+          "tests/**",
+          "~/.claude/skills/achilles-protocol/references/**"
         ]
       },
       "write": {
@@ -389,12 +393,14 @@
       "read": {
         "allow": [
           ".achilles/**",
+          ".claude/skills/achilles-protocol/references/**",
           ".gitignore",
           "README.md",
           "docs/**",
           "package.json",
           "playwright*.config.ts",
-          "tests/**"
+          "tests/**",
+          "~/.claude/skills/achilles-protocol/references/**"
         ]
       },
       "write": {
@@ -699,8 +705,10 @@
       },
       "read": {
         "allow": [
+          ".claude/skills/achilles-protocol/references/**",
           "docs/**",
-          "tests/**"
+          "tests/**",
+          "~/.claude/skills/achilles-protocol/references/**"
         ]
       },
       "write": {
@@ -714,12 +722,19 @@
         "codeImports": [
           "@civitas-cerebrum/element-interactions",
           "@playwright/test"
+        ],
+        "codeCapabilities": [
+          "network"
         ]
       },
       "bash": {
         "groups": [
           "browser-session-runs",
           "suite-runs"
+        ],
+        "allow": [
+          "^mkdir tests/e2e/docs/\\.adversarial-findings\\.lock$",
+          "^rmdir tests/e2e/docs/\\.adversarial-findings\\.lock$"
         ],
         "deny": [
           "^npx playwright-cli (close-all|kill-all)\\b"
@@ -1015,9 +1030,11 @@
       },
       "read": {
         "allow": [
+          ".claude/skills/achilles-protocol/references/**",
           "docs/**",
           "tests/**",
-          "tests/e2e/page-repository.json"
+          "tests/e2e/page-repository.json",
+          "~/.claude/skills/achilles-protocol/references/**"
         ]
       },
       "write": {

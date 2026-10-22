@@ -279,6 +279,59 @@ FACRULES
       "$(diff <(echo "$factory_want") <(echo "$factory_have"))"
   fi
 
+  # --- Assertion: `npm install <folder>` runs the postinstall -------------
+  # A folder install links the package, so its real path has no node_modules
+  # in it. The own-checkout guard must still let it install: only a developer's
+  # `npm install` inside the checkout (INIT_CWD = the package dir) is skipped.
+  # A copy of the package stands in for the checkout so npm's link step never
+  # touches the repo; its dependencies are the repo's own node_modules.
+  if command -v npm >/dev/null 2>&1 && [ -d "$repo_root/node_modules" ]; then
+    local fpkg="$work/folder-pkg" fproj="$work/folder-proj" fhome="$work/folder-home" fout entry_rel
+    mkdir -p "$fpkg" "$fproj" "$fhome"
+    cp "$repo_root/package.json" "$fpkg/"
+    for entry_rel in $("$JQ" -r '.files[]' "$repo_root/package.json"); do
+      [ -e "$repo_root/$entry_rel" ] || continue
+      mkdir -p "$fpkg/$(dirname "$entry_rel")"
+      cp -R "$repo_root/$entry_rel" "$fpkg/$entry_rel"
+    done
+    ln -s "$repo_root/node_modules" "$fpkg/node_modules"
+    printf '{"name":"folder-install-sim","version":"1.0.0","private":true}\n' > "$fproj/package.json"
+    # A clean environment: no INIT_CWD or npm_config_* from an outer `npm test`.
+    fout=$(cd "$fproj" && env -i PATH="$PATH" HOME="$fhome" npm_config_cache="$fhome/.npm" \
+      CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+      npm install "$fpkg" --offline --no-audit --no-fund --foreground-scripts 2>&1) || true
+    if [ -L "$fproj/node_modules/@civitas-cerebrum/achilles" ] \
+       && [ -x "$fproj/.claude/hooks/kernel-mandate-role-gate.sh" ] \
+       && [ -f "$fproj/.claude/settings.json" ] \
+       && [ -f "$fproj/.claude/kernel-mandate.json" ]; then
+      sim_pass "npm install <folder> lands the hooks, settings and mandate in the consuming project"
+    else
+      sim_fail "npm install <folder> lands the hooks, settings and mandate in the consuming project" \
+        "nothing under $fproj/.claude after a folder install. npm output: ${fout:0:300}"
+    fi
+    if [ ! -e "$fhome/.claude/settings.json" ] && [ ! -e "$fpkg/.claude" ]; then
+      sim_pass "npm install <folder> registers no hooks in HOME or in the package folder"
+    else
+      sim_fail "npm install <folder> registers no hooks in HOME or in the package folder" \
+        "found $fhome/.claude/settings.json or $fpkg/.claude"
+    fi
+    # The developer case: npm run in the checkout itself installs nothing.
+    local dhome="$work/dev-home"
+    mkdir -p "$dhome"
+    (cd "$fpkg" && env -i PATH="$PATH" HOME="$dhome" INIT_CWD="$fpkg" \
+      CIVITAS_SKIP_JQ_INSTALL=1 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+      node scripts/postinstall.js >/dev/null 2>&1) || true
+    if [ ! -e "$fpkg/.claude" ] && [ ! -e "$dhome/.claude" ]; then
+      sim_pass "npm install inside the package's own checkout installs nothing"
+    else
+      sim_fail "npm install inside the package's own checkout installs nothing" \
+        "the own-checkout run wrote $fpkg/.claude or $dhome/.claude"
+    fi
+  else
+    sim_fail "npm install <folder> lands the hooks in the consuming project" \
+      "needs npm and the repo's node_modules (npm ci first)"
+  fi
+
   # --- Assertion 5+6: write-gate DENIES a schema-invalid ledger write -----
   # Run from the fake project (no repo, no schemas/ dir anywhere above) with
   # HOME pointed at the fake home — exactly a consumer's runtime context.

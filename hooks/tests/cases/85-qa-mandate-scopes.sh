@@ -72,6 +72,11 @@ assert_allow "$KERNEL" "$(qs_disp 'probe-group-p4-auth: j-login, j-signup' probe
 assert_deny  "$KERNEL" "$(qs_disp '[group] test-composer-j-login,test-composer-j-signup:' test-composer)" "legacy leading [group] names no role → DENY" ""
 
 section "qa-mandate: the orchestrator runs no authored script"
+# Pass 5 commits one per journey (depth-mode-pipeline.md), with git add / git commit only.
+assert_allow "$KERNEL" "$(qs_main tool_name=Bash command='git add tests/e2e/j-cart-regression.spec.ts')" "orchestrator git add a regression spec → ALLOW"
+assert_allow "$KERNEL" "$(qs_main tool_name=Bash command='git commit -m "test(j-cart-regression): lock 3 boundaries"')" "orchestrator git commit the journey's locks → ALLOW"
+assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='python3 -I /tmp/achilles-tools/lock_commits.py . tests/e2e/j-cart-regression.spec.ts j-cart')" \
+  "orchestrator python3 <authored per-lock commit script> → DENY" "may not run this command"
 assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npm test')" \
   "orchestrator npm test → DENY (scripts.test is scaffolder-authored text)" "may not run this command"
 assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npm run test:repair')" \
@@ -79,6 +84,57 @@ assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npm run test:repair')" 
 assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='npx achilles-self-repair --claude-bin tests/e2e/x.sh')" \
   "orchestrator npx achilles-self-repair --claude-bin → DENY (spawns whatever --claude-bin names)" "may not run this command"
 assert_allow "$KERNEL" "$(qs_main tool_name=Bash command='npx playwright test')" "orchestrator npx playwright test → ALLOW"
+
+section "qa-mandate: pass-5 regression specs may reach the network (probe only)"
+# adversarial-subagent-contract.md: pass 5 locks every verified boundary, including ID-tamper
+# navigation built at run time and the app-wide CORS posture (a foreign Origin).
+QS_NAV='import { test } from "@playwright/test";
+test("TCX-000001 tampered id is refused", async ({ page }) => { const id = "64b"; await page.goto(`/books/${id}`); });'
+QS_ORIGIN='import { test } from "@playwright/test";
+test("TCX-000002 foreign origin is refused", async ({ page }) => { await page.setExtraHTTPHeaders({ Origin: "http://evil.example" }); });'
+for C in "$QS_NAV" "$QS_ORIGIN"; do
+  assert_allow "$KERNEL" "$(qs_sub tool_name=Write agent_type=probe file_path="$QP/tests/e2e/j-x-regression.spec.ts" content="$C")" \
+    "probe Write a network-shaped regression spec → ALLOW (write.codeCapabilities network)"
+  for R in test-composer fd; do
+    assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=$R file_path="$QP/tests/e2e/j-x.spec.ts" content="$C")" \
+      "$R Write the same spec → still DENY" "may not author code using"
+  done
+done
+assert_deny "$KERNEL" "$(qs_sub tool_name=Write agent_type=probe file_path="$QP/tests/e2e/x.spec.ts" content='import fs from "fs"; fs.readFileSync("/etc/hosts");')" \
+  "probe Write a spec using fs → still DENY (only network is granted)" "may not author code using"
+
+section "qa-mandate: probes take the findings-ledger lock"
+for C in 'mkdir tests/e2e/docs/.adversarial-findings.lock' 'rmdir tests/e2e/docs/.adversarial-findings.lock'; do
+  assert_allow "$KERNEL" "$(qs_sub tool_name=Bash agent_type=probe command="$C")" "probe $C → ALLOW (adversarial-subagent-contract.md lock)"
+  for R in reviewer test-composer; do
+    assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=$R command="$C")" "$R $C → DENY" "may not run this command"
+  done
+done
+for C in 'mkdir -p tests/e2e/docs/.adversarial-findings.lock' "mkdir $QP/tests/e2e/docs/.adversarial-findings.lock" \
+         'mkdir tests/e2e/docs/.adversarial-findings.lock/../../../../x' 'cd /tmp && mkdir tests/e2e/docs/.adversarial-findings.lock' \
+         'mkdir tests/e2e/docs/other.lock'; do
+  assert_deny "$KERNEL" "$(qs_sub tool_name=Bash agent_type=probe command="$C")" "probe $C → DENY (only the exact lock path)" "may not run this command"
+done
+
+section "qa-mandate: roles that run the Stage-4b sweep read its checklists"
+QS_HOME="$QS_TMP/home"
+mkdir -p "$QS_HOME/.claude/skills/achilles-protocol/references" "$QP/.claude/skills/achilles-protocol/references"
+for F in stages-protocol.md api-reference.md; do
+  echo x > "$QS_HOME/.claude/skills/achilles-protocol/references/$F"
+  echo x > "$QP/.claude/skills/achilles-protocol/references/$F"
+done
+echo x > "$QS_HOME/.claude/skills/achilles-protocol/SKILL.md"
+for F in "$QS_HOME/.claude/skills/achilles-protocol/references/stages-protocol.md" "$QP/.claude/skills/achilles-protocol/references/api-reference.md"; do
+  for R in probe test-composer fd companion; do
+    HOME="$QS_HOME" assert_allow "$KERNEL" "$(qs_sub tool_name=Read agent_type=$R file_path="$F")" "$R Read ${F##*/} (${F%%/.claude/*}) → ALLOW"
+  done
+  HOME="$QS_HOME" assert_allow "$KERNEL" "$(qs_main tool_name=Read file_path="$F")" "orchestrator Read ${F##*/} → ALLOW (it sweeps what comes back)"
+  for R in reviewer workflow-reviewer scaffolder; do
+    HOME="$QS_HOME" assert_deny "$KERNEL" "$(qs_sub tool_name=Read agent_type=$R file_path="$F")" "$R Read ${F##*/} → DENY" "outside the role's read scope"
+  done
+done
+HOME="$QS_HOME" assert_deny "$KERNEL" "$(qs_sub tool_name=Read agent_type=probe file_path="$QS_HOME/.claude/skills/achilles-protocol/SKILL.md")" \
+  "probe Read a skill file outside references/ → DENY (references only)" "outside the role's read scope"
 
 section "qa-mandate: procedures the kernel refuses today (KL-05..KL-08)"
 assert_deny "$KERNEL" "$(qs_main tool_name=Bash command='k6 run --vus 1 --duration 30s tests/perf/scenarios/home.js')" "orchestrator k6 run → DENY (KL-05)" "may not run this command"

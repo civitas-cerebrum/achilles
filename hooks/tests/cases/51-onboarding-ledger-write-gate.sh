@@ -162,6 +162,18 @@ assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$T
 ESCALATE=$(echo "$PRIOR_C2" | "$JQ" '.phases[0].reviewerCycles = 3 | .phases[0].reviewerVerdict = "escalated-to-user" | .status = "blocked"')
 assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$ESCALATE")" \
   "3rd-round escalated-to-user + status blocked → ALLOW"
+# `escalate`, the workflow-reviewer's own verdict word, is accepted as the same verdict.
+ESCALATE_WORD=$(echo "$PRIOR_C2" | "$JQ" '.phases[0].reviewerCycles = 3 | .phases[0].reviewerVerdict = "escalate" | .status = "blocked"')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$ESCALATE_WORD")" \
+  "3rd-round escalate + status blocked → ALLOW (the reviewer's verdict word)"
+# A pass-level escalate (the Pass 5 reviewer's) passes the schema; a near-miss word does not.
+printf '%s' "$VALID_FRESH" > "$LEDGER_PATH"
+SUB_ESC=$(echo "$VALID_FRESH" | "$JQ" '.status = "blocked" | .phases[4].subStages = [{"id":"pass-5","status":"blocked","reviewerVerdict":"escalate","reviewerCycles":1}]')
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$SUB_ESC")" \
+  "pass-5 subStage reviewerVerdict escalate → ALLOW (was a schema deny)"
+SUB_BAD=$(echo "$SUB_ESC" | "$JQ" '.phases[4].subStages[0].reviewerVerdict = "escalated"')
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$SUB_BAD")" \
+  "pass-5 subStage reviewerVerdict escalated (not a ledger word) → DENY" "fails schema validation"
 
 # ---------------------------------------------------------------------------
 section "ledger-write-gate: actor-identity on approval transitions"
