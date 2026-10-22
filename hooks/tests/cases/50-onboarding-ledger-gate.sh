@@ -107,6 +107,44 @@ write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
 ')"
 assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: confirm escalation' prompt='Review.' cwd="$TMP_REPO")" \
   "reviewer dispatch at reviewerCycles=3 (escalated-to-user) → ALLOW"
+# `escalate`, the reviewer's own verdict word, is the same verdict for the cap.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "escalate" |
+  .phases[0].reviewerCycles = 3 |
+  .status = "blocked"
+')"
+assert_allow "$H" "$(payload tool_name=Agent description='workflow-reviewer-phase1: confirm escalation' prompt='Review.' cwd="$TMP_REPO")" \
+  "reviewer dispatch at reviewerCycles=3 (escalate) → ALLOW"
+
+# ---------------------------------------------------------------------------
+section "ledger-gate: an escalate verdict is not approval"
+# Phase 1 escalated: the next phase may not start.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 2 |
+  .status = "blocked" |
+  .phases[0].status = "completed" |
+  .phases[0].reviewerVerdict = "escalate" |
+  .phases[0].reviewerCycles = 1 |
+  .phases[0].handoverEnvelope = {"role":"phase1-scaffold","status":"complete"} |
+  .phases[1].status = "in-progress"
+')"
+assert_deny "$H" "$(payload tool_name=Agent description='phase3-happy-path' prompt='Write the happy path.' cwd="$TMP_REPO")" \
+  "phase3 dispatch with phase1 verdict escalate → DENY" "Out-of-order phase dispatch"
+# Pass 5 escalated: no pass-6 work, and pass 2 cannot follow an escalated pass 1.
+write_ledger "$(echo "$fresh_ledger_json" | "$JQ" '
+  .currentPhase = 5 |
+  .currentSubStage = "pass-2" |
+  .phases[0].status = "completed" | .phases[0].reviewerVerdict = "approved" | .phases[0].handoverEnvelope = {} |
+  .phases[1].status = "completed" | .phases[1].reviewerVerdict = "approved" | .phases[1].handoverEnvelope = {} |
+  .phases[2].status = "completed" | .phases[2].reviewerVerdict = "approved" | .phases[2].handoverEnvelope = {} |
+  .phases[3].status = "completed" | .phases[3].reviewerVerdict = "approved" | .phases[3].handoverEnvelope = {} |
+  .phases[4].status = "in-progress" | .phases[4].subStages = [
+    {"id":"pass-1","status":"blocked","reviewerVerdict":"escalate","reviewerCycles":1}
+  ]
+')"
+assert_deny "$H" "$(payload tool_name=Agent description='composer-j-cart-2-c1:' prompt='Compose. composer.schema.json' cwd="$TMP_REPO")" \
+  "pass-2 composer dispatch with pass-1 verdict escalate → DENY" "pass-1 is not reviewer-approved"
 
 # ---------------------------------------------------------------------------
 section "ledger-gate: transition-point forces workflow-reviewer-* dispatch"

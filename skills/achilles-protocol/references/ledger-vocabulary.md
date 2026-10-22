@@ -5,7 +5,7 @@ Status values are defined by the schemas under `schemas/`; this file records onl
 - Pipeline ledgers: [onboarding](../../../schemas/onboarding-status.schema.json), [perf](../../../schemas/perf-onboarding-status.schema.json). The pipeline `status` says `complete`; a phase `status` says `completed`. Both are schema-enforced; do not normalise.
 - A phase moves `pending`, `in-progress`, `completed`, in order. `skipped` needs an `approvedDeviations[]` entry with a verbatim `authorizer` quote.
 - `approved` needs a non-null `handoverEnvelope`. `approved`, `complete` and `aborted` need a registered approver as writer; `complete` and `aborted` retire the session's protocol activation.
-- The third rejection is `escalated-to-user`, never `rejected`.
+- The third rejection is `escalated-to-user`, never `rejected`. The ledger also accepts `escalate`, the reviewer's own verdict word, as the same verdict. Neither is `approved`, so the unit stays blocked until the user triages it.
 
 ## Subagent returns
 
@@ -20,6 +20,6 @@ Status values are defined by the schemas under `schemas/`; this file records onl
 | in-loop reviewer | [reviewer-inloop](../../../schemas/subagent-returns/reviewer-inloop.schema.json) |
 | phase-validator | [phase-validator](../../../schemas/subagent-returns/phase-validator.schema.json) |
 
-Reviewer `verdict` maps to the ledger word: `approve` to `approved`, `reject` to `rejected`, `escalate` to `escalated-to-user`.
+Reviewer `verdict` maps to the ledger word: `approve` to `approved`, `reject` to `rejected`, `escalate` to `escalated-to-user` (or `escalate`, which the ledger accepts as the same verdict).
 
 `covered-exhaustively` needs a per-expectation mapping table; `no-new-tests-by-rationalisation` is not a valid status.
