@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // mutate.mjs — behavioural mutation testing: prove the suite can FAIL.
+// Size: one CLI for config loading, mutation apply/revert, calibration, flake repeats and the parallel runner.
 //
 // Consumers reach this through the `achilles-mutate` bin:
 //
@@ -13,7 +14,7 @@
 // WHY THIS EXISTS. A green suite proves nothing until you have seen it go red
 // for the right reason. Mutation testing injects the broken state an acceptance
 // criterion forbids and checks that the suite notices. See
-// skills/ticket-driven-testing/SKILL.md §8b.
+// skills/achilles-orchestrator/workflows/verify-change.md (mutation step).
 //
 // WHY IT IS A BIN AND NOT A PROSE RECIPE. It was a prose recipe first, and
 // every subtlety in it drew blood in practice:

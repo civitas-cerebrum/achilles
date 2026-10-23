@@ -98,7 +98,7 @@ The framework manages:
 
 ### Open Source
 
-Both packages are public on npm. The methodology ships inside `node_modules` — not in a wiki, not in a Confluence page, not in a prompt that drifts with every session. When you `npm install @civitas-cerebrum/achilles`, the agent picks up the skills, the hooks register themselves, and the harness is live. Version-pinned, auditable, reproducible.
+Both packages are public on npm. The methodology ships inside `node_modules` — not in a wiki, not in a Confluence page, not in a prompt that drifts with every session. When you `npm install @civitas-cerebrum/achilles`, the agent picks up the skills and the plugin adapter registers itself. Version-pinned, auditable, reproducible.
 
 ---
 
@@ -121,18 +121,20 @@ The commit-or-discard gate is the methodology's answer to the observation that m
 
 The distinction between a methodology and a best-practices document is enforcement.
 
-Every critical rule in this lifecycle is backed by a harness hook — a shell script that runs on every tool invocation and physically blocks the action when a precondition is not met:
+Every critical rule in this lifecycle is either a scope on one of the five Achilles agents or one of eight adapter hooks. Scopes decide who may write where; hooks advise by default and deny only what cannot be undone:
 
-| Gate | What it blocks | Precondition |
+| Deny | What it refuses | Precondition |
 |---|---|---|
-| **Evidence bundle** | Ticket transition to completed state; non-draft PR creation | Evidence bundle with summary, screenshots, and at least one verification artifact must exist for the ticket |
-| **Adversarial verification** | Same surfaces as above | Adversarial review receipt must exist and be newer than the newest spec edit |
-| **Negative control** | QA sign-off | Test must be demonstrated to fail without the fix |
-| **Schema validation** | Subagent returns | Every sub-agent return must conform to its role's JSON Schema |
-| **Dual-stage review** | Journey completion | Composer and reviewer must be separate dispatches with isolated context |
-| **PDF inspection** | Agent dispatch after deck export | Every page of a generated PDF must be visually inspected before delivery |
+| **Sign-off** | Ticket transition to a completed state; non-draft PR creation | An evidence bundle for the ticket and a receipt written by the reviewer agent, not by the author |
+| **Credential in an artifact** | Any sign-off | No live credential left in a captured HAR or console log |
+| **Negative control** | QA sign-off | The receipt records that the suite failed without the fix |
+| **Commit bypass and attribution** | `git commit --no-verify`, AI attribution trailers | None; refused outright |
+| **Load ceilings** | `k6 run` past 1000 VUs or 3600 s, outside the allowlist, against production | Explicit allowlist and production opt-in in the perf config |
+| **Non-inert selector edit** | A frontend edit on a selector brief | Exactly one added test attribute |
 
-The agent doesn't opt into the methodology; it has no path around it. The hooks are installed globally by `npm postinstall` and registered in the harness configuration. They cannot be disabled from inside a session — they can only be disabled by the operator before the session starts, via documented environment variables.
+Separation of duties is a scope, not a hook: an author has no reviewer schema to return and a reviewer has no spec path to write, so a journey cannot be composed and certified by one agent. Return-shape validation, phase ordering, dedup, test ids and PDF inspection are advice in the status pane, checked by the fresh reviewer that gates every unit of work.
+
+The Achilles agents do not opt into the methodology; their scopes and the adapter are set before the session starts. The main session is never bound. The operator can switch the adapter off (`ACHILLES_DISABLE=1`); nothing inside a session can.
 
 This is what makes the methodology trustworthy at scale: the enforcement is independent of the agent's context window, its instruction-following fidelity, or the length of the session. A hook that blocks sign-off without evidence blocks it on the ten-thousandth tool call the same way it blocks it on the first.
 

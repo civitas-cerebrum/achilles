@@ -14,7 +14,7 @@ When adding a test attribute to an element, the skill detects which attribute to
 
 ### Why caching matters
 
-All hooks and subsequent invocations within the same session read from the cached file, ensuring all attributes added during the same run use the same project convention. This avoids mixed conventions within a single commit.
+Every later step in the same session reads the cached file, ensuring all attributes added during the same run use the same project convention. This avoids mixed conventions within a single commit.
 
 ---
 
@@ -52,7 +52,7 @@ Test attributes must follow these rules:
 
 The skill is **only** permitted to add the project's detected test attribute (one of `data-testid`, `data-cy`, `data-qa`, or `data-test`).
 
-The following attributes are explicitly forbidden and will be denied by the inertness guard:
+The following attributes are forbidden by the inertness contract:
 
 | Attribute | Reason |
 |-----------|--------|

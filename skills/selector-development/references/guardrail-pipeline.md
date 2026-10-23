@@ -1,101 +1,49 @@
-# Guardrail Pipeline
+# Guardrail pipeline
 
-This reference specifies the hook-enforced state machine that gates and records all eight steps of a selector-development operation. The pipeline is stateful, deterministic, and uncuttable — the model cannot skip, reorder, or fake any step.
+The eight steps, the receipt journal that records them, and the revert path. The author runs the steps in order and writes the journal entries itself; on Claude Code the adapter mirrors the step order as visible state and refuses a non-inert patch (`docs/harness/claude-code.md`), which is a backstop, not a substitute for the order below.
 
-## 1. The Eight Steps
+## The eight steps
 
-| # | Step | Tool action that triggers it |
+| # | Step | Action |
 |---|---|---|
-| 1 | `before_snapshot` | `Bash`: `playwright-cli … screenshot` writing to `tests/e2e/.selector-development/before/<scope>.png` |
-| 2 | `patch_applied` | `Edit` or `Write` on a frontend source file |
-| 3 | `typecheck` | `Bash`: project's typecheck script (detected from `package.json`) |
-| 4 | `unit_tests` | `Bash`: project's test script (jest / vitest / etc.) |
-| 5 | `e2e` | `Bash`: `playwright test <spec>` for the affected spec |
-| 6 | `after_snapshot` | `Bash`: `playwright-cli … screenshot` writing to `tests/e2e/.selector-development/after/<scope>.png` |
-| 7 | `visual_diff` | `Bash`: `node hooks/lib/visual-diff.js before/<scope>.png after/<scope>.png` |
-| 8 | `commit` | `Bash`: `git commit` with the staged frontend file |
+| 1 | `before_snapshot` | `playwright-cli -s=<slug> screenshot tests/e2e/.selector-development/before/<scope>.png` |
+| 2 | `patch_applied` | one attribute appended to one opening tag in one frontend file |
+| 3 | `typecheck` | the project's typecheck script (`typecheck` → `tsc --noEmit` → `lint:types`) |
+| 4 | `unit_tests` | the project's unit-test script (jest / vitest) |
+| 5 | `e2e` | `npx playwright test <spec>` for the affected spec only |
+| 6 | `after_snapshot` | the same route to `after/<scope>.png` |
+| 7 | `visual_diff` | the visual-diff check the harness adapter provides, or the package's script through `npx`, over `before/<scope>.png` and `after/<scope>.png`; pass at 0 differing pixels (a project may allow up to 10) |
+| 8 | `commit` | the patched file staged (`git add`) with the staged diff hash equal to the hash recorded at step 2; the orchestrator makes the commit on the author's return |
 
-Each step must complete with exit status 0 and append a `pass` entry to the receipt journal before the next step's PreToolUse gate permits it to run. A failed step appends a `fail` entry, denies the next step, and triggers the revert path (§3).
+A step counts as done only when its `pass` entry is in the journal in sequence. A `fail` entry stops the pipeline; the next step is not attempted.
 
----
+## Receipt journal
 
-## 2. Receipt Journal Schema (v2)
-
-**Path:** `tests/e2e/.selector-development/<scope>.receipt.json`
-
-The journal is grown by hook PostToolUse handlers only — the model never writes it directly. Each step appends an entry when it completes; the full journal is consulted by every subsequent step's PreToolUse gate.
-
-**Top-level schema:**
+`tests/e2e/.selector-development/<scope>.receipt.json`, written before step 1, appended after every step:
 
 ```jsonc
 {
   "schema_version": 2,
   "mode": "jit" | "audit",
   "scope": "<element-key>" | "<page-id>",
-  "git_diff_hash": null,                    // set at step 2 completion
+  "git_diff_hash": null,                 // sha256 of `git diff --cached`, set at step 2
   "attribute": { "name": "data-testid", "value": "submit-button" },
-  "files": [],                              // populated at step 2
-  "steps": [ /* entries appended by hooks */ ]
+  "files": [],                           // the frontend file, set at step 2
+  "steps": [ { "name": "before_snapshot", "status": "pass", "ts": "<ISO-8601>", "artifact": "…" } ]
 }
 ```
 
-**Per-step entry format:**
+Per-step extras: `artifact` on steps 1 and 6; `files` on step 2; `elapsed_ms` on steps 3 and 4; `spec` on step 5; `diff_pixels` on step 7. Write the file with a temp-and-rename so a crash never leaves partial JSON.
 
-```jsonc
-{
-  "name": "<step-name>",
-  "status": "pass" | "fail",
-  "ts": "ISO-8601 timestamp"
-  // ... step-specific extras below
-}
-```
+`tests/e2e/.selector-development/.current-scope` holds the active scope (one line); written at start, deleted at step 8 or on revert, so a stale scope never leaks into the next operation. Once step 8 is journaled the receipt is archived to `tests/e2e/.selector-development/archive/<scope>.<ts>.receipt.json`.
 
-**Step-specific extras:**
+## Revert path
 
-- **step 1 (before_snapshot):** `artifact: "<path to PNG>"`
-- **step 2 (patch_applied):** `files: ["<paths>"]` (the frontend files modified)
-- **step 3 (typecheck):** `elapsed_ms: <number>`
-- **step 4 (unit_tests):** `elapsed_ms: <number>`
-- **step 5 (e2e):** `spec: "<spec path>"`
-- **step 6 (after_snapshot):** `artifact: "<path to PNG>"`
-- **step 7 (visual_diff):** `diff_pixels: <number>` (0 = pass; set to `fail` if diff > threshold)
+When any of steps 3–7 fails:
 
-A step is "done" only when an entry with `status: "pass"` exists in the array at the correct position in sequence. Missing, out-of-order, or `fail` entries cause the next step's gate to deny with a "previous step failed or missing" message.
+1. Append the `fail` entry with the artifact path (typecheck output, test report, the diff PNG).
+2. `git checkout -- <files from the journal>`.
+3. Delete the receipt and `.current-scope`.
+4. Return `blocked` with `blocked_artifact` pointing at the failing output.
 
----
-
-## 3. Scope Pointer
-
-**Path:** `tests/e2e/.selector-development/.current-scope`
-
-A single-line file containing the current operation's scope (element-key in JIT mode, page-id in Audit mode). Written by the skill at operation start; read by all hooks to locate the correct receipt journal.
-
-Cleared (deleted) by:
-- The `selector-development-revert-on-stop.sh` hook at model stop time.
-- The step 8 commit handler on successful completion.
-
-This prevents orphaned state from previous failed operations interfering with new ones.
-
----
-
-## 4. Failure & Revert Path
-
-When any of steps 3–7 returns non-zero (test failure, type error, visual change):
-
-1. **Hook records `fail`.** The stepper's PostToolUse handler appends a `fail` entry instead of `pass` in the journal for that step.
-
-2. **Next step gate denies.** When the model attempts step N+1, the PreToolUse gate reads the journal, sees `fail` in step N, and denies with a message naming the failing step and the artifact (e.g., "step 3 (typecheck) failed; see artifact /path/to/output").
-
-3. **Skill reverts the patch.** The skill must:
-   - Run `git checkout -- <files from journal.steps[patch_applied].files>` to revert to pre-patch state.
-   - Delete the receipt at `tests/e2e/.selector-development/<scope>.receipt.json`.
-   - Clear `.current-scope` (delete the file).
-   - Return `status: "blocked"` to the caller with `blocked_artifact: "<path>"` pointing to the failing artifact (typecheck output, test screenshot, visual-diff PNG, etc.).
-
-4. **Safety guarantee.** The revert itself (`git checkout`) is unconstrained — no hooks gate it. Safety still holds because:
-   - Any subsequent re-patch attempt re-enters the pipeline at step 1 (before_snapshot).
-   - The inertness-guard re-validates the new Edit/Write against the AST diff validator.
-   - The stepper re-validates all gate preconditions.
-   - A revert can never be used to smuggle a non-inert change because the validator runs on every file edit, regardless of whether a receipt exists.
-
-The caller (Stage 2 / failure-diagnosis / Audit mode) decides whether to retry with a different attribute value, escalate to the user with the failing artifact, or fall back to a non-frontend approach (e.g., API-level test fixtures).
+A re-attempt re-enters at step 1 with a fresh receipt; the inertness check applies to every frontend edit regardless, so a revert can never smuggle a non-inert change. The calling author (Stage 2, diagnosis, or the audit loop) decides whether to retry with a different attribute value, record test debt, or escalate through the orchestrator.

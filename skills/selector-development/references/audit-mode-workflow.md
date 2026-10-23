@@ -51,8 +51,8 @@ The audit process iterates page-by-page through the application, instrumenting a
 3. **For each page** (independent pages may be parallelized — see §5):
    - **Drive to the page:** Use `playwright-cli` to navigate the app to the page. Ensure the DOM is fully loaded.
    - **Snapshot and analyze:** Inspect the DOM for interactive and asserted nodes. Apply the missing-selector gate to each node in isolation.
-   - **For each qualifying node:** Run the full JIT loop (one test attribute per node, one receipt per node, one commit per page). Record the attribute name, element key, and source file in the ledger.
-   - **Commit boundary:** After all nodes on a page are instrumented, commit once with all changes for that page. Update the ledger: move the page-id from `pages_in_flight` to `pages_completed`.
+   - **For each qualifying node:** Run the full JIT loop (one test attribute per node, one receipt per node; the page's changes stay staged). Record the attribute name, element key, and source file in the ledger.
+   - **Page boundary:** After all nodes on a page are instrumented, update the ledger (move the page-id from `pages_in_flight` to `pages_completed`) and return; the orchestrator commits once per page with all of that page's staged changes.
 
 4. **Finalize:** After all pages complete, return a summary envelope with status per page, total attributes added, and the ledger path.
 
@@ -117,7 +117,7 @@ The ledger prevents duplicate attribute names: if a subagent attempts to write a
 
 ## 5. Parallel Dispatch
 
-Independent pages may be instrumented in parallel, mirroring the `coverage-expansion` dispatch pattern.
+Independent pages may be instrumented in parallel, mirroring the the expand-coverage workflow dispatch pattern.
 
 ### Independence criteria
 
@@ -135,7 +135,7 @@ Each subagent reads the ledger before writing a new attribute name:
 2. **Propose:** Generate a kebab-case name for the element (e.g., `submit-button`).
 3. **Check:** If the name already exists in the ledger with a different element, append a numeric suffix (e.g., `submit-button-2`).
 4. **Retry:** Proceed with the suffixed name.
-5. **Commit:** Write the ledger update at page commit.
+5. **Record:** Write the ledger update at the page boundary.
 
 ---
 

@@ -94,7 +94,7 @@ function render(model, opts) {
   // never silently green.
   const warnings = [];
   if (counts.knownDefect) {
-    // "(red by design)" is only honest when every tagged test was red this
+    // "(red by design)" is only true when every tagged test was red this
     // run; when some passed, say so and point at the anomaly lines below.
     const passedCount = (model.knownDefectPassed || []).length;
     const gloss = passedCount > 0
