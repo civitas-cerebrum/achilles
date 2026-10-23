@@ -12,7 +12,7 @@ The only allowed edit shape:
 
 ## 2. Forbidden Edits
 
-The following edits will be denied by the inertness guard:
+The following edits violate the contract and are refused:
 
 - **Changing or adding `id`, `className`, `style`, `aria-*`, event handlers, or any attribute that isn't the test attribute.** Test tooling must not touch attributes with functional, visual, or accessibility implications.
 - **Modifying the tag name, the opening tag's existing attributes, the closing tag, or any text/whitespace outside the inserted attribute.** The element structure is immutable except for the single append.
@@ -24,7 +24,7 @@ The following edits will be denied by the inertness guard:
 
 ## 3. Programmatic Enforcement
 
-Enforced by `selector-development-inertness-guard.sh` (PreToolUse hook on Edit/Write of frontend source files) calling `hooks/lib/selector-diff-validator.js`.
+Enforced by the Claude Code adapter's selector-development hook (`docs/harness/claude-code.md`), which refuses any frontend edit on a selector brief that is not one added attribute; on other harnesses the author self-checks the diff before step 3.
 
 ### Validation assertions
 
@@ -45,13 +45,13 @@ Denies the write with the offending diff fragment quoted in the deny message if 
 
 When denial occurs, the deny message includes a `reason` enum:
 
-- `modifies-existing-attribute` — an existing attribute on the element was changed or removed.
-- `structural-change` — a tag was renamed, a child added/removed, or the node type changed.
-- `multiple-attributes-added` — more than one attribute was added to the element.
-- `wrong-attribute-name` — the attribute name doesn't match the detected convention.
-- `value-not-kebab-case` — the value contains uppercase, underscores, spaces, or other invalid characters.
-- `parser-error` — the file syntax could not be parsed (malformed JSX/Vue/Svelte/HTML).
-- `unsupported-extension` — the file extension is not one the skill can validate (.tsx, .jsx, .vue, .svelte, .html).
+- `modifies-existing-attribute`: an existing attribute on the element was changed or removed.
+- `structural-change`: a tag was renamed, a child added/removed, or the node type changed.
+- `multiple-attributes-added`: more than one attribute was added to the element.
+- `wrong-attribute-name`: the attribute name doesn't match the detected convention.
+- `value-not-kebab-case`: the value contains uppercase, underscores, spaces, or other invalid characters.
+- `parser-error`: the file syntax could not be parsed (malformed JSX/Vue/Svelte/HTML).
+- `unsupported-extension`: the file extension is not one the skill can validate (.tsx, .jsx, .vue, .svelte, .html).
 
 ---
 

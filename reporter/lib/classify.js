@@ -14,7 +14,7 @@ const OUTCOMES = { PASSED: 'passed', FAILED: 'failed', FLAKY: 'flaky', SKIPPED: 
 // the regex source cannot be shared; this is a mirror, keep the two in sync.
 // Semantics match Playwright's own --grep: the tag counts anywhere in the
 // title path, plus the reporter's `tags` array for the `{ tag: … }` form.
-// See skills/achilles-protocol/references/test-identity.md §2.
+// See skills/achilles-orchestrator/references/test-identity.md §2.
 const KNOWN_DEFECT_RE = /@known-defect\b/;
 
 /**

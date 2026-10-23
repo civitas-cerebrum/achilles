@@ -80,8 +80,8 @@ test('the documented specifier resolves from an installed package', () => {
 });
 
 test('adding exports did not make the shipped directories unreachable', () => {
-  // An `exports` map is an allowlist: every subpath a consumer could previously
-  // reach becomes unreachable unless it is mapped. These are the paths the
+  // An `exports` map is an allowlist: a subpath it does not map is
+  // unreachable. These are the paths the
   // package ships and therefore the ones that must stay resolvable.
   const { pkg } = pack();
   const consumer = fs.mkdtempSync(path.join(os.tmpdir(), 'ach-consumer-'));
@@ -92,11 +92,9 @@ test('adding exports did not make the shipped directories unreachable', () => {
 
   const subpaths = [
     '@civitas-cerebrum/achilles/package.json',
-    '@civitas-cerebrum/achilles/hooks/playwright-artifact-archiver.sh',
-    '@civitas-cerebrum/achilles/skills/onboarding/SKILL.md',
+    '@civitas-cerebrum/achilles/skills/achilles-orchestrator/SKILL.md',
     '@civitas-cerebrum/achilles/schemas/onboarding-status.schema.json',
     '@civitas-cerebrum/achilles/bin/show.mjs',
-    '@civitas-cerebrum/achilles/scripts/postinstall.js',
   ];
   for (const specifier of subpaths) {
     const probe = spawnSync(process.execPath, ['-e',

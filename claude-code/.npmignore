@@ -1,0 +1,3 @@
+# The adapter's tests (plugin tests, lib tests, inert hook specs) and the types the engine lays never ship.
+tests/
+tests/**
