@@ -45,13 +45,13 @@ Denies the write with the offending diff fragment quoted in the deny message if 
 
 When denial occurs, the deny message includes a `reason` enum:
 
-- `modifies-existing-attribute` — an existing attribute on the element was changed or removed.
-- `structural-change` — a tag was renamed, a child added/removed, or the node type changed.
-- `multiple-attributes-added` — more than one attribute was added to the element.
-- `wrong-attribute-name` — the attribute name doesn't match the detected convention.
-- `value-not-kebab-case` — the value contains uppercase, underscores, spaces, or other invalid characters.
-- `parser-error` — the file syntax could not be parsed (malformed JSX/Vue/Svelte/HTML).
-- `unsupported-extension` — the file extension is not one the skill can validate (.tsx, .jsx, .vue, .svelte, .html).
+- `modifies-existing-attribute`: an existing attribute on the element was changed or removed.
+- `structural-change`: a tag was renamed, a child added/removed, or the node type changed.
+- `multiple-attributes-added`: more than one attribute was added to the element.
+- `wrong-attribute-name`: the attribute name doesn't match the detected convention.
+- `value-not-kebab-case`: the value contains uppercase, underscores, spaces, or other invalid characters.
+- `parser-error`: the file syntax could not be parsed (malformed JSX/Vue/Svelte/HTML).
+- `unsupported-extension`: the file extension is not one the skill can validate (.tsx, .jsx, .vue, .svelte, .html).
 
 ---
 

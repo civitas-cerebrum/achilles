@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"bash -c \"npx playwright test tests/e2e/south/checkout-order.spec.ts --project=south\""}},"expect":"deny","messageContains":["[spend.opt-in]","checkout-order.spec.ts"],"_comment":"A bash -c payload is classified as a command of its own."}

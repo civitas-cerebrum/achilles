@@ -10,7 +10,7 @@
         "playwright.config.ts — documented defaults present",
         "tests/fixtures/base.ts — baseFixture + 4 HELPER SLOT markers",
         "tests/e2e/docs/ — directory exists",
-        "tests/data/page-repository.json — valid JSON",
+        "tests/e2e/page-repository.json — valid JSON",
         "npx playwright --version → 1.59.1 (Chromium installed)"
       ]
     },

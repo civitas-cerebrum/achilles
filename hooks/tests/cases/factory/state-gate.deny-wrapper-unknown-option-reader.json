@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "time --bogus-flag cat .factory/verify-stamp"}}, "expect": "deny", "messageContains": ["[process.state]", "trust anchors", "npm run verify", "factory-gates.md#process.state"], "_comment": "Fail closed: a wrapper option the splitter does not know hides the command word."}

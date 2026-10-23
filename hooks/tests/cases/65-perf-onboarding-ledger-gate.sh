@@ -3,10 +3,9 @@
 # for the perf-onboarding workflow. PreToolUse:Agent. DENY mode.
 H="$HOOK_DIR/perf-onboarding-ledger-gate.sh"
 
-TMP_REPO=$(mktemp -d /tmp/perf-ledger-gate-XXXXXX)
+tmp_into TMP_REPO /tmp/perf-ledger-gate-XXXXXX
 mkdir -p "$TMP_REPO/tests/perf/docs"
-(cd "$TMP_REPO" && git init -q && git config user.email t@t && git config user.name t)
-trap 'rm -rf "$TMP_REPO"' EXIT
+init_repo "$TMP_REPO"
 
 LEDGER="$TMP_REPO/tests/perf/docs/perf-onboarding-status.json"
 

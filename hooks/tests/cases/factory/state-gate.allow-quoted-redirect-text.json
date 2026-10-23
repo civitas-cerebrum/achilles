@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"echo \"> .factory/stamp is protected\""}},"expect":"allow","warn":false,"_comment":"A quoted string is an argument, not a redirect."}

@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/north/zz-intake.spec.ts","content":"test.skip(\"parked card case\", async () => {});\n"}},"expect":"deny","messageContains":["(parked card case)"]}

@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "install -m 644 .factory/verify-stamp /tmp/stamp"}}, "expect": "allow", "warn": false}

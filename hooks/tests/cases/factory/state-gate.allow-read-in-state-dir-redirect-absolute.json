@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "cd .factory && ls > /tmp/listing"}}, "expect": "allow", "warn": false}

@@ -54,15 +54,16 @@ set -uo pipefail
 printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §\"Authoritative state file — read first, always\"\n  skills/achilles-protocol/references/harness-hooks.md"
 
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || { echo "[hook-authored-state-guard] FATAL: jq not found." >&2; exit 1; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib protected-paths.sh hook-emit.sh
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
@@ -70,26 +71,19 @@ case "$TOOL_NAME" in Write|Edit) ;; *) exit 0 ;; esac
 FILE_PATH=$(echo "$INPUT" | "$JQ" -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
 [ -n "$FILE_PATH" ] || exit 0
 
-emit_deny() {
-  "$JQ" -n --arg r "$1${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-  exit 0
-}
+# A deny ends the hook.
+emit_deny() { emit_pre_deny "$1"; exit 0; }
 
-# Normalise to leading-slash form so bare relative paths match the same
-# suffix patterns as absolute ones.
-NORM="/${FILE_PATH#/}"
+# One spelling per file (lib/protected-paths.sh), in leading-slash form so bare
+# relative paths match the same suffix patterns as absolute ones.
+NORM="$(protected_path_normalise "$FILE_PATH")"
+NORM="/${NORM#/}"
 
 # --- Class 1: hook-authored state — never Write|Edit. ---
-case "$NORM" in
-  */tests/e2e/docs/.workflow-approvers.json | \
-  */tests/perf/docs/.workflow-approvers.json)
-    emit_deny "[BLOCKED] .workflow-approvers.json is hook-authored state.
+if protected_write_match "$NORM"; then
+  case "${NORM##*/}" in
+    "$LEDGER_APPROVERS_NAME")
+      emit_deny "[BLOCKED] .workflow-approvers.json is hook-authored state.
 
 File: ${FILE_PATH}
 
@@ -100,10 +94,9 @@ relies on to verify that approvals come from a registered approver context.
 
 Fix: do not write this file. Dispatch the approver subagent with the correct
 description prefix; the registry hook records it automatically."
-    ;;
-  */tests/e2e/docs/.ledger-integrity.json | \
-  */tests/perf/docs/.ledger-integrity.json)
-    emit_deny "[BLOCKED] .ledger-integrity.json is hook-authored state.
+      ;;
+    *)
+      emit_deny "[BLOCKED] .ledger-integrity.json is hook-authored state.
 
 File: ${FILE_PATH}
 
@@ -114,8 +107,9 @@ hash chain.
 
 Fix: do not write this file. To accept an out-of-band ledger state, the
 operator deletes the sidecar in their own terminal."
-    ;;
-esac
+      ;;
+  esac
+fi
 
 # --- Class 2: monotonicity of orchestrator-written progress state. ---
 IS_CYCLE=0
@@ -143,7 +137,7 @@ case "$TOOL_NAME" in
       NODE_BIN="$(command -v node 2>/dev/null || true)"
       VALIDATOR="$(dirname "${BASH_SOURCE[0]}")/lib/validator.bundle.mjs"
       if [ -n "$NODE_BIN" ] && [ -f "$VALIDATOR" ]; then
-        TMP_OLD=$(mktemp /tmp/has-old-XXXXXX); TMP_NEW=$(mktemp /tmp/has-new-XXXXXX)
+        TMP_OLD=$(mktemp "${TMPDIR:-/tmp}/has-old-XXXXXX"); TMP_NEW=$(mktemp "${TMPDIR:-/tmp}/has-new-XXXXXX")
         printf '%s' "$OLD_STRING" > "$TMP_OLD"; printf '%s' "$NEW_STRING" > "$TMP_NEW"
         ALL_FLAG=""; [ "$REPLACE_ALL" = "true" ] && ALL_FLAG="--all"
         PROPOSED=$("$NODE_BIN" "$VALIDATOR" replace "$FILE_PATH" "$TMP_OLD" "$TMP_NEW" $ALL_FLAG 2>/dev/null || echo "")
@@ -156,7 +150,7 @@ esac
 
 # Must be parseable JSON for the comparison to be meaningful; if not,
 # silent-allow (the consuming gate / schema check owns parse failures).
-TMP_NEW_FILE=$(mktemp /tmp/has-proposed-XXXXXX.json)
+TMP_NEW_FILE=$(mktemp "${TMPDIR:-/tmp}/has-proposed-XXXXXX")
 trap 'rm -f "$TMP_NEW_FILE"' EXIT
 printf '%s' "$PROPOSED" > "$TMP_NEW_FILE"
 "$JQ" -e . "$TMP_NEW_FILE" >/dev/null 2>&1 || exit 0

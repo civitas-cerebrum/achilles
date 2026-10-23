@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"node scripts/run-suite.mjs --continue wallet-order.spec.ts"}},"expect":"deny","messageContains":["wallet-order.spec.ts","without --include-spend"]}

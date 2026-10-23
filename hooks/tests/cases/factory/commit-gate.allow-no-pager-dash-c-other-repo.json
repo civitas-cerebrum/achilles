@@ -1,0 +1,1 @@
+{"cwd":"temp","copy":["achilles-factory-rules.json"],"input":{"tool_name":"Bash","cwd":"{{ROOT}}","tool_input":{"command":"git --no-pager -C /private/tmp/some-other-repo commit -m \"docs: elsewhere\""}},"expect":"allow","warn":false}

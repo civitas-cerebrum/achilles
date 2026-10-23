@@ -3,8 +3,7 @@
 # session changed test code and never ran the Stage-4b compliance sweep.
 H="$HOOK_DIR/compliance-sweep-exit-gate.sh"
 
-TMP_CS=$(mktemp -d /tmp/compliance-sweep-gate-XXXXXX)
-trap 'rm -rf "$TMP_CS"' EXIT
+tmp_into TMP_CS /tmp/compliance-sweep-gate-XXXXXX
 
 # Transcript line builders (claude-code JSONL shape).
 tool_line() {  # <tool> <file_path>

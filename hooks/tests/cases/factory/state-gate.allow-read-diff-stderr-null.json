@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "diff .factory/a .factory/b 2>/dev/null"}}, "expect": "allow", "warn": false}

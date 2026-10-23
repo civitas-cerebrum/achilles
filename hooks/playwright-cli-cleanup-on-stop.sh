@@ -52,15 +52,16 @@ set -euo pipefail
 # bundled binary first, system jq second. Consistency matters because the
 # bundled jq has a known version + behaviour; relying on system jq when the
 # bundled one is available risks behaviour drift across operator machines.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init continue
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions OR sessions whose pipeline just completed (reporting/cleanup
 # must cover the final state); plain dev sessions silent-allow.
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active_or_completed "$INPUT"
 CWD=""
 if [ -n "$JQ" ]; then

@@ -7,14 +7,11 @@
 # seeded settings.json. CIVITAS_SKIP_JQ_INSTALL=1 keeps it offline; the
 # function copies bundled hooks (local file copies, no network).
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "  ${CLR_DIM}(node not on PATH — skipping postinstall prune test)${CLR_RST}"
-  return 0 2>/dev/null || exit 0
-fi
+require_tool node || return 0
 
 REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 PRUNE_TEST=$(mktemp /tmp/prune-test-XXXXXX.mjs)
-PRUNE_HOME=$(mktemp -d /tmp/prune-home-XXXXXX)
+tmp_into PRUNE_HOME /tmp/prune-home-XXXXXX
 cat > "$PRUNE_TEST" <<EOF
 import { strict as assert } from 'assert';
 import fs from 'fs';
@@ -45,7 +42,7 @@ const cmds = after.hooks.PreToolUse.flatMap(g => (g.hooks||[]).map(h => h.comman
 assert.ok(!cmds.some(c => c.endsWith('commit-attribution-gate.sh')), 'legacy pruned');
 assert.ok(!cmds.some(c => c.endsWith('bash-command-allowlist.sh')), 'legacy pruned');
 assert.ok(!cmds.some(c => c.endsWith('some-removed-future-hook.sh')), 'dangling (non-legacy, missing file) pruned');
-assert.ok(cmds.some(c => c.endsWith('commit-message-gate.sh')), 'shipped hook preserved (file exists after copy)');
+assert.ok(cmds.some(c => /commit-message-gate\.sh"?$/.test(c)), 'shipped hook preserved (file exists after copy)');
 assert.ok(cmds.includes('/opt/thirdparty/my-hook.sh'), 'third-party preserved');
 assert.ok(after.hooks.PreToolUse.filter(g => g.matcher==='Agent').every(g => (g.hooks||[]).length>0), 'empty group dropped');
 console.log('PRUNE_OK');
@@ -61,4 +58,4 @@ else
   FAIL_DETAILS+=("postinstall prune: ${PRUNE_OUT:0:300}")
   echo "${CLR_FAIL}  ✗${CLR_RST} postinstall prunes dangling legacy registrations ${CLR_DIM}(${PRUNE_OUT:0:120})${CLR_RST}"
 fi
-rm -f "$PRUNE_TEST"; rm -rf "$PRUNE_HOME"
+rm -f "$PRUNE_TEST"

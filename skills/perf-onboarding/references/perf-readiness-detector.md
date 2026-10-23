@@ -4,12 +4,12 @@
 (derive / bootstrap outcomes) and the exact signals that produce each.
 Cited by `perf-onboarding` (Phase 2) as its readiness-probe contract.
 Callers run the probe as documented here and consume the resulting outcome
-— they do NOT re-implement the detection table or infer outcomes from memory.
+; they do NOT re-implement the detection table or infer outcomes from memory.
 
 The detector answers exactly one question: **"are the functional and perf
 artifacts present such that the perf pipeline can derive a rich scenario
 model, or must it bootstrap from minimal discovery?"** It does NOT answer
-"has the perf pipeline already run?" — callers that care about in-flight
+"has the perf pipeline already run?": callers that care about in-flight
 pipeline state read the ledger at `tests/perf/docs/perf-onboarding-status.json`
 directly, on their own contract.
 
@@ -54,8 +54,8 @@ Run Axis A first. Axis B is always evaluated and always recorded.
 
 | Outcome | Axis A result | Meaning |
 |---|---|---|
-| **`derive`** | Both A1 and A2 pass | Rich path — scenario model is derived from journey-map priority tiers + HAR captures. Functional artifacts are present and sentinel-correct. |
-| **`bootstrap`** | Either A1 or A2 fails | Minimal path — agent discovers endpoints via crawler, OpenAPI spec, or manual specification. The `onboarding` skill is recommended but the pipeline continues autonomously. |
+| **`derive`** | Both A1 and A2 pass | Rich path: scenario model is derived from journey-map priority tiers + HAR captures. Functional artifacts are present and sentinel-correct. |
+| **`bootstrap`** | Either A1 or A2 fails | Minimal path: agent discovers endpoints via crawler, OpenAPI spec, or manual specification. The `onboarding` skill is recommended but the pipeline continues autonomously. |
 
 There is no third outcome. A detector result outside `derive | bootstrap`
 is a detector bug, not a new category for callers to handle.
@@ -66,27 +66,27 @@ is a detector bug, not a new category for callers to handle.
 
 Use the Read tool for file checks, Bash only for directory existence:
 
-1. **A1 — Journey map sentinel** — Read `tests/e2e/docs/journey-map.md`
+1. **A1: Journey map sentinel**: Read `tests/e2e/docs/journey-map.md`
    and check line 1. Missing file → A1 fail. Line 1 ≠
    `<!-- journey-mapping:generated -->` → A1 fail.
 
-2. **A2 — Captures manifest** — Read
+2. **A2: Captures manifest**: Read
    `tests/perf/captures/manifest.json`. Missing → A2 fail.
    Parse as JSON; `length === 0` → A2 fail.
 
-3. **Axis A result** — `derive` if both A1 and A2 pass; `bootstrap`
+3. **Axis A result**: `derive` if both A1 and A2 pass; `bootstrap`
    otherwise. Record which checks failed.
 
-4. **B1 — Lib helpers** — Check `tests/perf/lib/` exists and is
+4. **B1: Lib helpers**: Check `tests/perf/lib/` exists and is
    non-empty (Bash: `find tests/perf/lib -maxdepth 2 -type f | head -1`).
 
-5. **B2 — Baselines** — Check `tests/perf/baselines/*.json` count
+5. **B2: Baselines**: Check `tests/perf/baselines/*.json` count
    (Bash: `find tests/perf/baselines -maxdepth 1 -name '*.json' | wc -l`).
 
-6. **Record all results** — write into `tests/perf/docs/readiness.md`
+6. **Record all results**: write into `tests/perf/docs/readiness.md`
    under the standard template (see §"readiness.md template" below).
 
-Sentinel strings are case-sensitive — copy them verbatim from
+Sentinel strings are case-sensitive; copy them verbatim from
 [`skill-registry.md`](../../achilles-protocol/references/skill-registry.md)
 §"Non-skill sentinel strings".
 

@@ -196,8 +196,8 @@ assert_allow "$H" "$(payload tool_name=Agent description='fd-flaky-cart' respons
 # ---------------------------------------------------------------------------
 # §13: calibration log + strict mode.
 section "subagent-return-schema: calibration log captures a validation line"
-SGUARD_REPO=$(mktemp -d /tmp/sguard-log-XXXXXX)
-( cd "$SGUARD_REPO" && git init -q && git config user.email t@t && git config user.name t ) >/dev/null 2>&1
+tmp_into SGUARD_REPO /tmp/sguard-log-XXXXXX
+init_repo "$SGUARD_REPO"
 # An invalid composer return (missing handover) — WARN path; should log
 # valid:false to .achilles/schema-guard-log.jsonl.
 BADCOMP="journey: j-x
@@ -225,4 +225,3 @@ else
   FAIL_DETAILS+=("strict mode: expected exit 2, got $STRICT_EC")
 fi
 rm -f /tmp/sguard-strict-err.$$
-rm -rf "$SGUARD_REPO"

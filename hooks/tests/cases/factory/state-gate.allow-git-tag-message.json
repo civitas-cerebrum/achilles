@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "git tag -m 'x .factory' v1"}}, "expect": "allow", "warn": false}

@@ -33,10 +33,19 @@ const TEST_RE = /\btest(?:\.(?:only|skip|fail|fixme))?\s*\(\s*(['"`])((?:\\.|(?!
 // ordinal leaves room to number by area without renumbering later.
 //
 // A project on another scheme pins its own with CIVITAS_TEST_ID_PATTERN, a
-// regex source anchored at the start of the title with the ID in group 1 —
-// e.g. CIVITAS_TEST_ID_PATTERN='^\\s*([A-Z]{2,4}-[0-9]{2,4})' for a
+// regex source anchored at the start of the title — e.g.
+// CIVITAS_TEST_ID_PATTERN='^\\s*([A-Z]{2,4}-[0-9]{2,4})' for a
 // journey-prefixed suite (LGN-04). An unparseable pattern falls back to the
 // default rather than failing every write.
+//
+// The ID is group 1 when the pattern has one, and the whole match otherwise.
+// Supporting the group-less form is what lets the gate be driven by the
+// factory rule file's `specs.shape.titleIdPattern` (see
+// test-id-compliance-gate.sh), which is written for the intake gate's
+// match-or-not test and so carries no capture group:
+// "^[A-Z]{2,5}-\\d{2,3}[a-z]? — ". Before that, such a pattern made m[1]
+// undefined and EVERY title read as untagged — a blanket deny, the worst of
+// the available failure modes.
 const DEFAULT_ID_RE = /^\s*[[(]?(TC[A-Z]{0,3}-\d{4,6})[\])]?(?=[\s:·—|-]|$)/;
 
 function resolveIdPattern(source) {
@@ -69,12 +78,21 @@ function titles(src) {
   return out;
 }
 
+// Separators an ID may be followed by (and that a group-less match may have
+// swallowed): whitespace, colon, middot, em dash, pipe, hyphen.
+const SEPARATORS = /^[\s:·—|-]+/;
+
 function idOf(title) {
   const m = ID_RE.exec(title);
   if (!m) return null;
   // An ID with no behaviour sentence after it is not a titled test.
-  const rest = title.slice(m[0].length).replace(/^[\s:·—|-]+/, '').trim();
-  return rest.length > 0 ? m[1] : null;
+  const rest = title.slice(m[0].length).replace(SEPARATORS, '').trim();
+  if (rest.length === 0) return null;
+  // Group 1 when the pattern captures; otherwise the whole match, with any
+  // trailing separator the pattern consumed trimmed back off, so that
+  // "CHK-03 — " and "CHK-03" are the same ID for the duplicate check.
+  const id = m[1] ?? m[0].replace(/[\s:·—|-]+$/, '').trim();
+  return id.length > 0 ? id : null;
 }
 
 function tally(list) {

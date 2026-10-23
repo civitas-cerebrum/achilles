@@ -25,7 +25,7 @@ FIX="$HOOK_DIR/tests/lib-fixtures/selector-development"
 # scope-active workspace once at the top of the file and point
 # WORKSPACE_ROOT at it. Specific sections that test the no-scope path
 # unset / overwrite WORKSPACE_ROOT inline.
-INERT_WS=$(mktemp -d)
+tmp_into INERT_WS
 mkdir -p "$INERT_WS/tests/e2e/.selector-development"
 printf 'test-scope\n' > "$INERT_WS/tests/e2e/.selector-development/.current-scope"
 export WORKSPACE_ROOT="$INERT_WS"
@@ -160,7 +160,7 @@ assert_allow "$H" \
 # ---------------------------------------------------------------------------
 section "inertness-guard: C2 — HOOK_DIR/lib used when WORKSPACE_ROOT has no hooks/lib"
 
-_tmp_ws=$(mktemp -d)
+tmp_into _tmp_ws
 # Deliberately do NOT create $_tmp_ws/hooks/lib — simulates consumer workspace
 # Seed .current-scope so the gate fires (otherwise no-scope silent-allow
 # would bypass the validator entirely and the test wouldn't exercise
@@ -177,7 +177,6 @@ assert_allow "$H" \
   "WORKSPACE_ROOT has no hooks/lib → validator resolves via HOOK_DIR/lib → ALLOW"
 unset CONVENTION_OVERRIDE
 unset WORKSPACE_ROOT
-rm -rf "$_tmp_ws"
 
 # Restore the shared scope-active workspace for any tests that follow.
 export WORKSPACE_ROOT="$INERT_WS"
@@ -190,7 +189,7 @@ export WORKSPACE_ROOT="$INERT_WS"
 # default for any consumer who isn't using selector-development.
 section "inertness-guard: no scope in flight → silent ALLOW"
 
-_no_scope_ws=$(mktemp -d)
+tmp_into _no_scope_ws
 # Deliberately NO .current-scope under tests/e2e/.selector-development/
 printf '%s' "$baseline_content" > /tmp/inertness-noscope.tsx
 
@@ -205,7 +204,6 @@ assert_allow "$H" \
 
 unset CONVENTION_OVERRIDE
 unset WORKSPACE_ROOT
-rm -rf "$_no_scope_ws"
 
 # Restore the shared scope-active workspace.
 export WORKSPACE_ROOT="$INERT_WS"
@@ -228,4 +226,3 @@ unset CONVENTION_OVERRIDE
 
 # Final cleanup
 unset WORKSPACE_ROOT
-rm -rf "$INERT_WS"

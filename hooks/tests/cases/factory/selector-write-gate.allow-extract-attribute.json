@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/support/zz-case.ts","content":"const v = await steps.getAttribute('payButton', 'PaymentPage', { extractAttribute: 'href' });\nconst ctx = page.context();\n"}},"expect":"allow","warn":false}

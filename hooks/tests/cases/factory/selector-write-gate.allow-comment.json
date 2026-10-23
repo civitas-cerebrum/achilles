@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/north/zz-case.spec.ts","content":"// never page.locator(x) here\n/* nor getByRole( */ await steps.click('payButton', 'PaymentPage');\n"}},"expect":"allow","warn":false}

@@ -1,0 +1,402 @@
+{
+  "hooks": [
+    {
+      "file": "achilles-protocol-activation-watcher.sh",
+      "event": "PreToolUse",
+      "matcher": "Skill",
+      "timeout": 5
+    },
+    {
+      "file": "achilles-protocol-activation-watcher.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "achilles-protocol-activation-watcher.sh",
+      "event": "UserPromptSubmit",
+      "matcher": null,
+      "timeout": 5
+    },
+    {
+      "file": "achilles-protocol-activation-watcher.sh",
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 5
+    },
+    {
+      "file": "playwright-cli-isolation-guard.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10
+    },
+    {
+      "file": "commit-message-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10
+    },
+    {
+      "file": "pr-attribution-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10
+    },
+    {
+      "file": "protected-artifact-bash-guard.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 5
+    },
+    {
+      "file": "subagent-schema-preread-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 10
+    },
+    {
+      "file": "standard-mode-first-pass-guard.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 10
+    },
+    {
+      "file": "adversarial-verification-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "mcp__.*",
+      "timeout": 10
+    },
+    {
+      "file": "adversarial-verification-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10
+    },
+    {
+      "file": "evidence-bundle-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "mcp__.*",
+      "timeout": 30
+    },
+    {
+      "file": "evidence-bundle-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 30
+    },
+    {
+      "file": "onboarding-ledger-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 10
+    },
+    {
+      "file": "workflow-approver-registry.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "composition-judge-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "client-term-guard.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "workflow-reviewer-brief-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "onboarding-ledger-write-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "perf-onboarding-ledger-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 10
+    },
+    {
+      "file": "perf-onboarding-ledger-write-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "perf-load-safety-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10
+    },
+    {
+      "file": "harness-self-protection-guard.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 5
+    },
+    {
+      "file": "hook-authored-state-guard.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 5
+    },
+    {
+      "file": "ledger-integrity-chain.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 5
+    },
+    {
+      "file": "ledger-integrity-chain.sh",
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 5
+    },
+    {
+      "file": "failure-diagnosis-evidence-floor-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 5
+    },
+    {
+      "file": "journey-map-sentinel-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 3
+    },
+    {
+      "file": "journey-mapping-skill-preread-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 5
+    },
+    {
+      "file": "journey-mapping-skill-preread-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "playwright-artifact-archiver.sh",
+      "event": "PostToolUse",
+      "matcher": "Bash",
+      "timeout": 30
+    },
+    {
+      "file": "subagent-return-schema-guard.sh",
+      "event": "PostToolUse",
+      "matcher": "Agent",
+      "timeout": 10
+    },
+    {
+      "file": "composition-judge-gate.sh",
+      "event": "PostToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "workflow-reviewer-attestation-gate.sh",
+      "event": "PostToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    },
+    {
+      "file": "playwright-cli-cleanup-on-stop.sh",
+      "event": "SubagentStop",
+      "matcher": null,
+      "timeout": 30,
+      "async": true
+    },
+    {
+      "file": "playwright-artifact-archiver.sh",
+      "event": "SubagentStop",
+      "matcher": null,
+      "timeout": 30
+    },
+    {
+      "file": "test-id-compliance-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "achilles-import-boundary-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "achilles-multiedit-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "MultiEdit",
+      "timeout": 5
+    },
+    {
+      "file": "selector-development-activation-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "selector-development-inertness-guard.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "selector-development-pipeline-stepper.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash|Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "selector-development-pipeline-stepper.sh",
+      "event": "PostToolUse",
+      "matcher": "Bash|Write|Edit",
+      "timeout": 10
+    },
+    {
+      "file": "compliance-sweep-exit-gate.sh",
+      "event": "Stop",
+      "matcher": null,
+      "timeout": 10
+    },
+    {
+      "file": "compliance-sweep-exit-gate.sh",
+      "event": "SubagentStop",
+      "matcher": null,
+      "timeout": 10
+    },
+    {
+      "file": "selector-development-revert-on-stop.sh",
+      "event": "Stop",
+      "matcher": null,
+      "timeout": 10
+    },
+    {
+      "file": "composition-judge-gate.sh",
+      "event": "Stop",
+      "matcher": null,
+      "timeout": 10
+    },
+    {
+      "file": "run-summary-writer.sh",
+      "event": "Stop",
+      "matcher": null,
+      "timeout": 15
+    },
+    {
+      "file": "perf-summary-writer.sh",
+      "event": "Stop",
+      "matcher": null,
+      "timeout": 15
+    },
+    {
+      "file": "playwright-artifact-archiver.sh",
+      "event": "Stop",
+      "matcher": null,
+      "timeout": 30
+    },
+    {
+      "file": "deck-inspection-gate.sh",
+      "event": "PostToolUse",
+      "matcher": "Bash",
+      "timeout": 30
+    },
+    {
+      "file": "deck-inspection-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Agent",
+      "timeout": 5
+    }
+  ],
+  "factory": [
+    {
+      "file": "selector-write-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit|MultiEdit",
+      "timeout": 10
+    },
+    {
+      "file": "repository-evidence-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit|MultiEdit",
+      "timeout": 10
+    },
+    {
+      "file": "intake-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit|MultiEdit",
+      "timeout": 15
+    },
+    {
+      "file": "secrets-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit|MultiEdit",
+      "timeout": 10
+    },
+    {
+      "file": "spend-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10
+    },
+    {
+      "file": "commit-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 30
+    },
+    {
+      "file": "state-gate.sh",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10
+    }
+  ],
+  "companions": [],
+  "legacyEiHooks": [
+    "contribution-handover-gate.sh",
+    "coverage-expansion-direct-compose-block.sh",
+    "coverage-expansion-dispatch-guard.sh",
+    "coverage-expansion-orchestrator-cli-block.sh",
+    "coverage-state-deferral-auth-guard.sh",
+    "coverage-state-schema-guard.sh",
+    "contributing-skill-preread-guard.sh",
+    "failure-diagnosis-stage0-preread-guard.sh",
+    "journey-map-sentinel-guard.sh",
+    "mcp-browser-tool-redirect.sh",
+    "onboarding-pipeline-incomplete-stop-deny.sh",
+    "parent-only-orchestrator-dispatch-block.sh",
+    "phase-validator-dispatch-required.sh",
+    "phase4-concurrency-log-format.sh",
+    "raw-playwright-api-warning.sh",
+    "skill-subagent-only-guard.sh",
+    "subagent-spillover-rewrite-gate.sh",
+    "suite-gate-ratchet.sh",
+    "task-update-phase-ledger-audit.sh",
+    "using-superpowers-carveout-guard.sh",
+    "benchmark-write-guard.sh",
+    "onboarding-report-write-guard.sh",
+    "happy-path-discovery-draft-required.sh",
+    "journey-mapping-cycle-gate.sh",
+    "bash-command-allowlist.sh",
+    "commit-attribution-gate.sh",
+    "commit-author-signature-guard.sh",
+    "harness-trusted-state-write-guard.sh",
+    "playwright-config-defaults-guard.sh",
+    "test-data-discipline-guard.sh",
+    "version-bump-authorisation-guard.sh",
+    "version-bump-against-npm-guard.sh"
+  ]
+}

@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"eval 'npx playwright test checkout-order --project=south'"}},"expect":"deny","messageContains":["[spend.opt-in]","checkout-order.spec.ts"],"_comment":"An eval payload is classified as a command of its own."}

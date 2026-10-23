@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'mv x .factory/verify-stamp'"}}, "expect": "allow", "warn": false, "_comment": "A commit message is inert text."}

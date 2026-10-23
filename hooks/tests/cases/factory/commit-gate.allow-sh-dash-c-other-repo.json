@@ -1,0 +1,1 @@
+{"cwd": "temp", "copy": ["achilles-factory-rules.json"], "input": {"tool_name": "Bash", "cwd": "{{ROOT}}", "tool_input": {"command": "sh -c 'cd /tmp && git commit -m \"feat: x\"'"}}, "expect": "allow", "warn": false, "_comment": "Reading the nested string must not over-gate: a commit the `cd` moved out of this project is another repository's business, so a clean allow."}

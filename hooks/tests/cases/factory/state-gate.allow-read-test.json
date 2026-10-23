@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "[ -f .factory/verify-stamp ] && echo yes"}}, "expect": "allow", "warn": false}

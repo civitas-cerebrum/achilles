@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // self-repair.mjs — external driver for the self-repair entrypoint.
+// Size: one driver for baseline, classify, repair workers, verify and report; the next split candidate.
 //
 // Restores a Playwright suite to a green-or-explained state without a human
 // in the loop: baseline the suite, classify failures (deterministic vs

@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "sed -i s/a/b/ docs/verify-stamp.md"}}, "expect": "allow", "warn": false}

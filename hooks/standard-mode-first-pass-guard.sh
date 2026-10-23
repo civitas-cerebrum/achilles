@@ -2,73 +2,41 @@
 # standard-mode-first-pass-guard.sh — first-pass / first-cycle strict-dispatch
 #                                     enforcement for coverage-expansion +
 #                                     journey-mapping.
+# Size: the strict-dispatch rules of two pipelines (coverage-expansion, journey-mapping) with their ledger fallbacks.
 #
 # Hook    : PreToolUse:Agent
 # Mode    : DENY (blocks the dispatch before the subagent starts)
-# State   : reads
-#             tests/e2e/docs/onboarding-status.json          (workflow ledger —
-#                                                             runMode +
-#                                                             currentPhase +
-#                                                             currentSubStage;
-#                                                             primary source for
-#                                                             Rule 1)
-#             tests/e2e/docs/coverage-expansion-state.json   (fallback for
-#                                                             Rule 1 when the
-#                                                             workflow ledger is
-#                                                             absent — bare
-#                                                             coverage-expansion
-#                                                             invocations
-#                                                             outside onboarding)
-#             tests/e2e/docs/.phase4-cycle-state.json        (cycle-1 detection,
-#                                                             cycleStrictness)
+# State   : reads (all under tests/e2e/docs/)
+#             onboarding-status.json         workflow ledger: runMode, currentPhase,
+#                                            currentSubStage (primary source, Rule 1)
+#             coverage-expansion-state.json  runMode, currentPass (Rule 1 fallback
+#                                            when no workflow ledger exists)
+#             .phase4-cycle-state.json       cycle-1 sections, cycleStrictness
+#                                            ("standard" default | "depth")
 # Env     : none
 #
-# Mode awareness
-# --------------
-# Rule 1 (grouping permission) reads from the workflow-level onboarding ledger
-# rather than the Phase-5-internal coverage-expansion state file. The
-# coverage-expansion state file is deleted at Pass-5 cleanup per its
-# documented lifecycle, so cross-phase questions ("is this Phase-6 grouping
-# allowed?") must read from a state that survives Phase 5. The onboarding
-# ledger carries `runMode` + `currentPhase` + `currentSubStage` and lives
-# for the whole 8-phase pipeline — it is the right source.
-#
-#   onboarding-status.json
-#     - `runMode: "standard" | "depth"` — the front-load gate's mode choice.
-#       Under "standard", `[group]` / `[P3-batch]` are denied on Pass 1 only;
-#       under "depth", they are denied on every pass.
-#     - `currentPhase: 1..8` — the active phase. Rule 1 denies grouping when
-#       `currentPhase < 5` (pre-coverage-expansion) or
-#       `currentPhase == 5 AND currentSubStage == "pass-1"` (Phase-5 Pass 1).
-#       Permits grouping when `currentPhase == 5 AND currentSubStage in
-#       {pass-2..pass-5}` OR `currentPhase >= 6`.
-#     - `currentSubStage: "pass-1".."pass-5" | "cycle-1".."cycle-5" | null` —
-#       for Phase 5 (pass-N) and Phase 4 (cycle-N) sub-state.
-#
-#   coverage-expansion-state.json (fallback only)
-#     - `runMode: "standard" | "depth"` and `currentPass: 1..5`. Used when
-#       the workflow ledger is absent (bare coverage-expansion invocations
-#       outside the onboarding pipeline). Same DENY semantics.
-#
-#   .phase4-cycle-state.json
-#     - `cycleStrictness: "standard" | "depth"` (optional; default "standard"
-#       when absent). Under "standard", single-agent cycle-2+ dispatches are
-#       allowed; under "depth", single-agent cycle-N dispatches are denied
-#       for ANY cycle, not just cycle 1.
+# Rule 1 reads the workflow ledger rather than the coverage-expansion state file
+# because the latter is deleted at Pass-5 cleanup, and a Phase-6 grouping
+# question needs state that survives Phase 5. Under `runMode: standard` grouped
+# dispatches are denied on Pass 1 only (currentPhase < 5, or phase 5 with
+# sub-stage pass-1); under `depth` they are denied on every pass. Under
+# `cycleStrictness: depth`, single-agent dispatches are denied on every cycle,
+# not just cycle 1.
 #
 # Rules
 # -----
 # 1. Grouping forbidden (Pass-1 under standard, every pass under depth).
-#    If the Agent description starts with `[group]` or `[P3-batch]` AND
+#    If the Agent description starts with `<role>-group-<id>:` /
+#    `<role>-p3batch-<id>:` (or the legacy `[group]` / `[P3-batch]`) AND
 #    EITHER:
 #      (a) the coverage-expansion state file doesn't exist (implicit Pass 1
 #          → DENY always), OR
 #      (b) `currentPass == 1` (DENY always), OR
 #      (c) `runMode == "depth"` (DENY regardless of currentPass)
-#    DENY. Pass 1 of `mode: standard` (formerly `mode: depth`) is strict
-#    per-journey by contract — `[group]` and `[P3-batch]` are only permitted
-#    on Passes 2-5. Under `mode: depth` (first-class strict-everywhere) those
-#    markers are forbidden on every pass.
+#    DENY. Pass 1 of `mode: standard` is strict
+#    per-journey by contract — grouped dispatches are only permitted on
+#    Passes 2-5. Under `mode: depth` (strict on every pass) they
+#    are forbidden on every pass.
 #
 # 2. Author-without-≥2-cycle-1-sections forbidden.
 #    If the description starts with `phase4-prioritise-author:` AND
@@ -88,20 +56,15 @@
 #    DENY. This catches the failure mode where a single agent "walks" the
 #    whole app and hides the parallelism the protocol was designed for.
 #
-# Under `runMode: standard` and `cycleStrictness: standard` (the defaults),
-# rules 1 and 3 silent-allow once the strict contract relaxes (currentPass ≥ 2
-# for coverage-expansion; cycle 1 dispatched-sections recorded for
-# journey-mapping). Under `runMode: depth` / `cycleStrictness: depth`, the
-# strict contract holds across all passes / cycles.
+# Under the standard defaults, rules 1 and 3 allow once the strict contract
+# relaxes (Pass 2+, or cycle-1 sections recorded); under depth it never does.
 #
 # Empirical origin
 # ----------------
-# In a benchmark onboarding run on a 21-journey app, Phase 4 collapsed to a
-# single subagent under `phases: 'full'` mode and produced shallow per-section
-# coverage. Pass 1 grouping on coverage-expansion was observed to dilute
-# Test-expectations coverage across grouped journeys. The strict-on-first-X
-# rule captures the high-value fidelity moment without forbidding grouping on
-# the later passes / cycles where it pays.
+# A benchmark onboarding run on a 21-journey app collapsed Phase 4 into one
+# subagent (shallow per-section coverage), and Pass 1 grouping diluted
+# test-expectations coverage. Strict-on-first-X keeps the high-fidelity moment
+# without forbidding grouping on later passes / cycles where it pays.
 #
 # Canonical reference
 # -------------------
@@ -113,7 +76,7 @@
 #
 # Failure → action
 # ----------------
-# Pass-1 [group] / [P3-batch]      → DENY with fix-message pointing at the rule
+# Pass-1 grouped dispatch         → DENY with fix-message pointing at the rule
 # Cycle-1 author-without-≥2-sect.  → DENY with fix-message
 # Cycle-1 single-agent collapse    → DENY with fix-message
 
@@ -129,18 +92,16 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/coverage-expansion/SKILL.md §
 
 
 # Resolve jq.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 
@@ -153,64 +114,36 @@ DESCRIPTION=$(echo "$INPUT" | "$JQ" -r '.tool_input.description // ""' 2>/dev/nu
 # Resolve the cwd (where the state files live) — fall back to "." if absent.
 GUARD_CWD=$(echo "$INPUT" | "$JQ" -r '.cwd // "."' 2>/dev/null || echo ".")
 GUARD_REPO_ROOT=$(git -C "$GUARD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "$GUARD_CWD")
-WORKFLOW_LEDGER="$GUARD_REPO_ROOT/tests/e2e/docs/onboarding-status.json"
+hook_lib ledger.sh
+WORKFLOW_LEDGER="$(ledger_path "$GUARD_REPO_ROOT" onboarding)"
 COV_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/coverage-expansion-state.json"
 CYCLE_STATE="$GUARD_REPO_ROOT/tests/e2e/docs/.phase4-cycle-state.json"
-
-# Emit a DENY JSON with the supplied reason.
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # ---------------------------------------------------------------------------
 # Rule 1: Grouping forbidden (Pass-1 under standard, every pass under depth)
 # ---------------------------------------------------------------------------
-# Description starts with `[group]` or `[P3-batch]` (allowing whitespace).
-if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*\[(group|P3-batch)\]'; then
-  # Determine current pass + run mode. Primary source: the workflow-level
-  # onboarding ledger (`onboarding-status.json`), which lives for the whole
-  # 8-phase pipeline. Fallback: the Phase-5-internal coverage-expansion
-  # state file, for bare coverage-expansion invocations outside onboarding.
-  # If neither is present, this is implicitly Pass 1 (no dispatch has been
-  # recorded yet) AND the mode defaults to "standard".
+if echo "$DESCRIPTION" | grep -qE "$DISPATCH_GROUPED_RE"; then
+  # Primary source: the workflow ledger. Fallback: the coverage-expansion state
+  # file. Neither present: implicitly Pass 1, mode standard.
   CURRENT_PASS=""
   RUN_MODE="standard"
   LEDGER_USED=""
   if [ -f "$WORKFLOW_LEDGER" ]; then
     LEDGER_USED="workflow"
-    RUN_MODE_RAW=$("$JQ" -r '.runMode // "standard"' "$WORKFLOW_LEDGER" 2>/dev/null || echo "standard")
-    case "$RUN_MODE_RAW" in
-      depth) RUN_MODE="depth" ;;
-      *)     RUN_MODE="standard" ;;
-    esac
-    CURRENT_PHASE=$("$JQ" -r '.currentPhase // 0' "$WORKFLOW_LEDGER" 2>/dev/null || echo "0")
-    CURRENT_SUB_STAGE=$("$JQ" -r '.currentSubStage // ""' "$WORKFLOW_LEDGER" 2>/dev/null || echo "")
+    [ "$(ledger_get "$WORKFLOW_LEDGER" .runMode standard)" = depth ] && RUN_MODE="depth"
+    CURRENT_PHASE=$(ledger_get "$WORKFLOW_LEDGER" .currentPhase 0)
+    CURRENT_SUB_STAGE=$(ledger_get "$WORKFLOW_LEDGER" .currentSubStage)
     case "$CURRENT_PHASE" in
       ''|*[!0-9]*) CURRENT_PHASE=0 ;;
     esac
-    # Translate workflow phase + sub-stage into the legacy `currentPass`
-    # field semantics that Rule 1 already encodes:
-    #   - currentPhase < 5            → CURRENT_PASS="" (pre-Phase-5, Pass-1-equivalent)
-    #   - currentPhase == 5, sub-stage=="pass-1" → CURRENT_PASS="1"
-    #   - currentPhase == 5, sub-stage in pass-2..5 → CURRENT_PASS=<n>
-    #   - currentPhase >= 6           → CURRENT_PASS="6" (post-Phase-5, grouping permitted)
+    # Map phase + sub-stage onto Rule 1's pass number: pre-Phase-5 is ""
+    # (Pass-1-equivalent), Phase 5 is its pass, later phases are 6 (grouping ok).
     if [ "$CURRENT_PHASE" -lt 5 ]; then
       CURRENT_PASS=""
     elif [ "$CURRENT_PHASE" -eq 5 ]; then
       case "$CURRENT_SUB_STAGE" in
-        pass-1) CURRENT_PASS="1" ;;
-        pass-2) CURRENT_PASS="2" ;;
-        pass-3) CURRENT_PASS="3" ;;
-        pass-4) CURRENT_PASS="4" ;;
-        pass-5) CURRENT_PASS="5" ;;
-        *)      CURRENT_PASS="1" ;;
+        pass-[2-5]) CURRENT_PASS="${CURRENT_SUB_STAGE#pass-}" ;;
+        *)          CURRENT_PASS="1" ;;
       esac
     else
       CURRENT_PASS="6"
@@ -218,27 +151,23 @@ if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*\[(group|P3-batch)\]'; then
   elif [ -f "$COV_STATE" ]; then
     LEDGER_USED="coverage-expansion"
     CURRENT_PASS=$("$JQ" -r '.currentPass // empty' "$COV_STATE" 2>/dev/null || echo "")
-    RUN_MODE_RAW=$("$JQ" -r '.runMode // "standard"' "$COV_STATE" 2>/dev/null || echo "standard")
-    case "$RUN_MODE_RAW" in
-      depth) RUN_MODE="depth" ;;
-      *)     RUN_MODE="standard" ;;
-    esac
+    [ "$("$JQ" -r '.runMode // "standard"' "$COV_STATE" 2>/dev/null)" = depth ] && RUN_MODE="depth"
   fi
-  # Under depth: DENY on any pass.
-  # Under standard: DENY when currentPass empty OR == 1.
+  # Depth denies on any pass; standard denies when currentPass is empty or 1.
   if [ "$RUN_MODE" = "depth" ]; then
-    emit_deny "[BLOCKED] Grouping forbidden on every pass under \`mode: depth\`.
+    emit_pre_deny "[BLOCKED] Grouping forbidden on every pass under \`mode: depth\`.
 
 Description: \"${DESCRIPTION}\"
 
 \`mode: depth\` is the first-class strict-parallel-everywhere mode —
-\`[group]\` and \`[P3-batch]\` markers are FORBIDDEN on every pass
+\`<role>-group-<id>:\` / \`<role>-p3batch-<id>:\` dispatches (and the legacy
+\`[group]\` / \`[P3-batch]\` markers) are FORBIDDEN on every pass
 (Passes 1, 2, 3, 4, AND 5), not just Pass 1. Under depth the cost is
 explicit (up to ~20× more dispatches than \`mode: standard\`) and the
 contract is exhaustive per-unit fidelity.
 
 Fix: split this dispatch into N parallel single-journey dispatches in
-one message (one \`composer-j-<slug>:\` or \`probe-j-<slug>:\` Agent
+one message (one \`test-composer-j-<slug>:\` or \`probe-j-<slug>:\` Agent
 per journey, all sent in the same parallel wave). If grouping is
 genuinely needed on this run, the operator must re-enter the onboarding
 front-load gate and select \`runMode: standard\` instead.
@@ -249,19 +178,19 @@ See:
     exit 0
   fi
   if [ -z "$CURRENT_PASS" ] || [ "$CURRENT_PASS" = "1" ]; then
-    emit_deny "[BLOCKED] Pass-1 grouping forbidden under \`mode: standard\`.
+    emit_pre_deny "[BLOCKED] Pass-1 grouping forbidden under \`mode: standard\`.
 
 Description: \"${DESCRIPTION}\"
 
 Pass 1 of \`mode: standard\` (formerly \`mode: depth\`) is strict
-per-journey by contract — \`[group]\` and \`[P3-batch]\` markers are
-only permitted on Passes 2-5. The first pass establishes the test
+per-journey by contract — \`<role>-group-<id>:\` / \`<role>-p3batch-<id>:\`
+(and legacy \`[group]\` / \`[P3-batch]\`) dispatches are only permitted on Passes 2-5. The first pass establishes the test
 foundation at maximum fidelity; that quality propagates through every
 later pass.
 
 Fix: split this dispatch into N parallel single-journey dispatches in
-one message (one \`composer-j-<slug>:\` Agent per journey, all sent in
-the same parallel wave). Re-issue any \`[group]\` / \`[P3-batch]\`
+one message (one \`test-composer-j-<slug>:\` Agent per journey, all sent in
+the same parallel wave). Re-issue any grouped
 dispatches on Pass 2 or later, once Pass 1 has completed and the state
 file shows \`currentPass >= 2\`.
 
@@ -288,7 +217,7 @@ if echo "$DESCRIPTION" | grep -qE '^[[:space:]]*phase4-prioritise-author:'; then
     esac
   fi
   if [ "$CYCLE_1_COUNT" -lt 2 ]; then
-    emit_deny "[BLOCKED] \`phase4-prioritise-author:\` dispatch denied — cycle 1 has not yet established the per-section baseline.
+    emit_pre_deny "[BLOCKED] \`phase4-prioritise-author:\` dispatch denied — cycle 1 has not yet established the per-section baseline.
 
 Description: \"${DESCRIPTION}\"
 
@@ -314,38 +243,28 @@ fi
 # ---------------------------------------------------------------------------
 # Rule 3: Cycle-1 single-agent collapse forbidden
 # ---------------------------------------------------------------------------
-# Heuristic: if the description names ≥ 3 canonical section IDs joined with
-# commas or "and", AND no cycle-1 dispatches exist yet, this is a single
-# subagent attempting to do all of cycle 1 sequentially.
+# Heuristic: a description naming >= 3 canonical section IDs joined with commas
+# or "and" is one subagent walking cycle 1 sequentially.
 #
-# Canonical section IDs come from hooks/data/canonical-sections.txt where
-# available; fall back to a curated subset if the file is missing.
+# IDs come from hooks/data/canonical-sections.txt; fall back to a curated subset.
 SECTIONS_DATA="$(dirname "${BASH_SOURCE[0]}")/data/canonical-sections.txt"
 CANONICAL_SECTIONS=""
 if [ -f "$SECTIONS_DATA" ]; then
-  # Strip blanks + comments.
   CANONICAL_SECTIONS=$(grep -vE '^[[:space:]]*(#|$)' "$SECTIONS_DATA" 2>/dev/null | tr '\n' ' ')
 fi
-# Fallback list — matches the section vocabulary table in
-# skills/journey-mapping/SKILL.md §"Section vocabulary".
+# Fallback: skills/journey-mapping/SKILL.md §"Section vocabulary".
 if [ -z "$CANONICAL_SECTIONS" ]; then
   CANONICAL_SECTIONS="auth profile admin catalog detail cart order billing marketplace content documentation dashboard settings integrations notifications inbox support reports analytics error"
 fi
 
-# Count how many distinct canonical section IDs are mentioned, requiring word
-# boundaries so we don't match e.g. "authentication" when looking for "auth".
+# Count distinct canonical section IDs mentioned, as whole words ("authentication"
+# must not match "auth"). Journey slugs (j-<slug> / sj-<slug>) are stripped first:
+# a coordinator listing "j-auth, j-cart, j-order" is not a section walkthrough.
+# Commas and "and" become whitespace so "auth, cart, and order" tokenises.
+TOKENS=$(echo "$DESCRIPTION" | sed -E 's/\b(s?j-[a-z0-9-]+)//g; s/[,]/ /g; s/[[:space:]]+and[[:space:]]+/ /g' | tr -s ' ')
 HIT_COUNT=0
 HIT_NAMES=""
 for sec in $CANONICAL_SECTIONS; do
-  # \b-style word boundaries via grep -w on a tokenised description.
-  # Replace commas + "and" with whitespace first so multi-section lists like
-  # "auth, cart, and order" tokenise cleanly.
-  # Strip journey-slug literals (j-<slug> / sj-<slug>) BEFORE section
-  # counting — a Phase-5/8 coordinator listing several journey slugs (e.g.
-  # "j-auth, j-cart, j-order") is NOT a single-agent section walkthrough,
-  # but the bare section names embedded in those slugs would otherwise be
-  # counted as section hits (auth, cart, order). Remove the slugs first.
-  TOKENS=$(echo "$DESCRIPTION" | sed -E 's/\b(s?j-[a-z0-9-]+)//g; s/[,]/ /g; s/[[:space:]]+and[[:space:]]+/ /g' | tr -s ' ')
   if echo "$TOKENS" | grep -qiwE "$sec"; then
     HIT_COUNT=$((HIT_COUNT + 1))
     HIT_NAMES="${HIT_NAMES}${sec} "
@@ -353,23 +272,17 @@ for sec in $CANONICAL_SECTIONS; do
 done
 
 if [ "$HIT_COUNT" -ge 3 ]; then
-  # Phase-scope guard: Rule 3 (single-agent cycle walkthrough) is a
-  # journey-mapping Phase-4 rule. It must NOT fire outside Phase 4 — a
-  # Phase-5 coverage coordinator or a Phase-8 reporter that names several
-  # sections in its brief is not a journey-mapping cycle collapse. Read
-  # the workflow ledger (like Rule 1): evaluate only when currentPhase==4,
-  # OR (no ledger AND the description carries a phase4-* shape, i.e. a
-  # bare journey-mapping run outside onboarding).
+  # Rule 3 is a Phase-4 rule: a Phase-5 coordinator or Phase-8 reporter naming
+  # several sections is not a cycle collapse. In scope when currentPhase==4, or
+  # with no ledger when the description is phase4-shaped (bare journey-mapping).
   RULE3_IN_SCOPE=0
   if [ -f "$WORKFLOW_LEDGER" ]; then
-    R3_PHASE=$("$JQ" -r '.currentPhase // 0' "$WORKFLOW_LEDGER" 2>/dev/null || echo "0")
+    R3_PHASE=$(ledger_get "$WORKFLOW_LEDGER" .currentPhase 0)
     case "$R3_PHASE" in ''|*[!0-9]*) R3_PHASE=0 ;; esac
     [ "$R3_PHASE" -eq 4 ] && RULE3_IN_SCOPE=1
   else
-    # No workflow ledger — only treat phase4-shaped dispatches as in-scope.
-    case "$DESCRIPTION" in
-      phase4-*|phase4_*) RULE3_IN_SCOPE=1 ;;
-    esac
+    # No ledger: only phase4-shaped dispatches are in scope.
+    [ "$(dispatch_phase_number onboarding "$DESCRIPTION")" = 4 ] && RULE3_IN_SCOPE=1
   fi
   if [ "$RULE3_IN_SCOPE" != "1" ]; then
     exit 0
@@ -385,24 +298,13 @@ if [ "$HIT_COUNT" -ge 3 ]; then
     case "$CYCLE_1_DISPATCHED" in
       ''|*[!0-9]*) CYCLE_1_DISPATCHED=0 ;;
     esac
-    CYCLE_STRICTNESS_RAW=$("$JQ" -r '.cycleStrictness // "standard"' "$CYCLE_STATE" 2>/dev/null || echo "standard")
-    case "$CYCLE_STRICTNESS_RAW" in
-      depth) CYCLE_STRICTNESS="depth" ;;
-      *)     CYCLE_STRICTNESS="standard" ;;
-    esac
+    [ "$("$JQ" -r '.cycleStrictness // "standard"' "$CYCLE_STATE" 2>/dev/null)" = depth ] && CYCLE_STRICTNESS="depth"
   fi
-  # Only fire on actual walkthrough attempts, not legitimate author /
-  # validator dispatches that reference multiple sections in their brief.
-  # Heuristic: skip the rule when the role prefix is one of the legitimate
-  # multi-section consumers.
-  case "$DESCRIPTION" in
-    phase4-prioritise-author:*|phase-validator-*|process-validator-*|cleanup-*|workflow-reviewer-*|composer-*|reviewer-*|probe-*|phase[1-8]-*) ;;
-    *)
-      # Under cycleStrictness: depth, DENY for ANY cycle (including cycle 2+
-      # after cycle 1 has dispatched-sections recorded). Under standard,
-      # DENY only when no cycle-1 dispatches exist yet.
+  # Walkthrough attempts only: author / validator briefs may name many sections.
+  # depth denies on any cycle; standard only while no cycle-1 dispatch exists.
+  if ! is_multi_section_consumer "$DESCRIPTION"; then
       if [ "$CYCLE_STRICTNESS" = "depth" ]; then
-        emit_deny "[BLOCKED] Single-subagent walkthrough forbidden on every cycle under \`cycleStrictness: depth\`.
+        emit_pre_deny "[BLOCKED] Single-subagent walkthrough forbidden on every cycle under \`cycleStrictness: depth\`.
 
 Description: \"${DESCRIPTION}\"
 
@@ -428,7 +330,7 @@ See:
         exit 0
       fi
       if [ "$CYCLE_1_DISPATCHED" -eq 0 ]; then
-        emit_deny "[BLOCKED] Single-subagent walkthrough of journey-mapping cycle 1 forbidden.
+        emit_pre_deny "[BLOCKED] Single-subagent walkthrough of journey-mapping cycle 1 forbidden.
 
 Description: \"${DESCRIPTION}\"
 
@@ -453,8 +355,7 @@ See:
   - skills/achilles-protocol/references/harness-hooks.md (this hook indexed there)"
         exit 0
       fi
-      ;;
-  esac
+  fi
 fi
 
 # All checks passed — silent allow.

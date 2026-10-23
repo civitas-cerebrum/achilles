@@ -12,7 +12,7 @@ description: >
   and Audit (whole-app workflow, opt-in).
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # selector-development — Stable Selector Instrumentation
@@ -29,14 +29,14 @@ A companion skill of `@civitas-cerebrum/element-interactions` that closes the ga
 | [`references/selector-convention.md`](references/selector-convention.md) | Attribute precedence + naming rules. |
 | [`references/inertness-contract.md`](references/inertness-contract.md) | The additive-only contract. |
 | [`references/guardrail-pipeline.md`](references/guardrail-pipeline.md) | The 8-step pipeline + journal schema + revert. |
-| [`references/hook-contracts.md`](references/hook-contracts.md) | Per-hook deny/record rules — load-bearing for hook authors. |
+| [`references/hook-contracts.md`](references/hook-contracts.md) | Per-hook deny/record rules; load-bearing for hook authors. |
 | [`references/audit-mode-workflow.md`](references/audit-mode-workflow.md) | Whole-app workflow loop. |
 
 ---
 
 ## Activation contract
 
-The skill is gated behind two preconditions. Both must hold or the skill exits with a notice — it never silently proceeds on a partial workspace.
+The skill is gated behind two preconditions. Both must hold or the skill exits with a notice; it never silently proceeds on a partial workspace.
 
 ### Workspace gate
 
@@ -47,9 +47,9 @@ Both signals must be present:
 | Frontend source present | `package.json` has a frontend framework dep (`react`, `vue`, `svelte`, `@angular/core`, `solid-js`, `preact`, `lit`); a directory under `src/`, `app/`, or `pages/` contains files with extensions `.tsx`, `.jsx`, `.vue`, `.svelte`, or `.html`. |
 | Tests present | `tests/e2e/` exists and contains at least one `*.spec.ts` file. |
 
-**If frontend missing:** exit with notice — "tests not authored inside the frontend project — selector-development cannot run; fall back to best-effort locator."
+**If frontend missing:** exit with notice: "tests not authored inside the frontend project — selector-development cannot run; fall back to best-effort locator."
 
-**If tests missing:** exit with notice — "no test suite to author against — selector-development is only invoked from a test workflow."
+**If tests missing:** exit with notice: "no test suite to author against — selector-development is only invoked from a test workflow."
 
 ### Missing-selector gate
 
@@ -59,15 +59,15 @@ The element under test must have ALL of the following:
 - No unique role + accessible-name combination, AND
 - No unique stable text content (text that is asserted-on or copy-driven is not stable).
 
-If any one of those is satisfied, exit silently — Stage 2 already has a working locator. This avoids over-instrumenting accessible UIs.
+If any one of those is satisfied, exit silently: Stage 2 already has a working locator. This avoids over-instrumenting accessible UIs.
 
 ### Trigger points
 
 When both gates pass, the skill activates from any of:
 
-1. **Stage 2 inspection escalation** — `achilles-protocol` orchestrator reports "no stable selector available" and dispatches `selector-development` with `mode: "jit"` and the element-key/scope.
-2. **`failure-diagnosis` escalation** — failure-diagnosis attributes a flake/break root cause to a fragile selector and dispatches `selector-development` with `mode: "jit"`.
-3. **On-demand user invocation** — the user says "add stable selectors to the cart drawer" (JIT) or "audit selectors across the app" / `mode: "audit"` (Audit).
+1. **Stage 2 inspection escalation**: `achilles-protocol` orchestrator reports "no stable selector available" and dispatches `selector-development` with `mode: "jit"` and the element-key/scope.
+2. **`failure-diagnosis` escalation**: failure-diagnosis attributes a flake/break root cause to a fragile selector and dispatches `selector-development` with `mode: "jit"`.
+3. **On-demand user invocation**: the user says "add stable selectors to the cart drawer" (JIT) or "audit selectors across the app" / `mode: "audit"` (Audit).
 
 ---
 
@@ -77,19 +77,19 @@ When both gates pass, the skill activates from any of:
 
 Instruments exactly **one element**. Smallest possible diff: one element, one attribute, one round-trip to the calling skill. Triggered by Stage 2 / failure-diagnosis / a single-element user request.
 
-**JIT loop — every step is mandatory, in order:**
+**JIT loop: every step is mandatory, in order:**
 
 1. Receive the scope (element-key) from the calling skill or user.
 2. Run both preconditions (workspace gate + missing-selector gate). Exit if either fails.
 3. Initialize the receipt at `tests/e2e/.selector-development/<element-key>.receipt.json`; write `.current-scope` with the element-key.
-4. **Step 1 — Before snapshot:** Take a screenshot of the affected route via `playwright-cli screenshot`, writing to `tests/e2e/.selector-development/before/<scope>.png`. The stepper hook records `before_snapshot: pass` on success.
-5. **Step 2 — Patch applied:** Edit the frontend source file — append the detected test attribute to the target opening tag. Only this one attribute change is allowed. The inertness guard denies any broader diff at the filesystem layer. The stepper records `patch_applied: pass` with the file list and `git_diff_hash`.
-6. **Step 3 — Typecheck:** Run the project's typecheck script (detected from `package.json`: `typecheck` → `tsc` → `lint:types`). The stepper records `typecheck: pass` with elapsed time.
-7. **Step 4 — Unit tests:** Run the project's unit-test script (jest / vitest / equivalent). The stepper records `unit_tests: pass`.
-8. **Step 5 — E2E:** Run `playwright test <spec>` for the affected spec file. The stepper records `e2e: pass` with the spec path.
-9. **Step 6 — After snapshot:** Take a screenshot of the same route again, writing to `tests/e2e/.selector-development/after/<scope>.png`. The stepper records `after_snapshot: pass`.
-10. **Step 7 — Visual diff:** Run `node hooks/lib/visual-diff.js before/<scope>.png after/<scope>.png`. Pass criterion is exactly 0 diff pixels (configurable up to 10 with explicit project config). The stepper records `visual_diff: pass` with `diff_pixels` count.
-11. **Step 8 — Commit:** Run `git commit` with the patched frontend file staged. The stepper clears `.current-scope` and archives the receipt to `tests/e2e/.selector-development/archive/`.
+4. **Step 1. Before snapshot:** Take a screenshot of the affected route via `playwright-cli screenshot`, writing to `tests/e2e/.selector-development/before/<scope>.png`. The stepper hook records `before_snapshot: pass` on success.
+5. **Step 2. Patch applied:** Edit the frontend source file: append the detected test attribute to the target opening tag. Only this one attribute change is allowed. The inertness guard denies any broader diff at the filesystem layer. The stepper records `patch_applied: pass` with the file list and `git_diff_hash`.
+6. **Step 3. Typecheck:** Run the project's typecheck script (detected from `package.json`: `typecheck` → `tsc` → `lint:types`). The stepper records `typecheck: pass` with elapsed time.
+7. **Step 4. Unit tests:** Run the project's unit-test script (jest / vitest / equivalent). The stepper records `unit_tests: pass`.
+8. **Step 5. E2E:** Run `playwright test <spec>` for the affected spec file. The stepper records `e2e: pass` with the spec path.
+9. **Step 6. After snapshot:** Take a screenshot of the same route again, writing to `tests/e2e/.selector-development/after/<scope>.png`. The stepper records `after_snapshot: pass`.
+10. **Step 7. Visual diff:** Run `node hooks/lib/visual-diff.js before/<scope>.png after/<scope>.png`. Pass criterion is exactly 0 diff pixels (configurable up to 10 with explicit project config). The stepper records `visual_diff: pass` with `diff_pixels` count.
+11. **Step 8. Commit:** Run `git commit` with the patched frontend file staged. The stepper clears `.current-scope` and archives the receipt to `tests/e2e/.selector-development/archive/`.
 12. Return the canonical return envelope (see "Return shape" below) to the caller.
 
 **On any guardrail failure (steps 3–7):** the stepper appends `fail` instead of `pass`; the next step's gate denies. Run the revert path: `git checkout -- <patched files>`, delete the receipt, clear `.current-scope`, return `status: "blocked"` with the failing artifact path.
@@ -103,17 +103,17 @@ Activated by `mode: "audit"` or phrases like "audit selectors across the app", "
 - A complete sentinel-bearing `tests/e2e/docs/journey-map.md` (line 1 must be `<!-- journey-mapping:generated -->`). If absent or sentinel-less, exit and ask the user to run `journey-mapping` first.
 - Both workspace-gate signals present.
 
-**Audit loop — every step is mandatory:**
+**Audit loop. Every step is mandatory:**
 
 1. Read `tests/e2e/docs/journey-map.md`; build the ordered page list from the site map section.
-2. Read (or initialize) the ledger at `tests/e2e/.selector-development/audit-ledger.json` — dedups across pages and enables resumption after interruption.
+2. Read (or initialize) the ledger at `tests/e2e/.selector-development/audit-ledger.json`: dedups across pages and enables resumption after interruption.
 3. For each page (independent pages may be parallelized, matching `coverage-expansion`'s parallel-dispatch model):
    a. Drive the app to the page via `playwright-cli`.
    b. Snapshot the DOM; identify interactive/asserted nodes lacking stable selectors (missing-selector gate applied per node).
    c. For each qualifying node, run the full JIT loop (one receipt, one commit). Record the result in the audit ledger under the page-id key.
 4. After all pages complete, return a summary envelope (status per page, total attributes added, ledger path).
 
-Audit mode reuses the JIT loop and the same receipt schema — the only difference is the outer driver and the scope unit (page vs. element).
+Audit mode reuses the JIT loop and the same receipt schema; the only difference is the outer driver and the scope unit (page vs. element).
 
 ---
 
@@ -121,27 +121,27 @@ Audit mode reuses the JIT loop and the same receipt schema — the only differen
 
 The 8-step pipeline runs in strict sequential order. The `selector-development-pipeline-stepper.sh` hook enforces ordering: each step's PreToolUse gate checks that all predecessors have `pass` recorded in the receipt; each step's PostToolUse handler writes the `pass` (or `fail`) entry. The model cannot skip, reorder, or fake a step.
 
-**Step 1 — Before snapshot**
+**Step 1: Before snapshot**
 
 Before any frontend file edit, take a screenshot of the affected route:
 ```bash
 playwright-cli session <slug> screenshot tests/e2e/.selector-development/before/<scope>.png
 ```
-The stepper's PreToolUse gate checks that `.current-scope` exists and the receipt is initialized. PostToolUse writes `before_snapshot: pass` with the artifact path. Do not proceed to step 2 if this screenshot command fails — abort and surface the error.
+The stepper's PreToolUse gate checks that `.current-scope` exists and the receipt is initialized. PostToolUse writes `before_snapshot: pass` with the artifact path. Do not proceed to step 2 if this screenshot command fails: abort and surface the error.
 
-**Step 2 — Patch applied (the only frontend edit)**
+**Step 2: Patch applied (the only frontend edit)**
 
 Edit the target frontend source file using the `Edit` tool. The change must be exactly: append the project's detected test attribute to the opening tag of the target element. Example: `<button` becomes `<button data-testid="submit-button"`. The inertness guard (`selector-development-inertness-guard.sh`) calls `hooks/lib/selector-diff-validator.js` and denies the write if the AST diff is anything other than one attribute added to one opening tag. The stepper records `patch_applied: pass` with the file path list and `git_diff_hash`.
 
-**Step 3 — Typecheck**
+**Step 3: Typecheck**
 
 Run the project's typecheck command:
 ```bash
 npm run typecheck   # or tsc, or lint:types — detected from package.json
 ```
-The stepper's PreToolUse gate requires `patch_applied: pass`. On exit 0, PostToolUse writes `typecheck: pass` with elapsed milliseconds. On non-zero exit, writes `typecheck: fail` — proceed to the revert path, do not continue to step 4.
+The stepper's PreToolUse gate requires `patch_applied: pass`. On exit 0, PostToolUse writes `typecheck: pass` with elapsed milliseconds. On non-zero exit, writes `typecheck: fail`: proceed to the revert path, do not continue to step 4.
 
-**Step 4 — Unit tests**
+**Step 4: Unit tests**
 
 Run the project's unit-test suite:
 ```bash
@@ -149,15 +149,15 @@ npm test   # or vitest run, jest, etc. — detected from package.json
 ```
 PreToolUse requires `typecheck: pass`. On exit 0, records `unit_tests: pass`. On failure, records `unit_tests: fail` and reverts.
 
-**Step 5 — E2E**
+**Step 5: E2E**
 
 Run the affected e2e spec:
 ```bash
 npx playwright test <spec-file>   # scope recorded in .current-scope context
 ```
-PreToolUse requires `unit_tests: pass`. On exit 0, records `e2e: pass` with the spec path. On failure, records `e2e: fail` and reverts. Do not run the full e2e suite — only the spec(s) that exercise the instrumented element.
+PreToolUse requires `unit_tests: pass`. On exit 0, records `e2e: pass` with the spec path. On failure, records `e2e: fail` and reverts. Do not run the full e2e suite: only the spec(s) that exercise the instrumented element.
 
-**Step 6 — After snapshot**
+**Step 6: After snapshot**
 
 Take the post-patch screenshot:
 ```bash
@@ -165,7 +165,7 @@ playwright-cli session <slug> screenshot tests/e2e/.selector-development/after/<
 ```
 PreToolUse requires `e2e: pass`. Records `after_snapshot: pass` with artifact path.
 
-**Step 7 — Visual diff**
+**Step 7: Visual diff**
 
 Compare the before and after screenshots:
 ```bash
@@ -173,9 +173,9 @@ node hooks/lib/visual-diff.js \
   tests/e2e/.selector-development/before/<scope>.png \
   tests/e2e/.selector-development/after/<scope>.png
 ```
-PreToolUse requires `after_snapshot: pass`. Pass criterion: `diff_pixels` is exactly 0 (or within the project's configured threshold — maximum 10 pixels). On pass, records `visual_diff: pass` with `diff_pixels` count. On fail (pixels above threshold), records `visual_diff: fail` and reverts — a pixel delta indicates an unexpected re-render and the patch is not inert.
+PreToolUse requires `after_snapshot: pass`. Pass criterion: `diff_pixels` is exactly 0 (or within the project's configured threshold: maximum 10 pixels). On pass, records `visual_diff: pass` with `diff_pixels` count. On fail (pixels above threshold), records `visual_diff: fail` and reverts: a pixel delta indicates an unexpected re-render and the patch is not inert.
 
-**Step 8 — Commit**
+**Step 8: Commit**
 
 Stage and commit the patched frontend file:
 ```bash
@@ -212,7 +212,7 @@ Both JIT and Audit return via the canonical envelope (`subagent-return-schema.md
 }
 ```
 
-`status: "ok"` — pipeline completed; attribute added; commit made. `status: "skipped"` — a gate exited early (selector already stable, not a frontend project, no inert option available). `status: "blocked"` — a guardrail step failed; `blocked_artifact` carries the failing screenshot, test output, or typecheck log path; the patch was reverted.
+`status: "ok"`: pipeline completed; attribute added; commit made. `status: "skipped"`: a gate exited early (selector already stable, not a frontend project, no inert option available). `status: "blocked"`: a guardrail step failed; `blocked_artifact` carries the failing screenshot, test output, or typecheck log path; the patch was reverted.
 
 The `subagent-return-schema-guard.sh` hook routes `selector-development-<scope>:` description-prefixed dispatches to this return-shape validator.
 
@@ -221,9 +221,9 @@ The `subagent-return-schema-guard.sh` hook routes `selector-development-<scope>:
 ## Out of scope
 
 - **Multi-repo / submodule / monorepo cross-package frontend access.** Workspace gate aborts if the frontend isn't in the same workspace as `tests/e2e/`. Selector changes ride along in the test PR; cross-repo PR plumbing is excluded.
-- **Auto-PR creation in a separate frontend repo.** Not supported — the skill operates inside a single workspace.
+- **Auto-PR creation in a separate frontend repo.** Not supported; the skill operates inside a single workspace.
 - **Migration tooling** (e.g., converting an existing project from `data-cy` to `data-testid`). Convention detection respects whatever attribute family is already in use; bulk renaming is out of scope.
 - **Selector hardening for already-stable elements.** The missing-selector gate exits silently when a unique test attribute, unique role+name, or unique stable text already exists. The skill does not add redundant attributes.
 - **Visual-regression pinning beyond the ≤ 10-pixel threshold.** This skill is not a visual-testing system; the visual diff exists only to prove inertness. Full visual regression is `bug-discovery`'s domain.
 - **Wrapping third-party components that do not forward arbitrary props.** If the target element is rendered by a library that swallows unknown props, the skill escalates to the user rather than improvising (e.g., adding a wrapper div). The escalation message names the library and the element.
-- **Instrumenting elements that would require structural change.** If adding the attribute requires any tag-structure, child, or prop modification — even a trivial one — the skill declines and returns `status: "blocked"` with `skipped_reason: "no-inert-option"`.
+- **Instrumenting elements that would require structural change.** If adding the attribute requires any tag-structure, child, or prop modification (even a trivial one), the skill declines and returns `status: "blocked"` with `skipped_reason: "no-inert-option"`.

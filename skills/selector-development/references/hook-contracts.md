@@ -15,7 +15,7 @@ This reference specifies the exact behavior of each hook in the selector-develop
 - Writes: none
 
 **Env vars:**
-- `WORKSPACE_ROOT` (optional) — defaults to `git rev-parse --show-toplevel`
+- `WORKSPACE_ROOT` (optional): defaults to `git rev-parse --show-toplevel`
 
 **Deny conditions:**
 - Tool is Edit or Write on a frontend source file (`.tsx`, `.jsx`, `.vue`, `.svelte`, `.html`, `.htm`, or `.ts`/`.js` under `src/`, `app/`, `pages/`, `components/`), AND either:
@@ -37,8 +37,8 @@ This reference specifies the exact behavior of each hook in the selector-develop
 - Writes: none
 
 **Env vars:**
-- `WORKSPACE_ROOT` (optional) — defaults to `git rev-parse --show-toplevel`
-- `CONVENTION_OVERRIDE` (optional, test-mode only) — overrides cached convention for testing
+- `WORKSPACE_ROOT` (optional): defaults to `git rev-parse --show-toplevel`
+- `CONVENTION_OVERRIDE` (optional, test-mode only): overrides cached convention for testing
 
 **Deny conditions:**
 - Tool is Edit or Write on a frontend source file (same path filter as activation-gate), AND the file already exists, AND the diff does not match the inertness contract:
@@ -63,8 +63,8 @@ This reference specifies the exact behavior of each hook in the selector-develop
 - Writes: `tests/e2e/.selector-development/<scope>.receipt.json` (on PostToolUse); `tests/e2e/.selector-development/.current-scope` (deleted on successful commit); `tests/e2e/.selector-development/archive/<scope>.<ts>.receipt.json` (on successful commit)
 
 **Env vars:**
-- `WORKSPACE_ROOT` (required) — filesystem root of the target project; defaults to `git rev-parse --show-toplevel`
-- `FAKE_STAGED_HASH` (optional, test-mode only) — override for staged diff hash to avoid actual git operations in unit tests
+- `WORKSPACE_ROOT` (required): filesystem root of the target project; defaults to `git rev-parse --show-toplevel`
+- `FAKE_STAGED_HASH` (optional, test-mode only): override for staged diff hash to avoid actual git operations in unit tests
 
 ### 3.1 Step Detection Signatures
 

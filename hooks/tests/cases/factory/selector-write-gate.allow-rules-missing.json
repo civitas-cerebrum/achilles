@@ -1,0 +1,1 @@
+{"cwd":"temp","input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/north/zz-case.spec.ts","content":"await page.locator(x);\n"}},"expect":"allow","warn":false}

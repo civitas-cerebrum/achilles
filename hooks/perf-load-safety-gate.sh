@@ -42,18 +42,16 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/perf-onboarding/SKILL.md\n  sk
 
 # Resolve jq: prefer the binary bundled with the hook install, fall back to
 # system jq for in-repo testing before postinstall has run.
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH. Reinstall the package or install jq manually." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated
 # sessions; plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
 
@@ -77,16 +75,6 @@ fi
 # ---------------------------------------------------------------------------
 # Helper: emit a PreToolUse deny payload with the supplied reason.
 # ---------------------------------------------------------------------------
-emit_deny() {
-  local reason="$1"
-  "$JQ" -n --arg r "$reason${HOOK_REFS}$(achilles_scope_notice)" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }'
-}
 
 # ---------------------------------------------------------------------------
 # Resolve repo root from .cwd (same pattern as onboarding-ledger-gate.sh).
@@ -99,7 +87,7 @@ CONFIG="$REPO_ROOT/tests/perf/perf-onboarding.config.json"
 # Guard: config must exist (scaffold phase must have run first).
 # ---------------------------------------------------------------------------
 if [ ! -f "$CONFIG" ]; then
-  emit_deny "[BLOCKED] perf load run attempted but tests/perf/perf-onboarding.config.json is missing — run perf-onboarding Phase 1 (Scaffold) first to establish the target allowlist + caps."
+  emit_pre_deny "[BLOCKED] perf load run attempted but tests/perf/perf-onboarding.config.json is missing — run perf-onboarding Phase 1 (Scaffold) first to establish the target allowlist + caps."
   exit 0
 fi
 
@@ -119,7 +107,7 @@ if [ -z "$REQUESTED_VUS" ]; then
 fi
 
 if [ -n "$REQUESTED_VUS" ] && [ "$REQUESTED_VUS" -gt "$HARD_MAX_VUS" ] 2>/dev/null; then
-  emit_deny "[BLOCKED] requested VUs (${REQUESTED_VUS}) exceed the hard ceiling of 1000 baked into perf-load-safety-gate.sh. This ceiling is not configurable — it caps autonomous blast radius."
+  emit_pre_deny "[BLOCKED] requested VUs (${REQUESTED_VUS}) exceed the hard ceiling of 1000 baked into perf-load-safety-gate.sh. This ceiling is not configurable — it caps autonomous blast radius."
   exit 0
 fi
 
@@ -140,7 +128,7 @@ if [ -n "$REQUESTED_DUR_RAW" ]; then
     *) REQUESTED_DUR_SEC=0 ;;
   esac
   if [ "$REQUESTED_DUR_SEC" -gt "$HARD_MAX_DURATION_SEC" ] 2>/dev/null; then
-    emit_deny "[BLOCKED] requested duration (${REQUESTED_DUR_RAW} = ${REQUESTED_DUR_SEC}s) exceeds the hard ceiling of 3600s / 1h baked into perf-load-safety-gate.sh. This ceiling is not configurable — it caps autonomous blast radius."
+    emit_pre_deny "[BLOCKED] requested duration (${REQUESTED_DUR_RAW} = ${REQUESTED_DUR_SEC}s) exceeds the hard ceiling of 3600s / 1h baked into perf-load-safety-gate.sh. This ceiling is not configurable — it caps autonomous blast radius."
     exit 0
   fi
 fi
@@ -167,7 +155,7 @@ if [ -z "$TARGET_ORIGIN" ]; then
 fi
 
 if [ -z "$TARGET_ORIGIN" ]; then
-  emit_deny "[BLOCKED] could not determine the load target origin from the k6 command; add an explicit -e PERF_BASE_URL=<allowlisted-origin> so the safety gate can verify the target is in the allowlist."
+  emit_pre_deny "[BLOCKED] could not determine the load target origin from the k6 command; add an explicit -e PERF_BASE_URL=<allowlisted-origin> so the safety gate can verify the target is in the allowlist."
   exit 0
 fi
 
@@ -183,7 +171,7 @@ while IFS= read -r entry; do
 done <<< "$ALLOWLIST"
 
 if [ "$ORIGIN_ALLOWED" != "true" ]; then
-  emit_deny "[BLOCKED] perf load target ${TARGET_ORIGIN} is not in targets.allowlist of perf-onboarding.config.json. Add it explicitly before load-testing it."
+  emit_pre_deny "[BLOCKED] perf load target ${TARGET_ORIGIN} is not in targets.allowlist of perf-onboarding.config.json. Add it explicitly before load-testing it."
   exit 0
 fi
 
@@ -194,7 +182,7 @@ PROD_ORIGIN=$("$JQ" -r '.production.origin // empty' "$CONFIG" 2>/dev/null || tr
 PROD_ALLOWED=$("$JQ" -r '.production.allowed // false' "$CONFIG" 2>/dev/null || echo "false")
 
 if [ -n "$PROD_ORIGIN" ] && [ "$PROD_ORIGIN" = "$TARGET_ORIGIN" ] && [ "$PROD_ALLOWED" != "true" ]; then
-  emit_deny "[BLOCKED] ${TARGET_ORIGIN} is the configured production origin and production.allowed is not true. Production load requires production.allowed:true in perf-onboarding.config.json (a deliberate config opt-in)."
+  emit_pre_deny "[BLOCKED] ${TARGET_ORIGIN} is the configured production origin and production.allowed is not true. Production load requires production.allowed:true in perf-onboarding.config.json (a deliberate config opt-in)."
   exit 0
 fi
 

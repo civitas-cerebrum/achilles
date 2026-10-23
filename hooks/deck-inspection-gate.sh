@@ -6,7 +6,7 @@
 #           PreToolUse:Agent  (DENY agent dispatch while sentinel exists)
 # Mode    : RECORD (Post) / DENY (Pre)
 # State   : .deck-pending-inspection  (sentinel, in the directory holding the PDF)
-#           /tmp/deck-inspection-<ts>/ (rendered page images)
+#           ${TMPDIR:-/tmp}/deck-inspection-<ts>/ (rendered page images)
 # Env     : DECK_INSPECTION_GATE=0  (opt-out — disables the gate entirely)
 #
 # Rule
@@ -61,9 +61,10 @@ printf -v HOOK_REFS -- "\n\nReferences:\n  skills/work-summary-deck/SKILL.md §\
 # Opt-out.
 [ "${DECK_INSPECTION_GATE:-1}" != "0" ] || exit 0
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || exit 0
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init silent
+hook_lib hook-emit.sh
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
@@ -103,7 +104,7 @@ if [ "$EVENT" = "PostToolUse" ] && [ "$TOOL_NAME" = "Bash" ]; then
   PDF_DIR=$(dirname "$PDF_PATH")
   SENTINEL="$PDF_DIR/.deck-pending-inspection"
   TIMESTAMP=$(date +%Y%m%dT%H%M%S)
-  INSPECT_DIR="/tmp/deck-inspection-${TIMESTAMP}"
+  INSPECT_DIR="${TMPDIR:-/tmp}/deck-inspection-${TIMESTAMP}"
 
   # Render PDF pages to PNG images using pdftoppm (part of poppler).
   PDFTOPPM=$(command -v pdftoppm || true)
@@ -245,13 +246,7 @@ issues before dispatching any agent or considering the task complete.
 
 To clear this gate after inspection:  rm \"${SENTINEL}\""
 
-  "$JQ" -n --arg r "$REASON${HOOK_REFS}" '{
-    "hookSpecificOutput": {
-      "hookEventName": "PreToolUse",
-      "permissionDecision": "deny",
-      "permissionDecisionReason": $r
-    }
-  }' 2>/dev/null || true
+  emit_pre_deny_bare "$REASON${HOOK_REFS}"
 
   exit 0
 fi

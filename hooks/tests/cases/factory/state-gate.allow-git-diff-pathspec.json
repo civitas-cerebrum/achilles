@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "git diff -- .factory"}}, "expect": "allow", "warn": false}

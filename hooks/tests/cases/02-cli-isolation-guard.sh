@@ -6,6 +6,7 @@ assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=compo
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=reviewer-j-checkout-1-c1 open --browser=chromium http://app')" "reviewer-j- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=probe-j-checkout-4 open --browser=chromium http://app')" "probe-j- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=composer-sj-pay-1-c1 open --browser=chromium http://app')" "composer-sj- slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=test-composer-j-x-1-c1 open --browser=chromium http://app')" "test-composer-j- slug (kernel-mandate role spelling) → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=phase1-root open --browser=chromium http://app')" "phase1- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=phase2-mkt open --browser=chromium http://app')" "phase2- slug → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=stage2-cart-form open --browser=chromium http://app')" "stage2- slug → ALLOW"
@@ -48,6 +49,61 @@ section "cli-isolation: command-line forms"
 assert_allow "$H" "$(payload tool_name=Bash command='npx playwright-cli -s composer-j-x-1-c1 open --browser=chromium http://app')" "-s <slug> space form → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='bunx playwright-cli -s=composer-j-x-1-c1 open --browser=chromium http://app')" "bunx runner → ALLOW"
 assert_allow "$H" "$(payload tool_name=Bash command='pnpm exec playwright-cli -s=composer-j-x-1-c1 open --browser=chromium http://app')" "pnpm exec runner → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='npx --no-install playwright-cli --version')" "npx --no-install precondition check → ALLOW"
+assert_deny "$H" "$(payload tool_name=Bash command='npx --no-install playwright-cli open http://app')" "npx --no-install without a slug → DENY" "Missing -s=<slug> flag"
 
 section "cli-isolation: noise (playwright-cli mentioned inside string)"
 assert_allow "$H" "$(payload tool_name=Bash command='echo \"playwright-cli is great\"')" "playwright-cli inside echo → silent allow"
+# Observed false positive: a quoted argument that contains a separator before the tool name.
+assert_allow "$H" "$(payload tool_name=Bash command="printf 'Run: cd app && playwright-cli open http://x\n' > notes.md")" "printf of a usage line → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command="printf 'step 1; npx playwright-cli open\n'")" "quoted ';' before the tool name → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command="git commit -m 'docs: x | playwright-cli snapshot needs -s'")" "quoted '|' in a commit message → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='cat > notes.md <<EOF
+npx playwright-cli open http://app
+EOF')" "heredoc body written to a file → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='command -v playwright-cli')" "command -v lookup → silent allow"
+
+section "cli-isolation: invocations are judged wherever the shell runs them"
+assert_deny "$H" "$(payload tool_name=Bash command='cd app && npx playwright-cli open http://x')" "after && → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='"playwright-cli" open http://x')" "quoted command word → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='FOO=1 npx playwright-cli open http://x')" "after an assignment → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command="echo '-s=composer-j-x-1-c1'; npx playwright-cli open http://x")" "a slug in another command does not count → DENY" "Missing -s=<slug> flag"
+assert_deny "$H" "$(payload tool_name=Bash command='npx playwright-cli -s=composer-j-x-1-c1 open; npx playwright-cli -s=j-x-1 open')" "every invocation is judged → DENY" "missing role prefix"
+
+section "cli-isolation: package specs and runners before the invocation"
+for c in 'npx @playwright/cli open http://x' 'npx @playwright/cli@1.2.0 open http://x' 'npx playwright-cli@latest open http://x' \
+         'npm exec -- playwright-cli open http://x' 'env -C /tmp playwright-cli open http://x' \
+         './node_modules/.bin/playwright-cli open http://x' 'if npx playwright-cli open http://x; then echo ok; fi'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Missing -s=<slug> flag"
+done
+assert_allow "$H" "$(payload tool_name=Bash command='npx @playwright/cli -s=composer-j-x-1-c1 open http://x')" "@playwright/cli with a slug → ALLOW"
+
+# playwright-cli in a command the guard cannot identify as playwright-cli itself or a reader is DENY.
+section "cli-isolation: unrecognised = unsafe for any command that mentions playwright-cli"
+for c in 'setsid playwright-cli open https://x' 'someunknownwrapper playwright-cli open https://x'; do
+  assert_deny "$H" "$(payload tool_name=Bash command="$c")" "$c → DENY" "Cannot judge"
+done
+
+section "cli-isolation: spellings and readers"
+assert_deny "$H" "$(payload tool_name=Bash command='npx PLAYWRIGHT-CLI open http://a')" "case-variant name → DENY" "Missing -s=<slug> flag"
+assert_allow "$H" "$(payload tool_name=Bash command='PLAYWRIGHT-CLI -s=composer-j-x-1-c1 open http://a')" "case-variant name with a slug → ALLOW"
+assert_allow "$H" "$(payload tool_name=Bash command='[ -f x ] && ls ./*.md')" "[ as a command word, glob in an operand → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='jq ".dependencies[\"@playwright/cli\"]" package.json')" "jq → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='pgrep -f playwright-cli')" "pgrep → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npm ls @playwright/cli')" "npm ls → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npm view @playwright/cli version')" "npm view → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='npm i -D @playwright/cli')" "npm i -D @playwright/cli → silent allow (an install runs nothing)"
+assert_allow "$H" "$(payload tool_name=Bash command='npm install --save-dev @playwright/cli playwright-cli')" "npm install naming the package → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='bash hooks/tests/cases/02-cli-isolation-guard.sh')" "a shell running a script whose path names the guard → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "x=playwright-cli"')" "printf of an assignment-shaped string → silent allow"
+
+assert_allow "$H" "$(payload tool_name=Bash command='grep -rn playwright-cli hooks/')" "grep for the name → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='cat playwright-cli-notes.md | head')" "cat of a file named after it → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='which playwright-cli')" "which → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='git log --grep playwright-cli')" "git log --grep → silent allow"
+assert_allow "$H" "$(payload tool_name=Bash command='printf "%s\n" "npx playwright-cli open"')" "printf of a usage line → silent allow"
+
+section "cli-isolation: a line too long to split fails closed"
+PAD=$(printf 'w%.0s ' $(seq 1 17000))
+assert_deny "$H" "$(payload tool_name=Bash command="echo $PAD; npx playwright-cli open http://x")" "33 KB line naming playwright-cli → DENY" "too long to split"
+assert_allow "$H" "$(payload tool_name=Bash command="echo $PAD")" "33 KB line not naming it → silent allow"

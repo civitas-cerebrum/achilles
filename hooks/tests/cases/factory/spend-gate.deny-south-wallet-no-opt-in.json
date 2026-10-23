@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test tests/e2e/south/wallet-order.spec.ts --project=south"}},"expect":"deny","messageContains":["[spend.opt-in]","wallet-order.spec.ts","→ Do: Prefix the command with SPEND_OPT_IN=1 for an owner-approved run (one per scenario), or use node scripts/run-suite.mjs","factory-gates.md#spend.opt-in"]}

@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"SPEC=tests/e2e/south/checkout-order.spec.ts; npx playwright test \"$SPEC\" --project=south"}},"expect":"deny","messageContains":["$SPEC","use a literal path"],"_comment":"A spec argument held in a variable cannot be judged: deny, asking for a literal path."}

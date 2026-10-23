@@ -11,7 +11,7 @@ description: >
   per-scenario authoring work.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session — skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
+> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 > **Skill names: see registry.** All skill invocation strings are canonical in [`skill-registry.md`](../achilles-protocol/references/skill-registry.md). Never reconstruct them from memory.
 
@@ -37,11 +37,11 @@ mode you follow this skill body directly.
 
 | Skill | Relationship |
 |---|---|
-| `onboarding` | Functional peer — the e2e bootstrap orchestrator. `perf-onboarding` recommends (but does not require) that `onboarding` has run first so that `tests/e2e/docs/journey-map.md` and `tests/perf/captures/manifest.json` exist. When those artifacts are present the perf pipeline derives scenario models from them (the `derive` path). When absent it bootstraps minimal endpoint discovery. |
-| `performance-testing` | Companion — dispatched by Phase 3 (Scenario-model) and Phase 4 (Baseline) for per-scenario k6 script authoring. The orchestrator sets strategy and gating; the companion does scenario-level craftsmanship. |
+| `onboarding` | Functional peer: the e2e bootstrap orchestrator. `perf-onboarding` recommends (but does not require) that `onboarding` has run first so that `tests/e2e/docs/journey-map.md` and `tests/perf/captures/manifest.json` exist. When those artifacts are present the perf pipeline derives scenario models from them (the `derive` path). When absent it bootstraps minimal endpoint discovery. |
+| `performance-testing` | Companion: dispatched by Phase 3 (Scenario-model) and Phase 4 (Baseline) for per-scenario k6 script authoring. The orchestrator sets strategy and gating; the companion does scenario-level craftsmanship. |
 | `journey-mapping` | Upstream producer of `tests/e2e/docs/journey-map.md`, which the readiness detector (Phase 2) checks and Phase 3 ingests for priority-ordered scenario coverage. |
-| `contract-testing` | Optional — Phase 3 scenario modelling may inspect contract fixtures to derive realistic payload shapes for k6 scenarios. |
-| `workflow-reviewer` | Gatekeeper — dispatched as `perf-reviewer-phase<N>:` and `perf-reviewer-pass-<kind>:` at every transition. The orchestrator advances a phase only when the reviewer returns `approve`. |
+| `contract-testing` | Optional: Phase 3 scenario modelling may inspect contract fixtures to derive realistic payload shapes for k6 scenarios. |
+| `workflow-reviewer` | Gatekeeper: dispatched as `perf-reviewer-phase<N>:` and `perf-reviewer-pass-<kind>:` at every transition, with `subagent_type: perf-reviewer` and the binding tag `<<kernel-mandate-role: perf-reviewer#<nonce>>>` ([roles-and-dispatch.md](../achilles-protocol/references/roles-and-dispatch.md) §"Dispatch grammar"). The orchestrator advances a phase only when the reviewer returns `approve`. |
 
 ---
 
@@ -96,9 +96,9 @@ Before scaffolding, run the readiness probe documented in
 [`references/perf-readiness-detector.md`](references/perf-readiness-detector.md).
 The probe answers two axes:
 
-- **Functional axis** — does a sentinel-bearing `tests/e2e/docs/journey-map.md`
+- **Functional axis**: does a sentinel-bearing `tests/e2e/docs/journey-map.md`
   exist and does `tests/perf/captures/manifest.json` exist?
-- **Perf axis** — are scaffold helpers (`tests/perf/lib/`) and baselines
+- **Perf axis**: are scaffold helpers (`tests/perf/lib/`) and baselines
   (`tests/perf/baselines/`) already present?
 
 Outcomes:
@@ -127,17 +127,17 @@ returns `verdict: approve | reject | escalate`, and the orchestrator only
 advances when the verdict is `approve`.
 
 Every `perf-reviewer-*` dispatching brief MUST cite the reviewer's
-return-schema path (`schemas/subagent-returns/perf-reviewer.schema.json`) —
+return-schema path (`schemas/subagent-returns/perf-reviewer.schema.json`):
 the `subagent-schema-preread-gate.sh` hook denies briefs that omit the
 citation.
 
 The contract is harness-enforced:
 
-- `perf-onboarding-ledger-gate.sh` (PreToolUse:Agent, DENY) — denies any
+- `perf-onboarding-ledger-gate.sh` (PreToolUse:Agent, DENY): denies any
   non-reviewer Agent dispatch at a transition point until the matching
   `perf-reviewer-*` has approved; also denies out-of-order phase / pass
   dispatches (e.g., `scenario-model-*` while `currentPhase=1`).
-- `perf-onboarding-ledger-write-gate.sh` (PreToolUse:Write|Edit, DENY) —
+- `perf-onboarding-ledger-write-gate.sh` (PreToolUse:Write|Edit, DENY):
   validates every ledger write against
   `schemas/perf-onboarding-status.schema.json` and denies phase-skip
   transitions that lack a `status: skipped` row + an `approvedDeviations[]`
@@ -160,7 +160,7 @@ pipeline stopped early) **only** when the workflow-reviewer for the prior
 phase approves the deviation, with the `authorizer` field on the reviewer
 return carrying either a verbatim user quote OR a documented structural
 exception. Self-imposed reasons (`session-length`, `budget-cap`,
-`auto-mode`, `inferred-pref`) are not authorisation — the harness rejects
+`auto-mode`, `inferred-pref`) are not authorisation; the harness rejects
 ledger writes that lack a proper authorizer.
 
 **3-cycle reject cap.** A `perf-reviewer-*` that rejects three consecutive
@@ -169,9 +169,9 @@ returns to the user for manual triage. The ledger row's `status` becomes
 `blocked`.
 
 **Canonical references:**
-- `schemas/perf-onboarding-status.schema.json` — ledger shape (v1)
-- `schemas/subagent-returns/perf-reviewer.schema.json` — reviewer return shape
-- `skills/workflow-reviewer/SKILL.md` — reviewer methodology (§"Perf-onboarding pipeline reviewer")
+- `schemas/perf-onboarding-status.schema.json`: ledger shape (v1)
+- `schemas/subagent-returns/perf-reviewer.schema.json`: reviewer return shape
+- `skills/workflow-reviewer/SKILL.md`: reviewer methodology (§"Perf-onboarding pipeline reviewer")
 
 ---
 
@@ -213,13 +213,13 @@ as it learns the target's capacity from baseline and load-run results.
 `perf-load-safety-gate.sh` (PreToolUse:Bash) intercepts every `k6 run`
 invocation and enforces:
 
-1. **Hard VU ceiling: 1000** — requests exceeding this are denied regardless
+1. **Hard VU ceiling: 1000**: requests exceeding this are denied regardless
    of config values. Baked into the gate, not read from config.
-2. **Hard duration ceiling: 3600 s / 1 h** — same constraint, same source.
-3. **Allowlist enforcement** — only origins listed in `targets.allowlist` may
+2. **Hard duration ceiling: 3600 s / 1 h**: same constraint, same source.
+3. **Allowlist enforcement**: only origins listed in `targets.allowlist` may
    be load-tested. Origin is extracted from the `-e PERF_BASE_URL=<url>`
    flag or the first `http(s)://` URL in the command.
-4. **Production guard** — the configured `production.origin` cannot be
+4. **Production guard**: the configured `production.origin` cannot be
    load-tested unless `production.allowed: true` is set in the config
    (deliberate opt-in, not a runtime prompt).
 
@@ -244,18 +244,18 @@ phase has a consistent foundation.
 **Method.**
 
 1. Write `tests/perf/lib/` with the shared k6 helper modules:
-   - `tests/perf/lib/config.js` — exports `BASE_URL`, `PERF_CAPS`, and
+   - `tests/perf/lib/config.js`: exports `BASE_URL`, `PERF_CAPS`, and
      the stage profiles (ramp-up, steady, tear-down templates).
-   - `tests/perf/lib/profiles.js` — named load profiles: `smoke`,
+   - `tests/perf/lib/profiles.js`: named load profiles: `smoke`,
      `load`, `stress`, `spike`, `soak` (VU counts + duration defaults
      within safe caps).
-   - `tests/perf/lib/thresholds.js` — shared threshold factory: exports
+   - `tests/perf/lib/thresholds.js`: shared threshold factory: exports
      `defaultThresholds(sloConfig)` that builds an SLO-aware threshold
      object for k6's `options.thresholds`.
-   - `tests/perf/lib/correlation.js` — token-extraction helpers: captures
+   - `tests/perf/lib/correlation.js`: token-extraction helpers: captures
      dynamic values (CSRF tokens, session IDs, redirect targets) from
      responses and injects them into subsequent requests.
-   - `tests/perf/lib/summary.js` — custom summary handler: extends k6's
+   - `tests/perf/lib/summary.js`: custom summary handler: extends k6's
      `handleSummary` to write `tests/perf/results/<scenario>-<timestamp>.json`.
 2. Write `tests/perf/perf-onboarding.config.json` with the target origin
    as `targets.default`, the origin in `targets.allowlist`, and conservative
@@ -308,10 +308,10 @@ human-auditable assumptions.
 
 1. Execute the perf-readiness probe (see
    [`references/perf-readiness-detector.md`](references/perf-readiness-detector.md)):
-   - **Functional axis** — check for sentinel-bearing journey-map at
+   - **Functional axis**: check for sentinel-bearing journey-map at
      `tests/e2e/docs/journey-map.md` (line 1 = `<!-- journey-mapping:generated -->`)
      and for `tests/perf/captures/manifest.json`.
-   - **Perf axis** — check whether `tests/perf/lib/` is populated and
+   - **Perf axis**: check whether `tests/perf/lib/` is populated and
      `tests/perf/baselines/` contains any `.json` files.
 2. Derive the cascade outcome: `derive` (both functional artifacts present)
    or `bootstrap` (either absent).
@@ -360,13 +360,13 @@ passes each scenario requires.
      companion skill converts HAR captures into k6 `http.get/post` chains
      with correlation hooks and threshold declarations.
    - Add contract fixture payloads from `tests/perf/captures/` when
-     present (optional — enriches request bodies but is not required).
+     present (optional: enriches request bodies but is not required).
 
 2. **Bootstrap path** (when `readiness.md` shows `bootstrap`):
    - Crawl the target origin (up to 50 URLs) or parse an OpenAPI spec
      if present, or accept a user-provided endpoint list.
    - Cluster endpoints into logical scenarios (auth, browse, transact,
-     account, mutate, errors — no project-specific vocabulary in shared
+     account, mutate, errors; no project-specific vocabulary in shared
      docs).
    - Dispatch `performance-testing` for script authoring from the
      discovered endpoint clusters.
@@ -459,7 +459,7 @@ until the prior pass's `reviewerVerdict` is `approved`.
 
 **Per-pass method:**
 
-For each pass (load / stress / spike / soak — only run passes declared as
+For each pass (load / stress / spike / soak; only run passes declared as
 required in the scenario-model):
 
 1. For each scenario that requires this pass:
@@ -497,7 +497,7 @@ required in the scenario-model):
 pass completes, before the next pass starts. Include: substage handover
 envelope, results summary, ledger. Cite
 `schemas/subagent-returns/perf-reviewer.schema.json`. The gate enforces this
-sequencing — a `load-run-stress-*` dispatch is denied until `pass-load`
+sequencing; a `load-run-stress-*` dispatch is denied until `pass-load`
 has `reviewerVerdict: "approved"`.
 
 **Commit (per pass):** `test(perf): load-run <pass> — <N> scenarios complete`
@@ -506,8 +506,8 @@ has `reviewerVerdict: "approved"`.
 
 ### Phase 6 — Threshold-gate
 
-**Goal.** Prove that the SLO thresholds actually enforce — demonstrate that
-k6 exits non-zero when a threshold is breached — and then evaluate each
+**Goal.** Prove that the SLO thresholds actually enforce (demonstrate that
+k6 exits non-zero when a threshold is breached), and then evaluate each
 scenario's load-run results against those thresholds.
 
 **Method.**
@@ -515,7 +515,7 @@ scenario's load-run results against those thresholds.
 1. **Deliberate-breach proof** (mandatory, cannot be skipped):
    - Pick one scenario (preferably P0).
    - Temporarily mutate one threshold in `tests/perf/lib/thresholds.js`
-     to an impossible value (e.g., `p95 < 1` — 1ms response time).
+     to an impossible value (e.g., `p95 < 1`, 1ms response time).
    - Run `k6 run --vus 1 --duration 10s -e PERF_BASE_URL=<target> tests/perf/scenarios/<scenario>.js`.
    - Confirm k6 exits with a non-zero exit code.
    - Revert the threshold mutation.
@@ -523,9 +523,9 @@ scenario's load-run results against those thresholds.
      `deliberateBreach[]` with: scenario name, mutated threshold, observed
      k6 exit code, revert confirmed.
    - The write-gate denies `threshold-verdict.json` writes where
-     `deliberateBreach` is empty — this proof step cannot be stubbed.
+     `deliberateBreach` is empty; this proof step cannot be stubbed.
 
-2. **SLO evaluation** — for each scenario:
+2. **SLO evaluation**: for each scenario:
    - Compare the load-run results in `tests/perf/results/` against the
      SLO targets declared in the scenario-model.
    - Classify as `pass | fail | warning` (warning = within SLO but within
@@ -534,7 +534,7 @@ scenario's load-run results against those thresholds.
      scenario name, pass/fail/warning, p95 actual vs. threshold,
      error rate actual vs. threshold.
 
-3. **Regression-vs-baseline** — compare load-run results to baselines:
+3. **Regression-vs-baseline**: compare load-run results to baselines:
    - Flag any scenario where p95 under load has regressed more than 3×
      the baseline p95 at 1 VU.
    - Record regressions in `threshold-verdict.json` under `regressions[]`.
@@ -570,19 +570,19 @@ watch, without reading every result JSON.
 1. Write `tests/perf/docs/perf-report.md` with **line 1 exactly**:
    `<!-- perf-onboarding:report -->`
 2. Report sections:
-   - **Executive summary** — number of scenarios, passes run, overall
+   - **Executive summary**: number of scenarios, passes run, overall
      SLO verdict (`all-pass | partial | fail`), date.
-   - **Scenario inventory** — one row per scenario: name, priority,
+   - **Scenario inventory**: one row per scenario: name, priority,
      profiles run, SLO verdict (pass/fail/warning), p95 actual.
-   - **Threshold-gate results** — deliberate-breach proof record +
+   - **Threshold-gate results**: deliberate-breach proof record +
      per-scenario verdict table from `threshold-verdict.json`.
-   - **Regression analysis** — any baselines-vs-load regressions noted
+   - **Regression analysis**: any baselines-vs-load regressions noted
      in `threshold-verdict.json`.
-   - **SLO breach findings** — if any scenario failed SLO, list as a
+   - **SLO breach findings**: if any scenario failed SLO, list as a
      structured finding (scenario, metric, actual value, threshold,
      recommended action). Feed these into the ledger's `approvedDeviations`
      or surface to the user as open findings.
-   - **Recommendations** — load targets to raise/lower VUs, SLO
+   - **Recommendations**: load targets to raise/lower VUs, SLO
      thresholds to tighten, scenarios to add on the next pass.
 3. (Tranche 5 will add a `tests/perf/docs/perf-summary.json` machine-
    readable emit; Phase 7 in this version only writes the markdown report.)
@@ -605,19 +605,19 @@ the ledger. Cite `schemas/subagent-returns/perf-reviewer.schema.json`.
 
 ## Integration details
 
-- **`performance-testing` companion** — dispatched in Phase 3 (script
+- **`performance-testing` companion**: dispatched in Phase 3 (script
   authoring) and Phase 4 (baseline script repair). Pass the scenario name,
   HAR capture path (if `derive`), SLO targets, and target origin. The
   companion returns a path to the authored `.js` file.
-- **Journey-map consumption** — Phase 3 reads `tests/e2e/docs/journey-map.md`
+- **Journey-map consumption**: Phase 3 reads `tests/e2e/docs/journey-map.md`
   directly (no re-parse of a different format). The journey map's P0/P1/P2/P3
   priority tiers map 1:1 to scenario priority in the scenario-model.
-- **HAR captures** — sourced from `tests/perf/captures/manifest.json` (a
+- **HAR captures**: sourced from `tests/perf/captures/manifest.json` (a
   JSON array of `{ "journey": "<name>", "harPath": "tests/perf/captures/<file>.har" }`
   entries). The scenario-model derive pass iterates this manifest.
-- **`tests/perf/lib/` helpers** — shared across all scenario scripts. Scripts
+- **`tests/perf/lib/` helpers**: shared across all scenario scripts. Scripts
   `import { defaultThresholds } from '../lib/thresholds.js'`, etc.
-- **Ledger lifecycle** — initialized in Phase 1, updated after every phase
+- **Ledger lifecycle**: initialized in Phase 1, updated after every phase
   and sub-stage. The ledger is gitignored; the commit history is the durable
   record. On resume, the pipeline reads the ledger to determine the
   `currentPhase` and `currentSubStage` and picks up from there.
@@ -644,7 +644,7 @@ when the exit criteria are technically met.
 
 - **No production load without explicit opt-in.** The `perf-load-safety-gate.sh`
   enforces this at the Bash boundary. The orchestrator does not prompt for
-  production opt-in mid-run — this is a deliberate config change.
+  production opt-in mid-run; this is a deliberate config change.
 - **One commit per phase deliverable.** Phases commit per-phase (not per-scenario),
   except Phase 5 which commits per-pass, so a partial run can be safely resumed.
 - **No project-specific vocabulary in shared docs.** Scenario names use generic

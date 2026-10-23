@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "echo \".factory\""}}, "expect": "allow", "warn": false}

@@ -4,9 +4,8 @@
 # cycle/coverage progress files. PreToolUse:Write|Edit. DENY mode.
 H="$HOOK_DIR/hook-authored-state-guard.sh"
 
-TMP_HAS=$(mktemp -d /tmp/hook-authored-state-XXXXXX)
+tmp_into TMP_HAS /tmp/hook-authored-state-XXXXXX
 mkdir -p "$TMP_HAS/tests/e2e/docs"
-trap 'rm -rf "$TMP_HAS"' EXIT
 DOCS="$TMP_HAS/tests/e2e/docs"
 
 wpayload() { "$JQ" -n --arg p "$1" --arg c "$2" '{tool_name:"Write", tool_input:{file_path:$p, content:$c}}'; }
@@ -54,4 +53,3 @@ assert_allow "$H" "$(wpayload "$COV" '{"passes":{"1":{"dispatched-journeys":["j-
 section "hook-authored-state-guard: unrelated paths silent-allow"
 assert_allow "$H" "$(wpayload "/tmp/whatever.json" '{}')" "unrelated json write → ALLOW"
 
-rm -rf "$TMP_HAS"

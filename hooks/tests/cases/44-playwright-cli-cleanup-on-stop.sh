@@ -23,11 +23,10 @@ section "playwright-cli-cleanup-on-stop: phase4 cycle protocol defers cleanup"
 # must skip close-all. We can't observe the side-effect directly from the
 # test harness, but we can verify the hook still exits 0 with no JSON output
 # (the cycle-state-present branch returns early and is silent).
-TMPDIR_P4=$(mktemp -d)
+tmp_into TMPDIR_P4
 mkdir -p "$TMPDIR_P4/tests/e2e/docs"
 echo '{"cycle":1}' > "$TMPDIR_P4/tests/e2e/docs/.phase4-cycle-state.json"
 assert_allow "$H" "$(payload hook_event_name=SubagentStop cwd="$TMPDIR_P4")" "phase4 cycle-state present → silent allow (deferred)"
-rm -rf "$TMPDIR_P4"
 
 section "playwright-cli-cleanup-on-stop: non-SubagentStop events still exit 0"
 # The hook does not gate on hook_event_name explicitly (it runs cleanup on

@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/south/zz-intake.spec.ts","content":"test(\"CHK-99 — made-up scenario\", async () => {});\n"}},"expect":"deny","messageContains":["[specs.shape]","(CHK-99 — made-up scenario — no scenario block headed CHK-99 in docs/scenarios.md)","factory-gates.md#specs.shape"]}

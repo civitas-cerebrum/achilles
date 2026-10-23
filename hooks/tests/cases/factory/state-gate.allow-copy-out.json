@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"cp .factory/verify-stamp /tmp/stamp-copy.json"}},"expect":"allow","warn":false}

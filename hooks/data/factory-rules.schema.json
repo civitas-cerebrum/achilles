@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/civitas-cerebrum/achilles/main/hooks/data/factory-rules.schema.json",
+  "title": "Achilles factory rules",
+  "description": "Project rule file for the factory gates (hooks/factory/*.sh): the COMMITTED file <project>/achilles-factory-rules.json, or $FACTORY_RULES. One object per rule id; a gate whose rule is absent allows silently. Floors (the `allOf`/`contains` blocks) are shipped by Achilles: a project may add entries, never remove them — a rule file that drops a floor entry fails this schema. Validating the rule file against this schema is the project's verify step's job. See skills/achilles-protocol/references/factory-gates.md.",
+  "type": "object",
+  "required": ["version", "rules"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "contexts": {
+      "type": "object",
+      "description": "Optional named test contexts (e.g. one per region/account). Read by skills and tools that need a base URL and an authenticated storage state; the gates do not read it.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["baseUrl", "storageState"],
+        "properties": {
+          "baseUrl": { "type": "string", "minLength": 1, "description": "Base URL of the application for this context; may be an ${ENV_NAME} reference." },
+          "storageState": { "$ref": "#/$defs/relPath", "description": "Project-relative path of the Playwright storage state for this context (gitignored)." },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "selectors.no-inline": { "$ref": "#/$defs/selectorsNoInline" },
+        "selectors.evidence": { "$ref": "#/$defs/selectorsEvidence" },
+        "specs.shape": { "$ref": "#/$defs/specsShape" },
+        "spend.opt-in": { "$ref": "#/$defs/spendOptIn" },
+        "secrets.none": { "$ref": "#/$defs/secretsNone" },
+        "process.evidence": { "$ref": "#/$defs/processEvidence" },
+        "process.state": { "$ref": "#/$defs/processState" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/ruleBase" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "relPath": { "type": "string", "minLength": 1, "not": { "pattern": "^(/|\\.\\./)|/\\.\\./" }, "description": "Project-relative path (no leading slash, no .. segment)." },
+    "glob": { "type": "string", "minLength": 1, "description": "Bash glob over the project-relative path; a trailing /** also matches the directory itself." },
+    "argv": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Command and arguments, run from the project root without a shell. A first element `node` resolves to $FACTORY_NODE when set." },
+    "strings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "ruleBase": {
+      "type": "object",
+      "required": ["doc", "action"],
+      "properties": {
+        "description": { "type": "string" },
+        "doc": { "type": "string", "pattern": "#[a-z][a-z0-9.-]*$", "description": "Doc anchor quoted on the third line of every deny (→ Why/how:)." },
+        "action": { "type": "string", "minLength": 1, "description": "The sanctioned alternative quoted on the second line of every deny (→ Do:)." }
+      }
+    },
+    "selectorsNoInline": {
+      "allOf": [{ "$ref": "#/$defs/ruleBase" }],
+      "type": "object",
+      "required": ["scope", "forbidden", "allowed"],
+      "properties": {
+        "description": true, "doc": true, "action": true,
+        "scope": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/glob" } },
+        "forbidden": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "allOf": [
+            { "contains": { "const": "[data-" } }, { "contains": { "const": "getByRole(" } }, { "contains": { "const": "getByText(" } },
+            { "contains": { "const": "getByTestId(" } }, { "contains": { "const": "getByLabel(" } }, { "contains": { "const": "getByPlaceholder(" } },
+            { "contains": { "const": "getByAltText(" } }, { "contains": { "const": "getByTitle(" } }, { "contains": { "const": ".locator(" } },
+            { "contains": { "const": "frameLocator(" } }, { "contains": { "const": "page.goto(" } }, { "contains": { "const": "page.evaluate(" } },
+            { "contains": { "const": "page.$" } }, { "contains": { "const": "querySelector" } }, { "contains": { "const": "xpath=" } }
+          ]
+        },
+        "allowed": { "$ref": "#/$defs/strings", "description": "Literals cut out of the content before the forbidden check (e.g. extractAttribute:)." }
+      },
+      "additionalProperties": false
+    },
+    "selectorsEvidence": {
+      "allOf": [{ "$ref": "#/$defs/ruleBase" }],
+      "type": "object",
+      "required": ["repository"],
+      "properties": {
+        "description": true, "doc": true,
+        "repository": { "$ref": "#/$defs/relPath" },
+        "evidenceDir": { "$ref": "#/$defs/relPath", "default": "docs/evidence/selectors" },
+        "provisionalKey": { "type": "string", "minLength": 1, "default": "provisional" },
+        "action": { "type": "string", "minLength": 1, "description": "May carry the placeholders <Page> and <element>; the gate fills them in." }
+      },
+      "additionalProperties": false
+    },
+    "specsShape": {
+      "allOf": [{ "$ref": "#/$defs/ruleBase" }],
+      "type": "object",
+      "required": ["scope", "titleIdPattern", "scenarioDocs"],
+      "properties": {
+        "description": true, "doc": true, "action": true,
+        "scope": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/glob" } },
+        "exclude": { "type": "array", "items": { "$ref": "#/$defs/glob" } },
+        "frozenDirs": { "type": "array", "items": { "$ref": "#/$defs/relPath" }, "description": "Directories that take no new files (existing files stay editable)." },
+        "titleIdPattern": { "type": "string", "minLength": 1, "description": "Oniguruma regex (jq) matched at the start of a title; the match minus a trailing ' — ' is the scenario id." },
+        "scenarioDocs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/relPath" } },
+        "lint": { "$ref": "#/$defs/argv", "description": "Optional scenario lint; called as <lint…> --id <ID> <doc…>; exit 0 = the block is valid." },
+        "tags": { "type": "array", "items": { "type": "string", "pattern": "^@" }, "description": "Guard-only: the project's verify step checks tags; the gate does not." },
+        "blockEnums": {
+          "type": "object",
+          "description": "Optional allowed values for scenario-block fields; the scenario lint reads them when present (the gate does not).",
+          "properties": {
+            "type": { "$ref": "#/$defs/strings" },
+            "oracle": { "$ref": "#/$defs/strings" },
+            "spendPolicy": { "$ref": "#/$defs/strings" },
+            "status": { "$ref": "#/$defs/strings" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "spendOptIn": {
+      "allOf": [{ "$ref": "#/$defs/ruleBase" }],
+      "type": "object",
+      "required": ["list", "optInEnv", "optInFlag"],
+      "properties": {
+        "description": true, "doc": true, "action": true,
+        "list": { "$ref": "#/$defs/relPath", "description": "JSON file { \"specs\": [<project-relative spec path>, …] }." },
+        "optInEnv": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
+        "optInFlag": { "type": "string", "pattern": "^--[a-z0-9-]+$" },
+        "wrapper": { "$ref": "#/$defs/relPath", "description": "Project runner that excludes the list unless optInFlag is passed." },
+        "spendProjects": { "$ref": "#/$defs/strings", "description": "Playwright projects whose unfiltered run includes listed specs." },
+        "spendScripts": { "$ref": "#/$defs/strings", "description": "npm scripts that run a spend project unfiltered." }
+      },
+      "additionalProperties": false
+    },
+    "secretsNone": {
+      "allOf": [{ "$ref": "#/$defs/ruleBase" }],
+      "type": "object",
+      "required": ["scope", "patterns"],
+      "properties": {
+        "description": true, "doc": true, "action": true,
+        "scope": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/glob" } },
+        "patterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "allOf": [
+            { "contains": { "const": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[a-z]{2,}" } },
+            { "contains": { "const": "\\+[1-9]\\d{9,14}" } },
+            { "contains": { "const": "eyJ[A-Za-z0-9_-]{20,}\\." } }
+          ]
+        },
+        "allowlist": { "$ref": "#/$defs/strings", "description": "Entry ending in / = exempt path prefix; any other entry = exempt file path or allowed literal inside a match." }
+      },
+      "additionalProperties": false
+    },
+    "processEvidence": {
+      "allOf": [{ "$ref": "#/$defs/ruleBase" }],
+      "type": "object",
+      "required": ["stamp", "trailDir", "hashCommand"],
+      "properties": {
+        "description": true, "doc": true, "action": true,
+        "stamp": { "$ref": "#/$defs/relPath", "description": "JSON { \"treeHash\": … } written by the project's verify step only." },
+        "currentChange": { "$ref": "#/$defs/relPath", "description": "One line: the <yyyy-mm-dd>-<slug> folder of the change in progress; absent = maintenance commit." },
+        "trailDir": { "$ref": "#/$defs/relPath" },
+        "required": { "$ref": "#/$defs/strings", "description": "Files each current-change folder must hold before a commit." },
+        "hashCommand": { "$ref": "#/$defs/argv", "description": "Prints the content hash of the tree (the same function the verify step stamps)." }
+      },
+      "additionalProperties": false
+    },
+    "processState": {
+      "allOf": [{ "$ref": "#/$defs/ruleBase" }],
+      "type": "object",
+      "required": ["stateDir"],
+      "properties": {
+        "description": true, "doc": true, "action": true,
+        "stateDir": { "$ref": "#/$defs/relPath" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

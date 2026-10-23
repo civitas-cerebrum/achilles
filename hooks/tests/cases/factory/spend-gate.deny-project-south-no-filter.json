@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test --project=south-auth --project south --grep \u0040smoke"}},"expect":"deny","messageContains":["--project=south","no file argument"]}

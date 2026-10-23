@@ -2,29 +2,20 @@
 // validate-schema-fixtures.mjs
 // For each schemas/subagent-returns/<role>.schema.json, verifies that
 // fixtures/<role>-valid.yaml passes and fixtures/<role>-invalid.yaml
-// fails. Also validates the schemas/onboarding-status.schema.json fixtures
+// fails. Also validates the standalone schemas' own <name>.fixtures/ dirs,
+// hooks/data/factory-rules.schema.json (the shipped example plus patch
+// fixtures) and the schemas/onboarding-status.schema.json fixtures
 // under schemas/onboarding-status.fixtures/ (every valid-*.json must
 // validate; every invalid-*.json must fail). Exits non-zero on any mismatch.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { parse } from 'yaml';
-import Ajv from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
+import { makeAjv } from './lib/ajv.mjs';
 
 const dir = 'schemas/subagent-returns';
 const fixturesDir = join(dir, 'fixtures');
-// `allowUnionTypes` accommodates the handover envelope's `cycle` union
-// (integer | string), which the spec deliberately permits. `strictSchema:
-// false` keeps Ajv tolerant of vendor keywords.
-const ajv = new Ajv({
-  strict: true,
-  allErrors: true,
-  loadSchema: false,
-  allowUnionTypes: true,
-  strictSchema: false,
-});
-addFormats(ajv);
+const ajv = makeAjv();
 
 const handover = JSON.parse(readFileSync(join(dir, 'handover.schema.json'), 'utf8'));
 ajv.addSchema(handover);
@@ -99,14 +90,7 @@ for (const file of schemaFiles) {
 function validateStandaloneFixtures(schemaPath, fixturesDirPath) {
   if (!existsSync(schemaPath) || !existsSync(fixturesDirPath)) return;
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
-  const standaloneAjv = new Ajv({
-    strict: true,
-    allErrors: true,
-    loadSchema: false,
-    allowUnionTypes: true,
-    strictSchema: false,
-  });
-  addFormats(standaloneAjv);
+  const standaloneAjv = makeAjv();
   const validateFn = standaloneAjv.compile(schema);
 
   for (const f of readdirSync(fixturesDirPath).filter(n => n.endsWith('.json'))) {
@@ -133,6 +117,45 @@ validateStandaloneFixtures('schemas/perf-onboarding-status.schema.json', 'schema
 validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-summary.fixtures');
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
 
+// The factory-rules schema lives under hooks/data/ (the hooks read it from the
+// installed hook directory), so it has its own block. Its floors and closed
+// rule objects are how a project can add to a rule but not weaken it. The
+// shipped example is the valid fixture; each invalid fixture is a patch over
+// it (RFC 6902 add/replace/remove) plus a substring of the Ajv error it must
+// produce.
+function applyPatch(doc, ops) {
+  const out = structuredClone(doc);
+  for (const { op, path, value } of ops) {
+    const keys = path.split('/').slice(1).map((k) => k.replaceAll('~1', '/').replaceAll('~0', '~'));
+    const last = keys.pop();
+    const parent = keys.reduce((node, k) => node[k], out);
+    if (op === 'remove') Array.isArray(parent) ? parent.splice(Number(last), 1) : delete parent[last];
+    else if (op === 'add' && Array.isArray(parent)) parent.splice(last === '-' ? parent.length : Number(last), 0, value);
+    else if (op === 'add' || op === 'replace') parent[last] = value;
+    else throw new Error(`unsupported patch op: ${op}`);
+  }
+  return out;
+}
+
+{
+  const dirPath = 'hooks/data/factory-rules.fixtures';
+  const validateRules = makeAjv().compile(JSON.parse(readFileSync('hooks/data/factory-rules.schema.json', 'utf8')));
+  const exampleFile = 'hooks/data/factory-rules.example.json';
+  const example = JSON.parse(readFileSync(exampleFile, 'utf8'));
+  if (validateRules(example)) console.log(`OK:   ${exampleFile} validates against the schema`);
+  else { console.error(`FAIL: ${exampleFile} did not validate`); console.error(validateRules.errors); failures++; }
+
+  for (const f of readdirSync(dirPath).filter((n) => n.endsWith('.patch.json'))) {
+    const full = join(dirPath, f);
+    const { base, patch, expectError } = JSON.parse(readFileSync(full, 'utf8'));
+    const doc = applyPatch(JSON.parse(readFileSync(join('hooks/data', base), 'utf8')), patch);
+    if (validateRules(doc)) { console.error(`FAIL: ${full} unexpectedly validated`); failures++; continue; }
+    const messages = validateRules.errors.map((e) => `${e.instancePath}: ${e.message}`);
+    if (messages.some((m) => m.includes(expectError))) console.log(`OK:   ${full} correctly fails (${expectError})`);
+    else { console.error(`FAIL: ${full} failed, but not with "${expectError}"`); console.error(messages); failures++; }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Onboarding-status ledger fixtures
 // ---------------------------------------------------------------------------
@@ -145,14 +168,7 @@ if (existsSync(onboardingSchemaPath) && existsSync(onboardingFixturesDir)) {
   const onboardingSchema = JSON.parse(readFileSync(onboardingSchemaPath, 'utf8'));
   // Use a fresh Ajv instance — the onboarding-status schema is a
   // standalone document, not a member of the subagent-return collection.
-  const ajvOnboarding = new Ajv({
-    strict: true,
-    allErrors: true,
-    loadSchema: false,
-    allowUnionTypes: true,
-    strictSchema: false,
-  });
-  addFormats(ajvOnboarding);
+  const ajvOnboarding = makeAjv();
   const validateOnboarding = ajvOnboarding.compile(onboardingSchema);
 
   for (const f of readdirSync(onboardingFixturesDir).filter(n => n.endsWith('.json'))) {

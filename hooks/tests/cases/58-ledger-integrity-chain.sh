@@ -7,9 +7,8 @@ H="$HOOK_DIR/ledger-integrity-chain.sh"
 # shellcheck disable=SC1091
 . "$HOOK_DIR/lib/hash.sh"
 
-TMP_CHAIN=$(mktemp -d /tmp/ledger-integrity-chain-XXXXXX)
+tmp_into TMP_CHAIN /tmp/ledger-integrity-chain-XXXXXX
 mkdir -p "$TMP_CHAIN/tests/e2e/docs"
-trap 'rm -rf "$TMP_CHAIN"' EXIT
 
 CHAIN_LEDGER="$TMP_CHAIN/tests/e2e/docs/onboarding-status.json"
 CHAIN_SIDECAR="$TMP_CHAIN/tests/e2e/docs/.ledger-integrity.json"
@@ -96,4 +95,3 @@ section "ledger-integrity-chain: BARE RELATIVE sidecar path is gated like absolu
 assert_deny "$H" "$(payload tool_name=Write file_path='tests/e2e/docs/.ledger-integrity.json' content='{}' hook_event_name=PreToolUse)" \
   "relative sidecar path → DENY" "hook-authored"
 
-rm -rf "$TMP_CHAIN"

@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "grep -r stamp .factory"}}, "expect": "allow", "warn": false}

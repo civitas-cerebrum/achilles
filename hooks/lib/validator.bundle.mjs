@@ -15314,9 +15314,22 @@ var require_dist2 = __commonJS({
 
 // scripts/.validator-entry.gen.mjs
 var import_yaml = __toESM(require_dist(), 1);
+import { readFileSync } from "node:fs";
+
+// scripts/lib/ajv.mjs
 var import__ = __toESM(require__(), 1);
 var import_ajv_formats = __toESM(require_dist2(), 1);
-import { readFileSync } from "node:fs";
+function makeAjv() {
+  const ajv = new (import__.default.default || import__.default)({
+    strict: true,
+    allErrors: true,
+    loadSchema: false,
+    allowUnionTypes: true,
+    strictSchema: false
+  });
+  (import_ajv_formats.default.default || import_ajv_formats.default)(ajv);
+  return ajv;
+}
 
 // schemas/subagent-returns/composer.schema.json
 var composer_schema_default = {
@@ -16237,7 +16250,7 @@ var onboarding_status_schema_default = {
           },
           reviewerVerdict: {
             type: ["string", "null"],
-            enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+            enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
           },
           reviewerCycles: {
             type: "integer",
@@ -16285,7 +16298,7 @@ var onboarding_status_schema_default = {
                 },
                 reviewerVerdict: {
                   type: ["string", "null"],
-                  enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+                  enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
                 },
                 reviewerCycles: {
                   type: "integer",
@@ -16437,7 +16450,7 @@ var perf_onboarding_status_schema_default = {
           },
           reviewerVerdict: {
             type: ["string", "null"],
-            enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+            enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
           },
           reviewerCycles: {
             type: "integer",
@@ -16485,7 +16498,7 @@ var perf_onboarding_status_schema_default = {
                 },
                 reviewerVerdict: {
                   type: ["string", "null"],
-                  enum: ["pending", "approved", "rejected", "escalated-to-user", null]
+                  enum: ["pending", "approved", "rejected", "escalated-to-user", "escalate", null]
                 },
                 reviewerCycles: {
                   type: "integer",
@@ -16733,10 +16746,8 @@ var SCHEMAS = {
   "run-summary": run_summary_schema_default,
   "perf-summary": perf_summary_schema_default
 };
-function makeAjv() {
-  const AjvCtor = import__.default.default || import__.default;
-  const ajv = new AjvCtor({ strict: true, allErrors: true, allowUnionTypes: true, strictSchema: false });
-  (import_ajv_formats.default.default || import_ajv_formats.default)(ajv);
+function makeHandoverAjv() {
+  const ajv = makeAjv();
   if (SCHEMAS["handover"]) ajv.addSchema(SCHEMAS["handover"]);
   return ajv;
 }
@@ -16753,7 +16764,7 @@ function cmdValidate(id, dataFile) {
     console.error("PARSE_FAIL: " + e.message);
     process.exit(1);
   }
-  const validate = makeAjv().compile(schema);
+  const validate = makeHandoverAjv().compile(schema);
   if (!validate(data)) {
     for (const err of validate.errors ?? []) {
       console.error("SCHEMA_FAIL: " + (err.instancePath || "/") + " " + err.message);

@@ -1,0 +1,357 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/achilles-protocol-activation-watcher.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/achilles-protocol-activation-watcher.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/subagent-schema-preread-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/standard-mode-first-pass-guard.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/onboarding-ledger-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/workflow-approver-registry.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/composition-judge-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/workflow-reviewer-brief-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/perf-onboarding-ledger-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/journey-mapping-skill-preread-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/deck-inspection-gate.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/achilles-kernel-activation-gate.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/playwright-cli-isolation-guard.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/commit-message-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/pr-attribution-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/protected-artifact-bash-guard.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/adversarial-verification-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/evidence-bundle-gate.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/perf-load-safety-gate.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/adversarial-verification-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/evidence-bundle-gate.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/client-term-guard.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/onboarding-ledger-write-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/perf-onboarding-ledger-write-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/harness-self-protection-guard.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/hook-authored-state-guard.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/ledger-integrity-chain.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/failure-diagnosis-evidence-floor-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/journey-map-sentinel-gate.sh",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/journey-mapping-skill-preread-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/test-id-compliance-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/achilles-import-boundary-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/selector-development-activation-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/selector-development-inertness-guard.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/achilles-multiedit-gate.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/selector-development-pipeline-stepper.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/achilles-protocol-activation-watcher.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/achilles-protocol-activation-watcher.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/ledger-integrity-chain.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/playwright-artifact-archiver.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/deck-inspection-gate.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/subagent-return-schema-guard.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/composition-judge-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/workflow-reviewer-attestation-gate.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/selector-development-pipeline-stepper.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/playwright-cli-cleanup-on-stop.sh",
+            "timeout": 30,
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/playwright-artifact-archiver.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/compliance-sweep-exit-gate.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@HOOKS@/compliance-sweep-exit-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/selector-development-revert-on-stop.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/composition-judge-gate.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/run-summary-writer.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/perf-summary-writer.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "@HOOKS@/playwright-artifact-archiver.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

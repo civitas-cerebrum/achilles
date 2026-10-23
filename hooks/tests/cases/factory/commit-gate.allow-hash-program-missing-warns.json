@@ -1,0 +1,1 @@
+{"cwd":"temp","copy":["achilles-factory-rules.json"],"write":{"package.json":"{}\n"},"stamp":"deadbeef","env":{"FACTORY_NODE":"/nonexistent/node"},"input":{"tool_name":"Bash","cwd":"{{ROOT}}","tool_input":{"command":"git commit -m x"}},"expect":"allow","stderrContains":["[factory] node not found"]}

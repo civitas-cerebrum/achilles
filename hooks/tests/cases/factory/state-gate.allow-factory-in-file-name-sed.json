@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "sed -n 1,20p tests/factories/order.factory.ts && rm -f tests/tmp/*.json"}}, "expect": "allow", "warn": false}

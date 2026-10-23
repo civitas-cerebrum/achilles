@@ -1,0 +1,1 @@
+{"input": {"tool_name": "Bash", "tool_input": {"command": "git commit -am 'x .factory/x'"}}, "expect": "allow", "warn": false}

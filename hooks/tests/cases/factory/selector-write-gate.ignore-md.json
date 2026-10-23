@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/docs/zz-case.md","content":"Never write page.locator(x) or getByRole( in a spec.\n"}},"expect":"allow","warn":false}

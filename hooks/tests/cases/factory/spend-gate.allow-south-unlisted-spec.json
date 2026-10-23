@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test tests/e2e/south/checkout-state.spec.ts --project=south"}},"expect":"allow","warn":false}

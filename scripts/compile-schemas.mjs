@@ -3,25 +3,16 @@
 // Compiles every JSON Schema under schemas/subagent-returns/ via Ajv,
 // surfacing any compile-time error. Replaces the prior `ajv-cli compile`
 // invocation, which pulled in `fast-json-patch <3.1.1` with a HIGH-severity
-// prototype-pollution advisory (GHSA-8gh8-hqwg-xf34). Uses the same Ajv
-// configuration as the runtime validator + the fixture script so all three
-// consumers agree on strictness.
+// prototype-pollution advisory (GHSA-8gh8-hqwg-xf34). Ajv is configured in
+// scripts/lib/ajv.mjs, shared with the fixture script and the runtime validator.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import Ajv from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
+import { makeAjv } from './lib/ajv.mjs';
 
 const dir = 'schemas/subagent-returns';
 
-const ajv = new Ajv({
-  strict: true,
-  allErrors: true,
-  loadSchema: false,
-  allowUnionTypes: true,
-  strictSchema: false,
-});
-addFormats(ajv);
+const ajv = makeAjv();
 
 // The handover envelope is referenced by every role schema's $ref; add it
 // first so subsequent compiles can resolve `$ref: handover.schema.json`.
@@ -50,14 +41,7 @@ for (const file of schemaFiles) {
 // documents with no $ref into the handover envelope.
 function compileStandalone(name, schemaPath) {
   try {
-    const standaloneAjv = new Ajv({
-      strict: true,
-      allErrors: true,
-      loadSchema: false,
-      allowUnionTypes: true,
-      strictSchema: false,
-    });
-    addFormats(standaloneAjv);
+    const standaloneAjv = makeAjv();
     const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
     standaloneAjv.compile(schema);
     console.log(`✓ ${name}`);

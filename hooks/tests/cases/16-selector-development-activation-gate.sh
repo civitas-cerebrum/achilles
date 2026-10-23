@@ -193,7 +193,7 @@ section "selector-development-activation-gate: no scope in flight → silent ALL
 
 # Workspace without the sentinel (similar shape to _make_tests_only_ws
 # but without _seed_scope — explicitly the "no scope" case).
-WS=$(mktemp -d)
+tmp_into WS
 printf '{"devDependencies":{"typescript":"^5.0.0"}}\n' > "$WS/package.json"
 export WORKSPACE_ROOT="$WS"
 

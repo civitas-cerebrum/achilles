@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test tests/e2e/south/checkout-order.spec.ts:42:7 --project=south"}},"expect":"deny","messageContains":["checkout-order.spec.ts"]}

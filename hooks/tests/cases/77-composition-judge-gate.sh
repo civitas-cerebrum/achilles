@@ -7,7 +7,7 @@
 # ACHILLES_JUDGE_STATE_DIR (env override used here).
 H="$HOOK_DIR/composition-judge-gate.sh"
 
-CJG_STATE=$(mktemp -d)
+tmp_into CJG_STATE
 export ACHILLES_JUDGE_STATE_DIR="$CJG_STATE"
 export ACHILLES_PROTOCOL=1
 
@@ -52,4 +52,3 @@ assert_allow "$H" "not-json" "invalid JSON → silent allow"
 
 unset ACHILLES_PROTOCOL
 unset ACHILLES_JUDGE_STATE_DIR
-rm -rf "$CJG_STATE"

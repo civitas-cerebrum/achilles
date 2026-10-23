@@ -25,8 +25,8 @@
 # play, a Write|Edit to a `*.spec.*` file or a `page-repository*.json` is
 # denied when the transcript contains NO evidence access whatsoever.
 #
-# Scope, stated honestly
-# ----------------------
+# Scope
+# -----
 # The gate proves evidence was ACCESSED, not that it was UNDERSTOOD. An agent
 # that opens a trace and then ignores it passes. It cannot read the written
 # observation for each floor item, and it cannot tell attempt 0's trace from
@@ -52,10 +52,14 @@
 # 1. Tool is Write or Edit.
 # 2. Target path is a spec file (`*.spec.ts|tsx|js|mjs|cjs`, `*.test.ts|...`)
 #    or an element repository (`page-repository*.json`).
-# 3. The session is doing failure diagnosis — the transcript shows a
-#    Skill('failure-diagnosis'), a Read of `skills/failure-diagnosis/SKILL.md`,
-#    or an Agent dispatch whose description carries an `fd-` /
-#    `repair-worker-` role prefix.
+# 3. The WRITER is doing failure diagnosis — its own transcript shows a
+#    Skill('failure-diagnosis') or a Read of `skills/failure-diagnosis/SKILL.md`,
+#    or the writer is a subagent whose agent_type is an `fd` / `repair-worker`
+#    role. Only the writer's transcript counts: a subagent's call is judged on
+#    <session>/subagents/agent-<agent_id>.jsonl, never on the parent session's
+#    (the parent dispatching an fd- worker once does not make every later
+#    probe or composer a diagnoser, and the fd worker's evidence reads live in
+#    its own transcript).
 # 4. The transcript shows NO evidence access (the signal list below).
 #
 # Evidence signals (ANY ONE satisfies the floor's mechanical half)
@@ -104,18 +108,15 @@ if [ "${FD_EVIDENCE_FLOOR_GATE:-on}" = "off" ]; then
   exit 0
 fi
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-if [ -z "$JQ" ]; then
-  echo "[$(basename "${BASH_SOURCE[0]}")] FATAL: jq not found at \$HOOK_DIR/bin/jq nor on PATH." >&2
-  exit 1
-fi
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_jq_init fatal
 
-INPUT=$(cat)
+hook_read_input
 
 # Session-scope gate: this hook applies only to achilles-activated sessions;
 # plain dev sessions silent-allow (lib/achilles-activation.sh).
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh hook-emit.sh
 achilles_require_active "$INPUT"
 
 TOOL_NAME=$(echo "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
@@ -139,8 +140,16 @@ case "$NORM_PATH" in
   *) exit 0 ;;
 esac
 
-# Locate the transcript. Without it there is nothing to scan — fail open.
+# Locate the WRITER's transcript. A subagent's call carries `agent_id`, while
+# `transcript_path` still names the parent session's file; the child's own
+# transcript sits beside it under subagents/. Without one — fail open.
 TRANSCRIPT_PATH=$(echo "$INPUT" | "$JQ" -r '.transcript_path // empty' 2>/dev/null || echo "")
+AGENT_ID=$(echo "$INPUT" | "$JQ" -r '.agent_id // empty' 2>/dev/null || echo "")
+AGENT_TYPE=$(echo "$INPUT" | "$JQ" -r '.agent_type // empty' 2>/dev/null || echo "")
+if [ -n "$AGENT_ID" ]; then
+  case "$AGENT_ID" in *[!A-Za-z0-9_-]*) exit 0 ;; esac
+  TRANSCRIPT_PATH="${TRANSCRIPT_PATH%.jsonl}/subagents/agent-${AGENT_ID}.jsonl"
+fi
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
   exit 0
 fi
@@ -156,22 +165,22 @@ TOOL_USES=$(
         (
           (select(.name? == "Skill") | "SKILL " + (.input.skill // "")),
           (select(.name? == "Read")  | "READ "  + (.input.file_path // "")),
-          (select(.name? == "Bash")  | "BASH "  + (.input.command // "")),
-          (select(.name? == "Agent") | "AGENT " + (.input.description // ""))
+          (select(.name? == "Bash")  | "BASH "  + (.input.command // ""))
         )
     else empty end
   ' "$TRANSCRIPT_PATH" 2>/dev/null || true
 )
-[ -n "$TOOL_USES" ] || exit 0
 
-# --- (3) Is this session doing failure diagnosis? ---------------------------
-# Skill('failure-diagnosis') (bare or plugin/path-prefixed), a Read of the
-# skill file, or an fd- / repair-worker- role dispatch. No fd context → this
-# write is somebody else's business (a composer authoring a new spec, say).
+# --- (3) Is the writer doing failure diagnosis? -----------------------------
+# The writer is an fd / repair-worker subagent, or its own transcript loaded
+# Skill('failure-diagnosis') (bare or plugin/path-prefixed) or read the skill
+# file. No fd context → this write is somebody else's business (a composer or
+# a pass-5 probe authoring a spec, say).
 FD_CONTEXT=$(
-  printf '%s\n' "$TOOL_USES" \
-    | grep -E '^SKILL ([a-z0-9./_-]+[:/])?failure-diagnosis$|^READ .*skills/failure-diagnosis/SKILL\.md$|^AGENT[[:space:]]+(fd|repair-worker)-' \
-    | head -1 || true
+  { printf '%s\n' "$AGENT_TYPE" | grep -E '(^|:)('"$DISPATCH_FD_ROLE_ALT"')$'
+    printf '%s\n' "$TOOL_USES" \
+      | grep -E '^SKILL ([a-z0-9./_-]+[:/])?failure-diagnosis$|^READ .*skills/failure-diagnosis/SKILL\.md$'
+  } | head -1 || true
 )
 if [ -z "$FD_CONTEXT" ]; then
   exit 0
@@ -221,8 +230,8 @@ Do this instead — open the evidence, then write:
 What was wrong:
 ──────────────────────────────────────────────────────────────────
 File: ${FILE_PATH}
-Context: failure-diagnosis is in play in this session (skill loaded, or an
-         fd-* / repair-worker-* role is running).
+Context: this writer is diagnosing a failure (it loaded failure-diagnosis,
+         or it is an fd / repair-worker subagent).
 Evidence reads found in transcript: NONE — no trace, no error-context.md, no
          failure screenshot, no video, no JSON reporter output, no
          \`show-trace\` / \`unzip … trace.zip\` / \`gh run download\` call.
@@ -260,11 +269,5 @@ References:
   skills/coverage-expansion/references/anti-rationalizations.md §\"Pattern: Diagnosis from log text alone\"
   skills/achilles-protocol/references/harness-hooks.md"
 
-"$JQ" -n --arg r "$REASON$(achilles_scope_notice)" '{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": $r
-  }
-}'
+emit_pre_deny "$REASON"
 exit 0

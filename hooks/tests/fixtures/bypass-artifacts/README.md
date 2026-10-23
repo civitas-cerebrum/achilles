@@ -8,8 +8,7 @@ hooks they exercised; the artifacts are kept as the canonical record of the
 bypass shapes (and as inputs for any future exploit-replication coverage).
 
 The artifacts are read-only fixtures. Do not edit them; if the upstream
-shape changes, copy the new artifacts in and bump anything that depends on
-the old shape.
+shape changes, copy the new artifacts in and update what depends on them.
 
 | File | Source path in downstream-e2e |
 |---|---|

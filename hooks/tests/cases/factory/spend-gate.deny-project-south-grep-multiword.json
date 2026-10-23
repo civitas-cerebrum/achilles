@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"npx playwright test --project=south -g \"CHK-06 — Card, registered shopper\""}},"expect":"deny","messageContains":["`playwright test --project=south` with no file argument"]}

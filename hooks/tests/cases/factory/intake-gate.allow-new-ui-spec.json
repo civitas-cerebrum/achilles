@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/e2e/north/zz-new.spec.ts","content":"export {};\n"}},"expect":"allow","warn":false}

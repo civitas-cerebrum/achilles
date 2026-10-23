@@ -1,0 +1,1 @@
+{"input":{"tool_name":"Bash","tool_input":{"command":"bash -c 'npx playwright test tests/e2e/north/north-card.spec.ts --project=north'"}},"expect":"allow","warn":false}

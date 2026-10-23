@@ -1,0 +1,1 @@
+{"hook":"selector-write-gate","input":{"tool_name":"Write","tool_input":{"file_path":"{{ROOT}}/tests/support/zz-case.ts","content":"/**\n * Never call page.locator( or getByRole( here —\n * use steps.<verb>('<element>', '<Page>').\n */\nexport const x = 1;\n"}},"expect":"allow","warn":false}

@@ -53,24 +53,25 @@
 # - Stop w/ last verdict SATISFIED / no verdict / no judge → silent allow
 # - composition-judge-* dispatch (PreToolUse)             → RECORD, silent allow
 # - composition-judge-* return (PostToolUse)              → RECORD verdict, silent allow
-# - malformed input / jq missing / state unreadable       → silent allow (fail open)
+# - malformed input / state unreadable                    → silent allow (fail open)
+# - jq missing, PreToolUse                                → deny while the protocol is active (KL-14), else silent allow
 
 set -uo pipefail
 
-JQ="$(dirname "${BASH_SOURCE[0]}")/bin/jq"
-[ -x "$JQ" ] || JQ="$(command -v jq || true)"
-[ -n "$JQ" ] || exit 0
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/lib/hook-io.sh"
+hook_lib hook-emit.sh
+hook_jq_init silent
 
 INPUT=$(cat 2>/dev/null || echo "{}")
 
 # Session-scope gate: only achilles-activated sessions feel this leash.
-# shellcheck disable=SC1091
-. "$(dirname "${BASH_SOURCE[0]}")/lib/achilles-activation.sh"
+hook_lib achilles-activation.sh
 achilles_require_active "$INPUT"
 
-EVENT=$(printf '%s' "$INPUT" | "$JQ" -r '.hook_event_name // empty' 2>/dev/null || echo "")
-TOOL_NAME=$(printf '%s' "$INPUT" | "$JQ" -r '.tool_name // empty' 2>/dev/null || echo "")
-SID=$(printf '%s' "$INPUT" | "$JQ" -r '.session_id // empty' 2>/dev/null || echo "")
+EVENT=$(hook_field .hook_event_name)
+TOOL_NAME=$(hook_field .tool_name)
+SID=$(hook_field .session_id)
 [ -n "$SID" ] || SID="default"
 
 STATE_DIR="${ACHILLES_JUDGE_STATE_DIR:-$HOME/.claude/achilles/composition-judge}"
@@ -141,7 +142,7 @@ References:
   skills/achilles-protocol/references/test-composition-standards.md §4
   skills/coverage-expansion/references/anti-rationalizations.md §"Judge-loop skipping"
 EOF
-    "$JQ" -n --arg r "$REASON" '{ "decision": "block", "reason": $r }'
+    emit_stop_block "$REASON"
     exit 0
   fi
   exit 0

@@ -1,0 +1,1 @@
+{"cwd":"temp","copy":["achilles-factory-rules.json"],"input":{"tool_name":"Bash","cwd":"/private/tmp/some-other-repo","tool_input":{"command":"git commit -m \"docs: elsewhere\""}},"expect":"allow","warn":false}
