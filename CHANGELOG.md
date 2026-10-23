@@ -35,6 +35,11 @@
 - Approval-class ledger writes must come from an approver `agent_type` when the host supplies one.
 - Phase 7 is dispatched as `secrets-sweep-phase7:` with `subagent_type: secrets-sweep`.
 - The package declares `"engines": { "node": ">=20" }` and its tarball no longer includes schema fixtures.
+- Pass 5 commits one per journey, `test(<j-slug>-regression): lock <N> boundaries`, with one `lock <boundary>` line per lock in the body. The commit table asked for one commit per lock, which contradicted step 8 and the Pass 5 completion criteria and needs partial staging that the orchestrator's `git add` / `git commit` cannot do.
+- The advisory lock for appending to the adversarial findings ledger is taken with one `mkdir tests/e2e/docs/.adversarial-findings.lock` and released with one `rmdir`, each run on its own; the documented `while … sleep` loop is gone.
+- The status ledgers accept `escalate`, the workflow-reviewer's verdict word, as the same verdict as `escalated-to-user`. Neither counts as approval, and either satisfies the 3-round reject cap.
+- Postinstall runs for `npm install <folder>`. A folder install links the package, so its path has no `node_modules`, and the own-repo guard skipped it silently; the guard now skips only a developer's `npm install` inside the Achilles checkout (`INIT_CWD` is the package dir), and the consuming project is taken from `INIT_CWD`.
+- `failure-diagnosis-evidence-floor-gate` judges the writer's own transcript: a subagent's write is checked against `subagents/agent-<agent_id>.jsonl`, an `fd` / `repair-worker` subagent counts as diagnosing, and a dispatch line no longer does. One `fd-` dispatch in a session no longer makes every later spec write a diagnosis.
 
 ### Known limits
 
