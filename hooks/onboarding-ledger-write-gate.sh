@@ -156,7 +156,14 @@ onboarding_check_deliverables() {
           "invoke the \`coverage-expansion\` skill via the Skill tool. It writes the state file as it runs the per-pass pipeline." \
           "skills/onboarding/SKILL.md §\"Phase 5 — Coverage expansion\" + skills/coverage-expansion/SKILL.md"
       fi
-      HAS_PASS_1=$("$JQ" -r '.passes["1"] != null' "$COV_STATE_PATH" 2>/dev/null || echo "false")
+      # A pass record lives under passes["<N>"] or passes["pass-<N>"]; both
+      # keyings are in use (state-file-schema.md §"Per-pass records"). A real
+      # record is a non-empty object — `{}` or null is no record.
+      COV_PASS_JQ='def passrec($p): ((.passes // {}) | if type == "object" then (.[$p] // .["pass-" + $p]) else null end);
+        def hasrec($p): (passrec($p) | (type == "object") and (length > 0));
+        def p1journeys: [ (passrec("1") // {}) | ((.["dispatched-journeys"] // [])[]?), ((.dispatches // [])[]? | .journey? // empty) ] | map(select(type == "string")) | unique;
+        def p1deferred: [ ((passrec("1") // {}).deferredJourneys // [])[]?, (.deferredJourneys // [])[]? ] | map(select(type == "object")) | unique_by(.journey // "");'
+      HAS_PASS_1=$("$JQ" -r "${COV_PASS_JQ} hasrec(\"1\")" "$COV_STATE_PATH" 2>/dev/null || echo "false")
       if [ "$HAS_PASS_1" != "true" ]; then
         pipeline_emit_phase_deny "5" \
           "coverage-expansion-state.json reports no pass-1 record. Pass 1 (strict per-journey, compositional) is the foundation of every coverage-expansion mode." \
@@ -172,11 +179,11 @@ onboarding_check_deliverables() {
       if [ "$RUN_MODE_COV" != "breadth" ]; then
         MISSING_PASSES=""
         for pnum in 1 2 3 4 5; do
-          HAS_P=$("$JQ" -r --arg p "$pnum" '.passes[$p] != null' "$COV_STATE_PATH" 2>/dev/null || echo "false")
+          HAS_P=$("$JQ" -r --arg p "$pnum" "${COV_PASS_JQ} hasrec(\$p)" "$COV_STATE_PATH" 2>/dev/null || echo "false")
           [ "$HAS_P" = "true" ] || MISSING_PASSES="${MISSING_PASSES} ${pnum}"
         done
         CLEANUP_RECORDED=$("$JQ" -r '
-          (.cleanup != null) or (.cleanupRecorded == true) or (.passes["cleanup"] != null)
+          (.cleanup != null) or (.cleanupRecorded == true) or ((.passes // {}) | type == "object" and .["cleanup"] != null)
         ' "$COV_STATE_PATH" 2>/dev/null || echo "false")
         if [ -n "$MISSING_PASSES" ] || [ "$CLEANUP_RECORDED" != "true" ]; then
           pipeline_emit_phase_deny "5" \
@@ -186,15 +193,17 @@ onboarding_check_deliverables() {
         fi
       fi
 
-      # Pass 1's dispatched-journeys + deferredJourneys[] must cover the journey
+      # Pass 1's dispatched journeys + deferredJourneys[] must cover the journey
       # map's roster (silent scope compression: 8 of 41 dispatched, marked done).
       MAP_PATH="$PROJECT_ROOT/tests/e2e/docs/journey-map.md"
       if [ -f "$MAP_PATH" ]; then
         # Roster headings are `### j-<slug>: <name>`; accept `#### j-` too.
         ROSTER_COUNT=$(grep -cE '^###[#]? j-' "$MAP_PATH" 2>/dev/null; true)
         ROSTER_COUNT=${ROSTER_COUNT:-0}
-        DISPATCHED_COUNT=$("$JQ" -r '.passes["1"]["dispatched-journeys"] // [] | length' "$COV_STATE_PATH" 2>/dev/null || echo "0")
-        DEFERRED_COUNT=$("$JQ" -r '.passes["1"]["deferredJourneys"] // [] | length' "$COV_STATE_PATH" 2>/dev/null || echo "0")
+        # Pass 1's journeys: dispatched-journeys[] and/or dispatches[].journey.
+        # Deferrals: pass-1 deferredJourneys[] and/or the top-level one.
+        DISPATCHED_COUNT=$("$JQ" -r "${COV_PASS_JQ} p1journeys | length" "$COV_STATE_PATH" 2>/dev/null || echo "0")
+        DEFERRED_COUNT=$("$JQ" -r "${COV_PASS_JQ} p1deferred | length" "$COV_STATE_PATH" 2>/dev/null || echo "0")
         DISPATCHED_COUNT=${DISPATCHED_COUNT:-0}
         DEFERRED_COUNT=${DEFERRED_COUNT:-0}
         TOTAL_ACCOUNTED=$((DISPATCHED_COUNT + DEFERRED_COUNT))
@@ -213,8 +222,8 @@ onboarding_check_deliverables() {
         # without an authorizer field are silent scope narrowing.
         if [ "$DEFERRED_COUNT" -gt 0 ]; then
           BAD_DEFERRAL=$(
-            "$JQ" -r '
-              .passes["1"]["deferredJourneys"] // [] | .[] |
+            "$JQ" -r "${COV_PASS_JQ}"'
+              p1deferred | .[] |
               select(
                 ((.reason // "") | test("^(blocked-on-app-bug:|test-data-prerequisite:|user-authorised:)")) | not
               ) |

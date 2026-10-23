@@ -40,6 +40,7 @@
 - The status ledgers accept `escalate`, the workflow-reviewer's verdict word, as the same verdict as `escalated-to-user`. Neither counts as approval, and either satisfies the 3-round reject cap.
 - Postinstall runs for `npm install <folder>`. A folder install links the package, so its path has no `node_modules`, and the own-repo guard skipped it silently; the guard now skips only a developer's `npm install` inside the Achilles checkout (`INIT_CWD` is the package dir), and the consuming project is taken from `INIT_CWD`.
 - `failure-diagnosis-evidence-floor-gate` judges the writer's own transcript: a subagent's write is checked against `subagents/agent-<agent_id>.jsonl`, an `fd` / `repair-worker` subagent counts as diagnosing, and a dispatch line no longer does. One `fd-` dispatch in a session no longer makes every later spec write a diagnosis.
+- The Phase-5 completion gate reads the coverage-expansion state file's pass records keyed `pass-<N>` (or the bare `<N>`), counts pass-1 journeys from `dispatches[].journey` and `dispatched-journeys[]`, and reads `deferredJourneys[]` at the top level or in the pass-1 record. A standard run that recorded its passes the documented way was refused with "no pass-1 record" after all five passes were approved.
 
 ### Known limits
 
