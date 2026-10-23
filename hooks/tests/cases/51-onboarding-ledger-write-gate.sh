@@ -506,6 +506,64 @@ cov_state_full '{"kind":"compositional","dispatched-journeys":["j-alpha","j-beta
 assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
   "Phase 5 → full 5-pass+cleanup, roster fully covered → ALLOW (§12 sequence)"
 
+# Regression (live BookHive benchmark run): the coverage-expansion
+# orchestrator wrote the per-pass records keyed "pass-1".."pass-5", each
+# carrying the documented dispatches[] entries (state-file-schema.md), with
+# deferredJourneys[] at the top level. The gate read only passes["1"] and
+# passes["1"]["dispatched-journeys"], so a fully-reviewed five-pass run was
+# refused with "no pass-1 record". Shape below mirrors the real file
+# (values anonymised).
+cov_state_prefixed() {
+  # $1 = pass-1 record body, or the empty string to leave pass 1 out.
+  P1=""
+  [ -n "$1" ] && P1="\"pass-1\":$1,"
+  cat <<EOF
+{"status":"complete","runMode":"standard","strictAdversarial":false,"currentPass":5,
+ "journeyRoster":["j-alpha","j-beta","j-gamma"],
+ "completedPasses":["pass-1","pass-2","pass-3","pass-4","pass-5"],
+ "completedJourneys":["j-alpha","j-beta","j-gamma"],"inFlightJourneys":[],
+ "deferredJourneys":$2,
+ "passes":{${P1}
+   "pass-5":{"kind":"adversarial","dispatchMode":"per-journey","dispatches":[{"journey":"j-alpha","stage_a_cycles":2,"stage_b_cycles":2,"review_status":"greenlight","final_must_fix":[],"result":"findings-emitted","authorizer":null}]},
+   "pass-4":{"kind":"adversarial","dispatchMode":"per-journey","dispatches":[{"journey":"j-alpha","stage_a_cycles":2,"stage_b_cycles":2,"review_status":"greenlight","final_must_fix":[],"result":"findings-emitted","authorizer":null}]},
+   "pass-3":{"kind":"compositional","dispatches":[{"journey":"j-alpha","gated_skip":true,"result":"covered-exhaustively","review_status":"greenlight","triggers_checked":{"map_delta":false,"sibling_ledger_update":false,"must_fix_carry_over":false}}]},
+   "pass-2":{"kind":"compositional","dispatches":[{"journey":"j-alpha","gated_skip":true,"result":"covered-exhaustively","review_status":"greenlight","triggers_checked":{"map_delta":false,"sibling_ledger_update":false,"must_fix_carry_over":false}}]}
+ },
+ "cleanup":{"perPassDedupPass5":{"role":"cleanup-pass5","commit":"aaaaaaa"},"crossPass":{"role":"cleanup-crosspass","commit":"bbbbbbb"},"status":"completed"}}
+EOF
+}
+P1_DISPATCH_ENTRY() {
+  printf '{"journey":"%s","stage_a_cycles":1,"stage_b_cycles":1,"review_status":"greenlight","final_must_fix":[],"result":"new-tests-landed","authorizer":null,"batch_id":null}' "$1"
+}
+P1_FULL="{\"kind\":\"compositional\",\"dispatchMode\":\"per-journey\",\"parallelWaveSize\":3,\"dispatches\":[$(P1_DISPATCH_ENTRY j-alpha),$(P1_DISPATCH_ENTRY j-beta),$(P1_DISPATCH_ENTRY j-gamma)]}"
+P1_ONE="{\"kind\":\"compositional\",\"dispatches\":[$(P1_DISPATCH_ENTRY j-alpha)]}"
+
+cov_state_prefixed "$P1_FULL" '[]' > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → benchmark layout (passes keyed pass-N, dispatches[], top-level deferredJourneys) → ALLOW"
+
+cov_state_prefixed "" '[]' > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → benchmark layout with pass-1 truly missing → DENY" "no pass-1 record"
+
+cov_state_prefixed '{}' '[]' > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → benchmark layout with an empty pass-1 record → DENY" "no pass-1 record"
+
+cov_state_prefixed "$P1_ONE" '[]' > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → benchmark layout, pass-1 dispatches 1/3 journeys, no deferrals → DENY" "silently missing"
+
+cov_state_prefixed "$P1_ONE" '[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-1"},{"journey":"j-gamma","reason":"test-data-prerequisite:seed"}]' \
+  > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
+assert_allow "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → benchmark layout, 1 dispatched + 2 top-level structural deferrals → ALLOW"
+
+cov_state_prefixed "$P1_ONE" '[{"journey":"j-beta","reason":"blocked-on-app-bug:BUG-1"},{"journey":"j-gamma","reason":"budget-cap"}]' \
+  > "$TMP_REPO/tests/e2e/docs/coverage-expansion-state.json"
+assert_deny "$H" "$(payload tool_name=Write file_path="$LEDGER_PATH" content="$PROPOSED_P5_COMPLETED")" \
+  "Phase 5 → benchmark layout, top-level deferral 'budget-cap' without authorizer → DENY" "neither a structural reason prefix"
+
 # Actor-identity check must fire even when `node` is unavailable to the
 # hook (closes the node-missing bypass: prior to 5549c1d the hook
 # silent-allowed everything on `command -v node` failure, letting an

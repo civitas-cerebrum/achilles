@@ -43,6 +43,11 @@ State file shape (minimum fields):
       "authorizer": null
     }
   ],
+  "passes": {
+    "pass-1": { "kind": "compositional", "dispatches": [ ... ] },
+    "pass-2": { "kind": "compositional", "dispatches": [ ... ] }
+  },
+  "deferredJourneys": [],
   "adversarialTotals": { ... },
   "adversarialSkippedJourneys": [
     {
@@ -107,6 +112,10 @@ Gated-skip entries are valid **only** for Passes 2 and 3. Pass 1 has no prior pa
 The field is **opt-in per project, never silent**. The orchestrator may not append entries inferentially during a pass; entries land at project setup time (or in a between-pass commit explicitly authorised by the user) and stay through all subsequent runs. Compositional Passes (1–3) ignore this field; every journey gets compositional coverage regardless. Adversarial Passes (4 and 5) read it on entry and exclude listed journeys from their journey roster for those passes only.
 
 **Implementation:** the orchestrator iterates `journeyRoster - adversarialSkippedJourneys[].journey` for Passes 4 and 5; `journeyRoster` itself is NOT rewritten and `completedJourneys` continues to track only journeys whose dispatch returned in the current pass. The skip evidence lives only in `adversarialSkippedJourneys[]`.
+
+**Per-pass records (`passes`).** A top-level object holding one record per pass that has run. Key each record `"pass-<N>"` (`"pass-1"` … `"pass-5"`); the bare `"<N>"` key is accepted too. Each record is a non-empty object carrying `kind` (`compositional` | `adversarial`) and the pass's journey entries as `dispatches[]` (the dispatch / gated-skip entry shapes above), or the `dispatched-journeys[]` / `returned-journeys[]` rosters, or both. Pass-scoped notes (dispatch mode, wave size, gate history) may sit alongside. The cleanup / dedup step is recorded in the top-level `cleanup` object (or `passes.cleanup`).
+
+The onboarding Phase-5 ledger gate (`hooks/onboarding-ledger-write-gate.sh`) reads this map: Phase 5 completes only when a non-empty record exists for pass 1 (and for passes 1-5 plus cleanup in standard / depth mode), and when pass 1's journeys (`dispatches[].journey` ∪ `dispatched-journeys[]`) plus the `deferredJourneys[]` entries (top level, or inside the pass-1 record) cover the journey map's roster.
 
 The state file is rewritten after every per-pass commit (and whenever auto-compaction triggers; see [`depth-mode-pipeline.md` §"Auto-compaction between passes"](depth-mode-pipeline.md)).
 
