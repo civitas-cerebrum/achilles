@@ -1013,7 +1013,7 @@ run_npm_global_simulation() {
     sim_fail "a postinstall step that throws: exit 0, the failure and the undo command are printed, uninstall reverses the rest" "rc=$rc urc=$urc ${out:0:200}"
   fi
 
-  # The real thing. SQL_CLIENT_SKIP_SKILLS: a dependency's own postinstall writes outside this scope (KL-22).
+  # The real thing. SQL_CLIENT_SKIP_SKILLS: a dependency's own postinstall writes outside this scope (sql-client < 0.1.3).
   local tgz home="$work/home" prefix="$work/prefix"
   mkdir -p "$home" "$prefix"
   tgz=$(cd "$repo_root" && npm pack --ignore-scripts --silent --pack-destination "$work" 2>/dev/null | tail -1)

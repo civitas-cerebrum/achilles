@@ -34,7 +34,7 @@ Then type `/onboarding` and give the app URL. Start Claude Code from the project
 
 | Path | What |
 |---|---|
-| `.claude/skills/` | 25 Achilles skills (plus `sql-client`, a dependency's skill; KL-22) |
+| `.claude/skills/` | 25 Achilles skills (plus `sql-client`, a dependency's skill) |
 | `.claude/agents/` | 22 role agents |
 | `.claude/hooks/` | 39 hook scripts, plus 7 opt-in factory gates in `hooks/factory/` |
 | `.claude/settings.json` | hook registrations, as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`; existing hooks kept |
@@ -47,7 +47,7 @@ To install for every project instead, run `npm i -g @civitas-cerebrum/achilles`.
 
 Onboarding runs eight phases: scaffold, groundwork, happy path, journey map, coverage, bug hunt, secrets sweep, summary deck. It dispatches many subagents. Expect it to consume a large share of a Claude plan's usage window; no cost or duration figure is published yet. Phase contract: [`skills/onboarding/SKILL.md`](skills/onboarding/SKILL.md). Other entry phrases: "increase coverage", "find bugs", "repair the suite", "verify the checkout flow with evidence", "QA this ticket", "perf-onboard this project".
 
-Opt-outs, set before install: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, `CIVITAS_SKIP_HOOK_INSTALL=1`, `CIVITAS_SKIP_JQ_INSTALL=1` (hooks then need `jq` on PATH), `SQL_CLIENT_SKIP_SKILLS=1` (KL-22). A step that fails prints a warning and the install still succeeds; what was written stays recorded for `achilles-uninstall`.
+Opt-outs, set before install: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, `CIVITAS_SKIP_HOOK_INSTALL=1`, `CIVITAS_SKIP_JQ_INSTALL=1` (hooks then need `jq` on PATH), `SQL_CLIENT_SKIP_SKILLS=1` (skips sql-client's own skill copy; sql-client < 0.1.3 also wrote out of scope). A step that fails prints a warning and the install still succeeds; what was written stays recorded for `achilles-uninstall`.
 
 If npm 11 reports the install script as not approved, run `npm install-scripts approve @civitas-cerebrum/achilles` and install again. For `-g`, which has no project to record the approval, pass it at install time with `npm i -g --allow-scripts=@civitas-cerebrum/achilles @civitas-cerebrum/achilles`, or persist it with `npm config set allow-scripts=@civitas-cerebrum/achilles --location=user`.
 

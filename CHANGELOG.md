@@ -22,6 +22,7 @@
 
 ### Changed
 
+- sql-client 0.1.3 in the lockfile: its postinstall writes user-level only on `npm i -g`, never under npm's `lib/`. KL-22 is closed; installs resolving sql-client < 0.1.3 still write out of scope.
 - The role kernel is not shipped in this build. No hook checks tool calls against the QA mandate, and postinstall stages no `.claude/kernel-mandate.json`. The 23 roles stay as data (`hooks/data/achilles-qa.kernel-mandate.json`) for the generated agent definitions; roles are methodology, not enforced. An upgrade prunes the kernel hook files and the wrapper's registration that an earlier install recorded.
 - Postinstall copies by content instead of file time, so an npm tarball's fixed timestamps no longer leave an upgraded hook stale. A second run changes nothing.
 - Files a newer version no longer ships are pruned, with their registrations, unless you edited them.
