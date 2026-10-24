@@ -86,7 +86,8 @@
     "url": "git+https://github.com/civitas-cerebrum/achilles.git"
   },
   "overrides": {
-    "nodemailer": "^9.0.1",
+    "mailparser": "3.9.46",
+    "nodemailer": "10.1.7",
     "html-to-text": "10.0.1"
   },
   "author": "Umut Ay Bora",
