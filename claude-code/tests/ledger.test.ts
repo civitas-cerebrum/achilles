@@ -150,9 +150,19 @@ test('onboarding deliverables: a phase flipped to completed names what is missin
   expect(await complete(4)).toBe('')
 
   expect(await complete(5)).toContain('coverage-expansion-state.json does not exist')
-  const pass = (p1: unknown) => JSON.stringify({ passes: { '1': p1, '2': {}, '3': {}, '4': {}, '5': {} }, cleanup: { deduped: true } })
-  h.write(`${ROOT}/tests/e2e/docs/coverage-expansion-state.json`, JSON.stringify({ passes: { '1': { 'dispatched-journeys': ['j-alpha', 'j-beta'] } } }))
+  const later = { kind: 'compositional', dispatches: [{ journey: 'j-alpha' }] }
+  const pass = (p1: unknown) => JSON.stringify({ runMode: 'standard', passes: { '1': p1, '2': later, '3': later, '4': later, '5': later }, cleanup: { deduped: true } })
+  h.write(`${ROOT}/tests/e2e/docs/coverage-expansion-state.json`, JSON.stringify({ runMode: 'standard', passes: { '1': { 'dispatched-journeys': ['j-alpha', 'j-beta'] } } }))
   expect(await complete(5)).toContain('full five-pass run')
+  // A breadth run records pass 1 alone.
+  h.write(`${ROOT}/tests/e2e/docs/coverage-expansion-state.json`, JSON.stringify({ passes: { '1': { 'dispatched-journeys': ['j-alpha', 'j-beta'] } } }))
+  expect(await complete(5)).toBe('')
+  // The documented layout: "pass-<N>" keys, journeys in dispatches[], deferrals at the top level.
+  const documented = { 'pass-2': later, 'pass-3': later, 'pass-4': later, 'pass-5': later }
+  h.write(`${ROOT}/tests/e2e/docs/coverage-expansion-state.json`, JSON.stringify({ runMode: 'standard', passes: { 'pass-1': { kind: 'compositional', dispatches: [{ journey: 'j-alpha' }] }, ...documented }, cleanup: {}, deferredJourneys: [{ journey: 'j-beta', reason: 'blocked-on-app-bug:BUG-7' }] }))
+  expect(await complete(5)).toBe('')
+  h.write(`${ROOT}/tests/e2e/docs/coverage-expansion-state.json`, JSON.stringify({ runMode: 'standard', passes: { 'pass-1': {}, ...documented }, cleanup: {} }))
+  expect(await complete(5)).toContain('no pass-1 record')
   h.write(`${ROOT}/tests/e2e/docs/coverage-expansion-state.json`, pass({ 'dispatched-journeys': ['j-alpha'] }))
   expect(await complete(5)).toContain('silently missing')
   h.write(`${ROOT}/tests/e2e/docs/coverage-expansion-state.json`, pass({ 'dispatched-journeys': ['j-alpha'], deferredJourneys: [{ journey: 'j-beta', reason: 'budget-cap' }] }))

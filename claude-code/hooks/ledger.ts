@@ -54,7 +54,7 @@ export function transitionFindings(prior: Ledger | undefined, next: Ledger): str
     if (prior && nv !== pv && nc !== pc + 1)
       out.push(`Phase ${p.id} reviewerVerdict changed ("${pv ?? '<unset>'}" → "${nv}") without incrementing reviewerCycles by exactly 1 (was ${pc}, now ${nc}); each verdict is one review round and the 3-round cap keys on the counter.`)
     if (nc === 3 && nv === 'rejected')
-      out.push(`Phase ${p.id} is "rejected" at reviewerCycles 3: the third rejection escalates (reviewerVerdict "escalated-to-user" and the pipeline status "blocked").`)
+      out.push(`Phase ${p.id} is "rejected" at reviewerCycles 3: the third rejection escalates (reviewerVerdict "escalate" or "escalated-to-user", the same verdict, and the pipeline status "blocked").`)
   }
   if (next.runMode !== undefined) {
     const auth = next.modeAuthorizer ?? ''
@@ -76,7 +76,13 @@ const roster = (map: string | undefined) => [...(map ?? '').matchAll(/^###?#? (j
 const STRUCTURAL = /^(blocked-on-app-bug:|test-data-prerequisite:|user-authorised:)/
 
 type Cycle = { kind?: string; 'dispatched-sections'?: string[]; 'returned-sections'?: string[] }
-type Pass = { 'dispatched-journeys'?: string[]; 'returned-journeys'?: string[]; deferredJourneys?: { journey?: string; reason?: string; authorizer?: string }[] }
+type Deferral = { journey?: string; reason?: string; authorizer?: string }
+type Pass = { 'dispatched-journeys'?: string[]; 'returned-journeys'?: string[]; dispatches?: { journey?: string }[]; deferredJourneys?: Deferral[] }
+// A pass record is keyed "pass-<N>" (state-files.md) or the bare "<N>"; an empty object is no record.
+const passOf = (passes: Record<string, Pass>, n: number): Pass | undefined => {
+  const p = passes[`pass-${n}`] ?? passes[String(n)]
+  return p !== null && typeof p === 'object' && Object.keys(p).length > 0 ? p : undefined
+}
 
 /** What a completed onboarding phase must have on disk. */
 export async function onboardingDeliverables(id: number, f: Files): Promise<string[]> {
@@ -102,20 +108,24 @@ export async function onboardingDeliverables(id: number, f: Files): Promise<stri
   } else if (id === 5) {
     const state = await f.read(COVERAGE_STATE)
     if (state === undefined) return ['Phase 5 completed but tests/e2e/docs/coverage-expansion-state.json does not exist.']
-    let doc: { passes?: Record<string, Pass>; cleanup?: unknown } = {}
+    let doc: { runMode?: string; passes?: Record<string, Pass> & { cleanup?: unknown }; cleanup?: unknown; deferredJourneys?: Deferral[] } = {}
     try {
       doc = JSON.parse(state)
     } catch {
       return ['coverage-expansion-state.json is not JSON.']
     }
     const passes = doc.passes ?? {}
-    if (!passes['1']) return ['Phase 5 completed but the coverage state has no pass-1 record.']
-    if (['2', '3', '4', '5'].some(n => !passes[n]) || doc.cleanup === undefined) out.push('Phase 5 completed without a full five-pass run (passes 1-5 and the cross-pass cleanup recorded).')
+    const p1 = passOf(passes, 1)
+    if (!p1) return ['Phase 5 completed but the coverage state has no pass-1 record.']
+    // Breadth runs one pass; standard and depth run five plus the cross-pass cleanup.
+    const fullRun = doc.runMode === 'standard' || doc.runMode === 'depth'
+    if (fullRun && ([2, 3, 4, 5].some(n => !passOf(passes, n)) || (doc.cleanup ?? passes.cleanup) === undefined))
+      out.push('Phase 5 completed without a full five-pass run (passes 1-5 and the cross-pass cleanup recorded).')
     const journeys = roster(await f.read('tests/e2e/docs/journey-map.md'))
-    const p1 = passes['1']
-    const deferred = p1['deferredJourneys'] ?? []
+    const deferred = [...(p1.deferredJourneys ?? []), ...(doc.deferredJourneys ?? [])]
     if (journeys.length > 0) {
-      const covered = new Set([...(p1['dispatched-journeys'] ?? []), ...deferred.map(d => d.journey ?? '')])
+      const dispatched = [...(p1['dispatched-journeys'] ?? []), ...(p1.dispatches ?? []).map(d => d.journey ?? '')]
+      const covered = new Set([...dispatched, ...deferred.map(d => d.journey ?? '')])
       const missing = journeys.filter(j => !covered.has(j))
       if (missing.length > 0) out.push(`Phase 5 completed with ${missing.length} of ${journeys.length} journeys silently missing from pass 1 (${missing.slice(0, 5).join(', ')}); dispatch them or defer them with a reason.`)
     }

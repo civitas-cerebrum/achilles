@@ -56,10 +56,16 @@ Every workflow resumes from a file, never from the conversation. The orchestrato
   "adversarialSkippedJourneys": [
     { "journey": "j-logout", "rationale": "<specific>", "criteria": ["priority-p3", "page-subset-covered", "zero-prior-findings", "low-surface-shape"] }
   ],
+  "passes": {
+    "pass-1": { "kind": "compositional", "dispatches": [ ... ] },
+    "pass-2": { "kind": "compositional", "dispatches": [ ... ] }
+  },
   "deferredJourneys": [ { "journey": "j-…", "reason": "blocked-on-app-bug:<id>", "authorizer": null } ],
   "updatedAt": "<ISO-8601>"
 }
 ```
+
+- `passes`: one record per pass that has run, keyed `"pass-<N>"` (the bare `"<N>"` is accepted). Each is a non-empty object with `kind` (`compositional` | `adversarial`) and the pass's journey entries as `dispatches[]`, or `dispatched-journeys[]` / `returned-journeys[]`, or both. Phase 5 is complete when pass 1 exists (passes 1-5 and the cross-pass `cleanup` in standard and depth mode) and pass 1's journeys plus `deferredJourneys[]` (top level or in the pass-1 record) cover the journey map's roster.
 
 - `runMode` ∈ `standard | depth`; omitted for breadth. Written on the first write of the run from the mode the brief named.
 - Per dispatch: `stage_a_cycles`, `stage_b_cycles` (1..7), `review_status` ∈ `greenlight | blocked-cycle-stalled | blocked-cycle-exhausted | blocked-dispatch-failure`, `final_must_fix` (finding ids, carried to the next pass's author brief), `result` ∈ `new-tests-landed | covered-exhaustively | blocked | skipped`, `authorizer` non-null only for `skipped`, `batch_id` shared by the members of one grouped dispatch (null once a journey breaks out at cycle 2).
