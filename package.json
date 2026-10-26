@@ -1,6 +1,6 @@
 {
   "name": "@civitas-cerebrum/achilles",
-  "version": "0.3.0",
+  "version": "0.1.8",
   "description": "Autonomous quality-assurance methodology: harness-neutral agent skills and agent definitions, return-shape schemas and a Playwright reporter, with a Claude Code plugin adapter (delegate_qa, /achilles, the orchestrator and its experts).",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — unreleased
+## 0.1.8 — unreleased
 
 Achilles becomes a harness-neutral methodology (skills, agents, schemas, CLIs, reporter) with one Claude Code adapter. The main session is never bound; QA work runs in a separate orchestrator agent. Hooks advise by default and deny only irreversible or dangerous actions.
 
@@ -52,34 +52,34 @@ Achilles becomes a harness-neutral methodology (skills, agents, schemas, CLIs, r
 - The orchestrator dispatches experts with the ordinary Agent tool, in the foreground, and reads their report files, never their transcripts. Nesting is main → orchestrator → expert; experts dispatch nobody.
 - The reviewer is a fresh instance per review; `achilles-self-repair` dispatches its workers with `--worker` and the same report schema as the interactive repair workflow.
 - Skill text is harness-neutral: no tool names, hook names, `.claude/` paths or dispatch grammar; `scripts/lint-doc-drift.mjs` enforces it (checks 1, 2, 5, 6, 8, 10, 11, 12, 14; checks 3, 4, 7, 9 and 13 left with the kernel and the bash runtime).
-- Package description, keywords and `files` (now `bin`, `skills`, `agents`, `schemas`, `reporter`, `claude-code`, `.claude-plugin`, the postinstall and the Chromium step) follow the new layout. `docs/index.html` and `docs/agentic-qa.html` describe 0.3.0; the counts lint keeps their figures equal to the tree.
+- Package description, keywords and `files` (now `bin`, `skills`, `agents`, `schemas`, `reporter`, `claude-code`, `.claude-plugin`, the postinstall and the Chromium step) follow the new layout. `docs/index.html` and `docs/agentic-qa.html` describe 0.1.8; the counts lint keeps their figures equal to the tree.
 
-### Upgrading from 0.1.x or 0.2.x
+### Upgrading from 0.1.7 or a 0.2.0 branch install
 
-The earlier installers copied the harness into `.claude/` (or `~/.claude/` for `-g`). 0.3.0 does not remove those copies, and the old hooks keep running until you do.
+The earlier installers copied the harness into `.claude/` (or `~/.claude/` for `-g`). 0.1.8 does not remove those copies, and the old hooks keep running until you do.
 
 1. With the old package still installed, run `npx achilles-uninstall --project` (and `--global` if you installed with `-g` or had the user-level routing skill). 0.1.x had no uninstaller: continue with step 2.
 2. By hand, in each `.claude/` directory Achilles wrote to (and `~/.claude/`): delete the 41 Achilles hook scripts under `hooks/` plus `hooks/factory/`, `hooks/lib/`, `hooks/data/` and `hooks/bin/jq`; the 25 copied skills under `skills/` (and `sql-client`); the 22 generated agents under `agents/`; `kernel-mandate.json`, `kernel-mandate.md`, `kernel-mandate.achilles.json`, `kernel-mandate.achilles-new.json`, `achilles-qa.kernel-mandate.json`; `achilles-install.json`; the routing skill `~/.claude/skills/achilles/` and `~/.claude/achilles-install.json`.
 3. In `.claude/settings.json` (and `~/.claude/settings.json`), remove every `hooks` entry whose command points into `.claude/hooks/` or `~/.claude/hooks/`. Your own entries stay.
-4. Install 0.3.0 (`npm i -D @civitas-cerebrum/achilles`, or the marketplace install) and restart Claude Code. Drop `ACHILLES_PROTOCOL`, `KERNEL_MANDATE`, `CIVITAS_SKIP_HOOK_INSTALL` and `CIVITAS_SKIP_JQ_INSTALL` from shells and CI; use `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` where CI used `CIVITAS_SKIP_HOOK_INSTALL=1`.
+4. Install 0.1.8 (`npm i -D @civitas-cerebrum/achilles`, or the marketplace install) and restart Claude Code. Drop `ACHILLES_PROTOCOL`, `KERNEL_MANDATE`, `CIVITAS_SKIP_HOOK_INSTALL` and `CIVITAS_SKIP_JQ_INSTALL` from shells and CI; use `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` where CI used `CIVITAS_SKIP_HOOK_INSTALL=1`.
 5. Replace the old slash commands (`/onboarding`, `/coverage-expansion`, `/test-repair`, `/companion-mode`, …) with `/achilles <task>` or the `delegate_qa` tool. Projects with `achilles-factory-rules.json` keep it; the factory rules are read by the spec-hygiene hook and the CLIs.
 
-## 0.2.0 — unreleased, superseded by 0.3.0
+## 0.2.0 — never published, superseded by 0.1.8
 
-0.2.0 was never published to npm. Its kernel, activation, install-copying and uninstall items below are superseded by 0.3.0 and listed for anyone who installed it from a branch; the remaining items (CLIs, reporter behaviour, Bash parsing, mandate grants that became agent scopes) carried into 0.3.0 in their new form.
+0.2.0 was never published to npm. Its kernel, activation, install-copying and uninstall items below are superseded by 0.1.8 and listed for anyone who installed it from a branch; the remaining items (CLIs, reporter behaviour, Bash parsing, mandate grants that became agent scopes) carried into 0.1.8 in their new form.
 
-### Upgrading from 0.1.8 (superseded)
+### Upgrading from 0.1.7 (superseded)
 
-- **One-time overwrite.** 0.1.8 kept no install record. The first 0.2.0 install replaces every hook, hook library, hook data file and skill file in `.claude/` (for `-g`, in `~/.claude`) whose content differs from the package, including ones you edited. Postinstall prints how many files it replaced. From then on, a file you edit is never overwritten or pruned; postinstall warns once and leaves it.
+- **One-time overwrite.** 0.1.7 kept no install record. The first 0.2.0 install replaces every hook, hook library, hook data file and skill file in `.claude/` (for `-g`, in `~/.claude`) whose content differs from the package, including ones you edited. Postinstall prints how many files it replaced. From then on, a file you edit is never overwritten or pruned; postinstall warns once and leaves it.
 - **Restart Claude Code** after the install to pick up the new hooks.
-- **User-level copies.** A local install no longer copies skills and agents to `~/.claude`. It removes the copies an earlier recorded local install left there, unless you edited them, and names any unrecorded user-level skill with an Achilles name: 0.1.8 kept no record, and a user-level skill wins over the project's copy of the same name.
+- **User-level copies.** A local install no longer copies skills and agents to `~/.claude`. It removes the copies an earlier recorded local install left there, unless you edited them, and names any unrecorded user-level skill with an Achilles name: 0.1.7 kept no record, and a user-level skill wins over the project's copy of the same name.
 - **Staged mandate.** If `.claude/kernel-mandate.json` differs from what Achilles staged, it is left as it is and the new QA mandate is written beside it as `kernel-mandate.achilles-new.json`, with one notice. An unedited copy is refreshed.
 
 ### Added
 
 - *(superseded)* Role kernel: while an Achilles skill is active, every tool call is checked against the QA mandate (23 roles), staged into `.claude/kernel-mandate.json`. Only the kernel runtime ships; the mandate-designer skill and the kernel's schemas do not.
-- *(superseded)* Five change-loop roles: `live-inspector`, `implementer`, `task-reviewer`, `verifier`, `doc-author`, each with its own write scope and one hand-off path. A `doc-author` proposes changes to `CLAUDE.md` and skills as `docs/proposals/<topic>.md`. In 0.3.0 the verify-change workflow runs on the five agents.
-- *(superseded)* Seven opt-in factory gates under `hooks/factory/`, active only when `achilles-factory-rules.json` exists in the project. In 0.3.0 the rule file is read by the spec-hygiene hook and the CLIs.
+- *(superseded)* Five change-loop roles: `live-inspector`, `implementer`, `task-reviewer`, `verifier`, `doc-author`, each with its own write scope and one hand-off path. A `doc-author` proposes changes to `CLAUDE.md` and skills as `docs/proposals/<topic>.md`. In 0.1.8 the verify-change workflow runs on the five agents.
+- *(superseded)* Seven opt-in factory gates under `hooks/factory/`, active only when `achilles-factory-rules.json` exists in the project. In 0.1.8 the rule file is read by the spec-hygiene hook and the CLIs.
 - *(superseded)* `achilles-import-boundary-gate` (static import screen on `tests/` and root config) and `achilles-multiedit-gate` (MultiEdit is refused while the protocol is active). The import boundary is advice in the spec-hygiene hook; the MultiEdit gate is gone.
 - *(superseded)* Routing skill `~/.claude/skills/achilles`, the one file a local install writes user-level.
 - *(superseded)* One generated agent definition per QA role, installed to `.claude/agents/`.
@@ -90,12 +90,12 @@ The earlier installers copied the harness into `.claude/` (or `~/.claude/` for `
 
 ### Changed
 
-- *(superseded)* Postinstall copies by content instead of file time; files a newer version no longer ships are pruned unless edited; install scope follows `-g`; a project install registers its hooks as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`; postinstall runs for `npm install <folder>`. 0.3.0 copies nothing.
-- Postinstall never exits non-zero: a failing step is a warning, since a failed `npm i -g` removed the package while leaving the harness behind. Kept in 0.3.0.
-- *(superseded)* A session that never activated the protocol leaves no file behind; the transcript scan, the negative cache and the jq failure mode. There is no activation in 0.3.0.
+- *(superseded)* Postinstall copies by content instead of file time; files a newer version no longer ships are pruned unless edited; install scope follows `-g`; a project install registers its hooks as `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>`; postinstall runs for `npm install <folder>`. 0.1.8 copies nothing.
+- Postinstall never exits non-zero: a failing step is a warning, since a failed `npm i -g` removed the package while leaving the harness behind. Kept in 0.1.8.
+- *(superseded)* A session that never activated the protocol leaves no file behind; the transcript scan, the negative cache and the jq failure mode. There is no activation in 0.1.8.
 - Bash guards split a command line with one shared parser and judge the primary ways an agent writes: redirects, `tee`, `cp`/`mv`/`rm`, `sed -i`, and `git checkout`/`restore`/`reset --hard`/`clean`/`rm` on protected paths. Obfuscated forms are out of scope. The parser carries into the adapter's Bash judge.
-- *(superseded)* The bundled jq is checked against a pinned sha256; a PreToolUse call is denied when `jq` or a hook library is missing. No jq in 0.3.0.
-- *(superseded)* Approval-class ledger writes must come from an approver `agent_type`; Phase 7 is dispatched as `secrets-sweep-phase7:` with `subagent_type: secrets-sweep`. Separation of duties is agent scope in 0.3.0; the dispatch grammar is gone.
+- *(superseded)* The bundled jq is checked against a pinned sha256; a PreToolUse call is denied when `jq` or a hook library is missing. No jq in 0.1.8.
+- *(superseded)* Approval-class ledger writes must come from an approver `agent_type`; Phase 7 is dispatched as `secrets-sweep-phase7:` with `subagent_type: secrets-sweep`. Separation of duties is agent scope in 0.1.8; the dispatch grammar is gone.
 - The package declares `"engines": { "node": ">=20" }` and its tarball no longer includes schema fixtures.
 - *(superseded)* QA mandate grants: the `probe` role may author code that uses `network` and may run `mkdir`/`rmdir` on the findings lock; the Stage-4b roles may read the protocol references. These became the author agent's scope.
 - Pass 5 commits one per journey, `test(<j-slug>-regression): lock <N> boundaries`, with one `lock <boundary>` line per lock in the body.

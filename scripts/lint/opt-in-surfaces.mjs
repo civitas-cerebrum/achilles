@@ -16,7 +16,7 @@ export function run(report) {
   const sources = [
     ...walk(ADAPTER_DIR, (p) => /\.(ts|js|mjs|cjs)$/.test(p) && !p.includes('/node_modules/') && !p.includes('/tests/')),
     ...walk('bin', (p) => /\.(js|mjs|cjs)$/.test(p)),
-    // scripts/install/ keeps only chromium.js in 0.3.0; the other install scripts leave with the bash runtime.
+    // scripts/install/ keeps only chromium.js in 0.1.8; the other install scripts leave with the bash runtime.
     ...walk('scripts', (p) => /\.(js|mjs)$/.test(p) && !p.includes('/lint') && (!p.includes('/install/') || p.endsWith('/chromium.js'))),
     ...walk('reporter', (p) => /\.(js|mjs|cjs)$/.test(p) && !p.includes('/tests/')),
   ];

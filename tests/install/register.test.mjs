@@ -36,7 +36,7 @@ test('scope: a registry install under node_modules is local; -g is global; the c
 
 test('scope: the project is the path up to the first node_modules segment: a pnpm store and a hoisted workspace both resolve to it, and stay local', () => {
   const w = world();
-  const pnpm = join(w.project, 'node_modules', '.pnpm', '@civitas-cerebrum+achilles@0.3.0', 'node_modules', '@civitas-cerebrum', 'achilles');
+  const pnpm = join(w.project, 'node_modules', '.pnpm', '@civitas-cerebrum+achilles@0.1.8', 'node_modules', '@civitas-cerebrum', 'achilles');
   mkdirSync(pnpm, { recursive: true });
   const viaPnpm = scope({ env: { INIT_CWD: w.project }, packageDir: pnpm });
   assert.equal(viaPnpm.projectRoot, w.project);

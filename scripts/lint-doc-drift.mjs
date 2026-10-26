@@ -15,7 +15,7 @@
 //
 // Checks 3, 4, 7, 9 and 13 (hook manifest, role map, mandate ledger, activation
 // list, factory manifest) left with the bash hook runtime and the role kernel
-// in 0.3.0. Where a surface has not yet converged the lint reports the
+// in 0.1.8. Where a surface has not yet converged the lint reports the
 // specific drift rather than weakening the check.
 
 import { makeReport } from './lint/util.mjs';
