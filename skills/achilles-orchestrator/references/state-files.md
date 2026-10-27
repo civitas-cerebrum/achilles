@@ -26,6 +26,7 @@ Every workflow resumes from a file, never from the conversation. The orchestrato
   "cascade": "None",
   "step": "pass-3",
   "state-file": "tests/e2e/docs/coverage-expansion-state.json",
+  "plan": [ { "stage": "Inspect", "status": "completed" }, { "stage": "Author", "status": "in-progress" }, { "stage": "Review", "status": "pending" } ],
   "questions": [ { "n": 1, "question": "…", "answer": null } ],
   "rulings": [ "Ruling: … — … — cost if wrong: …" ],
   "commits": [ "<sha> <subject>" ],
@@ -33,7 +34,7 @@ Every workflow resumes from a file, never from the conversation. The orchestrato
 }
 ```
 
-`questions` holds every open `NEEDS_CONTEXT` question; the main session's re-dispatch fills `answer`. A run whose resume file is missing restarts preflight and says so in its hand-back. The run directory `.achilles/runs/<run-id>/` holds this file, `briefs/` and `reports/`; there is no other run-state file.
+`questions` holds every open `NEEDS_CONTEXT` question; the main session's re-dispatch fills `answer`. A run whose resume file is missing restarts preflight and says so in its hand-back. `plan` lists the workflow's stages in order with a status each (`pending`, `in-progress`, `completed`, `skipped`, `blocked`, `failed`); a run whose workflow writes a pipeline ledger (`onboarding-status.json`, `perf-onboarding-status.json`) leaves it out, since the ledger's phases are its stages. The run directory `.achilles/runs/<run-id>/` holds this file, `briefs/` and `reports/`, and `progress.json`, which the adapter writes from the ledger or the plan, the experts at work and the ones that handed back; no agent writes it. There is no other run-state file.
 
 ## Coverage-expansion state
 

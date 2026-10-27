@@ -16,7 +16,15 @@ export type AchillesExpert = {
   skills?: string[]
   /** True once the expert opened failure evidence (a trace, screenshot, error context, video or results file). */
   evidence?: boolean
+  /** When the expert was dispatched (epoch ms). */
+  since?: number
 }
+
+/** One stage of a run's workflow: a pipeline ledger's phase, or an entry of the plan in the run's resume.json. */
+export type AchillesStage = { name: string; status: string }
+
+/** An expert that handed back, with the status word that opened its answer. */
+export type AchillesFinished = { role: string; slug?: string; status: string; at: number }
 
 /** The selector-development pipeline in flight: the eight-step journal the hooks observe. */
 export type AchillesSelectorScope = {
@@ -39,6 +47,16 @@ export type AchillesRun = {
   /** Playwright run archives the reporting hook wrote during this run. */
   archived?: number
   selector?: AchillesSelectorScope
+  /** When the run was delegated (epoch ms). */
+  startedAt?: number
+  /** The pipeline ledger the run's stages are read from, once known (project-relative). */
+  ledger?: string
+  /** The run's stages as of the last progress refresh. */
+  stages?: AchillesStage[]
+  /** The `step` the orchestrator last wrote to its resume.json. */
+  step?: string
+  /** The experts that handed back, oldest first, the last few kept. */
+  finished?: AchillesFinished[]
 }
 
 declare module 'claude-code' {

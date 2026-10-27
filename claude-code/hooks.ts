@@ -6,6 +6,7 @@ import { dispatchAdvice } from './hooks/dispatch'
 import { registerHygiene } from './hooks/hygiene'
 import { registerLedger } from './hooks/ledger'
 import { PANE, registerPane, rememberHandback } from './hooks/pane'
+import { closeProgress, recordFinished, refreshProgress, registerProgress } from './hooks/progress'
 import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
@@ -97,7 +98,7 @@ async function delegate($: EngineInterface, task: string, context?: string, from
   if (task.trim() === '') return 'NEEDS_CONTEXT\nNo task was given.'
   if (whoIs(await readRuns($), fromAgent)) return 'BLOCKED\ndelegate_qa is the main session’s door; inside a run the orchestrator dispatches experts with the Agent tool.'
   const id = `qa-${(await $.clock.now()).toString(36)}`
-  const run: AchillesRun = { id, task, dir: `.achilles/runs/${id}`, experts: [] }
+  const run: AchillesRun = { id, task, dir: `.achilles/runs/${id}`, experts: [], startedAt: await $.clock.now() }
   await writeRuns($, runs => [...runs, run])
   const prompt = `[achilles run=${id}]\nRun ${id}. State directory: ${run.dir}/ (briefs/<slug>.md, reports/<slug>.md, resume.json).\n\nTask: ${task}${context ? `\n\nContext:\n${context}` : ''}`
   const spawned = await $.agent.spawn({ subagentType: ORCHESTRATOR, prompt, description: `achilles ${id}` })
@@ -106,7 +107,8 @@ async function delegate($: EngineInterface, task: string, context?: string, from
     return `BLOCKED\nThe Achilles orchestrator could not start: ${spawned.deny}`
   }
   if (spawned.agentId !== undefined) await editRun($, id, r => ({ ...r, agentId: r.agentId ?? spawned.agentId }))
-  return `RUNNING ${id}\nThe Achilles orchestrator is working in the background (state under ${run.dir}/). Its hand-back arrives as a message of its own; there is nothing to wait on.`
+  await refreshProgress($, id)
+  return `RUNNING ${id}\nThe Achilles orchestrator is working in the background (state under ${run.dir}/). Its hand-back arrives as a message of its own; there is nothing to wait on. Each stage it ends arrives as a short progress message to relay; for its progress meanwhile (stages done, current and to go, experts at work) read ${run.dir}/progress.json.`
 }
 
 function summary(run: AchillesRun): string {
@@ -121,6 +123,7 @@ function summary(run: AchillesRun): string {
 }
 
 async function handBack($: EngineInterface, run: AchillesRun, body: string) {
+  await closeProgress($, run, body.split('\n').find(l => l.trim() !== '')?.trim().split(/\s/)[0] ?? 'ended')
   await writeRuns($, runs => runs.filter(r => r.id !== run.id))
   await rememberHandback($, run.id, run.task, body)
   await $.prompt.submit({ text: `${HANDBACK_LEAD(run.id)}\n\nTask: ${run.task}\n\n${body}\n\n${summary(run)}` })
@@ -186,8 +189,9 @@ export const register: Register = on => {
     if (parent?.role === 'orchestrator') {
       if (started.agentId !== undefined) {
         const role = roleOf(subagentType)
-        const expert = { agentId: started.agentId, role, ...advice?.fields }
+        const expert = { agentId: started.agentId, role, ...advice?.fields, since: await $.clock.now() }
         await editRun($, parent.run.id, r => ({ ...r, experts: [...r.experts, expert], dispatched: { ...r.dispatched, [role]: (r.dispatched?.[role] ?? 0) + 1 } }))
+        await refreshProgress($, parent.run.id)
       }
     } else if (started.deny === undefined) {
       await $.session.append({ ...(e.parentAgentId === undefined ? {} : { agentId: e.parentAgentId }), message: { type: 'user', content: [text(ROUTE_NOTE)] } })
@@ -218,6 +222,7 @@ export const register: Register = on => {
         ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e)] : []),
         closeSelectorScope($, w, e),
         closeSessions($, w),
+        recordFinished($, w, e),
       ])
     }
     return next(e)
@@ -230,5 +235,6 @@ export const register: Register = on => {
   registerHygiene(on)
   registerSelector(on)
   registerReporting(on)
+  registerProgress(on)
   registerPane(on)
 }

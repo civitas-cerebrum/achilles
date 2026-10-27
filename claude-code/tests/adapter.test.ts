@@ -41,14 +41,14 @@ test('delegate_qa starts the orchestrator and answers RUNNING; its hand-back is 
   expect(h.spawns[0]?.prompt).toMatch(/^\[achilles run=qa-[\w-]+\]\nRun qa-/)
   expect(h.spawns[0]?.prompt).toContain('verify the login flow')
   expect(h.spawns[0]?.prompt).toContain('staging')
-  expect(h.status()).toBe('achilles: 1 run · 0 experts running')
+  expect(h.status()).toBe('1 run · 0 experts running')
 
   // The orchestrator dispatches an expert with its Agent tool: counted, then released at its end.
   const expert = await $.agent.spawn(expertSpawn(INSPECTOR, 'orchestrator-1'))
   expect(expert.agentId).toBe('inspector-2')
-  expect(h.status()).toBe('achilles: 1 run · 1 expert running')
+  expect(h.status()).toBe('1 run · 1 expert running (inspector b)')
   await $.turn.complete(ended('inspector-2', 'DONE\nLooked.'))
-  expect(h.status()).toBe('achilles: 1 run · 0 experts running')
+  expect(h.status()).toBe('1 run · 0 experts running')
   expect(h.prompts.length).toBe(0)
 
   await $.turn.complete(ended('orchestrator-1', 'DONE\nLogin verified.'))
@@ -65,7 +65,7 @@ test('an orchestrator turn that is not a hand-back keeps the run live; the next 
 
   await $.turn.complete(ended(orchestrator, 'The inspector is dispatched and running in the background; I am waiting for it.'))
   expect(h.prompts.length).toBe(0)
-  expect(h.status()).toBe('achilles: 1 run · 0 experts running')
+  expect(h.status()).toBe('1 run · 0 experts running')
 
   await $.turn.complete(ended(orchestrator, '\nDONE_WITH_CONCERNS\nVerified, one concern.'))
   expect(h.prompts.length).toBe(1)

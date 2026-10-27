@@ -1,5 +1,5 @@
 import type { FsEntry, On, ProcessRunResult } from 'claude-code'
-import type { Engine as EngineInterface } from 'claude-code/testing'
+import type { Engine as EngineInterface, MockClock } from 'claude-code/testing'
 import { mock } from 'claude-code/testing'
 
 // The world beneath the plugin, for every hook test: an in-memory project at ROOT, a table of
@@ -32,6 +32,7 @@ export type Harness = {
   written: () => string[]
   tools: { name: string; isDeferred?: unknown }[]
   agents: Record<string, unknown>[]
+  clock: MockClock
 }
 
 const parentDirs = (path: string) => {
@@ -45,7 +46,7 @@ const parentDirs = (path: string) => {
 }
 
 export function engine(on: On, opts: { env?: Record<string, string>; files?: Record<string, string>; now?: number } = {}): Harness {
-  mock.clock(on, { now: opts.now ?? 1_700_000_000_000 })
+  const clock = mock.clock(on, { now: opts.now ?? 1_700_000_000_000 })
   mock.env(on, opts.env ?? {})
   const files = new Map<string, string>()
   const mtimes = new Map<string, number>()
@@ -146,7 +147,7 @@ export function engine(on: On, opts: { env?: Record<string, string>; files?: Rec
     if (clean !== undefined) return { value: { exitCode: 0, stdout: clean, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     return { value: { exitCode: 127, stdout: '', stderr: `not mocked: ${e.argv.join(' ')}`, isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  return { files, mtimes, write, remove, procs, ran, spawns, prompts, status: () => status, written: () => writtenPaths, tools, agents }
+  return { files, mtimes, write, remove, procs, ran, spawns, prompts, status: () => status, written: () => writtenPaths, tools, agents, clock }
 }
 
 /** Starts a run through delegate_qa; the orchestrator's agent id is `orchestrator-<n>`. */

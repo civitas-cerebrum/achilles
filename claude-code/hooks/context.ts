@@ -1,7 +1,7 @@
 import type { EngineInterface, FsEntry, ProcessRunResult } from 'claude-code'
 import { update } from 'claude-code'
 
-import type { AchillesExpert, AchillesRun } from '../types'
+import type { AchillesExpert, AchillesRun, AchillesStage } from '../types'
 import { basename, isAbsolute, normalize, relTo, resolve } from './posix'
 
 // What every hook shares: the run registry in $.state, the agent → role lookup, the advisory
@@ -27,18 +27,46 @@ export async function readRuns($: EngineInterface): Promise<AchillesRun[]> {
   return value
 }
 
+// ── progress: the stage a run is in and the experts at work, for the status line, the pane and progress.json ──
+
+/** The stage statuses that end a stage; anything else is still to go. */
+export const ENDED = new Set(['completed', 'skipped', 'blocked', 'failed'])
+const ACTIVE = new Set(['in-progress', 'active', 'running'])
+
+/** The stage a run is in: the first one marked active, else the first not yet ended. */
+export const currentStage = (stages: AchillesStage[] = []) => stages.find(s => ACTIVE.has(s.status)) ?? stages.find(s => !ENDED.has(s.status))
+
+/** "stage 2/8 Groundwork", the resume step when the run has no stages yet, or undefined. */
+export function stageLine(run: AchillesRun): string | undefined {
+  const stages = run.stages ?? []
+  if (stages.length === 0) return run.step ? `step ${run.step}` : undefined
+  const cur = currentStage(stages)
+  return cur ? `stage ${stages.indexOf(cur) + 1}/${stages.length} ${cur.name}` : `${stages.filter(s => ENDED.has(s.status)).length}/${stages.length} stages ended`
+}
+
+/** The name a brief or report path gives its dispatch: `.achilles/runs/<run>/briefs/p2-groundwork.md` → `p2-groundwork`. */
+export const slugOf = (path?: string) => (path ? basename(path).replace(/\.md$/, '') : undefined)
+
+export const expertLabel = (x: AchillesExpert) => `${x.role} ${slugOf(x.brief ?? x.report) ?? x.agentId}`
+
 export async function writeRuns($: EngineInterface, change: (runs: AchillesRun[]) => AchillesRun[]) {
   const runs = await update($, RUNS, (runs = []) => change(runs))
-  const experts = runs.reduce((n, r) => n + r.experts.length, 0)
+  const experts = runs.flatMap(r => r.experts)
   const judge = runs.find(r => (r.judge?.consecutive ?? 0) > 0)
   const extra = [
+    ...runs.map(stageLine).filter(Boolean),
     judge ? `judge loop open ${judge.judge!.consecutive}/3` : '',
     runs.some(r => r.selector) ? `selector ${runs.map(r => r.selector).filter(Boolean).map(s => `${s!.scope} ${s!.steps.length}/8`).join(', ')}` : '',
   ].filter(Boolean)
+  // Two experts are named by brief; more are counted by role, so the line stays one line.
+  const roles = new Map<string, number>()
+  for (const x of experts) roles.set(x.role, (roles.get(x.role) ?? 0) + 1)
+  const working = experts.length === 0 ? '' : ` (${experts.length <= 2 ? experts.map(expertLabel).join(', ') : [...roles].map(([r, n]) => (n === 1 ? r : `${r} ×${n}`)).join(', ')})`
+  // The engine shows the line under the plugin's name, so it carries no "achilles:" of its own.
   $.ui.status(
     runs.length === 0
       ? undefined
-      : `achilles: ${runs.length} run${runs.length === 1 ? '' : 's'} · ${experts} expert${experts === 1 ? '' : 's'} running${extra.length ? ` · ${extra.join(' · ')}` : ''}`,
+      : `${runs.length} run${runs.length === 1 ? '' : 's'} · ${experts.length} expert${experts.length === 1 ? '' : 's'} running${working}${extra.length ? ` · ${extra.join(' · ')}` : ''}`,
   )
   return runs
 }
