@@ -1,8 +1,10 @@
 # Achilles on pi
 
-pi gets the methodology and expert mode: the skills under `skills/`, and one extension (`pi/index.ts`) that runs the orchestrator and its experts the way the Claude Code adapter does. There is no hook enforcement on pi.
+pi gets the methodology and expert mode: the skills under `skills/`, and one extension (`pi/index.ts`) that runs the orchestrator and its experts the way the Claude Code adapter does, with the Claude Code adapter's Bash judge and secrets screen as guards.
 
 ## Install
+
+`npm install @civitas-cerebrum/achilles` does this for you when `pi` is on PATH: a project install runs `pi install <package> --local --approve` (the approval is for that one command; pi asks for project trust as usual at the next session), a global one `pi install <package>`. `ACHILLES_SKIP_PI_REGISTRATION=1` skips it. By hand:
 
 ```bash
 pi install npm:@civitas-cerebrum/achilles        # user-wide
@@ -17,9 +19,10 @@ pi install npm:@civitas-cerebrum/achilles --local # this project; trust the proj
 - **One process per agent.** The orchestrator and every expert run as their own `pi` process (`--mode json -p --no-session`), each set up from `agents/achilles-<role>.md`: the prompt is appended to the system prompt, the `tools` list is mapped to pi's (`Read`→`read`, `Write`→`write`, `Edit`→`edit`, `Bash`→`bash`, `Grep`→`grep`, `Glob`→`find`,`ls`; skills need no tool, the model reads `SKILL.md`), a `skills:` entry is preloaded whole, and the model is the agent's own or the parent's. A child takes the parent's project-trust decision.
 - **Dispatch.** Only the orchestrator's process has an `Agent` tool, shaped like Claude Code's (`subagent_type`, `prompt`, `description`), so the skills' dispatch instructions read the same on both harnesses. It accepts any `achilles-<role>` defined under `agents/` other than the orchestrator (bare or `achilles:`-qualified), runs it in the foreground and returns its final message. Tool calls from one message run in parallel. Experts register nothing and dispatch nobody; the main session gets `delegate_qa` only.
 - **State.** The same files as on Claude Code: `.achilles/runs/<run-id>/` with `briefs/`, `reports/` and `resume.json`; `tests/e2e/docs/` for the workflow state files and ledgers ([state-files.md](../../skills/achilles-orchestrator/references/state-files.md)). The sign-off receipt `.achilles/adversarial-verification/<ticket>.json` is written by the orchestrator itself here.
+- **Guards** (`pi/guards.ts`, in the orchestrator's and the experts' processes; the main session is never touched). pi's `tool_call` runs the Claude Code adapter's Bash judge (`claude-code/hooks/bash-judge.ts`) unchanged: it blocks a commit-check bypass, AI attribution in a commit or PR, a force-push (not `--force-with-lease`), a recursive `rm` outside the project, k6 over its limits, and with `achilles-factory-rules.json` unapproved spend; it gives a `playwright-cli` call its `-s=<role>-<hash>` session; its advice is appended to the tool's result. A `write` or `edit` that puts a secret into a file in scope of the factory rule `secrets.none` is blocked.
 - **Switch.** `ACHILLES_DISABLE=1` loads nothing. `ACHILLES_ROLE` is set by the extension on the processes it spawns and decides which tools a process registers; do not set it by hand.
 
 ## Not on pi
 
-- **Hooks.** None. The behaviours the Claude Code adapter denies (commit bypass flags, AI attribution trailers, force-push, k6 ceilings, sign-off without a receipt and bundle, credentials in captured artifacts, non-inert selector edits) are stated as rules in the skills and are the operator's responsibility here.
+- **The run-state hooks**: the sign-off record and its credential check, the selector inertness guard, the ledger and return-shape checks, spec hygiene and dispatch advice. They read the run registry the Claude Code adapter keeps; on pi the skills state the same rules.
 - The Achilles pane, `progress.json` and stage-progress messages, the archiver, the return-shape validator and the sign-off hook.
