@@ -18,7 +18,7 @@ Requirements: Node 20 or later and a web app with a reachable URL. Claude Code 2
 | Claude Code, direct | `/plugin install achilles --marketplace civitas-cerebrum/achilles` at the prompt, or from a shell `claude plugin marketplace add civitas-cerebrum/achilles` then `claude plugin install achilles@achilles` | User-level plugin for every project; no npm install needed for the agents, skills and hooks. The CLIs and reporter still come from the npm package. |
 | pi | `pi install npm:@civitas-cerebrum/achilles` | Loads the skills and the pi extension (`pi/index.ts`): `delegate_qa`, `/achilles` and expert mode, with the orchestrator and each expert in their own `pi` process, and the Bash judge and secrets screen as guards. `npm install` registers it when pi is on PATH. See [docs/harness/pi.md](docs/harness/pi.md). |
 
-Set `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` to install without touching Claude Code settings, and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` to skip the Chromium fetch. A failed step prints a warning; the install still succeeds. If npm 11 reports the install script as not approved, run `npm install-scripts approve @civitas-cerebrum/achilles` and install again. Restart Claude Code after the install; the plugin loads at the next session. Uninstall: `claude plugin uninstall achilles`, or delete the `achilles` entries from the settings file postinstall wrote; npm runs no uninstall script.
+Set `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` to install without touching Claude Code settings, `ACHILLES_SKIP_PI_REGISTRATION=1` to skip the pi install, and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` to skip the Chromium fetch. A failed step prints a warning; the install still succeeds. npm 11 and later block a dependency's install script until it is approved: when npm lists `@civitas-cerebrum/achilles` under blocked install scripts, the plugin is not registered; run `npm install-scripts approve @civitas-cerebrum/achilles` and install again. Restart Claude Code after the install; the plugin loads at the next session. Uninstall: `claude plugin uninstall achilles`, or delete the `achilles` entries from the settings file postinstall wrote; npm runs no uninstall script.
 
 ## Use
 
@@ -97,7 +97,7 @@ One TypeScript module, eight hooks, acting on the five Achilles agents only. Def
 5. **Return review**: denies nothing; validates each expert's return against its schema and shows the problem in the pane.
 6. **Spec hygiene**: denies nothing; advises on missing test ids, import-boundary breaches, the evidence floor for diagnosis edits and factory rules when the project opts in.
 7. **Selector development**: denies any frontend edit on a selector brief other than one added inert test attribute; shows the eight-step order as state.
-8. **Reporting**: denies nothing; archives run artifacts, closes the agent's browser sessions, writes `.achilles/run-summary.json` and `.achilles/perf-summary.json`.
+8. **Reporting**: denies nothing; archives a Playwright run's artifacts under `.achilles/runs/` when the Achilles reporter did not, closes each expert's browser sessions when its turn ends, and puts a run summary line in the hand-back.
 
 The full table (events, exact deny lists, advice, switches, limits) is [docs/harness/claude-code.md](docs/harness/claude-code.md); that page is the contract the module implements.
 
@@ -107,6 +107,7 @@ The full table (events, exact deny lists, advice, switches, limits) is [docs/har
 |---|---|
 | `ACHILLES_DISABLE=1` in the shell | the adapter passes every event through for new sessions; the tools still answer that it is off |
 | `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` at install | postinstall does not register the plugin with Claude Code |
+| `ACHILLES_SKIP_PI_REGISTRATION=1` at install | postinstall does not install the package into pi |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` at install | skip the Chromium fetch |
 | `achilles-factory-rules.json` in the project root | opts into the factory content rules; no file, no rule |
 
