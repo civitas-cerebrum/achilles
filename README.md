@@ -34,7 +34,7 @@ What comes back, and when:
 
 1. At once: `RUNNING` plus a run id. The orchestrator agent starts in the background; progress shows in the status line and the Achilles pane. Your session stays free.
 2. When the run ends: a hand-back arrives as a turn of its own, without you typing. Its first word is one of `DONE` (deliverables, commits, verification evidence), `DONE_WITH_CONCERNS` (the same, plus rulings it needs from you), `NEEDS_CONTEXT` (a numbered question list) or `BLOCKED` (an owner action and what it unblocks).
-3. On `NEEDS_CONTEXT`: answer the questions in the chat. The main session re-delegates with your answers; the orchestrator resumes from `.achilles/runs/<run-id>/resume.json`, not from the conversation. Work that landed before the question is already committed. The orchestrator asks everything it needs in one hand-back; it never asks mid-run.
+3. On `NEEDS_CONTEXT`: answer the questions in the chat. The main session re-delegates with your answers and the run id; the orchestrator resumes from `.achilles/runs/<run-id>/resume.json`, not from the conversation. To resume a run yourself (after a crash, say), type `/achilles resume <run-id>`. Work that landed before the question is already committed. The orchestrator asks everything it needs in one hand-back; it never asks mid-run.
 
 pi works the same way: `delegate_qa` and `/achilles` start the orchestrator in its own `pi` process, it dispatches each expert into another, and the hand-back arrives as a message of its own ([docs/harness/pi.md](docs/harness/pi.md)).
 

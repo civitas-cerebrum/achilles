@@ -53,8 +53,33 @@ test('delegate_qa starts the orchestrator and answers RUNNING; its hand-back is 
 
   await $.turn.complete(ended('orchestrator-1', 'DONE\nLogin verified.'))
   expect(h.prompts.length).toBe(1)
-  expect(h.prompts[0]).toMatch(/^Achilles hand-back \(run qa-[\w-]+\)\. Relay this to the person\. If it is NEEDS_CONTEXT, ask them the numbered questions and re-delegate only with their answers\.\n\nTask: verify the login flow\n\nDONE\nLogin verified\.\n\nRun summary: experts dispatched: inspector ×1\.$/)
+  expect(h.prompts[0]).toMatch(/^Achilles hand-back \(run qa-[\w-]+\)\. Relay this to the person\. If it is NEEDS_CONTEXT, ask them the numbered questions and re-delegate only with their answers and run qa-[\w-]+\.\n\nTask: verify the login flow\n\nDONE\nLogin verified\.\n\nRun summary: experts dispatched: inspector ×1\.$/)
   expect(h.status()).toBeUndefined()
+})
+
+test('delegate_qa with run resumes that run: same id and directory, resume.json read first; a run with no resume file, a bad id or one still running is refused', async ($, on) => {
+  const h = engine(on, { files: { [`${ROOT}/.achilles/runs/qa-old/resume.json`]: '{"run-id":"qa-old"}' } })
+  await $.session.start(START)
+
+  const missing = await $.tool.call({ tool: DELEGATE, task: 'go on', run: 'qa-none' } as never)
+  expect(String(missing.result)).toBe('NEEDS_CONTEXT\nRun qa-none has no .achilles/runs/qa-none/resume.json to resume from.')
+  const bad = await $.tool.call({ tool: DELEGATE, task: 'go on', run: '../etc' } as never)
+  expect(String(bad.result)).toMatch(/^NEEDS_CONTEXT\n"\.\.\/etc" is not a run id/)
+  expect(h.spawns.length).toBe(0)
+
+  const call = await $.tool.call({ tool: DELEGATE, task: '', run: 'qa-old', context: 'the model server is back' } as never)
+  expect(String(call.result)).toMatch(/^RUNNING qa-old\n/)
+  expect(h.spawns[0]?.prompt).toMatch(/^\[achilles run=qa-old\]\nResume run qa-old: read \.achilles\/runs\/qa-old\/resume\.json before anything else/)
+  expect(h.spawns[0]?.prompt).toContain('Task: resume run qa-old')
+  expect(h.spawns[0]?.prompt).toContain('the model server is back')
+
+  const twice = await $.tool.call({ tool: DELEGATE, task: 'again', run: 'qa-old' } as never)
+  expect(String(twice.result)).toBe('BLOCKED\nRun qa-old is still running; its hand-back arrives on its own.')
+  expect((await $.command.run({ command: 'achilles', args: 'resume qa-old again' } as never)).text).toMatch(/^BLOCKED\nRun qa-old is still running/)
+  expect(h.spawns.length).toBe(1)
+  await $.turn.complete(ended('orchestrator-1', 'DONE\nResumed.'))
+  expect((await $.command.run({ command: 'achilles', args: 'resume qa-old  answers: 1 yes' } as never)).text).toMatch(/^RUNNING qa-old\n/)
+  expect(h.spawns[1]?.prompt).toContain('Task: answers: 1 yes')
 })
 
 test('an orchestrator turn that is not a hand-back keeps the run live; the next terminal turn hands back once, with the task text whole', async ($, on) => {

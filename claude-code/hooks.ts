@@ -11,7 +11,7 @@ import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
 import { recordReceipt, registerSignoff } from './hooks/signoff'
-import { ORCHESTRATOR, editRun, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+import { ORCHESTRATOR, checkoutRoot, editRun, exists, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
 
 // The Claude Code adapter of the Achilles methodology. The main session is never bound:
 // QA work enters through delegate_qa or /achilles, which start the orchestrator agent in
@@ -40,7 +40,7 @@ const TERMINAL = /^(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)\b/
 const ROUTE_NOTE =
   'Note from the Achilles orchestration: that agent is one of the Achilles experts, which the Achilles orchestrator briefs and reads back. QA work is better routed through delegate_qa (or /achilles): the orchestrator preflights, writes the brief, dispatches the right experts and hands back one verdict.'
 const HANDBACK_LEAD = (id: string) =>
-  `Achilles hand-back (run ${id}). Relay this to the person. If it is NEEDS_CONTEXT, ask them the numbered questions and re-delegate only with their answers.`
+  `Achilles hand-back (run ${id}). Relay this to the person. If it is NEEDS_CONTEXT, ask them the numbered questions and re-delegate only with their answers and run ${id}.`
 
 const text = (t: string) => ({ type: 'text', text: t })
 
@@ -96,13 +96,24 @@ async function registerAgents($: EngineInterface) {
 
 // ── runs: delegate, hand back ──
 
-async function delegate($: EngineInterface, task: string, context?: string, fromAgent?: string): Promise<string> {
-  if (task.trim() === '') return 'NEEDS_CONTEXT\nNo task was given.'
-  if (whoIs(await readRuns($), fromAgent)) return 'BLOCKED\ndelegate_qa is the main session’s door; inside a run the orchestrator dispatches experts with the Agent tool.'
-  const id = `qa-${(await $.clock.now()).toString(36)}`
-  const run: AchillesRun = { id, task, dir: `.achilles/runs/${id}`, experts: [], startedAt: await $.clock.now() }
+// A resumed run keeps its id and directory: the orchestrator reads its resume.json first.
+const RUN_ID = /^[A-Za-z0-9][\w-]{0,63}$/
+
+async function delegate($: EngineInterface, task: string, context?: string, fromAgent?: string, resume?: string): Promise<string> {
+  if (task.trim() === '' && !resume) return 'NEEDS_CONTEXT\nNo task was given.'
+  const runs = await readRuns($)
+  if (whoIs(runs, fromAgent)) return 'BLOCKED\ndelegate_qa is the main session’s door; inside a run the orchestrator dispatches experts with the Agent tool.'
+  if (resume !== undefined) {
+    if (!RUN_ID.test(resume)) return `NEEDS_CONTEXT\n"${resume}" is not a run id; pass the qa-… id a hand-back names.`
+    if (runs.some(r => r.id === resume)) return `BLOCKED\nRun ${resume} is still running; its hand-back arrives on its own.`
+    const root = await checkoutRoot($, await $.session.cwd())
+    if (!(await exists($, `${root}/.achilles/runs/${resume}/resume.json`))) return `NEEDS_CONTEXT\nRun ${resume} has no .achilles/runs/${resume}/resume.json to resume from.`
+  }
+  const id = resume ?? `qa-${(await $.clock.now()).toString(36)}`
+  const run: AchillesRun = { id, task: task.trim() === '' ? `resume run ${id}` : task, dir: `.achilles/runs/${id}`, experts: [], startedAt: await $.clock.now() }
   await writeRuns($, runs => [...runs, run])
-  const prompt = `[achilles run=${id}]\nRun ${id}. State directory: ${run.dir}/ (briefs/<slug>.md, reports/<slug>.md, resume.json).\n\nTask: ${task}${context ? `\n\nContext:\n${context}` : ''}`
+  const lead = resume ? `Resume run ${id}: read ${run.dir}/resume.json before anything else and continue from where it stopped, in the same state directory.\n` : ''
+  const prompt = `[achilles run=${id}]\n${lead}Run ${id}. State directory: ${run.dir}/ (briefs/<slug>.md, reports/<slug>.md, resume.json).\n\nTask: ${run.task}${context ? `\n\nContext:\n${context}` : ''}`
   const spawned = await $.agent.spawn({ subagentType: ORCHESTRATOR, prompt, description: `achilles ${id}` })
   if (spawned.deny !== undefined) {
     await writeRuns($, runs => runs.filter(r => r.id !== id))
@@ -141,12 +152,13 @@ export const register: Register = on => {
         properties: {
           task: { type: 'string', description: 'The QA task, in one or two sentences.' },
           context: { type: 'string', description: 'Optional background: files, tickets, constraints, answers to earlier NEEDS_CONTEXT questions.' },
+          run: { type: 'string', description: 'Optional: resume an earlier run by the id its hand-back names (qa-…); its state under .achilles/runs/<id>/ is reused.' },
         },
         required: ['task'],
       },
       isDeferred: false,
     })
-    await $.command.register({ name: 'achilles', description: 'Delegate a QA task to the Achilles orchestrator; with no task, open the Achilles pane.', argumentHint: '[task]' })
+    await $.command.register({ name: 'achilles', description: 'Delegate a QA task to the Achilles orchestrator, or resume a run (resume <run-id>); with no task, open the Achilles pane.', argumentHint: '[task | resume <run-id> [notes]]' })
     await registerAgents($)
     setDisabled((await $.env.get('ACHILLES_DISABLE')) === '1')
     const runs = await readRuns($)
@@ -156,17 +168,19 @@ export const register: Register = on => {
 
   on('tool.call', { tool: DELEGATE }, async ($, e) => {
     if (isDisabled()) return { result: OFF }
-    const { task, context } = e as unknown as { task?: unknown; context?: unknown }
-    return { result: await delegate($, typeof task === 'string' ? task : '', typeof context === 'string' ? context : undefined, e.agentId) }
+    const { task, context, run } = e as unknown as { task?: unknown; context?: unknown; run?: unknown }
+    return { result: await delegate($, typeof task === 'string' ? task : '', typeof context === 'string' ? context : undefined, e.agentId, typeof run === 'string' && run !== '' ? run : undefined) }
   }).catch(($, e, next) => (next.called ? next(e) : { result: `BLOCKED\nThe delegate_qa hook failed before the orchestrator started: ${next.error?.message ?? 'unknown error'}.` }))
 
-  // `/achilles <task>` delegates; `/achilles` alone opens the pane.
+  // `/achilles <task>` delegates, `/achilles resume <run-id> [notes]` resumes a run; `/achilles` alone opens the pane.
   on('command.run', { command: 'achilles' }, async ($, e) => {
     if (e.args.trim() === '') {
       await $.ui.open({ id: PANE, title: 'Achilles' })
       return { text: 'Achilles pane opened: runs in flight, their experts and the last hand-back.' }
     }
-    return { text: isDisabled() ? OFF : await delegate($, e.args) }
+    if (isDisabled()) return { text: OFF }
+    const resume = /^resume\s+(\S+)\s*([\s\S]*)$/.exec(e.args.trim())
+    return { text: resume ? await delegate($, resume[2]!, undefined, undefined, resume[1]) : await delegate($, e.args) }
   })
 
   // Every spawn goes through. A bare achilles-<role> type of this plugin is rewritten to the plugin's name;

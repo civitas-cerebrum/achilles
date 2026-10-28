@@ -21,7 +21,7 @@ const EXPERTS = readdirSync(join(ROOT, 'agents')).map(f => f.replace(/\.md$/, ''
 const TOOLS: Record<string, string[]> = { Read: ['read'], Write: ['write'], Edit: ['edit'], Bash: ['bash'], Grep: ['grep'], Glob: ['find', 'ls'], Agent: ['Agent'], Skill: [] }
 const TERMINAL = /^(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)\b/
 const HANDBACK_LEAD = (id: string) =>
-  `Achilles hand-back (run ${id}). Relay this to the person. If it is NEEDS_CONTEXT, ask them the numbered questions and re-delegate only with their answers.`
+  `Achilles hand-back (run ${id}). Relay this to the person. If it is NEEDS_CONTEXT, ask them the numbered questions and re-delegate only with their answers and run ${id}.`
 
 type Agent = { tools: string[]; skills: string[]; model?: string; prompt: string }
 
@@ -88,17 +88,36 @@ function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: 
       rmSync(dir, { recursive: true, force: true })
       resolve(code === 0 && text ? text : `BLOCKED\n${role} ended without a final message (${signal?.aborted ? 'aborted' : error || `exit code ${code}`}).${text ? `\nLast message:\n${text}` : ''}${stderr.trim() ? `\n${stderr.trim()}` : ''}`)
     })
+    // A pi that cannot start (not on PATH, not executable) emits no close: answer here.
+    proc.on('error', err => {
+      children.delete(proc)
+      rmSync(dir, { recursive: true, force: true })
+      resolve(`BLOCKED\n${role} could not start: ${err.message}`)
+    })
   })
 }
 
 // In the TUI and RPC modes the run goes on in the background and its hand-back arrives as a message
 // of its own; print and JSON modes end with the prompt, so there the tool waits for the hand-back.
-async function delegate(pi: ExtensionAPI, ctx: ExtensionContext, task: string, context?: string): Promise<string> {
-  if (task.trim() === '') return 'NEEDS_CONTEXT\nNo task was given.'
-  const id = `qa-${Date.now().toString(36)}`
+// A resumed run keeps its id and directory: the orchestrator reads its resume.json first.
+const RUN_ID = /^[A-Za-z0-9][\w-]{0,63}$/
+const active = new Set<string>()
+
+async function delegate(pi: ExtensionAPI, ctx: ExtensionContext, task: string, context?: string, resume?: string): Promise<string> {
+  if (task.trim() === '' && !resume) return 'NEEDS_CONTEXT\nNo task was given.'
+  if (resume !== undefined) {
+    if (!RUN_ID.test(resume)) return `NEEDS_CONTEXT\n"${resume}" is not a run id; pass the qa-… id a hand-back names.`
+    if (active.has(resume)) return `BLOCKED\nRun ${resume} is still running; its hand-back arrives on its own.`
+    if (!existsSync(join(ctx.cwd, '.achilles', 'runs', resume, 'resume.json'))) return `NEEDS_CONTEXT\nRun ${resume} has no .achilles/runs/${resume}/resume.json to resume from.`
+  }
+  const id = resume ?? `qa-${Date.now().toString(36)}`
   const dir = `.achilles/runs/${id}`
-  const prompt = `[achilles run=${id}]\nRun ${id}. State directory: ${dir}/ (briefs/<slug>.md, reports/<slug>.md, resume.json).\n\nTask: ${task}${context ? `\n\nContext:\n${context}` : ''}`
+  if (task.trim() === '') task = `resume run ${id}`
+  const lead = resume ? `Resume run ${id}: read ${dir}/resume.json before anything else and continue from where it stopped, in the same state directory.\n` : ''
+  const prompt = `[achilles run=${id}]\n${lead}Run ${id}. State directory: ${dir}/ (briefs/<slug>.md, reports/<slug>.md, resume.json).\n\nTask: ${task}${context ? `\n\nContext:\n${context}` : ''}`
+  active.add(id)
   const run = runAgent(ORCHESTRATOR, prompt, ctx, undefined, id).then(text => {
+    active.delete(id)
     ctx.ui.setStatus('achilles', undefined)
     return `${HANDBACK_LEAD(id)}\n\nTask: ${task}\n\n${TERMINAL.test(text) ? text : `BLOCKED\nThe orchestrator ended without a hand-back word.\n${text}`}`
   })
@@ -122,14 +141,19 @@ export default function (pi: ExtensionAPI) {
       parameters: Type.Object({
         task: Type.String({ description: 'The QA task, in one or two sentences.' }),
         context: Type.Optional(Type.String({ description: 'Optional background: files, tickets, constraints, answers to earlier NEEDS_CONTEXT questions.' })),
+        run: Type.Optional(Type.String({ description: 'Optional: resume an earlier run by the id its hand-back names (qa-…); its state under .achilles/runs/<id>/ is reused.' })),
       }),
       async execute(_id, params, _signal, _update, ctx) {
-        return { content: [{ type: 'text', text: await delegate(pi, ctx, params.task, params.context) }], details: undefined }
+        return { content: [{ type: 'text', text: await delegate(pi, ctx, params.task, params.context, params.run || undefined) }], details: undefined }
       },
     })
     pi.registerCommand('achilles', {
-      description: 'Delegate a QA task to the Achilles orchestrator.',
-      handler: async (args, ctx) => ctx.ui.notify((await delegate(pi, ctx, args ?? '')).split('\n')[0]!, 'info'),
+      description: 'Delegate a QA task to the Achilles orchestrator, or resume a run: /achilles resume <run-id> [notes].',
+      handler: async (args, ctx) => {
+        const resume = /^resume\s+(\S+)\s*([\s\S]*)$/.exec((args ?? '').trim())
+        const said = resume ? await delegate(pi, ctx, resume[2]!, undefined, resume[1]) : await delegate(pi, ctx, args ?? '')
+        ctx.ui.notify(said.split('\n')[0]!, 'info')
+      },
     })
   } else if (role === ORCHESTRATOR) {
     pi.registerTool({
