@@ -2,7 +2,8 @@
 // orchestrator and each expert run as their own `pi` process, set up from agents/achilles-<role>.md,
 // the same definitions the Claude Code plugin registers. The orchestrator's process gets an Agent tool
 // shaped like Claude Code's (subagent_type, prompt, description), so the skills read the same on both
-// harnesses. Which tools a process registers follows ACHILLES_ROLE, set on every process this spawns.
+// harnesses. Which tools a process registers follows ACHILLES_ROLE, set on every process this spawns;
+// the orchestrator's and the experts' processes also run the guards (guards.ts).
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,6 +11,7 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Type } from '@earendil-works/pi-ai'
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
+import { registerGuards } from './guards'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const ORCHESTRATOR = 'achilles-orchestrator'
@@ -42,7 +44,7 @@ function piCommand(): [string, string[]] {
 const children = new Set<ChildProcess>()
 
 /** Runs `role` on `prompt` in its own pi process and resolves to its final message, or a BLOCKED one. */
-function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: AbortSignal): Promise<string> {
+function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: AbortSignal, run = process.env.ACHILLES_RUN): Promise<string> {
   const agent = agentFile(role)
   const dir = mkdtempSync(join(tmpdir(), 'achilles-pi-'))
   const system = join(dir, 'system.md')
@@ -56,7 +58,7 @@ function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: 
   const args = ['--mode', 'json', '-p', '--no-session', trust, '--tools', agent.tools.join(','), '--append-system-prompt', system, ...(model ? ['--model', model] : []), prompt]
   const [cmd, pre] = piCommand()
   return new Promise(resolve => {
-    const proc = spawn(cmd, [...pre, ...args], { cwd: ctx.cwd, env: { ...process.env, ACHILLES_ROLE: role }, stdio: ['ignore', 'pipe', 'pipe'] })
+    const proc = spawn(cmd, [...pre, ...args], { cwd: ctx.cwd, env: { ...process.env, ACHILLES_ROLE: role, ...(run ? { ACHILLES_RUN: run } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] })
     children.add(proc)
     let text = ''
     let error = ''
@@ -96,7 +98,7 @@ async function delegate(pi: ExtensionAPI, ctx: ExtensionContext, task: string, c
   const id = `qa-${Date.now().toString(36)}`
   const dir = `.achilles/runs/${id}`
   const prompt = `[achilles run=${id}]\nRun ${id}. State directory: ${dir}/ (briefs/<slug>.md, reports/<slug>.md, resume.json).\n\nTask: ${task}${context ? `\n\nContext:\n${context}` : ''}`
-  const run = runAgent(ORCHESTRATOR, prompt, ctx).then(text => {
+  const run = runAgent(ORCHESTRATOR, prompt, ctx, undefined, id).then(text => {
     ctx.ui.setStatus('achilles', undefined)
     return `${HANDBACK_LEAD(id)}\n\nTask: ${task}\n\n${TERMINAL.test(text) ? text : `BLOCKED\nThe orchestrator ended without a hand-back word.\n${text}`}`
   })
@@ -110,6 +112,7 @@ export default function (pi: ExtensionAPI) {
   if (process.env.ACHILLES_DISABLE === '1') return
   const role = process.env.ACHILLES_ROLE || undefined
   pi.on('session_shutdown', () => children.forEach(c => c.kill('SIGTERM')))
+  if (role !== undefined) registerGuards(pi, role, ROOT)
 
   if (role === undefined) {
     pi.registerTool({

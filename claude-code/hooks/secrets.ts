@@ -3,7 +3,7 @@
 // echoed: a finding names the field or quotes three characters.
 
 import { inScope } from './posix'
-import { strings } from './context'
+import { strings } from './io'
 
 export type SecretRule = { scope?: unknown; patterns?: unknown; allowlist?: unknown; action?: unknown; doc?: unknown }
 

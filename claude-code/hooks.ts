@@ -1,7 +1,7 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { AchillesRun } from './types'
-import { registerBashJudge } from './hooks/bash-judge'
+import { registerBashJudge } from './hooks/bash-hook'
 import { dispatchAdvice } from './hooks/dispatch'
 import { registerHygiene } from './hooks/hygiene'
 import { registerLedger } from './hooks/ledger'
