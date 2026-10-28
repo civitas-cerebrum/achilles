@@ -14,10 +14,9 @@ let disabled = false
 export const setDisabled = (v: boolean) => (disabled = v)
 export const isDisabled = () => disabled
 
-export const ROLES = ['inspector', 'author', 'reviewer', 'doc-writer'] as const
-export const agentType = (role: (typeof ROLES)[number] | 'orchestrator') => `achilles:achilles-${role}`
-export const ORCHESTRATOR = agentType('orchestrator')
-export const EXPERTS: readonly string[] = ROLES.map(agentType)
+export const ORCHESTRATOR = 'achilles:achilles-orchestrator'
+/** Every plugin agent named achilles-<role> other than the orchestrator is an expert (agents/*.md). */
+export const isExpert = (type: string) => /^achilles:achilles-[\w-]+$/.test(type) && type !== ORCHESTRATOR
 export const roleOf = (type: string) => type.replace(/^achilles:achilles-/, '')
 
 export type Who = { run: AchillesRun; role: string; expert?: AchillesExpert }

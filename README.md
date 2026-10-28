@@ -16,7 +16,7 @@ Requirements: Node 20 or later and a web app with a reachable URL. Claude Code 2
 |---|---|---|
 | Any, through npm | `npm i -D @civitas-cerebrum/achilles` | Fetches the Chromium used for live inspection. On a machine with Claude Code, postinstall registers the package as a plugin in the project's `.claude/settings.local.json` (`-g`: `~/.claude/settings.json`), in place from `node_modules`; nothing is copied. |
 | Claude Code, direct | `/plugin install achilles --marketplace civitas-cerebrum/achilles` at the prompt, or from a shell `claude plugin marketplace add civitas-cerebrum/achilles` then `claude plugin install achilles@achilles` | User-level plugin for every project; no npm install needed for the agents, skills and hooks. The CLIs and reporter still come from the npm package. |
-| pi | `pi install npm:@civitas-cerebrum/achilles` | Loads the skills only (`package.json` declares `"pi": { "skills": ["./skills"] }`). No hooks, no plugin tools. See [docs/harness/pi.md](docs/harness/pi.md). |
+| pi | `pi install npm:@civitas-cerebrum/achilles` | Loads the skills and the pi extension (`pi/index.ts`): `delegate_qa`, `/achilles` and expert mode, with the orchestrator and each expert in their own `pi` process. No hooks. See [docs/harness/pi.md](docs/harness/pi.md). |
 
 Set `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` to install without touching Claude Code settings, and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` to skip the Chromium fetch. A failed step prints a warning; the install still succeeds. If npm 11 reports the install script as not approved, run `npm install-scripts approve @civitas-cerebrum/achilles` and install again. Restart Claude Code after the install; the plugin loads at the next session. Uninstall: `claude plugin uninstall achilles`, or delete the `achilles` entries from the settings file postinstall wrote; npm runs no uninstall script.
 
@@ -36,7 +36,7 @@ What comes back, and when:
 2. When the run ends: a hand-back arrives as a turn of its own, without you typing. Its first word is one of `DONE` (deliverables, commits, verification evidence), `DONE_WITH_CONCERNS` (the same, plus rulings it needs from you), `NEEDS_CONTEXT` (a numbered question list) or `BLOCKED` (an owner action and what it unblocks).
 3. On `NEEDS_CONTEXT`: answer the questions in the chat. The main session re-delegates with your answers; the orchestrator resumes from `.achilles/runs/<run-id>/resume.json`, not from the conversation. Work that landed before the question is already committed. The orchestrator asks everything it needs in one hand-back; it never asks mid-run.
 
-On pi, the agent that loads `skills/achilles-orchestrator/SKILL.md` plays the orchestrator and maps its dispatches onto the extension's subagent primitive ([docs/harness/pi.md](docs/harness/pi.md)).
+pi works the same way: `delegate_qa` and `/achilles` start the orchestrator in its own `pi` process, it dispatches each expert into another, and the hand-back arrives as a message of its own ([docs/harness/pi.md](docs/harness/pi.md)).
 
 Scope rules the orchestrator keeps: every unit of work is reviewed by a fresh reviewer before the run advances; no silent skips; app bugs are reported with evidence, never worked around; a long run commits what landed and names a resume file at every exit. The contract is [`skills/achilles-orchestrator/SKILL.md`](skills/achilles-orchestrator/SKILL.md).
 
@@ -78,7 +78,7 @@ Five hand-authored definitions under `agents/achilles-<role>.md`. Tools and path
 
 | Agent | Role | Scope in one line |
 |---|---|---|
-| `achilles-orchestrator` | controller | Routes the task, writes briefs and run state under `.achilles/runs/<run>/`, dispatches the four experts, reads their reports, commits landed work; runs the suite and git, never a browser session, never a spec |
+| `achilles-orchestrator` | controller | Routes the task, writes briefs and run state under `.achilles/runs/<run>/`, dispatches the experts, reads their reports, commits landed work; runs the suite and git, never a browser session, never a spec |
 | `achilles-inspector` | looks first | Reads the workspace and drives the live app in its own browser session; writes evidence, discovery notes and proposals, never a spec or the page repository |
 | `achilles-author` | writes tests | Owns `tests/**` and the page repository; the scaffold brief adds the runner config and `.env*`, the selector brief adds one inert attribute in one frontend file; proves its work with the runner |
 | `achilles-reviewer` | fresh eyes | Verifies on disk and in the running app, runs the suite read-only, writes a verdict; never edits what it reviews, a new instance per review |

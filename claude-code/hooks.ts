@@ -11,7 +11,7 @@ import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
 import { recordReceipt, registerSignoff } from './hooks/signoff'
-import { EXPERTS, ORCHESTRATOR, editRun, isDisabled, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+import { ORCHESTRATOR, editRun, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
 
 // The Claude Code adapter of the Achilles methodology. The main session is never bound:
 // QA work enters through delegate_qa or /achilles, which start the orchestrator agent in
@@ -23,8 +23,9 @@ import { EXPERTS, ORCHESTRATOR, editRun, isDisabled, note, readRuns, roleOf, set
 // The guards live under hooks/, one file each; this file is registration, runs and hand-back.
 
 // The bare spelling the agent definitions use ("the Agent tool's type achilles-author"),
-// rewritten at agent.spawn to the plugin-qualified name the engine dispatches.
-const BARE = /^achilles-(orchestrator|inspector|author|reviewer|doc-writer)$/
+// rewritten at agent.spawn to the plugin-qualified name the engine dispatches. Filled from agents/*.md
+// at session.start, so a new achilles-<role> needs only its file.
+const OURS = new Set<string>()
 const DELEGATE = 'mcp__achilles__delegate_qa'
 const OFF = 'BLOCKED\nAchilles is switched off in this session (ACHILLES_DISABLE=1).'
 
@@ -88,6 +89,7 @@ async function registerAgents($: EngineInterface) {
     const agent = parseAgent(String(await $.fs.read(`${dir}/${entry.name}`)))
     if (!agent) continue
     const { tools, skills, ...spec } = agent
+    OURS.add(agent.name)
     await $.agent.register({ ...spec, ...(tools ? { tools } : {}), ...(skills ? { skills } : {}) })
   }
 }
@@ -167,14 +169,14 @@ export const register: Register = on => {
     return { text: isDisabled() ? OFF : await delegate($, e.args) }
   })
 
-  // Every spawn goes through. A bare achilles-<role> type is rewritten to the plugin's name;
+  // Every spawn goes through. A bare achilles-<role> type of this plugin is rewritten to the plugin's name;
   // the orchestrator's own spawn (marked prompt) is tied to its run; an expert spawned from
   // an orchestrator's loop (parentAgentId, absent on the main loop) is counted in that run;
   // an expert spawned from anywhere else gets a note about the door.
   on('agent.spawn', async ($, e, next) => {
     if (isDisabled()) return next(e)
-    const subagentType = BARE.test(e.subagentType) ? `achilles:${e.subagentType}` : e.subagentType
-    const parent = EXPERTS.includes(subagentType) ? whoIs(await readRuns($), e.parentAgentId) : undefined
+    const subagentType = OURS.has(e.subagentType) ? `achilles:${e.subagentType}` : e.subagentType
+    const parent = isExpert(subagentType) ? whoIs(await readRuns($), e.parentAgentId) : undefined
     const advice = parent?.role === 'orchestrator' ? await dispatchAdvice($, e, roleOf(subagentType), parent) : undefined
     const rewritten = { ...e, subagentType, ...(advice ? { prompt: advice.prompt } : {}), ...(advice?.background === false ? { background: false } : {}) }
     const started = await next(advice || subagentType !== e.subagentType ? rewritten : e)
@@ -185,7 +187,7 @@ export const register: Register = on => {
       await editRun($, m[1]!, r => ({ ...r, agentId: r.agentId ?? agentId }))
       return started
     }
-    if (!EXPERTS.includes(subagentType)) return started
+    if (!isExpert(subagentType)) return started
     if (parent?.role === 'orchestrator') {
       if (started.agentId !== undefined) {
         const role = roleOf(subagentType)

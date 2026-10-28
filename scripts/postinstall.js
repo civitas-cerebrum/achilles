@@ -15,7 +15,7 @@ const TAG = '[@civitas-cerebrum/achilles]';
 function piHint() {
   const pi = spawnSync('pi', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   if (!pi || pi.status !== 0) return;
-  console.log(`${TAG} pi ${String(pi.stdout).trim()} found: load the skills with \`pi install npm:@civitas-cerebrum/achilles\` (user-wide) or \`pi install ./node_modules/@civitas-cerebrum/achilles --local\` (this project).`);
+  console.log(`${TAG} pi ${String(pi.stdout).trim()} found: load Achilles (skills and expert mode) with \`pi install npm:@civitas-cerebrum/achilles\` (user-wide) or \`pi install ./node_modules/@civitas-cerebrum/achilles --local\` (this project).`);
 }
 
 async function main() {

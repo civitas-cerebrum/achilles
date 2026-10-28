@@ -34,6 +34,7 @@
     "schemas",
     "reporter",
     "claude-code",
+    "pi",
     ".claude-plugin",
     "scripts/postinstall.js",
     "scripts/install/chromium.js"
@@ -71,6 +72,9 @@
     "element-interactions"
   ],
   "pi": {
+    "extensions": [
+      "./pi/index.ts"
+    ],
     "skills": [
       "./skills"
     ]
