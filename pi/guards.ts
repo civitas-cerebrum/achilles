@@ -2,7 +2,9 @@
 // secrets screen, run on pi's tool_call in the orchestrator's and the experts' processes. The judge
 // reaches the host through a few nouns of Claude Code's `$`; this file answers them from Node. A
 // deny blocks the call; a rewrite (the playwright-cli session flag) edits the input in place; a
-// note is appended to the tool's result for the model to read.
+// note is appended to the tool's result for the model to read. A bash call with no timeout gets one
+// (pi's has no default, and one command that never returns holds the expert, the orchestrator
+// and the main session with it): ACHILLES_PI_BASH_TIMEOUT seconds, 600 by default, as Claude Code caps.
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -36,6 +38,8 @@ function engine(root: string, pluginRoot: string): EngineInterface {
   return $ as unknown as EngineInterface
 }
 
+const BASH_TIMEOUT = Number(process.env.ACHILLES_PI_BASH_TIMEOUT) || 600
+
 export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: string) {
   const short = role.replace(/^achilles-/, '')
   const runId = process.env.ACHILLES_RUN ?? 'pi'
@@ -48,12 +52,13 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
 
   pi.on('tool_call', async (e, ctx) => {
     const $ = engine(ctx.cwd, pluginRoot)
-    const input = e.input as { command?: string; path?: string; content?: string; edits?: { newText: string }[] }
+    const input = e.input as { command?: string; timeout?: number; path?: string; content?: string; edits?: { newText: string }[] }
     if (e.toolName === 'bash' && typeof input.command === 'string') {
       const command = input.command
       const v = await judgeBash($, command, w).catch(() => ({ deny: 'its Bash judge failed, so the call is refused.', notes: [] as string[], command }))
       if (v.deny !== undefined) return { block: true, reason: `achilles: ${v.deny}` }
       if (v.command !== command) input.command = v.command
+      if (typeof input.timeout !== 'number' || input.timeout <= 0) input.timeout = BASH_TIMEOUT
       const said = v.notes.filter(n => !n.startsWith('__slug:'))
       if (said.length > 0) notes.set(e.toolCallId, said)
       return

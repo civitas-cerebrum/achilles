@@ -59,6 +59,7 @@ Switches the shipped code reads (the `opt-in-surfaces` lint compares this table 
 |---|---|
 | `ACHILLES_DISABLE=1` in the operator shell | the hook module passes every event through for new sessions (kill switch) |
 | `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` at install | the npm postinstall does not register the plugin with Claude Code |
+| `ACHILLES_PI_BASH_TIMEOUT=<s>` | on pi, the timeout given to an Achilles agent's `bash` call that sets none (default 600) |
 | `ACHILLES_SKIP_PI_REGISTRATION=1` at install | the npm postinstall does not install the package into pi (it does only when `pi` is on PATH) |
 | `ACHILLES_REQUIRE_CLAUDE=1` in CI | a missing `claude` CLI fails the registration step instead of logging the manual command |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` at install | skip the Chromium fetch |
