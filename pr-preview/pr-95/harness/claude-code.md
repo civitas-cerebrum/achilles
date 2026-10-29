@@ -32,6 +32,8 @@ The main session is never bound by Achilles rules; only the five agents are, thr
 | `achilles-reviewer` | Read, Glob, Grep, Bash, Write, Edit, Skill | its verdict and spill file, `docs/evidence/<change>/verify.md`, a ledger's reviewer fields | run-only: `npx playwright test`, `npx playwright-cli -s=…`, `npx tsc --noEmit`, `npm run test:unit`, `git status\|log\|diff\|show` |
 | `achilles-doc-writer` | Read, Glob, Grep, Edit, Write, Bash | `docs/**` except `docs/evidence/**`, `tests/e2e/docs/**` documents (not ledgers or dot-prefixed state), `qa-summary-deck.*` and `test-catalogue.*` at the root | run-only: `node <qa-reporting script>`, `pdftoppm`, read-only `git log` |
 
+Thinking effort: the inspector, author and doc-writer definitions set `effort: medium`; the orchestrator and the reviewer (the judge) set none and take the session's. The same frontmatter drives both adapters (`--thinking` on pi).
+
 Role scope is the enforcement for separation of duties: an author cannot approve its own work because it has no reviewer schema to return, and a reviewer cannot touch a spec. The orchestrator never writes specs and never opens a browser session; those limits are methodology ([SKILL.md](../../skills/achilles-orchestrator/SKILL.md) §1) checked by the review dispatch, not by a hook.
 
 ## Hooks (eight)
