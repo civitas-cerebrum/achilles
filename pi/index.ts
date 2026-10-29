@@ -23,14 +23,14 @@ const TERMINAL = /^(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)\b/
 const HANDBACK_LEAD = (id: string) =>
   `Achilles hand-back (run ${id}). Relay this to the person. If it is NEEDS_CONTEXT, ask them the numbered questions and re-delegate only with their answers and run ${id}.`
 
-type Agent = { tools: string[]; skills: string[]; model?: string; prompt: string }
+type Agent = { tools: string[]; skills: string[]; model?: string; effort?: string; prompt: string }
 
 function agentFile(role: string): Agent {
   const m = readFileSync(join(ROOT, 'agents', `${role}.md`), 'utf8').match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
   if (!m) throw new Error(`agents/${role}.md has no frontmatter`)
   const field = (k: string) => m[1]!.match(new RegExp(`^${k}:\\s*(.*)$`, 'm'))?.[1]?.trim()
   const list = (k: string) => (field(k) ?? '').split(',').map(s => s.trim()).filter(Boolean)
-  return { tools: list('tools').flatMap(t => TOOLS[t] ?? []), skills: list('skills'), model: field('model'), prompt: m[2]!.trim() }
+  return { tools: list('tools').flatMap(t => TOOLS[t] ?? []), skills: list('skills'), model: field('model'), effort: field('effort'), prompt: m[2]!.trim() }
 }
 
 // The pi this process runs as, so a child uses the same install: pi's own CLI script under node,
@@ -42,6 +42,8 @@ function piCommand(): [string, string[]] {
 }
 
 const children = new Set<ChildProcess>()
+// The parent's thinking level, for an agent whose definition names no effort (set when the extension loads).
+let parentThinking: () => string | undefined = () => undefined
 
 /** Runs `role` on `prompt` in its own pi process and resolves to its final message, or a BLOCKED one. */
 function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: AbortSignal, run = process.env.ACHILLES_RUN): Promise<string> {
@@ -55,7 +57,10 @@ function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: 
   // A child takes the parent's project-trust decision: print mode cannot ask, and an Achilles package
   // installed in the project loads only in a trusted one.
   const trust = ctx.isProjectTrusted() ? '--approve' : '--no-approve'
-  const args = ['--mode', 'json', '-p', '--no-session', trust, '--tools', agent.tools.join(','), '--append-system-prompt', system, ...(model ? ['--model', model] : []), prompt]
+  // Thinking: the definition's effort (the experts other than the judge run at medium), else the
+  // parent's level, so one run never mixes levels when the settings file changes under it.
+  const thinking = agent.effort ?? parentThinking()
+  const args = ['--mode', 'json', '-p', '--no-session', trust, '--tools', agent.tools.join(','), '--append-system-prompt', system, ...(model ? ['--model', model] : []), ...(thinking ? ['--thinking', thinking] : []), prompt]
   const [cmd, pre] = piCommand()
   return new Promise(resolve => {
     const proc = spawn(cmd, [...pre, ...args], { cwd: ctx.cwd, env: { ...process.env, ACHILLES_ROLE: role, ...(run ? { ACHILLES_RUN: run } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -129,6 +134,7 @@ async function delegate(pi: ExtensionAPI, ctx: ExtensionContext, task: string, c
 
 export default function (pi: ExtensionAPI) {
   if (process.env.ACHILLES_DISABLE === '1') return
+  parentThinking = () => pi.getThinkingLevel()
   const role = process.env.ACHILLES_ROLE || undefined
   pi.on('session_shutdown', () => children.forEach(c => c.kill('SIGTERM')))
   // A spawned orchestrator or expert ends with its parent: a parent killed outright (a signal, a

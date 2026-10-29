@@ -26,7 +26,9 @@ test('session.start registers delegate_qa in the prompt tool list, the command, 
   expect(tools.map(t => t.name)).toEqual(['delegate_qa'])
   expect(tools[0]?.isDeferred).toBe(false)
   expect(agents.map(a => a.name)).toEqual(['achilles-orchestrator', 'achilles-inspector', 'achilles-author', 'achilles-reviewer', 'achilles-doc-writer'])
-  expect(agents[1]).toEqual({ name: 'achilles-inspector', description: 'The inspector.', prompt: 'You are the inspector.', tools: ['Read', 'Write', 'Edit', 'Bash'] })
+  expect(agents[1]).toEqual({ name: 'achilles-inspector', description: 'The inspector.', prompt: 'You are the inspector.', tools: ['Read', 'Write', 'Edit', 'Bash'], effort: 'medium' })
+  // The orchestrator and the judge (reviewer) name no effort: they take the session's.
+  expect(agents.filter(a => 'effort' in a).map(a => a.name)).toEqual(['achilles-inspector', 'achilles-author', 'achilles-doc-writer'])
   expect(h.status()).toBeUndefined()
 })
 

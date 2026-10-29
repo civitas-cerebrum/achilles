@@ -44,9 +44,9 @@ const HANDBACK_LEAD = (id: string) =>
 
 const text = (t: string) => ({ type: 'text', text: t })
 
-// ── agents/*.md: frontmatter (name, description, tools, skills, model) and the prompt ──
+// ── agents/*.md: frontmatter (name, description, tools, skills, model, effort) and the prompt ──
 
-type AgentFile = { name: string; description: string; prompt: string; tools?: string[]; skills?: string[]; model?: string }
+type AgentFile = { name: string; description: string; prompt: string; tools?: string[]; skills?: string[]; model?: string; effort?: string }
 
 function parseAgent(source: string): AgentFile | undefined {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(source)
@@ -72,6 +72,7 @@ function parseAgent(source: string): AgentFile | undefined {
   const description = fields.description
   if (typeof name !== 'string' || name === '' || typeof description !== 'string' || description === '') return undefined
   const model = fields.model
+  const effort = fields.effort
   return {
     name,
     description,
@@ -79,6 +80,7 @@ function parseAgent(source: string): AgentFile | undefined {
     tools: list(fields.tools),
     skills: list(fields.skills),
     ...(typeof model === 'string' && model !== '' ? { model } : {}),
+    ...(typeof effort === 'string' && effort !== '' ? { effort } : {}),
   }
 }
 

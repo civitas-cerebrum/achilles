@@ -13,7 +13,7 @@ export const START = { cwd: ROOT, surface: 'terminal', isInteractive: true } as 
 const AGENT_FILES: Record<string, string> = Object.fromEntries(
   ['orchestrator', 'inspector', 'author', 'reviewer', 'doc-writer'].map(role => [
     `achilles-${role}.md`,
-    `---\nname: achilles-${role}\ndescription: The ${role}.\ntools: Read, Write, Edit, Bash\n---\nYou are the ${role}.`,
+    `---\nname: achilles-${role}\ndescription: The ${role}.\ntools: Read, Write, Edit, Bash\n${role === 'orchestrator' || role === 'reviewer' ? '' : 'effort: medium\n'}---\nYou are the ${role}.`,
   ]),
 )
 
