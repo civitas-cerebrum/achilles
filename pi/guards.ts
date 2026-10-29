@@ -39,6 +39,23 @@ function engine(root: string, pluginRoot: string): EngineInterface {
 }
 
 const BASH_TIMEOUT = Number(process.env.ACHILLES_PI_BASH_TIMEOUT) || 600
+const STATE_JSON = /^(tests\/(e2e|perf)\/docs|\.achilles)\/.*\.json$/
+
+const parseError = (text: string) => {
+  try {
+    JSON.parse(text)
+    return undefined
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+}
+
+/** The file's text after pi's edit (each oldText replaced once); undefined when it cannot be read. */
+async function edited(abs: string, edits: { oldText?: string; newText: string }[]): Promise<string | undefined> {
+  const before = await readFile(abs, 'utf8').catch(() => undefined)
+  if (before === undefined) return undefined
+  return edits.reduce((text, x) => (typeof x.oldText === 'string' ? text.replace(x.oldText, () => x.newText) : text), before)
+}
 
 export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: string) {
   const short = role.replace(/^achilles-/, '')
@@ -52,7 +69,7 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
 
   pi.on('tool_call', async (e, ctx) => {
     const $ = engine(ctx.cwd, pluginRoot)
-    const input = e.input as { command?: string; timeout?: number; path?: string; content?: string; edits?: { newText: string }[] }
+    const input = e.input as { command?: string; timeout?: number; path?: string; content?: string; edits?: { oldText?: string; newText: string }[] }
     if (e.toolName === 'bash' && typeof input.command === 'string') {
       const command = input.command
       const v = await judgeBash($, command, w).catch(() => ({ deny: 'its Bash judge failed, so the call is refused.', notes: [] as string[], command }))
@@ -64,10 +81,17 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
       return
     }
     if ((e.toolName === 'write' || e.toolName === 'edit') && typeof input.path === 'string') {
+      const { abs, rel } = placeFile(ctx.cwd, input.path)
+      // Run state the orchestrator and the gates read back (ledgers, cycle and coverage state,
+      // resume files) must stay parseable: a write or edit that breaks one is refused.
+      if (STATE_JSON.test(rel)) {
+        const after = e.toolName === 'write' ? (input.content ?? '') : await edited(abs, input.edits ?? [])
+        const broken = after === undefined ? undefined : parseError(after)
+        if (broken) return { block: true, reason: `achilles: this ${e.toolName} would leave ${rel} unparseable (${broken}); run state is read back by the gates and on resume, so write it as valid JSON.` }
+      }
       const rule = ruleOf(await factoryRules($, ctx.cwd), 'secrets.none')
       if (!rule) return
       const text = e.toolName === 'write' ? (input.content ?? '') : (input.edits ?? []).map(x => x.newText).join('\n')
-      const { rel } = placeFile(ctx.cwd, input.path)
       const hit = contentSecret(rule, rel, text)
       if (hit) return { block: true, reason: `achilles: ${threeLine('secrets.none', `${e.toolName === 'write' ? 'Write to' : 'Edit of'} ${rel} ${hit.what}`, typeof rule.action === 'string' ? rule.action : undefined, typeof rule.doc === 'string' ? rule.doc : undefined)}` }
     }
