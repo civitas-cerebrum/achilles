@@ -131,6 +131,16 @@ export default function (pi: ExtensionAPI) {
   if (process.env.ACHILLES_DISABLE === '1') return
   const role = process.env.ACHILLES_ROLE || undefined
   pi.on('session_shutdown', () => children.forEach(c => c.kill('SIGTERM')))
+  // A spawned orchestrator or expert ends with its parent: a parent killed outright (a signal, a
+  // crash) runs no session_shutdown, and an orphan would go on working with nobody to hand back to.
+  if (role !== undefined) {
+    const parent = process.ppid
+    pi.on('session_start', () => {
+      setInterval(() => {
+        try { process.kill(parent, 0) } catch { children.forEach(c => c.kill('SIGTERM')); process.exit(1) }
+      }, 5000).unref()
+    })
+  }
   if (role !== undefined) registerGuards(pi, role, ROOT)
 
   if (role === undefined) {
