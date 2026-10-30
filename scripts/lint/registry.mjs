@@ -1,42 +1,34 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { SKILLS_DIR } from './util.mjs';
+import { SKILLS_DIR, ORCHESTRATOR_SKILL, skillDirs, frontmatterName } from './util.mjs';
 
-const REGISTRY = 'skills/achilles-protocol/references/skill-registry.md';
-
-// Check 1 — skill-registry table  ↔  skills/*/ directories (bijection)
+// Check 1 — the skill set is what the orchestrator routes to.
+// Every skills/<name>/ has a SKILL.md whose frontmatter `name` is the directory
+// name, and is reachable from the orchestrator skill or one of its workflows
+// (a `../<name>/SKILL.md` link or a backticked `<name>`); every
+// `../<name>/SKILL.md` link in those files resolves to a directory.
 export function run(report) {
   const detail = [];
-  const md = readFileSync(REGISTRY, 'utf8').split('\n');
+  const dirs = skillDirs();
+  const workflowsDir = join(SKILLS_DIR, 'achilles-orchestrator', 'workflows');
+  const workflows = existsSync(workflowsDir)
+    ? readdirSync(workflowsDir).filter((f) => f.endsWith('.md')).map((f) => join(workflowsDir, f))
+    : [];
+  const text = [ORCHESTRATOR_SKILL, ...workflows].map((f) => readFileSync(f, 'utf8')).join('\n');
 
-  // Parse the registry table: rows between "## Registry" and the next "##".
-  const registrySkills = new Set();
-  let inRegistry = false;
-  for (const line of md) {
-    if (/^## Registry\b/.test(line)) { inRegistry = true; continue; }
-    if (inRegistry && /^##\s/.test(line)) break;
-    if (!inRegistry) continue;
-    // Table rows start with "| `skill-name` |". Skip header/separator rows.
-    const m = line.match(/^\|\s*`([^`]+)`\s*\|/);
-    if (m) registrySkills.add(m[1]);
+  for (const dir of dirs) {
+    const skill = join(SKILLS_DIR, dir, 'SKILL.md');
+    if (!existsSync(skill)) { detail.push(`skills/${dir}/ has no SKILL.md`); continue; }
+    const name = frontmatterName(skill);
+    if (name !== dir) detail.push(`skills/${dir}/SKILL.md frontmatter name is "${name}", expected "${dir}"`);
+    if (dir === 'achilles-orchestrator') continue;
+    if (!text.includes(`../${dir}/SKILL.md`) && !text.includes('`' + dir + '`')) {
+      detail.push(`skills/${dir}/ is routed from nowhere in the orchestrator skill or its workflows`);
+    }
+  }
+  for (const m of text.matchAll(/\.\.\/([a-z0-9-]+)\/SKILL\.md/g)) {
+    if (!dirs.includes(m[1])) detail.push(`orchestrator cites skills/${m[1]}/SKILL.md, which does not exist`);
   }
 
-  const dirSkills = new Set(
-    readdirSync(SKILLS_DIR).filter((n) => {
-      try { return statSync(join(SKILLS_DIR, n)).isDirectory(); }
-      catch { return false; }
-    }),
-  );
-
-  const missingDirs = [...registrySkills].filter((s) => !dirSkills.has(s));
-  const missingRows = [...dirSkills].filter((s) => !registrySkills.has(s));
-
-  if (missingDirs.length) detail.push(`in registry but no skills/<name>/ dir: ${missingDirs.join(', ')}`);
-  if (missingRows.length) detail.push(`skills/<name>/ dir but no registry row: ${missingRows.join(', ')}`);
-
-  report(
-    `skill-registry.md ↔ skills/*/ bijection (${registrySkills.size} registry rows, ${dirSkills.size} dirs)`,
-    missingDirs.length === 0 && missingRows.length === 0,
-    detail,
-  );
+  report(`skill set ↔ orchestrator routing (${dirs.length} skills, ${workflows.length} workflows)`, detail.length === 0, detail);
 }

@@ -165,7 +165,7 @@ git show <headSha>:playwright.config.ts | grep -nE "trace:|retries:|video:|scree
 grep -nE "trace:|retries:|video:|screenshot:" playwright.config.ts   # your working tree, for the diff
 ```
 
-**When no trace exists for the failing attempt**, do not treat that as permission to diagnose from the log. Work the rest of the evidence floor: `test-failed-1.png`, `error-context.md` (which carries the full aria page snapshot at the moment of failure), `video.webm`, and the JSON reporter's `stderr` / `annotations`, and state in the report that the trace was unavailable and why. Then, separately from the diagnosis, flag the config: `trace: 'on-first-retry'` is a known evidence gap and `retain-on-failure` is this suite's documented default (see `achilles-protocol/SKILL.md` Rule 8). Fixing it is a follow-up item, not a substitute for this session's evidence.
+**When no trace exists for the failing attempt**, do not treat that as permission to diagnose from the log. Work the rest of the evidence floor: `test-failed-1.png`, `error-context.md` (which carries the full aria page snapshot at the moment of failure), `video.webm`, and the JSON reporter's `stderr` / `annotations`, and state in the report that the trace was unavailable and why. Then, separately from the diagnosis, flag the config: `trace: 'on-first-retry'` is a known evidence gap and `retain-on-failure` is the scaffold's documented default (the onboard workflow's scaffold brief, `../../achilles-orchestrator/workflows/onboard.md` §"Phase 1: scaffold"). Fixing it is a follow-up item, not a substitute for this session's evidence.
 
 **7. Open the trace.** Interactive, when a human is watching:
 
@@ -193,7 +193,7 @@ Useful shapes inside the archive:
 - `test.trace`: the runner stream. `before` entries carry `class`, `method`, `title`; the matching `after` entry carries `error.message` with Playwright's full call log (including the resolved element's outerHTML). This is where "which action failed, against what element" is answered without ambiguity.
 - `0-trace.trace`: the browser stream: `console`, `frame-snapshot`, `screencast-frame`, `input`, `log`.
 - `0-trace.network`: every request/response of the run.
-- `resources/page@*.jpeg`: the screencast frames. Read the last few with the Read tool to see the UI at the moment of failure without launching the viewer.
+- `resources/page@*.jpeg`: the screencast frames. Open the last few to see the UI at the moment of failure without launching the viewer.
 - `resources/*.txt` / hashed files: captured page resources (scripts, stylesheets, HTML) as served during the run.
 
 `frame-snapshot.snapshot.html` is Playwright's delta-encoded DOM format (nested arrays, not raw HTML). For a readable DOM at failure, prefer `error-context.md`'s aria page snapshot; use the trace viewer when you need the live DOM tree.

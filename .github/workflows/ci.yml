@@ -1,6 +1,6 @@
 name: ✅ CI
 
-# Every suite the package owns, as separate steps, on Linux and macOS with Node 20 and 24, plus a root job.
+# Every suite the package owns, as separate steps, on Linux and macOS with Node 20 and 24.
 
 on:
   pull_request:
@@ -17,7 +17,6 @@ concurrency:
 jobs:
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
-    # BSD userland on macOS is the point: the hooks must hold on both.
     strategy:
       fail-fast: false
       matrix:
@@ -33,9 +32,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      # Dev deps included: test:hooks → build:validator imports esbuild (devDep)
-      # to bundle the self-contained validator. --ignore-scripts skips the
-      # package's own postinstall (which copies hooks/skills into ~/.claude).
+      # --ignore-scripts skips the package's own postinstall (Chromium fetch, Claude Code
+      # registration); the own-checkout guard would skip it anyway.
       - name: 🧩  Install dependencies
         id: install
         run: npm ci --ignore-scripts
@@ -50,26 +48,7 @@ jobs:
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:lint
 
-      - name: 🧪  Hook tests
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: npm run test:hooks
-
-      # Hooks use #!/bin/bash, which is 3.2 on macOS; the default PATH bash
-      # there is newer (Homebrew) so the first run does not cover 3.2.
-      - name: 🍎  Hook tests under /bin/bash 3.2
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' && runner.os == 'macOS' && matrix.node == '24' }}
-        run: |
-          PATH=/bin:$PATH
-          bash -c 'echo "bash $BASH_VERSION"; [[ $BASH_VERSION == 3.* ]]'
-          npm run build:validator
-          hooks/tests/self/run-sh.sh
-          bash hooks/tests/run.sh
-
-      - name: 🏭  Factory gate cases
-        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: npm run test:factory
-
-      - name: 🛠️  CLI tests
+      - name: 🛠️  CLI and install tests
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:bin
 
@@ -77,35 +56,17 @@ jobs:
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
         run: npm run test:reporter
 
-      - name: 🤖  Generated agents up to date
+      # The adapter's Node half always runs; `claude plugin validate` and `claude plugin test`
+      # run where the Claude Code CLI is installed (the step below) and are skipped elsewhere.
+      - name: 🔌  Claude Code CLI
         if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
-        run: npm run test:agents
+        run: npm install -g @anthropic-ai/claude-code && claude --version
+        continue-on-error: true
+
+      - name: 🧪  Adapter tests
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run test:adapter
 
       - name: 📦  Tarball contents
         if: ${{ !cancelled() && steps.install.conclusion == 'success' && matrix.os == 'ubuntu-latest' && matrix.node == '24' }}
         run: node scripts/check-pack.mjs
-
-  # uid 0: the hook cases must not depend on file-permission denials a non-root user gets.
-  root:
-    name: root (node 24)
-    runs-on: ubuntu-latest
-    container: node:24
-    steps:
-      - name: 🗂️  Checkout
-        uses: actions/checkout@v4
-
-      # jq 1.7.1, the version postinstall bundles: Debian's 1.6 prints 250.0 as 250, which the perf-summary cases pin.
-      - name: 🧩  Install jq and dependencies
-        run: |
-          curl -fsSL -o /usr/local/bin/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
-          chmod +x /usr/local/bin/jq
-          npm ci --ignore-scripts
-
-      - name: 🧪  Hook tests
-        run: |
-          [ "$(id -u)" = 0 ]
-          npm run test:hooks
-
-      - name: 🏭  Factory gate cases
-        if: ${{ !cancelled() }}
-        run: npm run test:factory

@@ -622,7 +622,7 @@
         Achilles is an autonomous quality assurance solution that builds, grows,
         guards, and repairs web test suites, and records evidence for each
         result. One sentence starts an eight-phase onboarding pipeline that
-        runs without intermediate confirmations. It runs on Claude Code only.
+        runs without intermediate confirmations. It runs on Claude Code through a plugin adapter; the skills load on pi as well.
       </p>
 
       <div class="hero-actions">
@@ -643,10 +643,10 @@
       </div>
 
       <div class="hero-stats">
-        <div class="stat"><div class="stat-value grad">25</div><div class="stat-label">Agent Skills</div></div>
-        <div class="stat"><div class="stat-value grad">46</div><div class="stat-label">Hook Scripts (7 opt-in)</div></div>
+        <div class="stat"><div class="stat-value grad">16</div><div class="stat-label">Agent Skills</div></div>
+        <div class="stat"><div class="stat-value grad">8</div><div class="stat-label">Hooks</div></div>
         <div class="stat"><div class="stat-value grad">9</div><div class="stat-label">Modes and Capabilities</div></div>
-        <div class="stat"><div class="stat-value grad">23</div><div class="stat-label">Roles</div></div>
+        <div class="stat"><div class="stat-value grad">5</div><div class="stat-label">Agents</div></div>
       </div>
 
     </div>
@@ -736,7 +736,7 @@
     <div class="section-header centered reveal">
       <div class="section-tag">Zero to Suite</div>
       <h2 class="section-title">Eight phases. One command.<br /><span class="grad">Fully autonomous.</span></h2>
-      <p class="section-desc">The onboarding pipeline runs end-to-end without intermediate confirmations. Hooks gate the phase transitions of the onboarding ledger. The agent finishes the phase or surfaces a blocker for human triage.</p>
+      <p class="section-desc">The onboarding pipeline runs end-to-end without intermediate confirmations. A fresh reviewer agent gates every phase transition; the adapter keeps the ledger consistent. The agent finishes the phase or surfaces a blocker for human triage.</p>
     </div>
 
     <div class="phases reveal">
@@ -816,7 +816,7 @@
       <div class="phase">
         <div class="phase-num">03 — Human + Harness</div>
         <div class="phase-name">Confirm</div>
-        <div class="phase-desc">The tests get tested: negative controls prove each test can fail; adversarial review challenges the assertions. Hooks block sign-off without the evidence.</div>
+        <div class="phase-desc">The tests get tested: negative controls prove each test can fail; adversarial review challenges the assertions. The adapter refuses sign-off without the evidence.</div>
         <div class="phase-arrow">→</div>
       </div>
       <div class="phase">
@@ -837,7 +837,7 @@
   <div class="container">
     <div class="quote-block reveal">
       <div class="quote-mark">“</div>
-      <p class="quote-text">While a session is active, the gates apply to every tool call the same way. A hook that blocks sign-off without evidence blocks it on the ten-thousandth call as on the first, until the operator switches the protocol off.</p>
+      <p class="quote-text">While a session is active, the gates apply to every tool call the same way. A hook that refuses sign-off without evidence refuses it on the ten-thousandth call as on the first; the operator can switch the adapter off, nothing inside a session can.</p>
       <div class="quote-caption">Agentic Shift-Left Doctrine · §IV Enforcement</div>
     </div>
   </div>
@@ -849,14 +849,14 @@
     <div class="section-header reveal">
       <div class="section-tag">Differentiators</div>
       <h2 class="section-title">Built different,<br /><span class="grad">by design</span></h2>
-      <p class="section-desc">Achilles is a QA methodology for Claude Code with hook-enforced phase ordering and JSON-Schema return contracts. It outputs Playwright suites you run without the agent.</p>
+      <p class="section-desc">Achilles is a harness-neutral QA methodology with a Claude Code adapter: one orchestrator agent, four expert agents, 8 hooks, JSON-Schema return contracts. It outputs Playwright suites you run without the agent.</p>
     </div>
 
     <div class="diffs-grid">
       <div class="diff-card reveal">
         <div class="diff-icon">⚡</div>
         <h4 class="diff-title">Hook-Enforced Discipline</h4>
-        <p class="diff-desc">46 hook scripts, including 7 opt-in factory gates, run before and after Claude Code tool calls. 37 are enforcement gates, meaning scripts named <code>*-gate.sh</code> or <code>*-guard.sh</code>. They deny scope compression, phase skipping and sign-off without negative-control and adversarial-review evidence. This build ships without the role kernel: the 23 roles are methodology, not enforced. The hooks act only while an Achilles skill runs. The operator can stop new sessions from activating the protocol (<code>ACHILLES_PROTOCOL=0</code>). Factory gates apply only when the project commits an <code>achilles-factory-rules.json</code>.</p>
+        <p class="diff-desc">8 hooks in one TypeScript module run on Claude Code tool calls, agent spawns and turn completions. They deny only what is irreversible: commit bypass flags and AI attribution trailers, <code>k6 run</code> past the ceilings or against production, sign-off without a reviewer-written receipt and an evidence bundle, a credential left in a captured artifact, a selector edit that is not one inert attribute. Everything else is advice in the status pane. 5 hand-authored agents (orchestrator, inspector, author, reviewer, doc-writer) bound tools and paths; separation of duties is their scope, not a kernel. Factory rules apply only when the project commits an <code>achilles-factory-rules.json</code>.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🎯</div>
@@ -893,29 +893,29 @@
     <div class="section-header reveal">
       <div class="section-tag">Scope</div>
       <h2 class="section-title">What it is not,<br /><span class="grad">and how to operate it</span></h2>
-      <p class="section-desc">Version 0.2.0. Limits are listed in <code>known-limits.md</code> (9 entries, IDs up to KL-21; retired IDs are not reused).</p>
+      <p class="section-desc">Version 0.1.8. The limits that remain are listed under "Limits worth knowing" in <code>docs/harness/claude-code.md</code>.</p>
     </div>
 
     <div class="diffs-grid">
       <div class="diff-card reveal">
         <div class="diff-icon">🚫</div>
         <h4 class="diff-title">What it is not</h4>
-        <p class="diff-desc">Claude Code only: the hooks register as Claude Code hooks, and the skills are plain markdown. No hosted runner. No native mobile; viewport emulation only. No runtime self-healing: repair runs offline against a red suite. No published benchmark.</p>
+        <p class="diff-desc">A Claude Code adapter plus plain-markdown skills; pi gets the skills, expert mode and the Bash guards. No hosted runner. No native mobile; viewport emulation only. No runtime self-healing: repair runs offline against a red suite. No published benchmark.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🛡️</div>
         <h4 class="diff-title">Scope of enforcement</h4>
-        <p class="diff-desc">This build ships without the role kernel; roles are methodology, not enforced. The hooks act only while an Achilles skill runs. Factory gates are opt-in per project. The Bash guards cover common agent commands, not obfuscated shell (KL-15).</p>
+        <p class="diff-desc">The adapter binds the 5 Achilles agents, never the main session. <code>ACHILLES_DISABLE=1</code> switches it off for new sessions. Factory rules are opt-in per project. The Bash judge reads one command line, quote-aware, not obfuscated shell.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">⌨️</div>
         <h4 class="diff-title">CLIs</h4>
-        <p class="diff-desc"><code>achilles-mutate</code>, <code>achilles-show</code>, <code>achilles-self-repair</code>, <code>achilles-scenario-lint</code>, <code>achilles-selector-evidence</code> and <code>achilles-uninstall</code>: the 6 bins in <code>package.json</code>.</p>
+        <p class="diff-desc"><code>achilles-mutate</code>, <code>achilles-show</code>, <code>achilles-self-repair</code>, <code>achilles-scenario-lint</code>, <code>achilles-selector-evidence</code>: the 5 bins in <code>package.json</code>.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🧹</div>
         <h4 class="diff-title">Uninstall</h4>
-        <p class="diff-desc"><code>npx achilles-uninstall [--global] [--project &lt;dir&gt;] [--dry-run]</code> reverses what postinstall recorded in <code>achilles-install.json</code>: hook registrations, unedited files and an unedited mandate an earlier install staged. npm runs no uninstall script, so this is a command.</p>
+        <p class="diff-desc"><code>claude plugin uninstall achilles</code> removes a marketplace install; an npm install is reversed by deleting the plugin entry the postinstall merged into the project settings. npm runs no uninstall script, so neither happens on <code>npm uninstall</code>.</p>
       </div>
     </div>
   </div>
@@ -952,9 +952,9 @@
       <div class="cta-badges">
         <span class="cta-badge">MIT License</span>
         <span class="cta-badge">Built on Playwright</span>
-        <span class="cta-badge">Claude Code</span>
-        <span class="cta-badge">v0.2.0</span>
-        <span class="cta-badge">25 Agent Skills</span>
+        <span class="cta-badge">Claude Code · pi</span>
+        <span class="cta-badge">v0.1.8</span>
+        <span class="cta-badge">16 Agent Skills</span>
       </div>
     </div>
   </div>

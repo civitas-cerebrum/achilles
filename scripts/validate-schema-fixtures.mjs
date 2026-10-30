@@ -3,7 +3,7 @@
 // For each schemas/subagent-returns/<role>.schema.json, verifies that
 // fixtures/<role>-valid.yaml passes and fixtures/<role>-invalid.yaml
 // fails. Also validates the standalone schemas' own <name>.fixtures/ dirs,
-// hooks/data/factory-rules.schema.json (the shipped example plus patch
+// schemas/factory-rules.schema.json (the shipped example plus patch
 // fixtures) and the schemas/onboarding-status.schema.json fixtures
 // under schemas/onboarding-status.fixtures/ (every valid-*.json must
 // validate; every invalid-*.json must fail). Exits non-zero on any mismatch.
@@ -111,14 +111,13 @@ function validateStandaloneFixtures(schemaPath, fixturesDirPath) {
   }
 }
 
-validateStandaloneFixtures('schemas/contribution-handover.schema.json', 'schemas/contribution-handover.fixtures');
 validateStandaloneFixtures('schemas/run-summary.schema.json', 'schemas/run-summary.fixtures');
 validateStandaloneFixtures('schemas/perf-onboarding-status.schema.json', 'schemas/perf-onboarding-status.fixtures');
 validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-summary.fixtures');
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
 
-// The factory-rules schema lives under hooks/data/ (the hooks read it from the
-// installed hook directory), so it has its own block. Its floors and closed
+// The factory-rules schema is the per-project rule-file contract (bin/ reads it),
+// so it has its own block. Its floors and closed
 // rule objects are how a project can add to a rule but not weaken it. The
 // shipped example is the valid fixture; each invalid fixture is a patch over
 // it (RFC 6902 add/replace/remove) plus a substring of the Ajv error it must
@@ -138,9 +137,9 @@ function applyPatch(doc, ops) {
 }
 
 {
-  const dirPath = 'hooks/data/factory-rules.fixtures';
-  const validateRules = makeAjv().compile(JSON.parse(readFileSync('hooks/data/factory-rules.schema.json', 'utf8')));
-  const exampleFile = 'hooks/data/factory-rules.example.json';
+  const dirPath = 'schemas/factory-rules.fixtures';
+  const validateRules = makeAjv().compile(JSON.parse(readFileSync('schemas/factory-rules.schema.json', 'utf8')));
+  const exampleFile = 'schemas/factory-rules.example.json';
   const example = JSON.parse(readFileSync(exampleFile, 'utf8'));
   if (validateRules(example)) console.log(`OK:   ${exampleFile} validates against the schema`);
   else { console.error(`FAIL: ${exampleFile} did not validate`); console.error(validateRules.errors); failures++; }
@@ -148,7 +147,7 @@ function applyPatch(doc, ops) {
   for (const f of readdirSync(dirPath).filter((n) => n.endsWith('.patch.json'))) {
     const full = join(dirPath, f);
     const { base, patch, expectError } = JSON.parse(readFileSync(full, 'utf8'));
-    const doc = applyPatch(JSON.parse(readFileSync(join('hooks/data', base), 'utf8')), patch);
+    const doc = applyPatch(JSON.parse(readFileSync(join('schemas', base), 'utf8')), patch);
     if (validateRules(doc)) { console.error(`FAIL: ${full} unexpectedly validated`); failures++; continue; }
     const messages = validateRules.errors.map((e) => `${e.instancePath}: ${e.message}`);
     if (messages.some((m) => m.includes(expectError))) console.log(`OK:   ${full} correctly fails (${expectError})`);

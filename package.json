@@ -1,26 +1,21 @@
 {
   "name": "@civitas-cerebrum/achilles",
-  "version": "0.2.0",
-  "description": "Autonomous quality-assurance methodology — agent skills, harness hooks, return-shape schemas, and post-install plumbing that drive the @civitas-cerebrum/element-interactions framework end-to-end.",
+  "version": "0.1.8",
+  "description": "Autonomous quality-assurance methodology: harness-neutral agent skills and agent definitions, return-shape schemas and a Playwright reporter, with a Claude Code plugin adapter (delegate_qa, /achilles, the orchestrator and its experts).",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
-    "build:validator": "node scripts/build-validator.mjs",
-    "test:hooks": "npm run build:validator && { hooks/tests/self/run-sh.sh; a=$?; hooks/tests/run.sh; b=$?; exit $((a | b)); }",
     "test:lint": "node scripts/lint-doc-drift.mjs",
-    "test:agents": "node scripts/build-agents.mjs --check",
-    "test:bin": "node --test tests/bin/*.test.mjs",
-    "test:factory": "CLAUDE_PROJECT_DIR=hooks/tests/fixtures/factory-project node hooks/tests/factory-run.mjs",
+    "test:bin": "node --test tests/bin/*.test.mjs tests/install/*.test.mjs",
     "test:reporter": "node --test --test-concurrency=1 reporter/tests/*.test.mjs",
-    "sync-hooks": "node scripts/sync-hooks.js",
+    "test:adapter": "node --test claude-code/tests/lib/*/*.test.js && node scripts/claude-plugin.mjs validate . --strict && node scripts/claude-plugin.mjs test .",
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
     "test": "node scripts/run-suites.mjs",
     "check:pack": "node scripts/check-pack.mjs",
-    "prepack": "npm run build:validator && npm run check:pack && npm test"
+    "prepack": "npm run check:pack && npm test"
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",
     "achilles-show": "bin/show.mjs",
-    "achilles-uninstall": "bin/achilles-uninstall.mjs",
     "achilles-mutate": "bin/mutate.mjs",
     "achilles-scenario-lint": "bin/scenario-lint.mjs",
     "achilles-selector-evidence": "bin/selector-evidence.mjs"
@@ -29,24 +24,22 @@
     "./reporter": "./reporter/index.js",
     "./package.json": "./package.json",
     "./bin/*": "./bin/*",
-    "./hooks/*": "./hooks/*",
     "./skills/*": "./skills/*",
-    "./schemas/*": "./schemas/*",
-    "./scripts/postinstall.js": "./scripts/postinstall.js"
+    "./schemas/*": "./schemas/*"
   },
   "files": [
     "bin",
-    "hooks",
     "skills",
     "agents",
     "schemas",
     "reporter",
+    "claude-code",
+    "pi",
+    ".claude-plugin",
     "scripts/postinstall.js",
-    "scripts/install"
+    "scripts/install/chromium.js"
   ],
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "esbuild": "^0.25.12",
     "typescript": "^5.0.0"
   },
   "dependencies": {
@@ -71,12 +64,21 @@
     "automation",
     "qa",
     "claude-code",
+    "claude-code-plugin",
+    "pi-package",
     "agent-skills",
     "agentic-testing",
     "methodology",
-    "harness-hooks",
     "element-interactions"
   ],
+  "pi": {
+    "extensions": [
+      "./pi/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -86,7 +88,7 @@
     "url": "git+https://github.com/civitas-cerebrum/achilles.git"
   },
   "overrides": {
-    "nodemailer": "^9.0.1",
+    "nodemailer": "^10.2.1",
     "html-to-text": "10.0.1"
   },
   "author": "Umut Ay Bora",

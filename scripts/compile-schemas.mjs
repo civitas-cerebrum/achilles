@@ -52,7 +52,6 @@ function compileStandalone(name, schemaPath) {
 }
 
 compileStandalone('onboarding-status', 'schemas/onboarding-status.schema.json');
-compileStandalone('contribution-handover', 'schemas/contribution-handover.schema.json');
 compileStandalone('run-summary', 'schemas/run-summary.schema.json');
 compileStandalone('self-repair-report', 'schemas/self-repair-report.schema.json');
 

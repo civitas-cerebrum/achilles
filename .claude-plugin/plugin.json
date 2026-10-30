@@ -1,0 +1,11 @@
+{
+  "name": "achilles",
+  "version": "0.1.8",
+  "description": "Autonomous QA methodology for Claude Code: delegate_qa and /achilles hand a task to the Achilles orchestrator, which dispatches inspector, author, reviewer and doc-writer experts and hands back one verdict.",
+  "author": { "name": "Umut Ay Bora" },
+  "repository": "https://github.com/civitas-cerebrum/achilles",
+  "license": "MIT",
+  "keywords": ["qa", "playwright", "testing", "agent-skills"],
+  "hooks": "./claude-code/hooks.json",
+  "types": "./claude-code/types/index.d.ts"
+}

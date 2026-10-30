@@ -25,14 +25,14 @@ the canonical finding format (Finding-ID `<journey-slug>-perf-<nn>`), with sever
 | Soak-test latency / memory creep over time | `high` |
 
 The `scope` / `expected` / `observed` / `coverage` field mapping follows
-`../../achilles-protocol/references/subagent-return-schema.md`.
+`../../achilles-orchestrator/references/finding-and-ledger-schema.md`.
 
 ## Regression vs baseline
 
 If a committed baseline exists (`tests/perf/<slug>.baseline.json`), compare current p95 against
 it: a p95 regression > 20% with thresholds still passing is a `medium` finding (the app got
 slower but is still inside budget — worth flagging before it crosses). If no baseline exists,
-the first green run establishes one (commit it; ask the user first).
+the first green run establishes one (write it, stage it, and name it in the return; committing a new baseline is a `NEEDS_CONTEXT` question in the orchestrator's hand-back).
 
 ## What a green run proves — and doesn't
 

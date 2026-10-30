@@ -92,11 +92,9 @@ test('adding exports did not make the shipped directories unreachable', () => {
 
   const subpaths = [
     '@civitas-cerebrum/achilles/package.json',
-    '@civitas-cerebrum/achilles/hooks/playwright-artifact-archiver.sh',
-    '@civitas-cerebrum/achilles/skills/onboarding/SKILL.md',
+    '@civitas-cerebrum/achilles/skills/achilles-orchestrator/SKILL.md',
     '@civitas-cerebrum/achilles/schemas/onboarding-status.schema.json',
     '@civitas-cerebrum/achilles/bin/show.mjs',
-    '@civitas-cerebrum/achilles/scripts/postinstall.js',
   ];
   for (const specifier of subpaths) {
     const probe = spawnSync(process.execPath, ['-e',

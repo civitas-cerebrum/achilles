@@ -2,8 +2,8 @@
 // fixture project with a passing test, a deterministically failing test, a test
 // that fails once then passes, and a skipped test. Asserted end-to-end —
 // per-attempt evidence on disk, history accumulating across two runs, the flake
-// classified as flaky rather than failed — and paired with the archiver hook,
-// because a consumer never runs one without the other.
+// classified as flaky rather than failed — and the claim it leaves for an
+// archiver backstop (the Claude Code adapter's), so the two never archive twice.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -16,7 +16,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
 const fixture = path.join(here, 'fixture');
 const playwright = path.join(repo, 'node_modules', '.bin', 'playwright');
-const archiverHook = path.join(repo, 'hooks', 'playwright-artifact-archiver.sh');
 
 const made = [];
 function project() {
@@ -52,17 +51,6 @@ function ledger(dir) {
   const file = path.join(dir, '.achilles', 'history', 'tests.ndjson');
   if (!fs.existsSync(file)) return [];
   return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
-}
-
-function fireHook(dir, event = 'PostToolUse') {
-  const payload = JSON.stringify({
-    hook_event_name: event,
-    tool_name: event === 'PostToolUse' ? 'Bash' : undefined,
-    tool_input: { command: 'npx playwright test' },
-    cwd: dir,
-  });
-  const result = spawnSync('bash', [archiverHook], { input: payload, encoding: 'utf8' });
-  return { code: result.status, out: result.stdout };
 }
 
 process.on('exit', () => {
@@ -161,46 +149,19 @@ test('archived runs are retained to the same bound the hook uses', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Paired with the hook. The hook ships one release ahead of the reporter, so
-// consumers run hook-alone for a while and then hook-plus-reporter. Every other
-// case file in hooks/tests/ covers hook-alone; these cover the combination.
+// The claim. An archiver backstop (the Claude Code adapter's, after a Bash
+// `playwright test` the reporter was not wired into) reads .last-archive.json
+// and skips a run the reporter already archived; the reporter's half is this.
 // ---------------------------------------------------------------------------
 
-test('the hook no-ops on a run the reporter already claimed', () => {
+test('the reporter claims the run it archived, naming what it saw', () => {
   const dir = project();
   run(dir);
-  const before = archives(dir);
-  assert.equal(before.length, 1);
-
+  assert.equal(archives(dir).length, 1);
   const claim = JSON.parse(fs.readFileSync(path.join(dir, '.achilles', 'runs', '.last-archive.json'), 'utf8'));
   assert.equal(claim.claimedBy, 'reporter');
   assert.equal(claim.complete, true);
   assert.ok(claim.candidates.files > 0);
-
-  const hook = fireHook(dir);
-  assert.equal(hook.code, 0);
-  assert.deepEqual(archives(dir), before, 'the hook did not duplicate the reporter archive');
-  assert.equal(hook.out.trim(), '', 'and said nothing about it');
-
-  const stop = fireHook(dir, 'Stop');
-  assert.deepEqual(archives(dir), before, 'the Stop backstop honours the claim too');
-  assert.equal(stop.code, 0);
-});
-
-test('the hook still archives when the artifacts changed after the claim', () => {
-  const dir = project();
-  run(dir);
-  const before = archives(dir);
-
-  // A run the reporter was not wired into — the exact gap the hook covers.
-  fs.writeFileSync(path.join(dir, 'test-results', 'unclaimed.txt'), 'evidence from a run with no reporter');
-  fireHook(dir);
-
-  const after = archives(dir);
-  assert.equal(after.length, before.length + 1, 'a claim never suppresses artifacts the reporter did not see');
-  const fresh = JSON.parse(fs.readFileSync(path.join(dir, '.achilles', 'runs', after[after.length - 1], 'manifest.json'), 'utf8'));
-  assert.equal(fresh.producer, undefined, "the new archive is the hook's own");
-  assert.ok(fs.existsSync(path.join(dir, '.achilles', 'runs', after[after.length - 1], 'artifacts', 'test-results', 'unclaimed.txt')));
 });
 
 // ---------------------------------------------------------------------------
