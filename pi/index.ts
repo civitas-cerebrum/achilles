@@ -60,7 +60,9 @@ function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: 
   // Thinking: the definition's effort (the experts other than the judge run at medium), else the
   // parent's level, so one run never mixes levels when the settings file changes under it.
   const thinking = agent.effort ?? parentThinking()
-  const args = ['--mode', 'json', '-p', '--no-session', trust, '--tools', agent.tools.join(','), '--append-system-prompt', system, ...(model ? ['--model', model] : []), ...(thinking ? ['--thinking', thinking] : []), prompt]
+  // Each agent keeps its transcript in the run, so a stall or a deviation can be read back later.
+  const sessions = join(ctx.cwd, '.achilles', 'runs', run ?? 'adhoc', 'sessions')
+  const args = ['--mode', 'json', '-p', '--session-dir', sessions, '--name', role, trust, '--tools', agent.tools.join(','), '--append-system-prompt', system, ...(model ? ['--model', model] : []), ...(thinking ? ['--thinking', thinking] : []), prompt]
   const [cmd, pre] = piCommand()
   return new Promise(resolve => {
     const proc = spawn(cmd, [...pre, ...args], { cwd: ctx.cwd, env: { ...process.env, ACHILLES_ROLE: role, ...(run ? { ACHILLES_RUN: run } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] })
