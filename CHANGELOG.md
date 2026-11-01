@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.8 — unreleased
+## 0.1.8 — 2026-11-01
 
 Achilles becomes a harness-neutral methodology (skills, agents, schemas, CLIs, reporter) with one Claude Code adapter. The main session is never bound; QA work runs in a separate orchestrator agent. Hooks advise by default and deny only irreversible or dangerous actions.
 
@@ -58,7 +58,7 @@ Achilles becomes a harness-neutral methodology (skills, agents, schemas, CLIs, r
 - The reviewer is a fresh instance per review; `achilles-self-repair` dispatches its workers with `--worker` and the same report schema as the interactive repair workflow.
 - Skill text is harness-neutral: no tool names, hook names, `.claude/` paths or dispatch grammar; `scripts/lint-doc-drift.mjs` enforces it (checks 1, 2, 5, 6, 8, 10, 11, 12, 14; checks 3, 4, 7, 9 and 13 left with the kernel and the bash runtime).
 - Package description, keywords and `files` (now `bin`, `skills`, `agents`, `schemas`, `reporter`, `claude-code`, `.claude-plugin`, the postinstall and the Chromium step) follow the new layout. `docs/index.html` and `docs/agentic-qa.html` describe 0.1.8; the counts lint keeps their figures equal to the tree.
-- **`@civitas-cerebrum/element-interactions` floor `>=0.3.8` → `>=0.3.11`.** 0.3.11 pulls wasapi 0.0.5 (test-coverage, and with it glob/minimatch, no longer installs: GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249) and email-client 0.0.10 (nodemailer `^10.3.1`, ip-address 10.7.5: GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w, GHSA-85x2-q946-cp5h, GHSA-rxp7-6hxx-x8q5). The raised floor moves a lockfile still holding 0.3.8–0.3.10 off the affected chain. `npm audit`: 0 vulnerabilities.
+- **`@civitas-cerebrum/element-interactions` floor `>=0.3.8` → `>=0.3.12`.** The chain moves off every open advisory: wasapi 0.0.5 no longer installs test-coverage (and with it glob/minimatch: GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249), and email-client 0.0.10 moves to nodemailer `^10.3.1` and ip-address 10.7.5 (GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w, GHSA-85x2-q946-cp5h, GHSA-rxp7-6hxx-x8q5). 0.3.12, on element-repository 0.3.4, also ships the repository features the selector-evidence workflow relies on: `"list": true` entries (presence and `getAll` mean at least one match) and `"provisional": true` validated as a boolean, plus `steps.forPage(page)` for popups and new tabs and a correct `.byAttribute(...)`. The raised floor moves a lockfile still holding 0.3.8–0.3.11 forward. `npm audit`: 0 vulnerabilities.
 
 ### Upgrading from 0.1.7 or a 0.2.0 branch install
 
