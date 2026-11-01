@@ -1,0 +1,459 @@
+[
+ {
+  "name": "file reporter under tests/ → ALLOW",
+  "expect": "allow",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests/e2e\", reporter: [[\"./tests/e2e/reporter.ts\"]] };"
+ },
+ {
+  "name": "import type (elided) and a const with satisfies → ALLOW",
+  "expect": "allow",
+  "file": "playwright.config.ts",
+  "content": "import type { PlaywrightTestConfig } from \"./tests/types\";\nconst config = { testDir: \"./tests/e2e\" } satisfies PlaywrightTestConfig;\nexport default config;"
+ },
+ {
+  "name": "as const / as Type wrappers → ALLOW",
+  "expect": "allow",
+  "file": "playwright.config.ts",
+  "content": "const config = { testDir: \"./tests/e2e\" } as const; export default config as object;"
+ },
+ {
+  "name": "enum and decorators parse → ALLOW",
+  "expect": "allow",
+  "file": "playwright.config.ts",
+  "content": "enum E { A }\n@sealed class X { @prop y = 1 }\nexport default { testDir: \"./tests/e2e\" };"
+ },
+ {
+  "name": "module.exports of an object literal → ALLOW",
+  "expect": "allow",
+  "file": "playwright.config.ts",
+  "content": "module.exports = { testDir: \"./tests/e2e\" };"
+ },
+ {
+  "name": "import fs → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "import fs from \"fs\"; export default { testDir: \"./tests\" };",
+  "contains": "import \"fs\""
+ },
+ {
+  "name": "globalSetup ./src/index.ts → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", globalSetup: \"./src/index.ts\" };",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "globalSetup through tests/.. → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", globalSetup: \"./tests/../src/index.ts\" };",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "relative import into src/ → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "import \"./src/app\"; export default { testDir: \"./tests\" };",
+  "contains": "import \"./src/app\""
+ },
+ {
+  "name": "testDir . → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \".\" };",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "globalSetup array with an entry in src/ → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", globalSetup: [\"./tests/a.ts\", \"./src/b.ts\"] };",
+  "contains": "\"./src/b.ts\""
+ },
+ {
+  "name": "reporter entry ./src/reporter.js → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", reporter: [[\"./src/reporter.js\"]] };",
+  "contains": "\"./src/reporter.js\""
+ },
+ {
+  "name": "reporter string ./src/reporter.js → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", reporter: \"./src/reporter.js\" };",
+  "contains": "\"./src/reporter.js\""
+ },
+ {
+  "name": "reporter chosen at runtime → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", reporter: process.env.CI ? \"dot\" : \"./src/r.js\" };",
+  "contains": "ConditionalExpression"
+ },
+ {
+  "name": "tsconfig key pointing at the root tsconfig → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", tsconfig: \"./tsconfig.json\" };",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "c.globalSetup = ./src/x.ts → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const c = {}; c.globalSetup = \"./src/x.ts\"; export default c;",
+  "contains": "assigned outside the config literal"
+ },
+ {
+  "name": "computed key → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { [\"global\" + \"Setup\"]: \"./src/x.ts\" };",
+  "contains": "computed property key"
+ },
+ {
+  "name": "computed member assignment → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const c = {}; c[\"global\" + \"Setup\"] = \"./src/x.ts\"; export default c;",
+  "contains": "computed member"
+ },
+ {
+  "name": "defineProperty → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default Object.defineProperty({}, \"globalSetup\", { value: \"./src/x.ts\" });",
+  "contains": "Object — the config's keys must be literal properties"
+ },
+ {
+  "name": "JSON.parse spread → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const base = JSON.parse(\"{}\"); export default { ...base };",
+  "contains": "JSON — the config's keys must be literal properties"
+ },
+ {
+  "name": "config not readable statically → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default makeConfig();",
+  "contains": "not an object literal or defineConfig"
+ },
+ {
+  "name": "ternary continued on the next line → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests\", globalSetup: \"./tests/a.ts\"\n  ? \"./src/b.ts\" : \"\" };",
+  "contains": "ConditionalExpression"
+ },
+ {
+  "name": "aliased require → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const r = require; r(\"fs\"); export default { testDir: \"./tests\" };",
+  "contains": "require used other than"
+ },
+ {
+  "name": "dynamic import of a non-literal → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const m = \"fs\"; import(m); export default { testDir: \"./tests\" };",
+  "contains": "not one string literal"
+ },
+ {
+  "name": "globalSetup from a variable → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const s = \"./src/x.ts\"; export default { testDir: \"./tests\", globalSetup: s };",
+  "contains": "Identifier is not a literal"
+ },
+ {
+  "name": "__dirname redefined → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const __dirname = \"/\"; export default { testDir: path.join(__dirname, \"tests\") };",
+  "contains": "__dirname"
+ },
+ {
+  "name": "devices redeclared → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "import { devices } from \"@playwright/test\"; const devices = {}; export default { testDir: \"./tests\", use: { ...devices.x } };",
+  "contains": "devices redeclared"
+ },
+ {
+  "name": "process.binding → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "process.binding(\"fs\"); export default { testDir: \"./tests\" };",
+  "contains": ".binding reaches the module loader"
+ },
+ {
+  "name": "eval → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "eval(\"1\"); export default { testDir: \"./tests\" };",
+  "contains": "eval"
+ },
+ {
+  "name": "module.exports = require(tests/cfg) → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "module.exports = require(\"./tests/cfg\");",
+  "contains": "not an object literal or defineConfig"
+ },
+ {
+  "name": "export of an alias of the const → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const config = { testDir: \"./tests/e2e\" }; const c2 = config; export default c2;",
+  "contains": "not an object literal or defineConfig"
+ },
+ {
+  "name": "value import from tests/ → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "import { users } from \"./tests/e2e/fixtures/users\"; export default { testDir: \"./tests/e2e\" };",
+  "contains": "the config loads no relative module"
+ },
+ {
+  "name": "require.resolve outside a path value → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "const p = require.resolve(\"./tests/x\"); export default { testDir: \"./tests/e2e\" };",
+  "contains": "require.resolve(\"./tests/x\") outside"
+ },
+ {
+  "name": "named export beside the default → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export const config = { testDir: \"./tests/e2e\" }; export default config;",
+  "contains": "a named export"
+ },
+ {
+  "name": "projects with a spread → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests/e2e\", projects: [...more] };",
+  "contains": "projects is not an array of object literals"
+ },
+ {
+  "name": "__proto__ key → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests/e2e\", \"__proto__\": { globalSetup: \"./src/x\" } };",
+  "contains": "__proto__"
+ },
+ {
+  "name": "Reflect → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "Reflect.set(globalThis, \"x\", 1); export default { testDir: \"./tests/e2e\" };",
+  "contains": "Reflect"
+ },
+ {
+  "name": "node:cluster → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import cluster from \"node:cluster\"; cluster.setupPrimary({ exec: \"./src/app.js\" }); cluster.fork();",
+  "contains": "a Node builtin outside the tests/ allowlist"
+ },
+ {
+  "name": "node:test → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import { run } from \"node:test\"; run({ files: [\"./src/app.js\"] });",
+  "contains": "a Node builtin outside the tests/ allowlist"
+ },
+ {
+  "name": "node:inspector → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import { Session } from \"node:inspector\"; new Session();",
+  "contains": "a Node builtin outside the tests/ allowlist"
+ },
+ {
+  "name": "child_process → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import { spawn } from \"child_process\";",
+  "contains": "a Node builtin outside the tests/ allowlist"
+ },
+ {
+  "name": "net and node:sqlite → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import net from \"net\"; import { DatabaseSync } from \"node:sqlite\";",
+  "contains": "a Node builtin outside the tests/ allowlist"
+ },
+ {
+  "name": "bare package in tests/ → not this gate's screen",
+  "expect": "allow",
+  "file": "tests/e2e/fixtures/x.ts",
+  "content": "import fs from \"fs\";"
+ },
+ {
+  "name": "test code that does not parse → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import { test } from \"@playwright/test\" test(\"a\")",
+  "contains": "does not parse"
+ },
+ {
+  "name": "tests/ screen deny is labelled as such → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import \"../../src/app\";"
+ },
+ {
+  "name": "tests/helper.txt requiring src → DENY (content screened whatever the extension)",
+  "expect": "deny",
+  "file": "tests/helper.txt",
+  "content": "require(\"../src/app.js\")",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "extensionless tests/h3 requiring src → DENY",
+  "expect": "deny",
+  "file": "tests/h3",
+  "content": "require(\"../src/app.js\")",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "prose that parses into a loader call (Notes.require) → DENY",
+  "expect": "deny",
+  "file": "tests/notes.md",
+  "content": "Notes.\nrequire/**/(\"../src/\" + \"app\");",
+  "contains": ".require reaches"
+ },
+ {
+  "name": "notes hiding module[\\",
+  "expect": "deny",
+  "file": "tests/notes.md",
+  "content": "// Notes\nmodule[\"require\"](\"../src/app\");"
+ },
+ {
+  "name": "spec requiring an existing .txt → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/a.spec.js",
+  "content": "require(\"../helper.txt\");",
+  "contains": "not code or JSON"
+ },
+ {
+  "name": "spec requiring a .md not on disk → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/a.spec.js",
+  "content": "require(\"../notes.md\");",
+  "contains": "not code or JSON"
+ },
+ {
+  "name": "spec importing an existing extensionless file → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/a.spec.ts",
+  "content": "import \"../h2\";",
+  "contains": "not code or JSON"
+ },
+ {
+  "name": "spec importing ./data.txt while only its data.txt.ts twin exists → ALLOW (the twin is code)",
+  "expect": "allow",
+  "file": "tests/e2e/x.spec.ts",
+  "content": "import { test } from \"@playwright/test\";\nimport \"./data.txt\";\ntest(\"t\", () => {});"
+ },
+ {
+  "name": "data.txt beside a code twin that does not parse → DENY (node loads it in place of the twin)",
+  "expect": "deny",
+  "file": "tests/e2e/data.txt",
+  "content": "Some notes that are not code",
+  "contains": "does not parse"
+ },
+ {
+  "name": "data.txt beside a code twin requiring src → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/data.txt",
+  "content": "require(\"../../src/app\")",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "prose saying require under tests/ → ALLOW",
+  "expect": "allow",
+  "file": "tests/e2e/docs/app-context.md",
+  "content": "Most pages require login. Uploads require a CSV file."
+ },
+ {
+  "name": "page repository JSON → ALLOW (data)",
+  "expect": "allow",
+  "file": "tests/e2e/page-repository.json",
+  "content": "{\"pages\":[{\"name\":\"x\",\"selectors\":{\"a\":\"../../src\"}}]}"
+ },
+ {
+  "name": "package.json under tests/ pointing into src → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/fixtures/package.json",
+  "content": "{\"main\":\"../../../src/app.js\"}",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "package.json under tests/ with a trailing comma → DENY",
+  "expect": "deny",
+  "file": "tests/e2e/fixtures/package.json",
+  "content": "{\"name\":\"x\",\"main\":\"../../../src/app.js\",}",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "JSONC tsconfig with a comment → DENY",
+  "expect": "deny",
+  "file": "tests/tsconfig.json",
+  "content": "{\n  // tests tsconfig\n  \"compilerOptions\": { \"baseUrl\": \"..\", \"paths\": { \"dotenv\": [\"src/app\"] } }\n}",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "tsconfig with a trailing comma → DENY",
+  "expect": "deny",
+  "file": "tests/tsconfig.json",
+  "content": "{ \"compilerOptions\": { \"baseUrl\": \"..\", \"paths\": { \"dotenv\": [\"src/app\"] } }, }",
+  "contains": "resolves outside tests/"
+ },
+ {
+  "name": "tsconfig extends → DENY",
+  "expect": "deny",
+  "file": "tests/tsconfig.json",
+  "content": "{ \"extends\": \"../tsconfig.json\" }",
+  "contains": "extends"
+ },
+ {
+  "name": "tsconfig references → DENY",
+  "expect": "deny",
+  "file": "tests/tsconfig.json",
+  "content": "{ \"references\": [ { \"path\": \"../tsconfig.app.json\" } ] }",
+  "contains": "references"
+ },
+ {
+  "name": "tsconfig that does not parse → DENY",
+  "expect": "deny",
+  "file": "tests/tsconfig.json",
+  "content": "{ \"compilerOptions\": ",
+  "contains": "does not parse"
+ },
+ {
+  "name": "src/** → not this gate's file",
+  "expect": "allow",
+  "file": "src/x.ts",
+  "content": "import \"../../etc\";"
+ },
+ {
+  "name": "config octal escape → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "export default { testDir: \"./tests/\\101\" };",
+  "contains": "does not parse"
+ },
+ {
+  "name": "two config exports → DENY",
+  "expect": "deny",
+  "file": "playwright.config.ts",
+  "content": "module.exports = { testDir: \"./tests\" }; module.exports = { testDir: \"./tests\" };",
+  "contains": "exactly one is readable"
+ }
+]

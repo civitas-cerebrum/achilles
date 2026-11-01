@@ -24,8 +24,8 @@ jobs:
           node-version: '24'
           registry-url: https://registry.npmjs.org
 
-      # Dev deps are needed: build:validator imports esbuild. --ignore-scripts keeps
-      # the package's own postinstall from writing into the runner's ~/.claude.
+      # --ignore-scripts keeps the package's own postinstall (Chromium fetch, Claude Code
+      # registration) off the runner.
       - name: 🧩  Install dependencies
         run: npm ci --ignore-scripts
 
@@ -34,7 +34,7 @@ jobs:
           v=$(node -p "require('./package.json').version")
           [ "$GITHUB_REF_NAME" = "$v" ] || { echo "tag $GITHUB_REF_NAME ≠ package.json $v"; exit 1; }
 
-      # All seven suites: schemas, doc-drift lint, hooks, factory gates, CLIs, reporter, agents.
+      # All five suites: schemas, doc-drift lint, CLIs and install, reporter, adapter.
       - name: ✅  Suites (npm test)
         run: npm test
 

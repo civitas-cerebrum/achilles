@@ -2,7 +2,7 @@
 
 # Phase 1a: Element Probing
 
-Visit every page via `playwright-cli` (open a `-s=bd-<journey-slug>` session per [`../achilles-protocol/references/playwright-cli-protocol.md`](../../achilles-protocol/references/playwright-cli-protocol.md) §3) with **zero context**: do NOT read `app-context.md`, existing tests, or scenario docs. Pure adversarial exploration.
+Visit every page via `playwright-cli` (open a `-s=probe-<journey-slug>` session per [`../../achilles-orchestrator/references/playwright-cli-protocol.md`](../../achilles-orchestrator/references/playwright-cli-protocol.md) §3) with **zero context**: do NOT read `app-context.md`, existing tests, or scenario docs. Pure adversarial exploration.
 
 ## Probing Categories
 
@@ -19,8 +19,8 @@ Apply to every interactive element found on every page:
 
 ## Process per Page
 
-1. Navigate via `playwright-cli` (`-s=bd-<journey-slug> goto <URL>`)
-2. Take a snapshot (`-s=bd-<journey-slug> snapshot`)
+1. Navigate via `playwright-cli` (`-s=probe-<journey-slug> goto <URL>`)
+2. Take a snapshot (`-s=probe-<journey-slug> snapshot`)
 3. Identify all interactive elements
 4. **Visibility gate:** For each element, check `getBoundingClientRect()`: if width and height are both 0, or if any ancestor has `display: none`, `visibility: hidden`, or zero height, mark the element as **DOM-only**. Continue probing both visible and DOM-only elements, but tag all findings accordingly.
 5. Systematically try each probing category on each element
@@ -34,7 +34,7 @@ Screenshots and captured artifacts are named and located so a report link, a led
 - **Pre-classification anomaly shots** (Phase 1a/1b, before a finding has an ID): `<page-slug>-<probe-category>-<nn>.png`.
 - **At Phase 5 classification**, rename each kept shot to its canonical FINDING-ID:
   - Standalone bug-discovery: `docs/e2e/screenshots/<FINDING-ID>.png`
-  - Journey-scoped (dispatched by `coverage-expansion`): `tests/e2e/docs/screenshots/<FINDING-ID>.png` (sibling of the ledger)
+  - Journey-scoped (dispatched by the expand-coverage workflow): `tests/e2e/docs/screenshots/<FINDING-ID>.png` (sibling of the ledger)
 - Non-screenshot evidence for API/security/privacy findings (saved response body, header dump, console capture, DOM/source excerpt) is saved alongside under the same `<FINDING-ID>` stem.
 - Report links and ledger `evidence:` lines carry exactly these repo-relative paths.
 
@@ -94,7 +94,7 @@ Scan existing test coverage against remaining findings.
 ## Steps
 
 1. Read all spec files in the test directory
-2. Read scenario docs (`docs/e2e-test-scenarios.md`) if they exist
+2. Read scenario docs (`tests/e2e/docs/test-scenarios.md`) if they exist
 3. Filter out findings already covered by a passing test
 4. Flag findings that contradict what an existing test asserts in a different context; these are **regression candidates**
 

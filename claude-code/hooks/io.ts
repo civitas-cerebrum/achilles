@@ -1,0 +1,163 @@
+import type { EngineInterface, FsEntry, ProcessRunResult } from 'claude-code'
+
+import { basename, isAbsolute, normalize, relTo, resolve } from './posix'
+
+// File, process and rule-file helpers over the engine's fs and process nouns, with no run state:
+// what the Bash judge needs, so the pi adapter can load it outside Claude Code.
+
+export function readText($: EngineInterface, path: string): Promise<string | undefined> {
+  return $.fs
+    .read(path)
+    .then(v => (typeof v === 'string' ? v : undefined))
+    .catch(() => undefined)
+}
+
+export async function readJson<T = unknown>($: EngineInterface, path: string): Promise<T | undefined> {
+  const text = await readText($, path)
+  if (text === undefined) return undefined
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return undefined
+  }
+}
+
+export function exists($: EngineInterface, path: string) {
+  return $.fs.exists(path).catch(() => false)
+}
+
+export function listDir($: EngineInterface, path: string): Promise<FsEntry[]> {
+  return $.fs.list(path).catch(() => [] as FsEntry[])
+}
+
+/** Every regular file under `dir`, project-relative to it, depth and count bounded so a hook never walks a whole tree. */
+export async function walk($: EngineInterface, dir: string, opts: { depth?: number; max?: number; skip?: RegExp } = {}): Promise<string[]> {
+  const { depth = 4, max = 2000, skip = /^(node_modules|\.git)$/ } = opts
+  const out: string[] = []
+  const queue: { path: string; depth: number }[] = [{ path: dir, depth: 0 }]
+  while (queue.length > 0 && out.length < max) {
+    const { path, depth: d } = queue.shift()!
+    for (const entry of await listDir($, path)) {
+      if (skip.test(entry.name)) continue
+      const full = `${path}/${entry.name}`
+      if (entry.kind === 'file') out.push(full)
+      else if (entry.kind === 'dir' && d < depth) queue.push({ path: full, depth: d + 1 })
+      if (out.length >= max) break
+    }
+  }
+  return out
+}
+
+/** A file's path resolved against the project (the session cwd) and its project-relative spelling. */
+export function placeFile(root: string, filePath: string): { abs: string; rel: string } {
+  const abs = resolve(root, filePath)
+  return { abs, rel: relTo(root, abs) }
+}
+
+export type FactoryRules = { path: string; rel: string; rules: Record<string, Record<string, unknown>> }
+
+/** The project's achilles-factory-rules.json (or FACTORY_RULES), when the project opted into the factory rules. */
+export async function factoryRules($: EngineInterface, root: string): Promise<FactoryRules | undefined> {
+  const override = await $.env.get('FACTORY_RULES').catch(() => undefined)
+  const path = override ? resolve(root, override) : `${root}/achilles-factory-rules.json`
+  const doc = await readJson<{ rules?: unknown }>($, path)
+  if (!doc || typeof doc !== 'object' || !doc.rules || typeof doc.rules !== 'object') return undefined
+  return { path, rel: relTo(root, path), rules: doc.rules as FactoryRules['rules'] }
+}
+
+export const ruleOf = (rules: FactoryRules | undefined, id: string): Record<string, unknown> | undefined => {
+  const r = rules?.rules[id]
+  return r && typeof r === 'object' ? r : undefined
+}
+
+export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x !== '') : [])
+
+/** The factory three-line message: what happened, what to do, where it is written down. */
+export function threeLine(id: string, what: string, action: string | undefined, doc: string | undefined): string {
+  return `[${id}] ${what}\n→ Do: ${action ?? 'see the rule file'}\n→ Why/how: ${doc ?? `achilles-factory-rules.json#${id}`}`
+}
+
+/** The content of a file after an Edit: Edit-tool semantics (one occurrence, or every one with replace_all). */
+export function applyEdit(before: string, edit: { old_string: string; new_string: string; replace_all?: boolean }): { text: string } | { error: string } {
+  if (edit.old_string === '') return { error: 'old_string is empty' }
+  const parts = before.split(edit.old_string)
+  if (parts.length < 2) return { error: 'old_string does not occur in the file' }
+  if (edit.replace_all) return { text: parts.join(edit.new_string) }
+  if (parts.length > 2) return { error: 'old_string occurs more than once and replace_all is not set' }
+  return { text: `${parts[0]}${edit.new_string}${parts[1]}` }
+}
+
+/** The content a Write or Edit lands, read from disk when an Edit needs its before-text. */
+export async function afterContent(
+  $: EngineInterface,
+  e: { tool: string; file_path: string; content?: string; old_string?: string; new_string?: string; replace_all?: boolean },
+  abs: string,
+): Promise<{ before: string; after: string } | { before: string; error: string }> {
+  const before = (await readText($, abs)) ?? ''
+  if (e.tool === 'Write') return { before, after: e.content ?? '' }
+  const r = applyEdit(before, { old_string: e.old_string ?? '', new_string: e.new_string ?? '', replace_all: e.replace_all })
+  return 'text' in r ? { before, after: r.text } : { before, error: r.error }
+}
+
+/** The text an Edit or Write adds, for a content screen that judges only what the call writes. */
+export const writtenText = (e: { tool: string; content?: string; new_string?: string }) => (e.tool === 'Write' ? (e.content ?? '') : (e.new_string ?? ''))
+
+/** Best-effort comment masking for a content screen: block comments on one line, JSDoc body lines, `// …` tails. */
+export const maskComments = (text: string) =>
+  text
+    .split('\n')
+    .map(l => l.replace(/\/\*([^*]|\*+[^*/])*\*+\//g, '').replace(/^\s*(\/\*|\*).*$/, '').replace(/\/\/.*$/, ''))
+    .join('\n')
+
+/** A 64-bit content hash (two 32-bit halves), enough to notice a file changed; not a cryptographic digest. */
+export function hashText(s: string): string {
+  let h1 = 0xdeadbeef ^ s.length
+  let h2 = 0x41c6ce57 ^ s.length
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `${(h2 >>> 0).toString(16).padStart(8, '0')}${(h1 >>> 0).toString(16).padStart(8, '0')}`
+}
+
+export type Ran = { ok: true; stdout: string; stderr: string; exitCode: number } | { ok: false; reason: string }
+
+/** A host command with a bounded wait; a failure to start or a timeout is a value, never a throw. */
+export async function run($: EngineInterface, argv: readonly string[], init: { cwd?: string; stdin?: string; timeoutMs?: number; env?: Record<string, string> } = {}): Promise<Ran> {
+  try {
+    const r: ProcessRunResult = await $.process.run(argv, { timeoutMs: 8000, ...init })
+    return { ok: true, stdout: r.stdout, stderr: r.stderr, exitCode: r.exitCode }
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export const firstLine = (s: string) => s.split('\n').find(l => l.trim() !== '')?.trim() ?? ''
+
+export function scriptPath($: EngineInterface, rel: string) {
+  return `${$.plugin.root}/claude-code/lib/${rel}`
+}
+
+export const isSpecPath = (p: string) => /\.(spec|test|setup)\.[cm]?[jt]sx?$/.test(basename(p)) || /\.(spec|test|setup)\./.test(basename(p))
+export const isPageRepository = (p: string) => /page-repository[^/]*\.json$/.test(basename(p))
+export const isFrontendSource = (p: string) =>
+  /\.(tsx|jsx|vue|svelte|html)$/.test(p) || (/\.(ts|js)$/.test(p) && /(^|\/)(src|app|pages|components)\//.test(p) && !/(^|\/)tests?\//.test(p))
+
+export { isAbsolute, normalize }
+
+export type Validated = { ok: true } | { ok: false; parse?: string; errors?: string[] } | { unavailable: string }
+
+/** Validates a document against schemas/<schema>.schema.json in a node child (the module cannot import Ajv). */
+export async function validateDoc($: EngineInterface, schema: string, text: string, timeoutMs = 6000): Promise<Validated> {
+  const r = await run($, ['node', `${$.plugin.root}/claude-code/lib/validate.mjs`, schema], { stdin: text, timeoutMs })
+  if (!r.ok) return { unavailable: r.reason }
+  try {
+    const v = JSON.parse(r.stdout) as Validated
+    return typeof v === 'object' && v !== null && 'ok' in v ? v : { unavailable: 'no verdict' }
+  } catch {
+    return { unavailable: firstLine(r.stderr) || `exit ${r.exitCode}` }
+  }
+}

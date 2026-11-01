@@ -18,7 +18,6 @@ description: >
   or pure UI assertions — those route elsewhere.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared. Subagents (which return structured data) are exempt.
 
 # Database Testing — Persistence-Layer Verification
 
@@ -156,16 +155,14 @@ writes data.
 - Never assert against production; never leave test mutations behind.
 - Seeding, cleanup, and deterministic-state discipline follow [`test-data-conventions`](../test-data-conventions/SKILL.md): the strategy decision ladder (seed-your-own vs content-resilient), per-attempt generation inside the test body (Rule 1), cleanup-in-hooks even on failure (Rule 5), no prod pollution (Rule 9), and DB-verified cleanup per its layering section. The Stage 4c judge's data-feasibility dimension reviews DB specs against that ladder.
 
-## Exit gate — compliance sweep
+## Exit gate
 
-**Exit gate: the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
-
-**Composing SSOT + Stage 4c.** Shared composing rules are single-homed in [`test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) (canon index §2: cite, never fork). A **standalone** invocation of this skill (direct user request, outside any composer / ticket-driven flow) is a composing exit: after the compliance sweep, dispatch the independent `composition-judge-` subagent per §4 of that file and return only on SATISFIED (3 consecutive NOT SATISFIED → operator). Specs authored **inside** a `test-composer` / `coverage-expansion` / `ticket-driven-testing` flow are covered by that flow's judge or its documented equivalence; do not impose a second judge (same non-double-imposition pattern as the dual-stage equivalence).
+**Exit gate.** Every spec this skill writes or edits gets the Stage 4b compliance sweep before the return, announced with the **API Compliance Review** block ([`stages-protocol.md`](../achilles-orchestrator/references/stages-protocol.md) §"Stage 4b is every mode's exit gate"). A standalone invocation is a composing exit: the orchestrator dispatches the independent judge after the sweep ([`test-composition-standards.md`](../achilles-orchestrator/references/test-composition-standards.md) §4); specs authored inside a `test-composer` or verify-change flow are covered by that flow's judge, never a second one.
 
 ## Return Shape
 
 When invoked as a subagent, returns conform to `schemas/subagent-returns/composer.schema.json`.
-Status words: [ledger-vocabulary.md](../achilles-protocol/references/ledger-vocabulary.md) §"Subagent returns". Every return MUST open
+Status words and envelope: [`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) §2. Every return MUST open
 with a `handover` envelope whose required fields are `role`, `status`, and `next-action` (plus
 `cycle`, an integer ≥ 1): see `schemas/subagent-returns/handover.schema.json`. The body names the
 specs created, scenarios covered, tables/relationships exercised, and any gaps (no silent truncation).

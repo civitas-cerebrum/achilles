@@ -1,0 +1,12 @@
+{
+  "name": "achilles",
+  "owner": { "name": "Umut Ay Bora" },
+  "metadata": { "description": "The Achilles QA methodology as a Claude Code plugin; the npm package root is the plugin root." },
+  "plugins": [
+    {
+      "name": "achilles",
+      "source": "./",
+      "description": "Autonomous QA methodology: delegate_qa, /achilles, the orchestrator and its experts, the skills."
+    }
+  ]
+}

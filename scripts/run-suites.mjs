@@ -6,11 +6,9 @@ import { spawnSync } from 'node:child_process';
 const SUITES = [
   ['schemas', 'schemas:lint'],
   ['lint', 'test:lint'],
-  ['hooks', 'test:hooks'],
-  ['factory', 'test:factory'],
   ['bin', 'test:bin'],
   ['reporter', 'test:reporter'],
-  ['agents', 'test:agents'],
+  ['adapter', 'test:adapter'],
 ];
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';

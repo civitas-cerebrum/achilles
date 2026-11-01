@@ -6,7 +6,7 @@
 // Rule `specs.shape` of the factory rule file ($FACTORY_RULES, else <project>/achilles-factory-rules.json) supplies
 // titleIdPattern (required; a leading ^ and trailing " — " are stripped to get the id core), scenarioDocs, doc and
 // blockEnums. Field contract, enum defaults and token normalisation:
-// skills/requirement-intake/references/scenario-block.md. DEFAULT_ENUMS below is the machine copy.
+// skills/achilles-orchestrator/references/scenario-block.md. DEFAULT_ENUMS below is the machine copy.
 // The project root is $CLAUDE_PROJECT_DIR, else the current directory; file arguments resolve against it.
 //
 // A block starts at a `#### <ID> — <title>` heading and ends at the next heading of level 1–4 or a `---` rule. Other
@@ -33,7 +33,7 @@ export const DEFAULT_ENUMS = {
   status: ['proposed', 'implemented', 'green', 'red-by-design', 'blocked', 'omitted-by-ruling'],
 };
 const OMITTED = 'omitted-by-ruling';
-const DEFAULT_DOC = 'skills/requirement-intake/SKILL.md#the-block';
+const DEFAULT_DOC = 'skills/achilles-orchestrator/references/scenario-block.md#template-and-field-contract';
 
 /** Step lines must read as user language: no selectors, no raw locators, no fixed waits. */
 const STEP_FORBIDDEN = [
@@ -46,7 +46,7 @@ const STEP_FORBIDDEN = [
   { re: /\b\d+(?:[.,]\d+)?\s?(?:s|ms|secs?|seconds?)\b/, what: 'a duration (fixed wait)' },
 ];
 
-const DO_ACTION = 'Bring the block in line with skills/requirement-intake/references/scenario-block.md (all nine fields as '
+const DO_ACTION = 'Bring the block in line with skills/achilles-orchestrator/references/scenario-block.md (all nine fields as '
   + '"- **<Field>**: …" bullets, enum values from specs.shape.blockEnums or the defaults, numbered user-language Steps with no selectors or waits, '
   + 'one block per ID and context), then re-run the lint.';
 

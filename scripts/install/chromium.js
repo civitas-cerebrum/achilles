@@ -1,7 +1,13 @@
 const fs   = require('fs');
 const path = require('path');
+const os   = require('os');
 const { spawnSync } = require('child_process');
-const { packageDir, projectRoot, homeDir } = require('./context.js');
+const { scope } = require('../../claude-code/register.js');
+
+// The consuming project (module resolution looks there too) and this package, as the install
+// context decides them.
+const { packageDir, projectRoot } = scope();
+const homeDir = os.homedir();
 
 // @playwright/cli is shipped as a hard dependency of this package, so skills
 // that drive a live browser can rely on it after `npm install` with no
@@ -80,8 +86,7 @@ function chromiumAlreadyCached() {
   }
 }
 
-// Never fails the install: a non-zero postinstall makes npm remove the package, and
-// with it achilles-uninstall, after the harness has already been written.
+// Never fails the install: a non-zero postinstall makes npm remove the package.
 function installChromium() {
   const manual = 'Before driving a browser, run `npx playwright-cli install-browser chromium`.';
   const entry = playwrightCliEntry();

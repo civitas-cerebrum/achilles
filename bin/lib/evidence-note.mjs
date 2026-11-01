@@ -7,7 +7,7 @@
 //   - source: <kind>     must be present (live | legacy-inspection <path> | live-run (exercised by <file:line>))
 //
 // — so a note left behind by a changed selector is refused, and a hand-written note without a source is refused.
-// See skills/achilles-protocol/references/selector-evidence.md#the-note.
+// See skills/achilles-orchestrator/references/selector-evidence.md#the-note.
 //
 // This module is pure (node:fs and node:path only). It never imports Playwright, so the count-check seam
 // (resolveAndCheck) can be driven with a fake locator.
@@ -17,9 +17,9 @@ import { projectRoot, rulesPath } from './project-root.mjs'
 
 export const TOOL_VERSION = '1.0'
 export const RULE_ID = 'selectors.evidence'
-export const DOC = 'skills/achilles-protocol/references/selector-evidence.md'
+export const DOC = 'skills/achilles-orchestrator/references/selector-evidence.md'
 
-const SCHEMA = new URL('../../hooks/data/factory-rules.schema.json', import.meta.url)
+const SCHEMA = new URL('../../schemas/factory-rules.schema.json', import.meta.url)
 
 /** Where notes live when the rule omits `evidenceDir`: the schema's `default`, which repository-evidence-gate.sh reads too. */
 export const DEFAULT_EVIDENCE_DIR = JSON.parse(readFileSync(SCHEMA, 'utf8')).$defs.selectorsEvidence.properties.evidenceDir.default

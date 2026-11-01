@@ -8,12 +8,12 @@ Merge all findings from Phases 2, 3, and 4 into a single prioritized list.
 |---|---|---|
 | **New bug** | Not documented, not tested, clearly wrong | Phase 6 (reproduce) |
 | **Regression candidate** | Contradicts existing test in different context | Phase 6 (reproduce with context note) |
-| **Undocumented quirk** | Weird but possibly intentional | Flag in report, ask user |
+| **Undocumented quirk** | Weird but possibly intentional | Flag in report; one entry under the return's `questions` (`NEEDS_CONTEXT` when nothing else remains) |
 | **Known but untested** | In app-context but no test guards it | Phase 6 (write guard test) |
 
 ## Severity
 
-Severity uses the **single canonical five-value enum**: `critical | high | medium | low | info`, defined once in [`../achilles-protocol/references/subagent-return-schema.md`](../../achilles-protocol/references/subagent-return-schema.md) §1. This skill does not restate the enum; the table below is **report-facing decision guidance** that maps observed findings onto those canonical values. The report-facing label **"No impact (DOM-only)"** is this skill's presentation name for canonical `info`.
+Severity uses the **single canonical five-value enum**: `critical | high | medium | low | info`, defined once in [`../../achilles-orchestrator/references/finding-and-ledger-schema.md`](../../achilles-orchestrator/references/finding-and-ledger-schema.md) §1. This skill does not restate the enum; the table below is **report-facing decision guidance** that maps observed findings onto those canonical values. The report-facing label **"No impact (DOM-only)"** is this skill's presentation name for canonical `info`.
 
 | Canonical severity | Report-facing guidance | Decision criteria | Examples |
 |---|---|---|---|
@@ -25,7 +25,7 @@ Severity uses the **single canonical five-value enum**: `critical | high | mediu
 
 ## Evidence rule (replaces the absolute screenshot cap)
 
-This operationalises the unified evidence rule in `subagent-return-schema.md` §1; it is the authority other skills inherit.
+This operationalises the unified evidence rule in `finding-and-ledger-schema.md` §1; it is the authority other skills inherit.
 
 **Every finding above `info` MUST cite captured evidence appropriate to its oracle**: a screenshot for visual/UX findings; a saved response body, header dump, console capture, DOM/source excerpt, or static-inference rationale (`inferred: true`) for API/security/privacy findings. Findings with no captured evidence cap at `info`.
 

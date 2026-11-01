@@ -78,7 +78,7 @@ _(Regressions: list any fix-verified entry whose reproduction test failed this r
 
 ## Triage lifecycle
 
-Findings carry a triage status across runs. This is a **methodology convention (model-compliance), not harness-enforced**: no hook gates the report or ledger. State is keyed on the canonical FINDING-ID and survives between runs.
+Findings carry a triage status across runs. This is a methodology convention: nothing gates the report or ledger. State is keyed on the canonical FINDING-ID and survives between runs.
 
 | Status | Meaning |
 |---|---|
@@ -101,8 +101,6 @@ The ledger mirrors this via its §3 `status:` line (`new | reported(<issue-url>)
 
 ## Post-Report
 
-After generating the report, ask:
+The return names the report path (`docs/e2e/bug-discovery-report.md`) and the confirmed-bug count; whether to file tickets is one question in the orchestrator's hand-back (`DONE_WITH_CONCERNS`, one concern per confirmed bug), never a prompt from this skill.
 
-> "Bug discovery report written to `docs/e2e/bug-discovery-report.md`. Would you also like me to file tickets for the confirmed bugs?"
-
-If the user agrees, **route ticket creation through the `bug-report` skill**: one ticket per confirmed bug, with the FINDING-ID, journey, build/commit, reproduction-test pointer, and the matrix-derived Priority handed over as `bug-report`'s Traceability and pre-fill fields. When a GitHub issue (or Jira ticket) is created, write its URL back into the finding's ledger `status:` line as `status: reported(<url>)` and reflect it in the report's `**Triage:**` carry-forward. Do not hand-roll the ticket body here; `bug-report` owns the ticket shape.
+When the answer is yes, **ticket creation routes through the `bug-report` skill** (a doc-writer dispatch per finding): one ticket per confirmed bug, with the FINDING-ID, journey, build/commit, reproduction-test pointer, and the matrix-derived Priority handed over as `bug-report`'s Traceability and pre-fill fields. When a GitHub issue (or Jira ticket) is created, write its URL back into the finding's ledger `status:` line as `status: reported(<url>)` and reflect it in the report's `**Triage:**` carry-forward. Do not hand-roll the ticket body here; `bug-report` owns the ticket shape.

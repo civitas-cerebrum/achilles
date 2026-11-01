@@ -34,7 +34,7 @@ Several environments are static-only by construction: CI runners without a brows
 
 ## Orchestrator-side: no silent deprioritisation
 
-Static mode constrains how orchestrators (`coverage-expansion`, `onboarding`, Phase-7 deck generation) handle the findings:
+Static mode constrains how orchestrators (the expand-coverage workflow, the onboard workflow, Phase-7 deck generation) handle the findings:
 
 - **Ranking.** Static findings rank by **severity**, not by evidence class. A `severity: high` inferred finding outranks a `severity: low` live-verified finding in any ordered list.
 - **Inclusion in reports and decks.** Static findings appear in the onboarding-report and the summary deck on the same footing as live findings. The `inferred: true` flag is shown explicitly so readers can judge epistemic weight, but the finding is not buried or collapsed.

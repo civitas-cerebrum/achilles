@@ -1,16 +1,18 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
-import { walk, SKILLS_DIR } from './util.mjs';
+import { walk, SKILLS_DIR, ADAPTER_DIR } from './util.mjs';
 
-// Check 11 — every `<path> §"Heading"` citation in hooks, hook libs and skills
-// names a heading that exists in the cited file. In Markdown a heading is
-// `#… Heading` or a line that starts with a bold lead-in (`**Heading.**`), ignoring symbols, a section number or `Pattern:` before the first letter
-// and a trailing `{#anchor}`; in a test case it is a `section "Heading"` line. Lines inside
+// Check 11 — every `<path> §"Heading"` citation in skills, docs/harness,
+// CONTRIBUTING.md and the adapter sources names a heading that exists in the
+// cited file. In Markdown a heading is `#… Heading` or a line that starts with
+// a bold lead-in (`**Heading.**`), ignoring symbols, a section number or
+// `Pattern:` before the first letter and a trailing `{#anchor}`. Lines inside
 // code fences are not headings. A citation may be a multi-word prefix of the
-// heading (`§"Mode selection"` cites `## Mode selection (the orchestrator decides)`). The path is resolved
-// repo-relative or citing-file-relative, else by unique tail (`references/x.md`
-// from a sibling skill); any file it resolves to may hold the heading.
-const CITATION = /([\w./-]+\.(?:md|sh|json))[\s`)*(#>]*§"([^"]+)"/g;
+// heading (`§"Mode selection"` cites `## Mode selection (the orchestrator
+// decides)`). The path is resolved repo-relative or citing-file-relative, else
+// by unique tail (`references/x.md` from a sibling skill); any file it
+// resolves to may hold the heading.
+const CITATION = /([\w./-]+\.(?:md|ts|js|json))[\s`)*(#>]*§"([^"]+)"/g;
 
 const headingsCache = new Map();
 function headingsOf(file) {
@@ -21,8 +23,7 @@ function headingsOf(file) {
       if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
       else if (!fenced) {
         const m = line.match(/^\*\*(.+?)[.:]?\*\*/)
-          ?? line.match(/^#+\s+(?:[^\p{L}\p{N}\s`*"'(]+\s*|\d+(?:\.\d+)*\.?\s+|Pattern:\s+)*(.*?)\s*(?:\{#[^}]*\})?\s*$/u)
-          ?? line.match(/^section "(.*)"\s*$/);
+          ?? line.match(/^#+\s+(?:[^\p{L}\p{N}\s`*"'(]+\s*|\d+(?:\.\d+)*\.?\s+|Pattern:\s+)*(.*?)\s*(?:\{#[^}]*\})?\s*$/u);
         if (m) out.push(m[1].replace(/`/g, ''));
       }
     }
@@ -41,10 +42,12 @@ function matches(heading, cited) {
 export function run(report) {
   const detail = [];
   const sources = [
-    ...walk('hooks', (p) => p.endsWith('.sh') && !p.includes('/tests/')),
     ...walk(SKILLS_DIR, (p) => p.endsWith('.md')),
+    ...walk('docs/harness', (p) => p.endsWith('.md')),
+    ...(existsSync('CONTRIBUTING.md') ? ['CONTRIBUTING.md'] : []),
+    ...walk(ADAPTER_DIR, (p) => /\.(ts|js|mjs|md)$/.test(p) && !p.includes('/node_modules/')),
   ];
-  const known = [...walk('hooks', () => true), ...walk(SKILLS_DIR, () => true), ...walk('docs', () => true)];
+  const known = [...walk(SKILLS_DIR, () => true), ...walk('docs', () => true), ...walk('schemas', () => true), ...walk(ADAPTER_DIR, () => true)];
   let checked = 0;
 
   for (const file of sources) {

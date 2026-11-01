@@ -4,28 +4,28 @@
 **Scope:** Phase 1 (Page Discovery + Test Infrastructure probe), Phase 2 (Flow Identification), Phase 3 (Journey Prioritization), Phase 3.5 (Redundancy Revision). Per-phase process, parallel-discovery model, output formats.
 
 For Phase 4 (Journey Map document) and Phase 5 (Coverage Checkpoint), see `journey-mapping/SKILL.md` directly; those phases' outputs are tightly coupled to the SKILL.md's signature-marker and hard-gate rules.
-For the canonical browser-automation primitive used in Phase 1 discovery, see `../achilles-protocol/references/playwright-cli-protocol.md`.
+For the canonical browser-automation primitive used in Phase 1 discovery, see `../../achilles-orchestrator/references/playwright-cli-protocol.md`.
 
 **Cycle strictness note.** The iterative discovery cycle protocol that drives Phases 2 / 3 / 3.5 (in both `full` and `phases-2-4` modes) honours an optional `cycle-strictness` parameter:
-- `cycle-strictness: standard` (default): cycle 1 strict per-section parallel; cycle 2+ may be single-subagent sequential when the orchestrator chooses.
-- `cycle-strictness: depth`: every cycle (including edge-probe and any additional discovery cycles) is strict per-section parallel; single-subagent walkthroughs are forbidden in every cycle. The state-file field `cycleStrictness: "depth"` in `.phase4-cycle-state.json` records the selection so the `standard-mode-first-pass-guard.sh` hook can enforce the every-cycle-strict semantics. Selected via `onboarding`'s `runMode: depth` front-load gate.
+- `cycle-strictness: standard` (default): cycle 1 strict per-section parallel; cycle 2+ may be one inspector covering several sections when the orchestrator chooses.
+- `cycle-strictness: depth`: every cycle (including edge-probe and any additional discovery cycles) is strict per-section parallel; single-inspector walkthroughs are forbidden in every cycle. The state-file field `cycleStrictness: "depth"` in `.phase4-cycle-state.json` records the selection; the phase-gate reviewer checks it. Selected via the onboard workflow's `runMode: depth` front-load gate.
 The Phase 1 parallel-discovery model below is unaffected; Phase 1 already mandates parallel dispatch per entry point and does not relax across runs.
 
 ---
 
 ## Phase 1: Page Discovery
 
-Visit every reachable page in the application via `@playwright/cli` (see [`../achilles-protocol/references/playwright-cli-protocol.md`](../../achilles-protocol/references/playwright-cli-protocol.md)). Build the app context document incrementally as you go.
+Visit every reachable page in the application via `@playwright/cli` (see [`../../achilles-orchestrator/references/playwright-cli-protocol.md`](../../achilles-orchestrator/references/playwright-cli-protocol.md)). Build the app context document incrementally as you go.
 
 ### Discovery Tool Rule — `playwright-cli` only
 
-Page discovery **must** be performed through `@playwright/cli` from the Bash tool (`playwright-cli open`, `playwright-cli snapshot`, `playwright-cli click`, `playwright-cli eval`, etc.). This is mandatory:
+Page discovery **must** be performed through `@playwright/cli` from the shell (`playwright-cli open`, `playwright-cli snapshot`, `playwright-cli click`, `playwright-cli eval`, etc.). This is mandatory:
 
 - **Do not** infer pages from reading source files, route tables, router configs, sitemaps, or existing tests. Static inspection misses runtime-only routes, feature flags, auth-gated redirects, and client-side navigation state.
 - **Do not** use `fetch`/`curl`/WebFetch to scrape HTML; those bypass client-side rendering and produce a false map.
 - **Do not** substitute a headless Playwright test runner or shell scripts for the CLI. Discovery runs in a live `playwright-cli` session so snapshots, console errors, and navigation timing are observable and recordable.
 - **Every URL in the site map must have a corresponding `playwright-cli` snapshot** taken during this phase. If a page appears in the map without a CLI visit, it was guessed: remove it and visit it, or mark it gated.
-- **Do not** call the `mcp__plugin_playwright_playwright__browser_*` MCP tools, even when the harness lists them as available. They run a separate Chrome process, write to a separate `.playwright-mcp/` directory, and share no state with the CLI's session model; using them at any point in discovery (parent or subagent) silently breaks the per-session OS-isolation guarantee documented in `../achilles-protocol/references/playwright-cli-protocol.md`. The CLI is the only sanctioned discovery channel.
+- **Do not** use any other browser channel the harness may offer (an MCP browser tool, a separate Chrome). It runs a separate browser process and shares no state with the CLI's session model; using it at any point in discovery silently breaks the per-session isolation documented in `../../achilles-orchestrator/references/playwright-cli-protocol.md`. The CLI is the only sanctioned discovery channel.
 
 `@playwright/cli` ships as a hard dependency of `@civitas-cerebrum/achilles`, so it is always reachable via `npx playwright-cli` after the package is installed. If the binary is somehow unreachable, the install is corrupted: `npm install` fixes it. If the browser binary is missing on the dev machine, the first `... open` call exits with a clear error; run `npx playwright-cli install-browser chromium` once, then retry. Do not fall back to static analysis.
 
@@ -33,7 +33,7 @@ Page discovery **must** be performed through `@playwright/cli` from the Bash too
 
 1. **Start at the entry point**: usually the homepage or login page
 2. **Take a snapshot** of each page
-3. **Record to app-context.md** immediately (per Rule 9 of achilles-protocol):
+3. **Record to app-context.md** immediately (per [`stages-protocol.md`](../../achilles-orchestrator/references/stages-protocol.md) §"App context"):
    - URL pattern
    - Page purpose (one sentence)
    - Key sections visible
@@ -46,52 +46,7 @@ Page discovery **must** be performed through `@playwright/cli` from the Bash too
 
 ### Parallel discovery
 
-For apps with multiple known entry points, Phase 1 parallelizes. **Parallel is the default** whenever two or more entry points are known. There is no isolation-prerequisite check: every dispatched subagent issues `playwright-cli -s=<unique-slug> open` and gets its own OS-isolated browser process by construction (see Rule 11 in the `achilles-protocol` orchestrator and `references/playwright-cli-protocol.md` §1).
-
-**Protocol:**
-
-1. Enumerate entry points: homepage (`/`), login page, and any other known top-level URLs (dashboard, known subsystem roots, explicitly user-listed starting points).
-2. Quarantine: run `npx playwright-cli close-all` once at the start of the phase to reap any stale sessions from prior interrupted runs.
-3. For each entry point, dispatch a discovery subagent in parallel. Each subagent gets:
-   - Its assigned entry point URL.
-   - A unique session slug (`phase1-<entry-slug>`, per `playwright-cli-protocol.md` §3.1).
-   - Its own fresh context window; no prior session content.
-   - A terse brief: crawl the subtree breadth-first, capture snapshots, return a structured list of discovered pages + interactive elements.
-4. Parent journey-mapping agent merges each subagent's returned page list into `tests/e2e/docs/app-context.md` and the flat site map. Parent does **not** paste raw DOM snapshots or CLI transcripts into its own context.
-5. Deduplicate pages discovered by multiple subagents (common boundary pages show up twice; keep one entry with merged metadata).
-6. After every subagent has returned and closed its session, the parent runs `npx playwright-cli close-all` as belt-and-suspenders cleanup, then proceeds to Phase 2 with the consolidated site map.
-
-**Concrete dispatch shape:**
-
-For each entry point, the agent dispatches a subagent through whatever subagent-dispatch primitive its environment provides. Example shape:
-
-```
-dispatchSubagent({
-  description: "Discover <subtree>",
-  prompt: `
-    Crawl <entry-point-URL> breadth-first. Capture a snapshot of each page,
-    record URL, purpose, key sections, interactive elements, and outbound links.
-    Return a structured list of discovered pages and interactive elements.
-    Do not paste raw DOM into the return — summarize.
-
-    Browser automation: use @playwright/cli from the Bash tool. Open and close
-    your own session — siblings have their own slugs and sessions are isolated
-    by construction (one browser process per -s= name).
-
-        npx playwright-cli -s=phase1-<entry-slug> open --browser=chromium <entry-point-URL>
-        # ...crawl with snapshot / click / goto...
-        npx playwright-cli -s=phase1-<entry-slug> close
-
-    Snapshot format and command surface:
-    skills/achilles-protocol/references/playwright-cli-protocol.md §3 + §5.
-    Do NOT call close-all (the parent owns that).
-  `,
-})
-```
-
-Dispatch one subagent per entry point, all in parallel. Each dispatched subagent opens its own browser session via `-s=<slug> open`. The parent does **not** drive its own browser during the parallel phase.
-
-**Parallelism:** dispatch as many subagents in parallel as the independence graph allows; there is no fixed cap and no isolation-driven serialization. In Phase 1, every entry point is an independent root, so dispatch N subagents for N entry points.
+The orchestrator dispatches one inspector per entry point, in parallel, each with its own `phase1-<entry-slug>` session, and merges the returned page lists itself; the loop, the slugs and the `close-all` points are in [`../../achilles-orchestrator/workflows/map-journeys.md`](../../achilles-orchestrator/workflows/map-journeys.md) §"Phase 1: crawl and infrastructure probe". An inspector crawls its subtree, returns the structured page list (never raw DOM), closes its own session and never calls `close-all`; it dispatches nobody.
 
 ### Discovery Scope Rules
 
@@ -117,14 +72,14 @@ Total: X pages discovered
 Gated: Y pages behind authentication
 ```
 
-### Test Infrastructure probe (split: per-entry observation + post-crawl `phase1-test-infra:` subagent)
+### Test Infrastructure probe (split: per-entry observation + a post-crawl `phase1-test-infra` inspector)
 
 Phase 1 captures the application's test-infrastructure surface: auth model, reset endpoint, persistent banners, mutation endpoints, stable seed resources; for downstream consumption by Stage 4a of the test-composition pipeline.
 
 Load `references/test-infrastructure-probe.md` and run the protocol described there. The probe runs in **two coordinated layers**:
 
-1. **In parallel with the crawl**: each per-entry-point `phase1-<entry>:` subagent records observed items (auth-model network shapes, mutation endpoints fired by the browser) in its structured return.
-2. **After the crawl completes**: the orchestrator dispatches a single **`phase1-test-infra:` subagent** that runs the deliberate post-crawl probes (reset-endpoint detection, banner / modal selector resolution, stable-seed enumeration) AND reconciles the per-entry-point observations into a single deduplicated list, then writes the canonical `## Test Infrastructure` section to `tests/e2e/docs/app-context.md`.
+1. **In parallel with the crawl**: each per-entry-point inspector (session `phase1-<entry>`) records observed items (auth-model network shapes, mutation endpoints fired by the browser) in its structured return.
+2. **After the crawl completes**: the orchestrator dispatches a single **inspector (session `phase1-test-infra`)** that runs the deliberate post-crawl probes (reset-endpoint detection, banner / modal selector resolution, stable-seed enumeration) AND reconciles the per-entry-point observations into a single deduplicated list, then writes the canonical `## Test Infrastructure` section to `tests/e2e/docs/app-context.md`.
 
 **Why a subagent for the post-crawl probe.** The deliberate probe generates several thousand tokens of network output and DOM snapshots. Confining it to a throwaway subagent context keeps the orchestrator at index-level state; the orchestrator only sees the structured return (the `## Test Infrastructure` Markdown block + the audit-tag list). Same context-discipline rule coverage-expansion enforces for composer/probe work, applied here.
 
@@ -201,8 +156,7 @@ For each flow, ask:
 3. **Failure impact:** If this flow breaks, do users notice? Can they work around it? → Raises priority
 4. **Business context:** Is there a deadline, compliance requirement, or recent incident related to this flow? → Raises priority
 
-If the app's business purpose is unclear, ask the user:
-> "What is the primary goal of this application? What action do you most want users to complete?"
+If the app's business purpose is unclear, the author step returns it as a question for the orchestrator's `NEEDS_CONTEXT` hand-back ("What is the primary goal of this application? What action do you most want users to complete?") with a provisional prioritisation attached, rather than guessing a P0.
 
 ### Defect-likelihood risk factors (second axis)
 
@@ -233,7 +187,7 @@ For every journey, count how many of the following eight factors are present. Ea
 - **Does NOT** add or remove test expectations. Expectations are priority-conditional (§"Priority Framework" coverage-expectation column); risk leaves them untouched.
 - **Backward-compatible.** A journey block with no `Risk factors:` field is `risk: baseline` and groups normally. No existing map breaks.
 
-This is a **methodology rule, not hook-enforced**; no harness hook reads or validates the `Risk factors:` field; the discipline lives in this protocol and in the consuming skills (`coverage-expansion`, `bug-discovery`). The probe categories named above are the canonical vocabulary in `../achilles-protocol/references/subagent-return-schema.md` §3.6.
+This is a **methodology rule, not hook-enforced**; no harness hook reads or validates the `Risk factors:` field; the discipline lives in this protocol and in the consuming skills (the expand-coverage workflow, `bug-discovery`). The probe categories named above are the canonical vocabulary in `../../achilles-orchestrator/references/finding-and-ledger-schema.md` §3.6.
 
 ### Output
 

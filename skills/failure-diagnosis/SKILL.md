@@ -1,44 +1,20 @@
 ---
 name: failure-diagnosis
 description: >
-  **Subagent-only.** Do not load in the orchestrator's transcript; the
-  diagnostic methodology + niche-edge-cases catalogue is heavy enough that
-  inlining it contaminates orchestrator context. The orchestrator detects
-  a failure and dispatches a subagent; the subagent loads this skill.
-  Loading this skill into orchestrator context is a methodology violation
-  (the skill is heavy enough to contaminate orchestrator context).
-
-  Diagnose failing Playwright tests through structured evidence-based triage.
-  Two entrypoints: a LOCAL failure (artifacts already on disk) and a
-  PIPELINE failure (artifacts still inside the CI run, and the first move is
-  to pull them down, not to re-run locally).
-  Activates inside subagent context (test-composer-/probe-/process-validator-/
-  cleanup-/repair-worker- prefixes) when a test fails during any mode
-  (authoring, maintenance, test-composer, bug-discovery, self-repair), or when
-  the dispatching brief says "test is failing", "debug this", "why is this
-  failing", "fix this test", or when another companion skill encounters a test
-  failure.
-  Pipeline triggers (Entrypoint C): "the nightly failed", "nightly regression
-  failed", "the regression failed", "CI is red", "the build is red", "the
-  pipeline failed", "the workflow failed", "the GitHub Actions run failed",
-  "the prod regression is failing", "analyse the failures" / "analyze the
-  failures", "why did the run fail", "what failed in CI", "look at run <id>",
-  "download the trace", "get the trace from CI", "check the trace", "open the
-  trace", "investigate the failure", "triage the CI failures".
-  Guides the agent through trace inspection, screenshot analysis, DOM
-  inspection, browser-console review, root cause hypothesis, then fixes test
-  issues autonomously or reports app bugs with evidence.
-
-  Auto-invoked via Skill tool from achilles-protocol Rule 7 (after
-  the orchestrator dispatches the subagent), test-composer's stabilization
-  loop, bug-discovery's adversarial probes, test-repair's per-cluster
-  diagnosis, and any subagent that runs tests and observes a failure;
-  those callers explicitly route to this skill rather than relying on
-  always-load.
-subagent-only: true
+  Diagnose failing Playwright tests through evidence-based triage, loaded by
+  an `author` dispatch when a test fails in any mode (authoring, composing,
+  probing, repair) or when the brief says "test is failing", "debug this",
+  "why is this failing", "fix this test". Two entrypoints: a LOCAL failure
+  (artifacts on disk) and a PIPELINE failure ("the nightly failed", "CI is
+  red", "the pipeline failed", "look at run <id>", "download the trace",
+  "triage the CI failures"), where the first move is to pull the run's
+  artifacts down, never to re-run locally. Evidence floor (trace, DOM at
+  failure, console) before any classification; heals test issues to the
+  stability bar; reports app bugs with evidence and leaves the test as
+  written. The repair-suite workflow's worker pipeline supplies the stage
+  order around this skill.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Failure Diagnosis
@@ -50,7 +26,7 @@ A structured diagnostic protocol for failing Playwright tests. Every failure get
 - A test run produces failures (from any mode)
 - User says "test is failing", "debug this", "why is this failing", "fix this test"
 - Another companion skill encounters a failure during its workflow
-  (exception: `companion-mode` treats Phase-4 failures as a first-class
+  (exception: `evidence-capture` treats Phase-4 failures as a first-class
   bundle outcome; failure-diagnosis is only its Phase-6 handoff, on
   explicit user assent)
 - **A pipeline run went red**: "the nightly failed", "the regression failed",
@@ -136,22 +112,7 @@ Each one gets an explicit written observation, even when it is negative: "consol
 
 **If a piece of the floor is unavailable** (no trace on the failing attempt because of `on-first-retry`; artifact expired; console empty because the trace predates the failure), name the specific gap and the specific reason in the evidence package, and proceed on the remaining evidence, including the JSON reporter's `stderr` and `annotations` and the video. A named gap is auditable; a silent one turns the whole classification into a guess.
 
-**Anti-rationalizations: the log-text-only diagnosis.** The dominant real-world failure of this skill is an agent reading the CI log or the terminal error, recognising a familiar-looking error string, and shipping a root cause without ever opening the trace. Every one of these framings is the same move:
-
-- "the error message is obvious, it's a timeout on the apply button"
-- "it's clearly a timeout, the trace won't add anything"
-- "I can tell from the stack trace exactly which locator failed"
-- "the call log already shows the resolved element, so I've effectively seen the DOM"
-- "the failure name says `strict mode violation`, that's self-explanatory"
-- "opening the trace is expensive / the trace viewer needs a browser / it's a 30MB zip"
-- "downloading the artifact is slow, I'll just re-run it locally"
-- "I'll form the hypothesis first and check the trace only if it doesn't hold"
-- "three tests failed the same way, so one log line covers all three"
-- "the error is identical to a failure I diagnosed earlier in this session"
-- "the trace I found shows a clean pass, so it isn't reproducible" (you read the retry, not the failure; Stage 0b step 5)
-- "I read the framework source, so I know what it does" (from *your* `node_modules`, not the version CI resolved; Stage 0a)
-
-**Reality:** the error message tells you *where execution stopped*. It does not tell you *what the page was doing*, and those are different questions, which is the entire reason the trace exists. `Timeout ... waiting for element to be visible, enabled and stable` is emitted identically by an overlay intercepting pointer events, a sticky cookie banner, an element animating forever, a mid-flight client-side navigation, a 500 behind a skeleton, a framework-side retry defect, and a absent element. The call log's resolved-element `outerHTML` proves the element *matched*; it says nothing about what was painted on top of it. Recognising the error *shape* from a previous diagnosis is exactly the condition under which a different root cause gets the previous session's answer stapled to it. Cost is not a reason: `unzip` + `jq` reads a trace headlessly in seconds, and the screencast frames are readable images.
+**The log-text-only diagnosis is the floor's one real enemy.** The dominant failure of this skill is reading the CI log or the terminal error, recognising a familiar-looking error string, and shipping a root cause without opening the trace: "it's clearly a timeout", "the stack trace names the locator", "the call log already shows the resolved element", "the error is identical to one I diagnosed earlier", "the trace I found shows a clean pass" (you read the retry, not the failure; Stage 0b step 5), "I read the framework source" (from *your* `node_modules`, not the version CI resolved; Stage 0a). The error message tells you *where execution stopped*, not *what the page was doing*. `Timeout ... waiting for element to be visible, enabled and stable` is emitted identically by an overlay intercepting pointer events, a sticky cookie banner, an element animating forever, a mid-flight client-side navigation, a 500 behind a skeleton, a framework-side retry defect, and an absent element; the call log's resolved-element `outerHTML` proves the element *matched*, not what was painted on top of it. Cost is not a reason: `unzip` + `jq` reads a trace headlessly in seconds, and the screencast frames are readable images.
 
 A root cause proposed without the evidence floor is a guess, and Stage 4a's preconditions cannot be evaluated against a guess, and every heal that follows inherits the guess.
 
@@ -159,12 +120,12 @@ A root cause proposed without the evidence floor is a guess, and Stage 4a's prec
 
 1. **Read the error message and stack trace.** Note the test file, line number, step name, and error type, and the framework version embedded in the stack trace's `node_modules` paths (Stage 0a step 3). This scopes the search; it does not answer it.
 2. **Open the trace** (floor #1), from the attempt that failed. Walk the action sequence to the failing call, then look at what the page was doing in the seconds before it: network activity, navigations, overlays appearing, content swapping.
-3. **Read the failure screenshot and the DOM at failure** (floor #2). The per-attempt evidence lives in `test-results/<sanitized-title>-<project>[-retryN]/`: the screenshot on disk is `test-failed-1.png`, and the aria page snapshot is in `error-context.md` beside it. Open both directly with the Read tool. (The HTML report at `playwright-report/` is a viewer over the same attachments: `npx playwright show-report <report-dir>` is convenient for a human, but the per-attempt directory is where the files you cite actually live.)
+3. **Read the failure screenshot and the DOM at failure** (floor #2). The per-attempt evidence lives in `test-results/<sanitized-title>-<project>[-retryN]/`: the screenshot on disk is `test-failed-1.png`, and the aria page snapshot is in `error-context.md` beside it. Open both directly. (The HTML report at `playwright-report/` is a viewer over the same attachments: `npx playwright show-report <report-dir>` is convenient for a human, but the per-attempt directory is where the files you cite actually live.)
 4. **Describe what the screenshot and DOM show.** State explicitly: page state, visible elements, error messages, unexpected UI, loading indicators, overlays. Write this down; it informs every subsequent decision.
 5. **Read the browser console** (floor #3). Note app-code errors, failed requests, CSP/blocked-resource notices, and framework warnings. Distinguish third-party noise from app-origin errors; only the latter is evidence about the app.
 6. **Read the JSON reporter's `stderr` and `annotations` for the failing result** (Stage 0b step 5). The `tester:*` step log in `stderr` is the framework's own account of what it did, including how many times a retry loop ran; an empty `annotations` array proves a fallback path did not fire.
 7. **Watch the video** when the trace is absent or the failure is motion-dependent (scroll, animation, transient overlay): `video.webm` sits beside the screenshot in the same attempt directory.
-8. **If the evidence is still insufficient:** use `@playwright/cli` (see [`../achilles-protocol/references/playwright-cli-protocol.md`](../achilles-protocol/references/playwright-cli-protocol.md)) to navigate to the failing page URL and take a fresh snapshot: `npx playwright-cli -s=fd-<short-slug> open --browser=chromium <URL>` then `npx playwright-cli -s=fd-<short-slug> snapshot`. Inspect the DOM for the element the test was trying to interact with. For Entrypoint C, note that this is a *different environment* from the run under diagnosis; differences between the two are themselves evidence, not corrections.
+8. **If the evidence is still insufficient:** use `@playwright/cli` (see [`../achilles-orchestrator/references/playwright-cli-protocol.md`](../achilles-orchestrator/references/playwright-cli-protocol.md)) to navigate to the failing page URL and take a fresh snapshot: `npx playwright-cli -s=fd-<short-slug> open --browser=chromium <URL>` then `npx playwright-cli -s=fd-<short-slug> snapshot`. Inspect the DOM for the element the test was trying to interact with. For Entrypoint C, note that this is a *different environment* from the run under diagnosis; differences between the two are themselves evidence, not corrections.
 
 ### Stage 2 — Group Failures
 
@@ -199,7 +160,7 @@ Common test issues:
 - Test isolation problem: stale cookies/localStorage from prior test
 - Navigation race: test interacts before page finishes loading
 
-#### App Bug: hard stop, report to user
+#### App Bug: hard stop, return `app-bug`
 
 **At least one** of the following must be true:
 - Screenshot shows unexpected UI state (blank page, error message, broken layout, wrong content displayed)
@@ -229,11 +190,11 @@ Typical shape: the failing stack trace's path embeds `@civitas-cerebrum+element-
 
 **Heal:** strategy **(i) dependency / framework upgrade** (Stage 4a). Do NOT add a wait, a retry, a `force`, or a selector change to route around a defect that is already fixed upstream; a workaround for a fixed bug outlives the bug and hides the next one.
 
-#### Ambiguous: escalate to user
+#### Ambiguous: return `NEEDS_CONTEXT`
 
 - Evidence supports both interpretations
 - The app changed intentionally but tests weren't updated (is this a test issue or a spec change?)
-- Present all evidence and ask the user to classify before acting
+- Return `NEEDS_CONTEXT` with all evidence and the two readings; never act on a guess
 
 ### Stage 4 — Edge Case Checklist
 
@@ -268,7 +229,7 @@ When to append (criteria: must hold ALL):
 
 When all three hold, follow the entry shape documented in `references/niche-edge-cases.md` §"Adding an entry" (Symptom / Why LLMs struggle / Disambiguating probe / Classification / Cross-link). Keep entries tight: one paragraph per field, not a war story.
 
-Contribution path for promoted entries: see `skills/contributing-to-achilles-protocol/SKILL.md` §"Contributing to the niche-edge-cases catalogue", covers the criteria above, the entry template, and how to ship the change as part of either a normal PR or a standalone docs PR.
+Contribution path for promoted entries: `CONTRIBUTING.md` at the repository root.
 
 ### Stage 4a — Heal strategy selection
 
@@ -276,9 +237,9 @@ Pick the heal strategy whose precondition holds; applying the wrong one masks th
 
 ### Stage 5 — Fix and stability (test issues only)
 
-1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly: refer to [`../achilles-protocol/references/api-reference.md`](../achilles-protocol/references/api-reference.md) for all method signatures.
-2. **If the fix requires new selectors:** Stage 4b has produced the proposal. For Auto strategies the update applies directly; for Propose strategies confirm with the operator first.
-3. **Run the test until the stability bar is met**: 3 consecutive green for a fix to a new or edited test; 5 consecutive for a heal of a previously-flaky test (suite order for flaky heals, per `test-repair`). A single pass is not sufficient: flaky tests are worse than failing tests.
+1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly: refer to [`../achilles-orchestrator/references/api-reference.md`](../achilles-orchestrator/references/api-reference.md) for all method signatures.
+2. **If the fix requires new selectors:** Stage 4b has produced the proposal. For Auto strategies the update applies directly; for Propose strategies return `operator-pending` with the proposal and apply it on the re-dispatch that carries the ruling.
+3. **Run the test until the stability bar is met**: 3 consecutive green for a fix to a new or edited test; 5 consecutive for a heal of a previously-flaky test (suite order for flaky heals, per the repair-suite workflow). A single pass is not sufficient: flaky tests are worse than failing tests.
    ```bash
    # Run the specific test file repeatedly (5 shown: the flaky-heal bar; 3 suffices for a non-flaky fix)
    for i in {1..5}; do npx playwright test <test-file> --reporter=line; done
@@ -290,7 +251,7 @@ Pick the heal strategy whose precondition holds; applying the wrong one masks th
 
 ### Stage 6 — Report (app bugs only)
 
-Present the bug report to the user with this structure:
+Write the bug report into your return with this structure:
 
 > **Application Bug Report**
 >
@@ -322,7 +283,7 @@ Do NOT modify the test to work around the bug. Do NOT skip the test. Do NOT add 
 
 ## Stability Validation Protocol
 
-A fix is confirmed only when it meets the two-number stability bar: **3 consecutive green runs for any new or edited test; 5 consecutive green runs for a heal of a previously-flaky test** (in suite order, per `test-repair`). This section is the canonical home of the bar (resolution record: `../achilles-protocol/references/test-composition-standards.md` §3.3). It catches:
+A fix is confirmed only when it meets the two-number stability bar: **3 consecutive green runs for any new or edited test; 5 consecutive green runs for a heal of a previously-flaky test** (in suite order, per the repair-suite workflow). This section is the canonical home of the bar (resolution record: `../achilles-orchestrator/references/test-composition-standards.md` §3.3). It catches:
 - Race conditions that pass 80% of the time
 - Timing-sensitive tests that work on fast machines but fail under load
 - State leakage between tests that only manifests on repeated runs
@@ -331,10 +292,10 @@ If any run in the stability check fails, the fix is incomplete. Do not commit. R
 
 ---
 
-## Exit gate — compliance sweep
+## Exit gate
 
-**Exit gate: the compliance sweep is not optional.** A heal edits test code, so every spec a heal touched gets the Stage-4b compliance sweep before the session or worker returns, announced with the documented **API Compliance Review** block. A fix that reintroduces raw Playwright, drops a test ID, or leaves a tautological assertion is a heal that made the suite worse while turning it green. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the per-mode table lives in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Every spec a heal edited gets the Stage 4b compliance sweep before the return**, announced with the **API Compliance Review** block ([`stages-protocol.md`](../achilles-orchestrator/references/stages-protocol.md) §"Stage 4b is every mode's exit gate"). A fix that reintroduces raw Playwright, drops a test id or leaves a tautology made the suite worse while turning it green.
 
 ## Integration
 
-Callers, the escalation table to `test-repair`, and the API reference pointer: [integration.md](references/integration.md). Hand off to `test-repair` when a run has 5 or more failures (or 30% of executed tests), when you have been invoked 3 or more times on distinct tests, or when a heal broke previously passing tests.
+Callers, the escalation table and the API reference pointer: [integration.md](references/integration.md). Return `BLOCKED` for the batch pipeline when a run has 5 or more failures (or 30% of executed tests), when you have been invoked 3 or more times on distinct tests, or when a heal broke previously passing tests.

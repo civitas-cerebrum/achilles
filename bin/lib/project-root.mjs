@@ -1,4 +1,4 @@
-// The project root and rule file the factory tools share with hooks/lib/project-root.sh:
+// The project root and rule file the factory tools share with the factory tools:
 // $CLAUDE_PROJECT_DIR, else the current directory; $FACTORY_RULES (absolute, or relative to the root),
 // else achilles-factory-rules.json.
 import path from 'node:path';

@@ -10,7 +10,6 @@ description: >
   AI-driven decision systems, or any LLM-integrated feature for safety and correctness.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Agents vs Agents — Adversarial AI Testing
@@ -58,7 +57,7 @@ Judge LLM      -->  evaluates transcript, issues verdict
 
 ## Canonical return + findings
 
-A confirmed guardrail failure is a finding like any other; it joins the same dedup, severity-mapping, ledger, and reporting machinery the rest of the methodology uses. Every judge verdict of **FAIL or PARTIAL** is emitted as a canonical finding block conforming to [`../achilles-protocol/references/subagent-return-schema.md`](../achilles-protocol/references/subagent-return-schema.md) §1.
+A confirmed guardrail failure is a finding like any other; it joins the same dedup, severity-mapping, ledger, and reporting machinery the rest of the methodology uses. Every judge verdict of **FAIL or PARTIAL** is emitted as a canonical finding block conforming to [`../achilles-orchestrator/references/finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) §1.
 
 - **Finding-return format**: `- **<FINDING-ID>** [<severity>] — <title>` with `scope` / `expected` / `observed` / `coverage` sub-bullets, exactly per §1.
 - **FINDING-ID**: `ai-<category-slug>-<nn>`. `<category-slug>` is the AI-safety probe-category slug from §3.6 of the canonical schema, mapped from the 8 categories:
@@ -431,9 +430,13 @@ Each adversarial test follows this shape:
 
 ---
 
-## Exit gate — compliance sweep
+## Exit gate
 
-**Exit gate: the compliance sweep is not optional.** This mode writes test code, so it runs the Stage-4b compliance sweep over every spec it touched before it returns, and announces it with the documented **API Compliance Review** block. That sweep is where API misuse, tautological assertions, missing test IDs and untagged intentional reds get caught. Harness-enforced at stop time by `hooks/compliance-sweep-exit-gate.sh`; the rule and the per-mode table live in [`stages-protocol.md`](../achilles-protocol/references/stages-protocol.md) §"Stage 4b is every mode's exit gate".
+**Exit gate.** Every spec this skill writes or edits gets the Stage 4b compliance sweep before the return, announced with the **API Compliance Review** block ([`stages-protocol.md`](../achilles-orchestrator/references/stages-protocol.md) §"Stage 4b is every mode's exit gate"). A standalone invocation is a composing exit: the orchestrator dispatches the independent judge after the sweep ([`test-composition-standards.md`](../achilles-orchestrator/references/test-composition-standards.md) §4); specs authored inside a `test-composer` or verify-change flow are covered by that flow's judge, never a second one.
+
+## AI-assisted test patterns
+
+When the application's own AI drives a conversation, a local or remote LLM simulates the user: the test reads the app's question from the DOM, sends it to the LLM with the conversation history, types the structured answer back, and repeats until an exit condition (the chat input disappears, a preview appears, the URL changes, a turn cap, or the LLM's completion signal). The utility (`utils/ollama.ts` or similar) supports several backends through env (a local runner for development, a hosted model for CI), structured output (a JSON schema in the request), a response interface with the answer text and a completion flag, bearer auth for remote instances, and backend quirks (some models answer in a `thinking` field). System prompt shape: "You are a <role> at <company> creating a <thing>. Answer concisely in 1-2 sentences. Reply in the language of the question. Do not ask questions back."
 
 ## Anti-Patterns
 

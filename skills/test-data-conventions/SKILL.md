@@ -9,25 +9,22 @@ description: >
   changed and the test broke", "seed the database for tests", "test accounts",
   "worker isolation", "test data plan". Auto-invoked by the composition
   standards' Stage 4c data-feasibility dimension
-  (skills/achilles-protocol/references/test-composition-standards.md §4,
-  dimension 4) and whenever a composing skill (achilles-protocol Stages 1-4,
-  test-composer, coverage-expansion, bug-discovery Phase 6,
-  ticket-driven-testing phase 7, companion-mode graduation) touches an
+  (skills/achilles-orchestrator/references/test-composition-standards.md §4,
+  dimension 4) and whenever a composing skill (the author-scenario workflow,
+  test-composer, coverage passes, bug-discovery Phase 6,
+  the verify-change workflow phase 7, evidence-capture graduation) touches an
   entity-creating flow — signup, record creation, uploads, orders, anything
   that persists tenant or user data. Do NOT use for secrets handling alone —
-  credential extraction to .env is owned by achilles-protocol Rule 15 and
-  the secrets-sweep skill; this skill owns the data-lifecycle doctrine around
+  credential extraction to .env is owned by the secrets-sweep skill; this skill owns the data-lifecycle doctrine around
   it.
 ---
 
-> **Activation banner:** The first user-facing reply after this skill loads MUST begin with the line: **Protocol Achilles activated.** Once per session. Skip if already declared in this conversation. Subagents (which return structured data, not user-facing text) are exempt.
 
 
 # Test Data Conventions — the data-lifecycle doctrine for composing
 
-> **Skill names: see `../achilles-protocol/references/skill-registry.md`.** Copy skill names from the registry verbatim. Never reconstruct a skill name from memory or recase it.
 
-Every flaky suite autopsy eventually reaches the same organ: data. Tests that pinned yesterday's content, shared one account across parallel workers, created records nothing deleted, or assumed a backend setting that flipped mid-day. This skill is the single source of truth for how tests in this suite relate to data: discovery first, then a two-strategy ladder, then the rules that keep both strategies sound. It is the standard the Stage 4c composition judge's data-feasibility dimension reviews against (see [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §4).
+Every flaky suite autopsy eventually reaches the same organ: data. Tests that pinned yesterday's content, shared one account across parallel workers, created records nothing deleted, or assumed a backend setting that flipped mid-day. This skill is the single source of truth for how tests in this suite relate to data: discovery first, then a two-strategy ladder, then the rules that keep both strategies sound. It is the standard the Stage 4c composition judge's data-feasibility dimension reviews against (see [`../achilles-orchestrator/references/test-composition-standards.md`](../achilles-orchestrator/references/test-composition-standards.md) §4).
 
 Evidence lines below are stated generically; each was observed in production suites.
 
@@ -65,7 +62,7 @@ This ladder is what the Stage 4c judge's dimension 4 checks each spec against: e
 
 Under strategy (a), generation happens **inside the test body**, per attempt: `` `user-${Date.now()}-${crypto.randomUUID().slice(0, 8)}@example.test` ``. **Module-scope generation is banned**: a retry re-runs the test body but NOT the module scope, so the retried attempt reuses the first attempt's identity and collides with the half-created state it left behind. Observed in production suites: retry-only failures that vanish under `--retries=0`, caused entirely by module-scope `const email = ...`.
 
-Env-sourced **durable identities** (accounts that exist by design: an admin, a seeded catalog user) are the fixture carve-out: they live in `tests/fixtures/test-data.ts` loaded from `process.env`, per `../achilles-protocol/SKILL.md` Rule 15. The line is creation: if the test creates it, the test generates it per-attempt; if it exists by design, it comes from env via the fixture.
+Env-sourced **durable identities** (accounts that exist by design: an admin, a seeded catalog user) are the fixture carve-out: they live in `tests/fixtures/test-data.ts` loaded from `process.env` (the `secrets-sweep` convention: `../secrets-sweep/SKILL.md`). The line is creation: if the test creates it, the test generates it per-attempt; if it exists by design, it comes from env via the fixture.
 
 ### 2. Never rely on current content — declare requirements, resolve at runtime
 
@@ -96,11 +93,11 @@ A backend setting can legitimately flip behaviour mid-day. Observed: registratio
 
 `before*` hooks create; `after*` hooks remove: **even on failure** (afterEach/afterAll run on failure; put cleanup there, never at the end of the test body), and **idempotently** (cleaning up an entity the failed test never created must not itself throw). Setup failures must read as setup failures; throw with a `setup:`-prefixed message rather than letting the first step's element timeout masquerade as the failure.
 
-The cleanup contract is canonical in `../test-composer/SKILL.md` §"Tenant cleanup hooks are non-negotiable for add-* journeys": `cleanupViaApiBackdoor`, the `CleanupBackdoorUnavailableError` stub, the `cleanup-blocked` annotation, and the `cleanup: done | blocked | not-needed` enum in the composer return. Cite it; do not fork it.
+The cleanup contract is canonical in `../test-composer/SKILL.md` §"Tenant cleanup": `cleanupViaApiBackdoor`, the `CleanupBackdoorUnavailableError` stub, the `cleanup-blocked` annotation, and the `cleanup: done | blocked | not-needed` enum in the composer return. Cite it; do not fork it.
 
 ### 6. API-first state setup for derivatives
 
-The doctrine: a test's *prerequisites* reach their target state through the fastest safe non-UI channel; only the test's *subject* runs through the UI. The mechanism is canonical in [`../achilles-protocol/references/test-optimization.md`](../achilles-protocol/references/test-optimization.md) §4: the two-of-two gate (UI-covered elsewhere + API equivalent discovered) decides when a UI prerequisite is replaced with a helper.
+The doctrine: a test's *prerequisites* reach their target state through the fastest safe non-UI channel; only the test's *subject* runs through the UI. The mechanism is canonical in [`../achilles-orchestrator/references/test-optimization.md`](../achilles-orchestrator/references/test-optimization.md) §4: the two-of-two gate (UI-covered elsewhere + API equivalent discovered) decides when a UI prerequisite is replaced with a helper.
 
 ### 7. Auth via session/cookie injection with worker-scoped account pools
 
@@ -108,7 +105,7 @@ Derivative tests inject session state (`setAuthCookie`-style helpers per test-op
 
 ### 8. Smoke-vs-e2e depth
 
-Which tests may inject state at all is the depth doctrine; canonical in [`../achilles-protocol/references/test-composition-standards.md`](../achilles-protocol/references/test-composition-standards.md) §5: the journey's one e2e walk stays UI-end-to-end; derivatives shortcut; auth is injected everywhere except the tests whose subject is login.
+Which tests may inject state at all is the depth doctrine; canonical in [`../achilles-orchestrator/references/test-composition-standards.md`](../achilles-orchestrator/references/test-composition-standards.md) §5: the journey's one e2e walk stays UI-end-to-end; derivatives shortcut; auth is injected everywhere except the tests whose subject is login.
 
 ### 9. No prod pollution
 
@@ -120,7 +117,7 @@ On framework-rendered forms, a client-side mount can reset controlled inputs aft
 
 ### 11. Volatile-value assertion discipline
 
-Round-trip, delta, and shape oracles for values the app legitimately changes between runs are canonical in [`../achilles-protocol/references/test-optimization.md`](../achilles-protocol/references/test-optimization.md) §3b (the oracle audit). Under strategy (b), the round-trip oracle's "value the test itself produced" becomes "value the test itself *resolved*": same form, resolved instead of generated.
+Round-trip, delta, and shape oracles for values the app legitimately changes between runs are canonical in [`../achilles-orchestrator/references/test-optimization.md`](../achilles-orchestrator/references/test-optimization.md) §3b (the oracle audit). Under strategy (b), the round-trip oracle's "value the test itself produced" becomes "value the test itself *resolved*": same form, resolved instead of generated.
 
 ### 12. DATA FEASIBILITY IS A COMPOSING GATE
 
@@ -162,7 +159,7 @@ another test's leftovers. If the requirements cannot be met now, the test says s
    delivery address; the "Save payment method" switch turned off before paying).
 5. **Oracle**: what confirms the outcome, chosen by the scenario block, not by convenience (the `orders` service
    `GET /orders/<id>` → `placed`, never "the confirmation page appeared"). The oracle is called visibly in the spec
-   (`references/spec-shape.md` in `achilles-protocol`); the engine only provides it.
+   ([`spec-shape.md`](../achilles-orchestrator/references/spec-shape.md)); the engine only provides it.
 
 ### Spend budgets
 
@@ -200,7 +197,7 @@ re-verify it when the date is old and a run contradicts it.
 
 ## The test data plan — a per-project living document
 
-Every project using this suite maintains **`tests/e2e/docs/test-data-plan.md`** (alongside `journey-map.md` and `e2e-test-scenarios.md`). It is the durable record of where each data dependency stands and what the ideal test environment would unblock. **Creation owner:** `onboarding`’s Phase-1 scaffold seeds it from the template below; on a project that predates that scaffold, **the first composing session creates it from the template if absent**, so the Stage 4c judge’s dimension 4 always has a file to check, and never fails a fresh project on a file no step creates. **Composing sessions UPDATE this document when they hit a gap**: a missing seeding endpoint, a shared account, a prod-only side effect, in the same session that hit it. The Stage 4c judge's dimension 4 checks the plan exists and reflects the specs under review.
+Every project using this suite maintains **`tests/e2e/docs/test-data-plan.md`** (alongside `journey-map.md` and `test-scenarios.md`). It is the durable record of where each data dependency stands and what the ideal test environment would unblock. **Creation owner:** the onboard workflow’s Phase-1 scaffold seeds it from the template below; on a project that predates that scaffold, **the first composing session creates it from the template if absent**, so the Stage 4c judge’s dimension 4 always has a file to check, and never fails a fresh project on a file no step creates. **Composing sessions UPDATE this document when they hit a gap**: a missing seeding endpoint, a shared account, a prod-only side effect, in the same session that hit it. The Stage 4c judge's dimension 4 checks the plan exists and reflects the specs under review.
 
 Three sections per data dependency / journey:
 
@@ -250,4 +247,4 @@ Three sections per data dependency / journey:
 | "I'll pin today's top item — it's obviously stable" | Ranking, seasonality, and CMS edits all reorder "obviously stable" lists. Declare the requirement ("first item in <collection>"), resolve it, assert the resolved fact. |
 | "Retry will regenerate anyway" | Only if generation is in the test body. Module-scope generation is exactly what retries do NOT re-run (Rule 1): this excuse ships the retry-collision bug. |
 | "No seeding API, so I'll just use whatever data is live" | That is composing against unfeasible data. Rule 12: block/flag the scenario, record the gap in the test data plan, and let the roadmap carry the seeding-API request; don't hide the gap inside a fragile spec. |
-| "The resolver and planner deserve unit tests" | The scenarios that use them exercise them, run N times, and a can-fail proof per family covers them: `achilles-protocol` Rule 17. The one exception here is a pure parser over a recorded payload when that payload is the contract (a catalogue response). "It's quick", "it documents the API" and "the reviewer asked for coverage" are not exceptions. |
+| "The resolver and planner deserve unit tests" | The scenarios that use them exercise them, run N times, and a can-fail proof per family covers them (`../achilles-orchestrator/references/verification-record.md` §"Stable"). The one exception here is a pure parser over a recorded payload when that payload is the contract (a catalogue response). "It's quick", "it documents the API" and "the reviewer asked for coverage" are not exceptions. |

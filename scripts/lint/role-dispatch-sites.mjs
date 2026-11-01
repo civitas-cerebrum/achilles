@@ -1,75 +1,59 @@
-import { readFileSync } from 'node:fs';
-import { SKILLS_DIR, walk } from './util.mjs';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { SKILLS_DIR, AGENTS_DIR, AGENT_ROLES, ROLE_WORDS, walk } from './util.mjs';
 
-const QA_MANDATE = 'hooks/data/achilles-qa.kernel-mandate.json';
+// Roles from the retired 23-role manifest. Prose that still names one of these
+// as a role (backticked, or as a `<role>-<slug>:` dispatch prefix) is stale.
+const RETIRED_ROLES = ['scaffolder', 'phase-validator', 'process-validator', 'perf-reviewer', 'task-reviewer',
+  'verifier', 'live-inspector', 'doc-author', 'implementer', 'contribution-handover', 'workflow-reviewer',
+  'batch-reviewer', 'in-flight-composer', 'repair-worker', 'phase1', 'phase2', 'phase4', 'stage2', 'fd'];
+// Session-slug families and spill-file names legitimately start with some of
+// these tokens; only the role-grammar shapes below count.
+const PREFIX_GRAMMAR = /`([a-z][a-z0-9-]*)-<[^`>]+>:`/g;      // `<role>-<slug>:` dispatch prefix
+const SUBAGENT_TYPE = /subagent_type[:=]/g;
+const KERNEL_TAG = /<<kernel-mandate-role/g;
 
-// Dispatch prefixes the kernel deliberately leaves unbound (the mandate's
-// unboundAgentPolicy covers them): methodology workers with no role of their own.
-const UNBOUND_PREFIXES = ['repair-worker', 'composition-judge', 'selector-development'];
-// Exact spellings only: legacy composer forms (KERNEL_MANDATE=0 sessions) and the
-// journey-slug progress-log lines (`j-<slug>: …`).
-const UNBOUND_EXACT = ['composer', 'composer-j', 'composer-sj', 'j', 'sj'];
-
-// Roles that existed in earlier manifests; prose naming them as a role is stale.
-// `batch-reviewer` still names the cycle-1 reviewer mode in coverage-expansion, so
-// only its backticked spelling counts; the others are caught as bare words too
-// (a path or `.js` suffix, as in hooks/lib/selector-diff-validator.js, is not a role).
-const RETIRED_ROLES = ['batch-reviewer', 'in-flight-composer', 'selector-diff-validator'];
-const BACKTICK_ONLY = ['batch-reviewer'];
-
-// Check 12 — role names in prose ↔ QA mandate roles
-// Prose surfaces: skills/**/*.md (the vendored mandate-designer excluded) and README.md.
-// Three shapes are read: `subagent_type: <role>`, a backticked dispatch prefix
-// (`<role>[-word]<placeholder>…:`, e.g. `<role>-phase<N>:`; grammar in
-// hooks/lib/dispatch-prefix.sh), and any retired role name. Each named role must exist in the mandate, and
-// every subagent role must be dispatched from at least one skill.
+// Check 12 — role names in prose ↔ the five agents.
+// Dispatch is the Agent tool with one of the five `achilles-<role>` types (prose
+// may say "the inspector" for the role); prose must not carry the retired dispatch-prefix grammar, a
+// `subagent_type`, a kernel tag, or a retired role name as a role. Each of the
+// four expert roles must be dispatched from at least one workflow. The agent
+// files themselves are written by the adapter slice; their absence is reported
+// as a note, not a failure.
 export function run(report) {
-  const mandate = JSON.parse(readFileSync(QA_MANDATE, 'utf8'));
-  const main = mandate.settings?.mainSessionRole;
-  const roles = Object.keys(mandate.roles ?? {});
-  const known = new Set(roles);
-
-  const files = [
-    ...walk(SKILLS_DIR, (f) => f.endsWith('.md') && !f.split('/').includes('mandate-designer')),
-    'README.md',
-  ];
-
   const detail = [];
+  const files = [...walk(SKILLS_DIR, (f) => f.endsWith('.md')), ...walk('docs/harness', (f) => f.endsWith('.md'))];
   const dispatched = new Set();
-  const roleOf = (name) => roles.filter((r) => name === r || name.startsWith(`${r}-`))
-    .sort((a, b) => b.length - a.length)[0];
 
   for (const file of files) {
     const lines = readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, i) => {
       const at = `${file}:${i + 1}`;
-      for (const m of line.matchAll(/subagent_type[:=]\s*["'`]?([a-z][a-z0-9-]*)/g)) {
-        if (!known.has(m[1])) detail.push(`${at}: subagent_type "${m[1]}" is not a mandate role`);
-        else dispatched.add(m[1]);
-      }
-      // A dispatch prefix is colon-terminated with a placeholder; the text before the
-      // first placeholder must start with a role. Colon-less placeholder tokens (CLI
-      // slugs) only credit a role; a bare `<role>-` credits one only on a "dispatch" line.
-      for (const m of line.matchAll(/`([a-z][a-z0-9-]*)<[^`\s]*`(:?)/g)) {
-        const name = m[1].replace(/-$/, '');
-        const role = roleOf(name);
-        if (!m[2] && !m[0].includes(':')) { if (role) dispatched.add(role); continue; } // CLI slug
-        if (role) dispatched.add(role);
-        else if (!UNBOUND_EXACT.includes(name) && !UNBOUND_PREFIXES.some((p) => name === p || name.startsWith(`${p}-`))) detail.push(`${at}: dispatch prefix "${name}-…:" names no mandate role`);
+      if (SUBAGENT_TYPE.test(line)) detail.push(`${at}: subagent_type is adapter vocabulary; dispatch by role`);
+      if (KERNEL_TAG.test(line)) detail.push(`${at}: kernel tag; the role kernel is gone`);
+      SUBAGENT_TYPE.lastIndex = 0; KERNEL_TAG.lastIndex = 0;
+      for (const m of line.matchAll(PREFIX_GRAMMAR)) detail.push(`${at}: dispatch-prefix grammar "${m[0]}"; name the role instead`);
+      for (const r of RETIRED_ROLES) {
+        if (line.includes('`' + r + '`') && /\b(role|agent|dispatch)/i.test(line)) detail.push(`${at}: "${r}" is a retired role`);
       }
       if (/dispatch/i.test(line)) {
-        for (const m of line.matchAll(/`([a-z][a-z0-9-]*)-`/g)) if (known.has(m[1])) dispatched.add(m[1]);
-      }
-      for (const r of RETIRED_ROLES) {
-        if ((BACKTICK_ONLY.includes(r) ? line.includes(`\`${r}\``) : new RegExp(`(?<![\\w/.-])${r}(?![\\w.-])`).test(line))) detail.push(`${at}: "${r}" is a retired role`);
+        for (const word of ROLE_WORDS) {
+          if (new RegExp(`\\b(?:achilles-)?${word}\\b`).test(line)) dispatched.add(`achilles-${word}`);
+        }
       }
     });
   }
 
-  for (const r of roles) {
-    if (r !== main && !dispatched.has(r)) detail.push(`mandate role "${r}" is dispatched nowhere in skills/ or README.md`);
+  for (const r of AGENT_ROLES) {
+    if (r !== 'achilles-orchestrator' && !dispatched.has(r)) detail.push(`role "${r}" is dispatched nowhere in skills/ or docs/harness/`);
   }
 
-  report(`role names in prose ↔ QA mandate roles (${roles.length} roles, ${files.length} files)`,
-    detail.length === 0, detail);
+  const notes = [];
+  for (const r of AGENT_ROLES) {
+    const f = join(AGENTS_DIR, `${r}.md`);
+    if (!existsSync(f)) notes.push(`note: ${f} is absent in this checkout (written by the adapter slice); role name checked from util.mjs`);
+  }
+  for (const n of notes) console.log(`        ${n}`);
+
+  report(`role names in prose ↔ the five agents (${AGENT_ROLES.length} roles, ${files.length} files)`, detail.length === 0, detail);
 }

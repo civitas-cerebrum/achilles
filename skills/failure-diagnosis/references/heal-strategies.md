@@ -8,14 +8,14 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 |---|---|---|---|
 | **a. Selector re-learn** | **Auto** | Page-repo lookup failed; live DOM has a close match by text/role/landmark; screenshot shows correct UI otherwise | Update `page-repository.json` with the re-learned selector; immediate confirmation run |
 | **b. Timing hardening** | **Auto** | Intermittent timeout on a known-good element; screenshot shows correct UI (no error state); no flow drift detected | Add `waitForState` / `waitForNetworkIdle` before the interaction; bump a bounded timeout |
-| **c. Flow-step drift** | **Propose** | App shows an extra/missing/reordered step between expected actions; screenshot confirms correct page state at each step the app does reach | Present the detected flow diff to the operator; apply on approval |
-| **d. Assertion re-baseline** | **Propose** | Hardcoded literal no longer matches; UI state around the assertion is otherwise correct | Present old vs new value to the operator; apply on approval |
+| **c. Flow-step drift** | **Propose** | App shows an extra/missing/reordered step between expected actions; screenshot confirms correct page state at each step the app does reach | Return `operator-pending` with the detected flow diff; applied on the re-dispatch that carries the ruling |
+| **d. Assertion re-baseline** | **Propose** | Hardcoded literal no longer matches; UI state around the assertion is otherwise correct | Return `operator-pending` with old versus new value; applied on the re-dispatch that carries the ruling |
 | **e. State isolation** | **Auto** | Test passes when run alone, fails when run after specific predecessors (verified empirically) | Add fresh context / storage reset / cleanup hook; re-run in suite order |
 | **f. Flake quarantine** | **Report** | Flake persisted after two heal attempts of different strategies; root cause unclear | Tag test `@flaky`, append an entry to the quarantine ledger (see §Quarantine ledger below), add to repair summary with diagnostic notes; do NOT silently skip |
-| **g. Whole-test rewrite** | **Operator-aligned** | Flow changed so fundamentally that the scenario no longer maps to the app as-is; no incremental heal applies | Present to operator; on approval, invoke `test-composer` with journey context. Never regenerate without alignment. The rewrite exits through `test-composer` Step 6c's composition judge (`../achilles-protocol/references/test-composition-standards.md` §4). |
-| **h0. Known defect: no heal, no rerun** | **Report** | The test (or its describe) carries `@known-defect` and the failure signature matches the filed defect | Terminal on sight: do not reproduce, do not experiment, do not heal, do not rerun. Record it as a known defect in the summary and move on. A *different* error behind the tag is a second, unfiled problem; diagnose that one normally. A `@known-defect` test that passes is an anomaly, never a silent green: prove the fix with the stability bar (3/3 targeted + 5/5 suite-order green) and drop the tag, or, if any of those runs is red, the pass is nondeterministic: retag `@flaky` with a quarantine-ledger entry. Contract: [`test-identity.md`](../../achilles-protocol/references/test-identity.md) §2 |
+| **g. Whole-test rewrite** | **Operator-aligned** | Flow changed so fundamentally that the scenario no longer maps to the app as-is; no incremental heal applies | Return `operator-pending` with the rationale; on the ruling the orchestrator dispatches an author loading `test-composer` with journey context. Never regenerate without alignment. The rewrite exits through `test-composer` Step 6c's composition judge (`../../achilles-orchestrator/references/test-composition-standards.md` §4). |
+| **h0. Known defect: no heal, no rerun** | **Report** | The test (or its describe) carries `@known-defect` and the failure signature matches the filed defect | Terminal on sight: do not reproduce, do not experiment, do not heal, do not rerun. Record it as a known defect in the summary and move on. A *different* error behind the tag is a second, unfiled problem; diagnose that one normally. A `@known-defect` test that passes is an anomaly, never a silent green: prove the fix with the stability bar (3/3 targeted + 5/5 suite-order green) and drop the tag, or, if any of those runs is red, the pass is nondeterministic: retag `@flaky` with a quarantine-ledger entry. Contract: [`test-identity.md`](../../achilles-orchestrator/references/test-identity.md) §2 |
 | **h. Documented-quirk match: no heal** | **Report** | The observed failure shape exactly matches a documented quirk in `app-context.md` (configuration-dependent option subsets, redirect-vs-popup auth patterns, vendor-aliased options, etc.) **OR** matches a documented app-degradation signal (a degradation-banner copy string from `app-context.md`'s documented-banners list, the documented hanging spinner-sentinel custom element, 5xx in network capture) | Report observed-vs-documented diff; do NOT modify the test. The skip / failure is correct; the regression is in the app or in the documentation. Cross-link the relevant `app-context.md` section in the report. |
-| **i. Dependency / framework upgrade** | **Propose** | Stage 3 classified the failure as a **framework / dependency defect**: the failing frames run through a dependency, Stage 0a shows the run resolved an older version than one where the behaviour differs, and the spec + app are both correct | Report the version delta (run's version → target version), cite the changelog / release entry or the passing re-run on the newer version, and propose the bump: a lockfile change, not a spec change. Do NOT edit the test, the waits, or the element repository. Verification is a re-run on the bumped version, and for Entrypoint C the next pipeline run. If the defect is not yet fixed upstream, this becomes a package-level report (see `contributing-to-achilles-protocol`); still not a test edit. |
+| **i. Dependency / framework upgrade** | **Propose** | Stage 3 classified the failure as a **framework / dependency defect**: the failing frames run through a dependency, Stage 0a shows the run resolved an older version than one where the behaviour differs, and the spec + app are both correct | Report the version delta (run's version → target version), cite the changelog / release entry or the passing re-run on the newer version, and propose the bump: a lockfile change, not a spec change. Do NOT edit the test, the waits, or the element repository. Verification is a re-run on the bumped version, and for Entrypoint C the next pipeline run. If the defect is not yet fixed upstream, this becomes a package-level report (see `framework-gap.md`); still not a test edit. |
 
 **Selection rules** (apply in order, stop at first match):
 
@@ -25,7 +25,7 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 3. If screenshot shows wrong UI (500, error page, broken layout, missing-that-should-be-present component) → **app bug**, go to Stage 6. Do not heal.
 4. If page-repo lookup failed → (a) selector re-learn → proceed to Stage 4b
 5. If timeout on a known-good element with correct surrounding state → (b) timing hardening
-6. If pattern hypothesis (from `test-repair` if present) or empirical check says "state leak" → (e) state isolation
+6. If pattern hypothesis (from the repair-suite workflow's clustering, when present) or empirical check says "state leak" → (e) state isolation
 7. If live DOM shows step order does not match test sequence → (c) flow drift → propose
 8. If assertion failure on a specific literal with otherwise-correct surrounding state → (d) re-baseline → propose
 9. If two heal strategies have been attempted and the test still flakes → (f) quarantine
@@ -38,14 +38,13 @@ The precondition columns exist so that no heal runs unqualified: any heal applie
 Heal (f) appends an entry to the quarantine ledger at
 `tests/e2e/docs/flake-quarantine.md`. The ledger is **committed, not
 gitignored**: quarantine is cross-session state that the next
-`test-repair` session must see.
+the repair-suite workflow session must see.
 
 Ledger header (first lines of the file):
 
 ```markdown
 # Flake quarantine ledger
-<!-- Written by failure-diagnosis heal (f); released by test-repair Stage 5.5.
-     Out-of-band shell edits are denied by hooks/protected-artifact-bash-guard.sh. -->
+<!-- Written by failure-diagnosis heal (f); released by the repair-suite workflow's quarantine review. -->
 ```
 
 Entry template (one per quarantined test):
@@ -62,7 +61,7 @@ Entry template (one per quarantined test):
 ```
 
 Ownership is write-only and split: **failure-diagnosis writes**
-entries (heal (f)); **test-repair releases** them (its Stage 5.5
+entries (heal (f)); **the repair-suite workflow releases** them (its quarantine review
 quarantine review flips `Status:` to `unquarantined` with dated
 evidence, or appends a still-flaking observation). No other skill
 edits the ledger, and entries are never deleted: a released entry
@@ -82,7 +81,7 @@ When the heal strategy is (a) selector re-learn, do NOT guess a replacement sele
 **Confidence thresholds:**
 
 - **High confidence** (text match + role match + landmark match all agree) → update `page-repository.json` atomically, run the test immediately to confirm.
-- **Multiple competing candidates** → escalate to the operator with the candidate list; do not guess between them.
+- **Multiple competing candidates** → return `operator-pending` with the candidate list; do not guess between them.
 - **No candidate found** → the element likely disappeared. Re-classify as either (c) flow drift (something replaced it) or app bug (component missing that should be present) using the screenshot evidence as the tiebreaker.
 
 # Root cause: fragile selector
@@ -95,4 +94,4 @@ If triage attributes the failure to a fragile selector (text drift, position-dep
 
 **Frontend source NOT in workspace:**
 
-→ Report the fragile selector to the user as an actionable test-debt item. Do NOT attempt to harden the locator with compound selectors, nth-child chains, or XPath depth, that adds brittleness without adding stability. The report should name the element-key, the fragile signal (text drift / CSS position / role collision), and that `selector-development` cannot help because the source files are not available in this workspace.
+→ Report the fragile selector in your return as an actionable test-debt item. Do NOT attempt to harden the locator with compound selectors, nth-child chains, or XPath depth, that adds brittleness without adding stability. The report should name the element-key, the fragile signal (text drift / CSS position / role collision), and that `selector-development` cannot help because the source files are not available in this workspace.

@@ -1,67 +1,48 @@
 #!/usr/bin/env node
+// postinstall dispatcher. Three steps, none of which fails the install (a non-zero exit makes
+// npm remove the package): the Chromium fetch every harness needs, the Claude Code plugin
+// registration (claude-code/register.js), and the pi package registration when pi is on PATH.
+// Nothing is copied into ~/.claude or ~/.pi: both harnesses load the package in place.
+'use strict';
 
-const context = require('./install/context.js');
+const { spawnSync } = require('child_process');
+const { installChromium } = require('./install/chromium.js');
+const { register, scope } = require('../claude-code/register.js');
 
-// Skip a developer's `npm install` inside this package's own checkout, where
-// INIT_CWD is the package dir. A folder install (`npm install <path>`) links
-// the package, so its path has no node_modules in it, yet it is a consumer
-// install and must run; a global install always runs. The guard only fires
-// when this file is executed directly; when require()'d (e.g. by
-// scripts/sync-hooks.js), the installers are exposed via module.exports.
-if (require.main === module && context.isOwnCheckout() && !context.globalInstall) {
-  process.exit(0);
+const TAG = '[@civitas-cerebrum/achilles]';
+
+// pi on PATH: install this package as a pi package, so pi loads the skills and the extension
+// (pi/index.ts: delegate_qa, expert mode, the guards). A project install goes into the project's
+// .pi/settings.json (`--local`), a global one user-wide. pi loads a local package in place.
+function piRegister(s) {
+  if (process.env.ACHILLES_SKIP_PI_REGISTRATION === '1') return;
+  const pi = spawnSync('pi', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  if (!pi || pi.status !== 0) return;
+  // --approve: pi's one-time trust decision for this command, which the user's own npm install asked for.
+  const args = ['install', s.packageDir, ...(s.isGlobal ? [] : ['--local', '--approve'])];
+  const r = spawnSync('pi', args, { cwd: s.projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 });
+  if (r.status === 0) console.log(`${TAG} pi ${String(pi.stdout).trim()}: Achilles installed as a pi package (${s.isGlobal ? 'user-wide' : 'this project'}); it loads at the next pi session${s.isGlobal ? '' : ' once the project is trusted'}.`);
+  else console.warn(`${TAG} pi found, but \`pi ${args.join(' ')}\` failed${r.stderr ? `: ${String(r.stderr).trim().split('\n')[0]}` : ''}. Run it by hand to load Achilles in pi.`);
 }
 
-const { installCivitasSkills } = require('./install/skills.js');
-const { installCivitasAgents } = require('./install/agents.js');
-const { installCivitasHooks }  = require('./install/hooks.js');
-const { installUserTrigger }   = require('./install/user-trigger.js');
-const { installBundledJq }     = require('./install/jq.js');
-const { installChromium }      = require('./install/chromium.js');
-
-module.exports = {
-  installCivitasSkills,
-  installCivitasAgents,
-  installCivitasHooks,
-  installUserTrigger,
-  installBundledJq,
-  installChromium,
-  isGlobalInstall: context.isGlobalInstall,
-  harnessClaudeDir: context.harnessClaudeDir,
-  skillsDestinations: context.destinations,
-  agentsDestinations: context.agentDestinations,
-};
-
-// Full postinstall runs only when this file is invoked directly. When
-// require()'d, the caller picks which installers to run.
-if (require.main === module) {
-  (async () => {
-    console.log(`[@civitas-cerebrum/achilles] ${context.globalInstall
-      ? 'Global install (-g): the harness → ~/.claude (every project).'
-      : `Local install: the harness → ${context.harnessClaudeDir} (this project only); the routing skill → ~/.claude/skills/achilles.`}`);
-
-    // Every step writes and records its own files before the next starts, and none fails the
-    // install: a non-zero exit makes npm remove the package, and achilles-uninstall with it, after
-    // the harness is already on disk.
-    const steps = [
-      ['skills', () => installCivitasSkills()],
-      ['agent definitions', () => installCivitasAgents()],
-      ['bundled jq', () => installBundledJq(context.harnessClaudeDir)],
-      ['harness hooks', () => installCivitasHooks(context.harnessClaudeDir)],
-      ...(context.globalInstall ? [] : [['the user-level routing skill', () => installUserTrigger()]]),
-      ['chromium', () => installChromium()],
-    ];
-    let failed = 0;
-    for (const [what, step] of steps) {
-      try {
-        await step();
-      } catch (err) {
-        failed++;
-        console.warn(`[@civitas-cerebrum/achilles] Could not install ${what}: ${err.message}`);
-      }
+async function main() {
+  // A developer's `npm install` inside this checkout installs nothing.
+  const s = scope();
+  if (s.isOwnCheckout && !s.isGlobal) return;
+  const steps = [
+    ['chromium', () => installChromium()],
+    ['Claude Code registration', () => register()],
+    ['pi registration', () => piRegister(s)],
+  ];
+  for (const [what, step] of steps) {
+    try {
+      await step();
+    } catch (err) {
+      console.warn(`${TAG} Could not finish ${what}: ${err.message}`);
     }
-    if (failed > 0) {
-      console.warn(`[@civitas-cerebrum/achilles] Installed with ${failed} step${failed === 1 ? '' : 's'} failed. What was written is recorded; undo it with \`npx achilles-uninstall ${context.globalInstall ? '--global' : '--project'}\`.`);
-    }
-  })();
+  }
 }
+
+if (require.main === module) main();
+
+module.exports = { main };
