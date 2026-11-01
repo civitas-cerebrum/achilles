@@ -1,139 +1,146 @@
 # Achilles
 
+**Point your coding agent at a web app. Get back a Playwright suite you own.**
+
 [![NPM Version](https://img.shields.io/npm/v/@civitas-cerebrum/achilles?color=rgb(88%2C%20171%2C%2070))](https://www.npmjs.com/package/@civitas-cerebrum/achilles)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Node 20+](https://img.shields.io/badge/node-%3E%3D20-339933)
 
-## What
+Achilles is a QA team that lives inside your agent. Hand it a URL and it maps the app, writes the tests, hunts for bugs, and has every piece of work checked by a reviewer that did not write it. What lands in your repo is plain Playwright: specs that run with `npx playwright test`, no agent required.
 
-Achilles (`@civitas-cerebrum/achilles`, MIT) is a QA methodology for coding agents. It takes a web app from no tests to a maintained Playwright suite, hunts bugs, repairs rotted suites and verifies code changes with evidence. The package is harness-neutral: 16 skills, five agent definitions, return-shape schemas, five CLIs and a Playwright reporter, plus one adapter for Claude Code. The output is plain Playwright specs on [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions); they run without any agent. Design background: [Agentic Shift-Left](docs/agentic-shift-left.md).
-
-Your main session is never bound by Achilles rules. QA work goes to a separate orchestrator agent, which dispatches four kinds of expert and hands back one verdict.
-
-## Install
-
-Requirements: Node 20 or later and a web app with a reachable URL. Claude Code 2.1.287 or later for the plugin.
-
-| Harness | Command | What happens |
-|---|---|---|
-| Any, through npm | `npm i -D @civitas-cerebrum/achilles` | Fetches the Chromium used for live inspection. On a machine with Claude Code, postinstall registers the package as a plugin in the project's `.claude/settings.local.json` (`-g`: `~/.claude/settings.json`), in place from `node_modules`; nothing is copied. |
-| Claude Code, direct | `/plugin install achilles --marketplace civitas-cerebrum/achilles` at the prompt, or from a shell `claude plugin marketplace add civitas-cerebrum/achilles` then `claude plugin install achilles@achilles` | User-level plugin for every project; no npm install needed for the agents, skills and hooks. The CLIs and reporter still come from the npm package. |
-| pi | `pi install npm:@civitas-cerebrum/achilles` | Loads the skills and the pi extension (`pi/index.ts`): `delegate_qa`, `/achilles` and expert mode, with the orchestrator and each expert in their own `pi` process, and the Bash judge and secrets screen as guards. `npm install` registers it when pi is on PATH. See [docs/harness/pi.md](docs/harness/pi.md). |
-
-Set `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` to install without touching Claude Code settings, `ACHILLES_SKIP_PI_REGISTRATION=1` to skip the pi install, and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` to skip the Chromium fetch. A failed step prints a warning; the install still succeeds. npm 11 and later block a dependency's install script until it is approved: when npm lists `@civitas-cerebrum/achilles` under blocked install scripts, the plugin is not registered; run `npm install-scripts approve @civitas-cerebrum/achilles` and install again. Restart Claude Code after the install; the plugin loads at the next session. Uninstall: `claude plugin uninstall achilles`, or delete the `achilles` entries from the settings file postinstall wrote; npm runs no uninstall script.
-
-## Use
-
-From the main session on Claude Code, call the `delegate_qa` tool or type `/achilles <task>`:
+It also takes the jobs nobody wants: a red suite after a refactor, a ticket that needs proof before it closes, a flaky test that fails one run in ten.
 
 ```text
-/achilles onboard this project; the app runs at http://localhost:3000, login is in .env
-/achilles verify PROJ-123 on this branch
-/achilles the checkout suite is red since yesterday, repair it
+you    /achilles onboard this project; the app runs at http://localhost:3000, login is in .env
+       RUNNING  run 2026-11-01-a7c3   (you keep working, progress shows in the status line)
+
+       ... inspector maps 9 journeys, author writes them, reviewer re-runs every one ...
+
+       DONE  41 specs across 9 journeys, all green on 3 consecutive runs
+             2 app bugs reported with reproductions (tests/e2e/docs/adversarial-findings.md)
+             secrets moved to .env, committed in 6 commits
 ```
 
-What comes back, and when:
+*An illustration of the flow; real counts depend on your app.*
 
-1. At once: `RUNNING` plus a run id. The orchestrator agent starts in the background; progress shows in the status line and the Achilles pane. Your session stays free.
-2. When the run ends: a hand-back arrives as a turn of its own, without you typing. Its first word is one of `DONE` (deliverables, commits, verification evidence), `DONE_WITH_CONCERNS` (the same, plus rulings it needs from you), `NEEDS_CONTEXT` (a numbered question list) or `BLOCKED` (an owner action and what it unblocks).
-3. On `NEEDS_CONTEXT`: answer the questions in the chat. The main session re-delegates with your answers and the run id; the orchestrator resumes from `.achilles/runs/<run-id>/resume.json`, not from the conversation. To resume a run yourself (after a crash, say), type `/achilles resume <run-id>`. Work that landed before the question is already committed. The orchestrator asks everything it needs in one hand-back; it never asks mid-run.
+## Quick start
 
-pi works the same way: `delegate_qa` and `/achilles` start the orchestrator in its own `pi` process, it dispatches each expert into another, and the hand-back arrives as a message of its own ([docs/harness/pi.md](docs/harness/pi.md)).
+You need Node 20+, a web app with a reachable URL, and Claude Code 2.1.287+ (or [pi](docs/harness/pi.md)).
 
-Scope rules the orchestrator keeps: every unit of work is reviewed by a fresh reviewer before the run advances; no silent skips; app bugs are reported with evidence, never worked around; a long run commits what landed and names a resume file at every exit. The contract is [`skills/achilles-orchestrator/SKILL.md`](skills/achilles-orchestrator/SKILL.md).
+```bash
+npm i -D @civitas-cerebrum/achilles   # registers the Claude Code plugin in place, fetches Chromium
+```
 
-## Skills
+Restart Claude Code, then ask:
 
-One orchestrator skill with seven workflows, and 15 expert skills that the experts load on the orchestrator's brief.
+```text
+/achilles onboard this project; the app runs at http://localhost:3000
+```
 
-| Skill | Workflow or role | What it does |
+That's it. On npm 11+, if npm lists Achilles under blocked install scripts, run `npm install-scripts approve @civitas-cerebrum/achilles` and install again. Other ways to install are [below](#install).
+
+## What you can ask for
+
+| Say | Achilles runs | You get |
 |---|---|---|
-| `achilles-orchestrator` | the controller | Routing table, preflight, dispatch and hand-back contracts, verification bar, state and commit discipline |
-| ↳ `workflows/author-scenario.md` | one scenario | One durable test from a scenario, URL, bundle or fix request; API questions |
-| ↳ `workflows/onboard.md` | zero to suite | Eight phases: scaffold, groundwork, happy paths, journey map, coverage, bug hunt, secrets sweep, report |
-| ↳ `workflows/map-journeys.md` | discovery | Sentinel-bearing `tests/e2e/docs/journey-map.md` from inspectors driving the app section by section |
-| ↳ `workflows/expand-coverage.md` | coverage | Five passes per journey across the map (`standard`, `breadth`, `depth`); adversarial ledger, residual risk |
-| ↳ `workflows/hunt-bugs.md` | adversarial | Probe every journey (`live` or `static`); findings ledger and reproduction specs |
-| ↳ `workflows/repair-suite.md` | repair | One failing test, a batch, or the unattended `npm run test:repair`; heals with stability evidence, quarantine ledger |
-| ↳ `workflows/verify-change.md` | change QA | A ticket, PR or branch: diff review, evidence bundle, durable tests and sentinels, negative control, verify note |
-| `test-composer` | author | The full variant set for one journey; stabilised, reviewed, coverage checked |
-| `bug-discovery` | author | Adversarial probing of one journey or page set; the probe contracts behind hunt-bugs and passes 4 and 5 |
-| `failure-diagnosis` | author | Evidence-based triage of a failing test, local or from a CI run; stability validation; niche-edge-case catalogue |
-| `evidence-capture` | author | One spec with per-step screenshots, video, trace, HAR and console, frozen as a redacted bundle |
-| `contract-testing` | author | Status, schema, error-envelope and header assertions for every `steps.api*` call |
-| `database-testing` | author | Row, cell, column and transaction assertions for `steps.sql*`; the DB as oracle |
-| `performance-testing` | author | k6 load, stress, spike, soak and breakpoint tests with SLO thresholds; the perf pipeline |
-| `agents-vs-agents` | author | Red-teaming, guardrail, bias and prompt-injection tests for AI features |
-| `selector-development` | author | One inert test attribute per element with an eight-step inertness proof; JIT or audit |
-| `secrets-sweep` | author | Credentials, keys, PII shapes and URLs moved out of the suite into `.env` |
-| `test-data-conventions` | author (companion) | Where a scenario's data comes from, who creates it, who cleans it up |
-| `journey-mapping` | inspector, doc-writer | The per-section inspection brief and the map author's rules |
-| `review` | reviewer | Composition judge, Stage B reviewer and phase gate; one vocabulary per mode |
-| `qa-reporting` | doc-writer | Work summary deck and test catalogue, rendered and inspected |
-| `bug-report` | doc-writer | A pre-filled tracker ticket from evidence and a reproduction |
+| `/achilles onboard this project` | **onboard**, zero to suite in eight phases | Scaffold, happy paths, a journey map, deep coverage, a bug hunt, a secrets sweep and a report |
+| `/achilles write a test: a guest can't check out with an empty cart` | **author-scenario** | One durable, reviewed test |
+| `/achilles map the user journeys` | **map-journeys** | `tests/e2e/docs/journey-map.md`, prioritised by business impact |
+| `/achilles expand coverage on checkout` | **expand-coverage** | Five passes per journey: variants, errors, edge cases, adversarial probes |
+| `/achilles try to break the app` | **hunt-bugs** | A findings ledger and a reproduction spec per bug |
+| `/achilles the checkout suite is red since yesterday, repair it` | **repair-suite** | Heals with stability evidence; real app bugs reported, never papered over |
+| `/achilles verify PROJ-123 on this branch` | **verify-change** | Diff review, an evidence bundle, new tests and a negative control proving they can fail |
 
-Skill directory names are the invocation names. Framework references (the Steps API, stages protocol, composition standards, test identity, selector evidence, browser protocol) live under `skills/achilles-orchestrator/references/`.
+Specialist skills join in when the work calls for them: API contract tests, database assertions, k6 performance tests, red-teaming AI features, inert test-attribute selectors, test-data lifecycle, bug reports, and a summary deck for stakeholders.
 
-## Agents
+## What lands in your repo
 
-Five hand-authored definitions under `agents/achilles-<role>.md`. Tools and path scopes are the role boundary: an author cannot approve its own work, a reviewer cannot touch a spec, the orchestrator never writes a spec and never opens a browser.
+Ordinary Playwright specs on [`@civitas-cerebrum/element-interactions`](https://www.npmjs.com/package/@civitas-cerebrum/element-interactions), with selectors kept in one page repository instead of scattered through the tests:
 
-| Agent | Role | Scope in one line |
-|---|---|---|
-| `achilles-orchestrator` | controller | Routes the task, writes briefs and run state under `.achilles/runs/<run>/`, dispatches the experts, reads their reports, commits landed work; runs the suite and git, never a browser session, never a spec |
-| `achilles-inspector` | looks first | Reads the workspace and drives the live app in its own browser session; writes evidence, discovery notes and proposals, never a spec or the page repository |
-| `achilles-author` | writes tests | Owns `tests/**` and the page repository; the scaffold brief adds the runner config and `.env*`, the selector brief adds one inert attribute in one frontend file; proves its work with the runner |
-| `achilles-reviewer` | fresh eyes | Verifies on disk and in the running app, runs the suite read-only, writes a verdict; never edits what it reviews, a new instance per review |
-| `achilles-doc-writer` | documents | Turns reports and evidence into docs under `docs/**` and `tests/e2e/docs/**`; no code, no commits |
+```ts
+// tests/e2e/checkout.spec.ts
+import { test } from '../fixtures/base';
 
-Nesting is main session → orchestrator → expert, and stops there. The exact tool lists and path scopes are in the agent files and the agents table of [docs/harness/claude-code.md](docs/harness/claude-code.md).
+test('a signed-in shopper can check out a single item', async ({ steps }) => {
+  await steps.navigateTo('/products/veggie-wrap');
+  await steps.click('addToCart', 'ProductPage');
+  await steps.click('checkoutButton', 'CartPage');
+  await steps.verifyText('orderStatus', 'ConfirmationPage', 'Order placed');
+});
+```
 
-## Hooks (Claude Code)
+```json
+// tests/e2e/page-repository.json
+{ "pages": [{ "name": "CartPage", "elements": [
+  { "elementName": "checkoutButton", "selector": { "role": "button", "name": "Checkout" } }
+]}]}
+```
 
-One TypeScript module, eight hooks, acting on the five Achilles agents only. Default posture: advise. A deny is reserved for irreversible or dangerous actions and always names the action to take.
+The tests run in CI like any other suite. Achilles is only needed to write and repair them.
 
-1. **Bash judge**: denies commit bypass flags, commits and PRs carrying AI attribution, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project and credential shapes written into committed files; advises on commit grammar and protected paths; rewrites a missing `playwright-cli -s=<slug>` from the agent id.
-2. **Pipeline ledger model**: denies nothing; advises on phase skips, approvals without an envelope and missing deliverables in the onboarding and perf ledgers, and keeps an integrity hash.
-3. **Sign-off**: denies a tracker transition to done or a published PR without the reviewer-written receipt and evidence bundle, and any sign-off while the bundle holds a live credential.
-4. **Dispatch discipline**: denies nothing; advises on brief shape, concurrency limits and a reviewer that is not fresh.
-5. **Return review**: denies nothing; validates each expert's return against its schema and shows the problem in the pane.
-6. **Spec hygiene**: denies nothing; advises on missing test ids, import-boundary breaches, the evidence floor for diagnosis edits and factory rules when the project opts in.
-7. **Selector development**: denies any frontend edit on a selector brief other than one added inert test attribute; shows the eight-step order as state.
-8. **Reporting**: denies nothing; archives a Playwright run's artifacts under `.achilles/runs/` when the Achilles reporter did not, closes each expert's browser sessions when its turn ends, and puts a run summary line in the hand-back.
+## How it works
 
-The full table (events, exact deny lists, advice, switches, limits) is [docs/harness/claude-code.md](docs/harness/claude-code.md); that page is the contract the module implements.
+```text
+your session ──/achilles──▶ orchestrator ──brief──▶ inspector     drives the live app, gathers evidence
+     ▲                         │   ▲                author        writes specs and the page repository
+     │                         │   └──report────── reviewer      fresh instance, verifies, never edits
+     └────── one verdict ──────┘                    doc-writer    maps, reports, decks
+```
 
-## Switches
+- **Your session stays yours.** The work runs in a separate orchestrator agent in the background. You get `RUNNING` and a run id at once, and one hand-back at the end: `DONE`, `DONE_WITH_CONCERNS`, `NEEDS_CONTEXT` or `BLOCKED`.
+- **Nobody marks their own homework.** Every unit of work is checked by a fresh reviewer before the run moves on. An author cannot approve, and a reviewer cannot edit.
+- **No questions mid-run.** If Achilles needs something from you, it commits what it has, writes a resume file and asks everything at once. Answer in the chat and it picks up where it stopped; `/achilles resume <run-id>` works after a crash too.
+- **Bugs are reported, not worked around.** A suspected app bug never becomes the expected result: the test keeps the correct assertion, is tagged `@known-defect` and points at the finding, with its evidence.
+- **Guardrails, not handcuffs.** On Claude Code eight hooks watch the Achilles agents. They advise by default and block only what can't be undone: force pushes, `rm -rf` outside the project, bypassed commit checks, credentials in committed files, sign-off without a reviewer receipt.
 
-| Switch | Effect |
+The full contract is in [`skills/achilles-orchestrator/SKILL.md`](skills/achilles-orchestrator/SKILL.md), and the design thinking in [Agentic Shift-Left](docs/agentic-shift-left.md).
+
+## Tools that come with it
+
+| Command | What it's for |
 |---|---|
-| `ACHILLES_DISABLE=1` in the shell | the adapter passes every event through for new sessions; the tools still answer that it is off |
-| `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` at install | postinstall does not register the plugin with Claude Code |
-| `ACHILLES_SKIP_PI_REGISTRATION=1` at install | postinstall does not install the package into pi |
-| `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` at install | skip the Chromium fetch |
-| `achilles-factory-rules.json` in the project root | opts into the factory content rules; no file, no rule |
+| `npx achilles-mutate` | Proves your tests can fail. Injects the broken state an acceptance criterion forbids and reports `CAUGHT`, `WRONG-TEST`, `SURVIVED`, `VOID` or `UNCHECKED`. `--calibrate` checks every probe can answer both ways; `--repeat 3` controls for flake. Needs a `noop` mutation and an `E2E_MUTATION_*` hook in the `page` fixture. |
+| `npx achilles-show <spec>` | Replays a spec headed and slowed down (`slowMo` 1500) with video and trace, and saves an mp4 to `show-recordings/<timestamp>/` (webm without `ffmpeg`). |
+| `npx achilles-self-repair` | Unattended repair. Baselines the suite, separates flake from real failures, sends one `claude -p` worker per red spec file and verifies each heal. The scaffold wires it as `npm run test:repair`. |
+| `npx achilles-selector-evidence` | Captures live evidence (count, outline, screenshot) for one page-repository entry. |
+| `npx achilles-scenario-lint` | Lints `#### <ID> — <title>` scenario blocks against your project's factory rules. |
 
-The full table, including the reporter and CLI variables, is in [docs/harness/claude-code.md](docs/harness/claude-code.md); a lint keeps it equal to what the code reads.
-
-## CLIs and reporter
-
-| Command | Use |
-|---|---|
-| `npx achilles-mutate` | Injects the broken state an acceptance criterion forbids and reports `CAUGHT`, `WRONG-TEST`, `SURVIVED`, `VOID` or `UNCHECKED`; `--calibrate` proves each check can answer both ways, `--repeat 3` controls flake. Needs a `noop` mutation and an `E2E_MUTATION_*` hook in the `page` fixture. |
-| `npx achilles-show <spec>` | Runs a spec headed at `slowMo` 1500 with video and trace, one worker, and writes mp4 to `show-recordings/<timestamp>/` (webm without `ffmpeg`). Arguments pass to `playwright test`. |
-| `npx achilles-self-repair` | Unattended repair: baselines the suite, separates flake from deterministic failures, spawns one `claude -p` worker per red spec file, verifies heals, writes a session report. Wired as `npm run test:repair` by the scaffold; needs Claude in the runner. |
-| `npx achilles-scenario-lint` | Lints `#### <ID> — <title>` scenario blocks against the project's factory rules. |
-| `npx achilles-selector-evidence` | Captures live evidence for one committed page-repository entry. |
-
-The reporter keeps a local ledger of outcomes and copies each failing attempt's evidence; it never fails a run:
+There's also a **Playwright reporter** that remembers. It keeps a local history of every test, so a failure shows up as `failed 6 of last 10 runs`, and it copies each failing attempt's evidence. It never fails a run.
 
 ```ts
 reporter: [['list'], ['html', { open: 'never' }], ['@civitas-cerebrum/achilles/reporter']],
 ```
 
-History goes to `.achilles/history/tests.ndjson` (`failed 6 of last 10 runs` appears next to a failure); per-attempt evidence to `.achilles/runs/<runId>/`. `ACHILLES_REPORTER=off` disables it.
+History lives in `.achilles/history/tests.ndjson` and per-attempt evidence in `.achilles/runs/<runId>/`. Set `ACHILLES_REPORTER=off` to disable it.
 
-## Run in CI
+## Install
 
-The scaffold writes `playwright.config.ts` (reporters `html`, `json` and the Achilles reporter), `tests/e2e/<journey>.spec.ts`, fixtures, a setup file and a `test:repair` script. It writes no CI workflow. The suite runs with `npx playwright test`; no agent is involved.
+| Where | Command | Notes |
+|---|---|---|
+| Any project, npm | `npm i -D @civitas-cerebrum/achilles` | Registers the plugin in `.claude/settings.local.json` (`-g`: `~/.claude/settings.json`), loaded in place from `node_modules`; nothing is copied. Fetches Chromium for live inspection. |
+| Claude Code, marketplace | `claude plugin marketplace add civitas-cerebrum/achilles` then `claude plugin install achilles@achilles` | A user-level plugin for every project. The CLIs and reporter still come from the npm package. |
+| pi | `pi install npm:@civitas-cerebrum/achilles` | Skills plus the pi extension: `delegate_qa`, `/achilles` and expert mode, each expert in its own `pi` process. See [docs/harness/pi.md](docs/harness/pi.md). |
+
+Restart Claude Code after installing. To uninstall, run `claude plugin uninstall achilles` or delete the `achilles` entries postinstall added to the settings file.
+
+<details>
+<summary><b>Switches</b></summary>
+
+| Switch | Effect |
+|---|---|
+| `ACHILLES_DISABLE=1` in the shell | The adapter passes every event through for new sessions; the tools say it is off |
+| `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` at install | Don't register the plugin with Claude Code |
+| `ACHILLES_SKIP_PI_REGISTRATION=1` at install | Don't install the package into pi |
+| `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` at install | Skip the Chromium fetch |
+| `achilles-factory-rules.json` in the project root | Opt into the factory content rules; no file, no rules |
+
+A failed install step prints a warning and the install still succeeds. The full table, including reporter and CLI variables, is in [docs/harness/claude-code.md](docs/harness/claude-code.md).
+
+</details>
+
+## Run the suite in CI
+
+The scaffold writes `playwright.config.ts`, the specs, fixtures, a setup file and a `test:repair` script, but no CI workflow, because CI doesn't need Achilles. A starting point:
 
 ```yaml
 # .github/workflows/e2e.yml
@@ -153,35 +160,103 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --reporter=junit
         env:
-          # the secrets sweep moves credentials into .env (gitignored); pass them here
+          # the secrets sweep moved credentials into .env (gitignored); pass them here
           E2E_USER: ${{ secrets.E2E_USER }}
 ```
 
-Adjust the variable names to the keys in your `.env`. The commands are Playwright's own; the recipe has not been run against an onboarded project in this release.
+Rename the variables to match your `.env`. The commands are Playwright's own; this recipe hasn't been run against an onboarded project in this release.
+
+## Under the hood
+
+<details>
+<summary><b>The 16 skills</b>: one orchestrator with seven workflows, and 15 expert skills</summary>
+
+| Skill | Role | What it does |
+|---|---|---|
+| `achilles-orchestrator` | controller | Routing, preflight, dispatch and hand-back contracts, the verification bar, state and commit discipline |
+| ↳ `workflows/author-scenario.md` | one scenario | One durable test from a scenario, URL, bundle or fix request |
+| ↳ `workflows/onboard.md` | zero to suite | Scaffold, groundwork, happy paths, journey map, coverage, bug hunt, secrets sweep, report |
+| ↳ `workflows/map-journeys.md` | discovery | `tests/e2e/docs/journey-map.md` from inspectors driving the app section by section |
+| ↳ `workflows/expand-coverage.md` | coverage | Five passes per journey (`standard`, `breadth`, `depth`); adversarial ledger, residual risk |
+| ↳ `workflows/hunt-bugs.md` | adversarial | Probe every journey (`live` or `static`); findings ledger and reproduction specs |
+| ↳ `workflows/repair-suite.md` | repair | One failing test, a batch, or unattended `npm run test:repair`; stability evidence, quarantine ledger |
+| ↳ `workflows/verify-change.md` | change QA | A ticket, PR or branch: diff review, evidence bundle, durable tests, negative control, verify note |
+| `test-composer` | author | The full variant set for one journey |
+| `bug-discovery` | author | Adversarial probing of one journey or page set |
+| `failure-diagnosis` | author | Evidence-based triage of a failing test, local or from CI |
+| `evidence-capture` | author | One spec with per-step screenshots, video, trace, HAR and console, frozen as a redacted bundle |
+| `contract-testing` | author | Status, schema, error-envelope and header assertions for every `steps.api*` call |
+| `database-testing` | author | Row, cell, column and transaction assertions for `steps.sql*` |
+| `performance-testing` | author | k6 load, stress, spike, soak and breakpoint tests with SLO thresholds |
+| `agents-vs-agents` | author | Red-teaming, guardrail, bias and prompt-injection tests for AI features |
+| `selector-development` | author | One inert test attribute per element, with an eight-step inertness proof |
+| `secrets-sweep` | author | Credentials, keys, PII and URLs moved out of the suite into `.env` |
+| `test-data-conventions` | author (companion) | Where a scenario's data comes from, who creates it, who cleans it up |
+| `journey-mapping` | inspector, doc-writer | The per-section inspection brief and the map author's rules |
+| `review` | reviewer | Composition judge, in-loop reviewer and phase gate |
+| `qa-reporting` | doc-writer | Work summary deck and test catalogue |
+| `bug-report` | doc-writer | A pre-filled tracker ticket from evidence and a reproduction |
+
+Framework references (the Steps API, stages protocol, composition standards, selector evidence, browser protocol) live under `skills/achilles-orchestrator/references/`.
+
+</details>
+
+<details>
+<summary><b>The five agents</b> and what each may touch</summary>
+
+| Agent | Role | Scope |
+|---|---|---|
+| `achilles-orchestrator` | controller | Routes the task, writes briefs and run state under `.achilles/runs/<run>/`, dispatches experts, reads their reports, commits landed work. Never opens a browser, never writes a spec |
+| `achilles-inspector` | looks first | Drives the live app in its own browser session; writes evidence and proposals, never a spec or the page repository |
+| `achilles-author` | writes tests | Owns `tests/**` and the page repository; proves its work with the runner |
+| `achilles-reviewer` | fresh eyes | Verifies on disk and in the running app, writes a verdict, never edits what it reviews; a new instance per review |
+| `achilles-doc-writer` | documents | Turns reports and evidence into docs under `docs/**` and `tests/e2e/docs/**`; no code, no commits |
+
+Nesting is main session → orchestrator → expert, and stops there. Exact tool lists are in the agent files under `agents/` and in [docs/harness/claude-code.md](docs/harness/claude-code.md).
+
+</details>
+
+<details>
+<summary><b>The eight hooks</b> (Claude Code)</summary>
+
+One TypeScript module acting on the five Achilles agents only. It advises by default; a deny is kept for irreversible or dangerous actions and always names the action to take instead.
+
+1. **Bash judge.** Denies commit bypass flags, AI attribution in commits and PRs, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project, and credential shapes in committed files. Advises on commit grammar and protected paths, and fills in a missing `playwright-cli -s=<slug>`.
+2. **Pipeline ledger model.** Advises on phase skips, approvals without an envelope and missing deliverables; keeps an integrity hash.
+3. **Sign-off.** Denies a tracker transition to done, or a published PR, without the reviewer's receipt and evidence bundle, or while the bundle holds a live credential.
+4. **Dispatch discipline.** Advises on brief shape, concurrency and reviewers that aren't fresh.
+5. **Return review.** Validates each expert's return against its schema.
+6. **Spec hygiene.** Advises on test ids, import boundaries, the evidence floor for diagnosis edits, and factory rules when the project opts in.
+7. **Selector development.** Denies any frontend edit on a selector brief other than one added inert test attribute.
+8. **Reporting.** Archives run artifacts, closes each expert's browser sessions and adds a run summary to the hand-back.
+
+The contract the module implements is [docs/harness/claude-code.md](docs/harness/claude-code.md).
+
+</details>
 
 ## What Achilles is not
 
-- No hosted runner and no dashboard. Everything runs on your machine or your CI.
-- No native mobile. "Mobile variants" are viewport emulation in Playwright.
-- No runtime self-healing. Repair happens in an agent session or through `achilles-self-repair`; a CI run does not retry a step with a model.
-- No enforcement outside Claude Code. On pi the skills state the same rules; keeping them is the operator's job.
-- No published benchmark. Detection rate, cost and duration have not been measured and published. Onboarding dispatches many subagents and consumes a large share of a plan's usage window.
+- **Not a hosted service.** No runner, no dashboard; everything runs on your machine or your CI.
+- **Not native mobile.** "Mobile variants" are viewport emulation in Playwright.
+- **Not runtime self-healing.** Repair happens in an agent session or through `achilles-self-repair`; a CI run never asks a model to retry a step.
+- **Not enforced outside Claude Code.** On pi the skills state the same rules; keeping them is the operator's job.
+- **Not benchmarked yet.** Detection rate, cost and duration haven't been measured and published. Onboarding dispatches many subagents and uses a large share of a plan's usage window.
 
 ## Upgrading from 0.1.7 or a 0.2.0 branch install
 
-Earlier installers copied the harness into `.claude/` (or `~/.claude/` for `-g`). 0.1.8 copies nothing: the plugin loads in place from `node_modules` or the marketplace. The old copies are not removed by the new postinstall and keep running until you delete them, so clean up once:
+Earlier versions copied hooks, skills and agents into `.claude/`. 0.1.8 copies nothing, and **the old copies keep running until you remove them**:
 
-1. **With the old package still installed**, run `npx achilles-uninstall --project` (and `npx achilles-uninstall --global` if you ever installed with `-g` or had the user-level routing skill). It removes what the install record lists. 0.1.x had no uninstaller; go to step 2.
-2. **By hand**, in each `.claude/` directory Achilles wrote to (and `~/.claude/`), delete: the Achilles hook scripts under `hooks/` (the 41 `*-gate.sh`, `*-guard.sh`, `*-watcher.sh`, `*-writer.sh`, `*-chain.sh`, `*-registry.sh`, `*-stepper.sh`, `*-archiver.sh`, `*-cleanup-on-stop.sh`, `*-revert-on-stop.sh` scripts) plus `hooks/factory/`, `hooks/lib/`, `hooks/data/` and `hooks/bin/jq`; the copied skills under `skills/` (`achilles-protocol`, `onboarding`, `coverage-expansion`, `test-repair`, `self-repair`, `companion-mode`, `workflow-reviewer`, `test-catalogue`, `work-summary-deck`, `perf-onboarding`, `ticket-driven-testing`, `contributing-to-achilles-protocol`, `requirement-intake`, `sql-client` and the twelve that kept their names); the 22 generated agents under `agents/`; `kernel-mandate.json`, `kernel-mandate.md`, `kernel-mandate.achilles.json`, any `kernel-mandate.achilles-new.json`, `achilles-qa.kernel-mandate.json`; and the install record `achilles-install.json`. Remove the user-level routing skill `~/.claude/skills/achilles/` and `~/.claude/achilles-install.json`.
-3. **In `.claude/settings.json`** (and `~/.claude/settings.json`), remove every entry under `hooks` whose command points into `.claude/hooks/` or `~/.claude/hooks/`. Your own hook entries stay.
-4. Install 0.1.8 and restart Claude Code. The switches `ACHILLES_PROTOCOL`, `KERNEL_MANDATE`, `CIVITAS_SKIP_HOOK_INSTALL` and `CIVITAS_SKIP_JQ_INSTALL` are no longer read; drop them from shells and CI. There is no session activation step and no `achilles-uninstall` command; uninstall is `claude plugin uninstall achilles` or removing the plugin entry from the settings file.
+1. With the old package still installed, run `npx achilles-uninstall --project` (and `--global` if you used `-g`). 0.1.x had no uninstaller; skip to step 2.
+2. Delete what's left by hand, and remove the `hooks` entries in `.claude/settings.json` that point into `.claude/hooks/`.
+3. Install 0.1.8, restart Claude Code, and drop `ACHILLES_PROTOCOL`, `KERNEL_MANDATE`, `CIVITAS_SKIP_HOOK_INSTALL` and `CIVITAS_SKIP_JQ_INSTALL` from shells and CI.
+4. Replace the old slash commands (`/onboarding`, `/coverage-expansion`, `/test-repair`, …) with `/achilles <task>`.
 
-What else changes for you: no banner at session start; questions arrive as `NEEDS_CONTEXT` hand-backs instead of mid-run prompts; the old slash commands (`/onboarding`, `/coverage-expansion` and the rest) are `/achilles <task>`; hooks advise where they used to deny, except the eight denies listed above. The full list is in [CHANGELOG.md](CHANGELOG.md).
+The exact file list for step 2 is in the [CHANGELOG](CHANGELOG.md).
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md): the methodology/adapter split, commit conventions (no AI attribution trailers), the lint (`node scripts/lint-doc-drift.mjs`) and the PR checklist. `npm test` runs every suite (schemas, doc lint, CLIs, reporter, adapter) and exits non-zero on any failure.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the methodology/adapter split, commit conventions (no AI attribution trailers), the doc lint and the PR checklist. `npm test` runs every suite: schemas, doc lint, CLIs, reporter and adapter.
 
 ## License
 
-MIT.
+[MIT](LICENSE)
