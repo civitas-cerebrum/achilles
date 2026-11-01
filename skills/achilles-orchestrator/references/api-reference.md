@@ -186,6 +186,10 @@ await steps.waitForUrl(/\/products\//, async () => {
 const newPage = await steps.switchToNewTab(async () => {
   await steps.click('newTabLink', 'PageName');
 });
+// Drive the new tab with repository names (0.3.12+): a Steps bound to that page,
+// sharing everything else. Never construct an ElementRepository for it yourself.
+const tabSteps = steps.forPage(newPage);
+await tabSteps.verifyPresence('heading', 'NewTabPage');
 await steps.closeTab(newPage);
 const count = steps.getTabCount();
 ```
@@ -350,6 +354,14 @@ await steps.verifyOrder('listItems', 'PageName', ['First', 'Second', 'Third']);
 await steps.verifyListOrder('listItems', 'PageName', 'asc');               // or 'desc'
 await steps.verifyCssProperty('elementName', 'PageName', 'color', 'rgb(255, 0, 0)');
 ```
+
+> **`"list": true` entries (0.3.12+).** For a repository entry marked `"list": true`,
+> reached without a narrowing strategy, `verifyPresence` passes when ANY match is
+> visible (not only the first), and `getAll` waits for at least one match and
+> throws on an empty list instead of returning `[]`. `.nth()`, `.random()`,
+> `.byText()`, `.byAttribute()`, `.visible()`, `ifVisible()` and a scoped `findBy*`
+> opt out and keep single-element semantics. `verifyAbsence` passes only when every
+> match is hidden.
 
 ### Expect Matcher Tree
 
