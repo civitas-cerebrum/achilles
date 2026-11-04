@@ -30,6 +30,8 @@ Report defects the diff review found even when every AC passes: they are the val
 
 Never silently upgrade a defect into an AC failure, or silently drop one because the ACs passed.
 
+The defect list is the `bug` verdicts of [`defect-audit.md`](phase-7a-defect-confirmation.md) and nothing else. `real-in-source` findings are listed apart as code findings, `spec-ambiguity` verdicts as questions for the product owner; `not-a-bug` verdicts are not reported as defects at all.
+
 ### Posting to the tracker
 
 The ticket comment is what the developer, the PM, and the next QA engineer will read. Keep it
@@ -99,3 +101,31 @@ negative-control result, for the reason given above: it is evidence that the tes
 the change, not methodology. Everything else about the rig (tool mechanics, injected state,
 framework versions) lives in the evidence bundle, where the next QA engineer can find it without
 the reviewer having to scroll past it.
+
+## 9d. Filing the defects
+
+Defects are filed only when the user says so. The hand-back carries the filing plan (each defect,
+its destination and its draft text); the main session files on the user's word. A user who asks
+for nothing to be posted until they are done holds the tracker comment of §9c to the same gate.
+
+**Where each `bug` verdict goes:**
+
+| The defect | Filed as |
+|---|---|
+| breaks an acceptance criterion of a ticket under test | a sub-task of that ticket (the tracker's rework type where it has one), naming the AC it breaks |
+| breaks an AC of several tickets under test | one sub-task, under the ticket whose AC it breaks most directly; the others are named in its description |
+| outside every ticket under test (shared code, another feature) | a standalone bug, not a sub-task of a ticket it does not belong to |
+
+**Say what filing will do to the parent.** Some trackers run automation when a rework sub-task is
+created: moving the parent back to development, raising its priority, setting the tester. Before
+filing, check the tracker's automation (or a recent rework's parent history) and put the effect in
+the hand-back, so the user is not surprised by a ticket that moved.
+
+**The ticket text comes from the audit**: the steps as the reproducer wrote them (one action per
+step, no shorthand, starting from a state a reader with no context can reach), the actual and
+expected result, the root cause by `file:line` where the tracker's house rules allow it on that
+issue type, and the evidence that exists. Where a project has its own ticket-writing rules or
+template, they decide the shape; this section decides only what is filed and where.
+
+**Priority is the user's.** Propose a severity with its reason; leave the priority field to them.
+

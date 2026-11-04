@@ -9,6 +9,10 @@ A structured bug report gives developers everything they need to reproduce and f
 
 ## Engine
 
+### Step 0: a confirmed verdict, or no ticket
+
+A ticket is written only for a defect an independent reproducer called `bug`: the verify-change defect audit (`docs/evidence/<ticket>/defect-audit.md`, [phase 7a](../achilles-orchestrator/references/verify-change/phase-7a-defect-confirmation.md)) or an equivalent independent reproduction named in the brief. A brief that carries only the finder's own observation, or a verdict of `real-in-source`, `spec-ambiguity` or `not-a-bug`, gets `NEEDS_CONTEXT` asking for the confirmation or the user's explicit decision to file anyway; record that decision in the ticket. The reproduction steps come from the reproducer's report, not from the finder's notes.
+
 ### Step 1: extract before listing a field as missing
 
 Read everything the brief and its evidence already carry before naming any field as open:
@@ -58,7 +62,7 @@ Return `NEEDS_CONTEXT` with the complete filled ticket and one numbered list: ev
 - **Console errors belong in the ticket body**, in Description or Actual result, not only in Attachments.
 - **Severity and Priority are suggestions until confirmed** through the `NEEDS_CONTEXT` round; never assigned silently.
 - **Never skip the confirmation round** unless the brief carries the confirmed values.
-- Write in **third person** ("the user", "they"); assume the reader has zero prior knowledge of the project; fill every available field; attach evidence at the **end** of the ticket.
+- Write in **third person** ("the user", "they"); assume the reader has zero prior knowledge of the project; **no shorthand in steps**: one action per numbered step, every button or menu by its visible label, every file by its path, no `→` chains and no "as in step N of another ticket"; fill every available field; attach evidence at the **end** of the ticket.
 
 ## Template
 

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/subagent-returns/defect-repro.schema.json",
+  "title": "Defect reproducer (probe-defect) return",
+  "description": "One independent verdict on one suspected defect: verify-change phase 7a (skills/achilles-orchestrator/references/verify-change/phase-7a-defect-confirmation.md).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["handover", "defect-id", "verdict", "reproduction", "root-cause", "severity", "steps", "cleanup"],
+  "properties": {
+    "handover": {
+      "allOf": [
+        { "$ref": "handover.schema.json" },
+        {
+          "type": "object",
+          "properties": {
+            "status": { "enum": ["verdict-reached", "blocked"] }
+          }
+        }
+      ]
+    },
+    "defect-id": { "type": "string", "minLength": 1 },
+    "verdict": {
+      "type": "string",
+      "enum": ["bug", "real-in-source", "spec-ambiguity", "not-a-bug"]
+    },
+    "reproduction": {
+      "type": "object",
+      "required": ["attempts", "observed"],
+      "properties": {
+        "attempts": { "type": "integer", "minimum": 0 },
+        "observed": { "type": "integer", "minimum": 0 },
+        "varied": { "type": "string", "description": "What differed between attempts when the defect is non-deterministic." }
+      }
+    },
+    "root-cause": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["layer", "location"],
+        "properties": {
+          "layer": { "type": "string", "description": "frontend, backend, data, ..." },
+          "location": { "type": "string", "description": "file:line, or why the source for this layer was not available" },
+          "explanation": { "type": "string" }
+        }
+      }
+    },
+    "severity": {
+      "type": "object",
+      "required": ["level", "reason"],
+      "properties": {
+        "level": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "One action per step, for a reader with no context; no shorthand."
+    },
+    "expected": { "type": "string" },
+    "actual": { "type": "string" },
+    "question": { "type": "string", "description": "For spec-ambiguity: the decision the product owner has to make." },
+    "cleanup": {
+      "type": "object",
+      "required": ["created", "deleted"],
+      "properties": {
+        "created": { "type": "array", "items": { "type": "string" } },
+        "deleted": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "budget-spent": { "type": "string" },
+    "summary": { "type": "string" },
+    "blocked-reason": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "required": ["verdict"],
+        "properties": { "verdict": { "const": "bug" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["reproduction", "expected", "actual"],
+        "properties": {
+          "reproduction": {
+            "type": "object",
+            "properties": { "observed": { "type": "integer", "minimum": 1 } }
+          },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["verdict"],
+        "properties": { "verdict": { "const": "spec-ambiguity" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["question"],
+        "properties": { "question": { "type": "string" } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "handover": { "type": "object", "required": ["status"], "properties": { "status": { "const": "blocked" } } } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["blocked-reason"],
+        "properties": { "blocked-reason": { "type": "string" } }
+      }
+    }
+  ]
+}

@@ -48,7 +48,7 @@ Read every changed file. For each AC, decide what would actually prove it:
 - **Find the load-bearing attributes.** `data-*` hooks, `inert`, `aria-*`, state-marker classes. These are the stable selectors, and they usually already exist; check before proposing a source change.
 - **Note what the diff deletes.** Removed feature flags, removed route mappings, removed components each imply a regression surface.
 
-Record findings now, with severity. They become sentinels in phase 7.
+Record findings now, with severity. They are suspected defects: [phase 7a](phase-7a-defect-confirmation.md) decides which are bugs, and only those become sentinels in phase 7.
 
 ## 5. Reach the environment
 

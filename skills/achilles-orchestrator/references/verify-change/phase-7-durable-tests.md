@@ -7,7 +7,9 @@ bundle is §8d's decision, made after they have proven themselves in §8–8c, a
 that they stay. Write them to committable standard either way; a test that would embarrass the
 suite proves nothing as evidence either.
 
-For each confirmed defect, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug, which is the signal to delete it.
+For each defect whose verdict in [phase-7a-defect-confirmation](phase-7a-defect-confirmation.md) is `bug`, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug, which is the signal to delete it.
+
+**A sentinel cites where the defect is recorded**: the tracker issue key once filed, and until then its entry in `docs/evidence/<ticket>/defect-audit.md`. The run's own notes or knowledge base are not a record. A `real-in-source`, `spec-ambiguity` or `not-a-bug` verdict never gets a sentinel; an existing sentinel whose defect gets one of those verdicts is removed in the same pass.
 
 **Scope of the `test.fail()` licence.** This section is the ONE sanctioned use of `test.fail()` in the whole suite: a defect sentinel **tied to a tracked ticket**, with a removed-when-fixed lifecycle (the "flips loud → delete" mechanism above IS the lifecycle). Where no ticket owns the marker it is banned: coverage-expansion and its adversarial passes never commit `test.fail()`; their suspected bugs stay ledger-only (see `../../workflows/expand-coverage.md` §"Not this workflow"; resolution record: `../test-composition-standards.md` §3.2).
 
