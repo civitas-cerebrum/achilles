@@ -1,7 +1,8 @@
 handover:
-  role: probe-defect
+  role: reproducer
   status: verdict-reached
   next-action: add the D2 entry to defect-audit.md
+ticket: ABC-450
 defect-id: ABC-450-D2
 verdict: bug
 reproduction:
@@ -23,6 +24,9 @@ steps:
   - Click Create template, then Save anyway.
 expected: every field in its own blank, and any skipped field named in the warning
 actual: the address is written into the birth-month blank and the date of birth is dropped
+evidence:
+  - .achilles/runs/qa-x/repro-d2/04-paragraph-3.png
+  - .achilles/runs/qa-x/repro-d2/apply-response.json
 cleanup:
   created: [template "repro-d2"]
   deleted: [template "repro-d2"]

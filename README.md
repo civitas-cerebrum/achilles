@@ -84,6 +84,7 @@ The tests run in CI like any other suite. Achilles is only needed to write and r
 your session ──/achilles──▶ orchestrator ──brief──▶ inspector     drives the live app, gathers evidence
      ▲                         │   ▲                author        writes specs and the page repository
      │                         │   └──report────── reviewer      fresh instance, verifies, never edits
+     │                         │                    reproducer    decides whether a suspected defect is a bug
      └────── one verdict ──────┘                    doc-writer    maps, reports, decks
 ```
 
@@ -91,6 +92,7 @@ your session ──/achilles──▶ orchestrator ──brief──▶ inspecto
 - **Nobody marks their own homework.** Every unit of work is checked by a fresh reviewer before the run moves on. An author cannot approve, and a reviewer cannot edit.
 - **No questions mid-run.** If Achilles needs something from you, it commits what it has, writes a resume file and asks everything at once. Answer in the chat and it picks up where it stopped; `/achilles resume <run-id>` works after a crash too.
 - **Bugs are reported, not worked around.** A suspected app bug never becomes the expected result: the test keeps the correct assertion, is tagged `@known-defect` and points at the finding, with its evidence.
+- **The finder does not confirm.** Before a suspected defect becomes a sentinel or a ticket, a fresh reproducer decides from the criteria, the live app and the source whether it is a bug, real only in the source, a spec question or intended. On Claude Code a defect filing or a sign-off without that verdict is refused.
 - **Guardrails, not handcuffs.** On Claude Code eight hooks watch the Achilles agents. They advise by default and block only what can't be undone: force pushes, `rm -rf` outside the project, bypassed commit checks, credentials in committed files, sign-off without a reviewer receipt.
 
 The full contract is in [`skills/achilles-orchestrator/SKILL.md`](skills/achilles-orchestrator/SKILL.md), and the design thinking in [Agentic Shift-Left](docs/agentic-shift-left.md).
@@ -194,6 +196,7 @@ Rename the variables to match your `.env`. The commands are Playwright's own; th
 | `test-data-conventions` | author (companion) | Where a scenario's data comes from, who creates it, who cleans it up |
 | `journey-mapping` | inspector, doc-writer | The per-section inspection brief and the map author's rules |
 | `review` | reviewer | Composition judge, in-loop reviewer and phase gate |
+| `defect-confirmation` | reproducer | One suspected defect reproduced independently; the verdict is the standard defect evidence |
 | `qa-reporting` | doc-writer | Work summary deck and test catalogue |
 | `bug-report` | doc-writer | A pre-filled tracker ticket from evidence and a reproduction |
 
@@ -202,7 +205,7 @@ Framework references (the Steps API, stages protocol, composition standards, sel
 </details>
 
 <details>
-<summary><b>The five agents</b> and what each may touch</summary>
+<summary><b>The six agents</b> and what each may touch</summary>
 
 | Agent | Role | Scope |
 |---|---|---|
@@ -210,6 +213,7 @@ Framework references (the Steps API, stages protocol, composition standards, sel
 | `achilles-inspector` | looks first | Drives the live app in its own browser session; writes evidence and proposals, never a spec or the page repository |
 | `achilles-author` | writes tests | Owns `tests/**` and the page repository; proves its work with the runner |
 | `achilles-reviewer` | fresh eyes | Verifies on disk and in the running app, writes a verdict, never edits what it reviews; a new instance per review |
+| `achilles-reproducer` | confirms defects | Reproduces one suspected defect without reading the suite or earlier reports; returns `bug`, `real-in-source`, `spec-ambiguity` or `not-a-bug`; a new instance per defect |
 | `achilles-doc-writer` | documents | Turns reports and evidence into docs under `docs/**` and `tests/e2e/docs/**`; no code, no commits |
 
 Nesting is main session → orchestrator → expert, and stops there. Exact tool lists are in the agent files under `agents/` and in [docs/harness/claude-code.md](docs/harness/claude-code.md).
@@ -219,11 +223,11 @@ Nesting is main session → orchestrator → expert, and stops there. Exact tool
 <details>
 <summary><b>The eight hooks</b> (Claude Code)</summary>
 
-One TypeScript module acting on the five Achilles agents only. It advises by default; a deny is kept for irreversible or dangerous actions and always names the action to take instead.
+One TypeScript module acting on the six Achilles agents only. It advises by default; a deny is kept for irreversible or dangerous actions and always names the action to take instead.
 
 1. **Bash judge.** Denies commit bypass flags, AI attribution in commits and PRs, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project, and credential shapes in committed files. Advises on commit grammar and protected paths, and fills in a missing `playwright-cli -s=<slug>`.
 2. **Pipeline ledger model.** Advises on phase skips, approvals without an envelope and missing deliverables; keeps an integrity hash.
-3. **Sign-off.** Denies a tracker transition to done, or a published PR, without the reviewer's receipt and evidence bundle, or while the bundle holds a live credential.
+3. **Sign-off and defect filing.** Advises on a tracker transition to done, or a published PR, without the reviewer's receipt and evidence bundle; denies it while the bundle holds a live credential or while a defect it reports has no reproducer's verdict. Denies a bug or rework filing that cites no defect the reproducer confirmed as a bug.
 4. **Dispatch discipline.** Advises on brief shape, concurrency and reviewers that aren't fresh.
 5. **Return review.** Validates each expert's return against its schema.
 6. **Spec hygiene.** Advises on test ids, import boundaries, the evidence floor for diagnosis edits, and factory rules when the project opts in.

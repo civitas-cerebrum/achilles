@@ -1,7 +1,8 @@
 handover:
-  role: probe-defect
+  role: reproducer
   status: verdict-reached
   next-action: add the D2 entry to defect-audit.md
+ticket: ABC-450
 defect-id: ABC-450-D2
 verdict: bug
 reproduction:

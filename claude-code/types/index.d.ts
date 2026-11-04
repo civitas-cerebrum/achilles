@@ -1,4 +1,4 @@
-/** One expert loop the orchestrator has running, by its agent id and role (inspector, author, reviewer, doc-writer). */
+/** One expert loop the orchestrator has running, by its agent id and role (inspector, author, reviewer, reproducer, doc-writer). */
 export type AchillesExpert = {
   agentId: string
   role: string

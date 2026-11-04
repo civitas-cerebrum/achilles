@@ -10,7 +10,7 @@ import { closeProgress, recordFinished, refreshProgress, registerProgress } from
 import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
-import { recordReceipt, registerSignoff } from './hooks/signoff'
+import { recordConfirmation, recordReceipt, registerSignoff } from './hooks/signoff'
 import { ORCHESTRATOR, checkoutRoot, editRun, exists, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
 
 // The Claude Code adapter of the Achilles methodology. The main session is never bound:
@@ -137,11 +137,21 @@ function summary(run: AchillesRun): string {
   return `Run summary: ${parts.join('; ')}.`
 }
 
+/** A hand-back that reports defects while the run dispatched no reproducer says so at its top. */
+export function unconfirmedDefectsLine(run: AchillesRun, body: string): string | undefined {
+  if ((run.dispatched?.reproducer ?? 0) > 0) return undefined
+  const first = body.split('\n').find(l => l.trim() !== '')?.trim() ?? ''
+  if (!/^DONE_WITH_CONCERNS\b/.test(first) && !/@known-defect|\[SENTINEL /.test(body)) return undefined
+  if (!/\bdefects?\b|\bbugs?\b|@known-defect|\[SENTINEL /i.test(body)) return undefined
+  return 'Unconfirmed defects: this hand-back reports defects, and the run dispatched no achilles-reproducer, so none was independently confirmed (verify-change step 7a). Treat them as suspected; do not file them before a reproducer has confirmed them.'
+}
+
 async function handBack($: EngineInterface, run: AchillesRun, body: string) {
+  const warn = unconfirmedDefectsLine(run, body)
   await closeProgress($, run, body.split('\n').find(l => l.trim() !== '')?.trim().split(/\s/)[0] ?? 'ended')
   await writeRuns($, runs => runs.filter(r => r.id !== run.id))
   await rememberHandback($, run.id, run.task, body)
-  await $.prompt.submit({ text: `${HANDBACK_LEAD(run.id)}\n\nTask: ${run.task}\n\n${body}\n\n${summary(run)}` })
+  await $.prompt.submit({ text: `${HANDBACK_LEAD(run.id)}\n\nTask: ${run.task}\n\n${warn ? `${warn}\n\n` : ''}${body}\n\n${summary(run)}` })
 }
 
 export const register: Register = on => {
@@ -237,7 +247,7 @@ export const register: Register = on => {
       // counted; then the guards read its hand-back side by side, inside one budget.
       await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))
       await Promise.all([
-        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e)] : []),
+        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e)] : []),
         closeSelectorScope($, w, e),
         closeSessions($, w),
         recordFinished($, w, e),

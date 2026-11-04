@@ -199,3 +199,96 @@ test('receipt rules: a review must name its reviewer, look at the UI, judge cove
   expect(receiptProblems({ negativeControl: {}, review: { ...GREEN.review, reviewer: '' } })).toEqual(['no reviewer is named'])
   expect(receiptProblems({ negativeControl: {}, review: { ...GREEN.review, total: 12 } })[0]).toContain('at or below 12')
 })
+
+// Defect confirmation (verify-change step 7a): a reproducer's verdict is recorded by the adapter;
+// a defect filing and a sign-off that reports defects are refused without one.
+
+const CONFIRM_DIR = `${ROOT}/.achilles/defect-confirmations`
+const BUG = { ticket: 'ABC-1', 'defect-id': 'ABC-1-D1', verdict: 'bug', reproduction: { attempts: 4, observed: 4 }, expected: 'the address in its own blank', actual: 'the address in the birth-month blank', evidence: ['.achilles/runs/x/repro/04.png'] }
+const file = (agentId: string, fields: Record<string, unknown>, tool = 'mcp__atlassian__createJiraIssue') => ({ tool, agentId, projectKey: 'ABC', ...fields })
+
+/** A reproducer reports its verdict; the adapter records it at its turn end. */
+async function reproduce($: EngineInterface, h: Harness, orchestrator: string, verdict: unknown, slug = 'repro-d1') {
+  const reproducer = await spawnExpert($, h, 'reproducer', orchestrator, `Read \`.achilles/runs/x/briefs/${slug}.md\` first; write your report to \`.achilles/runs/x/reports/${slug}.md\`.`)
+  await $.tool.call({ tool: 'Skill', skill: 'achilles:defect-confirmation', agentId: reproducer } as never)
+  h.write(`${ROOT}/.achilles/runs/x/reports/${slug}.md`, `# Reproduction\n\n\`\`\`json\n${JSON.stringify(verdict)}\n\`\`\`\n`)
+  await $.turn.complete(ended(reproducer, 'DONE\nVerdict in the report.'))
+  return reproducer
+}
+
+test('a reproducer’s verdict is recorded as the defect’s confirmation; a defect filing needs a recorded bug verdict and says to dispatch the reproducer', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  const { orchestrator } = await setup($, h)
+  const create = (fields: Record<string, unknown>) => $.tool.call(file(orchestrator, fields) as never)
+
+  const none = await create({ issueType: 'Rework', parent: 'ABC-1', summary: 'Address lands in the wrong blank', description: 'Steps …' })
+  expect(none.deny).toContain('cites no confirmed defect id')
+  expect(none.deny).toContain('Dispatch an achilles-reproducer')
+  expect((await create({ issueType: 'Bug', summary: 'ABC-1-D1 address in the wrong blank' })).deny).toContain('no recorded confirmation')
+
+  await reproduce($, h, orchestrator, BUG)
+  const record = JSON.parse(h.files.get(`${CONFIRM_DIR}/ABC-1/ABC-1-D1.json`) ?? '{}')
+  expect(record.verdict).toBe('bug')
+  expect(record.recordedBy.agentId).toMatch(/^reproducer-/)
+  expect((await create({ issueType: 'Rework', parent: 'ABC-1', summary: 'Address lands in the wrong blank', description: 'Confirmed as ABC-1-D1.' })).deny).toBeUndefined()
+
+  // Adjacent traffic: a story, a task without a defect type, and a fields-shaped create of another type go through.
+  expect((await create({ issueType: 'Story', summary: 'Save the template' })).deny).toBeUndefined()
+  expect((await create({ fields: { issuetype: { name: 'Task' }, summary: 'Tidy the fixtures' } })).deny).toBeUndefined()
+  // The main session is never bound: the user's own decision files.
+  expect((await $.tool.call(file('main-session', { issueType: 'Bug', summary: 'Filed on the user’s decision' }) as never)).deny).toBeUndefined()
+})
+
+test('a filing citing a non-bug verdict or a hand-written confirmation is refused; a verdict without a live observation is not recorded', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const { orchestrator } = await setup($, h)
+  const create = (summary: string) => $.tool.call(file(orchestrator, { issueType: 'Bug', summary }) as never)
+
+  await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D2', verdict: 'not-a-bug' }, 'repro-d2')
+  expect((await create('ABC-1-D2 wording')).deny).toContain('verdict is `not-a-bug`, not `bug`')
+
+  h.write(`${CONFIRM_DIR}/ABC-1/ABC-1-D3.json`, JSON.stringify({ ...BUG, 'defect-id': 'ABC-1-D3' }))
+  expect((await create('ABC-1-D3 forged')).deny).toContain('was not recorded by the adapter')
+
+  await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D4', reproduction: { attempts: 2, observed: 0 } }, 'repro-d4')
+  expect(h.files.has(`${CONFIRM_DIR}/ABC-1/ABC-1-D4.json`)).toBe(false)
+  expect(notes(session, orchestrator).join('\n')).toContain('a bug verdict with no live observation')
+  expect((await create('ABC-1-D4 never seen')).deny).toContain('no recorded confirmation')
+})
+
+test('gh issue create with a bug label needs a confirmed defect id; other gh issue calls go through', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  const { orchestrator } = await setup($, h)
+  const bash = (command: string) => $.tool.call({ tool: 'Bash', command, agentId: orchestrator } as never)
+  expect((await bash('gh issue create --title "Address in the wrong blank" --label bug --body "steps"')).deny).toContain('Dispatch an achilles-reproducer')
+  expect((await bash('gh issue create --title "Add a dark mode" --label enhancement --body "idea"')).deny).toBeUndefined()
+  expect((await bash('gh issue view 12')).deny).toBeUndefined()
+  await reproduce($, h, orchestrator, BUG)
+  expect((await bash('gh issue create --title "ABC-1-D1 address in the wrong blank" --label bug --body "steps"')).deny).toBeUndefined()
+})
+
+test('a sign-off is refused while a sentinel of the ticket or a defect-reporting comment has no confirmation; with them it goes through', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  const { orchestrator } = await setup($, h)
+  bundle(h, 'abc-1-widget-toggle-20260812-150715')
+  const comment = (body: string) => $.tool.call({ tool: 'mcp__atlassian__addCommentToJiraIssue', issueIdOrKey: 'ABC-1', commentBody: body, agentId: orchestrator } as never)
+
+  // Adjacent traffic first: a verdict with no sentinels and no defects, and an unrelated ticket's sentinel.
+  h.write(`${ROOT}/tests/other.spec.ts`, "test('TC-1 · [SENTINEL XYZ-9-D1] x @known-defect', () => {})")
+  expect((await comment('QA report: all acceptance criteria pass.')).deny).toBeUndefined()
+  expect((await $.tool.call(tracker(orchestrator, 'Done') as never)).deny).toBeUndefined()
+
+  h.write(`${ROOT}/tests/widget.spec.ts`, "test('TC-2 · [SENTINEL ABC-1-D1] the address sits in its blank @known-defect', () => {})")
+  const refused = await $.tool.call(tracker(orchestrator, 'Done') as never)
+  expect(refused.deny).toContain('[SENTINEL ABC-1-D1]')
+  expect(refused.deny).toContain('Dispatch an achilles-reproducer')
+  expect((await comment('QA report: AC1 passes; two defects found.')).deny).toContain('no recorded confirmation')
+
+  await reproduce($, h, orchestrator, BUG)
+  expect((await $.tool.call(tracker(orchestrator, 'Done') as never)).deny).toBeUndefined()
+  expect((await comment('QA report: AC1 passes; defect ABC-1-D1 found.')).deny).toBeUndefined()
+})

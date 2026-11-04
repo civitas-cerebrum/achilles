@@ -6,7 +6,8 @@ the step between those two: what turns a suspicion into a confirmation, and who 
 
 **The agent that suspected a defect does not confirm it.** The inspector who saw it and the author
 who would write its sentinel both have a stake in it being real. Each suspected defect goes to a
-fresh reviewer whose only job is to decide whether it is a bug.
+fresh `achilles-reproducer`, the expert whose only job is to decide whether it is a bug (it loads
+[`../../../defect-confirmation/SKILL.md`](../../../defect-confirmation/SKILL.md)).
 
 This exists because it was skipped and it cost something real. In the run this method comes from,
 8 suspected defects went into the suite as `@known-defect` sentinels on the strength of the
@@ -31,8 +32,8 @@ defect the run cannot point to either of those for is suspected, and is confirme
 
 ## The brief: one reproducer per suspected defect
 
-Dispatch one fresh reviewer per suspected defect (review skill, Mode 4, mission `probe-defect`),
-all in one message when the environment allows parallel sessions; a defect whose reproduction
+Dispatch one fresh reproducer per suspected defect (agent `achilles-reproducer`, skill
+`defect-confirmation`), all in one message when the environment allows parallel sessions; a defect whose reproduction
 changes account-wide state is dispatched alone, after the others have returned.
 
 Each brief carries:
@@ -55,7 +56,8 @@ Each brief carries:
    metered or rate-limited service per reproducer), which shared settings it may not change,
    and that everything it creates is deleted before it hands back. A reproduction that needs
    more budget than the brief grants returns `blocked` and says how much.
-7. **The return schema** `schemas/subagent-returns/defect-repro.schema.json`.
+7. **The defect id** `<TICKET>-D<n>`, which the sentinel, the audit and any filed ticket cite.
+8. **The return schema** `schemas/subagent-returns/defect-repro.schema.json`.
 
 ## The verdicts
 
@@ -82,11 +84,30 @@ Every verdict carries:
 - **What it created and deleted.**
 
 A verdict without a reproduction count, or `bug` with no live reproduction, is a failed dispatch;
-re-dispatch a fresh reviewer.
+re-dispatch a fresh reproducer.
+
+## The standard defect evidence
+
+The reproducer's report ends with one fenced `json` block in the `defect-repro` shape. A harness
+that records returns keeps it as the defect's confirmation, written by the harness and not by any
+expert, so the agent that wants the defect to be real cannot forge it. On Claude Code the record is
+`.achilles/defect-confirmations/<ticket>/<defect-id>.json`
+([`docs/harness/claude-code.md`](../../../../docs/harness/claude-code.md), hook 3). Two moments read it:
+
+- **Filing a defect.** A bug or rework ticket an Achilles agent files must cite a `defect-id` whose
+  recorded verdict is `bug`. Without one, the filing is refused, and the refusal says to dispatch
+  the reproducer.
+- **Sign-off.** Every `[SENTINEL <TICKET>-D<n>]` in the suite needs a recorded `bug` verdict for
+  `<TICKET>-D<n>`, and a verdict comment that reports defects needs at least one recorded
+  confirmation for the ticket. Without them the sign-off is refused the same way.
+
+A user who decides to file a defect the reproducer did not call a `bug` files it from the main
+session, which the harness never binds; the ticket records that decision.
 
 ## The audit: `docs/evidence/<ticket>/defect-audit.md`
 
-A doc-writer consolidates the reproducers' reports into one file per ticket:
+A doc-writer consolidates the recorded confirmations (and the reproducers' reports they point to)
+into one file per ticket:
 
 1. A verdict table: id, ticket and AC, verdict, severity, one line.
 2. One section per defect: the evidence, the root cause with `file:line`, and the reproduction

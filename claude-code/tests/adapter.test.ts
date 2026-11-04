@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { DELEGATE, ROOT, START, ended, engine, notes, spawnExpert, startRun } from './harness'
+import { unconfirmedDefectsLine } from '../hooks'
 
 const ORCHESTRATOR = 'achilles:achilles-orchestrator'
 const INSPECTOR = 'achilles:achilles-inspector'
@@ -25,7 +26,7 @@ test('session.start registers delegate_qa in the prompt tool list, the command, 
   await $.session.start(START)
   expect(tools.map(t => t.name)).toEqual(['delegate_qa'])
   expect(tools[0]?.isDeferred).toBe(false)
-  expect(agents.map(a => a.name)).toEqual(['achilles-orchestrator', 'achilles-inspector', 'achilles-author', 'achilles-reviewer', 'achilles-doc-writer'])
+  expect(agents.map(a => a.name)).toEqual(['achilles-orchestrator', 'achilles-inspector', 'achilles-author', 'achilles-reviewer', 'achilles-reproducer', 'achilles-doc-writer'])
   expect(agents[1]).toEqual({ name: 'achilles-inspector', description: 'The inspector.', prompt: 'You are the inspector.', tools: ['Read', 'Write', 'Edit', 'Bash'], effort: 'medium' })
   // The orchestrator and the judge (reviewer) name no effort: they take the session's.
   expect(agents.filter(a => 'effort' in a).map(a => a.name)).toEqual(['achilles-inspector', 'achilles-author', 'achilles-doc-writer'])
@@ -170,4 +171,13 @@ test('an expert spawned by the orchestrator is counted by role for the run summa
   await $.turn.complete(ended(r1, 'DONE\ngreenlight'))
   await $.turn.complete(ended(orchestrator, 'DONE\nall good'))
   expect(h.prompts[0]).toContain('Run summary: experts dispatched: author ×1, reviewer ×1.')
+})
+
+test('a hand-back that reports defects without a reproducer dispatch is flagged; with one, or without defects, it is not', () => {
+  const run = { id: 'qa-1', task: 't', dir: '.achilles/runs/qa-1', experts: [] } as never
+  expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nTwo defects found, sentinels written.')).toContain('Unconfirmed defects')
+  expect(unconfirmedDefectsLine(run, 'DONE\nAll ACs pass; [SENTINEL ABC-1-D1] stays.')).toContain('Unconfirmed defects')
+  expect(unconfirmedDefectsLine({ ...(run as object), dispatched: { reproducer: 2 } } as never, 'DONE_WITH_CONCERNS\nTwo defects found.')).toBeUndefined()
+  expect(unconfirmedDefectsLine(run, 'DONE\nAll ACs pass.')).toBeUndefined()
+  expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nThe staging environment was slow.')).toBeUndefined()
 })
