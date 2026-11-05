@@ -80,10 +80,12 @@ test('a storyboard plays into a captioned webm and mp4, with captures, downloads
   const board = {
     name: 'NAME-CLASH-demo', title: 'Demo: the save fails on a duplicate name', baseURL: `http://127.0.0.1:${server.address().port}`,
     pace: { actionMs: 50, captionMs: 200, evidenceMs: 400, closingMs: 300 },
+    auth: { steps: [{ goto: '/' }, { click: { text: 'Remind me later' }, optional: true, timeoutMs: 300 }] },
     capture: [{ id: 'save', url: '/api/save', method: 'POST' }],
     steps: [
       { caption: 'Open the templates page', goto: '/' },
       { caption: 'Type a template name', fill: { target: { label: 'Template name' }, value: 'demo-${run}-${env:EV_SECRET}' } },
+      { caption: 'Bring the button into view', scroll: { css: 'button#save[data-run="${run}"], button#save' } },
       { caption: 'Click Create template', click: { role: 'button', name: 'Create template' } },
       { caption: 'Wait for the save to answer', waitFor: { capture: 'save' } },
       { caption: 'The error names the duplicate', expect: { text: 'already exists' } },
@@ -111,15 +113,22 @@ test('a storyboard plays into a captioned webm and mp4, with captures, downloads
   assert.equal(r.status, 0, r.stderr + r.stdout)
   const manifest = JSON.parse(readFileSync(join(d, 'NAME-CLASH-demo.json'), 'utf8'))
   assert.equal(manifest.status, 'ok')
-  assert.equal(manifest.steps.length, 8)
+  assert.equal(manifest.steps.length, 9)
   assert.equal(manifest.steps[0].caption, 'Step 1: Open the templates page')
   assert.ok(manifest.steps.every((s, i) => i === 0 || s.atMs >= manifest.steps[i - 1].atMs))
-  assert.ok(manifest.steps[7].skipped, 'the optional step is skipped, not failed')
+  assert.ok(manifest.steps[8].skipped, 'the optional step is skipped, not failed')
   assert.deepEqual(manifest.expectations.map(e => e.held), [true, false])
   assert.equal(manifest.captures[0].status, 400)
   assert.match(manifest.captures[0].request.name, /\[REDACTED\]/)
   assert.ok(!readFileSync(join(d, 'NAME-CLASH-demo.json'), 'utf8').includes('hunter2-secret'))
   assert.ok(existsSync(join(d, 'downloads', 'file.txt')))
   assert.ok(existsSync(manifest.video.webm.file) && manifest.video.webm.bytes > 0)
+  // One expectation did not hold, so the closing card must not claim the scripted actual.
+  assert.equal(manifest.closing.shown, false)
+  assert.match(manifest.closing.actual, /^Not shown in this recording: the check at step 7 did not hold/)
+  // A second run with the same name refuses to overwrite.
+  const again = spawnSync(process.execPath, [CLI, join(d, 'board.json')], { encoding: 'utf8' })
+  assert.equal(again.status, 2)
+  assert.match(again.stderr, /never overwritten/)
   if (manifest.video.mp4) assert.equal(manifest.video.mp4.decoded, true)
 })

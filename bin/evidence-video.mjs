@@ -5,13 +5,14 @@
 //   npx achilles-video tests/e2e/evidence/ABC-1-D1.video.json
 //   npx achilles-video <storyboard.json> --check      validate only, no browser
 //   npx achilles-video <storyboard.json> --headed     watch it while it records
+//   npx achilles-video <storyboard.json> --force      replace an earlier recording of the same name
 //   npx achilles-video --help
 //
 // WHAT A VIDEO IS. An opening card with the title; then each step's caption alone on screen for
 // pace.captionMs, then its action at pace.actionMs (slowMo) with the caption still showing; then an
 // evidence page built from what the run captured (a downloaded .docx read as paragraphs, an API
 // response, plain text), with the decisive text highlighted and scrolled into view; then a closing
-// caption with the expected and the actual result. Defaults are the ones that read well: 1280x800,
+// card with the expected and the actual result, on its own screen. Defaults are the ones that read well: 1280x800,
 // 600 ms per action, 2.2 s per caption, 9 s of evidence, 6 s of closing.
 //
 // WHAT IT NEVER DOES. Log in on camera (auth runs in a separate, unrecorded context or comes from a
@@ -34,14 +35,15 @@ import Ajv from 'ajv/dist/2020.js';
 
 const require = createRequire(import.meta.url);
 const SCHEMA = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas', 'evidence-video.schema.json');
-const VERBS = ['goto', 'click', 'fill', 'press', 'select', 'check', 'uncheck', 'upload', 'waitFor', 'expect', 'download', 'pause'];
+const VERBS = ['goto', 'click', 'fill', 'press', 'select', 'check', 'uncheck', 'scroll', 'upload', 'waitFor', 'expect', 'download', 'pause'];
 const DEFAULTS = { actionMs: 600, captionMs: 2200, evidenceMs: 9000, closingMs: 6000, timeoutMs: 30000, waitMs: 180000 };
 const CAP_CSS = 'position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:2147483647;max-width:1100px;background:rgba(17,24,39,.93);color:#fff;font:600 20px/1.35 -apple-system,Segoe UI,Arial,sans-serif;padding:14px 22px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.35);pointer-events:none;white-space:pre-wrap;text-align:center';
 
-const HELP = `achilles-video <storyboard.json> [--check] [--headed]
+const HELP = `achilles-video <storyboard.json> [--check] [--headed] [--force]
 
 Plays an evidence-video storyboard (schemas/evidence-video.schema.json) into <name>.webm, <name>.mp4
-and the <name>.json manifest. --check validates the storyboard and exits. Rules:
+and the <name>.json manifest. --check validates the storyboard and exits; an existing recording of
+the same name is never replaced without --force. Rules:
 skills/evidence-capture/references/evidence-video.md`;
 
 function fail(msg, code = 2) {
@@ -105,12 +107,13 @@ function repository(file) {
   return map;
 }
 
-function locate(page, target, repo) {
-  let t = target;
+function locate(page, target, repo, sub = v => v) {
+  let t = Object.fromEntries(Object.entries(target).map(([k, v]) => [k, typeof v === 'string' ? sub(v) : v]));
   if (t.page !== undefined) {
     const sel = repo.get(`${t.page}.${t.element}`);
     if (!sel) throw new Error(`page repository has no ${t.page}.${t.element}`);
     t = { ...sel, nth: target.nth };
+    if (t.exact === undefined && target.exact !== undefined) t.exact = target.exact;
   }
   const exact = t.exact === true || t.exact === 'true';
   let loc;
@@ -150,7 +153,15 @@ main{padding:20px 28px 160px} .b{background:#fff;border-radius:8px;padding:14px 
 .b.bad{border-left:6px solid #b91c1c} .b h3{margin:0 0 8px;font-size:15px;color:#374151;text-transform:uppercase;letter-spacing:.04em}
 pre{white-space:pre-wrap;margin:0;font:14px/1.45 ui-monospace,Menlo,monospace} mark{background:#fde047;padding:0 2px;font-weight:700}
 .card{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#111827;color:#fff;text-align:center;padding:0 80px}
-.card h1{font-size:34px;margin:0 0 14px} .card p{font-size:18px;color:#d1d5db;margin:0}`;
+.card h1{font-size:34px;margin:0 0 14px} .card p{font-size:18px;color:#d1d5db;margin:0}
+.close{display:flex;flex-direction:column;justify-content:center;height:100vh;background:#111827;color:#fff;padding:0 110px}
+.close h2{font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px;color:#9ca3af} .close p{font-size:26px;line-height:1.4;margin:0 0 36px}
+.close .ok h2{color:#86efac} .close .no h2{color:#fca5a5}`;
+
+async function closingCard(page, expected, actual, hold) {
+  await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>${PAGE_CSS}</style></head><body><div class="close"><div class="ok"><h2>Expected</h2><p>${esc(expected)}</p></div><div class="no"><h2>Actual</h2><p>${esc(actual)}</p></div></div></body></html>`);
+  await page.waitForTimeout(hold);
+}
 
 async function titleCard(page, title, sub, hold) {
   await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>${PAGE_CSS}</style></head><body><div class="card"><h1>${esc(title)}</h1><p>${esc(sub)}</p></div></body></html>`);
@@ -175,6 +186,7 @@ function blockText(block, ctx) {
   if (block.capture !== undefined) {
     const c = ctx.captures.get(block.capture);
     if (!c) return `(not captured: no ${block.capture} response was seen in this run)`;
+    if (block.format) return block.format.replace(/\{([A-Za-z0-9_.]+)\}/g, (_, path) => { const v = pick(c, path); return typeof v === 'string' ? v : JSON.stringify(v ?? null); });
     const v = pick(c, block.pick);
     return typeof v === 'string' ? v : JSON.stringify(v ?? null, null, 2);
   }
@@ -201,7 +213,7 @@ async function evidencePage(page, board, ctx, hold) {
 
 async function act(page, a, ctx) {
   const t = a.timeoutMs ?? (a.waitFor ? DEFAULTS.waitMs : DEFAULTS.timeoutMs);
-  const L = target => locate(page, target, ctx.repo);
+  const L = target => locate(page, target, ctx.repo, ctx.sub);
   if (a.goto !== undefined) return page.goto(new URL(ctx.sub(a.goto), ctx.baseURL).toString(), { timeout: t });
   if (a.click) return L(a.click).click({ timeout: t });
   if (a.fill) return L(a.fill.target).fill(ctx.sub(a.fill.value), { timeout: t });
@@ -209,6 +221,7 @@ async function act(page, a, ctx) {
   if (a.select) return L(a.select.target).selectOption(ctx.sub(a.select.value), { timeout: t });
   if (a.check) return L(a.check).check({ timeout: t });
   if (a.uncheck) return L(a.uncheck).uncheck({ timeout: t });
+  if (a.scroll) return L(a.scroll).scrollIntoViewIfNeeded({ timeout: t });
   if (a.upload) {
     const file = resolve(ctx.dir, ctx.sub(a.upload.file));
     if (!existsSync(file)) throw new Error(`upload file ${a.upload.file} does not exist`);
@@ -274,13 +287,15 @@ function decodeCheck(ffmpeg, file) {
 
 // ── the run ──
 
-export async function play(file, { headed = false, env = process.env } = {}) {
+export async function play(file, { headed = false, force = false, env = process.env } = {}) {
   const board = JSON.parse(readFileSync(file, 'utf8'));
   const errors = checkStoryboard(board);
   if (errors.length > 0) return { code: 2, errors };
   const dir = dirname(resolve(file));
   const out = resolve(dir, board.out ?? '.');
   mkdirSync(out, { recursive: true });
+  const taken = ['webm', 'mp4', 'json'].map(x => join(out, `${board.name}.${x}`)).filter(f => existsSync(f));
+  if (taken.length > 0 && !force) return { code: 2, errors: [`${taken.join(', ')} already exist${taken.length === 1 ? 's' : ''}; a recording is never overwritten. Use another name, move the old files, or pass --force`] };
   const run = Math.random().toString(36).slice(2, 8);
   const { sub, mask } = substituter(env, run);
   const pace = { ...DEFAULTS, ...(board.pace ?? {}) };
@@ -298,7 +313,14 @@ export async function play(file, { headed = false, env = process.env } = {}) {
     else if (board.auth?.steps) {
       const login = await browser.newContext(common);
       const lp = await login.newPage();
-      for (const s of board.auth.steps) await act(lp, s, { ...ctx, n: 0, cap: '' });
+      for (const [i, s] of board.auth.steps.entries()) {
+        try {
+          await act(lp, s, { ...ctx, n: 0, cap: '' });
+        } catch (err) {
+          if (s.optional) continue;
+          throw new Error(`login step ${i + 1} failed (off camera): ${mask(String(err?.message ?? err).split('\n')[0])}`);
+        }
+      }
       storageState = join(scratch, 'state.json');
       await login.storageState({ path: storageState });
       await login.close();
@@ -343,9 +365,21 @@ export async function play(file, { headed = false, env = process.env } = {}) {
         break;
       }
     }
+    // The step captions end here: the evidence and closing screens speak for themselves.
+    ctx.cap = ''
     if (board.evidence) await evidencePage(page, board, ctx, pace.evidenceMs);
-    await caption(page, mask(`Expected: ${sub(board.closing.expected)}\nActual: ${sub(board.closing.actual)}`));
-    await page.waitForTimeout(pace.closingMs);
+    // The closing gets its own screen, so it never covers the evidence it sums up. It states the
+    // storyboard's "actual" only when the run showed it: a stopped run or an expectation that did not
+    // hold says that instead, so a recording never claims a defect it did not show.
+    const stopped = manifest.steps.find(s => s.error)
+    const unmet = ctx.expectations.filter(e => !e.held)
+    const actual = stopped
+      ? `Not shown in this recording: the run stopped at step ${stopped.n} (${stopped.error}).`
+      : unmet.length > 0
+        ? `Not shown in this recording: ${unmet.length === 1 ? 'the check at step' : 'the checks at steps'} ${unmet.map(e => e.step).join(', ')} did not hold.`
+        : mask(sub(board.closing.actual))
+    manifest.closing = { expected: mask(sub(board.closing.expected)), actual, shown: !stopped && unmet.length === 0 }
+    await closingCard(page, manifest.closing.expected, actual, pace.closingMs);
     const video = page.video();
     await rec.close();
     const webm = join(out, `${board.name}.webm`);
@@ -386,7 +420,7 @@ if (isMain) {
     process.stdout.write(`${file}: valid storyboard, ${board.steps.length} steps\n`);
     process.exit(0);
   }
-  play(file, { headed: args.includes('--headed') }).then(r => {
+  play(file, { headed: args.includes('--headed'), force: args.includes('--force') }).then(r => {
     if (r.errors) fail(`${file} does not validate:\n${r.errors.map(e => `  - ${e}`).join('\n')}`);
     const m = r.manifest;
     const failedStep = m.steps.find(s => s.error);

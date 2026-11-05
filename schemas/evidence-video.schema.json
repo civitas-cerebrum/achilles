@@ -146,7 +146,7 @@
           "url": {
             "type": "string",
             "minLength": 1,
-            "description": "A substring of the request URL, or /regex/."
+            "description": "A substring of the full request URL, or /regex/ (use a regex anchored with $ when one path is a prefix of another)."
           },
           "method": {
             "type": "string",
@@ -345,7 +345,7 @@
     },
     "action": {
       "type": "object",
-      "description": "Exactly one of goto, click, fill, press, select, check, uncheck, upload, waitFor, expect, download, pause (checked by the player), or none for a narration beat. Values may use ${env:NAME} (never shown on screen or in the manifest) and ${run} (a short id unique to the run).",
+      "description": "Exactly one of goto, click, fill, press, select, check, uncheck, scroll, upload, waitFor, expect, download, pause (checked by the player), or none for a narration beat. Values may use ${env:NAME} (never shown on screen or in the manifest) and ${run} (a short id unique to the run).",
       "additionalProperties": false,
       "properties": {
         "caption": {
@@ -411,6 +411,10 @@
         },
         "uncheck": {
           "$ref": "#/$defs/target"
+        },
+        "scroll": {
+          "$ref": "#/$defs/target",
+          "description": "Bring an element into view, so the viewer sees what the next step acts on."
         },
         "upload": {
           "type": "object",
@@ -544,6 +548,10 @@
         "pick": {
           "type": "string",
           "description": "For a capture: a dotted path into the JSON body (request or response), e.g. response.meta.status_message or request.clauseChoices."
+        },
+        "format": {
+          "type": "string",
+          "description": "For a capture: a sentence with {dotted.path} placeholders, e.g. \"{response.data.applied} of {response.data.requested} changes applied\". Overrides pick."
         },
         "match": {
           "type": "string",

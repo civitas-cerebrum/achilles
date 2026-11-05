@@ -32,8 +32,9 @@ is the request and response.
 4. **An evidence page.** Proof that is not on the screen, shown in the same recording: a downloaded
    `.docx` read as paragraphs (`match` keeps the relevant ones), an API response or request (`capture`
    plus a `pick` path), or plain text. `highlight` marks the decisive text, and the page scrolls to it.
-   `bad: true` marks the panel that shows the failure.
-5. **A closing caption**: "Expected: … / Actual: …", held for `pace.closingMs`.
+   `bad: true` marks the panel that shows the failure; `format` turns captured values into a sentence
+   (`"{response.data.applied} of {response.data.requested} changes applied"`).
+5. **A closing card**: Expected and Actual on a screen of their own, held for `pace.closingMs`, so it never covers the evidence.
 
 ## The quality bar
 
@@ -44,7 +45,9 @@ These are what made the first reproduction videos readable. Keep them.
 - **One action per step.** The player refuses a step with two.
 - **Default pace, not faster.** 1280×800, 600 ms per action, 2.2 s per caption, 9 s of evidence, 6 s of
   closing. A video a developer has to pause to read is too fast.
-- **The evidence names the defect.** Highlight the exact text that is wrong, and show what was sent
+- **The evidence names the defect.** Highlight the exact value that is wrong (the field name, the empty
+  blank, the error message), not a JSON key; keep `match` tight enough that only the relevant
+  paragraphs show, and show what was sent
   next to what was saved, so the viewer sees cause and effect without a second file.
 - **Expected and actual close the video**, in the words of the acceptance criterion or the on-screen
   promise.
@@ -78,7 +81,10 @@ The manifest `<name>.json` holds:
 - the downloads;
 - a decode check of each video file.
 
-The run exits 1 when a step failed: the video still ends, on a caption naming the failure. Treat a
+The run exits 1 when a step failed: the video still ends, on a caption naming the failure. The closing
+card states the storyboard's `actual` only when the run showed it; after a stopped step or an
+expectation that did not hold it says "Not shown in this recording" and why (`manifest.closing.shown`).
+An existing recording of the same name is never replaced without `--force`. Treat a
 failed step as a failed reproduction, not as evidence of the defect. Before citing a video:
 
 - confirm `status: "ok"`, the expectations you rely on, and `decoded: true`;
