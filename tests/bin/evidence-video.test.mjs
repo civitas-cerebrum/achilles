@@ -90,7 +90,8 @@ test('a storyboard plays into a captioned webm and mp4, with captures, downloads
       { caption: 'Wait for the save to answer', waitFor: { capture: 'save' } },
       { caption: 'The error names the duplicate', expect: { text: 'already exists' } },
       { caption: 'A message that is not there', expect: { text: 'Template saved' } },
-      { caption: 'Download the file', download: { click: { text: 'Download' }, as: 'file.txt' } },
+      { caption: 'No "Not found" text on the page', expect: { notText: 'Not found' } },
+      { caption: 'Click Download to save the file', download: { click: { text: 'Download' }, as: 'file.txt' } },
       { caption: 'An optional dialog that never appears', click: { text: 'Dismiss' }, optional: true, timeoutMs: 300 },
     ],
     evidence: { blocks: [
@@ -113,11 +114,11 @@ test('a storyboard plays into a captioned webm and mp4, with captures, downloads
   assert.equal(r.status, 0, r.stderr + r.stdout)
   const manifest = JSON.parse(readFileSync(join(d, 'NAME-CLASH-demo.json'), 'utf8'))
   assert.equal(manifest.status, 'ok')
-  assert.equal(manifest.steps.length, 9)
+  assert.equal(manifest.steps.length, 10)
   assert.equal(manifest.steps[0].caption, 'Step 1: Open the templates page')
   assert.ok(manifest.steps.every((s, i) => i === 0 || s.atMs >= manifest.steps[i - 1].atMs))
-  assert.ok(manifest.steps[8].skipped, 'the optional step is skipped, not failed')
-  assert.deepEqual(manifest.expectations.map(e => e.held), [true, false])
+  assert.ok(manifest.steps[9].skipped, 'the optional step is skipped, not failed')
+  assert.deepEqual(manifest.expectations.map(e => e.held), [true, false, true])
   assert.equal(manifest.captures[0].status, 400)
   assert.match(manifest.captures[0].request.name, /\[REDACTED\]/)
   assert.ok(!readFileSync(join(d, 'NAME-CLASH-demo.json'), 'utf8').includes('hunter2-secret'))

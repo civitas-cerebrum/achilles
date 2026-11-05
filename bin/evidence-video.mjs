@@ -117,12 +117,14 @@ function locate(page, target, repo, sub = v => v) {
   }
   const exact = t.exact === true || t.exact === 'true';
   let loc;
-  if (t.role) loc = page.getByRole(t.role, t.name !== undefined ? { name: t.name, exact } : {});
-  else if (t.text !== undefined) loc = page.getByText(t.text, { exact });
-  else if (t.label !== undefined) loc = page.getByLabel(t.label, { exact });
-  else if (t.placeholder !== undefined) loc = page.getByPlaceholder(t.placeholder);
-  else if (t.testId !== undefined) loc = page.getByTestId(t.testId);
-  else if (t.css !== undefined) loc = page.locator(t.css);
+  // Targets are looked up inside <body>, so the caption on <html> can never be matched or clicked.
+  const root = page.locator('body');
+  if (t.role) loc = root.getByRole(t.role, t.name !== undefined ? { name: t.name, exact } : {});
+  else if (t.text !== undefined) loc = root.getByText(t.text, { exact });
+  else if (t.label !== undefined) loc = root.getByLabel(t.label, { exact });
+  else if (t.placeholder !== undefined) loc = root.getByPlaceholder(t.placeholder);
+  else if (t.testId !== undefined) loc = root.getByTestId(t.testId);
+  else if (t.css !== undefined) loc = root.locator(t.css);
   else if (t.xpath !== undefined) loc = page.locator(`xpath=${t.xpath}`);
   else if (t.id !== undefined) loc = page.locator(`#${t.id}`);
   else throw new Error(`unusable target ${JSON.stringify(target)}`);
@@ -240,15 +242,16 @@ async function act(page, a, ctx) {
       return;
     }
     if (w.url) return page.waitForURL(u => u.toString().includes(ctx.sub(w.url)), { timeout: t });
-    const loc = w.target ? L(w.target) : page.getByText(ctx.sub(w.text)).first();
+    const loc = w.target ? L(w.target) : page.locator('body').getByText(ctx.sub(w.text)).first();
     return loc.waitFor({ state: w.state ?? 'visible', timeout: t });
   }
   if (a.expect) {
     const e = a.expect;
     let held;
-    if (e.notText !== undefined) held = (await page.getByText(ctx.sub(e.notText)).count()) === 0;
+    // Text checks read the page, not the caption: the caption sits on <html>, outside <body>.
+    if (e.notText !== undefined) held = (await page.locator('body').getByText(ctx.sub(e.notText)).count()) === 0;
     else {
-      const loc = e.target ? L(e.target) : page.getByText(ctx.sub(e.text)).first();
+      const loc = e.target ? L(e.target) : page.locator('body').getByText(ctx.sub(e.text)).first();
       held = await loc.waitFor({ state: 'visible', timeout: Math.min(t, 10000) }).then(() => true, () => false);
     }
     ctx.expectations.push({ step: ctx.n, caption: ctx.mask(ctx.cap), held, what: ctx.mask(JSON.stringify(e)) });
