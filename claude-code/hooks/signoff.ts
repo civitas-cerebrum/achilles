@@ -2,6 +2,7 @@ import type { EngineInterface, On, TurnCompleteInput } from 'claude-code'
 
 import {
   checkoutRoot,
+  editRun,
   findDirs,
   hashText,
   isDisabled,
@@ -47,6 +48,8 @@ const MAX_READ = 4 * 1024 * 1024
 const CONFIRMATIONS = '.achilles/defect-confirmations'
 const CONFIRM_REF = 'skills/achilles-orchestrator/references/verify-change/phase-7a-defect-confirmation.md'
 const CREATE = /createJiraIssue|create_issue|createIssue/
+const SEARCH = /search|jql|query|list_?issues|getJiraIssue|get_issue|getIssue/i
+const DEDUPE_REF = 'skills/bug-report/SKILL.md'
 const DEFECT_TYPE = /\b(bug|rework|defect)\b/i
 const DEFECT_ID = /\b([A-Za-z][A-Za-z0-9_]*-[0-9]+-D[0-9]+)\b/g
 const REPORTS_DEFECTS = /\bdefects?\b|\bbugs?\b|known.?defect|\brework\b/i
@@ -209,7 +212,9 @@ async function unconfirmedForSignoff($: EngineInterface, top: string, key: strin
 }
 
 /** A defect filing (a bug, rework or defect-labelled issue an Achilles agent creates): refused unless it cites a defect id recorded as `bug`. */
-export async function judgeFiling($: EngineInterface, text: string): Promise<{ deny?: string }> {
+export async function judgeFiling($: EngineInterface, text: string, w?: Who): Promise<{ deny?: string }> {
+  if (w && (w.run.trackerSearches ?? 0) === 0)
+    return { deny: `achilles: this files a defect before the run searched the tracker for an existing one. Search first: the ticket under test's sub-tasks and links, then open and recently closed bugs with the same screen, message or error text. File nothing new for a defect that already has a ticket; comment there with the new evidence (${DEDUPE_REF} §"Step 0b: search for an existing ticket before drafting a new one").` }
   const top = await checkoutRoot($, await $.session.cwd())
   const cited = [...new Set([...text.matchAll(DEFECT_ID)].map(m => m[1]!))]
   if (cited.length === 0)
@@ -398,21 +403,32 @@ function ghFiling(command: string): { defect: boolean; text: string } | undefine
 
 export function registerSignoff(on: On) {
   on('tool.call', { tool: /^mcp__/ }, async ($, e, next) => {
-    if (isDisabled() || !CREATE.test(e.tool)) return next(e)
+    if (isDisabled()) return next(e)
+    const name = e.tool.split('__').pop() ?? e.tool
+    if (SEARCH.test(name) && !CREATE.test(name)) {
+      const w = await who($, e.agentId)
+      if (w) await editRun($, w.run.id, r => ({ ...r, trackerSearches: (r.trackerSearches ?? 0) + 1 }))
+      return next(e)
+    }
+    if (!CREATE.test(e.tool)) return next(e)
     const w = await who($, e.agentId)
     if (!w) return next(e)
     const filing = filingOf(e as unknown as Record<string, unknown>)
     if (!filing.defect) return next(e)
-    const r = await judgeFiling($, filing.text)
+    const r = await judgeFiling($, filing.text, w)
     return r.deny ? { deny: r.deny } : next(e)
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its defect-filing check failed, so the tracker call is refused.' }))
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (isDisabled() || !/\bgh\b/.test(e.command) || !/\bissue\b/.test(e.command)) return next(e)
     const w = await who($, e.agentId)
+    if (w && /\bgh\s+issue\s+(list|search|view)\b|\bgh\s+search\s+issues\b/.test(e.command)) {
+      await editRun($, w.run.id, r => ({ ...r, trackerSearches: (r.trackerSearches ?? 0) + 1 }))
+      return next(e)
+    }
     const filing = w ? ghFiling(e.command) : undefined
     if (!filing?.defect) return next(e)
-    const r = await judgeFiling($, filing.text)
+    const r = await judgeFiling($, filing.text, w)
     return r.deny ? { deny: r.deny } : next(e)
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its defect-filing check failed, so the issue call is refused.' }))
 

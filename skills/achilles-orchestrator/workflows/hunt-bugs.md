@@ -25,7 +25,7 @@ Adversarial probing of the whole app (or a named page set) after the suite is gr
 
 ## Report
 
-After the last wave, one doc-writer consolidates `bug-discovery-report.md` (phase 7 of the expert skill): findings by severity and priority, reproduction spec per finding or an explicit `app-bug` flag, coverage notes (charter versus actuals, areas not probed and why). Filing tickets is a separate doc-writer dispatch loading `bug-report` per finding the user asks for.
+After the last wave, one doc-writer consolidates `bug-discovery-report.md` (phase 7 of the expert skill): findings by severity and priority, reproduction spec per finding or an explicit `app-bug` flag, coverage notes (charter versus actuals, areas not probed and why). Filing tickets is a separate doc-writer dispatch loading `bug-report` per finding the user asks for; each one first searches the tracker for an existing ticket (`bug-report` Step 0b), so a finding that already has one becomes a comment, not a duplicate.
 
 Commit per journey `docs(bug-hunt): j-<slug> — N findings`; reproduction specs commit with their journey.
 

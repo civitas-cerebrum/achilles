@@ -108,6 +108,8 @@ Defects are filed only when the user says so. The hand-back carries the filing p
 its destination and its draft text); the main session files on the user's word. A user who asks
 for nothing to be posted until they are done holds the tracker comment of §9c to the same gate.
 
+**Search before filing.** Each defect first goes through the duplicate search of [`../../../bug-report/SKILL.md`](../../../bug-report/SKILL.md) §"Step 0b: search for an existing ticket before drafting a new one": the ticket's sub-tasks and links, then open and recently closed bugs with the same symptom. A defect that already has a ticket gets a comment there, not a second ticket. The filing plan in the hand-back names the searches and what they found.
+
 **Where each `bug` verdict goes:**
 
 | The defect | Filed as |

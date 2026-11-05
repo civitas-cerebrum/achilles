@@ -205,6 +205,8 @@ test('receipt rules: a review must name its reviewer, look at the UI, judge cove
 
 const CONFIRM_DIR = `${ROOT}/.achilles/defect-confirmations`
 const BUG = { ticket: 'ABC-1', 'defect-id': 'ABC-1-D1', verdict: 'bug', reproduction: { attempts: 4, observed: 4 }, expected: 'the address in its own blank', actual: 'the address in the birth-month blank', evidence: ['.achilles/runs/x/repro/04.png'] }
+/** The run searches the tracker, as the duplicate check before a defect filing needs. */
+const searched = ($: EngineInterface, agentId: string) => $.tool.call({ tool: 'mcp__atlassian__searchJiraIssuesUsingJql', agentId, jql: 'parent = ABC-1 OR (issuetype in (Bug, Rework) AND text ~ "wrong blank")' } as never)
 const file = (agentId: string, fields: Record<string, unknown>, tool = 'mcp__atlassian__createJiraIssue') => ({ tool, agentId, projectKey: 'ABC', ...fields })
 
 /** A reproducer reports its verdict; the adapter records it at its turn end. */
@@ -221,6 +223,7 @@ test('a reproducer’s verdict is recorded as the defect’s confirmation; a def
   mock.session(on)
   const { orchestrator } = await setup($, h)
   const create = (fields: Record<string, unknown>) => $.tool.call(file(orchestrator, fields) as never)
+  await searched($, orchestrator)
 
   const none = await create({ issueType: 'Rework', parent: 'ABC-1', summary: 'Address lands in the wrong blank', description: 'Steps …' })
   expect(none.deny).toContain('cites no confirmed defect id')
@@ -245,6 +248,7 @@ test('a filing citing a non-bug verdict or a hand-written confirmation is refuse
   const session = mock.session(on)
   const { orchestrator } = await setup($, h)
   const create = (summary: string) => $.tool.call(file(orchestrator, { issueType: 'Bug', summary }) as never)
+  await searched($, orchestrator)
 
   await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D2', verdict: 'not-a-bug' }, 'repro-d2')
   expect((await create('ABC-1-D2 wording')).deny).toContain('verdict is `not-a-bug`, not `bug`')
@@ -263,6 +267,8 @@ test('gh issue create with a bug label needs a confirmed defect id; other gh iss
   mock.session(on)
   const { orchestrator } = await setup($, h)
   const bash = (command: string) => $.tool.call({ tool: 'Bash', command, agentId: orchestrator } as never)
+  expect((await bash('gh issue create --title "Address in the wrong blank" --label bug --body "steps"')).deny).toContain('before the run searched the tracker')
+  expect((await bash('gh issue list --search "wrong blank" --state all')).deny).toBeUndefined()
   expect((await bash('gh issue create --title "Address in the wrong blank" --label bug --body "steps"')).deny).toContain('Dispatch an achilles-reproducer')
   expect((await bash('gh issue create --title "Add a dark mode" --label enhancement --body "idea"')).deny).toBeUndefined()
   expect((await bash('gh issue view 12')).deny).toBeUndefined()
@@ -291,4 +297,20 @@ test('a sign-off is refused while a sentinel of the ticket or a defect-reporting
   await reproduce($, h, orchestrator, BUG)
   expect((await $.tool.call(tracker(orchestrator, 'Done') as never)).deny).toBeUndefined()
   expect((await comment('QA report: AC1 passes; defect ABC-1-D1 found.')).deny).toBeUndefined()
+})
+
+test('a defect filing before the run searched the tracker for an existing ticket is refused; a search, an issue read or a story create is not', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  const { orchestrator } = await setup($, h)
+  await reproduce($, h, orchestrator, BUG)
+  const create = (fields: Record<string, unknown>) => $.tool.call(file(orchestrator, fields) as never)
+  const first = await create({ issueType: 'Rework', parent: 'ABC-1', summary: 'ABC-1-D1 address in the wrong blank' })
+  expect(first.deny).toContain('before the run searched the tracker')
+  expect(first.deny).toContain('Step 0b')
+  // Adjacent traffic: a story create needs no search; the search itself and an issue read go through.
+  expect((await create({ issueType: 'Story', summary: 'Save the template' })).deny).toBeUndefined()
+  expect((await $.tool.call({ tool: 'mcp__atlassian__getJiraIssue', agentId: orchestrator, issueIdOrKey: 'ABC-1' } as never)).deny).toBeUndefined()
+  // The issue read above counts as the search (the parent's sub-tasks): the filing now goes through.
+  expect((await create({ issueType: 'Rework', parent: 'ABC-1', summary: 'ABC-1-D1 address in the wrong blank' })).deny).toBeUndefined()
 })

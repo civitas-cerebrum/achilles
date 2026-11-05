@@ -42,6 +42,8 @@ export type AchillesRun = {
   experts: AchillesExpert[]
   /** Experts dispatched so far, by role. */
   dispatched?: Record<string, number>
+  /** Tracker searches the run's agents made (MCP search or issue reads, gh issue list|search), for the duplicate check before a defect filing. */
+  trackerSearches?: number
   /** The judge loop: the last reviewer verdict and how many consecutive improvements-needed verdicts. */
   judge?: { last: 'satisfied' | 'not-satisfied'; consecutive: number }
   /** Playwright run archives the reporting hook wrote during this run. */

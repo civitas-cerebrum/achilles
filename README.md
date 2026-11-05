@@ -227,7 +227,7 @@ One TypeScript module acting on the six Achilles agents only. It advises by defa
 
 1. **Bash judge.** Denies commit bypass flags, AI attribution in commits and PRs, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project, and credential shapes in committed files. Advises on commit grammar and protected paths, and fills in a missing `playwright-cli -s=<slug>`.
 2. **Pipeline ledger model.** Advises on phase skips, approvals without an envelope and missing deliverables; keeps an integrity hash.
-3. **Sign-off and defect filing.** Advises on a tracker transition to done, or a published PR, without the reviewer's receipt and evidence bundle; denies it while the bundle holds a live credential or while a defect it reports has no reproducer's verdict. Denies a bug or rework filing that cites no defect the reproducer confirmed as a bug.
+3. **Sign-off and defect filing.** Advises on a tracker transition to done, or a published PR, without the reviewer's receipt and evidence bundle; denies it while the bundle holds a live credential or while a defect it reports has no reproducer's verdict. Denies a bug or rework filing made before the run searched the tracker for an existing ticket, or that cites no defect the reproducer confirmed as a bug.
 4. **Dispatch discipline.** Advises on brief shape, concurrency and reviewers that aren't fresh.
 5. **Return review.** Validates each expert's return against its schema.
 6. **Spec hygiene.** Advises on test ids, import boundaries, the evidence floor for diagnosis edits, and factory rules when the project opts in.
