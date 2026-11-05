@@ -181,3 +181,26 @@ test('a hand-back that reports defects without a reproducer dispatch is flagged;
   expect(unconfirmedDefectsLine(run, 'DONE\nAll ACs pass.')).toBeUndefined()
   expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nThe staging environment was slow.')).toBeUndefined()
 })
+
+test('a hand-back while the run still has an expert running is held; it is delivered after the expert reports and the orchestrator hands back again', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'verify the login flow' } as never)
+  await $.agent.spawn(expertSpawn(INSPECTOR, 'orchestrator-1'))
+
+  // The harness ran the dispatch in the background: the orchestrator's turn ends with a status word.
+  await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nThe inspector has not reported yet.'))
+  expect(h.prompts.length).toBe(0)
+  expect(h.status()).toBe('1 run · 1 expert running (inspector b)')
+  expect(notes(session, 'orchestrator-1').join('\n')).toContain('your hand-back is held: 1 expert is still running (inspector b)')
+
+  // The expert reports: the orchestrator is told, and its next status-word turn is the hand-back.
+  await $.turn.complete(ended('inspector-2', 'DONE\nLooked.'))
+  expect(notes(session, 'orchestrator-1').join('\n')).toContain('every expert of this run has now reported')
+  expect(h.prompts.length).toBe(0)
+  await $.turn.complete(ended('orchestrator-1', 'DONE\nLogin verified.'))
+  expect(h.prompts.length).toBe(1)
+  expect(h.prompts[0]).toContain('DONE\nLogin verified.')
+  expect(h.prompts[0]).not.toContain('has not reported yet')
+})

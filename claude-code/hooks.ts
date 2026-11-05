@@ -12,7 +12,9 @@ import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
 import { recordConfirmation, recordReceipt, registerSignoff } from './hooks/signoff'
-import { ORCHESTRATOR, checkoutRoot, editRun, exists, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+import { ORCHESTRATOR, checkoutRoot, editRun, exists, expertLabel, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+
+const CONTRACT_REF = 'skills/achilles-orchestrator/references/controller-contract.md'
 
 // The Claude Code adapter of the Achilles methodology. The main session is never bound:
 // QA work enters through delegate_qa or /achilles, which start the orchestrator agent in
@@ -239,6 +241,15 @@ export const register: Register = on => {
           await writeRuns($, runs => runs)
           return next(e)
         }
+        // A hand-back while its own experts still run is held: the harness may run a foreground
+        // dispatch in the background, and an expert that reports after the hand-back has nowhere to
+        // go. The run stays registered, the orchestrator resumes when they report, and its next
+        // status-word turn is the hand-back.
+        if (w.run.experts.length > 0) {
+          await editRun($, w.run.id, r => ({ ...r, held: e.answer }))
+          await note($, w.run.agentId, `your hand-back is held: ${w.run.experts.length} expert${w.run.experts.length === 1 ? ' is' : 's are'} still running (${w.run.experts.map(expertLabel).join(', ')}). You resume when ${w.run.experts.length === 1 ? 'it reports' : 'they report'}; read the report${w.run.experts.length === 1 ? '' : 's'}, finish the run, then hand back. While waiting, end a turn without a status word (${CONTRACT_REF}).`)
+          return next(e)
+        }
         await handBack($, w.run, e.answer)
       } else {
         await handBack($, w.run, `BLOCKED\nThe orchestrator's run ended by ${e.reason === 'aborted' ? 'an interruption' : e.reason === 'error' ? 'an API error' : 'a model refusal'} before it handed back; its state is under ${w.run.dir}/.`)
@@ -246,7 +257,10 @@ export const register: Register = on => {
     } else {
       // An expert's end: it leaves the run first, so a slow guard below can never keep it
       // counted; then the guards read its hand-back side by side, inside one budget.
-      await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))
+      const runs = await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))
+      const after = runs.find(r => r.id === w.run.id)
+      if (after?.held !== undefined && after.experts.length === 0)
+        await note($, after.agentId, `every expert of this run has now reported; read their reports, finish the run and hand back (your held hand-back began: "${after.held.split('\n')[0]}").`)
       await Promise.all([
         ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e)] : []),
         closeSelectorScope($, w, e),
