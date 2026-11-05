@@ -81,6 +81,9 @@ Every verdict carries:
   starting from a state the reader can reach (log in as, open, upload). No shorthand: no `→`
   chains, no "as above", no "upload the fixture → Continue". Every button and menu by its visible
   label, every file by its path.
+- **The reproduction evidence**: the captures behind the verdict, and for a defect that shows in
+  the UI, a recording of the reproduction by default (one chapter per step). A `bug` without
+  evidence is not recorded as confirmed.
 - **What it created and deleted.**
 
 A verdict without a reproduction count, or `bug` with no live reproduction, is a failed dispatch;

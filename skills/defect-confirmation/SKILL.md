@@ -34,11 +34,23 @@ with what is missing. Do not fill the gap from the suite.
 4. **Reproduce live**, in your own browser session (`npx playwright-cli -s=<slug> …`, the slug
    your brief gives you), from a state a reader can reach: log in, open, upload. Capture what you
    see: screenshots, the network request and response, the downloaded file.
-5. **Repeat** when the behaviour depends on anything non-deterministic (an AI result, timing,
+5. **Record the reproduction by default when the defect shows in the UI.** Log in first, outside
+   the recording, so no credential appears on it. Then:
+   - `video-start <run dir>/<defect-id>.webm`, then `video-show-actions` so each action is called
+     out on screen;
+   - `video-chapter "Step <n>: <the step as written in your steps>"` before each step;
+   - for proof that lives outside the screen (a downloaded file, an API response), show it in the
+     same browser before stopping, as a page that highlights the relevant text;
+   - a closing chapter with the expected and the actual result, then `video-stop`.
+
+   One recording per defect, of the reproduction you report: the steps on it are the steps in
+   your return. A defect that does not show in the UI (an API, backend or data defect) needs no
+   video; its evidence is the request and response, the log line or the stored record.
+6. **Repeat** when the behaviour depends on anything non-deterministic (an AI result, timing,
    ordering). Record attempts and observations; say what varied.
-6. **Stay inside the budget** the brief sets for metered or rate-limited services. A
+7. **Stay inside the budget** the brief sets for metered or rate-limited services. A
    reproduction that needs more returns `blocked` and says how much.
-7. **Clean up**: delete everything you created in the application. Never change a shared setting
+8. **Clean up**: delete everything you created in the application. Never change a shared setting
    the brief does not grant.
 
 ## The verdict
@@ -51,6 +63,8 @@ Exactly one:
 | `real-in-source` | The code path is wrong, and you could not trigger it live. |
 | `spec-ambiguity` | Two readings of the criteria, or two layers of the code, disagree, and either could be intended. Name the decision a product owner has to make. |
 | `not-a-bug` | Intended: coded, documented or tested on purpose. Cite where. |
+
+A `bug` without reproduction evidence is not recorded: every defect report needs it, and a UI defect needs its video.
 
 Never call something a `bug` from the source alone, and never upgrade `real-in-source` because
 the code reading is convincing.
@@ -74,7 +88,9 @@ The block carries:
   visible label, every file by its path, accounts by `.env` key name. No `→` chains, no "as
   above", no shorthand;
 - `expected` and `actual` (required for `bug`), `question` (required for `spec-ambiguity`);
-- `evidence`: the paths of what you captured (required for `bug`);
+- `surface`: `ui`, `api`, `backend` or `data` (required for `bug`);
+- `evidence`: the paths of what you captured (required for `bug`; every path must exist);
+- `video`: the reproduction recording (required for a `ui` bug);
 - `cleanup`: `created` and `deleted`;
 - `budget-spent`.
 

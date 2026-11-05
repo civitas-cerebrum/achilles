@@ -354,6 +354,22 @@ export function confirmationBlocks(text: string): Record<string, unknown>[] {
   return out
 }
 
+/** What a bug verdict's reproduction evidence lacks: no evidence, a cited file that does not exist, and for a ui defect no recording. */
+export async function evidenceGaps($: EngineInterface, cwd: string, block: Record<string, unknown>): Promise<string[]> {
+  const gaps: string[] = []
+  const at = (p: string) => (p.startsWith('/') ? p : `${cwd}/${p}`)
+  const evidence = Array.isArray(block.evidence) ? block.evidence.filter((x): x is string => typeof x === 'string') : []
+  if (evidence.length === 0) gaps.push('a bug verdict with no reproduction evidence (evidence is empty)')
+  for (const f of evidence) if (!(await $.fs.stat(at(f)).catch(() => undefined))) gaps.push(`the evidence ${f} does not exist`)
+  if (block.surface === 'ui') {
+    const video = typeof block.video === 'string' ? block.video : ''
+    const st = video !== '' ? await $.fs.stat(at(video)).catch(() => undefined) : undefined
+    if (!/\.(webm|mp4)$/.test(video)) gaps.push('a ui bug with no reproduction video (video: <path>.webm or .mp4; record it with playwright-cli video-start / video-chapter / video-stop)')
+    else if (!st || st.size === 0) gaps.push(`the reproduction video ${video} does not exist or is empty`)
+  } else if (block.surface === undefined) gaps.push('a bug verdict that names no surface (ui, api, backend, data); a ui bug needs its reproduction video')
+  return gaps
+}
+
 /** Called at a reproducer's turn end (hooks.ts): records each verdict it reported as the defect's confirmation. */
 export async function recordConfirmation($: EngineInterface, w: Who, e: TurnCompleteInput) {
   if (w.role !== 'reproducer' || !w.expert) return
@@ -369,6 +385,7 @@ export async function recordConfirmation($: EngineInterface, w: Who, e: TurnComp
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*-D[0-9]+$/.test(id) || id.replace(/-D[0-9]+$/, '') !== ticket) refused.push(`"${id}": the defect id must be <ticket>-D<n> for its ticket ("${ticket}")`)
     else if (!VERDICTS.has(verdict)) refused.push(`${id}: "${verdict}" is not a verdict (bug, real-in-source, spec-ambiguity, not-a-bug)`)
     else if (verdict === 'bug' && !(Number((block.reproduction as { observed?: unknown })?.observed) >= 1)) refused.push(`${id}: a bug verdict with no live observation (reproduction.observed < 1)`)
+    else if (verdict === 'bug' && (await evidenceGaps($, cwd, block)).length > 0) refused.push(...(await evidenceGaps($, cwd, block)).map(g => `${id}: ${g}`))
     else {
       const path = `${top}/${CONFIRMATIONS}/${ticket}/${id}.json`
       const record = { ...block, report: w.expert.report, recordedBy: { agentId: w.expert.agentId, run: w.run.id }, recordedAt: new Date(await $.clock.now()).toISOString() }

@@ -204,13 +204,15 @@ test('receipt rules: a review must name its reviewer, look at the UI, judge cove
 // a defect filing and a sign-off that reports defects are refused without one.
 
 const CONFIRM_DIR = `${ROOT}/.achilles/defect-confirmations`
-const BUG = { ticket: 'ABC-1', 'defect-id': 'ABC-1-D1', verdict: 'bug', reproduction: { attempts: 4, observed: 4 }, expected: 'the address in its own blank', actual: 'the address in the birth-month blank', evidence: ['.achilles/runs/x/repro/04.png'] }
+const BUG = { ticket: 'ABC-1', 'defect-id': 'ABC-1-D1', verdict: 'bug', surface: 'ui', reproduction: { attempts: 4, observed: 4 }, expected: 'the address in its own blank', actual: 'the address in the birth-month blank', evidence: ['.achilles/runs/x/repro/04.png'], video: '.achilles/runs/x/repro/ABC-1-D1.webm' }
 /** The run searches the tracker, as the duplicate check before a defect filing needs. */
 const searched = ($: EngineInterface, agentId: string) => $.tool.call({ tool: 'mcp__atlassian__searchJiraIssuesUsingJql', agentId, jql: 'parent = ABC-1 OR (issuetype in (Bug, Rework) AND text ~ "wrong blank")' } as never)
 const file = (agentId: string, fields: Record<string, unknown>, tool = 'mcp__atlassian__createJiraIssue') => ({ tool, agentId, projectKey: 'ABC', ...fields })
 
 /** A reproducer reports its verdict; the adapter records it at its turn end. */
 async function reproduce($: EngineInterface, h: Harness, orchestrator: string, verdict: unknown, slug = 'repro-d1') {
+  h.write(`${ROOT}/.achilles/runs/x/repro/04.png`, 'png')
+  h.write(`${ROOT}/.achilles/runs/x/repro/ABC-1-D1.webm`, 'webm')
   const reproducer = await spawnExpert($, h, 'reproducer', orchestrator, `Read \`.achilles/runs/x/briefs/${slug}.md\` first; write your report to \`.achilles/runs/x/reports/${slug}.md\`.`)
   await $.tool.call({ tool: 'Skill', skill: 'achilles:defect-confirmation', agentId: reproducer } as never)
   h.write(`${ROOT}/.achilles/runs/x/reports/${slug}.md`, `# Reproduction\n\n\`\`\`json\n${JSON.stringify(verdict)}\n\`\`\`\n`)
@@ -313,4 +315,31 @@ test('a defect filing before the run searched the tracker for an existing ticket
   expect((await $.tool.call({ tool: 'mcp__atlassian__getJiraIssue', agentId: orchestrator, issueIdOrKey: 'ABC-1' } as never)).deny).toBeUndefined()
   // The issue read above counts as the search (the parent's sub-tasks): the filing now goes through.
   expect((await create({ issueType: 'Rework', parent: 'ABC-1', summary: 'ABC-1-D1 address in the wrong blank' })).deny).toBeUndefined()
+})
+
+test('a bug verdict is recorded only with its reproduction evidence: a ui bug needs its video; an api bug needs its captures', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const { orchestrator } = await setup($, h)
+  const recorded = (id: string) => h.files.has(`${CONFIRM_DIR}/ABC-1/${id}.json`)
+  const last = () => notes(session, orchestrator).join('\n')
+
+  await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D5', video: undefined }, 'repro-d5')
+  expect(recorded('ABC-1-D5')).toBe(false)
+  expect(last()).toContain('a ui bug with no reproduction video')
+
+  await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D6', video: '.achilles/runs/x/repro/missing.webm' }, 'repro-d6')
+  expect(recorded('ABC-1-D6')).toBe(false)
+  expect(last()).toContain('missing.webm does not exist or is empty')
+
+  await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D7', evidence: [] }, 'repro-d7')
+  expect(recorded('ABC-1-D7')).toBe(false)
+  expect(last()).toContain('no reproduction evidence')
+
+  // Adjacent traffic: an api bug with its captures and no video, and a non-bug verdict without evidence, are recorded.
+  h.write(`${ROOT}/.achilles/runs/x/repro/create-500.json`, '{}')
+  await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D8', surface: 'api', video: undefined, evidence: ['.achilles/runs/x/repro/create-500.json'] }, 'repro-d8')
+  expect(recorded('ABC-1-D8')).toBe(true)
+  await reproduce($, h, orchestrator, { ...BUG, 'defect-id': 'ABC-1-D9', verdict: 'spec-ambiguity', evidence: [], video: undefined }, 'repro-d9')
+  expect(recorded('ABC-1-D9')).toBe(true)
 })

@@ -123,6 +123,8 @@ created: moving the parent back to development, raising its priority, setting th
 filing, check the tracker's automation (or a recent rework's parent history) and put the effect in
 the hand-back, so the user is not surprised by a ticket that moved.
 
+**Reproduction evidence goes with every defect**: the reproducer's captures, and for a UI defect its reproduction video, attached to the ticket (or linked where the reader can open it, per [`../outbound-text.md`](../outbound-text.md)). A defect with no evidence is not filed.
+
 **The ticket text comes from the audit**: the steps as the reproducer wrote them (one action per
 step, no shorthand, starting from a state a reader with no context can reach), the actual and
 expected result, the root cause by `file:line` where the tracker's house rules allow it on that

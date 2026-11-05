@@ -79,6 +79,7 @@ Return `NEEDS_CONTEXT` with the complete filled ticket and one numbered list: ev
 - **Never paste plaintext secrets into a ticket.** Test-account passwords, API keys, tokens, or any credential value never go into a ticket body, attachment, or comment. Reference the credential store or the `.env` key name instead (e.g. `STAGING_QA_USER` / `STAGING_QA_PASSWORD` from `.env`), the `secrets-sweep` convention: credentials live in `.env` or the secret store, and only their key names travel.
 - **No AI signature and no agent framing** in the ticket or its comments ([`../achilles-orchestrator/references/outbound-text.md`](../achilles-orchestrator/references/outbound-text.md)).
 - **Cite only evidence the reader can open**: a file of a pushed repository by its remote link, or an attachment; never a path into a repository that has no remote or a commit that is not pushed ([`outbound-text.md`](../achilles-orchestrator/references/outbound-text.md)).
+- **Every defect ticket carries reproduction evidence**: the reproducer's captures, and for a UI defect its reproduction video, attached to the ticket. No evidence, no ticket: return `NEEDS_CONTEXT` naming the fix (dispatch an `achilles-reproducer`).
 - **Never fabricate evidence.** Only list attachments that exist.
 - **Quote error messages verbatim.** Never paraphrase what the system said.
 - **Console errors belong in the ticket body**, in Description or Actual result, not only in Attachments.

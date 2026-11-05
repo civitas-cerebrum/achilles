@@ -54,6 +54,16 @@
         "not-a-bug"
       ]
     },
+    "surface": {
+      "type": "string",
+      "enum": [
+        "ui",
+        "api",
+        "backend",
+        "data"
+      ],
+      "description": "Where the defect shows: ui when a user sees it in the application, otherwise the layer the evidence comes from."
+    },
     "reproduction": {
       "type": "object",
       "required": [
@@ -139,6 +149,11 @@
       },
       "description": "Paths of what the reproducer captured (screenshots, network responses, downloaded files)."
     },
+    "video": {
+      "type": "string",
+      "pattern": "\\.(webm|mp4)$",
+      "description": "The reproduction recording (required for a ui bug): one action per chapter, captions naming each step."
+    },
     "question": {
       "type": "string",
       "description": "For spec-ambiguity: the decision the product owner has to make."
@@ -193,7 +208,8 @@
           "reproduction",
           "expected",
           "actual",
-          "evidence"
+          "evidence",
+          "surface"
         ],
         "properties": {
           "reproduction": {
@@ -214,6 +230,37 @@
           "evidence": {
             "type": "array",
             "minItems": 1
+          },
+          "surface": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": [
+          "verdict",
+          "surface"
+        ],
+        "properties": {
+          "verdict": {
+            "const": "bug"
+          },
+          "surface": {
+            "const": "ui"
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "required": [
+          "video"
+        ],
+        "properties": {
+          "video": {
+            "type": "string"
           }
         }
       }
