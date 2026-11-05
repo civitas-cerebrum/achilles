@@ -29,6 +29,14 @@ Write what was done and what was found: "an independent second QA pass reproduce
 checklist", "the e2e test TCCL-270918 covers it". The reader is deciding what to fix, not auditing
 who typed it.
 
+**References a reader cannot open.** Before a ticket, comment or report cites a file (a spec, a
+fixture, an evidence bundle, a reproduction script), check that the reader can reach it:
+
+- the repository has a remote, the file is committed, and the commit is on a remote branch: cite it
+  by its remote link where you can;
+- otherwise attach the file, push it first, or describe the evidence without the path. A path into
+  a repository that exists only on one machine sends the developer to nothing.
+
 ## Why
 
 A signature turns a QA finding into a statement about tooling. Readers outside the team discount it,
@@ -43,5 +51,6 @@ Achilles run.
 Where the harness can see the write, a signature is refused before it leaves, and agent framing in an
 outbound message gets a note ([`docs/harness/claude-code.md`](../../../docs/harness/claude-code.md):
 the Bash judge for commits, `gh pr` and `gh issue`; the outbound check for tracker, page and chat
-writes and for report documents). The rule binds where no hook reaches too: an expert drafting text
+writes and for report documents). A tracker, page or chat write, an issue, or a comment that cites a
+file of the checkout a reader cannot open (no remote, not committed, not pushed) is refused too. The rule binds where no hook reaches too: an expert drafting text
 for the main session to post writes it without a signature or framing.

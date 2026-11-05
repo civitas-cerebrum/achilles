@@ -15,7 +15,7 @@ import {
 } from './io'
 import type { Who } from './context'
 import { basename, isAbsolute, normalize, relative, resolve, within } from './posix'
-import { ATTRIBUTION, OUTBOUND_REF } from './attribution'
+import { ATTRIBUTION, OUTBOUND_REF, unreachableDeny, unreachableFiles } from './attribution'
 import { contentSecret } from './secrets'
 import { commands, gitCall, isReader, nestedCommand, unresolved, type Command } from './shell'
 
@@ -242,6 +242,10 @@ async function judgeGh($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict) {
     if (file !== undefined && file !== '-') scan += `\n${(await readText($, resolve(j.dir, file, ctx.home))) ?? ''}`
   }
   if (ATTRIBUTION.test(scan)) v.deny ??= `AI-attribution in ${what === 'issue' ? 'an' : 'a'} ${what} (Co-Authored-By: Claude …, Claude-Session:, "Generated with Claude Code", a claude.ai/code URL) is refused: ${what === 'pull request' ? 'PRs' : `${what}s`} made by Achilles agents carry no AI attribution. Remove it from the title and body.${REFS(COMMIT_REF, OUTBOUND_REF)}`
+  if (v.deny === undefined && (a[1] === 'issue' || a[2] === 'comment' || a[2] === 'review')) {
+    const unreachable = await unreachableFiles($, scan)
+    if (unreachable.length > 0) v.deny = unreachableDeny(`this ${what}`, unreachable).replace(/^achilles: /, '')
+  }
 }
 
 // ── playwright-cli: every session needs its own slug; a missing or malformed one is rewritten from the agent ──

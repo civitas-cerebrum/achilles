@@ -78,3 +78,41 @@ test('gh issue create|comment and gh pr comment|review with AI attribution are d
   expect((await bash("gh pr comment 7 --body 'Verified on staging.'")).deny).toBeUndefined()
   expect((await bash('gh issue view 12')).deny).toBeUndefined()
 })
+
+test('an outbound message citing a file of this checkout that a reader cannot open is refused; pushed files, other paths and URLs pass', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  const { agentId } = await setup($, h)
+  h.write(`${ROOT}/tests/e2e/fixtures/contract.docx`, 'docx')
+  h.write(`${ROOT}/tests/e2e/login.spec.ts`, "test('x', () => {})")
+  h.write(`${ROOT}/tests/e2e/draft.spec.ts`, "test('y', () => {})")
+  let remote = ''
+  h.procs.push(argv => {
+    const a = argv.join(' ')
+    if (a.includes('--git-common-dir')) return `${ROOT}/.git\n`
+    if (a.endsWith(' remote')) return remote
+    if (a.includes('ls-files')) return a.endsWith('draft.spec.ts') ? { exitCode: 1, stdout: '' } : 'ok\n'
+    if (a.includes('log -1')) return a.endsWith('login.spec.ts') ? 'aaa111\n' : 'bbb222\n'
+    if (a.includes('branch -r --contains aaa111')) return '  origin/main\n'
+    if (a.includes('branch -r --contains')) return ''
+    return undefined
+  })
+  const comment = (body: string) => $.tool.call({ tool: 'mcp__atlassian__addOrEditJiraIssueComment', agentId, issueIdOrKey: 'ABC-1', commentBody: body } as never)
+  const bash = (command: string) => $.tool.call({ tool: 'Bash', command, agentId } as never)
+
+  // No remote at all: every cited local file is unreachable.
+  const none = await comment('Upload `tests/e2e/fixtures/contract.docx` and run tests/e2e/login.spec.ts.')
+  expect(none.deny).toContain('tests/e2e/fixtures/contract.docx: the repository has no remote')
+  expect((await bash("gh issue create --title x --body 'See tests/e2e/login.spec.ts'")).deny).toContain('the repository has no remote')
+
+  remote = 'origin\n'
+  // A remote: a pushed file passes; an uncommitted file and an unpushed commit are refused.
+  expect((await comment('Covered by tests/e2e/login.spec.ts.')).deny).toBeUndefined()
+  expect((await comment('Covered by tests/e2e/draft.spec.ts.')).deny).toContain('draft.spec.ts: not committed')
+  expect((await comment('Upload tests/e2e/fixtures/contract.docx.')).deny).toContain('not pushed')
+  // Adjacent traffic: a path outside this checkout, an API path, a URL and no path at all.
+  expect((await comment('The frontend reads src/app/save/save-step.component.html.')).deny).toBeUndefined()
+  expect((await comment('GET /api/hiring/custom-variable/x answers 404.')).deny).toBeUndefined()
+  expect((await comment('See https://github.com/org/repo/blob/main/tests/e2e/draft.spec.ts')).deny).toBeUndefined()
+  expect((await comment('All ACs pass.')).deny).toBeUndefined()
+})
