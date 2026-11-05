@@ -1,6 +1,6 @@
 # Commit conventions
 
-One deliverable per commit, one template per deliverable kind. The git log has to be filterable by journey slug and by kind. The orchestrator commits what authors land; reviewers never commit (their verdicts live in the state file). No AI attribution trailers (`Co-Authored-By: Claude …`, "Generated with …") in any commit or PR body.
+One deliverable per commit, one template per deliverable kind. The git log has to be filterable by journey slug and by kind. The orchestrator commits what authors land; reviewers never commit (their verdicts live in the state file). No AI attribution trailers (`Co-Authored-By: Claude …`, `Claude-Session: …`, "Generated with …") in any commit or PR body; the full rule, for every outbound surface, is [`outbound-text.md`](outbound-text.md).
 
 | Deliverable | Subject | Notes |
 |---|---|---|
