@@ -1,0 +1,566 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/achilles/schemas/evidence-video.schema.json",
+  "title": "Evidence video storyboard",
+  "description": "One captioned reproduction video, played by `npx achilles-video <storyboard.json>` (bin/evidence-video.mjs): an off-camera login, one caption per step, an evidence page built from what the run captured, and a closing card with the expected and the actual result. Skill: skills/evidence-capture/references/evidence-video.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "title",
+    "baseURL",
+    "steps",
+    "closing"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+      "description": "File stem of the outputs: <out>/<name>.webm, .mp4, .json."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shown on the opening card and the evidence page."
+    },
+    "out": {
+      "type": "string",
+      "description": "Output directory, relative to the storyboard file. Default: the storyboard's directory."
+    },
+    "baseURL": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ignoreHTTPSErrors": {
+      "type": "boolean",
+      "description": "For an environment whose certificate the browser does not trust (a VPN-internal CA)."
+    },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 320
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 240
+        }
+      }
+    },
+    "pace": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Watchable speed. Defaults: actionMs 600 (slowMo), captionMs 2200 (a caption stays alone before its action), evidenceMs 9000, closingMs 6000.",
+      "properties": {
+        "actionMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000
+        },
+        "captionMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20000
+        },
+        "evidenceMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "closingMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
+      }
+    },
+    "pageRepository": {
+      "type": "string",
+      "description": "A page-repository.json whose elements steps may target as { page, element }."
+    },
+    "auth": {
+      "description": "How the recorded browser is signed in. Never on camera: a storage state file, or login steps played in a separate unrecorded browser context.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "storageState"
+          ],
+          "properties": {
+            "storageState": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "steps"
+          ],
+          "properties": {
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/action"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "none"
+          ],
+          "properties": {
+            "none": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "capture": {
+      "type": "array",
+      "description": "Network responses to keep for the evidence page and the manifest. Request and response headers are never kept.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A substring of the request URL, or /regex/."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blocks"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        }
+      }
+    },
+    "closing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected",
+        "actual"
+      ],
+      "properties": {
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actual": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "target": {
+      "description": "One element: a page-repository entry, or a Playwright locator description.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "page",
+            "element"
+          ],
+          "properties": {
+            "page": {
+              "type": "string"
+            },
+            "element": {
+              "type": "string"
+            },
+            "nth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "role"
+          ],
+          "properties": {
+            "role": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "exact": {
+              "type": [
+                "boolean",
+                "string"
+              ]
+            },
+            "nth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "exact": {
+              "type": "boolean"
+            },
+            "nth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "label"
+          ],
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "exact": {
+              "type": "boolean"
+            },
+            "nth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "placeholder"
+          ],
+          "properties": {
+            "placeholder": {
+              "type": "string"
+            },
+            "nth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "testId"
+          ],
+          "properties": {
+            "testId": {
+              "type": "string"
+            },
+            "nth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "css"
+          ],
+          "properties": {
+            "css": {
+              "type": "string"
+            },
+            "nth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "description": "Exactly one of goto, click, fill, press, select, check, uncheck, upload, waitFor, expect, download, pause (checked by the player), or none for a narration beat. Values may use ${env:NAME} (never shown on screen or in the manifest) and ${run} (a short id unique to the run).",
+      "additionalProperties": false,
+      "properties": {
+        "caption": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shown before the action and kept on screen while it runs. Name the step as a reader would do it: 'Step 6: choose Always \"Indefinite period\"'."
+        },
+        "goto": {
+          "type": "string"
+        },
+        "click": {
+          "$ref": "#/$defs/target"
+        },
+        "fill": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "value"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        "press": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "key"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        "select": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "value"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        "check": {
+          "$ref": "#/$defs/target"
+        },
+        "uncheck": {
+          "$ref": "#/$defs/target"
+        },
+        "upload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "file"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "click": {
+              "$ref": "#/$defs/target"
+            },
+            "file": {
+              "type": "string"
+            }
+          }
+        },
+        "waitFor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "text": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "capture": {
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "visible",
+                "hidden"
+              ]
+            }
+          }
+        },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Recorded as passed or failed in the manifest; the recording goes on either way.",
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "text": {
+              "type": "string"
+            },
+            "notText": {
+              "type": "string"
+            }
+          }
+        },
+        "download": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "click",
+            "as"
+          ],
+          "properties": {
+            "click": {
+              "$ref": "#/$defs/target"
+            },
+            "as": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+            }
+          }
+        },
+        "pause": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 900000
+        },
+        "optional": {
+          "type": "boolean",
+          "description": "A missing element does not fail the run (for a dialog that may or may not appear)."
+        }
+      }
+    },
+    "step": {
+      "description": "One numbered step: a caption, and the action it describes.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/action"
+        }
+      ],
+      "required": [
+        "caption"
+      ],
+      "type": "object",
+      "properties": {
+        "caption": {
+          "type": "string"
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "heading"
+      ],
+      "description": "One panel of the evidence page. Exactly one source: text, a download (a .docx is read as paragraphs) or a capture.",
+      "properties": {
+        "heading": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "download": {
+          "type": "string"
+        },
+        "capture": {
+          "type": "string"
+        },
+        "pick": {
+          "type": "string",
+          "description": "For a capture: a dotted path into the JSON body (request or response), e.g. response.meta.status_message or request.clauseChoices."
+        },
+        "match": {
+          "type": "string",
+          "description": "For a download: keep only paragraphs containing this text, or matching /regex/."
+        },
+        "highlight": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Substrings (or /regex/) marked on the page."
+        },
+        "bad": {
+          "type": "boolean",
+          "description": "Show this panel as the failing observation."
+        }
+      }
+    }
+  }
+}

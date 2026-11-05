@@ -105,6 +105,7 @@ The full contract is in [`skills/achilles-orchestrator/SKILL.md`](skills/achille
 | `npx achilles-show <spec>` | Replays a spec headed and slowed down (`slowMo` 1500) with video and trace, and saves an mp4 to `show-recordings/<timestamp>/` (webm without `ffmpeg`). |
 | `npx achilles-self-repair` | Unattended repair. Baselines the suite, separates flake from real failures, sends one `claude -p` worker per red spec file and verifies each heal. The scaffold wires it as `npm run test:repair`. |
 | `npx achilles-selector-evidence` | Captures live evidence (count, outline, screenshot) for one page-repository entry. |
+| `npx achilles-video` | Plays a JSON storyboard into a captioned reproduction video (`.webm` and `.mp4`): an off-camera login, one caption per step at a readable pace, an evidence page with the decisive text highlighted, expected and actual. Writes a manifest with step timings, expectations and a decode check. |
 | `npx achilles-scenario-lint` | Lints `#### <ID> — <title>` scenario blocks against your project's factory rules. |
 
 There's also a **Playwright reporter** that remembers. It keeps a local history of every test, so a failure shows up as `failed 6 of last 10 runs`, and it copies each failing attempt's evidence. It never fails a run.

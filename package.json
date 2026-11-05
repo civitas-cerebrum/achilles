@@ -18,7 +18,8 @@
     "achilles-show": "bin/show.mjs",
     "achilles-mutate": "bin/mutate.mjs",
     "achilles-scenario-lint": "bin/scenario-lint.mjs",
-    "achilles-selector-evidence": "bin/selector-evidence.mjs"
+    "achilles-selector-evidence": "bin/selector-evidence.mjs",
+    "achilles-video": "bin/evidence-video.mjs"
   },
   "exports": {
     "./reporter": "./reporter/index.js",

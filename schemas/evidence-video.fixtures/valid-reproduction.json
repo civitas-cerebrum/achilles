@@ -1,0 +1,28 @@
+{
+  "name": "ABC-450-D2",
+  "title": "ABC-450-D2: a field lands in the wrong blank on save",
+  "baseURL": "https://app.preprod.example.com",
+  "ignoreHTTPSErrors": true,
+  "pageRepository": "../page-repository.json",
+  "auth": { "steps": [
+    { "goto": "/login" },
+    { "fill": { "target": { "label": "Email" }, "value": "${env:E2E_OWNER_EMAIL}" } },
+    { "fill": { "target": { "label": "Password" }, "value": "${env:E2E_OWNER_PASSWORD}" } },
+    { "click": { "role": "button", "name": "Log in" } },
+    { "waitFor": { "url": "/dashboard" } }
+  ] },
+  "capture": [{ "id": "apply", "url": "/apply_variables", "method": "POST" }],
+  "steps": [
+    { "caption": "Step 1: open Hiring, then Templates", "goto": "/hiring/templates/document" },
+    { "caption": "Step 2: click the + button and choose Employment contract", "click": { "page": "TemplatesPage", "element": "addTemplateButton" } },
+    { "caption": "Step 3: upload the test contract", "upload": { "click": { "role": "button", "name": "Upload" }, "file": "../fixtures/contract.docx" } },
+    { "caption": "Step 4: wait for the scan to finish", "waitFor": { "text": "Signing" }, "timeoutMs": 240000 },
+    { "caption": "Step 5: on Create, click Save anyway", "click": { "role": "button", "name": "Save anyway" }, "optional": true },
+    { "caption": "Step 6: download the saved template", "download": { "click": { "role": "menuitem", "name": "Download" }, "as": "saved.docx" } }
+  ],
+  "evidence": { "title": "What was saved", "blocks": [
+    { "heading": "Paragraph 3 of the saved template", "download": "saved.docx", "match": "born on", "highlight": ["{address}"], "bad": true },
+    { "heading": "Skipped by the save", "capture": "apply", "pick": "response.data.skipped" }
+  ] },
+  "closing": { "expected": "every field in its own blank, or the warning names the field.", "actual": "the address is in the birth-month blank and the warning gives only a count." }
+}

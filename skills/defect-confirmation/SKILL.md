@@ -34,8 +34,14 @@ with what is missing. Do not fill the gap from the suite.
 4. **Reproduce live**, in your own browser session (`npx playwright-cli -s=<slug> …`, the slug
    your brief gives you), from a state a reader can reach: log in, open, upload. Capture what you
    see: screenshots, the network request and response, the downloaded file.
-5. **Record the reproduction by default when the defect shows in the UI.** Log in first, outside
-   the recording, so no credential appears on it. Then:
+5. **Record the reproduction by default when the defect shows in the UI**, with a storyboard played
+   by `npx achilles-video` (format and quality bar:
+   [`../evidence-capture/references/evidence-video.md`](../evidence-capture/references/evidence-video.md)).
+   Write `<run dir>/<defect-id>.video.json`: an off-camera login, one captioned step per reproduction
+   step (the same steps as your return), an evidence page with the decisive text highlighted, and the
+   expected and actual result. Record it, then check the manifest (`status: "ok"`, the expectations,
+   `decoded: true`) and watch it once. Without the player, record with `playwright-cli`, logging in
+   first, outside the recording. Then:
    - `video-start <run dir>/<defect-id>.webm`, then `video-show-actions` so each action is called
      out on screen;
    - `video-chapter "Step <n>: <the step as written in your steps>"` before each step;

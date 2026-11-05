@@ -39,6 +39,8 @@ A failing run is a first-class outcome: one in-bundle retry after fixing a suspe
 
 ## Phase 4: bundle
 
+**A watchable video** of a flow or a reproduction is a storyboard played by `npx achilles-video`: captioned steps at a readable pace, an off-camera login, an evidence page and the expected and actual result ([`references/evidence-video.md`](references/evidence-video.md)).
+
 Layout, `summary.md` sections and verdict definitions: [`references/bundle-and-summary.md`](references/bundle-and-summary.md). `PASSED` (every assertion resolved, criterion reflected in the final assertion; surprising side observations go in Notes), `FAILED` (an assertion failed), `INCONCLUSIVE` (the runner never reached the criterion: crash, setup error, unreachable network). The verdict is read from the run output, never from how the screenshots look. Every link in `summary.md` points at a file that exists; missing captures are named under `## Capture gaps`.
 
 ## Redaction
