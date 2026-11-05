@@ -48,7 +48,7 @@ The ticket comment is what the developer, the PM, and the next QA engineer will 
    followed by a clear recommendation: ready to merge, needs fixes, or blocked. Caveats
    (untested browsers, environment limitations) go as one-liners under the verdict.
 
-That is the entire comment. No tables of computed CSS values, no code review notes, no
+That is the entire comment. It carries no AI signature and no agent framing ([`../outbound-text.md`](../outbound-text.md)). No tables of computed CSS values, no code review notes, no
 methodology explanations beyond the negative control result. The evidence screenshots carry
 the detail: that is what they are for.
 

@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { AchillesRun } from './types'
 import { registerBashJudge } from './hooks/bash-hook'
 import { dispatchAdvice } from './hooks/dispatch'
+import { registerOutbound } from './hooks/attribution'
 import { registerHygiene } from './hooks/hygiene'
 import { registerLedger } from './hooks/ledger'
 import { PANE, registerPane, rememberHandback } from './hooks/pane'
@@ -259,6 +260,7 @@ export const register: Register = on => {
   registerBashJudge(on)
   registerLedger(on)
   registerSignoff(on)
+  registerOutbound(on)
   registerReturnTracking(on)
   registerHygiene(on)
   registerSelector(on)
