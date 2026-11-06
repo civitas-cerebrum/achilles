@@ -110,7 +110,10 @@ async function delegate($: EngineInterface, task: string, context?: string, from
   if (whoIs(runs, fromAgent)) return 'BLOCKED\ndelegate_qa is the main session’s door; inside a run the orchestrator dispatches experts with the Agent tool.'
   if (resume !== undefined) {
     if (!RUN_ID.test(resume)) return `NEEDS_CONTEXT\n"${resume}" is not a run id; pass the qa-… id a hand-back names.`
-    if (runs.some(r => r.id === resume)) return `BLOCKED\nRun ${resume} is still running; its hand-back arrives on its own.`
+    const live = runs.find(r => r.id === resume)
+    // A run whose hand-back is held with no expert left is not running: it is waiting for nobody.
+    if (live && live.held !== undefined && live.experts.length === 0) await writeRuns($, rs => rs.filter(r => r.id !== resume))
+    else if (live) return `BLOCKED\nRun ${resume} is still running; its hand-back arrives on its own.`
     const root = await checkoutRoot($, await $.session.cwd())
     if (!(await exists($, `${root}/.achilles/runs/${resume}/resume.json`))) return `NEEDS_CONTEXT\nRun ${resume} has no .achilles/runs/${resume}/resume.json to resume from.`
   }
@@ -266,8 +269,11 @@ export const register: Register = on => {
       // counted; then the guards read its hand-back side by side, inside one budget.
       const runs = await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))
       const after = runs.find(r => r.id === w.run.id)
+      // The last expert of a held run has reported. The harness does not reliably wake an
+      // orchestrator whose turn already ended, so the held hand-back is delivered now, naming the
+      // reports that arrived after it; a resume picks the run up from there.
       if (after?.held !== undefined && after.experts.length === 0)
-        await note($, after.agentId, `every expert of this run has now reported; read their reports, finish the run and hand back (your held hand-back began: "${after.held.split('\n')[0]}").`)
+        await handBack($, after, `${after.held}\n\nNote: the experts still at work when this hand-back was written have since reported; read ${after.dir}/reports/ before resuming.`)
       await Promise.all([
         ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e)] : []),
         closeSelectorScope($, w, e),

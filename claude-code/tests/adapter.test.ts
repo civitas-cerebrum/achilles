@@ -195,14 +195,12 @@ test('a hand-back while the run still has an expert running is held; it is deliv
   expect(h.status()).toBe('1 run · 1 expert running (inspector b)')
   expect(notes(session, 'orchestrator-1').join('\n')).toContain('your hand-back is held: 1 expert is still running (inspector b)')
 
-  // The expert reports: the orchestrator is told, and its next status-word turn is the hand-back.
+  // The expert reports: the held hand-back is delivered now, naming the reports that came after it.
   await $.turn.complete(ended('inspector-2', 'DONE\nLooked.'))
-  expect(notes(session, 'orchestrator-1').join('\n')).toContain('every expert of this run has now reported')
-  expect(h.prompts.length).toBe(0)
-  await $.turn.complete(ended('orchestrator-1', 'DONE\nLogin verified.'))
   expect(h.prompts.length).toBe(1)
-  expect(h.prompts[0]).toContain('DONE\nLogin verified.')
-  expect(h.prompts[0]).not.toContain('has not reported yet')
+  expect(h.prompts[0]).toContain('BLOCKED\nThe inspector has not reported yet.')
+  expect(h.prompts[0]).toContain('have since reported; read .achilles/runs/')
+  expect(h.status()).toBeUndefined()
 })
 
 test('an expert that ends a turn without a status word is still at work: it stays counted and the hand-back stays held', async ($, on) => {
@@ -217,11 +215,10 @@ test('an expert that ends a turn without a status word is still at work: it stay
   await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nThe inspector is still at work.'))
   expect(h.prompts.length).toBe(0)
   expect(notes(session, 'orchestrator-1').join('\n')).toContain('your hand-back is held')
-  // Its real hand-back releases it.
+  // Its real hand-back releases the held one.
   await $.turn.complete(ended('inspector-2', 'DONE\nLooked.'))
-  expect(h.status()).toBe('1 run · 0 experts running')
-  await $.turn.complete(ended('orchestrator-1', 'DONE\nLogin verified.'))
   expect(h.prompts.length).toBe(1)
+  expect(h.prompts[0]).toContain('The inspector is still at work.')
 })
 
 test('a hand-back is held only once: a second status-word turn is delivered even with an expert still counted', async ($, on) => {
@@ -235,4 +232,17 @@ test('a hand-back is held only once: a second status-word turn is delivered even
   await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nThe inspector never reported.'))
   expect(h.prompts.length).toBe(1)
   expect(h.prompts[0]).toContain('The inspector never reported.')
+})
+
+test('a run held with no expert left can be resumed; a run with an expert still at work cannot', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'verify the login flow' } as never)
+  const id = /qa-[\w-]+/.exec(h.spawns[0]!.prompt)![0]
+  h.write(`${ROOT}/.achilles/runs/${id}/resume.json`, '{}')
+  await $.agent.spawn(expertSpawn(INSPECTOR, 'orchestrator-1'))
+  await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nWaiting on the inspector.'))
+  // Held, expert at work: a resume is refused.
+  expect(String((await $.tool.call({ tool: DELEGATE, task: 'resume', run: id } as never)).result)).toMatch(/^BLOCKED\nRun .* is still running/)
 })
