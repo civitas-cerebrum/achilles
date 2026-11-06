@@ -1,12 +1,17 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { SKILLS_DIR, ORCHESTRATOR_SKILL, skillDirs, frontmatterName } from './util.mjs';
+import { SKILLS_DIR, ORCHESTRATOR_SKILL, skillDirs, frontmatterName, frontmatterDescription } from './util.mjs';
+
+// The Agent Skills cap on a description, which pi and Claude Code enforce at load
+// (pi lists a skill over it under [Skill conflicts] at every launch).
+const DESCRIPTION_MAX = 1024;
 
 // Check 1 — the skill set is what the orchestrator routes to.
 // Every skills/<name>/ has a SKILL.md whose frontmatter `name` is the directory
 // name, and is reachable from the orchestrator skill or one of its workflows
 // (a `../<name>/SKILL.md` link or a backticked `<name>`); every
-// `../<name>/SKILL.md` link in those files resolves to a directory.
+// `../<name>/SKILL.md` link in those files resolves to a directory; and every
+// description is at most DESCRIPTION_MAX characters.
 export function run(report) {
   const detail = [];
   const dirs = skillDirs();
@@ -21,6 +26,9 @@ export function run(report) {
     if (!existsSync(skill)) { detail.push(`skills/${dir}/ has no SKILL.md`); continue; }
     const name = frontmatterName(skill);
     if (name !== dir) detail.push(`skills/${dir}/SKILL.md frontmatter name is "${name}", expected "${dir}"`);
+    const desc = frontmatterDescription(skill);
+    if (!desc) detail.push(`skills/${dir}/SKILL.md has no description`);
+    else if (desc.length > DESCRIPTION_MAX) detail.push(`skills/${dir}/SKILL.md description is ${desc.length} characters (max ${DESCRIPTION_MAX})`);
     if (dir === 'achilles-orchestrator') continue;
     if (!text.includes(`../${dir}/SKILL.md`) && !text.includes('`' + dir + '`')) {
       detail.push(`skills/${dir}/ is routed from nowhere in the orchestrator skill or its workflows`);

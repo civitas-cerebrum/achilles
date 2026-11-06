@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Skill descriptions over 1,024 characters.** `contract-testing`, `database-testing` and `test-data-conventions` had frontmatter descriptions longer than the 1,024 characters pi accepts, so pi warned at every launch in a project with Achilles installed. They are now 975–1,014 characters, with every trigger and the reason to load each skill kept, and `scripts/lint/registry.mjs` fails a description over 1,024.
+
 ## 0.1.8 — 2026-11-01
 
 Achilles becomes a harness-neutral methodology (skills, agents, schemas, CLIs, reporter) with one Claude Code adapter. The main session is never bound; QA work runs in a separate orchestrator agent. Hooks advise by default and deny only irreversible or dangerous actions.

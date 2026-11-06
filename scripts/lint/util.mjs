@@ -42,6 +42,21 @@ export function skillDirs() {
   });
 }
 
+// `description:` from a SKILL.md frontmatter as harnesses read it (a folded `>` or
+// literal `|` block joined, quotes off), or null.
+export function frontmatterDescription(file) {
+  const fm = readFileSync(file, 'utf8').match(/^---\n([\s\S]*?)\n---/);
+  if (!fm) return null;
+  const lines = fm[1].split('\n');
+  const i = lines.findIndex((l) => /^description:/.test(l));
+  if (i < 0) return null;
+  const head = lines[i].replace(/^description:\s*/, '');
+  if (!/^[>|][+-]?$/.test(head)) return head.trim().replace(/^(["'])(.*)\1$/, '$2');
+  const body = [];
+  for (const l of lines.slice(i + 1)) { if (/^\S/.test(l)) break; body.push(l.trim()); }
+  return (head.startsWith('>') ? body.filter(Boolean).join(' ') : body.join('\n')).trim();
+}
+
 // `name:` from a SKILL.md frontmatter, or null.
 export function frontmatterName(file) {
   const m = readFileSync(file, 'utf8').match(/^---\n[\s\S]*?^name:\s*([^\n]+)$/m);
