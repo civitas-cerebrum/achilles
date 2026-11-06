@@ -1,0 +1,35 @@
+handover:
+  role: reproducer
+  status: verdict-reached
+  next-action: add the D2 entry to defect-audit.md
+ticket: ABC-450
+defect-id: ABC-450-D2
+verdict: bug
+surface: ui
+reproduction:
+  attempts: 4
+  observed: 4
+root-cause:
+  - layer: frontend
+    location: src/app/save/save-step.component.html:10
+    explanation: the partial warning names only the missing name fields
+  - layer: backend
+    location: not available; no backend source in the brief
+severity:
+  level: High
+  reason: the saved document carries a value in the wrong blank and the user is not told
+steps:
+  - Log in as the account owner (E2E_OWNER_EMAIL / E2E_OWNER_PASSWORD in .env).
+  - Open Templates and click the + button.
+  - Upload tests/e2e/fixtures/files/contract.docx and wait for the scan to finish.
+  - Click Create template, then Save anyway.
+expected: every field in its own blank, and any skipped field named in the warning
+actual: the address is written into the birth-month blank and the date of birth is dropped
+evidence:
+  - .achilles/runs/qa-x/repro-d2/04-paragraph-3.png
+  - .achilles/runs/qa-x/repro-d2/apply-response.json
+video: .achilles/runs/qa-x/repro-d2/ABC-450-D2.webm
+cleanup:
+  created: [template "repro-d2"]
+  deleted: [template "repro-d2"]
+budget-spent: 1 metered scan

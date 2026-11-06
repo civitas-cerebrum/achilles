@@ -13,11 +13,11 @@ const PREFIX_GRAMMAR = /`([a-z][a-z0-9-]*)-<[^`>]+>:`/g;      // `<role>-<slug>:
 const SUBAGENT_TYPE = /subagent_type[:=]/g;
 const KERNEL_TAG = /<<kernel-mandate-role/g;
 
-// Check 12 — role names in prose ↔ the five agents.
-// Dispatch is the Agent tool with one of the five `achilles-<role>` types (prose
+// Check 12 — role names in prose ↔ the six agents.
+// Dispatch is the Agent tool with one of the six `achilles-<role>` types (prose
 // may say "the inspector" for the role); prose must not carry the retired dispatch-prefix grammar, a
 // `subagent_type`, a kernel tag, or a retired role name as a role. Each of the
-// four expert roles must be dispatched from at least one workflow. The agent
+// five expert roles must be dispatched from at least one workflow. The agent
 // files themselves are written by the adapter slice; their absence is reported
 // as a note, not a failure.
 export function run(report) {
@@ -55,5 +55,5 @@ export function run(report) {
   }
   for (const n of notes) console.log(`        ${n}`);
 
-  report(`role names in prose ↔ the five agents (${AGENT_ROLES.length} roles, ${files.length} files)`, detail.length === 0, detail);
+  report(`role names in prose ↔ the six agents (${AGENT_ROLES.length} roles, ${files.length} files)`, detail.length === 0, detail);
 }

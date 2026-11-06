@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { DELEGATE, ROOT, START, ended, engine, notes, spawnExpert, startRun } from './harness'
+import { unconfirmedDefectsLine } from '../hooks'
 
 const ORCHESTRATOR = 'achilles:achilles-orchestrator'
 const INSPECTOR = 'achilles:achilles-inspector'
@@ -25,7 +26,7 @@ test('session.start registers delegate_qa in the prompt tool list, the command, 
   await $.session.start(START)
   expect(tools.map(t => t.name)).toEqual(['delegate_qa'])
   expect(tools[0]?.isDeferred).toBe(false)
-  expect(agents.map(a => a.name)).toEqual(['achilles-orchestrator', 'achilles-inspector', 'achilles-author', 'achilles-reviewer', 'achilles-doc-writer'])
+  expect(agents.map(a => a.name)).toEqual(['achilles-orchestrator', 'achilles-inspector', 'achilles-author', 'achilles-reviewer', 'achilles-reproducer', 'achilles-doc-writer'])
   expect(agents[1]).toEqual({ name: 'achilles-inspector', description: 'The inspector.', prompt: 'You are the inspector.', tools: ['Read', 'Write', 'Edit', 'Bash'], effort: 'medium' })
   // The orchestrator and the judge (reviewer) name no effort: they take the session's.
   expect(agents.filter(a => 'effort' in a).map(a => a.name)).toEqual(['achilles-inspector', 'achilles-author', 'achilles-doc-writer'])
@@ -170,4 +171,100 @@ test('an expert spawned by the orchestrator is counted by role for the run summa
   await $.turn.complete(ended(r1, 'DONE\ngreenlight'))
   await $.turn.complete(ended(orchestrator, 'DONE\nall good'))
   expect(h.prompts[0]).toContain('Run summary: experts dispatched: author ×1, reviewer ×1.')
+})
+
+test('a hand-back that reports defects without a reproducer dispatch is flagged; with one, or without defects, it is not', () => {
+  const run = { id: 'qa-1', task: 't', dir: '.achilles/runs/qa-1', experts: [] } as never
+  expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nTwo defects found, sentinels written.')).toContain('Unconfirmed defects')
+  expect(unconfirmedDefectsLine(run, 'DONE\nAll ACs pass; [SENTINEL ABC-1-D1] stays.')).toContain('Unconfirmed defects')
+  expect(unconfirmedDefectsLine({ ...(run as object), dispatched: { reproducer: 2 } } as never, 'DONE_WITH_CONCERNS\nTwo defects found.')).toBeUndefined()
+  expect(unconfirmedDefectsLine(run, 'DONE\nAll ACs pass.')).toBeUndefined()
+  expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nThe staging environment was slow.')).toBeUndefined()
+  // Defects confirmed in an earlier segment of the run carry recorded verdicts: no warning, whatever this segment dispatched.
+  const ticketRun = { id: 'qa-2', task: 'Resume run qa-2 (ABC-7 tracking events)', dir: '.achilles/runs/qa-2', experts: [] } as never
+  const body = 'DONE_WITH_CONCERNS\nAC1 fails on five confirmed defects (D1, D2, D4, D11, D13).'
+  expect(unconfirmedDefectsLine(ticketRun, body, new Set(['ABC-7-D1', 'ABC-7-D2', 'ABC-7-D4', 'ABC-7-D11', 'ABC-7-D13']))).toBeUndefined()
+  // A defect without a recorded verdict is named, even when the run dispatched reproducers for others.
+  const partial = unconfirmedDefectsLine({ ...(ticketRun as object), dispatched: { reproducer: 3 } } as never, body, new Set(['ABC-7-D1', 'ABC-7-D2', 'ABC-7-D4']))
+  expect(partial).toContain('ABC-7-D11, ABC-7-D13 have no independently recorded verdict')
+  expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nOne defect: ABC-9-D3 stays.', new Set(['ABC-9-D3']))).toBeUndefined()
+})
+
+test('a hand-back while the run still has an expert running is held; it is delivered after the expert reports and the orchestrator hands back again', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'verify the login flow' } as never)
+  await $.agent.spawn(expertSpawn(INSPECTOR, 'orchestrator-1'))
+
+  // The harness ran the dispatch in the background: the orchestrator's turn ends with a status word.
+  await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nThe inspector has not reported yet.'))
+  expect(h.prompts.length).toBe(0)
+  expect(h.status()).toBe('1 run · 1 expert running (inspector b)')
+  expect(notes(session, 'orchestrator-1').join('\n')).toContain('your hand-back is held: 1 expert is still running (inspector b)')
+
+  // The expert reports: the held hand-back is delivered now, naming the reports that came after it.
+  await $.turn.complete(ended('inspector-2', 'DONE\nLooked.'))
+  expect(h.prompts.length).toBe(1)
+  expect(h.prompts[0]).toContain('BLOCKED\nThe inspector has not reported yet.')
+  expect(h.prompts[0]).toContain('have since reported; read .achilles/runs/')
+  expect(h.status()).toBeUndefined()
+})
+
+test('an expert that ends a turn without a status word is still at work: it stays counted and the hand-back stays held', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'verify the login flow' } as never)
+  await $.agent.spawn(expertSpawn(INSPECTOR, 'orchestrator-1'))
+  // The expert waits on its own background spec run: an interim turn, no status word.
+  await $.turn.complete(ended('inspector-2', 'Waiting for the spec run to finish.'))
+  expect(h.status()).toBe('1 run · 1 expert running (inspector b)')
+  await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nThe inspector is still at work.'))
+  expect(h.prompts.length).toBe(0)
+  expect(notes(session, 'orchestrator-1').join('\n')).toContain('your hand-back is held')
+  // Its real hand-back releases the held one.
+  await $.turn.complete(ended('inspector-2', 'DONE\nLooked.'))
+  expect(h.prompts.length).toBe(1)
+  expect(h.prompts[0]).toContain('The inspector is still at work.')
+})
+
+test('a hand-back is held only once: a second status-word turn is delivered even with an expert still counted', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'verify the login flow' } as never)
+  await $.agent.spawn(expertSpawn(INSPECTOR, 'orchestrator-1'))
+  await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nWaiting on the inspector.'))
+  expect(h.prompts.length).toBe(0)
+  await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nThe inspector never reported.'))
+  expect(h.prompts.length).toBe(1)
+  expect(h.prompts[0]).toContain('The inspector never reported.')
+})
+
+test('a run held with no expert left can be resumed; a run with an expert still at work cannot', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'verify the login flow' } as never)
+  const id = /qa-[\w-]+/.exec(h.spawns[0]!.prompt)![0]
+  h.write(`${ROOT}/.achilles/runs/${id}/resume.json`, '{}')
+  await $.agent.spawn(expertSpawn(INSPECTOR, 'orchestrator-1'))
+  await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nWaiting on the inspector.'))
+  // Held, expert at work: a resume is refused.
+  expect(String((await $.tool.call({ tool: DELEGATE, task: 'resume', run: id } as never)).result)).toMatch(/^BLOCKED\nRun .* is still running/)
+})
+
+test('a hand-back naming defects with recorded confirmations on disk gets no unconfirmed-defects line; one naming an unrecorded defect does', async ($, on) => {
+  const h = engine(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'Resume run qa-x (ABC-7 tracking events)' } as never)
+  h.write(`${ROOT}/.achilles/defect-confirmations/ABC-7/ABC-7-D1.json`, '{"verdict":"bug"}')
+  h.write(`${ROOT}/.achilles/defect-confirmations/ABC-7/ABC-7-D2.json`, '{"verdict":"bug"}')
+  await $.turn.complete(ended('orchestrator-1', 'DONE_WITH_CONCERNS\nAC1 fails on two confirmed defects (D1, D2).'))
+  expect(h.prompts.at(-1)).not.toContain('Unconfirmed defects')
+
+  await $.tool.call({ tool: DELEGATE, task: 'Resume run qa-y (ABC-7 tracking events)' } as never)
+  await $.turn.complete(ended(h.spawns.at(-1)!.agentId, 'DONE_WITH_CONCERNS\nAC1 fails on two defects, D1 and D3.'))
+  expect(h.prompts.at(-1)).toContain('Unconfirmed defects: ABC-7-D3 has no independently recorded verdict')
 })

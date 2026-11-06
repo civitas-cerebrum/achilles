@@ -2,16 +2,19 @@ import type { EngineInterface, On, TurnCompleteInput } from 'claude-code'
 
 import {
   checkoutRoot,
+  editRun,
   findDirs,
   hashText,
   isDisabled,
   listDir,
+  isSpecPath,
   newestSpec,
   note,
   readJson,
   readReceiptHashes,
   readText,
   run,
+  walk,
   who,
   writeReceiptHash,
   type Who,
@@ -24,8 +27,13 @@ import { commands, nestedCommand } from './shell'
 // are the moments a verdict leaves the run. The adapter records the reviewers' sign-off receipt
 // itself (from their reports, keyed on their agent id, so no author writes it) and, at sign-off,
 // advises when the receipt or the evidence bundle for that ticket is missing, incomplete or older
-// than the newest spec. The one refusal: a bundle whose HAR or console log still holds a live
-// credential, on every sign-off surface, because a published credential cannot be unpublished.
+// than the newest spec. The refusals: a bundle whose HAR or console log still holds a live
+// credential, on every sign-off surface, because a published credential cannot be unpublished; and
+// a defect that reaches the tracker without an independent confirmation. A reproducer's verdict (the
+// standard defect evidence, its defect-repro JSON block) is recorded by the adapter at the
+// reproducer's turn end; a bug or rework filing must cite a defect id recorded as `bug`, and a
+// sign-off is refused while a sentinel of the ticket, or a verdict comment reporting defects, has
+// no recorded confirmation. The main session is never bound, so a user's own decision still files.
 
 const REF = 'skills/achilles-orchestrator/workflows/verify-change.md'
 const RECEIPTS = '.achilles/adversarial-verification'
@@ -37,6 +45,16 @@ const VERDICTISH = /qa (test )?report|acceptance criteri|verdict|sign.?off|AC-[0
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DEGENERATE = new Set(['', '-', '.', '..', 'evidence', 'json', 'head'])
 const MAX_READ = 4 * 1024 * 1024
+const CONFIRMATIONS = '.achilles/defect-confirmations'
+const CONFIRM_REF = 'skills/achilles-orchestrator/references/verify-change/phase-7a-defect-confirmation.md'
+const CREATE = /createJiraIssue|create_issue|createIssue/
+const SEARCH = /search|jql|query|list_?issues|getJiraIssue|get_issue|getIssue/i
+const DEDUPE_REF = 'skills/bug-report/SKILL.md'
+const DEFECT_TYPE = /\b(bug|rework|defect)\b/i
+const DEFECT_ID = /\b([A-Za-z][A-Za-z0-9_]*-[0-9]+-D[0-9]+)\b/g
+const REPORTS_DEFECTS = /\bdefects?\b|\bbugs?\b|known.?defect|\brework\b/i
+const VERDICTS = new Set(['bug', 'real-in-source', 'spec-ambiguity', 'not-a-bug'])
+const DISPATCH_REPRODUCER = 'Dispatch an achilles-reproducer for it (verify-change step 7a, the defect-confirmation skill): its report ends with the defect-repro JSON block, which the adapter records under'
 
 type Receipt = { ticket?: unknown; negativeControl?: unknown; review?: { reviewer?: unknown; uiReviewed?: unknown; coverageSufficient?: unknown; scores?: Record<string, unknown>; total?: unknown } }
 
@@ -140,7 +158,78 @@ async function bundleSecrets($: EngineInterface, bundle: string): Promise<string
   return out
 }
 
-type Surface = { kind: 'transition' | 'comment' | 'pr'; key: string; branchBound: boolean }
+type Surface = { kind: 'transition' | 'comment' | 'pr'; key: string; branchBound: boolean; body?: string }
+
+export type Confirmation = { ticket?: unknown; 'defect-id'?: unknown; verdict?: unknown; recordedBy?: unknown }
+
+/** The adapter-recorded confirmation of one defect id, or why there is none. */
+export async function confirmationOf($: EngineInterface, top: string, defectId: string): Promise<{ verdict: string; path: string } | { missing: string }> {
+  const ticket = defectId.replace(/-D[0-9]+$/, '')
+  const path = `${top}/${CONFIRMATIONS}/${ticket}/${defectId}.json`
+  const text = await readText($, path)
+  if (text === undefined) return { missing: `${defectId}: no recorded confirmation (${CONFIRMATIONS}/${ticket}/${defectId}.json)` }
+  const recorded = (await readReceiptHashes($))[path]
+  if (recorded === undefined) return { missing: `${defectId}: the confirmation was not recorded by the adapter from a reproducer's report in this session` }
+  if (recorded !== hashText(text)) return { missing: `${defectId}: the confirmation changed after the adapter recorded it` }
+  let c: Confirmation = {}
+  try {
+    c = JSON.parse(text) as Confirmation
+  } catch {
+    return { missing: `${defectId}: the confirmation is not readable JSON` }
+  }
+  return { verdict: str(c.verdict), path }
+}
+
+/** The ticket's defect ids its sentinels cite: `[SENTINEL <KEY>-D<n>]` in any spec under the checkout. */
+async function sentinelIds($: EngineInterface, top: string, key: string): Promise<string[]> {
+  const re = new RegExp(`\\[SENTINEL (${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-D[0-9]+)\\]`, 'g')
+  const ids = new Set<string>()
+  for (const f of await walk($, top, { depth: 8, max: 3000, skip: /^(node_modules|\.git|\.achilles|dist|build)$/ })) {
+    if (!isSpecPath(f)) continue
+    for (const m of ((await readText($, f)) ?? '').matchAll(re)) ids.add(m[1]!)
+  }
+  return [...ids]
+}
+
+/** What makes a sign-off report defects nobody confirmed: sentinels without a `bug` verdict, a defect-reporting comment with no confirmation at all. */
+async function unconfirmedForSignoff($: EngineInterface, top: string, key: string, surface: Surface): Promise<string[]> {
+  const out: string[] = []
+  for (const id of await sentinelIds($, top, key)) {
+    const c = await confirmationOf($, top, id)
+    if ('missing' in c) out.push(`the sentinel [SENTINEL ${id}]: ${c.missing}`)
+    else if (c.verdict !== 'bug') out.push(`the sentinel [SENTINEL ${id}]: the reproducer's verdict is \`${c.verdict}\`, not \`bug\``)
+  }
+  if (surface.kind === 'comment' && surface.body && REPORTS_DEFECTS.test(surface.body)) {
+    const cited = [...surface.body.matchAll(DEFECT_ID)].map(m => m[1]!)
+    const held = (await listDir($, `${top}/${CONFIRMATIONS}/${key}`)).filter(e => e.name.endsWith('.json'))
+    if (cited.length === 0 && held.length === 0) out.push(`this comment reports defects for ${key}, and no defect of ${key} has a recorded confirmation`)
+    for (const id of cited) {
+      const c = await confirmationOf($, top, id)
+      if ('missing' in c) out.push(`the comment cites ${c.missing}`)
+    }
+  }
+  return out
+}
+
+/** A defect filing (a bug, rework or defect-labelled issue an Achilles agent creates): refused unless it cites a defect id recorded as `bug`. */
+export async function judgeFiling($: EngineInterface, text: string, w?: Who): Promise<{ deny?: string }> {
+  if (w && (w.run.trackerSearches ?? 0) === 0)
+    return { deny: `achilles: this files a defect before the run searched the tracker for an existing one. Search first: the ticket under test's sub-tasks and links, then open and recently closed bugs with the same screen, message or error text. File nothing new for a defect that already has a ticket; comment there with the new evidence (${DEDUPE_REF} §"Step 0b: search for an existing ticket before drafting a new one").` }
+  const top = await checkoutRoot($, await $.session.cwd())
+  const cited = [...new Set([...text.matchAll(DEFECT_ID)].map(m => m[1]!))]
+  if (cited.length === 0)
+    return { deny: `achilles: this files a defect that cites no confirmed defect id (<TICKET>-D<n>). ${DISPATCH_REPRODUCER} ${CONFIRMATIONS}/<ticket>/<defect-id>.json; then file it citing that id. A defect the reproducer did not call a bug is filed only on the user's decision, from the main session (${CONFIRM_REF}).` }
+  const problems: string[] = []
+  let bug = false
+  for (const id of cited) {
+    const c = await confirmationOf($, top, id)
+    if ('missing' in c) problems.push(c.missing)
+    else if (c.verdict === 'bug') bug = true
+    else problems.push(`${id}: the reproducer's verdict is \`${c.verdict}\`, not \`bug\``)
+  }
+  if (bug) return {}
+  return { deny: `achilles: this defect filing has no independently confirmed bug behind it:\n${problems.map(s => `  - ${s}`).join('\n')}\n${DISPATCH_REPRODUCER} ${CONFIRMATIONS}/<ticket>/<defect-id>.json. A defect with another verdict is filed only on the user's decision, from the main session (${CONFIRM_REF}).` }
+}
 
 async function judge($: EngineInterface, surface: Surface, agentId: string | undefined): Promise<{ deny?: string }> {
   const cwd = await $.session.cwd()
@@ -156,6 +245,9 @@ async function judge($: EngineInterface, surface: Surface, agentId: string | und
     if (secrets.length > 0)
       return { deny: `achilles: the evidence bundle ${bundle.slice(top.length + 1)} still holds a live credential, so this sign-off would publish it:\n${secrets.map(s => `  - ${s}`).join('\n')}\nRedact each value (keep the field, replace the value with [REDACTED]) or delete the file, record what was removed in the bundle's summary.md under "## Redactions", then sign off again.` }
   }
+  const unconfirmed = await unconfirmedForSignoff($, top, key, surface)
+  if (unconfirmed.length > 0)
+    return { deny: `achilles: this sign-off reports defects that no independent reproducer confirmed:\n${unconfirmed.map(s => `  - ${s}`).join('\n')}\n${DISPATCH_REPRODUCER} ${CONFIRMATIONS}/${key}/<defect-id>.json. Sign off once every defect has a recorded verdict; remove the sentinel of any defect whose verdict is not \`bug\` (${CONFIRM_REF}).` }
   const problems: string[] = []
   const found = await findReceipt($, top, key)
   if (!found) problems.push(`no sign-off receipt ${RECEIPTS}/${key}.json under ${top}`)
@@ -248,7 +340,115 @@ export async function recordReceipt($: EngineInterface, w: Who, e: TurnCompleteI
   }
 }
 
+/** The defect-repro blocks a reproducer's report or hand-back carries: fenced json with a defect-id and a verdict. */
+export function confirmationBlocks(text: string): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = []
+  for (const m of text.matchAll(/```json\s*\n([\s\S]*?)```/g)) {
+    try {
+      const v = JSON.parse(m[1]!) as Record<string, unknown>
+      if (v && typeof v === 'object' && typeof v['defect-id'] === 'string' && typeof v.verdict === 'string') out.push(v)
+    } catch {
+      /* not a confirmation block */
+    }
+  }
+  return out
+}
+
+/** What a bug verdict's reproduction evidence lacks: no evidence, a cited file that does not exist, and for a ui defect no recording. */
+export async function evidenceGaps($: EngineInterface, cwd: string, block: Record<string, unknown>): Promise<string[]> {
+  const gaps: string[] = []
+  const at = (p: string) => (p.startsWith('/') ? p : `${cwd}/${p}`)
+  const evidence = Array.isArray(block.evidence) ? block.evidence.filter((x): x is string => typeof x === 'string') : []
+  if (evidence.length === 0) gaps.push('a bug verdict with no reproduction evidence (evidence is empty)')
+  for (const f of evidence) if (!(await $.fs.stat(at(f)).catch(() => undefined))) gaps.push(`the evidence ${f} does not exist`)
+  if (block.surface === 'ui') {
+    const video = typeof block.video === 'string' ? block.video : ''
+    const st = video !== '' ? await $.fs.stat(at(video)).catch(() => undefined) : undefined
+    if (!/\.(webm|mp4)$/.test(video)) gaps.push('a ui bug with no reproduction video (video: <path>.webm or .mp4; record it with playwright-cli video-start / video-chapter / video-stop)')
+    else if (!st || st.size === 0) gaps.push(`the reproduction video ${video} does not exist or is empty`)
+  } else if (block.surface === undefined) gaps.push('a bug verdict that names no surface (ui, api, backend, data); a ui bug needs its reproduction video')
+  return gaps
+}
+
+/** Called at a reproducer's turn end (hooks.ts): records each verdict it reported as the defect's confirmation. */
+export async function recordConfirmation($: EngineInterface, w: Who, e: TurnCompleteInput) {
+  if (w.role !== 'reproducer' || !w.expert) return
+  const cwd = await $.session.cwd()
+  const report = w.expert.report ? await readText($, `${cwd}/${w.expert.report}`) : undefined
+  const blocks = confirmationBlocks(`${e.answer}\n${report ?? ''}`)
+  const top = await checkoutRoot($, cwd)
+  const refused: string[] = []
+  for (const block of blocks) {
+    const id = String(block['defect-id'])
+    const ticket = String(block.ticket ?? '')
+    const verdict = String(block.verdict)
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*-D[0-9]+$/.test(id) || id.replace(/-D[0-9]+$/, '') !== ticket) refused.push(`"${id}": the defect id must be <ticket>-D<n> for its ticket ("${ticket}")`)
+    else if (!VERDICTS.has(verdict)) refused.push(`${id}: "${verdict}" is not a verdict (bug, real-in-source, spec-ambiguity, not-a-bug)`)
+    else if (verdict === 'bug' && !(Number((block.reproduction as { observed?: unknown })?.observed) >= 1)) refused.push(`${id}: a bug verdict with no live observation (reproduction.observed < 1)`)
+    else if (verdict === 'bug' && (await evidenceGaps($, cwd, block)).length > 0) refused.push(...(await evidenceGaps($, cwd, block)).map(g => `${id}: ${g}`))
+    else {
+      const path = `${top}/${CONFIRMATIONS}/${ticket}/${id}.json`
+      const record = { ...block, report: w.expert.report, recordedBy: { agentId: w.expert.agentId, run: w.run.id }, recordedAt: new Date(await $.clock.now()).toISOString() }
+      const text = `${JSON.stringify(record, null, 2)}\n`
+      await $.fs.write(path, text)
+      await writeReceiptHash($, path, hashText(text))
+    }
+  }
+  if (blocks.length === 0) refused.push('its return carries no defect-repro JSON block (defect-id, verdict)')
+  if (refused.length > 0) await note($, w.run.agentId, `the reproducer ${w.expert.agentId} handed back a confirmation the adapter could not record:\n- ${refused.join('\n- ')}\nThe defect stays unconfirmed; re-dispatch a fresh reproducer with the gap quoted (${CONFIRM_REF}).`)
+}
+
+/** The issue type, labels and text a create call carries, for the defect-filing check. */
+function filingOf(args: Record<string, unknown>): { defect: boolean; text: string } {
+  const f = (args.fields ?? args.additional_fields ?? {}) as Record<string, unknown>
+  const type = [args.issueType, args.issueTypeName, args.type, args.issuetype, f.issuetype, f.issueType].map(str).join(' ')
+  const labels = [args.labels, f.labels].flatMap(l => (Array.isArray(l) ? l.map(str) : typeof l === 'string' ? [l] : [])).join(' ')
+  const text = [args.summary, args.title, args.description, args.body, f.summary, f.description].filter((x): x is string => typeof x === 'string').join('\n')
+  return { defect: DEFECT_TYPE.test(type) || DEFECT_TYPE.test(labels), text }
+}
+
+/** `gh issue create` with a bug, rework or defect label, and the title and body it carries. */
+function ghFiling(command: string): { defect: boolean; text: string } | undefined {
+  for (const cmd of commands(command).commands) {
+    const a = cmd.args
+    if (a[0] !== 'gh' || a[1] !== 'issue' || a[2] !== 'create') continue
+    const val = (names: string[]) => a.flatMap((t, i) => (names.includes(t) ? [a[i + 1] ?? ''] : names.flatMap(n => (t.startsWith(`${n}=`) ? [t.slice(n.length + 1)] : []))))
+    return { defect: val(['--label', '-l']).some(l => DEFECT_TYPE.test(l)), text: [...val(['--title', '-t']), ...val(['--body', '-b'])].join('\n') }
+  }
+  return undefined
+}
+
 export function registerSignoff(on: On) {
+  on('tool.call', { tool: /^mcp__/ }, async ($, e, next) => {
+    if (isDisabled()) return next(e)
+    const name = e.tool.split('__').pop() ?? e.tool
+    if (SEARCH.test(name) && !CREATE.test(name)) {
+      const w = await who($, e.agentId)
+      if (w) await editRun($, w.run.id, r => ({ ...r, trackerSearches: (r.trackerSearches ?? 0) + 1 }))
+      return next(e)
+    }
+    if (!CREATE.test(e.tool)) return next(e)
+    const w = await who($, e.agentId)
+    if (!w) return next(e)
+    const filing = filingOf(e as unknown as Record<string, unknown>)
+    if (!filing.defect) return next(e)
+    const r = await judgeFiling($, filing.text, w)
+    return r.deny ? { deny: r.deny } : next(e)
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its defect-filing check failed, so the tracker call is refused.' }))
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (isDisabled() || !/\bgh\b/.test(e.command) || !/\bissue\b/.test(e.command)) return next(e)
+    const w = await who($, e.agentId)
+    if (w && /\bgh\s+issue\s+(list|search|view)\b|\bgh\s+search\s+issues\b/.test(e.command)) {
+      await editRun($, w.run.id, r => ({ ...r, trackerSearches: (r.trackerSearches ?? 0) + 1 }))
+      return next(e)
+    }
+    const filing = w ? ghFiling(e.command) : undefined
+    if (!filing?.defect) return next(e)
+    const r = await judgeFiling($, filing.text, w)
+    return r.deny ? { deny: r.deny } : next(e)
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its defect-filing check failed, so the issue call is refused.' }))
+
   on('tool.call', { tool: /^mcp__/ }, async ($, e, next) => {
     if (isDisabled()) return next(e)
     const isTransition = TRANSITION.test(e.tool)
@@ -264,7 +464,8 @@ export function registerSignoff(on: On) {
       const body = [args.body, args.commentBody, args.comment, args.text].filter((x): x is string => typeof x === 'string').join('\n')
       if (!VERDICTISH.test(body)) return next(e)
     }
-    const r = await judge($, { kind: isTransition ? 'transition' : 'comment', key: keyOf(args), branchBound: false }, e.agentId)
+    const body = [args.body, args.commentBody, args.comment, args.text].filter((x): x is string => typeof x === 'string').join('\n')
+    const r = await judge($, { kind: isTransition ? 'transition' : 'comment', key: keyOf(args), branchBound: false, body }, e.agentId)
     return r.deny ? { deny: r.deny } : next(e)
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its sign-off check failed, so the tracker call is refused.' }))
 

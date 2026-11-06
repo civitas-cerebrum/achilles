@@ -15,11 +15,12 @@ import {
 } from './io'
 import type { Who } from './context'
 import { basename, isAbsolute, normalize, relative, resolve, within } from './posix'
+import { ATTRIBUTION, OUTBOUND_REF, unreachableDeny, unreachableFiles } from './attribution'
 import { contentSecret } from './secrets'
 import { commands, gitCall, isReader, nestedCommand, unresolved, type Command } from './shell'
 
 // Hook 1, the Bash judge: one parsed-command model, small judges. Denies only what is
-// irreversible or dangerous (a hook or signing bypass, AI attribution on a commit or PR, a
+// irreversible or dangerous (a hook or signing bypass, AI attribution on a commit, PR or issue, a
 // force-push, a recursive delete outside the project, a k6 run past the ceilings, a spend-listed
 // spec without its opt-in); advises on commit grammar, shell writes to protected state and the
 // factory verify stamp; rewrites a missing playwright-cli slug. The main loop is never touched.
@@ -30,7 +31,6 @@ const CLI_REF = 'skills/achilles-orchestrator/references/playwright-cli-protocol
 const PERF_REF = 'skills/performance-testing/SKILL.md'
 const STATE_REF = 'skills/achilles-orchestrator/references/state-files.md'
 
-const ATTRIBUTION = /(^|['"\s])\s*co-authored-by:.*(claude|anthropic|noreply@anthropic\.com)|generated with.*claude(\s+code)?\b|claude\.ai\/code/i
 const RESERVED_SLUGS = new Set(['default', 'test', 'session', 'temp', 'tmp', 'x', 'y', 'main'])
 const SESSION_AGNOSTIC = new Set(['install-browser', 'close-all', 'kill-all', 'list', 'list-sessions', 'sessions', '--help', '-h', '--version', '-v'])
 const HARD_MAX_VUS = 1000
@@ -114,7 +114,7 @@ async function judgeGit($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict) {
       if (file !== '-' && file !== '') scan += `\n${(await readText($, resolve(j.dir, file, ctx.home))) ?? ''}`
     }
   }
-  if (ATTRIBUTION.test(scan)) v.deny ??= `AI-attribution in a commit (Co-Authored-By: Claude …, "Generated with Claude Code", a claude.ai/code URL) is refused: commits made by Achilles agents carry no AI attribution. Remove the trailer and commit again.${REFS(COMMIT_REF)}`
+  if (ATTRIBUTION.test(scan)) v.deny ??= `AI-attribution in a commit (Co-Authored-By: Claude …, Claude-Session:, "Generated with Claude Code", a claude.ai/code URL) is refused: commits made by Achilles agents carry no AI attribution. Remove the trailer and commit again.${REFS(COMMIT_REF, OUTBOUND_REF)}`
   const subject = (messages[0] ?? j.cmd.heredocs[0] ?? '').split('\n')[0]!.trim()
   if (/^test\(j-[^)]*,/.test(subject)) v.notes.push(`commit grammar: "${subject}" is a multi-journey commit; one journey per commit (${COMMIT_REF}).`)
   else if (/^feat\((e2e|test|coverage|journey|onboarding)\)/.test(subject)) v.notes.push(`commit grammar: "${subject}" uses 'feat:' for test work; the convention is 'test:' not 'feat:' (${COMMIT_REF}).`)
@@ -227,18 +227,25 @@ async function judgeK6($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict) {
   if (prod !== '' && prod === target && config.production?.allowed !== true) v.deny ??= `${target} is the configured production origin and production.allowed is not true; production load needs production.allowed: true in ${PERF_CONFIG} (a deliberate opt-in).${refs}`
 }
 
-// ── gh pr create|edit: attribution (deny). The sign-off hook judges the publish itself. ──
+// ── gh pr create|edit|comment|review and gh issue create|edit|comment: attribution (deny). The sign-off hook judges the publish itself. ──
+
+const GH_WRITES: Record<string, string[]> = { pr: ['create', 'edit', 'comment', 'review'], issue: ['create', 'edit', 'comment'] }
 
 async function judgeGh($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict) {
   const a = j.cmd.args
-  if (a[0] !== 'gh' || a[1] !== 'pr' || (a[2] !== 'create' && a[2] !== 'edit')) return
+  if (a[0] !== 'gh' || !(GH_WRITES[a[1] ?? ''] ?? []).includes(a[2] ?? '')) return
+  const what = a[2] === 'comment' || a[2] === 'review' ? 'comment' : a[1] === 'pr' ? 'pull request' : 'issue'
   let scan = ctx.text
   for (let i = 3; i < a.length; i++) {
     const t = a[i]!
     const file = t === '--body-file' || t === '-F' ? a[++i] : t.startsWith('--body-file=') ? t.slice('--body-file='.length) : undefined
     if (file !== undefined && file !== '-') scan += `\n${(await readText($, resolve(j.dir, file, ctx.home))) ?? ''}`
   }
-  if (ATTRIBUTION.test(scan)) v.deny ??= `AI-attribution in a pull request (Co-Authored-By: Claude …, "Generated with Claude Code", a claude.ai/code URL) is refused: PRs made by Achilles agents carry no AI attribution. Remove it from the title and body.${REFS(COMMIT_REF)}`
+  if (ATTRIBUTION.test(scan)) v.deny ??= `AI-attribution in ${what === 'issue' ? 'an' : 'a'} ${what} (Co-Authored-By: Claude …, Claude-Session:, "Generated with Claude Code", a claude.ai/code URL) is refused: ${what === 'pull request' ? 'PRs' : `${what}s`} made by Achilles agents carry no AI attribution. Remove it from the title and body.${REFS(COMMIT_REF, OUTBOUND_REF)}`
+  if (v.deny === undefined && (a[1] === 'issue' || a[2] === 'comment' || a[2] === 'review')) {
+    const unreachable = await unreachableFiles($, scan)
+    if (unreachable.length > 0) v.deny = unreachableDeny(`this ${what}`, unreachable).replace(/^achilles: /, '')
+  }
 }
 
 // ── playwright-cli: every session needs its own slug; a missing or malformed one is rewritten from the agent ──

@@ -10,7 +10,7 @@ export const AGENTS_DIR = 'agents';
 // The five hand-authored agents (agents/achilles-<role>.md). The lints read the
 // names from here so the methodology can be checked before those files land,
 // and tolerate their absence with an explicit message rather than a crash.
-export const AGENT_ROLES = ['achilles-orchestrator', 'achilles-inspector', 'achilles-author', 'achilles-reviewer', 'achilles-doc-writer'];
+export const AGENT_ROLES = ['achilles-orchestrator', 'achilles-inspector', 'achilles-author', 'achilles-reviewer', 'achilles-reproducer', 'achilles-doc-writer'];
 export const ROLE_WORDS = AGENT_ROLES.map((a) => a.replace(/^achilles-/, ''));
 
 // Check modules take this `report` and call it once per finding group.

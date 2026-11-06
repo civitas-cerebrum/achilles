@@ -11,9 +11,9 @@ export const DELEGATE = 'mcp__achilles__delegate_qa'
 export const START = { cwd: ROOT, surface: 'terminal', isInteractive: true } as const
 
 const AGENT_FILES: Record<string, string> = Object.fromEntries(
-  ['orchestrator', 'inspector', 'author', 'reviewer', 'doc-writer'].map(role => [
+  ['orchestrator', 'inspector', 'author', 'reviewer', 'reproducer', 'doc-writer'].map(role => [
     `achilles-${role}.md`,
-    `---\nname: achilles-${role}\ndescription: The ${role}.\ntools: Read, Write, Edit, Bash\n${role === 'orchestrator' || role === 'reviewer' ? '' : 'effort: medium\n'}---\nYou are the ${role}.`,
+    `---\nname: achilles-${role}\ndescription: The ${role}.\ntools: Read, Write, Edit, Bash\n${role === 'orchestrator' || role === 'reviewer' || role === 'reproducer' ? '' : 'effort: medium\n'}---\nYou are the ${role}.`,
   ]),
 )
 
@@ -156,7 +156,7 @@ export async function startRun($: EngineInterface, h: Harness, task = 'verify th
   return h.spawns[h.spawns.length - 1]!.agentId
 }
 
-const SKILL_OF: Record<string, string> = { inspector: 'journey-mapping', author: 'test-composer', reviewer: 'review', 'doc-writer': 'qa-reporting' }
+const SKILL_OF: Record<string, string> = { inspector: 'journey-mapping', author: 'test-composer', reviewer: 'review', reproducer: 'defect-confirmation', 'doc-writer': 'qa-reporting' }
 
 /** An expert spawn as the orchestrator's Agent tool raises it; the brief the prompt names is written first unless the test wrote one. */
 export async function spawnExpert($: EngineInterface, h: Harness, role: string, parentAgentId: string, prompt = 'Read `.achilles/runs/x/briefs/b.md` first; write your report to `.achilles/runs/x/reports/b.md`.'): Promise<string> {

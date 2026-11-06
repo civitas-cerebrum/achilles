@@ -1,0 +1,1 @@
+{ "name": "x", "title": "x", "baseURL": "https://x.example.test", "steps": [{ "goto": "/" }], "closing": { "expected": "e", "actual": "a" } }

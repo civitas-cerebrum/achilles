@@ -8,6 +8,7 @@ shape that validates against the JSON Schema for its role.
 | composer | `composer.schema.json` | new-tests-landed, covered-exhaustively, blocked, skipped |
 | reviewer-inloop | `reviewer-inloop.schema.json` | greenlight, improvements-needed |
 | probe | `probe.schema.json` | clean, findings-emitted, blocked |
+| defect-repro (reproducer) | `defect-repro.schema.json` | verdict-reached, blocked (verdict: bug, real-in-source, spec-ambiguity, not-a-bug) |
 | section-agent | `section-agent.schema.json` | section-complete, section-deferred, blocked |
 | phase4-prioritise-author | `phase4-prioritise-author.schema.json` | journey-map-authored, blocked |
 | workflow-reviewer | `workflow-reviewer.schema.json` | (verdict: approve, reject, escalate) |

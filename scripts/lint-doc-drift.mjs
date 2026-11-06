@@ -8,9 +8,9 @@
 //   5 hook-refs           adapter sources cite resolvable skills/ and schemas/ paths (when claude-code/ exists)
 //   6 docs-counts         hand-written counts in docs/*.html ↔ the tree
 //   8 opt-in-surfaces     env switches read by the adapter and CLIs ↔ docs/harness/claude-code.md
-//  10 agents              agents/*.md ↔ the five roles; tools ↔ the Agents table in docs/harness/claude-code.md
+//  10 agents              agents/*.md ↔ the six roles; tools ↔ the Agents table in docs/harness/claude-code.md
 //  11 anchors             every cited §"Heading" exists in the cited file
-//  12 role-dispatch-sites role names in prose ↔ the five agents; no dispatch-prefix grammar
+//  12 role-dispatch-sites role names in prose ↔ the six agents; no dispatch-prefix grammar
 //  14 prose               em-dash density per file; banned stock phrases
 //
 // Checks 3, 4, 7, 9 and 13 (hook manifest, role map, mandate ledger, activation
