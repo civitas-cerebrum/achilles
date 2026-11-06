@@ -1,21 +1,15 @@
 ---
 name: database-testing
 description: >
-  Use whenever a test reads from or asserts against a SQL database — write, run, review, or just
-  call. Owns the structured shape every database interaction should produce: row-count expectations,
-  cell-value assertions, column-order assertions, transaction (commit/rollback) verification, and
-  using the DB as the oracle for a UI/API mutation. Auto-activates on the explicit-intent triggers
-  (database test, SQL test, query the db in a test, verify db state, assert the database, check the
-  table, data-layer test, persistence test) AND on any test or planned test that calls
-  `steps.sqlQuery`, `steps.sqlExecute`, `steps.sqlTransaction`, `steps.sqlSelect`, `steps.sqlInsert`,
-  `steps.sqlUpdate`, `steps.sqlDelete`, or any `steps.verifySql*` matcher — even inside a UI- or
-  API-flow spec. The rationale: every persisted mutation deserves at minimum a state assertion;
-  without one the test silently passes when the write regresses. Also activates on phrases that
-  signal a DB interaction is about to land: "check the row was inserted", "verify it saved to the
-  database", "assert the order was created", "query the table after the action". Extends
-  contract-testing (API surface) and test-composer (UI flows) by adding the persistence layer as a
-  verifiable oracle. Not for: ORM/migration/DDL testing, schema-drift detection, load/perf testing,
-  or pure UI assertions — those route elsewhere.
+  Use whenever a test reads from or asserts against a SQL database (write, run, review, or just
+  call). Owns the shape every database interaction should produce: row counts, cell values,
+  column order, commit/rollback verification, and the DB as the oracle for a UI or API mutation.
+  Activates on database-test intent (SQL test, verify or assert db state, check the table,
+  persistence test) and on any test that calls `steps.sql*` or a `steps.verifySql*` matcher, even
+  inside a UI or API spec; also on "check the row was inserted", "verify it saved to the
+  database", "query the table after the action". Extends contract-testing (API) and test-composer
+  (UI) with the persistence layer. Not for: ORM, migration or DDL testing, schema drift,
+  load/perf, or pure UI assertions.
 ---
 
 
