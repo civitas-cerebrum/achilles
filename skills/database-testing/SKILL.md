@@ -4,12 +4,14 @@ description: >
   Use whenever a test reads from or asserts against a SQL database (write, run, review, or just
   call). Owns the shape every database interaction should produce: row counts, cell values,
   column order, commit/rollback verification, and the DB as the oracle for a UI or API mutation.
-  Activates on database-test intent (SQL test, verify or assert db state, check the table,
-  persistence test) and on any test that calls `steps.sql*` or a `steps.verifySql*` matcher, even
-  inside a UI or API spec; also on "check the row was inserted", "verify it saved to the
-  database", "query the table after the action". Extends contract-testing (API) and test-composer
-  (UI) with the persistence layer. Not for: ORM, migration or DDL testing, schema drift,
-  load/perf, or pure UI assertions.
+  Activates on database-test intent (database test, SQL test, query the db in a test, verify or
+  assert db state, check the table, data-layer test, persistence test) and on any test that calls
+  `steps.sql*` or a `steps.verifySql*` matcher, even inside a UI or API spec: every persisted
+  mutation deserves a state assertion, or the test silently passes when the write regresses. Also
+  on "check the row was inserted", "verify it saved to the database", "assert the order was
+  created", "query the table after the action". Extends contract-testing (API) and test-composer
+  (UI) with the persistence layer as an oracle. Not for: ORM, migration or DDL testing, schema
+  drift, load/perf, or pure UI assertions.
 ---
 
 

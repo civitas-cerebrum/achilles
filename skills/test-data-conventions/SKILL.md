@@ -4,12 +4,14 @@ description: >
   Use whenever a test's relationship to data is in question: what data a scenario needs, where it
   comes from, who creates it and who cleans it up. Triggers on "test data", "test data strategy",
   "hardcoded data", "dynamic test data", "seed data", "data cleanup", "data generation",
-  "fixtures", "relies on current content", "the content changed and the test broke", "test
-  accounts", "worker isolation", "test data plan". Auto-invoked by the composition standards'
-  Stage 4c data-feasibility dimension and whenever a composing skill (author-scenario,
+  "fixtures", "test fixtures", "relies on current content", "the content changed and the test
+  broke", "seed the database for tests", "test accounts", "worker isolation", "test data plan".
+  Auto-invoked by the composition standards' Stage 4c data-feasibility dimension
+  (test-composition-standards.md §4, dimension 4) and whenever a composing skill (author-scenario,
   test-composer, coverage passes, bug-discovery Phase 6, verify-change phase 7, evidence-capture
-  graduation) touches an entity-creating flow: signup, record creation, uploads, orders. Not for
-  secrets handling alone (secrets-sweep owns credential extraction).
+  graduation) touches an entity-creating flow: signup, record creation, uploads, orders, anything
+  that persists tenant or user data. Not for secrets handling alone: secrets-sweep owns credential
+  extraction to .env; this skill owns the data-lifecycle doctrine around it.
 ---
 
 

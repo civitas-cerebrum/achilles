@@ -1,16 +1,18 @@
 ---
 name: contract-testing
 description: >
-  Use whenever a test consumes a backend HTTP endpoint (write, run, review, or just call it). Owns
-  the shape every API interaction should produce: status-code expectations, response-schema
-  assertion, error-envelope validation, header coverage. Activates on contract intent (contract
-  test, schema test, pact, OpenAPI conformance, lock or verify the API shape, breaking-change
-  detection, consumer-driven contract, provider verification, spec conformance) and on any test
-  that calls `steps.api*`, `steps.verifyApiStatus` or `steps.verifyApiHeader`, even inside a UI-flow
-  spec; also on "call the API in a test", "verify the response", "assert the JSON shape",
-  "endpoint should return". Loaded by any author whose variant emits `steps.api*` lines
-  (test-composer Step 3). Not for: pure UI assertions, journey coverage, page-level bug hunting,
-  or failing-test diagnosis.
+  Use when writing, running or reviewing a test that calls a backend HTTP endpoint. Owns
+  what every API interaction should assert: status codes, response schema, error envelope,
+  headers. Activates on contract intent (contract or schema test, pact, OpenAPI or spec
+  conformance, lock, verify or ensure the API shape hasn't changed, breaking-change detection,
+  consumer-driven contract, provider verification, API compatibility) and on any test calling
+  `steps.api*`, `steps.verifyApiStatus` or `steps.verifyApiHeader`, even in a UI-flow spec:
+  without a status and error-envelope assertion a test passes through an endpoint
+  regression. Also on "call the API in a test", "test against the backend", "verify the
+  response", "assert the JSON shape", "endpoint should return", or an HTTP verb against a project
+  URL in a spec. Routed on contract intent and loaded by any author emitting
+  `steps.api*` lines (test-composer Step 3). Not for: pure UI assertions, journey coverage,
+  page-level bug hunting, or failing-test diagnosis.
 ---
 
 

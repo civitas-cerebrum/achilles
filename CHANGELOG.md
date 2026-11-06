@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- **Skill descriptions over 1,024 characters.** `contract-testing`, `database-testing` and `test-data-conventions` had frontmatter descriptions longer than the 1,024 characters pi accepts, so pi warned at every launch in a project with Achilles installed. They are now 767–861 characters, and `scripts/lint/registry.mjs` fails a description over 1,024.
+- **Skill descriptions over 1,024 characters.** `contract-testing`, `database-testing` and `test-data-conventions` had frontmatter descriptions longer than the 1,024 characters pi accepts, so pi warned at every launch in a project with Achilles installed. They are now 975–1,014 characters, with every trigger and the reason to load each skill kept, and `scripts/lint/registry.mjs` fails a description over 1,024.
 
 ## 0.1.8 — 2026-11-01
 
