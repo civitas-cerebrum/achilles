@@ -180,6 +180,14 @@ test('a hand-back that reports defects without a reproducer dispatch is flagged;
   expect(unconfirmedDefectsLine({ ...(run as object), dispatched: { reproducer: 2 } } as never, 'DONE_WITH_CONCERNS\nTwo defects found.')).toBeUndefined()
   expect(unconfirmedDefectsLine(run, 'DONE\nAll ACs pass.')).toBeUndefined()
   expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nThe staging environment was slow.')).toBeUndefined()
+  // Defects confirmed in an earlier segment of the run carry recorded verdicts: no warning, whatever this segment dispatched.
+  const ticketRun = { id: 'qa-2', task: 'Resume run qa-2 (ABC-7 tracking events)', dir: '.achilles/runs/qa-2', experts: [] } as never
+  const body = 'DONE_WITH_CONCERNS\nAC1 fails on five confirmed defects (D1, D2, D4, D11, D13).'
+  expect(unconfirmedDefectsLine(ticketRun, body, new Set(['ABC-7-D1', 'ABC-7-D2', 'ABC-7-D4', 'ABC-7-D11', 'ABC-7-D13']))).toBeUndefined()
+  // A defect without a recorded verdict is named, even when the run dispatched reproducers for others.
+  const partial = unconfirmedDefectsLine({ ...(ticketRun as object), dispatched: { reproducer: 3 } } as never, body, new Set(['ABC-7-D1', 'ABC-7-D2', 'ABC-7-D4']))
+  expect(partial).toContain('ABC-7-D11, ABC-7-D13 have no independently recorded verdict')
+  expect(unconfirmedDefectsLine(run, 'DONE_WITH_CONCERNS\nOne defect: ABC-9-D3 stays.', new Set(['ABC-9-D3']))).toBeUndefined()
 })
 
 test('a hand-back while the run still has an expert running is held; it is delivered after the expert reports and the orchestrator hands back again', async ($, on) => {
@@ -245,4 +253,18 @@ test('a run held with no expert left can be resumed; a run with an expert still 
   await $.turn.complete(ended('orchestrator-1', 'BLOCKED\nWaiting on the inspector.'))
   // Held, expert at work: a resume is refused.
   expect(String((await $.tool.call({ tool: DELEGATE, task: 'resume', run: id } as never)).result)).toMatch(/^BLOCKED\nRun .* is still running/)
+})
+
+test('a hand-back naming defects with recorded confirmations on disk gets no unconfirmed-defects line; one naming an unrecorded defect does', async ($, on) => {
+  const h = engine(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: DELEGATE, task: 'Resume run qa-x (ABC-7 tracking events)' } as never)
+  h.write(`${ROOT}/.achilles/defect-confirmations/ABC-7/ABC-7-D1.json`, '{"verdict":"bug"}')
+  h.write(`${ROOT}/.achilles/defect-confirmations/ABC-7/ABC-7-D2.json`, '{"verdict":"bug"}')
+  await $.turn.complete(ended('orchestrator-1', 'DONE_WITH_CONCERNS\nAC1 fails on two confirmed defects (D1, D2).'))
+  expect(h.prompts.at(-1)).not.toContain('Unconfirmed defects')
+
+  await $.tool.call({ tool: DELEGATE, task: 'Resume run qa-y (ABC-7 tracking events)' } as never)
+  await $.turn.complete(ended(h.spawns.at(-1)!.agentId, 'DONE_WITH_CONCERNS\nAC1 fails on two defects, D1 and D3.'))
+  expect(h.prompts.at(-1)).toContain('Unconfirmed defects: ABC-7-D3 has no independently recorded verdict')
 })

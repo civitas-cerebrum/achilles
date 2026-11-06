@@ -144,16 +144,47 @@ function summary(run: AchillesRun): string {
 }
 
 /** A hand-back that reports defects while the run dispatched no reproducer says so at its top. */
-export function unconfirmedDefectsLine(run: AchillesRun, body: string): string | undefined {
-  if ((run.dispatched?.reproducer ?? 0) > 0) return undefined
+/** The defect ids a hand-back names: <KEY>-D<n>, and a bare D<n> when the run concerns exactly one ticket. */
+export function defectIdsOf(run: AchillesRun, body: string): string[] {
+  const keys = [...new Set([...`${run.task}\n${body}`.matchAll(/\b([A-Z][A-Z0-9]+-[0-9]+)\b(?!-D[0-9])/g)].map(m => m[1]!))]
+  const ids = new Set([...body.matchAll(/\b([A-Z][A-Z0-9]+-[0-9]+-D[0-9]+)\b/g)].map(m => m[1]!))
+  if (keys.length === 1) for (const m of body.matchAll(/(?<![A-Za-z0-9-])D([0-9]+)\b/g)) ids.add(`${keys[0]}-D${m[1]}`)
+  return [...ids]
+}
+
+/**
+ * The warning a hand-back gets when it reports defects nobody confirmed independently, or undefined.
+ * `recorded` holds the defect ids with an adapter-recorded confirmation (.achilles/defect-confirmations/),
+ * which may come from an earlier segment of the run: a resumed run dispatches no reproducer for defects
+ * that already have a verdict, so the dispatch count alone is not the evidence.
+ */
+export function unconfirmedDefectsLine(run: AchillesRun, body: string, recorded: ReadonlySet<string> = new Set()): string | undefined {
   const first = body.split('\n').find(l => l.trim() !== '')?.trim() ?? ''
   if (!/^DONE_WITH_CONCERNS\b/.test(first) && !/@known-defect|\[SENTINEL /.test(body)) return undefined
   if (!/\bdefects?\b|\bbugs?\b|@known-defect|\[SENTINEL /i.test(body)) return undefined
+  const ids = defectIdsOf(run, body)
+  if (ids.length > 0) {
+    const missing = ids.filter(id => !recorded.has(id))
+    if (missing.length === 0) return undefined
+    return `Unconfirmed defects: ${missing.join(', ')} ${missing.length === 1 ? 'has' : 'have'} no independently recorded verdict (verify-change step 7a). Treat ${missing.length === 1 ? 'it' : 'them'} as suspected; do not file ${missing.length === 1 ? 'it' : 'them'} before a reproducer has confirmed ${missing.length === 1 ? 'it' : 'them'}.`
+  }
+  if ((run.dispatched?.reproducer ?? 0) > 0) return undefined
   return 'Unconfirmed defects: this hand-back reports defects, and the run dispatched no achilles-reproducer, so none was independently confirmed (verify-change step 7a). Treat them as suspected; do not file them before a reproducer has confirmed them.'
 }
 
+/** Every defect id with an adapter-recorded confirmation, for the tickets this run concerns. */
+async function recordedDefects($: EngineInterface, run: AchillesRun, body: string): Promise<Set<string>> {
+  const top = await checkoutRoot($, await $.session.cwd())
+  const keys = new Set(defectIdsOf(run, body).map(id => id.replace(/-D[0-9]+$/, '')))
+  const out = new Set<string>()
+  for (const key of keys)
+    for (const e of await $.fs.list(`${top}/.achilles/defect-confirmations/${key}`).catch(() => []))
+      if (e.kind === 'file' && e.name.endsWith('.json')) out.add(e.name.replace(/\.json$/, ''))
+  return out
+}
+
 async function handBack($: EngineInterface, run: AchillesRun, body: string) {
-  const warn = unconfirmedDefectsLine(run, body)
+  const warn = unconfirmedDefectsLine(run, body, await recordedDefects($, run, body))
   await closeProgress($, run, body.split('\n').find(l => l.trim() !== '')?.trim().split(/\s/)[0] ?? 'ended')
   await writeRuns($, runs => runs.filter(r => r.id !== run.id))
   await rememberHandback($, run.id, run.task, body)
