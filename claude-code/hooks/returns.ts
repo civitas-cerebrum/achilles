@@ -12,7 +12,7 @@ const CONTRACT = 'skills/achilles-orchestrator/references/controller-contract.md
 const STATUS = /^(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)\b/
 const SPILL = /tests\/e2e\/docs\/\.subagent-returns\/[^\s`'")\]]+\.md/g
 const PATHISH = /(?:^|[\s`'"(])((?:tests|src|app|skills|schemas|scripts|docs)\/[A-Za-z0-9_.\/-]+[A-Za-z0-9_])/g
-const SKILLS = ['journey-mapping', 'evidence-capture', 'bug-discovery', 'test-composer', 'failure-diagnosis', 'contract-testing', 'database-testing', 'performance-testing', 'agents-vs-agents', 'secrets-sweep', 'selector-development', 'test-data-conventions', 'review', 'qa-reporting', 'bug-report']
+const SKILLS = ['journey-mapping', 'evidence-capture', 'bug-discovery', 'test-composer', 'failure-diagnosis', 'contract-testing', 'database-testing', 'performance-testing', 'agents-vs-agents', 'secrets-sweep', 'selector-development', 'test-data-conventions', 'review', 'qa-reporting', 'bug-report', 'defect-confirmation']
 
 /** The judge verdict a reviewer's return records, anchored on its status line. */
 export function judgeVerdict(text: string): 'satisfied' | 'not-satisfied' | undefined {

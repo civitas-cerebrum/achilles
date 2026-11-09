@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENTS_DIR, AGENT_ROLES, HARNESS_DOC, frontmatterName } from './util.mjs';
 
-// Check 10 — agents/*.md ↔ the five roles, and ↔ the Agents table.
+// Check 10 — agents/*.md ↔ the six roles, and ↔ the Agents table.
 // Exactly one hand-authored definition per role, frontmatter `name` equal to
 // the file name, no extra files (a leftover generated role file would be
 // registered by the adapter). The Tools column of the "Agents and scopes"
@@ -44,7 +44,7 @@ export function run(report) {
   const names = files.map((f) => f.replace(/\.md$/, ''));
   for (const r of AGENT_ROLES) if (!names.includes(r)) detail.push(`agents/${r}.md is missing`);
   for (const n of names) {
-    if (!AGENT_ROLES.includes(n)) detail.push(`agents/${n}.md is not one of the five roles`);
+    if (!AGENT_ROLES.includes(n)) detail.push(`agents/${n}.md is not one of the six roles`);
     const fm = frontmatterName(join(AGENTS_DIR, `${n}.md`));
     if (fm !== n && fm !== null) detail.push(`agents/${n}.md frontmatter name is "${fm}"`);
   }

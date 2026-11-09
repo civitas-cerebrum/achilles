@@ -14,6 +14,7 @@ const ROLE_SKILLS: Record<string, string[]> = {
   inspector: ['journey-mapping', 'evidence-capture', 'bug-discovery'],
   author: ['test-composer', 'bug-discovery', 'failure-diagnosis', 'evidence-capture', 'contract-testing', 'database-testing', 'performance-testing', 'agents-vs-agents', 'secrets-sweep', 'selector-development', 'test-data-conventions'],
   reviewer: ['review'],
+  reproducer: ['defect-confirmation'],
   'doc-writer': ['journey-mapping', 'qa-reporting', 'bug-report'],
 }
 const SECTIONS_FILE = 'schemas/canonical-sections.txt'

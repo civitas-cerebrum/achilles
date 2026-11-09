@@ -9,6 +9,30 @@ A structured bug report gives developers everything they need to reproduce and f
 
 ## Engine
 
+### Step 0: a confirmed verdict, or no ticket
+
+A ticket is written only for a defect an independent reproducer called `bug`: the `achilles-reproducer`'s standard defect evidence (its `defect-repro` return, recorded by the harness; [`../defect-confirmation/SKILL.md`](../defect-confirmation/SKILL.md)) as consolidated in the verify-change defect audit (`docs/evidence/<ticket>/defect-audit.md`, [phase 7a](../achilles-orchestrator/references/verify-change/phase-7a-defect-confirmation.md)). The ticket cites the `defect-id` (`<TICKET>-D<n>`); the harness refuses a defect filing that cites none with a recorded `bug` verdict. A brief that carries only the finder's own observation, or a verdict of `real-in-source`, `spec-ambiguity` or `not-a-bug`, gets `NEEDS_CONTEXT` asking for the confirmation or the user's explicit decision to file anyway; record that decision in the ticket. The reproduction steps come from the reproducer's report, not from the finder's notes. With no confirmation, the `NEEDS_CONTEXT` names the fix: the orchestrator dispatches an `achilles-reproducer` for the defect.
+
+### Step 0b: search for an existing ticket before drafting a new one
+
+Before drafting, search the tracker with the tools the brief or the harness gives you. Look at:
+
+1. the ticket under test: its sub-tasks (reworks, code changes) and its linked issues;
+2. its parent and siblings, for a story under an epic;
+3. open bugs matching the defect: the screen or endpoint, the user-visible message, the error text verbatim, and the component;
+4. recently closed bugs with the same symptom, which may be a regression of a known fix.
+
+Each outcome has its own route:
+
+| The search finds | You |
+|---|---|
+| the same defect, open | file nothing new. Draft a comment for that ticket with the new evidence, and name it in the hand-back |
+| the same defect, closed | draft a new ticket as a regression of it, linked to it |
+| a related, different defect | draft the new ticket and propose a link |
+| nothing | draft the new ticket |
+
+Record the searches you ran (the queries and what they returned) in the hand-back, so a reviewer can repeat them. A search you could not run (no tracker access) is a `NEEDS_CONTEXT` item, not a skipped step.
+
 ### Step 1: extract before listing a field as missing
 
 Read everything the brief and its evidence already carry before naming any field as open:
@@ -53,12 +77,15 @@ Return `NEEDS_CONTEXT` with the complete filled ticket and one numbered list: ev
 ### Hard rules
 
 - **Never paste plaintext secrets into a ticket.** Test-account passwords, API keys, tokens, or any credential value never go into a ticket body, attachment, or comment. Reference the credential store or the `.env` key name instead (e.g. `STAGING_QA_USER` / `STAGING_QA_PASSWORD` from `.env`), the `secrets-sweep` convention: credentials live in `.env` or the secret store, and only their key names travel.
+- **No AI signature and no agent framing** in the ticket or its comments ([`../achilles-orchestrator/references/outbound-text.md`](../achilles-orchestrator/references/outbound-text.md)).
+- **Cite only evidence the reader can open**: a file of a pushed repository by its remote link, or an attachment; never a path into a repository that has no remote or a commit that is not pushed ([`outbound-text.md`](../achilles-orchestrator/references/outbound-text.md)).
+- **Every defect ticket carries reproduction evidence**: the reproducer's captures, and for a UI defect its reproduction video (the `.mp4` that `achilles-video` writes), attached to the ticket. No evidence, no ticket: return `NEEDS_CONTEXT` naming the fix (dispatch an `achilles-reproducer`).
 - **Never fabricate evidence.** Only list attachments that exist.
 - **Quote error messages verbatim.** Never paraphrase what the system said.
 - **Console errors belong in the ticket body**, in Description or Actual result, not only in Attachments.
 - **Severity and Priority are suggestions until confirmed** through the `NEEDS_CONTEXT` round; never assigned silently.
 - **Never skip the confirmation round** unless the brief carries the confirmed values.
-- Write in **third person** ("the user", "they"); assume the reader has zero prior knowledge of the project; fill every available field; attach evidence at the **end** of the ticket.
+- Write in **third person** ("the user", "they"); assume the reader has zero prior knowledge of the project; **no shorthand in steps**: one action per numbered step, every button or menu by its visible label, every file by its path, no `→` chains and no "as in step N of another ticket"; fill every available field; attach evidence at the **end** of the ticket.
 
 ## Template
 

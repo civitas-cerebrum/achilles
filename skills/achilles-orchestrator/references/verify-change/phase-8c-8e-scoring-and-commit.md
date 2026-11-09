@@ -21,7 +21,7 @@ citation is void and scores 0.** The reviewer is scoring what it can *see*, not 
 | R2 | **Discrimination**: does the suite fail where the fix is absent? | never run against a build without the fix | negative control run and read *per test*, plus mutation by owner |
 | R3 | **Outcome fidelity**: is the user-visible outcome asserted? | every AC rests on a proxy/mechanism | outcome asserted directly; each surviving proxy justified in writing |
 | R4 | **Environment honesty**: do the claims match what was run? | claims cover browsers/viewports/builds never executed | every claim scoped to the matrix actually run, with the matrix stated |
-| R5 | **Defect quality**: are findings reproducible and bounded? | severities asserted; no repro; no boundary | each defect has a repro, a measured boundary, and a severity with a reason |
+| R5 | **Defect quality**: are findings reproducible and bounded? | severities asserted; no repro; no boundary; or any reported defect without an independent 7a verdict | each defect has a 7a verdict in `defect-audit.md` with a reproduction count, a root cause by `file:line`, steps a reader with no context can follow, and a severity with a reason |
 | R6 | **Self-scepticism**: was the harness itself controlled? | results believed without a control | no-op control, applied-checks, and at least one earlier conclusion retracted on evidence |
 
 **Thresholds: the part that makes it a gate rather than a decoration:**
@@ -34,7 +34,7 @@ citation is void and scores 0.** The reviewer is scoring what it can *see*, not 
 - **16–18** should be *rare*. A reviewer handing out 18 is a reviewer to distrust: ask it which
   dimension it examined *least* carefully, and re-run that one.
 
-The `probe-rigour` brief carries: the rubric above; the instruction to score the QA work, not the code under test, and to quote for every score the artifact it was read from (file, line, log or run output; an uncited score is 0); the inputs (the specs, the live-observation trace, the negative-control output, the mutation report, the defect list, the draft report); the return schema `schemas/subagent-returns/probe.schema.json`; and the closing instruction to state the total, the blocking dimensions, the one change that would raise the lowest score, and, when everything scored 3, the dimension examined least, re-examined.
+The `probe-rigour` brief carries: the rubric above; the instruction to score the QA work, not the code under test, and to quote for every score the artifact it was read from (file, line, log or run output; an uncited score is 0); the inputs (the specs, the live-observation trace, the negative-control output, the mutation report, the defect audit, the draft report); the return schema `schemas/subagent-returns/probe.schema.json`; and the closing instruction to state the total, the blocking dimensions, the one change that would raise the lowest score, and, when everything scored 3, the dimension examined least, re-examined.
 
 **Why a score and not more findings.** Findings are unranked and unbounded; six cosmetic ones read
 louder than one missing negative control. A rubric forces the reviewer to say *which axis is

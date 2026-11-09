@@ -1,0 +1,21 @@
+handover:
+  role: reproducer
+  status: verdict-reached
+  next-action: add the D2 entry to defect-audit.md
+ticket: ABC-450
+defect-id: ABC-450-D2
+verdict: bug
+reproduction:
+  attempts: 2
+  observed: 0
+root-cause:
+  - layer: frontend
+    location: src/app/save/save-step.component.html:10
+severity:
+  level: High
+  reason: called a bug without a live reproduction or an expected result
+steps:
+  - Upload the fixture and continue.
+cleanup:
+  created: []
+  deleted: []

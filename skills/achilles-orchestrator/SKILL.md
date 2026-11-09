@@ -132,7 +132,7 @@ Stated once; workflows cite this section.
 ## 9. State and commit discipline
 
 - **Authoritative files per workflow:** expand-coverage → `coverage-expansion-state.json`; map-journeys → `.phase4-cycle-state.json`; onboard → `onboarding-status.json`; perf pipeline → `perf-onboarding-status.json`; repair-suite → `.achilles/self-repair/<run-id>/` and `flake-quarantine.md`; every run → `.achilles/runs/<run-id>/resume.json`. Write after every landed deliverable, not at the end. Shapes: [`references/state-files.md`](references/state-files.md).
-- **One commit per landed deliverable**, with the subject grammar in [`references/commit-conventions.md`](references/commit-conventions.md). Reviewers never commit; their verdicts live in the state file. No AI attribution trailers in commits or PR bodies.
+- **One commit per landed deliverable**, with the subject grammar in [`references/commit-conventions.md`](references/commit-conventions.md). Reviewers never commit; their verdicts live in the state file. No AI signature or agent framing in anything that leaves the run: commits, PRs, tickets, comments, reports ([`references/outbound-text.md`](references/outbound-text.md)).
 - **Gitignored:** `.achilles/`, `test-results/`, `playwright-report/`, `.playwright-cli/`, `bug-evidence/`, `.env*` (except `.env.example`), the dot-prefixed state files under `tests/e2e/docs/`. `tests/e2e/docs/.discovery-draft.json` is committed.
 - **Ledgers you own:** `tests/e2e/docs/adversarial-findings.md` (append-only, schema in [`finding-and-ledger-schema.md`](references/finding-and-ledger-schema.md) §3), `tests/e2e/docs/app-context.md` (experts append; you never rewrite another's entry), `tests/e2e/docs/flake-quarantine.md` (authors add, the repair workflow releases).
 

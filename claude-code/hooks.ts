@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { AchillesRun } from './types'
 import { registerBashJudge } from './hooks/bash-hook'
 import { dispatchAdvice } from './hooks/dispatch'
+import { registerOutbound } from './hooks/attribution'
 import { registerHygiene } from './hooks/hygiene'
 import { registerLedger } from './hooks/ledger'
 import { PANE, registerPane, rememberHandback } from './hooks/pane'
@@ -10,8 +11,10 @@ import { closeProgress, recordFinished, refreshProgress, registerProgress } from
 import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
-import { recordReceipt, registerSignoff } from './hooks/signoff'
-import { ORCHESTRATOR, checkoutRoot, editRun, exists, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+import { recordConfirmation, recordReceipt, registerSignoff } from './hooks/signoff'
+import { ORCHESTRATOR, checkoutRoot, editRun, exists, expertLabel, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+
+const CONTRACT_REF = 'skills/achilles-orchestrator/references/controller-contract.md'
 
 // The Claude Code adapter of the Achilles methodology. The main session is never bound:
 // QA work enters through delegate_qa or /achilles, which start the orchestrator agent in
@@ -107,7 +110,10 @@ async function delegate($: EngineInterface, task: string, context?: string, from
   if (whoIs(runs, fromAgent)) return 'BLOCKED\ndelegate_qa is the main session’s door; inside a run the orchestrator dispatches experts with the Agent tool.'
   if (resume !== undefined) {
     if (!RUN_ID.test(resume)) return `NEEDS_CONTEXT\n"${resume}" is not a run id; pass the qa-… id a hand-back names.`
-    if (runs.some(r => r.id === resume)) return `BLOCKED\nRun ${resume} is still running; its hand-back arrives on its own.`
+    const live = runs.find(r => r.id === resume)
+    // A run whose hand-back is held with no expert left is not running: it is waiting for nobody.
+    if (live && live.held !== undefined && live.experts.length === 0) await writeRuns($, rs => rs.filter(r => r.id !== resume))
+    else if (live) return `BLOCKED\nRun ${resume} is still running; its hand-back arrives on its own.`
     const root = await checkoutRoot($, await $.session.cwd())
     if (!(await exists($, `${root}/.achilles/runs/${resume}/resume.json`))) return `NEEDS_CONTEXT\nRun ${resume} has no .achilles/runs/${resume}/resume.json to resume from.`
   }
@@ -137,11 +143,52 @@ function summary(run: AchillesRun): string {
   return `Run summary: ${parts.join('; ')}.`
 }
 
+/** A hand-back that reports defects while the run dispatched no reproducer says so at its top. */
+/** The defect ids a hand-back names: <KEY>-D<n>, and a bare D<n> when the run concerns exactly one ticket. */
+export function defectIdsOf(run: AchillesRun, body: string): string[] {
+  const keys = [...new Set([...`${run.task}\n${body}`.matchAll(/\b([A-Z][A-Z0-9]+-[0-9]+)\b(?!-D[0-9])/g)].map(m => m[1]!))]
+  const ids = new Set([...body.matchAll(/\b([A-Z][A-Z0-9]+-[0-9]+-D[0-9]+)\b/g)].map(m => m[1]!))
+  if (keys.length === 1) for (const m of body.matchAll(/(?<![A-Za-z0-9-])D([0-9]+)\b/g)) ids.add(`${keys[0]}-D${m[1]}`)
+  return [...ids]
+}
+
+/**
+ * The warning a hand-back gets when it reports defects nobody confirmed independently, or undefined.
+ * `recorded` holds the defect ids with an adapter-recorded confirmation (.achilles/defect-confirmations/),
+ * which may come from an earlier segment of the run: a resumed run dispatches no reproducer for defects
+ * that already have a verdict, so the dispatch count alone is not the evidence.
+ */
+export function unconfirmedDefectsLine(run: AchillesRun, body: string, recorded: ReadonlySet<string> = new Set()): string | undefined {
+  const first = body.split('\n').find(l => l.trim() !== '')?.trim() ?? ''
+  if (!/^DONE_WITH_CONCERNS\b/.test(first) && !/@known-defect|\[SENTINEL /.test(body)) return undefined
+  if (!/\bdefects?\b|\bbugs?\b|@known-defect|\[SENTINEL /i.test(body)) return undefined
+  const ids = defectIdsOf(run, body)
+  if (ids.length > 0) {
+    const missing = ids.filter(id => !recorded.has(id))
+    if (missing.length === 0) return undefined
+    return `Unconfirmed defects: ${missing.join(', ')} ${missing.length === 1 ? 'has' : 'have'} no independently recorded verdict (verify-change step 7a). Treat ${missing.length === 1 ? 'it' : 'them'} as suspected; do not file ${missing.length === 1 ? 'it' : 'them'} before a reproducer has confirmed ${missing.length === 1 ? 'it' : 'them'}.`
+  }
+  if ((run.dispatched?.reproducer ?? 0) > 0) return undefined
+  return 'Unconfirmed defects: this hand-back reports defects, and the run dispatched no achilles-reproducer, so none was independently confirmed (verify-change step 7a). Treat them as suspected; do not file them before a reproducer has confirmed them.'
+}
+
+/** Every defect id with an adapter-recorded confirmation, for the tickets this run concerns. */
+async function recordedDefects($: EngineInterface, run: AchillesRun, body: string): Promise<Set<string>> {
+  const top = await checkoutRoot($, await $.session.cwd())
+  const keys = new Set(defectIdsOf(run, body).map(id => id.replace(/-D[0-9]+$/, '')))
+  const out = new Set<string>()
+  for (const key of keys)
+    for (const e of await $.fs.list(`${top}/.achilles/defect-confirmations/${key}`).catch(() => []))
+      if (e.kind === 'file' && e.name.endsWith('.json')) out.add(e.name.replace(/\.json$/, ''))
+  return out
+}
+
 async function handBack($: EngineInterface, run: AchillesRun, body: string) {
+  const warn = unconfirmedDefectsLine(run, body, await recordedDefects($, run, body))
   await closeProgress($, run, body.split('\n').find(l => l.trim() !== '')?.trim().split(/\s/)[0] ?? 'ended')
   await writeRuns($, runs => runs.filter(r => r.id !== run.id))
   await rememberHandback($, run.id, run.task, body)
-  await $.prompt.submit({ text: `${HANDBACK_LEAD(run.id)}\n\nTask: ${run.task}\n\n${body}\n\n${summary(run)}` })
+  await $.prompt.submit({ text: `${HANDBACK_LEAD(run.id)}\n\nTask: ${run.task}\n\n${warn ? `${warn}\n\n` : ''}${body}\n\n${summary(run)}` })
 }
 
 export const register: Register = on => {
@@ -228,16 +275,38 @@ export const register: Register = on => {
           await writeRuns($, runs => runs)
           return next(e)
         }
+        // A hand-back while its own experts still run is held: the harness may run a foreground
+        // dispatch in the background, and an expert that reports after the hand-back has nowhere to
+        // go. The run stays registered, the orchestrator resumes when they report, and its next
+        // status-word turn is the hand-back.
+        // Held once: a second status-word turn is delivered, so an expert that never reports
+        // cannot hold a run forever.
+        if (w.run.experts.length > 0 && w.run.held === undefined) {
+          await editRun($, w.run.id, r => ({ ...r, held: e.answer }))
+          await note($, w.run.agentId, `your hand-back is held: ${w.run.experts.length} expert${w.run.experts.length === 1 ? ' is' : 's are'} still running (${w.run.experts.map(expertLabel).join(', ')}). You resume when ${w.run.experts.length === 1 ? 'it reports' : 'they report'}; read the report${w.run.experts.length === 1 ? '' : 's'}, finish the run, then hand back. While waiting, end a turn without a status word (${CONTRACT_REF}).`)
+          return next(e)
+        }
         await handBack($, w.run, e.answer)
       } else {
         await handBack($, w.run, `BLOCKED\nThe orchestrator's run ended by ${e.reason === 'aborted' ? 'an interruption' : e.reason === 'error' ? 'an API error' : 'a model refusal'} before it handed back; its state is under ${w.run.dir}/.`)
       }
     } else {
+      // An expert that ends a turn with no status word and no report on disk is waiting on its own
+      // background work (a spec run, a sub-step): it is still at work, so it stays counted and
+      // nothing is read yet. A written report means it has finished, status word or not.
+      const interim = e.reason === 'answer' && !TERMINAL.test(e.answer.split('\n').find(l => l.trim() !== '')?.trim() ?? '')
+      if (interim && !(w.expert?.report && (await exists($, `${await $.session.cwd()}/${w.expert.report}`)))) return next(e)
       // An expert's end: it leaves the run first, so a slow guard below can never keep it
       // counted; then the guards read its hand-back side by side, inside one budget.
-      await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))
+      const runs = await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))
+      const after = runs.find(r => r.id === w.run.id)
+      // The last expert of a held run has reported. The harness does not reliably wake an
+      // orchestrator whose turn already ended, so the held hand-back is delivered now, naming the
+      // reports that arrived after it; a resume picks the run up from there.
+      if (after?.held !== undefined && after.experts.length === 0)
+        await handBack($, after, `${after.held}\n\nNote: the experts still at work when this hand-back was written have since reported; read ${after.dir}/reports/ before resuming.`)
       await Promise.all([
-        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e)] : []),
+        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e)] : []),
         closeSelectorScope($, w, e),
         closeSessions($, w),
         recordFinished($, w, e),
@@ -249,6 +318,7 @@ export const register: Register = on => {
   registerBashJudge(on)
   registerLedger(on)
   registerSignoff(on)
+  registerOutbound(on)
   registerReturnTracking(on)
   registerHygiene(on)
   registerSelector(on)
