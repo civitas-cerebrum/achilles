@@ -32,6 +32,7 @@ Restated rules drift into contradictions (inline-selector policy, `test.fail()`,
 | Whole-suite re-run gate | [`test-optimization.md`](test-optimization.md) §7 |
 | Per-journey portfolio (variant order, P0–P3 depth) | `../../test-composer/SKILL.md` Steps 1 and 3 |
 | Oracle strength ladder L0–L3 | `../../test-composer/SKILL.md` §"Oracle strength ladder" |
+| UI outcome oracle (a UI test asserts what the user is shown, refusals included) | `../../test-composer/SKILL.md` §"UI outcome oracle" |
 | Deliberate-failure bite check | `../../test-composer/SKILL.md` §"Oracle strength ladder" (UI); `../../contract-testing/SKILL.md` Rule 8 (API); `../../performance-testing/SKILL.md` rule 9 (k6) |
 | Input-domain / partition analysis | `../../test-composer/references/input-domain-analysis.md` |
 | Tenant cleanup contract (`cleanupViaApiBackdoor`, `cleanup: done \| blocked \| not-needed`) | `../../test-composer/SKILL.md` §"Tenant cleanup" |
@@ -72,7 +73,7 @@ Stages 4a and 4b are author-side self-review. Stage 4c adds the reader the autho
 
 **Dispatch.** After 4a + 4b are clean. A fresh `achilles-reviewer` loading `../../review/SKILL.md` in judge mode; never the author, never a reused judge. The brief gives it the specs, the scenario source (approved scenario, journey block, or ticket criteria), the `page-repository.json` slice, `tests/e2e/docs/test-data-plan.md`, and the return schema `schemas/subagent-returns/reviewer-inloop.schema.json`.
 
-**Dimensions.** (1) Intent coverage: every criterion maps to ≥1 test and back. (2) Oracle strength: causal verification on every test; the ladder per priority (an L0-only oracle on a P0 mutating step is a miss). (3) API compliance spot-check against the API reference. (4) Test-data feasibility per `test-data-conventions`, including a test data plan that reflects the specs (a missing plan is a must-fix for the author, never grounds to fail a fresh project).
+**Dimensions.** (1) Intent coverage: every criterion maps to ≥1 test and back. (2) Oracle strength: causal verification on every test; the ladder per priority (an L0-only oracle on a P0 mutating step is a miss); the UI outcome oracle on every UI test (a `proxy-only` UI test, whose user-facing checks are all URLs, absences or API statuses, is a miss). (3) API compliance spot-check against the API reference. (4) Test-data feasibility per `test-data-conventions`, including a test data plan that reflects the specs (a missing plan is a must-fix for the author, never grounds to fail a fresh project).
 
 **Verdict and loop.** `greenlight` ⇔ SATISFIED; `improvements-needed` + `[must-fix]` findings ⇔ NOT SATISFIED. The author fixes, re-runs 4a/4b when code changed, and a new judge is dispatched. Three consecutive NOT SATISFIED → the orchestrator hands back `DONE_WITH_CONCERNS` with the three lists.
 

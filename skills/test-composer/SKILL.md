@@ -16,7 +16,7 @@ description: >
 
 One journey per invocation. Every step, branch and applicable state variation in the journey's block has a test before you return; the orchestrator trusts this and does not re-check per-journey coverage.
 
-**Inside a coverage pass** you are Stage A. A fresh reviewer (Stage B, [`../review/references/stage-b-contract.md`](../review/references/stage-b-contract.md)) reads your output and the live app and returns `greenlight` or `improvements-needed`; the orchestrator re-dispatches you with the must-fix list per [`dual-stage-retry-loop.md`](../achilles-orchestrator/references/dual-stage-retry-loop.md). Meet the bar in cycle 1 by knowing what the reviewer checks: every `Test expectations:` item covered; Steps API with repository selectors; file-level serial on tenant-mutating specs; a mobile variant on P0/P1; assertions that match the live DOM; a data strategy on the `test-data-conventions` ladder.
+**Inside a coverage pass** you are Stage A. A fresh reviewer (Stage B, [`../review/references/stage-b-contract.md`](../review/references/stage-b-contract.md)) reads your output and the live app and returns `greenlight` or `improvements-needed`; the orchestrator re-dispatches you with the must-fix list per [`dual-stage-retry-loop.md`](../achilles-orchestrator/references/dual-stage-retry-loop.md). Meet the bar in cycle 1 by knowing what the reviewer checks: every `Test expectations:` item covered; Steps API with repository selectors; file-level serial on tenant-mutating specs; a mobile variant on P0/P1; assertions that match the live DOM; a UI outcome oracle on every UI test (§"UI outcome oracle"); a data strategy on the `test-data-conventions` ladder.
 
 ## Mandatory stages
 
@@ -57,7 +57,7 @@ Rules:
 2. **Error states**: validation, network failure, session expiry, invalid input per step.
 3. **Edge cases** from the partition table in [`references/input-domain-analysis.md`](references/input-domain-analysis.md), never ad hoc.
 4. **Mobile** (P0/P1): the happy path at 375×812.
-5. **Negative flows**: permission denied, unauthorised access, out-of-order steps.
+5. **Negative flows**: permission denied, unauthorised access, out-of-order steps; each asserts the refusal the user is shown, not only the redirect (§"UI outcome oracle").
 6. **Data lifecycle** where the expectations list them: create → read → update → delete across sessions, draft persistence, bulk operations.
 7. **Visual regression** where the surface is design-locked (see below).
 
@@ -85,6 +85,19 @@ Every test proves its claim through an oracle, the assertion that fails when the
 | P2/P3 | L0 acceptable | L0 acceptable |
 
 A P0 mutating step whose strongest oracle is L0 is a coverage gap (Step 7 loops back). **Bite check**: per journey, mutate the expected value of one L1+ assertion, confirm the test fails with a useful diff, revert.
+
+### UI outcome oracle
+
+A test that drives the app through the browser is a UI test, and its claim is about what the user experiences. On top of whatever rung the ladder demands, every UI test asserts **through the UI** the user-visible outcome of the action it is about. The ladder decides how deep the proof goes; this rule decides that the user's side of it is proven at all.
+
+- **Success:** what the user sees change: the new row, the saved value after a reload, the confirmation message.
+- **Refusal or failure** (negative flows, permission denied, validation, out-of-order steps, a guarded route): the feedback the user is shown, asserted by its text through a repository entry: the permission or error toast, the inline validation message, the banner, the disabled control and its explanation. Where the user ends up (the redirect target) is asserted too, but it is not the feedback.
+- **Proxies never satisfy it on their own:** the URL after a redirect, the absence of an element, a status code from `steps.api*` or a helper request, a database row. Keep them as further oracles (they prove the guard held); the UI assertion proves the user was told.
+- **Discover the outcome surface in Step 2:** trigger the outcome in your session and snapshot the toast or message while it is shown. Toasts are transient, so the test asserts them as they appear (an auto-waiting visibility and text check right after the action), never after a fixed wait. Save the entry with its evidence note.
+- **No feedback where the user needs it** (a silent redirect, a refused save with no message) is a finding with evidence ([`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md)), not a reason to drop the oracle: assert the feedback the user should get and tag the test `@known-defect` ([`test-identity.md`](../achilles-orchestrator/references/test-identity.md)). Never assert the silent outcome as the expected result.
+- **Scope:** a test that opens no page (a contract, server-gate or data test) is not a UI test. A test that opens a page for any step is one for every step whose outcome the user can see; an API probe inside it adds an oracle and never replaces the UI one.
+
+A UI test whose user-facing assertions are all proxies is a verification miss (`proxy-only`), the same class as an L0-only P0 mutation: Step 7 loops back.
 
 ### Tenant cleanup
 
