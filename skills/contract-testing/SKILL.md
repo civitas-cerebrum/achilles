@@ -1,24 +1,18 @@
 ---
 name: contract-testing
 description: >
-  Use whenever a backend HTTP endpoint is being consumed in a test — write, run, review, or just
-  call. The skill owns the structured shape every API interaction should produce: status code
-  expectations, response-schema assertion, error-envelope validation, header coverage. It auto-
-  activates on the explicit-intent triggers (contract test, schema test, pact, OpenAPI conformance,
-  lock API contract, verify API shape, breaking change detection, consumer-driven contract,
-  provider verification, API compatibility, spec conformance, ensure API hasn't changed) AND on any
-  test or planned test that calls `steps.apiGet`, `steps.apiPost`, `steps.apiPut`, `steps.apiDelete`,
-  `steps.apiPatch`, `steps.apiHead`, `steps.verifyApiStatus`, or `steps.verifyApiHeader` — even
-  inside a UI-flow spec. The rationale: every backend call deserves at minimum a status-code +
-  error-envelope assertion; without those the test silently passes when the endpoint regresses.
-  Also activates on phrases that signal a backend interaction is about to land: "call the API in a
-  test", "test against the backend", "consume the API", "verify the response", "assert the JSON
-  shape", "validate the API response", "lock the backend's response", "endpoint should return", and
-  any mention of an HTTP verb against a project URL inside a spec context. Routed by the
-  orchestrator on contract intent, and loaded by any author whose variant emits `steps.api*` lines
-  (test-composer Step 3) rather than treating contract shape as optional.
-  Not for: pure UI flow assertions, coverage expansion at journey scope, bug hunting at the page
-  level, or failing-test diagnosis — those route to their own skills.
+  Use when writing, running or reviewing a test that calls a backend HTTP endpoint. Owns
+  what every API interaction should assert: status codes, response schema, error envelope,
+  headers. Activates on contract intent (contract or schema test, pact, OpenAPI or spec
+  conformance, lock, verify or ensure the API shape hasn't changed, breaking-change detection,
+  consumer-driven contract, provider verification, API compatibility) and on any test calling
+  `steps.api*`, `steps.verifyApiStatus` or `steps.verifyApiHeader`, even in a UI-flow spec:
+  without a status and error-envelope assertion a test passes through an endpoint
+  regression. Also on "call the API in a test", "test against the backend", "verify the
+  response", "assert the JSON shape", "endpoint should return", or an HTTP verb against a project
+  URL in a spec. Routed on contract intent and loaded by any author emitting
+  `steps.api*` lines (test-composer Step 3). Not for: pure UI assertions, journey coverage,
+  page-level bug hunting, or failing-test diagnosis.
 ---
 
 
