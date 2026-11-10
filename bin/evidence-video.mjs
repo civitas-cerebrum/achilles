@@ -12,8 +12,14 @@
 // pace.captionMs, then its action at pace.actionMs (slowMo) with the caption still showing; then an
 // evidence page built from what the run captured (a downloaded .docx read as paragraphs, an API
 // response, plain text), with the decisive text highlighted and scrolled into view; then a closing
-// card with the expected and the actual result, on its own screen. Defaults are the ones that read well: 1280x800,
-// 600 ms per action, 2.2 s per caption, 9 s of evidence, 6 s of closing.
+// card with the expected and the actual result, on its own screen. Defaults: Full HD (1920x1080),
+// 400 ms per action, each caption held for its reading time (400 ms a word, at least 2 s; a repeated
+// caption is not held again), 5 s of evidence, 4 s of closing, encoded sharp enough to read text.
+//
+// ROUTES. A storyboard may name a module (`routes`) that sets up the recorded context before the first
+// page opens, e.g. Playwright routes that answer a service with a stand-in. What it declares as its
+// `notice` is shown on the title card and kept in the manifest; its `finish()` runs after the last
+// step and fails the recording when it throws.
 //
 // WHAT IT NEVER DOES. Log in on camera (auth runs in a separate, unrecorded context or comes from a
 // storage state), show or keep a ${env:NAME} value (masked in captions, captures and the manifest),
@@ -29,14 +35,14 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import Ajv from 'ajv/dist/2020.js';
 
 const require = createRequire(import.meta.url);
 const SCHEMA = join(dirname(fileURLToPath(import.meta.url)), '..', 'schemas', 'evidence-video.schema.json');
 const VERBS = ['goto', 'click', 'fill', 'press', 'select', 'check', 'uncheck', 'scroll', 'upload', 'waitFor', 'expect', 'download', 'pause'];
-const DEFAULTS = { actionMs: 600, captionMs: 2200, evidenceMs: 9000, closingMs: 6000, timeoutMs: 30000, waitMs: 180000 };
+const DEFAULTS = { actionMs: 400, captionMs: 2000, wordMs: 400, settleMs: 1200, evidenceMs: 5000, closingMs: 4000, timeoutMs: 30000, waitMs: 180000 };
 const CAP_CSS = 'position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:2147483647;max-width:1100px;background:rgba(17,24,39,.93);color:#fff;font:600 20px/1.35 -apple-system,Segoe UI,Arial,sans-serif;padding:14px 22px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.35);pointer-events:none;white-space:pre-wrap;text-align:center';
 
 const HELP = `achilles-video <storyboard.json> [--check] [--headed] [--force]
@@ -133,6 +139,12 @@ function locate(page, target, repo, sub = v => v) {
 
 // ── on-screen layers ──
 
+// How long a caption stays alone on screen: its reading time, never less than pace.captionMs.
+export function readingMs(text, pace) {
+  const words = String(text).split(/\s+/).filter(Boolean).length;
+  return Math.max(pace.captionMs, 400 + words * pace.wordMs);
+}
+
 async function caption(page, text) {
   await page.evaluate(([t, css]) => {
     let d = document.getElementById('__achilles_caption');
@@ -155,7 +167,7 @@ main{padding:20px 28px 160px} .b{background:#fff;border-radius:8px;padding:14px 
 .b.bad{border-left:6px solid #b91c1c} .b h3{margin:0 0 8px;font-size:15px;color:#374151;text-transform:uppercase;letter-spacing:.04em}
 pre{white-space:pre-wrap;margin:0;font:14px/1.45 ui-monospace,Menlo,monospace} mark{background:#fde047;padding:0 2px;font-weight:700}
 .card{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#111827;color:#fff;text-align:center;padding:0 80px}
-.card h1{font-size:34px;margin:0 0 14px} .card p{font-size:18px;color:#d1d5db;margin:0}
+.card h1{font-size:34px;margin:0 0 14px} .card p{font-size:18px;color:#d1d5db;margin:0;white-space:pre-line}
 .close{display:flex;flex-direction:column;justify-content:center;height:100vh;background:#111827;color:#fff;padding:0 110px}
 .close h2{font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px;color:#9ca3af} .close p{font-size:26px;line-height:1.4;margin:0 0 36px}
 .close .ok h2{color:#86efac} .close .no h2{color:#fca5a5}`;
@@ -302,7 +314,7 @@ export async function play(file, { headed = false, force = false, env = process.
   const run = Math.random().toString(36).slice(2, 8);
   const { sub, mask } = substituter(env, run);
   const pace = { ...DEFAULTS, ...(board.pace ?? {}) };
-  const viewport = { width: board.viewport?.width ?? 1280, height: board.viewport?.height ?? 800 };
+  const viewport = { width: board.viewport?.width ?? 1920, height: board.viewport?.height ?? 1080 };
   const ctx = { dir, out, sub, mask, baseURL: board.baseURL, repo: repository(board.pageRepository && resolve(dir, board.pageRepository)), captures: new Map(), captureLog: [], downloads: new Map(), expectations: [], n: 0, cap: '' };
   const { chromium } = await import('@playwright/test');
   const browser = await chromium.launch({ headless: !headed, slowMo: pace.actionMs });
@@ -329,6 +341,15 @@ export async function play(file, { headed = false, force = false, env = process.
       await login.close();
     }
     const rec = await browser.newContext({ ...common, ...(storageState ? { storageState } : {}), recordVideo: { dir: scratch, size: viewport } });
+    // The storyboard's routes module, before the first page: what it changes is said on the title card.
+    let routes;
+    if (board.routes) {
+      const mod = await import(pathToFileURL(resolve(dir, sub(board.routes))).href);
+      const install = mod.default ?? mod.install;
+      if (typeof install !== 'function') throw new Error(`routes module ${board.routes} exports no default function`);
+      routes = (await install({ context: rec, storyboard: board, env })) ?? {};
+      manifest.routes = { module: board.routes, notice: routes.notice ? mask(String(routes.notice)) : null };
+    }
     const page = await rec.newPage();
     const started = Date.now();
     page.on('response', async res => {
@@ -347,16 +368,20 @@ export async function play(file, { headed = false, force = false, env = process.
       }
     });
     page.on('load', () => { if (ctx.cap) caption(page, ctx.cap); });
-    await titleCard(page, board.title, 'Reproduction', 2500);
+    await titleCard(page, board.title, manifest.routes?.notice ? `Reproduction\n${manifest.routes.notice}` : 'Reproduction', manifest.routes?.notice ? Math.max(2500, readingMs(manifest.routes.notice, pace)) : 2500);
     for (const [i, s] of board.steps.entries()) {
       ctx.n = i + 1;
+      const prev = ctx.cap;
       ctx.cap = mask(/^step\s*\d+/i.test(s.caption) ? s.caption : `Step ${i + 1}: ${s.caption}`);
       const entry = { n: ctx.n, caption: ctx.cap, action: verbOf(s)[0] ?? 'narration', atMs: Date.now() - started };
       manifest.steps.push(entry);
       await caption(page, ctx.cap);
-      await page.waitForTimeout(pace.captionMs);
+      if (ctx.cap !== prev) await page.waitForTimeout(readingMs(ctx.cap, pace));
       try {
         await act(page, s, ctx);
+        // Let the screen the action led to be seen before the next caption or action replaces it.
+        await page.waitForLoadState('domcontentloaded').catch(() => {});
+        await page.waitForTimeout(pace.settleMs);
         await caption(page, ctx.cap);
       } catch (err) {
         const why = mask(String(err?.message ?? err).split('\n')[0]);
@@ -366,6 +391,16 @@ export async function play(file, { headed = false, force = false, env = process.
         await caption(page, `${ctx.cap}\nThe run stopped here: ${why}`);
         await page.waitForTimeout(pace.closingMs);
         break;
+      }
+    }
+    // The routes module's own check (e.g. nothing it should answer reached the network) fails the recording.
+    if (routes?.finish) {
+      try {
+        await routes.finish();
+        manifest.routes.finish = 'ok';
+      } catch (err) {
+        manifest.routes.finish = mask(String(err?.message ?? err).split('\n')[0]);
+        manifest.status = 'failed';
       }
     }
     // The step captions end here: the evidence and closing screens speak for themselves.
@@ -382,7 +417,8 @@ export async function play(file, { headed = false, force = false, env = process.
         ? `Not shown in this recording: ${unmet.length === 1 ? 'the check at step' : 'the checks at steps'} ${unmet.map(e => e.step).join(', ')} did not hold.`
         : mask(sub(board.closing.actual))
     manifest.closing = { expected: mask(sub(board.closing.expected)), actual, shown: !stopped && unmet.length === 0 }
-    await closingCard(page, manifest.closing.expected, actual, pace.closingMs);
+    // Held at least as long as its words take to read, as the step captions are.
+    await closingCard(page, manifest.closing.expected, actual, readingMs(`${manifest.closing.expected} ${actual}`, { ...pace, captionMs: pace.closingMs }));
     const video = page.video();
     await rec.close();
     const webm = join(out, `${board.name}.webm`);
@@ -391,7 +427,7 @@ export async function play(file, { headed = false, force = false, env = process.
     manifest.video.webm = { file: webm, ...decodeCheck(ffmpeg, webm) };
     if (ffmpeg) {
       const mp4 = join(out, `${board.name}.mp4`);
-      const r = spawnSync(ffmpeg, ['-loglevel', 'error', '-y', '-i', webm, '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-movflags', '+faststart', '-an', mp4], { encoding: 'utf8' });
+      const r = spawnSync(ffmpeg, ['-loglevel', 'error', '-y', '-i', webm, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-movflags', '+faststart', '-an', mp4], { encoding: 'utf8' });
       manifest.video.mp4 = r.status === 0 ? { file: mp4, ...decodeCheck(ffmpeg, mp4) } : { file: null, reason: (r.stderr ?? '').split('\n')[0] };
     }
     for (const [k, v] of ctx.downloads) manifest.downloads[k] = v;
