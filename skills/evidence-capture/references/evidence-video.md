@@ -24,8 +24,11 @@ is the request and response.
 ## What a video is made of
 
 1. **An opening card**: the title, so a forwarded file still says what it is.
-2. **One step per action, captioned.** Each caption is shown on its own for `pace.captionMs`, then its
-   action runs at `pace.actionMs` per interaction, with the caption still on screen. The player numbers
+2. **One step per action, captioned.** Each caption is shown on its own for its reading time (400 ms
+   plus `pace.wordMs` per word, at least `pace.captionMs`), then its action runs at `pace.actionMs` per
+   interaction, with the caption still on screen. A caption repeated from the step before is not held
+   again, but every action is followed by `pace.settleMs` on the screen it led to, so no screen a caption
+   names flashes by. The player numbers
    captions that do not start with "Step".
 3. **An off-camera login.** `auth.steps` run in a separate browser context that is never recorded, or
    `auth.storageState` names a state file. No credential, email or token is ever on screen.
@@ -34,17 +37,26 @@ is the request and response.
    plus a `pick` path), or plain text. `highlight` marks the decisive text, and the page scrolls to it.
    `bad: true` marks the panel that shows the failure; `format` turns captured values into a sentence
    (`"{response.data.applied} of {response.data.requested} changes applied"`).
-5. **A closing card**: Expected and Actual on a screen of their own, held for `pace.closingMs`, so it never covers the evidence.
+5. **A closing card**: Expected and Actual on a screen of their own, held for its reading time (400 ms plus `pace.wordMs` per word of both), never less than `pace.closingMs`, so it never covers the evidence and is never cut short.
 
 ## The quality bar
 
 These are what made the first reproduction videos readable. Keep them.
 
-- **Captions are the reproduction steps**, worded as a reader would do them: "Step 6: choose Always
-  'Indefinite period'", not "click locator 3". They match the steps in the written report one to one.
+- **One caption per ticket step, numbered from 1.** Captions are the reproduction steps of the filed
+  ticket, one to one, with the same numbers and words, so the ticket and the video read side by side. The
+  video always starts at Step 1. When the ticket's step 1 is the login, its caption ("Step 1: log in to
+  the test environment as the account owner") is shown on the first screen after the off-camera login.
+- **Longer captions, not more of them.** What the reader should notice on that step goes in the same
+  caption, after the action: "Step 6: scroll to Delivery date; it shows Not set, yet the order summary
+  already lists a date." A step that needs several actions repeats its caption
+  exactly, so it is held once. Up to about 30 words; no notes about the recording, no stage directions in
+  brackets, no long placeholder lists (the evidence page carries the detail).
 - **One action per step.** The player refuses a step with two.
-- **Default pace, not faster.** 1280×800, 600 ms per action, 2.2 s per caption, 9 s of evidence, 6 s of
-  closing. A video a developer has to pause to read is too fast.
+- **At least HD, at the default pace.** Full HD (1920×1080) by default and never below 1280×720, except a
+  phone-size reproduction; 400 ms per action, each caption held for its reading time, 5 s of evidence, 4 s
+  of closing. Text must be readable at full screen. Actions move quickly; captions stay long enough to
+  read once, never so long that the reader waits.
 - **The evidence names the defect.** Highlight the exact value that is wrong (the field name, the empty
   blank, the error message), not a JSON key; keep `match` tight enough that only the relevant
   paragraphs show, and show what was sent
@@ -55,6 +67,19 @@ These are what made the first reproduction videos readable. Keep them.
   page was wrong, fix the storyboard and record again. The manifest is the record of what was run.
 - **Wait on conditions.** Use `waitFor` (text, element, URL or a capture), never a fixed pause, for
   anything the application does; `pause` is for letting the viewer read.
+
+## Routes: a stand-in for a service
+
+`routes` names a module (a path relative to the storyboard, `.mjs` or `.js`) that sets up the recorded
+context before the first page opens, for example Playwright routes that answer a metered or slow
+service with a local stand-in. Its default export is called with `{ context, storyboard, env }` and may
+return:
+
+- `notice`: what the routes change, in one sentence. It is shown on the title card and kept in the
+  manifest (`routes.notice`). A recording made with a stand-in must say so here: a viewer must never
+  take the stand-in's answers for the product's.
+- `finish()`: run after the last step. Use it for the stand-in's own guard (nothing it should have
+  answered reached the network). A throw marks the recording failed (`routes.finish` holds the reason).
 
 ## Values and secrets
 

@@ -133,3 +133,48 @@ test('a storyboard plays into a captioned webm and mp4, with captures, downloads
   assert.match(again.stderr, /never overwritten/)
   if (manifest.video.mp4) assert.equal(manifest.video.mp4.decoded, true)
 })
+
+test('a routes module sets up the recorded context: its notice is on the title card and in the manifest, and a finish() that throws fails the recording', { skip: !hasChromium && 'no Playwright Chromium installed', timeout: 120000 }, async () => {
+  const server = await serve()
+  const d = mkdtempSync(join(tmpdir(), 'ev-routes-'))
+  // the stand-in answers /api/save itself; finish() throws when RS_FAIL is set (a guard that something reached the network)
+  writeFileSync(join(d, 'routes.mjs'), `export default async function ({ context, storyboard, env }) {
+  let answered = 0
+  await context.route('**/api/save', route => { answered++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ meta: { status_message: 'Saved by the stand-in.' } }) }) })
+  return { notice: 'The save is answered by a stand-in (' + storyboard.name + ').', finish: async () => { if (env.RS_FAIL) throw new Error('guard: a request reached the network'); if (answered !== 1) throw new Error('the stand-in answered ' + answered + ' times') } }
+}
+`)
+  const board = {
+    name: 'ROUTES-demo', title: 'Demo: a stand-in answers the save', baseURL: `http://127.0.0.1:${server.address().port}`, routes: './routes.mjs',
+    pace: { actionMs: 50, captionMs: 200, evidenceMs: 300, closingMs: 300 },
+    capture: [{ id: 'save', url: '/api/save', method: 'POST' }],
+    steps: [
+      { caption: 'Open the templates page', goto: '/' },
+      { caption: 'Type a template name', fill: { target: { label: 'Template name' }, value: 'demo' } },
+      { caption: 'Click Create template', click: { role: 'button', name: 'Create template' } },
+      { caption: 'Wait for the save to answer', waitFor: { capture: 'save' } },
+    ],
+    closing: { expected: 'the template saves', actual: 'the stand-in answers' },
+  }
+  writeFileSync(join(d, 'board.json'), JSON.stringify(board))
+  assert.deepEqual(checkStoryboard(board), [])
+  const play = env => new Promise(res => {
+    const child = spawn(process.execPath, [CLI, join(d, 'board.json'), '--force'], { env: { ...process.env, ...env } })
+    let out = ''
+    child.stdout.on('data', c => (out += c))
+    child.stderr.on('data', c => (out += c))
+    child.on('close', status => res({ status, out }))
+  })
+  const ok = await play({})
+  assert.equal(ok.status, 0, ok.out)
+  const manifest = JSON.parse(readFileSync(join(d, 'ROUTES-demo.json'), 'utf8'))
+  assert.equal(manifest.status, 'ok')
+  assert.deepEqual(manifest.routes, { module: './routes.mjs', notice: 'The save is answered by a stand-in (ROUTES-demo).', finish: 'ok' })
+  assert.equal(manifest.captures[0].status, 200, 'the stand-in answered, not the server (which says 400)')
+  const failed = await play({ RS_FAIL: '1' })
+  server.close()
+  assert.equal(failed.status, 1, failed.out)
+  const m2 = JSON.parse(readFileSync(join(d, 'ROUTES-demo.json'), 'utf8'))
+  assert.equal(m2.status, 'failed')
+  assert.equal(m2.routes.finish, 'guard: a request reached the network')
+})

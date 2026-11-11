@@ -55,12 +55,22 @@
     "pace": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Watchable speed. Defaults: actionMs 600 (slowMo), captionMs 2200 (a caption stays alone before its action), evidenceMs 9000, closingMs 6000.",
+      "description": "Watchable speed. Defaults: actionMs 400 (slowMo); a caption stays alone before its action for its reading time, 400 ms plus wordMs 400 per word, never less than captionMs 2000, and a caption repeated from the step before is not held again; after each action the resulting screen stays for settleMs 1200; evidenceMs 5000; the closing card is held for the reading time of its Expected and Actual text, never less than closingMs 4000.",
       "properties": {
         "actionMs": {
           "type": "integer",
           "minimum": 0,
           "maximum": 5000
+        },
+        "settleMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "wordMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000
         },
         "captionMs": {
           "type": "integer",
@@ -127,6 +137,11 @@
           }
         }
       ]
+    },
+    "routes": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A module (path relative to this storyboard; .mjs or .js) that sets up the recorded context before the first page opens, e.g. Playwright routes that answer a service with a stand-in. Its default export is called with { context, storyboard, env } and may return { notice, finish }: notice is shown on the title card and kept in the manifest (say there what the routes change, so the recording never passes a stand-in off as the product); finish() runs after the last step, and a throw marks the recording failed (a guard that something it should have answered reached the network)."
     },
     "capture": {
       "type": "array",
