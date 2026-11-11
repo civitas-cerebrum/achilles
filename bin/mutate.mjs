@@ -76,6 +76,9 @@ Create one. It exports \`specs\` (the specs to run) and \`mutations\`:
       // The test that OWNS this criterion. If some OTHER test catches the
       // mutation, that is a broken shared precondition, not coverage.
       expectedCatchers: ['TC_001', 'TC_002'],
+      // Optional: run only these specs for this mutation instead of the
+      // top-level list. Point it at the owning tests' files to keep a run short.
+      // specs: ['tests/regression/feature-ac1.spec.ts'],
       // Evaluated IN THE PAGE. Must be true once the mutation is live.
       // A selector alone is too weak: most mutations change a computed style
       // rather than adding a node.
@@ -249,7 +252,7 @@ const results = []
 
 const runOnce = (m) =>
   failedTests(
-    spawnSync('npx', ['playwright', 'test', ...specs, '--reporter=json'], {
+    spawnSync('npx', ['playwright', 'test', ...(m.specs?.length ? m.specs : specs), '--reporter=json'], {
       encoding: 'utf8',
       maxBuffer: 128 * 1024 * 1024,
       env: { ...process.env, E2E_MUTATION_CSS: m.css ?? '', E2E_MUTATION_INIT: m.init ?? '' },

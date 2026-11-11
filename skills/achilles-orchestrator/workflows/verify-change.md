@@ -32,7 +32,7 @@ Cost: one three-criteria ticket is roughly six full suite runs and five or more 
 5. **Environment**: preview auth, bypass tokens; record them for redaction.
 6. **Build understanding by interacting** ([phase-6-understanding](../references/verify-change/phase-6-understanding.md)): an inspector drives the flow (`companion-<key>` session), observes sequence and timing, derives cases, evaluates what is undesirable, and returns the observed behaviour that becomes the assertions.
    - **7a Defect confirmation**, before step 7 ([phase-7a-defect-confirmation](../references/verify-change/phase-7a-defect-confirmation.md)): every suspected defect from steps 4 and 6, and every defect the run believes is "known" without a tracker issue or audit entry to point to, goes to its own fresh reproducer (`achilles-reproducer`, loading [`../../defect-confirmation/SKILL.md`](../../defect-confirmation/SKILL.md)). The reproducer gets the claim worded exactly, the evidence it rests on, the criteria and the source, but not the suite, the knowledge base or earlier reports. It decides `bug` / `real-in-source` / `spec-ambiguity` / `not-a-bug`, with a reproduction count, the root cause by `file:line` and steps written for a reader with no context. Its report ends with the standard defect evidence (`defect-repro` JSON), which the harness records as the defect's confirmation; filing a defect and signing off are refused without it. A doc-writer consolidates the verdicts into `docs/evidence/<ticket>/defect-audit.md`; `spec-ambiguity` verdicts go upward as `NEEDS_CONTEXT`.
-7. **Durable tests + sentinels** ([phase-7-durable-tests](../references/verify-change/phase-7-durable-tests.md)): an author writes one test per criterion plus a `test.fail()` sentinel per defect whose 7a verdict is `bug` (the one sanctioned `test.fail()` use: ticketed, removed when fixed, tagged `@known-defect`), then runs the evidence capture of [`../../evidence-capture/SKILL.md`](../../evidence-capture/SKILL.md) against the branch to produce the ticket's bundle.
+7. **Durable tests + sentinels** ([phase-7-durable-tests](../references/verify-change/phase-7-durable-tests.md)): an author writes one test per criterion, covering every case step 6 checked by hand so a re-verification round can run it instead of repeating the check, plus a `test.fail()` sentinel per defect whose 7a verdict is `bug` (the one sanctioned `test.fail()` use: ticketed, removed when fixed, tagged `@known-defect`), then runs the evidence capture of [`../../evidence-capture/SKILL.md`](../../evidence-capture/SKILL.md) against the branch to produce the ticket's bundle.
 8. **Negative control** ([phase-8-negative-control](../references/verify-change/phase-8-negative-control.md)): you create the without-fix worktree when the control is the merge-base (`git merge-base`, `git worktree add`); the same author runs the new suite where the fix is absent. It must fail there; read the result per test: a test that passes on both sides either covers pre-existing behaviour (fine) or does not discriminate the feature (worthless as criterion cover).
    - **8b Adversarial review** ([phase-8b](../references/verify-change/phase-8b-adversarial-review.md)): first an author runs the mutation set (`.achilles/mutations.mjs`, `npx achilles-mutate --calibrate`, then the run; every source-level mutation reverted) and writes the mutation report. Then six fresh reviewers (review skill, Mode 4), one mission each, attack the tests in parallel, scoped to the diff and the criteria:
      `probe-mutation` (for each criterion, does any test catch the one-line change that breaks it: judges the mutation report's survivors and voids),
@@ -46,6 +46,25 @@ Cost: one three-criteria ticket is roughly six full suite runs and five or more 
    - **8d Commit or discard**: CX/revenue impact proposes; the user confirms through `NEEDS_CONTEXT`; discard into the bundle is the default.
    - **8e Verify note** ([`verification-record.md`](../references/verification-record.md)): a reviewer that neither wrote nor reviewed the tests records stable = N greens in the reporter history + a can-fail proof per family in `docs/evidence/<ticket>/verify.md`.
 9. **Report** ([reporting](../references/verify-change/reporting.md)): the compliance sweep over the tests that back the verdict, the brief tracker comment (what was tested, inline screenshots, negative-control result, verdict; drafted by a doc-writer, posted with `gh` for a GitHub issue or PR, otherwise carried in the hand-back for the main session to post), then one more reviewer (`probe-verdict`, Mode 4) attacks the claims in the report itself.
+
+## Re-verification rounds
+
+A run that resumes from its resume file to re-verify fixes (a new head commit for findings the run already reported) is a round, not a new run. The fix diff is the commit range from the head the run last verified to the new head.
+
+The first run pays for the manual work once: step 7 turns every criterion and every case step 6 observed into a test, so the suite holds what the inspector checked by hand. A round runs that suite instead of repeating the checks. Behaviour that passed before is re-verified by its test going green, not by driving the app again. Scope each step to the fix diff:
+
+| Step | On a round |
+|---|---|
+| 4, 7a | the fix diff and the findings it claims to fix; earlier findings outside it keep their verdicts |
+| 6 | no manual pass over behaviour a test already covers; the inspector drives the app only for behaviour the fix diff adds or changes that no test covers yet, and step 7 turns what it finds into a test |
+| 7 | reuse the run's tests; flip or remove the sentinel of each fixed finding, or update it when the user accepted the defect |
+| 8 | the negative control is the head the run last verified, so the fixed sentinels must fail there |
+| 8b | mutations for the fix diff's hunks only ([phase-8b](../references/verify-change/phase-8b-adversarial-review.md) §"The mutation run (an author brief, before the probes)"); probes re-run only where the fix diff or a must-fix changed what they judged |
+| Stability | 3 consecutive greens for tests the round added or edited; one run of every other test, to catch regressions |
+
+Before each dispatch that drives the app, check that the target responds. A target that stopped mid-round is `BLOCKED` with the time it went down; the round does not wait on it.
+
+A brief may scope a round tighter than this table; follow the brief and say in the hand-back what it left out.
 
 ## The contract
 
