@@ -2,6 +2,8 @@
 
 Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
 
+**Every case the inspector checked by hand in §6 ends up in a test.** A case that belongs to an AC becomes an assertion in that AC's test, not a test of its own. A re-verification round re-checks behaviour by running these tests and does not drive the app again ([`../../workflows/verify-change.md`](../../workflows/verify-change.md) §"Re-verification rounds"), so a case left out here is either re-checked by hand on every round or never checked again.
+
 **Written is not committed.** Whether these tests land in the suite or stay in the evidence
 bundle is §8d's decision, made after they have proven themselves in §8–8c, and the default is
 that they stay. Write them to committable standard either way; a test that would embarrass the
