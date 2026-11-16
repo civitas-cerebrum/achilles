@@ -44,7 +44,7 @@ When in doubt it is a suspected defect. Triage removes questions from the reprod
 Dispatch one fresh reproducer per suspected defect (agent `achilles-reproducer`, skill
 `defect-confirmation`), all in one message when the environment allows parallel sessions; a defect whose reproduction
 changes account-wide state is dispatched alone, after the others have returned. Suspicions of low
-severity on the same screen and in the same state (three at most) may share one reproducer, which
+severity on the same screen and in the same state (two at most: a reproduction fills about half of what a reproducer holds) may share one reproducer, which
 returns one verdict and one `defect-repro` block per defect id; a defect that loses data, money,
 access or work always has a reproducer of its own.
 

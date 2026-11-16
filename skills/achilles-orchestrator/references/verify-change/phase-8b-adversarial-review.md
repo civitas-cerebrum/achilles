@@ -39,7 +39,9 @@ Rules the author's brief carries:
 
 ## The six probes (reviewer briefs, in parallel)
 
-Six fresh reviewers, dispatched in one message, each loading [`../../../review/SKILL.md`](../../../review/SKILL.md) §"Mode 4: adversarial probe". Every brief names: the mission, the files to read, the ACs verbatim, the specific question, the return schema `schemas/subagent-returns/probe.schema.json` (`handover { role, status, next-action }`, `findings-emitted`, `finding-ids` required whenever the status is `findings-emitted`, `summary`), and the rule that silence is a failed dispatch: findings, or exactly what was examined and why nothing was found. A brief without the schema produces unparseable returns that cost a re-dispatch.
+Six missions, four fresh reviewers. Each probe spends about a third of its cost reading the same suite, criteria and reports before it asks its own question, and finishes with its context half used, so the missions that read the same material the same way share a reviewer: `probe-coverage` with `probe-outcome` (both read per criterion), `probe-assertions` with `probe-value` (both read per test). `probe-mutation` and `probe-visual` read other inputs and stay alone. A paired reviewer answers each mission separately and writes one report per mission, so the receipt and a re-probe still address one mission. Pairing ends where the questions would blur: never more than two missions per reviewer, and a suite of more than about fifteen tests goes back to six reviewers.
+
+The four reviewers are dispatched in one message, each loading [`../../../review/SKILL.md`](../../../review/SKILL.md) §"Mode 4: adversarial probe". Every brief names: the mission, the files to read, the ACs verbatim, the specific question, the return schema `schemas/subagent-returns/probe.schema.json` (`handover { role, status, next-action }`, `findings-emitted`, `finding-ids` required whenever the status is `findings-emitted`, `summary`), and the rule that silence is a failed dispatch: findings, or exactly what was examined and why nothing was found. A brief without the schema produces unparseable returns that cost a re-dispatch.
 
 ### probe-mutation
 

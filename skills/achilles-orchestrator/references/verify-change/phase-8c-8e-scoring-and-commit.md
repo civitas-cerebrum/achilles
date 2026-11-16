@@ -7,7 +7,7 @@ them audits **the testing**. A run can produce well-formed tests that catch thei
 still be bad QA, because the agent never drove the feature, ran one browser and claimed three,
 or bounded nothing it reported.
 
-So dispatch one more reviewer (review skill, Mode 4) whose subject is the *work*, and make it return **a score with a
+So dispatch one more reviewer (review skill, Mode 4) whose subject is the *work* (the same reviewer then writes the verify note of §8e in the same dispatch: it has judged none of the tests, both tasks read the run history and the control results, and together they use about half of what one reviewer holds), and make it return **a score with a
 threshold**, not a findings list. A findings list has no failure state: zero findings reads as
 "nothing to fix" and six reads as "we fixed six", and neither says whether the testing was good
 enough to sign off on. A rubric with a blocking floor does.
