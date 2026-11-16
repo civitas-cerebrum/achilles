@@ -30,11 +30,23 @@ any defect the run "already knows": a defect is known when a tracker issue or an
 `defect-audit.md` entry records it, not when the run's own notes or knowledge base mention it. A
 defect the run cannot point to either of those for is suspected, and is confirmed here like any other.
 
+## Triage before dispatch
+
+A reproducer decides whether behaviour is a defect; it is not needed to find out that nobody has said what the behaviour should be. Before dispatch, hold each suspicion against the criteria verbatim and the product's stated promises:
+
+- **A criterion or a stated promise says what should happen, or the user loses data, money, access or work**: a suspected defect. It gets a reproducer.
+- **Neither**: an observation about copy, layout taste or a behaviour no criterion covers. It goes to the product owner as a question in the report, worded with the evidence, and is listed in the audit as `not triaged as a defect`. It gets no sentinel, no defect id and no verdict; the orchestrator states an absence of a criterion, it does not rule on the behaviour.
+
+When in doubt it is a suspected defect. Triage removes questions from the reproducers' queue; it never removes a defect.
+
 ## The brief: one reproducer per suspected defect
 
 Dispatch one fresh reproducer per suspected defect (agent `achilles-reproducer`, skill
 `defect-confirmation`), all in one message when the environment allows parallel sessions; a defect whose reproduction
-changes account-wide state is dispatched alone, after the others have returned.
+changes account-wide state is dispatched alone, after the others have returned. Suspicions of low
+severity on the same screen and in the same state (three at most) may share one reproducer, which
+returns one verdict and one `defect-repro` block per defect id; a defect that loses data, money,
+access or work always has a reproducer of its own.
 
 Each brief carries:
 
@@ -86,8 +98,11 @@ Every verdict carries:
   evidence is not recorded as confirmed.
 - **What it created and deleted.**
 
-A verdict without a reproduction count, or `bug` with no live reproduction, is a failed dispatch;
-re-dispatch a fresh reproducer.
+A verdict without a reproduction count, or `bug` with no live reproduction, is an incomplete
+return: message the same reproducer with what is missing, once. It has the reproduction in hand, and
+finishing its own report costs no independence. Dispatch a fresh reproducer only when that answer
+is still incomplete, or when the claim itself was worded wrong. A verdict is never re-run to change
+its form.
 
 ## The standard defect evidence
 

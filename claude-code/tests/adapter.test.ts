@@ -33,6 +33,12 @@ test('session.start registers delegate_qa in the prompt tool list, the command, 
   expect(h.status()).toBeUndefined()
 })
 
+test('ACHILLES_MODEL_ORCHESTRATOR and ACHILLES_MODEL_EXPERTS pin the registered models; unset, an agent keeps its frontmatter', async ($, on) => {
+  const h = engine(on, { env: { ACHILLES_MODEL_ORCHESTRATOR: 'fable', ACHILLES_MODEL_EXPERTS: 'opus' } })
+  await $.session.start(START)
+  expect(h.agents.map(a => a.model)).toEqual(['fable', 'opus', 'opus', 'opus', 'opus', 'opus'])
+})
+
 test('delegate_qa starts the orchestrator and answers RUNNING; its hand-back is submitted as a prompt of its own with the run summary', async ($, on) => {
   const h = engine(on)
   await $.session.start(START)

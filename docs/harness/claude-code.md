@@ -33,6 +33,8 @@ The main session is never bound by Achilles rules; only the six agents are, thro
 | `achilles-reproducer` | Read, Glob, Grep, Bash, Write, Skill | its report and captured evidence under `.achilles/runs/**`; reads application source and the live app, not `tests/**` specs or other experts' reports; the confirmation record is the adapter's | `npx playwright-cli -s=…`, `npx achilles-video <storyboard>`, read-only `git status\|log\|diff\|show`; never `npx playwright test` |
 | `achilles-doc-writer` | Read, Glob, Grep, Edit, Write, Bash | `docs/**` except `docs/evidence/**`, `tests/e2e/docs/**` documents (not ledgers or dot-prefixed state), `qa-summary-deck.*` and `test-catalogue.*` at the root | run-only: `node <qa-reporting script>`, `pdftoppm`, read-only `git log` |
 
+Prompt cache: an expert that runs a suite or a mutation pass is silent for longer than the five-minute cache lifetime subagents get by default, and then re-writes its whole context on the next turn. A project that runs verify-change sets `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in its settings `env` (or `subagentPromptCacheTtl`); in fourteen measured ticket runs half of all cache writes were such rebuilds.
+
 Thinking effort: the inspector, author and doc-writer definitions set `effort: medium`; the orchestrator, the reviewer (the judge) and the reproducer set none and take the session's. The same frontmatter drives both adapters (`--thinking` on pi).
 
 Role scope is the enforcement for separation of duties: an author cannot approve its own work because it has no reviewer schema to return, and a reviewer cannot touch a spec. The orchestrator never writes specs and never opens a browser session; those limits are methodology ([SKILL.md](../../skills/achilles-orchestrator/SKILL.md) §1) checked by the review dispatch, not by a hook.
@@ -61,6 +63,8 @@ Switches the shipped code reads (the `opt-in-surfaces` lint compares this table 
 | Switch | Effect |
 |---|---|
 | `ACHILLES_DISABLE=1` in the operator shell | the hook module passes every event through for new sessions (kill switch) |
+| `ACHILLES_MODEL_ORCHESTRATOR=<model>`, `ACHILLES_MODEL_EXPERTS=<model>` | the model the orchestrator, and each of the five experts, is registered with (an alias or a full id); a pin beats the agent file's `model`, and unset leaves the session's subagent default |
+| `ACHILLES_MUTATE_CONCURRENCY=<n>` | how many mutations `achilles-mutate` runs at a time when `--concurrency` is not passed (default 1) |
 | `ACHILLES_SKIP_CLAUDE_REGISTRATION=1` at install | the npm postinstall does not register the plugin with Claude Code |
 | `ACHILLES_PI_BASH_TIMEOUT=<s>` | on pi, the timeout given to an Achilles agent's `bash` call that sets none (default 600) |
 | `ACHILLES_SKIP_PI_REGISTRATION=1` at install | the npm postinstall does not install the package into pi (it does only when `pi` is on PATH) |

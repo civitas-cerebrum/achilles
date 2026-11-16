@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **verify-change loops are bounded.** Fourteen measured ticket runs spent a third of their cost on fix, re-review and re-probe dispatches. Step 8b now ends at zero `[must-fix]` findings and at two fix cycles, re-probes only the missions that raised a must-fix, and re-runs only the mutants a fix touched (`achilles-mutate --only a,b,c`). Probe findings carry a `[must-fix]` or `[should-fix]` bracket against a closed list (review skill, Mode 4; `must-fix` in `probe.schema.json`).
+- **7a triage.** An observation no criterion or stated promise covers goes to the product owner as a question instead of to a reproducer; low-severity suspicions on one screen may share a reproducer; an incomplete verdict is completed by the same reproducer.
+- **One slice per author brief, one pass per document.** An author brief covers about five tests and iterates on those only; documents that cite evidence are written once, after it is final, and reviewed once.
+
+### Added
+
+- **`ACHILLES_MODEL_ORCHESTRATOR`, `ACHILLES_MODEL_EXPERTS`**: operator model pins for the registered agents. **`ACHILLES_MUTATE_CONCURRENCY`**: the project's default mutation width.
+
 ### Fixed
 
 - **Skill descriptions over 1,024 characters.** `contract-testing`, `database-testing` and `test-data-conventions` had frontmatter descriptions longer than the 1,024 characters pi accepts, so pi warned at every launch in a project with Achilles installed. They are now 975–1,014 characters, with every trigger and the reason to load each skill kept, and `scripts/lint/registry.mjs` fails a description over 1,024.

@@ -21,7 +21,7 @@ Every ticket gets its own run of steps 1–9; a second ticket in the same sessio
 
 A reachable app; a Playwright project with installed browsers; `git` worktree support; a tracker or pasted criteria; a second environment without the fix (or the merge-base); `E2E_MUTATION_CSS`/`E2E_MUTATION_INIT` hooks in the page fixture for the mutation probe, or source-level mutation when the app runs locally. Missing items are one `NEEDS_CONTEXT`; a run without a negative control is reported as unverified, never as regression cover.
 
-Cost: one three-criteria ticket is roughly six full suite runs and five or more dispatches; budget it or scope step 8b to the criteria that matter, and say which.
+Cost: one three-criteria ticket is roughly six full suite runs and twenty or more dispatches; budget it or scope step 8b to the criteria that matter, and say which. The loops are bounded: 8b ends at zero must-fix and at two fix cycles, a document is written once and reviewed once ([reporting](../references/verify-change/reporting.md) §"Write once, after the evidence is final"), and an author brief is one slice (SKILL.md §4).
 
 ## Steps
 
@@ -41,7 +41,7 @@ Cost: one three-criteria ticket is roughly six full suite runs and five or more 
      `probe-value` (per test: keep, merge or delete, with evidence),
      `probe-outcome` (per criterion: user-visible outcome asserted, or a proxy standing in for it),
      `probe-visual` (every evidence screenshot reviewed as a designer would).
-     You do not self-assess. Must-fix findings go back to the author, then to a fresh reviewer for that probe.
+     You do not self-assess. `[must-fix]` findings go back to the author, then to a fresh reviewer for the missions that raised them; the loop ends at zero must-fix and is capped at two fix cycles ([phase-8b](../references/verify-change/phase-8b-adversarial-review.md) §"After the probes").
    - **8c Score** ([phase-8c-8e](../references/verify-change/phase-8c-8e-scoring-and-commit.md)): one more reviewer (`probe-rigour`) scores the testing itself 0–3 on six axes with the blocking floor; a 0 anywhere or a total ≤ 12 blocks sign-off.
    - **8d Commit or discard**: CX/revenue impact proposes; the user confirms through `NEEDS_CONTEXT`; discard into the bundle is the default.
    - **8e Verify note** ([`verification-record.md`](../references/verification-record.md)): a reviewer that neither wrote nor reviewed the tests records stable = N greens in the reporter history + a can-fail proof per family in `docs/evidence/<ticket>/verify.md`.

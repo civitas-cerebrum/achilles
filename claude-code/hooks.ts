@@ -95,7 +95,11 @@ async function registerAgents($: EngineInterface) {
     if (!agent) continue
     const { tools, skills, ...spec } = agent
     OURS.add(agent.name)
-    await $.agent.register({ ...spec, ...(tools ? { tools } : {}), ...(skills ? { skills } : {}) })
+    // An operator's model pin beats the frontmatter: one switch for the orchestrator, one for the five experts.
+    const pin = ORCHESTRATOR.endsWith(`:${agent.name}`)
+      ? await $.env.get('ACHILLES_MODEL_ORCHESTRATOR').catch(() => undefined)
+      : await $.env.get('ACHILLES_MODEL_EXPERTS').catch(() => undefined)
+    await $.agent.register({ ...spec, ...(pin ? { model: pin } : {}), ...(tools ? { tools } : {}), ...(skills ? { skills } : {}) })
   }
 }
 
