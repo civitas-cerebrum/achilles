@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **Adapter validation on a current Claude Code CLI.** `claude plugin validate --strict` now type-checks the hooks' imports, and `bash-judge.ts` and `dispatch.ts` import two `.mjs` data modules that had no types, so the adapter suite failed on Node 24 for every pull request. `claude-code/data/protected-paths.d.mts` and `schema-role-map.d.mts` declare them.
+
 - **Skill descriptions over 1,024 characters.** `contract-testing`, `database-testing` and `test-data-conventions` had frontmatter descriptions longer than the 1,024 characters pi accepts, so pi warned at every launch in a project with Achilles installed. They are now 975–1,014 characters, with every trigger and the reason to load each skill kept, and `scripts/lint/registry.mjs` fails a description over 1,024.
 
 ## 0.1.8 — 2026-11-01
