@@ -5,6 +5,7 @@
 ### Changed
 
 - **verify-change loops are bounded.** Fourteen measured ticket runs spent a third of their cost on fix, re-review and re-probe dispatches. Step 8b now ends at zero `[must-fix]` findings and at two fix cycles, re-probes only the missions that raised a must-fix, and re-runs only the mutants a fix touched (`achilles-mutate --only a,b,c`). Probe findings carry a `[must-fix]` or `[should-fix]` bracket against a closed list (review skill, Mode 4; `must-fix` in `probe.schema.json`).
+- **Reuse first (verify-change 5b).** Existing tests that answer a criterion are run instead of re-explored or rewritten; a re-test, a browser pass and a regression check run existing tests only.
 - **7a triage.** An observation no criterion or stated promise covers goes to the product owner as a question instead of to a reproducer; low-severity suspicions on one screen may share a reproducer; an incomplete verdict is completed by the same reproducer.
 - **One slice per author brief, one pass per document.** An author brief covers about five tests and iterates on those only; documents that cite evidence are written once, after it is final, and reviewed once.
 
