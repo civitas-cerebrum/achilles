@@ -75,6 +75,17 @@ test('a second author while one is running is named; read-only experts beside an
   expect(notes(session, orchestrator).at(-1)).toContain('at most one author edits shared fixtures at a time')
 })
 
+test('a reproducer brief that names no defect id or no defect-repro schema is named; a complete one is not', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const orchestrator = await setup($, h)
+  await spawn($, orchestrator, 'reproducer', brief(h, 'repro-a', 'Load `defect-confirmation`. The claim: the type list is locked.'))
+  expect(notes(session, orchestrator).at(-1)).toContain('lacks a defect id (<TICKET>-D<n>) and the return schema defect-repro.schema.json')
+  const n = notes(session, orchestrator).length
+  await spawn($, orchestrator, 'reproducer', brief(h, 'repro-b', 'Load `defect-confirmation`. Defect SHB-28021-D1. Return per schemas/subagent-returns/defect-repro.schema.json.'))
+  expect(notes(session, orchestrator).length).toBe(n)
+})
+
 test('the ledger orders dispatches: a completed phase awaiting review asks for the reviewer first; a fourth review round is named', async ($, on) => {
   const h = engine(on)
   const session = mock.session(on)

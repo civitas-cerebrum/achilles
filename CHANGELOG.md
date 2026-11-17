@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- **A reproducer brief without a defect id or the `defect-repro` schema is named at dispatch.** Such a brief produced a verdict the adapter could not record, and the reproducers were dispatched a second time.
 - **Resuming a run from a worktree session.** `delegate_qa` with `run` looked for `resume.json` only in the main work tree, while a session started in a worktree keeps its run state there; it now accepts either.
 
 ### Added

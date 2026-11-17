@@ -83,6 +83,13 @@ walk's output is also code:
 - where a step calls a metered or slow service, the captured response next to the script, and a
   switch to replay it.
 
+**Write the script as you walk, not after.** A walk done by hand and then transcribed pays for the
+flow twice and fills the inspector to the point where it stops seeing: each increment of 6b is a
+few lines added to the script and a run of it, with its screenshot and state dump read from the
+run's output. Drive by hand only to find a selector or a state the script cannot yet reach. One
+walk dispatch covers three criterion flows at most; a ticket with more gets a second walk that
+starts from the first one's scripts.
+
 Run each script once and put the command and the result in the report. These scripts are not the
 suite and are not committed: they stay for the run (the reproducers replay the suspect scripts, the
 author turns the flow scripts into tests, reviewers re-run either) and the orchestrator removes
