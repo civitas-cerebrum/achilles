@@ -82,7 +82,7 @@ test('a reproducer brief that names no defect id or no defect-repro schema is na
   await spawn($, orchestrator, 'reproducer', brief(h, 'repro-a', 'Load `defect-confirmation`. The claim: the type list is locked.'))
   expect(notes(session, orchestrator).at(-1)).toContain('lacks a defect id (<TICKET>-D<n>) and the return schema defect-repro.schema.json')
   const n = notes(session, orchestrator).length
-  await spawn($, orchestrator, 'reproducer', brief(h, 'repro-b', 'Load `defect-confirmation`. Defect SHB-28021-D1. Return per schemas/subagent-returns/defect-repro.schema.json.'))
+  await spawn($, orchestrator, 'reproducer', brief(h, 'repro-b', 'Load `defect-confirmation`. Defect ACME-42-D1. Return per schemas/subagent-returns/defect-repro.schema.json.'))
   expect(notes(session, orchestrator).length).toBe(n)
 })
 
