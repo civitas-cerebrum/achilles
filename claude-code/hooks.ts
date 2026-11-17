@@ -12,7 +12,7 @@ import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
 import { recordConfirmation, recordReceipt, registerSignoff } from './hooks/signoff'
-import { ORCHESTRATOR, checkoutRoot, editRun, exists, expertLabel, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+import { ORCHESTRATOR, checkoutRoot, editRun, exists, expertLabel, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, under, whoIs, writeRuns } from './hooks/context'
 
 const CONTRACT_REF = 'skills/achilles-orchestrator/references/controller-contract.md'
 
@@ -302,7 +302,7 @@ export const register: Register = on => {
       // background work (a spec run, a sub-step): it is still at work, so it stays counted and
       // nothing is read yet. A written report means it has finished, status word or not.
       const interim = e.reason === 'answer' && !TERMINAL.test(e.answer.split('\n').find(l => l.trim() !== '')?.trim() ?? '')
-      if (interim && !(w.expert?.report && (await exists($, `${await $.session.cwd()}/${w.expert.report}`)))) return next(e)
+      if (interim && !(w.expert?.report && (await exists($, under(await $.session.cwd(), w.expert.report))))) return next(e)
       // An expert's end: it leaves the run first, so a slow guard below can never keep it
       // counted; then the guards read its hand-back side by side, inside one budget.
       const runs = await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))

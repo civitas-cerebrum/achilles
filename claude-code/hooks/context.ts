@@ -162,9 +162,13 @@ export async function newestSpec($: EngineInterface, dir: string): Promise<numbe
   return newest
 }
 
+/** A dispatched path as a file: absolute as given, anything else under `root`. */
+export const under = (root: string, p: string) => (p.startsWith('/') ? p : `${root}/${p}`)
+
 /** The brief and report paths a dispatch prompt names (`.achilles/runs/<run>/briefs/<slug>.md`, `…/reports/<slug>.md`). */
 export function dispatchPaths(prompt: string): { brief?: string; report?: string } {
-  const brief = /(?:^|[\s`'"(])((?:\.\/)?\.achilles\/(?:runs\/[^\s`'")]+\/)?briefs\/[^\s`'")]+\.md)/.exec(prompt)?.[1]
-  const report = /(?:^|[\s`'"(])((?:\.\/)?\.achilles\/runs\/[^\s`'")]+\/reports\/[^\s`'")]+\.md)/.exec(prompt)?.[1]
+  // An orchestrator in a worktree or a nested checkout names these by an absolute or a prefixed path; keep whatever leads up to `.achilles/`.
+  const brief = /(?:^|[\s`'"(])((?:[^\s`'"()]*\/)?\.achilles\/(?:runs\/[^\s`'")]+\/)?briefs\/[^\s`'")]+\.md)/.exec(prompt)?.[1]
+  const report = /(?:^|[\s`'"(])((?:[^\s`'"()]*\/)?\.achilles\/runs\/[^\s`'")]+\/reports\/[^\s`'")]+\.md)/.exec(prompt)?.[1]
   return { ...(brief ? { brief: brief.replace(/^\.\//, '') } : {}), ...(report ? { report: report.replace(/^\.\//, '') } : {}) }
 }

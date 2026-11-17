@@ -2,7 +2,7 @@ import type { AgentSpawnInput, EngineInterface } from 'claude-code'
 
 import { SCHEMA_ROLES } from '../data/schema-role-map.mjs'
 import type { AchillesExpert } from '../types'
-import { dispatchPaths, listDir, readJson, readText, type Who } from './context'
+import { dispatchPaths, listDir, readJson, readText, under, type Who } from './context'
 import type { Ledger } from './ledger'
 
 // Hook 4, dispatch discipline: an orchestrator's expert dispatch is checked against the
@@ -38,7 +38,7 @@ export async function dispatchAdvice($: EngineInterface, e: AgentSpawnInput, rol
   const root = await $.session.cwd()
   const notes: string[] = []
   const fields: Partial<AchillesExpert> = dispatchPaths(e.prompt)
-  const briefText = fields.brief ? await readText($, `${root}/${fields.brief}`) : undefined
+  const briefText = fields.brief ? await readText($, under(root, fields.brief)) : undefined
   const advice: Advice = { prompt: e.prompt, notes, fields }
 
   if (e.background) {

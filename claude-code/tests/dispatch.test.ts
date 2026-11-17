@@ -86,6 +86,15 @@ test('a reproducer brief that names no defect id or no defect-repro schema is na
   expect(notes(session, orchestrator).length).toBe(n)
 })
 
+test('a dispatch that names its brief and report by absolute path is read like a relative one', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const orchestrator = await setup($, h)
+  h.write(`${ROOT}/.achilles/runs/x/briefs/abs.md`, '# Brief\nLoad the `test-composer` skill.\nReturn per schemas/subagent-returns/composer.schema.json.\n')
+  await spawn($, orchestrator, 'author', `Read ${ROOT}/.achilles/runs/x/briefs/abs.md first; write your report to ${ROOT}/.achilles/runs/x/reports/abs.md before your final message.`)
+  expect(notes(session, orchestrator)).toEqual([])
+})
+
 test('the ledger orders dispatches: a completed phase awaiting review asks for the reviewer first; a fourth review round is named', async ($, on) => {
   const h = engine(on)
   const session = mock.session(on)

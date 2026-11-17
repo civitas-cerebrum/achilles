@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- **Briefs and reports named by absolute path.** An orchestrator in a worktree or a nested checkout dispatches with absolute paths, which the adapter did not recognise: it read no brief, and it never found the reproducer's `defect-repro` block in its report, so verdicts went unrecorded and reproducers were dispatched twice. Both forms are read now, and an unrecorded verdict is completed by the same reproducer.
 - **A reproducer brief without a defect id or the `defect-repro` schema is named at dispatch.** Such a brief produced a verdict the adapter could not record, and the reproducers were dispatched a second time.
 - **Resuming a run from a worktree session.** `delegate_qa` with `run` looked for `resume.json` only in the main work tree, while a session started in a worktree keeps its run state there; it now accepts either.
 

@@ -1,6 +1,6 @@
 import type { EngineInterface, On, TurnCompleteInput } from 'claude-code'
 
-import { editExpert, editRun, exists, firstLine, isDisabled, note, readText, validateDoc, who, type Who } from './context'
+import { editExpert, editRun, exists, firstLine, isDisabled, note, readText, under, validateDoc, who, type Who } from './context'
 
 // Hook 5, return review: when an expert's turn ends with an answer, its report (or its final
 // message, when it named none) is read back against the return contract: the status word, the
@@ -31,7 +31,7 @@ export async function reviewReturn($: EngineInterface, w: Who, e: TurnCompleteIn
   const root = await $.session.cwd()
   const gaps: string[] = []
   if (!STATUS.test(firstLine(e.answer))) gaps.push('its final message does not open with DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED')
-  const report = x.report ? await readText($, `${root}/${x.report}`) : undefined
+  const report = x.report ? await readText($, under(root, x.report)) : undefined
   if (x.report && report === undefined) gaps.push(`it wrote no report at ${x.report}`)
   const text = report ?? e.answer
   if (x.schema && text.trim() !== '') {
@@ -50,7 +50,7 @@ export async function reviewReturn($: EngineInterface, w: Who, e: TurnCompleteIn
     }
   }
   if (x.brief) {
-    const brief = (await readText($, `${root}/${x.brief}`)) ?? ''
+    const brief = (await readText($, under(root, x.brief))) ?? ''
     const named = SKILLS.filter(s => new RegExp(`(^|[^a-z-])${s}([^a-z-]|$)`).test(brief))
     const loaded = x.skills ?? []
     if (named.length > 0 && !named.some(s => loaded.some(l => l === s || l.endsWith(`:${s}`)))) gaps.push(`its brief names ${named.join(', ')} and it never loaded ${named.length > 1 ? 'any of them' : 'it'}`)
