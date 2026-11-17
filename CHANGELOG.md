@@ -11,7 +11,9 @@
 - **Reuse first (verify-change 5b).** Existing tests that answer a criterion are run instead of re-explored or rewritten; a re-test, a browser pass and a regression check run existing tests only.
 - **Stages merged where the context has room.** Measured peaks: probes about 100 k and reviewers at the end about 90 k, with a third of their cost spent on setup reading; authors about 207 k. So coverage and outcome share a reviewer, assertions and value share one, `probe-rigour` writes the verify note, one doc-writer dispatch writes the phase 9 set, and `probe-verdict` reviews the defect audit. Author and inspector stages are not merged.
 - **7a triage.** An observation no criterion or stated promise covers goes to the product owner as a question instead of to a reproducer; two low-severity suspicions on one screen may share a reproducer; an incomplete verdict is completed by the same reproducer.
-- **One slice per author brief, one pass per document.** An author brief covers about five tests and iterates on those only; documents that cite evidence are written once, after it is final, and reviewed once.
+- **Bug or spec question is decided by the written text.** A product that does otherwise than a criterion or spec row states is a `bug`, also when the code diverges on purpose; `spec-ambiguity` needs two readings quoted from the text.
+- **The coverage probe reads what the walk saw.** A recorded observation that contradicts a criterion and has no defect id or test, and a named edge case with no test, are must-fix.
+- **One slice per author brief, one pass per document.** An author brief covers one criterion group with all of its edge cases and iterates on those only; documents that cite evidence are written once, after it is final, and reviewed once.
 
 ### Fixed
 

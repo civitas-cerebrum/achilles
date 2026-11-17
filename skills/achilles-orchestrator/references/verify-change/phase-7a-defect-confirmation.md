@@ -78,10 +78,10 @@ The reproducer decides for itself and returns exactly one verdict:
 
 | Verdict | Meaning | What happens next |
 |---|---|---|
-| `bug` | Reproduced live, against the ACs or a stated product promise. | Sentinel in phase 7; filed per §9d. |
+| `bug` | Reproduced live, against the ACs or a stated product promise, also when the code diverges from them on purpose. | Sentinel in phase 7; filed per §9d. |
 | `real-in-source` | The code path is wrong, but the reproducer could not trigger it live. | No sentinel. Reported as a code finding with its source lines; filed only if the user decides to. |
-| `spec-ambiguity` | Two readings of the ACs or two layers of the code disagree, and either could be intended. | No sentinel. A question for the product owner in the report. |
-| `not-a-bug` | Intended: coded, documented or tested on purpose. | No sentinel. The run's notes are corrected. At most a copy or UX remark. |
+| `spec-ambiguity` | The written text supports two readings, both quoted in the verdict, or two written sources disagree. | No sentinel. A question for the product owner in the report. |
+| `not-a-bug` | Intended, and no criterion or spec row says otherwise. | No sentinel. The run's notes are corrected. At most a copy or UX remark. |
 
 Every verdict carries:
 

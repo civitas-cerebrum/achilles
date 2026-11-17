@@ -81,8 +81,10 @@ Exactly one:
 |---|---|
 | `bug` | Seen live at least once, against the oracle. |
 | `real-in-source` | The code path is wrong, and you could not trigger it live. |
-| `spec-ambiguity` | Two readings of the criteria, or two layers of the code, disagree, and either could be intended. Name the decision a product owner has to make. |
-| `not-a-bug` | Intended: coded, documented or tested on purpose. Cite where. |
+| `spec-ambiguity` | The written text itself supports two readings, or two written sources disagree. Quote both readings and name the decision a product owner has to make. |
+| `not-a-bug` | Intended, and nothing written says otherwise: coded, documented or tested on purpose, with no criterion or spec row it contradicts. Cite where. |
+
+**The written text decides between `bug` and the other two.** When a criterion or a spec row states the expected result and the product does otherwise, the verdict is `bug`, also when the code does it on purpose, is commented or is unit-tested: deliberate code that contradicts the written spec is a defect against the spec, and the report says the divergence is deliberate so the reader can choose between changing the code and changing the spec. `spec-ambiguity` needs two readings you can quote from the text; "the developer may have meant it" is not a reading. If you cannot quote a second reading, it is a `bug` or it is `not-a-bug`.
 
 A `bug` without reproduction evidence is not recorded: every defect report needs it, and a UI defect needs its video.
 

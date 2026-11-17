@@ -51,6 +51,8 @@ Reads the mutation report and the suite. Every `SURVIVED` with an applied-check 
 
 Which AC clauses and which hunks of the diff have no assertion pointing at them. Output: a gap list keyed to AC text and `file:line`.
 
+It also reads what the run saw and did not act on. The brief names the walk and diff-review reports; the probe holds every recorded observation (the values in the walk's tables, not only the rows marked as suspicions) against the criteria and the spec rows. An observation that contradicts one and has neither a defect id nor a test is a `[must-fix]` finding: it goes to 7a as a suspicion and, if confirmed, gets its sentinel. This exists because a walk once recorded the values that showed a defect and nobody raised it, so it was never reproduced or tested. The same probe checks the criteria's edge cases (the failure paths and boundaries the criteria or the spec name) for a test each.
+
 ### probe-assertions
 
 Per assertion: `structural` (proves a guarantee) or `incidental` (observed one passing render), with the reason; plus the test-data conformance check named above.
