@@ -161,12 +161,12 @@ The **correct intended behaviour** only, in objective, testable language ("The u
 | **Definition** | How badly the bug breaks the system | How urgently it needs to be fixed |
 | **Question** | "How bad is this?" | "How soon?" |
 
-| Severity level | When to use |
+| Severity level | When to use (first yes wins; full rubric: [`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) §"Severity rubric (the single authority)") |
 |---|---|
-| **Critical** | System crash, data loss, security issue, core feature completely blocked |
-| **High** | Important feature broken, no workaround available |
-| **Medium** | Feature works incorrectly but workaround exists |
-| **Low** | Minor UI/cosmetic issue, no functional impact |
+| **Critical** | Someone loses money, data or access, gains access they should not have, or a legal promise is broken |
+| **High** | The person is stopped with no way round a typical user would find, or the result is wrong at its core |
+| **Medium** | The feature finishes with a result wrong in part, or only after a workaround a typical user finds |
+| **Low** | The result is right; something is off that costs seconds or most would not notice |
 
 A bug can have **High severity** but **Low priority** (rare crash in an unused area), or **Low severity** but **High priority** (typo on the homepage during a marketing campaign). A report handed over from `bug-discovery` arrives with Priority pre-filled from that skill's `f(severity, journey tier)` matrix; present it as the suggestion, exactly as with Severity.
 

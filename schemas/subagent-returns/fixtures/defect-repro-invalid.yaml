@@ -12,7 +12,7 @@ root-cause:
   - layer: frontend
     location: src/app/save/save-step.component.html:10
 severity:
-  level: High
+  level: high
   reason: called a bug without a live reproduction or an expected result
 steps:
   - Upload the fixture and continue.

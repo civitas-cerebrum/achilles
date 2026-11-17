@@ -117,8 +117,14 @@
       ],
       "properties": {
         "level": {
-          "type": "string",
-          "minLength": 1
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "description": "One value of the severity rubric (skills/achilles-orchestrator/references/finding-and-ledger-schema.md, Severity rubric); for a verdict other than bug, the severity it would have if ruled one."
         },
         "reason": {
           "type": "string",

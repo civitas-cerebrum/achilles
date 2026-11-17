@@ -103,7 +103,7 @@ The block carries:
 - `verdict`;
 - `reproduction` (`attempts`, `observed`, and `varied` when it varied);
 - `root-cause`: one entry per layer, `file:line` or why that source was unavailable;
-- `severity`: `level` and the `reason` (what the user loses, whether there is a workaround);
+- `severity`: `level`, one of `critical`, `high`, `medium`, `low`, `info` by the ordered questions of the severity rubric ([`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) §"Severity rubric (the single authority)"), and the `reason` in a sentence: what is lost, by whom, whether there is a way round. No ranges, no conditions, no other scale;
 - `steps`: one action per step for a reader with no context. Every button and menu by its
   visible label, every file by its path, accounts by `.env` key name. No `→` chains, no "as
   above", no shorthand;

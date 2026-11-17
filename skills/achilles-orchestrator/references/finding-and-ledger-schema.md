@@ -25,13 +25,25 @@ Every finding, in a return, a spill file or the ledger:
 
 ### Severity rubric (the single authority)
 
-| Severity | Definition |
-|---|---|
-| `critical` | Monetary loss, data exfiltration, privilege escalation, auth bypass, credential or key exposure, legal or compliance risk |
-| `high` | A state the app must prevent, or material user impact: a blocked journey, a core feature broken |
-| `medium` | Degraded UX or data correctness; the user notices but can continue |
-| `low` | Minor inconsistency, cosmetic defect, UX nit |
-| `info` | DOM-only, no user impact, code hygiene |
+Severity says how bad the worst realistic outcome is for the person the feature serves. That person is whoever relies on the result: the user on the screen, an administrator, or the business that reads the data the feature produces. Ask the questions in order; the first yes is the severity.
+
+| Severity | The question | Typical cases |
+|---|---|---|
+| `critical` | Does someone lose money, data or access they should have, gain access they should not have, or does the product break a legal promise? | a wrong charge or payout; records lost or exposed; another account's data shown; auth bypass; a leaked credential |
+| `high` | Is the person stopped: they cannot finish what the feature exists for, and a typical user would not find a way round? Or is the result wrong at its core, so that whoever relies on it is misled without knowing? | a save that silently fails; a step that cannot be passed; a report or an event whose main value is always wrong |
+| `medium` | Does the feature finish, but with a result that is wrong in part, or only after a workaround a typical user does find? | one field of a saved record wrong; a value missing in some cases; a retry needed |
+| `low` | Is the result right, and something is still off that costs seconds or that most people would not notice? | a cosmetic or copy defect; a duplicate request on a double click; a misaligned control |
+| `info` | Is there no effect on anyone? | DOM-only leftovers, code hygiene |
+
+How to apply it:
+
+- **Rate the outcome, not the cause.** A one-line fix and a redesign get the same severity when the user loses the same thing.
+- **Rate the worst realistic case**, not the sample that was reproduced. A defect seen on one record that would hit every record is rated on every record.
+- **Frequency and visibility are priority, not severity.** A rare crash is still `high`; a typo on the home page is still `low`. Priority is the reader's call, proposed from severity and journey tier.
+- **A workaround lowers the severity one step only when a typical user would find it unaided.**
+- **Data nobody sees is still data.** A wrong value sent to another system, stored for later or reported to the business is rated by what its reader loses, on the same questions.
+- **Blocking is the `high` question.** A defect blocks the journey when the person is stopped; `medium` and below never block, however wrong they look.
+- **One value from the list, then the reason in a sentence**: what is lost, by whom, and whether there is a way round. No ranges ("low to medium"), no conditions ("low if …"), no private scales (S1, P2). A verdict that is not `bug` states the severity the defect would have if it were ruled one.
 
 Report-facing labels map onto these (bug-discovery's "No impact (DOM-only)" is `info`; bug-report's Jira labels are the title-cased values, `info` never ticketed; agents-vs-agents judge severities map verbatim).
 

@@ -89,7 +89,7 @@ Every verdict carries:
   defect (`4/4`, `1/3`). A non-deterministic defect says so, with what varied between runs.
 - **The root cause with `file:line`**, in each layer it reached (frontend, backend), or the
   statement that the source was not available for that layer.
-- **A severity with its reason**: what the user loses and whether there is a workaround.
+- **A severity with its reason**: one value of the severity rubric ([`finding-and-ledger-schema.md`](../finding-and-ledger-schema.md) §"Severity rubric (the single authority)"), reached by its ordered questions, and what is lost, by whom, and whether there is a way round.
 - **Reproduction steps written for someone with no context**: one action per numbered step,
   starting from a state the reader can reach (log in as, open, upload). No shorthand: no `→`
   chains, no "as above", no "upload the fixture → Continue". Every button and menu by its visible
