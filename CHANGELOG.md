@@ -12,6 +12,10 @@
 - **7a triage.** An observation no criterion or stated promise covers goes to the product owner as a question instead of to a reproducer; two low-severity suspicions on one screen may share a reproducer; an incomplete verdict is completed by the same reproducer.
 - **One slice per author brief, one pass per document.** An author brief covers about five tests and iterates on those only; documents that cite evidence are written once, after it is final, and reviewed once.
 
+### Fixed
+
+- **Resuming a run from a worktree session.** `delegate_qa` with `run` looked for `resume.json` only in the main work tree, while a session started in a worktree keeps its run state there; it now accepts either.
+
 ### Added
 
 - **`ACHILLES_MODEL_ORCHESTRATOR`, `ACHILLES_MODEL_EXPERTS`**: operator model pins for the registered agents. **`ACHILLES_MUTATE_CONCURRENCY`**: the project's default mutation width.
