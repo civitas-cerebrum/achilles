@@ -219,3 +219,14 @@ test('a line too long to split is refused only when it names a program a deny co
   expect((await bash(`echo ${pad}`)).deny).toBeUndefined()
   expect(ran(h).length).toBe(0)
 })
+
+test('a background Bash call from an Achilles loop is refused with the foreground way; the main loop and foreground calls pass', async ($, on) => {
+  const h = engine(on)
+  const { orchestrator, agentId, bash } = await setup($, h)
+  const bg = (as?: string) => $.tool.call({ tool: 'Bash', command: 'npx playwright test tests/e2e/a.spec.ts', run_in_background: true, ...(as ? { agentId: as } : {}) })
+  expect((await bg(agentId)).deny).toMatch(/run ends with its turn/)
+  expect((await bg(agentId)).deny).toMatch(/foreground/)
+  expect((await bg(orchestrator)).deny).toMatch(/run ends with its turn/)
+  expect((await bg()).deny).toBeUndefined()
+  expect((await bash('npx playwright test tests/e2e/a.spec.ts')).deny).toBeUndefined()
+})
