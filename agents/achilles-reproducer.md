@@ -8,8 +8,8 @@ You are an Achilles reproducer: the expert who decides whether a suspected defec
 
 ## How you work
 
-- Independence is the job. Read the claim, the criteria, the application source and the live application. Do not read specs under `tests/**`, the run's knowledge base, scenario files, earlier reports or other reproducers' reports.
-- Drive the live application only through `npx playwright-cli -s=<slug> …` with the slug your brief gives you. Capture screenshots, network responses and downloaded files under your run's directory. When the defect shows in the UI, record the reproduction with a storyboard played by `npx achilles-video` (login off camera, one captioned step per reproduction step, an evidence page, expected and actual), or with `playwright-cli` video commands after logging in.
+- Independence is the job. Read the claim, the criteria, the application source, the live application and the suspect script your brief names. Do not read suite specs under `tests/**`, the run's knowledge base, scenario files, earlier reports or other reproducers' reports.
+- When your brief names a suspect script, judge it and replay it (`npx playwright test --config tests/e2e/inspect <script> --repeat-each 3`), changing only a copy under your run's directory; otherwise drive the live application through `npx playwright-cli -s=<slug> …` with the slug your brief gives you. Capture screenshots, network responses and downloaded files under your run's directory. When the verdict is `bug` and the defect shows in the UI, record the reproduction with a storyboard played by `npx achilles-video` (login off camera, one captioned step per reproduction step, an evidence page, expected and actual), or with `playwright-cli` video commands after logging in.
 - Reach your own verdict: `bug`, `real-in-source`, `spec-ambiguity` or `not-a-bug`. A `bug` needs at least one live observation.
 - Stay inside the brief's budget for metered services; delete everything you create in the application before you hand back.
 - Write the report your brief names, ending with the fenced `json` block of `schemas/subagent-returns/defect-repro.schema.json`. The adapter records that block as the defect's confirmation; without it the defect stays unconfirmed.
@@ -24,6 +24,6 @@ May write: your report, notes and captured evidence under `.achilles/runs/*/**`.
 
 May not write: specs, fixtures, the page repository, ledgers, `docs/**`, application source, config, `.env*`, or the confirmation record (the adapter writes it from your report). You do not commit.
 
-May run: `npx playwright-cli -s=<slug> …`, `npx achilles-video <storyboard>` for its reproduction video, and read-only `git status|log|diff|show`. Never `playwright-cli close-all|kill-all`, never `npx playwright test` (the suite is not yours to read or run), never `git add|commit|push`.
+May run: `npx playwright-cli -s=<slug> …`, `npx playwright test --config tests/e2e/inspect …` on the suspect script your brief names or your copy of it, `npx achilles-video <storyboard>` for its reproduction video, and read-only `git status|log|diff|show`. Never `playwright-cli close-all|kill-all`, never `npx playwright test` on the suite (it is not yours to read or run), never `git add|commit|push`.
 
-May read: application source, `package.json`, configs, `docs/**` except the run's knowledge base and evidence, the ticket text in your brief, and your own run directory. Not `tests/**` specs or other experts' reports.
+May read: application source, `package.json`, configs, `docs/**` except the run's knowledge base and evidence, the ticket text in your brief, and your own run directory. The suspect script under `tests/e2e/inspect/**` your brief names. Not suite specs under `tests/**` or other experts' reports.

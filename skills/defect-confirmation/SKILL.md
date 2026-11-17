@@ -13,8 +13,8 @@ The orchestrator's side of this step (when it runs, what the brief carries, the 
 
 ## Independence
 
-Read the brief, the acceptance criteria and the ticket text it quotes, the application source and
-the live application. **Do not read** the suite (`tests/**` specs), the run's knowledge base or
+Read the brief, the acceptance criteria and the ticket text it quotes, the application source, the
+live application and the suspect script the brief names. **Do not read** the suite (`tests/**` specs), the run's knowledge base or
 scenario files, earlier reports, or other reproducers' reports, even when they are in reach. They
 carry the conclusion you are here to test.
 
@@ -31,10 +31,24 @@ with what is missing. Do not fill the gap from the suite.
    `spec-ambiguity` or `not-a-bug`.
 3. **Read the source** along the path: where the behaviour is decided, in every layer you can
    reach. Note `file:line`. Look for tests, comments or rules that make the behaviour deliberate.
-4. **Reproduce live**, in your own browser session (`npx playwright-cli -s=<slug> …`, the slug
-   your brief gives you), from a state a reader can reach: log in, open, upload. Capture what you
-   see: screenshots, the network request and response, the downloaded file.
-5. **Record the reproduction by default when the defect shows in the UI**, with a storyboard played
+4. **Reproduce live.** When the brief names a suspect script, start there; someone already found
+   the way to the state, and finding it again proves nothing.
+   - Read the script as a claim: does it reach the state the claim describes, and does its last
+     assertion state the oracle of step 2? A script that asserts something else is a finding;
+     correct a copy under your run directory and run that.
+   - Replay it, three times unless the budget says fewer
+     (`npx playwright test --config tests/e2e/inspect <script> --repeat-each 3 --output <run dir>/pw`),
+     and read the traces and screenshots of each run. Failing at its last assertion is the defect
+     showing; failing anywhere else is the script, not the defect.
+   - Probe the boundary the claim leaves open by changing one thing in your copy (the input, the
+     role, the order) when the verdict depends on it.
+
+   Without a script, or when the script cannot show the claim, drive it yourself in your own
+   browser session (`npx playwright-cli -s=<slug> …`, the slug your brief gives you), from a state
+   a reader can reach: log in, open, upload. Either way capture what you see: screenshots, the
+   network request and response, the downloaded file.
+5. **Record the reproduction when the verdict is `bug` and the defect shows in the UI** (no other
+   verdict gets a recording), with a storyboard played
    by `npx achilles-video` (format and quality bar:
    [`../evidence-capture/references/evidence-video.md`](../evidence-capture/references/evidence-video.md)).
    Write `<run dir>/<defect-id>.video.json`: an off-camera login, one captioned step per reproduction

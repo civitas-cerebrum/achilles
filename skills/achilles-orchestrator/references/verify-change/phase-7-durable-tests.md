@@ -2,6 +2,8 @@
 
 Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
 
+**Start from the flow scripts.** The walk left a runnable script per criterion flow (phase 6, 6f) and the reproducers confirmed the suspect scripts. The author's brief names them. Turn each into a suite test (Steps API, page repository, test ID); do not walk the flow again. Drive the application by hand only for a state no script reaches, and say which.
+
 **Written is not committed.** Whether these tests land in the suite or stay in the evidence
 bundle is §8d's decision, made after they have proven themselves in §8–8c, and the default is
 that they stay. Write them to committable standard either way; a test that would embarrass the

@@ -68,6 +68,26 @@ This step catches defects that no functional assertion will find; the test that 
 flush against the edge. Report design findings separately from AC results: they are not AC
 failures, but they are findings that belong in the QA comment.
 
+**6f: Leave the flows runnable.** A walk that ends in prose makes everyone after it walk again: in
+fourteen measured runs the same flow was driven live by the inspector, by each reproducer, by the
+author and by several reviewers, and that repeated discovery was the largest single cost. So the
+walk's output is also code:
+
+- one **flow script** per criterion flow, `tests/e2e/inspect/<ticket>/flow-<criterion>.spec.ts`:
+  plain Playwright against the inspect config, from a state anyone can reach (log in, open,
+  upload) to the observation, with the control element asserted and everything it creates deleted;
+- one **suspect script** per suspected defect, `suspect-<n>.spec.ts`: the same, ending in an
+  assertion of the behaviour the criterion or promise calls for, so that it fails while the
+  defect shows. A suspicion from the diff review that the walk could not trigger gets no script,
+  and the report says so;
+- where a step calls a metered or slow service, the captured response next to the script, and a
+  switch to replay it.
+
+Run each script once and put the command and the result in the report. These scripts are not the
+suite and are not committed: they stay for the run (the reproducers replay the suspect scripts, the
+author turns the flow scripts into tests, reviewers re-run either) and the orchestrator removes
+them at cleanup.
+
 **Why this order.** Tests written straight from a diff bind to *that* implementation. Tests derived from observed behaviour survive the implementation moving
 underneath them.
 

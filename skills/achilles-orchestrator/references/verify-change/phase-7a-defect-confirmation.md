@@ -68,8 +68,9 @@ Each brief carries:
    metered or rate-limited service per reproducer), which shared settings it may not change,
    and that everything it creates is deleted before it hands back. A reproduction that needs
    more budget than the brief grants returns `blocked` and says how much.
-7. **The defect id** `<TICKET>-D<n>`, which the sentinel, the audit and any filed ticket cite.
-8. **The return schema** `schemas/subagent-returns/defect-repro.schema.json`.
+7. **The suspect script** the walk left for this suspicion (`tests/e2e/inspect/<ticket>/suspect-<n>.spec.ts`, phase 6 §6f) and the command that runs it. It shows how to trigger the claim; it does not decide it. A suspicion without a script is reproduced by hand.
+8. **The defect id** `<TICKET>-D<n>`, which the sentinel, the audit and any filed ticket cite.
+9. **The return schema** `schemas/subagent-returns/defect-repro.schema.json`.
 
 ## The verdicts
 
@@ -93,9 +94,9 @@ Every verdict carries:
   starting from a state the reader can reach (log in as, open, upload). No shorthand: no `→`
   chains, no "as above", no "upload the fixture → Continue". Every button and menu by its visible
   label, every file by its path.
-- **The reproduction evidence**: the captures behind the verdict, and for a defect that shows in
-  the UI, a recording of the reproduction by default (one chapter per step). A `bug` without
-  evidence is not recorded as confirmed.
+- **The reproduction evidence**: the captures behind the verdict (the script's runs, traces and
+  screenshots), and for a `bug` that shows in the UI, a recording of the reproduction (one chapter
+  per step). Other verdicts get no recording. A `bug` without evidence is not recorded as confirmed.
 - **What it created and deleted.**
 
 A verdict without a reproduction count, or `bug` with no live reproduction, is an incomplete
