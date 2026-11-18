@@ -30,11 +30,23 @@ any defect the run "already knows": a defect is known when a tracker issue or an
 `defect-audit.md` entry records it, not when the run's own notes or knowledge base mention it. A
 defect the run cannot point to either of those for is suspected, and is confirmed here like any other.
 
+## Triage before dispatch
+
+A reproducer decides whether behaviour is a defect; it is not needed to find out that nobody has said what the behaviour should be. Before dispatch, hold each suspicion against the criteria verbatim and the product's stated promises:
+
+- **A criterion or a stated promise says what should happen, or the user loses data, money, access or work**: a suspected defect. It gets a reproducer.
+- **Neither**: an observation about copy, layout taste or a behaviour no criterion covers. It goes to the product owner as a question in the report, worded with the evidence, and is listed in the audit as `not triaged as a defect`. It gets no sentinel, no defect id and no verdict; the orchestrator states an absence of a criterion, it does not rule on the behaviour.
+
+When in doubt it is a suspected defect. Triage removes questions from the reproducers' queue; it never removes a defect.
+
 ## The brief: one reproducer per suspected defect
 
 Dispatch one fresh reproducer per suspected defect (agent `achilles-reproducer`, skill
 `defect-confirmation`), all in one message when the environment allows parallel sessions; a defect whose reproduction
-changes account-wide state is dispatched alone, after the others have returned.
+changes account-wide state is dispatched alone, after the others have returned. Suspicions of low
+severity on the same screen and in the same state (two at most: a reproduction fills about half of what a reproducer holds) may share one reproducer, which
+returns one verdict and one `defect-repro` block per defect id; a defect that loses data, money,
+access or work always has a reproducer of its own.
 
 Each brief carries:
 
@@ -56,8 +68,9 @@ Each brief carries:
    metered or rate-limited service per reproducer), which shared settings it may not change,
    and that everything it creates is deleted before it hands back. A reproduction that needs
    more budget than the brief grants returns `blocked` and says how much.
-7. **The defect id** `<TICKET>-D<n>`, which the sentinel, the audit and any filed ticket cite.
-8. **The return schema** `schemas/subagent-returns/defect-repro.schema.json`.
+7. **The suspect script** the walk left for this suspicion (`tests/e2e/inspect/<ticket>/suspect-<n>.spec.ts`, phase 6 §6f) and the command that runs it. It shows how to trigger the claim; it does not decide it. A suspicion without a script is reproduced by hand.
+8. **The defect id** `<TICKET>-D<n>`, which the sentinel, the audit and any filed ticket cite.
+9. **The return schema** `schemas/subagent-returns/defect-repro.schema.json`.
 
 ## The verdicts
 
@@ -65,10 +78,10 @@ The reproducer decides for itself and returns exactly one verdict:
 
 | Verdict | Meaning | What happens next |
 |---|---|---|
-| `bug` | Reproduced live, against the ACs or a stated product promise. | Sentinel in phase 7; filed per §9d. |
+| `bug` | Reproduced live, against the ACs or a stated product promise, also when the code diverges from them on purpose. | Sentinel in phase 7; filed per §9d. |
 | `real-in-source` | The code path is wrong, but the reproducer could not trigger it live. | No sentinel. Reported as a code finding with its source lines; filed only if the user decides to. |
-| `spec-ambiguity` | Two readings of the ACs or two layers of the code disagree, and either could be intended. | No sentinel. A question for the product owner in the report. |
-| `not-a-bug` | Intended: coded, documented or tested on purpose. | No sentinel. The run's notes are corrected. At most a copy or UX remark. |
+| `spec-ambiguity` | The written text supports two readings, both quoted in the verdict, or two written sources disagree. | No sentinel. A question for the product owner in the report. |
+| `not-a-bug` | Intended, and no criterion or spec row says otherwise. | No sentinel. The run's notes are corrected. At most a copy or UX remark. |
 
 Every verdict carries:
 
@@ -76,18 +89,21 @@ Every verdict carries:
   defect (`4/4`, `1/3`). A non-deterministic defect says so, with what varied between runs.
 - **The root cause with `file:line`**, in each layer it reached (frontend, backend), or the
   statement that the source was not available for that layer.
-- **A severity with its reason**: what the user loses and whether there is a workaround.
+- **A severity with its reason**: one value of the severity rubric ([`finding-and-ledger-schema.md`](../finding-and-ledger-schema.md) §"Severity rubric (the single authority)"), reached by its ordered questions, and what is lost, by whom, and whether there is a way round.
 - **Reproduction steps written for someone with no context**: one action per numbered step,
   starting from a state the reader can reach (log in as, open, upload). No shorthand: no `→`
   chains, no "as above", no "upload the fixture → Continue". Every button and menu by its visible
   label, every file by its path.
-- **The reproduction evidence**: the captures behind the verdict, and for a defect that shows in
-  the UI, a recording of the reproduction by default (one chapter per step). A `bug` without
-  evidence is not recorded as confirmed.
+- **The reproduction evidence**: the captures behind the verdict (the script's runs, traces and
+  screenshots), and for a `bug` that shows in the UI, a recording of the reproduction (one chapter
+  per step). Other verdicts get no recording. A `bug` without evidence is not recorded as confirmed.
 - **What it created and deleted.**
 
-A verdict without a reproduction count, or `bug` with no live reproduction, is a failed dispatch;
-re-dispatch a fresh reproducer.
+A verdict without a reproduction count, or `bug` with no live reproduction, is an incomplete
+return: message the same reproducer with what is missing, once. It has the reproduction in hand, and
+finishing its own report costs no independence. Dispatch a fresh reproducer only when that answer
+is still incomplete, or when the claim itself was worded wrong. A verdict is never re-run to change
+its form.
 
 ## The standard defect evidence
 

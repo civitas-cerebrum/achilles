@@ -2,6 +2,12 @@
 
 Live observation (drive the flow by hand, screenshot and state dump per step, the control element) is §6b in [phase-6-understanding](phase-6-understanding.md); it is done before the tests are written, not after.
 
+## Write once, after the evidence is final
+
+Every document that cites evidence (the defect audit, the report, the ticket comment and filing drafts, the project's knowledge-base entries) is dispatched once, after the evidence it cites has stopped changing: the audit after the last reproducer verdict, the rest after 8e. A document written earlier is rewritten at every later phase, and each rewrite costs a review.
+
+One doc-writer dispatch writes the phase 9 set together (the report, the ticket comment, the filing drafts): they draw on the same evidence and a doc-writer ends such a dispatch with most of its context unused. One review per document: `probe-verdict` (§9b) for the report, its drafts and the defect audit, in one dispatch; the audit gets no review of its own. A finding that changes a claim goes back to the doc-writer and the same finding ids are re-checked once by a fresh reviewer. A finding that only changes wording (a count, a name, a sentence) is fixed by the doc-writer and checked by the orchestrator against the diff; it gets no second review.
+
 ## 9a. Compliance sweep: before any verdict leaves the run
 
 **Exit gate.** Every spec this workflow writes or edits gets the Stage 4b compliance sweep before the return, announced with the **API Compliance Review** block ([`stages-protocol.md`](../stages-protocol.md) §"Stage 4b is every mode's exit gate").

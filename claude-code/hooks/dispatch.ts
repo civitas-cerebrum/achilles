@@ -2,7 +2,7 @@ import type { AgentSpawnInput, EngineInterface } from 'claude-code'
 
 import { SCHEMA_ROLES } from '../data/schema-role-map.mjs'
 import type { AchillesExpert } from '../types'
-import { dispatchPaths, listDir, readJson, readText, type Who } from './context'
+import { dispatchPaths, listDir, readJson, readText, under, type Who } from './context'
 import type { Ledger } from './ledger'
 
 // Hook 4, dispatch discipline: an orchestrator's expert dispatch is checked against the
@@ -38,7 +38,7 @@ export async function dispatchAdvice($: EngineInterface, e: AgentSpawnInput, rol
   const root = await $.session.cwd()
   const notes: string[] = []
   const fields: Partial<AchillesExpert> = dispatchPaths(e.prompt)
-  const briefText = fields.brief ? await readText($, `${root}/${fields.brief}`) : undefined
+  const briefText = fields.brief ? await readText($, under(root, fields.brief)) : undefined
   const advice: Advice = { prompt: e.prompt, notes, fields }
 
   if (e.background) {
@@ -62,6 +62,12 @@ export async function dispatchAdvice($: EngineInterface, e: AgentSpawnInput, rol
   const named = cited.find(s => roleSchemas.includes(s))
   if (named) fields.schema = named
   else if (cited.length > 0) notes.push(`the brief cites ${cited.map(c => `${c}.schema.json`).join(', ')}, which is not a return shape of the ${role} (${roleSchemas.join(', ') || 'none'}).`)
+
+  // A reproducer's verdict is recorded by its defect id and its defect-repro block; a brief that names neither buys a verdict nobody can use.
+  if (role === 'reproducer' && briefText !== undefined) {
+    const missing = [/\b[A-Z][A-Z0-9]+-\d+-D\d+\b/.test(text) ? '' : 'a defect id (<TICKET>-D<n>)', named === 'defect-repro' ? '' : 'the return schema defect-repro.schema.json'].filter(Boolean)
+    if (missing.length > 0) notes.push(`the reproducer brief ${fields.brief} lacks ${missing.join(' and ')}; without them its verdict is not recorded as the defect's confirmation and the reproduction is paid for twice. Message the reproducer with what is missing before it reports (skills/achilles-orchestrator/references/verify-change/phase-7a-defect-confirmation.md).`)
+  }
 
   // Concurrency: one author on shared fixtures at a time.
   const authors = w.run.experts.filter(x => x.role === 'author')

@@ -2,6 +2,8 @@
 
 Regression tests go in the project's suite, not the bundle. One test per AC, plus edge cases and close-regression cover for what the diff touched nearby.
 
+**Start from the flow scripts.** The walk left a runnable script per criterion flow (phase 6, 6f) and the reproducers confirmed the suspect scripts. The author's brief names them. Turn each into a suite test (Steps API, page repository, test ID); do not walk the flow again. Drive the application by hand only for a state no script reaches, and say which.
+
 **Every case the inspector checked by hand in §6 ends up in a test.** A case that belongs to an AC becomes an assertion in that AC's test, not a test of its own. A re-verification round re-checks behaviour by running these tests and does not drive the app again ([`../../workflows/verify-change.md`](../../workflows/verify-change.md) §"Re-verification rounds"), so a case left out here is either re-checked by hand on every round or never checked again.
 
 **Written is not committed.** Whether these tests land in the suite or stay in the evidence

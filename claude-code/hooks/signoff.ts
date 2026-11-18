@@ -14,6 +14,7 @@ import {
   readReceiptHashes,
   readText,
   run,
+  under,
   walk,
   who,
   writeReceiptHash,
@@ -321,7 +322,7 @@ function receiptBlocks(text: string): Record<string, unknown>[] {
 export async function recordReceipt($: EngineInterface, w: Who, e: TurnCompleteInput) {
   if (w.role !== 'reviewer' || !w.expert) return
   const cwd = await $.session.cwd()
-  const report = w.expert.report ? await readText($, `${cwd}/${w.expert.report}`) : undefined
+  const report = w.expert.report ? await readText($, under(cwd, w.expert.report)) : undefined
   const blocks = receiptBlocks(`${e.answer}\n${report ?? ''}`)
   if (blocks.length === 0) return
   const top = await checkoutRoot($, cwd)
@@ -374,7 +375,7 @@ export async function evidenceGaps($: EngineInterface, cwd: string, block: Recor
 export async function recordConfirmation($: EngineInterface, w: Who, e: TurnCompleteInput) {
   if (w.role !== 'reproducer' || !w.expert) return
   const cwd = await $.session.cwd()
-  const report = w.expert.report ? await readText($, `${cwd}/${w.expert.report}`) : undefined
+  const report = w.expert.report ? await readText($, under(cwd, w.expert.report)) : undefined
   const blocks = confirmationBlocks(`${e.answer}\n${report ?? ''}`)
   const top = await checkoutRoot($, cwd)
   const refused: string[] = []
@@ -395,7 +396,7 @@ export async function recordConfirmation($: EngineInterface, w: Who, e: TurnComp
     }
   }
   if (blocks.length === 0) refused.push('its return carries no defect-repro JSON block (defect-id, verdict)')
-  if (refused.length > 0) await note($, w.run.agentId, `the reproducer ${w.expert.agentId} handed back a confirmation the adapter could not record:\n- ${refused.join('\n- ')}\nThe defect stays unconfirmed; re-dispatch a fresh reproducer with the gap quoted (${CONFIRM_REF}).`)
+  if (refused.length > 0) await note($, w.run.agentId, `the reproducer ${w.expert.agentId} handed back a confirmation the adapter could not record:\n- ${refused.join('\n- ')}\nThe defect stays unconfirmed; message this reproducer with the gap quoted so it completes its report, and dispatch a fresh one only if that answer is still incomplete (${CONFIRM_REF}).`)
 }
 
 /** The issue type, labels and text a create call carries, for the defect-filing check. */

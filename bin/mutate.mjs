@@ -7,6 +7,7 @@
 //   npx achilles-mutate                          # uses .achilles/mutations.mjs
 //   npx achilles-mutate --config path/to/muts.mjs
 //   npx achilles-mutate --only pills-hidden      # one mutation, for iterating
+//   npx achilles-mutate --only a,b,c             # the mutants a fix touched, after a fix cycle
 //   npx achilles-mutate --calibrate              # prove the applied-checks discriminate
 //   npx achilles-mutate --repeat 3               # flake control: owner must fail 2 of 3
 //   npx achilles-mutate --concurrency 4          # run mutations in parallel
@@ -56,7 +57,8 @@ const ONLY = flag('only', null)
 const REPEAT = Math.max(1, parseInt(flag('repeat', '1'), 10) || 1)
 // Mutations are independent runs against a deployed URL — embarrassingly parallel. Serial was
 // costing N x suite-runtime, which is what makes this unaffordable on a slow suite.
-const CONCURRENCY = Math.max(1, parseInt(flag('concurrency', '1'), 10) || 1)
+// ACHILLES_MUTATE_CONCURRENCY sets the project's default once (the width its environment tolerates); the flag wins.
+const CONCURRENCY = Math.max(1, parseInt(flag('concurrency', process.env.ACHILLES_MUTATE_CONCURRENCY || '1'), 10) || 1)
 const OUT = path.resolve('.achilles/mutation-out')
 
 if (!fs.existsSync(CONFIG)) {
@@ -247,7 +249,9 @@ if (!process.env.PLAYWRIGHT_TEST_BASE_URL) {
 
 fs.mkdirSync(OUT, { recursive: true })
 
-const queue = ONLY ? mutations.filter((m) => m.id === ONLY || m.id === 'noop') : mutations
+// --only takes one id or a comma-separated list: after a fix, re-run the mutants the fix touched, not the set.
+const ONLY_IDS = ONLY ? new Set(ONLY.split(',').map((s) => s.trim()).filter(Boolean)) : null
+const queue = ONLY_IDS ? mutations.filter((m) => ONLY_IDS.has(m.id) || m.id === 'noop') : mutations
 const results = []
 
 const runOnce = (m) =>

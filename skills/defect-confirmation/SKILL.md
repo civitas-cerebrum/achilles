@@ -13,8 +13,8 @@ The orchestrator's side of this step (when it runs, what the brief carries, the 
 
 ## Independence
 
-Read the brief, the acceptance criteria and the ticket text it quotes, the application source and
-the live application. **Do not read** the suite (`tests/**` specs), the run's knowledge base or
+Read the brief, the acceptance criteria and the ticket text it quotes, the application source, the
+live application and the suspect script the brief names. **Do not read** the suite (`tests/**` specs), the run's knowledge base or
 scenario files, earlier reports, or other reproducers' reports, even when they are in reach. They
 carry the conclusion you are here to test.
 
@@ -31,10 +31,24 @@ with what is missing. Do not fill the gap from the suite.
    `spec-ambiguity` or `not-a-bug`.
 3. **Read the source** along the path: where the behaviour is decided, in every layer you can
    reach. Note `file:line`. Look for tests, comments or rules that make the behaviour deliberate.
-4. **Reproduce live**, in your own browser session (`npx playwright-cli -s=<slug> …`, the slug
-   your brief gives you), from a state a reader can reach: log in, open, upload. Capture what you
-   see: screenshots, the network request and response, the downloaded file.
-5. **Record the reproduction by default when the defect shows in the UI**, with a storyboard played
+4. **Reproduce live.** When the brief names a suspect script, start there; someone already found
+   the way to the state, and finding it again proves nothing.
+   - Read the script as a claim: does it reach the state the claim describes, and does its last
+     assertion state the oracle of step 2? A script that asserts something else is a finding;
+     correct a copy under your run directory and run that.
+   - Replay it, three times unless the budget says fewer
+     (`npx playwright test --config tests/e2e/inspect <script> --repeat-each 3 --output <run dir>/pw`),
+     and read the traces and screenshots of each run. Failing at its last assertion is the defect
+     showing; failing anywhere else is the script, not the defect.
+   - Probe the boundary the claim leaves open by changing one thing in your copy (the input, the
+     role, the order) when the verdict depends on it.
+
+   Without a script, or when the script cannot show the claim, drive it yourself in your own
+   browser session (`npx playwright-cli -s=<slug> …`, the slug your brief gives you), from a state
+   a reader can reach: log in, open, upload. Either way capture what you see: screenshots, the
+   network request and response, the downloaded file.
+5. **Record the reproduction when the verdict is `bug` and the defect shows in the UI** (no other
+   verdict gets a recording), with a storyboard played
    by `npx achilles-video` (format and quality bar:
    [`../evidence-capture/references/evidence-video.md`](../evidence-capture/references/evidence-video.md)).
    Write `<run dir>/<defect-id>.video.json`: an off-camera login, one captioned step per reproduction
@@ -67,8 +81,10 @@ Exactly one:
 |---|---|
 | `bug` | Seen live at least once, against the oracle. |
 | `real-in-source` | The code path is wrong, and you could not trigger it live. |
-| `spec-ambiguity` | Two readings of the criteria, or two layers of the code, disagree, and either could be intended. Name the decision a product owner has to make. |
-| `not-a-bug` | Intended: coded, documented or tested on purpose. Cite where. |
+| `spec-ambiguity` | The written text itself supports two readings, or two written sources disagree. Quote both readings and name the decision a product owner has to make. |
+| `not-a-bug` | Intended, and nothing written says otherwise: coded, documented or tested on purpose, with no criterion or spec row it contradicts. Cite where. |
+
+**The written text decides between `bug` and the other two.** When a criterion or a spec row states the expected result and the product does otherwise, the verdict is `bug`, also when the code does it on purpose, is commented or is unit-tested: deliberate code that contradicts the written spec is a defect against the spec, and the report says the divergence is deliberate so the reader can choose between changing the code and changing the spec. `spec-ambiguity` needs two readings you can quote from the text; "the developer may have meant it" is not a reading. If you cannot quote a second reading, it is a `bug` or it is `not-a-bug`.
 
 A `bug` without reproduction evidence is not recorded: every defect report needs it, and a UI defect needs its video.
 
@@ -89,7 +105,7 @@ The block carries:
 - `verdict`;
 - `reproduction` (`attempts`, `observed`, and `varied` when it varied);
 - `root-cause`: one entry per layer, `file:line` or why that source was unavailable;
-- `severity`: `level` and the `reason` (what the user loses, whether there is a workaround);
+- `severity`: `level`, one of `critical`, `high`, `medium`, `low`, `info` by the ordered questions of the severity rubric ([`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) §"Severity rubric (the single authority)"), and the `reason` in a sentence: what is lost, by whom, whether there is a way round. No ranges, no conditions, no other scale;
 - `steps`: one action per step for a reader with no context. Every button and menu by its
   visible label, every file by its path, accounts by `.env` key name. No `→` chains, no "as
   above", no shorthand;

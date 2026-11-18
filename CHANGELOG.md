@@ -4,8 +4,28 @@
 
 ### Changed
 
+- **One severity scale, as ordered questions.** The severity rubric asks, in order, whether someone loses money, data or access (`critical`), is stopped or misled at the core (`high`), gets a result wrong in part (`medium`) or right with something off (`low`), and covers data that leaves the product as well as what shows on screen. A reproducer's `severity.level` must be one of the five values; ranges, conditions and private scales are refused by the schema.
+- **A premise and depth gate (verify-change 4b).** After the diff review the run decides whether the behaviour the criteria describe is still what the environment is meant to do. A premise that a later change superseded or reverted, confirmed by one live look, stops the run with one question instead of a full verification. Runs that go on state `light` or `full` with the reason; light keeps the negative control, defect confirmation and the score and drops the breadth.
+- **Drive once, replay everywhere (6f).** The live walk returns a runnable flow script per criterion and a suspect script per suspicion. Reproducers judge and replay the suspect script instead of finding the state again, and record a video only for a `bug`; the author turns the flow scripts into tests instead of walking the flow again.
+- **verify-change loops are bounded.** Fourteen measured ticket runs spent a third of their cost on fix, re-review and re-probe dispatches. Step 8b now ends at zero `[must-fix]` findings and at two fix cycles, re-probes only the missions that raised a must-fix, and re-runs only the mutants a fix touched (`achilles-mutate --only a,b,c`). Probe findings carry a `[must-fix]` or `[should-fix]` bracket against a closed list (review skill, Mode 4; `must-fix` in `probe.schema.json`).
+- **Reuse first (verify-change 5b).** Existing tests that answer a criterion are run instead of re-explored or rewritten; a re-test, a browser pass and a regression check run existing tests only.
+- **Stages merged where the context has room.** Measured peaks: probes about 100 k and reviewers at the end about 90 k, with a third of their cost spent on setup reading; authors about 207 k. So coverage and outcome share a reviewer, assertions and value share one, `probe-rigour` writes the verify note, one doc-writer dispatch writes the phase 9 set, and `probe-verdict` reviews the defect audit. Author and inspector stages are not merged.
+- **7a triage.** An observation no criterion or stated promise covers goes to the product owner as a question instead of to a reproducer; two low-severity suspicions on one screen may share a reproducer; an incomplete verdict is completed by the same reproducer.
+- **Bug or spec question is decided by the written text.** A product that does otherwise than a criterion or spec row states is a `bug`, also when the code diverges on purpose; `spec-ambiguity` needs two readings quoted from the text.
+- **The coverage probe reads what the walk saw.** A recorded observation that contradicts a criterion and has no defect id or test, and a named edge case with no test, are must-fix.
+- **One slice per author brief, one pass per document.** An author brief covers one criterion group with all of its edge cases and iterates on those only; documents that cite evidence are written once, after it is final, and reviewed once.
 - **Re-verification rounds are scoped to the fix diff.** `verify-change` defines a round and its fix diff, and each step after the first run only looks at what the fix changed. Behaviour that passed before is re-verified by its test going green, not by driving the app again. Step 7 asks for every case checked by hand in step 6 to end up as an assertion in its criterion's test, and the adversarial review mutates only the fix diff's hunks, carrying the other verdicts forward marked as carried.
 - **`achilles-mutate` accepts a `specs` list per mutation**, so a mutation runs only the specs that own its criterion. Without it the top-level list runs as before.
+
+### Fixed
+
+- **Briefs and reports named by absolute path.** An orchestrator in a worktree or a nested checkout dispatches with absolute paths, which the adapter did not recognise: it read no brief, and it never found the reproducer's `defect-repro` block in its report, so verdicts went unrecorded and reproducers were dispatched twice. Both forms are read now, and an unrecorded verdict is completed by the same reproducer.
+- **A reproducer brief without a defect id or the `defect-repro` schema is named at dispatch.** Such a brief produced a verdict the adapter could not record, and the reproducers were dispatched a second time.
+- **Resuming a run from a worktree session.** `delegate_qa` with `run` looked for `resume.json` only in the main work tree, while a session started in a worktree keeps its run state there; it now accepts either.
+
+### Added
+
+- **`ACHILLES_MODEL_ORCHESTRATOR`, `ACHILLES_MODEL_EXPERTS`**: operator model pins for the registered agents. **`ACHILLES_MUTATE_CONCURRENCY`**: the project's default mutation width.
 
 ### Fixed
 

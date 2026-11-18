@@ -28,6 +28,11 @@
       "$comment": "Ledger anchor IDs for the findings appended this dispatch (e.g. j-acme-4-01). Array length should equal the findings-emitted count.",
       "description": "Ledger anchor IDs of the emitted findings; length should equal findings-emitted."
     },
+    "must-fix": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "verify-change probes (review skill, Mode 4): how many of the emitted findings carry the [must-fix] bracket. The 8b loop ends when this is 0 across the missions."
+    },
     "tests-added": { "type": "integer", "minimum": 0 },
     "summary": { "type": "string" },
     "spill": { "type": "string" },

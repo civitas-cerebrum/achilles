@@ -12,7 +12,7 @@ The mission names and the one-line charter of each are in the workflow ([`../../
 
 1. Write `.achilles/mutations.mjs`: for each AC, the concrete one-line change to the app that would break it, with an applied-check (an expression evaluated in the page once the mutation is live; a selector alone is too weak, because most mutations change a computed style rather than adding a node), plus the mandatory `noop` entry.
 2. Make sure the project's `page` fixture honours the two hook variables (below); without them browser-level mutation is not runnable. Add the hook as a prerequisite, not as a mid-run discovery.
-3. Run `npx achilles-mutate --calibrate` (every applied-check must report `false` with no injection and `true` with its mutation injected; a checker that always says one thing is a rubber stamp or invents holes), then `npx achilles-mutate`. The runner owns the parts that drew blood when this was a prose recipe: owner-based classification, the `noop` control, the per-mutation applied-check, and the four verdicts `CAUGHT` / `SURVIVED` / `VOID` (never took effect) / `UNCHECKED` (the check could not run). `npx achilles-mutate --help` lists the switches; the prose is not re-derived per project.
+3. Run `npx achilles-mutate --calibrate` (every applied-check must report `false` with no injection and `true` with its mutation injected; a checker that always says one thing is a rubber stamp or invents holes), then `npx achilles-mutate`. The runner owns the parts that drew blood when this was a prose recipe: owner-based classification, the `noop` control, the per-mutation applied-check, and the four verdicts `CAUGHT` / `SURVIVED` / `VOID` (never took effect) / `UNCHECKED` (the check could not run). `npx achilles-mutate --help` lists the switches; the prose is not re-derived per project. Run the set at the width the environment tolerates: `--concurrency <n>` (or the project's `ACHILLES_MUTATE_CONCURRENCY`), where `n` is the parallel width of the test-infrastructure audit. Serial is the fallback for a single-credential or rate-limited target, not the default.
 4. Write the mutation report: per mutation the AC, the hunk or injection, the applied-check result and the verdict; the `noop` result first.
 5. Source-level mutation (a locally runnable app, [entry B](entry-b-dev-triggered.md)) binds the mutation to the actual change and is preferred when available; every such mutation is reverted before the author hands back. Where the suite runs against a deployed environment that cannot be rebuilt, mutate at the browser level: inject CSS/JS that re-creates the broken state the AC forbids. Weaker in one way (it binds to behaviour, not to the source change), stronger in another (it tests the deployed artifact).
 6. Run each mutation against the specs that own its criterion, not the whole suite: give the mutation its own `specs` list in `.achilles/mutations.mjs`. The `noop` keeps the full top-level list. A source-level mutation waits for each rebuild, so a full suite per mutation multiplies the run by the suite size.
@@ -41,7 +41,9 @@ Rules the author's brief carries:
 
 ## The six probes (reviewer briefs, in parallel)
 
-Six fresh reviewers, dispatched in one message, each loading [`../../../review/SKILL.md`](../../../review/SKILL.md) §"Mode 4: adversarial probe". Every brief names: the mission, the files to read, the ACs verbatim, the specific question, the return schema `schemas/subagent-returns/probe.schema.json` (`handover { role, status, next-action }`, `findings-emitted`, `finding-ids` required whenever the status is `findings-emitted`, `summary`), and the rule that silence is a failed dispatch: findings, or exactly what was examined and why nothing was found. A brief without the schema produces unparseable returns that cost a re-dispatch.
+Six missions, four fresh reviewers. Each probe spends about a third of its cost reading the same suite, criteria and reports before it asks its own question, and finishes with its context half used, so the missions that read the same material the same way share a reviewer: `probe-coverage` with `probe-outcome` (both read per criterion), `probe-assertions` with `probe-value` (both read per test). `probe-mutation` and `probe-visual` read other inputs and stay alone. A paired reviewer answers each mission separately and writes one report per mission, so the receipt and a re-probe still address one mission. Pairing ends where the questions would blur: never more than two missions per reviewer, and a suite of more than about fifteen tests goes back to six reviewers.
+
+The four reviewers are dispatched in one message, each loading [`../../../review/SKILL.md`](../../../review/SKILL.md) §"Mode 4: adversarial probe". Every brief names: the mission, the files to read, the ACs verbatim, the specific question, the return schema `schemas/subagent-returns/probe.schema.json` (`handover { role, status, next-action }`, `findings-emitted`, `finding-ids` required whenever the status is `findings-emitted`, `summary`), and the rule that silence is a failed dispatch: findings, or exactly what was examined and why nothing was found. A brief without the schema produces unparseable returns that cost a re-dispatch.
 
 ### probe-mutation
 
@@ -50,6 +52,8 @@ Reads the mutation report and the suite. Every `SURVIVED` with an applied-check 
 ### probe-coverage
 
 Which AC clauses and which hunks of the diff have no assertion pointing at them. Output: a gap list keyed to AC text and `file:line`.
+
+It also reads what the run saw and did not act on. The brief names the walk and diff-review reports; the probe holds every recorded observation (the values in the walk's tables, not only the rows marked as suspicions) against the criteria and the spec rows. An observation that contradicts one and has neither a defect id nor a test is a `[must-fix]` finding: it goes to 7a as a suspicion and, if confirmed, gets its sentinel. This exists because a walk once recorded the values that showed a defect and nobody raised it, so it was never reproduced or tested. The same probe checks the criteria's edge cases (the failure paths and boundaries the criteria or the spec name) for a test each.
 
 ### probe-assertions
 
@@ -82,7 +86,14 @@ Does not read test code; reads every evidence screenshot in the bundle's screens
 
 ## After the probes
 
-The orchestrator reads the six reports and the mutation report, dispatches the author for every must-fix finding, re-runs the affected probe with a fresh reviewer, and then records the sign-off receipt (or the harness adapter records it on the orchestrator's behalf from the reviewers' hand-backs; which one is in the harness doc). The receipt shape:
+The orchestrator reads the six reports and the mutation report and sorts the findings by their bracket (review skill, Mode 4): `[must-fix]` blocks the verdict, `[should-fix]` improves the suite without changing what it proves. A probe almost never returns `clean`, so the loop ends on the must-fix count, never on silence:
+
+1. **Must-fix present**: one author dispatch fixes every must-fix finding and, in the same pass, the should-fix findings it accepts. After a fix the author re-runs only the tests it changed and only the mutants those tests own (`npx achilles-mutate --only <ids>`), not the set. A fix brief is a slice like any author brief (SKILL.md §4): more than about six must-fix findings are split by the tests they touch into briefs run in sequence, because one author carrying sixteen findings ends three times as full as it started and costs as much as writing the tests did.
+2. **Re-probe** with a fresh reviewer only the missions that raised a must-fix. The re-probe brief carries those finding ids and asks one question per id: resolved or not. It does not re-open the mission.
+3. **Zero must-fix** (in the first round or after the re-probe): the loop is over. Should-fix findings that remain go to one author pass whose changes the orchestrator checks by the diff and the author's targeted run; they get no further probe round. A should-fix that changes an assertion is a must-fix that was graded wrong: send it back through step 1.
+4. **Must-fix still open after the re-probe**: one more fix and re-probe of those ids. Open after that, the run hands back `DONE_WITH_CONCERNS` with the unresolved list; a third cycle is the user's decision, not the run's.
+
+Then the orchestrator records the sign-off receipt (or the harness adapter records it on the orchestrator's behalf from the reviewers' hand-backs; which one is in the harness doc). The receipt shape:
 
 ```json
 {

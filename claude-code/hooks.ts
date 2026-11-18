@@ -12,7 +12,7 @@ import { closeSessions, registerReporting } from './hooks/reporting'
 import { registerReturnTracking, reviewReturn } from './hooks/returns'
 import { closeSelectorScope, registerSelector } from './hooks/selector'
 import { recordConfirmation, recordReceipt, registerSignoff } from './hooks/signoff'
-import { ORCHESTRATOR, checkoutRoot, editRun, exists, expertLabel, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, whoIs, writeRuns } from './hooks/context'
+import { ORCHESTRATOR, checkoutRoot, editRun, exists, expertLabel, isDisabled, isExpert, note, readRuns, roleOf, setDisabled, under, whoIs, writeRuns } from './hooks/context'
 
 const CONTRACT_REF = 'skills/achilles-orchestrator/references/controller-contract.md'
 
@@ -95,7 +95,11 @@ async function registerAgents($: EngineInterface) {
     if (!agent) continue
     const { tools, skills, ...spec } = agent
     OURS.add(agent.name)
-    await $.agent.register({ ...spec, ...(tools ? { tools } : {}), ...(skills ? { skills } : {}) })
+    // An operator's model pin beats the frontmatter: one switch for the orchestrator, one for the five experts.
+    const pin = ORCHESTRATOR.endsWith(`:${agent.name}`)
+      ? await $.env.get('ACHILLES_MODEL_ORCHESTRATOR').catch(() => undefined)
+      : await $.env.get('ACHILLES_MODEL_EXPERTS').catch(() => undefined)
+    await $.agent.register({ ...spec, ...(pin ? { model: pin } : {}), ...(tools ? { tools } : {}), ...(skills ? { skills } : {}) })
   }
 }
 
@@ -114,8 +118,11 @@ async function delegate($: EngineInterface, task: string, context?: string, from
     // A run whose hand-back is held with no expert left is not running: it is waiting for nobody.
     if (live && live.held !== undefined && live.experts.length === 0) await writeRuns($, rs => rs.filter(r => r.id !== resume))
     else if (live) return `BLOCKED\nRun ${resume} is still running; its hand-back arrives on its own.`
-    const root = await checkoutRoot($, await $.session.cwd())
-    if (!(await exists($, `${root}/.achilles/runs/${resume}/resume.json`))) return `NEEDS_CONTEXT\nRun ${resume} has no .achilles/runs/${resume}/resume.json to resume from.`
+    // The orchestrator writes its state under the session directory; in a worktree session that is not the main work tree.
+    const cwd = await $.session.cwd()
+    const root = await checkoutRoot($, cwd)
+    const file = `.achilles/runs/${resume}/resume.json`
+    if (!(await exists($, `${root}/${file}`)) && !(await exists($, `${cwd}/${file}`))) return `NEEDS_CONTEXT\nRun ${resume} has no .achilles/runs/${resume}/resume.json to resume from.`
   }
   const id = resume ?? `qa-${(await $.clock.now()).toString(36)}`
   const run: AchillesRun = { id, task: task.trim() === '' ? `resume run ${id}` : task, dir: `.achilles/runs/${id}`, experts: [], startedAt: await $.clock.now() }
@@ -295,7 +302,7 @@ export const register: Register = on => {
       // background work (a spec run, a sub-step): it is still at work, so it stays counted and
       // nothing is read yet. A written report means it has finished, status word or not.
       const interim = e.reason === 'answer' && !TERMINAL.test(e.answer.split('\n').find(l => l.trim() !== '')?.trim() ?? '')
-      if (interim && !(w.expert?.report && (await exists($, `${await $.session.cwd()}/${w.expert.report}`)))) return next(e)
+      if (interim && !(w.expert?.report && (await exists($, under(await $.session.cwd(), w.expert.report))))) return next(e)
       // An expert's end: it leaves the run first, so a slow guard below can never keep it
       // counted; then the guards read its hand-back side by side, inside one budget.
       const runs = await editRun($, w.run.id, r => ({ ...r, experts: r.experts.filter(x => x.agentId !== e.agentId) }))

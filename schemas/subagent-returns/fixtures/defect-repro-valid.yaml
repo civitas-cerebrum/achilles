@@ -16,7 +16,7 @@ root-cause:
   - layer: backend
     location: not available; no backend source in the brief
 severity:
-  level: High
+  level: high
   reason: the saved document carries a value in the wrong blank and the user is not told
 steps:
   - Log in as the account owner (E2E_OWNER_EMAIL / E2E_OWNER_PASSWORD in .env).
