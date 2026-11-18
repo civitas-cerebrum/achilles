@@ -14,6 +14,8 @@
 - **Bug or spec question is decided by the written text.** A product that does otherwise than a criterion or spec row states is a `bug`, also when the code diverges on purpose; `spec-ambiguity` needs two readings quoted from the text.
 - **The coverage probe reads what the walk saw.** A recorded observation that contradicts a criterion and has no defect id or test, and a named edge case with no test, are must-fix.
 - **One slice per author brief, one pass per document.** An author brief covers one criterion group with all of its edge cases and iterates on those only; documents that cite evidence are written once, after it is final, and reviewed once.
+- **Re-verification rounds are scoped to the fix diff.** `verify-change` defines a round and its fix diff, and each step after the first run only looks at what the fix changed. Behaviour that passed before is re-verified by its test going green, not by driving the app again. Step 7 asks for every case checked by hand in step 6 to end up as an assertion in its criterion's test, and the adversarial review mutates only the fix diff's hunks, carrying the other verdicts forward marked as carried.
+- **`achilles-mutate` accepts a `specs` list per mutation**, so a mutation runs only the specs that own its criterion. Without it the top-level list runs as before.
 
 ### Fixed
 
@@ -27,6 +29,7 @@
 
 ### Fixed
 
+- **Hook type check on Claude Code 2.1.323.** `plugin validate --strict` now type-checks hooks modules, and the untyped `.mjs` imports in `bash-judge.ts` and `dispatch.ts` failed with TS7016 on node 24. `claude-code/data/` gets declaration files for `protected-paths.mjs` and `schema-role-map.mjs`.
 - **Skill descriptions over 1,024 characters.** `contract-testing`, `database-testing` and `test-data-conventions` had frontmatter descriptions longer than the 1,024 characters pi accepts, so pi warned at every launch in a project with Achilles installed. They are now 975–1,014 characters, with every trigger and the reason to load each skill kept, and `scripts/lint/registry.mjs` fails a description over 1,024.
 
 ## 0.1.8 — 2026-11-01
