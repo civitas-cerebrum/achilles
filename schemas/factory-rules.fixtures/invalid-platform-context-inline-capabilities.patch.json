@@ -1,0 +1,14 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/contexts/iphone/capabilities",
+      "value": {
+        "platformName": "iOS",
+        "appium:automationName": "XCUITest"
+      }
+    }
+  ],
+  "expectError": "/contexts/iphone/capabilities: must be string"
+}

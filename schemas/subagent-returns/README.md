@@ -12,6 +12,8 @@ shape that validates against the JSON Schema for its role.
 | section-agent | `section-agent.schema.json` | section-complete, section-deferred, blocked |
 | phase4-prioritise-author | `phase4-prioritise-author.schema.json` | journey-map-authored, blocked |
 | workflow-reviewer | `workflow-reviewer.schema.json` | (verdict: approve, reject, escalate) |
+| perf-reviewer (reviewer, performance pipeline) | `perf-reviewer.schema.json` | approved, rejected, escalated-to-user (verdict: approve, reject, escalate) |
+| platform-reviewer (reviewer, platform pipeline) | `platform-reviewer.schema.json` | approved, rejected, escalated-to-user (verdict: approve, reject, escalate; tied one-to-one to the status; `phase` equals the N of `platform-reviewer-phase<N>`) |
 
 All schemas reference the shared `handover.schema.json` envelope via `$ref`.
 

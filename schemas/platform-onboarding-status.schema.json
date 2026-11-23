@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/platform-onboarding-status.schema.json",
+  "title": "Platform-testing pipeline status ledger",
+  "description": "Single source of truth for the platform-testing pipeline's state (native apps on android | ios | macos | windows). Owned by the platform orchestrator. Read by the reviewer subagents and by the ledger hooks. Lives at tests/platform/docs/platform-onboarding-status.json in consumer projects (gitignored, like the perf ledger). Phases are numbered 1-7 in pipeline order and each carries its fixed name: 1=Preflight, 2=Scaffold, 3=Inspect, 4=Selectors, 5=Compose, 6=Review, 7=Report.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "pipelineVersion",
+    "runMode",
+    "startedAt",
+    "currentPhase",
+    "status",
+    "devices",
+    "phases"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version for forward-compat. Bump when the shape changes."
+    },
+    "pipelineVersion": {
+      "type": "string",
+      "description": "The achilles methodology package version that produced this ledger, e.g. '1.0.0'."
+    },
+    "runMode": {
+      "type": "string",
+      "enum": ["standard", "depth"],
+      "description": "The run mode captured at the front-load gate, as in the perf ledger."
+    },
+    "modeAuthorizer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Verbatim operator quote authorising the persisted runMode. Required by the write-gate whenever runMode is set or changed (gate-enforced co-location)."
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the pipeline start."
+    },
+    "currentPhase": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7,
+      "description": "1=Preflight, 2=Scaffold, 3=Inspect, 4=Selectors, 5=Compose, 6=Review, 7=Report."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["in-progress", "blocked", "complete", "aborted"],
+      "description": "Pipeline-level status."
+    },
+    "devices": {
+      "type": "array",
+      "description": "The devices this run targets, one per capabilities file. Recorded at preflight (at least one once preflight is completed or skipped) so every report can name the device, its OS version and whether it is a real device or a virtual one (emulator / simulator).",
+      "items": { "$ref": "#/$defs/device" }
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "description": "Length-7 array, phases 1-7 in pipeline order; entry N has id N and its fixed name.",
+      "prefixItems": [
+        { "allOf": [{ "$ref": "#/$defs/phase" }, { "type": "object", "properties": { "id": { "const": 1 }, "name": { "const": "Preflight" } } }], "description": "Target, capabilities file(s) and Appium server confirmed." },
+        { "allOf": [{ "$ref": "#/$defs/phase" }, { "type": "object", "properties": { "id": { "const": 2 }, "name": { "const": "Scaffold" } } }], "description": "playwright.platform.config.ts, tests/capabilities/, tests/platform/fixtures/base.ts, the app build / install step." },
+        { "allOf": [{ "$ref": "#/$defs/phase" }, { "type": "object", "properties": { "id": { "const": 3 }, "name": { "const": "Inspect" } } }], "description": "Screens inspected; tests/platform/docs/app-context.md written." },
+        { "allOf": [{ "$ref": "#/$defs/phase" }, { "type": "object", "properties": { "id": { "const": 4 }, "name": { "const": "Selectors" } } }], "description": "Platform pages in the page repository, each element with selector evidence." },
+        { "allOf": [{ "$ref": "#/$defs/phase" }, { "type": "object", "properties": { "id": { "const": 5 }, "name": { "const": "Compose" } } }], "description": "Specs under tests/platform/." },
+        { "allOf": [{ "$ref": "#/$defs/phase" }, { "type": "object", "properties": { "id": { "const": 6 }, "name": { "const": "Review" } } }], "description": "An author runs the whole suite once per capabilities file and proves at least one deliberate failure per device class; both are recorded in tests/platform/docs/review-verdict.json, which the phase gate judges." },
+        { "allOf": [{ "$ref": "#/$defs/phase" }, { "type": "object", "properties": { "id": { "const": 7 }, "name": { "const": "Report" } } }] }
+      ],
+      "items": false
+    },
+    "approvedDeviations": {
+      "type": "array",
+      "description": "Structured exceptions: skip-phase / early-stop authorisations captured during the run.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["phase", "deviation", "authorizer"],
+        "properties": {
+          "phase": { "type": "integer", "minimum": 1, "maximum": 7 },
+          "deviation": { "type": "string", "description": "Short description, e.g. 'skipped'." },
+          "authorizer": { "type": "string", "minLength": 1, "description": "Verbatim user quote OR a structured reviewer attestation." }
+        }
+      }
+    }
+  },
+  "if": {
+    "type": "object",
+    "required": ["phases"],
+    "properties": {
+      "phases": { "type": "array", "contains": { "type": "object", "required": ["id", "status"], "properties": { "id": { "const": 1 }, "status": { "enum": ["completed", "skipped"] } } } }
+    }
+  },
+  "then": {
+    "type": "object",
+    "properties": { "devices": { "type": "array", "minItems": 1 } }
+  },
+  "$defs": {
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capabilities", "platform", "osVersion", "real"],
+      "properties": {
+        "capabilities": { "type": "string", "pattern": "^tests/capabilities/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$", "description": "Project-relative path of the device's capabilities file; the same file the inspection session and the test run use." },
+        "platform": { "enum": ["android", "ios", "macos", "windows"] },
+        "osVersion": { "type": "string", "minLength": 1, "description": "The OS version of the device, stated at preflight and confirmed at inspect, e.g. '17.5' or '14'." },
+        "real": { "type": "boolean", "description": "true for a real device, false for a virtual one (emulator / simulator)." },
+        "model": { "type": "string", "minLength": 1, "description": "Optional device model or class for reports, e.g. 'iPhone 15' or 'Pixel 8 emulator'. Never a personal device name." }
+      }
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "name", "status"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "maximum": 7 },
+        "name": { "type": "string", "enum": ["Preflight", "Scaffold", "Inspect", "Selectors", "Compose", "Review", "Report"] },
+        "startedAt": { "type": ["string", "null"], "format": "date-time" },
+        "finishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "in-progress", "completed", "blocked", "skipped"] },
+        "handoverEnvelope": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "description": "The closing subagent's handover envelope for this phase. See schemas/subagent-returns/handover.schema.json. Required (non-null) when reviewerVerdict is 'approved'."
+        },
+        "reviewerVerdict": {
+          "type": ["string", "null"],
+          "enum": ["pending", "approved", "rejected", "escalated-to-user", "escalate", null],
+          "description": "The phase greenlight: 'approved' is the greenlight."
+        },
+        "reviewerCycles": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Number of reviewer dispatches for this phase. Cap is 3; the 3rd rejection escalates." },
+        "reviewerFindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "checklist-item": { "type": "string" },
+              "what-missing": { "type": "string" },
+              "methodology-ref": { "type": "string" },
+              "fix-instruction": { "type": "string" }
+            }
+          }
+        },
+        "deliverables": { "type": "array", "items": { "type": "string" }, "description": "Relative paths of files committed during this phase." }
+      }
+    }
+  }
+}

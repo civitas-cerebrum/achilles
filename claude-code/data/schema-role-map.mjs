@@ -4,7 +4,7 @@
 export const SCHEMA_ROLES = {
   author: ['composer', 'repair-worker', 'probe', 'phase4-prioritise-author'],
   inspector: ['section-agent', 'probe'],
-  reviewer: ['reviewer-inloop', 'workflow-reviewer', 'perf-reviewer'],
+  reviewer: ['reviewer-inloop', 'workflow-reviewer', 'perf-reviewer', 'platform-reviewer'],
   reproducer: ['defect-repro'],
   'doc-writer': [],
 }

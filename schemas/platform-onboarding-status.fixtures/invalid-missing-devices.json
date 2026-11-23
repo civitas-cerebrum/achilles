@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "pipelineVersion": "0.1.0",
+  "runMode": "standard",
+  "modeAuthorizer": "standard mode, as asked at the start",
+  "startedAt": "2026-11-23T09:00:00Z",
+  "currentPhase": 1,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Preflight",
+      "startedAt": "2026-11-23T09:00:00Z",
+      "finishedAt": null,
+      "status": "in-progress",
+      "handoverEnvelope": null,
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "reviewerFindings": [],
+      "deliverables": []
+    },
+    {
+      "id": 2,
+      "name": "Scaffold",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    },
+    {
+      "id": 3,
+      "name": "Inspect",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    },
+    {
+      "id": 4,
+      "name": "Selectors",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    },
+    {
+      "id": 5,
+      "name": "Compose",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    },
+    {
+      "id": 6,
+      "name": "Review",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    },
+    {
+      "id": 7,
+      "name": "Report",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    }
+  ],
+  "approvedDeviations": []
+}

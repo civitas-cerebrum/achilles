@@ -1,0 +1,11 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/contexts/iphone/server",
+      "value": "http://a.localhost.:4723/wd/hub"
+    }
+  ],
+  "expectError": "/contexts/iphone/server: must NOT be valid"
+}

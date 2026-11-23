@@ -1,0 +1,10 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/contexts/iphone/server",
+      "value": "https://hub.example.com/wd/hub"
+    }
+  ]
+}
