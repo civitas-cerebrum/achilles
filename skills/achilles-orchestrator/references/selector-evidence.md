@@ -158,7 +158,11 @@ screenshot is the **element** screenshot: `<ref>` is the element's ref from `sna
 - Output: `<evidence dir>/<Page>.<element>.<platform>.md` and `.png`, beside the web `<Page>.<element>.md`.
 - `--repository` default: `rules["selectors.evidence"].repository`, else `tests/e2e/page-repository.json` if it
   exists, else `tests/platform/page-repository.json` (one page repository per project).
-- Flags also take the `--name=value` form; an unrecognised argument is named by its flag only, never its value.
+- Flags also take the `--name=value` form; an unrecognised argument is named by its flag only, never its value. A
+  message repeats a flag value only when it is a plain name or path (`[A-Za-z0-9_./-]`, at most 120 characters);
+  anything else, a URL or `key=value` included, prints as `(not shown)`.
+- Capability keys the tool reads (`platformName`, `appium:appPackage`) follow one rule: from `alwaysMatch` when the
+  file has one (also under `capabilities.alwaysMatch`), else from the top level.
 
 ### The platform note
 

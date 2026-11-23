@@ -446,6 +446,9 @@ export function splitEquals(argv) {
   return argv.flatMap((a) => (/^--[^=]+=/.test(a) ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a]))
 }
 
+/** A flag value in a message: only a plain name or path (no JSON, no key=value, no colon), else "(not shown)". */
+export const shown = (v) => (typeof v === 'string' && /^[A-Za-z0-9_.\/-]{1,120}$/.test(v) ? v : '(not shown)')
+
 /** How an unrecognised argument is named in a message: a flag by its name, anything else not at all (it may be a value). */
 export const shownArg = (a) => (/^--[\w-]+$/.test(a) ? a : 'a value with no flag (not shown)')
 
@@ -459,6 +462,15 @@ function parseArgs(argv) {
     a[name] = value
   }
   return a
+}
+
+/**
+ * One rule for every capability key the tool reads (platformName, appium:appPackage): from `alwaysMatch` when the file
+ * has one (also under `capabilities.alwaysMatch`), else from the top level. Only string values count.
+ */
+export function capability(caps, key) {
+  const scope = caps?.alwaysMatch ?? caps?.capabilities?.alwaysMatch ?? caps
+  return typeof scope?.[key] === 'string' ? scope[key] : undefined
 }
 
 /** Refuses anything but a path to a JSON file under tests/capabilities/; returns the project-relative path. */
@@ -477,7 +489,7 @@ function capabilitiesFile(root, value, platform) {
   } catch (e) {
     fail(`Capabilities file ${rel} is missing or not JSON (${e.code ?? 'parse error'})`, 'Pass the capabilities file the inspection session used.', 'platform-pages', 2)
   }
-  const named = caps?.platformName ?? caps?.alwaysMatch?.platformName ?? caps?.capabilities?.alwaysMatch?.platformName
+  const named = capability(caps, 'platformName')
   if (typeof named === 'string' && named.toLowerCase() !== platform)
     fail(`The platformName in ${rel} does not name ${platform}`, `Pass the capabilities file of a ${platform} device, or the --platform that file targets.`, 'platform-pages', 2)
   return { rel, caps }
@@ -485,7 +497,7 @@ function capabilitiesFile(root, value, platform) {
 
 function inputFile(root, value, flag, hint) {
   const abs = path.resolve(root, value)
-  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) fail(`--${flag} ${value} does not exist`, hint, 'platform-pages', 2)
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) fail(`--${flag} ${shown(value)} does not exist`, hint, 'platform-pages', 2)
   return abs
 }
 
@@ -511,9 +523,9 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
     // offline, and the server value (a URL or env:<VAR>) has no place in a note or a message.
     const ctx = rules.contexts?.[args.context]
     if (!ctx || typeof ctx.platform !== 'string')
-      fail(`--context ${args.context} is not a platform context`, 'Name a context of achilles-factory-rules.json shaped { "platform", "capabilities", "server" }, or pass --platform and --capabilities.', 'platform-pages', 2)
+      fail(`--context ${shown(args.context)} is not a platform context`, 'Name a context of achilles-factory-rules.json shaped { "platform", "capabilities", "server" }, or pass --platform and --capabilities.', 'platform-pages', 2)
     if (args.platform !== undefined && args.platform !== ctx.platform)
-      fail(`--platform ${args.platform} contradicts context ${args.context} (platform ${ctx.platform})`, 'Drop --platform, or pick the context of that platform.', 'platform-pages', 2)
+      fail(`--platform ${shown(args.platform)} contradicts context ${shown(args.context)} (platform ${shown(ctx.platform)})`, 'Drop --platform, or pick the context of that platform.', 'platform-pages', 2)
     args.platform = ctx.platform
     args.capabilities ??= ctx.capabilities
   }
@@ -521,7 +533,7 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
   if (platform === 'web') fail('--platform web is the default mode', 'Omit --platform for web pages and pass --base-url or a web --context.', 'platform-pages', 2)
   if (DECLARED.includes(platform))
     fail(`Platform ${platform} is declared but not implemented yet`, `Selector evidence runs for ${IMPLEMENTED.join(' and ')} pages today.`, 'platform-pages', 2)
-  if (!IMPLEMENTED.includes(platform)) fail(`Unknown --platform ${platform}`, `Use --platform android | ios (web pages: omit --platform).`, 'platform-pages', 2)
+  if (!IMPLEMENTED.includes(platform)) fail(`Unknown --platform ${shown(platform)}`, `Use --platform android | ios (web pages: omit --platform).`, 'platform-pages', 2)
   for (const f of ['page', 'element', 'capabilities', 'screen', 'source', 'screenshot'])
     if (!args[f]) fail(`Missing --${f}`, `Use: ${USAGE}`, 'platform-pages', 2)
   if (/[\n\r]/.test(args.screen)) fail('--screen must be one line', 'Pass the screen name as tests/platform/docs/app-context.md keys it.', 'platform-pages', 2)
@@ -532,22 +544,22 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
   const ruleRepo = rules.rules?.[RULE_ID]?.repository
   const defaultRepo = fs.existsSync(path.join(root, 'tests/e2e/page-repository.json')) ? 'tests/e2e/page-repository.json' : 'tests/platform/page-repository.json'
   const repoFile = path.resolve(root, args.repository ?? ruleRepo ?? defaultRepo)
-  if (!fs.existsSync(repoFile)) fail(`Page repository ${posix(path.relative(root, repoFile))} not found`, 'Pass --repository <file>.', 'the-tool', 2)
+  if (!fs.existsSync(repoFile)) fail(`Page repository ${shown(posix(path.relative(root, repoFile)))} not found`, 'Pass --repository <file>.', 'the-tool', 2)
   const repo = JSON.parse(fs.readFileSync(repoFile, 'utf8'))
   const named = (repo.pages ?? []).filter((p) => p.name === args.page)
   const page = named.find((p) => (p.platform ?? 'web') === platform)
   if (!page) {
     const have = named.map((p) => p.platform ?? 'web')
-    fail(`Page "${args.page}" has no entry for platform "${platform}". Available: ${have.length ? have.join(', ') : 'none'}.`, `Add a { "name": "${args.page}", "platform": "${platform}" } page to the repository (one page name, one selector set per platform).`, 'platform-pages', 2)
+    fail(`Page "${shown(args.page)}" has no entry for platform "${platform}". Available: ${have.length ? have.join(', ') : 'none'}.`, `Add a { "name": "${shown(args.page)}", "platform": "${platform}" } page to the repository (one page name, one selector set per platform).`, 'platform-pages', 2)
   }
   const entry = page.elements?.find((e) => e.elementName === args.element)
   if (!entry)
-    fail(`Unknown repository entry ${args.page}.${args.element} on the ${platform} page`, 'Insert the entry first with "provisional": true, run this tool, then remove the flag in the same change.', 'the-sequence', 2)
+    fail(`Unknown repository entry ${shown(args.page)}.${shown(args.element)} on the ${platform} page`, 'Insert the entry first with "provisional": true, run this tool, then remove the flag in the same change.', 'the-sequence', 2)
 
   const sourceFile = inputFile(root, args.source, 'source', `Save the page source first: ${SOURCE_CMD}, on the screen named by --screen.`)
   const shotFile = inputFile(root, args.screenshot, 'screenshot', `Save the element screenshot first: ${SHOT_CMD} (the ref from snapshot -i --all --selectors), on the same screen.`)
   const png = fs.readFileSync(shotFile)
-  if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) fail(`--screenshot ${args.screenshot} is not a PNG`, `Pass the PNG that ${SHOT_CMD} saved.`, 'platform-pages', 2)
+  if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) fail(`--screenshot ${shown(args.screenshot)} is not a PNG`, `Pass the PNG that ${SHOT_CMD} saved.`, 'platform-pages', 2)
   if (png.length > MAX_PNG_BYTES)
     fail(`--screenshot is ${Math.round(png.length / 1024)} KB (cap ${MAX_PNG_BYTES / 1024} KB)`, `Take the element screenshot instead of the full screen: ${SHOT_CMD}, then re-run; nothing over the cap is written.`, 'platform-pages', 1)
 
@@ -555,12 +567,12 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
   try {
     doc = parseXml(fs.readFileSync(sourceFile, 'utf8'))
   } catch (e) {
-    fail(`--source ${args.source} is not a page source (${e.message})`, `Pass the XML file that ${SOURCE_CMD} wrote.`, 'platform-pages', 2)
+    fail(`--source ${shown(args.source)} is not a page source (${e.message})`, `Pass the XML file that ${SOURCE_CMD} wrote.`, 'platform-pages', 2)
   }
 
   const key = `${args.page}.${args.element}`
   const list = entry.list === true
-  const r = resolveSelector(doc, entry.selector, platform, { appPackage: typeof caps?.["appium:appPackage"] === "string" ? caps["appium:appPackage"] : undefined })
+  const r = resolveSelector(doc, entry.selector, platform, { appPackage: capability(caps, 'appium:appPackage') })
   if (r.wrongPlatform)
     fail(`${key} uses the ${r.wrongPlatform} strategy, which does not exist on ${platform}`, 'Pick a strategy of this platform (CONTRACT order: accessibility id, then id / predicate, then class chain / uiautomator, then text, xpath last).', 'platform-pages', 1)
   if (r.nodes) {

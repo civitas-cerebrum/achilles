@@ -371,6 +371,45 @@ test('--name=value is accepted; an inline capabilities value is never printed, w
   }
 });
 
+test('a value that is not a plain name or path is "(not shown)" in every message that names a flag value', () => {
+  const d = project([iosPage([el('networkRow', { 'accessibility id': 'example.row.network' })]), { name: 'HomePage', elements: [el('x', { css: '#x' })] }]);
+  writeFileSync(join(d, 'achilles-factory-rules.json'), JSON.stringify({ version: 1, contexts: { phone: { platform: 'ios', capabilities: 'tests/capabilities/phone.json', server: 'env:FAKE_APPIUM_URL' }, north: { baseUrl: 'https://shop.example.test' } } }));
+  const secret = 'FAKE-SECRET-MARKER-0000';
+  const v = `{"appium:udid":"${secret}"}`;
+  const kv = `udid=${secret}`;
+  const swap = (args, from, to) => args.map((a) => (a === from ? to : a));
+  const cases = {
+    'unknown --platform': ['--platform', v, '--page', 'SettingsPage', '--element', 'networkRow'],
+    'not a platform context': ['--platform', 'ios', '--context', v, '--page', 'SettingsPage', '--element', 'networkRow'],
+    'contradicts context': ['--context', 'phone', '--platform', kv, '--page', 'SettingsPage', '--element', 'networkRow'],
+    'missing --source': swap(ios('SettingsPage', 'networkRow'), 'inspect/ios.xml', v),
+    'missing --screenshot': swap(ios('SettingsPage', 'networkRow'), 'inspect/shot.png', kv),
+    'unknown page': swap(ios('SettingsPage', 'networkRow'), 'SettingsPage', v),
+    'web unknown context': ['--page', 'HomePage', '--element', 'x', '--context', v],
+    'web base url': ['--page', 'HomePage', '--element', 'x', '--base-url', v, '--anonymous'],
+  };
+  for (const [slot, args] of Object.entries(cases)) {
+    const r = run(d, args);
+    assert.equal(r.status, 2, `${slot}: ${r.out}`);
+    assert.doesNotMatch(r.out, new RegExp(secret), slot);
+    assert.match(r.out, /\(not shown\)/, slot);
+  }
+  const plain = run(d, ['--platform', 'tvos', '--page', 'SettingsPage', '--element', 'networkRow']);
+  assert.match(plain.out, /Unknown --platform tvos/, 'a plain value is still named');
+});
+
+test('capability keys are read from alwaysMatch when present, else the top level, for platformName and appPackage alike', () => {
+  const d = project([androidPage([el('save', { id: 'save' })])]);
+  writeFileSync(join(d, 'tests/capabilities/w3c.json'), JSON.stringify({ platformName: 'iOS', alwaysMatch: { platformName: 'Android', 'appium:appPackage': 'com.example.other' } }));
+  const r = run(d, android('SettingsPage', 'save').map((a) => (a === 'tests/capabilities/android.json' ? 'tests/capabilities/w3c.json' : a)));
+  assert.equal(r.status, 0, r.out);
+  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md'))).id, 'com.example.other:id/save');
+  writeFileSync(join(d, 'tests/capabilities/top.json'), JSON.stringify({ platformName: 'Android', 'appium:appPackage': 'com.example.other', alwaysMatch: { platformName: 'Android' } }));
+  const top = run(d, android('SettingsPage', 'save').map((a) => (a === 'tests/capabilities/android.json' ? 'tests/capabilities/top.json' : a)));
+  assert.equal(top.status, 0, top.out);
+  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md'))).id, 'com.example.app:id/save', 'alwaysMatch present: top-level keys are not read');
+});
+
 test('a short android id prefers the appium:appPackage of the capabilities file, else the package owning most nodes', () => {
   const d = project([androidPage([el('save', { id: 'save' })])]);
   writeFileSync(join(d, 'tests/capabilities/other.json'), JSON.stringify({ platformName: 'Android', 'appium:appPackage': 'com.example.other' }));

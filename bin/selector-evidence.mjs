@@ -35,7 +35,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { projectRoot } from './lib/project-root.mjs'
-import { USAGE as PLATFORM_USAGE, platformOf, runPlatform, shownArg, splitEquals } from './lib/platform-evidence.mjs'
+import { USAGE as PLATFORM_USAGE, platformOf, runPlatform, shown, shownArg, splitEquals } from './lib/platform-evidence.mjs'
 import { DEFAULT_EVIDENCE_DIR, NOTE_REFUSED, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './lib/evidence-note.mjs'
 
 const MAX_PNG_BYTES = 300 * 1024
@@ -121,7 +121,7 @@ if (args.context) {
   if (!ctx) {
     const known = Object.keys(rules.contexts ?? {})
     fail(
-      `Unknown context ${args.context}`,
+      `Unknown context ${shown(args.context)}`,
       known.length ? `Use one of: ${known.join(', ')} — or pass --base-url/--storage-state.` : 'Add a "contexts" map to achilles-factory-rules.json, or pass --base-url/--storage-state.',
       'config-and-contexts',
       2,
@@ -134,22 +134,22 @@ if (!baseUrl) fail('No base URL: pass --base-url or --context', `Use: ${USAGE}`,
 try {
   new URL(baseUrl)
 } catch {
-  fail(`--base-url is not an absolute URL (${baseUrl})`, 'Pass an origin such as https://shop.example.test.', 'config-and-contexts', 2)
+  fail(`--base-url is not an absolute URL (${shown(baseUrl)})`, 'Pass an origin such as https://shop.example.test.', 'config-and-contexts', 2)
 }
 if (!args.anonymous && !storageState)
   fail('No session: pass --storage-state (or a context with storageState), or --anonymous for a signed-out page', `Use: ${USAGE}`, 'config-and-contexts', 2)
 if (storageState && !fs.existsSync(path.resolve(root, storageState)))
-  fail(`Storage state ${storageState} does not exist`, "Run the project's auth setup to produce it (the tool never logs in), then re-run.", 'config-and-contexts', 2)
+  fail(`Storage state ${shown(storageState)} does not exist`, "Run the project's auth setup to produce it (the tool never logs in), then re-run.", 'config-and-contexts', 2)
 
 const repoFile = path.resolve(root, args.repository ?? rules.rules?.[RULE_ID]?.repository ?? DEFAULT_REPOSITORY)
-if (!fs.existsSync(repoFile)) fail(`Page repository ${path.relative(root, repoFile)} not found`, 'Pass --repository <file>.', 'the-tool', 2)
+if (!fs.existsSync(repoFile)) fail(`Page repository ${shown(path.relative(root, repoFile))} not found`, 'Pass --repository <file>.', 'the-tool', 2)
 const repo = JSON.parse(fs.readFileSync(repoFile, 'utf8'))
 // A4: the same page name may appear once per platform; web mode reads the web one (`platform` missing means web).
 const page = (repo.pages ?? []).find((p) => p.name === args.page && (p.platform ?? 'web') === 'web')
 const entry = page?.elements?.find((e) => e.elementName === args.element)
 if (!entry)
   fail(
-    `Unknown repository entry ${args.page}.${args.element}`,
+    `Unknown repository entry ${shown(args.page)}.${shown(args.element)}`,
     'Insert the entry first with "provisional": true, run this tool, then remove the flag in the same change.',
     'the-sequence',
     2,
