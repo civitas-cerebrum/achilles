@@ -61,4 +61,4 @@ Rules that differ from the web cascade:
 | Workflow on a platform target | A | B | C | None |
 |---|---|---|---|---|
 | one platform scenario | `NEEDS_CONTEXT`: offer the platform pipeline or the one-task platform scaffold | one-task platform scaffold of the missing files, then proceed | inspect the scenario's screens, then proceed | proceed |
-| platform pipeline ("onboard the app") | from `preflight` | `scaffold` writes only the missing files | `preflight` and `scaffold` verify only; first producing phase is `inspect` | do not re-run; route to the ask's own work |
+| platform pipeline ("platform-onboard" / "onboard the iOS / Android app") | from `preflight` | `scaffold` writes only the missing files | `preflight` and `scaffold` verify only; first producing phase is `inspect` | do not re-run; route to the ask's own work |

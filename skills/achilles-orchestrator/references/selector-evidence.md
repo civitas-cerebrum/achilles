@@ -229,7 +229,7 @@ never touches a `source: live` note and is idempotent. Running the tool later re
 An entry may **stay** provisional only when the code needs it and its state never occurred live, or the tool cannot
 reach it without an interaction. Every such entry is **listed in the project's known-issues file** (for example
 `tests/e2e/docs/known-issues.md`): the entry, its selector, where it is referenced, and what fails if it is wrong.
-Note XOR flag; flag ⇒ known-issues row. When the state is met live: run the tool, drop the flag, delete the row, in
+Platform pages use `tests/platform/docs/known-issues.md` (the gate also accepts `tests/e2e/docs/known-issues.md` in a project with both trees). Note XOR flag; flag ⇒ known-issues row. When the state is met live: run the tool, drop the flag, delete the row, in
 the same change.
 
 ## Standing authorisation

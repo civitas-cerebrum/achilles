@@ -105,7 +105,7 @@
       "properties": {
         "capabilities": { "type": "string", "pattern": "^tests/capabilities/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$", "description": "Project-relative path of the device's capabilities file; the same file the inspection session and the test run use." },
         "platform": { "enum": ["android", "ios", "macos", "windows"] },
-        "osVersion": { "type": "string", "minLength": 1, "description": "The OS version the device reported, e.g. '17.5' or '14'." },
+        "osVersion": { "type": "string", "minLength": 1, "description": "The OS version of the device, stated at preflight and confirmed at inspect, e.g. '17.5' or '14'." },
         "real": { "type": "boolean", "description": "true for a real device, false for a virtual one (emulator / simulator)." },
         "model": { "type": "string", "minLength": 1, "description": "Optional device model or class for reports, e.g. 'iPhone 15' or 'Pixel 8 emulator'. Never a personal device name." }
       }
