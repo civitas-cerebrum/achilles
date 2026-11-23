@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 // validate-schema-fixtures.mjs
-// For each schemas/subagent-returns/<role>.schema.json, verifies that
-// fixtures/<role>-valid.yaml passes and fixtures/<role>-invalid.yaml
-// fails. Also validates the standalone schemas' own <name>.fixtures/ dirs,
+// For each schemas/subagent-returns/<role>.schema.json, checks the files in
+// schemas/subagent-returns/fixtures/ by name:
+//   <role>-valid.yaml           required; must validate
+//   <role>-invalid.yaml         required; must fail
+//   <role>-valid-<case>.yaml    optional, any number; each must validate
+//   <role>-invalid-<case>.yaml  optional, any number; each must fail
+//   handover-valid.yaml / handover-invalid.yaml  the shared envelope (below)
+// A file in that dir that matches none of these is itself a failure, so a
+// misnamed fixture cannot sit there unexercised. Also validates the standalone schemas' own <name>.fixtures/ dirs,
 // schemas/factory-rules.schema.json (the shipped example plus patch
 // fixtures) and the schemas/onboarding-status.schema.json fixtures
 // under schemas/onboarding-status.fixtures/ (every valid-*.json must
@@ -23,6 +29,8 @@ ajv.addSchema(handover);
 const schemaFiles = readdirSync(dir).filter(f => f.endsWith('.schema.json') && f !== 'handover.schema.json');
 
 let failures = 0;
+const fixtureNames = readdirSync(fixturesDir);
+const claimed = new Set(fixtureNames.filter(n => /^handover-(valid|invalid)\.yaml$/.test(n)));
 for (const file of schemaFiles) {
   const role = basename(file, '.schema.json');
   const schema = JSON.parse(readFileSync(join(dir, file), 'utf8'));
@@ -30,6 +38,7 @@ for (const file of schemaFiles) {
 
   const validPath = join(fixturesDir, `${role}-valid.yaml`);
   const invalidPath = join(fixturesDir, `${role}-invalid.yaml`);
+  claimed.add(`${role}-valid.yaml`).add(`${role}-invalid.yaml`);
 
   const validData = parse(readFileSync(validPath, 'utf8'));
   if (!validate(validData)) {
@@ -48,16 +57,29 @@ for (const file of schemaFiles) {
     console.log(`OK:   ${invalidPath} correctly fails ${file}`);
   }
 
-  // Further negatives for one role: fixtures/<role>-invalid-<case>.yaml must fail too.
-  for (const extra of readdirSync(fixturesDir).filter(n => n.startsWith(`${role}-invalid-`) && n.endsWith('.yaml'))) {
-    const extraPath = join(fixturesDir, extra);
-    if (validate(parse(readFileSync(extraPath, 'utf8')))) {
-      console.error(`FAIL: ${extraPath} unexpectedly validated against ${file}`);
-      failures++;
-    } else {
-      console.log(`OK:   ${extraPath} correctly fails ${file}`);
+  // Further cases for one role: <role>-valid-<case>.yaml must validate, <role>-invalid-<case>.yaml must fail.
+  for (const [prefix, expectValid] of [[`${role}-valid-`, true], [`${role}-invalid-`, false]]) {
+    for (const extra of fixtureNames.filter(n => n.startsWith(prefix) && n.endsWith('.yaml'))) {
+      claimed.add(extra);
+      const extraPath = join(fixturesDir, extra);
+      const ok = validate(parse(readFileSync(extraPath, 'utf8')));
+      if (expectValid && !ok) {
+        console.error(`FAIL: ${extraPath} did not validate against ${file}`);
+        console.error(validate.errors);
+        failures++;
+      } else if (!expectValid && ok) {
+        console.error(`FAIL: ${extraPath} unexpectedly validated against ${file}`);
+        failures++;
+      } else {
+        console.log(`OK:   ${extraPath} ${expectValid ? 'validates against' : 'correctly fails'} ${file}`);
+      }
     }
   }
+}
+
+for (const n of fixtureNames.filter(n => !claimed.has(n))) {
+  console.error(`FAIL: ${join(fixturesDir, n)} matches no fixture convention (<role>-valid[-<case>].yaml, <role>-invalid[-<case>].yaml, handover-valid.yaml, handover-invalid.yaml for a schema in ${dir})`);
+  failures++;
 }
 
 // ---------------------------------------------------------------------------
