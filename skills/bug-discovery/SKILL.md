@@ -61,6 +61,26 @@ Gates: 1b needs 1a; 2 needs 1a + 1b; 3 and 4 need 2 (and may run together); 5 ne
 
 Assertion strategy for reproduction tests: assert the **correct** behaviour, so the test fails against the bug today and turns green, unmodified, when it is fixed. Never lock buggy behaviour; never `test.fail()` (the one sanctioned use is a ticketed sentinel in the verify-change workflow). Every reproduction spec gets the Stage 4b compliance sweep and the judge review before the report cites it.
 
+## Platform targets (iOS, Android)
+
+On a native app, load [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md); probing runs in your own `wdio session` per the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md), closed before you return, and every probe states the device, OS version and real or virtual. The web categories (input tamper, state skip, auth tamper) still apply. A device adds three probe families that have no web equivalent; for each in-scope flow, probe every member that applies and record the ones that do not, with the reason, in the charter.
+
+**Interruptions and lifecycle.** Interrupt the flow at its riskiest step (mid-form, mid-payment, mid-upload) and assert that its state survives or recovers with a clear message:
+
+- background and resume (`backgroundApp` for a few seconds, and long enough for the OS to reclaim memory where the device allows);
+- lock and unlock the device mid-flow;
+- an incoming notification (the app's own push or another app's) pulled down or tapped;
+- low and lost connectivity, then recovery (airplane mode or the network profile the server offers), checking for duplicate submissions on reconnect;
+- kill and relaunch mid-flow (`terminateApp`, then `launchApp`), checking drafts, half-finished orders and the login state.
+
+[`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Interruptions and lifecycle".
+
+**Device capabilities**, where the app uses them: biometrics (enrolled, not enrolled, failed match, cancelled), camera (granted, denied, no camera), location (granted, denied, changed mid-flow, approximate only), push (enabled, disabled at OS level), the clipboard (paste into fields, sensitive values copied out) and the share sheet (share out, cancelled, receiving shared content). [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Device capabilities".
+
+**Permission prompt branches.** Every prompt the flow raises is probed with allow, deny and the deferred answer ("Allow once", "Ask next time", dismissed), plus revoking the permission in the middle of a flow that needs it. The deny branch must show the app's fallback (an explanation, a disabled feature, a link to settings); a crash, a blank screen or a silent no-op is a finding. Arrange a known state with `setPermission`, raise a prompt again with a reinstall or a permission reset, and never auto-accept. [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Permissions and system alerts".
+
+Probes that change device state (lock, connectivity, permissions) happen only on a device the brief assigns for it; every probe restores the state it changed before the session closes. Reproduction tests for these findings go under `tests/platform/` and follow [`../test-composer/SKILL.md`](../test-composer/SKILL.md) §"Platform targets (iOS, Android)".
+
 ## Findings and ledger
 
 Every finding uses the canonical block (`- **<FINDING-ID>** [<severity>] — <title>` with `scope` / `expected` / `observed` / `coverage`) from [`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) §1: ids `<journey-slug>-<pass>-<nn>` inside a pass, `<journey-slug>-<nn>` standalone; severities `critical | high | medium | low | info` ("No impact (DOM-only)" in phase 5 is the report label for `info`); every finding above `info` cites captured evidence. Ledger appends to `tests/e2e/docs/adversarial-findings.md` follow §3 of that file and are validated in memory before the lockfile is released. Probe-category vocabulary: §3.6 (`auth-tamper`, `input-tamper`, `state-skip`, `idor`, `race`, `boundary-values`, `compound`, …).

@@ -56,7 +56,7 @@ Rules:
 1. **Happy path end to end** (introduces the selectors every later variant inherits).
 2. **Error states**: validation, network failure, session expiry, invalid input per step.
 3. **Edge cases** from the partition table in [`references/input-domain-analysis.md`](references/input-domain-analysis.md), never ad hoc.
-4. **Mobile** (P0/P1): the happy path at 375×812.
+4. **Mobile** (P0/P1): the happy path at 375×812. On a platform target this is landscape and the two device classes instead (§"Platform targets (iOS, Android)").
 5. **Negative flows**: permission denied, unauthorised access, out-of-order steps; each asserts the refusal the user is shown, not only the redirect (§"UI outcome oracle").
 6. **Data lifecycle** where the expectations list them: create → read → update → delete across sessions, draft persistence, bulk operations.
 7. **Visual regression** where the surface is design-locked (see below).
@@ -168,6 +168,41 @@ Composer schema (`schemas/subagent-returns/composer.schema.json`), envelope firs
 - `no-new-tests-by-rationalisation` is not a return; inspect instead.
 
 Findings (coverage gaps, app-bug flags, discoveries) use the canonical block in [`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) with ids `<journey-slug>-<pass>-<nn>` (or `<journey-slug>-<nn>` standalone). Commit subjects are the orchestrator's: `test(<j-slug>): <variant>` ([commit-conventions.md](../achilles-orchestrator/references/commit-conventions.md)).
+
+## Platform targets (iOS, Android)
+
+A brief whose target is a native app (`PLATFORM=ios` or `android`) loads [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) with this skill. The steps above still apply; these rules change them, and the Stage B reviewer checks each one as a must-fix. Step names and options come from [`platform-steps.md`](../platform-testing/references/platform-steps.md) only.
+
+- **Where things live.** Specs under `tests/platform/<journey>/`, the fixture `tests/platform/fixtures/base.ts`, screens in `tests/platform/docs/app-context.md`. Step 2 discovery uses the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md), not `playwright-cli`. Every run takes the one form in [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Run command", with a file or `--grep` after the config while iterating.
+- **Variants.** The 375x812 mobile variant does not exist on a platform target. P0 and P1 add instead: the happy path in landscape where the app supports it (`setOrientation`, then `verifyOrientation`), the happy path on the small and the large device class (one run per capabilities file), and every permission prompt the journey raises as its own allow, deny and deferred branches ([platform skill](../platform-testing/SKILL.md) §"Permissions and system alerts").
+
+### Start state and reset
+
+A device keeps app data, login and granted permissions from the previous test. Every platform scenario opens with a comment naming its start state (screen, logged in or not, permission states, data present) and its reset level: `relaunch` (the fixture default, terminate and activate), `clear data`, or `reinstall`. A level above relaunch is arranged explicitly in the test or a setup project and the reason is in the comment. A test never relies on what an earlier test left on screen or on disk. A prompt that iOS shows once per install needs `reinstall` or a permission reset to appear. [Platform skill](../platform-testing/SKILL.md) §"App state and reset".
+
+### Keyboard
+
+The on-screen keyboard covers the lower part of the screen after any text entry. Before tapping or asserting an element below a field, call `hideKeyboard()` or bring the element into view with a directional scroll; never assert visibility of a control the keyboard may hide. Where the keyboard's presence is the behaviour (focus moves to the next field, the keyboard closes on submit), assert it with `verifyKeyboardShown`. Use the keyboard-up and keyboard-down snapshots in `app-context.md` to decide. [Platform skill](../platform-testing/SKILL.md) §"Keyboard".
+
+### Gestures and scrolling
+
+A native list renders only the rows near the viewport, so an element further down is absent, not hidden. Reach it with `scrollUntilFound` and an explicit direction. The web habit of checking `exists` and scrolling afterwards always fails here, because the check runs before the row exists. Swipe (element and screen), long press, pinch and zoom are first-class steps with their own variants where the journey uses them, and each is followed by an assertion of its effect (the row's actions shown, the item deleted, the map scale changed). `tapAt` with coordinates is the last resort and carries a comment with the reason. [Platform skill](../platform-testing/SKILL.md) §"Gestures and scrolling".
+
+### Hybrid content
+
+A screen that embeds web content has a native context and one or more `WEBVIEW_*` contexts; `app-context.md` records which context each screen element lives in. A spec switches explicitly with `switchContext`, confirms with `verifyContext`, and switches back to `NATIVE_APP` before leaving the screen. Repository pages belong to one context; a test never relies on an element resolving in whatever context happens to be active. [Platform skill](../platform-testing/SKILL.md) §"Hybrid content".
+
+### Platform divergence
+
+Write the spec once for every platform first. Element names are the same across platforms (one page name, one selector set per platform in the page repository), so a shared spec addresses `submit` on `LoginPage` everywhere. A platform-specific branch (`test.skip(repo.platform === 'ios', '<reason>')`, or a step only one platform has) is allowed only with the reason written in the branch. A difference in behaviour rather than layout is a finding to report, not a branch to write around. [Platform skill](../platform-testing/SKILL.md) §"Platform divergence".
+
+### Animations and timing
+
+Transitions on a device take real time. Every wait is a polling verification (`verify*` steps poll until their timeout); a fixed sleep (`setTimeout`, `driver.pause`, `steps.pace` used as a delay) is refused. Animations are turned off through the capabilities file where the driver supports it, never in the spec. A transition that needs a longer timeout states it on that one verification with the reason. [Platform skill](../platform-testing/SKILL.md) §"Animations and timing".
+
+### Web-only steps throw
+
+On a platform run a web-only step (URL, tabs, cookies, storage, network waits, HTML and CSS reads, file upload, `selectDropdown`, `hover`, right click) throws `PlatformNotSupportedError`, and so does a platform step a platform cannot do (`pressBack` on iOS). Never catch the error to keep going and never wrap a step in a try to make it optional; use the platform step that does the job, or a stated platform branch. The oracle ladder carries over: the L1 round trip is a relaunch (`resetApp`) and a re-read of the screen instead of a page reload, and an L2 API oracle applies unchanged when the suite can reach the app's API. [`platform-steps.md`](../platform-testing/references/platform-steps.md) §"Step semantics".
 
 ## Anti-patterns
 

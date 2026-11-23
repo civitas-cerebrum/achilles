@@ -9,7 +9,8 @@ description: >
   Stage 2 inspection finding no stable selector, failure-diagnosis blaming a
   fragile selector, "add stable selectors to <X>", "audit selectors across
   the app". Only when the frontend source and `tests/e2e/` share a
-  workspace. Never modifies structure, classes, ids, aria, handlers or text.
+  workspace, or on a platform brief the native or React Native app source
+  and `tests/platform/` (testID, accessibilityIdentifier, resource id). Never modifies structure, classes, ids, aria, handlers or text.
 ---
 
 # Selector development
@@ -33,6 +34,28 @@ Both must hold, else return `skipped` with the reason:
 |---|---|---|
 | Workspace | `package.json` declares a frontend framework (`react`, `vue`, `svelte`, `@angular/core`, `solid-js`, `preact`, `lit`) and a component tree exists under `src/`, `app/` or `pages/`; `tests/e2e/` holds at least one `*.spec.ts` | `not-frontend-project` |
 | Missing selector | the element has no test attribute (`data-testid` / `data-cy` / `data-qa` / `data-test`), no unique role + accessible name, and no unique stable text | `selector-already-stable` |
+
+## Platform variant (iOS, Android)
+
+A native app has no `data-testid`. Its stable handle is the accessibility identifier, which the page repository reads as `accessibility id` (or `id` on Android for a resource id), the top of the platform preference order ([`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Accessibility identifiers"). On a platform brief the gates and the patch change; the receipt, the one-file grant and the revert path do not.
+
+**Workspace gate (replaces the web one).** The project is a native or React Native app when the workspace holds one of: `package.json` with `react-native` or `expo` (React Native); an `*.xcodeproj` or `*.xcworkspace`, or `Package.swift`, with Swift or Objective-C views (iOS); a `build.gradle` or `build.gradle.kts` with the Android application plugin and `AndroidManifest.xml` (Android, Kotlin, Java or Compose). It does not need a web framework in `package.json` and does not need `tests/e2e/`; it needs at least one spec under `tests/platform/`. None of these present: `skipped`, `not-frontend-project`. A Flutter, Xamarin or other cross-platform stack that the identifiers below do not cover returns `skipped` with the stack named.
+
+**Missing-selector gate.** The element has no accessibility id, no resource id (Android), and no unique, stable label; a positional or text-only candidate from the inspection snapshot is what brings it here.
+
+**The attribute, by stack** (one added property on one element, nothing else):
+
+| Stack | Added at source | Repository key it enables |
+|---|---|---|
+| React Native | `testID="<value>"` on the component (maps to the accessibility identifier on iOS and the resource id on Android) | `accessibility id` (ios), `id` (android) |
+| iOS UIKit | `view.accessibilityIdentifier = "<value>"`, or the Identifier field in a storyboard or xib | `accessibility id` |
+| iOS SwiftUI | `.accessibilityIdentifier("<value>")` on the view | `accessibility id` |
+| Android Views | `android:id="@+id/<value>"` where the view has none; otherwise `android:contentDescription` only when the element has no visible label (it is read aloud by screen readers, so it must be a meaningful label, never a test token) | `id` (resource id) or `accessibility id` |
+| Jetpack Compose | `Modifier.testTag("<value>")` (with `testTagsAsResourceId` enabled once on the root, recorded in the receipt) | `id` |
+
+The value follows the project's naming convention ([`references/selector-convention.md`](references/selector-convention.md)). Changing an existing accessibility label, visible text or content description is not inert and is out of scope (`no-inert-option`).
+
+**Guardrails on a platform brief.** Before and after snapshots are `npx wdio session -s <slug> screenshot` captures of the same screen in the same state, per the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md); typecheck and unit tests run the project's own scripts (`tsc` for React Native; the Xcode or Gradle unit target when the brief names its command); the e2e step is the affected platform spec in the one run form ([`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Run command") against a build that contains the patch. A rebuild and reinstall is part of the loop; when the brief gives no build command the patch is staged and returned `blocked` with `blocked_artifact` naming the missing build step, never claimed verified. The visual diff compares the two screenshots as on web.
 
 ## JIT loop (one element)
 

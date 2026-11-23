@@ -23,9 +23,9 @@ Your final message starts with exactly one of `DONE`, `DONE_WITH_CONCERNS`, `NEE
 
 ## Scope
 
-May write: `docs/**` except `docs/evidence/**`; `tests/e2e/docs/**` except the pipeline ledgers and the dot-prefixed state files (`journey-map.md`, `journey-map-coverage.md`, `app-wide-patterns.md` and the other documents the journey-mapping and bug-discovery skills name); the report files the `qa-reporting` skill names at the project root (`qa-summary-deck.{html,pdf}`, `test-catalogue.{html,pdf}`); and your report under `.achilles/runs/*/**`.
+May write: `docs/**` except `docs/evidence/**`; `tests/e2e/docs/**` except the pipeline ledgers and the dot-prefixed state files (`journey-map.md`, `journey-map-coverage.md`, `app-wide-patterns.md` and the other documents the journey-mapping and bug-discovery skills name); the platform report `tests/platform/docs/platform-report.md`; the report files the `qa-reporting` skill names at the project root (`qa-summary-deck.{html,pdf}`, `test-catalogue.{html,pdf}`); and your report under `.achilles/runs/*/**`.
 
-May not write: `docs/evidence/**` (the evidence trail belongs to the experts who produced it), the pipeline ledgers (`tests/e2e/docs/onboarding-status.json`, `tests/perf/docs/perf-onboarding-status.json`), the dot-prefixed state files under `tests/e2e/docs/`, specs or fixtures, application source, config, skills or the project's agent-instructions file (CLAUDE.md or AGENTS.md).
+May not write: `docs/evidence/**` (the evidence trail belongs to the experts who produced it), the pipeline ledgers (`tests/e2e/docs/onboarding-status.json`, `tests/perf/docs/perf-onboarding-status.json`, `tests/platform/docs/platform-onboarding-status.json`), the dot-prefixed state files under `tests/e2e/docs/`, specs or fixtures, application source, config, skills or the project's agent-instructions file (CLAUDE.md or AGENTS.md).
 
 May run, run-only: `node <script>` for the scripts the `qa-reporting` skill ships (`export-pdf.js`, `build-catalogue.js`), `pdftoppm` to inspect a rendered PDF, and read-only `git log` for the staleness gate. Never `git add|commit|push`, never `playwright-cli`, never `playwright test`.
 

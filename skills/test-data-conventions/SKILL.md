@@ -226,6 +226,17 @@ Three sections per data dependency / journey:
 
 ---
 
+## Platform targets (iOS, Android)
+
+On a device, data lives in two places: the backend, governed by the rules above unchanged, and the device itself (the app's sandbox, its keychain or keystore, granted permissions, the signed-in account). A browser context throws the second away after every test; a device keeps it. These rules cover it ([`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"App state and reset").
+
+- **Accounts logged in on the device are test data with an owner.** A scenario that starts signed in names the account, where its credentials come from (env through the fixture, as Rule 1's durable identities) and who signs it in: an arrange step in the test or a setup project, never "whoever was signed in last". Rule 7's no-sharing applies per device instead of per worker: one device runs one worker, and two devices never share an account whose state a test mutates. Record device-resident accounts in the test data plan under their dependency, with the device class they live on.
+- **App data reset levels.** Every scenario states the reset it needs, cheapest first: `relaunch` (the fixture default: terminate and activate, app data kept), clear data (sandbox and preferences wiped, the app stays installed; on iOS this means a reinstall in practice), `reinstall` (remove and install the build: also resets permissions and first-run state). The level comes from the scenario's start state, not from habit: a first-run or permission-prompt scenario needs reinstall or a permission reset, a signed-in flow usually needs relaunch plus a known account.
+- **No shared device state between scenarios.** A test that changes device-resident state (a setting inside the app, a cached draft, a granted permission, a downloaded file, the signed-in account) restores it in its teardown or declares a reset level that wipes it. A scenario never depends on the order the runner happens to use. A cleanup the test cannot do (an OS setting the driver cannot reach) is a `cleanup-blocked` annotation with the reason, as in Rule 5.
+- **Capabilities files hold no secrets.** `tests/capabilities/*.json` is committed: it names the device class, OS version, app id and reset flags, never a password, token or cloud key. Cloud and remote-server credentials come from `APPIUM_USER` and `APPIUM_KEY` in the environment ([`platform-steps.md`](../platform-testing/references/platform-steps.md) §"Environment variables"); account credentials for the app come from env through the fixture.
+
+---
+
 ## Layering — when UI, API, and DB clients are all available
 
 **Generation preference: API > DB seed > UI.** The API exercises the app's own validation and stays within what a client can create; a DB seed (via the `database-testing` surface) is faster but bypasses validation; use it when the API path doesn't exist; the UI is the last resort for generation (slow, flaky, and already covered by the journey's own e2e walk). **Cleanup mirrors generation**: clean through the same layer that created, or lower. When a DB oracle exists, **DB-verified cleanup** closes the loop: after the cleanup call, a `steps.sql*` read confirms the row is gone, so silent cleanup failures cannot accumulate.
