@@ -172,7 +172,7 @@ Rename the variables to match your `.env`. The commands are Playwright's own; th
 ## Under the hood
 
 <details>
-<summary><b>The 16 skills</b>: one orchestrator with seven workflows, and 15 expert skills</summary>
+<summary><b>The 18 skills</b>: one orchestrator with seven workflows, and 17 expert skills</summary>
 
 | Skill | Role | What it does |
 |---|---|---|
@@ -191,6 +191,7 @@ Rename the variables to match your `.env`. The commands are Playwright's own; th
 | `contract-testing` | author | Status, schema, error-envelope and header assertions for every `steps.api*` call |
 | `database-testing` | author | Row, cell, column and transaction assertions for `steps.sql*` |
 | `performance-testing` | author | k6 load, stress, spike, soak and breakpoint tests with SLO thresholds |
+| `platform-testing` | inspector, author | Native iOS and Android apps through Appium: the platform pipeline, scaffold, inspection with `wdio session` and the mobile discipline |
 | `agents-vs-agents` | author | Red-teaming, guardrail, bias and prompt-injection tests for AI features |
 | `selector-development` | author | One inert test attribute per element, with an eight-step inertness proof |
 | `secrets-sweep` | author | Credentials, keys, PII and URLs moved out of the suite into `.env` |
