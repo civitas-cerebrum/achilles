@@ -70,3 +70,23 @@ test('an expert’s own playwright-cli sessions close when its turn ends; an exp
   await $.turn.complete(ended(reviewer, 'DONE\nreviewed'))
   expect(h.ran.filter(r => r.argv[0] === 'sh').length).toBe(1)
 })
+
+test('an expert’s wdio session closes when its turn ends, so the device is freed; the orchestrator’s closes at each of its turn ends', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const { orchestrator } = await setup($, h)
+  h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:bundleId': 'com.example.shop' }))
+  const open = 'npx wdio session open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json'
+  const inspector = await spawnExpert($, h, 'inspector', orchestrator)
+  await $.tool.call({ tool: 'Bash', command: open, agentId: inspector })
+  await $.tool.call({ tool: 'Bash', command: 'npx playwright-cli -s=phase1-root open http://app', agentId: inspector })
+  await $.turn.complete(ended(inspector, 'DONE\ninspected'))
+  const close = h.ran.filter(r => r.argv[0] === 'sh')
+  expect(close.length).toBe(1)
+  expect(close[0]!.argv[2]).toBe(`npx --no-install playwright-cli -s=phase1-root close >/dev/null 2>&1; npx --no-install wdio session -s ${derivedSlug('inspector', inspector)} close >/dev/null 2>&1`)
+  await $.tool.call({ tool: 'Bash', command: open, agentId: orchestrator })
+  await $.turn.complete(ended(orchestrator, 'waiting for the inspector'))
+  const last = h.ran.filter(r => r.argv[0] === 'sh').at(-1)!
+  expect(last.argv[2]).toBe(`npx --no-install wdio session -s ${derivedSlug('orchestrator', orchestrator)} close >/dev/null 2>&1`)
+  expect(notes(session, orchestrator).join('\n')).not.toContain('could not be closed')
+})

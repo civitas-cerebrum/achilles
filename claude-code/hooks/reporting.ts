@@ -5,8 +5,9 @@ import { commands } from './shell'
 
 // Hook 8, reporting, all after the fact and never refusing: a Playwright run by an achilles loop
 // is archived to .achilles/runs/<runId>/ when the Achilles reporter did not already claim it
-// (claude-code/lib/archive-run.mjs, a node child); each expert's own playwright-cli sessions are
-// closed when its turn ends; the run summary line rides in the hand-back (hooks.ts).
+// (claude-code/lib/archive-run.mjs, a node child); each expert's own playwright-cli and wdio
+// session inspection sessions are closed when its turn ends; the run summary line rides in the
+// hand-back (hooks.ts).
 
 /** What a Bash line runs that is a Playwright run: the --output and JSON report it names, or undefined. */
 export async function playwrightRun($: EngineInterface, command: string, root: string): Promise<{ output?: string; json?: string } | undefined> {
@@ -23,13 +24,24 @@ export async function playwrightRun($: EngineInterface, command: string, root: s
   return undefined
 }
 
-/** Called at an expert's turn end (hooks.ts): its own browser sessions close with it. */
+/**
+ * Called at an expert's turn end, and at each of the orchestrator's (hooks.ts): its own browser
+ * sessions and its own `wdio session` inspection sessions close with it, so a device is never held
+ * past the turn that opened it.
+ */
 export async function closeSessions($: EngineInterface, w: Who) {
-  const slugs = (w.expert?.slugs ?? []).filter(s => /^[A-Za-z0-9_-]+$/.test(s)).slice(0, 8)
-  if (slugs.length === 0) return
-  // One child for every session, bounded, so the turn's end never waits past its budget.
-  const r = await run($, ['sh', '-c', slugs.map(s => `npx --no-install playwright-cli -s=${s} close >/dev/null 2>&1`).join('; ')], { timeoutMs: 4000 })
-  if (!r.ok) await note($, w.run.agentId, `the playwright-cli sessions of ${w.expert!.agentId} (${slugs.join(', ')}) could not be closed (${r.reason}); close them with npx playwright-cli -s=<slug> close.`)
+  const safe = (xs: string[] | undefined) => (xs ?? []).filter(s => /^[A-Za-z0-9_-]+$/.test(s)).slice(0, 8)
+  const slugs = safe(w.expert?.slugs)
+  const wdio = safe(w.expert ? w.expert.wdio : w.run.wdio)
+  if (slugs.length === 0 && wdio.length === 0) return
+  if (!w.expert) await editRun($, w.run.id, r => ({ ...r, wdio: [] }))
+  // One child for every session, bounded, so the turn's end never waits past its budget; ending an
+  // Appium session on a device takes longer than closing a browser.
+  const lines = [...slugs.map(s => `npx --no-install playwright-cli -s=${s} close >/dev/null 2>&1`), ...wdio.map(s => `npx --no-install wdio session -s ${s} close >/dev/null 2>&1`)]
+  const r = await run($, ['sh', '-c', lines.join('; ')], { timeoutMs: wdio.length > 0 ? 15000 : 4000 })
+  const owner = w.expert?.agentId ?? 'the orchestrator'
+  if (!r.ok && slugs.length > 0) await note($, w.run.agentId, `the playwright-cli sessions of ${owner} (${slugs.join(', ')}) could not be closed (${r.reason}); close them with npx playwright-cli -s=<slug> close.`)
+  if (!r.ok && wdio.length > 0) await note($, w.run.agentId, `the wdio inspection sessions of ${owner} (${wdio.join(', ')}) could not be closed (${r.reason}), so the device may still be held; close them with npx wdio session -s <slug> close.`)
 }
 
 export function registerReporting(on: On) {

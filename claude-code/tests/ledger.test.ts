@@ -11,6 +11,8 @@ const LEDGER = `${ROOT}/tests/e2e/docs/onboarding-status.json`
 const PERF = `${ROOT}/tests/perf/docs/perf-onboarding-status.json`
 const NAMES = ['Scaffold', 'Groundwork', 'Happy-path', 'Journey-mapping', 'Coverage-expansion', 'Bug-discovery', 'Secrets-sweep', 'Report']
 const PERF_NAMES = ['Scaffold', 'Readiness', 'Scenario-model', 'Baseline', 'Load-run', 'Threshold-gate', 'Report']
+const PLATFORM = `${ROOT}/tests/platform/docs/platform-onboarding-status.json`
+const PLATFORM_NAMES = ['preflight', 'scaffold', 'inspect', 'selectors', 'compose', 'review', 'report']
 
 type L = Record<string, unknown> & { phases: Record<string, unknown>[] }
 const fresh = (names = NAMES): L => ({
@@ -213,6 +215,44 @@ test('perf deliverables: each perf phase names its own missing artefact', async 
   h.write(`${ROOT}/tests/perf/docs/threshold-verdict.json`, '{"deliberateBreach":[{"threshold":"p95"}]}')
   expect(await complete(6)).toBe('')
   expect(await complete(7)).toContain('perf-report.md does not exist')
+})
+
+test('platform deliverables: the platform ledger is validated against its own schema and each phase names its missing artefact', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const { orchestrator } = await setup($, h)
+  const platformFresh = () => ({ ...fresh(PLATFORM_NAMES), devices: [{ capabilities: 'tests/capabilities/iphone.json', platform: 'ios', osVersion: '17.5', real: true }] })
+  const complete = async (id: number) => {
+    await write($, orchestrator, edit(platformFresh(), c => ((c.currentPhase = id), (c.phases[id - 1]!.status = 'in-progress'))), PLATFORM)
+    const n = notes(session, orchestrator).length
+    await write($, orchestrator, completed(platformFresh(), id), PLATFORM)
+    return notes(session, orchestrator).length === n ? '' : notes(session, orchestrator).at(-1)!
+  }
+  expect(await complete(1)).toBe('')
+  expect(h.ran.some(r => r.argv.some(a => a.endsWith('validate.mjs')) && r.argv.includes('platform-onboarding-status'))).toBe(true)
+  const p2 = await complete(2)
+  expect(p2).toContain('playwright.platform.config.ts does not exist')
+  expect(p2).toContain('no *.json capabilities file under tests/capabilities/')
+  expect(p2).toContain('tests/platform/fixtures/base.ts does not exist')
+  h.write(`${ROOT}/playwright.platform.config.ts`, 'export default {}')
+  h.write(`${ROOT}/tests/capabilities/iphone.json`, '{}')
+  h.write(`${ROOT}/tests/platform/fixtures/base.ts`, '')
+  expect(await complete(2)).toBe('')
+  expect(await complete(3)).toContain('tests/platform/docs/app-context.md does not exist')
+  h.write(`${ROOT}/tests/platform/docs/app-context.md`, '# Screens')
+  expect(await complete(3)).toBe('')
+  expect(await complete(4)).toContain('no page with a platform')
+  h.write(`${ROOT}/tests/e2e/page-repository.json`, JSON.stringify({ pages: [{ name: 'Login', elements: [] }, { name: 'Login', platform: 'ios', elements: [] }] }))
+  expect(await complete(4)).toBe('')
+  expect(await complete(5)).toContain('no *.spec.ts under tests/platform/')
+  h.write(`${ROOT}/tests/platform/auth/login.spec.ts`, '')
+  expect(await complete(5)).toBe('')
+  expect(await complete(6)).toBe('')
+  expect(await complete(7)).toContain('platform-report.md does not exist')
+  h.write(`${ROOT}/tests/platform/docs/platform-report.md`, '# Report')
+  expect(await complete(7)).toContain('<!-- platform-testing:generated -->')
+  h.write(`${ROOT}/tests/platform/docs/platform-report.md`, '<!-- platform-testing:generated -->\n# Report')
+  expect(await complete(7)).toBe('')
 })
 
 test('integrity: a ledger changed or deleted out of band since its last tool write is named at the next write; an untouched one is not', async ($, on) => {

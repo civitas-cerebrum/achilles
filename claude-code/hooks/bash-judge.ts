@@ -22,8 +22,9 @@ import { commands, gitCall, isReader, nestedCommand, unresolved, type Command } 
 // Hook 1, the Bash judge: one parsed-command model, small judges. Denies only what is
 // irreversible or dangerous (a hook or signing bypass, AI attribution on a commit, PR or issue, a
 // force-push, a recursive delete outside the project, a k6 run past the ceilings, a spend-listed
-// spec without its opt-in); advises on commit grammar, shell writes to protected state and the
-// factory verify stamp; rewrites a missing playwright-cli slug. The main loop is never touched.
+// spec without its opt-in, a wdio session or platform run outside its one form); advises on commit
+// grammar, shell writes to protected state and the factory verify stamp; rewrites a missing
+// playwright-cli slug, a wdio session's name and a snapshot without --all. The main loop is never touched.
 
 const REFS = (...paths: string[]) => `\n\nReferences:\n${paths.map(p => `  ${p}`).join('\n')}`
 const COMMIT_REF = 'skills/achilles-orchestrator/references/commit-conventions.md'
@@ -283,6 +284,179 @@ function judgePlaywrightCli(ctx: Ctx, j: Judged, v: Verdict, inserts: { at: numb
   v.notes.push(`playwright-cli ${bad}; it ran as -s=${derived}. Use that slug for every call of this session (${CLI_REF}).`)
 }
 
+// ── wdio session: the one platform inspection form (npx wdio session -s <slug> <action> …) ──
+// The session name is always the calling agent's slug, so parallel experts never share a device
+// session and the turn's end can close it; snapshot always carries --all (iOS judges list rows
+// hidden otherwise); open takes its capabilities only from tests/capabilities/<device>.json and its
+// server only from --appium-url, never from capability flags of its own.
+
+const PLATFORM_INSPECT_REF = 'skills/achilles-orchestrator/references/platform-inspection-protocol.md'
+const WDIO_GLOBAL_VALUE = new Set(['-s', '--session', '--timeout'])
+const WDIO_AGNOSTIC = new Set(['list', 'doctor', 'skill', 'help'])
+// open's flags that the inspection form allows; every other one sets a capability, the server or a
+// browser option outside the capabilities file.
+const WDIO_OPEN_FLAGS = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--activity', '--replace', '--launch-timeout', '--idle-timeout', '--log-level', '--snapshot', '--no-snapshot', '--json', '-q', '--quiet', '--color', '--no-color', '--timeout'])
+const WDIO_OPEN_VALUE = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--activity', '--launch-timeout', '--idle-timeout', '--log-level', '--timeout'])
+const APP_ID_KEYS = ['appium:bundleId', 'appium:appPackage', 'appium:app', 'bundleId', 'appPackage', 'app']
+const CAPS_FILE = /^(\.\/)?tests\/capabilities\/[A-Za-z0-9._-]+\.json$/
+
+const isWdioSession = (a: readonly string[]) => (a[0] === 'wdio' || a[0] === '@wdio/cli') && a[1] === 'session'
+
+/** A project-relative tests/capabilities/<device>.json for a literal path, else undefined. */
+function capabilitiesFile(ctx: Ctx, dir: string, value: string): string | undefined {
+  if (unresolved(value)) return undefined
+  if (isAbsolute(value)) {
+    const rel = relative(ctx.root, value)
+    return CAPS_FILE.test(rel) ? rel : undefined
+  }
+  if (!CAPS_FILE.test(value)) return undefined
+  const rel = relative(ctx.root, resolve(dir, value, ctx.home))
+  return CAPS_FILE.test(rel) ? rel : undefined
+}
+
+async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, inserts: { at: number; replaceTo?: number; text: string }[]) {
+  const a = j.cmd.args
+  if (!isWdioSession(a)) return
+  if (a.some(t => t === '--help' || t === '-h' || t === '--version')) return
+  // Global flags may come before the action; the action is the first word that is not a flag or a flag's value.
+  let slugAt = -1
+  let slugForm: 'split' | 'joined' = 'split'
+  let action = -1
+  for (let i = 2; i < a.length; i++) {
+    const t = a[i]!
+    if (t === '-s' || t === '--session') {
+      slugAt = i
+      slugForm = 'split'
+      i++
+    } else if (t.startsWith('--session=') || t.startsWith('-s=')) {
+      slugAt = i
+      slugForm = 'joined'
+    } else if (action < 0 && WDIO_GLOBAL_VALUE.has(t)) i++
+    else if (action < 0 && !t.startsWith('-')) action = i
+  }
+  const act = action < 0 ? '' : a[action]!
+  if (act === '' || WDIO_AGNOSTIC.has(act)) return
+  const refs = REFS(PLATFORM_INSPECT_REF)
+  if (j.nested) return void (v.deny ??= `a wdio session call inside a nested shell (sh -c, eval) cannot have its session name and flags checked; run \`npx wdio session -s <slug> ${act} …\` as a command of its own.${refs}`)
+  const rest = a.slice(action + 1)
+  if (act === 'close' && rest.includes('--all')) return void (v.deny ??= `\`wdio session close --all\` closes every session, including other experts' sessions on shared devices; close your own with \`npx wdio session -s <slug> close\`.${refs}`)
+  if (act === 'open') {
+    const deny = await judgeWdioOpen($, ctx, j, rest)
+    if (deny !== undefined) return void (v.deny ??= `${deny}${refs}`)
+  }
+  const derived = derivedSlug(ctx.who.role, ctx.who.expert?.agentId ?? ctx.who.run.agentId ?? 'run')
+  const given = slugAt < 0 ? undefined : slugForm === 'split' ? a[slugAt + 1] : a[slugAt]!.slice(a[slugAt]!.indexOf('=') + 1)
+  // The orchestrator may close a session an expert left behind, by its name; it frees a device.
+  if (act === 'close' && !ctx.who.expert && given !== undefined && given !== '') return
+  if (given !== derived) {
+    if (slugAt < 0) inserts.push({ at: j.cmd.spans[1]!.end, text: ` -s ${derived}` })
+    else if (slugForm === 'joined' || a[slugAt + 1] === undefined) inserts.push({ at: j.cmd.spans[slugAt]!.start, replaceTo: j.cmd.spans[slugAt]!.end, text: `-s ${derived}` })
+    else inserts.push({ at: j.cmd.spans[slugAt]!.start, replaceTo: j.cmd.spans[slugAt + 1]!.end, text: `-s ${derived}` })
+    v.notes.push(`wdio session ${given === undefined ? 'had no -s <name>' : `named its session '${given}'`}; it ran as -s ${derived}, the session name of this agent. Use that name for every call of this session (${PLATFORM_INSPECT_REF}).`)
+  }
+  v.notes.push(`__wdio:${derived}`)
+  if (act === 'snapshot' && !rest.includes('--all')) inserts.push({ at: j.cmd.spans[action]!.end, text: ' --all' })
+}
+
+/** Why an `open` is not the inspection form, or undefined. */
+async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: readonly string[]): Promise<string | undefined> {
+  const form = '`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json`'
+  const flags: Record<string, string> = {}
+  const positional: string[] = []
+  for (let i = 0; i < rest.length; i++) {
+    const t = rest[i]!
+    if (t === '-s' || t === '--session') {
+      i++
+      continue
+    }
+    if (t.startsWith('-s=') || t.startsWith('--session=')) continue
+    if (!t.startsWith('-')) {
+      positional.push(t)
+      continue
+    }
+    const eq = t.indexOf('=')
+    const name = eq > 0 ? t.slice(0, eq) : t
+    if (!WDIO_OPEN_FLAGS.has(name)) return `\`${name}\` is not part of the inspection form: a device's capabilities (device, udid, OS version, reset, app, orientation, vendor options) come only from tests/capabilities/<device>.json and the server only from --appium-url. Put the value in the capabilities file and open with ${form}.`
+    flags[name] = eq > 0 ? t.slice(eq + 1) : WDIO_OPEN_VALUE.has(name) ? (rest[++i] ?? '') : ''
+  }
+  const target = positional[0] ?? ''
+  if (target === 'macos' || target === 'windows') return `platform "${target}" is declared but not implemented yet; inspection runs on android and ios.`
+  if (target !== 'android' && target !== 'ios') return `\`wdio session open ${target || '<nothing>'}\` is not a platform inspection: open android or ios with ${form}. A web page is inspected with playwright-cli.`
+  if (positional.length > 1) return `\`wdio session open ${target}\` takes no further positional argument (${positional.slice(1).join(' ')}); the app comes from the capabilities file (or --bundle-id / --package when the file has no app id). Open with ${form}.`
+  const caps = flags['--capabilities']
+  if (caps === undefined || caps === '') return `the inspection session opens with --capabilities tests/capabilities/<device>.json, the same file the test run uses: ${form}.`
+  if (/^\s*[{[]/.test(caps)) return `--capabilities takes inline JSON here; capabilities live only in tests/capabilities/<device>.json, so pass that file: ${form}.`
+  const file = capabilitiesFile(ctx, j.dir, caps)
+  if (file === undefined) return `--capabilities ${caps} is not a file under tests/capabilities/; the inspection session and the test run share tests/capabilities/<device>.json: ${form}.`
+  const url = flags['--appium-url']
+  if (url === undefined || !(/^\$\{?APPIUM_URL\}?$/.test(url) || /^https?:\/\/\S+$/.test(url))) return `the inspection session names its server with --appium-url "$APPIUM_URL" (or the server URL with its base path, e.g. http://<appium-server>/wd/hub): ${form}.`
+  const text = await readText($, `${ctx.root}/${file.replace(/^\.\//, '')}`)
+  if (text === undefined) return `${file} does not exist; the scaffold phase writes tests/capabilities/<device>.json before any session opens.`
+  let doc: Record<string, unknown> = {}
+  try {
+    doc = JSON.parse(text) as Record<string, unknown>
+  } catch {
+    return `${file} is not JSON; fix the capabilities file before opening a session.`
+  }
+  const appId = APP_ID_KEYS.find(k => typeof doc[k] === 'string' && doc[k] !== '')
+  const appFlag = ['--bundle-id', '--package', '--activity'].find(f => flags[f] !== undefined)
+  if (appId !== undefined && appFlag !== undefined) return `${file} already names the app (${appId}); ${appFlag} is passed only when the capabilities file has no app id. Drop it.`
+  return undefined
+}
+
+// ── platform test runs: PLATFORM=<p> CAPABILITIES=tests/capabilities/<device>.json APPIUM_URL=… npx playwright test -c playwright.platform.config.ts ──
+
+const PLATFORM_REF = 'skills/platform-testing/SKILL.md'
+const PLATFORM_CONFIG = /(^|\/)playwright\.platform\.config\.[cm]?[jt]s$/
+const RUN_FORM = '`PLATFORM=<android|ios> CAPABILITIES=tests/capabilities/<device>.json APPIUM_URL=<server-with-base-path> npx playwright test -c playwright.platform.config.ts`'
+
+async function judgePlatformRun($: EngineInterface, ctx: Ctx, all: Judged[], v: Verdict) {
+  const exported: Record<string, string> = {}
+  let scripts: Record<string, string> | undefined
+  for (const { cmd, dir } of all) {
+    const a = cmd.args
+    if (a[0] === 'export') {
+      for (const t of a.slice(1)) if (/^[A-Za-z_]\w*=/.test(t)) exported[t.slice(0, t.indexOf('='))] = t.slice(t.indexOf('=') + 1)
+      continue
+    }
+    const env: Record<string, string> = { ...exported }
+    for (const as of cmd.assign) env[as.slice(0, as.indexOf('='))] = as.slice(as.indexOf('=') + 1)
+    let config: string | undefined
+    let list = false
+    const pw = a.findIndex((t, k) => /(^|\/)playwright$/.test(t) && a[k + 1] === 'test')
+    if (pw >= 0) {
+      const args = a.slice(pw + 2)
+      for (let i = 0; i < args.length; i++) {
+        const t = args[i]!
+        if (t === '-c' || t === '--config') config = args[++i]
+        else if (t.startsWith('--config=')) config = t.slice('--config='.length)
+        else if (/^-c./.test(t)) config = t.slice(2)
+        else if (t === '--list') list = true
+      }
+    } else if ((a[0] === 'npm' || a[0] === 'pnpm' || a[0] === 'yarn') && a[1] === 'run' && a[2] !== undefined) {
+      scripts ??= (await readJson<{ scripts?: Record<string, string> }>($, `${ctx.root}/package.json`))?.scripts ?? {}
+      const script = scripts[a[2]] ?? ''
+      if (!/playwright test/.test(script)) continue
+      config = /(?:-c|--config)[ =](\S+)/.exec(script)?.[1]
+      list = /--list\b/.test(script) || a.includes('--list')
+    } else continue
+    const platformConfig = config !== undefined && PLATFORM_CONFIG.test(config)
+    const platform = env.PLATFORM
+    const declared = platform !== undefined && platform !== 'web'
+    if (!platformConfig && !declared && env.CAPABILITIES === undefined) continue
+    const refs = REFS(PLATFORM_REF)
+    const say = (what: string) => (v.deny ??= `${what} A platform run has one form: ${RUN_FORM}.${refs}`)
+    if (env.CAPABILITIES !== undefined && capabilitiesFile(ctx, dir, env.CAPABILITIES) === undefined)
+      return void say(`CAPABILITIES=${env.CAPABILITIES} is not a file under tests/capabilities/; the run and the inspection session share tests/capabilities/<device>.json, the only place capabilities live.`)
+    if (list && platform === undefined) continue
+    if (platform === undefined) return void say('this platform run names no PLATFORM=; the fixture would fall back to web.')
+    if (platform === 'macos' || platform === 'windows') return void say(`platform "${platform}" is declared but not implemented yet.`)
+    if (platform !== 'android' && platform !== 'ios') return void say(`PLATFORM=${platform} is not a platform this run can start (android | ios; web runs use the web config).`)
+    if (!platformConfig) return void say(`a PLATFORM=${platform} run uses -c playwright.platform.config.ts (testDir tests/platform, workers: 1), not ${config ?? 'the web config'}.`)
+    if (env.CAPABILITIES === undefined && !list) return void say(`this PLATFORM=${platform} run names no CAPABILITIES=tests/capabilities/<device>.json file.`)
+  }
+}
+
 // ── protected state and the factory state dir: on a line naming them, every command must be a reader or a copy out ──
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -497,7 +671,7 @@ export async function judgeBash($: EngineInterface, command: string, w: Who): Pr
   const rules = await factoryRules($, root)
   if (parsed.overflow) {
     // Unsplit, nothing on the line is proved: the denies hold for any line that names their programs.
-    if (/\b(git|rm|k6|playwright|gh)\b/.test(command)) v.deny = 'this command is too long to judge (over 32 KB); split it.'
+    if (/\b(git|rm|k6|playwright|gh|wdio)\b/.test(command)) v.deny = 'this command is too long to judge (over 32 KB); split it.'
     const state = ruleOf(rules, 'process.state')
     const stateDir = typeof state?.stateDir === 'string' ? state.stateDir.replace(/\/$/, '') : ''
     if (state && stateDir !== '' && command.toLowerCase().includes(stateDir.toLowerCase()))
@@ -513,7 +687,9 @@ export async function judgeBash($: EngineInterface, command: string, w: Who): Pr
     await judgeK6($, ctx, j, v)
     await judgeGh($, ctx, j, v)
     judgePlaywrightCli(ctx, j, v, inserts)
+    await judgeWdio($, ctx, j, v, inserts)
   }
+  await judgePlatformRun($, ctx, all, v)
   judgeProtected(ctx, all, v)
   await judgeSpend($, ctx, all, v)
   if (v.deny === undefined && inserts.length > 0) {

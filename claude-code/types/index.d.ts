@@ -8,10 +8,12 @@ export type AchillesExpert = {
   report?: string
   /** The return schema (schemas/subagent-returns/<name>.schema.json) the brief named or the role defaults to. */
   schema?: string
-  /** The workflow the brief loads, as far as the brief says: diagnosis, selector, review, compose, perf, other. */
+  /** The workflow the brief loads, as far as the brief says: diagnosis, selector, review, compose, perf, platform, other. */
   kind?: string
   /** playwright-cli session slugs this expert ran with; closed at its end. */
   slugs?: string[]
+  /** `wdio session` inspection session names this expert ran with; closed at its end so the device is freed. */
+  wdio?: string[]
   /** The skills the expert loaded with its Skill tool. */
   skills?: string[]
   /** True once the expert opened failure evidence (a trace, screenshot, error context, video or results file). */
@@ -50,6 +52,8 @@ export type AchillesRun = {
   judge?: { last: 'satisfied' | 'not-satisfied'; consecutive: number }
   /** Playwright run archives the reporting hook wrote during this run. */
   archived?: number
+  /** `wdio session` inspection session names the orchestrator itself ran with; closed at each of its turn ends. */
+  wdio?: string[]
   selector?: AchillesSelectorScope
   /** When the run was delegated (epoch ms). */
   startedAt?: number

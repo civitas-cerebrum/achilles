@@ -2,9 +2,12 @@ import type { On } from 'claude-code'
 
 import { judgeBash } from './bash-judge'
 import { contentSecret } from './secrets'
-import { editExpert, factoryRules, isDisabled, note, placeFile, ruleOf, threeLine, who, writtenText } from './context'
+import { capabilityDeny, capabilityLiteral } from './capabilities'
+import { within } from './posix'
+import { editExpert, editRun, factoryRules, isDisabled, note, placeFile, ruleOf, threeLine, who, writtenText } from './context'
 
-// The Bash judge and the secrets screen on Claude Code's tool.call, for the Achilles agents' loops.
+// The Bash judge, the secrets screen and the capability-literal screen on Claude Code's tool.call,
+// for the Achilles agents' loops.
 // The judge itself (bash-judge.ts) touches no run state, so the pi adapter runs it too.
 
 // An Achilles agent's run ends when its turn ends: a command left running in the background is cut off
@@ -24,11 +27,15 @@ export function registerBashJudge(on: On) {
     const v = await judgeBash($, e.command, w)
     if (v.deny !== undefined) return { deny: `achilles: ${v.deny}` }
     const slugs = v.notes.filter(n => n.startsWith('__slug:')).map(n => n.slice(7))
-    const notes = v.notes.filter(n => !n.startsWith('__slug:'))
+    const wdio = v.notes.filter(n => n.startsWith('__wdio:')).map(n => n.slice(7))
+    const notes = v.notes.filter(n => !n.startsWith('__slug:') && !n.startsWith('__wdio:'))
     if (w.expert && slugs.some(s => !(w.expert!.slugs ?? []).includes(s))) {
       const agentId = w.expert.agentId
       await editExpert($, w.run.id, agentId, x => ({ ...x, slugs: [...new Set([...(x.slugs ?? []), ...slugs])] }))
     }
+    // A wdio inspection session holds a device: its name is kept so the turn's end closes it.
+    if (w.expert && wdio.some(s => !(w.expert!.wdio ?? []).includes(s))) await editExpert($, w.run.id, w.expert.agentId, x => ({ ...x, wdio: [...new Set([...(x.wdio ?? []), ...wdio])] }))
+    else if (!w.expert && wdio.some(s => !(w.run.wdio ?? []).includes(s))) await editRun($, w.run.id, r => ({ ...r, wdio: [...new Set([...(r.wdio ?? []), ...wdio])] }))
     for (const n of notes) await note($, e.agentId, n)
     return next(v.command === e.command ? e : { ...e, command: v.command })
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its Bash judge failed, so the call is refused.' }))
@@ -47,4 +54,16 @@ export function registerBashJudge(on: On) {
     if (!hit) return next(e)
     return { deny: `achilles: ${threeLine('secrets.none', `${e.tool === 'Write' ? 'Write to' : 'Edit of'} ${rel} ${hit.what}`, typeof rule.action === 'string' ? rule.action : undefined, typeof rule.doc === 'string' ? rule.doc : undefined)}` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its secrets screen failed, so the write is refused.' }))
+
+  // Capabilities live only in tests/capabilities/<device>.json: a platform spec, a fixture or the platform config that spells one out is refused.
+  on('tool.call', { tool: ['Write', 'Edit'] }, async ($, e, next) => {
+    if (isDisabled()) return next(e)
+    const w = await who($, e.agentId)
+    if (!w) return next(e)
+    const root = await $.session.cwd()
+    const { abs, rel } = placeFile(root, e.file_path)
+    if (!within(root, abs)) return next(e)
+    const what = capabilityLiteral(rel, writtenText(e))
+    return what === undefined ? next(e) : { deny: capabilityDeny(rel, what) }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its capability-literal screen failed, so the write is refused.' }))
 }

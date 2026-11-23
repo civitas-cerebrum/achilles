@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 
-import { afterContent, exists, hashText, isDisabled, listDir, note, placeFile, readLedgerHashes, readText, validateDoc, who, writeLedgerHash } from './context'
+import { afterContent, exists, hashText, isDisabled, listDir, note, placeFile, readLedgerHashes, readText, validateDoc, walk, who, writeLedgerHash } from './context'
 
 // Hook 2, the pipeline ledger model: a Write or Edit of a pipeline ledger or progress file is
 // checked as a state transition, and every finding is a note to the writing loop; nothing is
@@ -10,6 +10,7 @@ import { afterContent, exists, hashText, isDisabled, listDir, note, placeFile, r
 
 export const ONBOARDING = 'tests/e2e/docs/onboarding-status.json'
 export const PERF = 'tests/perf/docs/perf-onboarding-status.json'
+export const PLATFORM = 'tests/platform/docs/platform-onboarding-status.json'
 const CYCLE_STATE = 'tests/e2e/docs/.phase4-cycle-state.json'
 const COVERAGE_STATE = 'tests/e2e/docs/coverage-expansion-state.json'
 const STATE_REF = 'skills/achilles-orchestrator/references/state-files.md'
@@ -69,7 +70,7 @@ export function transitionFindings(prior: Ledger | undefined, next: Ledger): str
 export const newlyCompleted = (prior: Ledger | undefined, next: Ledger) =>
   phasesOf(next).filter(p => p.status === 'completed' && phaseOf(prior, p.id ?? -1)?.status !== 'completed').map(p => p.id ?? 0)
 
-type Files = { root: string; read: (rel: string) => Promise<string | undefined>; has: (rel: string) => Promise<boolean>; list: (rel: string) => Promise<string[]> }
+type Files = { root: string; read: (rel: string) => Promise<string | undefined>; has: (rel: string) => Promise<boolean>; list: (rel: string) => Promise<string[]>; walk: (rel: string) => Promise<string[]> }
 
 const firstLineOf = (s: string | undefined) => (s ?? '').split('\n')[0]!.trim()
 const roster = (map: string | undefined) => [...(map ?? '').matchAll(/^###?#? (j-[a-z0-9-]+)/gm)].map(m => m[1]!)
@@ -184,6 +185,43 @@ export async function perfDeliverables(id: number, f: Files): Promise<string[]> 
   }
 }
 
+/** What a completed platform-pipeline phase must have on disk (phases: preflight, scaffold, inspect, selectors, compose, review, report). */
+export async function platformDeliverables(id: number, f: Files): Promise<string[]> {
+  switch (id) {
+    case 2: {
+      const out: string[] = []
+      if (!(await f.has('playwright.platform.config.ts'))) out.push('Phase 2 (scaffold) completed but playwright.platform.config.ts does not exist.')
+      if (!(await f.list('tests/capabilities')).some(n => n.endsWith('.json'))) out.push('Phase 2 (scaffold) completed but there is no *.json capabilities file under tests/capabilities/.')
+      if (!(await f.has('tests/platform/fixtures/base.ts'))) out.push('Phase 2 (scaffold) completed but tests/platform/fixtures/base.ts does not exist.')
+      return out
+    }
+    case 3:
+      return (await f.has('tests/platform/docs/app-context.md')) ? [] : ['Phase 3 (inspect) completed but tests/platform/docs/app-context.md does not exist.']
+    case 4: {
+      // The one page repository: the e2e one when the project has web tests, else the platform one.
+      for (const rel of ['tests/e2e/page-repository.json', 'tests/platform/page-repository.json']) {
+        try {
+          const pages = (JSON.parse((await f.read(rel)) ?? '{}') as { pages?: { platform?: unknown }[] }).pages
+          if (Array.isArray(pages) && pages.some(p => p !== null && typeof p === 'object' && ['android', 'ios', 'macos', 'windows'].includes(String(p.platform)))) return []
+        } catch {
+          return [`Phase 4 (selectors) completed but ${rel} is not JSON.`]
+        }
+      }
+      return ['Phase 4 (selectors) completed but the page repository (tests/e2e/page-repository.json or tests/platform/page-repository.json) has no page with a platform of android, ios, macos or windows.']
+    }
+    case 5:
+      return (await f.walk('tests/platform')).some(r => r.endsWith('.spec.ts')) ? [] : ['Phase 5 (compose) completed but there is no *.spec.ts under tests/platform/.']
+    case 7: {
+      const rel = 'tests/platform/docs/platform-report.md'
+      const text = await f.read(rel)
+      if (text === undefined) return [`Phase 7 (report) completed but ${rel} does not exist.`]
+      return firstLineOf(text) === '<!-- platform-testing:generated -->' ? [] : [`${rel} is missing the line-1 sentinel \`<!-- platform-testing:generated -->\`.`]
+    }
+    default:
+      return []
+  }
+}
+
 /** Progress files only grow: a cycle's or pass's dispatched and returned rosters never lose an entry. */
 export function monotonicFindings(rel: string, prior: unknown, next: unknown): string[] {
   const [group, dispatched, returned] = rel.endsWith('.phase4-cycle-state.json') ? ['cycles', 'dispatched-sections', 'returned-sections'] : ['passes', 'dispatched-journeys', 'returned-journeys']
@@ -219,7 +257,7 @@ export function registerLedger(on: On) {
     if (!w) return next(e)
     const root = await $.session.cwd()
     const { abs, rel } = placeFile(root, e.file_path)
-    const isLedger = rel === ONBOARDING || rel === PERF
+    const isLedger = rel === ONBOARDING || rel === PERF || rel === PLATFORM
     const isProgress = rel === CYCLE_STATE || rel === COVERAGE_STATE
     if (!isLedger && !isProgress) return next(e)
     const findings: string[] = []
@@ -235,7 +273,7 @@ export function registerLedger(on: On) {
       const nextDoc = parse(synth.after) as Ledger | undefined
       if (nextDoc === undefined || typeof nextDoc !== 'object') findings.push(`${rel} would not be parseable JSON after this write.`)
       else {
-        const verdict = await validateDoc($, rel === PERF ? 'perf-onboarding-status' : 'onboarding-status', synth.after)
+        const verdict = await validateDoc($, rel === PERF ? 'perf-onboarding-status' : rel === PLATFORM ? 'platform-onboarding-status' : 'onboarding-status', synth.after)
         if ('unavailable' in verdict) findings.push(`the ledger schema could not be checked (${verdict.unavailable}).`)
         else if (!verdict.ok) findings.push(`${rel} fails schema validation: ${(verdict.errors ?? [verdict.parse ?? '']).join('; ')}.`)
         const priorDoc = parse(diskText) as Ledger | undefined
@@ -245,8 +283,9 @@ export function registerLedger(on: On) {
           read: r => readText($, `${root}/${r}`),
           has: r => exists($, `${root}/${r}`),
           list: async r => (await listDir($, `${root}/${r}`)).map(x => x.name),
+          walk: async r => (await walk($, `${root}/${r}`, { depth: 6 })).map(p => p.slice(root.length + 1)),
         }
-        for (const id of newlyCompleted(priorDoc, nextDoc)) findings.push(...(await (rel === PERF ? perfDeliverables(id, files) : onboardingDeliverables(id, files))))
+        for (const id of newlyCompleted(priorDoc, nextDoc)) findings.push(...(await (rel === PERF ? perfDeliverables(id, files) : rel === PLATFORM ? platformDeliverables(id, files) : onboardingDeliverables(id, files))))
       }
     } else {
       const nextDoc = parse(synth.after)

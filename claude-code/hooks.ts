@@ -276,6 +276,8 @@ export const register: Register = on => {
     const w = whoIs(await readRuns($), e.agentId)
     if (!w) return next(e)
     if (w.role === 'orchestrator') {
+      // A device is scarce: the orchestrator's own inspection session (preflight) ends with each of its turns.
+      await closeSessions($, w)
       if (e.reason === 'answer') {
         const first = e.answer.split('\n').find(l => l.trim() !== '')?.trim() ?? ''
         if (!TERMINAL.test(first)) {
