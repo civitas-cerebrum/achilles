@@ -27,6 +27,8 @@ you    /achilles onboard this project; the app runs at http://localhost:3000, lo
 
 You need Node 20+, a web app with a reachable URL, and Claude Code 2.1.287+ (or [pi](docs/harness/pi.md)).
 
+A native iOS or Android app needs an Appium server and a capabilities file in place of the URL, and element-interactions and element-repository 0.4.0 (not published yet); see [`platform-testing`](skills/platform-testing/SKILL.md).
+
 ```bash
 npm i -D @civitas-cerebrum/achilles   # registers the Claude Code plugin in place, fetches Chromium
 ```
@@ -51,7 +53,7 @@ That's it. On npm 11+, if npm lists Achilles under blocked install scripts, run 
 | `/achilles the checkout suite is red since yesterday, repair it` | **repair-suite** | Heals with stability evidence; real app bugs reported, never papered over |
 | `/achilles verify PROJ-123 on this branch` | **verify-change** | Diff review, an evidence bundle, new tests and a negative control proving they can fail |
 
-Specialist skills join in when the work calls for them: API contract tests, database assertions, k6 performance tests, red-teaming AI features, inert test-attribute selectors, test-data lifecycle, bug reports, and a summary deck for stakeholders.
+Specialist skills join in when the work calls for them: native iOS and Android app tests, API contract tests, database assertions, k6 performance tests, red-teaming AI features, inert test-attribute selectors, test-data lifecycle, bug reports, and a summary deck for stakeholders.
 
 ## What lands in your repo
 
@@ -104,7 +106,7 @@ The full contract is in [`skills/achilles-orchestrator/SKILL.md`](skills/achille
 | `npx achilles-mutate` | Proves your tests can fail. Injects the broken state an acceptance criterion forbids and reports `CAUGHT`, `WRONG-TEST`, `SURVIVED`, `VOID` or `UNCHECKED`. `--calibrate` checks every probe can answer both ways; `--repeat 3` controls for flake. Needs a `noop` mutation and an `E2E_MUTATION_*` hook in the `page` fixture. |
 | `npx achilles-show <spec>` | Replays a spec headed and slowed down (`slowMo` 1500) with video and trace, and saves an mp4 to `show-recordings/<timestamp>/` (webm without `ffmpeg`). |
 | `npx achilles-self-repair` | Unattended repair. Baselines the suite, separates flake from real failures, sends one `claude -p` worker per red spec file and verifies each heal. The scaffold wires it as `npm run test:repair`. |
-| `npx achilles-selector-evidence` | Captures live evidence (count, outline, screenshot) for one page-repository entry. |
+| `npx achilles-selector-evidence` | Writes the selector evidence note for one page-repository entry. On the web it resolves the entry live with the framework and records the count, outline and screenshot. With `--platform android\|ios` it works offline from a page source and element screenshot saved in a `wdio session`, and refuses an element that was not visible at capture or that it cannot resolve offline (that entry stays `provisional`). |
 | `npx achilles-video` | Plays a JSON storyboard into a captioned reproduction video (`.webm` and `.mp4`): an off-camera login, one caption per step at a readable pace, an evidence page with the decisive text highlighted, expected and actual. Writes a manifest with step timings, expectations and a decode check. |
 | `npx achilles-scenario-lint` | Lints `#### <ID> — <title>` scenario blocks against your project's factory rules. |
 
@@ -172,7 +174,7 @@ Rename the variables to match your `.env`. The commands are Playwright's own; th
 ## Under the hood
 
 <details>
-<summary><b>The 16 skills</b>: one orchestrator with seven workflows, and 15 expert skills</summary>
+<summary><b>The 18 skills</b>: one orchestrator with seven workflows, and 17 expert skills</summary>
 
 | Skill | Role | What it does |
 |---|---|---|
@@ -191,6 +193,7 @@ Rename the variables to match your `.env`. The commands are Playwright's own; th
 | `contract-testing` | author | Status, schema, error-envelope and header assertions for every `steps.api*` call |
 | `database-testing` | author | Row, cell, column and transaction assertions for `steps.sql*` |
 | `performance-testing` | author | k6 load, stress, spike, soak and breakpoint tests with SLO thresholds |
+| `platform-testing` | inspector, author | Native iOS and Android apps through Appium: the platform pipeline, scaffold, inspection with `wdio session` and the platform discipline |
 | `agents-vs-agents` | author | Red-teaming, guardrail, bias and prompt-injection tests for AI features |
 | `selector-development` | author | One inert test attribute per element, with an eight-step inertness proof |
 | `secrets-sweep` | author | Credentials, keys, PII and URLs moved out of the suite into `.env` |
@@ -226,14 +229,14 @@ Nesting is main session → orchestrator → expert, and stops there. Exact tool
 
 One TypeScript module acting on the six Achilles agents only. It advises by default; a deny is kept for irreversible or dangerous actions and always names the action to take instead.
 
-1. **Bash judge.** Denies commit bypass flags, AI attribution in commits, PRs, issues and comments, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project, and credential shapes in committed files. Advises on commit grammar and protected paths, and fills in a missing `playwright-cli -s=<slug>`.
+1. **Bash judge.** Denies commit bypass flags, AI attribution in commits, PRs, issues and comments, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project, credential shapes in committed files, and the `wdio` actions that could disturb a shared device (`wdio repl`, `close --all`, capability or server flags on `open`, inline JSON capabilities on `open`, an unknown short flag on `open`, an `--idle-timeout` of 0, over 30 minutes or unreadable, session flags that name different sessions, a `wdio` form the judge cannot read, another expert's session name inside a nested shell, and a device session opened by the orchestrator; the list with its reasons is in [docs/harness/claude-code.md](docs/harness/claude-code.md)). Advises on commit grammar, protected paths, the platform run and inspection forms and capability literals in platform code, fills in a missing `playwright-cli -s=<slug>`, and holds each `wdio session` call to one valid session name per agent.
 2. **Pipeline ledger model.** Advises on phase skips, approvals without an envelope and missing deliverables; keeps an integrity hash.
 3. **Sign-off, defect filing and outbound text.** Denies an AI signature in a ticket, comment, page or chat message (agent framing gets a note). Advises on a tracker transition to done, or a published PR, without the reviewer's receipt and evidence bundle; denies it while the bundle holds a live credential or while a defect it reports has no reproducer's verdict. Denies a bug or rework filing made before the run searched the tracker for an existing ticket, or that cites no defect the reproducer confirmed as a bug.
 4. **Dispatch discipline.** Advises on brief shape, concurrency and reviewers that aren't fresh.
 5. **Return review.** Validates each expert's return against its schema.
 6. **Spec hygiene.** Denies an AI signature in a report document. Advises on test ids, import boundaries, the evidence floor for diagnosis edits, and factory rules when the project opts in.
 7. **Selector development.** Denies any frontend edit on a selector brief other than one added inert test attribute.
-8. **Reporting.** Archives run artifacts, closes each expert's browser sessions and adds a run summary to the hand-back.
+8. **Reporting.** Archives run artifacts, closes each expert's browser and device inspection sessions and adds a run summary to the hand-back.
 
 The contract the module implements is [docs/harness/claude-code.md](docs/harness/claude-code.md).
 
@@ -242,7 +245,7 @@ The contract the module implements is [docs/harness/claude-code.md](docs/harness
 ## What Achilles is not
 
 - **Not a hosted service.** No runner, no dashboard; everything runs on your machine or your CI.
-- **Not native mobile.** "Mobile variants" are viewport emulation in Playwright.
+- **Not finished on every platform.** Native iOS and Android apps are tested through the `platform-testing` skill: Appium via WebdriverIO, inspected with `wdio session`, on the same Steps API and page repository as web. iOS has been verified on a real device; Android is implemented and has not yet been verified on a live device. Desktop (macOS, Windows) is declared but not implemented yet. Platform testing requires `@civitas-cerebrum/element-interactions` 0.4.0 and `@civitas-cerebrum/element-repository` 0.4.0, which are not published yet, so it cannot run in a consumer project today; it also needs `@wdio/cli` 10.2.0 in the tested project. "Mobile variants" still mean the 375x812 viewport emulation in Playwright.
 - **Not runtime self-healing.** Repair happens in an agent session or through `achilles-self-repair`; a CI run never asks a model to retry a step.
 - **Not enforced outside Claude Code.** On pi the skills state the same rules; keeping them is the operator's job.
 - **Not benchmarked yet.** Detection rate, cost and duration haven't been measured and published. Onboarding dispatches many subagents and uses a large share of a plan's usage window.

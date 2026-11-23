@@ -1,0 +1,14 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/contexts/mac",
+      "value": {
+        "platform": "macos",
+        "capabilities": "tests/capabilities/mac.json",
+        "server": "${APPIUM_URL}"
+      }
+    }
+  ]
+}

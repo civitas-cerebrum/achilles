@@ -127,6 +127,15 @@ test('writes by loops outside a run, and other files, move nothing', async ($, o
   expect(h.status()).toBe('1 run · 0 experts running')
 })
 
+test('the platform ledger the run writes becomes its stages, as the onboarding and perf ledgers do', async ($, on) => {
+  const h = engine(on)
+  const { orchestrator, progress } = await begin($, h)
+  const names = ['Preflight', 'Scaffold', 'Inspect', 'Selectors', 'Compose', 'Review', 'Report']
+  await write($, orchestrator, 'tests/platform/docs/platform-onboarding-status.json', { ...ledger(['completed', 'in-progress']), phases: names.map((name, i) => ({ id: i + 1, name, status: i === 0 ? 'completed' : i === 1 ? 'in-progress' : 'pending' })) })
+  expect(progress()).toMatchObject({ ledger: 'tests/platform/docs/platform-onboarding-status.json', current: 'Scaffold', done: ['Preflight'] })
+  expect(h.status()).toContain('stage 2/7 Scaffold')
+})
+
 test('the pane draws the stage checklist, the experts at work and the last expert hand-backs', async ($, on) => {
   const h = engine(on)
   const { orchestrator, run } = await begin($, h)

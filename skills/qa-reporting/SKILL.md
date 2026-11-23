@@ -53,6 +53,15 @@ Every slide: `<section class="slide">` with the brand mark, `NN / NN` slide numb
 
 Palette tokens (default): `--bg #0A0E14`, `--ink #E6EAF2`, `--ink-mute #8892A6`, `--brand #00A3FF`, `--accent #FF7A1A`, `--crit #FF5757`, `--high #FF8A3D`, `--med #FFC93D`, `--low #9CA3AF`, `--ok #34D399`. Brand overrides are added as rows, never inferred from a hostname.
 
+## Platform results (iOS, Android)
+
+A platform result means nothing without the device it ran on. When the project has a platform suite (`tests/platform/**`), load [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Real device versus emulator" and apply these on top of both outputs and the platform report (`tests/platform/docs/platform-report.md`, sentinel `<!-- platform-testing:generated -->` on line 1):
+
+- **Every platform result names its target**: device model or class, OS version, and `real` or `virtual` (emulator or simulator), taken from the `devices[]` entries of `tests/platform/docs/platform-onboarding-status.json` (`model`, `osVersion`, `real`) and the entry's `capabilities` file; the app version and build come from the run's report and attachments, or else the `## Test Infrastructure` section of `tests/platform/docs/app-context.md`. Never a personal device name. A pass count without them is not reported. A figure aggregated across devices is broken down per device row; "12/12 passed" on two devices is two rows.
+- **Platform coverage figures** are per platform and per device class: P0 journeys run in portrait and landscape, small and large class, permission branches covered per prompt. The deck's "platforms" figure counts platforms with a green run, not pages in the repository.
+- **Environment failures are their own category.** Code signing, provisioning, trust, a locked or unallocated device and an unreachable server are environment failures: listed under their own heading with what blocked the run, never counted as failed tests and never reported as app bugs. A device that could not be reached makes its rows `not run`, with the reason.
+- **Catalogue chips.** The type chip `mobile` stays the 375x812 web variant; platform tests carry a `platform: ios` / `platform: android` chip and their orientation or device-class variant.
+
 ## Render and inspect (both outputs)
 
 1. **Render**: `node <path-to-this-skill>/scripts/export-pdf.js <html> [pdf]` ([`scripts/export-pdf.js`](scripts/export-pdf.js) uses the project's `@playwright/test`; the resolved PDF path is printed). The script renders every `<section class="slide">` on its own page and verifies the page count equals the slide count; a mismatch is a corrupt render and throws. Chromium's single-pass PDF truncates long documents, so the per-slide path is the only path.

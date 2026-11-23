@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 // validate-schema-fixtures.mjs
-// For each schemas/subagent-returns/<role>.schema.json, verifies that
-// fixtures/<role>-valid.yaml passes and fixtures/<role>-invalid.yaml
-// fails. Also validates the standalone schemas' own <name>.fixtures/ dirs,
+// For each schemas/subagent-returns/<role>.schema.json, checks the files in
+// schemas/subagent-returns/fixtures/ by name:
+//   <role>-valid.yaml           required; must validate
+//   <role>-invalid.yaml         required; must fail
+//   <role>-valid-<case>.yaml    optional, any number; each must validate
+//   <role>-invalid-<case>.yaml  optional, any number; each must fail
+//   handover-valid.yaml / handover-invalid.yaml  the shared envelope (below)
+// A file in that dir that matches none of these is itself a failure, so a
+// misnamed fixture cannot sit there unexercised (dotfiles are ignored).
+// Also validates the standalone schemas' own <name>.fixtures/ dirs,
 // schemas/factory-rules.schema.json (the shipped example plus patch
 // fixtures) and the schemas/onboarding-status.schema.json fixtures
 // under schemas/onboarding-status.fixtures/ (every valid-*.json must
@@ -23,6 +30,8 @@ ajv.addSchema(handover);
 const schemaFiles = readdirSync(dir).filter(f => f.endsWith('.schema.json') && f !== 'handover.schema.json');
 
 let failures = 0;
+const fixtureNames = readdirSync(fixturesDir).filter(n => !n.startsWith('.')); // dotfiles (.DS_Store) are not fixtures
+const claimed = new Set(fixtureNames.filter(n => /^handover-(valid|invalid)\.yaml$/.test(n)));
 for (const file of schemaFiles) {
   const role = basename(file, '.schema.json');
   const schema = JSON.parse(readFileSync(join(dir, file), 'utf8'));
@@ -30,6 +39,7 @@ for (const file of schemaFiles) {
 
   const validPath = join(fixturesDir, `${role}-valid.yaml`);
   const invalidPath = join(fixturesDir, `${role}-invalid.yaml`);
+  claimed.add(`${role}-valid.yaml`).add(`${role}-invalid.yaml`);
 
   const validData = parse(readFileSync(validPath, 'utf8'));
   if (!validate(validData)) {
@@ -47,6 +57,30 @@ for (const file of schemaFiles) {
   } else {
     console.log(`OK:   ${invalidPath} correctly fails ${file}`);
   }
+
+  // Further cases for one role: <role>-valid-<case>.yaml must validate, <role>-invalid-<case>.yaml must fail.
+  for (const [prefix, expectValid] of [[`${role}-valid-`, true], [`${role}-invalid-`, false]]) {
+    for (const extra of fixtureNames.filter(n => n.startsWith(prefix) && n.endsWith('.yaml'))) {
+      claimed.add(extra);
+      const extraPath = join(fixturesDir, extra);
+      const ok = validate(parse(readFileSync(extraPath, 'utf8')));
+      if (expectValid && !ok) {
+        console.error(`FAIL: ${extraPath} did not validate against ${file}`);
+        console.error(validate.errors);
+        failures++;
+      } else if (!expectValid && ok) {
+        console.error(`FAIL: ${extraPath} unexpectedly validated against ${file}`);
+        failures++;
+      } else {
+        console.log(`OK:   ${extraPath} ${expectValid ? 'validates against' : 'correctly fails'} ${file}`);
+      }
+    }
+  }
+}
+
+for (const n of fixtureNames.filter(n => !claimed.has(n))) {
+  console.error(`FAIL: ${join(fixturesDir, n)} matches no fixture convention (<role>-valid[-<case>].yaml, <role>-invalid[-<case>].yaml, handover-valid.yaml, handover-invalid.yaml for a schema in ${dir})`);
+  failures++;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,15 +148,17 @@ function validateStandaloneFixtures(schemaPath, fixturesDirPath) {
 validateStandaloneFixtures('schemas/run-summary.schema.json', 'schemas/run-summary.fixtures');
 validateStandaloneFixtures('schemas/perf-onboarding-status.schema.json', 'schemas/perf-onboarding-status.fixtures');
 validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-summary.fixtures');
+validateStandaloneFixtures('schemas/platform-onboarding-status.schema.json', 'schemas/platform-onboarding-status.fixtures');
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
 validateStandaloneFixtures('schemas/evidence-video.schema.json', 'schemas/evidence-video.fixtures');
 
 // The factory-rules schema is the per-project rule-file contract (bin/ reads it),
 // so it has its own block. Its floors and closed
 // rule objects are how a project can add to a rule but not weaken it. The
-// shipped example is the valid fixture; each invalid fixture is a patch over
-// it (RFC 6902 add/replace/remove) plus a substring of the Ajv error it must
-// produce.
+// shipped example is the valid fixture; each fixture is a patch over it
+// (RFC 6902 add/replace/remove): a valid-*.patch.json result must validate,
+// any other *.patch.json must fail with expectError, a substring of the Ajv
+// error it must produce.
 function applyPatch(doc, ops) {
   const out = structuredClone(doc);
   for (const { op, path, value } of ops) {
@@ -149,6 +185,11 @@ function applyPatch(doc, ops) {
     const full = join(dirPath, f);
     const { base, patch, expectError } = JSON.parse(readFileSync(full, 'utf8'));
     const doc = applyPatch(JSON.parse(readFileSync(join('schemas', base), 'utf8')), patch);
+    if (f.startsWith('valid-')) {
+      if (validateRules(doc)) console.log(`OK:   ${full} validates`);
+      else { console.error(`FAIL: ${full} did not validate`); console.error(validateRules.errors); failures++; }
+      continue;
+    }
     if (validateRules(doc)) { console.error(`FAIL: ${full} unexpectedly validated`); failures++; continue; }
     const messages = validateRules.errors.map((e) => `${e.instancePath}: ${e.message}`);
     if (messages.some((m) => m.includes(expectError))) console.log(`OK:   ${full} correctly fails (${expectError})`);

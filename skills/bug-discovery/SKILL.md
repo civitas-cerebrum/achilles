@@ -61,6 +61,26 @@ Gates: 1b needs 1a; 2 needs 1a + 1b; 3 and 4 need 2 (and may run together); 5 ne
 
 Assertion strategy for reproduction tests: assert the **correct** behaviour, so the test fails against the bug today and turns green, unmodified, when it is fixed. Never lock buggy behaviour; never `test.fail()` (the one sanctioned use is a ticketed sentinel in the verify-change workflow). Every reproduction spec gets the Stage 4b compliance sweep and the judge review before the report cites it.
 
+## Platform targets (iOS, Android)
+
+On a native app, load [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md); in-app probing (input, state, flow) runs in your own `wdio session` per the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md), closed before you return, and every probe states the device, OS version and real or virtual. The web categories (input tamper, state skip, auth tamper) still apply. A device adds three probe families that have no web equivalent; for each in-scope flow, probe every member that applies and record the ones that do not, with the reason, in the charter.
+
+**Interruptions and lifecycle.** Interrupt the flow at its riskiest step (mid-form, mid-payment, mid-upload) and assert that its state survives or recovers with a clear message:
+
+- background and resume (`backgroundApp` for a few seconds, and long enough for the OS to reclaim memory where the device allows);
+- lock and unlock the device mid-flow;
+- an incoming notification (the app's own push or another app's) pulled down or tapped;
+- low and lost connectivity, then recovery (airplane mode or the network profile the server offers), checking for duplicate submissions on reconnect;
+- kill and relaunch mid-flow (`terminateApp`, then `activateApp`), checking drafts, half-finished orders and the login state.
+
+[`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Interruptions and lifecycle".
+
+**Device capabilities**, where the app uses them: biometrics (enrolled, not enrolled, failed match, cancelled), camera (granted, denied, no camera), location (granted, denied, changed mid-flow, approximate only), push (enabled, disabled at OS level), the clipboard (paste into fields, sensitive values copied out) and the share sheet (share out, cancelled, receiving shared content). [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Device capabilities".
+
+**Permission prompt branches.** Every prompt the flow raises is probed with allow, deny and the deferred answer ("Allow once", "Ask next time", dismissed), plus revoking the permission in the middle of a flow that needs it. The deny branch must show the app's fallback (an explanation, a disabled feature, a link to settings); a crash, a blank screen or a silent no-op is a finding. Arrange a known state with `setPermission`, raise a prompt again with a reinstall or a permission reset, and never auto-accept. [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Permissions and system alerts".
+
+**Where device-state probes run.** The inspection session is read-only ([platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md) §"Read-only discipline"): it never changes device state: no lock, connectivity change, notification or permission change, and none of the device-capability probes (biometric enrolment or match, a mocked location, an OS-level push, clipboard or share-sheet content, camera input). Every probe that changes device state is written as a reproduction spec under `tests/platform/` that drives the device through the steps ([`platform-steps.md`](../platform-testing/references/platform-steps.md): `backgroundApp`, `terminateApp`, `activateApp`, `setPermission`) and, where no step exists (lock and unlock, notifications, connectivity, biometrics, location, push), through the `driver` fixture, on a device the brief assigns for it, restoring what it changed in its teardown. What neither a step nor the `driver` fixture can do on that platform is recorded as a framework gap ([framework-gap.md](../achilles-orchestrator/references/framework-gap.md)) and named in the charter as not probed. The spec follows [`../test-composer/SKILL.md`](../test-composer/SKILL.md) §"Platform targets (iOS, Android)".
+
 ## Findings and ledger
 
 Every finding uses the canonical block (`- **<FINDING-ID>** [<severity>] — <title>` with `scope` / `expected` / `observed` / `coverage`) from [`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) §1: ids `<journey-slug>-<pass>-<nn>` inside a pass, `<journey-slug>-<nn>` standalone; severities `critical | high | medium | low | info` ("No impact (DOM-only)" in phase 5 is the report label for `info`); every finding above `info` cites captured evidence. Ledger appends to `tests/e2e/docs/adversarial-findings.md` follow §3 of that file and are validated in memory before the lockfile is released. Probe-category vocabulary: §3.6 (`auth-tamper`, `input-tamper`, `state-skip`, `idor`, `race`, `boundary-values`, `compound`, …).

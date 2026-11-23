@@ -81,7 +81,8 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
 - Relative paths (`--repository`, `--out`, `--storage-state`) resolve against the project root (the root the harness
   adapter passes, else the cwd), like the rules file.
 - **Schema fields the tool reads** (`schemas/factory-rules.schema.json`, all optional):
-  - `contexts`: optional top-level map `{ "<name>": { "baseUrl": string, "storageState": string } }`;
+  - `contexts`: optional top-level map `{ "<name>": { "baseUrl": string, "storageState": string } }`, or for a platform
+    target `{ "<name>": { "platform": "android" | "ios", "capabilities": "tests/capabilities/<device>.json", "server": "<url>" | "${ENV_NAME}" } }`;
   - `rules["selectors.evidence"].evidenceDir`: the evidence directory (default `--out`);
   - `rules["selectors.evidence"].provisionalKey`: the entry flag name (`provisional`), read by the gate; the tool
     itself does not change entries.
@@ -124,6 +125,128 @@ it is the project's own committed value, already in `page-repository.json`, and 
 back verbatim, so a selector containing `@` can be neither redacted nor omitted. A refusal is reported as a refusal: it
 names the offending line and says the element resolved, rather than sending you to re-check the `--url`.
 
+## Platform pages
+
+A page whose `platform` is `android` or `ios` (one page name, one selector set per platform, `platform` missing means
+web) is evidenced by the same bin in its platform mode. It is **offline**: it opens no session, starts no browser and
+never touches a device. It reads the inspection material the expert already captured in its own `npx wdio session`
+(see [`platform-inspection-protocol.md`](platform-inspection-protocol.md)) on the screen that shows the element:
+
+```
+npx wdio session -s <expert-slug> source --path <scratch>/Settings.xml
+npx wdio session -s <expert-slug> screenshot <ref> --path <scratch>/SettingsPage.networkRow.png
+npx achilles-selector-evidence --platform ios --page SettingsPage --element networkRow \
+  --capabilities tests/capabilities/iphone.json --screen Settings \
+  --source <scratch>/Settings.xml --screenshot <scratch>/SettingsPage.networkRow.png [--out <dir>] [--repository <file>]
+```
+
+`source --path` and `screenshot --path` write the file (the command itself prints a status line, not the XML). The
+screenshot is the **element** screenshot: `<ref>` is the element's ref from `snapshot -i --all --selectors`.
+
+- `--context <name>` may stand for `--platform` and `--capabilities` when it names a platform context
+  (`{ "platform", "capabilities", "server" }`); the tool never reads or prints `server`.
+- `--platform macos` and `--platform windows` are declared but not implemented yet (exit 2).
+- `--capabilities` takes a **path** under `tests/capabilities/`, the same file the inspection session and the test
+  run use. Inline capability values (JSON, quotes, spaces, `=`, a colon that is not a drive letter), a path outside
+  that directory, or a file whose `platformName` names another platform are refused (exit 2); the message never
+  repeats the value. The note records the path only, never a capability value.
+- The committed entry of the page with that `platform` is resolved against the saved page source. Count semantics are
+  the web ones: exactly 1, at least 1 for `"list": true`; 0 or more than 1 is refused (exit 1) and nothing is
+  written. The element screenshot (a PNG) is copied beside the note. Its cap is 1 MB, not the web 300 KB: an element
+  shot on a 3x display easily passes 300 KB. Over the cap the tool refuses and asks for the element screenshot
+  instead of the full screen.
+- Output: `<evidence dir>/<Page>.<element>.<platform>.md` and `.png`, beside the web `<Page>.<element>.md`.
+- `--repository` default: `rules["selectors.evidence"].repository`, else `tests/e2e/page-repository.json` if it
+  exists, else `tests/platform/page-repository.json` (one page repository per project).
+- Flags also take the `--name=value` form; an unrecognised argument is named by its flag only, never its value. A
+  message repeats a flag value only when it is a plain name or path (`[A-Za-z0-9_./-]` and spaces, at most 120 characters);
+  anything else, a URL or `key=value` included, prints as `(not shown)`.
+- Capabilities files are flat: top-level keys, no `alwaysMatch` / `firstMatch` / `capabilities` wrapper (the shape
+  `wdio session open` merges). A wrapped file, or one without a string `platformName`, is
+  refused (exit 2). The tool reads `platformName` and `appium:appPackage` from the top level.
+
+### The platform note
+
+Fields, in this order: `selector`, `platform`, `capabilities`, `screen`, `resolved count`, `class`,
+`accessibility id`, `id`, `label`, `source snippet`, `screenshot`, `source`.
+
+```
+# SettingsPage.networkRow (ios)
+- selector: {"accessibility id":"example.row.network"}
+- platform: ios
+- capabilities: tests/capabilities/iphone.json
+- screen: Settings
+- resolved count: 1
+- class: XCUIElementTypeCell
+- accessibility id: example.row.network
+- id: example.row.network
+- label: "Network"
+- source snippet: `<XCUIElementTypeCell type="XCUIElementTypeCell" name="example.row.network" label="Network" … />`
+- screenshot: SettingsPage.networkRow.ios.png
+- source: wdio-page-source
+```
+
+| Field | android (UiAutomator2) | ios (XCUITest) |
+|---|---|---|
+| `class` | `class` | `type` |
+| `accessibility id` | `content-desc` | `name` |
+| `id` | `resource-id` | `name` |
+| `label` | `text`, else `content-desc` | `label`, else `value` |
+| `source snippet` | the matched element's opening tag (≤ 300 chars, emails redacted) | same |
+
+`resolved count` is the count (`(list entry)` for a list), followed by `(positional: …)` when the selector text is
+positional: xpath `[n]` or `last()`. `source` is always `wdio-page-source`: the note was resolved offline
+against a captured page source, not live through the framework.
+
+The tool refuses (exit 1) and writes nothing when:
+
+- **The element was not visible at capture** (`visible="false"` on ios, `displayed="false"` on android; its element
+  screenshot is black). Swipe the element into view, re-capture `source` and the element screenshot, then re-run.
+- **The selector is outside offline resolution** (below). Mark the entry `"provisional": true` with a row in
+  `tests/platform/docs/known-issues.md`, or use a selector the offline resolver covers.
+
+### Offline resolution
+
+Offline resolution is a **subset** of the framework's resolution: the web tool resolves through element-repository
+`get()` on a live page, the platform tool reads a saved page source. What it covers:
+
+| Repository `selector` | Covered offline |
+|---|---|
+| `accessibility id` | yes (android `content-desc`, ios `name`) |
+| `id` | android: full `pkg:id/x`, or short `x` completed with the capabilities file's `appium:appPackage` (else the package owning most nodes of the source), then `android:id/x`; ios: `name` |
+| `predicate` (ios) | `attr ==\|!=\|CONTAINS\|BEGINSWITH\|ENDSWITH 'v'` joined by `AND` on `name label value type`; `enabled visible accessible selected ==\|!= true\|false\|YES\|NO\|1\|0` unquoted only; never matches the application element. Not covered: `OR`, `NOT`, `[c]`, `MATCHES`, `LIKE`, `IN`, parentheses, quoted booleans |
+| `class chain` (ios) | `Type` / `*` segments, `/` and `**/`, `` [`predicate`] `` filters (subset above). Not covered: `[n]` / `[-n]` indices, `[$…$]` descendant predicates |
+| `uiautomator` (android) | `new UiSelector()` with `text`, `textContains`, `textStartsWith`, `description`, `descriptionContains`, `descriptionStartsWith`, `resourceId`, `className`. Not covered: `UiScrollable`, `instance`, `index`, regex matchers |
+| `text` | yes (android `text`, ios `label`) |
+| `class name` | yes |
+| `xpath` | absolute paths of `/` and `//` steps, `*` or a name, predicates `[n]`, `[last()]`, `[@a]`, `[@a="v"]`, `[@a!="v"]` (true only when `@a` is present), `[contains(@a,"v")]`, `[starts-with(@a,"v")]` joined by `and`, one `(path)[n]` wrapper. Not covered: axes, `text()`, `position()`, unions, `or`, relative paths |
+
+Not covered either: a selector with two strategy keys (`role` + `name` included). `fallback` is not a strategy and is
+ignored by the resolution. A strategy of the other platform (a predicate on an android page, a UiSelector on an ios
+page) is refused as a wrong selector.
+
+### Selector mapping and preference
+
+How a `wdio session` selector becomes a repository `selector` is mapped in
+[`platform-inspection-protocol.md`](platform-inspection-protocol.md) §"Selectors and the page repository". This
+file is the one home of the preference order. When inserting a platform entry, prefer:
+
+1. **accessibility id**;
+2. **id** (android) / **predicate** (ios);
+3. **class chain** / **uiautomator**;
+4. **text**;
+5. **xpath** last, and flagged: a positional xpath needs a `fallback` or a known-issues row.
+
+### What the gate checks on a platform page
+
+The repository-evidence gate treats a new or changed platform entry as it treats a web one (an advisory note, nothing
+refused): the entry is backed by a valid note or it is provisional. A valid note is
+`<Page>.<element>.<platform>.md` with `- source: wdio-page-source`, a numeric `- resolved count:`, a `- platform:`
+line naming the page's platform and the selector deep-equal. A web note never counts for a platform page. A selector
+whose note says `(positional` additionally needs a `fallback` in its selector or a known-issues row naming
+`<Page>.<element>` as a whole word (`tests/platform/docs/known-issues.md`, or the project's
+`tests/e2e/docs/known-issues.md`); without either, the gate says so.
+
 ## Backfill
 
 A project adopting the convention has entries that predate it. A backfill writes a note only on what the record says:
@@ -143,7 +266,7 @@ never touches a `source: live` note and is idempotent. Running the tool later re
 An entry may **stay** provisional only when the code needs it and its state never occurred live, or the tool cannot
 reach it without an interaction. Every such entry is **listed in the project's known-issues file** (for example
 `tests/e2e/docs/known-issues.md`): the entry, its selector, where it is referenced, and what fails if it is wrong.
-Note XOR flag; flag ⇒ known-issues row. When the state is met live: run the tool, drop the flag, delete the row, in
+Platform pages use `tests/platform/docs/known-issues.md` (the gate also accepts `tests/e2e/docs/known-issues.md` in a project with both trees). Note XOR flag; flag ⇒ known-issues row. When the state is met live: run the tool, drop the flag, delete the row, in
 the same change.
 
 ## Standing authorisation

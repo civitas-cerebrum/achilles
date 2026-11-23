@@ -1,0 +1,10 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/contexts/iphone/server"
+    }
+  ],
+  "expectError": "/contexts/iphone: must have required property 'server'"
+}

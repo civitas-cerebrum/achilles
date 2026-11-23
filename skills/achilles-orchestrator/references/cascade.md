@@ -36,5 +36,29 @@ Read the files to probe; do not infer the level from memory or from a directory 
 | `<!-- app-wide-scan:generated -->` | line 1 of `tests/e2e/docs/app-wide-patterns.md` |
 | `<!-- performance-testing:generated -->` | line 1 of `tests/perf/docs/perf-report.md` |
 | `<!-- perf-onboarding:scenario-model -->` | line 1 of `tests/perf/docs/scenario-model.md` |
+| `<!-- platform-testing:generated -->` | line 1 of `tests/platform/docs/platform-report.md` |
 | `"discovery-draft-version": 1` | first key of `tests/e2e/docs/.discovery-draft.json` |
 | `<!-- subagent-returns:<role>:<scope> -->` | line 1 of every spill file under `tests/e2e/docs/.subagent-returns/` |
+
+## Platform projects
+
+A native app target (iOS, Android) runs the same probe with the platform files in place of the web ones. The level is recorded per modality: a project can be onboarded for web and at level B for platform, or the reverse.
+
+| Level | Condition (platform) | Meaning |
+|---|---|---|
+| **A** | `@civitas-cerebrum/element-interactions` OR `@civitas-cerebrum/element-repository` below 0.4.0 or absent (read the installed versions under `node_modules/`), OR `@wdio/cli` not pinned at `10.2.0` in `devDependencies`, OR `webdriverio` absent | Framework or inspection tool not installed. Both 0.4.0 releases are required and neither is published yet, so until they are every platform project is at level A |
+| **B** | Any of these missing: `playwright.platform.config.ts`, `tests/platform/fixtures/base.ts`, at least one `tests/capabilities/*.json` with `platformName`, `tests/capabilities/README.md`, the page repository (below) | Installed, not scaffolded |
+| **C** | Scaffold present, but `tests/platform/docs/app-context.md` has no screen entries | Scaffolded, never inspected. Single scenarios can land once their screens are inspected; a suite cannot |
+| **None** | All checks pass | Onboarded for platform |
+
+Rules that differ from the web cascade:
+
+- **One page repository per project.** If `tests/e2e/page-repository.json` exists, platform pages go into it (one page name per platform) and the B check looks there. A platform-only project uses `tests/platform/page-repository.json`. Two repositories in one project is a drift to fix, not a layout.
+- **No Chromium requirement.** A platform-only project is never sent to `playwright-cli install-browser` or `npx playwright install`; neither is a level condition. The Appium server, its drivers and the devices are environment, checked in preflight, not in the cascade.
+- **The scaffold is the platform scaffold** ([`../../platform-testing/SKILL.md`](../../platform-testing/SKILL.md) §"Scaffolding"): config with `workers: 1`, capabilities files and README, the fixture, the pinned `@wdio/cli`, the app build and install step. It never writes a capability into the fixture or config.
+- **Pipeline state** is `tests/platform/docs/platform-onboarding-status.json`, a resume file like the other ledgers ([state-files.md](state-files.md)).
+
+| Workflow on a platform target | A | B | C | None |
+|---|---|---|---|---|
+| one platform scenario | `BLOCKED` naming the missing 0.4.0 release while one is unpublished; otherwise `NEEDS_CONTEXT`: offer the platform pipeline or the one-task platform scaffold | one-task platform scaffold of the missing files, then proceed | inspect the scenario's screens, then proceed | proceed |
+| platform pipeline ("platform-onboard" / "onboard the iOS / Android app") | from `Preflight` (which hands back `BLOCKED` while a 0.4.0 release is unpublished) | `Scaffold` writes only the missing files | `Preflight` and `Scaffold` verify only (Preflight still writes `devices[]` when the ledger is new); first producing phase is `Inspect` | do not re-run; route to the ask's own work |

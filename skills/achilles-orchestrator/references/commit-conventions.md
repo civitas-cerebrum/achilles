@@ -21,6 +21,7 @@ One deliverable per commit, one template per deliverable kind. The git log has t
 | Secrets sweep | `chore: extract secrets to .env` | |
 | Selector attribute | `feat(selectors): add data-testid='<value>' to <element-key>` | the one frontend file plus the spec that uses it |
 | Perf | `chore(perf): scaffold perf suite`, `feat(perf): scenario model — <N> scenarios`, `test(perf): baselines — smoke-green for <N> scenarios`, `test(perf): load-run <pass> — <N> scenarios`, `test(perf): threshold-gate — deliberate-breach proven`, `docs(perf): perf-report — <verdict>` | one phase per commit; load-run per pass |
+| Platform | `chore(platform): scaffold platform suite`, `docs(platform): app context — <N> screens`, `feat(platform): selectors — <N> elements`, `test(platform): <journey> — <N> tests`, `test(platform): review — deliberate failure proven on <N> device classes`, `docs(platform): platform-report — <verdict>` | one phase per commit; compose per journey; the deliberate failure reverted before the review commit |
 | Report | `docs(report): qa summary deck` / `docs(report): test catalogue` | |
 | Verify-change tests | `test(<ticket>): <AC or defect sentinel>` | only after the commit-or-discard ruling |
 

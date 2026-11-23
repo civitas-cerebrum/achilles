@@ -43,6 +43,23 @@ A failing run is a first-class outcome: one in-bundle retry after fixing a suspe
 
 Layout, `summary.md` sections and verdict definitions: [`references/bundle-and-summary.md`](references/bundle-and-summary.md). `PASSED` (every assertion resolved, criterion reflected in the final assertion; surprising side observations go in Notes), `FAILED` (an assertion failed), `INCONCLUSIVE` (the runner never reached the criterion: crash, setup error, unreachable network). The verdict is read from the run output, never from how the screenshots look. Every link in `summary.md` points at a file that exists; missing captures are named under `## Capture gaps`.
 
+## Platform targets (iOS, Android)
+
+On a native app (`E2E_PLATFORM=ios` or `android`) there is no browser: no trace, no DOM, no HAR, no browser console and no Playwright video. A bundle that promises them is wrong, and a capture gap list that names them as "missing" misreads the target. Load [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md); the captures are:
+
+| Capture | How | Bundle file |
+|---|---|---|
+| Screenshot per meaningful step | through the `driver` fixture in the bundle spec, or `npx wdio session -s <slug> screenshot` in the discovery walk; `steps.screenshot()` only once [`platform-steps.md`](../platform-testing/references/platform-steps.md) lists it as a platform step. The fixture attaches `failure-screenshot` on a failure | `NN-<step>.png`, `failure-screenshot.png` |
+| Page source at the end and at a failure | `steps.getPageSource()` written by the spec; the fixture also attaches `page-source` and `failure-screenshot` on a failure | `NN-<step>.xml`, `failure-screenshot.png`, `page-source.xml` |
+| Device log for the run's time window | syslog on iOS, logcat on Android, read through the `driver` fixture (in the spec or in the fixture's `onSessionStarted`); where the spec cannot read it, a named capture gap, and a framework gap ([framework-gap.md](../achilles-orchestrator/references/framework-gap.md)) when the framework offers no way. `npx wdio session -s <slug> logs` belongs to a separate reproduction session, never to the run | `device.log` |
+| Screen recording | started and stopped through the `driver` fixture around the scenario; otherwise a named capture gap (framework gap when no way exists). A recording of the discovery walk is labelled as such, never as the run | `recording.mp4` |
+| Target | platform, capabilities file path, device model or class, OS version, real or virtual (from the capabilities file and the ledger `devices[]` entry when one exists), app version (from the run's attachments or the `## Test Infrastructure` section of `tests/platform/docs/app-context.md`) | `summary.md` §Environment |
+
+- Phase 1 discovery uses the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md) with the run's capabilities file and the session name `companion-<slug>`, closed before Phase 2. Never answer a system alert the task does not name.
+- The bundle lives under `tests/platform/evidence/<slug>-<ts>/`, inside the platform config's `testDir`, with the same layout and timestamp rules as on web. The spec in it imports the platform fixture and runs with the one form in [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Run command" (pointing at the bundle spec).
+- Redaction covers `device.log` and every page-source file: device logs carry tokens, account names and push identifiers, and page sources carry whatever the screen showed.
+- A signing, trust or device-lock failure at session start makes the verdict `INCONCLUSIVE` with the error named; it is an environment failure, not a `FAILED` app check.
+
 ## Redaction
 
 Any captured `network.har` or `console.log` gets a redaction pass before anything else happens to it, whether or not a bundle is being assembled. Grep for the four `secrets-sweep` literal classes (credentials, API keys, PII shapes, tokens in `Authorization` / `Set-Cookie` and any `*-bypass` / `*-token` / `*-key` request header) and redact in place. Redact HARs **by header name across every entry**, not by searching for the value you know: one credential appears in every request. Strip response bodies at the same time. Record every redaction under `## Redactions` in `summary.md`. Evidence bundles are not swept by the secrets-sweep skill; this pass is their only one, and the adapter refuses a sign-off while a bundle still holds a live credential.

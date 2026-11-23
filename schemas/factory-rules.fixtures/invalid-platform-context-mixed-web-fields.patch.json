@@ -1,0 +1,11 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/contexts/iphone/baseUrl",
+      "value": "${SHOP_BASE_URL_NORTH}"
+    }
+  ],
+  "expectError": "/contexts/iphone: must NOT have additional properties"
+}

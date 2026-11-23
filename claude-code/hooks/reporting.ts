@@ -5,8 +5,9 @@ import { commands } from './shell'
 
 // Hook 8, reporting, all after the fact and never refusing: a Playwright run by an achilles loop
 // is archived to .achilles/runs/<runId>/ when the Achilles reporter did not already claim it
-// (claude-code/lib/archive-run.mjs, a node child); each expert's own playwright-cli sessions are
-// closed when its turn ends; the run summary line rides in the hand-back (hooks.ts).
+// (claude-code/lib/archive-run.mjs, a node child); each expert's own playwright-cli and wdio
+// session inspection sessions are closed when its turn ends; the run summary line rides in the
+// hand-back (hooks.ts).
 
 /** What a Bash line runs that is a Playwright run: the --output and JSON report it names, or undefined. */
 export async function playwrightRun($: EngineInterface, command: string, root: string): Promise<{ output?: string; json?: string } | undefined> {
@@ -23,13 +24,33 @@ export async function playwrightRun($: EngineInterface, command: string, root: s
   return undefined
 }
 
-/** Called at an expert's turn end (hooks.ts): its own browser sessions close with it. */
+/**
+ * Called at an expert's turn end (hooks.ts): its own browser sessions and its own `wdio session`
+ * inspection sessions close with it, so a device is never held past the turn that opened it. The
+ * orchestrator opens no session (the Bash judge refuses it one), so it has nothing to close.
+ */
 export async function closeSessions($: EngineInterface, w: Who) {
-  const slugs = (w.expert?.slugs ?? []).filter(s => /^[A-Za-z0-9_-]+$/.test(s)).slice(0, 8)
-  if (slugs.length === 0) return
-  // One child for every session, bounded, so the turn's end never waits past its budget.
-  const r = await run($, ['sh', '-c', slugs.map(s => `npx --no-install playwright-cli -s=${s} close >/dev/null 2>&1`).join('; ')], { timeoutMs: 4000 })
-  if (!r.ok) await note($, w.run.agentId, `the playwright-cli sessions of ${w.expert!.agentId} (${slugs.join(', ')}) could not be closed (${r.reason}); close them with npx playwright-cli -s=<slug> close.`)
+  if (!w.expert) return
+  const safe = (xs: string[] | undefined) => (xs ?? []).filter(s => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(s)).slice(0, 8)
+  const slugs = safe(w.expert.slugs)
+  const wdio = safe(w.expert.wdio)
+  if (slugs.length === 0 && wdio.length === 0) return
+  // One child for every session, bounded, so the turn's end never waits past its budget. The
+  // browser closes run in turn; each wdio close runs in the background, since ending an Appium
+  // session on a device is slow and may hang: @wdio/session 10.2.0 waits up to 35 s for the daemon to
+  // answer, then sends SIGTERM and waits up to 25 s more, then SIGKILL. The 40 s budget is a
+  // deliberate give-up: past it the child is reported failed while the backgrounded close goes on.
+  // The child fails when any close did not end its session. Exit 4 is SESSION_NOT_FOUND: no session
+  // by that name is running, so the device is already free.
+  const browser = slugs.map(s => `npx --no-install playwright-cli -s=${s} close >/dev/null 2>&1`).join('; ')
+  const devices = wdio.length === 0 ? '' : `${wdio.map((s, i) => `(npx --no-install wdio session -s ${s} close >/dev/null 2>&1; c=$?; [ $c -eq 0 ] || [ $c -eq 4 ]) & p${i}=$!`).join('; ')}; s=0; ${wdio.map((_, i) => `wait $p${i} || s=1`).join('; ')}; exit $s`
+  const r = await run($, ['sh', '-c', [browser, devices].filter(Boolean).join('; ')], { timeoutMs: wdio.length > 0 ? 40000 : 4000 })
+  const owner = w.expert.agentId
+  if (!r.ok && slugs.length > 0) await note($, w.run.agentId, `the playwright-cli sessions of ${owner} (${slugs.join(', ')}) could not be closed (${r.reason}); close them with npx playwright-cli -s=<slug> close.`)
+  if (wdio.length === 0) return
+  const closed = r.ok && r.exitCode === 0
+  const why = r.ok ? `exit ${r.exitCode}` : r.reason
+  if (!closed) await note($, w.run.agentId, `Close the wdio inspection sessions of ${owner} (${wdio.join(', ')}) with npx wdio session -s <slug> close: they could not be closed at its turn end (${why}), so the device may still be held.`)
 }
 
 export function registerReporting(on: On) {

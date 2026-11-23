@@ -1,0 +1,10 @@
+handover:
+  role: platform-reviewer-phase4
+  cycle: 2
+  status: rejected
+  next-action: redispatch the phase 4 review
+verdict: reject
+phase: 4
+reviewerCycle: 2
+# Missing required `findings` array: a reject must always carry the surgical fix list.
+attestation: rejected without explanation
