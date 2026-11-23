@@ -308,6 +308,7 @@ const WDIO_OPEN_FLAGS = new Set(['--capabilities', '--appium-url', '--bundle-id'
 const WDIO_OPEN_VALUE = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--app', '--activity', '--launch-timeout', '--idle-timeout', '--log-level', '--timeout'])
 const CAPS_FILE = /^(\.\/)?tests\/capabilities\/[A-Za-z0-9._-]+\.json$/
 const MAX_IDLE_S = 1800
+const OPEN_FORM = '`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id> | --package <id>`'
 const RUNNERS = new Set(['node', 'bun', 'deno', 'tsx', 'ts-node', '@wdio/cli'])
 
 const isWdioWord = (w: string) => w === '@wdio/cli' || /^wdio(\.[cm]?js)?$/.test(basename(w))
@@ -344,7 +345,8 @@ function heldBy(ctx: Ctx, name: string): string | undefined {
   const mine = ctx.who.expert?.agentId
   const owner = ctx.who.run.experts.find(x => x.agentId !== mine && ((x.wdio ?? []).includes(name) || derivedSlug(x.role, x.agentId) === name))
   if (owner) return `another expert (${owner.role} ${owner.agentId}) that is still at work`
-  if (ctx.who.expert && (ctx.who.run.wdio ?? []).includes(name)) return 'the orchestrator'
+  // Names the orchestrator holds, and those it gave up closing (the device may still be held), are never an expert's.
+  if (ctx.who.expert && [...(ctx.who.run.wdio ?? []), ...(ctx.who.run.wdioDropped ?? [])].includes(name)) return 'the orchestrator'
   return undefined
 }
 
@@ -381,7 +383,7 @@ async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, in
   }
   const sub = a[at + 1]
   if (sub !== 'session' && sub !== 'repl' && a.slice(at + 1).includes('session')) return void (v.deny ??= unrecognised)
-  if (sub === 'repl') return void (v.deny ??= `\`wdio repl\` opens a device session outside the inspection form; inspect with \`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json\`.${refs}`)
+  if (sub === 'repl') return void (v.deny ??= `\`wdio repl\` opens a device session outside the inspection form; inspect with ${OPEN_FORM}.${refs}`)
   if (sub !== 'session') return
   const s = at + 1
   if (a.slice(s + 1).some(t => t === '--help' || t === '-h' || t === '--version')) return
@@ -453,7 +455,7 @@ function idleSeconds(value: string): number | undefined {
 
 /** Why an `open` is not the inspection form, or undefined. */
 async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: readonly string[]): Promise<string | undefined> {
-  const form = '`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id> | --package <id>`'
+  const form = OPEN_FORM
   const flags: Record<string, string> = {}
   const positional: string[] = []
   for (let i = 0; i < rest.length; i++) {
@@ -504,6 +506,12 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   const str = (k: string) => (typeof doc[k] === 'string' && doc[k] !== '' ? (doc[k] as string) : undefined)
   const [idFlag, idKey, otherFlag] = target === 'ios' ? ['--bundle-id', 'appium:bundleId', '--package'] : ['--package', 'appium:appPackage', '--bundle-id']
   if (flags[otherFlag] !== undefined) return `${otherFlag} does not apply to ${target}; open ${target} with ${idFlag} <the ${idKey} of ${file}>.`
+  // The activity is a capability like any other: it lives in the file; the flag may only repeat it.
+  const activity = flags['--activity']
+  if (activity !== undefined) {
+    if (target === 'ios') return `--activity does not apply to ios; open ios with --bundle-id <the appium:bundleId of ${file}>.`
+    if (activity !== str('appium:appActivity')) return `--activity ${activity} is not the appium:appActivity of ${file}; put appium:appActivity in the capabilities file (the flag may only repeat it, or leave it out).`
+  }
   const id = str(idKey)
   const app = str('appium:app')
   if (id !== undefined) {
@@ -527,7 +535,7 @@ const PLATFORM_CONFIG = /(^|\/)playwright\.platform\.config\.[cm]?[jt]s$/
 const RUN_FORM = '`PLATFORM=<android|ios> CAPABILITIES=tests/capabilities/<device>.json APPIUM_URL=<server-with-base-path> npx playwright test -c playwright.platform.config.ts`'
 const PM = new Set(['npm', 'pnpm', 'yarn'])
 const PM_VALUE_OPTS: Record<string, Set<string>> = {
-  npm: new Set(['--prefix', '-C', '-w', '--workspace', '--userconfig', '--cache', '--registry']),
+  npm: new Set(['--prefix', '-C', '-w', '--workspace', '--userconfig', '--cache', '--registry', '--loglevel']),
   yarn: new Set(['--cwd']),
   pnpm: new Set(['-C', '--dir', '-F', '--filter']),
 }

@@ -62,7 +62,8 @@ export async function closeSessions($: EngineInterface, w: Who) {
     dropped = wdio.filter(n => fails[n]! >= 2)
     const gone = new Set(closed ? wdio : dropped)
     for (const n of gone) delete fails[n]
-    return { ...x, wdio: (x.wdio ?? []).filter(n => !gone.has(n)), wdioFails: fails }
+    // A dropped name stays reserved: the device may still be held under it, so no expert may take it.
+    return { ...x, wdio: (x.wdio ?? []).filter(n => !gone.has(n)), wdioFails: fails, wdioDropped: [...new Set([...(x.wdioDropped ?? []), ...dropped])] }
   })
   if (closed) return
   const kept = wdio.filter(n => !dropped.includes(n))

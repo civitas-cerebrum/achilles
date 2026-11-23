@@ -114,4 +114,8 @@ test('an expert’s wdio session closes when its turn ends, so the device is fre
   const after = h.ran.filter(r => r.argv[0] === 'sh').length
   await $.turn.complete(ended(orchestrator, 'turn c'))
   expect(h.ran.filter(r => r.argv[0] === 'sh').length).toBe(after)
+  // The dropped name stays reserved: an expert asking for it gets its own name instead.
+  const late = await spawnExpert($, h, 'inspector', orchestrator, 'Read `.achilles/runs/x/briefs/l.md` first; write your report to `.achilles/runs/x/reports/l.md`.')
+  await $.tool.call({ tool: 'Bash', command: `npx wdio session -s ${oslug} snapshot --all`, agentId: late })
+  expect(notes(session, late).at(-1)).toContain(`uses '${oslug}', the session of the orchestrator; it ran as -s ${derivedSlug('inspector', late)}`)
 })

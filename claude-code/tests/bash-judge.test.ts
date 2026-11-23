@@ -323,7 +323,7 @@ test('wdio session: the action comes from the known list, only global flags prec
   expect((await bash(`node node_modules/@wdio/cli/bin/wdio.js session ${open} --udid 0000`)).deny).toMatch(/not part of the inspection form/)
   await bash(`node node_modules/@wdio/cli/bin/wdio.js session ${open}`)
   expect(seen.at(-1)).toBe(`node node_modules/@wdio/cli/bin/wdio.js session -s ${slug} ${open}`)
-  expect((await bash('npx wdio repl ios')).deny).toMatch(/repl/)
+  expect((await bash('npx wdio repl ios')).deny).toMatch(/repl.*--bundle-id <id> \| --package <id>/)
   for (const c of [`npm exec wdio -- session ${open}`, `yarn wdio session ${open}`, `pnpm wdio session ${open}`,`node -r ./hook.js node_modules/@wdio/cli/bin/wdio.js session ${open}`, `echo x | xargs npx wdio session ${open}`])
     expect((await bash(c)).deny).toMatch(/run it as `npx wdio session/)
   // yarn exec / pnpm exec are npx: judged like it.
@@ -363,7 +363,6 @@ test('wdio session open: capabilities only from tests/capabilities/*.json, the s
     'npx wdio session open ios --appium-url http://127.0.0.1:4723/wd/hub --capabilities=./tests/capabilities/iphone.json --bundle-id=com.example.shop',
     `npx wdio session open ios --appium-url=\${APPIUM_URL} ${iphone} --replace --idle-timeout 10m`,
     `npx wdio session open ios ${url} ${iphone} --idle-timeout 30m`,
-    `npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.example.shop --activity .Main`,
     `npx wdio session open ios ${url} --capabilities ${ROOT}/tests/capabilities/iphone.json --bundle-id com.example.shop`,
     `npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.example.shop`,
     `npx wdio session open ios ${url} --capabilities tests/capabilities/build.json --app ./build/Shop.ipa`,
@@ -386,6 +385,12 @@ test('wdio session open: capabilities only from tests/capabilities/*.json, the s
   expect((await bash(`npx wdio session open ios ${url} ${iphone} --app ./x.ipa`)).deny).toMatch(/not --app/)
   expect((await bash(`npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json`)).deny).toMatch(/needs --package com\.example\.shop/)
   expect((await bash(`npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.other`)).deny).toMatch(/does not match/)
+  // The activity lives in the capabilities file; the flag may only repeat it, and never on ios.
+  expect((await bash(`npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.example.shop --activity .Main`)).deny).toMatch(/put appium:appActivity in the capabilities file/)
+  h.write(`${ROOT}/tests/capabilities/pixel-main.json`, JSON.stringify({ platformName: 'Android', 'appium:appPackage': 'com.example.shop', 'appium:appActivity': '.Main' }))
+  expect((await bash(`npx wdio session open android ${url} --capabilities tests/capabilities/pixel-main.json --package com.example.shop --activity .Main`)).deny).toBeUndefined()
+  expect((await bash(`npx wdio session open android ${url} --capabilities tests/capabilities/pixel-main.json --package com.example.shop --activity .Other`)).deny).toMatch(/put appium:appActivity/)
+  expect((await bash(`npx wdio session open ios ${url} ${iphone} --activity .Main`)).deny).toMatch(/--activity does not apply to ios/)
   expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/build.json`)).deny).toMatch(/needs --app \.\/build\/Shop\.ipa/)
   expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/build.json --app ./other.ipa`)).deny).toMatch(/not --app \.\/other\.ipa/)
   expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/build.json --bundle-id com.example.shop`)).deny).toMatch(/appium:app/)
@@ -420,7 +425,7 @@ test('platform runs: PLATFORM, CAPABILITIES under tests/capabilities/ and the pl
   expect((await bash(`PLATFORM=windows CAPABILITIES=tests/capabilities/win.json npx playwright test ${cfg}`)).deny).toMatch(/not implemented yet/)
   expect((await bash('PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json npx playwright test tests/platform/a.spec.ts')).deny).toMatch(/playwright\.platform\.config\.ts/)
   h.write(`${ROOT}/package.json`, JSON.stringify({ scripts: { 'test:platform': 'playwright test -c playwright.platform.config.ts', test: 'playwright test -c playwright.platform.config.ts' } }))
-  for (const run of ['npm run test:platform', 'pnpm test:platform', 'yarn test:platform', 'pnpm run test:platform', 'npm test', 'npm t', 'yarn test', 'npm --silent test', 'npm -s run test:platform', 'yarn -s test:platform', 'npm --prefix app test', 'npm -w app run test:platform', 'yarn --cwd app test:platform', 'pnpm -C app test:platform', 'pnpm --filter app test:platform']) {
+  for (const run of ['npm run test:platform', 'pnpm test:platform', 'yarn test:platform', 'pnpm run test:platform', 'npm test', 'npm t', 'yarn test', 'npm --silent test', 'npm -s run test:platform', 'yarn -s test:platform', 'npm --prefix app test', 'npm -w app run test:platform', 'yarn --cwd app test:platform', 'pnpm -C app test:platform', 'pnpm --filter app test:platform', 'npm --loglevel silent test']) {
     expect((await bash(`PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json ${run}`)).deny).toBeUndefined()
     expect((await bash(`PLATFORM=ios CAPABILITIES=/tmp/x.json ${run}`)).deny).toMatch(/tests\/capabilities\//)
   }

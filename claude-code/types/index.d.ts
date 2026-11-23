@@ -56,6 +56,8 @@ export type AchillesRun = {
   wdio?: string[]
   /** Consecutive failed turn-end closes per orchestrator session name; the second drops the name. */
   wdioFails?: Record<string, number>
+  /** Orchestrator session names dropped after two failed closes; still refused to experts, since the device may be held under them. */
+  wdioDropped?: string[]
   selector?: AchillesSelectorScope
   /** When the run was delegated (epoch ms). */
   startedAt?: number
