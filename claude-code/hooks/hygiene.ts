@@ -136,13 +136,17 @@ function noInline(rules: FactoryRules, rel: string, tool: string, text: string):
   return p === undefined ? [] : [threeLine('selectors.no-inline', `${tool === 'Edit' ? 'Edit of' : 'Write to'} ${rel} contains \`${p}\`.`, typeof rule.action === 'string' ? rule.action : undefined, typeof rule.doc === 'string' ? rule.doc : undefined)]
 }
 
-type Entry = { page: string; el: string; sel: unknown; prov: boolean }
+type Entry = { page: string; platform: string; el: string; sel: unknown; prov: boolean }
+// A4: one page name per platform; `platform` missing means web.
 const entries = (doc: unknown, key: string): Entry[] => {
   const out: Entry[] = []
-  for (const p of ((doc as { pages?: unknown })?.pages as { name?: string; elements?: unknown[] }[] | undefined) ?? [])
-    for (const e of (p?.elements ?? []) as Record<string, unknown>[]) if (e && typeof e === 'object') out.push({ page: String(p.name), el: String(e.elementName), sel: e.selector, prov: e[key] === true })
+  for (const p of ((doc as { pages?: unknown })?.pages as { name?: string; platform?: unknown; elements?: unknown[] }[] | undefined) ?? [])
+    for (const e of (p?.elements ?? []) as Record<string, unknown>[])
+      if (e && typeof e === 'object') out.push({ page: String(p.name), platform: typeof p.platform === 'string' ? p.platform : 'web', el: String(e.elementName), sel: e.selector, prov: e[key] === true })
   return out
 }
+// Where a positional platform xpath may be recorded instead of carrying a fallback.
+const KNOWN_ISSUES = ['tests/platform/docs/known-issues.md', 'tests/e2e/docs/known-issues.md']
 const same = (a: unknown, b: unknown): boolean => {
   if (a === b) return true
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
@@ -175,14 +179,19 @@ async function repositoryEvidence($: EngineInterface, rules: FactoryRules, root:
   } catch {
     /* an unparseable prior judges every entry as new */
   }
-  const old = new Map(entries(prior, pkey).map(x => [`${x.page}\u001f${x.el}`, x.sel]))
+  const id = (x: Entry) => `${x.page}\u001f${x.platform}\u001f${x.el}`
+  const old = new Map(entries(prior, pkey).map(x => [id(x), x.sel]))
   for (const x of entries(next, pkey)) {
-    if (x.prov || same(old.get(`${x.page}\u001f${x.el}`), x.sel)) continue
+    if (x.prov || same(old.get(id(x)), x.sel)) continue
+    const web = x.platform === 'web'
+    const name = web ? `${x.page}.${x.el}` : `${x.page}.${x.el} (${x.platform})`
     const action = typeof rule.action === 'string' ? rule.action.split('<Page>').join(x.page).split('<element>').join(x.el) : `Insert the entry with "${pkey}": true, record live evidence for ${x.page}.${x.el}, then drop the flag in the same change.`
-    const noteRel = `${evDir}/${x.page}.${x.el}.md`
+    // A platform note is written offline by `achilles-selector-evidence --platform <p>` next to the web one.
+    const noteRel = web ? `${evDir}/${x.page}.${x.el}.md` : `${evDir}/${x.page}.${x.el}.${x.platform}.md`
     const text = await readText($, `${root}/${noteRel}`)
-    if (text === undefined) return [threeLine('selectors.evidence', `Repository entry ${x.page}.${x.el} has no evidence note.`, action, doc)]
+    if (text === undefined) return [threeLine('selectors.evidence', web ? `Repository entry ${name} has no evidence note.` : `Repository entry ${name} has no evidence note (${noteRel}, written by achilles-selector-evidence --platform ${x.platform}).`, action, doc)]
     if (!/^- source: /m.test(text)) return [threeLine('selectors.evidence', `Evidence note ${noteRel} has no "- source:" line (not written by the evidence tool).`, action, doc)]
+    if (!web && /^- platform: (.*)$/m.exec(text)?.[1]?.trim() !== x.platform) return [threeLine('selectors.evidence', `Evidence note ${noteRel} is not an ${x.platform} note (its "- platform:" line does not name ${x.platform}).`, action, doc)]
     const line = /^- selector: (.*)$/m.exec(text)?.[1]
     let noted: unknown
     try {
@@ -190,7 +199,15 @@ async function repositoryEvidence($: EngineInterface, rules: FactoryRules, root:
     } catch {
       noted = undefined
     }
-    if (!same(noted, x.sel)) return [threeLine('selectors.evidence', `Evidence note ${noteRel} is stale: its "- selector:" line does not describe the new selector of ${x.page}.${x.el}.`, action, doc)]
+    if (!same(noted, x.sel)) return [threeLine('selectors.evidence', `Evidence note ${noteRel} is stale: its "- selector:" line does not describe the new selector of ${name}.`, action, doc)]
+    // CONTRACT C4: an xpath the evidence marks positional needs a fallback or a known-issues row. Advisory, like
+    // every finding of this gate.
+    if (!web && /^- resolved count: .*\(positional\b/m.test(text)) {
+      const fallback = typeof x.sel === 'object' && x.sel !== null && 'fallback' in x.sel
+      const issues = fallback ? [] : await Promise.all(KNOWN_ISSUES.map(f => readText($, `${root}/${f}`)))
+      if (!fallback && !issues.some(t => t !== undefined && t.includes(`${x.page}.${x.el}`)))
+        return [threeLine('selectors.evidence', `${name} enters the repository with a positional xpath (${noteRel} flags it) and has neither a "fallback" nor a known-issues row.`, `Prefer a stable strategy (accessibility id, then id / predicate, then class chain / uiautomator, then text); otherwise add a "fallback" to the selector or a row naming ${x.page}.${x.el} to ${KNOWN_ISSUES[0]}.`, doc)]
+    }
   }
   return []
 }

@@ -124,6 +124,92 @@ it is the project's own committed value, already in `page-repository.json`, and 
 back verbatim, so a selector containing `@` can be neither redacted nor omitted. A refusal is reported as a refusal: it
 names the offending line and says the element resolved, rather than sending you to re-check the `--url`.
 
+## Platform pages
+
+A page whose `platform` is `android` or `ios` (one page name, one selector set per platform, `platform` missing means
+web) is evidenced by the same bin in its platform mode. It is **offline**: it opens no session, starts no browser and
+never touches a device. It reads the inspection material the expert already captured in its own `npx wdio session`
+(see [`platform-inspection-protocol.md`](platform-inspection-protocol.md)) on the screen that shows the element:
+
+```
+npx wdio session -s <expert-slug> source > <scratch>/settings.xml
+npx wdio session -s <expert-slug> screenshot <scratch>/settings.png
+npx achilles-selector-evidence --platform ios --page SettingsPage --element networkRow \
+  --capabilities tests/capabilities/iphone.json --screen Settings \
+  --source <scratch>/settings.xml --screenshot <scratch>/settings.png [--out <dir>] [--repository <file>]
+```
+
+- `--context <name>` may stand for `--platform` and `--capabilities` when it names a platform context
+  (`{ "platform", "capabilities", "server" }`); the tool never reads or prints `server`.
+- `--platform macos` and `--platform windows` are declared but not implemented yet (exit 2).
+- `--capabilities` takes a **path** under `tests/capabilities/`, the same file the inspection session and the test
+  run use. Inline capability values, a path outside that directory, or a file whose `platformName` names another
+  platform are refused (exit 2). The note records the path only, never a capability value.
+- The committed entry of the page with that `platform` is resolved against the saved page source. Count semantics are
+  the web ones: exactly 1, at least 1 for `"list": true`; 0 or more than 1 is refused (exit 1) and nothing is
+  written. The screenshot (a PNG, ≤ 1 MB; crop it when larger) is copied beside the note.
+- Output: `<evidence dir>/<Page>.<element>.<platform>.md` and `.png`, beside the web `<Page>.<element>.md`.
+
+### The platform note
+
+Fields, in this order: `selector`, `platform`, `capabilities`, `screen`, `resolved count`, `class`,
+`accessibility id`, `id`, `label`, `source snippet`, `screenshot`, `source`.
+
+```
+# SettingsPage.networkRow (ios)
+- selector: {"accessibility id":"example.row.network"}
+- platform: ios
+- capabilities: tests/capabilities/iphone.json
+- screen: Settings
+- resolved count: 1
+- class: XCUIElementTypeCell
+- accessibility id: example.row.network
+- id: example.row.network
+- label: "Network"
+- source snippet: `<XCUIElementTypeCell type="XCUIElementTypeCell" name="example.row.network" label="Network" … />`
+- screenshot: SettingsPage.networkRow.ios.png
+- source: live (wdio session page source)
+```
+
+| Field | android (UiAutomator2) | ios (XCUITest) |
+|---|---|---|
+| `class` | `class` | `type` |
+| `accessibility id` | `content-desc` | `name` |
+| `id` | `resource-id` | `name` |
+| `label` | `text`, else `content-desc` | `label`, else `value` |
+| `source snippet` | the matched element's opening tag (≤ 300 chars, emails redacted) | same |
+
+`resolved count` is the count, `(list entry)` for a list, `(positional: …)` for a positional xpath, or
+`unresolved offline (<why>)` for a form the tool cannot evaluate faithfully offline; it never guesses a count. An
+unresolved note is still written (the expert saw the element in its live snapshot), and the tool says so on stderr.
+
+### Selector mapping and preference (CONTRACT C4)
+
+| `wdio session` selector | Repository `selector` | Resolved offline |
+|---|---|---|
+| `~value` | `{ "accessibility id": "value" }` | yes |
+| `id=value` / resource-id | `{ "id": "value" }` | yes (android: full `pkg:id/x` or short `x`; ios: `name`) |
+| `-ios predicate string:expr` | `{ "predicate": "expr" }` | `attr ==\|!=\|CONTAINS\|BEGINSWITH\|ENDSWITH 'v'` joined by `AND`, attrs `name label value type enabled visible accessible selected`; no `OR`, `NOT`, `[c]`, `MATCHES`, `LIKE`, `IN`, parentheses |
+| `-ios class chain:expr` | `{ "class chain": "expr" }` | `Type` / `*` segments, `/` and `**/`, `` [`predicate`] `` filters (subset above); no `[n]` indices |
+| `android=expr` | `{ "uiautomator": "expr" }` | `new UiSelector()` with `text`, `textContains`, `textStartsWith`, `description`, `descriptionContains`, `descriptionStartsWith`, `resourceId`, `className`; no `UiScrollable`, `instance`, `index`, regex |
+| text | `{ "text": "value" }` | yes (android `text`, ios `label`) |
+| class | `{ "class name": "value" }` | yes |
+| `//xpath` or `(//xpath)[n]` | `{ "xpath": "..." }` | absolute paths of `/` and `//` steps, `*` or a name, predicates `[n]`, `[last()]`, `[@a]`, `[@a="v"]`, `[@a!="v"]`, `[contains(@a,"v")]`, `[starts-with(@a,"v")]` joined by `and`, one `(path)[n]` wrapper; no axes, `text()`, unions, `or`, relative paths |
+
+Preference order when inserting a platform entry: **accessibility id**, then **id** (android) / **predicate** (ios),
+then **class chain** / **uiautomator**, then **text**, **xpath last**. A strategy of the other platform (a predicate on
+an android page, a UiSelector on an ios page) is refused (exit 1). A selector with two strategy keys is recorded as
+unresolved offline; `fallback` is not a strategy and is ignored by the resolution.
+
+### What the gate checks on a platform page
+
+The repository-evidence gate treats a new or changed platform entry as it treats a web one (an advisory note, nothing
+refused), against `<Page>.<element>.<platform>.md`: the note must exist, carry `- source:`, name the page's platform
+in `- platform:` and carry the selector deep-equal. A web note never counts for a platform page. An xpath whose note
+says `(positional` additionally needs a `fallback` in its selector or a known-issues row naming `<Page>.<element>`
+(`tests/platform/docs/known-issues.md`, or the project's `tests/e2e/docs/known-issues.md`); without either, the gate
+says so.
+
 ## Backfill
 
 A project adopting the convention has entries that predate it. A backfill writes a note only on what the record says:

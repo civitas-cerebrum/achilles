@@ -35,6 +35,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { projectRoot } from './lib/project-root.mjs'
+import { USAGE as PLATFORM_USAGE, platformOf, runPlatform } from './lib/platform-evidence.mjs'
 import { DEFAULT_EVIDENCE_DIR, NOTE_REFUSED, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './lib/evidence-note.mjs'
 
 const MAX_PNG_BYTES = 300 * 1024
@@ -61,6 +62,13 @@ count 1 (≥ 1 for an entry marked "list": true), outlines it, screenshots the v
   --mask              CSS selector masked in the screenshot (repeatable; default: none) — use it for personal data
   --anonymous         no session: open the page signed out (pre-login pages)
   --help              this text
+
+Platform pages (android, ios; macos and windows are declared but not implemented yet), offline, no browser:
+  ${PLATFORM_USAGE}
+  [--context <name>] may replace --platform/--capabilities with a platform context of achilles-factory-rules.json.
+Resolves the committed entry of the page whose "platform" matches against the page source the expert saved with
+\`npx wdio session -s <slug> source\`, copies the \`screenshot\` PNG (≤ 1 MB) beside the note and writes
+<out>/<Page>.<element>.<platform>.{png,md}. Forms it cannot evaluate offline are written as "unresolved offline".
 
 Exit codes: 0 note written · 1 evidence refused · 2 usage or configuration error.
 Rules file: $FACTORY_RULES, else achilles-factory-rules.json (optional).
@@ -93,6 +101,10 @@ function parseArgs(argv) {
   }
   return a
 }
+
+// A platform page (--platform, or --context naming a platform context) never reaches Playwright or Chromium.
+if (!process.argv.includes('--help') && !process.argv.includes('-h') && platformOf(process.argv.slice(2), loadFactoryRules()) !== 'web')
+  runPlatform(process.argv.slice(2), loadFactoryRules())
 
 const args = parseArgs(process.argv.slice(2))
 const root = projectRoot()
