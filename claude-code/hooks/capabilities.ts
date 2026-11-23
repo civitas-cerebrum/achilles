@@ -18,7 +18,7 @@ type Scope = 'platform' | 'web-fixture'
 export function capabilityScope(rel: string): Scope | undefined {
   if (/^tests\/platform\/docs\//.test(rel)) return undefined
   if (/^tests\/platform\/.+\.[cm]?[jt]sx?$/.test(rel)) return 'platform'
-  if (/^tests\/platform\/.+\.json$/.test(rel) && !/(^|\/)page-repository[^/]*\.json$/.test(rel)) return 'platform'
+  if (/^tests\/platform\/.+\.json$/.test(rel) && !/(^|\/)page-repository\.json$/.test(rel)) return 'platform'
   if (/^playwright\.platform\.config\.[cm]?[jt]s$/.test(rel)) return 'platform'
   if (/^tests\/e2e\/fixtures\/.+\.[cm]?[jt]sx?$/.test(rel)) return 'web-fixture'
   return undefined
@@ -31,8 +31,20 @@ const LITERAL = `\\s*:\\s*(?:["'\`\\d]|-\\d|true\\b|false\\b|null\\b|\\{|\\[)`
 const KEY = new RegExp(`(?:^|[\\s{,(])(["'\`]?)(${CAPABILITY_KEYS.join('|')})\\1${LITERAL}`, 'm')
 const APPIUM_KEY = /["'`](appium:[A-Za-z][\w.-]*)["'`]\s*:/
 const INLINE = /\b((?:desired)?[cC]apabilities)["'`]?\s*:\s*\{/
-const CAPS_VALUE = /\bcapabilities["'`]?\s*:\s*([^,}\n]+)/g
-const CAPS_OK = /^(process\.env\.CAPABILITIES|(["'`])tests\/capabilities\/[A-Za-z0-9._-]+\.json\2)$/
+const CAPS_VALUE = /\bcapabilities["'`]?\s*:\s*([^,}\n;]+)/g
+const STRING = /(["'`])((?:(?!\1)[^\\\n]|\\.)*)\1/g
+const CAPS_PATH = /^tests\/capabilities\/[A-Za-z0-9._-]+\.json$/
+const LITERAL_VALUE = /:\s*(?:["'`\d]|-\d|true\b|false\b|null\b|\[)|["'`][^"'`\n]*["'`]\s*:/
+
+/** An inline `capabilities: {…}` that holds a literal (a copy), not an object type or an empty object. */
+function inlineCopy(text: string): string | undefined {
+  for (const m of text.matchAll(new RegExp(INLINE.source, 'g'))) {
+    const start = m.index! + m[0].length
+    const end = text.indexOf('}', start)
+    if (LITERAL_VALUE.test(text.slice(start, end < 0 ? undefined : end))) return m[1]
+  }
+  return undefined
+}
 
 /** The text without // and /* *\/ comments (a `//` inside a URL is kept). */
 export function stripComments(text: string): string {
@@ -46,13 +58,14 @@ export function capabilityLiteral(rel: string, raw: string): string | undefined 
   const text = stripComments(raw)
   const appium = APPIUM_KEY.exec(text)
   if (appium) return `the "${appium[1]}" key`
-  const inline = INLINE.exec(text)
-  if (inline) return `an inline \`${inline[1]}: {…}\` object`
+  const inline = inlineCopy(text)
+  if (inline) return `an inline \`${inline}: {…}\` object`
+  // A fixture's capabilities value is code (process.env.CAPABILITIES with or without a fallback, a
+  // variable, a type) or a path to a capabilities file; a string naming anything else is a copy.
   if (isFixture(rel))
-    for (const m of text.matchAll(CAPS_VALUE)) {
-      const value = m[1]!.trim()
-      if (value !== '{' && !CAPS_OK.test(value)) return `a capabilities value \`${value}\` that is neither process.env.CAPABILITIES nor a '${FORM}' path`
-    }
+    for (const m of text.matchAll(CAPS_VALUE))
+      for (const str of m[1]!.matchAll(STRING))
+        if (!CAPS_PATH.test(str[2]!)) return `a capabilities value \`${m[1]!.trim()}\` naming "${str[2]}", which is not a '${FORM}' path`
   if (scope === 'web-fixture') return undefined
   const key = KEY.exec(text)
   if (key) return `the \`${key[2]}\` key with a literal value`

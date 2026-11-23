@@ -313,6 +313,11 @@ const RUNNERS = new Set(['node', 'bun', 'deno', 'tsx', 'ts-node', '@wdio/cli'])
 
 const isWdioWord = (w: string) => w === '@wdio/cli' || /^wdio(\.[cm]?js)?$/.test(basename(w))
 const isSessionFlag = (t: string) => (t.startsWith('-s') && !t.startsWith('--')) || t === '--session' || t.startsWith('--session=')
+// After an action that takes free text (fill e3 -secret, find -text), only the exact session flag forms count.
+const isExactSessionFlag = (t: string) => t === '-s' || t.startsWith('-s=') || t === '--session' || t.startsWith('--session=')
+const WDIO_VALUE_ACTIONS = new Set(['fill', 'type', 'find', 'exec', 'deeplink'])
+/** A session name wdio and the turn-end close accept: starts with a letter or digit. */
+export const WDIO_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 
 /** Where the wdio CLI word sits in a command (`wdio`, `@wdio/cli`, `npx -p @wdio/cli wdio`, `node …/wdio.js`), or -1. */
 function wdioAt(a: readonly string[]): number {
@@ -337,27 +342,48 @@ function capabilitiesFile(ctx: Ctx, dir: string, value: string): string | undefi
 }
 
 /** Why a session name is not this agent's to use, or undefined when it is. */
+/** Who else holds a session name: another live expert (its recorded names or its derived slug) or, for an expert, the orchestrator. */
+function heldBy(ctx: Ctx, name: string): string | undefined {
+  const mine = ctx.who.expert?.agentId
+  const owner = ctx.who.run.experts.find(x => x.agentId !== mine && ((x.wdio ?? []).includes(name) || derivedSlug(x.role, x.agentId) === name))
+  if (owner) return `another expert (${owner.role} ${owner.agentId}) that is still at work`
+  if (ctx.who.expert && (ctx.who.run.wdio ?? []).includes(name)) return 'the orchestrator'
+  return undefined
+}
+
+/** Why a session name is not this agent's to use, or undefined when it is. */
 function badSessionName(ctx: Ctx, name: string | undefined): string | undefined {
   if (name === undefined || name === '') return 'has no -s <name>'
-  if (!/^[A-Za-z0-9_-]+$/.test(name)) return `uses a session name with characters outside [A-Za-z0-9_-] ('${name}')`
+  if (!WDIO_NAME.test(name)) return `uses a session name that does not start with a letter or digit or has characters outside [A-Za-z0-9_-] ('${name}')`
   if (RESERVED_SLUGS.has(name)) return `uses the collision-prone session name '${name}'`
   if (name.length < 6) return `uses a session name too short to be distinct ('${name}')`
   if (name.length > 28) return `uses a session name too long for the socket path ('${name}')`
-  const mine = ctx.who.expert?.agentId
-  const owner = ctx.who.run.experts.find(x => x.agentId !== mine && (x.wdio ?? []).includes(name))
-  if (owner) return `uses '${name}', the session of another expert (${owner.role} ${owner.agentId}) that is still at work`
+  const holder = heldBy(ctx, name)
+  if (holder) return `uses '${name}', the session of ${holder}`
   return undefined
+}
+
+/** The agent's own session name: its derived slug, or a re-hashed one when someone else already holds that. */
+function ownSessionName(ctx: Ctx): string {
+  const id = ctx.who.expert?.agentId ?? ctx.who.run.agentId ?? 'run'
+  let name = derivedSlug(ctx.who.role, id)
+  for (let n = 1; n < 10 && heldBy(ctx, name) !== undefined; n++) name = derivedSlug(ctx.who.role, `${id}#${n}`)
+  return name
 }
 
 async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, inserts: { at: number; replaceTo?: number; text: string }[]) {
   const a = j.cmd.args
   const refs = REFS(PLATFORM_INSPECT_REF)
   const at = wdioAt(a)
+  const unrecognised = `this command reaches \`wdio session\` through a form the judge does not read (a package-manager exec, a wrapper, a runner option); run it as \`npx wdio session -s <slug> <action> …\`.${refs}`
   if (at < 0) {
+    if (isReader(a)) return
+    if (a.some((t, k) => isWdioWord(t) && a.slice(k + 1).includes('session'))) return void (v.deny ??= unrecognised)
     if (j.cmd.wrapBad && a.some(t => /wdio/.test(t))) v.deny ??= `this command runs wdio behind a wrapper option the judge cannot read; run \`npx wdio session -s <slug> <action> …\` directly.${refs}`
     return
   }
   const sub = a[at + 1]
+  if (sub !== 'session' && sub !== 'repl' && a.slice(at + 1).includes('session')) return void (v.deny ??= unrecognised)
   if (sub === 'repl') return void (v.deny ??= `\`wdio repl\` opens a device session outside the inspection form; inspect with \`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json\`.${refs}`)
   if (sub !== 'session') return
   const s = at + 1
@@ -367,7 +393,8 @@ async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, in
   let action = -1
   for (let i = s + 1; i < a.length; i++) {
     const t = a[i]!
-    if (isSessionFlag(t)) {
+    const free = action >= 0 && WDIO_VALUE_ACTIONS.has(a[action]!)
+    if (free ? isExactSessionFlag(t) : isSessionFlag(t)) {
       sessionFlags.push(i)
       if (t === '-s' || t === '--session') i++
       continue
@@ -401,7 +428,7 @@ async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, in
   const fixes: { at: number; replaceTo?: number; text: string }[] = []
   let name = given!
   if (bad !== undefined) {
-    name = derivedSlug(ctx.who.role, ctx.who.expert?.agentId ?? ctx.who.run.agentId ?? 'run')
+    name = ownSessionName(ctx)
     if (flagAt === undefined) fixes.push({ at: j.cmd.spans[s]!.end, text: ` -s ${name}` })
     else if ((flag === '-s' || flag === '--session') && a[flagAt + 1] !== undefined) fixes.push({ at: j.cmd.spans[flagAt]!.start, replaceTo: j.cmd.spans[flagAt + 1]!.end, text: `-s ${name}` })
     else fixes.push({ at: j.cmd.spans[flagAt]!.start, replaceTo: j.cmd.spans[flagAt]!.end, text: `-s ${name}` })
@@ -421,10 +448,11 @@ async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, in
 }
 
 /** An --idle-timeout value in seconds (a bare number is milliseconds), or undefined when unreadable. */
+// As @wdio/session 10.2.0 parses it (parseDuration): one number with an optional ms|s|m|h unit, a bare number is milliseconds.
 function idleSeconds(value: string): number | undefined {
-  if (/^\d+(\.\d+)?$/.test(value)) return Number(value) / 1000
-  if (!/^(\d+(\.\d+)?(ms|s|m|h))+$/.test(value)) return undefined
-  return seconds(value)
+  const m = /^(\d+(?:\.\d+)?)(ms|s|m|h)?$/.exec(value.trim())
+  if (!m) return undefined
+  return (Number(m[1]) * { ms: 1, s: 1e3, m: 6e4, h: 36e5 }[(m[2] ?? 'ms') as 'ms' | 's' | 'm' | 'h']) / 1000
 }
 
 /** Why an `open` is not the inspection form, or undefined. */
@@ -490,10 +518,13 @@ const PM = new Set(['npm', 'pnpm', 'yarn'])
 /** The package.json script a package-manager command runs (`npm run x`, `npm test`, `npm t`, `pnpm x`, `yarn x`), or undefined. */
 function scriptName(a: readonly string[], scripts: Record<string, string>): string | undefined {
   if (!PM.has(a[0] ?? '')) return undefined
-  const sub = a[1] ?? ''
-  if (sub === 'run' || sub === 'run-script') return a[2]
+  // Leading options (npm --silent test, yarn -s build) stand before the subcommand.
+  const k = a.findIndex((t, i) => i > 0 && !t.startsWith('-'))
+  if (k < 0) return undefined
+  const sub = a[k]!
+  if (sub === 'run' || sub === 'run-script') return a.slice(k + 1).find(t => !t.startsWith('-'))
   if (sub === 'test' || sub === 't' || sub === 'tst') return 'test'
-  if (a[0] !== 'npm' && sub !== '' && !sub.startsWith('-') && Object.prototype.hasOwnProperty.call(scripts, sub)) return sub
+  if (a[0] !== 'npm' && Object.prototype.hasOwnProperty.call(scripts, sub)) return sub
   return undefined
 }
 

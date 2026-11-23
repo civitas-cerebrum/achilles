@@ -30,17 +30,18 @@ export async function playwrightRun($: EngineInterface, command: string, root: s
  * past the turn that opened it.
  */
 export async function closeSessions($: EngineInterface, w: Who) {
-  const safe = (xs: string[] | undefined) => (xs ?? []).filter(s => /^[A-Za-z0-9_-]+$/.test(s)).slice(0, 8)
+  const safe = (xs: string[] | undefined) => (xs ?? []).filter(s => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(s)).slice(0, 8)
   const slugs = safe(w.expert?.slugs)
   const wdio = safe(w.expert ? w.expert.wdio : w.run.wdio)
   if (slugs.length === 0 && wdio.length === 0) return
   // One child for every session, bounded, so the turn's end never waits past its budget. The
-  // browser closes run in turn; each wdio close runs in the background with its own request
-  // timeout (ending an Appium session on a device is slower and may hang), and the child fails
-  // when any of them did not end its session (exit 4 is "no such session": already free).
+  // browser closes run in turn; each wdio close runs in the background (ending an Appium session
+  // on a device is slower and may hang: @wdio/session 10.2.0 waits up to 30 s for the daemon, then
+  // stops it with SIGTERM), and the child fails when any of them did not end its session. Exit 4 is
+  // SESSION_NOT_FOUND: no session by that name is running, so the device is already free.
   const browser = slugs.map(s => `npx --no-install playwright-cli -s=${s} close >/dev/null 2>&1`).join('; ')
-  const devices = wdio.length === 0 ? '' : `${wdio.map((s, i) => `(npx --no-install wdio session -s ${s} --timeout 10000 close >/dev/null 2>&1; c=$?; [ $c -eq 0 ] || [ $c -eq 4 ]) & p${i}=$!`).join('; ')}; s=0; ${wdio.map((_, i) => `wait $p${i} || s=1`).join('; ')}; exit $s`
-  const r = await run($, ['sh', '-c', [browser, devices].filter(Boolean).join('; ')], { timeoutMs: wdio.length > 0 ? 15000 : 4000 })
+  const devices = wdio.length === 0 ? '' : `${wdio.map((s, i) => `(npx --no-install wdio session -s ${s} close >/dev/null 2>&1; c=$?; [ $c -eq 0 ] || [ $c -eq 4 ]) & p${i}=$!`).join('; ')}; s=0; ${wdio.map((_, i) => `wait $p${i} || s=1`).join('; ')}; exit $s`
+  const r = await run($, ['sh', '-c', [browser, devices].filter(Boolean).join('; ')], { timeoutMs: wdio.length > 0 ? 40000 : 4000 })
   const owner = w.expert?.agentId ?? 'the orchestrator'
   if (!r.ok && slugs.length > 0) await note($, w.run.agentId, `the playwright-cli sessions of ${owner} (${slugs.join(', ')}) could not be closed (${r.reason}); close them with npx playwright-cli -s=<slug> close.`)
   if (wdio.length === 0) return

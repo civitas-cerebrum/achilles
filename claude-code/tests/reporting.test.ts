@@ -87,7 +87,7 @@ test('an expert’s wdio session closes when its turn ends, so the device is fre
   const islug = derivedSlug('inspector', inspector)
   expect(script.startsWith('npx --no-install playwright-cli -s=phase1-root close >/dev/null 2>&1; ')).toBe(true)
   // Each wdio close runs in the background with its own request timeout, so one hung close does not starve the rest.
-  expect(script).toContain(`(npx --no-install wdio session -s ${islug} --timeout 10000 close >/dev/null 2>&1; c=$?; [ $c -eq 0 ] || [ $c -eq 4 ]) & p0=$!`)
+  expect(script).toContain(`(npx --no-install wdio session -s ${islug} close >/dev/null 2>&1; c=$?; [ $c -eq 0 ] || [ $c -eq 4 ]) & p0=$!`)
   expect(script).toContain('wait $p0 || s=1')
   // The orchestrator's names stay until a close succeeds.
   let closeExit = 1
@@ -95,7 +95,7 @@ test('an expert’s wdio session closes when its turn ends, so the device is fre
   const oslug = derivedSlug('orchestrator', orchestrator)
   await $.tool.call({ tool: 'Bash', command: open, agentId: orchestrator })
   await $.turn.complete(ended(orchestrator, 'waiting for the inspector'))
-  expect(h.ran.filter(r => r.argv[0] === 'sh').at(-1)!.argv[2]).toContain(`wdio session -s ${oslug} --timeout 10000 close`)
+  expect(h.ran.filter(r => r.argv[0] === 'sh').at(-1)!.argv[2]).toContain(`wdio session -s ${oslug} close`)
   expect(notes(session, orchestrator).at(-1)).toContain('could not be closed')
   closeExit = 0
   const before = h.ran.filter(r => r.argv[0] === 'sh').length

@@ -271,6 +271,26 @@ test('wdio session: a good slug is kept and recorded, a missing, malformed or ta
   await bash('npx wdio session -s inspect-android-1 snapshot --all')
   expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot --all`)
   expect(notes(session, agentId).at(-1)).toContain('another expert')
+  // Another live expert's derived slug is taken too, even before it used it; so is a name the orchestrator holds.
+  await bash(`npx wdio session -s ${derivedSlug('inspector', other)} snapshot --all`)
+  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot --all`)
+  await bash('npx wdio session -s preflight-iphone snapshot --all', orchestrator)
+  expect(seen.at(-1)).toBe('npx wdio session -s preflight-iphone snapshot --all')
+  await bash('npx wdio session -s preflight-iphone snapshot --all')
+  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot --all`)
+  expect(notes(session, agentId).at(-1)).toContain('the orchestrator')
+  // A name must start with a letter or digit.
+  await bash('npx wdio session -s _hidden-name snapshot --all')
+  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot --all`)
+  // An expert whose own derived slug the orchestrator already holds gets a different one.
+  const nextId = `inspector-${Number(other.split('-')[1]) + 1}`
+  await bash(`npx wdio session -s ${derivedSlug('inspector', nextId)} snapshot --all`, orchestrator)
+  const late = await spawnExpert($, h, 'inspector', orchestrator, 'Read `.achilles/runs/x/briefs/l.md` first; write your report to `.achilles/runs/x/reports/l.md`.')
+  expect(late).toBe(nextId)
+  await bash('npx wdio session snapshot --all', late)
+  const lateName = /-s (\S+) snapshot/.exec(seen.at(-1)!)![1]!
+  expect(lateName).not.toBe(derivedSlug('inspector', late))
+  expect(lateName).toMatch(/^inspector-[0-9a-f]{6}$/)
   // The orchestrator may close a session an expert left behind by its name.
   await bash('npx wdio session -s inspector-abc123 close', orchestrator)
   expect(seen.at(-1)).toBe('npx wdio session -s inspector-abc123 close')
@@ -304,6 +324,17 @@ test('wdio session: the action comes from the known list, only global flags prec
   await bash(`node node_modules/@wdio/cli/bin/wdio.js session ${open}`)
   expect(seen.at(-1)).toBe(`node node_modules/@wdio/cli/bin/wdio.js session -s ${slug} ${open}`)
   expect((await bash('npx wdio repl ios')).deny).toMatch(/repl/)
+  for (const c of [`npm exec wdio -- session ${open}`, `yarn wdio session ${open}`, `pnpm wdio session ${open}`,`node -r ./hook.js node_modules/@wdio/cli/bin/wdio.js session ${open}`, `echo x | xargs npx wdio session ${open}`])
+    expect((await bash(c)).deny).toMatch(/run it as `npx wdio session/)
+  // yarn exec / pnpm exec are npx: judged like it.
+  await bash(`yarn exec wdio session ${open}`)
+  expect(seen.at(-1)).toBe(`yarn exec wdio session -s ${slug} ${open}`)
+  await bash(`pnpm exec -- wdio session ${open}`)
+  expect(seen.at(-1)).toBe(`pnpm exec -- wdio session -s ${slug} ${open}`)
+  // After a free-text action only the exact session flag forms count.
+  await bash(`npx wdio session -s ${slug} fill e3 -secret-value`)
+  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} fill e3 -secret-value`)
+  expect((await bash(`npx wdio session -s ${slug} fill e3 --session=other-iphone`)).deny).toMatch(/more than one session flag/)
   expect((await bash('npx wdio session close --all')).deny).toMatch(/every session/)
   // A nested shell is judged the same way; a name it would need rewritten is refused, since it cannot be rewritten there.
   expect((await bash(`sh -c 'npx wdio session -s inspect-iphone-1 ${open} --udid 1'`)).deny).toMatch(/not part of the inspection form/)
@@ -368,7 +399,7 @@ test('platform runs: PLATFORM, CAPABILITIES under tests/capabilities/ and the pl
   expect((await bash(`PLATFORM=windows CAPABILITIES=tests/capabilities/win.json npx playwright test ${cfg}`)).deny).toMatch(/not implemented yet/)
   expect((await bash('PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json npx playwright test tests/platform/a.spec.ts')).deny).toMatch(/playwright\.platform\.config\.ts/)
   h.write(`${ROOT}/package.json`, JSON.stringify({ scripts: { 'test:platform': 'playwright test -c playwright.platform.config.ts', test: 'playwright test -c playwright.platform.config.ts' } }))
-  for (const run of ['npm run test:platform', 'pnpm test:platform', 'yarn test:platform', 'pnpm run test:platform', 'npm test', 'npm t', 'yarn test']) {
+  for (const run of ['npm run test:platform', 'pnpm test:platform', 'yarn test:platform', 'pnpm run test:platform', 'npm test', 'npm t', 'yarn test', 'npm --silent test', 'npm -s run test:platform', 'yarn -s test:platform']) {
     expect((await bash(`PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json ${run}`)).deny).toBeUndefined()
     expect((await bash(`PLATFORM=ios CAPABILITIES=/tmp/x.json ${run}`)).deny).toMatch(/tests\/capabilities\//)
   }

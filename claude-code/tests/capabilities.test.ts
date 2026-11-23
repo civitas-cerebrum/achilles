@@ -25,7 +25,8 @@ test('a capability literal in a platform spec, a fixture, a platform JSON file o
     ['tests/platform/login.spec.ts', "const caps = { platformName: 'iOS' }"],
     ['tests/platform/fixtures/base.ts', 'baseFixture(base, repo, { session: { capabilities: { platformName: "iOS" } } })'],
     ['tests/platform/fixtures/base.ts', "export const opts = { automationName: 'XCUITest' }"],
-    ['tests/platform/fixtures/base.ts', 'export const opts = { session: { capabilities: caps } }'],
+    ['tests/platform/fixtures/base.ts', "export const opts = { session: { capabilities: process.env.CAPABILITIES ?? 'caps/iphone.json' } }"],
+    ['tests/platform/page-repository.backup.json', '{ "platformName": "iOS" }'],
     ['tests/platform/helpers/app.ts', '{ "appPackage": "com.example.shop", "appActivity": ".Main" }'],
     ['tests/platform/data/device.json', '{ "platformName": "Android", "udid": "x" }'],
     ['tests/e2e/fixtures/base.ts', "const caps = { 'appium:bundleId': 'com.example.shop' }"],
@@ -48,6 +49,11 @@ test('the capabilities files, path references, non-literal keys, comments, docs,
     ['tests/capabilities/iphone.json', JSON.stringify({ platformName: 'iOS', 'appium:automationName': 'XCUITest', 'appium:bundleId': 'com.example.shop' })],
     ['tests/platform/fixtures/base.ts', "baseFixture(base, 'tests/e2e/page-repository.json', { session: { capabilities: process.env.CAPABILITIES } })"],
     ['tests/platform/fixtures/base.ts', "export const opts = { session: { capabilities: 'tests/capabilities/iphone.json', reset: 'relaunch' } }"],
+    ['tests/platform/fixtures/base.ts', "export const opts = { session: { capabilities: process.env.CAPABILITIES ?? 'tests/capabilities/iphone.json' } }"],
+    ['tests/platform/fixtures/base.ts', 'export const opts = { session: { capabilities: process.env.CAPABILITIES! } }'],
+    ['tests/platform/fixtures/base.ts', 'interface Options { capabilities: string; extra: Record<string, unknown> }\ntype Caps = { capabilities: { platformName: string } }'],
+    ['tests/platform/fixtures/provider.ts', 'export const provider = { async start({ capabilities, server }) { return remote({ ...server, capabilities: capabilities }) } }'],
+    ['tests/e2e/fixtures/base.ts', 'export type Opts = { capabilities: Record<string, unknown> }'],
     ['tests/platform/login.spec.ts', "test('login', async ({ steps }) => { await steps.click('submit', 'LoginPage') })"],
     ['tests/platform/helpers/device.ts', 'export function label(platformName: string, udid: string) { return `${platformName}:${udid}` }'],
     ['tests/platform/helpers/device.ts', 'const { platformName: name, bundleId: id } = driver.capabilities as Record<string, string>'],
@@ -68,7 +74,8 @@ test('the capabilities files, path references, non-literal keys, comments, docs,
 
 test('capabilityLiteral: what it matches and where', () => {
   expect(capabilityLiteral('tests/platform/a.spec.ts', 'const x = { platformName: "Android" }')).toContain('platformName')
-  expect(capabilityLiteral('tests/platform/a.spec.ts', 'const x = { desiredCapabilities: {} }')).toBeDefined()
+  expect(capabilityLiteral('tests/platform/a.spec.ts', 'const x = { desiredCapabilities: { noReset: true } }')).toBeDefined()
+  expect(capabilityLiteral('tests/platform/a.spec.ts', 'const x = { capabilities: {} }')).toBeUndefined()
   expect(capabilityLiteral('tests/platform/a.spec.ts', 'const x = { udid: 42 }')).toBeDefined()
   expect(capabilityLiteral('tests/platform/a.spec.ts', 'const x = { "appium:noReset": true }')).toBeDefined()
   expect(capabilityLiteral('tests/platform/a.spec.ts', "const platform = process.env.PLATFORM ?? 'ios'")).toBeUndefined()
