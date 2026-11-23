@@ -54,6 +54,8 @@ export type AchillesRun = {
   archived?: number
   /** `wdio session` inspection session names the orchestrator itself ran with; closed at each of its turn ends. */
   wdio?: string[]
+  /** Consecutive failed turn-end closes per orchestrator session name; the second drops the name. */
+  wdioFails?: Record<string, number>
   selector?: AchillesSelectorScope
   /** When the run was delegated (epoch ms). */
   startedAt?: number

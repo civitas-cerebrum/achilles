@@ -27,6 +27,7 @@ test('a capability literal in a platform spec, a fixture, a platform JSON file o
     ['tests/platform/fixtures/base.ts', "export const opts = { automationName: 'XCUITest' }"],
     ['tests/platform/fixtures/base.ts', "export const opts = { session: { capabilities: process.env.CAPABILITIES ?? 'caps/iphone.json' } }"],
     ['tests/platform/page-repository.backup.json', '{ "platformName": "iOS" }'],
+    ['tests/platform/data/page-repository.json', '{ "platformName": "iOS" }'],
     ['tests/platform/helpers/app.ts', '{ "appPackage": "com.example.shop", "appActivity": ".Main" }'],
     ['tests/platform/data/device.json', '{ "platformName": "Android", "udid": "x" }'],
     ['tests/e2e/fixtures/base.ts', "const caps = { 'appium:bundleId': 'com.example.shop' }"],

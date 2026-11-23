@@ -335,6 +335,12 @@ test('wdio session: the action comes from the known list, only global flags prec
   await bash(`npx wdio session -s ${slug} fill e3 -secret-value`)
   expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} fill e3 -secret-value`)
   expect((await bash(`npx wdio session -s ${slug} fill e3 --session=other-iphone`)).deny).toMatch(/more than one session flag/)
+  // That holds after every action, not only the free-text ones.
+  await bash(`npx wdio session -s ${slug} click e3 -sx`)
+  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} click e3 -sx`)
+  // find that only lists is a reader; find that runs something is not.
+  expect((await bash('find node_modules -name wdio -o -name session')).deny).toBeUndefined()
+  expect((await bash(`find . -name wdio.js -exec node {} session ${open} ;`)).deny).toMatch(/run it as `npx wdio session/)
   expect((await bash('npx wdio session close --all')).deny).toMatch(/every session/)
   // A nested shell is judged the same way; a name it would need rewritten is refused, since it cannot be rewritten there.
   expect((await bash(`sh -c 'npx wdio session -s inspect-iphone-1 ${open} --udid 1'`)).deny).toMatch(/not part of the inspection form/)
@@ -414,7 +420,7 @@ test('platform runs: PLATFORM, CAPABILITIES under tests/capabilities/ and the pl
   expect((await bash(`PLATFORM=windows CAPABILITIES=tests/capabilities/win.json npx playwright test ${cfg}`)).deny).toMatch(/not implemented yet/)
   expect((await bash('PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json npx playwright test tests/platform/a.spec.ts')).deny).toMatch(/playwright\.platform\.config\.ts/)
   h.write(`${ROOT}/package.json`, JSON.stringify({ scripts: { 'test:platform': 'playwright test -c playwright.platform.config.ts', test: 'playwright test -c playwright.platform.config.ts' } }))
-  for (const run of ['npm run test:platform', 'pnpm test:platform', 'yarn test:platform', 'pnpm run test:platform', 'npm test', 'npm t', 'yarn test', 'npm --silent test', 'npm -s run test:platform', 'yarn -s test:platform']) {
+  for (const run of ['npm run test:platform', 'pnpm test:platform', 'yarn test:platform', 'pnpm run test:platform', 'npm test', 'npm t', 'yarn test', 'npm --silent test', 'npm -s run test:platform', 'yarn -s test:platform', 'npm --prefix app test', 'npm -w app run test:platform', 'yarn --cwd app test:platform', 'pnpm -C app test:platform', 'pnpm --filter app test:platform']) {
     expect((await bash(`PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json ${run}`)).deny).toBeUndefined()
     expect((await bash(`PLATFORM=ios CAPABILITIES=/tmp/x.json ${run}`)).deny).toMatch(/tests\/capabilities\//)
   }

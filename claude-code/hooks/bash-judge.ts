@@ -312,9 +312,8 @@ const RUNNERS = new Set(['node', 'bun', 'deno', 'tsx', 'ts-node', '@wdio/cli'])
 
 const isWdioWord = (w: string) => w === '@wdio/cli' || /^wdio(\.[cm]?js)?$/.test(basename(w))
 const isSessionFlag = (t: string) => (t.startsWith('-s') && !t.startsWith('--')) || t === '--session' || t.startsWith('--session=')
-// After an action that takes free text (fill e3 -secret, find -text), only the exact session flag forms count.
+// After the action (whose arguments may be free text: fill e3 -secret, find -text), only the exact session flag forms count.
 const isExactSessionFlag = (t: string) => t === '-s' || t.startsWith('-s=') || t === '--session' || t.startsWith('--session=')
-const WDIO_VALUE_ACTIONS = new Set(['fill', 'type', 'find', 'exec', 'deeplink'])
 /** A session name wdio and the turn-end close accept: starts with a letter or digit. */
 export const WDIO_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 
@@ -340,7 +339,6 @@ function capabilitiesFile(ctx: Ctx, dir: string, value: string): string | undefi
   return CAPS_FILE.test(rel) ? rel : undefined
 }
 
-/** Why a session name is not this agent's to use, or undefined when it is. */
 /** Who else holds a session name: another live expert (its recorded names or its derived slug) or, for an expert, the orchestrator. */
 function heldBy(ctx: Ctx, name: string): string | undefined {
   const mine = ctx.who.expert?.agentId
@@ -376,7 +374,7 @@ async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, in
   const at = wdioAt(a)
   const unrecognised = `this command reaches \`wdio session\` through a form the judge does not read (a package-manager exec, a wrapper, a runner option); run it as \`npx wdio session -s <slug> <action> …\`.${refs}`
   if (at < 0) {
-    if (isReader(a)) return
+    if (isReader(a) || (a[0] === 'find' && !a.some(x => /^-(delete|exec|execdir|ok|okdir)$/.test(x)))) return
     if (a.some((t, k) => isWdioWord(t) && a.slice(k + 1).includes('session'))) return void (v.deny ??= unrecognised)
     if (j.cmd.wrapBad && a.some(t => /wdio/.test(t))) v.deny ??= `this command runs wdio behind a wrapper option the judge cannot read; run \`npx wdio session -s <slug> <action> …\` directly.${refs}`
     return
@@ -392,8 +390,7 @@ async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, in
   let action = -1
   for (let i = s + 1; i < a.length; i++) {
     const t = a[i]!
-    const free = action >= 0 && WDIO_VALUE_ACTIONS.has(a[action]!)
-    if (free ? isExactSessionFlag(t) : isSessionFlag(t)) {
+    if (action >= 0 ? isExactSessionFlag(t) : isSessionFlag(t)) {
       sessionFlags.push(i)
       if (t === '-s' || t === '--session') i++
       continue
@@ -529,12 +526,27 @@ const PLATFORM_REF = 'skills/platform-testing/SKILL.md'
 const PLATFORM_CONFIG = /(^|\/)playwright\.platform\.config\.[cm]?[jt]s$/
 const RUN_FORM = '`PLATFORM=<android|ios> CAPABILITIES=tests/capabilities/<device>.json APPIUM_URL=<server-with-base-path> npx playwright test -c playwright.platform.config.ts`'
 const PM = new Set(['npm', 'pnpm', 'yarn'])
+const PM_VALUE_OPTS: Record<string, Set<string>> = {
+  npm: new Set(['--prefix', '-C', '-w', '--workspace', '--userconfig', '--cache', '--registry']),
+  yarn: new Set(['--cwd']),
+  pnpm: new Set(['-C', '--dir', '-F', '--filter']),
+}
 
 /** The package.json script a package-manager command runs (`npm run x`, `npm test`, `npm t`, `pnpm x`, `yarn x`), or undefined. */
 function scriptName(a: readonly string[], scripts: Record<string, string>): string | undefined {
   if (!PM.has(a[0] ?? '')) return undefined
-  // Leading options (npm --silent test, yarn -s build) stand before the subcommand.
-  const k = a.findIndex((t, i) => i > 0 && !t.startsWith('-'))
+  // Leading options (npm --silent test, yarn -s build) stand before the subcommand; the value of a
+  // value-taking one (npm --prefix dir, yarn --cwd dir, pnpm -F pkg) is not the subcommand.
+  const takesValue = PM_VALUE_OPTS[a[0]!]!
+  let k = -1
+  for (let i = 1; i < a.length; i++) {
+    const t = a[i]!
+    if (takesValue.has(t)) i++
+    else if (!t.startsWith('-')) {
+      k = i
+      break
+    }
+  }
   if (k < 0) return undefined
   const sub = a[k]!
   if (sub === 'run' || sub === 'run-script') return a.slice(k + 1).find(t => !t.startsWith('-'))

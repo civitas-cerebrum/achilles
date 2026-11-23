@@ -18,7 +18,7 @@ type Scope = 'platform' | 'web-fixture'
 export function capabilityScope(rel: string): Scope | undefined {
   if (/^tests\/platform\/docs\//.test(rel)) return undefined
   if (/^tests\/platform\/.+\.[cm]?[jt]sx?$/.test(rel)) return 'platform'
-  if (/^tests\/platform\/.+\.json$/.test(rel) && !/(^|\/)page-repository\.json$/.test(rel)) return 'platform'
+  if (/^tests\/platform\/.+\.json$/.test(rel) && rel !== 'tests/platform/page-repository.json') return 'platform'
   if (/^playwright\.platform\.config\.[cm]?[jt]s$/.test(rel)) return 'platform'
   if (/^tests\/e2e\/fixtures\/.+\.[cm]?[jt]sx?$/.test(rel)) return 'web-fixture'
   return undefined

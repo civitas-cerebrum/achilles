@@ -103,4 +103,15 @@ test('an expert’s wdio session closes when its turn ends, so the device is fre
   expect(h.ran.filter(r => r.argv[0] === 'sh').length).toBe(before + 1)
   await $.turn.complete(ended(orchestrator, 'still waiting, once more'))
   expect(h.ran.filter(r => r.argv[0] === 'sh').length).toBe(before + 1)
+  // A close that fails twice in a row drops the name, with a note naming it, so it cannot stall every turn.
+  closeExit = 1
+  await $.tool.call({ tool: 'Bash', command: open, agentId: orchestrator })
+  await $.turn.complete(ended(orchestrator, 'turn a'))
+  expect(notes(session, orchestrator).at(-1)).toContain('the next turn end tries again')
+  await $.turn.complete(ended(orchestrator, 'turn b'))
+  expect(notes(session, orchestrator).at(-1)).toContain(`${oslug} failed to close twice in a row`)
+  expect(notes(session, orchestrator).at(-1)).toContain(`npx wdio session -s ${oslug} close`)
+  const after = h.ran.filter(r => r.argv[0] === 'sh').length
+  await $.turn.complete(ended(orchestrator, 'turn c'))
+  expect(h.ran.filter(r => r.argv[0] === 'sh').length).toBe(after)
 })
