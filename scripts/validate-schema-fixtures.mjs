@@ -8,7 +8,8 @@
 //   <role>-invalid-<case>.yaml  optional, any number; each must fail
 //   handover-valid.yaml / handover-invalid.yaml  the shared envelope (below)
 // A file in that dir that matches none of these is itself a failure, so a
-// misnamed fixture cannot sit there unexercised. Also validates the standalone schemas' own <name>.fixtures/ dirs,
+// misnamed fixture cannot sit there unexercised (dotfiles are ignored).
+// Also validates the standalone schemas' own <name>.fixtures/ dirs,
 // schemas/factory-rules.schema.json (the shipped example plus patch
 // fixtures) and the schemas/onboarding-status.schema.json fixtures
 // under schemas/onboarding-status.fixtures/ (every valid-*.json must
@@ -29,7 +30,7 @@ ajv.addSchema(handover);
 const schemaFiles = readdirSync(dir).filter(f => f.endsWith('.schema.json') && f !== 'handover.schema.json');
 
 let failures = 0;
-const fixtureNames = readdirSync(fixturesDir);
+const fixtureNames = readdirSync(fixturesDir).filter(n => !n.startsWith('.')); // dotfiles (.DS_Store) are not fixtures
 const claimed = new Set(fixtureNames.filter(n => /^handover-(valid|invalid)\.yaml$/.test(n)));
 for (const file of schemaFiles) {
   const role = basename(file, '.schema.json');
