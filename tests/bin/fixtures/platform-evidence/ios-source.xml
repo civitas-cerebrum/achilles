@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fake XCUITest page source for the platform selector-evidence tests. All values are invented. -->
+<AppiumAUT>
+  <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="Example" label="Example" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0">
+    <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0">
+      <XCUIElementTypeNavigationBar type="XCUIElementTypeNavigationBar" name="Settings" enabled="true" visible="true" accessible="false" x="0" y="47" width="390" height="96" index="0">
+        <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Settings" name="Settings" label="Settings" enabled="true" visible="true" accessible="true" x="16" y="96" width="358" height="41" index="0"/>
+        <XCUIElementTypeButton type="XCUIElementTypeButton" name="Edit" label="Edit" enabled="true" visible="true" accessible="true" x="320" y="50" width="54" height="44" index="1"/>
+      </XCUIElementTypeNavigationBar>
+      <XCUIElementTypeTable type="XCUIElementTypeTable" enabled="true" visible="true" accessible="false" x="0" y="143" width="390" height="701" index="1">
+        <XCUIElementTypeCell type="XCUIElementTypeCell" name="example.row.network" label="Network" enabled="true" visible="true" accessible="true" x="0" y="160" width="390" height="52" index="0">
+          <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Network" name="Network" label="Network" enabled="true" visible="true" accessible="false" x="60" y="174" width="80" height="22" index="0"/>
+        </XCUIElementTypeCell>
+        <XCUIElementTypeCell type="XCUIElementTypeCell" name="example.row.sound" label="Sound" enabled="true" visible="true" accessible="true" x="0" y="212" width="390" height="52" index="1"/>
+        <XCUIElementTypeCell type="XCUIElementTypeCell" name="example.row.support" label="Support &amp; Help" enabled="true" visible="true" accessible="true" x="0" y="264" width="390" height="52" index="2"/>
+        <XCUIElementTypeButton type="XCUIElementTypeButton" name="Edit" label="Edit" enabled="false" visible="true" accessible="true" x="320" y="320" width="54" height="44" index="3"/>
+      </XCUIElementTypeTable>
+    </XCUIElementTypeWindow>
+  </XCUIElementTypeApplication>
+</AppiumAUT>
