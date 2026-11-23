@@ -231,7 +231,7 @@ test('a background Bash call from an Achilles loop is refused with the foregroun
   expect((await bash('npx playwright test tests/e2e/a.spec.ts')).deny).toBeUndefined()
 })
 
-test('wdio session: the session name is forced to the expert slug, snapshot gets --all, list and help are untouched, close --all and nested calls are denied', async ($, on) => {
+test('wdio session: a good slug is kept and recorded, a missing, malformed or taken one is rewritten, snapshot always carries --all', async ($, on) => {
   const seen: string[] = []
   on('tool.call', { tool: 'Bash' }, (_, e) => (seen.push(e.command), { result: { ok: true } }))
   const h = engine(on)
@@ -242,45 +242,88 @@ test('wdio session: the session name is forced to the expert slug, snapshot gets
   const open = 'open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json'
   expect((await bash(`npx wdio session ${open}`)).deny).toBeUndefined()
   expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} ${open}`)
-  expect(notes(session, agentId).at(-1)).toContain(`ran as -s ${slug}`)
-  await bash(`npx wdio session -s mine-123456 ${open}`)
-  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} ${open}`)
+  expect(notes(session, agentId).at(-1)).toContain(`it ran as -s ${slug}`)
+  // A valid brief slug is kept, as playwright-cli keeps one.
+  for (const c of [`npx wdio session -s inspect-iphone-1 ${open}`, 'npx wdio session --session inspect-iphone-1 snapshot -i --all --selectors', 'npx @wdio/cli@10.2.0 session -s inspect-iphone-1 close']) {
+    expect((await bash(c)).deny).toBeUndefined()
+    expect(seen.at(-1)).toBe(c)
+  }
+  for (const [given, why] of [['default', 'collision-prone'], ['ab', 'too short'], ['a-very-long-session-name-that-overflows', 'too long'], ['bad/slug!', 'characters']] as const) {
+    await bash(`npx wdio session -s '${given}' snapshot --all`)
+    expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot --all`)
+    expect(notes(session, agentId).at(-1)).toContain(why)
+  }
   await bash(`npx @wdio/cli session --session=other-slug ${open}`)
+  expect(seen.at(-1)).toBe(`npx @wdio/cli session --session=other-slug ${open}`)
+  await bash(`npx @wdio/cli session --session=tiny ${open}`)
   expect(seen.at(-1)).toBe(`npx @wdio/cli session -s ${slug} ${open}`)
   await bash('WDIO_SESSION=x wdio session snapshot -i --selectors')
   expect(seen.at(-1)).toBe(`WDIO_SESSION=x wdio session -s ${slug} snapshot --all -i --selectors`)
-  await bash(`npx wdio session -s ${slug} snapshot -i --all --selectors`)
-  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot -i --all --selectors`)
   await bash(`npx wdio session -s ${slug} tap e3 && npx wdio session -s ${slug} snapshot -i`)
   expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} tap e3 && npx wdio session -s ${slug} snapshot --all -i`)
-  await bash('npx wdio session close')
-  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} close`)
+  for (const off of ['--all=false', '--no-all']) {
+    await bash(`npx wdio session -s ${slug} snapshot -i ${off}`)
+    expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot -i --all`)
+  }
+  // Another live expert's session name is not taken over.
+  const other = await spawnExpert($, h, 'inspector', orchestrator, 'Read `.achilles/runs/x/briefs/o.md` first; write your report to `.achilles/runs/x/reports/o.md`.')
+  await bash(`npx wdio session -s inspect-android-1 ${open}`, other)
+  await bash('npx wdio session -s inspect-android-1 snapshot --all')
+  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot --all`)
+  expect(notes(session, agentId).at(-1)).toContain('another expert')
+  // The orchestrator may close a session an expert left behind by its name.
+  await bash('npx wdio session -s inspector-abc123 close', orchestrator)
+  expect(seen.at(-1)).toBe('npx wdio session -s inspector-abc123 close')
   const noted = notes(session, agentId).length
-  for (const c of ['npx wdio session list', 'npx wdio session --help', 'npx wdio session open --help', 'echo "npx wdio session open ios"', 'grep -rn "wdio session" docs/', 'npx wdio run wdio.conf.ts', 'npm ls @wdio/cli']) {
+  for (const c of ['npx wdio session list', 'npx wdio session --help', 'npx wdio session open --help', 'npx wdio --version', 'echo "npx wdio session open ios"', 'echo npx wdio session open ios', 'grep -rn "wdio session" docs/', 'npm ls @wdio/cli']) {
     expect((await bash(c)).deny).toBeUndefined()
     expect(seen.at(-1)).toBe(c)
   }
   expect(notes(session, agentId).length).toBe(noted)
-  // The orchestrator may close a session an expert left behind by its name; an expert may not.
-  await bash('npx wdio session -s inspector-abc123 close', orchestrator)
-  expect(seen.at(-1)).toBe('npx wdio session -s inspector-abc123 close')
-  await bash('npx wdio session -s inspector-abc123 close')
-  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} close`)
-  expect((await bash('npx wdio session close --all')).deny).toMatch(/every session/)
-  expect((await bash(`sh -c 'npx wdio session ${open}'`)).deny).toMatch(/nested shell/)
 })
 
-test('wdio session open: capabilities only from tests/capabilities/*.json, the server only from --appium-url, no capability flags, an app id flag only when the file has none', async ($, on) => {
+test('wdio session: the action comes from the known list, only global flags precede it, one session flag, other wdio entry points are judged too', async ($, on) => {
+  const seen: string[] = []
+  on('tool.call', { tool: 'Bash' }, (_, e) => (seen.push(e.command), { result: { ok: true } }))
+  const h = engine(on)
+  const { agentId, bash } = await setup($, h, 'inspector')
+  const slug = derivedSlug('inspector', agentId)
+  h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:bundleId': 'com.example.shop' }))
+  const open = 'open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json'
+  expect((await bash(`npx wdio session --foo bar open ios --capabilities '{"platformName":"iOS"}'`)).deny).toMatch(/--foo/)
+  expect((await bash(`npx wdio session --log-level debug ${open}`)).deny).toMatch(/--log-level/)
+  expect((await bash('npx wdio session frobnicate e3')).deny).toMatch(/not a wdio session action/)
+  expect((await bash(`npx wdio session -s inspect-iphone-1 -s other-iphone ${open}`)).deny).toMatch(/more than one session flag/)
+  expect((await bash(`npx wdio session -sinspect-iphone-1 --session other-iphone ${open}`)).deny).toMatch(/more than one session flag/)
+  expect((await bash(`npx wdio session --json -q --timeout 20000 -s inspect-iphone-1 ${open}`)).deny).toBeUndefined()
+  await bash('npx wdio session -sother snapshot --all')
+  expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} snapshot --all`)
+  // Other entry points to the same CLI.
+  expect((await bash(`npx -p @wdio/cli wdio session ${open} --udid 0000`)).deny).toMatch(/not part of the inspection form/)
+  expect((await bash(`node node_modules/@wdio/cli/bin/wdio.js session ${open} --udid 0000`)).deny).toMatch(/not part of the inspection form/)
+  await bash(`node node_modules/@wdio/cli/bin/wdio.js session ${open}`)
+  expect(seen.at(-1)).toBe(`node node_modules/@wdio/cli/bin/wdio.js session -s ${slug} ${open}`)
+  expect((await bash('npx wdio repl ios')).deny).toMatch(/repl/)
+  expect((await bash('npx wdio session close --all')).deny).toMatch(/every session/)
+  // A nested shell is judged the same way; a name it would need rewritten is refused, since it cannot be rewritten there.
+  expect((await bash(`sh -c 'npx wdio session -s inspect-iphone-1 ${open} --udid 1'`)).deny).toMatch(/not part of the inspection form/)
+  expect((await bash(`sh -c 'npx wdio session ${open}'`)).deny).toContain(`-s ${slug}`)
+  expect((await bash("sh -c 'npx wdio session -s inspect-iphone-1 snapshot --all'")).deny).toBeUndefined()
+})
+
+test('wdio session open: capabilities only from tests/capabilities/*.json, the server only from --appium-url, no capability flags, the platform the file names, an app id flag only when the file has none', async ($, on) => {
   const h = engine(on)
   const { bash } = await setup($, h, 'inspector')
   h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:bundleId': 'com.example.shop' }))
   h.write(`${ROOT}/tests/capabilities/pixel.json`, JSON.stringify({ platformName: 'Android', 'appium:automationName': 'UiAutomator2' }))
+  h.write(`${ROOT}/tests/capabilities/noname.json`, JSON.stringify({ 'appium:automationName': 'XCUITest' }))
   const url = '--appium-url "$APPIUM_URL"'
   const iphone = '--capabilities tests/capabilities/iphone.json'
   for (const c of [
     `npx wdio session open ios ${url} ${iphone}`,
     'npx wdio session open ios --appium-url http://127.0.0.1:4723/wd/hub --capabilities=./tests/capabilities/iphone.json',
     `npx wdio session open ios --appium-url=\${APPIUM_URL} ${iphone} --replace --idle-timeout 10m`,
+    `npx wdio session open ios ${url} ${iphone} --idle-timeout 30m`,
     `npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.example.shop --activity .Main`,
     `npx wdio session open ios ${url} --capabilities ${ROOT}/tests/capabilities/iphone.json`,
   ])
@@ -298,9 +341,13 @@ test('wdio session open: capabilities only from tests/capabilities/*.json, the s
   expect((await bash('npx wdio session open chrome http://app')).deny).toMatch(/playwright-cli/)
   expect((await bash(`npx wdio session open macos ${url} ${iphone}`)).deny).toMatch(/not implemented yet/)
   expect((await bash(`npx wdio session open ios com.example.shop ${url} ${iphone}`)).deny).toMatch(/positional/)
+  expect((await bash(`npx wdio session open android ${url} ${iphone}`)).deny).toMatch(/platformName "iOS"/)
+  expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/noname.json`)).deny).toMatch(/no platformName/)
+  for (const idle of ['2h', '31m', '0', '7200s'])
+    expect((await bash(`npx wdio session open ios ${url} ${iphone} --idle-timeout ${idle}`)).deny).toMatch(/idle-timeout/)
 })
 
-test('platform runs: PLATFORM, CAPABILITIES under tests/capabilities/ and the platform config are the only form; web runs and --list are untouched', async ($, on) => {
+test('platform runs: PLATFORM, CAPABILITIES under tests/capabilities/ and the platform config are the only form, through npm, pnpm and yarn scripts too; web runs and --list are untouched', async ($, on) => {
   const h = engine(on)
   const { bash } = await setup($, h)
   const cfg = '-c playwright.platform.config.ts'
@@ -320,9 +367,12 @@ test('platform runs: PLATFORM, CAPABILITIES under tests/capabilities/ and the pl
   expect((await bash(`PLATFORM=mobile CAPABILITIES=tests/capabilities/iphone.json npx playwright test ${cfg}`)).deny).toMatch(/android \| ios/)
   expect((await bash(`PLATFORM=windows CAPABILITIES=tests/capabilities/win.json npx playwright test ${cfg}`)).deny).toMatch(/not implemented yet/)
   expect((await bash('PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json npx playwright test tests/platform/a.spec.ts')).deny).toMatch(/playwright\.platform\.config\.ts/)
-  h.write(`${ROOT}/package.json`, JSON.stringify({ scripts: { 'test:platform': 'playwright test -c playwright.platform.config.ts' } }))
-  expect((await bash('PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json npm run test:platform')).deny).toBeUndefined()
-  expect((await bash('PLATFORM=ios CAPABILITIES=/tmp/x.json npm run test:platform')).deny).toMatch(/tests\/capabilities\//)
+  h.write(`${ROOT}/package.json`, JSON.stringify({ scripts: { 'test:platform': 'playwright test -c playwright.platform.config.ts', test: 'playwright test -c playwright.platform.config.ts' } }))
+  for (const run of ['npm run test:platform', 'pnpm test:platform', 'yarn test:platform', 'pnpm run test:platform', 'npm test', 'npm t', 'yarn test']) {
+    expect((await bash(`PLATFORM=ios CAPABILITIES=tests/capabilities/iphone.json ${run}`)).deny).toBeUndefined()
+    expect((await bash(`PLATFORM=ios CAPABILITIES=/tmp/x.json ${run}`)).deny).toMatch(/tests\/capabilities\//)
+  }
+  expect((await bash('pnpm install')).deny).toBeUndefined()
 })
 
 test('a line too long to split that names wdio is refused', async ($, on) => {

@@ -192,22 +192,40 @@ export async function platformDeliverables(id: number, f: Files): Promise<string
       const out: string[] = []
       if (!(await f.has('playwright.platform.config.ts'))) out.push('Phase 2 (scaffold) completed but playwright.platform.config.ts does not exist.')
       if (!(await f.list('tests/capabilities')).some(n => n.endsWith('.json'))) out.push('Phase 2 (scaffold) completed but there is no *.json capabilities file under tests/capabilities/.')
+      if (!(await f.has('tests/capabilities/README.md'))) out.push('Phase 2 (scaffold) completed but tests/capabilities/README.md does not exist (what each capabilities file targets).')
       if (!(await f.has('tests/platform/fixtures/base.ts'))) out.push('Phase 2 (scaffold) completed but tests/platform/fixtures/base.ts does not exist.')
+      let pin: unknown
+      try {
+        pin = (JSON.parse((await f.read('package.json')) ?? '{}') as { devDependencies?: Record<string, unknown> }).devDependencies?.['@wdio/cli']
+      } catch {
+        pin = undefined
+      }
+      if (pin !== '10.2.0') out.push(`Phase 2 (scaffold) completed but package.json ${pin === undefined ? 'has no @wdio/cli devDependency' : `has @wdio/cli "${String(pin)}"`}; the scaffold pins @wdio/cli at exactly 10.2.0 (the inspection CLI).`)
       return out
     }
-    case 3:
-      return (await f.has('tests/platform/docs/app-context.md')) ? [] : ['Phase 3 (inspect) completed but tests/platform/docs/app-context.md does not exist.']
+    case 3: {
+      const text = await f.read('tests/platform/docs/app-context.md')
+      if (text === undefined) return ['Phase 3 (inspect) completed but tests/platform/docs/app-context.md does not exist.']
+      // Screens are entries of their own, keyed by screen name; the Test Infrastructure section alone is the scaffold's.
+      const screens = [...text.matchAll(/^#{2,4}\s+(.+?)\s*$/gm)].map(m => m[1]!).filter(h => !/^test infrastructure$/i.test(h))
+      return screens.length > 0 ? [] : ['Phase 3 (inspect) completed but tests/platform/docs/app-context.md has no screen entry beyond the Test Infrastructure section (one heading per screen, keyed by screen name, with its navigation path).']
+    }
     case 4: {
-      // The one page repository: the e2e one when the project has web tests, else the platform one.
-      for (const rel of ['tests/e2e/page-repository.json', 'tests/platform/page-repository.json']) {
-        try {
-          const pages = (JSON.parse((await f.read(rel)) ?? '{}') as { pages?: { platform?: unknown }[] }).pages
-          if (Array.isArray(pages) && pages.some(p => p !== null && typeof p === 'object' && ['android', 'ios', 'macos', 'windows'].includes(String(p.platform)))) return []
-        } catch {
-          return [`Phase 4 (selectors) completed but ${rel} is not JSON.`]
-        }
+      // ONE page repository per project (CONTRACT C1): the e2e one when it exists, else the platform one.
+      const e2e = 'tests/e2e/page-repository.json'
+      const own = 'tests/platform/page-repository.json'
+      const hasE2e = await f.has(e2e)
+      const out: string[] = []
+      if (hasE2e && (await f.has(own))) out.push(`Phase 4 (selectors) completed with both ${e2e} and ${own}, but there is one page repository per project: the platform pages go into ${e2e} and ${own} is removed.`)
+      const rel = hasE2e ? e2e : own
+      try {
+        const pages = (JSON.parse((await f.read(rel)) ?? '{}') as { pages?: { platform?: unknown }[] }).pages
+        if (!(Array.isArray(pages) && pages.some(p => p !== null && typeof p === 'object' && ['android', 'ios', 'macos', 'windows'].includes(String(p.platform)))))
+          out.push(`Phase 4 (selectors) completed but ${rel} has no page with a platform of android, ios, macos or windows.`)
+      } catch {
+        out.push(`Phase 4 (selectors) completed but ${rel} is not JSON.`)
       }
-      return ['Phase 4 (selectors) completed but the page repository (tests/e2e/page-repository.json or tests/platform/page-repository.json) has no page with a platform of android, ios, macos or windows.']
+      return out
     }
     case 5:
       return (await f.walk('tests/platform')).some(r => r.endsWith('.spec.ts')) ? [] : ['Phase 5 (compose) completed but there is no *.spec.ts under tests/platform/.']

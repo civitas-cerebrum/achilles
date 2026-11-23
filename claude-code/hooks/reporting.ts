@@ -34,14 +34,20 @@ export async function closeSessions($: EngineInterface, w: Who) {
   const slugs = safe(w.expert?.slugs)
   const wdio = safe(w.expert ? w.expert.wdio : w.run.wdio)
   if (slugs.length === 0 && wdio.length === 0) return
-  if (!w.expert) await editRun($, w.run.id, r => ({ ...r, wdio: [] }))
-  // One child for every session, bounded, so the turn's end never waits past its budget; ending an
-  // Appium session on a device takes longer than closing a browser.
-  const lines = [...slugs.map(s => `npx --no-install playwright-cli -s=${s} close >/dev/null 2>&1`), ...wdio.map(s => `npx --no-install wdio session -s ${s} close >/dev/null 2>&1`)]
-  const r = await run($, ['sh', '-c', lines.join('; ')], { timeoutMs: wdio.length > 0 ? 15000 : 4000 })
+  // One child for every session, bounded, so the turn's end never waits past its budget. The
+  // browser closes run in turn; each wdio close runs in the background with its own request
+  // timeout (ending an Appium session on a device is slower and may hang), and the child fails
+  // when any of them did not end its session (exit 4 is "no such session": already free).
+  const browser = slugs.map(s => `npx --no-install playwright-cli -s=${s} close >/dev/null 2>&1`).join('; ')
+  const devices = wdio.length === 0 ? '' : `${wdio.map((s, i) => `(npx --no-install wdio session -s ${s} --timeout 10000 close >/dev/null 2>&1; c=$?; [ $c -eq 0 ] || [ $c -eq 4 ]) & p${i}=$!`).join('; ')}; s=0; ${wdio.map((_, i) => `wait $p${i} || s=1`).join('; ')}; exit $s`
+  const r = await run($, ['sh', '-c', [browser, devices].filter(Boolean).join('; ')], { timeoutMs: wdio.length > 0 ? 15000 : 4000 })
   const owner = w.expert?.agentId ?? 'the orchestrator'
   if (!r.ok && slugs.length > 0) await note($, w.run.agentId, `the playwright-cli sessions of ${owner} (${slugs.join(', ')}) could not be closed (${r.reason}); close them with npx playwright-cli -s=<slug> close.`)
-  if (!r.ok && wdio.length > 0) await note($, w.run.agentId, `the wdio inspection sessions of ${owner} (${wdio.join(', ')}) could not be closed (${r.reason}), so the device may still be held; close them with npx wdio session -s <slug> close.`)
+  if (wdio.length === 0) return
+  const closed = r.ok && r.exitCode === 0
+  // The orchestrator's names are kept until a close succeeds, so its next turn end tries again.
+  if (closed && !w.expert) await editRun($, w.run.id, x => ({ ...x, wdio: (x.wdio ?? []).filter(n => !wdio.includes(n)) }))
+  if (!closed) await note($, w.run.agentId, `the wdio inspection sessions of ${owner} (${wdio.join(', ')}) could not be closed (${r.ok ? `exit ${r.exitCode}` : r.reason}), so the device may still be held; close them with npx wdio session -s <slug> close.`)
 }
 
 export function registerReporting(on: On) {

@@ -285,22 +285,44 @@ function judgePlaywrightCli(ctx: Ctx, j: Judged, v: Verdict, inserts: { at: numb
 }
 
 // ── wdio session: the one platform inspection form (npx wdio session -s <slug> <action> …) ──
-// The session name is always the calling agent's slug, so parallel experts never share a device
-// session and the turn's end can close it; snapshot always carries --all (iOS judges list rows
-// hidden otherwise); open takes its capabilities only from tests/capabilities/<device>.json and its
-// server only from --appium-url, never from capability flags of its own.
+// The session name follows the playwright-cli -s= rule: a valid slug of the agent's own is kept
+// and recorded (the turn's end closes it), a missing, malformed or taken one is rewritten to the
+// agent's derived slug. snapshot always carries --all (iOS judges list rows hidden otherwise);
+// open takes its capabilities only from tests/capabilities/<device>.json, its platform from that
+// file and its server only from --appium-url, never from capability flags of its own.
 
 const PLATFORM_INSPECT_REF = 'skills/achilles-orchestrator/references/platform-inspection-protocol.md'
-const WDIO_GLOBAL_VALUE = new Set(['-s', '--session', '--timeout'])
-const WDIO_AGNOSTIC = new Set(['list', 'doctor', 'skill', 'help'])
+// The actions of `wdio session` in @wdio/cli 10.2.0 (wdio session --help).
+const WDIO_ACTIONS = new Set([
+  'open', 'close', 'list', 'info', 'restart', 'status', 'exec', 'helpers', 'snapshot', 'read', 'find', 'diff', 'screenshot', 'pdf', 'source', 'get', 'is', 'logs',
+  'navigate', 'back', 'forward', 'reload', 'wait', 'click', 'tap', 'fill', 'type', 'press', 'select', 'upload', 'hover', 'focus', 'check', 'uncheck', 'drag', 'scroll', 'swipe', 'long-press',
+  'tabs', 'windows', 'frame', 'contexts', 'dialog', 'app', 'deeplink', 'rotate', 'keyboard', 'background', 'lock', 'unlock', 'geolocation', 'emulate', 'requests', 'mock', 'unmock',
+  'cookies', 'storage', 'state', 'visual', 'trace', 'record', 'history', 'export', 'resume', 'doctor', 'skill',
+])
+const WDIO_AGNOSTIC = new Set(['list', 'doctor', 'skill'])
+// The global flags that may precede the action (besides the session flag).
+const WDIO_GLOBAL_BOOL = new Set(['--json', '-q', '--quiet', '--color', '--no-color'])
 // open's flags that the inspection form allows; every other one sets a capability, the server or a
 // browser option outside the capabilities file.
 const WDIO_OPEN_FLAGS = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--activity', '--replace', '--launch-timeout', '--idle-timeout', '--log-level', '--snapshot', '--no-snapshot', '--json', '-q', '--quiet', '--color', '--no-color', '--timeout'])
 const WDIO_OPEN_VALUE = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--activity', '--launch-timeout', '--idle-timeout', '--log-level', '--timeout'])
 const APP_ID_KEYS = ['appium:bundleId', 'appium:appPackage', 'appium:app', 'bundleId', 'appPackage', 'app']
 const CAPS_FILE = /^(\.\/)?tests\/capabilities\/[A-Za-z0-9._-]+\.json$/
+const MAX_IDLE_S = 1800
+const RUNNERS = new Set(['node', 'bun', 'deno', 'tsx', 'ts-node', '@wdio/cli'])
 
-const isWdioSession = (a: readonly string[]) => (a[0] === 'wdio' || a[0] === '@wdio/cli') && a[1] === 'session'
+const isWdioWord = (w: string) => w === '@wdio/cli' || /^wdio(\.[cm]?js)?$/.test(basename(w))
+const isSessionFlag = (t: string) => (t.startsWith('-s') && !t.startsWith('--')) || t === '--session' || t.startsWith('--session=')
+
+/** Where the wdio CLI word sits in a command (`wdio`, `@wdio/cli`, `npx -p @wdio/cli wdio`, `node …/wdio.js`), or -1. */
+function wdioAt(a: readonly string[]): number {
+  const first = a[0] ?? ''
+  if (first === '@wdio/cli') return a[1] !== undefined && a[1] !== '@wdio/cli' && isWdioWord(a[1]) ? 1 : 0
+  if (isWdioWord(first)) return 0
+  if (!RUNNERS.has(first)) return -1
+  const k = a.findIndex((t, i) => i > 0 && !t.startsWith('-'))
+  return k > 0 && isWdioWord(a[k]!) ? k : -1
+}
 
 /** A project-relative tests/capabilities/<device>.json for a literal path, else undefined. */
 function capabilitiesFile(ctx: Ctx, dir: string, value: string): string | undefined {
@@ -314,48 +336,95 @@ function capabilitiesFile(ctx: Ctx, dir: string, value: string): string | undefi
   return CAPS_FILE.test(rel) ? rel : undefined
 }
 
+/** Why a session name is not this agent's to use, or undefined when it is. */
+function badSessionName(ctx: Ctx, name: string | undefined): string | undefined {
+  if (name === undefined || name === '') return 'has no -s <name>'
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) return `uses a session name with characters outside [A-Za-z0-9_-] ('${name}')`
+  if (RESERVED_SLUGS.has(name)) return `uses the collision-prone session name '${name}'`
+  if (name.length < 6) return `uses a session name too short to be distinct ('${name}')`
+  if (name.length > 28) return `uses a session name too long for the socket path ('${name}')`
+  const mine = ctx.who.expert?.agentId
+  const owner = ctx.who.run.experts.find(x => x.agentId !== mine && (x.wdio ?? []).includes(name))
+  if (owner) return `uses '${name}', the session of another expert (${owner.role} ${owner.agentId}) that is still at work`
+  return undefined
+}
+
 async function judgeWdio($: EngineInterface, ctx: Ctx, j: Judged, v: Verdict, inserts: { at: number; replaceTo?: number; text: string }[]) {
   const a = j.cmd.args
-  if (!isWdioSession(a)) return
-  if (a.some(t => t === '--help' || t === '-h' || t === '--version')) return
-  // Global flags may come before the action; the action is the first word that is not a flag or a flag's value.
-  let slugAt = -1
-  let slugForm: 'split' | 'joined' = 'split'
+  const refs = REFS(PLATFORM_INSPECT_REF)
+  const at = wdioAt(a)
+  if (at < 0) {
+    if (j.cmd.wrapBad && a.some(t => /wdio/.test(t))) v.deny ??= `this command runs wdio behind a wrapper option the judge cannot read; run \`npx wdio session -s <slug> <action> …\` directly.${refs}`
+    return
+  }
+  const sub = a[at + 1]
+  if (sub === 'repl') return void (v.deny ??= `\`wdio repl\` opens a device session outside the inspection form; inspect with \`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json\`.${refs}`)
+  if (sub !== 'session') return
+  const s = at + 1
+  if (a.slice(s + 1).some(t => t === '--help' || t === '-h' || t === '--version')) return
+  // Before the action only the global flags may stand; every session flag anywhere is counted.
+  const sessionFlags: number[] = []
   let action = -1
-  for (let i = 2; i < a.length; i++) {
+  for (let i = s + 1; i < a.length; i++) {
     const t = a[i]!
-    if (t === '-s' || t === '--session') {
-      slugAt = i
-      slugForm = 'split'
+    if (isSessionFlag(t)) {
+      sessionFlags.push(i)
+      if (t === '-s' || t === '--session') i++
+      continue
+    }
+    if (action >= 0) continue
+    if (t === '--timeout') {
       i++
-    } else if (t.startsWith('--session=') || t.startsWith('-s=')) {
-      slugAt = i
-      slugForm = 'joined'
-    } else if (action < 0 && WDIO_GLOBAL_VALUE.has(t)) i++
-    else if (action < 0 && !t.startsWith('-')) action = i
+      continue
+    }
+    if (t.startsWith('--timeout=') || WDIO_GLOBAL_BOOL.has(t)) continue
+    if (t.startsWith('-')) return void (v.deny ??= `\`${t}\` is not a global flag of \`wdio session\`; before the action only -s/--session, --timeout, --json and -q/--quiet may stand. Run \`npx wdio session -s <slug> <action> …\`.${refs}`)
+    action = i
   }
   const act = action < 0 ? '' : a[action]!
-  if (act === '' || WDIO_AGNOSTIC.has(act)) return
-  const refs = REFS(PLATFORM_INSPECT_REF)
-  if (j.nested) return void (v.deny ??= `a wdio session call inside a nested shell (sh -c, eval) cannot have its session name and flags checked; run \`npx wdio session -s <slug> ${act} …\` as a command of its own.${refs}`)
+  if (act === '') return
+  if (!WDIO_ACTIONS.has(act)) return void (v.deny ??= `'${act}' is not a wdio session action (@wdio/cli 10.2.0); see \`npx wdio session --help\`.${refs}`)
+  if (WDIO_AGNOSTIC.has(act)) return
+  if (sessionFlags.length > 1) return void (v.deny ??= `this wdio session call names more than one session flag (${sessionFlags.map(i => a[i]).join(', ')}); pass one -s <slug>.${refs}`)
   const rest = a.slice(action + 1)
   if (act === 'close' && rest.includes('--all')) return void (v.deny ??= `\`wdio session close --all\` closes every session, including other experts' sessions on shared devices; close your own with \`npx wdio session -s <slug> close\`.${refs}`)
   if (act === 'open') {
     const deny = await judgeWdioOpen($, ctx, j, rest)
     if (deny !== undefined) return void (v.deny ??= `${deny}${refs}`)
   }
-  const derived = derivedSlug(ctx.who.role, ctx.who.expert?.agentId ?? ctx.who.run.agentId ?? 'run')
-  const given = slugAt < 0 ? undefined : slugForm === 'split' ? a[slugAt + 1] : a[slugAt]!.slice(a[slugAt]!.indexOf('=') + 1)
+  const flagAt = sessionFlags[0]
+  const flag = flagAt === undefined ? undefined : a[flagAt]!
+  const given = flag === undefined ? undefined : flag === '-s' || flag === '--session' ? a[flagAt! + 1] : flag.startsWith('--session=') ? flag.slice('--session='.length) : flag.slice(flag.startsWith('-s=') ? 3 : 2)
   // The orchestrator may close a session an expert left behind, by its name; it frees a device.
   if (act === 'close' && !ctx.who.expert && given !== undefined && given !== '') return
-  if (given !== derived) {
-    if (slugAt < 0) inserts.push({ at: j.cmd.spans[1]!.end, text: ` -s ${derived}` })
-    else if (slugForm === 'joined' || a[slugAt + 1] === undefined) inserts.push({ at: j.cmd.spans[slugAt]!.start, replaceTo: j.cmd.spans[slugAt]!.end, text: `-s ${derived}` })
-    else inserts.push({ at: j.cmd.spans[slugAt]!.start, replaceTo: j.cmd.spans[slugAt + 1]!.end, text: `-s ${derived}` })
-    v.notes.push(`wdio session ${given === undefined ? 'had no -s <name>' : `named its session '${given}'`}; it ran as -s ${derived}, the session name of this agent. Use that name for every call of this session (${PLATFORM_INSPECT_REF}).`)
+  const bad = badSessionName(ctx, given)
+  const fixes: { at: number; replaceTo?: number; text: string }[] = []
+  let name = given!
+  if (bad !== undefined) {
+    name = derivedSlug(ctx.who.role, ctx.who.expert?.agentId ?? ctx.who.run.agentId ?? 'run')
+    if (flagAt === undefined) fixes.push({ at: j.cmd.spans[s]!.end, text: ` -s ${name}` })
+    else if ((flag === '-s' || flag === '--session') && a[flagAt + 1] !== undefined) fixes.push({ at: j.cmd.spans[flagAt]!.start, replaceTo: j.cmd.spans[flagAt + 1]!.end, text: `-s ${name}` })
+    else fixes.push({ at: j.cmd.spans[flagAt]!.start, replaceTo: j.cmd.spans[flagAt]!.end, text: `-s ${name}` })
   }
-  v.notes.push(`__wdio:${derived}`)
-  if (act === 'snapshot' && !rest.includes('--all')) inserts.push({ at: j.cmd.spans[action]!.end, text: ' --all' })
+  if (act === 'snapshot') {
+    const off = rest.findIndex(t => t === '--all=false' || t === '--no-all')
+    if (off >= 0) fixes.push({ at: j.cmd.spans[action + 1 + off]!.start, replaceTo: j.cmd.spans[action + 1 + off]!.end, text: '--all' })
+    else if (!rest.includes('--all') && !rest.includes('--all=true')) fixes.push({ at: j.cmd.spans[action]!.end, text: ' --all' })
+  }
+  if (fixes.length > 0 && j.nested) {
+    const what = [bad !== undefined ? `-s ${name}` : '', fixes.length > (bad !== undefined ? 1 : 0) ? '--all' : ''].filter(Boolean).join(' and ')
+    return void (v.deny ??= `a wdio session call inside a nested shell (sh -c, eval) cannot be rewritten; it needs ${what}. Run it as \`npx wdio session -s ${name} ${act} …\`.${refs}`)
+  }
+  inserts.push(...fixes)
+  if (bad !== undefined) v.notes.push(`wdio session ${bad}; it ran as -s ${name}. Use that name for every call of this session (${PLATFORM_INSPECT_REF}).`)
+  v.notes.push(`__wdio:${name}`)
+}
+
+/** An --idle-timeout value in seconds (a bare number is milliseconds), or undefined when unreadable. */
+function idleSeconds(value: string): number | undefined {
+  if (/^\d+(\.\d+)?$/.test(value)) return Number(value) / 1000
+  if (!/^(\d+(\.\d+)?(ms|s|m|h))+$/.test(value)) return undefined
+  return seconds(value)
 }
 
 /** Why an `open` is not the inspection form, or undefined. */
@@ -365,11 +434,10 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   const positional: string[] = []
   for (let i = 0; i < rest.length; i++) {
     const t = rest[i]!
-    if (t === '-s' || t === '--session') {
-      i++
+    if (isSessionFlag(t)) {
+      if (t === '-s' || t === '--session') i++
       continue
     }
-    if (t.startsWith('-s=') || t.startsWith('--session=')) continue
     if (!t.startsWith('-')) {
       positional.push(t)
       continue
@@ -383,6 +451,11 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   if (target === 'macos' || target === 'windows') return `platform "${target}" is declared but not implemented yet; inspection runs on android and ios.`
   if (target !== 'android' && target !== 'ios') return `\`wdio session open ${target || '<nothing>'}\` is not a platform inspection: open android or ios with ${form}. A web page is inspected with playwright-cli.`
   if (positional.length > 1) return `\`wdio session open ${target}\` takes no further positional argument (${positional.slice(1).join(' ')}); the app comes from the capabilities file (or --bundle-id / --package when the file has no app id). Open with ${form}.`
+  const idle = flags['--idle-timeout']
+  if (idle !== undefined) {
+    const s = idleSeconds(idle)
+    if (s === undefined || s <= 0 || s > MAX_IDLE_S) return `--idle-timeout ${idle} is ${s === 0 ? 'no idle limit at all' : s === undefined ? 'unreadable' : 'over the 30m cap'}; a device is shared, so an abandoned session must end within 30 minutes (--idle-timeout 30m or less, never 0).`
+  }
   const caps = flags['--capabilities']
   if (caps === undefined || caps === '') return `the inspection session opens with --capabilities tests/capabilities/<device>.json, the same file the test run uses: ${form}.`
   if (/^\s*[{[]/.test(caps)) return `--capabilities takes inline JSON here; capabilities live only in tests/capabilities/<device>.json, so pass that file: ${form}.`
@@ -398,6 +471,9 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   } catch {
     return `${file} is not JSON; fix the capabilities file before opening a session.`
   }
+  const named = doc.platformName
+  if (typeof named !== 'string' || named === '') return `${file} has no platformName; the capabilities file names its platform (CONTRACT B1), and open must match it.`
+  if (named.toLowerCase() !== target) return `\`open ${target}\` does not match ${file}, whose platformName "${named}" is ${named.toLowerCase()}; open the platform the file names.`
   const appId = APP_ID_KEYS.find(k => typeof doc[k] === 'string' && doc[k] !== '')
   const appFlag = ['--bundle-id', '--package', '--activity'].find(f => flags[f] !== undefined)
   if (appId !== undefined && appFlag !== undefined) return `${file} already names the app (${appId}); ${appFlag} is passed only when the capabilities file has no app id. Drop it.`
@@ -409,6 +485,17 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
 const PLATFORM_REF = 'skills/platform-testing/SKILL.md'
 const PLATFORM_CONFIG = /(^|\/)playwright\.platform\.config\.[cm]?[jt]s$/
 const RUN_FORM = '`PLATFORM=<android|ios> CAPABILITIES=tests/capabilities/<device>.json APPIUM_URL=<server-with-base-path> npx playwright test -c playwright.platform.config.ts`'
+const PM = new Set(['npm', 'pnpm', 'yarn'])
+
+/** The package.json script a package-manager command runs (`npm run x`, `npm test`, `npm t`, `pnpm x`, `yarn x`), or undefined. */
+function scriptName(a: readonly string[], scripts: Record<string, string>): string | undefined {
+  if (!PM.has(a[0] ?? '')) return undefined
+  const sub = a[1] ?? ''
+  if (sub === 'run' || sub === 'run-script') return a[2]
+  if (sub === 'test' || sub === 't' || sub === 'tst') return 'test'
+  if (a[0] !== 'npm' && sub !== '' && !sub.startsWith('-') && Object.prototype.hasOwnProperty.call(scripts, sub)) return sub
+  return undefined
+}
 
 async function judgePlatformRun($: EngineInterface, ctx: Ctx, all: Judged[], v: Verdict) {
   const exported: Record<string, string> = {}
@@ -433,9 +520,10 @@ async function judgePlatformRun($: EngineInterface, ctx: Ctx, all: Judged[], v: 
         else if (/^-c./.test(t)) config = t.slice(2)
         else if (t === '--list') list = true
       }
-    } else if ((a[0] === 'npm' || a[0] === 'pnpm' || a[0] === 'yarn') && a[1] === 'run' && a[2] !== undefined) {
+    } else if (PM.has(a[0] ?? '')) {
       scripts ??= (await readJson<{ scripts?: Record<string, string> }>($, `${ctx.root}/package.json`))?.scripts ?? {}
-      const script = scripts[a[2]] ?? ''
+      const name = scriptName(a, scripts)
+      const script = name === undefined ? '' : (scripts[name] ?? '')
       if (!/playwright test/.test(script)) continue
       config = /(?:-c|--config)[ =](\S+)/.exec(script)?.[1]
       list = /--list\b/.test(script) || a.includes('--list')
