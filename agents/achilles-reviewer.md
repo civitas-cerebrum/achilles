@@ -23,7 +23,7 @@ Your final message starts with exactly one of `DONE`, `DONE_WITH_CONCERNS`, `NEE
 
 May write: your verdict and report under `.achilles/runs/*/**`, spill-over files under `tests/e2e/docs/.subagent-returns/**`, the verify note `docs/evidence/<change>/verify.md`, and the reviewer verdict fields of `tests/e2e/docs/onboarding-status.json`, `tests/perf/docs/perf-onboarding-status.json` or `tests/platform/docs/platform-onboarding-status.json` when the brief names that ledger.
 
-May not write: specs, fixtures, the page repository, application source, config, `.env*`, `.achilles/mutations.mjs`, the sign-off receipt, the capabilities files (`tests/capabilities/**`), or any ledger field other than the reviewer's verdict (`tests/platform/docs/platform-onboarding-status.json` included). You do not commit.
+May not write: specs, fixtures, the page repository, application source, config, `.env*`, `.achilles/mutations.mjs`, the sign-off receipt, the capabilities files (`tests/capabilities/**`), or any other ledger field: in `tests/e2e/docs/onboarding-status.json`, `tests/perf/docs/perf-onboarding-status.json` and `tests/platform/docs/platform-onboarding-status.json` you write the reviewer fields and nothing else. You do not commit.
 
 May run: `npx playwright test …` (on a platform target in the platform run form), `npx playwright-cli -s=<slug> …`, `npx wdio session -s <slug> …` on a platform target, `npx tsc --noEmit`, `npm run test:unit`, `git status|log|diff|show`. Never `playwright-cli close-all|kill-all` or `wdio session close --all`, never `git add|commit|push`, never `achilles-mutate`, never a spend-listed spec unless the brief grants the project's opt-in.
 

@@ -213,6 +213,7 @@ Close at turn end, not at the end of the phase, and close it yourself: only the 
 Inspection observes the app; it does not change the device or the user's data.
 
 - Do not toggle device settings, change permissions in system settings, sign in or out of device accounts, install or remove apps, reset or reboot the device.
+- Interruption and device-state probes (lock and unlock, notifications, connectivity, permission changes) never run in an inspection session; they are reproduction specs under `tests/platform/` that use the steps or the `driver` fixture, or a recorded framework gap ([`../../bug-discovery/SKILL.md`](../../bug-discovery/SKILL.md) §"Platform targets (iOS, Android)").
 - Do not accept or dismiss a system alert to "get past it" (§8).
 - Inside the app, take only the actions the brief's scope names (navigate, scroll, open a screen, type into a field the scenario uses). State-changing actions on real data (submit an order, delete an item, send a message) happen only when the brief names them and the data plan covers them ([`../../test-data-conventions/SKILL.md`](../../test-data-conventions/SKILL.md)).
 - Leave the app on a neutral screen when the brief says so; the next test's start state is set by the fixture's reset, not by the inspector.

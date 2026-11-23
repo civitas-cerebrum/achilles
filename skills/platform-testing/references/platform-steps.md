@@ -107,6 +107,7 @@ This is the complete list. No other variable selects platform, device or server.
 
 - Shared steps keep their names and `(elementName, pageName, ...)` argument order on every platform.
 - A web-only step called on an appium-family platform throws `PlatformNotSupportedError(<stepName>, <platform>)`. A platform-only step called on `web` throws the same. A platform step one platform cannot do (`pressBack` on ios) throws the same.
+- Web-only steps, as designed for element-interactions 0.4.0 (confirm against the installed package's `PlatformNotSupportedError` behaviour before relying on the list): URL steps, tabs, cookies, storage, network waits, HTML and CSS reads, file upload, `selectDropdown`, `hover` and `rightClick`. `hover` the step throws on a platform run even though the `hover` primitive exists on the `Element` interface (§"Element primitives").
 - Nothing warns and continues. A skipped action is a thrown error, never a log line and a green test.
 - Every `verify*` step and matcher polls until its timeout in both families. A platform assertion never reads once.
 

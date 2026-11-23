@@ -51,7 +51,9 @@ A native app has no `data-testid`. Its stable handle is the accessibility identi
 | iOS UIKit | `view.accessibilityIdentifier = "<value>"`, or the Identifier field in a storyboard or xib | `accessibility id` |
 | iOS SwiftUI | `.accessibilityIdentifier("<value>")` on the view | `accessibility id` |
 | Android Views | `android:id="@+id/<value>"` where the view has none; otherwise `android:contentDescription` only when the element has no visible label (it is read aloud by screen readers, so it must be a meaningful label, never a test token) | `id` (resource id) or `accessibility id` |
-| Jetpack Compose | `Modifier.testTag("<value>")` (with `testTagsAsResourceId` enabled once on the root, recorded in the receipt) | `id` |
+| Jetpack Compose | `Modifier.testTag("<value>")`, only where `testTagsAsResourceId` is already enabled on the root; if it is not, enabling it would be a second edit, so return `blocked` naming that one-time project change | `id` |
+
+**Rows of a lazy list.** A row is identified by a stable per-row value (the item's id or its stable text, for example ``testID={`order-row-${order.id}`}``), never by its position. A native list renders only the rows near the viewport, so `scrollUntilFound` must be able to name a row that is not rendered yet; an index-based identifier (`row-3`) changes with scrolling, sorting and data and cannot do that ([`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Gestures and scrolling").
 
 The value follows the project's naming convention ([`references/selector-convention.md`](references/selector-convention.md)). Changing an existing accessibility label, visible text or content description is not inert and is out of scope (`no-inert-option`).
 

@@ -49,11 +49,11 @@ On a native app (`PLATFORM=ios` or `android`) there is no browser: no trace, no 
 
 | Capture | How | Bundle file |
 |---|---|---|
-| Screenshot per meaningful step | `steps.screenshot()` as on web (the driver's screenshot) | `NN-<step>.png` |
+| Screenshot per meaningful step | through the `driver` fixture in the bundle spec, or `npx wdio session -s <slug> screenshot` in the discovery walk; `steps.screenshot()` only once [`platform-steps.md`](../platform-testing/references/platform-steps.md) lists it as a platform step. The fixture attaches `failure-screenshot` on a failure | `NN-<step>.png`, `failure-screenshot.png` |
 | Page source at the end and at a failure | `steps.getPageSource()` written by the spec; the fixture also attaches `page-source` and `failure-screenshot` on a failure | `NN-<step>.xml`, `failure-screenshot.png`, `page-source.xml` |
-| Device log for the run's time window | syslog on iOS, logcat on Android, through the Appium session (`npx wdio session -s <slug> logs --source syslog\|logcat` during discovery) | `device.log` |
-| Screen recording | Appium screen recording around the scenario where the project enables it; otherwise a recorded walk in the discovery session | `recording.mp4` |
-| Target | platform, capabilities file path, device model or class, OS version, real or virtual, app version | `summary.md` §Environment |
+| Device log for the run's time window | syslog on iOS, logcat on Android, read through the `driver` fixture (in the spec or in the fixture's `onSessionStarted`); where the spec cannot read it, a named capture gap, and a framework gap ([framework-gap.md](../achilles-orchestrator/references/framework-gap.md)) when the framework offers no way. `npx wdio session -s <slug> logs` belongs to a separate reproduction session, never to the run | `device.log` |
+| Screen recording | started and stopped through the `driver` fixture around the scenario; otherwise a named capture gap (framework gap when no way exists). A recording of the discovery walk is labelled as such, never as the run | `recording.mp4` |
+| Target | platform, capabilities file path, device model or class, OS version, real or virtual (from the capabilities file and the ledger `devices[]` entry when one exists), app version (from the run's attachments or the `## Test Infrastructure` section of `tests/platform/docs/app-context.md`) | `summary.md` §Environment |
 
 - Phase 1 discovery uses the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md) with the run's capabilities file and the session name `companion-<slug>`, closed before Phase 2. Never answer a system alert the task does not name.
 - The bundle lives under `tests/platform/evidence/<slug>-<ts>/`, inside the platform config's `testDir`, with the same layout and timestamp rules as on web. The spec in it imports the platform fixture and runs with the one form in [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Run command" (pointing at the bundle spec).

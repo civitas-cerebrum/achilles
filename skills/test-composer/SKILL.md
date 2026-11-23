@@ -178,7 +178,7 @@ A brief whose target is a native app (`PLATFORM=ios` or `android`) loads [`../pl
 
 ### Start state and reset
 
-A device keeps app data, login and granted permissions from the previous test. Every platform scenario opens with a comment naming its start state (screen, logged in or not, permission states, data present) and its reset level: `relaunch` (the fixture default, terminate and activate), `clear data`, or `reinstall`. A level above relaunch is arranged explicitly in the test or a setup project and the reason is in the comment. A test never relies on what an earlier test left on screen or on disk. A prompt that iOS shows once per install needs `reinstall` or a permission reset to appear. [Platform skill](../platform-testing/SKILL.md) §"App state and reset".
+A device keeps app data, login and granted permissions from the previous test. Every platform scenario opens with a comment naming its start state (screen, logged in or not, permission states, data present) and its reset level (`none`, `relaunch`, `clear data` or `reinstall`), using only the mechanism the levels table in [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"App state and reset" gives for that level; no other way of resetting is invented in a spec. Any level other than the fixture default carries its reason in the comment. A test never relies on what an earlier test left on screen or on disk, except inside a `none` block that declares itself a deliberate sequence. A prompt that iOS shows once per install appears only after a reinstall or a permission reset.
 
 ### Keyboard
 
@@ -202,7 +202,7 @@ Transitions on a device take real time. Every wait is a polling verification (`v
 
 ### Web-only steps throw
 
-On a platform run a web-only step (URL, tabs, cookies, storage, network waits, HTML and CSS reads, file upload, `selectDropdown`, `hover`, right click) throws `PlatformNotSupportedError`, and so does a platform step a platform cannot do (`pressBack` on iOS). Never catch the error to keep going and never wrap a step in a try to make it optional; use the platform step that does the job, or a stated platform branch. The oracle ladder carries over: the L1 round trip is a relaunch (`resetApp`) and a re-read of the screen instead of a page reload, and an L2 API oracle applies unchanged when the suite can reach the app's API. [`platform-steps.md`](../platform-testing/references/platform-steps.md) §"Step semantics".
+On a platform run a web-only step throws `PlatformNotSupportedError`, and so does a platform step a platform cannot do (`pressBack` on iOS); which steps are web-only is listed once, in [`platform-steps.md`](../platform-testing/references/platform-steps.md) §"Step semantics". Never catch the error to keep going and never wrap a step in a try to make it optional; use the platform step that does the job, or a stated platform branch. The oracle ladder carries over: the L1 round trip is a relaunch (`resetApp`) and a re-read of the screen instead of a page reload, and an L2 API oracle applies unchanged when the suite can reach the app's API.
 
 ## Anti-patterns
 
