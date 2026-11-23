@@ -2,11 +2,12 @@
 // entry of a platform page (page `platform` android or ios), built OFFLINE from the inspection material the expert
 // already captured in its `npx wdio session`:
 //
-//   npx wdio session -s <slug> source      > <scratch>/settings.xml   (the page source XML)
-//   npx wdio session -s <slug> screenshot    <scratch>/settings.png   (the screenshot)
+//   npx wdio session -s <slug> source --path <scratch>/Settings.xml                       (the page source XML)
+//   npx wdio session -s <slug> screenshot <ref> --path <scratch>/SettingsPage.networkRow.png   (the ELEMENT shot;
+//                                                    <ref> from `snapshot -i --all --selectors`)
 //   npx achilles-selector-evidence --platform ios --page SettingsPage --element networkRow \
 //       --capabilities tests/capabilities/iphone.json --screen Settings \
-//       --source <scratch>/settings.xml --screenshot <scratch>/settings.png
+//       --source <scratch>/Settings.xml --screenshot <scratch>/SettingsPage.networkRow.png
 //
 // It never opens a session, never starts a browser and never touches a device: it resolves the committed selector
 // against the saved page source, records what it found and copies the screenshot beside the note. Forms it cannot
@@ -27,8 +28,11 @@ export const IMPLEMENTED = ['android', 'ios']
 export const DECLARED = ['macos', 'windows']
 export const NOTE_FIELDS = ['selector', 'platform', 'capabilities', 'screen', 'resolved count', 'class', 'accessibility id', 'id', 'label', 'source snippet', 'screenshot', 'source']
 export const CAPABILITIES_DIR = 'tests/capabilities/'
-/** A device screenshot is larger than a clipped browser viewport; the cap still keeps the evidence dir reviewable. */
+/** An element screenshot on a 3x display can pass the web 300 KB cap; 1 MB still keeps the evidence dir reviewable. */
 export const MAX_PNG_BYTES = 1024 * 1024
+// wdio CLI 10.2.0: `source` and `screenshot` write the file named by --path (stdout is a status line, not the XML).
+const SOURCE_CMD = 'npx wdio session -s <slug> source --path <scratch>/<screen>.xml'
+const SHOT_CMD = 'npx wdio session -s <slug> screenshot <ref> --path <scratch>/<Page>.<element>.png'
 const POSITIONAL = 'positional: needs a "fallback" or a known-issues row'
 
 export const USAGE =
@@ -102,6 +106,7 @@ const VIEW = {
 // ── NSPredicate subset (predicate, class chain): `attr OP value` joined by AND ──────────────────────────────────────
 
 const PREDICATE_ATTRS = new Set(['name', 'label', 'value', 'type', 'enabled', 'visible', 'accessible', 'selected'])
+const BOOLEAN_ATTRS = new Set(['enabled', 'visible', 'accessible', 'selected'])
 const PREDICATE_OPS = { '==': (a, b) => a === b, '=': (a, b) => a === b, '!=': (a, b) => a !== b, CONTAINS: (a, b) => a.includes(b), BEGINSWITH: (a, b) => a.startsWith(b), ENDSWITH: (a, b) => a.endsWith(b) }
 
 /** Splits on a keyword outside quotes. */
@@ -136,8 +141,13 @@ export function compilePredicate(expr) {
     if (!m) unresolved(`"${c}" is outside the offline predicate subset (attr ==|!=|CONTAINS|BEGINSWITH|ENDSWITH 'value', joined by AND; no [c]/[d] modifiers, OR, NOT, MATCHES, LIKE, IN or parentheses)`)
     const attr = m[1]
     if (!PREDICATE_ATTRS.has(attr)) unresolved(`the predicate attribute "${attr}" is not in the page source`)
-    let want = m[4] ?? m[5]
-    if (want === undefined) want = /^(true|yes|1)$/i.test(m[3]) ? 'true' : 'false'
+    const quoted = m[4] ?? m[5]
+    // XCUITest compares booleans as numbers: `enabled == 1` / `enabled == true` match, `enabled == 'true'` does not
+    // compare the way the source text suggests, so only unquoted booleans on boolean attributes resolve offline.
+    if (BOOLEAN_ATTRS.has(attr) && quoted !== undefined) unresolved(`"${c}" compares the boolean attribute ${attr} with a quoted string; write it unquoted (${attr} == true)`)
+    if (!BOOLEAN_ATTRS.has(attr) && quoted === undefined) unresolved(`"${c}" compares the string attribute ${attr} with an unquoted value`)
+    if (BOOLEAN_ATTRS.has(attr) && !/^(==|=|!=)$/.test(m[2])) unresolved(`"${c}" applies ${m[2]} to the boolean attribute ${attr}`)
+    const want = quoted ?? (/^(true|yes|1)$/i.test(m[3]) ? 'true' : 'false')
     const op = PREDICATE_OPS[m[2].toUpperCase()]
     return (n) => op(n.attrs[attr] ?? '', want)
   })
@@ -161,7 +171,8 @@ export function evalClassChain(doc, expr) {
     i += t[0].length
     const preds = []
     while (expr[i] === '[') {
-      if (expr[i + 1] !== '`') unresolved('class chain indices ([n]) are positional and are not evaluated offline')
+      if (expr[i + 1] === '$') unresolved('a class chain descendant predicate [$…$] is not evaluated offline')
+      if (expr[i + 1] !== '`') unresolved('class chain indices ([n], [-n]) are positional and are not evaluated offline')
       const end = expr.indexOf('`]', i + 2)
       if (end < 0) unresolved('an unterminated class chain predicate')
       preds.push(compilePredicate(expr.slice(i + 2, end)))
@@ -223,7 +234,8 @@ function parsePredicate(body) {
     if ((m = /^@([\w:.-]+)\s*(!?=)\s*(?:"([^"]*)"|'([^']*)')$/.exec(c))) {
       const [, a, op, d, s] = m
       const v = d ?? s
-      return op === '=' ? (n) => n.attrs[a] === v : (n) => (n.attrs[a] ?? '') !== v
+      // XPath: @a != "v" is true only for an element that HAS @a with another value.
+      return op === '=' ? (n) => n.attrs[a] === v : (n) => a in n.attrs && n.attrs[a] !== v
     }
     if ((m = /^(contains|starts-with)\(\s*@([\w:.-]+)\s*,\s*(?:"([^"]*)"|'([^']*)')\s*\)$/.exec(c))) {
       const [, fn, a, d, s] = m
@@ -313,15 +325,30 @@ const ALIASES = { accessibilityid: 'accessibility id', classname: 'class name', 
 const IOS_ONLY = new Set(['predicate', 'class chain'])
 const ANDROID_ONLY = new Set(['uiautomator'])
 
+/** Positional forms read off the selector TEXT, so a form the tool cannot evaluate is still flagged. */
+export function isPositional(key, value) {
+  const bare = String(value).replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '""')
+  if (key === 'xpath') return /\[\s*\d+\s*\]/.test(bare) || /\b(position|last)\s*\(\s*\)/.test(bare)
+  if (key === 'class chain') return /\[\s*-?\d+\s*\]/.test(bare)
+  if (key === 'uiautomator') return /\.(instance|index)\s*\(/.test(bare)
+  return false
+}
+
 /**
- * Resolves a repository selector on a parsed page source. Returns { nodes, positional } or { unresolved: why }.
- * Throws { wrongPlatform } when the strategy cannot exist on this platform at all.
+ * Resolves a repository selector on a parsed page source. Returns { nodes, positional } or { unresolved, positional }.
+ * Returns { wrongPlatform } when the strategy cannot exist on this platform at all.
  */
 export function resolveSelector(doc, selector, platform) {
   const keys = Object.keys(selector ?? {}).filter((k) => k !== 'fallback')
+  if (keys.map((k) => k.toLowerCase()).sort().join('+') === 'name+role')
+    return { unresolved: 'role + name is the enhanced accessibility lookup; it has no page-source equivalent and is not evaluated offline' }
   if (keys.length !== 1) return { unresolved: keys.length === 0 ? 'the selector has no strategy key' : `combined strategies (${keys.join(' + ')}) are not evaluated offline` }
   const key = ALIASES[keys[0].toLowerCase()] ?? keys[0].toLowerCase()
-  const value = selector[keys[0]]
+  const r = resolveOne(doc, key, keys[0], selector[keys[0]], platform)
+  return typeof selector[keys[0]] === 'string' && isPositional(key, selector[keys[0]]) ? { ...r, positional: true } : r
+}
+
+function resolveOne(doc, key, rawKey, value, platform) {
   if (typeof value !== 'string') return { unresolved: `the ${key} value is not a string` }
   if ((platform === 'android' && IOS_ONLY.has(key)) || (platform === 'ios' && ANDROID_ONLY.has(key))) return { wrongPlatform: key }
   const v = VIEW[platform]
@@ -331,13 +358,13 @@ export function resolveSelector(doc, selector, platform) {
       case 'accessibility id':
         return { nodes: all().filter((n) => v.accessibilityId(n) === value) }
       case 'id':
-        return {
-          nodes: all().filter((n) => {
-            const id = v.id(n)
-            if (id === value) return true
-            return platform === 'android' && !value.includes(':') && n.attrs.package !== undefined && id === `${n.attrs.package}:id/${value}`
-          }),
+        if (platform === 'android' && !value.includes(':')) {
+          // UiAutomator2 completes a short id with the app package (the top node's), then tries android:id/.
+          const appPackage = all().find((n) => n.attrs.package)?.attrs.package
+          const mine = appPackage ? all().filter((n) => v.id(n) === `${appPackage}:id/${value}`) : []
+          return { nodes: mine.length > 0 ? mine : all().filter((n) => v.id(n) === `android:id/${value}`) }
         }
+        return { nodes: all().filter((n) => v.id(n) === value) }
       case 'class name':
         return { nodes: all().filter((n) => n.tag !== 'hierarchy' && v.cls(n) === value) }
       case 'text':
@@ -346,14 +373,15 @@ export function resolveSelector(doc, selector, platform) {
         return evalXpath(doc, value)
       case 'predicate': {
         const p = compilePredicate(value)
-        return { nodes: all().filter((n) => n.tag.startsWith('XCUIElementType') && p(n)) }
+        // The search runs below the application element, as XCUITest's does.
+        return { nodes: all().filter((n) => n.tag.startsWith('XCUIElementType') && n.tag !== 'XCUIElementTypeApplication' && p(n)) }
       }
       case 'class chain':
         return evalClassChain(doc, value)
       case 'uiautomator':
         return evalUiSelector(doc, value)
       default:
-        return { unresolved: `the "${keys[0]}" strategy is not resolvable offline` }
+        return { unresolved: `the "${rawKey}" strategy is not resolvable offline` }
     }
   } catch (e) {
     if (e instanceof Unresolved) return { unresolved: e.message }
@@ -370,7 +398,7 @@ const dash = (v) => (v === undefined || v === null || v === '' ? '—' : v)
 export function renderPlatformNote(n) {
   const v = VIEW[n.platform]
   const node = n.node
-  const count = n.unresolved !== undefined ? `unresolved offline (${oneLine(n.unresolved)})` : `${n.count}${n.list ? ' (list entry)' : ''}${n.positional ? ` (${POSITIONAL})` : ''}`
+  const count = (n.unresolved !== undefined ? `unresolved offline (${oneLine(n.unresolved)})` : `${n.count}${n.list ? ' (list entry)' : ''}`) + (n.positional ? ` (${POSITIONAL})` : '')
   const label = node ? v.label(node) : undefined
   const snippet = node ? '`' + oneLine(node.raw).replace(/`/g, "'").slice(0, 300) + '`' : undefined
   const values = {
@@ -418,11 +446,14 @@ function parseArgs(argv) {
 
 /** Refuses anything but a path to a JSON file under tests/capabilities/; returns the project-relative path. */
 function capabilitiesFile(root, value, platform) {
-  if (/^\s*[{[]/.test(value) || /^[\w:.-]+=/.test(value))
+  // The value is never echoed: a mistaken inline value may carry a device id or a credential.
+  // Inline: JSON, a quote, whitespace, '=' or a colon that is not a drive letter (C:\ or C:/).
+  const colon = value.replace(/^[A-Za-z]:[\\/]/, '').includes(':')
+  if (/^\s*[{[]/.test(value) || /["'\s=]/.test(value) || colon)
     fail('--capabilities was given capability values inline', `Pass the path of a capabilities file (${CAPABILITIES_DIR}<device>.json), the same file the test run and the inspection session use. Capabilities live only in those files.`, 'platform-pages', 2)
   const rel = posix(path.relative(root, path.resolve(root, value)))
   if (!rel.startsWith(CAPABILITIES_DIR) || rel.includes('../') || !rel.endsWith('.json'))
-    fail(`--capabilities ${value} is outside ${CAPABILITIES_DIR}`, `Pass ${CAPABILITIES_DIR}<device>.json: the only place a project keeps capabilities.`, 'platform-pages', 2)
+    fail(`--capabilities is not a path under ${CAPABILITIES_DIR}`, `Pass ${CAPABILITIES_DIR}<device>.json: the only place a project keeps capabilities.`, 'platform-pages', 2)
   let caps
   try {
     caps = JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'))
@@ -496,18 +527,18 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
   if (!entry)
     fail(`Unknown repository entry ${args.page}.${args.element} on the ${platform} page`, 'Insert the entry first with "provisional": true, run this tool, then remove the flag in the same change.', 'the-sequence', 2)
 
-  const sourceFile = inputFile(root, args.source, 'source', 'Save the page source first: npx wdio session -s <slug> source > <file>, on the screen named by --screen.')
-  const shotFile = inputFile(root, args.screenshot, 'screenshot', 'Save the screenshot first: npx wdio session -s <slug> screenshot <file>.png, on the same screen.')
+  const sourceFile = inputFile(root, args.source, 'source', `Save the page source first: ${SOURCE_CMD}, on the screen named by --screen.`)
+  const shotFile = inputFile(root, args.screenshot, 'screenshot', `Save the element screenshot first: ${SHOT_CMD} (the ref from snapshot -i --all --selectors), on the same screen.`)
   const png = fs.readFileSync(shotFile)
-  if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) fail(`--screenshot ${args.screenshot} is not a PNG`, 'Pass the PNG that `npx wdio session -s <slug> screenshot` saved.', 'platform-pages', 2)
+  if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) fail(`--screenshot ${args.screenshot} is not a PNG`, `Pass the PNG that ${SHOT_CMD} saved.`, 'platform-pages', 2)
   if (png.length > MAX_PNG_BYTES)
-    fail(`--screenshot is ${Math.round(png.length / 1024)} KB (cap ${MAX_PNG_BYTES / 1024} KB)`, 'Crop the screenshot to the area around the element, then re-run; nothing over the cap is written.', 'platform-pages', 1)
+    fail(`--screenshot is ${Math.round(png.length / 1024)} KB (cap ${MAX_PNG_BYTES / 1024} KB)`, `Take the element screenshot instead of the full screen: ${SHOT_CMD}, then re-run; nothing over the cap is written.`, 'platform-pages', 1)
 
   let doc
   try {
     doc = parseXml(fs.readFileSync(sourceFile, 'utf8'))
   } catch (e) {
-    fail(`--source ${args.source} is not a page source (${e.message})`, 'Pass the XML that `npx wdio session -s <slug> source` printed.', 'platform-pages', 2)
+    fail(`--source ${args.source} is not a page source (${e.message})`, `Pass the XML file that ${SOURCE_CMD} wrote.`, 'platform-pages', 2)
   }
 
   const key = `${args.page}.${args.element}`
@@ -556,7 +587,7 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
   fs.writeFileSync(path.join(evDir, `${base}.md`), text)
   if (r.unresolved !== undefined)
     process.stderr.write(`[${RULE_ID}] ${key} (${platform}): unresolved offline (${r.unresolved}); the note says so and carries no count. Confirm the element in the live snapshot, or prefer a strategy the tool resolves.\n`)
-  if (r.positional) process.stderr.write(`[${RULE_ID}] ${key} (${platform}): the xpath is positional; the entry needs a "fallback" or a known-issues row.\n`)
+  if (r.positional) process.stderr.write(`[${RULE_ID}] ${key} (${platform}): the selector is positional; the entry needs a "fallback" or a known-issues row.\n`)
   process.stdout.write(text + `png: ${posix(path.relative(root, path.join(evDir, `${base}.png`)))} (${Math.round(png.length / 1024)} KB)\n`)
   process.exit(0)
 }

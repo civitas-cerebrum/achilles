@@ -132,22 +132,28 @@ never touches a device. It reads the inspection material the expert already capt
 (see [`platform-inspection-protocol.md`](platform-inspection-protocol.md)) on the screen that shows the element:
 
 ```
-npx wdio session -s <expert-slug> source > <scratch>/settings.xml
-npx wdio session -s <expert-slug> screenshot <scratch>/settings.png
+npx wdio session -s <expert-slug> source --path <scratch>/Settings.xml
+npx wdio session -s <expert-slug> screenshot <ref> --path <scratch>/SettingsPage.networkRow.png
 npx achilles-selector-evidence --platform ios --page SettingsPage --element networkRow \
   --capabilities tests/capabilities/iphone.json --screen Settings \
-  --source <scratch>/settings.xml --screenshot <scratch>/settings.png [--out <dir>] [--repository <file>]
+  --source <scratch>/Settings.xml --screenshot <scratch>/SettingsPage.networkRow.png [--out <dir>] [--repository <file>]
 ```
+
+`source --path` and `screenshot --path` write the file (the command itself prints a status line, not the XML). The
+screenshot is the **element** screenshot: `<ref>` is the element's ref from `snapshot -i --all --selectors`.
 
 - `--context <name>` may stand for `--platform` and `--capabilities` when it names a platform context
   (`{ "platform", "capabilities", "server" }`); the tool never reads or prints `server`.
 - `--platform macos` and `--platform windows` are declared but not implemented yet (exit 2).
 - `--capabilities` takes a **path** under `tests/capabilities/`, the same file the inspection session and the test
-  run use. Inline capability values, a path outside that directory, or a file whose `platformName` names another
-  platform are refused (exit 2). The note records the path only, never a capability value.
+  run use. Inline capability values (JSON, quotes, spaces, `=`, a colon that is not a drive letter), a path outside
+  that directory, or a file whose `platformName` names another platform are refused (exit 2); the message never
+  repeats the value. The note records the path only, never a capability value.
 - The committed entry of the page with that `platform` is resolved against the saved page source. Count semantics are
   the web ones: exactly 1, at least 1 for `"list": true`; 0 or more than 1 is refused (exit 1) and nothing is
-  written. The screenshot (a PNG, ≤ 1 MB; crop it when larger) is copied beside the note.
+  written. The element screenshot (a PNG) is copied beside the note. Its cap is 1 MB, not the web 300 KB: an element
+  shot on a 3x display easily passes 300 KB. Over the cap the tool refuses and asks for the element screenshot
+  instead of the full screen.
 - Output: `<evidence dir>/<Page>.<element>.<platform>.md` and `.png`, beside the web `<Page>.<element>.md`.
 
 ### The platform note
@@ -179,34 +185,37 @@ Fields, in this order: `selector`, `platform`, `capabilities`, `screen`, `resolv
 | `label` | `text`, else `content-desc` | `label`, else `value` |
 | `source snippet` | the matched element's opening tag (≤ 300 chars, emails redacted) | same |
 
-`resolved count` is the count, `(list entry)` for a list, `(positional: …)` for a positional xpath, or
-`unresolved offline (<why>)` for a form the tool cannot evaluate faithfully offline; it never guesses a count. An
-unresolved note is still written (the expert saw the element in its live snapshot), and the tool says so on stderr.
+`resolved count` is the count (`(list entry)` for a list) or `unresolved offline (<why>)` for a form the tool cannot
+evaluate faithfully offline; it never guesses a count. An unresolved note is still written (the expert saw the element
+in its live snapshot), and the tool says so on stderr. Either is followed by `(positional: …)` when the selector
+text is positional, whether or not it resolved: xpath `[n]`, `position()`, `last()`; class chain `[n]` / `[-n]`;
+UiSelector `.instance(` / `.index(`.
 
 ### Selector mapping and preference (CONTRACT C4)
 
 | `wdio session` selector | Repository `selector` | Resolved offline |
 |---|---|---|
 | `~value` | `{ "accessibility id": "value" }` | yes |
-| `id=value` / resource-id | `{ "id": "value" }` | yes (android: full `pkg:id/x` or short `x`; ios: `name`) |
-| `-ios predicate string:expr` | `{ "predicate": "expr" }` | `attr ==\|!=\|CONTAINS\|BEGINSWITH\|ENDSWITH 'v'` joined by `AND`, attrs `name label value type enabled visible accessible selected`; no `OR`, `NOT`, `[c]`, `MATCHES`, `LIKE`, `IN`, parentheses |
-| `-ios class chain:expr` | `{ "class chain": "expr" }` | `Type` / `*` segments, `/` and `**/`, `` [`predicate`] `` filters (subset above); no `[n]` indices |
+| `id=value` / resource-id | `{ "id": "value" }` | yes (android: full `pkg:id/x`, or short `x` completed with the app package of the top node, then `android:id/x`; ios: `name`) |
+| `-ios predicate string:expr` | `{ "predicate": "expr" }` | `attr ==\|!=\|CONTAINS\|BEGINSWITH\|ENDSWITH 'v'` joined by `AND` on `name label value type`; `enabled visible accessible selected ==\|!= true\|false\|YES\|NO\|1\|0` unquoted only (a quoted boolean is unresolved); never matches the application element; no `OR`, `NOT`, `[c]`, `MATCHES`, `LIKE`, `IN`, parentheses |
+| `-ios class chain:expr` | `{ "class chain": "expr" }` | `Type` / `*` segments, `/` and `**/`, `` [`predicate`] `` filters (subset above); no `[n]` / `[-n]` indices (positional), no `[$…$]` descendant predicates |
 | `android=expr` | `{ "uiautomator": "expr" }` | `new UiSelector()` with `text`, `textContains`, `textStartsWith`, `description`, `descriptionContains`, `descriptionStartsWith`, `resourceId`, `className`; no `UiScrollable`, `instance`, `index`, regex |
 | text | `{ "text": "value" }` | yes (android `text`, ios `label`) |
 | class | `{ "class name": "value" }` | yes |
-| `//xpath` or `(//xpath)[n]` | `{ "xpath": "..." }` | absolute paths of `/` and `//` steps, `*` or a name, predicates `[n]`, `[last()]`, `[@a]`, `[@a="v"]`, `[@a!="v"]`, `[contains(@a,"v")]`, `[starts-with(@a,"v")]` joined by `and`, one `(path)[n]` wrapper; no axes, `text()`, unions, `or`, relative paths |
+| `//xpath` or `(//xpath)[n]` | `{ "xpath": "..." }` | absolute paths of `/` and `//` steps, `*` or a name, predicates `[n]`, `[last()]`, `[@a]`, `[@a="v"]`, `[@a!="v"]` (true only when `@a` is present), `[contains(@a,"v")]`, `[starts-with(@a,"v")]` joined by `and`, one `(path)[n]` wrapper; no axes, `text()`, unions, `or`, relative paths |
 
 Preference order when inserting a platform entry: **accessibility id**, then **id** (android) / **predicate** (ios),
 then **class chain** / **uiautomator**, then **text**, **xpath last**. A strategy of the other platform (a predicate on
-an android page, a UiSelector on an ios page) is refused (exit 1). A selector with two strategy keys is recorded as
-unresolved offline; `fallback` is not a strategy and is ignored by the resolution.
+an android page, a UiSelector on an ios page) is refused (exit 1). A selector with two strategy keys, `role` + `name`
+included, is recorded as unresolved offline; `fallback` is not a strategy and is ignored by the resolution.
 
 ### What the gate checks on a platform page
 
 The repository-evidence gate treats a new or changed platform entry as it treats a web one (an advisory note, nothing
 refused), against `<Page>.<element>.<platform>.md`: the note must exist, carry `- source:`, name the page's platform
-in `- platform:` and carry the selector deep-equal. A web note never counts for a platform page. An xpath whose note
-says `(positional` additionally needs a `fallback` in its selector or a known-issues row naming `<Page>.<element>`
+in `- platform:` and carry the selector deep-equal. A web note never counts for a platform page. A note whose count
+is `unresolved offline` gets a soft note and the checks go on. A selector whose note says `(positional`
+additionally needs a `fallback` in its selector or a known-issues row naming `<Page>.<element>` as a whole word
 (`tests/platform/docs/known-issues.md`, or the project's `tests/e2e/docs/known-issues.md`); without either, the gate
 says so.
 

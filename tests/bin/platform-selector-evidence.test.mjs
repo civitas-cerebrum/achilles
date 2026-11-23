@@ -197,7 +197,14 @@ test('capabilities: inline values are refused, a path outside tests/capabilities
   for (const p of ['caps.json', 'tests/capabilities/../../caps.json', join(d, 'caps.json')]) {
     const r = run(d, withCaps(p));
     assert.equal(r.status, 2, p);
-    assert.match(r.out, /outside tests\/capabilities\//, p);
+    assert.match(r.out, /--capabilities is not a path under tests\/capabilities\//, p);
+    assert.doesNotMatch(r.out, /caps\.json/, 'the value is never echoed');
+  }
+  for (const v of ['platformName:iOS', 'appium:udid=' + FAKE_UDID, "'iOS'", 'tests/capabilities/a b.json', '"tests/capabilities/phone.json"']) {
+    const r = run(d, withCaps(v));
+    assert.equal(r.status, 2, v);
+    assert.match(r.out, /capability values inline/, v);
+    assert.doesNotMatch(r.out, new RegExp(FAKE_UDID));
   }
   const mismatch = run(d, withCaps('tests/capabilities/android.json'));
   assert.equal(mismatch.status, 2);
@@ -217,7 +224,7 @@ test('macos and windows are declared but not implemented yet; an unknown platfor
   assert.match(r.out, /android \| ios/);
 });
 
-test('no Chromium: the platform mode loads no browser package, while the web mode trips the same guard', () => {
+test('no Chromium: the platform mode requires none of @playwright/test, playwright, playwright-core or element-repository; the web mode trips the same require guard', () => {
   const d = project([iosPage([el('networkRow', { 'accessibility id': 'example.row.network' })]), { name: 'HomePage', elements: [el('x', { css: '#x' })] }]);
   const p = run(d, ios('SettingsPage', 'networkRow'));
   assert.equal(p.status, 0, p.out);
@@ -235,7 +242,7 @@ test('lookup is per platform: a page with no entry for the platform, and missing
   const d2 = project([iosPage([el('networkRow', { 'accessibility id': 'example.row.network' })])]);
   const noSource = run(d2, ios('SettingsPage', 'networkRow').map((a) => (a === 'inspect/ios.xml' ? 'inspect/missing.xml' : a)));
   assert.equal(noSource.status, 2);
-  assert.match(noSource.out, /wdio session -s <slug> source/);
+  assert.match(noSource.out, /npx wdio session -s <slug> source --path /);
   writeFileSync(join(d2, 'inspect/not.png'), 'text');
   const notPng = run(d2, ios('SettingsPage', 'networkRow').map((a) => (a === 'inspect/shot.png' ? 'inspect/not.png' : a)));
   assert.equal(notPng.status, 2);
@@ -273,4 +280,74 @@ test('a platform context supplies the platform and the capabilities file; its se
   const web = run(d, ['--context', 'north', '--page', 'HomePage', '--element', 'x']);
   assert.equal(web.status, 2);
   assert.match(web.out, /storage state|CHROMIUM_GUARD/i, 'a web context stays on the web path');
+});
+
+test('over the 1 MB cap the screenshot is refused and the hint asks for the element screenshot', () => {
+  const d = project([iosPage([el('networkRow', { 'accessibility id': 'example.row.network' })])]);
+  writeFileSync(join(d, 'inspect/big.png'), Buffer.concat([PNG, Buffer.alloc(1024 * 1024 + 1)]));
+  const r = run(d, ios('SettingsPage', 'networkRow').map((a) => (a === 'inspect/shot.png' ? 'inspect/big.png' : a)));
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /screenshot <ref> --path /);
+  assert.equal(existsSync(join(d, 'docs/evidence/selectors')), false);
+});
+
+test('web mode looks up the web page of a name even when a platform page of that name is listed first', () => {
+  const d = project([iosPage([el('onlyIos', { 'accessibility id': 'example.row.network' })]), { name: 'SettingsPage', elements: [el('webOnly', { css: '#x' })] }]);
+  const web = (e) => run(d, ['--page', 'SettingsPage', '--element', e, '--base-url', 'https://shop.example.test', '--anonymous']);
+  const missing = web('onlyIos');
+  assert.equal(missing.status, 2);
+  assert.match(missing.out, /Unknown repository entry SettingsPage\.onlyIos/);
+  const found = web('webOnly');
+  assert.match(found.out, /CHROMIUM_GUARD/, 'the web entry was found and the tool went on to load Playwright');
+});
+
+test('xpath != needs the attribute present; predicate booleans resolve only unquoted', () => {
+  const d = project([iosPage([
+    el('noValue', { xpath: '//XCUIElementTypeCell[@value!="x"]' }),
+    el('disabledEdit', { predicate: "type == 'XCUIElementTypeButton' AND enabled == false" }),
+    el('quotedBool', { predicate: "type == 'XCUIElementTypeButton' AND enabled == 'false'" }),
+  ])]);
+  const nv = run(d, ios('SettingsPage', 'noValue'));
+  assert.equal(nv.status, 1, nv.out);
+  assert.match(nv.out, /resolved to 0 elements/);
+  assert.equal(run(d, ios('SettingsPage', 'disabledEdit')).status, 0);
+  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.disabledEdit.ios.md')))['resolved count'], '1');
+  assert.equal(run(d, ios('SettingsPage', 'quotedBool')).status, 0);
+  assert.match(Object.fromEntries(fields(note(d, 'SettingsPage.quotedBool.ios.md')))['resolved count'], /^unresolved offline \(.*boolean/);
+});
+
+test('positional forms are flagged from the selector text, resolved or not', () => {
+  const d = project([iosPage([
+    el('xpPosition', { xpath: '//XCUIElementTypeCell[position()=2]' }),
+    el('chainIndex', { 'class chain': '**/XCUIElementTypeCell[2]' }),
+    el('chainNegative', { 'class chain': '**/XCUIElementTypeCell[-1]' }),
+    el('chainDescendant', { 'class chain': '**/XCUIElementTypeCell[$name == "Network"$]' }),
+  ]), androidPage([el('instance', { uiautomator: 'new UiSelector().className("android.widget.TextView").instance(1)' })])]);
+  for (const name of ['xpPosition', 'chainIndex', 'chainNegative']) {
+    assert.equal(run(d, ios('SettingsPage', name)).status, 0, name);
+    assert.match(Object.fromEntries(fields(note(d, `SettingsPage.${name}.ios.md`)))['resolved count'], /^unresolved offline \(.*\) \(positional: /, name);
+  }
+  assert.equal(run(d, android('SettingsPage', 'instance')).status, 0);
+  assert.match(Object.fromEntries(fields(note(d, 'SettingsPage.instance.android.md')))['resolved count'], /^unresolved offline \(.*\) \(positional: /);
+  assert.equal(run(d, ios('SettingsPage', 'chainDescendant')).status, 0);
+  const desc = Object.fromEntries(fields(note(d, 'SettingsPage.chainDescendant.ios.md')))['resolved count'];
+  assert.match(desc, /descendant predicate \[\$…\$\]/);
+  assert.doesNotMatch(desc, /positional/);
+});
+
+test('role + name gets its own message; a predicate never matches the application node; android short ids follow the app package, then android:id/', () => {
+  const d = project([
+    iosPage([el('roleName', { role: 'button', name: 'Save' }), el('app', { predicate: "label == 'Example'" })]),
+    androidPage([el('title', { id: 'title' }), el('save', { id: 'save' })]),
+  ]);
+  assert.equal(run(d, ios('SettingsPage', 'roleName')).status, 0);
+  assert.match(Object.fromEntries(fields(note(d, 'SettingsPage.roleName.ios.md')))['resolved count'], /role \+ name/);
+  const app = run(d, ios('SettingsPage', 'app'));
+  assert.equal(app.status, 1, app.out);
+  assert.match(app.out, /resolved to 0 elements/);
+  assert.equal(run(d, android('SettingsPage', 'title')).status, 0);
+  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.title.android.md'))).id, 'android:id/title');
+  const save = run(d, android('SettingsPage', 'save'));
+  assert.equal(save.status, 0, save.out);
+  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md'))).id, 'com.example.app:id/save');
 });

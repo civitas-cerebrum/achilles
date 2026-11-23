@@ -85,11 +85,34 @@ test('a positional xpath the note flags is noted unless the selector has a fallb
   const sel = { xpath: '(//XCUIElementTypeCell)[2]' }
   const flagged = platformNote(sel, 'ios', '1 (positional: needs a "fallback" or a known-issues row)')
   const said = await writeRepo($, on, { [`${EV}/SettingsPage.row.ios.md`]: flagged }, repo(page('ios', [{ elementName: 'row', selector: sel }])))
-  expect(said).toContain('SettingsPage.row (ios) enters the repository with a positional xpath')
+  expect(said).toContain('SettingsPage.row (ios) enters the repository with a positional selector')
   expect(said).toContain('fallback')
 })
 
-test('a positional xpath with a fallback, or with a known-issues row, is accepted', async ($, on) => {
+test('a positional form the tool could not resolve offline is still caught, after the soft unresolved note', async ($, on) => {
+  const sel = { 'class chain': '**/XCUIElementTypeCell[2]' }
+  const flagged = platformNote(sel, 'ios', 'unresolved offline (class chain indices are not evaluated offline) (positional: needs a "fallback" or a known-issues row)')
+  const said = await writeRepo($, on, { [`${EV}/SettingsPage.row.ios.md`]: flagged }, repo(page('ios', [{ elementName: 'row', selector: sel }])))
+  expect(said).toContain('SettingsPage.row (ios) enters the repository with a positional selector')
+  expect(said).toContain('was not resolved offline')
+})
+
+test('an unresolved-offline note gets a soft note and nothing else', async ($, on) => {
+  const sel = { predicate: "label == 'Row' OR label == 'Other'" }
+  const said = await writeRepo($, on, { [`${EV}/SettingsPage.row.ios.md`]: platformNote(sel, 'ios', 'unresolved offline (OR is outside the offline predicate subset)') }, repo(page('ios', [{ elementName: 'row', selector: sel }])))
+  expect(said).toContain('SettingsPage.row (ios): its evidence note records no count (unresolved offline)')
+  expect(said).not.toContain('positional')
+})
+
+test('a known-issues row for another entry whose name starts the same does not count', async ($, on) => {
+  const sel = { xpath: '(//XCUIElementTypeCell)[2]' }
+  const flagged = platformNote(sel, 'ios', '1 (positional: needs a "fallback" or a known-issues row)')
+  const files = { [`${EV}/SettingsPage.row.ios.md`]: flagged, [`${ROOT}/tests/platform/docs/known-issues.md`]: '| SettingsPage.rowExtra (ios) | positional xpath |\n' }
+  const said = await writeRepo($, on, files, repo(page('ios', [{ elementName: 'row', selector: sel }])))
+  expect(said).toContain('enters the repository with a positional selector')
+})
+
+test('a positional xpath with a fallback is accepted', async ($, on) => {
   const sel = { xpath: '(//XCUIElementTypeCell)[2]', fallback: { 'accessibility id': 'example.row' } }
   const flagged = platformNote(sel, 'ios', '1 (positional: needs a "fallback" or a known-issues row)')
   const said = await writeRepo($, on, { [`${EV}/SettingsPage.row.ios.md`]: flagged }, repo(page('ios', [{ elementName: 'row', selector: sel }])))

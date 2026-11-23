@@ -67,7 +67,8 @@ Platform pages (android, ios; macos and windows are declared but not implemented
   ${PLATFORM_USAGE}
   [--context <name>] may replace --platform/--capabilities with a platform context of achilles-factory-rules.json.
 Resolves the committed entry of the page whose "platform" matches against the page source the expert saved with
-\`npx wdio session -s <slug> source\`, copies the \`screenshot\` PNG (≤ 1 MB) beside the note and writes
+\`npx wdio session -s <slug> source --path <scratch>/<screen>.xml\`, copies the element screenshot from
+\`npx wdio session -s <slug> screenshot <ref> --path <scratch>/<Page>.<element>.png\` (PNG ≤ 1 MB) beside the note and writes
 <out>/<Page>.<element>.<platform>.{png,md}. Forms it cannot evaluate offline are written as "unresolved offline".
 
 Exit codes: 0 note written · 1 evidence refused · 2 usage or configuration error.
@@ -140,7 +141,8 @@ if (storageState && !fs.existsSync(path.resolve(root, storageState)))
 const repoFile = path.resolve(root, args.repository ?? rules.rules?.[RULE_ID]?.repository ?? DEFAULT_REPOSITORY)
 if (!fs.existsSync(repoFile)) fail(`Page repository ${path.relative(root, repoFile)} not found`, 'Pass --repository <file>.', 'the-tool', 2)
 const repo = JSON.parse(fs.readFileSync(repoFile, 'utf8'))
-const page = (repo.pages ?? []).find((p) => p.name === args.page)
+// A4: the same page name may appear once per platform; web mode reads the web one (`platform` missing means web).
+const page = (repo.pages ?? []).find((p) => p.name === args.page && (p.platform ?? 'web') === 'web')
 const entry = page?.elements?.find((e) => e.elementName === args.element)
 if (!entry)
   fail(

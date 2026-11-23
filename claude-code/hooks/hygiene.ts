@@ -181,6 +181,7 @@ async function repositoryEvidence($: EngineInterface, rules: FactoryRules, root:
   }
   const id = (x: Entry) => `${x.page}\u001f${x.platform}\u001f${x.el}`
   const old = new Map(entries(prior, pkey).map(x => [id(x), x.sel]))
+  const soft: string[] = []
   for (const x of entries(next, pkey)) {
     if (x.prov || same(old.get(id(x)), x.sel)) continue
     const web = x.platform === 'web'
@@ -189,9 +190,9 @@ async function repositoryEvidence($: EngineInterface, rules: FactoryRules, root:
     // A platform note is written offline by `achilles-selector-evidence --platform <p>` next to the web one.
     const noteRel = web ? `${evDir}/${x.page}.${x.el}.md` : `${evDir}/${x.page}.${x.el}.${x.platform}.md`
     const text = await readText($, `${root}/${noteRel}`)
-    if (text === undefined) return [threeLine('selectors.evidence', web ? `Repository entry ${name} has no evidence note.` : `Repository entry ${name} has no evidence note (${noteRel}, written by achilles-selector-evidence --platform ${x.platform}).`, action, doc)]
-    if (!/^- source: /m.test(text)) return [threeLine('selectors.evidence', `Evidence note ${noteRel} has no "- source:" line (not written by the evidence tool).`, action, doc)]
-    if (!web && /^- platform: (.*)$/m.exec(text)?.[1]?.trim() !== x.platform) return [threeLine('selectors.evidence', `Evidence note ${noteRel} is not an ${x.platform} note (its "- platform:" line does not name ${x.platform}).`, action, doc)]
+    if (text === undefined) return [...soft, threeLine('selectors.evidence', web ? `Repository entry ${name} has no evidence note.` : `Repository entry ${name} has no evidence note (${noteRel}, written by achilles-selector-evidence --platform ${x.platform}).`, action, doc)]
+    if (!/^- source: /m.test(text)) return [...soft, threeLine('selectors.evidence', `Evidence note ${noteRel} has no "- source:" line (not written by the evidence tool).`, action, doc)]
+    if (!web && /^- platform: (.*)$/m.exec(text)?.[1]?.trim() !== x.platform) return [...soft, threeLine('selectors.evidence', `Evidence note ${noteRel} is not an ${x.platform} note (its "- platform:" line does not name ${x.platform}).`, action, doc)]
     const line = /^- selector: (.*)$/m.exec(text)?.[1]
     let noted: unknown
     try {
@@ -199,17 +200,22 @@ async function repositoryEvidence($: EngineInterface, rules: FactoryRules, root:
     } catch {
       noted = undefined
     }
-    if (!same(noted, x.sel)) return [threeLine('selectors.evidence', `Evidence note ${noteRel} is stale: its "- selector:" line does not describe the new selector of ${name}.`, action, doc)]
-    // CONTRACT C4: an xpath the evidence marks positional needs a fallback or a known-issues row. Advisory, like
+    if (!same(noted, x.sel)) return [...soft, threeLine('selectors.evidence', `Evidence note ${noteRel} is stale: its "- selector:" line does not describe the new selector of ${name}.`, action, doc)]
+    // A note without a count is evidence the tool could not check offline: a soft note, the checks go on.
+    if (!web && /^- resolved count: unresolved offline\b/m.test(text))
+      soft.push(threeLine('selectors.evidence', `${name}: its evidence note records no count (unresolved offline), so the selector was not resolved offline against the page source.`, 'Confirm the element in the live snapshot, or prefer a strategy the tool resolves (accessibility id, id, simple predicate / class chain / UiSelector).', doc))
+    // CONTRACT C4: a selector the evidence marks positional needs a fallback or a known-issues row. Advisory, like
     // every finding of this gate.
     if (!web && /^- resolved count: .*\(positional\b/m.test(text)) {
       const fallback = typeof x.sel === 'object' && x.sel !== null && 'fallback' in x.sel
       const issues = fallback ? [] : await Promise.all(KNOWN_ISSUES.map(f => readText($, `${root}/${f}`)))
-      if (!fallback && !issues.some(t => t !== undefined && t.includes(`${x.page}.${x.el}`)))
-        return [threeLine('selectors.evidence', `${name} enters the repository with a positional xpath (${noteRel} flags it) and has neither a "fallback" nor a known-issues row.`, `Prefer a stable strategy (accessibility id, then id / predicate, then class chain / uiautomator, then text); otherwise add a "fallback" to the selector or a row naming ${x.page}.${x.el} to ${KNOWN_ISSUES[0]}.`, doc)]
+      // The entry name as a whole word: SettingsPage.row must not be satisfied by a row for SettingsPage.rowExtra.
+      const named = new RegExp(`(^|[^\\w.])${`${x.page}.${x.el}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.])`, 'm')
+      if (!fallback && !issues.some(t => t !== undefined && named.test(t)))
+        return [...soft, threeLine('selectors.evidence', `${name} enters the repository with a positional selector (${noteRel} flags it) and has neither a "fallback" nor a known-issues row.`, `Prefer a stable strategy (accessibility id, then id / predicate, then class chain / uiautomator, then text); otherwise add a "fallback" to the selector or a row naming ${x.page}.${x.el} to ${KNOWN_ISSUES[0]}.`, doc)]
     }
   }
-  return []
+  return soft
 }
 
 // ── the evidence floor and the journey map ──
