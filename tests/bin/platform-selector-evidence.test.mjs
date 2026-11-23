@@ -351,3 +351,64 @@ test('role + name gets its own message; a predicate never matches the applicatio
   assert.equal(save.status, 0, save.out);
   assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md'))).id, 'com.example.app:id/save');
 });
+
+test('--name=value is accepted; an inline capabilities value is never printed, whatever the flag spelling or mode', () => {
+  const d = project([iosPage([el('networkRow', { 'accessibility id': 'example.row.network' })]), { name: 'HomePage', elements: [el('x', { css: '#x' })] }]);
+  const ok = run(d, ['--platform=ios', '--page=SettingsPage', '--element=networkRow', '--capabilities=tests/capabilities/phone.json', '--screen=Settings', '--source=inspect/ios.xml', '--screenshot=inspect/shot.png']);
+  assert.equal(ok.status, 0, ok.out);
+  const secret = 'FAKE-SECRET-UDID-0000';
+  const inline = `{"appium:udid":"${secret}"}`;
+  for (const args of [
+    ['--platform', 'ios', '--page', 'SettingsPage', '--element', 'networkRow', `--capabilities=${inline}`],
+    ['--platform=ios', '--page', 'SettingsPage', '--element', 'networkRow', `--caps=${inline}`],
+    ['--page', 'HomePage', '--element', 'x', `--capabilities=${inline}`],
+    ['--page', 'HomePage', '--element', 'x', `--caps=${inline}`],
+  ]) {
+    const r = run(d, args);
+    assert.equal(r.status, 2, args.join(' '));
+    assert.doesNotMatch(r.stdout, new RegExp(secret), args.join(' '));
+    assert.doesNotMatch(r.stderr, new RegExp(secret), args.join(' '));
+  }
+});
+
+test('a short android id prefers the appium:appPackage of the capabilities file, else the package owning most nodes', () => {
+  const d = project([androidPage([el('save', { id: 'save' })])]);
+  writeFileSync(join(d, 'tests/capabilities/other.json'), JSON.stringify({ platformName: 'Android', 'appium:appPackage': 'com.example.other' }));
+  assert.equal(run(d, android('SettingsPage', 'save')).status, 0);
+  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md'))).id, 'com.example.app:id/save');
+  const r = run(d, android('SettingsPage', 'save').map((a) => (a === 'tests/capabilities/android.json' ? 'tests/capabilities/other.json' : a)));
+  assert.equal(r.status, 0, r.out);
+  const v = Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md')));
+  assert.equal(v.id, 'com.example.other:id/save');
+  assert.equal(v.capabilities, 'tests/capabilities/other.json');
+  assert.doesNotMatch(note(d, 'SettingsPage.save.android.md'), /appPackage/);
+});
+
+test('an element not visible at capture is marked on the resolved count line and warned on stderr', () => {
+  const d = project([iosPage([el('sound', { 'accessibility id': 'example.row.sound' }), el('network', { 'accessibility id': 'example.row.network' })]), androidPage([el('save', { id: 'save' })])]);
+  const iosXml = readFileSync(join(d, 'inspect/ios.xml'), 'utf8').replace('name="example.row.sound" label="Sound" enabled="true" visible="true"', 'name="example.row.sound" label="Sound" enabled="true" visible="false"');
+  writeFileSync(join(d, 'inspect/ios.xml'), iosXml);
+  const andXml = readFileSync(join(d, 'inspect/android.xml'), 'utf8').replace(/(resource-id="com\.example\.app:id\/save"[^>]*displayed=)"true"/, '$1"false"');
+  writeFileSync(join(d, 'inspect/android.xml'), andXml);
+  const r = run(d, ios('SettingsPage', 'sound'));
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.stderr, /not visible at capture/);
+  const f = fields(note(d, 'SettingsPage.sound.ios.md'));
+  assert.deepEqual(f.map(([k]) => k), C6);
+  assert.equal(Object.fromEntries(f)['resolved count'], '1 (not visible at capture: swipe it into view and re-capture)');
+  assert.equal(run(d, ios('SettingsPage', 'network')).status, 0);
+  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.network.ios.md')))['resolved count'], '1');
+  assert.equal(run(d, android('SettingsPage', 'save')).status, 0);
+  assert.match(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md')))['resolved count'], /^1 \(not visible at capture: /);
+});
+
+test('--help states the platform --repository default', () => {
+  const h = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
+  assert.match(h.stdout, /tests\/e2e\/page-repository\.json if it exists, else tests\/platform\/page-repository\.json/);
+});
+
+test('a string operator on a boolean attribute is named as the cause, before the quoting', () => {
+  const d = project([iosPage([el('opOnBool', { predicate: "enabled CONTAINS 'true'" })])]);
+  assert.equal(run(d, ios('SettingsPage', 'opOnBool')).status, 0);
+  assert.match(Object.fromEntries(fields(note(d, 'SettingsPage.opOnBool.ios.md')))['resolved count'], /applies CONTAINS to the boolean attribute enabled/);
+});

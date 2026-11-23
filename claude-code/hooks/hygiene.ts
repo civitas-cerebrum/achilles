@@ -204,13 +204,16 @@ async function repositoryEvidence($: EngineInterface, rules: FactoryRules, root:
     // A note without a count is evidence the tool could not check offline: a soft note, the checks go on.
     if (!web && /^- resolved count: unresolved offline\b/m.test(text))
       soft.push(threeLine('selectors.evidence', `${name}: its evidence note records no count (unresolved offline), so the selector was not resolved offline against the page source.`, 'Confirm the element in the live snapshot, or prefer a strategy the tool resolves (accessibility id, id, simple predicate / class chain / UiSelector).', doc))
+    // visible="false" / displayed="false" at capture: the screenshot beside the note is likely black.
+    if (!web && /^- resolved count: .*\(not visible at capture\b/m.test(text))
+      soft.push(threeLine('selectors.evidence', `${name}: its evidence was captured while the element was not visible, so its screenshot shows nothing useful.`, 'Swipe the element into view, capture source and the element screenshot again, and re-run achilles-selector-evidence.', doc))
     // CONTRACT C4: a selector the evidence marks positional needs a fallback or a known-issues row. Advisory, like
     // every finding of this gate.
     if (!web && /^- resolved count: .*\(positional\b/m.test(text)) {
       const fallback = typeof x.sel === 'object' && x.sel !== null && 'fallback' in x.sel
       const issues = fallback ? [] : await Promise.all(KNOWN_ISSUES.map(f => readText($, `${root}/${f}`)))
       // The entry name as a whole word: SettingsPage.row must not be satisfied by a row for SettingsPage.rowExtra.
-      const named = new RegExp(`(^|[^\\w.])${`${x.page}.${x.el}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.])`, 'm')
+      const named = new RegExp(`(^|[^\\w.])${`${x.page}.${x.el}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\w|\\.\\w)`, 'm')
       if (!fallback && !issues.some(t => t !== undefined && named.test(t)))
         return [...soft, threeLine('selectors.evidence', `${name} enters the repository with a positional selector (${noteRel} flags it) and has neither a "fallback" nor a known-issues row.`, `Prefer a stable strategy (accessibility id, then id / predicate, then class chain / uiautomator, then text); otherwise add a "fallback" to the selector or a row naming ${x.page}.${x.el} to ${KNOWN_ISSUES[0]}.`, doc)]
     }

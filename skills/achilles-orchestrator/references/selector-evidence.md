@@ -155,6 +155,9 @@ screenshot is the **element** screenshot: `<ref>` is the element's ref from `sna
   shot on a 3x display easily passes 300 KB. Over the cap the tool refuses and asks for the element screenshot
   instead of the full screen.
 - Output: `<evidence dir>/<Page>.<element>.<platform>.md` and `.png`, beside the web `<Page>.<element>.md`.
+- `--repository` default: `rules["selectors.evidence"].repository`, else `tests/e2e/page-repository.json` if it
+  exists, else `tests/platform/page-repository.json` (one page repository per project).
+- Flags also take the `--name=value` form; an unrecognised argument is named by its flag only, never its value.
 
 ### The platform note
 
@@ -189,14 +192,17 @@ Fields, in this order: `selector`, `platform`, `capabilities`, `screen`, `resolv
 evaluate faithfully offline; it never guesses a count. An unresolved note is still written (the expert saw the element
 in its live snapshot), and the tool says so on stderr. Either is followed by `(positional: …)` when the selector
 text is positional, whether or not it resolved: xpath `[n]`, `position()`, `last()`; class chain `[n]` / `[-n]`;
-UiSelector `.instance(` / `.index(`.
+UiSelector `.instance(` / `.index(`. When the matched element was not visible when the material was captured
+(`visible="false"` on ios, `displayed="false"` on android), the count is followed by `(not visible at capture: swipe
+it into view and re-capture)` and the tool warns on stderr: the element screenshot of a hidden element is black.
+Swipe it into view, capture `source` and the element screenshot again, and re-run.
 
 ### Selector mapping and preference (CONTRACT C4)
 
 | `wdio session` selector | Repository `selector` | Resolved offline |
 |---|---|---|
 | `~value` | `{ "accessibility id": "value" }` | yes |
-| `id=value` / resource-id | `{ "id": "value" }` | yes (android: full `pkg:id/x`, or short `x` completed with the app package of the top node, then `android:id/x`; ios: `name`) |
+| `id=value` / resource-id | `{ "id": "value" }` | yes (android: full `pkg:id/x`, or short `x` completed with the capabilities file's `appium:appPackage` (else the package owning most nodes of the source), then `android:id/x`; ios: `name`) |
 | `-ios predicate string:expr` | `{ "predicate": "expr" }` | `attr ==\|!=\|CONTAINS\|BEGINSWITH\|ENDSWITH 'v'` joined by `AND` on `name label value type`; `enabled visible accessible selected ==\|!= true\|false\|YES\|NO\|1\|0` unquoted only (a quoted boolean is unresolved); never matches the application element; no `OR`, `NOT`, `[c]`, `MATCHES`, `LIKE`, `IN`, parentheses |
 | `-ios class chain:expr` | `{ "class chain": "expr" }` | `Type` / `*` segments, `/` and `**/`, `` [`predicate`] `` filters (subset above); no `[n]` / `[-n]` indices (positional), no `[$…$]` descendant predicates |
 | `android=expr` | `{ "uiautomator": "expr" }` | `new UiSelector()` with `text`, `textContains`, `textStartsWith`, `description`, `descriptionContains`, `descriptionStartsWith`, `resourceId`, `className`; no `UiScrollable`, `instance`, `index`, regex |
@@ -214,7 +220,7 @@ included, is recorded as unresolved offline; `fallback` is not a strategy and is
 The repository-evidence gate treats a new or changed platform entry as it treats a web one (an advisory note, nothing
 refused), against `<Page>.<element>.<platform>.md`: the note must exist, carry `- source:`, name the page's platform
 in `- platform:` and carry the selector deep-equal. A web note never counts for a platform page. A note whose count
-is `unresolved offline` gets a soft note and the checks go on. A selector whose note says `(positional`
+is `unresolved offline`, or says `(not visible at capture`, gets a soft note and the checks go on. A selector whose note says `(positional`
 additionally needs a `fallback` in its selector or a known-issues row naming `<Page>.<element>` as a whole word
 (`tests/platform/docs/known-issues.md`, or the project's `tests/e2e/docs/known-issues.md`); without either, the gate
 says so.

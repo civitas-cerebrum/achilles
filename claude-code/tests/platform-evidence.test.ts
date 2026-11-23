@@ -126,3 +126,17 @@ test('a positional xpath named in the known-issues file is accepted', async ($, 
   const said = await writeRepo($, on, files, repo(page('ios', [{ elementName: 'row', selector: sel }])))
   expect(said).toBe('')
 })
+
+test('evidence of an element not visible at capture gets a soft note', async ($, on) => {
+  const said = await writeRepo($, on, { [`${EV}/SettingsPage.row.ios.md`]: platformNote(IOS_SEL, 'ios', '1 (not visible at capture: swipe it into view and re-capture)') }, repo(page('ios', [{ elementName: 'row', selector: IOS_SEL }])))
+  expect(said).toContain('SettingsPage.row (ios): its evidence was captured while the element was not visible')
+  expect(said).not.toContain('positional')
+})
+
+test('a known-issues row naming the entry at the end of a sentence counts', async ($, on) => {
+  const sel = { xpath: '(//XCUIElementTypeCell)[2]' }
+  const flagged = platformNote(sel, 'ios', '1 (positional: needs a "fallback" or a known-issues row)')
+  const files = { [`${EV}/SettingsPage.row.ios.md`]: flagged, [`${ROOT}/tests/platform/docs/known-issues.md`]: '- The second cell has no identifier yet, see SettingsPage.row.\n' }
+  const said = await writeRepo($, on, files, repo(page('ios', [{ elementName: 'row', selector: sel }])))
+  expect(said).toBe('')
+})

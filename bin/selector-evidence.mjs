@@ -35,7 +35,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { projectRoot } from './lib/project-root.mjs'
-import { USAGE as PLATFORM_USAGE, platformOf, runPlatform } from './lib/platform-evidence.mjs'
+import { USAGE as PLATFORM_USAGE, platformOf, runPlatform, shownArg, splitEquals } from './lib/platform-evidence.mjs'
 import { DEFAULT_EVIDENCE_DIR, NOTE_REFUSED, RULE_ID, TOOL_VERSION, cleanPath, fail, loadFactoryRules, redact, resolveAndCheck, validateNote, writeNoteText } from './lib/evidence-note.mjs'
 
 const MAX_PNG_BYTES = 300 * 1024
@@ -66,6 +66,7 @@ count 1 (≥ 1 for an entry marked "list": true), outlines it, screenshots the v
 Platform pages (android, ios; macos and windows are declared but not implemented yet), offline, no browser:
   ${PLATFORM_USAGE}
   [--context <name>] may replace --platform/--capabilities with a platform context of achilles-factory-rules.json.
+  --repository default: rules["${RULE_ID}"].repository, else tests/e2e/page-repository.json if it exists, else tests/platform/page-repository.json.
 Resolves the committed entry of the page whose "platform" matches against the page source the expert saved with
 \`npx wdio session -s <slug> source --path <scratch>/<screen>.xml\`, copies the element screenshot from
 \`npx wdio session -s <slug> screenshot <ref> --path <scratch>/<Page>.<element>.png\` (PNG ≤ 1 MB) beside the note and writes
@@ -98,16 +99,18 @@ function parseArgs(argv) {
       else a[name] = value
       continue
     }
-    fail(`Unknown argument ${arg}`, `Use: ${USAGE}`, 'the-tool', 2)
+    fail(`Unknown argument ${shownArg(arg)}`, `Use: ${USAGE}`, 'the-tool', 2)
   }
   return a
 }
 
 // A platform page (--platform, or --context naming a platform context) never reaches Playwright or Chromium.
-if (!process.argv.includes('--help') && !process.argv.includes('-h') && platformOf(process.argv.slice(2), loadFactoryRules()) !== 'web')
-  runPlatform(process.argv.slice(2), loadFactoryRules())
+// `--name=value` is split on the first =, so a value never reaches a message glued to its flag.
+const ARGV = splitEquals(process.argv.slice(2))
+if (!process.argv.includes('--help') && !process.argv.includes('-h') && platformOf(ARGV, loadFactoryRules()) !== 'web')
+  runPlatform(ARGV, loadFactoryRules())
 
-const args = parseArgs(process.argv.slice(2))
+const args = parseArgs(ARGV)
 const root = projectRoot()
 if (!args.page || !args.element) fail('Missing --page or --element', `Use: ${USAGE}`, 'the-tool', 2)
 

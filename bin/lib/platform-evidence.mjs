@@ -34,6 +34,9 @@ export const MAX_PNG_BYTES = 1024 * 1024
 const SOURCE_CMD = 'npx wdio session -s <slug> source --path <scratch>/<screen>.xml'
 const SHOT_CMD = 'npx wdio session -s <slug> screenshot <ref> --path <scratch>/<Page>.<element>.png'
 const POSITIONAL = 'positional: needs a "fallback" or a known-issues row'
+const HIDDEN = 'not visible at capture: swipe it into view and re-capture'
+/** XCUITest writes visible="false", UiAutomator2 displayed="false", for an element off screen or covered: its screenshot is black. */
+export const hiddenAtCapture = (n) => n?.attrs.visible === 'false' || n?.attrs.displayed === 'false'
 
 export const USAGE =
   'achilles-selector-evidence --platform <android|ios> --page <Page> --element <element> --capabilities tests/capabilities/<device>.json ' +
@@ -144,9 +147,9 @@ export function compilePredicate(expr) {
     const quoted = m[4] ?? m[5]
     // XCUITest compares booleans as numbers: `enabled == 1` / `enabled == true` match, `enabled == 'true'` does not
     // compare the way the source text suggests, so only unquoted booleans on boolean attributes resolve offline.
+    if (BOOLEAN_ATTRS.has(attr) && !/^(==|=|!=)$/.test(m[2])) unresolved(`"${c}" applies ${m[2]} to the boolean attribute ${attr}`)
     if (BOOLEAN_ATTRS.has(attr) && quoted !== undefined) unresolved(`"${c}" compares the boolean attribute ${attr} with a quoted string; write it unquoted (${attr} == true)`)
     if (!BOOLEAN_ATTRS.has(attr) && quoted === undefined) unresolved(`"${c}" compares the string attribute ${attr} with an unquoted value`)
-    if (BOOLEAN_ATTRS.has(attr) && !/^(==|=|!=)$/.test(m[2])) unresolved(`"${c}" applies ${m[2]} to the boolean attribute ${attr}`)
     const want = quoted ?? (/^(true|yes|1)$/i.test(m[3]) ? 'true' : 'false')
     const op = PREDICATE_OPS[m[2].toUpperCase()]
     return (n) => op(n.attrs[attr] ?? '', want)
@@ -338,17 +341,17 @@ export function isPositional(key, value) {
  * Resolves a repository selector on a parsed page source. Returns { nodes, positional } or { unresolved, positional }.
  * Returns { wrongPlatform } when the strategy cannot exist on this platform at all.
  */
-export function resolveSelector(doc, selector, platform) {
+export function resolveSelector(doc, selector, platform, { appPackage } = {}) {
   const keys = Object.keys(selector ?? {}).filter((k) => k !== 'fallback')
   if (keys.map((k) => k.toLowerCase()).sort().join('+') === 'name+role')
     return { unresolved: 'role + name is the enhanced accessibility lookup; it has no page-source equivalent and is not evaluated offline' }
   if (keys.length !== 1) return { unresolved: keys.length === 0 ? 'the selector has no strategy key' : `combined strategies (${keys.join(' + ')}) are not evaluated offline` }
   const key = ALIASES[keys[0].toLowerCase()] ?? keys[0].toLowerCase()
-  const r = resolveOne(doc, key, keys[0], selector[keys[0]], platform)
+  const r = resolveOne(doc, key, keys[0], selector[keys[0]], platform, appPackage)
   return typeof selector[keys[0]] === 'string' && isPositional(key, selector[keys[0]]) ? { ...r, positional: true } : r
 }
 
-function resolveOne(doc, key, rawKey, value, platform) {
+function resolveOne(doc, key, rawKey, value, platform, appPackage) {
   if (typeof value !== 'string') return { unresolved: `the ${key} value is not a string` }
   if ((platform === 'android' && IOS_ONLY.has(key)) || (platform === 'ios' && ANDROID_ONLY.has(key))) return { wrongPlatform: key }
   const v = VIEW[platform]
@@ -359,9 +362,15 @@ function resolveOne(doc, key, rawKey, value, platform) {
         return { nodes: all().filter((n) => v.accessibilityId(n) === value) }
       case 'id':
         if (platform === 'android' && !value.includes(':')) {
-          // UiAutomator2 completes a short id with the app package (the top node's), then tries android:id/.
-          const appPackage = all().find((n) => n.attrs.package)?.attrs.package
-          const mine = appPackage ? all().filter((n) => v.id(n) === `${appPackage}:id/${value}`) : []
+          // UiAutomator2 completes a short id with the app package, then tries android:id/. The package is the
+          // capabilities file's appium:appPackage when it names one, else the package owning most nodes of the source.
+          let pkg = appPackage
+          if (!pkg) {
+            const owners = new Map()
+            for (const n of all()) if (n.attrs.package) owners.set(n.attrs.package, (owners.get(n.attrs.package) ?? 0) + 1)
+            pkg = [...owners].sort((a, b) => b[1] - a[1])[0]?.[0]
+          }
+          const mine = pkg ? all().filter((n) => v.id(n) === `${pkg}:id/${value}`) : []
           return { nodes: mine.length > 0 ? mine : all().filter((n) => v.id(n) === `android:id/${value}`) }
         }
         return { nodes: all().filter((n) => v.id(n) === value) }
@@ -398,7 +407,7 @@ const dash = (v) => (v === undefined || v === null || v === '' ? '—' : v)
 export function renderPlatformNote(n) {
   const v = VIEW[n.platform]
   const node = n.node
-  const count = (n.unresolved !== undefined ? `unresolved offline (${oneLine(n.unresolved)})` : `${n.count}${n.list ? ' (list entry)' : ''}`) + (n.positional ? ` (${POSITIONAL})` : '')
+  const count = (n.unresolved !== undefined ? `unresolved offline (${oneLine(n.unresolved)})` : `${n.count}${n.list ? ' (list entry)' : ''}`) + (n.node && hiddenAtCapture(n.node) ? ` (${HIDDEN})` : '') + (n.positional ? ` (${POSITIONAL})` : '')
   const label = node ? v.label(node) : undefined
   const snippet = node ? '`' + oneLine(node.raw).replace(/`/g, "'").slice(0, 300) + '`' : undefined
   const values = {
@@ -432,11 +441,19 @@ function validate(n) {
 const VALUED = new Set(['context', 'platform', 'page', 'element', 'capabilities', 'screen', 'source', 'screenshot', 'out', 'repository'])
 const posix = (p) => p.split(path.sep).join('/')
 
+/** `--name=value` → `--name`, `value` (split on the first '='), for both modes. */
+export function splitEquals(argv) {
+  return argv.flatMap((a) => (/^--[^=]+=/.test(a) ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a]))
+}
+
+/** How an unrecognised argument is named in a message: a flag by its name, anything else not at all (it may be a value). */
+export const shownArg = (a) => (/^--[\w-]+$/.test(a) ? a : 'a value with no flag (not shown)')
+
 function parseArgs(argv) {
   const a = {}
   for (let i = 0; i < argv.length; i++) {
     const name = argv[i].startsWith('--') ? argv[i].slice(2) : ''
-    if (!VALUED.has(name)) fail(`Unknown argument ${argv[i]} for --platform mode`, `Use: ${USAGE}`, 'platform-pages', 2)
+    if (!VALUED.has(name)) fail(`Unknown argument ${shownArg(argv[i])} for --platform mode`, `Use: ${USAGE}`, 'platform-pages', 2)
     const value = argv[++i]
     if (value === undefined || value.startsWith('--')) fail(`Option --${name} needs a value`, `Use: ${USAGE}`, 'platform-pages', 2)
     a[name] = value
@@ -463,7 +480,7 @@ function capabilitiesFile(root, value, platform) {
   const named = caps?.platformName ?? caps?.alwaysMatch?.platformName ?? caps?.capabilities?.alwaysMatch?.platformName
   if (typeof named === 'string' && named.toLowerCase() !== platform)
     fail(`The platformName in ${rel} does not name ${platform}`, `Pass the capabilities file of a ${platform} device, or the --platform that file targets.`, 'platform-pages', 2)
-  return rel
+  return { rel, caps }
 }
 
 function inputFile(root, value, flag, hint) {
@@ -510,7 +527,7 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
   if (/[\n\r]/.test(args.screen)) fail('--screen must be one line', 'Pass the screen name as tests/platform/docs/app-context.md keys it.', 'platform-pages', 2)
 
   const root = projectRoot()
-  const capabilities = capabilitiesFile(root, args.capabilities, platform)
+  const { rel: capabilities, caps } = capabilitiesFile(root, args.capabilities, platform)
 
   const ruleRepo = rules.rules?.[RULE_ID]?.repository
   const defaultRepo = fs.existsSync(path.join(root, 'tests/e2e/page-repository.json')) ? 'tests/e2e/page-repository.json' : 'tests/platform/page-repository.json'
@@ -543,7 +560,7 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
 
   const key = `${args.page}.${args.element}`
   const list = entry.list === true
-  const r = resolveSelector(doc, entry.selector, platform)
+  const r = resolveSelector(doc, entry.selector, platform, { appPackage: typeof caps?.["appium:appPackage"] === "string" ? caps["appium:appPackage"] : undefined })
   if (r.wrongPlatform)
     fail(`${key} uses the ${r.wrongPlatform} strategy, which does not exist on ${platform}`, 'Pick a strategy of this platform (CONTRACT order: accessibility id, then id / predicate, then class chain / uiautomator, then text, xpath last).', 'platform-pages', 1)
   if (r.nodes) {
@@ -587,6 +604,7 @@ export function runPlatform(argv, rules = loadFactoryRules(projectRoot())) {
   fs.writeFileSync(path.join(evDir, `${base}.md`), text)
   if (r.unresolved !== undefined)
     process.stderr.write(`[${RULE_ID}] ${key} (${platform}): unresolved offline (${r.unresolved}); the note says so and carries no count. Confirm the element in the live snapshot, or prefer a strategy the tool resolves.\n`)
+  if (hiddenAtCapture(r.nodes?.[0])) process.stderr.write(`[${RULE_ID}] ${key} (${platform}): not visible at capture (visible or displayed was false, so its screenshot is likely black); swipe it into view and re-capture.\n`)
   if (r.positional) process.stderr.write(`[${RULE_ID}] ${key} (${platform}): the selector is positional; the entry needs a "fallback" or a known-issues row.\n`)
   process.stdout.write(text + `png: ${posix(path.relative(root, path.join(evDir, `${base}.png`)))} (${Math.round(png.length / 1024)} KB)\n`)
   process.exit(0)
