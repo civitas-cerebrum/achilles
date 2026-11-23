@@ -114,15 +114,17 @@ function validateStandaloneFixtures(schemaPath, fixturesDirPath) {
 validateStandaloneFixtures('schemas/run-summary.schema.json', 'schemas/run-summary.fixtures');
 validateStandaloneFixtures('schemas/perf-onboarding-status.schema.json', 'schemas/perf-onboarding-status.fixtures');
 validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-summary.fixtures');
+validateStandaloneFixtures('schemas/platform-onboarding-status.schema.json', 'schemas/platform-onboarding-status.fixtures');
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
 validateStandaloneFixtures('schemas/evidence-video.schema.json', 'schemas/evidence-video.fixtures');
 
 // The factory-rules schema is the per-project rule-file contract (bin/ reads it),
 // so it has its own block. Its floors and closed
 // rule objects are how a project can add to a rule but not weaken it. The
-// shipped example is the valid fixture; each invalid fixture is a patch over
-// it (RFC 6902 add/replace/remove) plus a substring of the Ajv error it must
-// produce.
+// shipped example is the valid fixture; each fixture is a patch over it
+// (RFC 6902 add/replace/remove): a valid-*.patch.json result must validate,
+// any other *.patch.json must fail with expectError, a substring of the Ajv
+// error it must produce.
 function applyPatch(doc, ops) {
   const out = structuredClone(doc);
   for (const { op, path, value } of ops) {
@@ -149,6 +151,11 @@ function applyPatch(doc, ops) {
     const full = join(dirPath, f);
     const { base, patch, expectError } = JSON.parse(readFileSync(full, 'utf8'));
     const doc = applyPatch(JSON.parse(readFileSync(join('schemas', base), 'utf8')), patch);
+    if (f.startsWith('valid-')) {
+      if (validateRules(doc)) console.log(`OK:   ${full} validates`);
+      else { console.error(`FAIL: ${full} did not validate`); console.error(validateRules.errors); failures++; }
+      continue;
+    }
     if (validateRules(doc)) { console.error(`FAIL: ${full} unexpectedly validated`); failures++; continue; }
     const messages = validateRules.errors.map((e) => `${e.instancePath}: ${e.message}`);
     if (messages.some((m) => m.includes(expectError))) console.log(`OK:   ${full} correctly fails (${expectError})`);

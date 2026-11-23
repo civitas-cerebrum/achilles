@@ -1,0 +1,14 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/contexts/pixel",
+      "value": {
+        "platform": "android",
+        "capabilities": "tests/capabilities/pixel-8.json",
+        "server": "https://appium.example.test/wd/hub"
+      }
+    }
+  ]
+}

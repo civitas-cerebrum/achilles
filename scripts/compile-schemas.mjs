@@ -55,6 +55,7 @@ compileStandalone('onboarding-status', 'schemas/onboarding-status.schema.json');
 compileStandalone('run-summary', 'schemas/run-summary.schema.json');
 compileStandalone('self-repair-report', 'schemas/self-repair-report.schema.json');
 compileStandalone('evidence-video', 'schemas/evidence-video.schema.json');
+compileStandalone('platform-onboarding-status', 'schemas/platform-onboarding-status.schema.json');
 
 if (failures > 0) {
   console.error(`\n${failures} schema(s) failed to compile.`);

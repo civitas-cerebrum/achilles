@@ -3,7 +3,8 @@
   "version": 1,
   "contexts": {
     "north": { "baseUrl": "${SHOP_BASE_URL_NORTH}", "storageState": "tests/data/.auth/shopper-a.json", "description": "Region north, account shopper-a." },
-    "south": { "baseUrl": "${SHOP_BASE_URL_SOUTH}", "storageState": "tests/data/.auth/shopper-b.json", "description": "Region south, account shopper-b." }
+    "south": { "baseUrl": "${SHOP_BASE_URL_SOUTH}", "storageState": "tests/data/.auth/shopper-b.json", "description": "Region south, account shopper-b." },
+    "iphone": { "platform": "ios", "capabilities": "tests/capabilities/iphone.json", "server": "env:APPIUM_URL", "description": "The iOS app on one iPhone; the Appium server URL (with base path) comes from APPIUM_URL." }
   },
   "rules": {
     "selectors.no-inline": {

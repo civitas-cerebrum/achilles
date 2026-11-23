@@ -1,0 +1,11 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/contexts/iphone/platform",
+      "value": "mobile"
+    }
+  ],
+  "expectError": "/contexts/iphone/platform: must be equal to one of the allowed values"
+}

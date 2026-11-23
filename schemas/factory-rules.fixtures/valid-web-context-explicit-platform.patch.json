@@ -1,0 +1,10 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/contexts/north/platform",
+      "value": "web"
+    }
+  ]
+}

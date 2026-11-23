@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "pipelineVersion": "0.1.0",
+  "startedAt": "2026-11-23T09:00:00Z",
+  "currentPhase": 5,
+  "status": "in-progress",
+  "devices": [
+    {
+      "capabilities": "tests/capabilities/iphone.json",
+      "platform": "ios",
+      "osVersion": "26.0",
+      "real": true,
+      "model": "iPhone"
+    },
+    {
+      "capabilities": "tests/capabilities/pixel-emulator.json",
+      "platform": "android",
+      "osVersion": "15",
+      "real": false
+    }
+  ],
+  "phases": [
+    {
+      "id": 1,
+      "name": "Scaffold",
+      "startedAt": "2026-11-23T09:00:00Z",
+      "finishedAt": "2026-11-23T09:10:00Z",
+      "status": "completed",
+      "handoverEnvelope": {
+        "role": "platform-preflight",
+        "status": "complete"
+      },
+      "reviewerVerdict": "approved",
+      "reviewerCycles": 1,
+      "reviewerFindings": [],
+      "deliverables": [
+        "tests/capabilities/iphone.json",
+        "tests/capabilities/pixel-emulator.json",
+        "tests/capabilities/README.md"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "scaffold",
+      "startedAt": "2026-11-23T09:10:00Z",
+      "finishedAt": "2026-11-23T09:40:00Z",
+      "status": "completed",
+      "handoverEnvelope": {
+        "role": "platform-scaffold",
+        "status": "complete"
+      },
+      "reviewerVerdict": "approved",
+      "reviewerCycles": 1,
+      "reviewerFindings": [],
+      "deliverables": [
+        "playwright.platform.config.ts",
+        "tests/platform/fixtures/base.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "inspect",
+      "startedAt": "2026-11-23T09:40:00Z",
+      "finishedAt": "2026-11-23T10:30:00Z",
+      "status": "completed",
+      "handoverEnvelope": {
+        "role": "platform-inspect",
+        "status": "complete"
+      },
+      "reviewerVerdict": "approved",
+      "reviewerCycles": 1,
+      "reviewerFindings": [],
+      "deliverables": [
+        "tests/platform/docs/app-context.md"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "selectors",
+      "startedAt": "2026-11-23T10:30:00Z",
+      "finishedAt": "2026-11-23T11:15:00Z",
+      "status": "completed",
+      "handoverEnvelope": {
+        "role": "platform-selectors",
+        "status": "complete"
+      },
+      "reviewerVerdict": "approved",
+      "reviewerCycles": 1,
+      "reviewerFindings": [],
+      "deliverables": [
+        "tests/e2e/page-repository.json"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "compose",
+      "startedAt": "2026-11-23T11:15:00Z",
+      "finishedAt": null,
+      "status": "in-progress",
+      "handoverEnvelope": null,
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "reviewerFindings": [],
+      "deliverables": []
+    },
+    {
+      "id": 6,
+      "name": "review",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    },
+    {
+      "id": 7,
+      "name": "report",
+      "status": "pending",
+      "reviewerVerdict": "pending",
+      "reviewerCycles": 0,
+      "deliverables": []
+    }
+  ],
+  "approvedDeviations": []
+}

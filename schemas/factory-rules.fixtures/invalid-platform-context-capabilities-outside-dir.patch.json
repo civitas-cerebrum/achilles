@@ -1,0 +1,11 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/contexts/iphone/capabilities",
+      "value": "tests/platform/iphone.json"
+    }
+  ],
+  "expectError": "/contexts/iphone/capabilities: must match pattern"
+}

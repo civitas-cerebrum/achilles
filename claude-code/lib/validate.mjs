@@ -3,7 +3,7 @@
 // where no npm package can be imported and so call this as a child process.
 //
 // Usage: node validate.mjs <schema> < text
-//   <schema>  onboarding-status | perf-onboarding-status | subagent-returns/<role> (a file under
+//   <schema>  onboarding-status | perf-onboarding-status | platform-onboarding-status | subagent-returns/<role> (a file under
 //             schemas/, without .schema.json)
 //   stdin     the document: JSON, YAML, or Markdown whose first ```json / ```yaml fence (or a
 //             leading YAML front block) holds it
