@@ -10,6 +10,7 @@ Every workflow resumes from a file, never from the conversation. The orchestrato
 | `tests/e2e/docs/.discovery-draft.json` | author-scenario (onboard Phase 3) → map-journeys | yes |
 | `tests/e2e/docs/onboarding-status.json` | onboard | no |
 | `tests/perf/docs/perf-onboarding-status.json` | performance pipeline | no |
+| `tests/platform/docs/platform-onboarding-status.json` | platform pipeline | no |
 | `tests/e2e/docs/flake-quarantine.md` | repair-suite (authors add, the workflow releases) | yes |
 | `.achilles/self-repair/<run-id>/` | repair-suite | no |
 | `tests/e2e/docs/.subagent-returns/*.md` | spill files, every workflow | no |
@@ -34,7 +35,7 @@ Every workflow resumes from a file, never from the conversation. The orchestrato
 }
 ```
 
-`questions` holds every open `NEEDS_CONTEXT` question; the main session's re-dispatch fills `answer`. A run whose resume file is missing restarts preflight and says so in its hand-back. `plan` lists the workflow's stages in order with a status each (`pending`, `in-progress`, `completed`, `skipped`, `blocked`, `failed`); a run whose workflow writes a pipeline ledger (`onboarding-status.json`, `perf-onboarding-status.json`) leaves it out, since the ledger's phases are its stages. The run directory `.achilles/runs/<run-id>/` holds this file, `briefs/` and `reports/`, and `progress.json`, which the adapter writes from the ledger or the plan, the experts at work and the ones that handed back; no agent writes it. There is no other run-state file.
+`questions` holds every open `NEEDS_CONTEXT` question; the main session's re-dispatch fills `answer`. A run whose resume file is missing restarts preflight and says so in its hand-back. `plan` lists the workflow's stages in order with a status each (`pending`, `in-progress`, `completed`, `skipped`, `blocked`, `failed`); a run whose workflow writes a pipeline ledger (`onboarding-status.json`, `perf-onboarding-status.json`, `platform-onboarding-status.json`) leaves it out, since the ledger's phases are its stages. The run directory `.achilles/runs/<run-id>/` holds this file, `briefs/` and `reports/`, and `progress.json`, which the adapter writes from the ledger or the plan, the experts at work and the ones that handed back; no agent writes it. There is no other run-state file.
 
 ## Coverage-expansion state
 
@@ -108,6 +109,8 @@ Cycles are contiguous `1..N`, at most 5, at least one `discovery` and exactly on
 ## Pipeline ledgers
 
 `tests/e2e/docs/onboarding-status.json` and `tests/perf/docs/perf-onboarding-status.json` follow `schemas/onboarding-status.schema.json` and `schemas/perf-onboarding-status.schema.json`. One row per phase with `status` (`pending → in-progress → completed`, or `skipped` with an `approvedDeviations[]` entry whose `authorizer` is a verbatim quote), `reviewerVerdict` (`pending | approved | rejected | escalated-to-user`), `reviewerCycles` (0..3), `handoverEnvelope` (the closing expert's envelope, required for `approved`), and `runMode` with its `modeAuthorizer`. The pipeline `status` says `complete`; a phase says `completed`. The third rejection is `escalated-to-user` and the pipeline `status` becomes `blocked`.
+
+`tests/platform/docs/platform-onboarding-status.json` follows `schemas/platform-onboarding-status.schema.json` with the same row semantics as the perf ledger, `runMode` (and its `modeAuthorizer`) required as there. Its seven phases carry a numeric `id` 1-7 and a fixed Title-Case `name` (`Preflight`, `Scaffold`, `Inspect`, `Selectors`, `Compose`, `Review`, `Report`), and it adds `devices[]`: one entry per capabilities file (`capabilities`, `platform`, `osVersion`, `real`, optional `model`), recorded at preflight. Ownership: the orchestrator writes phase `status`, `handoverEnvelope` and `devices[]`; the reviewer writes only the reviewer fields (`reviewerVerdict`, `reviewerCycles`, `reviewerFindings`) from its platform phase-gate return (`schemas/subagent-returns/platform-reviewer.schema.json`); no other expert writes it.
 
 ## Quarantine ledger
 

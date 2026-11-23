@@ -26,6 +26,8 @@ The following edits violate the contract and are refused:
 
 Enforced by the Claude Code adapter's selector-development hook (`docs/harness/claude-code.md`), which refuses any frontend edit on a selector brief that is not one added attribute; on other harnesses the author self-checks the diff before step 3.
 
+The validator checks web front-end source only. On a platform selector brief, native source edits (Swift, Objective-C, Kotlin, Java, layout XML, storyboards and xibs) are not checked by the hook. They rely on the brief's guardrails: one property added to one element and nothing else, a rebuild and reinstall before the e2e step, and the reviewer reading the staged diff. The author applies the assertions below to those files by hand and states in the receipt that the check was manual.
+
 ### Validation assertions
 
 The validator:

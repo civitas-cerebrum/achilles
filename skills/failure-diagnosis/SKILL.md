@@ -9,7 +9,8 @@ description: >
   red", "the pipeline failed", "look at run <id>", "download the trace",
   "triage the CI failures"), where the first move is to pull the run's
   artifacts down, never to re-run locally. Evidence floor (trace, DOM at
-  failure, console) before any classification; heals test issues to the
+  failure, console; on a platform run page source, screenshot, device log,
+  recording, app and OS version) before any classification; heals test issues to the
   stability bar; reports app bugs with evidence and leaves the test as
   written. The repair-suite workflow's worker pipeline supplies the stage
   order around this skill.
@@ -116,6 +117,24 @@ Each one gets an explicit written observation, even when it is negative: "consol
 
 A root cause proposed without the evidence floor is a guess, and Stage 4a's preconditions cannot be evaluated against a guess, and every heal that follows inherits the guess.
 
+#### Platform evidence floor (iOS, Android)
+
+A failed platform test (`E2E_PLATFORM=ios` or `android`) has no trace, no DOM and no browser console, so the three-item floor above cannot be met and is replaced by this one ([`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Failure evidence"). Each item gets a written observation, as above:
+
+| # | Evidence | Where it comes from |
+|---|---|---|
+| **1** | **Page source at failure** | the `page-source` attachment (`text/xml`) the fixture adds to the failed result ([platform-steps.md](../platform-testing/references/platform-steps.md) §"Failure evidence"); the XML is the element tree, so check whether the target exists, in which context, and with which attributes |
+| **2** | **Screenshot at failure** | the `failure-screenshot` attachment (`image/png`); look for a system alert, the keyboard over the target, an onboarding or permission screen the start state did not expect |
+| **3** | **Device log** | syslog on iOS, logcat on Android, for the failure's time window: during the run, only what the suite captured through the `driver` fixture (in the spec or the fixture's `onSessionStarted`); otherwise a named gap (and a framework gap, [framework-gap.md](../achilles-orchestrator/references/framework-gap.md), when the framework offers no way). `npx wdio session -s <slug> logs --source syslog\|logcat` is read only in a separate reproduction session and labelled as such. App crashes, ANRs and native exceptions show here and nowhere else |
+| **4** | **Screen recording** | when the failure involves motion, an animation, a gesture or a transition: the recording the suite took through the `driver` fixture, otherwise a named gap; a recording of a reproduction is labelled as such |
+| **5** | **App and OS version, device** | device model or class, OS version and real or virtual from the `devices[]` entry of `tests/platform/docs/platform-onboarding-status.json` for the run's capabilities file (else the capabilities file and `tests/capabilities/README.md`); app version and build from the run's attachments or the `## Test Infrastructure` section of `tests/platform/docs/app-context.md`. The same failure on one OS version only is evidence in itself |
+
+Reproduction (R1) uses the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md) with the run's capabilities file, not `playwright-cli`, and closes its session before you return.
+
+**Environment failures are not app bugs.** Code signing or provisioning errors, an untrusted developer certificate, "Timed out while enabling automation mode" (a locked iOS device), a device the server will not allocate, a missing driver on the Appium server or an unreachable server are environment failures. Classify them as such (neither test issue nor app bug), name the evidence (the session-start error, the server response), and return `BLOCKED` with what the owner of the device or server must do. Never heal a spec around them and never file them as app bugs.
+
+Platform-specific test issues to check in Stage 3 before an app-bug call: the element is below the open keyboard; the element sits further down a lazy list and was never scrolled to (`scrollUntilFound` missing); the spec acted in the wrong context on a hybrid screen; the start state differed because an earlier test left state behind (wrong reset level); an unexpected permission prompt or system alert covered the screen (a missing arrange step, not a bug, unless the app raised it at the wrong moment).
+
 #### Steps
 
 1. **Read the error message and stack trace.** Note the test file, line number, step name, and error type, and the framework version embedded in the stack trace's `node_modules` paths (Stage 0a step 3). This scopes the search; it does not answer it.
@@ -213,6 +232,7 @@ Before finalizing your classification, run through this checklist:
 | **Stale browser state** | Cookies, localStorage, or cached data from a previous test contaminating the current one | Test isolation issue: test issue. Ensure tests don't depend on shared state |
 | **Navigation race** | URL shows an intermediate state; page is mid-redirect when the test tries to interact | Test issue: add `verifyUrlContains` or `waitForState` after navigation |
 | **Third-party dependency** | CDN asset failed, external widget didn't load, embedded iframe timed out | Neither test nor app bug: report as infrastructure/external dependency issue |
+| **Platform: signing, trust or device lock** | Session start failed with a signing, provisioning or trust error, "Timed out while enabling automation mode", or no device allocated (§"Platform evidence floor (iOS, Android)") | Environment failure: `BLOCKED` with the evidence; not a test issue, not an app bug |
 | **Modal opens but content hangs** | Frame mounts but content stays on a spinner sentinel. See [`references/niche-edge-cases.md`](references/niche-edge-cases.md) entry (1) for the disambiguating probe and full prose | **App bug**: apply Stage 4a heal `(h)` (documented-quirk, no heal) |
 
 ### Niche edge cases
@@ -266,14 +286,14 @@ Write the bug report into your return with this structure:
 > **DOM evidence:** <error-context.md or snapshot path>
 > **Console:** <app-origin errors, or "none: only third-party blocked-resource notices">
 > **Severity:** <per bug-report rubric>
-> **Environment:** <base URL + browser/project + viewport>
+> **Environment:** <base URL + browser/project + viewport; on a platform run: device, OS version, real or virtual, app version, capabilities file>
 > **Source run:** <local | run <run-id>, job "<job name>", workflow "<name>", branch <ref>, commit <headSha>, framework <pkg>@<version>>
 > **Journey:** j-<slug> (when journey-map.md present)
 > **Reproducible:** R1: confirmed by navigating manually via `playwright-cli` | R2: artifact-only: <the ≥2 independent observations>; R1 unavailable because <reason>
 >
 > This is an application bug. The test has NOT been modified.
 
-**Hard rule:** every app-bug report MUST cite at least one on-disk artifact path (screenshot, `trace.zip`, `error-context.md`, snapshot, or capture file). Prose supplements the artifact, never replaces it.
+**Hard rule:** every app-bug report MUST cite at least one on-disk artifact path (screenshot, `trace.zip`, `error-context.md`, snapshot, or capture file; on a platform run the page-source XML, the failure screenshot or the device log). Prose supplements the artifact, never replaces it.
 
 **Hard rule (Entrypoint C):** every pipeline-sourced report MUST carry the `Source run:` provenance line, including the commit the run was built from and the framework version it resolved, and MUST cite downloaded-artifact paths, not workspace paths. A report that cites `test-results/...` from the workspace while diagnosing a CI failure is citing a different execution.
 

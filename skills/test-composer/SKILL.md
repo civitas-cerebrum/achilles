@@ -56,7 +56,7 @@ Rules:
 1. **Happy path end to end** (introduces the selectors every later variant inherits).
 2. **Error states**: validation, network failure, session expiry, invalid input per step.
 3. **Edge cases** from the partition table in [`references/input-domain-analysis.md`](references/input-domain-analysis.md), never ad hoc.
-4. **Mobile** (P0/P1): the happy path at 375×812.
+4. **Mobile** (P0/P1): the happy path at 375×812. On a platform target this is landscape and the two device classes instead (§"Platform targets (iOS, Android)").
 5. **Negative flows**: permission denied, unauthorised access, out-of-order steps; each asserts the refusal the user is shown, not only the redirect (§"UI outcome oracle").
 6. **Data lifecycle** where the expectations list them: create → read → update → delete across sessions, draft persistence, bulk operations.
 7. **Visual regression** where the surface is design-locked (see below).
@@ -168,6 +168,31 @@ Composer schema (`schemas/subagent-returns/composer.schema.json`), envelope firs
 - `no-new-tests-by-rationalisation` is not a return; inspect instead.
 
 Findings (coverage gaps, app-bug flags, discoveries) use the canonical block in [`finding-and-ledger-schema.md`](../achilles-orchestrator/references/finding-and-ledger-schema.md) with ids `<journey-slug>-<pass>-<nn>` (or `<journey-slug>-<nn>` standalone). Commit subjects are the orchestrator's: `test(<j-slug>): <variant>` ([commit-conventions.md](../achilles-orchestrator/references/commit-conventions.md)).
+
+## Platform targets (iOS, Android)
+
+A brief whose target is a native app (`E2E_PLATFORM=ios` or `android`) loads [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) with this skill. The steps above still apply; these rules change them, and the Stage B reviewer checks each one as a must-fix. Step names and options come from [`platform-steps.md`](../platform-testing/references/platform-steps.md) only.
+
+- **Where things live.** Specs under `tests/platform/<journey>/`, the fixture `tests/platform/fixtures/base.ts`, screens in `tests/platform/docs/app-context.md`. Step 2 discovery uses the [platform inspection protocol](../achilles-orchestrator/references/platform-inspection-protocol.md), not `playwright-cli`. Every run takes the one form in [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Run command", with a file or `--grep` after the config while iterating.
+- **Variants.** The 375x812 mobile variant does not exist on a platform target. P0 and P1 add instead: the happy path in landscape where the app supports it (`setOrientation`, then `verifyOrientation`), the happy path on the small and the large device class (one run per capabilities file), and every permission prompt the journey raises as its own allow, deny and deferred branches ([platform skill](../platform-testing/SKILL.md) §"Permissions and system alerts").
+
+### Start state and reset
+
+Every platform scenario opens with a comment naming its start state (screen, signed in or not, permission states, data present) and its reset level, with the mechanism the levels table in [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"App state and reset" gives for that level. A level other than the fixture default carries its reason in that comment.
+
+### Platform discipline in a spec
+
+Each row below is stated in full in the platform skill; compose against the row, and the Stage B reviewer checks it there.
+
+- Keyboard: [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Keyboard"; decide where to hide it from the keyboard-up and keyboard-down snapshots in `app-context.md`.
+- Gestures and scrolling: [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Gestures and scrolling"; each gesture variant ends with an assertion of its effect.
+- Hybrid content: [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Hybrid content"; the context of each screen comes from `app-context.md`.
+- Platform divergence: [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Platform divergence"; the reason of a platform branch is written in the branch.
+- Animations and timing: [`../platform-testing/SKILL.md`](../platform-testing/SKILL.md) §"Animations and timing"; a longer timeout on one verification carries its reason.
+
+### Web-only steps throw
+
+Which steps throw `PlatformNotSupportedError` on a platform run is listed once, in [`platform-steps.md`](../platform-testing/references/platform-steps.md) §"Step semantics". Never catch the error to keep going and never wrap a step in a try to make it optional; use the platform step that does the job, or a stated platform branch. The oracle ladder carries over: the L1 round trip is a relaunch (`resetApp`) and a re-read of the screen instead of a page reload, and an L2 API oracle applies unchanged when the suite can reach the app's API.
 
 ## Anti-patterns
 
