@@ -37,7 +37,7 @@ A platform-only project downloads no Chromium. `npx playwright-cli install-brows
 
 ### 2.3 Workspace artifacts
 
-`wdio session` writes snapshots, screenshots, page sources and exports to a per-session artifacts directory, which `open` and `info` print. Nothing there is committed; evidence an expert keeps is copied to the existing evidence locations its brief names (selector evidence under `docs/evidence/selectors/**`, a change's folder under `docs/evidence/`, a platform evidence bundle under `tests/platform/evidence/<slug>-<ts>/`).
+`wdio session` writes snapshots, screenshots, page sources, `history.json`, `daemon.log` and exports to a per-session artifacts directory, `<project>/.wdio/session/<slug>/`, which `open` and `info` print. It ignores itself through `.wdio/session/.gitignore`. It can hold personal data read off the screen (names, account rows), so it is never committed and never attached to a report, ticket or evidence bundle as is. Nothing there is committed; evidence an expert keeps is copied to the existing evidence locations its brief names (selector evidence under `docs/evidence/selectors/**`, a change's folder under `docs/evidence/`, a platform evidence bundle under `tests/platform/evidence/<slug>-<ts>/`).
 
 ---
 
@@ -46,7 +46,7 @@ A platform-only project downloads no Chromium. `npx playwright-cli install-brows
 ### 3.1 The invocation (the only form)
 
 ```bash
-npx wdio session -s <expert-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json
+npx wdio session -s <expert-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id>   # android: --package <id>
 npx wdio session -s <expert-slug> snapshot -i --all --selectors
 # ... actions by ref ...
 npx wdio session -s <expert-slug> close
@@ -55,7 +55,8 @@ npx wdio session -s <expert-slug> close
 - `<platform>` is `ios` or `android` (the `Platform` vocabulary; `macos` and `windows` are declared, not implemented yet).
 - `--appium-url` is the full server URL **including the base path** (`<appium-server>/wd/hub` on a server started with that base path). Without the base path, session creation fails with "unknown command". The value comes from `APPIUM_URL`; a literal private URL is never written into a brief, a spec or a committed file.
 - `--capabilities` names a file under `tests/capabilities/`, the **same file** the test run uses (`CAPABILITIES`). Capabilities live only there; never pass them as inline JSON.
-- The app under test comes from that file (`appium:bundleId` on ios, `appium:appPackage` on android, or `appium:app`). Pass `--bundle-id <id>` or `--package <id>` only when the file has no app id.
+- `open` **always** passes the app flag: `--bundle-id <id>` on ios, `--package <id>` on android, equal to the file's `appium:bundleId` / `appium:appPackage`. `@wdio/cli` 10.2.0 checks for the flag before it merges the capabilities file, so `open` without it exits 2 even when the file names the app (found live). The Bash judge requires the flag and cross-checks it against the file. The test run still reads the app id from the file only.
+- The capabilities file sets explicitly every key the CLI would otherwise default: `appium:newCommandTimeout` (short, e.g. 300; never the CLI's 3600), `appium:deviceName`, and on android `appium:autoGrantPermissions: false` (the CLI defaults it to `true`).
 - Add nothing else to `open`. Device, udid, reset behaviour, orientation and timeouts are capabilities, and therefore file content, not flags.
 - `-s <expert-slug>` comes before the action on every call.
 
@@ -107,7 +108,8 @@ npx wdio session -s <slug> snapshot -i --all --selectors
 ```
 
 - `-i` lists interactive elements only.
-- `--all` includes elements the tool judges hidden. **On iOS the default snapshot judges list content hidden** and can return only the navigation title while the page source holds every row. Pass `--all` on every platform so one habit works everywhere.
+- `--all` includes elements the tool judges hidden. **On iOS the default snapshot showed only the navigation title**; with `--all` it lists the rendered rows, the same set as the page source. Rows further down a lazy list are not rendered yet and need a swipe. Pass `--all` on every platform so one habit works everywhere.
+- `--all` marks off-screen or obscured elements `[hidden]`. **Swipe a `[hidden]` element into view before you tap it or take its element screenshot.** Found live: `tap <ref>` on a `[hidden]` element printed "Tapped …" and exited 0 but did nothing, and its element screenshot was black. A "Tapped" line and exit 0 do not prove the action worked; re-snapshot and compare. Selector evidence captured while the element was hidden is not acceptable.
 - `--selectors` ends each ref line with its best WebdriverIO selector.
 
 Format (fake app, values illustrative):
@@ -248,7 +250,7 @@ The orchestrator embeds this block in every brief for an expert that inspects a 
 
 Use `wdio session` from your shell, in exactly this form:
 
-    npx wdio session -s <your-session-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json
+    npx wdio session -s <your-session-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id>   # android: --package <id>
     npx wdio session -s <your-session-slug> snapshot -i --all --selectors
     # ... your work, acting by ref ...
     npx wdio session -s <your-session-slug> close
@@ -271,7 +273,9 @@ Command surface and rules: `skills/achilles-orchestrator/references/platform-ins
 | Symptom | Cause | Fix |
 |---|---|---|
 | `open` fails with "unknown command" | `--appium-url` lacks the server's base path | Use the full URL with the base path, from `APPIUM_URL` |
-| iOS snapshot shows only the navigation title | Snapshot without `--all`; the tool judged the list hidden | `snapshot -i --all --selectors` |
+| iOS snapshot shows only the navigation title | Snapshot without `--all`; the tool judged the list hidden | `snapshot -i --all --selectors`; swipe for rows further down |
+| `open` exits 2 although the capabilities file names the app | The CLI checks for the app flag before it merges the file | Pass `--bundle-id <id>` (ios) / `--package <id>` (android), equal to the file's app id |
+| `tap` printed "Tapped" and exited 0, but the screen did not change; the element screenshot is black | The element was `[hidden]` (off-screen or obscured) | Swipe it into view, re-snapshot, tap the fresh ref, re-snapshot and compare |
 | "Timed out while enabling automation mode" (iOS) | The device is locked | Stop and report; do not retry in a loop |
 | `back` refused on iOS | No system back on iOS; `back` is a web action | Tap the on-screen back button by ref |
 | `REF_STALE` | The screen changed since the snapshot | Re-snapshot, then act |
@@ -286,14 +290,16 @@ Command surface and rules: `skills/achilles-orchestrator/references/platform-ins
 
 The inspection tool was proven on a real iOS device. What held:
 
-- `open ios --appium-url <server-with-base-path> --capabilities <file>` opened a named session.
+- `open ios --appium-url <server-with-base-path> --capabilities <file> --bundle-id <id>` opened a named session. Without `--bundle-id`, `open` exited 2 although the file named the app: the CLI checks the flag before it merges the file.
+- The CLI injects defaults the file overrides only when it sets them: `appium:newCommandTimeout` 3600, `appium:deviceName`, and on android `appium:autoGrantPermissions: true`.
+- `tap` on a `[hidden]` element reported success and did nothing; its element screenshot was black.
 - `snapshot -i --all --selectors` listed every interactive element with a ref and a selector, accessibility id first, class chain or positional XPath marked "(positional)" otherwise.
 - `tap <ref>`, `swipe up`, `source` (full XCUITest XML), `screenshot` and `export` worked; each action printed the WebdriverIO code it ran.
 - `close` ended the session and freed the device.
 
-What the protocol encodes from it: `--all` on every snapshot; the base path inside `--appium-url`; capabilities (udid, a short `newCommandTimeout`, `noReset`, `autoAcceptAlerts: false`) only from the capabilities file; no `back` on iOS; positional selectors never land without a better alternative.
+What the protocol encodes from it: `--all` on every snapshot; the app flag on every `open`, equal to the file's app id; the base path inside `--appium-url`; capabilities (udid, `deviceName`, a short `newCommandTimeout`, `noReset`, `autoAcceptAlerts: false`) only from the capabilities file, with every CLI default overridden explicitly; swipe a `[hidden]` element into view before acting on it; no `back` on iOS; positional selectors never land without a better alternative.
 
-Not yet proven, so treat as unverified and report surprises: Android (everything), `fill` on a text field, `long-press`, `contexts` on a hybrid app, two sessions on two devices at once, and `open` without `--bundle-id` / `--package` (the app id only from the capabilities file).
+Not yet proven, so treat as unverified and report surprises: Android (everything), `fill` on a text field, `long-press`, `contexts` on a hybrid app, and two sessions on two devices at once.
 
 Other constraints:
 
