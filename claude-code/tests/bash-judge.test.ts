@@ -400,7 +400,7 @@ test('wdio session open: capabilities only from tests/capabilities/*.json, the s
   expect((await bash(`npx wdio session open ios com.example.shop ${url} ${iphone}`)).deny).toMatch(/positional/)
   expect((await bash(`npx wdio session open android ${url} ${iphone}`)).deny).toMatch(/platformName "iOS"/)
   expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/noname.json`)).deny).toMatch(/no platformName/)
-  for (const [name, doc] of [['w3c', { alwaysMatch: { platformName: 'iOS' }, firstMatch: [{}] }], ['first', { firstMatch: [{ platformName: 'iOS' }] }], ['wrapped', { capabilities: { platformName: 'iOS' } }]] as const) {
+  for (const [name, doc] of [['w3c', { alwaysMatch: { platformName: 'iOS' }, firstMatch: [{}] }], ['first', { firstMatch: [{ platformName: 'iOS' }] }], ['wrapped', { capabilities: { platformName: 'iOS' } }], ['null', null], ['list', [{ platformName: 'iOS' }]], ['text', 'iOS']] as const) {
     h.write(`${ROOT}/tests/capabilities/${name}.json`, JSON.stringify(doc))
     expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/${name}.json --bundle-id com.example.shop`)).deny).toMatch(/capabilities files are flat: top-level keys, no alwaysMatch\/firstMatch wrapper/)
   }

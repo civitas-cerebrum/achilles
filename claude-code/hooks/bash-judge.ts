@@ -497,6 +497,7 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   } catch {
     return `${file} is not JSON; fix the capabilities file before opening a session.`
   }
+  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) return `${file} is not a JSON object; capabilities files are flat: top-level keys, no alwaysMatch/firstMatch wrapper.`
   const wrapper = ['alwaysMatch', 'firstMatch', 'capabilities'].find(k => k in doc)
   if (wrapper !== undefined) return `${file} wraps its capabilities in "${wrapper}"; capabilities files are flat: top-level keys, no alwaysMatch/firstMatch wrapper (the library sends the file's content as the capabilities object).`
   const named = doc.platformName
