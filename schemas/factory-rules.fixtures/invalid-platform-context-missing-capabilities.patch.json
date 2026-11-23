@@ -1,0 +1,10 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/contexts/iphone/capabilities"
+    }
+  ],
+  "expectError": "/contexts/iphone: must have required property 'capabilities'"
+}

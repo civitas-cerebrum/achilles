@@ -52,7 +52,7 @@
     },
     "devices": {
       "type": "array",
-      "description": "The devices this run targets, one per capabilities file. Recorded at preflight (at least one before preflight is completed) so every report can name the device, its OS version and whether it is a real device or a virtual one (emulator / simulator).",
+      "description": "The devices this run targets, one per capabilities file. Recorded at preflight (at least one once preflight is completed or skipped) so every report can name the device, its OS version and whether it is a real device or a virtual one (emulator / simulator).",
       "items": { "$ref": "#/$defs/device" }
     },
     "phases": {
@@ -90,7 +90,7 @@
     "type": "object",
     "required": ["phases"],
     "properties": {
-      "phases": { "type": "array", "contains": { "type": "object", "required": ["id", "status"], "properties": { "id": { "const": 1 }, "status": { "const": "completed" } } } }
+      "phases": { "type": "array", "contains": { "type": "object", "required": ["id", "status"], "properties": { "id": { "const": 1 }, "status": { "enum": ["completed", "skipped"] } } } }
     }
   },
   "then": {
@@ -103,7 +103,7 @@
       "additionalProperties": false,
       "required": ["capabilities", "platform", "osVersion", "real"],
       "properties": {
-        "capabilities": { "type": "string", "pattern": "^tests/capabilities/[A-Za-z0-9._-]+\\.json$", "description": "Project-relative path of the device's capabilities file; the same file the inspection session and the test run use." },
+        "capabilities": { "type": "string", "pattern": "^tests/capabilities/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$", "description": "Project-relative path of the device's capabilities file; the same file the inspection session and the test run use." },
         "platform": { "enum": ["android", "ios", "macos", "windows"] },
         "osVersion": { "type": "string", "minLength": 1, "description": "The OS version the device reported, e.g. '17.5' or '14'." },
         "real": { "type": "boolean", "description": "true for a real device, false for a virtual one (emulator / simulator)." },
