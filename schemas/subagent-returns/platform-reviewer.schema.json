@@ -36,7 +36,7 @@
     },
     "checklist": {
       "type": "array",
-      "description": "Per-item pass/fail of the platform phase exit criteria. An item that checks one row of the mobile discipline (skills/platform-testing/SKILL.md ## Mobile discipline: app state and reset, permissions, keyboard, gestures, orientation, real versus virtual device, ...) names that row in section6-row.",
+      "description": "Per-item pass/fail of the platform phase exit criteria. An item that checks one row of the platform discipline (skills/platform-testing/SKILL.md ## Platform discipline: app state and reset, permissions, keyboard, gestures, orientation, real versus virtual device, ...) names that row in section6-row.",
       "items": {
         "type": "object",
         "additionalProperties": true,
@@ -46,7 +46,7 @@
           "satisfied": { "type": "boolean" },
           "evidence": { "type": "string" },
           "methodology-ref": { "type": "string" },
-          "section6-row": { "type": "string", "minLength": 1, "description": "The mobile-discipline row this item ticks: the text of one ### heading under ## Mobile discipline in skills/platform-testing/SKILL.md, e.g. 'Permissions and system alerts'." }
+          "section6-row": { "type": "string", "minLength": 1, "description": "The platform-discipline row this item ticks: the text of one ### heading under ## Platform discipline in skills/platform-testing/SKILL.md, e.g. 'Permissions and system alerts'." }
         }
       }
     },

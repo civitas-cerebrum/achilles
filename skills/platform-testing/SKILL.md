@@ -6,8 +6,8 @@ description: >
   `author` or `inspector` dispatch on a platform target. Triggers: "test the
   iOS app", "test the Android app", "native app tests", "Appium", "wdio
   session", "capabilities file", "tests/capabilities", "PLATFORM=ios",
-  "PLATFORM=android", "tests/platform", "onboard the app", "set up platform
-  testing", "real device", "emulator", "simulator", "bundle id", "app
+  "PLATFORM=android", "tests/platform", "platform-onboard", "onboard the iOS app",
+  "onboard the Android app", "set up platform testing", "real device", "emulator", "simulator", "bundle id", "app
   package". Read references/platform-steps.md before writing any platform
   spec, fixture or page-repository entry; never invent a platform step or
   selector key. Not for the mobile viewport variant (a web test at 375x812 in
@@ -17,7 +17,7 @@ description: >
 
 # Platform testing
 
-Native apps (iOS, Android) tested through the same Steps API as web: element-interactions picks the driver family from one switch, `PLATFORM`, and element-repository resolves the platform's page by name. The spec reads the same; the discipline does not. Platform testing is not web testing with different selectors. Every rule in §"Mobile discipline" exists because a web assumption breaks on a device, and a reviewer treats a missing one as a must-fix, the way a missing mobile viewport variant is a must-fix on web.
+Native apps (iOS, Android) tested through the same Steps API as web: element-interactions picks the driver family from one switch, `PLATFORM`, and element-repository resolves the platform's page by name. The spec reads the same; the discipline does not. Platform testing is not web testing with different selectors. Every rule in §"Platform discipline" exists because a web assumption breaks on a device, and a reviewer treats a missing one as a must-fix, the way a missing mobile viewport variant is a must-fix on web.
 
 "Mobile" keeps meaning the 375x812 viewport variant of a web test. This skill calls the native modality **platform** (`platform-testing`, `tests/platform/`), and its platform values are exactly `web | android | ios | macos | windows`.
 
@@ -40,15 +40,15 @@ Native apps (iOS, Android) tested through the same Steps API as web: element-int
 6. Never auto-accept a permission prompt or system alert by default (§"Permissions and system alerts").
 7. One expert per device, one session per expert, closed at the end of the turn (§"Devices are scarce and slow").
 8. One page repository per project, one page name per platform inside it.
-9. Positional selectors never land without a better alternative, a fallback, or a known-issues row.
-10. Results name the device, the OS version and whether it was a real or a virtual device.
+9. Positional selectors never land without a better alternative, a fallback, or a row in `tests/platform/docs/known-issues.md`.
+10. Results name the device, the OS version and whether it was a real or a virtual device, read from the ledger's `devices[]`.
 
 ## Prerequisites
 
-Collected in the orchestrator's preflight; any missing item is a `NEEDS_CONTEXT` return.
+Collected in the orchestrator's preflight (phase 1); any missing item is a `NEEDS_CONTEXT` return. The orchestrator collects and records; it never opens a session. The first session on each device is opened by the dispatched inspector at the start of phase 3.
 
 - **The app.** Its id (`bundleId` on iOS, `appPackage` on Android) in the capabilities file, or a build (`.ipa`/`.app`, `.apk`/`.aab`) and the command that produces it.
-- **A capabilities file per device** under `tests/capabilities/`, with `platformName` matching `PLATFORM`.
+- **A capabilities file per device** under `tests/capabilities/`, with `platformName` matching `PLATFORM`, or the values for one (platform, device class, real or virtual, OS version, app id), which the scaffold phase writes into the file.
 - **An Appium server** with the platform's driver (XCUITest, UiAutomator2), given as a URL with its base path or as `env:<VAR>` (normally `env:APPIUM_URL`). A literal private URL is never committed.
 - **Tooling.** `npx --no-install wdio --version` prints `10.2.0`; Node meets WebdriverIO 10's minimum (advisory: older Node may work but is unsupported). No browser download.
 
@@ -57,6 +57,14 @@ The target is recorded in `factory-rules` `contexts` in the platform shape:
 ```json
 { "platform": "ios", "capabilities": "tests/capabilities/iphone.json", "server": "env:APPIUM_URL" }
 ```
+
+and each device in the ledger's `devices[]` (at least one once preflight is `completed` or `skipped`):
+
+```json
+{ "capabilities": "tests/capabilities/iphone.json", "platform": "ios", "osVersion": "17.5", "real": true, "model": "iPhone 15" }
+```
+
+`model` is optional and is a device model or class, never a personal device name. Reports read device, OS version and real or virtual from `devices[]`.
 
 ## Project layout
 
@@ -73,7 +81,9 @@ tests/platform/
   docs/
     platform-onboarding-status.json  # the platform ledger
     app-context.md                   # screens keyed by screen name and navigation path
+    known-issues.md                  # positional selectors kept, platform divergences, environment limits
     platform-report.md               # the report (sentinel on line 1)
+  evidence/<slug>-<ts>/              # platform evidence bundles (evidence-capture)
 ```
 
 A project that already has `tests/e2e/page-repository.json` keeps one repository: platform pages are added to it (same page name, `"platform": "ios"` / `"android"`), and `tests/platform/page-repository.json` is not created.
@@ -87,7 +97,7 @@ PLATFORM=<platform> CAPABILITIES=tests/capabilities/<device>.json APPIUM_URL=<se
   npx playwright test -c playwright.platform.config.ts
 ```
 
-While iterating, an author adds a file and `--grep <ids>` after the config, as on web. Each device class is a separate run with its own capabilities file; there is no in-run device matrix. `APPIUM_USER` / `APPIUM_KEY` are set in the environment for a remote server that needs them.
+While iterating, an author keeps the same prefix and adds its own file and `--grep <ids>` after `-c playwright.platform.config.ts`. Each device class is a separate run with its own capabilities file; there is no in-run device matrix. `APPIUM_USER` / `APPIUM_KEY` are set in the environment for a remote server that needs them.
 
 ## Scaffolding
 
@@ -109,7 +119,23 @@ The scaffold phase writes, and writes only what is missing:
    }
    ```
 
-   Android uses `"platformName": "Android"`, `"appium:automationName": "UiAutomator2"`, `"appium:appPackage"` and `"appium:appActivity"`. Animations are turned off here where the driver supports it (§"Animations and timing"). Vendor and cloud options are keys in this file; credentials are not.
+   The Android counterpart, also with fake values:
+
+   ```json
+   {
+     "platformName": "Android",
+     "appium:automationName": "UiAutomator2",
+     "appium:udid": "emulator-5554",
+     "appium:appPackage": "com.example.shop",
+     "appium:appActivity": ".MainActivity",
+     "appium:newCommandTimeout": 300,
+     "appium:noReset": true,
+     "appium:autoGrantPermissions": false,
+     "appium:disableWindowAnimation": true
+   }
+   ```
+
+   `appium:autoGrantPermissions: false` on Android and `appium:autoAcceptAlerts: false` on iOS are the never-auto-accept rule in file form (§"Permissions and system alerts"). Animations are turned off here where the driver supports it: `appium:disableWindowAnimation: true` on Android, `appium:reduceMotion: true` on an iOS simulator (§"Animations and timing"). A variant file for a different reset level (for example `iphone-clean.json` with `"appium:noReset": false`, or `"appium:fullReset": true` where the driver supports it) is a separate capabilities file, listed in the README (§"App state and reset"). Vendor and cloud options are keys in this file; credentials are not.
 3. **`tests/platform/fixtures/base.ts`**: the `baseFixture(base, <repository path>, { ... })` call from [`references/platform-steps.md`](references/platform-steps.md) §"Fixture options". `platform` and `session` default to `PLATFORM`, `CAPABILITIES` and `APPIUM_URL`; the file names no capability, server or app id.
 4. **`package.json`**: `@wdio/cli` pinned at exactly `10.2.0` in `devDependencies`; `webdriverio` `^10` as a devDependency (element-interactions imports it dynamically); scripts `"test:platform": "playwright test -c playwright.platform.config.ts"` and, when the app is built from this workspace, `"app:build:ios"` / `"app:build:android"`.
 5. **The app build and install step.** When the app is built from source, the build command is a script, its output path is the `appium:app` value of a build-specific capabilities file or is installed once with `steps.installApp(<path>)` in a setup project, and the README in `tests/capabilities/` says which. When the app is already on the device, the capabilities file carries its id and no install happens. A signing or trust failure during install is an environment failure (§"Real device versus emulator").
@@ -119,27 +145,38 @@ The scaffold phase writes, and writes only what is missing:
 
 ## Pipeline mode (zero to a maintained platform suite)
 
-The orchestrator runs seven phases with a fresh phase-gate review between each ([`../review/SKILL.md`](../review/SKILL.md)). The ledger is `tests/platform/docs/platform-onboarding-status.json` (schema `schemas/platform-onboarding-status.schema.json`, row semantics as in [state-files.md](../achilles-orchestrator/references/state-files.md) §"Pipeline ledgers"). The phase ids are fixed: `preflight`, `scaffold`, `inspect`, `selectors`, `compose`, `review`, `report`.
+The orchestrator runs seven phases with a fresh phase-gate review between each. The ledger is `tests/platform/docs/platform-onboarding-status.json` (schema `schemas/platform-onboarding-status.schema.json`, row semantics as in [state-files.md](../achilles-orchestrator/references/state-files.md) §"Pipeline ledgers"). Phases carry a numeric `id` 1-7 with a fixed `name`: 1 `preflight`, 2 `scaffold`, 3 `inspect`, 4 `selectors`, 5 `compose`, 6 `review`, 7 `report`. The ledger also holds `devices[]` (§"Prerequisites").
 
-| # | Phase id | Who | Deliverable | Exit |
+**Phase gates.** After each phase the orchestrator dispatches the existing reviewer role, fresh each time, loading [`../review/SKILL.md`](../review/SKILL.md). Its handover role is `platform-reviewer-phase<N>` (N = the phase id) and its return follows `schemas/subagent-returns/platform-reviewer.schema.json`. Each check of a §"Platform discipline" row is one `checklist[]` item whose `section6-row` is that row's heading text (for example `Permissions and system alerts`). The orchestrator records the verdict in the platform ledger; the reviewer writes no ledger.
+
+| id | name | Who | Deliverable | Exit |
 |---|---|---|---|---|
-| 1 | `preflight` | orchestrator | the target in `factory-rules` `contexts` (platform shape); tooling checked; the server answered; device list per capabilities file | every prerequisite stated, none inferred; one session opened and closed on each device |
-| 2 | `scaffold` | author | the files in §"Scaffolding" | `npx playwright test -c playwright.platform.config.ts --list` exits 0; no Chromium downloaded; no capability literal outside `tests/capabilities/` |
-| 3 | `inspect` | inspector, one per device | `tests/platform/docs/app-context.md`: screens keyed by screen name and navigation path, entry points and deep links, permission prompts and where they fire, keyboard states, contexts per screen | every screen in scope has an entry; every prompt seen is listed with its trigger |
-| 4 | `selectors` | author | platform pages in the one page repository, each entry with a selector evidence note (`npx achilles-selector-evidence --platform <p>`, [selector-evidence.md](../achilles-orchestrator/references/selector-evidence.md)) | no `provisional` entry without a stated reason; no positional selector without a fallback or known-issues row |
-| 5 | `compose` | author loading `test-composer` with this skill | `tests/platform/**/*.spec.ts` per journey, with the variants §"Mobile discipline" adds | 3 consecutive greens per new test on each device class it targets; Stage 4b sweep clean |
-| 6 | `review` | reviewer | the verdict, plus the whole-suite run per device class and one deliberate failure turning a test red | composition judge satisfied; §"Mobile discipline" rows checked; suite green |
-| 7 | `report` | doc-writer loading `qa-reporting` | `tests/platform/docs/platform-report.md` with `<!-- platform-testing:generated -->` on line 1 | every result names device, OS version and real or virtual; findings in the canonical ledger |
+| 1 | `preflight` | orchestrator | the app id or build; an existing capabilities file or the values for one; the server as a URL with base path or `env:<VAR>`; `npx --no-install wdio --version` checked; the target in `factory-rules` `contexts` (platform shape); `devices[]` in the ledger | every prerequisite stated, none inferred; at least one `devices[]` entry. The orchestrator opens no session |
+| 2 | `scaffold` | author | the files in §"Scaffolding", including `tests/capabilities/<device>.json` for every `devices[]` entry | `npx playwright test -c playwright.platform.config.ts --list` exits 0; no Chromium downloaded; no capability literal outside `tests/capabilities/` |
+| 3 | `inspect` | inspector, one per device | first, one session opened and closed on each device to prove the capabilities file and server; then `tests/platform/docs/app-context.md`: screens keyed by screen name and navigation path, entry points and deep links, permission prompts and where they fire, keyboard states, contexts per screen | every device opened and closed once; every screen in scope has an entry; every prompt seen is listed with its trigger |
+| 4 | `selectors` | author | platform pages in the one page repository, each entry with a selector evidence note (`npx achilles-selector-evidence --platform <p>`, [selector-evidence.md](../achilles-orchestrator/references/selector-evidence.md)) | no `provisional` entry without a stated reason; no positional selector without a fallback or a row in `tests/platform/docs/known-issues.md` |
+| 5 | `compose` | author loading `test-composer` with this skill | `tests/platform/**/*.spec.ts` per journey, with the variants §"Platform discipline" adds | 3 consecutive greens per new test on each device class it targets; Stage 4b sweep clean |
+| 6 | `review` | reviewer | the verdict, plus the whole-suite run per device class and one deliberate failure turning a test red | composition judge satisfied; §"Platform discipline" rows checked; suite green |
+| 7 | `report` | doc-writer loading `qa-reporting` | `tests/platform/docs/platform-report.md` with `<!-- platform-testing:generated -->` on line 1 | every result names device, OS version and real or virtual, read from `devices[]`; findings in the canonical ledger |
 
 Resume: the first ledger row that is not `completed` with `reviewerVerdict: approved`. One commit per phase (`chore(platform): scaffold platform suite`, `docs(platform): app context — <N> screens`, `feat(platform): selectors — <N> elements`, `test(platform): <journey> — <N> tests`, `docs(platform): platform-report — <verdict>`). The ledger is never hand-edited around a failed check.
 
-## Mobile discipline
+## Platform discipline
 
 One heading per nuance. Rows owned here are complete; the others give the rule and the skill that owns its detail. Cite a row by its heading (`platform-testing/SKILL.md` and the heading text).
 
 ### App state and reset
 
-A browser context gives each web test a clean slate; a device keeps app data, login, caches and permissions between tests. Every scenario states its start state and its reset level: `relaunch` (the fixture default: terminate and activate), clear data, or reinstall. A test that needs more than relaunch says so and arranges it; it never depends on the previous test's leftovers. Accounts already logged in on the device are test data with an owner. Detail: [`../test-composer/SKILL.md`](../test-composer/SKILL.md) (start state and reset per scenario) and [`../test-data-conventions/SKILL.md`](../test-data-conventions/SKILL.md) (device-resident accounts and data).
+A browser context gives each web test a clean slate; a device keeps app data, login, caches and permissions between tests. Every scenario states its start state and its reset level, and each level has one mechanism:
+
+| Level | Mechanism |
+|---|---|
+| none | `session: { reset: 'none' }` in the fixture; only for a describe block whose tests are a deliberate sequence, stated in the block |
+| relaunch | the fixture default `session.reset: 'relaunch'` (terminate and activate between tests), or `steps.resetApp()` inside a test |
+| clear data | no platform step exists for it. A capabilities-file variant (`"appium:noReset": false`, or `"appium:fullReset": true` where the driver supports it) run as its own run; anything else is a framework gap ([framework-gap.md](../achilles-orchestrator/references/framework-gap.md)), never an invented step |
+| reinstall | `steps.removeApp(<appId>)` then `steps.installApp(<path>)` |
+
+A test that needs more than relaunch says so and arranges it; it never depends on the previous test's leftovers. Accounts already logged in on the device are test data with an owner. Detail: [`../test-composer/SKILL.md`](../test-composer/SKILL.md) (start state and reset per scenario) and [`../test-data-conventions/SKILL.md`](../test-data-conventions/SKILL.md) (device-resident accounts and data).
 
 ### Install, upgrade, first launch
 
@@ -150,10 +187,11 @@ There is no install step on the web. On a device, first launch (onboarding scree
 On the web, permissions are a config setting. On a device each permission prompt is a decision the user makes, shown by the operating system, and the app must handle every answer. Owned here:
 
 - **Each prompt is a tested branch.** For every prompt the app can raise (notifications, location, camera, microphone, photos, contacts, tracking, Bluetooth, and Android's runtime permissions), the suite covers allow, deny, and the deferred answer where the OS offers one ("Allow once", "Ask next time", dismissing the prompt). The deny branch asserts the app's fallback (an explanation, a disabled feature, a settings link), not just that the app survived.
-- **Never auto-accepted by default.** Capabilities files set `appium:autoAcceptAlerts: false` and `appium:autoDismissAlerts: false`. Turning either on is a recorded project decision with a reason, and it removes the branches it hides from the claimed coverage.
+- **Never auto-accepted by default.** iOS capabilities files set `appium:autoAcceptAlerts: false` and `appium:autoDismissAlerts: false`; Android files set `appium:autoGrantPermissions: false`. Turning either on is a recorded project decision with a reason, and it removes the branches it hides from the claimed coverage.
 - **Alerts belong to another process.** A system alert is not in the app's element tree and not in the page repository. A test answers it with `steps.acceptAlert()` / `steps.dismissAlert()` at the point the scenario reaches it, then asserts the app's reaction. No "dismiss any alert" helper in `beforeEach`, no blind accept in a fixture.
 - **Arranging a known state.** A scenario whose subject is not the prompt itself starts from a set permission state with `steps.setPermission(<permission>, 'grant' | 'deny' | 'reset')` in its arrange step. That does not replace the prompt branches.
 - **Re-prompt rules.** iOS asks once per install; Android may ask again until "Don't ask again". The scenario names the reset level that makes the prompt appear (reinstall or `setPermission(..., 'reset')`).
+- **Where `setPermission` cannot work.** On iOS, setting or resetting a permission may be possible only on a simulator. An unsupported call throws `PlatformNotSupportedError`; the fallback is a fresh install on a virtual device, never a reinstall or reset on a shared real device.
 - **Inspection never answers an alert** to get past it ([platform-inspection-protocol.md](../achilles-orchestrator/references/platform-inspection-protocol.md) §"System alerts and permission prompts").
 
 The prompt inventory comes from the `inspect` phase; the review gate checks each prompt has its branches.
@@ -176,7 +214,7 @@ The web viewport is a config number; on devices orientation and screen class cha
 
 ### Interruptions and lifecycle
 
-A web page is never backgrounded. Probes cover background and resume (`steps.backgroundApp`), lock and unlock, an incoming notification, low or lost connectivity, and kill and relaunch mid-flow, each asserting that the flow's state survives or recovers. Detail: [`../bug-discovery/SKILL.md`](../bug-discovery/SKILL.md).
+A web page is never backgrounded. Probes cover background and resume (`steps.backgroundApp`), kill and relaunch mid-flow (`steps.terminateApp` then `steps.activateApp`), lock and unlock, an incoming notification, and low or lost connectivity, each asserting that the flow's state survives or recovers. Lock and unlock, notifications and connectivity have no platform step: use the `driver` fixture value ([`references/platform-steps.md`](references/platform-steps.md) §"Fixture values") or record a framework gap ([framework-gap.md](../achilles-orchestrator/references/framework-gap.md)); never invent a step. Detail: [`../bug-discovery/SKILL.md`](../bug-discovery/SKILL.md).
 
 ### Hybrid content
 
@@ -195,7 +233,7 @@ One web implementation runs in several browsers; iOS and Android are two impleme
 Browsers are free and parallel; devices are neither. Owned here and by the orchestrator:
 
 - **One expert per device.** The orchestrator never gives two concurrent experts the same capabilities file. Parallel width on platform work is the number of devices, not the host's limit.
-- **One session per expert, closed at turn end.** Every inspection session is closed before the expert reports, on success and on failure; an orchestrator never relies on the idle timeout. The test fixture opens one worker-scoped session and closes it when the worker ends.
+- **One session per expert, closed at turn end.** Every inspection session is closed by the expert itself before it reports, on success and on failure. Only the Claude Code harness closes a forgotten session at turn end; on pi the CLI's `--idle-timeout` (30 minutes by default) is the only backstop, so nobody relies on either. The test fixture opens one worker-scoped session and closes it when the worker ends.
 - **Short command timeouts.** `appium:newCommandTimeout` stays short (300 s is the reference) so a crashed run frees the device in minutes; per-action CLI timeouts fail fast; a hung call is reported, not retried in a loop.
 - **`workers: 1` per device.** A config never runs two workers against one device. More devices means more runs, each with its own capabilities file.
 - **Budgets for longer runs.** A brief states its budget (screens to inspect, tests to run, wall-clock). Whole-suite runs on a device happen at phase exits, not inside every brief; an author iterates on its own tests only. A run that would exceed the budget is split, never cut short silently.
@@ -207,7 +245,7 @@ On the web there is no such distinction. Every result names the device (model or
 
 ### Animations and timing
 
-Web steps auto-wait for actionability; device animations and transitions take real time. Every verification polls until its timeout (the steps do this in both families); animations are turned off through capabilities where the driver supports it; there are no fixed sleeps. A test that needs a longer wait for a slow transition states it on that wait and why. Detail: [`../test-composer/SKILL.md`](../test-composer/SKILL.md).
+Web steps auto-wait for actionability; device animations and transitions take real time. Every verification polls until its timeout (the steps do this in both families); animations are turned off in the capabilities file where the driver supports it (`appium:disableWindowAnimation: true` on Android, `appium:reduceMotion: true` on an iOS simulator); there are no fixed sleeps. A test that needs a longer wait for a slow transition states it on that wait and why. Detail: [`../test-composer/SKILL.md`](../test-composer/SKILL.md).
 
 ### Failure evidence
 
@@ -223,4 +261,4 @@ The web has no camera roll or biometrics to speak of. Where the app uses them, p
 
 ## Return
 
-Envelope first, then: the target (platform, capabilities file, device class, real or virtual, OS version), files written, runs executed (the exact command, exit code, counts), the sessions opened and closed, the permission branches covered per prompt, findings (canonical blocks), and any `concerns` (a device that could not be reached, a branch that could not be arranged, a positional selector kept with a known-issues row).
+Envelope first, then: the target (platform, capabilities file, device class, real or virtual, OS version), files written, runs executed (the exact command, exit code, counts), the sessions opened and closed, the permission branches covered per prompt, findings (canonical blocks), and any `concerns` (a device that could not be reached, a branch that could not be arranged, a positional selector kept with a row in `tests/platform/docs/known-issues.md`).

@@ -37,7 +37,7 @@ A platform-only project downloads no Chromium. `npx playwright-cli install-brows
 
 ### 2.3 Workspace artifacts
 
-`wdio session` writes snapshots, screenshots, page sources and exports to a per-session artifacts directory, which `open` and `info` print. Nothing there is committed; evidence an expert keeps is copied to the path its brief names (for example `docs/evidence/selectors/**` or `tests/platform/evidence/**`).
+`wdio session` writes snapshots, screenshots, page sources and exports to a per-session artifacts directory, which `open` and `info` print. Nothing there is committed; evidence an expert keeps is copied to the existing evidence locations its brief names (selector evidence under `docs/evidence/selectors/**`, a change's folder under `docs/evidence/`, a platform evidence bundle under `tests/platform/evidence/<slug>-<ts>/`).
 
 ---
 
@@ -59,7 +59,7 @@ npx wdio session -s <expert-slug> close
 - Add nothing else to `open`. Device, udid, reset behaviour, orientation and timeouts are capabilities, and therefore file content, not flags.
 - `-s <expert-slug>` comes before the action on every call.
 
-The shared Bash judge in both harnesses enforces this form: it rewrites a missing or mismatching `-s` to the expert's slug, adds `--all` to a snapshot that lacks it, refuses `open` without a capabilities file under `tests/capabilities/`, and closes a session left open at turn end. The judge is the backstop; the brief and this protocol are the rule.
+The session name is the expert's slug; the Bash judge enforces it exactly as it does for `playwright-cli -s=`. Closing at turn end differs by harness: the Claude Code adapter closes a session an expert left open when its turn ends; pi does not, and there the CLI's `--idle-timeout` (30 minutes by default) is the only backstop. So every expert closes its own session explicitly, on both harnesses (§7).
 
 ### 3.2 Session name = expert slug
 
@@ -122,7 +122,7 @@ Format (fake app, values illustrative):
 ```
 
 - Refs are `eN`, scoped to the latest snapshot. They stay valid while the element exists; an action on a removed element fails with `REF_STALE`. Re-snapshot after every screen change before the next ref action.
-- A selector marked **(positional)** depends on the element's index in the tree. It is a weak selector: it never goes into the page repository without a better alternative, a `fallback`, or a known-issues row (§5.3).
+- A selector marked **(positional)** depends on the element's index in the tree. It is a weak selector: it never goes into the page repository without a better alternative, a `fallback`, or a row in `tests/platform/docs/known-issues.md` (§5.3).
 - Long snapshots print in parts (`--max-chars`, `--offset`); `find "<text>"` searches the whole snapshot and already includes hidden parts.
 
 ### 5.2 Scoping and change tracking
@@ -133,7 +133,7 @@ npx wdio session -s <slug> tap e5 && npx wdio session -s <slug> snapshot -i --al
 npx wdio session -s <slug> find "Checkout"
 ```
 
-`--diff` prints only what changed since the previous snapshot, and needs the same `-i` / `--all` flags as that snapshot.
+`--diff` prints only what changed since the previous snapshot and must repeat that snapshot's flags (`--scope`, `-i`, `--all`); otherwise the whole tree is printed. The separate `diff` action has no `--all` flag, so do not use it on iOS: it would compare a snapshot that hides list content.
 
 ### 5.3 Selectors and the page repository
 
@@ -146,7 +146,7 @@ The selector a snapshot prints maps onto a repository `selector` as follows:
 | `-ios class chain:expr` | `{ "class chain": "expr" }` |
 | `android=expr` | `{ "uiautomator": "expr" }` |
 | `id=value` / resource-id | `{ "id": "value" }` |
-| `//xpath` or `(//xpath)[n]` | `{ "xpath": "..." }`, last resort; anything marked "(positional)" needs a fallback or a known-issues row |
+| `//xpath` or `(//xpath)[n]` | `{ "xpath": "..." }`, last resort; anything marked "(positional)" needs a fallback or a row in `tests/platform/docs/known-issues.md` |
 
 Preference order: accessibility id, then id (android) / predicate (ios), then class chain / uiautomator, then text, then xpath. When the best candidate is positional or text-only and the workspace holds the app source, the element goes to `selector-development` for an `accessibilityIdentifier` / `testID` / `contentDescription` at source ([`../../platform-testing/SKILL.md`](../../platform-testing/SKILL.md) §"Accessibility identifiers").
 
@@ -168,11 +168,11 @@ Read the page source when a snapshot hides an attribute a selector needs (`name`
 
 Every action takes a ref from the latest snapshot. A WebdriverIO selector string is accepted too, but a ref from a fresh snapshot is the habit.
 
-| Action | Form | Platforms |
+| Action | Form | Platforms (the tool's own `--help` wording) |
 |---|---|---|
 | Tap | `npx wdio session -s <slug> tap e5` | native mobile |
-| Fill (clears first) | `npx wdio session -s <slug> fill e7 some text` | all |
-| Type (no clear) | `npx wdio session -s <slug> type e7 more` | all |
+| Fill (clears first) | `npx wdio session -s <slug> fill e7 some text` | web, native mobile, native desktop |
+| Type (no clear) | `npx wdio session -s <slug> type e7 more` | web, native mobile, native desktop |
 | Swipe the screen | `npx wdio session -s <slug> swipe up` (`--percent 0..1`) | native mobile |
 | Long press | `npx wdio session -s <slug> long-press e4 --duration 1500` | native mobile |
 | Hide the keyboard | `npx wdio session -s <slug> keyboard hide` | native mobile |
@@ -182,7 +182,7 @@ Every action takes a ref from the latest snapshot. A WebdriverIO selector string
 | Background | `npx wdio session -s <slug> background 3` | native mobile |
 | Rotate | `npx wdio session -s <slug> rotate landscape` | native mobile |
 | Device log | `npx wdio session -s <slug> logs --source syslog` (ios) / `--source logcat` (android) | native mobile |
-| Dialog status | `npx wdio session -s <slug> dialog status` | all |
+| Dialog status | `npx wdio session -s <slug> dialog status` | web, native mobile |
 
 Rules that differ from the browser:
 
@@ -206,7 +206,7 @@ Rules that differ from the browser:
 | `npx wdio session -s <slug> status` | Exit 0 if running, 4 if not |
 | `npx wdio session -s <slug> close` | **End of every turn** that opened a session, success or failure |
 
-Close at turn end, not at the end of the phase. The daemon's idle timeout is 30 minutes by default; a session left open holds the device that long, blocks every other expert that needs it, and on a farm keeps the device marked busy. An expert that hits an error closes its session before it reports.
+Close at turn end, not at the end of the phase, and close it yourself: only the Claude Code adapter closes a forgotten session at turn end, pi does not. The daemon's idle timeout is 30 minutes by default; a session left open holds the device that long, blocks every other expert that needs it, and on a farm keeps the device marked busy. An expert that hits an error closes its session before it reports.
 
 ### 7.2 Read-only discipline
 
@@ -223,7 +223,7 @@ Inspection observes the app; it does not change the device or the user's data.
 
 Never accept a system alert by default. A permission prompt (location, camera, notifications, contacts, tracking) or a system alert is shown by another process, and each one is a branch of the app's behaviour that a test must cover (allow, deny, later): [`../../platform-testing/SKILL.md`](../../platform-testing/SKILL.md) §"Permissions and system alerts".
 
-- The capabilities file sets `appium:autoAcceptAlerts: false` (and `appium:autoDismissAlerts: false`) unless the project has recorded a reason to do otherwise.
+- The capabilities file sets `appium:autoAcceptAlerts: false` and `appium:autoDismissAlerts: false` on iOS, and `appium:autoGrantPermissions: false` on Android, unless the project has recorded a reason to do otherwise.
 - When an alert appears, `dialog status` reports it. Record its text, the screen and the action that triggered it in the app context, take a screenshot, and stop that path. Accept or dismiss it only when the brief names that branch.
 - An alert that blocks every action is a finding for the report, not an obstacle to clear.
 
@@ -247,15 +247,16 @@ The orchestrator embeds this block in every brief for an expert that inspects a 
 
 Use `wdio session` from your shell, in exactly this form:
 
-    npx wdio session -s <your-session-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities <capabilities-file>
+    npx wdio session -s <your-session-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json
     npx wdio session -s <your-session-slug> snapshot -i --all --selectors
     # ... your work, acting by ref ...
     npx wdio session -s <your-session-slug> close
 
 Your session slug: **<concrete-slug>**. Platform: **<ios|android>**.
-Capabilities file: **tests/capabilities/<device>.json**. You are the only expert on this device.
+Capabilities file: `tests/capabilities/<device>.json`. You are the only expert on this device.
 
-Close your session before you report, also on failure. Never accept or dismiss a
+Close your session yourself before you report, also on failure; on pi nothing
+closes it for you. Never accept or dismiss a
 system alert unless this brief names that branch. Do not change device settings.
 Do NOT use `close --all` (the orchestrator owns cleanup).
 
@@ -282,16 +283,16 @@ Command surface and rules: `skills/achilles-orchestrator/references/platform-ins
 
 ## 12. Known constraints and Phase 0 findings
 
-The inspection tool was proven on iOS (a real device, iOS 26, a self-hosted Appium 3.8.0 server with the device-farm plugin, the built-in Settings app). What held:
+The inspection tool was proven on a real iOS device. What held:
 
-- `open ios --appium-url <server-with-base-path> --capabilities <file>` opened a named session; the device-farm plugin allocated the device.
+- `open ios --appium-url <server-with-base-path> --capabilities <file>` opened a named session.
 - `snapshot -i --all --selectors` listed every interactive element with a ref and a selector, accessibility id first, class chain or positional XPath marked "(positional)" otherwise.
 - `tap <ref>`, `swipe up`, `source` (full XCUITest XML), `screenshot` and `export` worked; each action printed the WebdriverIO code it ran.
-- `close` ended the session and the farm showed the device free again.
+- `close` ended the session and freed the device.
 
 What the protocol encodes from it: `--all` on every snapshot; the base path inside `--appium-url`; capabilities (udid, a short `newCommandTimeout`, `noReset`, `autoAcceptAlerts: false`) only from the capabilities file; no `back` on iOS; positional selectors never land without a better alternative.
 
-Not yet proven, so treat as unverified and report surprises: Android (everything), `fill` on a text field, `long-press`, `contexts` on a hybrid app, and two sessions on two devices at once.
+Not yet proven, so treat as unverified and report surprises: Android (everything), `fill` on a text field, `long-press`, `contexts` on a hybrid app, two sessions on two devices at once, and `open` without `--bundle-id` / `--package` (the app id only from the capabilities file).
 
 Other constraints:
 
