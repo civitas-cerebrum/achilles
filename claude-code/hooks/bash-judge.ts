@@ -497,6 +497,8 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   } catch {
     return `${file} is not JSON; fix the capabilities file before opening a session.`
   }
+  const wrapper = ['alwaysMatch', 'firstMatch', 'capabilities'].find(k => k in doc)
+  if (wrapper !== undefined) return `${file} wraps its capabilities in "${wrapper}"; capabilities files are flat: top-level keys, no alwaysMatch/firstMatch wrapper (the library sends the file's content as the capabilities object).`
   const named = doc.platformName
   if (typeof named !== 'string' || named === '') return `${file} has no platformName; the capabilities file names its platform (CONTRACT B1), and open must match it.`
   if (named.toLowerCase() !== target) return `\`open ${target}\` does not match ${file}, whose platformName "${named}" is ${named.toLowerCase()}; open the platform the file names.`
