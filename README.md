@@ -27,6 +27,8 @@ you    /achilles onboard this project; the app runs at http://localhost:3000, lo
 
 You need Node 20+, a web app with a reachable URL, and Claude Code 2.1.287+ (or [pi](docs/harness/pi.md)).
 
+A native iOS or Android app needs an Appium server and a capabilities file in place of the URL; see [`platform-testing`](skills/platform-testing/SKILL.md).
+
 ```bash
 npm i -D @civitas-cerebrum/achilles   # registers the Claude Code plugin in place, fetches Chromium
 ```
@@ -51,7 +53,7 @@ That's it. On npm 11+, if npm lists Achilles under blocked install scripts, run 
 | `/achilles the checkout suite is red since yesterday, repair it` | **repair-suite** | Heals with stability evidence; real app bugs reported, never papered over |
 | `/achilles verify PROJ-123 on this branch` | **verify-change** | Diff review, an evidence bundle, new tests and a negative control proving they can fail |
 
-Specialist skills join in when the work calls for them: API contract tests, database assertions, k6 performance tests, red-teaming AI features, inert test-attribute selectors, test-data lifecycle, bug reports, and a summary deck for stakeholders.
+Specialist skills join in when the work calls for them: native iOS and Android app tests, API contract tests, database assertions, k6 performance tests, red-teaming AI features, inert test-attribute selectors, test-data lifecycle, bug reports, and a summary deck for stakeholders.
 
 ## What lands in your repo
 
@@ -227,14 +229,14 @@ Nesting is main session → orchestrator → expert, and stops there. Exact tool
 
 One TypeScript module acting on the six Achilles agents only. It advises by default; a deny is kept for irreversible or dangerous actions and always names the action to take instead.
 
-1. **Bash judge.** Denies commit bypass flags, AI attribution in commits, PRs, issues and comments, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project, and credential shapes in committed files. Advises on commit grammar and protected paths, and fills in a missing `playwright-cli -s=<slug>`.
+1. **Bash judge.** Denies commit bypass flags, AI attribution in commits, PRs, issues and comments, `k6` runs over the VU, duration, allowlist or production limits, `git push --force`, `rm -rf` outside the project, credential shapes in committed files, a `wdio session` call or platform test run outside its one form, and a capability spelled out in a platform spec, fixture or config. Advises on commit grammar and protected paths, fills in a missing `playwright-cli -s=<slug>`, and gives each `wdio session` call the agent's session name.
 2. **Pipeline ledger model.** Advises on phase skips, approvals without an envelope and missing deliverables; keeps an integrity hash.
 3. **Sign-off, defect filing and outbound text.** Denies an AI signature in a ticket, comment, page or chat message (agent framing gets a note). Advises on a tracker transition to done, or a published PR, without the reviewer's receipt and evidence bundle; denies it while the bundle holds a live credential or while a defect it reports has no reproducer's verdict. Denies a bug or rework filing made before the run searched the tracker for an existing ticket, or that cites no defect the reproducer confirmed as a bug.
 4. **Dispatch discipline.** Advises on brief shape, concurrency and reviewers that aren't fresh.
 5. **Return review.** Validates each expert's return against its schema.
 6. **Spec hygiene.** Denies an AI signature in a report document. Advises on test ids, import boundaries, the evidence floor for diagnosis edits, and factory rules when the project opts in.
 7. **Selector development.** Denies any frontend edit on a selector brief other than one added inert test attribute.
-8. **Reporting.** Archives run artifacts, closes each expert's browser sessions and adds a run summary to the hand-back.
+8. **Reporting.** Archives run artifacts, closes each expert's browser and device inspection sessions and adds a run summary to the hand-back.
 
 The contract the module implements is [docs/harness/claude-code.md](docs/harness/claude-code.md).
 
@@ -243,7 +245,7 @@ The contract the module implements is [docs/harness/claude-code.md](docs/harness
 ## What Achilles is not
 
 - **Not a hosted service.** No runner, no dashboard; everything runs on your machine or your CI.
-- **Not native mobile.** "Mobile variants" are viewport emulation in Playwright.
+- **Not finished on every platform.** Native iOS and Android apps are tested through the `platform-testing` skill: Appium via WebdriverIO, inspected with `wdio session`, on the same Steps API and page repository as web. iOS is verified on a real device; Android is implemented and awaits live verification on a device. Desktop (macOS, Windows) is declared but not implemented yet. Platform testing needs `@civitas-cerebrum/element-interactions` 0.4.0 and `@wdio/cli` 10.2.0 in the tested project. "Mobile variants" still mean the 375x812 viewport emulation in Playwright.
 - **Not runtime self-healing.** Repair happens in an agent session or through `achilles-self-repair`; a CI run never asks a model to retry a step.
 - **Not enforced outside Claude Code.** On pi the skills state the same rules; keeping them is the operator's job.
 - **Not benchmarked yet.** Detection rate, cost and duration haven't been measured and published. Onboarding dispatches many subagents and uses a large share of a plan's usage window.

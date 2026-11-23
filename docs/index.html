@@ -645,7 +645,7 @@
       <div class="hero-stats">
         <div class="stat"><div class="stat-value grad">18</div><div class="stat-label">Agent Skills</div></div>
         <div class="stat"><div class="stat-value grad">8</div><div class="stat-label">Hooks</div></div>
-        <div class="stat"><div class="stat-value grad">9</div><div class="stat-label">Modes and Capabilities</div></div>
+        <div class="stat"><div class="stat-value grad">10</div><div class="stat-label">Modes and Capabilities</div></div>
         <div class="stat"><div class="stat-value grad">5</div><div class="stat-label">Agents</div></div>
       </div>
 
@@ -718,6 +718,13 @@
         <h3 class="mode-title">API &amp; Database Oracles</h3>
         <p class="mode-desc">Locks the backend surface against drift — status codes, response schemas, error envelopes, critical headers — and asserts persisted state directly in SQL: row counts, cell values, transactions. Persisted mutations are checked against an API or database oracle, because a test that only watches the UI passes when the write regresses.</p>
         <span class="mode-tag c-green">Contract &amp; DB</span>
+      </div>
+
+      <div class="mode-card c-pink reveal">
+        <div class="mode-icon c-pink">📱</div>
+        <h3 class="mode-title">Native App Testing</h3>
+        <p class="mode-desc">Native iOS and Android apps on the same Steps API and page repository as web, one switch apart: <code>PLATFORM=ios</code> or <code>android</code>, a capabilities file, an Appium server. Experts inspect the device with <code>wdio session</code>, one session per expert and one expert per device, and the discipline covers app state, permissions, gestures, keyboard, lifecycle and real versus virtual devices. iOS is verified on a real device; Android awaits live verification; macOS and Windows are declared, not implemented yet.</p>
+        <span class="mode-tag c-pink">Platform</span>
       </div>
 
       <div class="mode-card c-orange reveal">
@@ -900,7 +907,7 @@
       <div class="diff-card reveal">
         <div class="diff-icon">🚫</div>
         <h4 class="diff-title">What it is not</h4>
-        <p class="diff-desc">A Claude Code adapter plus plain-markdown skills; pi gets the skills, expert mode and the Bash guards. No hosted runner. No native mobile; viewport emulation only. No runtime self-healing: repair runs offline against a red suite. No published benchmark.</p>
+        <p class="diff-desc">A Claude Code adapter plus plain-markdown skills; pi gets the skills, expert mode and the Bash guards. No hosted runner. Native iOS and Android apps run through Appium and WebdriverIO (iOS verified on a real device, Android awaiting live verification); desktop apps are declared, not implemented. No runtime self-healing: repair runs offline against a red suite. No published benchmark.</p>
       </div>
       <div class="diff-card reveal">
         <div class="diff-icon">🛡️</div>
@@ -929,6 +936,8 @@
       <span class="tech-pill"><span class="dot dot-purple"></span>Playwright</span>
       <span class="tech-pill"><span class="dot dot-cyan"></span>JSON Schema</span>
       <span class="tech-pill"><span class="dot dot-green"></span>k6</span>
+      <span class="tech-pill"><span class="dot dot-purple"></span>Appium</span>
+      <span class="tech-pill"><span class="dot dot-cyan"></span>WebdriverIO</span>
       <span class="tech-pill"><span class="dot dot-purple"></span>Pixelmatch</span>
       <span class="tech-pill"><span class="dot dot-cyan"></span>Babel Parser</span>
     </div>
