@@ -46,7 +46,7 @@ A platform-only project downloads no Chromium. `npx playwright-cli install-brows
 ### 3.1 The invocation (the only form)
 
 ```bash
-npx wdio session -s <expert-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id>   # android: --package <id>
+npx wdio session -s <expert-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id>   # android: --package <id>; an appium:app file: --app <path>
 npx wdio session -s <expert-slug> snapshot -i --all --selectors
 # ... actions by ref ...
 npx wdio session -s <expert-slug> close
@@ -55,7 +55,8 @@ npx wdio session -s <expert-slug> close
 - `<platform>` is `ios` or `android` (the `Platform` vocabulary; `macos` and `windows` are declared, not implemented yet).
 - `--appium-url` is the full server URL **including the base path** (`<appium-server>/wd/hub` on a server started with that base path). Without the base path, session creation fails with "unknown command". The value comes from `APPIUM_URL`; a literal private URL is never written into a brief, a spec or a committed file.
 - `--capabilities` names a file under `tests/capabilities/`, the **same file** the test run uses (`CAPABILITIES`). Capabilities live only there; never pass them as inline JSON.
-- `open` **always** passes the app flag: `--bundle-id <id>` on ios, `--package <id>` on android, equal to the file's `appium:bundleId` / `appium:appPackage`. `@wdio/cli` 10.2.0 checks for the flag before it merges the capabilities file, so `open` without it exits 2 even when the file names the app (found live). The Bash judge requires the flag and cross-checks it against the file. The test run still reads the app id from the file only.
+- `open` **always** passes the app flag: `--bundle-id <id>` on ios, `--package <id>` on android, equal to the file's `appium:bundleId` / `appium:appPackage`. A build-specific capabilities file that names the app only by `appium:app` repeats it as `--app <path>` instead. `@wdio/cli` 10.2.0 checks for the flag before it merges the capabilities file, so `open` without it exits 2 even when the file names the app (found live). The Bash judge requires the flag and cross-checks it against the file. The test run still reads the app id from the file only.
+- `--activity <name>` is refused on ios. On android it is allowed only when it equals the file's `appium:appActivity`; leave it out otherwise.
 - The capabilities file sets explicitly every key the CLI would otherwise default: `appium:newCommandTimeout` (short, e.g. 300; never the CLI's 3600), `appium:deviceName`, and on android `appium:autoGrantPermissions: false` (the CLI defaults it to `true`).
 - Add nothing else to `open`. Device, udid, reset behaviour, orientation and timeouts are capabilities, and therefore file content, not flags.
 - `-s <expert-slug>` comes before the action on every call.
@@ -208,7 +209,7 @@ Rules that differ from the browser:
 | `npx wdio session -s <slug> status` | Exit 0 if running, 4 if not |
 | `npx wdio session -s <slug> close` | **End of every turn** that opened a session, success or failure |
 
-Close at turn end, not at the end of the phase, and close it yourself: only the Claude Code adapter closes a forgotten session at turn end, pi does not. The daemon's idle timeout is 30 minutes by default; a session left open holds the device that long, blocks every other expert that needs it, and on a farm keeps the device marked busy. An expert that hits an error closes its session before it reports.
+Close at turn end, not at the end of the phase, and close it yourself: only the Claude Code adapter closes a forgotten session at turn end, pi does not. On Claude Code, an expert's session the adapter fails to close is only noted; a session of the orchestrator's that fails to close is retried at its next turn end and dropped after two failed closes in a row, with a note to close that session by hand. The daemon's idle timeout is 30 minutes by default; a session left open holds the device that long, blocks every other expert that needs it, and on a shared device pool keeps the device marked busy. An expert that hits an error closes its session before it reports.
 
 ### 7.2 Read-only discipline
 
@@ -250,7 +251,7 @@ The orchestrator embeds this block in every brief for an expert that inspects a 
 
 Use `wdio session` from your shell, in exactly this form:
 
-    npx wdio session -s <your-session-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id>   # android: --package <id>
+    npx wdio session -s <your-session-slug> open <platform> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id>   # android: --package <id>; an appium:app file: --app <path>
     npx wdio session -s <your-session-slug> snapshot -i --all --selectors
     # ... your work, acting by ref ...
     npx wdio session -s <your-session-slug> close
@@ -274,7 +275,7 @@ Command surface and rules: `skills/achilles-orchestrator/references/platform-ins
 |---|---|---|
 | `open` fails with "unknown command" | `--appium-url` lacks the server's base path | Use the full URL with the base path, from `APPIUM_URL` |
 | iOS snapshot shows only the navigation title | Snapshot without `--all`; the tool judged the list hidden | `snapshot -i --all --selectors`; swipe for rows further down |
-| `open` exits 2 although the capabilities file names the app | The CLI checks for the app flag before it merges the file | Pass `--bundle-id <id>` (ios) / `--package <id>` (android), equal to the file's app id |
+| `open` exits 2 although the capabilities file names the app | The CLI checks for the app flag before it merges the file | Pass `--bundle-id <id>` (ios) / `--package <id>` (android), equal to the file's app id, or `--app <path>` when the file names the app only by `appium:app` |
 | `tap` printed "Tapped" and exited 0, but the screen did not change; the element screenshot is black | The element was `[hidden]` (off-screen or obscured) | Swipe it into view, re-snapshot, tap the fresh ref, re-snapshot and compare |
 | "Timed out while enabling automation mode" (iOS) | The device is locked | Stop and report; do not retry in a loop |
 | `back` refused on iOS | No system back on iOS; `back` is a web action | Tap the on-screen back button by ref |

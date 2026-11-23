@@ -81,7 +81,8 @@ project's factory rules file (`$FACTORY_RULES`, else `achilles-factory-rules.jso
 - Relative paths (`--repository`, `--out`, `--storage-state`) resolve against the project root (the root the harness
   adapter passes, else the cwd), like the rules file.
 - **Schema fields the tool reads** (`schemas/factory-rules.schema.json`, all optional):
-  - `contexts`: optional top-level map `{ "<name>": { "baseUrl": string, "storageState": string } }`;
+  - `contexts`: optional top-level map `{ "<name>": { "baseUrl": string, "storageState": string } }`, or for a platform
+    target `{ "<name>": { "platform": "android" | "ios", "capabilities": "tests/capabilities/<device>.json", "server": "<url>" | "env:<VAR>" } }`;
   - `rules["selectors.evidence"].evidenceDir`: the evidence directory (default `--out`);
   - `rules["selectors.evidence"].provisionalKey`: the entry flag name (`provisional`), read by the gate; the tool
     itself does not change entries.

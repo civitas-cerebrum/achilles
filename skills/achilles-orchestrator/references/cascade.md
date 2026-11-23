@@ -47,7 +47,7 @@ A native app target (iOS, Android) runs the same probe with the platform files i
 | Level | Condition (platform) | Meaning |
 |---|---|---|
 | **A** | `@civitas-cerebrum/element-interactions` below 0.4.0 or absent, OR `@wdio/cli` not pinned at `10.2.0` in `devDependencies`, OR `webdriverio` absent | Framework or inspection tool not installed |
-| **B** | Any of: `playwright.platform.config.ts`, `tests/platform/fixtures/base.ts`, at least one `tests/capabilities/*.json` with `platformName`, `tests/capabilities/README.md`, the page repository (below) | Installed, not scaffolded |
+| **B** | Any of these missing: `playwright.platform.config.ts`, `tests/platform/fixtures/base.ts`, at least one `tests/capabilities/*.json` with `platformName`, `tests/capabilities/README.md`, the page repository (below) | Installed, not scaffolded |
 | **C** | Scaffold present, but `tests/platform/docs/app-context.md` has no screen entries | Scaffolded, never inspected. Single scenarios can land once their screens are inspected; a suite cannot |
 | **None** | All checks pass | Onboarded for platform |
 
@@ -61,4 +61,4 @@ Rules that differ from the web cascade:
 | Workflow on a platform target | A | B | C | None |
 |---|---|---|---|---|
 | one platform scenario | `NEEDS_CONTEXT`: offer the platform pipeline or the one-task platform scaffold | one-task platform scaffold of the missing files, then proceed | inspect the scenario's screens, then proceed | proceed |
-| platform pipeline ("platform-onboard" / "onboard the iOS / Android app") | from `preflight` | `scaffold` writes only the missing files | `preflight` and `scaffold` verify only; first producing phase is `inspect` | do not re-run; route to the ask's own work |
+| platform pipeline ("platform-onboard" / "onboard the iOS / Android app") | from `preflight` | `scaffold` writes only the missing files | `preflight` and `scaffold` verify only (preflight still writes `devices[]` when the ledger is new); first producing phase is `inspect` | do not re-run; route to the ask's own work |
