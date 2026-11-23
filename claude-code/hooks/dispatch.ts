@@ -11,8 +11,8 @@ import type { Ledger } from './ledger'
 
 const CONTRACT = 'skills/achilles-orchestrator/references/controller-contract.md'
 const ROLE_SKILLS: Record<string, string[]> = {
-  inspector: ['journey-mapping', 'evidence-capture', 'bug-discovery'],
-  author: ['test-composer', 'bug-discovery', 'failure-diagnosis', 'evidence-capture', 'contract-testing', 'database-testing', 'performance-testing', 'agents-vs-agents', 'secrets-sweep', 'selector-development', 'test-data-conventions'],
+  inspector: ['journey-mapping', 'evidence-capture', 'bug-discovery', 'platform-testing'],
+  author: ['test-composer', 'bug-discovery', 'failure-diagnosis', 'evidence-capture', 'contract-testing', 'database-testing', 'performance-testing', 'platform-testing', 'agents-vs-agents', 'secrets-sweep', 'selector-development', 'test-data-conventions'],
   reviewer: ['review'],
   reproducer: ['defect-confirmation'],
   'doc-writer': ['journey-mapping', 'qa-reporting', 'bug-report'],
@@ -25,6 +25,7 @@ const KIND: [RegExp, string][] = [
   [/failure-diagnosis/, 'diagnosis'],
   [/selector-development/, 'selector'],
   [/performance-testing/, 'perf'],
+  [/platform-testing/, 'platform'],
   [/\breview\b|skills\/review\//, 'review'],
   [/test-composer|bug-discovery|evidence-capture/, 'compose'],
 ]

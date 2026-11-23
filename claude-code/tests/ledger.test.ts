@@ -11,6 +11,8 @@ const LEDGER = `${ROOT}/tests/e2e/docs/onboarding-status.json`
 const PERF = `${ROOT}/tests/perf/docs/perf-onboarding-status.json`
 const NAMES = ['Scaffold', 'Groundwork', 'Happy-path', 'Journey-mapping', 'Coverage-expansion', 'Bug-discovery', 'Secrets-sweep', 'Report']
 const PERF_NAMES = ['Scaffold', 'Readiness', 'Scenario-model', 'Baseline', 'Load-run', 'Threshold-gate', 'Report']
+const PLATFORM = `${ROOT}/tests/platform/docs/platform-onboarding-status.json`
+const PLATFORM_NAMES = ['Preflight', 'Scaffold', 'Inspect', 'Selectors', 'Compose', 'Review', 'Report']
 
 type L = Record<string, unknown> & { phases: Record<string, unknown>[] }
 const fresh = (names = NAMES): L => ({
@@ -213,6 +215,111 @@ test('perf deliverables: each perf phase names its own missing artefact', async 
   h.write(`${ROOT}/tests/perf/docs/threshold-verdict.json`, '{"deliberateBreach":[{"threshold":"p95"}]}')
   expect(await complete(6)).toBe('')
   expect(await complete(7)).toContain('perf-report.md does not exist')
+})
+
+test('platform deliverables: the platform ledger is validated against its own schema and each phase names its missing artefact', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const { orchestrator } = await setup($, h)
+  const iphone = { capabilities: 'tests/capabilities/iphone.json', platform: 'ios', osVersion: '17.5', real: true }
+  const pixel = { capabilities: 'tests/capabilities/pixel.json', platform: 'android', osVersion: '14', real: false }
+  let devices: unknown[] = [iphone]
+  const platformFresh = () => ({ ...fresh(PLATFORM_NAMES), devices })
+  const complete = async (id: number) => {
+    await write($, orchestrator, edit(platformFresh(), c => ((c.currentPhase = id), (c.phases[id - 1]!.status = 'in-progress'))), PLATFORM)
+    const n = notes(session, orchestrator).length
+    await write($, orchestrator, completed(platformFresh(), id), PLATFORM)
+    return notes(session, orchestrator).length === n ? '' : notes(session, orchestrator).at(-1)!
+  }
+  // Preflight records the devices, each by its capabilities file under tests/capabilities/.
+  devices = []
+  expect(await complete(1)).toContain('devices[] is empty')
+  devices = [iphone, { ...pixel, capabilities: 'caps/pixel.json' }]
+  expect(await complete(1)).toContain('"caps/pixel.json"')
+  devices = [iphone]
+  expect(await complete(1)).toBe('')
+  expect(h.ran.some(r => r.argv.some(a => a.endsWith('validate.mjs')) && r.argv.includes('platform-onboarding-status'))).toBe(true)
+  const p2 = await complete(2)
+  expect(p2).toContain('playwright.platform.config.ts does not exist')
+  expect(p2).toContain('no *.json capabilities file under tests/capabilities/')
+  expect(p2).toContain('tests/capabilities/README.md does not exist')
+  expect(p2).toContain('tests/platform/fixtures/base.ts does not exist')
+  expect(p2).toContain('no @wdio/cli devDependency')
+  h.write(`${ROOT}/playwright.platform.config.ts`, 'export default {}')
+  h.write(`${ROOT}/tests/capabilities/iphone.json`, '{}')
+  h.write(`${ROOT}/tests/capabilities/README.md`, '# Capabilities')
+  h.write(`${ROOT}/tests/platform/fixtures/base.ts`, '')
+  h.write(`${ROOT}/package.json`, JSON.stringify({ devDependencies: { '@wdio/cli': '^10.2.0' } }))
+  expect(await complete(2)).toContain('pins @wdio/cli at exactly 10.2.0')
+  h.write(`${ROOT}/package.json`, JSON.stringify({ devDependencies: { '@wdio/cli': '10.2.0' } }))
+  expect(await complete(2)).toBe('')
+  expect(await complete(3)).toContain('tests/platform/docs/app-context.md does not exist')
+  h.write(`${ROOT}/tests/platform/docs/app-context.md`, '# App context\n\n## Test Infrastructure\n\nServer reachable.\n')
+  expect(await complete(3)).toContain('no screen entry')
+  h.write(`${ROOT}/tests/platform/docs/app-context.md`, '# App context\n\n## Test Infrastructure\n\nServer reachable.\n\n## Settings\n\nPath: Launch > Settings\n')
+  expect(await complete(3)).toBe('')
+  expect(await complete(4)).toContain('no page with a platform')
+  h.write(`${ROOT}/tests/platform/page-repository.json`, JSON.stringify({ pages: [{ name: 'Login', platform: 'ios', elements: [] }] }))
+  expect(await complete(4)).toBe('')
+  h.write(`${ROOT}/tests/e2e/page-repository.json`, JSON.stringify({ pages: [{ name: 'Login', elements: [] }] }))
+  const p4 = await complete(4)
+  expect(p4).toContain('no page with a platform')
+  expect(p4).toContain('one page repository per project')
+  h.remove(`${ROOT}/tests/platform/page-repository.json`)
+  h.write(`${ROOT}/tests/e2e/page-repository.json`, JSON.stringify({ pages: [{ name: 'Login', elements: [] }, { name: 'Login', platform: 'ios', elements: [] }] }))
+  expect(await complete(4)).toBe('')
+  expect(await complete(5)).toContain('no *.spec.ts under tests/platform/')
+  h.write(`${ROOT}/tests/platform/auth/login.spec.ts`, '')
+  expect(await complete(5)).toBe('')
+  // Review: the author's review-verdict.json, one whole-suite run per device and a reverted deliberate failure.
+  const verdict = `${ROOT}/tests/platform/docs/review-verdict.json`
+  expect(await complete(6)).toContain('review-verdict.json does not exist')
+  h.write(verdict, '{ nope')
+  expect(await complete(6)).toContain('review-verdict.json is not JSON')
+  h.write(verdict, JSON.stringify({ deliberateFailure: [], runs: [] }))
+  const p6 = await complete(6)
+  expect(p6).toContain('no deliberateFailure entry for tests/capabilities/iphone.json')
+  expect(p6).toContain('runs[] has no entry for tests/capabilities/iphone.json')
+  const failure = { capabilities: 'tests/capabilities/iphone.json', spec: 'tests/platform/auth/login.spec.ts', test: 'signs in', change: 'expected title changed', exitCode: 1, reverted: true }
+  const run = (capabilities: string) => ({ capabilities, passed: 4, failed: 0, flaky: 0 })
+  const IPHONE = 'tests/capabilities/iphone.json'
+  const PIXEL = 'tests/capabilities/pixel.json'
+  const review = async (deliberateFailure: unknown[], runs: unknown[]) => (h.write(verdict, JSON.stringify({ deliberateFailure, runs })), complete(6))
+  // Each deliberateFailure entry: a devices[] capabilities file, a spec, a test, a change, a non-zero exitCode, reverted: true.
+  expect(await review([{ ...failure, capabilities: undefined }], [run(IPHONE)])).toContain('deliberateFailure[0] has no capabilities file')
+  expect(await review([{ ...failure, capabilities: PIXEL }], [run(IPHONE)])).toContain(`deliberateFailure[0] has capabilities ${PIXEL}, which is not a devices[] capabilities file`)
+  expect(await review([{ ...failure, spec: '' }], [run(IPHONE)])).toContain('deliberateFailure[0] has no spec.')
+  expect(await review([{ ...failure, test: undefined }], [run(IPHONE)])).toContain('deliberateFailure[0] has no test.')
+  expect(await review([{ ...failure, change: ' ' }], [run(IPHONE)])).toContain('deliberateFailure[0] has no change.')
+  expect(await review([{ ...failure, exitCode: 0 }], [run(IPHONE)])).toContain('deliberateFailure[0] has no non-zero exitCode.')
+  expect(await review([{ ...failure, exitCode: '1' }], [run(IPHONE)])).toContain('deliberateFailure[0] has no non-zero exitCode.')
+  expect(await review([{ ...failure, reverted: false }], [run(IPHONE)])).toContain('deliberateFailure[0] has not reverted: true.')
+  // runs[]: exactly one entry per devices[] capabilities file, and it ends with failed: 0.
+  expect(await review([failure], [run(IPHONE), run(IPHONE)])).toContain(`runs[] has 2 entries for ${IPHONE}`)
+  expect(await review([failure], [{ ...run(IPHONE), failed: 2 }])).toContain(`runs[] entry for ${IPHONE} has failed 2`)
+  expect(await review([failure], [{ capabilities: IPHONE, passed: 4, flaky: 0 }])).toContain(`runs[] entry for ${IPHONE} has no numeric failed`)
+  expect(await review([failure], [{ capabilities: IPHONE, failed: 0, flaky: 0 }])).toContain(`runs[] entry for ${IPHONE} has no numeric passed`)
+  expect(await review([failure], [{ capabilities: IPHONE, passed: 4, failed: 0, flaky: '0' }])).toContain(`runs[] entry for ${IPHONE} has no numeric flaky`)
+  expect(await review([failure], [run(IPHONE)])).toBe('')
+  // A device class is one devices[] capabilities file: each needs its own deliberate failure and run.
+  devices = [iphone, pixel]
+  const two = await review([failure], [run(IPHONE)])
+  expect(two).toContain(`no deliberateFailure entry for ${PIXEL}`)
+  expect(two).toContain(`runs[] has no entry for ${PIXEL}`)
+  expect(two).not.toContain(`no deliberateFailure entry for ${IPHONE}`)
+  expect(await review([failure, { ...failure, capabilities: PIXEL }], [run(IPHONE), run(PIXEL)])).toBe('')
+  // No devices recorded: the verdict cannot be checked per device, which is a finding of its own.
+  devices = []
+  expect(await review([failure], [run(IPHONE)])).toContain("devices[] names no capabilities file")
+  devices = [iphone, pixel]
+  // Messages name the phase in Title-Case.
+  h.remove(verdict)
+  expect(await complete(6)).toContain('Phase 6 (Review) completed but tests/platform/docs/review-verdict.json does not exist')
+  expect(await complete(7)).toContain('platform-report.md does not exist')
+  h.write(`${ROOT}/tests/platform/docs/platform-report.md`, '# Report')
+  expect(await complete(7)).toContain('<!-- platform-testing:generated -->')
+  h.write(`${ROOT}/tests/platform/docs/platform-report.md`, '<!-- platform-testing:generated -->\n# Report')
+  expect(await complete(7)).toBe('')
 })
 
 test('integrity: a ledger changed or deleted out of band since its last tool write is named at the next write; an untouched one is not', async ($, on) => {

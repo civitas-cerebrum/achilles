@@ -142,3 +142,15 @@ test('a spawn that is not the orchestrator’s is not given the preamble', async
   await spawn($, 'some-other-agent', 'author', 'just do it')
   expect(h.spawns.at(-1)?.prompt).toBe('just do it')
 })
+
+test('a platform brief: platform-testing is a skill an author or inspector may load; a platform reviewer brief points at the platform-reviewer schema', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const orchestrator = await setup($, h)
+  await spawn($, orchestrator, 'author', brief(h, 'platform-scaffold', '# Brief\nLoad the `platform-testing` skill. Scaffold the platform suite.\n'))
+  await spawn($, orchestrator, 'inspector', brief(h, 'platform-inspect', '# Brief\nLoad `platform-testing`. Inspect the iPhone screens.\n'))
+  expect(notes(session, orchestrator).join('\n')).not.toContain('names no skill')
+  await spawn($, orchestrator, 'reviewer', brief(h, 'platform-reviewer-phase2', '# Brief\nLoad `review` and `platform-testing`. Return per schemas/subagent-returns/platform-reviewer.schema.json.\n'))
+  expect(h.spawns.at(-1)!.prompt).toContain('validates against schemas/subagent-returns/platform-reviewer.schema.json')
+  expect(notes(session, orchestrator).join('\n')).not.toContain('which is not a return shape')
+})

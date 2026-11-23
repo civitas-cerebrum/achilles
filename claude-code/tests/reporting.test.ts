@@ -70,3 +70,36 @@ test('an expert’s own playwright-cli sessions close when its turn ends; an exp
   await $.turn.complete(ended(reviewer, 'DONE\nreviewed'))
   expect(h.ran.filter(r => r.argv[0] === 'sh').length).toBe(1)
 })
+
+test('an expert’s wdio session closes when its turn ends, so the device is freed; a failed close is noted; the orchestrator holds no device session to close', async ($, on) => {
+  const h = engine(on)
+  const session = mock.session(on)
+  const { orchestrator } = await setup($, h)
+  h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:bundleId': 'com.example.shop' }))
+  const open = 'npx wdio session open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json --bundle-id com.example.shop'
+  const inspector = await spawnExpert($, h, 'inspector', orchestrator)
+  await $.tool.call({ tool: 'Bash', command: open, agentId: inspector })
+  await $.tool.call({ tool: 'Bash', command: 'npx playwright-cli -s=phase1-root open http://app', agentId: inspector })
+  await $.turn.complete(ended(inspector, 'DONE\ninspected'))
+  const closes = () => h.ran.filter(r => r.argv[0] === 'sh')
+  expect(closes().length).toBe(1)
+  const script = closes()[0]!.argv[2]!
+  const islug = derivedSlug('inspector', inspector)
+  expect(script.startsWith('npx --no-install playwright-cli -s=phase1-root close >/dev/null 2>&1; ')).toBe(true)
+  // Each wdio close runs in the background with its own request timeout, so one hung close does not starve the rest.
+  expect(script).toContain(`(npx --no-install wdio session -s ${islug} close >/dev/null 2>&1; c=$?; [ $c -eq 0 ] || [ $c -eq 4 ]) & p0=$!`)
+  expect(script).toContain('wait $p0 || s=1')
+  // A close that fails is noted to the orchestrator, leading with the command that frees the device.
+  h.procs.push(argv => (argv[0] === 'sh' ? { exitCode: 1 } : undefined))
+  const second = await spawnExpert($, h, 'inspector', orchestrator, 'Read `.achilles/runs/x/briefs/s.md` first; write your report to `.achilles/runs/x/reports/s.md`.')
+  await $.tool.call({ tool: 'Bash', command: open, agentId: second })
+  await $.turn.complete(ended(second, 'DONE\ninspected'))
+  const failed = `achilles: Close the wdio inspection sessions of ${second} (${derivedSlug('inspector', second)}) with npx wdio session -s <slug> close: they could not be closed at its turn end (exit 1), so the device may still be held.`
+  expect(notes(session, orchestrator)).toContain(failed)
+  // The orchestrator's own device session is refused, so its turn ends close nothing.
+  const before = closes().length
+  expect((await $.tool.call({ tool: 'Bash', command: open, agentId: orchestrator })).deny).toMatch(/Leave device sessions to the experts/)
+  await $.turn.complete(ended(orchestrator, 'waiting for the inspector'))
+  await $.turn.complete(ended(orchestrator, 'still waiting'))
+  expect(closes().length).toBe(before)
+})

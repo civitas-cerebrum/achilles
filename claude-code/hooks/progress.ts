@@ -2,10 +2,10 @@ import type { EngineInterface, On } from 'claude-code'
 
 import type { AchillesRun, AchillesStage } from '../types'
 import { ENDED, currentStage, editRun, expertLabel, firstLine, isDisabled, placeFile, readJson, readRuns, slugOf, stageLine, who, type Who } from './context'
-import { ONBOARDING, PERF, type Ledger } from './ledger'
+import { ONBOARDING, PERF, PLATFORM, type Ledger } from './ledger'
 
 // Progress, part of hook 8 (reporting): after the fact, never refusing. A run's stages are read
-// from the pipeline ledger it writes (the onboarding or perf phases), else from the `plan` in its
+// from the pipeline ledger it writes (the onboarding, perf or platform phases), else from the `plan` in its
 // resume.json; with them the experts at work and the ones that handed back. The adapter holds
 // this on the run in $.state (status line, pane) and writes it to .achilles/runs/<run>/progress.json
 // for anyone who asks. When a write moves a stage to an end state while stages remain, the main
@@ -94,7 +94,7 @@ export async function refreshProgress($: EngineInterface, runId: string, ledger?
   if (!held) return
   const resume = await readJson<{ step?: unknown; plan?: unknown; 'state-file'?: unknown }>($, `${root}/${held.dir}/resume.json`)
   const named = resume?.['state-file']
-  const source = ledger ?? held.ledger ?? (named === ONBOARDING || named === PERF ? named : undefined)
+  const source = ledger ?? held.ledger ?? (named === ONBOARDING || named === PERF || named === PLATFORM ? named : undefined)
   const stages = (source ? stagesOf(await readJson<Ledger>($, `${root}/${source}`)) : undefined) ?? planOf(resume?.plan)
   const step = typeof resume?.step === 'string' && resume.step !== '' ? resume.step : undefined
   let moved: AchillesStage[] = []
@@ -133,7 +133,7 @@ export function registerProgress(on: On) {
     const w = await who($, e.agentId)
     if (!w) return next(e)
     const { rel } = placeFile(await $.session.cwd(), e.file_path)
-    const isLedger = rel === ONBOARDING || rel === PERF
+    const isLedger = rel === ONBOARDING || rel === PERF || rel === PLATFORM
     if (!isLedger && rel !== `${w.run.dir}/resume.json`) return next(e)
     const ran = await next(e)
     if (ran.deny === undefined) await refreshProgress($, w.run.id, isLedger ? rel : undefined)

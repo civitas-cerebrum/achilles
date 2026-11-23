@@ -1,8 +1,9 @@
-// The guards on pi: the Claude Code adapter's Bash judge (claude-code/hooks/bash-judge.ts) and its
-// secrets screen, run on pi's tool_call in the orchestrator's and the experts' processes. The judge
-// reaches the host through a few nouns of Claude Code's `$`; this file answers them from Node. A
-// deny blocks the call; a rewrite (the playwright-cli session flag) edits the input in place; a
-// note is appended to the tool's result for the model to read. A bash call with no timeout gets one
+// The guards on pi: the Claude Code adapter's Bash judge (claude-code/hooks/bash-judge.ts), its
+// secrets screen and its capability-literal screen, run on pi's tool_call in the orchestrator's
+// and the experts' processes. The judge reaches the host through a few nouns of Claude Code's `$`;
+// this file answers them from Node. A deny blocks the call; a rewrite (the playwright-cli session
+// flag, the wdio session name, snapshot --all) edits the input in place; a note is appended to
+// the tool's result for the model to read. A bash call with no timeout gets one
 // (pi's has no default, and one command that never returns holds the expert, the orchestrator
 // and the main session with it): ACHILLES_PI_BASH_TIMEOUT seconds, 600 by default, as Claude Code caps.
 import { spawn } from 'node:child_process'
@@ -13,6 +14,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { judgeBash } from '../claude-code/hooks/bash-judge'
 import { factoryRules, placeFile, ruleOf, threeLine } from '../claude-code/hooks/io'
 import { contentSecret } from '../claude-code/hooks/secrets'
+import { capabilityLiteral, capabilityNote } from '../claude-code/hooks/capabilities'
 import type { Who } from '../claude-code/hooks/context'
 
 function engine(root: string, pluginRoot: string): EngineInterface {
@@ -39,7 +41,7 @@ function engine(root: string, pluginRoot: string): EngineInterface {
 }
 
 const BASH_TIMEOUT = Number(process.env.ACHILLES_PI_BASH_TIMEOUT) || 600
-const STATE_JSON = /^(tests\/(e2e|perf)\/docs|\.achilles)\/.*\.json$/
+const STATE_JSON = /^(tests\/(e2e|perf|platform)\/docs|\.achilles)\/.*\.json$/
 
 const parseError = (text: string) => {
   try {
@@ -76,7 +78,7 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
       if (v.deny !== undefined) return { block: true, reason: `achilles: ${v.deny}` }
       if (v.command !== command) input.command = v.command
       if (typeof input.timeout !== 'number' || input.timeout <= 0) input.timeout = BASH_TIMEOUT
-      const said = v.notes.filter(n => !n.startsWith('__slug:'))
+      const said = v.notes.filter(n => !n.startsWith('__slug:') && !n.startsWith('__wdio:'))
       if (said.length > 0) notes.set(e.toolCallId, said)
       return
     }
@@ -89,9 +91,12 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
         const broken = after === undefined ? undefined : parseError(after)
         if (broken) return { block: true, reason: `achilles: this ${e.toolName} would leave ${rel} unparseable (${broken}); run state is read back by the gates and on resume, so write it as valid JSON.` }
       }
+      const text = e.toolName === 'write' ? (input.content ?? '') : (input.edits ?? []).map(x => x.newText).join('\n')
+      // Capabilities live only in tests/capabilities/<device>.json: a platform spec, fixture or config spelling one out gets a note.
+      const literal = capabilityLiteral(rel, text)
+      if (literal !== undefined) notes.set(e.toolCallId, [capabilityNote(rel, literal)])
       const rule = ruleOf(await factoryRules($, ctx.cwd), 'secrets.none')
       if (!rule) return
-      const text = e.toolName === 'write' ? (input.content ?? '') : (input.edits ?? []).map(x => x.newText).join('\n')
       const hit = contentSecret(rule, rel, text)
       if (hit) return { block: true, reason: `achilles: ${threeLine('secrets.none', `${e.toolName === 'write' ? 'Write to' : 'Edit of'} ${rel} ${hit.what}`, typeof rule.action === 'string' ? rule.action : undefined, typeof rule.doc === 'string' ? rule.doc : undefined)}` }
     }

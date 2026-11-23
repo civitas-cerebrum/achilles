@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 
-import { afterContent, exists, hashText, isDisabled, listDir, note, placeFile, readLedgerHashes, readText, validateDoc, who, writeLedgerHash } from './context'
+import { afterContent, exists, hashText, isDisabled, listDir, note, placeFile, readLedgerHashes, readText, validateDoc, walk, who, writeLedgerHash } from './context'
 
 // Hook 2, the pipeline ledger model: a Write or Edit of a pipeline ledger or progress file is
 // checked as a state transition, and every finding is a note to the writing loop; nothing is
@@ -10,6 +10,7 @@ import { afterContent, exists, hashText, isDisabled, listDir, note, placeFile, r
 
 export const ONBOARDING = 'tests/e2e/docs/onboarding-status.json'
 export const PERF = 'tests/perf/docs/perf-onboarding-status.json'
+export const PLATFORM = 'tests/platform/docs/platform-onboarding-status.json'
 const CYCLE_STATE = 'tests/e2e/docs/.phase4-cycle-state.json'
 const COVERAGE_STATE = 'tests/e2e/docs/coverage-expansion-state.json'
 const STATE_REF = 'skills/achilles-orchestrator/references/state-files.md'
@@ -69,7 +70,7 @@ export function transitionFindings(prior: Ledger | undefined, next: Ledger): str
 export const newlyCompleted = (prior: Ledger | undefined, next: Ledger) =>
   phasesOf(next).filter(p => p.status === 'completed' && phaseOf(prior, p.id ?? -1)?.status !== 'completed').map(p => p.id ?? 0)
 
-type Files = { root: string; read: (rel: string) => Promise<string | undefined>; has: (rel: string) => Promise<boolean>; list: (rel: string) => Promise<string[]> }
+type Files = { root: string; read: (rel: string) => Promise<string | undefined>; has: (rel: string) => Promise<boolean>; list: (rel: string) => Promise<string[]>; walk: (rel: string) => Promise<string[]> }
 
 const firstLineOf = (s: string | undefined) => (s ?? '').split('\n')[0]!.trim()
 const roster = (map: string | undefined) => [...(map ?? '').matchAll(/^###?#? (j-[a-z0-9-]+)/gm)].map(m => m[1]!)
@@ -184,6 +185,126 @@ export async function perfDeliverables(id: number, f: Files): Promise<string[]> 
   }
 }
 
+const CAPS_PATH = /^tests\/capabilities\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/
+const REVIEW_VERDICT = 'tests/platform/docs/review-verdict.json'
+const isObject = (x: unknown): x is Record<string, unknown> => x !== null && typeof x === 'object' && !Array.isArray(x)
+
+/** The capabilities files the ledger's devices[] names, in order. */
+const deviceFiles = (ledger: unknown): unknown[] => {
+  const devices = isObject(ledger) ? ledger.devices : undefined
+  return Array.isArray(devices) ? devices.map(d => (isObject(d) ? d.capabilities : undefined)) : []
+}
+
+/**
+ * What a completed platform-pipeline phase must have on disk, by phase id (1 Preflight, 2 Scaffold,
+ * 3 Inspect, 4 Selectors, 5 Compose, 6 Review, 7 Report). `ledger` is the ledger as this write leaves it.
+ */
+export async function platformDeliverables(id: number, f: Files, ledger?: unknown): Promise<string[]> {
+  switch (id) {
+    case 1: {
+      const devices = isObject(ledger) && Array.isArray(ledger.devices) ? ledger.devices : []
+      if (devices.length === 0) return ['Phase 1 (Preflight) completed but devices[] is empty; record one entry per capabilities file the run targets (capabilities, platform, osVersion, real).']
+      const off = deviceFiles(ledger).filter(c => typeof c !== 'string' || !CAPS_PATH.test(c))
+      return off.length === 0 ? [] : [`Phase 1 (Preflight) completed with ${off.length} devices[] entr${off.length === 1 ? 'y' : 'ies'} whose capabilities is not a tests/capabilities/<device>.json path (${off.map(c => JSON.stringify(c ?? null)).join(', ')}).`]
+    }
+    case 2: {
+      const out: string[] = []
+      if (!(await f.has('playwright.platform.config.ts'))) out.push('Phase 2 (Scaffold) completed but playwright.platform.config.ts does not exist.')
+      if (!(await f.list('tests/capabilities')).some(n => n.endsWith('.json'))) out.push('Phase 2 (Scaffold) completed but there is no *.json capabilities file under tests/capabilities/.')
+      if (!(await f.has('tests/capabilities/README.md'))) out.push('Phase 2 (Scaffold) completed but tests/capabilities/README.md does not exist (what each capabilities file targets).')
+      if (!(await f.has('tests/platform/fixtures/base.ts'))) out.push('Phase 2 (Scaffold) completed but tests/platform/fixtures/base.ts does not exist.')
+      let pin: unknown
+      try {
+        pin = (JSON.parse((await f.read('package.json')) ?? '{}') as { devDependencies?: Record<string, unknown> }).devDependencies?.['@wdio/cli']
+      } catch {
+        pin = undefined
+      }
+      if (pin !== '10.2.0') out.push(`Phase 2 (Scaffold) completed but package.json ${pin === undefined ? 'has no @wdio/cli devDependency' : `has @wdio/cli "${String(pin)}"`}; the scaffold pins @wdio/cli at exactly 10.2.0 (the inspection CLI).`)
+      return out
+    }
+    case 3: {
+      const text = await f.read('tests/platform/docs/app-context.md')
+      if (text === undefined) return ['Phase 3 (Inspect) completed but tests/platform/docs/app-context.md does not exist.']
+      // Screens are entries of their own, keyed by screen name; the Test Infrastructure section alone is the scaffold's.
+      const screens = [...text.matchAll(/^#{2,4}\s+(.+?)\s*$/gm)].map(m => m[1]!).filter(h => !/^test infrastructure$/i.test(h))
+      return screens.length > 0 ? [] : ['Phase 3 (Inspect) completed but tests/platform/docs/app-context.md has no screen entry beyond the Test Infrastructure section (one heading per screen, keyed by screen name, with its navigation path).']
+    }
+    case 4: {
+      // One page repository per project: the e2e one when it exists, else the platform one.
+      const e2e = 'tests/e2e/page-repository.json'
+      const own = 'tests/platform/page-repository.json'
+      const hasE2e = await f.has(e2e)
+      const out: string[] = []
+      if (hasE2e && (await f.has(own))) out.push(`Phase 4 (Selectors) completed with both ${e2e} and ${own}, but there is one page repository per project: the platform pages go into ${e2e} and ${own} is removed.`)
+      const rel = hasE2e ? e2e : own
+      try {
+        const pages = (JSON.parse((await f.read(rel)) ?? '{}') as { pages?: { platform?: unknown }[] }).pages
+        if (!(Array.isArray(pages) && pages.some(p => p !== null && typeof p === 'object' && ['android', 'ios', 'macos', 'windows'].includes(String(p.platform)))))
+          out.push(`Phase 4 (Selectors) completed but ${rel} has no page with a platform of android, ios, macos or windows.`)
+      } catch {
+        out.push(`Phase 4 (Selectors) completed but ${rel} is not JSON.`)
+      }
+      return out
+    }
+    case 5:
+      return (await f.walk('tests/platform')).some(r => r.endsWith('.spec.ts')) ? [] : ['Phase 5 (Compose) completed but there is no *.spec.ts under tests/platform/.']
+    case 6: {
+      // The author's proof: the whole suite run once per capabilities file, and at least one
+      // deliberate failure that turned a test red, then reverted.
+      const text = await f.read(REVIEW_VERDICT)
+      if (text === undefined) return [`Phase 6 (Review) completed but ${REVIEW_VERDICT} does not exist.`]
+      let doc: unknown
+      try {
+        doc = JSON.parse(text)
+      } catch {
+        return [`${REVIEW_VERDICT} is not JSON.`]
+      }
+      if (!isObject(doc)) return [`${REVIEW_VERDICT} is not a JSON object.`]
+      // A device class is one devices[] capabilities file: each needs a deliberate failure of its own
+      // and exactly one green whole-suite run.
+      const out: string[] = []
+      const files = deviceFiles(ledger).filter((c): c is string => typeof c === 'string')
+      const failures = Array.isArray(doc.deliberateFailure) ? doc.deliberateFailure : []
+      if (files.length === 0) out.push(`Phase 6 (Review) completed but the ledger's devices[] names no capabilities file, so ${REVIEW_VERDICT} cannot be checked per device; record the devices at preflight.`)
+      const text_ = (x: unknown) => typeof x === 'string' && x.trim() !== ''
+      failures.forEach((x, i) => {
+        const e = isObject(x) ? x : {}
+        const gaps = [
+          !text_(e.capabilities) ? 'no capabilities file' : !files.includes(e.capabilities as string) ? `capabilities ${String(e.capabilities)}, which is not a devices[] capabilities file` : '',
+          text_(e.spec) ? '' : 'no spec',
+          text_(e.test) ? '' : 'no test',
+          text_(e.change) ? '' : 'no change',
+          typeof e.exitCode === 'number' && e.exitCode !== 0 ? '' : 'no non-zero exitCode',
+          e.reverted === true ? '' : 'not reverted: true',
+        ].filter(Boolean)
+        if (gaps.length > 0) out.push(`${REVIEW_VERDICT} deliberateFailure[${i}] has ${gaps.join(', ')}.`)
+      })
+      const failed = failures.map(x => (isObject(x) ? x.capabilities : undefined))
+      const runs = Array.isArray(doc.runs) ? doc.runs.filter(isObject) : []
+      for (const c of files) {
+        if (!failed.includes(c)) out.push(`${REVIEW_VERDICT} has no deliberateFailure entry for ${c}; the review proves the suite with a deliberate failure on every devices[] capabilities file.`)
+        const mine = runs.filter(r => r.capabilities === c)
+        if (mine.length !== 1) out.push(`${REVIEW_VERDICT} runs[] has ${mine.length === 0 ? 'no entry' : `${mine.length} entries`} for ${c}; record one whole-suite run per devices[] capabilities file.`)
+        else {
+          const r = mine[0]!
+          const counts = ['passed', 'failed', 'flaky'].filter(k => typeof r[k] !== 'number' || !Number.isFinite(r[k] as number))
+          if (counts.length > 0) out.push(`${REVIEW_VERDICT} runs[] entry for ${c} has no numeric ${counts.join(', ')}; record the run's passed, failed and flaky counts.`)
+          else if (r.failed !== 0) out.push(`${REVIEW_VERDICT} runs[] entry for ${c} has failed ${String(r.failed)}; the whole-suite run on each device ends with failed: 0.`)
+        }
+      }
+      return out
+    }
+    case 7: {
+      const rel = 'tests/platform/docs/platform-report.md'
+      const text = await f.read(rel)
+      if (text === undefined) return [`Phase 7 (Report) completed but ${rel} does not exist.`]
+      return firstLineOf(text) === '<!-- platform-testing:generated -->' ? [] : [`${rel} is missing the line-1 sentinel \`<!-- platform-testing:generated -->\`.`]
+    }
+    default:
+      return []
+  }
+}
+
 /** Progress files only grow: a cycle's or pass's dispatched and returned rosters never lose an entry. */
 export function monotonicFindings(rel: string, prior: unknown, next: unknown): string[] {
   const [group, dispatched, returned] = rel.endsWith('.phase4-cycle-state.json') ? ['cycles', 'dispatched-sections', 'returned-sections'] : ['passes', 'dispatched-journeys', 'returned-journeys']
@@ -219,7 +340,7 @@ export function registerLedger(on: On) {
     if (!w) return next(e)
     const root = await $.session.cwd()
     const { abs, rel } = placeFile(root, e.file_path)
-    const isLedger = rel === ONBOARDING || rel === PERF
+    const isLedger = rel === ONBOARDING || rel === PERF || rel === PLATFORM
     const isProgress = rel === CYCLE_STATE || rel === COVERAGE_STATE
     if (!isLedger && !isProgress) return next(e)
     const findings: string[] = []
@@ -235,7 +356,7 @@ export function registerLedger(on: On) {
       const nextDoc = parse(synth.after) as Ledger | undefined
       if (nextDoc === undefined || typeof nextDoc !== 'object') findings.push(`${rel} would not be parseable JSON after this write.`)
       else {
-        const verdict = await validateDoc($, rel === PERF ? 'perf-onboarding-status' : 'onboarding-status', synth.after)
+        const verdict = await validateDoc($, rel === PERF ? 'perf-onboarding-status' : rel === PLATFORM ? 'platform-onboarding-status' : 'onboarding-status', synth.after)
         if ('unavailable' in verdict) findings.push(`the ledger schema could not be checked (${verdict.unavailable}).`)
         else if (!verdict.ok) findings.push(`${rel} fails schema validation: ${(verdict.errors ?? [verdict.parse ?? '']).join('; ')}.`)
         const priorDoc = parse(diskText) as Ledger | undefined
@@ -245,8 +366,9 @@ export function registerLedger(on: On) {
           read: r => readText($, `${root}/${r}`),
           has: r => exists($, `${root}/${r}`),
           list: async r => (await listDir($, `${root}/${r}`)).map(x => x.name),
+          walk: async r => (await walk($, `${root}/${r}`, { depth: 6 })).map(p => p.slice(root.length + 1)),
         }
-        for (const id of newlyCompleted(priorDoc, nextDoc)) findings.push(...(await (rel === PERF ? perfDeliverables(id, files) : onboardingDeliverables(id, files))))
+        for (const id of newlyCompleted(priorDoc, nextDoc)) findings.push(...(await (rel === PERF ? perfDeliverables(id, files) : rel === PLATFORM ? platformDeliverables(id, files, nextDoc) : onboardingDeliverables(id, files))))
       }
     } else {
       const nextDoc = parse(synth.after)
