@@ -94,7 +94,7 @@ function parseArgs(argv) {
     if (VALUED.has(name)) {
       const value = argv[++i]
       if (value === undefined || value.startsWith('--'))
-        fail(`Option --${name} needs a value (got ${value === undefined ? 'nothing' : value})`, `Use: ${USAGE}`, 'the-tool', 2)
+        fail(`Option --${name} needs a value`, `Use: ${USAGE}`, 'the-tool', 2)
       if (name === 'mask') a.mask.push(value)
       else a[name] = value
       continue

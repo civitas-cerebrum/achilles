@@ -159,10 +159,11 @@ screenshot is the **element** screenshot: `<ref>` is the element's ref from `sna
 - `--repository` default: `rules["selectors.evidence"].repository`, else `tests/e2e/page-repository.json` if it
   exists, else `tests/platform/page-repository.json` (one page repository per project).
 - Flags also take the `--name=value` form; an unrecognised argument is named by its flag only, never its value. A
-  message repeats a flag value only when it is a plain name or path (`[A-Za-z0-9_./-]`, at most 120 characters);
+  message repeats a flag value only when it is a plain name or path (`[A-Za-z0-9_./-]` and spaces, at most 120 characters);
   anything else, a URL or `key=value` included, prints as `(not shown)`.
-- Capability keys the tool reads (`platformName`, `appium:appPackage`) follow one rule: from `alwaysMatch` when the
-  file has one (also under `capabilities.alwaysMatch`), else from the top level.
+- Capabilities files are flat: top-level keys, no `alwaysMatch` / `firstMatch` / `capabilities` wrapper (the shape
+  `wdio session open` merges and the Bash judge reads). A wrapped file, or one without a string `platformName`, is
+  refused (exit 2). The tool reads `platformName` and `appium:appPackage` from the top level.
 
 ### The platform note
 

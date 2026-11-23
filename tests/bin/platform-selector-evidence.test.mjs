@@ -398,16 +398,43 @@ test('a value that is not a plain name or path is "(not shown)" in every message
   assert.match(plain.out, /Unknown --platform tvos/, 'a plain value is still named');
 });
 
-test('capability keys are read from alwaysMatch when present, else the top level, for platformName and appPackage alike', () => {
+test('capabilities files are flat: a wrapper (alwaysMatch, firstMatch, capabilities) is refused, and so is a file without a string platformName', () => {
   const d = project([androidPage([el('save', { id: 'save' })])]);
-  writeFileSync(join(d, 'tests/capabilities/w3c.json'), JSON.stringify({ platformName: 'iOS', alwaysMatch: { platformName: 'Android', 'appium:appPackage': 'com.example.other' } }));
-  const r = run(d, android('SettingsPage', 'save').map((a) => (a === 'tests/capabilities/android.json' ? 'tests/capabilities/w3c.json' : a)));
-  assert.equal(r.status, 0, r.out);
+  const withCaps = (file) => android('SettingsPage', 'save').map((a) => (a === 'tests/capabilities/android.json' ? file : a));
+  const wrapped = {
+    'always.json': { platformName: 'Android', alwaysMatch: { 'appium:appPackage': 'com.example.other' } },
+    'first.json': { platformName: 'Android', firstMatch: [{}] },
+    'wrapper.json': { capabilities: { platformName: 'Android' } },
+  };
+  for (const [file, caps] of Object.entries(wrapped)) {
+    writeFileSync(join(d, 'tests/capabilities', file), JSON.stringify(caps));
+    const r = run(d, withCaps(`tests/capabilities/${file}`));
+    assert.equal(r.status, 2, file);
+    assert.match(r.out, /capabilities files are flat: top-level keys, no alwaysMatch\/firstMatch wrapper/, file);
+  }
+  writeFileSync(join(d, 'tests/capabilities/noname.json'), JSON.stringify({ 'appium:automationName': 'UiAutomator2' }));
+  const noName = run(d, withCaps('tests/capabilities/noname.json'));
+  assert.equal(noName.status, 2);
+  assert.match(noName.out, /no string platformName/);
+  writeFileSync(join(d, 'tests/capabilities/flat.json'), JSON.stringify({ platformName: 'Android', 'appium:appPackage': 'com.example.other' }));
+  assert.equal(run(d, withCaps('tests/capabilities/flat.json')).status, 0);
   assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md'))).id, 'com.example.other:id/save');
-  writeFileSync(join(d, 'tests/capabilities/top.json'), JSON.stringify({ platformName: 'Android', 'appium:appPackage': 'com.example.other', alwaysMatch: { platformName: 'Android' } }));
-  const top = run(d, android('SettingsPage', 'save').map((a) => (a === 'tests/capabilities/android.json' ? 'tests/capabilities/top.json' : a)));
-  assert.equal(top.status, 0, top.out);
-  assert.equal(Object.fromEntries(fields(note(d, 'SettingsPage.save.android.md'))).id, 'com.example.app:id/save', 'alwaysMatch present: top-level keys are not read');
+  assert.equal(existsSync(join(d, 'docs/evidence/selectors/SettingsPage.save.android.png')), true);
+});
+
+test('a plain value with spaces (a repository name) is still shown', () => {
+  const d = project([iosPage([el('networkRow', { 'accessibility id': 'example.row.network' })])]);
+  const r = run(d, ['--platform', 'ios', '--page', 'Settings Page', '--element', 'networkRow', '--capabilities', 'tests/capabilities/phone.json', '--screen', 'Settings', '--source', 'inspect/ios.xml', '--screenshot', 'inspect/shot.png']);
+  assert.equal(r.status, 2);
+  assert.match(r.out, /Page "Settings Page" has no entry/);
+});
+
+test('web mode: a flag missing its value names the flag, not the next argument', () => {
+  const d = project([{ name: 'HomePage', elements: [el('x', { css: '#x' })] }]);
+  const r = run(d, ['--page', 'HomePage', '--element', '--base-url']);
+  assert.equal(r.status, 2);
+  assert.match(r.out, /Option --element needs a value/);
+  assert.doesNotMatch(r.out, /got /);
 });
 
 test('a short android id prefers the appium:appPackage of the capabilities file, else the package owning most nodes', () => {

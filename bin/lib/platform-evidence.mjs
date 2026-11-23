@@ -446,8 +446,8 @@ export function splitEquals(argv) {
   return argv.flatMap((a) => (/^--[^=]+=/.test(a) ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a]))
 }
 
-/** A flag value in a message: only a plain name or path (no JSON, no key=value, no colon), else "(not shown)". */
-export const shown = (v) => (typeof v === 'string' && /^[A-Za-z0-9_.\/-]{1,120}$/.test(v) ? v : '(not shown)')
+/** A flag value in a message: only a plain name or path (letters, digits, _ . / - and spaces; no JSON, key=value or colon), else "(not shown)". */
+export const shown = (v) => (typeof v === 'string' && /^[A-Za-z0-9_. \/-]{1,120}$/.test(v) ? v : '(not shown)')
 
 /** How an unrecognised argument is named in a message: a flag by its name, anything else not at all (it may be a value). */
 export const shownArg = (a) => (/^--[\w-]+$/.test(a) ? a : 'a value with no flag (not shown)')
@@ -465,12 +465,11 @@ function parseArgs(argv) {
 }
 
 /**
- * One rule for every capability key the tool reads (platformName, appium:appPackage): from `alwaysMatch` when the file
- * has one (also under `capabilities.alwaysMatch`), else from the top level. Only string values count.
+ * Capabilities files are flat (top-level keys, the shape `wdio session open` merges and the Bash judge reads), so every
+ * key the tool reads (platformName, appium:appPackage) comes from the top level. Only string values count.
  */
 export function capability(caps, key) {
-  const scope = caps?.alwaysMatch ?? caps?.capabilities?.alwaysMatch ?? caps
-  return typeof scope?.[key] === 'string' ? scope[key] : undefined
+  return typeof caps?.[key] === 'string' ? caps[key] : undefined
 }
 
 /** Refuses anything but a path to a JSON file under tests/capabilities/; returns the project-relative path. */
@@ -489,8 +488,11 @@ function capabilitiesFile(root, value, platform) {
   } catch (e) {
     fail(`Capabilities file ${rel} is missing or not JSON (${e.code ?? 'parse error'})`, 'Pass the capabilities file the inspection session used.', 'platform-pages', 2)
   }
+  if (caps === null || typeof caps !== 'object' || Array.isArray(caps) || ['alwaysMatch', 'firstMatch', 'capabilities'].some((k) => k in caps))
+    fail(`${rel}: capabilities files are flat: top-level keys, no alwaysMatch/firstMatch wrapper`, 'Move the keys to the top level of the file (the shape wdio session open and the test run read).', 'platform-pages', 2)
   const named = capability(caps, 'platformName')
-  if (typeof named === 'string' && named.toLowerCase() !== platform)
+  if (named === undefined) fail(`${rel} has no string platformName`, `Add "platformName" to the file (the platform it targets).`, 'platform-pages', 2)
+  if (named.toLowerCase() !== platform)
     fail(`The platformName in ${rel} does not name ${platform}`, `Pass the capabilities file of a ${platform} device, or the --platform that file targets.`, 'platform-pages', 2)
   return { rel, caps }
 }
