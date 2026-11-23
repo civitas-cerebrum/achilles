@@ -76,7 +76,7 @@ test('an expert’s wdio session closes when its turn ends, so the device is fre
   const session = mock.session(on)
   const { orchestrator } = await setup($, h)
   h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:bundleId': 'com.example.shop' }))
-  const open = 'npx wdio session open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json'
+  const open = 'npx wdio session open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json --bundle-id com.example.shop'
   const inspector = await spawnExpert($, h, 'inspector', orchestrator)
   await $.tool.call({ tool: 'Bash', command: open, agentId: inspector })
   await $.tool.call({ tool: 'Bash', command: 'npx playwright-cli -s=phase1-root open http://app', agentId: inspector })

@@ -239,7 +239,7 @@ test('wdio session: a good slug is kept and recorded, a missing, malformed or ta
   const { agentId, bash, orchestrator } = await setup($, h, 'inspector')
   const slug = derivedSlug('inspector', agentId)
   h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:automationName': 'XCUITest', 'appium:bundleId': 'com.example.shop' }))
-  const open = 'open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json'
+  const open = 'open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json --bundle-id com.example.shop'
   expect((await bash(`npx wdio session ${open}`)).deny).toBeUndefined()
   expect(seen.at(-1)).toBe(`npx wdio session -s ${slug} ${open}`)
   expect(notes(session, agentId).at(-1)).toContain(`it ran as -s ${slug}`)
@@ -309,7 +309,7 @@ test('wdio session: the action comes from the known list, only global flags prec
   const { agentId, bash } = await setup($, h, 'inspector')
   const slug = derivedSlug('inspector', agentId)
   h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:bundleId': 'com.example.shop' }))
-  const open = 'open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json'
+  const open = 'open ios --appium-url "$APPIUM_URL" --capabilities tests/capabilities/iphone.json --bundle-id com.example.shop'
   expect((await bash(`npx wdio session --foo bar open ios --capabilities '{"platformName":"iOS"}'`)).deny).toMatch(/--foo/)
   expect((await bash(`npx wdio session --log-level debug ${open}`)).deny).toMatch(/--log-level/)
   expect((await bash('npx wdio session frobnicate e3')).deny).toMatch(/not a wdio session action/)
@@ -342,21 +342,25 @@ test('wdio session: the action comes from the known list, only global flags prec
   expect((await bash("sh -c 'npx wdio session -s inspect-iphone-1 snapshot --all'")).deny).toBeUndefined()
 })
 
-test('wdio session open: capabilities only from tests/capabilities/*.json, the server only from --appium-url, no capability flags, the platform the file names, an app id flag only when the file has none', async ($, on) => {
+test('wdio session open: capabilities only from tests/capabilities/*.json, the server only from --appium-url, no capability flags, the platform the file names, and the app id the file names repeated as --bundle-id / --package / --app', async ($, on) => {
   const h = engine(on)
   const { bash } = await setup($, h, 'inspector')
   h.write(`${ROOT}/tests/capabilities/iphone.json`, JSON.stringify({ platformName: 'iOS', 'appium:bundleId': 'com.example.shop' }))
-  h.write(`${ROOT}/tests/capabilities/pixel.json`, JSON.stringify({ platformName: 'Android', 'appium:automationName': 'UiAutomator2' }))
+  h.write(`${ROOT}/tests/capabilities/pixel.json`, JSON.stringify({ platformName: 'Android', 'appium:automationName': 'UiAutomator2', 'appium:appPackage': 'com.example.shop' }))
+  h.write(`${ROOT}/tests/capabilities/build.json`, JSON.stringify({ platformName: 'iOS', 'appium:app': './build/Shop.ipa' }))
+  h.write(`${ROOT}/tests/capabilities/noapp.json`, JSON.stringify({ platformName: 'iOS', 'appium:udid': '00000000-0000000000000000' }))
   h.write(`${ROOT}/tests/capabilities/noname.json`, JSON.stringify({ 'appium:automationName': 'XCUITest' }))
   const url = '--appium-url "$APPIUM_URL"'
-  const iphone = '--capabilities tests/capabilities/iphone.json'
+  const iphone = '--capabilities tests/capabilities/iphone.json --bundle-id com.example.shop'
   for (const c of [
     `npx wdio session open ios ${url} ${iphone}`,
-    'npx wdio session open ios --appium-url http://127.0.0.1:4723/wd/hub --capabilities=./tests/capabilities/iphone.json',
+    'npx wdio session open ios --appium-url http://127.0.0.1:4723/wd/hub --capabilities=./tests/capabilities/iphone.json --bundle-id=com.example.shop',
     `npx wdio session open ios --appium-url=\${APPIUM_URL} ${iphone} --replace --idle-timeout 10m`,
     `npx wdio session open ios ${url} ${iphone} --idle-timeout 30m`,
     `npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.example.shop --activity .Main`,
-    `npx wdio session open ios ${url} --capabilities ${ROOT}/tests/capabilities/iphone.json`,
+    `npx wdio session open ios ${url} --capabilities ${ROOT}/tests/capabilities/iphone.json --bundle-id com.example.shop`,
+    `npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.example.shop`,
+    `npx wdio session open ios ${url} --capabilities tests/capabilities/build.json --app ./build/Shop.ipa`,
   ])
     expect((await bash(c)).deny).toBeUndefined()
   expect((await bash(`npx wdio session open ios ${url}`)).deny).toMatch(/--capabilities tests\/capabilities\/<device>\.json/)
@@ -366,9 +370,20 @@ test('wdio session open: capabilities only from tests/capabilities/*.json, the s
   expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/missing.json`)).deny).toMatch(/does not exist/)
   expect((await bash(`npx wdio session open ios ${iphone}`)).deny).toMatch(/--appium-url/)
   expect((await bash(`npx wdio session open ios --appium-url localhost:4723 ${iphone}`)).deny).toMatch(/--appium-url/)
-  for (const flag of ['--udid 00000000-0000000000000000', '--device iPhone', '--platform-version 17', '--no-reset', '--full-reset', '--orientation landscape', '--app ./x.ipa', '--hostname h', '--port 4723', '--path /wd/hub', '--provider browserstack', '--headed'])
+  for (const flag of ['--udid 00000000-0000000000000000', '--device iPhone', '--platform-version 17', '--no-reset', '--full-reset', '--orientation landscape', '--hostname h', '--port 4723', '--path /wd/hub', '--provider browserstack', '--headed'])
     expect((await bash(`npx wdio session open ios ${url} ${iphone} ${flag}`)).deny).toMatch(/not part of the inspection form/)
-  expect((await bash(`npx wdio session open ios ${url} ${iphone} --bundle-id com.example.other`)).deny).toMatch(/already names the app/)
+  // The CLI checks the app flag before it reads the file, so the form always repeats the file's app id.
+  const bare = '--capabilities tests/capabilities/iphone.json'
+  expect((await bash(`npx wdio session open ios ${url} ${bare}`)).deny).toMatch(/needs --bundle-id com\.example\.shop/)
+  expect((await bash(`npx wdio session open ios ${url} ${bare} --bundle-id com.example.other`)).deny).toMatch(/does not match .* com\.example\.shop/)
+  expect((await bash(`npx wdio session open ios ${url} ${bare} --package com.example.shop`)).deny).toMatch(/--package does not apply to ios/)
+  expect((await bash(`npx wdio session open ios ${url} ${iphone} --app ./x.ipa`)).deny).toMatch(/not --app/)
+  expect((await bash(`npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json`)).deny).toMatch(/needs --package com\.example\.shop/)
+  expect((await bash(`npx wdio session open android ${url} --capabilities tests/capabilities/pixel.json --package com.other`)).deny).toMatch(/does not match/)
+  expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/build.json`)).deny).toMatch(/needs --app \.\/build\/Shop\.ipa/)
+  expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/build.json --app ./other.ipa`)).deny).toMatch(/not --app \.\/other\.ipa/)
+  expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/build.json --bundle-id com.example.shop`)).deny).toMatch(/appium:app/)
+  expect((await bash(`npx wdio session open ios ${url} --capabilities tests/capabilities/noapp.json --bundle-id com.example.shop`)).deny).toMatch(/must name the app/)
   expect((await bash('npx wdio session open chrome http://app')).deny).toMatch(/playwright-cli/)
   expect((await bash(`npx wdio session open macos ${url} ${iphone}`)).deny).toMatch(/not implemented yet/)
   expect((await bash(`npx wdio session open ios com.example.shop ${url} ${iphone}`)).deny).toMatch(/positional/)

@@ -304,9 +304,8 @@ const WDIO_AGNOSTIC = new Set(['list', 'doctor', 'skill'])
 const WDIO_GLOBAL_BOOL = new Set(['--json', '-q', '--quiet', '--color', '--no-color'])
 // open's flags that the inspection form allows; every other one sets a capability, the server or a
 // browser option outside the capabilities file.
-const WDIO_OPEN_FLAGS = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--activity', '--replace', '--launch-timeout', '--idle-timeout', '--log-level', '--snapshot', '--no-snapshot', '--json', '-q', '--quiet', '--color', '--no-color', '--timeout'])
-const WDIO_OPEN_VALUE = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--activity', '--launch-timeout', '--idle-timeout', '--log-level', '--timeout'])
-const APP_ID_KEYS = ['appium:bundleId', 'appium:appPackage', 'appium:app', 'bundleId', 'appPackage', 'app']
+const WDIO_OPEN_FLAGS = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--app', '--activity', '--replace', '--launch-timeout', '--idle-timeout', '--log-level', '--snapshot', '--no-snapshot', '--json', '-q', '--quiet', '--color', '--no-color', '--timeout'])
+const WDIO_OPEN_VALUE = new Set(['--capabilities', '--appium-url', '--bundle-id', '--package', '--app', '--activity', '--launch-timeout', '--idle-timeout', '--log-level', '--timeout'])
 const CAPS_FILE = /^(\.\/)?tests\/capabilities\/[A-Za-z0-9._-]+\.json$/
 const MAX_IDLE_S = 1800
 const RUNNERS = new Set(['node', 'bun', 'deno', 'tsx', 'ts-node', '@wdio/cli'])
@@ -457,7 +456,7 @@ function idleSeconds(value: string): number | undefined {
 
 /** Why an `open` is not the inspection form, or undefined. */
 async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: readonly string[]): Promise<string | undefined> {
-  const form = '`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json`'
+  const form = '`npx wdio session -s <slug> open <android|ios> --appium-url "$APPIUM_URL" --capabilities tests/capabilities/<device>.json --bundle-id <id> | --package <id>`'
   const flags: Record<string, string> = {}
   const positional: string[] = []
   for (let i = 0; i < rest.length; i++) {
@@ -478,7 +477,7 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   const target = positional[0] ?? ''
   if (target === 'macos' || target === 'windows') return `platform "${target}" is declared but not implemented yet; inspection runs on android and ios.`
   if (target !== 'android' && target !== 'ios') return `\`wdio session open ${target || '<nothing>'}\` is not a platform inspection: open android or ios with ${form}. A web page is inspected with playwright-cli.`
-  if (positional.length > 1) return `\`wdio session open ${target}\` takes no further positional argument (${positional.slice(1).join(' ')}); the app comes from the capabilities file (or --bundle-id / --package when the file has no app id). Open with ${form}.`
+  if (positional.length > 1) return `\`wdio session open ${target}\` takes no further positional argument (${positional.slice(1).join(' ')}); the app comes from the capabilities file, repeated with --bundle-id (ios) / --package (android). Open with ${form}.`
   const idle = flags['--idle-timeout']
   if (idle !== undefined) {
     const s = idleSeconds(idle)
@@ -502,10 +501,26 @@ async function judgeWdioOpen($: EngineInterface, ctx: Ctx, j: Judged, rest: read
   const named = doc.platformName
   if (typeof named !== 'string' || named === '') return `${file} has no platformName; the capabilities file names its platform (CONTRACT B1), and open must match it.`
   if (named.toLowerCase() !== target) return `\`open ${target}\` does not match ${file}, whose platformName "${named}" is ${named.toLowerCase()}; open the platform the file names.`
-  const appId = APP_ID_KEYS.find(k => typeof doc[k] === 'string' && doc[k] !== '')
-  const appFlag = ['--bundle-id', '--package', '--activity'].find(f => flags[f] !== undefined)
-  if (appId !== undefined && appFlag !== undefined) return `${file} already names the app (${appId}); ${appFlag} is passed only when the capabilities file has no app id. Drop it.`
-  return undefined
+  // @wdio/session 10.2.0 checks the app flag before it merges the capabilities file (open ios exits 2
+  // without --app/--bundle-id, android without --app/--package), so the form always repeats the app id
+  // the file names, and the judge keeps the two equal.
+  const str = (k: string) => (typeof doc[k] === 'string' && doc[k] !== '' ? (doc[k] as string) : undefined)
+  const [idFlag, idKey, otherFlag] = target === 'ios' ? ['--bundle-id', 'appium:bundleId', '--package'] : ['--package', 'appium:appPackage', '--bundle-id']
+  if (flags[otherFlag] !== undefined) return `${otherFlag} does not apply to ${target}; open ${target} with ${idFlag} <the ${idKey} of ${file}>.`
+  const id = str(idKey)
+  const app = str('appium:app')
+  if (id !== undefined) {
+    if (flags['--app'] !== undefined) return `${file} names the app by ${idKey}; open with ${idFlag} ${id}, not --app.`
+    if (flags[idFlag] === undefined || flags[idFlag] === '') return `\`wdio session open ${target}\` needs ${idFlag} ${id} (the ${idKey} of ${file}); the CLI checks the flag before it reads the file.`
+    if (flags[idFlag] !== id) return `${idFlag} ${flags[idFlag]} does not match ${file}, whose ${idKey} is ${id}; inspect the app the test run uses.`
+    return undefined
+  }
+  if (app !== undefined) {
+    if (flags[idFlag] !== undefined) return `${file} names the app by appium:app; open with --app ${app}, not ${idFlag}.`
+    if (flags['--app'] !== app) return `\`wdio session open ${target}\` needs --app ${app} (the appium:app of ${file})${flags['--app'] ? `, not --app ${flags['--app']}` : ''}; the CLI checks the flag before it reads the file.`
+    return undefined
+  }
+  return `${file} names no app (${idKey} or appium:app); the capabilities file must name the app, and open repeats it with ${idFlag} or --app.`
 }
 
 // ── platform test runs: PLATFORM=<p> CAPABILITIES=tests/capabilities/<device>.json APPIUM_URL=… npx playwright test -c playwright.platform.config.ts ──
