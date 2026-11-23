@@ -47,6 +47,17 @@ for (const file of schemaFiles) {
   } else {
     console.log(`OK:   ${invalidPath} correctly fails ${file}`);
   }
+
+  // Further negatives for one role: fixtures/<role>-invalid-<case>.yaml must fail too.
+  for (const extra of readdirSync(fixturesDir).filter(n => n.startsWith(`${role}-invalid-`) && n.endsWith('.yaml'))) {
+    const extraPath = join(fixturesDir, extra);
+    if (validate(parse(readFileSync(extraPath, 'utf8')))) {
+      console.error(`FAIL: ${extraPath} unexpectedly validated against ${file}`);
+      failures++;
+    } else {
+      console.log(`OK:   ${extraPath} correctly fails ${file}`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

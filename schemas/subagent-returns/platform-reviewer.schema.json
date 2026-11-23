@@ -36,7 +36,7 @@
     },
     "checklist": {
       "type": "array",
-      "description": "Per-item pass/fail of the platform phase exit criteria. An item that checks one row of the platform methodology table (the mobile nuances: app state and reset, permissions, keyboard, gestures, orientation, real versus virtual device, ...) names that row in section6-row.",
+      "description": "Per-item pass/fail of the platform phase exit criteria. An item that checks one row of the mobile discipline (skills/platform-testing/SKILL.md ## Mobile discipline: app state and reset, permissions, keyboard, gestures, orientation, real versus virtual device, ...) names that row in section6-row.",
       "items": {
         "type": "object",
         "additionalProperties": true,
@@ -46,7 +46,7 @@
           "satisfied": { "type": "boolean" },
           "evidence": { "type": "string" },
           "methodology-ref": { "type": "string" },
-          "section6-row": { "type": "string", "minLength": 1, "description": "The methodology-table row this item ticks, by its nuance name, e.g. 'Permissions and system alerts'." }
+          "section6-row": { "type": "string", "minLength": 1, "description": "The mobile-discipline row this item ticks: the text of one ### heading under ## Mobile discipline in skills/platform-testing/SKILL.md, e.g. 'Permissions and system alerts'." }
         }
       }
     },
@@ -120,6 +120,16 @@
           "findings": { "type": "array", "minItems": 1 }
         }
       }
-    }
+    },
+    {"if": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["role"], "properties": {"role": {"const": "platform-reviewer-phase1"}}}}}, "then": {"type": "object", "required": ["phase"], "properties": {"phase": {"const": 1}}}},
+    {"if": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["role"], "properties": {"role": {"const": "platform-reviewer-phase2"}}}}}, "then": {"type": "object", "required": ["phase"], "properties": {"phase": {"const": 2}}}},
+    {"if": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["role"], "properties": {"role": {"const": "platform-reviewer-phase3"}}}}}, "then": {"type": "object", "required": ["phase"], "properties": {"phase": {"const": 3}}}},
+    {"if": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["role"], "properties": {"role": {"const": "platform-reviewer-phase4"}}}}}, "then": {"type": "object", "required": ["phase"], "properties": {"phase": {"const": 4}}}},
+    {"if": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["role"], "properties": {"role": {"const": "platform-reviewer-phase5"}}}}}, "then": {"type": "object", "required": ["phase"], "properties": {"phase": {"const": 5}}}},
+    {"if": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["role"], "properties": {"role": {"const": "platform-reviewer-phase6"}}}}}, "then": {"type": "object", "required": ["phase"], "properties": {"phase": {"const": 6}}}},
+    {"if": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["role"], "properties": {"role": {"const": "platform-reviewer-phase7"}}}}}, "then": {"type": "object", "required": ["phase"], "properties": {"phase": {"const": 7}}}},
+    {"if": {"type": "object", "required": ["verdict"], "properties": {"verdict": {"const": "approve"}}}, "then": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["status"], "properties": {"status": {"const": "approved"}}}}}},
+    {"if": {"type": "object", "required": ["verdict"], "properties": {"verdict": {"const": "reject"}}}, "then": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["status"], "properties": {"status": {"const": "rejected"}}}}}},
+    {"if": {"type": "object", "required": ["verdict"], "properties": {"verdict": {"const": "escalate"}}}, "then": {"type": "object", "required": ["handover"], "properties": {"handover": {"type": "object", "required": ["status"], "properties": {"status": {"const": "escalated-to-user"}}}}}}
   ]
 }
