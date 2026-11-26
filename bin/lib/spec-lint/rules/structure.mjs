@@ -6,9 +6,9 @@ import {
   isFn, isMember, isCall, propName, unwrap, isStr, strValue, anyNode,
   onePass, LOOPS, ITERATION, isAssertion, declarations, referencedNames, statementOf, commentBlockAbove, testModifier,
 } from '../shapes.mjs';
-import { DRIVER_KINDS, FRAMEWORK_KINDS, classifyCall, TYPE_KIND, kindOf } from '../bindings.mjs';
+import { DRIVER_KINDS, FRAMEWORK_KINDS, classifyCall, TYPE_KIND, kindOf, testBindings } from '../bindings.mjs';
 import { idPattern, idsIn } from '../ids.mjs';
-import { typeName } from '../ast.mjs';
+import { typeName, parseCode } from '../ast.mjs';
 import { resolveRelative } from '../suite.mjs';
 
 const RULEBOOK = 'skills/achilles-orchestrator/references/test-baseline.md';
@@ -142,27 +142,10 @@ function injectedFields(n) {
 function classTable(file) {
   if (file.facts.classTable) return file.facts.classTable;
   const out = new Map();
+  const rank = { none: 0, field: 1, blocking: 2 };
   const visit = (n) => {
     if (!n || typeof n.type !== 'string') return;
-    if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id) {
-      const injected = injectedFields(n);
-      let kind = 'none';
-      anyNode(n.body, (x) => {
-        if (!isCall(x) || !isMember(unwrap(x.callee))) return false;
-        const c = unwrap(x.callee);
-        if (BACK_DOOR.test(propName(c) || '')) return false;
-        const o = unwrap(c.object);
-        if (isMember(o) && unwrap(o.object).type === 'ThisExpression') { if (injected.has(propName(o)) && kind === 'none') kind = 'field'; return false; }
-        let r = o;
-        while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
-        if (r && r.type === 'Identifier' && UI_NAMES.test(r.name) && r.name !== 'request') { kind = 'blocking'; return true; }
-        return false;
-      });
-      const sup = n.superClass && unwrap(n.superClass);
-      const supName = sup && (sup.type === 'Identifier' ? sup.name : isMember(sup) ? propName(sup) : null);
-      if (supName && /(Page|Screen)$/.test(supName)) kind = 'blocking';
-      out.set(n.id.name, kind);
-    }
+    if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id) out.set(n.id.name, classify(n, rank));
     for (const k of Object.keys(n)) {
       if (k === 'loc' || k.endsWith('Comments')) continue;
       const v = n[k];
@@ -171,6 +154,60 @@ function classTable(file) {
   };
   visit(file.ast.program);
   return (file.facts.classTable = out);
+}
+
+/**
+ * One class: { typed, any, node }. `typed` uses the fields injected from a Steps, framework, driver or UI-named
+ * parameter; `any` also counts fields taken from any constructor parameter (used when a construction hands the
+ * class a Steps or driver binding). A field handed to another call or returned from a getter is 'field'; only
+ * api*, request* and sql* member calls on it keep the class 'none'.
+ */
+function classify(n, rank) {
+  const typed = injectedFields(n);
+  const all = new Set([...typed, ...constructorFields(n)]);
+  const methodActorParams = new Set();
+  for (const m of n.body.body) if (m.type === 'ClassMethod' && m.kind !== 'constructor') for (const p of m.params) { const k = p.type === 'Identifier' ? TYPE_KIND[typeName(p)] : null; if (k && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) methodActorParams.add(p.name); }
+  const scan = (fields) => {
+    let kind = 'none';
+    const up = (k) => { if (rank[k] > rank[kind]) kind = k; };
+    const thisField = (e) => { const u = unwrap(e); return !!u && isMember(u) && unwrap(u.object).type === 'ThisExpression' && fields.has(propName(u)); };
+    anyNode(n.body, (x) => {
+      if (x.type === 'ReturnStatement' && x.argument && thisField(x.argument)) up('field');
+      if (!isCall(x)) return false;
+      if (x.arguments.some((a) => thisField(a))) up('field');
+      if (x.arguments.some((a) => { const u = unwrap(a); return u && u.type === 'Identifier' && UI_NAMES.test(u.name) && u.name !== 'request'; })) up('field');
+      const c = unwrap(x.callee);
+      if (!isMember(c) || BACK_DOOR.test(propName(c) || '')) return false;
+      const o = unwrap(c.object);
+      if (thisField(o)) { up('field'); return false; }
+      let r = o;
+      while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
+      if (r && r.type === 'Identifier' && ((UI_NAMES.test(r.name) && r.name !== 'request') || methodActorParams.has(r.name))) { up('blocking'); return true; }
+      return false;
+    });
+    const sup = n.superClass && unwrap(n.superClass);
+    const supName = sup && (sup.type === 'Identifier' ? sup.name : isMember(sup) ? propName(sup) : null);
+    if (supName && /(Page|Screen)$/.test(supName)) kind = 'blocking';
+    return kind;
+  };
+  return { typed: scan(typed), any: scan(all), node: n };
+}
+
+/** Fields a constructor takes from any parameter (`constructor(private x)`, `this.x = x`). */
+function constructorFields(n) {
+  const out = new Set();
+  const ctor = n.body.body.find((m) => m.type === 'ClassMethod' && m.kind === 'constructor');
+  if (!ctor) return out;
+  const params = new Set();
+  for (const p of ctor.params) {
+    if (p.type === 'TSParameterProperty' && p.parameter.type === 'Identifier') out.add(p.parameter.name);
+    if (p.type === 'Identifier') params.add(p.name);
+  }
+  anyNode(ctor.body, (x) => {
+    if (x.type === 'AssignmentExpression' && isMember(x.left) && x.left.object.type === 'ThisExpression' && unwrap(x.right).type === 'Identifier' && params.has(unwrap(x.right).name)) out.add(propName(x.left));
+    return false;
+  });
+  return out;
 }
 
 /** A string literal, or a file-level `const` holding one. */
@@ -307,6 +344,19 @@ export function visitors(project) {
     if (ctx.file.kind === 'spec') ctx.report('TB-S2', n, { message: `class ${n.id ? n.id.name : '(anonymous)'} in a spec file` });
   }
 
+  /** How many tests used helper `name` in the base version of the file (--staged / --base), or 0. */
+  function beforeUses(file, name) {
+    const text = project.change && project.change.before && project.change.before.get(file.rel);
+    if (!text) return 0;
+    if (!file.facts.beforeHelpers) {
+      try {
+        const ast = parseCode(project.parser, text, file.abs);
+        file.facts.beforeHelpers = helpers({ ast, testNames: testBindings(ast), facts: {}, abs: file.abs, rel: file.rel }).uses;
+      } catch { file.facts.beforeHelpers = new Map(); }
+    }
+    return (file.facts.beforeHelpers.get(name) || new Set()).size;
+  }
+
   function helpers(file) {
     const d = declarations(file);
     const byName = new Map(d.helpers.map((h) => [h.name, h]));
@@ -333,7 +383,7 @@ export function visitors(project) {
   /** 'blocking' | 'field' | 'none' for a class declared in this file or imported from a project module; null when unknown. */
   function classKind(file, name, depth = 0) {
     const local = classTable(file).get(name);
-    if (local) return local;
+    if (local) return local.any;
     if (depth > 4) return null;
     for (const st of file.ast.program.body) {
       if (st.type !== 'ImportDeclaration') continue;
@@ -364,6 +414,10 @@ export function visitors(project) {
     ClassDeclaration: onClass,
     ClassExpression: onClass,
     fileEnd(file) {
+      for (const [name, c] of classTable(file)) {
+        if (c.typed === 'none' || project.findings.some((f) => f.file === file.rel && f.rule === 'TB-S3' && f.line === c.node.loc.start.line)) continue;
+        report(file, 'TB-S3', c.node, c.typed === 'field' ? `class ${name} drives through its injected field (it hands it to a call or returns it) (advisory: unmeasured)` : `class ${name} drives the UI: a page-object layer`, { severity: c.typed === 'field' ? 'advisory' : 'blocking' });
+      }
       if (file.kind !== 'spec') return;
       const { d, uses } = helpers(file);
       for (const h of d.helpers) {
@@ -373,8 +427,8 @@ export function visitors(project) {
         if (!ui) continue;
         const n = uses.get(h.name).size;
         if (h.exported) report(file, 'TB-S2', h.node, `exported spec helper ${h.name}(): a helper other files use belongs in a support module`, { region: h.describes.length ? 'describe' : 'module' });
-        // touched also when a user test changes, or a change outside every test removed a user
-        else if (n < 2) report(file, 'TB-S2', h.node, `helper ${h.name}() drives the UI and is used by ${n} test${n === 1 ? '' : 's'} of this file`, { region: h.describes.length ? 'describe' : 'module', data: { ranges: d.tests.filter((t) => uses.get(h.name).has(t.call)).map((t) => [t.line, t.endLine]), outsideTests: true } });
+        // touched also when a user test changes, or when the base version had two or more users and the change took one away
+        else if (n < 2) report(file, 'TB-S2', h.node, `helper ${h.name}() drives the UI and is used by ${n} test${n === 1 ? '' : 's'} of this file`, { region: h.describes.length ? 'describe' : 'module', data: { ranges: d.tests.filter((t) => uses.get(h.name).has(t.call)).map((t) => [t.line, t.endLine]), ...(beforeUses(file, h.name) >= 2 ? { lostUser: true } : {}) } });
         else if (anyNode(body, (x) => isAssertion(x, (e) => (e.type === 'Identifier' && e.name === 'steps' ? 'steps' : null)))) report(file, 'TB-S2a', h.node, `shared in-spec helper ${h.name}() holds assertions (used by ${n} tests): the scenario's outcome check belongs in each test (advisory)`, { region: h.describes.length ? 'describe' : 'module' });
       }
       for (const t of d.tests) {

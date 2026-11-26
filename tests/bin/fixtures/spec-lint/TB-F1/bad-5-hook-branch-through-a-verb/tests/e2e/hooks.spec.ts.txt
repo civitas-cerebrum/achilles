@@ -1,0 +1,18 @@
+// spec-lint fixture: a hook branch through a verb that drives the UI, or a verb the lint cannot read, still decides the test; an API-only verb does not
+import { test } from './fixtures/base';
+import { signIn } from './flows/auth';
+import { deleteAccount } from './flows/cleanup';
+import { openMenu } from 'some-ui-helpers';
+
+test.beforeEach(async ({ steps }) => {
+  if (process.env.LOGGED) await signIn(steps, 'u'); // EXPECT TB-F1
+});
+test.beforeEach(async ({ steps }) => {
+  if (process.env.MENU) await openMenu(steps); // EXPECT TB-F1
+});
+test.afterEach(async ({ steps }) => {
+  if (process.env.CREATED) await deleteAccount(steps, 'u');
+});
+test('TCAB-1001 · body', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage');
+});

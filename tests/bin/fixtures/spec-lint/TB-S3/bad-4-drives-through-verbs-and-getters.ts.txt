@@ -1,0 +1,25 @@
+// spec-lint fixture: a class that hands its injected Steps to a verb or returns it from a getter drives through it (advisory); its construction follows it
+// place: tests/e2e/flows/po.ts
+// rules: TB-S3
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+import { signIn } from './auth';
+
+export class ViaVerbs { // EXPECT TB-S3/advisory
+  constructor(private steps: Steps) {}
+  async login() { await signIn(this.steps, 'u'); }
+}
+export class Holder { // EXPECT TB-S3/advisory
+  constructor(private s: Steps) {}
+  get steps() { return this.s; }
+}
+class Untyped {
+  constructor(private st: any) {}
+  async go() { await signIn(this.st, 'u'); }
+}
+export class ApiOnly {
+  constructor(private steps: Steps) {}
+  async seed() { await this.steps.apiPost('/seed', {}); }
+}
+export function build(steps: Steps) {
+  return [new ViaVerbs(steps), new Holder(steps), new Untyped(steps), new ApiOnly(steps)]; // EXPECT TB-S3/advisory TB-S3/advisory TB-S3/advisory
+}

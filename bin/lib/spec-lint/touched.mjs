@@ -7,9 +7,9 @@
 //   test, hook, helper   its line range holds a changed line (or the file is new)
 //   describe scope       a changed line inside the describe that no test, hook, helper or nested describe holds
 //   file scope           a changed line outside every unit and describe
-import { execFileSync } from 'node:child_process';
+import { gitSync } from './git.mjs';
 
-const git = (root, args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+const git = (root, args) => gitSync(root, args);
 
 export class ChangeError extends Error {}
 
@@ -57,11 +57,13 @@ export function stagedChange(root) {
   try { diff = git(root, ['diff', '--cached', '--no-color', '--no-ext-diff', '-U0', '-M', '--relative']); } catch (e) { throw new ChangeError(`git diff --cached failed: ${String(e.stderr || e.message).trim()}`); }
   const files = parseDiff(diff);
   const contents = new Map();
+  const before = new Map();
   for (const [rel, c] of files) {
     if (c.status === 'D') continue;
     try { contents.set(rel, git(root, ['show', `:./${rel}`])); } catch { /* not readable from the index: the working tree is used */ }
+    if (c.status === 'M') try { before.set(rel, git(root, ['show', `HEAD:./${rel}`])); } catch { /* no base version */ }
   }
-  return { files, contents, from: 'the index against HEAD' };
+  return { files, contents, before, from: 'the index against HEAD' };
 }
 
 /** The change against the merge-base of HEAD and `ref`: the working tree, plus untracked files as new files. */
@@ -71,7 +73,9 @@ export function baseChange(root, ref) {
   try { mb = git(root, ['merge-base', 'HEAD', ref]).trim(); } catch (e) { throw new ChangeError(`no merge-base of HEAD and ${ref}: ${String(e.stderr || e.message).trim()}`); }
   const files = parseDiff(git(root, ['diff', '--no-color', '--no-ext-diff', '-U0', '-M', '--relative', mb]));
   for (const rel of git(root, ['ls-files', '--others', '--exclude-standard']).split('\n').filter(Boolean)) if (!files.has(rel)) files.set(rel, { status: 'A', lines: null });
-  return { files, contents: new Map(), from: `the working tree against ${ref} (merge-base ${mb.slice(0, 12)})` };
+  const before = new Map();
+  for (const [rel, c] of files) if (c.status === 'M') try { before.set(rel, git(root, ['show', `${mb}:./${rel}`])); } catch { /* no base version */ }
+  return { files, contents: new Map(), before, from: `the working tree against ${ref} (merge-base ${mb.slice(0, 12)})` };
 }
 
 const inRange = (l, u) => l >= u.line && l <= u.endLine;
@@ -88,8 +92,8 @@ export function markTouched(project, change) {
     if (c.lines === null) { f.touched = true; continue; }
     // a finding may name the other lines that make it (a generated test's loop and table, a helper's users)
     const extra = f.data && Array.isArray(f.data.ranges) ? f.data.ranges : [];
-    const outside = !!(f.data && f.data.outsideTests) && [...c.lines].some((l) => !(file && file.tests || []).some((t) => l >= t.line && l <= t.endLine));
-    f.touched = touchedAt(file, f, c.lines) || outside || [...c.lines].some((l) => extra.some(([s, e]) => l >= s && l <= e));
+    // `lostUser`: the change took away a use the base version had (a helper's second user)
+    f.touched = touchedAt(file, f, c.lines) || !!(f.data && f.data.lostUser) || [...c.lines].some((l) => extra.some(([s, e]) => l >= s && l <= e));
   }
 }
 

@@ -1,0 +1,3 @@
+export async function deleteAccount(steps, user: string) {
+  await steps.apiDelete(`/accounts/${user}`);
+}

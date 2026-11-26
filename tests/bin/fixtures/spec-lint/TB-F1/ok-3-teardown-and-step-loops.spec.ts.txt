@@ -1,7 +1,8 @@
-// spec-lint fixture: conditional teardown through verbs in an after hook, an if inside a loop inside a step, a local function called twice
+// spec-lint fixture: conditional teardown through an API-only verb in an after hook, an if inside a loop inside a step, a local function called twice
 // rules: TB-F1
 import { test } from './fixtures/base';
-import { returnOrder } from './flows/orders';
+
+async function returnOrder(steps, id: string) { await steps.apiPost(`/orders/${id}/return`, {}); }
 
 let order = '';
 test.afterEach(async ({ steps }) => {

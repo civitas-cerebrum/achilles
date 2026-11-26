@@ -51,9 +51,21 @@ function timerHelpers(file) {
   const promisified = (init) => { const c = unwrap(init); return isCall(c) && /(^|\.)promisify$/.test((memberChain(unwrap(c.callee)) || []).join('.')) && isTimerFn(c.arguments[0]); };
   for (const st of body) if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && promisified(d.init)) out.add(d.id.name);
   // a promise-sleep: `new Promise((r) => setTimeout(r, n))`; a bare setTimeout (an abort timer) is not one
-  const sleeps = (x) => (x.type === 'NewExpression' && unwrap(x.callee).type === 'Identifier' && unwrap(x.callee).name === 'Promise' && isFn(unwrap(x.arguments[0])) && anyNode(unwrap(x.arguments[0]).body, (y) => isCall(y) && isTimerFn(y.callee)))
-    || (isCall(x) && unwrap(x.callee).type === 'Identifier' && (timerImports.has(unwrap(x.callee).name) || out.has(unwrap(x.callee).name)));
-  const isTimer = (fn) => anyNode(fn.body, sleeps);
+  const sleepPromise = (x) => x.type === 'NewExpression' && unwrap(x.callee).type === 'Identifier' && unwrap(x.callee).name === 'Promise' && isFn(unwrap(x.arguments[0])) && anyNode(unwrap(x.arguments[0]).body, (y) => isCall(y) && isTimerFn(y.callee));
+  // a sleep expression: the timer promise, a timers/promises call, or a call of a sleep helper declared above it
+  const sleepExpr = (e) => {
+    let x = unwrap(e);
+    if (x && x.type === 'AwaitExpression') x = unwrap(x.argument);
+    return !!x && (sleepPromise(x) || (isCall(x) && unwrap(x.callee).type === 'Identifier' && (timerImports.has(unwrap(x.callee).name) || out.has(unwrap(x.callee).name))) || (isCall(x) && isMember(unwrap(x.callee)) && propName(unwrap(x.callee)) === 'setTimeout' && TIMERS.test((importsOf(file).get((unwrap(unwrap(x.callee).object) || {}).name) || {}).source || '')));
+  };
+  // A sleep helper is a function whose whole effect is the sleep: its body is the sleep expression, or only
+  // statements that await or return one. A function that polls, drives or returns other work around a tick
+  // is not one, and the label never passes on to its callers.
+  const isTimer = (fn) => {
+    const b = fn.body;
+    if (b.type !== 'BlockStatement') return sleepExpr(b);
+    return b.body.length > 0 && b.body.every((st) => (st.type === 'ExpressionStatement' && sleepExpr(st.expression)) || (st.type === 'ReturnStatement' && st.argument && sleepExpr(st.argument)));
+  };
   for (const st of body) {
     if (st.type === 'FunctionDeclaration' && st.id && isTimer(st)) out.add(st.id.name);
     if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && isFn(unwrap(d.init)) && isTimer(unwrap(d.init))) out.add(d.id.name);
@@ -77,6 +89,21 @@ function importsOf(file) {
     for (const sp of st.specifiers) out.set(sp.local.name, { source: st.source.value, imported: sp.type === 'ImportSpecifier' ? (sp.imported.name || sp.imported.value) : sp.type === 'ImportDefaultSpecifier' ? 'default' : '*' });
   }
   return (file.facts.imports = out);
+}
+
+/** A function body whose every call is an api* / request* / sql* call (on any receiver) or a plain value call. */
+function apiOnly(fn) {
+  const params = new Set(fn.params.map((p) => (p.type === 'AssignmentPattern' ? p.left : p)).filter((p) => p.type === 'Identifier').map((p) => p.name));
+  return !anyNode(fn.body, (x) => {
+    if (!isCall(x)) return false;
+    const c = unwrap(x.callee);
+    if (isMember(c) && /^(api|request|sql)[A-Z]/.test(propName(c) || '')) return false;
+    // handing a parameter on (to another verb) or calling any other member of a parameter drives
+    if (x.arguments.some((a) => { const u = unwrap(a); return u && u.type === 'Identifier' && params.has(u.name); })) return true;
+    let r = c;
+    while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
+    return !!(r && r.type === 'Identifier' && (params.has(r.name) || /^(page|steps|context|browser|locator|repo|interactions|driver)$/.test(r.name)));
+  });
 }
 
 const nullish = (a) => { const u = unwrap(a); return !u || u.type === 'NullLiteral' || (u.type === 'Identifier' && u.name === 'undefined') || (u.type === 'UnaryExpression' && u.operator === 'void'); };
@@ -151,7 +178,31 @@ export function visitors(project) {
    * teardown through verbs, API calls or cleanup is bookkeeping.
    */
   function branchCounts(b, ctx) {
-    return ctx.region === 'hook' ? anyNode(b, (x) => drivesUi(x, ctx.kind)) : drives(b, ctx.kind);
+    return ctx.region === 'hook' ? anyNode(b, (x) => drivesUi(x, ctx.kind) || uiVerb(x, ctx)) : drives(b, ctx.kind);
+  }
+
+  /**
+   * In a hook, a verb call (a call handed a Steps, framework or driver binding) counts as driving the UI unless
+   * the verb resolves to an in-file or project function whose body makes only api*, request* or sql* calls.
+   */
+  function uiVerb(x, ctx) {
+    if (!isCall(x)) return false;
+    const c = unwrap(x.callee);
+    if (isMember(c) && ctx.kind(c.object)) return false; // a call on the binding itself: drivesUi decides
+    if (!x.arguments.some((a) => { const k = ctx.kind(a && a.type === 'SpreadElement' ? a.argument : a); return k && (DRIVER_KINDS.has(k) || k === 'steps' || k === 'repo' || k === 'interactions' || k.startsWith('fixture:')); })) return false;
+    const fn = c.type === 'Identifier' ? verbBody(ctx.file, c.name, 0) : null;
+    return !(fn && apiOnly(fn));
+  }
+
+  /** The function a name resolves to: declared in the file, or imported from a project module (re-exports followed). */
+  function verbBody(file, name, depth) {
+    const local = localFunction(file, name);
+    if (local) return local;
+    const imp = importsOf(file).get(name);
+    if (!imp || depth > 4) return null;
+    const target = resolveRelative(file.abs, imp.source);
+    const tf = target && project.allFiles.find((f) => f.abs === target);
+    return tf ? verbBody(tf, imp.imported, depth + 1) : null;
   }
 
   function wrapper(node, ctx, kind) {

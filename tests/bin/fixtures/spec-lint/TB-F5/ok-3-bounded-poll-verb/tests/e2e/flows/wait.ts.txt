@@ -1,0 +1,14 @@
+// A verb that polls with a deadline and a short tick between attempts, then checks its own effect.
+export async function waitForDashboard(steps, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await steps.isVisible('dashboard', 'HomePage')) break;
+    await new Promise((r) => setTimeout(r, 250)); // EXPECT TB-F5/advisory
+  }
+  await steps.verifyPresence('dashboard', 'HomePage');
+}
+export const signUpToDashboard = async (steps, user: string) => {
+  await steps.fill('email', 'SignupPage', user);
+  await steps.click('submit', 'SignupPage');
+  await waitForDashboard(steps);
+};

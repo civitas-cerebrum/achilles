@@ -204,6 +204,17 @@ test('--staged: editing the table a loop iterates touches the tests it generates
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('--staged: a change outside the tests that takes no user away leaves a helper finding legacy', () => {
+  const spec = "import { test } from './fixtures/base';\nasync function open(steps) {\n  await steps.click('a', 'HomePage');\n}\n\ntest('TCAB-0001 · one', async ({ steps }) => {\n  await open(steps);\n});\n";
+  const root = repo({ 'tests/e2e/a.spec.ts': spec });
+  try {
+    writeFileSync(path.join(root, 'tests/e2e/a.spec.ts'), `// the header comment changed\n${spec}const ROWS = ['a'];\n`);
+    git(root, 'add', '-A');
+    const s2 = json(run(root, ['--staged', '--json'])).findings.filter((f) => f.rule === 'TB-S2');
+    assert.deepEqual(s2.map((f) => [f.line, f.touched]), [[3, false]]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('--staged: removing the second user of an in-spec helper charges the helper', () => {
   const spec = "import { test } from './fixtures/base';\nasync function open(steps) {\n  await steps.click('a', 'HomePage');\n}\n\ntest('TCAB-0001 · one', async ({ steps }) => {\n  await open(steps);\n});\n\ntest('TCAB-0002 · two', async ({ steps }) => {\n  await open(steps);\n});\n";
   const root = repo({ 'tests/e2e/a.spec.ts': spec });

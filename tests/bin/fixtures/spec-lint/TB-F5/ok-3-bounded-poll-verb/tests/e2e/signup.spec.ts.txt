@@ -1,0 +1,9 @@
+// spec-lint fixture: a spec calling verbs that poll with a bounded tick is not a fixed wait; the tick is advisory in the verb
+import { test } from './fixtures/base';
+import { signUpToDashboard, waitForDashboard } from './flows/wait';
+
+test('TCAB-1101 · sign up lands on the dashboard', async ({ steps }) => {
+  await signUpToDashboard(steps, 'new@example.test');
+  await waitForDashboard(steps);
+  await steps.verifyText('greeting', 'HomePage', 'Welcome');
+});
