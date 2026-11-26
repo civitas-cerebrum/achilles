@@ -2,7 +2,7 @@
 
 The one canonical home of every rule that test code written or edited by Achilles follows: specs, support modules, evidence bundles and k6 scripts. Each rule has a short id (`TB-<family><n>`); other files cite it as `test-baseline.md#tb-<id>` and never restate it. The first sentence of a rule is its normative sentence; Achilles' own documentation checks keep cited ids resolvable and keep normative sentences out of other skills.
 
-**Who checks the rules today.** The author checks every touched test against this file in the Stage 4b sweep ([`stages-protocol.md`](stages-protocol.md)); at a composing exit the composition judge (which re-checks a sample) or the Stage B reviewer reads it again from the code and the scenario ([`test-composition-standards.md`](test-composition-standards.md) §4); an incremental heal gets the author's sweep only. **Mechanical** rules are written so a machine can decide them from the code; **judgment** rules need a reader. A lint for the mechanical rules (`achilles-spec-lint`) ships in a later release; until then the Detection text is applied by reading.
+**Who checks the rules today.** The author checks every touched test against this file in the Stage 4b sweep ([`stages-protocol.md`](stages-protocol.md)); at a composing exit the composition judge (which re-checks a sample) or the Stage B reviewer reads it again from the code and the scenario ([`test-composition-standards.md`](test-composition-standards.md) §4); an incremental heal gets the author's sweep only. **Mechanical** rules are written so a machine can decide them from the code; **judgment** rules need a reader. The lint `achilles-spec-lint` decides the mechanical rules from the code and reports its findings (three lines each, or `--json`); it advises and refuses nothing. The rules it cannot decide yet ([TB-A6](#tb-a6), [TB-G2](#tb-g2)) and every judgment rule are still applied by reading.
 
 ## Contents
 
@@ -31,7 +31,7 @@ Every rule carries these fields:
 
 Judgment rules block through the judge's or reviewer's verdict. A false positive found later downgrades a rule here (one commit to this file), never per project.
 
-**Only the touched test must be clean.** A blocking finding counts against a change when it sits in a test the change adds or edits, or in a describe-level or file-level construct the change itself touches. Findings in untouched tests of the same file are legacy: recorded and reported, not charged to the change.
+**Only the touched test must be clean.** A blocking finding counts against a change when it sits in a test the change adds or edits, or in a describe-level or file-level construct the change itself touches. Findings in untouched tests of the same file are legacy: recorded and reported, not charged to the change. `achilles-spec-lint --staged` (the index against `HEAD`) or `--base <ref>` (the working tree against the merge-base) marks each finding touched or legacy.
 
 ## Scope
 
@@ -490,7 +490,7 @@ await dismissCookieBanner(steps);
 Each `test()` declares exactly one scenario, written out by hand, and no loop or factory function declares tests.
 
 - **Source** W, R · **Kind** mechanical and judgment · **Severity** blocking for tests declared inside a loop, an iteration callback or a function called more than once; advisory (unmeasured) for a title with two ids · **Applies to** spec, in every suite
-- **Detection**: `test(…)` inside a loop or iteration callback at describe or module level, or inside a function called more than once. A declarative constant table for non-UI suites is not accepted at present.
+- **Detection**: `test(…)` inside a loop or iteration callback at describe or module level, or inside a function called more than once. A declarative constant table for non-UI suites is not accepted at present: the lint keeps that form behind one factory-rule setting, `specs.constant-table-tests` (`{ "allowed": true }`), which is off, and turning it on is a [TB-G2](#tb-g2) rule-input change.
 - **Judgment**: "Does this test check exactly one behaviour, the one its title names?"
 
 ```ts
@@ -662,7 +662,7 @@ test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { /* �
 No two tests of a suite share an id, and the suite's id index lists every id in use.
 
 - **Source** W, R · **Kind** mechanical · **Severity** blocking · **Applies to** spec (whole suite)
-- **Detection**: ids across files; every id appears in the suite's index (typically `tests/e2e/docs/test-ids.md`), which is the place to look before minting a new id. Generating or checking the index is part of the lint that ships in a later release (`achilles-spec-lint --id-index`).
+- **Detection**: ids across files; every id appears in the suite's index (typically `tests/e2e/docs/test-ids.md`), which is the place to look before minting a new id. `achilles-spec-lint --id-index` writes the index and `--id-index --check` fails when an id in use is missing from it or a listed id is no longer used; `achilles-spec-lint --suite` reports an id used in two files.
 
 ```ts
 // Non-compliant: 'TCLG-000420 · …' in login.spec.ts and in session.spec.ts
