@@ -96,7 +96,7 @@ The doctrine: a test's *prerequisites* reach their target state through the fast
 
 ### 7. Auth via session/cookie injection with worker-scoped account pools
 
-Derivative tests inject session state (`setAuthCookie`-style helpers per test-optimization §4) instead of walking the login UI. **Parallel workers never share an account**: pool accounts per worker (`accounts[test.info().workerIndex % accounts.length]` over a pool ≥ worker count, or a per-worker `freshUser`). Observed: a shared account throttled valid credentials mid-suite: worker A's login storm tripped rate limiting that failed workers B-D on correct passwords.
+Derivative tests inject session state (`signInViaApi`-style verbs per test-optimization §4) instead of walking the login UI. **Parallel workers never share an account**: pool accounts per worker (`accounts[test.info().workerIndex % accounts.length]` over a pool ≥ worker count, or a per-worker `freshUser`). Observed: a shared account throttled valid credentials mid-suite: worker A's login storm tripped rate limiting that failed workers B-D on correct passwords.
 
 ### 8. Smoke-vs-e2e depth
 

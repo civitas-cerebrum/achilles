@@ -2,7 +2,7 @@
 
 The one canonical home of every rule that test code written or edited by Achilles follows: specs, support modules, evidence bundles and k6 scripts. Each rule has a short id (`TB-<family><n>`); other files cite it as `test-baseline.md#tb-<id>` and never restate it. The first sentence of a rule is its normative sentence; Achilles' own documentation checks keep cited ids resolvable and keep normative sentences out of other skills.
 
-**Who checks the rules today.** The author checks every touched test against this file in the Stage 4b sweep ([`stages-protocol.md`](stages-protocol.md)); the composition judge and the Stage B reviewer check it again from the code and the scenario ([`test-composition-standards.md`](test-composition-standards.md) §4). **Mechanical** rules are written so a machine can decide them from the code; **judgment** rules need a reader. The lint (`achilles-spec-lint`, when installed) reports the mechanical rules from their Detection text; where it is not installed, the Detection text is applied by reading.
+**Who checks the rules today.** The author checks every touched test against this file in the Stage 4b sweep ([`stages-protocol.md`](stages-protocol.md)); at a composing exit the composition judge (which re-checks a sample) or the Stage B reviewer reads it again from the code and the scenario ([`test-composition-standards.md`](test-composition-standards.md) §4); an incremental heal gets the author's sweep only. **Mechanical** rules are written so a machine can decide them from the code; **judgment** rules need a reader. A lint for the mechanical rules (`achilles-spec-lint`) ships in a later release; until then the Detection text is applied by reading.
 
 ## Contents
 
@@ -107,7 +107,7 @@ Form (a) is preferred for new sentinels. Any other use of `test.fail` is a [TB-F
 Register rules:
 
 - A row is valid only when every method it lists is in the no-equivalent table ([TB-A2b](#tb-a2b)); a row naming a method that has a Steps equivalent is a [TB-G1](#tb-g1) finding.
-- Adding or changing a row is a [TB-G2](#tb-g2) rule-input change: the expert does not decide it, but returns `NEEDS_CONTEXT` asking the person, and the decision is recorded in the hand-back. This holds in particular for a method in neither table.
+- Adding or changing a row is a [TB-G2](#tb-g2) rule-input change, decided only by the person through the escalation path of [TB-G2](#tb-g2). This holds in particular for a method in neither table.
 - The escape hatch for a gap that needs a raw locator keeps the selector in the repository and goes through the framework's interactions: `interactions.interact.<method>(new WebElement(page.locator(repo.getSelector('<element>', '<Page>'))))`, one raw call per waived statement ([`framework-gap.md`](framework-gap.md) has the procedure).
 
 **Seed rows** (a new register starts with these):
@@ -147,7 +147,7 @@ A spec makes no member call on a driver binding unless the method appears in the
 - **Source** W · **Kind** mechanical · **Severity** blocking · **Applies to** spec
 - **Detection**: any member call on a driver binding except the [TB-A2b](#tb-a2b) table and the accessors `context()`, `mainFrame()`, `frames()`. `waitForEvent` counts only for `popup` and `page`. A method in neither table is a hit too ("no known Steps equivalent": it needs an entry in the no-equivalent table, which is an Achilles release, or a register row, which is the person's decision). A computed member with a non-literal key (`page[m]()`) is a hit.
 - **Equivalents by version**: an equivalent is read from the published package surface of each release (raw method, Steps method, first release that has it), never from documentation alone. An equivalent counts only when it exists in the project's installed release; otherwise the site is [TB-A13](#tb-a13).
-- **HTTP**: `get`, `post`, `put`, `patch`, `delete`, `head` on a request binding map to `steps.request*` (browser session) or `steps.api*` (own client, no browser session); `fetch` is unlisted; `dispose` is in the no-equivalent table. Below the release that has `request*`, a `context.request.*` or `page.request.*` call has no equivalent (the strict reading) and is [TB-A13](#tb-a13); reading `api*` as its equivalent is the person's decision (ask through `NEEDS_CONTEXT`), because the code alone does not show whether the call carries its own auth header.
+- **HTTP**: `get`, `post`, `put`, `patch`, `delete`, `head` on a request binding map to `steps.request*` (browser session) or `steps.api*` (own client, no browser session); `fetch` is unlisted; `dispose` is in the no-equivalent table. Below the release that has `request*`, a `context.request.*` or `page.request.*` call has no equivalent (the strict reading) and is [TB-A13](#tb-a13); reading `api*` as its equivalent is the person's decision (escalated as in [TB-G2](#tb-g2)), because the code alone does not show whether the call carries its own auth header.
 
 ```ts
 // Non-compliant
@@ -661,7 +661,7 @@ test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { /* �
 No two tests of a suite share an id, and the suite's id index lists every id in use.
 
 - **Source** W, R · **Kind** mechanical · **Severity** blocking · **Applies to** spec (whole suite)
-- **Detection**: ids across files; every id appears in the suite's index (typically `tests/e2e/docs/test-ids.md`), which is the place to look before minting a new id. The lint (`achilles-spec-lint`, when installed) can generate or check the index.
+- **Detection**: ids across files; every id appears in the suite's index (typically `tests/e2e/docs/test-ids.md`), which is the place to look before minting a new id. Generating or checking the index is part of the lint that ships in a later release (`achilles-spec-lint --id-index`).
 
 ```ts
 // Non-compliant: 'TCLG-000420 · …' in login.spec.ts and in session.spec.ts
@@ -939,7 +939,7 @@ test.setTimeout(120_000); // perf: the export test waits for a two-minute job
 Each support module plays one role (fixtures, verbs, data, handoff or setup) and holds only what that role allows.
 
 - **Source** W, R · **Kind** judgment · **Severity** blocking · **Applies to** support
-- **Fixtures module**: wiring only: the `baseFixture(…)` call, the repository path declared once, options, the `expect` re-export, `.extend` fixtures that construct framework objects or set up and tear down state without driving the UI, the mutation hooks of [TB-X2](#tb-x2). A fixture that exposes a UI-driving function is a verb: the verb-module rules below apply to its body.
+- **Fixtures module**: wiring only: the `baseFixture(…)` call, the repository path declared once, options, the `expect` re-export, `.extend` fixtures that construct framework objects or set up and tear down state without driving the UI, a fixture-level `beforeEach` slot whose body only calls verbs and fixtures, the mutation hooks of [TB-X2](#tb-x2). A fixture that exposes a UI-driving function is a verb: the verb-module rules below apply to its body.
 - **Verb modules** (`flows/`): functions taking `steps` that drive one chore, with imperative names. Allowed with a reason comment: bounded loops of idempotent or state-aware attempts followed by a hard gate; branches on optional app state followed by a check; parameter options; a per-call timeout. Never: the scenario's outcome assertion, `try/catch`, raw calls outside [TB-A12](#tb-a12)'s allowlist, unbounded waits, hand-rolled sleeps. A new verb's doc comment says where it leaves the browser (advisory).
 - **Data modules**: constants with reasons, types, generators, builders with overrides, env getters; no Playwright, no I/O.
 - **Handoff modules**: run-state file read and write, with an explanatory throw when the file is missing.
@@ -1198,9 +1198,9 @@ A change that weakens an input the rules depend on is made only when the person 
 
 - **Source** N · **Kind** mechanical · **Severity** blocking; the judge or reviewer returns an undecided change as must-fix · **Applies to** the protected inputs
 - **Protected inputs**: the pinned id pattern (`CIVITAS_TEST_ID_PATTERN` in committed env files, `specs.shape.titleIdPattern`, a recorded baseline `idPattern`); `achilles-factory-rules.json` (any change to a `specs.*` or `secrets.*` rule, or deleting the file); removing entries from `selectors.no-inline.forbidden`; adding or editing a row of `tests/e2e/docs/framework-gaps.md`; raising or deleting counts in a compliance baseline file, where the project keeps one; a Playwright config's `grep`, `grepInvert`, `testIgnore` or `testMatch`; the git hooks directory and its hook files.
-- **How to get the decision**: the expert does not make the change on its own judgment. It returns `NEEDS_CONTEXT` naming the input and the change, the person answers, and the decision is recorded in the hand-back.
+- **How to get the decision**: the expert does not make the change on its own judgment; it returns `NEEDS_CONTEXT` naming the input and the change. The orchestrator never answers such a question itself: it escalates it in its own `NEEDS_CONTEXT` hand-back ([`../SKILL.md`](../SKILL.md) §6). The person's answer comes back in the resume brief, is recorded in `resume.json` `rulings[]` ([`state-files.md`](state-files.md)), and the final hand-back cites it.
 
 ```text
 Non-compliant: a change that widens testIgnore to skip a red spec, made without asking
-Compliant: the same change after a NEEDS_CONTEXT question the person answered, recorded in the hand-back
+Compliant: the same change after the person answered the escalated question; the ruling is in resume.json and the hand-back cites it
 ```

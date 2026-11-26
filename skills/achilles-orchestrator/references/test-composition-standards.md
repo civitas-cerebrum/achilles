@@ -97,7 +97,7 @@ Stages 4a and 4b are author-side self-review. Stage 4c adds the reader the autho
 ## §5 Smoke versus e2e depth
 
 - **e2e spec: the journey is the subject.** Walk it through the UI end to end, no state-injection shortcuts on the path under test. A journey's full UI walk is the subject of exactly one e2e test.
-- **smoke or derivative spec: a surface is the subject.** Reach the target view by API or state injection (`test-optimization.md` §4's gate; `setAuthCookie`, seed helpers) and assert only the surface under test.
+- **smoke or derivative spec: a surface is the subject.** Reach the target view by API or state injection (`test-optimization.md` §4's gate; `signInViaApi`, seed verbs) and assert only the surface under test.
 - **Auth** is a precondition, not a step of the journeys it unlocks: inject it everywhere except in the tests whose subject is login or signup.
 - **Organisation:** one spec file per journey or feature area; e2e and smoke suites split so the depth choice is visible.
 

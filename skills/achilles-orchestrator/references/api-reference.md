@@ -698,6 +698,7 @@ await steps.on('cookieDialog', 'CookieBanner').findByRole('button').count.toBe(2
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /preferences|manage/i }).count.toBe(0);
 await steps.on('cartPanel', 'CartPage').findByText('Your cart is empty').verifyState('visible');
 await steps.on('panel', 'Page').findBySelector("input[name='email']").fill('a@b.com');
+// inline selector: evidence bundles only; durable code uses a repository child entry (TB-A5)
 
 // Conditional visibility — silently skips if element is not visible
 // Flow control: in a spec only per TB-F7; it belongs in verbs

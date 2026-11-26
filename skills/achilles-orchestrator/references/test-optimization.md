@@ -293,35 +293,27 @@ await steps.verifyCount('rows', 'PageName', { exactly: before + 1 });
 
 | Prerequisite | UI-covered? | API discovered? | Action |
 |---|:---:|:---:|---|
-| login | yes | yes | use the `setAuthCookie` fixture |
+| login | yes | yes | use the `signInViaApi(steps, …)` verb |
 | login | yes | no | keep UI |
 | login | no | yes | keep UI; flag A-gap to journey-mapping |
 | login | no | no | keep UI |
 | <resource-create> | yes | yes (`POST <endpoint>`) | use a `seed<Resource>(steps, …)` verb |
 | <UI-only toggle> | yes | no API equivalent | keep UI |
 
-### Helper template — `setAuthCookie`
+### Helper template — `signInViaApi`
 
-Substitute the `«…»` placeholders per the placeholder-convention table above:
-
-A fixture that takes Playwright's `request` and `context` and hands the spec a function through `use(…)`; the cookie step is a framework gap and cites its register row ([TB-A2b](test-baseline.md#tb-a2b), FG-1):
+Substitute the `«…»` placeholders per the placeholder-convention table above. A verb over `steps`: `steps.requestPost` is session-aware (backed by the browser context's request client), so the session cookie the login endpoint sets lands in the browser context with no raw call:
 
 ```typescript
-// In tests/fixtures/base.ts (HELPER SLOT: setAuthCookie), inside the project's .extend<…>({ … })
-const COOKIE_NAME = '«COOKIE_NAME»';
-const BASE_URL = process.env.BASE_URL ?? '«BASE_URL»';
-
-setAuthCookie: async ({ request, context }, use) => {
-  await use(async (credentials: { email: string; password: string }) => {
-    const res = await request.post('«LOGIN_ENDPOINT»', { data: credentials });
-    if (!res.ok()) throw new Error(`setAuthCookie login failed: ${res.status()}`);
-    const match = (res.headers()['set-cookie'] ?? '').match(new RegExp(`(${COOKIE_NAME})=([^;]+)`));
-    if (!match) throw new Error(`setAuthCookie: ${COOKIE_NAME} cookie not found in response`);
-    // framework-gap: FG-1
-    await context.addCookies([{ name: match[1], value: match[2], url: BASE_URL }]);
-  });
-},
+// tests/e2e/flows/auth-flow.ts (HELPER SLOT: signInViaApi)
+/** Signs the user in through the login endpoint; the browser context holds the session cookie afterwards. */
+export async function signInViaApi(steps: Steps, user: { email: string; password: string }) {
+  const res = await steps.requestPost('«LOGIN_ENDPOINT»', { data: user });
+  await steps.verifyRequestOk(res);
+}
 ```
+
+On a framework release without the `request*` steps this is a version gap: upgrade first ([TB-A13](test-baseline.md#tb-a13)). Only when the API sets its cookie on a different domain from the app does the cookie have to be copied into the context by hand; that copy is the framework gap FG-1 and lives in a fixture with its citation ([TB-A2b](test-baseline.md#tb-a2b)).
 
 ### Helper template — `seedCart`
 
@@ -351,9 +343,9 @@ test('TCCK-000210 · a cart checks out into an order', async ({ steps }) => {
 });
 
 // after
-test('TCCK-000210 · a cart checks out into an order', async ({ steps, freshUser, setAuthCookie }) => {
+test('TCCK-000210 · a cart checks out into an order', async ({ steps, freshUser }) => {
   const user = await freshUser();                       // API signup, generated credentials
-  await setAuthCookie(user);
+  await signInViaApi(steps, user);
   await seedCart(steps, [{ itemId: SEED_ITEMS[0], quantity: 1 }]);
   await steps.navigateTo(Routes.CART);
   // …rest of test starts from cart-loaded state
@@ -376,12 +368,14 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
    // tests/e2e/flows/banner-flow.ts (HELPER SLOT: dismissBanners)
    /** Closes the persistent banners that may cover the page; leaves the browser where it was. */
    export async function dismissBanners(steps: Steps) {
+     // Banners appear at random (consent state, campaigns): dismiss each when present, then check it is gone.
      await steps.on('«BANNER_DISMISS_ELEMENT»', '«BANNER_PAGE»').ifVisible().click();
-     // one line per banner listed in app-context
+     await steps.verifyAbsence('«BANNER_ROOT»', '«BANNER_PAGE»');
+     // one pair of lines per banner listed in app-context
    }
    ```
 
-   Example substitution: `steps.on('cookieAccept', 'CookieBanner')`, `steps.on('welcomeClose', 'WelcomeModal')`.
+   Example substitution: `steps.on('cookieAccept', 'CookieBanner')` then `steps.verifyAbsence('cookieBanner', 'CookieBanner')`.
 
 2. Populate the `HELPER SLOT: beforeEach` slot in `base.ts` (NOT a freeform region; the slot is the single contracted insertion point for fixture-level `beforeEach` hooks):
 
@@ -480,7 +474,7 @@ Stage 4a returns a structured JSON-shaped block back to its caller. The block is
   "findings": [
     { "rule": "§1", "severity": "fixed", "spec": "<path>", "summary": "Inserted beforeEach(resetState)." },
     { "rule": "§3b", "severity": "fixed", "spec": "<path>", "summary": "Rewrote verifyText('createdAt', …, '2026-06-12') to a shape oracle (text.toMatch ISO-date) — volatile timestamp." },
-    { "rule": "§4", "severity": "fixed", "spec": "<path>", "summary": "Replaced UI signup with setAuthCookie() (login UI-covered in j-login-to-purchase)." },
+    { "rule": "§4", "severity": "fixed", "spec": "<path>", "summary": "Replaced UI sign-in with signInViaApi() (login UI-covered in j-login-to-purchase)." },
     { "rule": "§4", "severity": "gap-flagged", "spec": "<path>", "summary": "Cart-add not UI-covered in any journey; kept UI flow and flagged journey-mapping." },
     { "rule": "§6", "severity": "review", "spec": "<path>", "summary": "Serial mode without sentinel; inserted // stage4a:serial-mode-review comment." }
   ],
@@ -505,7 +499,7 @@ Reviewed: `tests/e2e/checkout.spec.ts`, `tests/e2e/cart.spec.ts`
 Fixtures modified: `tests/fixtures/base.ts`
 
 - `checkout.spec.ts` (§1) — fixed: inserted `beforeEach(resetState)`.
-- `checkout.spec.ts` (§4) — fixed: replaced UI signup with `setAuthCookie()` (login UI-covered in `j-login-to-purchase`).
+- `checkout.spec.ts` (§4) — fixed: replaced UI sign-in with `signInViaApi()` (login UI-covered in `j-login-to-purchase`).
 - `cart.spec.ts` (§4) — gap: cart-add not UI-covered; kept UI flow, flagged to journey-mapping.
 - `cart.spec.ts` (§6) — review: serial mode without sentinel; comment inserted.
 
