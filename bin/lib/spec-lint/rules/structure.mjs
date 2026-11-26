@@ -140,7 +140,8 @@ const BACK_DOOR = /^(api|request|sql)[A-Z]/;
 function injectedFields(n) {
   const injected = new Set();
   const ctor = n.body.body.find((m) => m.type === 'ClassMethod' && m.kind === 'constructor');
-  const actor = (p) => { const k = TYPE_KIND[typeName(p)]; return (k && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) || UI_NAMES.test(p.name || ''); };
+  // a field of request kind is an API client's transport, not a UI binding
+  const actor = (p) => { const k = TYPE_KIND[typeName(p)]; if (k === 'request' || (!k && p.name === 'request')) return false; return (k && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) || UI_NAMES.test(p.name || ''); };
   if (!ctor) return injected;
   const params = new Set();
   for (const p of ctor.params) {
@@ -482,7 +483,8 @@ export function visitors(project) {
     NewExpression(n, ctx) {
       const name = unwrap(n.callee).type === 'Identifier' ? unwrap(n.callee).name : null;
       if (!name || FRAMEWORK_CTORS.test(name)) return;
-      const arg = n.arguments.find((a) => { const k = ctx.kind(a); return FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k); });
+      // a request binding handed to a class builds an API client, not a page-object layer
+      const arg = n.arguments.find((a) => { const k = ctx.kind(a); return FRAMEWORK_KINDS.has(k) || (DRIVER_KINDS.has(k) && k !== 'request'); });
       if (arg) {
         // the construction follows its class: blocking for a page-object layer, advisory when the class drives only
         // through an injected field, nothing when it makes no UI call; an unknown class stays blocking
