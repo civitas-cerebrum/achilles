@@ -95,13 +95,15 @@ test('messages name the normalised callee, the actual receiver and the installed
   const root = tempRoot();
   try {
     writeProject(root, {
-      'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ page }) => {\n  const frame = page.mainFrame();\n  await page\n    .waitForResponse('**/api');\n  await frame.getByTestId('save').click();\n  await page.evaluate(() => window.scrollY);\n});\n",
+      'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ page }) => {\n  const frame = page.mainFrame();\n  await page\n    .waitForResponse('**/api');\n  await frame.getByTestId('save').click();\n  await page.evaluate(() => window.scrollY);\n  await page.evaluate(() => document.body.scrollHeight > 10);\n  await page.evaluate(() => localStorage.getItem('k'));\n});\n",
     });
     const f = lintProject({ root, useGit: false }).findings;
     const msg = (rule, line) => (f.find((x) => x.rule === rule && x.line === line) || {}).message || '';
     assert.match(msg('TB-A2', 4), /`page\.waitForResponse`/);
     assert.match(msg('TB-A5', 6), /`frame\.getByTestId\(…\)`/);
-    assert.match(msg('TB-A4', 7), /steps\.evaluateScript/);
-    assert.doesNotMatch(msg('TB-A4', 7), /installed release has steps\.getLocalStorage/);
+    assert.match(msg('TB-A4', 7), /steps\.getWindowProperty/);
+    assert.match(msg('TB-A4', 8), /has steps\.evaluateScript$/);
+    assert.doesNotMatch(msg('TB-A4', 8), /getLocalStorage|getWindowProperty|getAttribute/);
+    assert.match(msg('TB-A4', 9), /has steps\.getLocalStorage$/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

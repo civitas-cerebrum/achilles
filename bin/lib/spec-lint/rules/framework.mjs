@@ -5,6 +5,7 @@ import {
 } from '../ast.mjs';
 import { LOCATOR_CTORS, LOCATOR_CHAIN, DRIVER_KINDS, FRAMEWORK_KINDS, reachKind, classifyCall, testChain } from '../bindings.mjs';
 import { blockAbove } from '../waivers.mjs';
+import { shippedVersions, readSnapshot } from '../surface.mjs';
 
 const PKG = '@civitas-cerebrum/element-interactions';
 const EVAL = new Set(['evaluate', 'evaluateHandle', '$eval', '$$eval', 'addInitScript', 'addStyleTag', 'exposeFunction', 'exposeBinding']);
@@ -125,6 +126,44 @@ function receiverIsLocatorChain(call, ctx) {
     r = unwrap(unwrap(r.callee).object);
   }
   return false;
+}
+
+const releaseCache = new Map();
+/** The first shipped release whose surface has `method`, or null. */
+function firstRelease(method) {
+  if (releaseCache.has(method)) return releaseCache.get(method);
+  let v = null;
+  for (const r of shippedVersions()) { try { if (readSnapshot(r).methods.includes(method)) { v = r; break; } } catch { /* unreadable snapshot */ } }
+  releaseCache.set(method, v);
+  return v;
+}
+
+/**
+ * The Steps read a page script certainly is: `localStorage.getItem(k)` / `sessionStorage.getItem(k)`,
+ * `(el) => el.getAttribute(a)` on an element, `() => window.<name>`. Null for anything else.
+ */
+function scriptRead(call, c) {
+  const fn = call.arguments.find(isFn);
+  if (!fn) return null;
+  let body = fn.body;
+  if (body.type === 'BlockStatement') {
+    if (body.body.length !== 1 || body.body[0].type !== 'ReturnStatement' || !body.body[0].argument) return null;
+    body = body.body[0].argument;
+  }
+  body = unwrap(body);
+  if (isCall(body) && body.arguments.length === 1 && isStr(body.arguments[0])) {
+    const ch = (memberChain(body.callee) || []).join('.').replace(/^window\./, '');
+    if (ch === 'localStorage.getItem') return 'getLocalStorage';
+    if (ch === 'sessionStorage.getItem') return 'getSessionStorage';
+    const p0 = fn.params[0];
+    if (c.kind === 'locator' && p0 && p0.type === 'Identifier' && isMember(body.callee) && propName(body.callee) === 'getAttribute' && unwrap(body.callee.object).type === 'Identifier' && unwrap(body.callee.object).name === p0.name) return 'getAttribute';
+    return null;
+  }
+  if (isMember(body) && !body.computed && fn.params.length === 0) {
+    const ch = memberChain(body);
+    if (ch && ch.length === 2 && ch[0] === 'window') return 'getWindowProperty';
+  }
+  return null;
 }
 
 /** The first target present in the installed surface, else the earliest release that has one. */
@@ -285,12 +324,10 @@ export function visitors(project) {
     }
     if (c.cat === 'eval') {
       if (c.targets) {
-        const av = availability(c.targets, surface);
-        if (!av.have) { versionGap(n, ctx, c, av); return; }
-        const opts = ['evaluateScript', 'getWindowProperty', 'getLocalStorage', 'getSessionStorage', 'getAttribute'].filter((m) => surface.methods.has(m));
-        const narrow = opts.filter((m) => m !== 'evaluateScript').map((m) => `steps.${m}`).join(', ');
-        const main = opts.includes('evaluateScript') ? 'steps.evaluateScript' : null;
-        ctx.report('TB-A4', n, { message: `page scripting \`${display(c, ctx, n)}\`; the installed release has ${main || narrow}`, do: main ? `Use steps.evaluateScript, or a narrower read (${narrow}) when the script only reads that value.` : `Use a Steps read (${narrow}) when the script only reads that value, or upgrade for steps.evaluateScript.` });
+        // Name a narrower read only when the script is certainly that read; otherwise steps.evaluateScript.
+        const want = scriptRead(n, c) || 'evaluateScript';
+        if (!surface.methods.has(want)) { versionGap(n, ctx, c, { since: firstRelease(want) || c.targets.find((t) => t.method === want)?.since || '?', method: want }); return; }
+        ctx.report('TB-A4', n, { message: `page scripting \`${display(c, ctx, n)}\`; the installed release has steps.${want}`, do: `Use steps.${want}${want === 'evaluateScript' ? ' for the script' : ', which reads the same value'}.` });
         return;
       }
       ctx.report('TB-A4', n, { message: `page scripting \`${display(c, ctx, n)}\` on a driver binding` });
