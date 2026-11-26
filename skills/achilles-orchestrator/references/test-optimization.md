@@ -68,23 +68,37 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 
 **Auto-fix:**
 
-1. Populate `tests/fixtures/base.ts`'s `freshUser` HELPER SLOT to mint a throwaway user per test. The helper signs the user in and returns the `{ email, password, userId }` triplet:
+1. Populate `tests/fixtures/base.ts`'s `freshUser` HELPER SLOT: a fixture that hands out a function minting a throwaway user per call and returning the `{ email, password, userId }` triplet. It takes Playwright's `request` fixture and drives no UI (an API back-door, [TB-A12](test-baseline.md#tb-a12)); the spec never passes it a page ([TB-A11](test-baseline.md#tb-a11)):
 
    ```typescript
-   import { request, type Page } from '@playwright/test';
+   // In tests/fixtures/base.ts (HELPER SLOT: freshUser), inside the project's .extend<…>({ … })
    import { randomUUID } from 'node:crypto';
+   export type FreshUser = { email: string; password: string; userId: string };
 
-   export async function freshUser(page: Page): Promise<{ email: string; password: string; userId: string }> {
-     const email = `test+${Date.now()}-${Math.random().toString(36).slice(2,8)}@example.test`;
-     // Env-sourced or generated — never a hardcoded literal (test-data-conventions Rule 1).
-     const password = process.env.E2E_FRESH_USER_PASSWORD ?? `Pw!${randomUUID().slice(0, 12)}`;
-     const ctx = await request.newContext({ baseURL: process.env.BASE_URL ?? '«BASE_URL»' });
-     const res = await ctx.post('«SIGNUP_ENDPOINT»', { data: { email, password } });
-     if (!res.ok()) throw new Error(`freshUser signup failed: ${res.status()}`);
-     const { userId } = await res.json();
-     await ctx.dispose();
-     // The page-level login is left to the spec — fixtures shouldn't navigate.
-     return { email, password, userId };
+   freshUser: async ({ request }, use) => {
+     await use(async (): Promise<FreshUser> => {
+       const email = `test+${Date.now()}-${randomUUID().slice(0, 8)}@example.test`;
+       // Generated per call, never a literal (TB-D2, TB-D4).
+       const password = `Pw!${randomUUID().slice(0, 12)}`;
+       const res = await request.post('«SIGNUP_ENDPOINT»', { data: { email, password } });
+       if (!res.ok()) throw new Error(`freshUser signup failed: ${res.status()}`);
+       const { userId } = await res.json();
+       return { email, password, userId };   // signing in is a verb's job: fixtures do not navigate
+     });
+   },
+   ```
+
+   The matching sign-in verb lives in a flow module and takes `steps`:
+
+   ```typescript
+   // tests/e2e/flows/auth-flow.ts
+   /** Signs a user in through the login form; leaves the browser on the home page. */
+   export async function signIn(steps: Steps, user: { email: string; password: string }) {
+     await steps.navigateTo(Routes.LOGIN);
+     await steps.fill('emailInput', 'LoginPage', user.email);
+     await steps.fill('passwordInput', 'LoginPage', user.password);
+     await steps.click('submitButton', 'LoginPage');
+     await steps.verifyPresence('homeRoot', 'HomePage');   // the verb checks its own effect
    }
    ```
 
@@ -100,7 +114,7 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
    ```
 
    ```typescript
-   // tests/fixtures/global-setup.ts
+   // tests/fixtures/global-setup.ts (support: runs once outside any test, drives no UI)
    import { request } from '@playwright/test';
    export default async function globalSetup() {
      const ctx = await request.newContext({ baseURL: process.env.BASE_URL ?? '«BASE_URL»' });
@@ -112,20 +126,16 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 3. Each spec uses `freshUser` per-test, with assertions scoped to that user:
 
    ```typescript
-   test('listing creates and appears on MY profile', async ({ page, steps }) => {
-     const { email, password } = await freshUser(page);
-     // Sign in through the real UI — every interaction goes through steps.*
-     await steps.navigateTo('/login');
-     await steps.fill('emailInput', 'LoginPage', email);
-     await steps.fill('passwordInput', 'LoginPage', password);
-     await steps.click('submitButton', 'LoginPage');
+   test('TCLS-000110 · a new listing appears on my profile', async ({ steps, freshUser }) => {
+     const user = await freshUser();
+     await signIn(steps, user);
      // Create the listing through the UI.
-     await steps.navigateTo('/listings/new');
+     await steps.navigateTo(Routes.NEW_LISTING);
      await steps.fill('titleInput', 'NewListingPage', 'My item');
      await steps.fill('priceInput', 'NewListingPage', '10');
      await steps.click('publishButton', 'NewListingPage');
      // SCOPED — assert on MY profile, not on the global marketplace.
-     await steps.navigateTo('/me/listings');
+     await steps.navigateTo(Routes.MY_LISTINGS);
      await steps.verifyText('listingTitle', 'MyListingsPage', 'My item');
    });
    ```
@@ -145,23 +155,21 @@ The detailed rules for each check are in §1 through §6 below; §3b sits betwee
 1. If `tests/fixtures/base.ts`'s `resetState` HELPER SLOT is empty, populate it from the discovered reset endpoint:
 
    ```typescript
-   import { request } from '@playwright/test';
-
-   export async function resetState() {
-     const ctx = await request.newContext({ baseURL: process.env.BASE_URL ?? '«BASE_URL»' });
-     const res = await ctx.post('«RESET_ENDPOINT»');
-     if (!res.ok()) throw new Error(`resetState failed: ${res.status()} ${await res.text()}`);
-     await ctx.dispose();
-   }
+   // In tests/fixtures/base.ts (HELPER SLOT: resetState), inside the project's .extend<…>({ … })
+   resetState: async ({ request }, use) => {
+     await use(async () => {
+       const res = await request.post('«RESET_ENDPOINT»');   // back-door setup, drives no UI
+       if (!res.ok()) throw new Error(`resetState failed: ${res.status()} ${await res.text()}`);
+     });
+   },
    ```
 
 2. Insert into the spec's top-level describe:
 
    ```typescript
    import { test, expect } from '../fixtures/base';
-   import { resetState } from '../fixtures/base';
 
-   test.beforeEach(async () => {
+   test.beforeEach(async ({ resetState }) => {
      await resetState();
    });
    ```
@@ -285,74 +293,69 @@ await steps.verifyCount('rows', 'PageName', { exactly: before + 1 });
 
 | Prerequisite | UI-covered? | API discovered? | Action |
 |---|:---:|:---:|---|
-| login | yes | yes | use `setAuthCookie()` helper |
+| login | yes | yes | use the `setAuthCookie` fixture |
 | login | yes | no | keep UI |
 | login | no | yes | keep UI; flag A-gap to journey-mapping |
 | login | no | no | keep UI |
-| <resource-create> | yes | yes (`POST <endpoint>`) | use `seed<Resource>()` helper |
+| <resource-create> | yes | yes (`POST <endpoint>`) | use a `seed<Resource>(steps, …)` verb |
 | <UI-only toggle> | yes | no API equivalent | keep UI |
 
 ### Helper template — `setAuthCookie`
 
 Substitute the `«…»` placeholders per the placeholder-convention table above:
 
-```typescript
-// In tests/fixtures/base.ts (HELPER SLOT: setAuthCookie)
-import { request, type Page } from '@playwright/test';
+A fixture that takes Playwright's `request` and `context` and hands the spec a function through `use(…)`; the cookie step is a framework gap and cites its register row ([TB-A2b](test-baseline.md#tb-a2b), FG-1):
 
+```typescript
+// In tests/fixtures/base.ts (HELPER SLOT: setAuthCookie), inside the project's .extend<…>({ … })
 const COOKIE_NAME = '«COOKIE_NAME»';
 const BASE_URL = process.env.BASE_URL ?? '«BASE_URL»';
 
-export async function setAuthCookie(page: Page, credentials: { email: string; password: string }) {
-  const ctx = await request.newContext({ baseURL: BASE_URL });
-  const res = await ctx.post('«LOGIN_ENDPOINT»', { data: credentials });
-  if (!res.ok()) throw new Error(`setAuthCookie login failed: ${res.status()}`);
-  const setCookie = res.headers()['set-cookie'] ?? '';
-  const re = new RegExp(`(${COOKIE_NAME})=([^;]+)`);
-  const match = setCookie.match(re);
-  if (!match) throw new Error(`setAuthCookie: ${COOKIE_NAME} cookie not found in response`);
-  await page.context().addCookies([{
-    name: match[1],
-    value: match[2],
-    url: BASE_URL,
-  }]);
-  await ctx.dispose();
-}
+setAuthCookie: async ({ request, context }, use) => {
+  await use(async (credentials: { email: string; password: string }) => {
+    const res = await request.post('«LOGIN_ENDPOINT»', { data: credentials });
+    if (!res.ok()) throw new Error(`setAuthCookie login failed: ${res.status()}`);
+    const match = (res.headers()['set-cookie'] ?? '').match(new RegExp(`(${COOKIE_NAME})=([^;]+)`));
+    if (!match) throw new Error(`setAuthCookie: ${COOKIE_NAME} cookie not found in response`);
+    // framework-gap: FG-1
+    await context.addCookies([{ name: match[1], value: match[2], url: BASE_URL }]);
+  });
+},
 ```
 
 ### Helper template — `seedCart`
 
-```typescript
-// In tests/fixtures/base.ts (HELPER SLOT: seedCart)
-import type { APIRequestContext } from '@playwright/test';
+A verb over `steps`: `steps.requestPost` carries the browser session the cookie just set, so no raw request object is needed:
 
-export async function seedCart(authedCtx: APIRequestContext, items: { bookId: string; quantity: number }[]) {
+```typescript
+// tests/e2e/flows/cart-flow.ts (HELPER SLOT: seedCart)
+/** Adds items to the signed-in user's cart through the API; leaves the browser where it was. */
+export async function seedCart(steps: Steps, items: { itemId: string; quantity: number }[]) {
   for (const item of items) {
-    const res = await authedCtx.post('«CART_ADD_ENDPOINT»', { data: item });
-    if (!res.ok()) throw new Error(`seedCart failed for ${item.bookId}: ${res.status()}`);
+    const res = await steps.requestPost('«CART_ADD_ENDPOINT»', { data: item });
+    await steps.verifyRequestOk(res);
   }
 }
 ```
 
-Other helpers (`createListingViaApi`, etc.) follow the same shape: read the request body shape from Test Infrastructure's `Mutation endpoints` table, parameterize what the call site needs, throw on non-2xx.
+Other helpers (`createListingViaApi`, etc.) follow the same shape: read the request body shape from Test Infrastructure's `Mutation endpoints` table, parameterize what the call site needs, fail on non-2xx.
 
 **Per-spec replacement pattern:**
 
 ```typescript
 // before
-test('happy-path: cart → checkout → order', async ({ steps, page }) => {
-  await signupFresh(steps);  // UI signup, ~3-5s
-  await steps.click('addToCartBook001', 'HomePage');  // UI add, ~1s
+test('TCCK-000210 · a cart checks out into an order', async ({ steps }) => {
+  await signupFresh(steps);                             // UI signup, ~3-5s
+  await steps.click('addToCartFirstItem', 'HomePage');  // UI add, ~1s
   // …rest of test
 });
 
 // after
-test('happy-path: cart → checkout → order', async ({ steps, page, request }) => {
-  const email = `flow-${Date.now()}@test.com`;
-  await signupViaApi(request, { email, password: 'TestPass123!' });  // API signup
-  await setAuthCookie(page, { email, password: 'TestPass123!' });
-  await seedCart(request, [{ bookId: SEED_BOOKS[0], quantity: 1 }]);
-  await page.goto('/cart');
+test('TCCK-000210 · a cart checks out into an order', async ({ steps, freshUser, setAuthCookie }) => {
+  const user = await freshUser();                       // API signup, generated credentials
+  await setAuthCookie(user);
+  await seedCart(steps, [{ itemId: SEED_ITEMS[0], quantity: 1 }]);
+  await steps.navigateTo(Routes.CART);
   // …rest of test starts from cart-loaded state
 });
 ```
@@ -363,40 +366,35 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
 
 **Trigger:** any test body or spec-level helper clicks a banner-dismiss / modal-close, OR the same dismissal selector appears in two or more spec files.
 
-**Rule:** dismissal goes in `base.ts`'s `dismissBanners` HELPER SLOT, called from the fixture's `beforeEach`. Specs do not repeat it.
+**Rule:** dismissal is a `dismissBanners` verb over `steps` in a flow module, called from the fixture's `beforeEach`. Specs do not repeat it. Each banner's dismiss control is a repository entry; an optional action is allowed here because this is support code ([TB-F7](test-baseline.md#tb-f7)).
 
 **Auto-fix:**
 
-1. Populate `tests/fixtures/base.ts`'s `dismissBanners` slot. Substitute `«BANNER_DISMISS_SELECTORS»` with the comma-separated list from app-context Test Infrastructure's `Persistent banners / modals` section:
+1. Add a repository entry per banner from app-context Test Infrastructure's `Persistent banners / modals` section (through Stage 2 and the selector evidence of Stage 3), then populate the `dismissBanners` slot with one line per entry:
 
    ```typescript
-   // In tests/fixtures/base.ts (HELPER SLOT: dismissBanners)
-   import type { Page } from '@playwright/test';
-
-   export async function dismissBanners(page: Page) {
-     for (const sel of [«BANNER_DISMISS_SELECTORS»]) {
-       const el = page.locator(sel).first();
-       if (await el.isVisible({ timeout: 250 }).catch(() => false)) {
-         await el.click().catch(() => { /* ignore — banner already dismissed */ });
-       }
-     }
+   // tests/e2e/flows/banner-flow.ts (HELPER SLOT: dismissBanners)
+   /** Closes the persistent banners that may cover the page; leaves the browser where it was. */
+   export async function dismissBanners(steps: Steps) {
+     await steps.on('«BANNER_DISMISS_ELEMENT»', '«BANNER_PAGE»').ifVisible().click();
+     // one line per banner listed in app-context
    }
    ```
 
-   Example substitution: `'[data-testid="cookie-accept"]', '[data-testid="welcome-close"]'`.
+   Example substitution: `steps.on('cookieAccept', 'CookieBanner')`, `steps.on('welcomeClose', 'WelcomeModal')`.
 
 2. Populate the `HELPER SLOT: beforeEach` slot in `base.ts` (NOT a freeform region; the slot is the single contracted insertion point for fixture-level `beforeEach` hooks):
 
    ```typescript
    // In tests/fixtures/base.ts (HELPER SLOT: beforeEach)
-   test.beforeEach(async ({ page }) => {
-     await dismissBanners(page);
+   test.beforeEach(async ({ steps }) => {
+     await dismissBanners(steps);
    });
    ```
 
    If the slot already contains other `test.beforeEach` blocks (e.g., from a prior Stage 4a run that populated `resetState` here), append the new block to the slot. Do NOT overwrite. The slot is additive across protocol runs.
 
-3. Strip duplicated `await steps.click('cookieAccept', …)` / `await page.locator(...)` dismiss calls from each spec body. The fixture handles it now.
+3. Strip duplicated `await steps.click('cookieAccept', …)` dismiss calls from each spec body. The fixture handles it now.
 
 **No-banner-discovered branch:** if Test Infrastructure's `Persistent banners / modals` reads `none discovered`, the `dismissBanners` slot stays empty (or has a no-op stub). Check is a no-op for the spec under review.
 
@@ -409,11 +407,11 @@ The mechanical rule: **any `signupFresh` / `loginFresh` / `addToCartViaUI` call 
 - **(a)** Serial dependency is intentional; i.e. test N+1 deliberately depends on the side-effects of test N. (Most well-isolated tests do not need this.)
 - **(b)** The first test in the block is a **cheap, fast-failing sentinel** that surfaces real env breakage cleanly. Examples:
   - A single `await steps.verifyPresence('homeRoot', 'HomePage');` after a navigate.
-  - An API health-check via `request.get('/api/health')`.
+  - An API health-check via `steps.requestGet('/api/health')` plus `steps.verifyRequestOk(res)`.
 
-  The sentinel is named `sentinel: …` so cascade-skips become diagnostic, not silent collateral damage.
+  The sentinel's title says `sentinel: …` after its id, so cascade-skips become diagnostic, not silent collateral damage.
 
-**The `// serial-deliberate:` annotation satisfies review.** Tenant-mutating specs are *required* to use file-level serial mode and to carry a `// serial-deliberate: <reason>` comment above the `configure` line (per `test-composer` Step 3; resolution record in `test-composition-standards.md` §3.4). When that annotation is present with a substantive reason, §6 treats the serial mode as reviewed-and-justified: no `stage4a:serial-mode-review` flag is emitted for the file. The flag-only behaviour below applies to **unannotated** serial mode only.
+**The `// serial-deliberate:` annotation satisfies review.** Tenant-mutating specs are *required* to use file-level serial mode, annotated per [TB-S7](test-baseline.md#tb-s7) (when: `test-composer` Step 3; resolution record in `test-composition-standards.md` §3.4). When that annotation is present with a substantive reason, §6 treats the serial mode as reviewed-and-justified: no `stage4a:serial-mode-review` flag is emitted for the file. The flag-only behaviour below applies to **unannotated** serial mode only.
 
 **Flag-only behavior:** Stage 4a does NOT silently strip `mode: 'serial'` even if the rule is violated. For unannotated serial mode it does:
 
@@ -427,17 +425,17 @@ The agent does not auto-flip `mode: 'serial'` to per-test isolation because doin
 
 ```typescript
 // serial-deliberate: tests 2..N depend on the record test 1 creates in the shared tenant
-test.describe.configure({ mode: 'serial', timeout: 60_000 });
+test.describe.configure({ mode: 'serial' });
 
 test.describe('j-<slug> — <one-sentence journey title>', () => {
-  test('sentinel: app health + auth ready', async ({ steps, request }) => {
-    const res = await request.get('/api/health');
-    expect(res.ok()).toBe(true);
-    await steps.navigateTo('/');
+  test('TCXX-000100 · sentinel: app health + auth ready', async ({ steps }) => {
+    const res = await steps.requestGet('/api/health');
+    await steps.verifyRequestOk(res);
+    await steps.navigateTo(Routes.HOME);
     await steps.verifyPresence('homeRoot', 'HomePage');
   });
 
-  test('happy-path: <one-sentence variant title>', async ({ steps }) => {
+  test('TCXX-000110 · happy-path: <one-sentence variant title>', async ({ steps }) => {
     // …real test, depends on the sentinel having warmed the env
   });
 });
