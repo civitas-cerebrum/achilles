@@ -543,7 +543,12 @@ function main() {
   process.stdout.write(JSON.stringify({ scope: scope === 'config-ext' ? 'config' : scope, offenders: [...new Set(offenders)].slice(0, 50) }));
 }
 
-try { main(); } catch (e) {
-  process.stderr.write(`${e.message}\n`);
-  process.exit(e.exitCode || 2);
+// The parser chain is shared with the spec lint (bin/lib/spec-lint/engine.mjs).
+module.exports = { loadParser };
+
+if (require.main === module) {
+  try { main(); } catch (e) {
+    process.stderr.write(`${e.message}\n`);
+    process.exit(e.exitCode || 2);
+  }
 }
