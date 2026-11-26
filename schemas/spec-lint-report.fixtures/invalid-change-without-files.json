@@ -1,0 +1,163 @@
+{
+  "tool": "achilles-spec-lint",
+  "version": "0.2.0",
+  "ok": false,
+  "stepsSurface": {
+    "package": "@civitas-cerebrum/element-interactions",
+    "version": "0.3.6",
+    "source": "snapshot"
+  },
+  "files": [
+    {
+      "path": "tests/e2e/dark-mode.spec.ts",
+      "kind": "spec",
+      "blob": "2bf1f06ab4e30a84916a948a21ff63327581a2db",
+      "parsed": true,
+      "tests": [
+        {
+          "title": "TC-0415 · emulates dark mode",
+          "id": "TC-0415",
+          "line": 5,
+          "endLine": 9
+        }
+      ]
+    },
+    {
+      "path": "tests/e2e/load.spec.ts",
+      "kind": "spec",
+      "blob": "c9fddf9ee947402a5dc7d21ba436c703704ce954",
+      "parsed": true,
+      "tests": [
+        {
+          "title": "TC-0130 · waits for the page",
+          "id": "TC-0130",
+          "line": 7,
+          "endLine": 9
+        }
+      ],
+      "followedFrom": "tests/e2e/dark-mode.spec.ts"
+    },
+    {
+      "path": "tests/e2e/login.spec.ts",
+      "kind": "spec",
+      "blob": "77b3f6ba8dcad437edb5fa4fdc61d55e463e746a",
+      "parsed": true,
+      "tests": [
+        {
+          "title": "TC-0010 · opens the login page",
+          "id": "TC-0010",
+          "line": 5,
+          "endLine": 7
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "rule": "TB-A2",
+      "severity": "blocking",
+      "file": "tests/e2e/dark-mode.spec.ts",
+      "line": 7,
+      "column": 9,
+      "region": "test",
+      "message": "`page.emulateMedia`: no known Steps equivalent",
+      "do": "There is no known Steps equivalent: move the call into a verb or fixture and ask for the method to be added to the no-equivalent table (an Achilles release) or for a framework-gap row (the person decides); until then it stays a finding.",
+      "why": "skills/achilles-orchestrator/references/test-baseline.md#tb-a2",
+      "test": {
+        "title": "TC-0415 · emulates dark mode",
+        "id": "TC-0415",
+        "line": 5
+      },
+      "waived": true,
+      "waiver": {
+        "reason": "emulateMedia has no Steps form and the dark theme needs it",
+        "line": 6
+      },
+      "touched": true
+    },
+    {
+      "rule": "TB-A13",
+      "severity": "advisory",
+      "file": "tests/e2e/load.spec.ts",
+      "line": 8,
+      "column": 9,
+      "region": "test",
+      "message": "upgrade @civitas-cerebrum/element-interactions to ≥ 0.3.8, then use steps.waitForLoadState instead of `page.waitForLoadState` (installed 0.3.6)",
+      "do": "Upgrade @civitas-cerebrum/element-interactions to ≥ 0.3.8 as the first unit of work, then use steps.waitForLoadState.",
+      "why": "skills/achilles-orchestrator/references/test-baseline.md#tb-a13",
+      "test": {
+        "title": "TC-0130 · waits for the page",
+        "id": "TC-0130",
+        "line": 7
+      },
+      "waived": false,
+      "data": {
+        "upgradeTo": "0.3.8",
+        "method": "waitForLoadState"
+      },
+      "touched": false
+    },
+    {
+      "rule": "TB-A2",
+      "severity": "blocking",
+      "file": "tests/e2e/login.spec.ts",
+      "line": 6,
+      "column": 9,
+      "region": "test",
+      "message": "raw call `page.goto` has a Steps equivalent: steps.navigateTo",
+      "do": "Replace the raw call with steps.navigateTo(…), addressing elements by their page-repository names.",
+      "why": "skills/achilles-orchestrator/references/test-baseline.md#tb-a2",
+      "test": {
+        "title": "TC-0010 · opens the login page",
+        "id": "TC-0010",
+        "line": 5
+      },
+      "waived": false,
+      "touched": true
+    }
+  ],
+  "project": [
+    {
+      "rule": "TB-A13",
+      "severity": "advisory",
+      "message": "upgrade @civitas-cerebrum/element-interactions to ≥ 0.3.8 (1 call site); installed 0.3.6",
+      "do": "Upgrade @civitas-cerebrum/element-interactions to ≥ 0.3.8 as the first unit of work the next time a workflow touches the suite, then use the Steps methods.",
+      "why": "skills/achilles-orchestrator/references/test-baseline.md#tb-a13"
+    }
+  ],
+  "summary": {
+    "files": 3,
+    "specs": 3,
+    "support": 0,
+    "blocking": 1,
+    "advisory": 2,
+    "waived": 1,
+    "legacy": 0
+  },
+  "timing": {
+    "ms": 12
+  },
+  "change": {
+    "from": "x"
+  },
+  "ids": [
+    {
+      "id": "TC-0415",
+      "file": "tests/e2e/dark-mode.spec.ts",
+      "line": 5,
+      "title": "TC-0415 · emulates dark mode"
+    },
+    {
+      "id": "TC-0130",
+      "file": "tests/e2e/load.spec.ts",
+      "line": 7,
+      "title": "TC-0130 · waits for the page"
+    },
+    {
+      "id": "TC-0010",
+      "file": "tests/e2e/login.spec.ts",
+      "line": 5,
+      "title": "TC-0010 · opens the login page"
+    }
+  ]
+}

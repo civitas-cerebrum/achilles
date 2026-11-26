@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/spec-lint-report.schema.json",
   "title": "achilles-spec-lint report",
-  "description": "What `achilles-spec-lint --json` prints: the Steps surface used, every linted file with its tests, every finding against the test baseline (skills/achilles-orchestrator/references/test-baseline.md) and the project-level findings. `ok` is false when an unwaived blocking finding exists.",
+  "description": "What `achilles-spec-lint --json` prints: the Steps surface used, every linted file with its tests, every finding against the test baseline (skills/achilles-orchestrator/references/test-baseline.md) and the project-level findings. `ok` is false when an unwaived blocking finding exists (in touched code, when a change is given).",
   "type": "object",
   "additionalProperties": false,
   "required": ["tool", "version", "ok", "stepsSurface", "files", "findings", "project", "summary", "timing"],
@@ -20,6 +20,31 @@
         "source": { "enum": ["worktree", "checkout", "snapshot"] }
       }
     },
+    "change": {
+      "type": "object",
+      "description": "the change the run compared against (--staged, --base or --stdin); findings then carry `touched`, and only touched blocking findings make `ok` false",
+      "additionalProperties": false,
+      "required": ["from", "files"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "files": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "ids": {
+      "type": "array",
+      "description": "--suite: every test id of the suite with its file, line and title",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "file", "line", "title"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string" }
+        }
+      }
+    },
     "files": {
       "type": "array",
       "items": {
@@ -31,7 +56,8 @@
           "kind": { "enum": ["spec", "support", "k6", "bundle"] },
           "blob": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$", "description": "git's object id of the content (sha1, or sha256 in a sha256 repository)" },
           "parsed": { "type": "boolean" },
-          "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } }
+          "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } },
+          "followedFrom": { "type": "string", "description": "--suite: the spec whose imports led to this module" }
         }
       }
     },
@@ -62,7 +88,8 @@
         "support": { "type": "integer", "minimum": 0 },
         "blocking": { "type": "integer", "minimum": 0 },
         "advisory": { "type": "integer", "minimum": 0 },
-        "waived": { "type": "integer", "minimum": 0 }
+        "waived": { "type": "integer", "minimum": 0 },
+        "legacy": { "type": "integer", "minimum": 0, "description": "blocking findings outside the touched code (not charged to the change)" }
       }
     },
     "timing": {
