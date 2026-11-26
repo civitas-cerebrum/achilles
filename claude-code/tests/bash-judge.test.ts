@@ -217,7 +217,8 @@ test('a line too long to split is refused only when it names a program a deny co
   const pad = 'w '.repeat(17000)
   expect((await bash(`echo ${pad}; git push --force`)).deny).toMatch(/too long to judge/)
   expect((await bash(`echo ${pad}`)).deny).toBeUndefined()
-  expect(ran(h).length).toBe(0)
+  // nothing ran for the lines; the dispatch's own HEAD read is not one of them
+  expect(ran(h).filter(r => !(r.argv[0] === 'git' && r.argv.includes('--verify'))).length).toBe(0)
 })
 
 test('a background Bash call from an Achilles loop is refused with the foreground way; the main loop and foreground calls pass', async ($, on) => {

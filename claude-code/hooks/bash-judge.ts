@@ -507,7 +507,12 @@ export async function judgeBash($: EngineInterface, command: string, w: Who): Pr
   }
   const ctx: Ctx = { root, home, who: w, rules, text: command }
   const all = expand(command, root, home)
-  v.writes = shellWrites(all, home)
+  // Record-only input for the touched list: a parser surprise must never become a refusal.
+  try {
+    v.writes = shellWrites(all, home)
+  } catch {
+    v.writes = []
+  }
   const inserts: { at: number; replaceTo?: number; text: string }[] = []
   for (const j of all) {
     await judgeGit($, ctx, j, v)

@@ -29,7 +29,9 @@ function operands(args: readonly string[], valued: ReadonlySet<string> = new Set
   return out
 }
 
-function sedTargets(args: readonly string[]): string[] {
+function sedTargets(raw: readonly string[]): string[] {
+  // BSD sed spells an in-place edit without a backup as `-i ''`: the empty word is the suffix, not the script
+  const args = raw.filter((a, i) => !(a === '' && raw[i - 1] === '-i'))
   let inPlace = false
   let script = false
   for (const a of args.slice(1)) {

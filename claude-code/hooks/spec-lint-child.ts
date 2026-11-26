@@ -12,7 +12,7 @@ export const BASELINE_REF = 'skills/achilles-orchestrator/references/test-baseli
 
 /** The hard per-file budget the child is given (its exit 3), and the wait for the child itself. */
 export const FILE_BUDGET_MS = 5000
-const WAIT_MS = 8000
+export const WAIT_MS = 8000
 
 /** A path the lint may classify as spec or support: its code extensions, never a declaration file or a dependency. */
 export const lintable = (p: string) => /\.(?:[cm]?[jt]sx?)$/i.test(p) && !/\.d\.[cm]?ts$/i.test(p) && !/(^|\/)node_modules\//.test(p)
@@ -52,6 +52,20 @@ export async function topOf($: EngineInterface, dir: string): Promise<string | u
   return top === '' ? undefined : top
 }
 
+/** The commit a work tree's HEAD names, or undefined (no repository, no commit yet). */
+export async function headOf($: EngineInterface, dir: string): Promise<string | undefined> {
+  const r = await run($, ['git', 'rev-parse', '--verify', '-q', 'HEAD'], { cwd: dir, timeoutMs: 3000 })
+  const sha = r.ok && r.exitCode === 0 ? (r.stdout.split('\n')[0] ?? '').trim() : ''
+  return /^[0-9a-f]{40,64}$/.test(sha) ? sha : undefined
+}
+
+/** The git object id of a file as it is on disk now, or undefined when git cannot say. */
+export async function objectIdOf($: EngineInterface, top: string, rel: string): Promise<string | undefined> {
+  const r = await run($, ['git', 'hash-object', '--', rel], { cwd: top, timeoutMs: 3000 })
+  const id = r.ok && r.exitCode === 0 ? (r.stdout.split('\n')[0] ?? '').trim() : ''
+  return /^[0-9a-f]{40,64}$/.test(id) ? id : undefined
+}
+
 async function child($: EngineInterface, top: string, args: string[], stdin?: string, timeoutMs = WAIT_MS): Promise<LintRun> {
   const r = await run($, ['node', `${$.plugin.root}/bin/spec-lint.mjs`, ...args, '--json', '--quiet', '--budget-ms', String(FILE_BUDGET_MS)], {
     cwd: top,
@@ -82,10 +96,12 @@ export function lintPaths($: EngineInterface, top: string, rels: string[]): Prom
   return child($, top, rels)
 }
 
-/** The named files against HEAD with the lint's touched-test semantics: a finding counts only in a touched test, describe or file scope. */
-export function lintTouched($: EngineInterface, top: string, rels: string[]): Promise<LintRun> {
-  return child($, top, ['--base', 'HEAD', ...rels], undefined, 15000)
+/** The named files against `base` (a commit, or HEAD) with the lint's touched-test semantics: a finding counts only in a touched test, describe or file scope. */
+export function lintTouched($: EngineInterface, top: string, base: string, rels: string[]): Promise<LintRun> {
+  return child($, top, ['--base', base, ...rels], undefined, TOUCHED_WAIT_MS)
 }
+
+export const TOUCHED_WAIT_MS = 15000
 
 const MAX_SHOWN = 8
 
@@ -102,14 +118,20 @@ export function writeNote(rel: string, findings: LintFinding[]): string | undefi
   const lead =
     n > 0
       ? `fix the ${n === 1 ? 'finding' : `${n} findings`} this write added to ${rel} that ${n === 1 ? 'is' : 'are'} blocking under the test baseline, in a follow-up write (the write itself landed):`
-      : `this write added ${shown.length === 1 ? 'an advisory test-baseline finding' : `${shown.length} advisory test-baseline findings`} to ${rel}; fix ${shown.length === 1 ? 'it' : 'them'} while the change is open (the write itself landed):`
+      : `fix the ${shown.length === 1 ? 'advisory test-baseline finding' : `${shown.length} advisory test-baseline findings`} this write added to ${rel} while the change is open (the write itself landed):`
   const more = ordered.length > MAX_SHOWN ? `\n(+${ordered.length - MAX_SHOWN} more: run \`npx achilles-spec-lint ${rel}\`)` : ''
   return `${lead}\n${ordered.slice(0, MAX_SHOWN).map(lineOf).join('\n')}${more}\n\nReferences:\n  ${BASELINE_REF}`
 }
 
-/** The one-line note when the lint could not check a write. */
+const REFS = `\n\nReferences:\n  ${BASELINE_REF}`
+
+/** The note when the lint could not check a write: one line, then the reference. */
 export const failNote = (rel: string, why: string) =>
-  `run \`npx achilles-spec-lint ${rel}\` before you hand back: the test-baseline lint could not check this write (${why}); the write landed unchecked (${BASELINE_REF}).`
+  `run \`npx achilles-spec-lint ${rel}\` before you hand back: the test-baseline lint could not check this write (${why}); the write landed unchecked.${REFS}`
+
+/** The note when the hand-back check of an expert's files could not run. */
+export const touchedFailNote = (base: string, rels: readonly string[], where: string, who: string, why: string) =>
+  `run \`npx achilles-spec-lint --base ${base} ${rels.join(' ')}\`${where} before review: the test-baseline check of the files ${who} touched could not run (${why}).${REFS}`
 
 /** Blocking, unwaived findings in touched code of the given files, from a lintTouched run. */
 export const blockingInTouched = (findings: LintFinding[], rels: ReadonlySet<string>) =>
@@ -117,4 +139,4 @@ export const blockingInTouched = (findings: LintFinding[], rels: ReadonlySet<str
 
 /** The lines of a hand-back note listing blocking findings in touched tests. */
 export const findingLines = (findings: LintFinding[]) =>
-  `${findings.slice(0, MAX_SHOWN).map(lineOf).join('\n')}${findings.length > MAX_SHOWN ? `\n(+${findings.length - MAX_SHOWN} more: run \`npx achilles-spec-lint --base HEAD\`)` : ''}`
+  `${findings.slice(0, MAX_SHOWN).map(lineOf).join('\n')}${findings.length > MAX_SHOWN ? `\n(+${findings.length - MAX_SHOWN} more: run \`npx achilles-spec-lint --base <base> <files>\`)` : ''}`

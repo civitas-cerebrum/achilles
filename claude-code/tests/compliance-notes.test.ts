@@ -3,6 +3,7 @@ import type { Engine as EngineInterface } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { AchillesRun } from '../types'
+import { capRows } from '../hooks/compliance-notes'
 import { ROOT, START, cleanLint, ended, engine, fakeBlob, notes, spawnExpert, startRun, type Harness } from './harness'
 
 // The write-time notes of the test baseline: a Write or Edit of a spec or support file by an Achilles
@@ -39,8 +40,10 @@ type Case = {
   expect: 'allow' | 'advise'
   messageContains?: string[]
   messageExcludes?: string[]
+  /** The note is one line followed by its References block. */
+  oneLine?: boolean
   /** The row the run records, or null for none. */
-  touched?: { rel: string; top?: string; objectId?: 'any' | 'none' } | null
+  touched?: { rel: string; top?: string; objectId?: 'any' | 'none'; kind?: string | null } | null
   /** True when the lint child must not run at all. */
   noLint?: boolean
 }
@@ -49,7 +52,7 @@ const SPEC = 'tests/e2e/login.spec.ts'
 const report = (path: string, findings: unknown[]) => JSON.stringify({ ...cleanLint(['--stdin'], JSON.stringify({ file: path, after: 'x' })), findings })
 
 const CASES: Case[] = [
-  { name: 'an author writes a clean spec: no note, the write is recorded with its object id', as: 'author', tool: 'Write', file: SPEC, content: "test('TCLG-000001 · opens', async () => {})", expect: 'allow', touched: { rel: SPEC, objectId: 'any' } },
+  { name: 'an author writes a clean spec: no note, the write is recorded with its object id', as: 'author', tool: 'Write', file: SPEC, content: "test('TCLG-000001 · opens', async () => {})", expect: 'allow', touched: { rel: SPEC, objectId: 'any', kind: 'spec' } },
   {
     name: 'an author writes a spec with a new blocking finding: a note naming the rule and its rulebook anchor',
     as: 'author',
@@ -72,7 +75,7 @@ const CASES: Case[] = [
     findings: [ADVISORY],
     lint: f => ({ stdout: report(SPEC, f) }),
     expect: 'advise',
-    messageContains: ['advisory test-baseline finding', '[TB-R4]', '(advisory)'],
+    messageContains: ['fix the advisory test-baseline finding this write added', '[TB-R4]', '(advisory)'],
     messageExcludes: ['blocking'],
     touched: { rel: SPEC, objectId: 'any' },
   },
@@ -81,7 +84,7 @@ const CASES: Case[] = [
   { name: 'the orchestrator is an Achilles agent too', as: 'orchestrator', tool: 'Write', file: SPEC, content: 'x', findings: [BLOCKING], lint: f => ({ exitCode: 1, stdout: report(SPEC, f) }), expect: 'advise', messageContains: ['[TB-F1]'], touched: { rel: SPEC, objectId: 'any' } },
   { name: 'the main session writing a spec: no lint, no note, no record', as: 'main', tool: 'Write', file: SPEC, content: 'if (x) await steps.click()', findings: [BLOCKING], lint: f => ({ exitCode: 1, stdout: report(SPEC, f) }), expect: 'allow', touched: null, noLint: true },
   { name: 'a non-code file: no lint', as: 'author', tool: 'Write', file: 'tests/e2e/docs/app-context.md', content: 'notes', expect: 'allow', touched: null, noLint: true },
-  { name: 'a code file the lint does not scope (no file in its report): no note, no record', as: 'author', tool: 'Write', file: 'src/app.ts', content: 'export const x = 1', expect: 'allow', touched: null },
+  { name: 'a code file the lint does not scope (no file in its report): no note, recorded as kind none', as: 'author', tool: 'Write', file: 'src/app.ts', content: 'export const x = 1', expect: 'allow', touched: { rel: 'src/app.ts', objectId: 'none', kind: 'none' } },
   {
     name: 'the lint cannot run (no Steps surface): one line, the write lands',
     as: 'author',
@@ -91,13 +94,13 @@ const CASES: Case[] = [
     lint: () => ({ exitCode: 2, stderr: '[spec-lint] spec lint cannot run: no Steps surface for @civitas-cerebrum/element-interactions resolved\n→ Do: install the project dependencies\n' }),
     expect: 'advise',
     messageContains: ['could not check this write', 'no Steps surface', `npx achilles-spec-lint ${SPEC}`, 'test-baseline.md'],
-    messageExcludes: ['\n'],
-    touched: { rel: SPEC, objectId: 'none' },
+    oneLine: true,
+    touched: { rel: SPEC, objectId: 'none', kind: null },
   },
-  { name: 'the lint runs past its budget (exit 3): one line', as: 'author', tool: 'Write', file: SPEC, content: 'x', lint: () => ({ exitCode: 3, stderr: '[spec-lint] the run went past its time budget\n' }), expect: 'advise', messageContains: ['time budget'], messageExcludes: ['\n'], touched: { rel: SPEC, objectId: 'none' } },
-  { name: 'the lint child does not finish: one line', as: 'author', tool: 'Write', file: SPEC, content: 'x', lint: () => 'throw', expect: 'advise', messageContains: ['did not finish'], messageExcludes: ['\n'], touched: { rel: SPEC, objectId: 'none' } },
-  { name: 'the lint crashes with no report: one line', as: 'author', tool: 'Write', file: SPEC, content: 'x', lint: () => ({ exitCode: 1, stdout: '' }), expect: 'advise', messageContains: ['printed no report'], messageExcludes: ['\n'], touched: { rel: SPEC, objectId: 'none' } },
-  { name: 'a failing lint on a non-test code file records nothing', as: 'author', tool: 'Write', file: 'src/app.ts', content: 'x', lint: () => ({ exitCode: 2, stderr: '[spec-lint] boom' }), expect: 'advise', messageContains: ['boom'], touched: null },
+  { name: 'the lint runs past its budget (exit 3): one line', as: 'author', tool: 'Write', file: SPEC, content: 'x', lint: () => ({ exitCode: 3, stderr: '[spec-lint] the run went past its time budget\n' }), expect: 'advise', messageContains: ['time budget'], oneLine: true, touched: { rel: SPEC, objectId: 'none' } },
+  { name: 'the lint child does not finish: one line', as: 'author', tool: 'Write', file: SPEC, content: 'x', lint: () => 'throw', expect: 'advise', messageContains: ['did not finish'], oneLine: true, touched: { rel: SPEC, objectId: 'none' } },
+  { name: 'the lint crashes with no report: one line', as: 'author', tool: 'Write', file: SPEC, content: 'x', lint: () => ({ exitCode: 1, stdout: '' }), expect: 'advise', messageContains: ['printed no report'], oneLine: true, touched: { rel: SPEC, objectId: 'none' } },
+  { name: 'a failing lint on a non-test code file still records it, with no kind', as: 'author', tool: 'Write', file: 'src/app.ts', content: 'x', lint: () => ({ exitCode: 2, stderr: '[spec-lint] boom' }), expect: 'advise', messageContains: ['boom'], oneLine: true, touched: { rel: 'src/app.ts', objectId: 'none', kind: null } },
 ]
 
 /** The run registry as the adapter last wrote it, read off its state writes. */
@@ -145,6 +148,11 @@ for (const c of CASES) {
       expect(said.length).toBe(1)
       for (const s of c.messageContains ?? []) expect(said[0]).toContain(s)
       for (const s of c.messageExcludes ?? []) expect(said[0]!.replace(/^achilles: /, '')).not.toContain(s)
+      if (c.oneLine) {
+        const [head, refs] = said[0]!.split('\n\nReferences:\n')
+        expect(head).not.toContain('\n')
+        expect(refs).toBe('  skills/achilles-orchestrator/references/test-baseline.md')
+      }
     }
     if (c.noLint) expect(lintRuns(h)).toEqual([])
     const rows = touched()
@@ -157,6 +165,7 @@ for (const c of CASES) {
       expect(rows[0]!.via).toBe('write')
       if (c.touched.objectId === 'any') expect(rows[0]!.objectId).toMatch(/^[0-9a-f]{40}$/)
       if (c.touched.objectId === 'none') expect(rows[0]!.objectId).toBeUndefined()
+      if (c.touched.kind !== undefined) expect(rows[0]!.kind).toBe(c.touched.kind ?? undefined)
     }
   })
 }
@@ -236,6 +245,8 @@ const SHELL: ShellCase[] = [
   { command: "sed -i.bak -e 's/a/b/' tests/e2e/login.spec.ts tests/e2e/other.spec.ts", records: [SPEC, 'tests/e2e/other.spec.ts'] },
   { command: "sed 's/old/new/' tests/e2e/login.spec.ts", records: [] },
   { command: "sed -i 's/old/new/' README.md", records: [] },
+  { command: "sed -i '' 's/old/new/' tests/e2e/login.spec.ts", records: [SPEC] },
+  { command: "sed -i 's/old/new/' src/app.ts", records: ['src/app.ts'] },
   { command: "echo 'x' > tests/e2e/login.spec.ts", records: [SPEC] },
   { command: 'cat tests/e2e/login.spec.ts > /tmp/copy.ts', records: [] },
   { command: 'git checkout HEAD~1 -- tests/e2e/login.spec.ts', records: [SPEC] },
@@ -251,7 +262,7 @@ for (const c of SHELL) {
     const h = engine(on)
     const touched = watchRuns(on)
     const session = mock.session(on)
-    for (const f of [SPEC, 'tests/e2e/other.spec.ts', 'README.md']) h.write(`${ROOT}/${f}`, 'x')
+    for (const f of [SPEC, 'tests/e2e/other.spec.ts', 'README.md', 'src/app.ts']) h.write(`${ROOT}/${f}`, 'x')
     const { author } = await setup($, h)
     const before = notes(session).length
     const r = await $.tool.call({ tool: 'Bash', command: c.command, ...(c.as === 'main' ? {} : { agentId: author }) } as never)
@@ -262,7 +273,9 @@ for (const c of SHELL) {
     for (const row of rows) {
       expect(row.via).toBe('shell')
       expect(row.agentId).toBe(author)
-      expect(row.objectId).toMatch(/^[0-9a-f]{40}$/)
+      // scope is kept on the row and decided when the list is read
+      expect(row.kind).toBe(row.rel.startsWith('tests/') ? 'spec' : 'none')
+      if (row.kind === 'spec') expect(row.objectId).toMatch(/^[0-9a-f]{40}$/)
     }
   })
 }
@@ -277,7 +290,7 @@ const TURN: TurnCase[] = [
   { name: 'advisory findings are no note', wrote: true, findings: [{ ...ADVISORY, touched: true }], expect: 'allow' },
   { name: 'a finding in a file the expert did not write is no note', wrote: true, findings: [{ ...BLOCKING, file: 'tests/e2e/someone-else.spec.ts', touched: true }], expect: 'allow' },
   { name: 'an expert that wrote no test file: no lint at all', wrote: false, findings: [{ ...BLOCKING, touched: true }], expect: 'allow' },
-  { name: 'the lint cannot run at hand-back: one line to the orchestrator', wrote: true, findings: [], lint: { exitCode: 2, stderr: '[spec-lint] the change cannot be read: no commits yet' }, expect: 'advise', messageContains: ['could not run', 'no commits yet', '--base HEAD'] },
+  { name: 'the lint cannot run at hand-back: one line to the orchestrator', wrote: true, findings: [], lint: { exitCode: 2, stderr: '[spec-lint] the change cannot be read: no commits yet' }, expect: 'advise', messageContains: ['could not run', 'no commits yet', '--base HEAD', '\n\nReferences:\n  skills/achilles-orchestrator/references/test-baseline.md'] },
 ]
 
 for (const c of TURN) {
@@ -307,3 +320,49 @@ for (const c of TURN) {
     }
   })
 }
+
+test('hand-back: the author is linted against the commit its dispatch started from, so its own commits count', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  const DISPATCH = 'a'.repeat(40)
+  let head = DISPATCH
+  h.procs.push(argv => (argv[0] === 'git' && argv.includes('HEAD') && argv.includes('--verify') ? `${head}\n` : undefined))
+  const { author } = await setup($, h)
+  await $.tool.call({ tool: 'Write', file_path: `${ROOT}/${SPEC}`, content: 'x', agentId: author } as never)
+  head = 'b'.repeat(40) // the author committed its work
+  await $.turn.complete(ended(author, 'DONE\nTests written and committed.'))
+  const run = lintRuns(h).find(r => r.argv.includes('--base'))!
+  expect(run.argv).toEqual(expect.arrayContaining(['--base', DISPATCH, SPEC]))
+})
+
+test('hand-back: only an author is checked; a reviewer or a reproducer that wrote a file is not', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  await $.session.start(START)
+  const orchestrator = await startRun($, h)
+  for (const role of ['reviewer', 'reproducer']) {
+    const x = await spawnExpert($, h, role, orchestrator)
+    await $.tool.call({ tool: 'Write', file_path: `${ROOT}/tests/e2e/${role}.spec.ts`, content: 'x', agentId: x } as never)
+    await $.turn.complete(ended(x, 'DONE\nverdict'))
+  }
+  expect(lintRuns(h).filter(r => r.argv.includes('--base'))).toEqual([])
+})
+
+test('the object id is read from the file on disk after the write when git can say', async ($, on) => {
+  const h = engine(on)
+  const touched = watchRuns(on)
+  mock.session(on)
+  h.procs.push(argv => (argv[0] === 'git' && argv[1] === 'hash-object' ? `${'c'.repeat(40)}\n` : undefined))
+  const { author } = await setup($, h)
+  await $.tool.call({ tool: 'Write', file_path: `${ROOT}/${SPEC}`, content: 'x', agentId: author } as never)
+  expect(touched()[0]!.objectId).toBe('c'.repeat(40))
+})
+
+test('rows are capped per agent: one agent writing many files never evicts another agent\'s rows', () => {
+  const row = (agentId: string, i: number) => ({ agentId, rel: `tests/e2e/f-${i}.spec.ts`, top: ROOT, via: 'write' as const, at: i })
+  const rows = [row('orchestrator-1', 0), ...Array.from({ length: 6 }, (_, i) => row('author-2', i + 1))]
+  const kept = capRows(rows, 'author-2', 4)
+  expect(kept.filter(r => r.agentId === 'author-2').map(r => r.at)).toEqual([3, 4, 5, 6])
+  expect(kept.some(r => r.agentId === 'orchestrator-1')).toBe(true)
+  expect(capRows(rows, 'orchestrator-1', 4)).toEqual(rows)
+})

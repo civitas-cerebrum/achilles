@@ -5,6 +5,7 @@ import { registerBashJudge } from './hooks/bash-hook'
 import { dispatchAdvice } from './hooks/dispatch'
 import { registerOutbound } from './hooks/attribution'
 import { complianceReturn, registerComplianceNotes } from './hooks/compliance-notes'
+import { headOf } from './hooks/spec-lint-child'
 import { registerHygiene } from './hooks/hygiene'
 import { registerLedger } from './hooks/ledger'
 import { PANE, registerPane, rememberHandback } from './hooks/pane'
@@ -262,7 +263,9 @@ export const register: Register = on => {
     if (parent?.role === 'orchestrator') {
       if (started.agentId !== undefined) {
         const role = roleOf(subagentType)
-        const expert = { agentId: started.agentId, role, ...advice?.fields, since: await $.clock.now() }
+        // The commit the dispatch starts from: the author's hand-back is linted against it, so its own commits count.
+        const head = await headOf($, await $.session.cwd()).catch(() => undefined)
+        const expert = { agentId: started.agentId, role, ...advice?.fields, since: await $.clock.now(), ...(head ? { head } : {}) }
         await editRun($, parent.run.id, r => ({ ...r, experts: [...r.experts, expert], dispatched: { ...r.dispatched, [role]: (r.dispatched?.[role] ?? 0) + 1 } }))
         await refreshProgress($, parent.run.id)
       }
@@ -314,7 +317,7 @@ export const register: Register = on => {
       if (after?.held !== undefined && after.experts.length === 0)
         await handBack($, after, `${after.held}\n\nNote: the experts still at work when this hand-back was written have since reported; read ${after.dir}/reports/ before resuming.`)
       await Promise.all([
-        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e), complianceReturn($, w, e)] : []),
+        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e), complianceReturn($, w, e).catch(() => undefined)] : []),
         closeSelectorScope($, w, e),
         closeSessions($, w),
         recordFinished($, w, e),

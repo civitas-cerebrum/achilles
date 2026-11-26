@@ -13,6 +13,7 @@ import { Type } from '@earendil-works/pi-ai'
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
 import { engine, registerGuards } from './guards'
 import { complianceParagraph } from './compliance'
+import { headOf } from '../claude-code/hooks/spec-lint-child'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const ORCHESTRATOR = 'achilles-orchestrator'
@@ -187,9 +188,12 @@ export default function (pi: ExtensionAPI) {
       async execute(_id, params, signal, _update, ctx) {
         const expert = params.subagent_type.replace(/^achilles:/, '').replace(/^(?!achilles-)/, 'achilles-')
         if (!EXPERTS.includes(expert)) throw new Error(`Unknown expert "${params.subagent_type}". Dispatch one of ${EXPERTS.join(', ')}.`)
+        // An author's hand-back is linted against the commit its dispatch started from, so its own commits count.
+        const author = expert === 'achilles-author'
+        const head = author ? await headOf(engine(ctx.cwd, ROOT), ctx.cwd).catch(() => undefined) : undefined
         const { text, pid } = await runAgent(expert, params.prompt, ctx, signal)
-        // The test files the expert's process wrote, linted against HEAD: a short paragraph, notes only.
-        const compliance = await complianceParagraph(engine(ctx.cwd, ROOT), ctx.cwd, process.env.ACHILLES_RUN ?? 'pi', pid).catch(() => undefined)
+        // The files the author's process wrote, linted with touched-test semantics: a short paragraph, notes only.
+        const compliance = author ? await complianceParagraph(engine(ctx.cwd, ROOT), ctx.cwd, process.env.ACHILLES_RUN ?? 'pi', pid, head).catch(() => undefined) : undefined
         return { content: [{ type: 'text', text: compliance ? `${text}\n\n${compliance}` : text }], details: undefined }
       },
     })

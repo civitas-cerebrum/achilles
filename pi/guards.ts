@@ -25,13 +25,32 @@ export function engine(root: string, pluginRoot: string): EngineInterface {
     process: {
       run: (argv: string[], o: { cwd?: string; stdin?: string; timeoutMs?: number; env?: Record<string, string> } = {}) =>
         new Promise((resolve, reject) => {
-          const p = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd ?? root, env: { ...process.env, ...o.env }, timeout: o.timeoutMs })
+          const p = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd ?? root, env: { ...process.env, ...o.env } })
           let stdout = ''
           let stderr = ''
+          let settled = false
+          const finish = (f: () => void) => {
+            if (settled) return
+            settled = true
+            if (timer) clearTimeout(timer)
+            f()
+          }
+          // The wait is a bound: past it the child is killed outright and the call fails, even when the child
+          // ignores SIGTERM or a grandchild still holds its pipes.
+          const timer = o.timeoutMs
+            ? setTimeout(() => {
+                p.kill('SIGKILL')
+                p.stdout.destroy()
+                p.stderr.destroy()
+                finish(() => reject(new Error(`timed out after ${o.timeoutMs} ms`)))
+              }, o.timeoutMs)
+            : undefined
           p.stdout.on('data', d => (stdout += d))
           p.stderr.on('data', d => (stderr += d))
-          p.on('error', reject)
-          p.on('close', code => resolve({ stdout, stderr, exitCode: code ?? 1 }))
+          p.on('error', err => finish(() => reject(err)))
+          p.on('close', code => finish(() => resolve({ stdout, stderr, exitCode: code ?? 1 })))
+          // A child that exits before reading all of a large stdin closes the pipe: EPIPE is not this process's death.
+          p.stdin.on('error', () => undefined)
           p.stdin.end(o.stdin ?? '')
         }),
     },
@@ -80,15 +99,20 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
       if (typeof input.timeout !== 'number' || input.timeout <= 0) input.timeout = BASH_TIMEOUT
       const said = v.notes.filter(n => !n.startsWith('__slug:'))
       if (said.length > 0) notes.set(e.toolCallId, said)
-      const shell = shellRecorder($, ctx.cwd, runId, short, ('writes' in v ? v.writes : undefined) ?? [])
-      if (shell) settles.set(e.toolCallId, shell)
+      // Record only: a failure here never blocks the call (pi turns a handler's throw into a refusal).
+      try {
+        const shell = shellRecorder($, ctx.cwd, runId, short, ('writes' in v ? v.writes : undefined) ?? [])
+        if (shell) settles.set(e.toolCallId, shell)
+      } catch {}
       return
     }
     if ((e.toolName === 'write' || e.toolName === 'edit') && typeof input.path === 'string') {
       const { abs, rel } = placeFile(ctx.cwd, input.path)
-      const landed = e.toolName === 'write' ? (input.content ?? '') : await edited(abs, input.edits ?? [])
-      const settle = landed === undefined ? undefined : await writeRecorder($, ctx.cwd, runId, short, abs, landed)
-      if (settle) settles.set(e.toolCallId, settle)
+      try {
+        const landed = e.toolName === 'write' ? (input.content ?? '') : await edited(abs, input.edits ?? [])
+        const settle = landed === undefined ? undefined : await writeRecorder($, ctx.cwd, runId, short, abs, landed)
+        if (settle) settles.set(e.toolCallId, settle)
+      } catch {}
       // Run state the orchestrator and the gates read back (ledgers, cycle and coverage state,
       // resume files) must stay parseable: a write or edit that breaks one is refused.
       if (STATE_JSON.test(rel)) {

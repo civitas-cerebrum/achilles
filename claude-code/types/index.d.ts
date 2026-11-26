@@ -18,6 +18,8 @@ export type AchillesExpert = {
   evidence?: boolean
   /** When the expert was dispatched (epoch ms). */
   since?: number
+  /** The commit HEAD named in the session's work tree when the expert was dispatched: the base its hand-back is linted against. */
+  head?: string
 }
 
 /** One stage of a run's workflow: a pipeline ledger's phase, or an entry of the plan in the run's resume.json. */
@@ -40,8 +42,12 @@ export type AchillesTouched = {
   rel: string
   /** The git work tree the file sits in (a worktree write names that worktree). */
   top: string
-  /** The git object id of the content written; absent when the write could not be read back. */
+  /** The git object id of the file on disk after the write; absent when git could not say and the lint did not run. */
   objectId?: string
+  /** What the lint classed the file as (spec, support, k6, bundle), `none` when it is out of the lint's scope; absent when the lint could not run. Scope is decided when the list is read. */
+  kind?: string
+  /** The commit HEAD named in `top` when this agent first wrote there: the base its hand-back is linted against outside the session's work tree. */
+  base?: string
   /** How it was written: the Write or Edit tool, or a shell command. */
   via: 'write' | 'shell'
   at: number
