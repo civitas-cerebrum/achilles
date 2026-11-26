@@ -6,7 +6,7 @@ import { walk } from './util.mjs';
 //   a) test-baseline.md declares at least one rule and each id once; every rule
 //      heading `#### TB-<id> …` is reachable at `#tb-<id>` (its heading slug, or an
 //      explicit `<a id="tb-<id>">`); every cited `test-baseline.md#<anchor>` (and
-//      every in-file `](#<anchor>)`) exists; every bare `TB-<id>` under skills/ is a rule;
+//      every in-file `](#<anchor>)`) exists; every bare `TB-<id>` under skills/, docs/ and in CHANGELOG.md is a rule;
 //   b) the first sentence of each rule (its normative sentence, at least six
 //      words) appears in no other file under skills/, compared after
 //      normalising case, punctuation, backticks and whitespace.
@@ -16,7 +16,7 @@ const RULE_HEADING = /^#{2,6}\s+TB-([A-Z]\d+[a-z]?)\b/;
 // `test-baseline.md#tb-<id>` (a placeholder) is not a citation.
 const CITATION = /test-baseline\.md#([A-Za-z0-9_-]+)(?![A-Za-z0-9_<-])/g;
 const LOCAL_LINK = /\]\(#([A-Za-z0-9_-]+)\)/g;
-// A bare rule id named anywhere under skills/ (`TB-<id>` and `TB-…` placeholders do not match).
+// A bare rule id named under skills/, docs/ or in the changelog (`TB-<id>` and `TB-…` placeholders do not match).
 const BARE_ID = /\bTB-([A-Z]\d+[a-z]?)\b/g;
 
 export function normalise(text) {
@@ -126,15 +126,21 @@ export function baselineFindings(root = '.') {
     }
   }
 
+  // Bare rule ids: skills/, docs/ and the changelog.
+  if (ids.size) {
+    const named = [...walk(at('skills'), () => true), ...walk(at('docs'), (p) => p.endsWith('.md')), ...['CHANGELOG.md'].map(at).filter(existsSync)];
+    for (const file of named) {
+      const body = readFileSync(file, 'utf8');
+      for (const m of body.matchAll(BARE_ID)) {
+        if (!ids.has(m[1])) findings.citations.push(`${rel(file)}:${lineOf(body, m.index)}: TB-${m[1]} is not a rule of test-baseline.md`);
+      }
+    }
+  }
+
   const checked = rules.filter((r) => normalise(r.normative).split(' ').length >= MIN_WORDS);
   for (const file of walk(at('skills'), () => true)) {
     const name = rel(file);
     const body = readFileSync(file, 'utf8');
-    if (ids.size) {
-      for (const m of body.matchAll(BARE_ID)) {
-        if (!ids.has(m[1])) findings.citations.push(`${name}:${lineOf(body, m.index)}: TB-${m[1]} is not a rule of test-baseline.md`);
-      }
-    }
     if (name === BASELINE) continue;
     const flat = ` ${normalise(body)} `;
     for (const r of checked) {

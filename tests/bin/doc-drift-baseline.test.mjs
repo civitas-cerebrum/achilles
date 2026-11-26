@@ -127,11 +127,24 @@ test('a rule id declared twice is a finding', () => {
 test('a bare TB id under skills/ must name a rule; placeholders are not ids', () => {
   const root = tree({
     [BASELINE]: RULEBOOK,
-    'skills/review/SKILL.md': 'Check TB-A1 and TB-A2.\nThen TB-Q7, which does not exist.\nCite as `TB-<id>`.\n',
+    'skills/review/SKILL.md': 'Check TB-A1 and TB-A2.\nThen TB-Z7, which does not exist.\nCite as `TB-<id>`.\n',
   });
   const f = baselineFindings(root);
   assert.equal(f.citations.length, 1);
-  assert.match(f.citations[0], /skills\/review\/SKILL\.md:2: TB-Q7/);
+  assert.match(f.citations[0], /skills\/review\/SKILL\.md:2: TB-Z7/);
+});
+
+test('bare TB ids in docs/ and CHANGELOG.md must name a rule too', () => {
+  const root = tree({
+    [BASELINE]: RULEBOOK,
+    'docs/harness/claude-code.md': 'The lint reports TB-A1.\nAnd TB-Z8.\n',
+    'CHANGELOG.md': '# Changelog\n\n- Rules TB-A1 to TB-A2; also TB-Z9.\n',
+  });
+  const f = baselineFindings(root);
+  assert.deepEqual(f.citations.map((c) => c.replace(/:.*?: /, ': ')), [
+    'docs/harness/claude-code.md: TB-Z8 is not a rule of test-baseline.md',
+    'CHANGELOG.md: TB-Z9 is not a rule of test-baseline.md',
+  ]);
 });
 
 test('an absent rulebook is a finding, not a crash', () => {
