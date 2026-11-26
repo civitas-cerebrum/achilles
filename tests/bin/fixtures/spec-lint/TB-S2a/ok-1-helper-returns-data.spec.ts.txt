@@ -1,0 +1,18 @@
+// spec-lint fixture: a shared helper builds and returns data; the tests assert
+// rules: TB-S2a
+import { test, expect } from './fixtures/base';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+async function reserveName(steps: Steps) {
+  await steps.fill('username', 'SignupPage', 'taken');
+  return 'taken';
+}
+
+test('TCSG-000201 · a rejected name stays free', async ({ steps }) => {
+  const name = await reserveName(steps);
+  await steps.verifyText('availability', 'SignupPage', `${name} is available`);
+});
+test('TCSG-000202 · a rejected name shows the hint', async ({ steps }) => {
+  await reserveName(steps);
+  await steps.verifyPresence('nameHint', 'SignupPage');
+});

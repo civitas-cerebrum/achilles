@@ -1,0 +1,6 @@
+{
+  "description": "the spec reads steps.platform",
+  "rules": [
+    "TB-P2"
+  ]
+}

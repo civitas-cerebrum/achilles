@@ -1,0 +1,8 @@
+// spec-lint fixture: driver and browser calls
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0120 · signs in', async ({ steps, driver }) => {
+  await driver.$('~loginButton').click(); // EXPECT TB-P1
+  await browser.execute('mobile: scroll', { direction: 'down' }); // EXPECT TB-P1
+  await steps.verifyPresence('heading', 'HomeScreen');
+});

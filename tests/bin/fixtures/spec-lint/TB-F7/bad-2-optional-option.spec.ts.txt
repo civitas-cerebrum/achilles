@@ -1,0 +1,18 @@
+// spec-lint fixture: { optional: true } on steps calls, in a test and in a shared in-spec helper
+// rules: TB-F7
+import { test } from './fixtures/base';
+
+async function maybeToast(steps) {
+  await steps.waitForState('toast', 'HomePage', 'visible', { optional: true }); // EXPECT TB-F7
+}
+
+test('TCAB-0081 · optional waits', async ({ steps }) => {
+  await steps.click('dismiss', 'HomePage', { optional: true }); // EXPECT TB-F7
+  await maybeToast(steps);
+  await steps.verifyPresence('heading', 'HomePage');
+});
+
+test('TCAB-0082 · optional waits again', async ({ steps }) => {
+  await maybeToast(steps);
+  await steps.verifyPresence('heading', 'HomePage');
+});

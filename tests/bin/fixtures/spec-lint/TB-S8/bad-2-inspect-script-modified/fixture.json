@@ -1,0 +1,13 @@
+{
+  "rules": [
+    "TB-S8"
+  ],
+  "change": {
+    "tests/e2e/inspect/probe.spec.ts": [
+      3
+    ],
+    "tests/e2e/a.spec.ts": [
+      5
+    ]
+  }
+}

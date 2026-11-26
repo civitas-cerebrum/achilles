@@ -1,0 +1,15 @@
+// spec-lint fixture: a test factory called twice; a title with two ids (advisory)
+// rules: TB-S1
+import { test, expect } from './fixtures/base';
+
+function sizeTest(size: string) {
+  test(`TCPD-000300 · size ${size}`, async ({ steps }) => { // EXPECT TB-S1
+    await steps.click('sizeOption', 'ProductPage');
+  });
+}
+sizeTest('S');
+sizeTest('M');
+
+test('TCPD-000400 TCPD-000401 · two scenarios in one test', async ({ steps }) => { // EXPECT TB-S1/advisory
+  await steps.click('sizeOption', 'ProductPage');
+});

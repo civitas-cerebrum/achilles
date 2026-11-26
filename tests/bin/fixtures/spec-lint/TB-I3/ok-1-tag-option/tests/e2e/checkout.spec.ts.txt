@@ -1,0 +1,5 @@
+// spec-lint fixture: test titles and tags against the scenario block
+import { test, expect } from './fixtures/base';
+test('CHK-03 · cancelling the payment modal returns to checkout without an order', { tag: ['@e2e', '@checkout'] }, async ({ steps }) => {
+  await steps.click('cancelPayment', 'CheckoutPage');
+});

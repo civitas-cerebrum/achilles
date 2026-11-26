@@ -1,0 +1,8 @@
+// spec-lint fixture: on a web project the same literal is not a finding
+// rules: TB-P2
+import { test, expect } from './fixtures/base';
+
+const caps = { platformName: 'Android', 'appium:deviceName': 'Pixel 7' };
+test('TCAB-0133 · web', async ({ steps }) => {
+  await steps.verifyText('platform', 'HomePage', caps.platformName);
+});

@@ -1,0 +1,19 @@
+// spec-lint fixture: a tracker-key pointer; a describe pointer covers its tests
+// rules: TB-I4
+import { test, expect } from './fixtures/base';
+
+// The checkout double-charges on retry.
+// defect: SHOP-42
+test('TCCK-000101 · a retried payment charges once @known-defect', async ({ steps }) => {
+  await steps.verifyText('chargeCount', 'OrderPage', '1');
+});
+
+// defect: SHOP-43
+test.describe('refunds @known-defect', () => {
+  test('TCCK-000102 · a refund restores the balance', async ({ steps }) => {
+    await steps.verifyText('balance', 'AccountPage', '10.00');
+  });
+  test('TCCK-000103 · a refund emails a receipt @known-defect', async ({ steps }) => {
+    await steps.verifyPresence('receiptNotice', 'AccountPage');
+  });
+});

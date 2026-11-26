@@ -1,0 +1,12 @@
+// spec-lint fixture: pure iteration over data, and a loop in a hook, are not loops in a test body
+// rules: TB-F2
+import { test } from './fixtures/base';
+
+test.beforeEach(async ({ steps }) => {
+  for (const name of ['a', 'b']) await steps.fill(name, 'SetupPage', 'x');
+});
+
+test('TCAB-0022 · names are listed', async ({ steps }) => {
+  const names = ['Ann ', ' Bob'].map((n) => n.trim());
+  await steps.verifyText('names', 'ListPage', names.join(', '));
+});

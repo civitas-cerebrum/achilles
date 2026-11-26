@@ -1,0 +1,11 @@
+// spec-lint fixture: require of a query builder and an ORM import
+// rules: TB-N4
+import mongoose from 'mongoose'; // EXPECT TB-N4
+import { test, expect } from './fixtures/base';
+
+const knex = require('knex'); // EXPECT TB-N4
+
+test('TCAB-0111 · reads a row', async ({ steps }) => {
+  expect(knex && mongoose).toBeTruthy();
+  await steps.verifyPresence('heading', 'HomePage');
+});

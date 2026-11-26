@@ -1,0 +1,14 @@
+// spec-lint fixture: a sleep polling inside a while loop
+// place: tests/perf/sleep-in-while.js.js
+// rules: TB-K4
+import http from 'k6/http';
+import { sleep } from 'k6';
+import { config } from './config.js';
+export const options = { thresholds: { http_req_duration: ['p(95)<800'] } };
+export default function () {
+  let res = http.get(`${config.baseUrl}/api/jobs/1`);
+  while (res.json('state') !== 'done') {
+    sleep(1); // EXPECT TB-K4/advisory
+    res = http.get(`${config.baseUrl}/api/jobs/1`);
+  }
+}

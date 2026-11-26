@@ -1,0 +1,15 @@
+// spec-lint fixture: tests declared inside a loop and inside an iteration callback
+// rules: TB-S1
+import { test, expect } from './fixtures/base';
+
+for (const size of ['S', 'M']) {
+  test(`TCPD-00010${size} · the size is selectable`, async ({ steps }) => { // EXPECT TB-S1
+    await steps.click('sizeOption', 'ProductPage');
+  });
+}
+
+['red', 'blue'].forEach((colour) => {
+  test(`TCPD-000200 · ${colour} is selectable`, async ({ steps }) => { // EXPECT TB-S1
+    await steps.click('colourOption', 'ProductPage');
+  });
+});

@@ -1,0 +1,18 @@
+// spec-lint fixture: a describe-level helper with expect, used by two tests
+// rules: TB-S2a
+import { test, expect } from './fixtures/base';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+test.describe('catalogue', () => {
+  const expectCount = async (steps: Steps, n: number) => { // EXPECT TB-S2a/advisory
+    const count = await steps.getCount('productCard', 'CataloguePage');
+    expect(count).toBe(n);
+  };
+  test('TCCT-000101 · the first page holds twelve', async ({ steps }) => {
+    await expectCount(steps, 12);
+  });
+  test('TCCT-000102 · a filter narrows the list', async ({ steps }) => {
+    await steps.click('filterLamps', 'CataloguePage');
+    await expectCount(steps, 3);
+  });
+});

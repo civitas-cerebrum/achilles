@@ -1,0 +1,17 @@
+// spec-lint fixture: .only on a test and a describe, and a declared test.fail
+// rules: TB-F6
+import { test } from './fixtures/base';
+
+test.only('TCAB-0060 · focused', async ({ steps }) => { // EXPECT TB-F6/blocking
+  await steps.verifyPresence('heading', 'HomePage');
+});
+
+test.describe.only('focused group', () => { // EXPECT TB-F6/blocking
+  test('TCAB-0061 · inner', async ({ steps }) => {
+    await steps.verifyPresence('heading', 'HomePage');
+  });
+});
+
+test.fail('TCAB-0062 · a cancelled order is not charged', async ({ steps }) => { // EXPECT TB-F6/blocking
+  await steps.verifyText('chargeStatus', 'OrderPage', 'Not charged');
+});

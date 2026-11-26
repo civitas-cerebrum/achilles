@@ -1,0 +1,9 @@
+// spec-lint fixture: a database client imported in a spec
+// rules: TB-N4
+import { Client } from 'pg'; // EXPECT TB-N4
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0110 · reads a row', async ({ steps }) => {
+  expect(Client).toBeTruthy();
+  await steps.verifyPresence('heading', 'HomePage');
+});

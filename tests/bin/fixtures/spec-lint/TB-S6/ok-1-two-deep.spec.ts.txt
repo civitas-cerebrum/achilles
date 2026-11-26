@@ -1,0 +1,8 @@
+// spec-lint fixture: describes two deep
+// rules: TB-S6
+import { test, expect } from './fixtures/base';
+test.describe('level 1', () => {
+  test.describe('level 2', () => {
+    test('TCDS-000102 · deep', async ({ steps }) => { await steps.click('a', 'HomePage'); });
+  });
+});

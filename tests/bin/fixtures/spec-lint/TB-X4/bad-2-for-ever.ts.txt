@@ -1,0 +1,11 @@
+// spec-lint fixture: a for loop with no test
+// place: tests/e2e/flows/catalog-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function crawl(steps: Steps) {
+  for (let page = 0; ; page++) { // EXPECT TB-X4/advisory
+    if (!(await steps.isVisible('nextPage', 'CatalogPage'))) return page;
+    await steps.click('nextPage', 'CatalogPage');
+  }
+}

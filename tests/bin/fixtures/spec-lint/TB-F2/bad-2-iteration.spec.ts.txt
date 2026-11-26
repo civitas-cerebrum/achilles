@@ -1,0 +1,12 @@
+// spec-lint fixture: iteration callbacks that drive the test, and steps.repeat (preferred, still reviewed)
+// rules: TB-F2
+import { test } from './fixtures/base';
+
+const ITEMS = ['lamp', 'chair'];
+
+test('TCAB-0021 · every item can be added', async ({ steps }) => {
+  ITEMS.forEach(async (item) => { await steps.fill('search', 'ShopPage', item); }); // EXPECT TB-F2
+  await Promise.all(ITEMS.map((item) => steps.click(item, 'ShopPage'))); // EXPECT TB-F2
+  await steps.repeat(() => steps.click('addOne', 'ShopPage'), 3); // EXPECT TB-F2
+  await steps.verifyCount('cartRow', 'CartPage', { exactly: 2 });
+});

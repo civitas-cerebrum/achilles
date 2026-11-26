@@ -1,0 +1,9 @@
+// spec-lint fixture: clickIfPresent and ifVisible in a spec
+// rules: TB-F7
+import { test } from './fixtures/base';
+
+test('TCAB-0080 · optional clicks', async ({ steps }) => {
+  await steps.clickIfPresent('acceptCookies', 'HomePage'); // EXPECT TB-F7
+  await steps.on('promo', 'HomePage').ifVisible().click(); // EXPECT TB-F7
+  await steps.click('signInLink', 'HomePage');
+});

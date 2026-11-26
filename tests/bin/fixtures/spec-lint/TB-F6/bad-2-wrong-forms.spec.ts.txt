@@ -1,0 +1,30 @@
+// spec-lint fixture: test.fail outside the sentinel forms, and unconditional skips without a reason (advisory)
+// rules: TB-F6
+import { test } from './fixtures/base';
+
+test('TCAB-0063 · bare fail', async ({ steps }) => {
+  test.fail(); // EXPECT TB-F6/blocking
+  await steps.verifyPresence('heading', 'HomePage');
+});
+
+test('TCAB-0064 · form b without its pointer @known-defect', async ({ steps }) => {
+  test.fail(true, 'L3: the badge counts archived messages'); // EXPECT TB-F6/blocking
+  await steps.verifyText('inboxBadge', 'HomePage', '2');
+});
+
+test.describe('group', () => {
+  test.fail(true, 'L4: search drops accents'); // EXPECT TB-F6/blocking
+  test('TCAB-0065 · search keeps accents', async ({ steps }) => {
+    await steps.verifyText('result', 'SearchPage', 'café');
+  });
+});
+
+test.skip('TCAB-0066 · skipped without a reason', async ({ steps }) => { // EXPECT TB-F6/advisory
+  await steps.verifyPresence('heading', 'HomePage');
+});
+
+test('TCAB-0067 · runtime skip without a reason', async ({ steps }) => {
+  test.skip(); // EXPECT TB-F6/advisory
+  test.fixme(true); // EXPECT TB-F6/advisory
+  await steps.verifyPresence('heading', 'HomePage');
+});

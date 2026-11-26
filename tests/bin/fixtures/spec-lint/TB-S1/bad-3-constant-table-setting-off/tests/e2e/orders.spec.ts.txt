@@ -1,0 +1,14 @@
+// spec-lint fixture: the same non-UI constant table without the setting
+import { test, expect } from './fixtures/base';
+
+const CASES = [
+  { id: 'TCAP-000101', status: 200 },
+  { id: 'TCAP-000102', status: 404 },
+];
+
+for (const c of CASES) {
+  test(`${c.id} · the orders endpoint answers ${c.status}`, async ({ steps }) => { // EXPECT TB-S1
+    const res = await steps.apiGet('/orders');
+    expect(res.status).toBe(c.status);
+  });
+}

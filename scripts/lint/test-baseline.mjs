@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { walk } from './util.mjs';
 
@@ -9,7 +9,11 @@ import { walk } from './util.mjs';
 //      every in-file `](#<anchor>)`) exists; every bare `TB-<id>` under skills/, docs/ and in CHANGELOG.md is a rule;
 //   b) the first sentence of each rule (its normative sentence, at least six
 //      words) appears in no other file under skills/, compared after
-//      normalising case, punctuation, backticks and whitespace.
+//      normalising case, punctuation, backticks and whitespace;
+//   c) every rule whose Kind is mechanical (in whole or in part) has an engine
+//      rule in achilles-spec-lint (bin/lib/spec-lint/rules/*.mjs) and a fixture
+//      directory tests/bin/fixtures/spec-lint/<id>/, except the DEFERRED ones;
+//      every engine rule is a rule of the rulebook.
 export const BASELINE = 'skills/achilles-orchestrator/references/test-baseline.md';
 const MIN_WORDS = 6;
 const RULE_HEADING = /^#{2,6}\s+TB-([A-Z]\d+[a-z]?)\b/;
@@ -150,9 +154,66 @@ export function baselineFindings(root = '.') {
   return findings;
 }
 
+export const ENGINE_RULES_DIR = 'bin/lib/spec-lint/rules';
+export const FIXTURES_DIR = 'tests/bin/fixtures/spec-lint';
+// Mechanical rules the engine does not detect itself, and why.
+export const DEFERRED = {
+  'TB-A6': 'repository names resolve only once the lint resolves the repository exactly as the fixture does (a later unit)',
+  'TB-G2': 'rule inputs are decided at the commit gate (a later unit); the engine lists the rule only to keep it unwaivable',
+  'TB-P3': 'detected as TB-F1 on the platform branch',
+};
+
+/** Rule ids with their Kind text: [{ id, kind }]. */
+export function ruleKinds(text) {
+  const out = [];
+  const lines = stripFences(String(text).split('\n'));
+  let cur = null;
+  for (const line of lines) {
+    const h = line.match(RULE_HEADING);
+    if (h) { cur = { id: `TB-${h[1]}`, kind: null }; out.push(cur); continue; }
+    const k = cur && !cur.kind && /\*\*Kind\*\*\s+([^·\n]+)/.exec(line);
+    if (k) cur.kind = k[1].trim();
+  }
+  return out;
+}
+
+/** Ids the engine's rule families declare (`id: 'TB-…'` in RULES), with `pending` entries apart. */
+export function engineRuleIds(root = '.') {
+  const dir = join(root, ENGINE_RULES_DIR);
+  const ids = new Set();
+  const pending = new Set();
+  if (!existsSync(dir)) return { ids, pending };
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.mjs'))) {
+    for (const line of readFileSync(join(dir, f), 'utf8').split('\n')) {
+      const m = /^\s*\{\s*id:\s*'(TB-[A-Z]\d+[a-z]?)'/.exec(line);
+      if (m) (/\bpending:/.test(line) ? pending : ids).add(m[1]);
+    }
+  }
+  return { ids, pending };
+}
+
+export function engineCoverage(root = '.') {
+  const at = (p) => join(root, p);
+  const problems = [];
+  if (!existsSync(at(BASELINE))) return problems;
+  const rules = ruleKinds(readFileSync(at(BASELINE), 'utf8'));
+  const known = new Set(rules.map((r) => r.id));
+  const { ids, pending } = engineRuleIds(root);
+  for (const r of rules) {
+    if (!r.kind || !/mechanical/.test(r.kind) || DEFERRED[r.id]) continue;
+    if (!ids.has(r.id)) problems.push(`${BASELINE}: ${r.id} is mechanical (${r.kind}) but no rule family under ${ENGINE_RULES_DIR}/ implements it`);
+    const fx = at(join(FIXTURES_DIR, r.id));
+    if (!existsSync(fx) || !statSync(fx).isDirectory() || !readdirSync(fx).length) problems.push(`${r.id} has no fixture directory ${FIXTURES_DIR}/${r.id}/`);
+  }
+  for (const id of [...ids, ...pending]) if (!known.has(id)) problems.push(`${ENGINE_RULES_DIR}: ${id} is not a rule of ${BASELINE}`);
+  return problems;
+}
+
 export function run(report) {
   const f = baselineFindings('.');
   report(`test-baseline rules are reachable at #tb-<id> and their normative sentences are checkable`, f.rules.length === 0, f.rules);
   report('cited test-baseline.md anchors exist', f.citations.length === 0, f.citations);
   report('no file under skills/ restates a test-baseline normative sentence', f.restated.length === 0, f.restated);
+  const cov = engineCoverage('.');
+  report('every mechanical test-baseline rule has an achilles-spec-lint rule and fixtures', cov.length === 0, cov);
 }

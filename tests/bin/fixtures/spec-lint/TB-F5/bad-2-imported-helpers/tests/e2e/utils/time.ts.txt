@@ -1,0 +1,10 @@
+// support module: sleeps here are advisory
+import type { Page } from '@playwright/test';
+
+export async function delay(ms: number) {
+  await new Promise((r) => setTimeout(r, ms)); // EXPECT TB-F5/advisory
+}
+
+export async function settle(page: Page) {
+  await page.waitForTimeout(100); // EXPECT TB-F5/advisory
+}

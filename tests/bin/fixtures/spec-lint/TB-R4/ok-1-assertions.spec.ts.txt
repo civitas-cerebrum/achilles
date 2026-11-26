@@ -1,0 +1,17 @@
+// spec-lint fixture: steps.verify*, expect on data, and a Steps chain ending in a matcher count
+// rules: TB-R4
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0004 · verifies', async ({ steps }) => {
+  await steps.click('cartButton', 'HeaderPage');
+  await steps.verifyPresence('cartPanel', 'CartPage');
+});
+
+test('TCAB-0005 · expects data', async ({ steps }) => {
+  const n = await steps.getCount('rows', 'CartPage');
+  expect(n).toBe(2);
+});
+
+test('TCAB-0006 · fluent chain', async ({ steps }) => {
+  await steps.on('total', 'CartPage').text.toBe('9.99');
+});

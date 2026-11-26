@@ -1,0 +1,11 @@
+// spec-lint fixture: a beforeEach that checks the scenario's outcome
+// rules: TB-S9
+import { test, expect } from './fixtures/base';
+
+test.beforeEach(async ({ steps }) => { // EXPECT TB-S9/advisory
+  await steps.click('signInLink', 'HeaderPage');
+  await steps.verifyText('greeting', 'HomePage', 'Welcome back');
+});
+test('TCHK-000101 · orders show', async ({ steps }) => {
+  await steps.verifyPresence('ordersList', 'OrdersPage');
+});

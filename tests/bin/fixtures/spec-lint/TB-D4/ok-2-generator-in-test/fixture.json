@@ -1,0 +1,6 @@
+{
+  "description": "the generator is called per attempt",
+  "rules": [
+    "TB-D4"
+  ]
+}

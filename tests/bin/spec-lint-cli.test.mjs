@@ -12,7 +12,8 @@ const BIN = path.join(REPO, 'bin', 'spec-lint.mjs');
 const run = (root, args = []) => spawnSync(process.execPath, [BIN, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 const validate = makeAjv().compile(JSON.parse(readFileSync(path.join(REPO, 'schemas', 'spec-lint-report.schema.json'), 'utf8')));
 
-const CLEAN = "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ steps }) => { await steps.navigateTo('/'); });\n";
+const CLEAN = "import { test } from './fixtures/base';\ntest('TCAB-0001 · x', async ({ steps }) => { await steps.navigateTo('/'); await steps.verifyPresence('heading', 'HomePage'); });\n";
+const PINNED = { 'tests/compliance-baseline.json': '{ "idPattern": "house-default" }\n' };
 const RAW = "import { test } from './fixtures/base';\ntest('TCAB-0002 · x', async ({ page }) => {\n  await page.goto('/');\n});\n";
 
 function withProject(files, fn, opts) {
@@ -20,7 +21,7 @@ function withProject(files, fn, opts) {
   try { writeProject(root, files, opts); return fn(root); } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-test('a clean project exits 0 and prints the summary line', () => withProject({ 'tests/e2e/a.spec.ts': CLEAN }, (root) => {
+test('a clean project exits 0 and prints the summary line', () => withProject({ ...PINNED, 'tests/e2e/a.spec.ts': CLEAN }, (root) => {
   const r = run(root);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^spec-lint: 1 file\(s\), 0 blocking, 0 advisory/m);

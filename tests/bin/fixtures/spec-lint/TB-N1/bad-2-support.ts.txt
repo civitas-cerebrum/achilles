@@ -1,0 +1,9 @@
+// spec-lint fixture: HTTP in a support module is advisory
+// place: tests/e2e/support/seed.ts
+// rules: TB-N1
+const got = require('got'); // EXPECT TB-N1/advisory
+
+export async function seed() {
+  await fetch('/api/seed', { method: 'POST' }); // EXPECT TB-N1/advisory
+  return got;
+}

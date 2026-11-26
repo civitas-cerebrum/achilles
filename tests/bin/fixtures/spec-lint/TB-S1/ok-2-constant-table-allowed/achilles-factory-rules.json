@@ -1,0 +1,7 @@
+{
+  "rules": {
+    "specs.constant-table-tests": {
+      "allowed": true
+    }
+  }
+}

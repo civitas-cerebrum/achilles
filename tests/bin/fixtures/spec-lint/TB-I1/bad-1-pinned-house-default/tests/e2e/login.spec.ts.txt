@@ -1,0 +1,15 @@
+// spec-lint fixture: pinned house default: a missing id and a duplicate block; a dash separator is advisory
+import { test, expect } from './fixtures/base';
+
+test('wrong password is rejected', async ({ steps }) => { // EXPECT TB-I1/blocking
+  await steps.click('submit', 'LoginPage');
+});
+test('TCLG-000420 · a locked account is told so', async ({ steps }) => {
+  await steps.click('submit', 'LoginPage');
+});
+test('TCLG-000420 · a second test with the same id', async ({ steps }) => { // EXPECT TB-I1/blocking
+  await steps.click('submit', 'LoginPage');
+});
+test('TCLG-000430 — the dash is not the canonical separator', async ({ steps }) => { // EXPECT TB-I1/advisory
+  await steps.click('submit', 'LoginPage');
+});

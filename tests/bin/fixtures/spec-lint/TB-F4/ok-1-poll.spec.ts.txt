@@ -1,0 +1,8 @@
+// spec-lint fixture: expect.poll and toPass are allowed in a test
+// rules: TB-F4
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0042 · polls', async ({ steps }) => {
+  await expect.poll(() => steps.getCount('row', 'InboxPage')).toBeGreaterThan(0);
+  await expect(async () => { await steps.verifyPresence('newMail', 'InboxPage'); }).toPass();
+});

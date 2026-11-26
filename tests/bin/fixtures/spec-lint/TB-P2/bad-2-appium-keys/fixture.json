@@ -1,0 +1,6 @@
+{
+  "description": "appium: keys alone are capabilities",
+  "rules": [
+    "TB-P2"
+  ]
+}

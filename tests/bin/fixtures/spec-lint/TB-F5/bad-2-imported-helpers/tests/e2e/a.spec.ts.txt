@@ -1,0 +1,12 @@
+// spec-lint fixture: an imported sleep helper, timers/promises setTimeout, and a waiver that excuses a helper sleep
+import { setTimeout as pauseFor } from 'node:timers/promises';
+import { test } from './fixtures/base';
+import { delay } from './utils/time';
+
+test('TCAB-0051 · imported waits', async ({ steps }) => {
+  await delay(100); // EXPECT TB-F5/blocking
+  await pauseFor(100); // EXPECT TB-F5/blocking
+  // achilles-allow TB-F5 -- the third-party widget settles without any visible state
+  await delay(50); // EXPECT TB-F5/waived
+  await steps.verifyPresence('heading', 'HomePage');
+});

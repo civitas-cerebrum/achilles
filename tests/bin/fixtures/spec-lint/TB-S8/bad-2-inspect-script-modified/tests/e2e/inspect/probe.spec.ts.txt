@@ -1,0 +1,3 @@
+// a throwaway probe // EXPECT TB-S8
+import { test } from '@playwright/test';
+test('look', async ({ page }) => { await page.goto('/'); });

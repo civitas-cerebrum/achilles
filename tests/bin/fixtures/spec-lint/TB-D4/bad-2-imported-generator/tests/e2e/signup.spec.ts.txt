@@ -1,0 +1,10 @@
+// spec-lint fixture: module-scope generator call
+import { test, expect } from './fixtures/base';
+import { makeCustomer } from './data/users';
+
+const user = makeCustomer(); // EXPECT TB-D4
+
+test('TCAB-0061 · signs up', async ({ steps }) => {
+  await steps.fill('emailInput', 'SignupPage', user.email);
+  await steps.verifyPresence('welcome', 'SignupPage');
+});

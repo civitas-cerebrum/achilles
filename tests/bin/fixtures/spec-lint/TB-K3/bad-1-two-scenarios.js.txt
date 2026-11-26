@@ -1,0 +1,13 @@
+// spec-lint fixture: two scenarios in one script
+// place: tests/perf/two-scenarios.js.js
+// rules: TB-K3
+import http from 'k6/http';
+import { config } from './config.js';
+export const options = {
+  thresholds: { http_req_duration: ['p(95)<800'] },
+  scenarios: { // EXPECT TB-K3/advisory
+    browse: { executor: 'constant-vus', vus: 10, duration: '1m' },
+    soak: { executor: 'constant-vus', vus: 2, duration: '1h' },
+  },
+};
+export default function () { http.get(`${config.baseUrl}/api/items`); }

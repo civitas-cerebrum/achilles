@@ -1,0 +1,8 @@
+// spec-lint fixture: a retyped route
+import { test, expect } from './fixtures/base';
+import { Routes } from './data/routes';
+
+test('TCAB-0051 · opens login', async ({ steps }) => {
+  await steps.navigateTo('/login'); // EXPECT TB-D3/advisory
+  await steps.verifyUrlContains(Routes.LOGIN);
+});

@@ -1,0 +1,21 @@
+// spec-lint fixture: exactly 15 awaited statements within 40 lines
+// rules: TB-S5
+import { test, expect } from './fixtures/base';
+
+test('TCLN-000301 · at the limit', async ({ steps }) => {
+  await steps.click('item0', 'CartPage');
+  await steps.click('item1', 'CartPage');
+  await steps.click('item2', 'CartPage');
+  await steps.click('item3', 'CartPage');
+  await steps.click('item4', 'CartPage');
+  await steps.click('item5', 'CartPage');
+  await steps.click('item6', 'CartPage');
+  await steps.click('item7', 'CartPage');
+  await steps.click('item8', 'CartPage');
+  await steps.click('item9', 'CartPage');
+  await steps.click('item10', 'CartPage');
+  await steps.click('item11', 'CartPage');
+  await steps.click('item12', 'CartPage');
+  await steps.click('item13', 'CartPage');
+  await steps.click('item14', 'CartPage');
+});

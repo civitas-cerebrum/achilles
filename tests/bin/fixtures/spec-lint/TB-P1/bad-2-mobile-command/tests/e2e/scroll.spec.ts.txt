@@ -1,0 +1,8 @@
+// spec-lint fixture: mobile: command
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0121 · scrolls', async ({ steps }) => {
+  await steps.run('mobile: swipeGesture'); // EXPECT TB-P1
+  await $('~menu').click(); // EXPECT TB-P1
+  await steps.verifyPresence('heading', 'HomeScreen');
+});

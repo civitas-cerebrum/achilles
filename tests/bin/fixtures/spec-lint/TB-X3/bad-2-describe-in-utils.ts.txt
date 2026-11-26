@@ -1,0 +1,10 @@
+// spec-lint fixture: a utils module declares a describe
+// place: tests/e2e/utils/cart.ts
+// rules: TB-X3
+import { test } from '../fixtures/base';
+
+test.describe('cart', () => { // EXPECT TB-X3
+  test('adds', async ({ steps }) => { // EXPECT TB-X3
+    await steps.click('add', 'CartPage');
+  });
+});

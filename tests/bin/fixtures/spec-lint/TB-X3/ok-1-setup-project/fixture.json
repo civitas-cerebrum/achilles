@@ -1,0 +1,6 @@
+{
+  "description": "a setup file a config runs as a setup project may declare setup tests",
+  "rules": [
+    "TB-X3"
+  ]
+}

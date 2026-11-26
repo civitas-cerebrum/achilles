@@ -1,0 +1,9 @@
+// spec-lint fixture: a support collector keys a folder on test.info().title
+// place: tests/e2e/support/evidence.ts
+// rules: TB-R7
+import fs from 'node:fs';
+import { test } from '@playwright/test';
+
+export function evidenceDir() {
+  fs.mkdirSync(`evidence/${test.info().title}`, { recursive: true }); // EXPECT TB-R7/advisory
+}

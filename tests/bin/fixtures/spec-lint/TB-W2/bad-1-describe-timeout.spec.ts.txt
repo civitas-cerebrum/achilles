@@ -1,0 +1,10 @@
+// spec-lint fixture: a describe-level timeout
+// rules: TB-W2
+import { test, expect } from './fixtures/base';
+
+test.describe('reports', () => {
+  test.describe.configure({ timeout: 60_000 }); // EXPECT TB-W2/advisory
+  test('TCAB-0080 · loads', async ({ steps }) => {
+    await steps.verifyPresence('report', 'ReportsPage');
+  });
+});

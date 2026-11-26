@@ -1,0 +1,12 @@
+// spec-lint fixture: no pinned pattern: a missing id is advisory, plus one project finding; a template title is advisory
+// rules: TB-I1
+// expect-project: TB-I1
+import { test, expect } from './fixtures/base';
+
+const area = 'login';
+test('wrong password is rejected', async ({ steps }) => { // EXPECT TB-I1/advisory
+  await steps.click('submit', 'LoginPage');
+});
+test(`TCLG-000440 · ${area} works`, async ({ steps }) => { // EXPECT TB-I1/advisory
+  await steps.click('submit', 'LoginPage');
+});

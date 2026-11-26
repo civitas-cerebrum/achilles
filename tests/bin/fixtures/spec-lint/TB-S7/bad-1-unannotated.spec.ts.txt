@@ -1,0 +1,9 @@
+// spec-lint fixture: serial mode without its reason
+// rules: TB-S7
+import { test, expect } from './fixtures/base';
+
+test.describe.configure({ mode: 'serial' }); // EXPECT TB-S7
+
+test('TCSR-000101 · one', async ({ steps }) => {
+  await steps.click('addressAdd', 'AccountPage');
+});

@@ -1,0 +1,7 @@
+// spec-lint fixture: appium keys
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0131 · starts', async ({ steps }) => {
+  const extra = { 'appium:automationName': 'UiAutomator2' }; // EXPECT TB-P2
+  await steps.verifyText('platform', 'HomeScreen', String(extra));
+});

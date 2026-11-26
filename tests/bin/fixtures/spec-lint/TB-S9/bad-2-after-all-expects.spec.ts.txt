@@ -1,0 +1,13 @@
+// spec-lint fixture: an afterAll with expect
+// rules: TB-S9
+import { test, expect } from './fixtures/base';
+
+test.describe('orders', () => {
+  test.afterAll(async ({ steps }) => { // EXPECT TB-S9/advisory
+    const n = await steps.getCount('orderRow', 'OrdersPage');
+    expect(n).toBeGreaterThan(0);
+  });
+  test('TCHK-000201 · orders show', async ({ steps }) => {
+    await steps.verifyPresence('ordersList', 'OrdersPage');
+  });
+});

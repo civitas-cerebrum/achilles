@@ -1,0 +1,10 @@
+// spec-lint fixture: typed responses
+// place: tests/contracts/orders.spec.ts
+// rules: TB-N2
+import { test, expect } from '../e2e/fixtures/base';
+
+type Order = { id: number };
+test('TCAB-0102 · order shape', async ({ steps }) => {
+  const res = await steps.apiGet<Order>('/orders/7');
+  expect(res).toBeTruthy();
+});

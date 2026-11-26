@@ -1,0 +1,12 @@
+// spec-lint fixture: a single-use helper with an assertion is TB-S2, not TB-S2a
+// rules: TB-S2a
+import { test, expect } from './fixtures/base';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+async function checkBanner(steps: Steps) {
+  await steps.verifyPresence('banner', 'HomePage');
+}
+
+test('TCSG-000301 · the banner shows', async ({ steps }) => {
+  await checkBanner(steps);
+});

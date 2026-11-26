@@ -12,7 +12,8 @@
 //  11 anchors             every cited §"Heading" exists in the cited file
 //  12 role-dispatch-sites role names in prose ↔ the six agents; no dispatch-prefix grammar
 //  14 prose               em-dash density per file; banned stock phrases
-//  15 test-baseline       TB rule anchors and citations resolve; no skill restates a rule's normative sentence
+//  15 test-baseline       TB rule anchors and citations resolve; no skill restates a rule's normative sentence;
+//                         every mechanical rule has an achilles-spec-lint rule and fixtures
 //
 // Checks 3, 4, 7, 9 and 13 (hook manifest, role map, mandate ledger, activation
 // list, factory manifest) left with the bash hook runtime and the role kernel

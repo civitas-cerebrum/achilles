@@ -1,0 +1,6 @@
+// spec-lint fixture: a script without options
+// place: tests/perf/no-options.js.js
+// rules: TB-K2
+import http from 'k6/http'; // EXPECT TB-K2/advisory
+import { config } from './config.js';
+export default function () { http.get(`${config.baseUrl}/api/items`); }

@@ -1,0 +1,43 @@
+// Corpus spec: one seeded violation per blocking rule of the structure, identity, data and API families.
+import { test, expect } from './fixtures/base';
+import { Client } from 'pg'; // EXPECT TB-N4
+import { pause } from './utils/timing';
+
+const RUN_ID = Date.now(); // EXPECT TB-D4
+
+class CheckoutScreen { // EXPECT TB-S2
+  constructor(private readonly steps: unknown) {}
+}
+
+test('TC-0401 · first of a pair', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage'); // CLEAN
+});
+
+test('TC-0401 · second with the same id', async ({ page, steps }) => { // EXPECT TB-I1
+  const screen = new CheckoutScreen(steps); // EXPECT TB-S3
+  await pause(200); // EXPECT TB-F5
+  const res = await fetch('/api/health'); // EXPECT TB-N1
+  expect(res.ok).toBe(true);
+  await steps.verifyText('runId', 'HomePage', String(RUN_ID)); // CLEAN
+  await page.evaluate(() => fetch('/api/ping')); // EXPECT TB-A4
+});
+
+// see the README for the defect
+test('TC-0402 · the badge count matches the inbox @known-defect', async ({ steps }) => { // EXPECT TB-I4
+  await steps.verifyText('inboxBadge', 'HomePage', '2'); // CLEAN
+});
+
+// defect: SHOP-12
+test('TC-0403 · a pointed defect @known-defect', async ({ steps }) => {
+  await steps.verifyText('inboxBadge', 'HomePage', '3'); // CLEAN
+});
+
+test.describe('serial and annotated', () => {
+  // serial-deliberate: every test edits the one shared address book
+  test.describe.configure({ mode: 'serial' }); // CLEAN
+  test('TC-0404 · body', async ({ steps }) => {
+    await steps.verifyPresence('heading', 'HomePage'); // CLEAN
+  });
+});
+
+void Client;

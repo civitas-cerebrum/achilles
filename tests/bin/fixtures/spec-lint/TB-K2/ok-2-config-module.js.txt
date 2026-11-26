@@ -1,0 +1,4 @@
+// spec-lint fixture: a configuration module runs nothing
+// place: tests/perf/config-module.js.js
+// rules: TB-K2
+export const config = { baseUrl: __ENV.BASE_URL };

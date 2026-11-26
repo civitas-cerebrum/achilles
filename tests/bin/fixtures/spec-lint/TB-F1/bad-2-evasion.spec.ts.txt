@@ -1,0 +1,20 @@
+// spec-lint fixture: the evasion shapes: IIFE, one-pass loops, an awaited ternary, short-circuits
+// rules: TB-F1
+import { test } from './fixtures/base';
+
+test('TCAB-0002 · evasion shapes', async ({ steps }) => {
+  const shown = await steps.isVisible('banner', 'HomePage');
+  await (async () => { // EXPECT TB-F1
+    if (shown) await steps.click('dismiss', 'HomePage'); // EXPECT TB-F1
+  })();
+  do { // EXPECT TB-F1
+    if (shown) await steps.click('dismiss', 'HomePage'); // EXPECT TB-F1
+  } while (false);
+  for (let i = 0; i < 1; i++) { // EXPECT TB-F1
+    if (shown) await steps.click('dismiss', 'HomePage'); // EXPECT TB-F1
+  }
+  await (shown ? steps.click('dismiss', 'HomePage') : steps.click('open', 'HomePage')); // EXPECT TB-F1
+  shown || (await steps.click('open', 'HomePage')); // EXPECT TB-F1
+  const label = shown ?? (await steps.getText('label', 'HomePage')); // EXPECT TB-F1
+  await steps.verifyText('heading', 'HomePage', String(label));
+});

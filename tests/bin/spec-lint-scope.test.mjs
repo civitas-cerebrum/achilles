@@ -78,7 +78,8 @@ test('k6, bundles, inspect scripts, declarations and JSON', () => {
     assert.equal(k['tests/e2e/types.d.ts'], undefined);
     assert.equal(k['tests/e2e/page-repository.json'], undefined);
     assert.ok(report.findings.some((f) => f.file === 'tests/e2e/evidence/run-2/probe.spec.ts' && f.rule === 'TB-A2'));
-    assert.ok(!report.findings.some((f) => f.file.startsWith('tests/perf/') || f.file.includes('/inspect/')));
+    assert.ok(!report.findings.some((f) => (f.file.startsWith('tests/perf/') && !/^TB-K/.test(f.rule)) || f.file.includes('/inspect/')));
+    assert.deepEqual(report.findings.filter((f) => f.file.startsWith('tests/perf/')).map((f) => f.rule).sort(), ['TB-K1', 'TB-K2'], 'a k6 script gets only the k6 family');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -103,5 +104,36 @@ test('path arguments restrict the linted files', () => {
     const report = lintProject({ root, paths: ['tests/e2e/b.spec.ts'], useGit: false });
     assert.deepEqual(report.files.map((f) => f.path), ['tests/e2e/b.spec.ts']);
     assert.ok(report.findings.every((f) => f.file === 'tests/e2e/b.spec.ts'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a config-named globalSetup outside the spec roots is linted as support', () => {
+  const root = project({
+    'playwright.config.ts': "export default { testDir: 'tests/e2e', globalSetup: require.resolve('./global-setup'), globalTeardown: './global-teardown.ts' };\n",
+    'global-setup.ts': "import { chromium } from '@playwright/test';\nexport default async function () { const b = await chromium.launch(); const p = await b.newPage(); await p.goto('/warm'); }\n",
+    'global-teardown.ts': 'export default async function () {}\n',
+    'tests/e2e/a.spec.ts': SPEC,
+  });
+  try {
+    const report = lintProject({ root, useGit: false });
+    const k = kinds(report);
+    assert.equal(k['global-setup.ts'], 'support');
+    assert.equal(k['global-teardown.ts'], 'support');
+    assert.ok(report.findings.some((f) => f.file === 'global-setup.ts' && f.rule === 'TB-A12'), 'its raw calls are linted');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('one project-level advisory counts the code files under the spec roots that are neither spec nor support', () => {
+  const root = project({
+    'tests/e2e/a.spec.ts': SPEC,
+    'tests/e2e/misc/unused.ts': 'export const z = 3;\n',
+    'tests/e2e/misc/also-unused.ts': 'export const w = 4;\n',
+  });
+  try {
+    const report = lintProject({ root, useGit: false });
+    const notes = report.project.filter((p) => p.rule === 'scope' && /neither a spec nor a support module/.test(p.message));
+    assert.equal(notes.length, 1);
+    assert.match(notes[0].message, /^2 code files under the spec roots are neither a spec nor a support module and are not linted: tests\/e2e\/misc\/also-unused\.ts, tests\/e2e\/misc\/unused\.ts$/);
+    assert.equal(notes[0].severity, 'advisory');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

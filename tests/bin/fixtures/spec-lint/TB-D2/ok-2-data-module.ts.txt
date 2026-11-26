@@ -1,0 +1,6 @@
+// spec-lint fixture: env getters in a data module
+// place: tests/e2e/data/accounts.ts
+// rules: TB-D2
+export const StandingAccount = {
+  credentials: () => ({ email: process.env.E2E_EMAIL ?? '', password: process.env.E2E_PASSWORD ?? '' }),
+};

@@ -1,0 +1,9 @@
+// spec-lint fixture: constant holders and error classes are not page objects
+// place: tests/e2e/data/routes.ts
+// rules: TB-S3
+export class Routes {
+  static LOGIN = '/login';
+  static ORDERS = '/orders';
+}
+
+export class BackdoorUnavailableError extends Error {}

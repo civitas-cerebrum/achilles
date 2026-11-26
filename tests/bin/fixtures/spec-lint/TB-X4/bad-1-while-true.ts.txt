@@ -1,0 +1,12 @@
+// spec-lint fixture: an unbounded while loop in a verb
+// place: tests/e2e/flows/wizard-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function finishWizard(steps: Steps) {
+  while (true) { // EXPECT TB-X4/advisory
+    if (!(await steps.isVisible('nextButton', 'WizardPage'))) break;
+    await steps.click('nextButton', 'WizardPage');
+  }
+  await steps.verifyPresence('wizardDone', 'WizardPage');
+}

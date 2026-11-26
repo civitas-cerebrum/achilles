@@ -1,0 +1,9 @@
+// spec-lint fixture: on a web project the platform rules never fire
+// rules: TB-P1
+import { test, expect } from './fixtures/base';
+
+const driver = { $: (s: string) => s };
+test('TCAB-0123 · web', async ({ steps }) => {
+  driver.$('~loginButton');
+  await steps.verifyPresence('heading', 'HomePage');
+});

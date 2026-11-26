@@ -1,0 +1,14 @@
+// spec-lint fixture: generation once at module scope of a spec; a describe callback is advisory
+// rules: TB-D4
+import { test, expect } from './fixtures/base';
+
+const email = `user-${Date.now()}@example.com`; // EXPECT TB-D4
+const seed = Math.random(); // EXPECT TB-D4
+
+test.describe('signup', () => {
+  const nonce = crypto.randomUUID(); // EXPECT TB-D4/advisory
+  test('TCAB-0060 · signs up', async ({ steps }) => {
+    await steps.fill('emailInput', 'SignupPage', `${email}${seed}${nonce}`);
+    await steps.verifyPresence('welcome', 'SignupPage');
+  });
+});

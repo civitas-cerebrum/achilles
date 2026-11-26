@@ -1,10 +1,12 @@
 // Family G: governance (test-baseline.md §Family G). TB-G0 the file parses; TB-G1 waivers, gap citations
 // and register rows are well formed. TB-G2 (rule inputs are not weakened) is a commit-gate check of a
-// later unit.
+// later unit; its entry here makes it unwaivable.
 import { REGISTER } from '../waivers.mjs';
 
 export const RULES = [
   { id: 'TB-G0', title: 'the file does not parse', severity: 'blocking', appliesTo: ['spec', 'support'], waivable: false, do: 'Fix the syntax so the file parses as TypeScript or JavaScript.' },
+  // TB-G2 is decided at the commit gate (a later unit); listed here so no waiver applies to it.
+  { id: 'TB-G2', title: 'a rule input weakened without the person\'s decision', severity: 'blocking', appliesTo: ['protected inputs'], waivable: false, pending: 'commit gate', do: 'Return NEEDS_CONTEXT naming the input and the change; only the person decides.' },
   { id: 'TB-G1', title: 'malformed waiver, gap citation or register row', severity: 'blocking', appliesTo: ['spec', 'support', 'register'], waivable: false, do: 'Write `// achilles-allow TB-<id> -- <the actual obstacle, 15+ characters> [gap: FG-<n>]` on its own line directly above the one statement it excuses (at most 2 per test, never for an unwaivable rule), and cite only open rows that cover the call.' },
 ];
 
@@ -29,7 +31,7 @@ export function visitors(project) {
       });
     },
     projectEnd(p) {
-      const push = (file, line, message, extra = {}) => p.findings.push({ rule: 'TB-G1', severity: 'blocking', file, line, column: 1, region: 'module', message, do: extra.do || RULES[1].do, why: 'skills/achilles-orchestrator/references/test-baseline.md#tb-g1', test: extra.test || null, waived: false });
+      const push = (file, line, message, extra = {}) => p.findings.push({ rule: 'TB-G1', severity: 'blocking', file, line, column: 1, region: 'module', message, do: extra.do || RULES.find((r) => r.id === 'TB-G1').do, why: 'skills/achilles-orchestrator/references/test-baseline.md#tb-g1', test: extra.test || null, waived: false });
       const testAt = (f, line) => { const t = f.tests.find((x) => line >= x.line && line <= x.endLine); return t ? { title: t.title, id: t.id, line: t.line } : null; };
       for (const f of p.files) {
         for (const w of f.waivers || []) for (const msg of w.problems) push(f.rel, w.line, `waiver: ${msg}`, { test: testAt(f, w.line) });

@@ -9,12 +9,13 @@
 //   // expect-file: TB-G0                 a finding anywhere in the file (line not compared)
 // and markers on lines: `// EXPECT TB-A1 TB-A5/advisory TB-A2/waived` (this line), `// EXPECT-NEXT …`
 // (the next line), `<!-- EXPECT … -->` in Markdown. A directory fixture holds a project tree plus
-// fixture.json ({ rules, pin, project }). Projects are written outside any git checkout, so the surface
-// chain falls through to the shipped snapshot for the pinned version.
+// fixture.json ({ rules, pin, project, suite, change }); `change` maps a path to "A" (new), "D" (deleted) or a
+// list of changed lines, and the lint then runs as for --staged. Projects are written outside any git
+// checkout, so the surface chain falls through to the shipped snapshot for the pinned version.
 //
 // Code fixtures are stored with a `.txt` suffix (`bad-1-goto.spec.ts.txt`) so no TypeScript tooling run
 // over this repository (the plugin validator's type check) loads them; materialise() drops the suffix.
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +38,7 @@ export function tempRoot() {
 }
 
 export function writeProject(root, files, { pin = '0.3.12' } = {}) {
-  if (!('package.json' in files)) files = { 'package.json': JSON.stringify({ name: 'p', private: true, dependencies: { '@civitas-cerebrum/element-interactions': pin } }), ...files };
+  if (!('package.json' in files) && !existsSync(path.join(root, 'package.json'))) files = { 'package.json': JSON.stringify({ name: 'p', private: true, dependencies: { '@civitas-cerebrum/element-interactions': pin } }), ...files };
   for (const [rel, text] of Object.entries(files)) {
     const p = path.join(root, rel);
     mkdirSync(path.dirname(p), { recursive: true });
@@ -85,7 +86,10 @@ export function loadFixture(fixturePath, defaultRule) {
     writeProject(root, {}, { pin: meta.pin || '0.3.12' });
     const files = walk(root).filter((f) => f !== 'package.json');
     const expected = files.flatMap((f) => markers(readFileSync(path.join(root, f), 'utf8'), f));
-    return { root, rules: meta.rules || [defaultRule], expected, project: meta.project || [], fileLevel: [], cleanup: () => rmSync(root, { recursive: true, force: true }) };
+    const options = {};
+    if (meta.suite) options.suite = true;
+    if (meta.change) options.change = { from: 'the fixture', contents: new Map(), files: new Map(Object.entries(meta.change).map(([p, v]) => [p, v === 'A' ? { status: 'A', lines: null } : v === 'D' ? { status: 'D', lines: new Set() } : { status: 'M', lines: new Set(v) }])) };
+    return { root, rules: meta.rules || [defaultRule], expected, project: meta.project || [], fileLevel: [], options, cleanup: () => rmSync(root, { recursive: true, force: true }) };
   }
   const text = readFileSync(fixturePath, 'utf8');
   const place = header(text, 'place') || `tests/e2e/${path.basename(fixturePath).replace(/\.txt$/, '')}`;
@@ -93,7 +97,7 @@ export function loadFixture(fixturePath, defaultRule) {
   const rules = (header(text, 'rules') || defaultRule).split(/\s+/);
   const project = (header(text, 'expect-project') || '').split(/\s+/).filter(Boolean);
   const fileLevel = (header(text, 'expect-file') || '').split(/\s+/).filter(Boolean).map((rule) => ({ file: place, rule }));
-  return { root, rules, expected: markers(text, place), project, fileLevel, place, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, rules, expected: markers(text, place), project, fileLevel, place, options: {}, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 const key = (f) => `${f.file}:${f.line} ${f.rule}${f.status ? `/${f.status}` : ''}`;

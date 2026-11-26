@@ -1,0 +1,9 @@
+// spec-lint fixture: the recorded house default; every title has its own id and the middle dot
+import { test, expect } from './fixtures/base';
+
+test('TCLG-000101 · a wrong password is rejected', async ({ steps }) => {
+  await steps.click('submit', 'LoginPage');
+});
+test('[TCLG-000102] · a bracketed id is accepted', async ({ steps }) => {
+  await steps.click('submit', 'LoginPage');
+});

@@ -1,0 +1,13 @@
+// spec-lint fixture: branching on the retry attempt, and a while(true) retry
+// rules: TB-F4
+import { test } from './fixtures/base';
+
+test('TCAB-0041 · knows its attempt', async ({ steps }, testInfo) => {
+  const fresh = testInfo.retry === 0; // EXPECT TB-F4
+  const again = test.info().retry > 0; // EXPECT TB-F4
+  while (true) { // EXPECT TB-F4
+    await steps.click('refresh', 'InboxPage');
+    if (await steps.isVisible('newMail', 'InboxPage')) break;
+  }
+  await steps.verifyText('status', 'InboxPage', `${fresh} ${again}`);
+});

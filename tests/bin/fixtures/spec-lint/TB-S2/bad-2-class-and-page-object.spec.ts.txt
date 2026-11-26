@@ -1,0 +1,13 @@
+// spec-lint fixture: a class and a page-object construction in a spec
+// rules: TB-S2
+import { test, expect } from './fixtures/base';
+
+class Basket { // EXPECT TB-S2
+  items = 0;
+}
+
+test('TCST-000201 · the basket starts empty', async ({ steps }) => {
+  const basket = new Basket();
+  const checkout = new CheckoutPage(); // EXPECT TB-S2
+  await steps.verifyText('basketCount', 'HeaderPage', String(basket.items + checkout.offset));
+});

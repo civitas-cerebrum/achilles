@@ -1,0 +1,9 @@
+// spec-lint fixture: a verb in a flow module may branch on optional app state
+// place: tests/e2e/flows/promo.ts
+// rules: TB-F1
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function dismissPromo(steps: Steps) {
+  if (await steps.isVisible('promoBanner', 'HomePage')) await steps.click('closePromo', 'HomePage');
+  await steps.verifyAbsence('promoBanner', 'HomePage');
+}

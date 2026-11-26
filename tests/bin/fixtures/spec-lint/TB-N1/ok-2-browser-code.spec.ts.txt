@@ -1,0 +1,8 @@
+// spec-lint fixture: fetch inside page scripting is browser code, not a spec call
+// rules: TB-N1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0092 · in page', async ({ steps }) => {
+  await steps.evaluateScript(() => fetch('/api/ping'));
+  await steps.verifyPresence('heading', 'HomePage');
+});

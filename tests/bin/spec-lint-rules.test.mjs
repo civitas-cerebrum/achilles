@@ -2,16 +2,19 @@
 // bindings/ produces exactly the findings its markers name (see spec-lint-helpers.mjs for the grammar).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { lintProject } from '../../bin/lib/spec-lint/engine.mjs';
-import { FIXTURES, loadFixture, compare, tempRoot, writeProject } from './spec-lint-helpers.mjs';
+import { FIXTURES, REPO, loadFixture, compare, tempRoot, writeProject } from './spec-lint-helpers.mjs';
+import { ruleKinds, DEFERRED } from '../../scripts/lint/test-baseline.mjs';
 import { rmSync } from 'node:fs';
 
 const dirs = readdirSync(FIXTURES).filter((d) => /^TB-|^bindings$/.test(d) && statSync(path.join(FIXTURES, d)).isDirectory()).sort();
 
-// The mechanical rules of this engine: each needs at least two compliant and two non-compliant fixtures.
-const MECHANICAL = ['TB-A1', 'TB-A2', 'TB-A2b', 'TB-A3', 'TB-A4', 'TB-A5', 'TB-A7', 'TB-A9', 'TB-A10', 'TB-A11', 'TB-A12', 'TB-A13', 'TB-A14', 'TB-G0', 'TB-G1'];
+// The mechanical rules of the rulebook the engine implements (every Kind that is mechanical in whole or in
+// part, except the deferred ones): each needs at least two compliant and two non-compliant fixtures.
+const MECHANICAL = ruleKinds(readFileSync(path.join(REPO, 'skills/achilles-orchestrator/references/test-baseline.md'), 'utf8'))
+  .filter((r) => /mechanical/.test(r.kind || '') && !DEFERRED[r.id]).map((r) => r.id);
 
 test('no fixture is stored with a code extension (TypeScript tooling over the repository must not load them)', () => {
   const walk = (d) => readdirSync(d).flatMap((f) => (statSync(path.join(d, f)).isDirectory() ? walk(path.join(d, f)) : [path.join(d, f)]));
@@ -32,10 +35,10 @@ for (const dir of dirs) {
     test(`${dir}/${name}`, () => {
       const fx = loadFixture(path.join(FIXTURES, dir, name), dir);
       try {
-        const report = lintProject({ root: fx.root });
+        const report = lintProject({ root: fx.root, ...fx.options });
         assert.deepEqual(compare(report, fx), []);
         if (name.startsWith('ok-')) {
-          const blocking = report.findings.filter((f) => fx.rules.includes(f.rule) && f.severity === 'blocking' && !f.waived);
+          const blocking = report.findings.filter((f) => fx.rules.includes(f.rule) && f.severity === 'blocking' && !f.waived && f.touched !== false);
           assert.deepEqual(blocking.map((f) => `${f.rule} ${f.file}:${f.line}`), [], 'a compliant fixture has no unwaived blocking finding of its rules');
         }
       } finally { fx.cleanup(); }

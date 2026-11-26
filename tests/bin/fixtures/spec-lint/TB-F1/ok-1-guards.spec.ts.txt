@@ -1,0 +1,24 @@
+// spec-lint fixture: guard-throws, skip guards, bookkeeping, loop control, value ternaries, an if in a real
+// loop and branches in a route handler are not TB-F1
+// rules: TB-F1
+import { test } from './fixtures/base';
+
+test('TCAB-0010 · guards and bookkeeping', async ({ page, steps }) => {
+  await page.route('**/api/cart', async (route) => {
+    if (route.request().method() === 'GET') await route.fulfill({ json: [] });
+    else await route.continue();
+  });
+  const rows = await steps.getCount('row', 'CartPage');
+  if (rows === 0) throw new Error('the cart fixture returned an empty cart');
+  test.skip(rows > 50, 'premise: the cart holds at most 50 rows');
+  if (rows > 40) test.skip(true, 'premise: a small cart');
+  let label = 'none';
+  if (rows > 1) label = 'many';
+  const kind = rows > 1 ? 'plural' : 'single';
+  const shown = (await steps.isVisible('banner', 'CartPage')) ? 'shown' : 'hidden';
+  for (const r of [1, 2, 3]) {
+    if (r > rows) break;
+    if (r === 2) await steps.click('row', 'CartPage');
+  }
+  await steps.verifyText('summary', 'CartPage', `${label} ${kind} ${shown}`);
+});

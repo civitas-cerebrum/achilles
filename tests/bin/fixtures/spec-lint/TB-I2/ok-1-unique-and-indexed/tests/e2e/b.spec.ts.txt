@@ -1,0 +1,5 @@
+// spec-lint fixture: unique ids, all indexed
+import { test, expect } from './fixtures/base';
+test('TCAB-000102 · second', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage');
+});

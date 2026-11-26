@@ -1,0 +1,8 @@
+// spec-lint fixture: an id the index does not list
+import { test, expect } from './fixtures/base';
+test('TCAB-000101 · first', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage');
+});
+test('TCAB-000102 · second', async ({ steps }) => { // EXPECT TB-I2
+  await steps.verifyPresence('heading', 'HomePage');
+});

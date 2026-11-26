@@ -1,0 +1,8 @@
+// spec-lint fixture: a short test
+// rules: TB-S5
+import { test, expect } from './fixtures/base';
+
+test('TCLN-000401 · short', async ({ steps }) => {
+  await steps.click('item', 'CartPage');
+  await steps.verifyPresence('cartBadge', 'HeaderPage');
+});

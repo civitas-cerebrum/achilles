@@ -1,0 +1,12 @@
+// spec-lint fixture: a class whose method calls steps; a class extending a screen base
+// place: tests/e2e/flows/checkout.ts
+// rules: TB-S3
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export class CheckoutFlow { // EXPECT TB-S3
+  async pay(steps: Steps) {
+    await steps.click('payButton', 'CheckoutPage');
+  }
+}
+
+export class AccountScreen extends BaseScreen {} // EXPECT TB-S3

@@ -1,0 +1,10 @@
+// spec-lint fixture: rejection handlers that turn a failure into a constant
+// rules: TB-F3
+import { test } from './fixtures/base';
+
+test('TCAB-0030 · swallowed reads', async ({ steps }) => {
+  const banner = await steps.getText('statusBanner', 'OrderPage').catch(() => null); // EXPECT TB-F3
+  await steps.click('refresh', 'OrderPage').catch(() => {}); // EXPECT TB-F3
+  const ok = await steps.isVisible('receipt', 'OrderPage').catch(() => false); // EXPECT TB-F3
+  await steps.verifyText('summary', 'OrderPage', `${banner} ${ok}`);
+});

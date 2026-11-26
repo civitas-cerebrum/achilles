@@ -1,0 +1,7 @@
+// spec-lint fixture: a JWT-shaped literal and an apiKey property in a data module
+// place: tests/e2e/data/accounts.ts
+// rules: TB-D2
+export const session = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlLXBhcnQ'; // EXPECT TB-D2/advisory
+export const client = {
+  apiKey: 'key-live-abcdef', // EXPECT TB-D2/advisory
+};

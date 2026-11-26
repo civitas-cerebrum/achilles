@@ -1,0 +1,9 @@
+// spec-lint fixture: an untyped request* call in a contract test
+// place: tests/contracts/carts.spec.ts
+// rules: TB-N2
+import { test, expect } from '../e2e/fixtures/base';
+
+test('TCAB-0101 · cart shape', async ({ steps }) => {
+  const res = await steps.requestPost('/carts', {}); // EXPECT TB-N2/advisory
+  expect(res).toBeTruthy();
+});

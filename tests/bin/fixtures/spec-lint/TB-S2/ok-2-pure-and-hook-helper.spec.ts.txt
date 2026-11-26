@@ -1,0 +1,24 @@
+// spec-lint fixture: a pure helper used once; a UI helper a hook runs for every test of its describe
+// rules: TB-S2
+import { test, expect } from './fixtures/base';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+function label(n: number) {
+  return `#${n}`;
+}
+
+async function openSettings(steps: Steps) {
+  await steps.click('settingsLink', 'HeaderPage');
+}
+
+test.describe('settings', () => {
+  test.beforeEach(async ({ steps }) => {
+    await openSettings(steps);
+  });
+  test('TCST-000401 · the panel shows', async ({ steps }) => {
+    await steps.verifyText('panelTitle', 'SettingsPage', label(1));
+  });
+  test('TCST-000402 · the panel closes', async ({ steps }) => {
+    await steps.click('closePanel', 'SettingsPage');
+  });
+});

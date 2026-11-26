@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { baselineFindings, normalise, ruleSections } from '../../scripts/lint/test-baseline.mjs';
+import { baselineFindings, normalise, ruleSections, engineCoverage, ruleKinds, DEFERRED } from '../../scripts/lint/test-baseline.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BASELINE = 'skills/achilles-orchestrator/references/test-baseline.md';
@@ -164,4 +164,30 @@ test('this repository passes both checks', () => {
   const expected = [...range('A', 14), 'A2b', ...range('F', 7), ...range('S', 9), 'S2a', ...range('I', 4), ...range('R', 8),
     ...range('D', 5), ...range('W', 2), ...range('X', 4), ...range('P', 3), ...range('N', 4), ...range('K', 4), ...range('G', 3)];
   assert.deepEqual([...ids].sort(), [...expected].sort());
+});
+
+test('engine coverage: a mechanical rule needs an engine rule and a fixture directory; judgment rules and deferred ones do not', () => {
+  const book = [
+    '#### TB-A1 One', '', 'First rule sentence for the lint check here.', '', '- **Source** W · **Kind** mechanical · **Severity** blocking', '',
+    '#### TB-A6 Two', '', 'Second rule sentence for the lint check here.', '', '- **Source** W · **Kind** mechanical · **Severity** advisory', '',
+    '#### TB-R1 Three', '', 'Third rule sentence for the lint check here.', '', '- **Source** W · **Kind** judgment · **Severity** blocking', '',
+    '#### TB-F2 Four', '', 'Fourth rule sentence for the lint check here.', '', '- **Source** W · **Kind** mechanical and judgment · **Severity** advisory', '',
+  ].join('\n');
+  assert.deepEqual(ruleKinds(book).map((r) => `${r.id} ${r.kind}`), ['TB-A1 mechanical', 'TB-A6 mechanical', 'TB-R1 judgment', 'TB-F2 mechanical and judgment']);
+  const root = tree({
+    [BASELINE]: book,
+    'bin/lib/spec-lint/rules/a.mjs': "export const RULES = [\n  { id: 'TB-A1', title: 'x' },\n  { id: 'TB-Z9', title: 'not in the book' },\n];\n",
+    'tests/bin/fixtures/spec-lint/TB-A1/ok-1.txt': 'x\n',
+  });
+  assert.deepEqual(engineCoverage(root), [
+    `${BASELINE}: TB-F2 is mechanical (mechanical and judgment) but no rule family under bin/lib/spec-lint/rules/ implements it`,
+    'TB-F2 has no fixture directory tests/bin/fixtures/spec-lint/TB-F2/',
+    'bin/lib/spec-lint/rules: TB-Z9 is not a rule of skills/achilles-orchestrator/references/test-baseline.md',
+  ]);
+});
+
+test('engine coverage of the shipped rulebook: every mechanical rule has an engine rule and fixtures', () => {
+  assert.deepEqual(engineCoverage(REPO), []);
+  const ids = new Set(ruleKinds(readFileSync(join(REPO, BASELINE), 'utf8')).map((r) => r.id));
+  assert.deepEqual(Object.keys(DEFERRED).filter((id) => !ids.has(id)), [], 'every deferred id is a rule');
 });

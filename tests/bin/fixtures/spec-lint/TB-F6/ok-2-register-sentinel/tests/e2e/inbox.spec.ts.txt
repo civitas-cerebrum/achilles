@@ -1,0 +1,14 @@
+// spec-lint fixture: sentinel form (b): test.fail(true, '<key>: …'), @known-defect, and a pointer resolving to the key
+import { test } from './fixtures/base';
+
+// defect: tests/e2e/docs/known-issues.md#l3-badge-counts-archived
+test('TCAB-0072 · the badge count matches the inbox @known-defect', async ({ steps }) => {
+  test.fail(true, 'L3: the badge counts archived messages');
+  await steps.verifyText('inboxBadge', 'HomePage', '2');
+});
+
+// defect: tests/e2e/docs/known-issues.md#l4
+test('TCAB-0073 · search keeps accents', { tag: '@known-defect' }, async ({ steps }) => {
+  test.fail(true, 'L4: search drops accents');
+  await steps.verifyText('result', 'SearchPage', 'café');
+});

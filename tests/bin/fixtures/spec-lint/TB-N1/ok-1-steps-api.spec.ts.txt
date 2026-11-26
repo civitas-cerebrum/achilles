@@ -1,0 +1,8 @@
+// spec-lint fixture: HTTP through the Steps API
+// rules: TB-N1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0091 · reads a user', async ({ steps }) => {
+  const res = await steps.apiGet('/users/42');
+  expect(res).toBeTruthy();
+});

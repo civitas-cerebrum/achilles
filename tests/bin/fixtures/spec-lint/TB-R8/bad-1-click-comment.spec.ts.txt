@@ -1,0 +1,10 @@
+// spec-lint fixture: a comment that says what the next line does
+// rules: TB-R8
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0020 · resends', async ({ steps }) => {
+  // EXPECT-NEXT TB-R8/advisory
+  // click the resend button
+  await steps.click('resendCode', 'TwoFactorPage');
+  await steps.verifyPresence('codeSent', 'TwoFactorPage');
+});
