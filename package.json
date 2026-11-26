@@ -11,7 +11,8 @@
     "schemas:lint": "node scripts/compile-schemas.mjs && node scripts/validate-schema-fixtures.mjs",
     "test": "node scripts/run-suites.mjs",
     "check:pack": "node scripts/check-pack.mjs",
-    "prepack": "npm run check:pack && npm test"
+    "prepack": "npm run check:pack && npm test",
+    "build:equivalents": "node scripts/build-equivalents.mjs"
   },
   "bin": {
     "achilles-self-repair": "bin/self-repair.mjs",
