@@ -33,6 +33,20 @@ export type AchillesSelectorScope = {
   steps: { name: string; status: 'pass' | 'fail' }[]
 }
 
+/** A test-code file an Achilles agent wrote in a run: who, where (its path in its own git work tree) and the git object id it left. */
+export type AchillesTouched = {
+  agentId: string
+  /** The file's path relative to `top`. */
+  rel: string
+  /** The git work tree the file sits in (a worktree write names that worktree). */
+  top: string
+  /** The git object id of the content written; absent when the write could not be read back. */
+  objectId?: string
+  /** How it was written: the Write or Edit tool, or a shell command. */
+  via: 'write' | 'shell'
+  at: number
+}
+
 /** One delegated QA task: the orchestrator loop running it (once known) and the experts it has running now. */
 export type AchillesRun = {
   id: string
@@ -61,6 +75,8 @@ export type AchillesRun = {
   step?: string
   /** The experts that handed back, oldest first, the last few kept. */
   finished?: AchillesFinished[]
+  /** Test-code files the run's agents wrote, the latest write per agent and file. */
+  touched?: AchillesTouched[]
 }
 
 declare module 'claude-code' {

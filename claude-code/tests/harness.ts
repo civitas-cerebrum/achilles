@@ -142,12 +142,37 @@ export function engine(on: On, opts: { env?: Record<string, string>; files?: Rec
       const full = typeof r === 'string' ? { stdout: r } : r
       return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false, ...full } }
     }
+    // The test-baseline lint answers clean, classing every file under tests/ as a spec, unless a test answers it first.
+    const lint = e.argv.findIndex(a => a.endsWith('/bin/spec-lint.mjs'))
+    if (lint >= 0) return { value: { exitCode: 0, stdout: JSON.stringify(cleanLint(e.argv.slice(lint + 1), e.init?.stdin)), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     // The plugin's own node scanners answer clean unless a test answers them first.
     const clean = e.argv.some(a => a.endsWith('test-id-scan.js')) ? '{"untagged":[],"duplicates":[]}' : e.argv.some(a => a.endsWith('import-boundary-scan.js')) ? '{"scope":"tests","offenders":[]}' : e.argv.some(a => a.endsWith('validate.mjs')) ? '{"ok":true}' : e.argv.some(a => a.endsWith('archive-run.mjs')) ? '{"archived":false,"why":"no artefacts on disk"}' : undefined
     if (clean !== undefined) return { value: { exitCode: 0, stdout: clean, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     return { value: { exitCode: 127, stdout: '', stderr: `not mocked: ${e.argv.join(' ')}`, isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return { files, mtimes, write, remove, procs, ran, spawns, prompts, status: () => status, written: () => writtenPaths, tools, agents, clock }
+}
+
+/** A fake git object id for a text: stable, 40 hex digits. */
+export const fakeBlob = (text: string) => {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619)
+  return (h >>> 0).toString(16).padStart(8, '0').repeat(5)
+}
+
+/** The clean report of the test-baseline lint for its argv (after the script) and stdin: files under tests/ are specs. */
+export function cleanLint(args: readonly string[], stdin?: string) {
+  const valued = new Set(['--base', '--budget-ms'])
+  let files: { path: string; text: string }[] = []
+  if (args.includes('--stdin')) {
+    const input = JSON.parse(stdin ?? '{}') as { file?: string; after?: string }
+    files = [{ path: input.file ?? '', text: input.after ?? '' }]
+  } else for (let i = 0; i < args.length; i++) {
+    if (valued.has(args[i]!)) i++
+    else if (!args[i]!.startsWith('-')) files.push({ path: args[i]!, text: args[i]! })
+  }
+  const inScope = files.filter(f => f.path.startsWith('tests/'))
+  return { tool: 'achilles-spec-lint', ok: true, files: inScope.map(f => ({ path: f.path, kind: 'spec', blob: fakeBlob(f.text), parsed: true, tests: [] })), findings: [], project: [], summary: { files: inScope.length, blocking: 0, advisory: 0, waived: 0 } }
 }
 
 /** Starts a run through delegate_qa; the orchestrator's agent id is `orchestrator-<n>`. */

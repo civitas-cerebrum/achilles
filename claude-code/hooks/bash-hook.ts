@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 
 import { judgeBash } from './bash-judge'
 import { contentSecret } from './secrets'
+import { recordShellWrites } from './compliance-notes'
 import { editExpert, factoryRules, isDisabled, note, placeFile, ruleOf, threeLine, who, writtenText } from './context'
 
 // The Bash judge and the secrets screen on Claude Code's tool.call, for the Achilles agents' loops.
@@ -30,7 +31,10 @@ export function registerBashJudge(on: On) {
       await editExpert($, w.run.id, agentId, x => ({ ...x, slugs: [...new Set([...(x.slugs ?? []), ...slugs])] }))
     }
     for (const n of notes) await note($, e.agentId, n)
-    return next(v.command === e.command ? e : { ...e, command: v.command })
+    const ran = await next(v.command === e.command ? e : { ...e, command: v.command })
+    // Record only: the test files the command wrote join the run's touched list.
+    if ((v.writes ?? []).length > 0 && ran.deny === undefined && e.agentId !== undefined) await recordShellWrites($, w, e.agentId, v.writes!).catch(() => undefined)
+    return ran
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'achilles: its Bash judge failed, so the call is refused.' }))
 
   // The factory rule secrets.none: a credential or PII shape never lands in a committed file. Hook 1 owns this deny.

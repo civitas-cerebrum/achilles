@@ -4,6 +4,7 @@ import type { AchillesRun } from './types'
 import { registerBashJudge } from './hooks/bash-hook'
 import { dispatchAdvice } from './hooks/dispatch'
 import { registerOutbound } from './hooks/attribution'
+import { complianceReturn, registerComplianceNotes } from './hooks/compliance-notes'
 import { registerHygiene } from './hooks/hygiene'
 import { registerLedger } from './hooks/ledger'
 import { PANE, registerPane, rememberHandback } from './hooks/pane'
@@ -313,7 +314,7 @@ export const register: Register = on => {
       if (after?.held !== undefined && after.experts.length === 0)
         await handBack($, after, `${after.held}\n\nNote: the experts still at work when this hand-back was written have since reported; read ${after.dir}/reports/ before resuming.`)
       await Promise.all([
-        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e)] : []),
+        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e), complianceReturn($, w, e)] : []),
         closeSelectorScope($, w, e),
         closeSessions($, w),
         recordFinished($, w, e),
@@ -328,6 +329,7 @@ export const register: Register = on => {
   registerOutbound(on)
   registerReturnTracking(on)
   registerHygiene(on)
+  registerComplianceNotes(on)
   registerSelector(on)
   registerReporting(on)
   registerProgress(on)
