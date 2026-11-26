@@ -1,0 +1,20 @@
+// spec-lint fixture: a parameter annotated any or unknown is still bound by its name
+// rules: TB-A1 TB-A2
+import { test } from './fixtures/base';
+
+async function openOrders(page: any) {
+  await page.goto('/orders'); // EXPECT TB-A2
+  await page.locator('#latest').click(); // EXPECT TB-A1
+}
+async function refresh(page: unknown) {
+  await (page as any).reload(); // EXPECT TB-A2
+}
+
+test('TC-0514 · opens the orders', async ({ page }) => {
+  await openOrders(page);
+  await refresh(page);
+});
+test('TC-0515 · opens the orders again', async ({ page }) => {
+  await openOrders(page);
+  await refresh(page);
+});

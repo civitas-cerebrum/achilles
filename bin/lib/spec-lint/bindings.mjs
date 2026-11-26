@@ -22,7 +22,8 @@ export const TYPE_KIND = {
   APIRequestContext: 'request', Keyboard: 'input', Mouse: 'input', Touchscreen: 'input',
   Steps: 'steps', ElementRepository: 'repo', ElementInteractions: 'interactions', WebElement: 'element', Element: 'element', ContextStore: 'contextStore',
 };
-const NAME_KIND = { page: 'page', context: 'context', browser: 'browser', locator: 'locator', steps: 'steps', repo: 'repo', interactions: 'interactions' };
+// Parameters bind by annotation, else (no annotation, `any` or `unknown`) by name: an `any` never hides a driver.
+const NAME_KIND = { page: 'page', context: 'context', browser: 'browser', request: 'request', locator: 'locator', frame: 'frame', steps: 'steps', repo: 'repo', interactions: 'interactions' };
 export const LOCATOR_CTORS = new Set(['locator', 'getByRole', 'getByText', 'getByTestId', 'getByLabel', 'getByPlaceholder', 'getByAltText', 'getByTitle', 'frameLocator', '$', '$$']);
 export const LOCATOR_CHAIN = new Set(['first', 'last', 'nth', 'filter', 'and', 'or', 'contentFrame', 'owner', 'describe']);
 const REPO_ELEMENT_CALLS = /^(get|getAll|getByText|getByAttribute|getByIndex|getRandom|getVisible|getByRole|getByVisibleText)$/;
@@ -157,8 +158,8 @@ export function bindParams(fn, scope, env, { fixtureCallback = false, support = 
       const ak = annotationKind(q);
       const tn = typeName(q);
       if (ak) scope.vars.set(q.name, ak);
-      else if (!tn || tn === 'any') {
-        if (NAME_KIND[q.name] && (!tn)) scope.vars.set(q.name, NAME_KIND[q.name]);
+      else if (!tn || tn === 'any' || tn === 'unknown') {
+        if (NAME_KIND[q.name]) scope.vars.set(q.name, NAME_KIND[q.name]);
         else if (support && !fixtureCallback) scope.vars.set(q.name, 'untyped');
       }
     } else if (q.type === 'ObjectPattern') {

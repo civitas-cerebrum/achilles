@@ -5,9 +5,10 @@
 // testMatch and with tests/**. A config value the engine cannot evaluate statically is reported (advisory)
 // and the defaults apply. Kinds:
 //   spec     a file a config would run as a test, or code under a spec root that calls test()/describe()
-//            on a test binding; any *.setup.* file that no setup project uses
+//            on a test binding (a *.setup.* file that no setup project uses counts only when it declares tests)
 //   support  non-spec code under the spec roots that a spec imports (transitively), anything under
-//            fixtures/ flows/ data/ support/ utils/ lib/ helpers/, a *.setup.* file a setup project uses
+//            fixtures/ flows/ data/ support/ utils/ lib/ helpers/, a *.setup.* file a setup project uses,
+//            a globalSetup / globalTeardown module a config names
 //   k6       under tests/perf/
 //   bundle   inside a directory under an evidence/ folder that holds a summary.md, when no glob runs it
 //   excluded tests/e2e/inspect/**, node_modules, reports, .d.ts, JSON, the configs themselves
@@ -115,6 +116,7 @@ function evaluate(node, env) {
       return name.endsWith('resolve') ? path.resolve(env.dir, ...parts) : path.join(...parts);
     }
     if (name === 'defineConfig' && n.arguments.length === 1) return evaluate(n.arguments[0], env);
+    if (name === 'require.resolve' && n.arguments.length === 1) return path.resolve(env.dir, evaluate(n.arguments[0], env));
     if (name === 'fileURLToPath' || name === 'url.fileURLToPath') return env.dir;
   }
   if (n.type === 'MemberExpression' && memberChain(n)?.join('.') === 'import.meta.dirname') return env.dir;
@@ -181,7 +183,9 @@ export function readConfig(root, abs, parser) {
     const ig = p.ignore.map((e) => matcher(e, p.testDir));
     p.runs = (abs) => within(p.testDir, abs) && m.some((f) => f(abs)) && !ig.some((f) => f(abs));
   }
-  return { file: rel, projects, problems };
+  // Playwright's global setup / teardown modules run code but declare no tests: support files.
+  const globals = ['globalSetup', 'globalTeardown'].flatMap((k) => list(value(top, k, undefined)) || []).filter((g) => typeof g === 'string').map((g) => path.resolve(dir, g));
+  return { file: rel, projects, globals, problems };
 }
 
 export const within = (dir, abs) => { const r = path.relative(dir, abs); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
@@ -222,6 +226,7 @@ export function candidateFiles(root, specRoots) {
 /** The scope of a project: configs, spec roots, and a classifier for one file. */
 export function projectScope(root, parser) {
   const configs = findConfigs(root).map((f) => readConfig(root, f, parser));
+  const globalFiles = new Set(configs.flatMap((c) => c.globals));
   const testsDir = path.join(root, 'tests');
   const specRoots = [...new Set([testsDir, ...configs.flatMap((c) => c.projects.map((p) => p.testDir))])].filter((d) => within(root, d));
   const defaultMatch = globToRegExp(DEFAULT_TEST_MATCH);
@@ -236,11 +241,11 @@ export function projectScope(root, parser) {
     const projects = configs.flatMap((c) => c.projects);
     const setupHit = projects.some((p) => p.setup && p.runs(abs));
     const isSetupName = /\.setup\.[cm]?[jt]sx?$/.test(abs);
+    if (globalFiles.has(abs) || globalFiles.has(abs.replace(/\.[cm]?[jt]sx?$/, ''))) return 'setup';
     if (setupHit && isSetupName) return 'setup';
     const root0 = underRoot(abs);
     const runs = projects.some((p) => p.runs(abs)) || (root0 && defaultMatch.test(path.basename(abs)));
     if (runs) return 'run';
-    if (isSetupName) return 'run';
     const m = /(^|\/)evidence\/([^/]+)\//.exec(r);
     if (m) {
       const bundleDir = path.join(root, r.slice(0, m.index + m[0].length));
