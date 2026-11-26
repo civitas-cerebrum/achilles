@@ -11,6 +11,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 export const REGISTER = 'tests/e2e/docs/framework-gaps.md';
+/** The register cell token of a row that allows the TB-A1 escape hatch. */
+export const HATCH_TOKEN = 'locator (escape hatch)';
 const STOCK = /^(?:needed|necessary|required|temporary|temp|todo|fixme|workaround|hack|legacy|flaky|known issue|framework gap|gap|see above|n\/a|none|ok|later|tbd|no steps equivalent|no equivalent)\.?$/i;
 
 /** The seed rows a register starts with; used when the project has no register file. */
@@ -72,6 +74,7 @@ export function blockAbove(line, commentOnlyLines) {
 
 /** A backticked method in a register cell: `page.on('console' | 'pageerror')`, `context.cookies`, `addCookies`. */
 function parseMethod(s) {
+  if (s.trim() === HATCH_TOKEN) return { method: HATCH_TOKEN, hatch: true };
   const m = /^(?:(\w+)\.)?([\w$]+)(?:\((.*)\))?$/.exec(s.trim());
   if (!m) return null;
   const args = m[3] ? [...m[3].matchAll(/'([^']+)'|"([^"]+)"/g)].map((x) => x[1] || x[2]) : undefined;

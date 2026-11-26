@@ -293,7 +293,7 @@ export function visitors(project) {
     if (c.cat === 'equiv' || c.cat === 'http') {
       const av = availability(c.targets, surface);
       if (!av.have) { versionGap(n, ctx, c, av); return; }
-      ctx.report('TB-A2', n, { message: `raw call \`${display(c, ctx, n)}\` has a Steps equivalent: steps.${av.have}`, do: doRaw(av.have), data: { kind: c.kind, method: c.method } });
+      ctx.report('TB-A2', n, { message: `raw call \`${display(c, ctx, n)}\` has a Steps equivalent: steps.${av.have}`, do: doRaw(av.have), data: { kind: c.kind, method: c.method, equivalent: av.have } });
       return;
     }
     if (c.cat === 'computed') { ctx.report('TB-A2', n, { message: 'computed member call on a driver binding (no known Steps equivalent)', data: { kind: c.kind, method: c.method } }); return; }
@@ -387,6 +387,12 @@ export function visitors(project) {
         return;
       }
       const k = ctx.kind(u);
+      if (typeof k === 'string' && (k.startsWith('list:') || k.startsWith('obj:'))) {
+        const held = k.startsWith('list:') ? [k.slice(5)] : Object.values(JSON.parse(k.slice(4)));
+        const d = held.find((x) => DRIVER_KINDS.has(x) || x === 'element');
+        if (d) ext(u, d, 'container');
+        return;
+      }
       if (!(DRIVER_KINDS.has(k) || k === 'element')) return;
       if (shape === 'direct' && direct.has(k) && !stored && !promise) ctx.report('TB-A11', u, { message: `${k} binding passed to \`${cname || 'a call'}\`` });
       else ext(u, k, stored ? 'stored in contextStore' : promise ? 'promise' : k === 'input' ? 'input' : k === 'element' ? 'element' : shape);

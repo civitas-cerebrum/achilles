@@ -1,0 +1,18 @@
+import { test } from './fixtures/base';
+
+test('TC-0427 · waives without a gap token', async ({ page }) => {
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A2 -- emulateMedia has no Steps form and the dark theme needs it
+  await page.emulateMedia({ colorScheme: 'dark' }); // EXPECT TB-A2
+});
+
+test('TC-0428 · waives a call that has a Steps equivalent', async ({ page }) => {
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A2 -- the router needs a hard navigation here [gap: FG-8]
+  await page.goto('/orders'); // EXPECT TB-A2
+});
+
+test('TC-0429 · waives with a covering row', async ({ page }) => {
+  // achilles-allow TB-A2 -- emulateMedia has no Steps form and the dark theme needs it [gap: FG-8]
+  await page.emulateMedia({ colorScheme: 'dark' }); // EXPECT TB-A2/waived
+});

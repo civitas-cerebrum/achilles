@@ -57,7 +57,7 @@ A waiver excuses one statement from one waivable rule. It sits in the comment li
 // achilles-allow TB-<id> -- <reason of at least 15 characters> [gap: FG-<n>]
 ```
 
-- The reason names the actual obstacle, not a stock word; `[gap: FG-<n>]` is required when the obstacle is a framework gap. On a waiver of a raw call the row's raw methods include that call's method; on a [TB-A1](#tb-a1) waiver the row is any open row, and the waived statement is the escape-hatch form ([Framework gaps](#framework-gaps-and-version-gaps)), the only form a TB-A1 waiver covers.
+- The reason names the actual obstacle, not a stock word; `[gap: FG-<n>]` is required when the obstacle is a framework gap. A [TB-A1](#tb-a1) waiver covers only the escape-hatch form ([Framework gaps](#framework-gaps-and-version-gaps)) and always carries `[gap: FG-<n>]` naming a row whose raw methods include `locator (escape hatch)`; no seed row does, so a project that needs the hatch adds such a row, which is a [TB-G2](#tb-g2) rule-input change. A [TB-A2](#tb-a2) waiver applies only to a method with no Steps equivalent in the installed release and always carries `[gap: FG-<n>]` naming a row whose raw methods include that method. On any other waiver of a raw call, a gap token names a row that covers the call's method.
 - One raw call per waived statement. A waiver directly above a test whose callback is a single expression excuses the one raw call in that expression and counts toward that test.
 - A waiver that excuses no finding is removed.
 - **Caps:** at most 2 waivers per test, per hook and per helper function, and per gap row the count recorded in the register, counted over the whole suite. File splits gain nothing.
@@ -103,7 +103,7 @@ Form (a) is preferred for new sentinels. Any other use of `test.fail` is a [TB-F
 
 | Row | Missing capability | Raw methods covered | Waiver cap | Status | Upstream issue |
 |---|---|---|---|---|---|
-| FG-<n> | what a test needs | every raw method the row allows | waivers allowed across the suite | `open` or `fixed-in <version>` | link, when filed |
+| FG-<n> | what a test needs | every raw method the row allows, each in backticks (`context.cookies`, `addCookies`, `page.on('console')`); `locator (escape hatch)` for a row that allows the TB-A1 escape hatch | waivers allowed across the suite | `open` or `fixed-in <version>` | link, when filed |
 
 Register rules:
 
@@ -131,7 +131,7 @@ A spec reaches elements only by repository name through the Steps API, never thr
 
 - **Source** W, R · **Kind** mechanical · **Severity** blocking · **Applies to** spec; support through [TB-A12](#tb-a12)
 - **Detection**: `locator`, `getBy*`, `frameLocator`, `$`, `$$` on a driver binding in any region of a spec, spec-local `test.extend` bodies included. A chain reports once. Repository calls (`repo.get`, `repo.getByText`) are never hits; `repo.driver` is [TB-A14](#tb-a14).
-- **Exceptions**: a framework gap in the escape-hatch form ([Framework gaps](#framework-gaps-and-version-gaps)) with a waiver.
+- **Exceptions**: a framework gap in the escape-hatch form ([Framework gaps](#framework-gaps-and-version-gaps)) with a waiver whose `[gap: FG-<n>]` names a register row listing `locator (escape hatch)` ([Waivers](#waivers)).
 
 ```ts
 // Non-compliant

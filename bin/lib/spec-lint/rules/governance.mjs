@@ -58,7 +58,7 @@ export function visitors(project) {
         for (const r of p.register.rows) {
           if (!r.methods.length) { push(REGISTER, r.line, `register row ${r.id} lists no raw methods`, { do: DO_ROW }); continue; }
           for (const m of r.methods) {
-            if (noEq.some((e) => covers(e, m))) continue;
+            if (m.hatch || noEq.some((e) => covers(e, m))) continue;
             const name = `${m.recv ? `${m.recv}.` : ''}${m.method}`;
             push(REGISTER, r.line, hasEquivalent(m)
               ? `register row ${r.id} names \`${name}\`, which has a Steps equivalent`

@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parserFor, parseCode, isFn, isMember, isCall, propName, unwrap, children, relPosix } from './ast.mjs';
+import { parserFor, parseCode, isFn, isMember, isCall, propName, unwrap, children, relPosix, isStr, strValue } from './ast.mjs';
 import { projectScope, candidateFiles } from './config-scope.mjs';
 import { resolveSurface, SURFACES_DIR } from './surface.mjs';
 import { loadEquivalents } from './equivalents.mjs';
@@ -20,8 +20,9 @@ import {
   extendFixtures, typedFixtureKinds, typeDeclarations, bindForOf, listElement,
 } from './bindings.mjs';
 
+const LISTENERS = new Set(['on', 'once', 'addListener', 'prependListener', 'waitForEvent']);
 const ITERATION = new Set(['forEach', 'map', 'flatMap', 'filter', 'some', 'every', 'find', 'findLast', 'reduce']);
-import { collectComments, blockAbove, readRegister } from './waivers.mjs';
+import { collectComments, blockAbove, readRegister, HATCH_TOKEN } from './waivers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.resolve(HERE, '..', '..', '..');
@@ -160,6 +161,10 @@ function walkFile(file, project, pass, handlers) {
     }
     const callee = unwrap(n.callee);
     if (isFn(callee)) overrides.set(callee, { region: ctx.region, nested: ctx.nested, test: ctx.test, fixture: ctx.fixture }); // IIFE: same region
+    if (isMember(callee) && LISTENERS.has(propName(callee) || '') && /^(page|context|browser)$/.test(ctx.kind(callee.object) || '') && isStr(n.arguments[0]) && /^(page|popup)$/.test(strValue(n.arguments[0]))) {
+      const fns = n.arguments.slice(1).flatMap((a) => (isFn(a) ? [a] : a && a.type === 'ObjectExpression' ? a.properties.filter((p) => p.type === 'ObjectProperty' && isFn(p.value)).map((p) => p.value) : []));
+      for (const cb of fns) if (!overrides.has(cb)) overrides.set(cb, { region: ctx.region, nested: true, test: ctx.test, fixture: ctx.fixture, paramKind: 'page' });
+    }
     if (isMember(callee) && ITERATION.has(propName(callee) || '')) {
       const el = listElement(ctx.kind(callee.object));
       const cb = n.arguments.find(isFn);
@@ -276,7 +281,15 @@ function applyWaivers(project) {
     if (fds.length > 1) { w.problems.push(`a waiver excuses one raw call; the statement has ${fds.length} ${rule} findings`); w.valid = false; continue; }
     if (!w.valid) continue;
     const d = fds[0].data || {};
-    if (rule === 'TB-A1' && !d.hatch) { w.problems.push('a TB-A1 waiver covers only the escape-hatch form `interactions.<part>.<method>(new WebElement(<locator>))`'); w.valid = false; continue; }
+    if (rule === 'TB-A1') {
+      const row = w.gap ? rows.get(w.gap) : null;
+      if (!d.hatch) { w.problems.push('a TB-A1 waiver covers only the escape-hatch form `interactions.<part>.<method>(new WebElement(<locator>))`'); w.valid = false; continue; }
+      if (!row || !row.methods.some((m) => m.hatch)) { w.problems.push(`a TB-A1 waiver names its register row (\`[gap: FG-<n>]\`), and that row's raw methods include \`${HATCH_TOKEN}\``); w.valid = false; continue; }
+    }
+    if (rule === 'TB-A2') {
+      if (d.equivalent) { w.problems.push(`the installed release has steps.${d.equivalent}: use it instead of waiving the raw call`); w.valid = false; continue; }
+      if (!w.gap) { w.problems.push('a TB-A2 waiver names the register row that covers the method (`[gap: FG-<n>]`)'); w.valid = false; continue; }
+    }
     if (w.gap && rule !== 'TB-A1' && d.method) {
       const row = rows.get(w.gap);
       if (row && !rowCovers(row, d.kind, d.method)) { w.problems.push(`${w.gap} does not cover \`${d.kind}.${d.method}\``); w.valid = false; continue; }

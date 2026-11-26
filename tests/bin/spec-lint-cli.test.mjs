@@ -79,12 +79,12 @@ test('a file that runs past the time budget exits 3', () => withProject({ 'tests
 }));
 
 test('a waived finding does not fail the run and is reported as waived', () => withProject({
-  'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-3 · x', async ({ page }) => {\n  // achilles-allow TB-A2 -- emulateMedia has no Steps form for the dark theme\n  await page.emulateMedia({ colorScheme: 'dark' });\n});\n",
+  'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-3 · x', async ({ page }) => {\n  // achilles-allow TB-A4 -- the theme flag must exist before any page script runs\n  await page.addInitScript(() => localStorage.setItem('theme', 'dark'));\n});\n",
 }, (root) => {
   const r = run(root, ['--json']);
   assert.equal(r.status, 0, r.stdout);
   const report = JSON.parse(r.stdout);
-  const f = report.findings.find((x) => x.rule === 'TB-A2');
+  const f = report.findings.find((x) => x.rule === 'TB-A4');
   assert.equal(f.waived, true);
-  assert.match(f.waiver.reason, /emulateMedia/);
+  assert.match(f.waiver.reason, /theme flag/);
 }));

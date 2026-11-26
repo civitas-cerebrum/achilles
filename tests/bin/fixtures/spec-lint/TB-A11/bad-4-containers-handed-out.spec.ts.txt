@@ -1,0 +1,11 @@
+// spec-lint fixture: a container holding a driver binding handed to a helper (advisory, extended form)
+// rules: TB-A11
+import { helper } from './utils/helpers';
+import { test } from './fixtures/base';
+
+test('TC-0115 · hands containers over', async ({ page }) => {
+  const o = { page };
+  await helper(o); // EXPECT TB-A11/advisory
+  const arr = [page];
+  await helper(arr); // EXPECT TB-A11/advisory
+});

@@ -1,9 +1,10 @@
-// spec-lint fixture: an escape-hatch waiver may name an open register row
+// spec-lint fixture: an escape-hatch waiver naming a row whose methods do not include the escape hatch
 // rules: TB-A1 TB-G1
 import { WebElement } from '@civitas-cerebrum/element-interactions';
 import { test } from './fixtures/base';
 
 test('TC-0005 · focuses the menu for real', async ({ page, repo, interactions }) => {
+  // EXPECT-NEXT TB-G1
   // achilles-allow TB-A1 -- real keyboard focus needs the locator itself [gap: FG-4]
-  await interactions.interact.click(new WebElement(page.locator(repo.getSelector('menu', 'HomePage')))); // EXPECT TB-A1/waived
+  await interactions.interact.click(new WebElement(page.locator(repo.getSelector('menu', 'HomePage')))); // EXPECT TB-A1
 });

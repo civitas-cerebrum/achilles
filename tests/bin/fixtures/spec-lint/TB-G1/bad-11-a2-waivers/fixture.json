@@ -1,0 +1,4 @@
+{
+  "description": "a TB-A2 waiver needs a gap token whose row covers the method, and never waives a method with an installed Steps equivalent",
+  "rules": ["TB-G1", "TB-A2"]
+}

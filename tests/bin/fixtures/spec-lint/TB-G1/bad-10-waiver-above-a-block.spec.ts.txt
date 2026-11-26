@@ -1,17 +1,17 @@
 // spec-lint fixture: a waiver above a multi-line block statement excuses nothing inside the block (it excuses the
 // statement that starts on the next line), and two waivers in one comment block excuse only the statement below them
-// rules: TB-G1 TB-A2
+// rules: TB-G1 TB-A4
 import { test } from './fixtures/base';
 
 test('TC-0426 · waives the wrong statement', async ({ page }) => {
   // EXPECT-NEXT TB-G1
-  // achilles-allow TB-A2 -- emulateMedia has no Steps form and the dark theme needs it
+  // achilles-allow TB-A4 -- the theme flag must exist before any page script runs
   if (process.env.DARK) {
-    await page.emulateMedia({ colorScheme: 'dark' }); // EXPECT TB-A2
+    await page.addInitScript(() => localStorage.setItem('theme', 'dark')); // EXPECT TB-A4
   }
-  // achilles-allow TB-A2 -- emulateMedia has no Steps form and the dark theme needs it
+  // achilles-allow TB-A4 -- the theme flag must exist before any page script runs
   // EXPECT-NEXT TB-G1
-  // achilles-allow TB-A2 -- emulateMedia has no Steps form and the light theme needs it
-  await page.emulateMedia({ colorScheme: 'dark' }); // EXPECT TB-A2/waived
-  await page.emulateMedia({ colorScheme: 'light' }); // EXPECT TB-A2
+  // achilles-allow TB-A4 -- the light flag must exist before any page script runs
+  await page.addInitScript(() => localStorage.setItem('theme', 'dark')); // EXPECT TB-A4/waived
+  await page.addInitScript(() => localStorage.setItem('theme', 'light')); // EXPECT TB-A4
 });
