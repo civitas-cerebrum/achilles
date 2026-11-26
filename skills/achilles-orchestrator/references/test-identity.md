@@ -12,7 +12,7 @@
 test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { … });
 ```
 
-Shape: **`TC` + up to three more letters of area code (2–5 letters in total), a dash, and a 4–6 digit ordinal**: `TC-0042`, `TCLG-000420`, `TCSGN-000110`. Optionally bracketed (`[TCLG-000420]`). The ID is the **first token of the title**, followed by ` · ` (the canonical separator; the spec-hygiene scan also reads a space, `—`, `-`, `:` or `|`) and the sentence describing the behaviour. Describe-block titles need no ID; the case is the unit of identity.
+Shape: **`TC` + up to three more letters of area code (2–5 letters in total), a dash, and a 4–6 digit ordinal**: `TC-0042`, `TCLG-000420`, `TCSGN-000110`. Optionally bracketed (`[TCLG-000420]`). The ID is the **first token of the title**, followed by ` · ` (the canonical separator; tools that read ids also accept a space, `—`, `-`, `:` or `|`) and the sentence describing the behaviour. Describe-block titles need no ID; the case is the unit of identity.
 
 The `TC` stem is load-bearing: it makes an ID greppable across a whole repo with no false positives (no product string looks like `TCLG-000420`), and the wide ordinal means a suite never renumbers to make room. Area codes are the team's to choose: `TCLG` login, `TCSG` signup, `TCCK` checkout.
 
@@ -45,6 +45,7 @@ The Claude Code adapter's spec-hygiene hook advises on a spec write that adds a 
 **Rule.** A test that asserts the behaviour the app *should* have, while a confirmed and reported defect makes it fail today, carries the `@known-defect` tag, on the test title or on its enclosing `describe`:
 
 ```ts
+// defect: tests/e2e/docs/adversarial-findings.md#j-signup-02
 test.describe('Signup — duplicate email @known-defect', () => {
   test('TCSG-000110 · registering an already-used email surfaces a conflict', async ({ steps }) => { … });
 });

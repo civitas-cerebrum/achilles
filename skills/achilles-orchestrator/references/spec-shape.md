@@ -82,11 +82,15 @@ test('CHK-03 · Cancelling the payment modal returns to checkout without an orde
 The `region-2` modal and the `region-1` same-tab redirect are two blocks (or one block with two contexts and a verb that
 knows the difference); either way the spec does not branch.
 
-## Who checks the shape
+## The readability check (verifier)
 
-The reviewer checks [TB-R1](test-baseline.md#tb-r1), [TB-R2](test-baseline.md#tb-r2), [TB-R4](test-baseline.md#tb-r4),
-[TB-R5](test-baseline.md#tb-r5), [TB-R7](test-baseline.md#tb-r7) and [TB-S1](test-baseline.md#tb-s1) on every spec in
-the change; the lint reports the mechanical rules ([TB-A5](test-baseline.md#tb-a5), [TB-F1](test-baseline.md#tb-f1),
-[TB-F4](test-baseline.md#tb-f4), [TB-F5](test-baseline.md#tb-f5), [TB-F6](test-baseline.md#tb-f6),
-[TB-S3](test-baseline.md#tb-s3), [TB-S5](test-baseline.md#tb-s5), [TB-S6](test-baseline.md#tb-s6)). A spec that breaks
-a blocking rule is a must-fix finding, not a style comment.
+The verifier performs this check on every spec in the change and records it in the verify note:
+
+- [ ] One scenario per test, titled and tagged from its block: [TB-S1](test-baseline.md#tb-s1), [TB-I1](test-baseline.md#tb-i1), [TB-I3](test-baseline.md#tb-i3).
+- [ ] The test follows the block's Steps in order: [TB-R1](test-baseline.md#tb-r1).
+- [ ] Every verb is shared or holds what a spec may not: [TB-R2](test-baseline.md#tb-r2), [TB-R3](test-baseline.md#tb-r3).
+- [ ] No page object, inline selector, sleep, `.only`, retry or branch in the spec: [TB-S3](test-baseline.md#tb-s3), [TB-A5](test-baseline.md#tb-a5), [TB-F5](test-baseline.md#tb-f5), [TB-F6](test-baseline.md#tb-f6), [TB-F4](test-baseline.md#tb-f4), [TB-F1](test-baseline.md#tb-f1).
+- [ ] The oracle is present, tied to the action and able to fail; order-placing tests attach evidence: [TB-R4](test-baseline.md#tb-r4), [TB-R5](test-baseline.md#tb-r5), [TB-R7](test-baseline.md#tb-r7).
+- [ ] One family per file; tests within the length hint: [TB-S6](test-baseline.md#tb-s6), [TB-S5](test-baseline.md#tb-s5).
+
+A spec that fails the check is a finding under "Readability" in the verify note, not a style comment.

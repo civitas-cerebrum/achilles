@@ -61,7 +61,7 @@ Rules:
 6. **Data lifecycle** where the expectations list them: create → read → update → delete across sessions, draft persistence, bulk operations.
 7. **Visual regression** where the surface is design-locked (see below).
 
-Each variant is its own `test(...)`; spec shape: [`spec-shape.md`](../achilles-orchestrator/references/spec-shape.md).
+Each variant is its own `test(...)`; spec shape and the readability check: [`spec-shape.md`](../achilles-orchestrator/references/spec-shape.md).
 
 ### Visual regression
 

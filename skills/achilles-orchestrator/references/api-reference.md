@@ -207,7 +207,7 @@ const count = steps.getTabCount();
 await steps.click('elementName', 'PageName');
 await steps.click('elementName', 'PageName', { force: true });              // dispatches a DOM 'click' event directly — NOT Playwright's force: true (no pointer simulation, no actionability checks; rename pending in a future major)
 await steps.click('elementName', 'PageName', { withoutScrolling: true });   // alias semantics of force: dispatches a DOM 'click' event without scrolling into view
-const clicked = await steps.clickIfPresent('elementName', 'PageName');      // returns boolean, false if absent
+const clicked = await steps.clickIfPresent('elementName', 'PageName');      // returns boolean, false if absent; flow control: in a spec only per TB-F7, it belongs in verbs
 await steps.clickRandom('elementName', 'PageName');
 await steps.clickNth('elementName', 'PageName', 2);           // zero-based index
 await steps.rightClick('elementName', 'PageName');
@@ -529,6 +529,8 @@ When `.throws(message)` is chained, that message replaces the default header whi
 
 ### Visibility Probe
 
+Flow control: a probe result that decides what a spec does is a branch, allowed in a spec only per [TB-F1](test-baseline.md#tb-f1); it belongs in verbs.
+
 ```ts
 // Non-throwing boolean check — never throws, returns true/false
 const present = await steps.isPresent('elementName', 'PageName');                   // uses default element timeout
@@ -576,18 +578,21 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 await steps.waitForState('elementName', 'PageName');                        // default: 'visible'; throws on timeout
 await steps.waitForState('elementName', 'PageName', 'hidden');              // also: 'attached', 'detached'
 // Soft probe: { optional: true } resolves false on timeout instead of throwing.
+// Flow control: in a spec only per TB-F7; optional waits belong in verbs.
 const present = await steps.waitForState('elementName', 'PageName', 'visible', { optional: true });
 // Per-call timeout override:
 await steps.waitForState('elementName', 'PageName', 'visible', { timeout: 5_000 });
 await steps.waitAndClick('elementName', 'PageName');                        // waits for visible, then clicks; throws if never visible
 await steps.waitForNetworkIdle();
-await steps.waitForNetworkIdle({ timeout: 10000, optional: true });        // 0.3.7+ — bounded; optional swallows timeout
+await steps.waitForNetworkIdle({ timeout: 10000, optional: true });        // 0.3.7+ — bounded; optional swallows timeout (flow control: TB-F7)
 await steps.waitForResponse('/api/data', async () => {
   await steps.click('submitButton', 'PageName');
 });
 ```
 
 ### Timing / pacing (0.3.8+)
+
+Flow control: `pace` and `repeat` in a spec only per [TB-F5](test-baseline.md#tb-f5) and [TB-F2](test-baseline.md#tb-f2); `retryUntil` (below) in a spec only per [TB-F4](test-baseline.md#tb-f4); retries belong in verbs.
 
 > **Reach for `waitForState` / `waitForUrl` / web-first assertions first.** `pace` is *deliberate* timing — settling a debounce, spacing rapid-fire actions — NOT a substitute for waiting on a condition. A `pace` standing in for a missing wait is a flake waiting to happen.
 
@@ -614,7 +619,7 @@ await steps.fillForm('FormsPage', {
   countrySelect: { type: DropdownSelectType.VALUE, value: 'us' }
 });
 
-// Retry an action until a verification passes
+// Retry an action until a verification passes (flow control: in a spec only per TB-F4; it belongs in verbs)
 await steps.retryUntil(
   async () => { await steps.click('refreshButton', 'PageName'); },
   async () => { await steps.verifyText('status', 'PageName', 'Ready'); },
@@ -695,6 +700,7 @@ await steps.on('cartPanel', 'CartPage').findByText('Your cart is empty').verifyS
 await steps.on('panel', 'Page').findBySelector("input[name='email']").fill('a@b.com');
 
 // Conditional visibility — silently skips if element is not visible
+// Flow control: in a spec only per TB-F7; it belongs in verbs
 await steps.on('cookieBanner', 'Page').ifVisible().click();
 await steps.on('promoPopup', 'Page').ifVisible(500).click();       // custom timeout (ms)
 await steps.on('optionalField', 'Page').ifVisible().fill('text');

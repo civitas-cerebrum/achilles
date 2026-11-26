@@ -1,8 +1,8 @@
 # Test baseline: the rulebook for test code
 
-The one canonical home of every rule that test code written or edited by Achilles follows: specs, support modules, evidence bundles and k6 scripts. Each rule has a short id (`TB-<family><n>`); other files cite it as `test-baseline.md#tb-<id>` and never restate it. The first sentence of a rule is its normative sentence; `scripts/lint-doc-drift.mjs` checks that every cited id exists and that no other file under `skills/` repeats a normative sentence.
+The one canonical home of every rule that test code written or edited by Achilles follows: specs, support modules, evidence bundles and k6 scripts. Each rule has a short id (`TB-<family><n>`); other files cite it as `test-baseline.md#tb-<id>` and never restate it. The first sentence of a rule is its normative sentence; Achilles' own documentation checks keep cited ids resolvable and keep normative sentences out of other skills.
 
-Two checkers apply the rules. The lint, `achilles-spec-lint`, parses every in-scope file and reports the **mechanical** rules from their Detection text. The reviewer (`achilles-reviewer`) answers the **judgment** rules from the code, the scenario and the lint's report. Until the lint ships in a release, the author and the reviewer apply the Detection text by reading.
+**Who checks the rules today.** The author checks every touched test against this file in the Stage 4b sweep ([`stages-protocol.md`](stages-protocol.md)); the composition judge and the Stage B reviewer check it again from the code and the scenario ([`test-composition-standards.md`](test-composition-standards.md) §4). **Mechanical** rules are written so a machine can decide them from the code; **judgment** rules need a reader. The lint (`achilles-spec-lint`, when installed) reports the mechanical rules from their Detection text; where it is not installed, the Detection text is applied by reading.
 
 ## Contents
 
@@ -15,21 +15,21 @@ Two checkers apply the rules. The lint, `achilles-spec-lint`, parses every in-sc
 Every rule carries these fields:
 
 - **Source**: `W` a written Achilles rule, `R` a pattern of the reference project the baseline is derived from, `N` a new mechanical form.
-- **Kind**: `mechanical` (the lint decides from the code) or `judgment` (the reviewer decides). A rule may have both parts.
+- **Kind**: `mechanical` (decidable from the code alone) or `judgment` (needs a reader: the author in the sweep, then the judge or reviewer). A rule may have both parts.
 - **Severity**: see [Severity](#severity).
 - **Applies to**: `spec`, `support`, `bundle`, `k6` (see [Scope](#scope)).
-- **Detection**: what the lint matches, or the question the reviewer answers.
+- **Detection**: the code shape that breaks the rule, or the question the reader answers.
 - **Exceptions**: the only ways out; anything not listed is a finding.
 - **Example**: a non-compliant and a compliant snippet.
 
 ## Severity
 
-- **blocking**: the finding must be fixed before the change is accepted. The lint reports it as blocking and the reviewer returns it as must-fix. A mechanical rule is blocking only when its definition showed at most 5% false positives on hand-checked live suites, or when its shape is exact or structural by construction (a path, a token, a parse result, an exact import or method name, or an AST shape that is the banned construct itself) with no false positive observed and full recall on the lint's seeded corpus. A rule blocks because its shape is exact, not because it was rare.
+- **blocking**: the finding must be fixed before the change is accepted: the author fixes it in the sweep, and the judge or reviewer returns it as must-fix. A mechanical rule is blocking only when its definition showed at most 5% false positives on hand-checked live suites, or when its shape is exact or structural by construction (a path, a token, a parse result, an exact import or method name, or an AST shape that is the banned construct itself) with no false positive observed and full recall on a seeded corpus of breaking lines. A rule blocks because its shape is exact, not because it was rare.
 - **advisory (unmeasured)**: a clause with no live measurement yet. It is reported and counted, and becomes blocking in this file (one commit) once a live measurement confirms it.
 - **advisory**: reported and counted, never must-fix on its own.
 - **unwaivable**: no waiver applies (see [Waivers](#waivers)).
 
-Judgment rules block through the reviewer's verdict. A false positive found later downgrades a rule here, never per project; a project may raise a severity, never lower one (lowering is a [TB-G2](#tb-g2) change).
+Judgment rules block through the judge's or reviewer's verdict. A false positive found later downgrades a rule here (one commit to this file), never per project.
 
 **Only the touched test must be clean.** A blocking finding counts against a change when it sits in a test the change adds or edits, or in a describe-level or file-level construct the change itself touches. Findings in untouched tests of the same file are legacy: recorded and reported, not charged to the change.
 
@@ -61,26 +61,26 @@ A waiver excuses one statement from one waivable rule. It sits in the comment li
 - One raw call per waived statement.
 - **Caps:** at most 2 waivers per test, and per gap row the count recorded in the register. File splits gain nothing.
 - A raw call from the no-equivalent table ([TB-A2b](#tb-a2b)) is not waived but cited: `// framework-gap: FG-<n>` directly above it, inside a verb or fixture.
-- The author writes a waiver; only the reviewer accepts it. A waiver citing a row marked `fixed-in <version>` is a blocking [TB-G1](#tb-g1) finding.
+- The author writes a waiver; the judge or reviewer decides whether it stands, never the author. A waiver citing a row marked `fixed-in <version>` is a blocking [TB-G1](#tb-g1) finding.
 - **Unwaivable:** [TB-A5](#tb-a5) in durable files, [TB-A13](#tb-a13), [TB-F5](#tb-f5) `waitForTimeout` and `pause` in specs, [TB-F6](#tb-f6) `.only`, [TB-D2](#tb-d2), [TB-S8](#tb-s8), [TB-G0](#tb-g0), [TB-G1](#tb-g1), [TB-G2](#tb-g2).
 
 ## Defect pointers and sentinels
 
-**Pointer grammar.** Every `@known-defect` test or describe and every `test.fail` sentinel carries a line `// defect: <ref>` in its own contiguous comment block, directly above its `test(` or `describe(` call. One pointer never covers another test in the file. `<ref>` is one of:
+**Pointer grammar.** Every `@known-defect` test or describe and every `test.fail` sentinel carries a line `// defect: <ref>` in its own contiguous comment block, directly above its `test(` or `describe(` call. A pointer above a `@known-defect` describe covers the tests inside that describe; a pointer never covers any other test in the file, and one comment at the top of the file covers nothing. `<ref>` is one of:
 
 - a repo-relative path with an optional `#anchor` that exists: a bug report, `tests/e2e/docs/adversarial-findings.md#<finding-id>`, a known-issues register entry;
 - a tracker key `<KEY>-<n>`;
-- a defect id `<KEY>-D<n>` recorded under `.achilles/defect-confirmations/`.
+- a defect id `<TICKET>-D<n>` (the ticket key plus a defect number, e.g. `SHOP-12-D1`) recorded under `.achilles/defect-confirmations/`.
 
-Anchors follow the GitHub heading slug rule (lower-case, spaces to `-`, punctuation other than `-` and `_` removed), or an explicit `<a id="…">`. The lint resolves paths and anchors; tracker keys are syntactic; `<KEY>-D<n>` ids resolve against `.achilles/defect-confirmations/` where that directory exists and are checked syntactically elsewhere (CI, where it is gitignored).
+Anchors follow the GitHub heading slug rule (lower-case, spaces to `-`, punctuation other than `-` and `_` removed), or an explicit `<a id="…">`. Paths and anchors must resolve in the repository; tracker keys are checked for shape only; `<TICKET>-D<n>` ids resolve against `.achilles/defect-confirmations/` where that directory exists and are checked for shape elsewhere (CI, where it is gitignored).
 
-**The two accepted `test.fail` sentinel forms.** Both assert the correct behaviour, carry `@known-defect`, and include the defect's own assertion with a message naming the key, so a sentinel that fails for another reason (a broken selector) is visible to the reviewer.
+**The two accepted `test.fail` sentinel forms.** Both assert the correct behaviour, carry `@known-defect`, and include the defect's own assertion with a message naming the key, so a sentinel that fails for another reason (a broken selector) is visible to whoever reads the failure.
 
 ```ts
-// (a) verify-change sentinel: the key sits in the title
-// defect: SHOP-D1
-test('TCCK-000310 · [SENTINEL SHOP-D1] a cancelled order is not charged @known-defect', async ({ steps }) => {
-  test.fail(true, 'SHOP-D1: a cancelled order is charged. Delete this sentinel once fixed.');
+// (a) verify-change sentinel: the defect id sits in the title
+// defect: SHOP-12-D1
+test('TCCK-000310 · [SENTINEL SHOP-12-D1] a cancelled order is not charged @known-defect', async ({ steps }) => {
+  test.fail(true, 'SHOP-12-D1: a cancelled order is charged. Delete this sentinel once fixed.');
   await steps.verifyText('chargeStatus', 'OrderPage', 'Not charged');
 });
 
@@ -106,8 +106,8 @@ Form (a) is preferred for new sentinels. Any other use of `test.fail` is a [TB-F
 
 Register rules:
 
-- A row is valid only when every method it lists is in the shipped no-equivalent table ([TB-A2b](#tb-a2b)). A row for a method in neither table needs a person's ruling ([TB-G2](#tb-g2)); a row naming a method that has a Steps equivalent is a [TB-G1](#tb-g1) finding.
-- Adding or changing a row is a [TB-G2](#tb-g2) rule-input change and a reviewer decision.
+- A row is valid only when every method it lists is in the no-equivalent table ([TB-A2b](#tb-a2b)); a row naming a method that has a Steps equivalent is a [TB-G1](#tb-g1) finding.
+- Adding or changing a row is a [TB-G2](#tb-g2) rule-input change: the expert does not decide it, but returns `NEEDS_CONTEXT` asking the person, and the decision is recorded in the hand-back. This holds in particular for a method in neither table.
 - The escape hatch for a gap that needs a raw locator keeps the selector in the repository and goes through the framework's interactions: `interactions.interact.<method>(new WebElement(page.locator(repo.getSelector('<element>', '<Page>'))))`, one raw call per waived statement ([`framework-gap.md`](framework-gap.md) has the procedure).
 
 **Seed rows** (a new register starts with these):
@@ -145,9 +145,9 @@ await steps.verifyPresence('scheduleSummary', 'DashboardPage');
 A spec makes no member call on a driver binding unless the method appears in the no-equivalent table or is a plain accessor.
 
 - **Source** W · **Kind** mechanical · **Severity** blocking · **Applies to** spec
-- **Detection**: any member call on a driver binding except the [TB-A2b](#tb-a2b) table and the accessors `context()`, `mainFrame()`, `frames()`. `waitForEvent` counts only for `popup` and `page`. A method in neither table is a hit with the message "no known Steps equivalent: add it to the no-equivalent table (an Achilles release) or to a register row (needs a ruling)". A computed member with a non-literal key (`page[m]()`) is a hit.
-- **Equivalents by version**: the lint ships a table (raw method, Steps method, first framework release that has it) built from the published package surfaces, never from documentation. An equivalent counts only when it exists in the project's installed release; otherwise the site is [TB-A13](#tb-a13).
-- **HTTP**: `get`, `post`, `put`, `patch`, `delete`, `head` on a request binding map to `steps.request*` (browser session) or `steps.api*` (own client, no browser session); `fetch` is unlisted; `dispose` is in the no-equivalent table. Below the release that has `request*`, a `context.request.*` or `page.request.*` call has no equivalent (the strict reading) and is [TB-A13](#tb-a13); reading `api*` as its equivalent needs a ruling, because the lint cannot see whether the call carries its own auth header.
+- **Detection**: any member call on a driver binding except the [TB-A2b](#tb-a2b) table and the accessors `context()`, `mainFrame()`, `frames()`. `waitForEvent` counts only for `popup` and `page`. A method in neither table is a hit too ("no known Steps equivalent": it needs an entry in the no-equivalent table, which is an Achilles release, or a register row, which is the person's decision). A computed member with a non-literal key (`page[m]()`) is a hit.
+- **Equivalents by version**: an equivalent is read from the published package surface of each release (raw method, Steps method, first release that has it), never from documentation alone. An equivalent counts only when it exists in the project's installed release; otherwise the site is [TB-A13](#tb-a13).
+- **HTTP**: `get`, `post`, `put`, `patch`, `delete`, `head` on a request binding map to `steps.request*` (browser session) or `steps.api*` (own client, no browser session); `fetch` is unlisted; `dispose` is in the no-equivalent table. Below the release that has `request*`, a `context.request.*` or `page.request.*` call has no equivalent (the strict reading) and is [TB-A13](#tb-a13); reading `api*` as its equivalent is the person's decision (ask through `NEEDS_CONTEXT`), because the code alone does not show whether the call carries its own auth header.
 
 ```ts
 // Non-compliant
@@ -168,8 +168,8 @@ A raw call that the Steps API cannot replace lives in a verb or a fixture, or ca
 ```ts
 // Non-compliant (in a spec, no citation)
 await context.clearCookies();
-// Compliant (fixtures module; the spec calls `await expireSession()`)
-expireSession: async ({ context }, use) => {
+// Compliant (fixtures module; the spec calls `await clearSessionCookies()`)
+clearSessionCookies: async ({ context }, use) => {
   // framework-gap: FG-1
   await use(() => context.clearCookies());
 },
@@ -229,7 +229,7 @@ await steps.click('removeItemButton', 'CartPage');
 
 Every element and page name a test hands to the framework names an entry of the page repository the fixture loads.
 
-- **Source** W, N · **Kind** mechanical · **Severity** advisory until the lint resolves the repository exactly as the fixture does (resolved path, generated repository, page names merged across platforms), then blocking; retyping the repository path outside the fixtures module: advisory · **Applies to** spec, support
+- **Source** W, N · **Kind** mechanical · **Severity** advisory until a mechanical check can resolve the repository exactly as the fixture does (resolved path, generated repository, page names merged across platforms), then blocking; retyping the repository path outside the fixtures module: advisory · **Applies to** spec, support
 - **Detection**: every literal or file-constant `(elementName, pageName)` pair passed to `steps.*`, `steps.on`, `steps.expect` or `repo.*`, and every `child: { pageName, elementName }`.
 
 ```ts
@@ -282,7 +282,7 @@ A test callback asks only for the framework's fixtures, the project's own fixtur
 // Non-compliant
 test('TCLG-000130 · a second session sees the change', async ({ browser }) => { const ctx = await browser.newContext(); /* … */ });
 // Compliant
-test('TCLG-000130 · a second session sees the change', async ({ steps, secondSession }) => { /* … */ });
+test('TCLG-000130 · a second session sees the change', async ({ steps, otherUserSession }) => { /* … */ });
 ```
 
 <a id="tb-a10"></a>
@@ -291,7 +291,7 @@ test('TCLG-000130 · a second session sees the change', async ({ steps, secondSe
 Every `steps.<method>` a test calls is a public method of the framework release the project has installed.
 
 - **Source** N · **Kind** mechanical · **Severity** blocking (methods); advisory (unmeasured) for undeclared fixture names · **Applies to** spec, support
-- **Detection**: the installed surface resolves from the worktree's `node_modules`, then the main checkout's, then the surface snapshot the lint ships for the pinned version; the check fails closed only when none resolves, and says which.
+- **Detection**: compare with the installed surface: `CommonSteps.d.ts` of `@civitas-cerebrum/element-interactions` in the worktree's `node_modules`, else the main checkout's. When neither is installed, the check cannot be made: say so in the return rather than assume a method exists.
 
 ```ts
 // Non-compliant (no such method)
@@ -314,7 +314,7 @@ A spec never hands a page, context, browser, request, frame or locator to a func
 // Non-compliant
 await clickCss(page, '#pay');
 // Compliant
-await submitLogin(steps, user.email, user.password);
+await signIn(steps, user);
 ```
 
 <a id="tb-a12"></a>
@@ -323,8 +323,8 @@ await submitLogin(steps, user.email, user.password);
 Support modules drive the UI through the Steps API, and raw Playwright appears there only in the sanctioned wiring shapes.
 
 - **Source** W, R · **Kind** mechanical · **Severity** blocking for UI-driving raw calls in new or touched support functions; advisory (unmeasured) for HTTP raw calls · **Applies to** support
-- **Detection**: the [TB-A1](#tb-a1) to [TB-A4](#tb-a4) and [TB-P1](#tb-p1) shapes in verb, data and helper modules outside the wiring allowlist: (a) fixtures-module `.extend` / `baseFixture` bodies that build framework objects or own a lifecycle; (b) route handlers whose enclosing statement cites a gap row; (c) the mutation hooks of [TB-X2](#tb-x2); (d) API back-door helpers ([`test-optimization.md`](test-optimization.md) §4) whose only driver use is a request binding and that drive no UI; (e) [TB-A2b](#tb-a2b) calls with a gap citation.
-- **Legacy modules**: the lint follows a touched spec's imports. Findings in an untouched module it reaches are reported and handed to the reviewer, not charged to the change; the spec side of a wrapper is already [TB-A11](#tb-a11).
+- **Detection**: the [TB-A1](#tb-a1) to [TB-A4](#tb-a4) and [TB-P1](#tb-p1) shapes in verb, data and helper modules outside the wiring allowlist: (a) fixtures-module `.extend` / `baseFixture` bodies that construct framework objects, or that set up and tear down state without driving the UI (a fixture that hands out a UI-driving function is a verb, [TB-X1](#tb-x1)); (b) route handlers whose enclosing statement cites a gap row; (c) the mutation hooks of [TB-X2](#tb-x2); (d) API back-door helpers ([`test-optimization.md`](test-optimization.md) §4) whose only driver use is a request binding and that drive no UI; (e) [TB-A2b](#tb-a2b) calls with a gap citation.
+- **Legacy modules**: a touched spec's imports are followed. Findings in an untouched module it reaches are reported in the return, not charged to the change; the spec side of a wrapper is already [TB-A11](#tb-a11).
 
 ```ts
 // Non-compliant (flows/checkout-flow.ts)
@@ -382,10 +382,12 @@ No `if`, `switch`, awaited conditional expression or short-circuit in a spec's t
 - **Exceptions**: the declarative `test.skip(<condition>, '<reason>')`. A test whose data may be in either of two states does not branch on it: a fixture resolves the state, or the test skips by name ([TB-D5](#tb-d5)). Platform differences are [TB-P3](#tb-p3).
 
 ```ts
-// Non-compliant
+// Non-compliant: the test closes the promo only when it happens to show
 if (await steps.isVisible('promoBanner', 'HomePage')) await steps.click('closePromo', 'HomePage');
-// Compliant (two tests, or a fixture that resolves the banner before the test)
-test.skip(steps.platform !== 'android', 'the back gesture exists only on Android');
+await steps.click('searchButton', 'HomePage');
+// Compliant: a verb in a flow module owns the optional promo; the spec does not branch
+await dismissPromo(steps);
+await steps.click('searchButton', 'HomePage');
 ```
 
 <a id="tb-f2"></a>
@@ -398,10 +400,10 @@ A loop inside a test body repeats only what the scenario itself defines, with it
 
 ```ts
 // Non-compliant
-for (let i = 0; i < 9; i++) await submitLogin(steps, email, 'wrong');
+for (let i = 0; i < 6; i++) await enterPin(steps, wrongPin);
 // Compliant
-const ATTEMPTS_BEFORE_LOCKOUT = 8; // the lockout policy allows eight failed attempts
-await steps.repeat(() => submitLogin(steps, email, 'wrong'), ATTEMPTS_BEFORE_LOCKOUT);
+const PIN_TRIES_BEFORE_LOCK = 5; // the card policy locks after five wrong PINs
+await steps.repeat(() => enterPin(steps, wrongPin), PIN_TRIES_BEFORE_LOCK);
 ```
 
 <a id="tb-f3"></a>
@@ -469,7 +471,7 @@ test.fail('TCCK-000310 · a cancelled order is not charged', async ({ steps }) =
 An optional action in a spec is followed by a check that fails when the action did not happen.
 
 - **Source** W · **Kind** mechanical and judgment · **Severity** advisory (mechanical); blocking by judgment · **Applies to** spec; allowed in support
-- **Detection**: `steps.clickIfPresent`, `steps.on(…).ifVisible()…`, `{ optional: true }` on a steps call. These members are flow control: in a spec the reviewer asks "does the test pass if the element never appears?", and a yes is must-fix.
+- **Detection**: `steps.clickIfPresent`, `steps.on(…).ifVisible()…`, `{ optional: true }` on a steps call. These members are flow control: in a spec the reader asks "does the test pass if the element never appears?", and a yes is must-fix.
 
 ```ts
 // Non-compliant
@@ -505,28 +507,35 @@ A function in a spec file that drives the UI is used by at least two tests of th
 
 - **Source** W, R · **Kind** mechanical · **Severity** blocking · **Applies to** spec
 - **Detection**: a module- or describe-level function in a spec that references `steps`, a driver binding or a fixture actor, or awaits, and is used by fewer than two tests in the file (counted per test, through in-file helpers); an exported spec helper; any `class`, or `new XxxPage / Screen / Flow()`, in a spec. A helper that declares tests is [TB-S1](#tb-s1).
-- **Exceptions**: a helper used by two or more tests of the file. Once another file needs it, it moves to a support module. A helper that holds assertions is also [TB-S2a](#tb-s2a).
+- **Exceptions**: a helper used by two or more tests of the file, bounded like a verb kept close to its only callers: it takes `steps` (plus data), builds data, composes verbs and returns data. Its body is held to the spec's flow-control rules as if it were the test body ([TB-F1](#tb-f1) to [TB-F5](#tb-f5), [TB-F7](#tb-f7)), and it never holds the scenario's outcome assertion ([TB-R3](#tb-r3); see [TB-S2a](#tb-s2a)). A doc comment says why it stays in the file (advisory). Once another file needs it, it moves to a support module.
 
 ```ts
 // Non-compliant (one caller)
 async function openSettings(steps: Steps) { await steps.click('settingsLink', 'HeaderPage'); }
 // Compliant (called by three tests of this file)
-async function signInAsLockedUser(steps: Steps) { await submitLogin(steps, LockedUser.email, LockedUser.password); }
+/** File-local: only the suspension tests sign in as a suspended account. */
+async function signInAsSuspendedAccount(steps: Steps) {
+  const account = SuspendedAccount.credentials();
+  await signIn(steps, account);
+  return account;
+}
 ```
 
 <a id="tb-s2a"></a>
 #### TB-S2a Assertion-holding in-spec helper
 
-An in-spec helper that contains assertions puts every test calling it under the reviewer's oracle questions.
+An in-spec helper that contains assertions is flagged, because the scenario's outcome check belongs in the test body where the reader sees it.
 
-- **Source** R · **Kind** mechanical · **Severity** advisory · **Applies to** spec
-- **Detection**: an in-spec helper allowed by [TB-S2](#tb-s2) whose body contains an assertion. The reviewer answers [TB-R4](#tb-r4) and [TB-R5](#tb-r5) for each calling test: the oracle must still be visible from the test.
+- **Source** R · **Kind** mechanical and judgment · **Severity** advisory (mechanical); blocking by judgment when the helper holds a scenario's outcome assertion · **Applies to** spec
+- **Detection**: an in-spec helper allowed by [TB-S2](#tb-s2) whose body contains an assertion. The reader answers [TB-R4](#tb-r4) and [TB-R5](#tb-r5) for each calling test. A check of the helper's own effect may stay (as for a verb, [TB-R3](#tb-r3)); the scenario's outcome assertion moves into the test.
 
 ```ts
-// Flagged for review
+// Non-compliant: the outcome of every calling test hides in the helper
 async function expectNameStillFree(steps: Steps, name: string) { await steps.verifyText('availability', 'SignupPage', `${name} is available`); }
-// Compliant reading: the test name and the helper name say which outcome is checked
 await expectNameStillFree(steps, rejected.username);
+// Compliant: the helper builds and returns data; the test asserts
+const name = await reserveRejectedName(steps);
+await steps.verifyText('availability', 'SignupPage', `${name} is available`);
 ```
 
 <a id="tb-s3"></a>
@@ -564,7 +573,7 @@ await test.step('pay by card', async () => { await payByCard(steps, card); });
 A test stays within 40 lines from `test(` to its closing brace and within 15 awaited statements.
 
 - **Source** W, R · **Kind** mechanical · **Severity** advisory · **Applies to** spec
-- **Detection**: lines of the test callback; awaited statements are top-level statements of the body containing an `await` outside nested functions. The finding asks the reviewer to answer [TB-S1](#tb-s1) and [TB-R2](#tb-r2): a long test is usually two scenarios or an unshared chore.
+- **Detection**: lines of the test callback; awaited statements are top-level statements of the body containing an `await` outside nested functions. The finding asks the reader to answer [TB-S1](#tb-s1) and [TB-R2](#tb-r2): a long test is usually two scenarios or an unshared chore.
 
 ```ts
 // Flagged: 22 awaited statements covering cart edits and checkout in one test
@@ -624,7 +633,7 @@ Hooks prepare and clean state, while the scenario's actions and outcome checks s
 
 ```ts
 // Non-compliant
-test.beforeEach(async ({ steps }) => { await submitLogin(steps, user.email, user.password); await steps.verifyText('greeting', 'HomePage', 'Welcome back'); });
+test.beforeEach(async ({ steps }) => { await signIn(steps, user); await steps.verifyText('greeting', 'HomePage', 'Welcome back'); });
 // Compliant
 test.beforeEach(async ({ steps }) => { await steps.navigateTo(Routes.LOGIN); });
 ```
@@ -652,7 +661,7 @@ test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { /* �
 No two tests of a suite share an id, and the suite's id index lists every id in use.
 
 - **Source** W, R · **Kind** mechanical · **Severity** blocking · **Applies to** spec (whole suite)
-- **Detection**: ids across files; the index `tests/e2e/docs/test-ids.md` is generated or checked by `achilles-spec-lint --id-index`.
+- **Detection**: ids across files; every id appears in the suite's index (typically `tests/e2e/docs/test-ids.md`), which is the place to look before minting a new id. The lint (`achilles-spec-lint`, when installed) can generate or check the index.
 
 ```ts
 // Non-compliant: 'TCLG-000420 · …' in login.spec.ts and in session.spec.ts
@@ -704,7 +713,7 @@ A reader finds the scenario's steps in the test in the same order the scenario l
 ```ts
 // Non-compliant: the oracle for step 2 is checked before step 1 runs
 // Compliant
-await submitLogin(steps, user.email, 'wrong-password');           // step 1
+await signIn(steps, { ...user, password: wrongPassword });           // step 1
 await steps.verifyText('formError', 'LoginPage', 'Wrong email or password'); // step 2
 ```
 
@@ -714,12 +723,12 @@ await steps.verifyText('formError', 'LoginPage', 'Wrong email or password'); // 
 A verb earns its place by being used by two or more scenarios, or by holding a branch, bounded retry or poll that a spec may not contain.
 
 - **Source** W, R · **Kind** judgment, plus an advisory hint · **Severity** blocking by judgment · **Applies to** support
-- A verb is an exported function in a support module (a flow module under `flows/`) that takes `steps` first, or a project fixture; it is named as an imperative chore with its end state. Use counts include composition through other verbs.
+- A verb is an exported function in a support module (a flow module under `flows/`) that takes `steps` first, or a project fixture that hands out such a function (its body is held to the verb-module rules of [TB-X1](#tb-x1)); it is named as an imperative chore with its end state. Use counts include composition through other verbs.
 
 ```ts
 // Non-compliant: clickSave(steps) wraps one steps.click and is used once
 // Compliant
-export async function dismissFirstRunDialog(steps: Steps) { /* branches on an optional dialog, then checks it is gone */ }
+export async function closeWelcomeTour(steps: Steps) { /* branches on an optional dialog, then checks it is gone */ }
 ```
 
 <a id="tb-r3"></a>
@@ -733,7 +742,7 @@ A verb may confirm that its own chore took effect, and the scenario's outcome as
 // Non-compliant (flow asserts the scenario's outcome)
 export async function placeOrder(steps: Steps) { /* … */ await steps.verifyText('orderStatus', 'OrderPage', 'Placed'); }
 // Compliant (flow checks its own step; the test asserts the outcome)
-export async function dismissMfaPrompt(steps: Steps) { await steps.click('skipMfa', 'MfaPage'); await steps.verifyAbsence('mfaDialog', 'MfaPage'); }
+export async function skipTwoFactorSetup(steps: Steps) { await steps.click('skipForNow', 'TwoFactorPage'); await steps.verifyAbsence('twoFactorDialog', 'TwoFactorPage'); }
 ```
 
 <a id="tb-r4"></a>
@@ -806,7 +815,7 @@ A check whose purpose is not evident from its names carries a comment saying why
 ```ts
 // Non-compliant
 // click the button
-await steps.click('resendCode', 'MfaPage');
+await steps.click('resendCode', 'TwoFactorPage');
 // Compliant
 // the lockout banner appears only after the server has counted the attempt
 await steps.verifyPresence('lockoutBanner', 'LoginPage');
@@ -839,9 +848,9 @@ No real credential, token or key appears as a literal in test or support code.
 
 ```ts
 // Non-compliant
-await submitLogin(steps, 'ops@shop.test', 'S3cret-prod-pass!');
+await signIn(steps, { email: 'ops@shop.test', password: 'S3cret-prod-pass!' });
 // Compliant
-await submitLogin(steps, ExistingAccount.email(), ExistingAccount.password());
+await signIn(steps, StandingAccount.credentials());
 ```
 
 <a id="tb-d3"></a>
@@ -869,9 +878,9 @@ Data that a test creates is generated per attempt inside the test or a hook, nev
 
 ```ts
 // Non-compliant
-const user = buildUser(); // module scope: a retry reuses the same email
+const user = makeCustomer(); // module scope: a retry reuses the same email
 // Compliant
-test('TCSG-000120 · a new account can sign in', async ({ steps }) => { const user = buildUser(); /* … */ });
+test('TCSG-000120 · a new account can sign in', async ({ steps }) => { const user = makeCustomer(); /* … */ });
 ```
 
 <a id="tb-d5"></a>
@@ -930,7 +939,7 @@ test.setTimeout(120_000); // perf: the export test waits for a two-minute job
 Each support module plays one role (fixtures, verbs, data, handoff or setup) and holds only what that role allows.
 
 - **Source** W, R · **Kind** judgment · **Severity** blocking · **Applies to** support
-- **Fixtures module**: wiring only: the `baseFixture(…)` call, the repository path declared once, options, the `expect` re-export, `.extend` fixtures that own a lifecycle, the mutation hooks of [TB-X2](#tb-x2).
+- **Fixtures module**: wiring only: the `baseFixture(…)` call, the repository path declared once, options, the `expect` re-export, `.extend` fixtures that construct framework objects or set up and tear down state without driving the UI, the mutation hooks of [TB-X2](#tb-x2). A fixture that exposes a UI-driving function is a verb: the verb-module rules below apply to its body.
 - **Verb modules** (`flows/`): functions taking `steps` that drive one chore, with imperative names. Allowed with a reason comment: bounded loops of idempotent or state-aware attempts followed by a hard gate; branches on optional app state followed by a check; parameter options; a per-call timeout. Never: the scenario's outcome assertion, `try/catch`, raw calls outside [TB-A12](#tb-a12)'s allowlist, unbounded waits, hand-rolled sleeps. A new verb's doc comment says where it leaves the browser (advisory).
 - **Data modules**: constants with reasons, types, generators, builders with overrides, env getters; no Playwright, no I/O.
 - **Handoff modules**: run-state file read and write, with an explanatory throw when the file is missing.
@@ -978,7 +987,7 @@ test('login works', async ({ steps }) => { /* … */ });
 
 A loop or retry inside a verb has a deadline or a counter, and a hard check follows it.
 
-- **Source** W, R · **Kind** mechanical and judgment · **Severity** `while (true)`, `for (;;)` or a `for` with no test and no deadline or counter: advisory until the lint's definition fix ships, then blocking; other bound shapes advisory; blocking by judgment ("idempotent or state-aware attempts, followed by a hard gate?") · **Applies to** support
+- **Source** W, R · **Kind** mechanical and judgment · **Severity** `while (true)`, `for (;;)` or a `for` with no test and no deadline or counter: advisory until the shape has a measured mechanical definition, then blocking; other bound shapes advisory; blocking by judgment ("idempotent or state-aware attempts, followed by a hard gate?") · **Applies to** support
 
 ```ts
 // Non-compliant
@@ -1157,7 +1166,7 @@ sleep(randomBetween(1, 3)); // think time between page views
 <a id="tb-g0"></a>
 #### TB-G0 The file parses
 
-Every in-scope test or support file parses with the lint's TypeScript parser.
+Every in-scope test or support file parses as valid TypeScript or JavaScript.
 
 - **Source** N · **Kind** mechanical · **Severity** blocking, unwaivable; a note while writing · **Applies to** spec, support
 
@@ -1173,7 +1182,7 @@ test('TCLG-000430 · …', async ({ steps }) => { await steps.click('submitButto
 Every waiver and framework-gap citation follows the grammar and caps of this file and names a valid, open register row.
 
 - **Source** N · **Kind** mechanical · **Severity** blocking, unwaivable · **Applies to** spec, support, the register
-- **Detection**: the [Waivers](#waivers) grammar and caps; a row naming a method with a Steps equivalent; a citation of a `fixed-in` row; a third waiver in one test.
+- **Detection**: the [Waivers](#waivers) grammar and caps; a row naming a method with a Steps equivalent; a citation of a `fixed-in` row; a third waiver in one test; a citation of a row that the person has not decided on (a new register row needs the person's decision, [TB-G2](#tb-g2)).
 
 ```ts
 // Non-compliant
@@ -1185,13 +1194,13 @@ Every waiver and framework-gap citation follows the grammar and caps of this fil
 <a id="tb-g2"></a>
 #### TB-G2 Rule inputs are not weakened
 
-A change that weakens an input the rules depend on is accepted only under a ruling a person gave for that input.
+A change that weakens an input the rules depend on is made only when the person decided it for that input.
 
-- **Source** N · **Kind** mechanical · **Severity** blocking for Achilles agents; the reviewer reports such a change as must-fix · **Applies to** the protected inputs
-- **Protected inputs**: the pinned id pattern (`CIVITAS_TEST_ID_PATTERN` in committed env files, `specs.shape.titleIdPattern`, the baseline's `idPattern`); `achilles-factory-rules.json` (any change to a `specs.*` or `secrets.*` rule, or deleting the file); removing entries from `selectors.no-inline.forbidden`; adding or editing a row of `tests/e2e/docs/framework-gaps.md`; raising or deleting counts in `tests/compliance-baseline.json`; a Playwright config's `grep`, `grepInvert`, `testIgnore` or `testMatch`; the git hooks directory and its hook files.
-- A ruling is typed by the person, names the inputs it covers, and holds for one run. Free-text rulings in state files are notes and unlock nothing.
+- **Source** N · **Kind** mechanical · **Severity** blocking; the judge or reviewer returns an undecided change as must-fix · **Applies to** the protected inputs
+- **Protected inputs**: the pinned id pattern (`CIVITAS_TEST_ID_PATTERN` in committed env files, `specs.shape.titleIdPattern`, a recorded baseline `idPattern`); `achilles-factory-rules.json` (any change to a `specs.*` or `secrets.*` rule, or deleting the file); removing entries from `selectors.no-inline.forbidden`; adding or editing a row of `tests/e2e/docs/framework-gaps.md`; raising or deleting counts in a compliance baseline file, where the project keeps one; a Playwright config's `grep`, `grepInvert`, `testIgnore` or `testMatch`; the git hooks directory and its hook files.
+- **How to get the decision**: the expert does not make the change on its own judgment. It returns `NEEDS_CONTEXT` naming the input and the change, the person answers, and the decision is recorded in the hand-back.
 
 ```text
-Non-compliant: a commit that widens testIgnore to skip a red spec, with no ruling
-Compliant: the same change citing the ruling id the person typed for that config's testIgnore
+Non-compliant: a change that widens testIgnore to skip a red spec, made without asking
+Compliant: the same change after a NEEDS_CONTEXT question the person answered, recorded in the hand-back
 ```
