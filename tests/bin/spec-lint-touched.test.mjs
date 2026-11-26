@@ -134,6 +134,18 @@ test('--staged outside a git work tree exits 2; --staged with --base is a usage 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('--stdin: an edit of a test\'s opening line does not re-report a finding that test already had; a retitle does', () => {
+  const root = tempRoot();
+  const old = SPEC.replace("'TCAB-0001 · first'", "'first without an id'");
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': old });
+    const i1 = (after) => json(run(root, ['--stdin', '--json'], JSON.stringify({ file: 'tests/e2e/a.spec.ts', before: old, after }))).findings.filter((f) => f.rule === 'TB-I1');
+    assert.equal(old.includes("async ({ page, steps })"), true);
+    assert.deepEqual(i1(old.replace("'first without an id', async ({ page, steps })", "'first without an id', async ({ page, steps, request })")), [], 'the header edit keeps the existing TB-I1');
+    assert.equal(i1(old.replace("'first without an id'", "'renamed without an id'")).length, 1, 'a retitle is a new finding');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('--stdin reports only the findings new in "after"', () => {
   const root = tempRoot();
   try {

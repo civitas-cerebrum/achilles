@@ -519,8 +519,9 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
 
 /**
  * Write mode (`--stdin`): lints `file` as `after` and as `before`, and reports only the findings new in
- * `after`. A finding is the same when its rule, its test title and the text of its line match (lines may
- * shift). `before` null or missing: every finding is new.
+ * `after`. A finding in a test is the same when its rule, its test (id, else title) and its message match; one
+ * outside a test when its rule and the text of its line match (lines may shift). `before` null or missing: every
+ * finding is new.
  */
 export function lintWrite({ root, file, before, after, ...opts }) {
   const t0 = Date.now();
@@ -529,7 +530,11 @@ export function lintWrite({ root, file, before, after, ...opts }) {
   const run = (text) => lintProject({ ...opts, root, paths: [rel], contents: { [rel]: text } });
   const now = run(after);
   const old = typeof before === 'string' ? run(before) : null;
-  const key = (f, text) => `${f.rule}\0${f.test ? f.test.title : ''}\0${(text.split(/\r?\n/)[f.line - 1] || '').trim()}`;
+  // inside a test, a finding is the same when its rule, its test (id, else title) and its message match, so an edit
+  // of the line it sits on (a test's opening line) does not make it new; outside a test the line's text decides
+  const key = (f, text) => (f.test
+    ? `${f.rule}\0${f.test.id || f.test.title}\0${f.message}`
+    : `${f.rule}\0\0${(text.split(/\r?\n/)[f.line - 1] || '').trim()}`);
   const left = new Map();
   for (const f of old ? old.findings : []) { const k = key(f, before); left.set(k, (left.get(k) || 0) + 1); }
   // a test is edited when its text differs from the test of the same title before (or it is new)
