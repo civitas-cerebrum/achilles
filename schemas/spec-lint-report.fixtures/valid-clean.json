@@ -1,0 +1,39 @@
+{
+  "tool": "achilles-spec-lint",
+  "version": "0.2.0",
+  "ok": true,
+  "stepsSurface": {
+    "package": "@civitas-cerebrum/element-interactions",
+    "version": "0.3.6",
+    "source": "snapshot"
+  },
+  "files": [
+    {
+      "path": "tests/e2e/dark-mode.spec.ts",
+      "kind": "spec",
+      "blob": "2bf1f06ab4e30a84916a948a21ff63327581a2db",
+      "parsed": true,
+      "tests": [
+        {
+          "title": "TC-0415 · emulates dark mode",
+          "id": "TC-0415",
+          "line": 5,
+          "endLine": 9
+        }
+      ]
+    }
+  ],
+  "findings": [],
+  "project": [],
+  "summary": {
+    "files": 1,
+    "specs": 1,
+    "support": 0,
+    "blocking": 0,
+    "advisory": 0,
+    "waived": 0
+  },
+  "timing": {
+    "ms": 12
+  }
+}
