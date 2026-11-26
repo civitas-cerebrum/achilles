@@ -6,7 +6,7 @@
 // collect project facts (extend keys, custom fixture kinds); pass 2 walks the selected files again with the
 // same scopes, so a binding assigned later in the file (a `beforeAll` assignment) is known everywhere.
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { gitSync } from './git.mjs';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -77,7 +77,7 @@ const isStatement = (n) => STATEMENT.test(n.type) && n.type !== 'BlockStatement'
 
 function objectFormat(root) {
   try {
-    return execFileSync('git', ['-C', root, 'rev-parse', '--show-object-format'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() === 'sha256' ? 'sha256' : 'sha1';
+    return gitSync(root, ['rev-parse', '--show-object-format'], { stderr: 'ignore', timeoutMs: 10000 }).trim() === 'sha256' ? 'sha256' : 'sha1';
   } catch { return 'sha1'; }
 }
 const blobId = (text, algo) => { const b = Buffer.from(text, 'utf8'); return createHash(algo).update(`blob ${b.length}\0`).update(b).digest('hex'); };
@@ -474,12 +474,16 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
   project.allFiles = lintable;
   const order = [...lintable.filter((r) => r.kind === 'support'), ...lintable.filter((r) => r.kind === 'spec')];
   for (const r of order) walkFile(r, project, 1, handlers);
+  const runBudget = budgetMs * Math.max(1, lintable.length);
+  const overRun = (phase) => { if (Date.now() - t0 > runBudget) throw new BudgetError(`the run went past its time budget (${budgetMs} ms per file) in ${phase}`); };
   for (const h of handlers.projectStart || []) h(project);
+  overRun('the project facts');
   for (const r of order) if (r.selected) walkFile(r, project, 2, handlers);
   for (const r of project.files) if (r.parseError && (r.kind === 'spec' || r.kind === 'support')) for (const h of handlers.parseError || []) h(r, r.parseError);
 
   applyWaivers(project);
   for (const h of handlers.projectEnd || []) h(project);
+  overRun('the suite checks');
 
   if (change) {
     markTouched(project, change);

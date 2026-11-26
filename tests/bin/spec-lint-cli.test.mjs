@@ -89,3 +89,18 @@ test('a waived finding does not fail the run and is reported as waived', () => w
   assert.equal(f.waived, true);
   assert.match(f.waiver.reason, /theme flag/);
 }));
+
+test('a run that is not --stdin never reads standard input: an open, never-closed pipe does not hold it', async () => {
+  const { spawn } = await import('node:child_process');
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': RAW });
+    const code = await new Promise((resolve) => {
+      const p = spawn(process.execPath, [BIN, '--json'], { cwd: root, env: { ...process.env, CLAUDE_PROJECT_DIR: root }, stdio: ['pipe', 'pipe', 'pipe'] });
+      p.stdout.resume(); p.stderr.resume();
+      const kill = setTimeout(() => { p.kill('SIGKILL'); resolve('timeout'); }, 30000);
+      p.on('exit', (c) => { clearTimeout(kill); p.stdin.destroy(); resolve(c); });
+    });
+    assert.equal(code, 1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

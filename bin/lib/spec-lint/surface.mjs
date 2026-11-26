@@ -7,7 +7,7 @@
 //   3. snapshot  bin/lib/spec-lint/surfaces/<version>.json shipped with this package, for the version the
 //                project pins (package-lock.json, else the package.json range: the highest shipped match)
 // When none resolves the lint cannot run, and says what it tried.
-import { execFileSync } from 'node:child_process';
+import { gitSync } from './git.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -142,7 +142,7 @@ export function pinnedVersion(root) {
 /** The main checkout's directory for this project: the parent of the common git dir, plus the project's prefix in the repository. */
 function mainCheckout(root) {
   try {
-    const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const git = (...a) => gitSync(root, a, { stderr: 'ignore', timeoutMs: 10000 }).trim();
     const out = git('rev-parse', '--path-format=absolute', '--git-common-dir');
     if (!out) return null;
     const top = path.dirname(out);
