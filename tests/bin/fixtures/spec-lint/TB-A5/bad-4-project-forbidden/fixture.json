@@ -1,0 +1,4 @@
+{
+  "description": "the project's selectors.no-inline forbidden strings are an extra input (advisory)",
+  "rules": ["TB-A5"]
+}

@@ -1,0 +1,364 @@
+// The spec-lint engine: scope, parse, bindings, one walk per file with the rule families' visitors,
+// waivers, and the report. Rule families are the modules under rules/ (each exports RULES and visitors);
+// a new family is a new module there, picked up without changes here.
+//
+// Pass 1 walks every in-scope file once to bind kinds (parameters, declarations, later assignments) and to
+// collect project facts (extend keys, custom fixture kinds); pass 2 walks the selected files again with the
+// same scopes, so a binding assigned later in the file (a `beforeAll` assignment) is known everywhere.
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parserFor, parseCode, isFn, isMember, isCall, propName, unwrap, children, relPosix } from './ast.mjs';
+import { projectScope, candidateFiles } from './config-scope.mjs';
+import { resolveSurface, SURFACES_DIR } from './surface.mjs';
+import { loadEquivalents } from './equivalents.mjs';
+import { specifiers, resolveRelative, reachable } from './suite.mjs';
+import {
+  Scope, kindOf, bindParams, bindDeclarator, bindAssignment, bindImports, testBindings, classifyCall, idOfTitle,
+  extendFixtures, typedFixtureKinds, typeDeclarations,
+} from './bindings.mjs';
+import { collectComments, blockAbove, readRegister } from './waivers.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+export const PACKAGE_ROOT = path.resolve(HERE, '..', '..', '..');
+export const RULEBOOK = 'skills/achilles-orchestrator/references/test-baseline.md';
+const RULES_DIR = path.join(HERE, 'rules');
+export const DEFAULT_FILE_BUDGET_MS = 5000;
+
+export class BudgetError extends Error {}
+
+// ── rule families ─────────────────────────────────────────────────────────
+
+const FAMILIES = await Promise.all(readdirSync(RULES_DIR).filter((f) => f.endsWith('.mjs')).sort().map(async (f) => ({ name: f.slice(0, -4), mod: await import(pathToFileURL(path.join(RULES_DIR, f)).href) })));
+const META = new Map(FAMILIES.flatMap(({ mod }) => (mod.RULES || []).map((r) => [r.id, r])));
+
+/** The rules this engine implements: [{ id, title, severity, appliesTo, waivable }]. */
+export function implementedRules() {
+  return [...META.values()].map(({ id, title, severity, appliesTo, waivable }) => ({ id, title, severity, appliesTo, waivable: waivable !== false }));
+}
+
+let knownIdsCache = null;
+/** Rule ids the rulebook defines (anchors `tb-<id>`). */
+export function knownRuleIds() {
+  if (knownIdsCache) return knownIdsCache;
+  const file = path.join(PACKAGE_ROOT, RULEBOOK);
+  const ids = new Set(META.keys());
+  if (existsSync(file)) for (const m of readFileSync(file, 'utf8').matchAll(/^#### (TB-[A-Z]\d+[a-z]?)\b/gm)) ids.add(m[1]);
+  return (knownIdsCache = ids);
+}
+
+export const docOf = (rule) => `${RULEBOOK}#${rule.toLowerCase()}`;
+
+// ── helpers ───────────────────────────────────────────────────────────────
+
+const STATEMENT = /Statement$|Declaration$/;
+const isStatement = (n) => STATEMENT.test(n.type) && n.type !== 'BlockStatement';
+
+function objectFormat(root) {
+  try {
+    return execFileSync('git', ['-C', root, 'rev-parse', '--show-object-format'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() === 'sha256' ? 'sha256' : 'sha1';
+  } catch { return 'sha1'; }
+}
+const blobId = (text, algo) => { const b = Buffer.from(text, 'utf8'); return createHash(algo).update(`blob ${b.length}\0`).update(b).digest('hex'); };
+
+function factoryRules(root) {
+  const p = path.isAbsolute(process.env.FACTORY_RULES || '') ? process.env.FACTORY_RULES : path.join(root, process.env.FACTORY_RULES || 'achilles-factory-rules.json');
+  try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
+}
+
+const commentOnlyLines = (lines) => {
+  const s = new Set();
+  let inBlock = false;
+  lines.forEach((l, i) => {
+    const t = l.trim();
+    if (inBlock) { s.add(i + 1); if (t.includes('*/')) inBlock = false; return; }
+    if (t.startsWith('//')) s.add(i + 1);
+    else if (t.startsWith('/*')) { s.add(i + 1); if (!t.includes('*/')) inBlock = true; }
+  });
+  return s;
+};
+
+// ── the walk ──────────────────────────────────────────────────────────────
+
+function walkFile(file, project, pass, handlers) {
+  const env = { fixtureKinds: project.fixtureKinds };
+  const stack = [];
+  const overrides = new Map();
+  const typeDecls = typeDeclarations(file.ast);
+  const deadline = Date.now() + project.budgetMs;
+  let steps = 0;
+  if (!file.moduleScope) { file.moduleScope = new Scope(null, null); bindImports(file.ast, file.moduleScope); }
+  if (!file.fnScopes) file.fnScopes = new WeakMap();
+  if (!file.testsByNode) file.testsByNode = new WeakMap();
+
+  const baseCtx = { file, project, region: 'module', nested: false, browser: false, scope: file.moduleScope, test: null, fixture: null, inRoute: null, stack };
+
+  const makeApi = (ctx) => {
+    ctx.kind = (e) => kindOf(e, ctx.scope, env);
+    ctx.report = (rule, node, extra = {}) => {
+      if (pass !== 2 || ctx.browser || !file.selected) return;
+      const meta = META.get(rule);
+      let stmt = null;
+      for (let i = stack.length - 1; i >= 0; i--) if (isStatement(stack[i])) { stmt = stack[i]; break; }
+      const loc = (node.loc || stmt?.loc || { start: { line: 1, column: 0 } }).start;
+      project.findings.push({
+        rule, severity: extra.severity || meta.severity, file: file.rel, line: loc.line, column: loc.column + 1,
+        region: ctx.region, message: extra.message || meta.title, do: extra.do || meta.do, why: docOf(rule),
+        test: (t => (t ? { title: t.title, id: t.id, line: t.line } : null))(extra.test !== undefined ? extra.test : ctx.test),
+        stmtLine: stmt ? stmt.loc.start.line : loc.line, waived: false, ...(extra.data ? { data: extra.data } : {}),
+      });
+    };
+    return ctx;
+  };
+
+  function enterFunction(fn, ctx) {
+    const ov = overrides.get(fn);
+    let scope = file.fnScopes.get(fn);
+    if (!scope) { scope = new Scope(ctx.scope, fn); file.fnScopes.set(fn, scope); }
+    let next;
+    if (ov) next = { ...ctx, ...ov, scope };
+    else if (ctx.region === 'module' || ctx.region === 'describe') next = { ...ctx, region: 'helper', nested: false, scope, test: null, fixture: null };
+    else next = { ...ctx, nested: true, scope };
+    if (ov && ov.browserCode) next.browser = true;
+    bindParams(fn, scope, env, { fixtureCallback: !!(ov && ov.fixtureCallback), support: file.kind === 'support' });
+    return makeApi(next);
+  }
+
+  function onCall(n, ctx) {
+    const cls = classifyCall(n, file.testNames);
+    if (cls) {
+      if (cls.type === 'test') {
+        let t = file.testsByNode.get(n);
+        if (!t) {
+          t = { title: cls.title.text, id: cls.title.dynamic ? null : idOfTitle(cls.title.text), line: n.loc.start.line, endLine: n.loc.end.line, dynamic: cls.title.dynamic };
+          file.testsByNode.set(n, t);
+          file.tests.push(t);
+        }
+        overrides.set(cls.fn, { region: 'test', nested: false, test: t, fixtureCallback: true, fixture: null });
+      } else if (cls.type === 'hook') overrides.set(cls.fn, { region: 'hook', nested: false, test: null, fixtureCallback: true, fixture: null });
+      else if (cls.type === 'describe') overrides.set(cls.fn, { region: 'describe', nested: false, test: null, fixture: null });
+      else if (cls.type === 'step') overrides.set(cls.fn, { region: ctx.region, nested: ctx.nested, test: ctx.test });
+      else if (cls.type === 'extend') {
+        const { fixtures, open } = extendFixtures(n);
+        if (open) project.extendOpen = true;
+        for (const [k, v] of typedFixtureKinds(n, typeDecls)) if (!project.fixtureKinds.has(k)) project.fixtureKinds.set(k, v);
+        for (const f of fixtures) {
+          project.extendKeys.add(f.key);
+          if (f.fn) overrides.set(f.fn, { region: file.kind === 'spec' ? 'spec-fixture' : 'fixture', nested: false, test: null, fixtureCallback: true, fixture: f.key });
+        }
+      }
+    }
+    const callee = unwrap(n.callee);
+    if (isFn(callee)) overrides.set(callee, { region: ctx.region, nested: ctx.nested, test: ctx.test, fixture: ctx.fixture }); // IIFE: same region
+    if (isMember(callee)) {
+      const p = propName(callee);
+      const ok = ctx.kind(callee.object);
+      const driver = ok === 'page' || ok === 'frame' || ok === 'locator' || ok === 'context';
+      if ((driver && /^(evaluate|evaluateHandle|\$eval|\$\$eval|addInitScript|exposeFunction|exposeBinding|waitForFunction)$/.test(p || '')) || (ok === 'steps' && /^(evaluateScript|getWindowProperty|waitForFunction)$/.test(p || ''))) {
+        for (const a of n.arguments) if (isFn(a)) overrides.set(a, { region: ctx.region, nested: true, test: ctx.test, fixture: ctx.fixture, browserCode: true });
+      }
+      if (driver && (p === 'route' || p === 'routeFromHAR')) {
+        const stmtLine = (() => { for (let i = stack.length - 1; i >= 0; i--) if (isStatement(stack[i])) return stack[i].loc.start.line; return n.loc.start.line; })();
+        const cited = file.citations.some((c) => blockAbove(stmtLine, file.commentLines).includes(c.line) && c.row);
+        for (const a of n.arguments) if (isFn(a)) overrides.set(a, { region: ctx.region, nested: true, test: ctx.test, fixture: ctx.fixture, inRoute: { cited } });
+      }
+    }
+    if (n.callee.type === 'Identifier' && n.callee.name === 'use' && ctx.fixture && n.arguments[0]) {
+      const k = ctx.kind(n.arguments[0]);
+      if (k && !project.fixtureKinds.has(ctx.fixture)) project.fixtureKinds.set(ctx.fixture, k);
+    }
+  }
+
+  function visit(n, ctx) {
+    if (!n || typeof n.type !== 'string') return;
+    if ((++steps & 1023) === 0 && Date.now() > deadline) throw new BudgetError(`${file.rel}: the time budget of ${project.budgetMs} ms per file ran out`);
+    stack.push(n);
+    if (n.type === 'VariableDeclarator') bindDeclarator(n, ctx.scope, env);
+    else if (n.type === 'AssignmentExpression') bindAssignment(n, ctx.scope, env);
+    else if (n.type === 'FunctionDeclaration' && n.id) ctx.scope.decls.add(n.id.name);
+    if (isCall(n) || n.type === 'NewExpression') onCall(n, ctx);
+    if (pass === 2) for (const h of handlers[n.type] || []) h(n, ctx);
+    if (isFn(n)) {
+      const inner = enterFunction(n, ctx);
+      for (const p of n.params) visit(p, inner);
+      visit(n.body, inner);
+    } else {
+      for (const c of children(n)) visit(c, ctx);
+    }
+    stack.pop();
+  }
+
+  if (Date.now() > deadline) throw new BudgetError(`${file.rel}: the time budget of ${project.budgetMs} ms per file ran out`);
+  const ctx = makeApi({ ...baseCtx });
+  if (pass === 2) for (const h of handlers.fileStart || []) h(file, ctx);
+  visit(file.ast.program, ctx);
+  if (pass === 2) for (const h of handlers.fileEnd || []) h(file, ctx);
+  if (Date.now() > deadline) throw new BudgetError(`${file.rel}: the time budget of ${project.budgetMs} ms per file ran out`);
+}
+
+// ── waivers ───────────────────────────────────────────────────────────────
+
+function applyWaivers(project) {
+  const byFile = new Map(project.files.map((f) => [f.rel, f]));
+  // caps: at most 2 waivers per test
+  for (const f of project.files) {
+    for (const t of f.tests) {
+      const inside = (f.waivers || []).filter((w) => w.line >= t.line && w.line <= t.endLine && w.valid);
+      inside.slice(2).forEach((w) => { w.problems.push(`more than 2 waivers in test ${t.id || `"${t.title}"`}`); w.valid = false; });
+    }
+  }
+  // gap tokens: the row exists, is open, and its waiver cap holds across the suite
+  const rows = new Map(project.register.rows.map((r) => [r.id, r]));
+  const used = new Map();
+  for (const f of project.files) {
+    for (const w of f.waivers || []) {
+      if (!w.gap) continue;
+      const row = rows.get(w.gap);
+      if (!row) { w.problems.push(`${w.gap} is not a row of the framework-gap register`); w.valid = false; continue; }
+      if (row.fixedIn) { w.problems.push(`${w.gap} is marked ${row.status}: upgrade and remove the waiver`); w.valid = false; continue; }
+      const n = (used.get(w.gap) || 0) + 1;
+      used.set(w.gap, n);
+      if (row.cap !== null && n > row.cap) { w.problems.push(`${w.gap} allows ${row.cap} waiver(s) across the suite; this is number ${n}`); w.valid = false; }
+    }
+  }
+  // match: a valid waiver in the comment block directly above the finding's statement excuses one finding
+  const groups = new Map();
+  for (const fd of project.findings) {
+    const k = `${fd.file}\0${fd.stmtLine}\0${fd.rule}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(fd);
+  }
+  for (const [k, fds] of groups) {
+    const [rel, stmtLine, rule] = k.split('\0');
+    const f = byFile.get(rel);
+    if (!f || !f.waivers) continue;
+    const above = new Set(blockAbove(Number(stmtLine), f.commentLines));
+    const w = f.waivers.find((x) => above.has(x.line) && x.rule === rule);
+    if (!w) continue;
+    w.matched = true;
+    const meta = META.get(rule);
+    const waivable = meta ? (typeof meta.waivable === 'function' ? fds.every((fd) => meta.waivable(fd)) : meta.waivable !== false) : true;
+    if (!waivable) { if (!w.problems.some((p) => /unwaivable/.test(p))) w.problems.push(`${rule} is unwaivable here`); w.valid = false; continue; }
+    if (fds.length > 1) { w.problems.push(`a waiver excuses one raw call; the statement has ${fds.length} ${rule} findings`); w.valid = false; continue; }
+    if (!w.valid) continue;
+    fds[0].waived = true;
+    fds[0].waiver = { reason: w.reason, ...(w.gap ? { gap: w.gap } : {}), line: w.line };
+  }
+}
+
+// ── the project ───────────────────────────────────────────────────────────
+
+/**
+ * Lints the project at `root`. Options: paths (files to report on; default every in-scope file),
+ * snapshotsDir, useGit (surface chain step 2 and blob format), budgetMs (per file).
+ * Throws SurfaceError when no Steps surface resolves and BudgetError when a file runs out of time.
+ */
+export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, useGit = true, budgetMs = DEFAULT_FILE_BUDGET_MS } = {}) {
+  const t0 = Date.now();
+  root = path.resolve(root);
+  const parser = parserFor(root);
+  const surface = resolveSurface(root, parser, { snapshotsDir, useGit });
+  const scope = projectScope(root, parser);
+  const project = {
+    root, parser, surface, equivalents: loadEquivalents(), budgetMs,
+    rules: factoryRules(root), register: readRegister(root), knownIds: knownRuleIds(),
+    findings: [], projectFindings: [], files: [],
+    fixtureKinds: new Map(), extendKeys: new Set(), extendOpen: false,
+  };
+  for (const p of scope.problems) project.projectFindings.push({ rule: 'scope', severity: 'advisory', file: p.file, message: `${p.file}: ${p.message}; the default test glob and tests/** apply`, do: 'Keep testDir, testMatch, testIgnore and projects in the Playwright config as literal values (or path.join / path.resolve over __dirname) so the lint can see which files run.', why: `${RULEBOOK}#scope` });
+  for (const n of surface.notes) project.projectFindings.push({ rule: 'surface', severity: 'advisory', message: n, do: 'Upgrade @civitas-cerebrum/achilles.', why: docOf('TB-A10') });
+
+  // classify and parse
+  const algo = useGit ? objectFormat(root) : 'sha1';
+  const records = [];
+  for (const abs of candidateFiles(root, scope.specRoots)) {
+    const stat = scope.staticKind(abs);
+    if (stat === 'excluded') continue;
+    const rel = relPosix(root, abs);
+    const text = readFileSync(abs, 'utf8');
+    const rec = { abs, rel, text, stat, kind: null, ast: null, parseError: null };
+    if (stat !== 'k6' && stat !== 'bundle') {
+      try { rec.ast = parseCode(parser, text, abs); } catch (e) { rec.parseError = e; }
+    }
+    if (rec.ast) rec.testNames = testBindings(rec.ast);
+    records.push(rec);
+  }
+  const byAbs = new Map(records.map((r) => [r.abs, r]));
+  const declaresTests = (r) => {
+    if (!r.ast) return false;
+    const stack = [r.ast.program];
+    while (stack.length) {
+      const n = stack.pop();
+      if (isCall(n)) { const c = classifyCall(n, r.testNames); if (c && (c.type === 'test' || c.type === 'describe')) return true; }
+      for (const c of children(n)) stack.push(c);
+    }
+    return false;
+  };
+  for (const r of records) {
+    if (r.stat === 'k6' || r.stat === 'bundle') r.kind = r.stat;
+    else if (r.stat === 'run') r.kind = 'spec';
+    else if (r.stat === 'setup' || r.stat === 'support-dir') r.kind = 'support';
+    else if (r.stat === 'candidate' && declaresTests(r)) r.kind = 'spec';
+  }
+  const edges = new Map();
+  for (const r of records) if (r.ast) edges.set(r.abs, specifiers(r.ast).map((s) => resolveRelative(r.abs, s)).filter((x) => x && byAbs.has(x)));
+  const fromSpecs = reachable(records.filter((r) => r.kind === 'spec').map((r) => r.abs), edges);
+  for (const r of records) if (!r.kind && r.stat === 'candidate' && (fromSpecs.has(r.abs) || r.parseError)) r.kind = 'support';
+  const inScope = records.filter((r) => r.kind);
+
+  let selected = null;
+  if (paths) selected = new Set(paths.map((p) => path.resolve(root, p)));
+  for (const r of inScope) {
+    r.selected = !selected || selected.has(r.abs);
+    r.lines = r.text.split(/\r?\n/);
+    r.tests = [];
+    r.blob = blobId(r.text, algo);
+    r.facts = {};
+    r.commentLines = commentOnlyLines(r.lines);
+    const cc = r.ast ? collectComments(r.ast, r.lines, project.knownIds) : { waivers: [], citations: [] };
+    r.waivers = cc.waivers;
+    r.citations = cc.citations;
+    r.isFixturesModule = r.kind === 'support' && !!r.ast && (/(^|\/)fixtures\//.test(r.rel) || /\bbaseFixture\s*\(|\.extend\s*[<(]/.test(r.text));
+  }
+  project.files = inScope.filter((r) => r.selected);
+
+  // handlers of every family
+  const handlers = {};
+  for (const { mod } of FAMILIES) {
+    if (typeof mod.visitors !== 'function') continue;
+    for (const [type, fn] of Object.entries(mod.visitors(project))) (handlers[type] ||= []).push(fn);
+  }
+
+  const lintable = inScope.filter((r) => (r.kind === 'spec' || r.kind === 'support') && r.ast);
+  const order = [...lintable.filter((r) => r.kind === 'support'), ...lintable.filter((r) => r.kind === 'spec')];
+  for (const r of order) walkFile(r, project, 1, handlers);
+  for (const r of order) if (r.selected) walkFile(r, project, 2, handlers);
+  for (const r of project.files) if (r.parseError && (r.kind === 'spec' || r.kind === 'support')) for (const h of handlers.parseError || []) h(r, r.parseError);
+
+  applyWaivers(project);
+  for (const h of handlers.projectEnd || []) h(project);
+
+  project.findings.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line || a.column - b.column || (a.rule < b.rule ? -1 : 1)));
+  const blocking = project.findings.filter((f) => f.severity === 'blocking' && !f.waived).length;
+  const advisory = project.findings.filter((f) => f.severity === 'advisory' && !f.waived).length + project.projectFindings.length;
+  return {
+    tool: 'achilles-spec-lint',
+    version: JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')).version,
+    ok: blocking === 0,
+    stepsSurface: { package: surface.package, version: surface.version, source: surface.source },
+    files: project.files.map((r) => ({ path: r.rel, kind: r.kind, blob: r.blob, parsed: !r.parseError, tests: r.tests.map((t) => ({ title: t.title, id: t.id, line: t.line, endLine: t.endLine })) })),
+    findings: project.findings.map(({ stmtLine, ...f }) => f),
+    project: project.projectFindings,
+    summary: {
+      files: project.files.length,
+      specs: project.files.filter((r) => r.kind === 'spec').length,
+      support: project.files.filter((r) => r.kind === 'support').length,
+      blocking, advisory,
+      waived: project.findings.filter((f) => f.waived).length,
+    },
+    timing: { ms: Date.now() - t0 },
+  };
+}
+

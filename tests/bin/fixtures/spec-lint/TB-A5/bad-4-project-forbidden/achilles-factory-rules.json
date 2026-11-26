@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "rules": {
+    "selectors.no-inline": { "scope": ["tests/**"], "forbidden": ["data-qa="] }
+  }
+}
