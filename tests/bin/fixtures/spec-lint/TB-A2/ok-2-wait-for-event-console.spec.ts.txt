@@ -1,9 +1,9 @@
-// spec-lint fixture: waitForEvent counts only for popup and page; reads go through Steps
+// spec-lint fixture: waitForEvent for another event is an event capture (advisory A2b, not A2); reads go through Steps
 // rules: TB-A2 TB-A2b
 import { test, expect } from './fixtures/base';
 
 test('TC-0014 · reads the heading', async ({ steps, page }) => {
-  const message = page.waitForEvent('console');
+  const message = page.waitForEvent('console'); // EXPECT TB-A2b/advisory
   const title = await steps.getText('heading', 'HomePage');
   expect(title).toBe('Home');
   expect(message).toBeTruthy();

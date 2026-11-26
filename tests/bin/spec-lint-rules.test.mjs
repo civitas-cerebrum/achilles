@@ -56,3 +56,52 @@ test('a register row\'s waiver cap counts every in-scope file, also when only so
     assert.ok(report.findings.some((f) => f.rule === 'TB-G1' && f.file === 'tests/e2e/b.spec.ts' && /allows 1 waiver/.test(f.message)), JSON.stringify(report.findings.map((f) => `${f.rule} ${f.file}:${f.line} ${f.message}`)));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('every member call on a driver binding gets exactly one classification', async () => {
+  const { classifyRaw } = await import('../../bin/lib/spec-lint/rules/framework.mjs');
+  const { loadEquivalents } = await import('../../bin/lib/spec-lint/equivalents.mjs');
+  const KNOWN = new Set(['locator', 'chain', 'accessor', 'sleep', 'eval', 'noeq', 'http', 'equiv', 'unlisted', 'computed']);
+  const eq = loadEquivalents();
+  const methods = new Set([...Object.keys(eq.methods), ...Object.keys(eq.http), ...eq.evaluate.methods, ...eq.noEquivalent.flatMap((e) => e.methods), 'locator', 'getByRole', 'first', 'context', 'waitForTimeout', 'emulateMedia', 'tap', 'fetch']);
+  const kinds = ['page', 'frame', 'context', 'browser', 'request', 'locator', 'input'];
+  const args = [[], [{ type: 'StringLiteral', value: 'popup' }], [{ type: 'StringLiteral', value: 'requestfailed' }], [{ type: 'Identifier', name: 'x' }]];
+  for (const kind of kinds) for (const method of methods) for (const a of args) {
+    const callee = { type: 'MemberExpression', object: { type: 'Identifier', name: 'drv' }, property: { type: 'Identifier', name: method }, computed: false };
+    const ctx = { kind: (e) => (e && e.type === 'Identifier' && e.name === 'drv' ? kind : null), project: { equivalents: eq } };
+    const c = classifyRaw({ type: 'CallExpression', callee, arguments: a }, ctx);
+    assert.ok(c && KNOWN.has(c.cat), `${kind}.${method}(${a.map((x) => x.value || x.name).join()}) -> ${c && c.cat}`);
+  }
+});
+
+test('a Playwright globalSetup module and a setup-named file declaring no tests are not specs', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, {
+      'playwright.config.ts': "export default { testDir: 'tests/e2e', globalSetup: './tests/e2e/playwright.setup.ts', globalTeardown: require.resolve('./tests/e2e/teardown.ts') };\n",
+      'tests/e2e/playwright.setup.ts': "export default async function globalSetup() { process.env.READY = '1'; }\n",
+      'tests/e2e/teardown.ts': 'export default async function () {}\n',
+      'tests/e2e/seed.setup.ts': 'export const seed = 1;\n',
+      'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ steps }) => { await steps.navigateTo('/'); });\n",
+    });
+    const kinds = Object.fromEntries(lintProject({ root, useGit: false }).files.map((f) => [f.path, f.kind]));
+    assert.equal(kinds['tests/e2e/playwright.setup.ts'], 'support');
+    assert.equal(kinds['tests/e2e/teardown.ts'], 'support');
+    assert.equal(kinds['tests/e2e/seed.setup.ts'], undefined);
+    assert.equal(kinds['tests/e2e/a.spec.ts'], 'spec');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('messages name the normalised callee, the actual receiver and the installed Steps options', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, {
+      'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ page }) => {\n  const frame = page.mainFrame();\n  await page\n    .waitForResponse('**/api');\n  await frame.getByTestId('save').click();\n  await page.evaluate(() => window.scrollY);\n});\n",
+    });
+    const f = lintProject({ root, useGit: false }).findings;
+    const msg = (rule, line) => (f.find((x) => x.rule === rule && x.line === line) || {}).message || '';
+    assert.match(msg('TB-A2', 4), /`page\.waitForResponse`/);
+    assert.match(msg('TB-A5', 6), /`frame\.getByTestId\(…\)`/);
+    assert.match(msg('TB-A4', 7), /steps\.evaluateScript/);
+    assert.doesNotMatch(msg('TB-A4', 7), /installed release has steps\.getLocalStorage/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -60,7 +60,7 @@ function equivalenceOf(eq, kind, method, call) {
   if (e.on && !e.on.includes(kind)) return null;
   if (e.args) {
     const a = call.arguments[0];
-    if (!isStr(a) || !e.args.includes(strValue(a))) return { cat: 'ignore' };
+    if (!isStr(a) || !e.args.includes(strValue(a))) return null;
   }
   return { cat: 'equiv', targets: e.targets };
 }
@@ -102,8 +102,11 @@ export function classifyRaw(call, ctx) {
   const ne = noEquivalentOf(eq, kind, method, call);
   if (ne) return { cat: 'noeq', kind, method, row: ne.row };
   if (method === 'waitForEvent') {
+    // popup / page: steps.switchToNewTab (below); another literal event is an event capture with no Steps
+    // equivalent (A2b, like on(...)); a non-literal event cannot be classified (A2, no known equivalent).
     const a = call.arguments[0];
-    if (!isStr(a) || !/^(popup|page)$/.test(strValue(a))) return { cat: 'ignore', kind, method };
+    if (!isStr(a)) return { cat: 'unlisted', kind, method };
+    if (!/^(popup|page)$/.test(strValue(a))) return { cat: 'noeq', kind, method, row: null };
   }
   const e = equivalenceOf(eq, kind, method, call);
   if (e) return { ...e, kind, method };
@@ -223,7 +226,7 @@ function escapeHatch(stack, ctx) {
 
 const literalArg = (a) => a && (isStr(a) || a.type === 'TemplateLiteral' || a.type === 'RegExpLiteral');
 /** The source text of a node, whitespace collapsed, at most 60 characters. */
-const src = (ctx, node) => { const t = ctx.file.text.slice(node.start, node.end).replace(/\s+/g, ' '); return t.length > 60 ? `${t.slice(0, 57)}...` : t; };
+const src = (ctx, node) => { const t = ctx.file.text.slice(node.start, node.end).replace(/\s*(\??\.)\s*/g, '$1').replace(/\s+/g, ' '); return t.length > 60 ? `${t.slice(0, 57)}...` : t; };
 const display = (c, ctx, n) => src(ctx, unwrap(n.callee));
 
 export function visitors(project) {
@@ -243,7 +246,7 @@ export function visitors(project) {
     const { file } = ctx;
     const stmt = stmtOf(ctx.stack);
     if (c.cat === 'noeq') (file.facts.noEq ||= []).push({ stmtLine: stmt ? stmt.loc.start.line : n.loc.start.line, row: c.row, method: c.method, kind: c.kind });
-    if (c.cat === 'accessor' || c.cat === 'chain' || c.cat === 'sleep' || c.cat === 'ignore') return;
+    if (c.cat === 'accessor' || c.cat === 'chain' || c.cat === 'sleep') return;
     if (c.cat !== 'noeq' && receiverIsLocatorChain(n, ctx)) return;
 
     if (file.kind === 'support') {
@@ -284,7 +287,10 @@ export function visitors(project) {
       if (c.targets) {
         const av = availability(c.targets, surface);
         if (!av.have) { versionGap(n, ctx, c, av); return; }
-        ctx.report('TB-A4', n, { message: `page scripting \`${display(c, ctx, n)}\`; the installed release has steps.${av.have}`, do: RULES.find((r) => r.id === 'TB-A4').do });
+        const opts = ['evaluateScript', 'getWindowProperty', 'getLocalStorage', 'getSessionStorage', 'getAttribute'].filter((m) => surface.methods.has(m));
+        const narrow = opts.filter((m) => m !== 'evaluateScript').map((m) => `steps.${m}`).join(', ');
+        const main = opts.includes('evaluateScript') ? 'steps.evaluateScript' : null;
+        ctx.report('TB-A4', n, { message: `page scripting \`${display(c, ctx, n)}\`; the installed release has ${main || narrow}`, do: main ? `Use steps.evaluateScript, or a narrower read (${narrow}) when the script only reads that value.` : `Use a Steps read (${narrow}) when the script only reads that value, or upgrade for steps.evaluateScript.` });
         return;
       }
       ctx.report('TB-A4', n, { message: `page scripting \`${display(c, ctx, n)}\` on a driver binding` });
@@ -332,7 +338,7 @@ export function visitors(project) {
     const report = (node, message) => { if (!inRefusalCallback(ctx.stack)) ctx.report('TB-A5', node, { message }); };
     const k = ctx.kind(callee.object);
     const a0 = n.arguments[0];
-    if (DRIVER_KINDS.has(k) && (LOCATOR_CTORS.has(p) || p === 'waitForSelector') && literalArg(a0)) return report(a0, `selector literal in \`${k}.${p}(…)\``);
+    if (DRIVER_KINDS.has(k) && (LOCATOR_CTORS.has(p) || p === 'waitForSelector') && literalArg(a0)) return report(a0, `selector literal in \`${src(ctx, callee)}(…)\``);
     if (p === 'findBySelector' && literalArg(a0)) return report(a0, 'selector literal in `findBySelector(…)`');
     if (k === 'steps' && p && !URL_STEPS.test(p)) {
       const params = surface.params && surface.params[p];
@@ -451,7 +457,7 @@ export function visitors(project) {
     if (parent.type === 'AssignmentExpression' && parent.left === child) return;
     if (isCall(parent) && (memberChain(unwrap(parent.callee)) || [])[0] === 'expect') return;
     const c = classifyRaw({ type: 'CallExpression', callee: n, arguments: [], loc: n.loc, start: n.start, end: n.end }, ctx);
-    if (!c || c.cat === 'accessor' || c.cat === 'chain' || c.cat === 'ignore') return;
+    if (!c || c.cat === 'accessor' || c.cat === 'chain') return;
     extracted(n, c, ctx);
   }
 
@@ -559,7 +565,7 @@ export function visitors(project) {
         }
         if (DRIVER_KINDS.has(k) && !DRIVER_PROPERTIES.has(key)) {
           const c = classifyRaw({ type: 'CallExpression', callee: { type: 'MemberExpression', object: n.init, property: { type: 'Identifier', name: key }, computed: false }, arguments: [] }, ctx);
-          if (c && c.cat !== 'accessor' && c.cat !== 'chain' && c.cat !== 'ignore') extracted(pr, c, ctx);
+          if (c && c.cat !== 'accessor' && c.cat !== 'chain') extracted(pr, c, ctx);
         }
       }
     },

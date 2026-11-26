@@ -1,0 +1,14 @@
+// spec-lint fixture: waitForEvent for an event other than popup or page is an event capture (A2b); a
+// non-literal event is A2; popup stays A2 (switchToNewTab)
+// rules: TB-A2 TB-A2b
+import { test, expect } from './fixtures/base';
+
+test('TC-0023 · waits for events', async ({ page }) => {
+  const failed = page.waitForEvent('requestfailed'); // EXPECT TB-A2b/advisory
+  const logged = page.waitForEvent('console'); // EXPECT TB-A2b/advisory
+  const name = process.env.EVENT || 'response';
+  const any = page.waitForEvent(name); // EXPECT TB-A2
+  const popup = page.waitForEvent('popup'); // EXPECT TB-A2
+  const file = page.waitForEvent('download'); // EXPECT TB-A2b/advisory
+  expect([failed, logged, any, popup, file].length).toBe(5);
+});

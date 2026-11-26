@@ -38,7 +38,7 @@ Judgment rules block through the judge's or reviewer's verdict. A false positive
 | Kind | Files |
 |---|---|
 | `spec` | any file a Playwright config would run as a test, plus any code file under the spec roots that calls `test(`, `describe(` or `it(` on a test binding |
-| `support` | non-spec code under the spec roots that a spec imports (transitively); everything under `fixtures/`, `flows/`, `data/`, `support/`, `utils/`, `lib/`, `helpers/`; a `*.setup.*` file only when a config uses it as a setup project (any other `*.setup.*` is a spec) |
+| `support` | non-spec code under the spec roots that a spec imports (transitively); everything under `fixtures/`, `flows/`, `data/`, `support/`, `utils/`, `lib/`, `helpers/`; a `*.setup.*` file only when a config uses it as a setup project (any other `*.setup.*` that declares tests is a spec); a `globalSetup` or `globalTeardown` module a config names |
 | `k6` | files under `tests/perf/**` |
 | `bundle` | a directory under an `evidence/` folder with a `summary.md` sibling that no config's test glob matches |
 | excluded | `tests/e2e/inspect/**` (except [TB-S8](#tb-s8)), `node_modules`, reports, `.d.ts`, JSON |
@@ -107,7 +107,7 @@ Form (a) is preferred for new sentinels. Any other use of `test.fail` is a [TB-F
 
 Register rules:
 
-- A row is valid only when every method it lists is in the no-equivalent table ([TB-A2b](#tb-a2b)); a row naming a method that has a Steps equivalent is a [TB-G1](#tb-g1) finding.
+- A row is valid only when every method it lists is in the no-equivalent table ([TB-A2b](#tb-a2b)), or is the `locator (escape hatch)` token; a row naming a method that has a Steps equivalent is a [TB-G1](#tb-g1) finding. Until rulings have a recorded form the lint can read, a row for a method in neither table stays a [TB-G1](#tb-g1) finding until an Achilles release adds the method to the no-equivalent table; the person's decision is recorded in `resume.json` `rulings[]` as [TB-G2](#tb-g2) describes.
 - Adding or changing a row is a [TB-G2](#tb-g2) rule-input change, decided only by the person through the escalation path of [TB-G2](#tb-g2). This holds in particular for a method in neither table.
 - The escape hatch for a gap that needs a raw locator keeps the selector in the repository and goes through the framework's interactions: `interactions.interact.<method>(new WebElement(page.locator(repo.getSelector('<element>', '<Page>'))))`, one raw call per waived statement ([`framework-gap.md`](framework-gap.md) has the procedure).
 
@@ -146,7 +146,7 @@ await steps.verifyPresence('scheduleSummary', 'DashboardPage');
 A spec makes no member call on a driver binding unless the method appears in the no-equivalent table or is a plain accessor.
 
 - **Source** W · **Kind** mechanical · **Severity** blocking · **Applies to** spec
-- **Detection**: any member call on a driver binding except the [TB-A2b](#tb-a2b) table and the accessors `context()`, `mainFrame()`, `frames()`. `waitForEvent` counts only for `popup` and `page`. A method in neither table is a hit too ("no known Steps equivalent": it needs an entry in the no-equivalent table, which is an Achilles release, or a register row, which is the person's decision). A computed member with a non-literal key (`page[m]()`) is a hit.
+- **Detection**: any member call on a driver binding except the [TB-A2b](#tb-a2b) table and the accessors `context()`, `mainFrame()`, `frames()`. `waitForEvent('popup' | 'page')` is a hit (`steps.switchToNewTab`); `waitForEvent` with another literal event is an event capture in the [TB-A2b](#tb-a2b) table; `waitForEvent` with a non-literal event is a hit (no known Steps equivalent). A method in neither table is a hit too ("no known Steps equivalent": it needs an entry in the no-equivalent table, which is an Achilles release, or a register row, which is the person's decision). A computed member with a non-literal key (`page[m]()`) is a hit.
 - **Equivalents by version**: an equivalent is read from the published package surface of each release (raw method, Steps method, first release that has it), never from documentation alone. An equivalent counts only when it exists in the project's installed release; otherwise the site is [TB-A13](#tb-a13).
 - **HTTP**: `get`, `post`, `put`, `patch`, `delete`, `head` on a request binding map to `steps.request*` (browser session) or `steps.api*` (own client, no browser session); `fetch` is unlisted; `dispose` is in the no-equivalent table. Below the release that has `request*`, a `context.request.*` or `page.request.*` call has no equivalent (the strict reading) and is [TB-A13](#tb-a13); reading `api*` as its equivalent is the person's decision (escalated as in [TB-G2](#tb-g2)), because the code alone does not show whether the call carries its own auth header.
 
@@ -163,7 +163,7 @@ await steps.navigateTo(Routes.LOGIN);
 A raw call that the Steps API cannot replace lives in a verb or a fixture, or carries the framework-gap citation of its register row.
 
 - **Source** W, R · **Kind** mechanical and judgment · **Severity** advisory in specs (mechanical); blocking by judgment · **Applies to** spec; allowed in fixtures and verbs with the citation of its register row (advisory without it)
-- **Detection**: the no-equivalent table: `page.on('console' | 'pageerror' | 'request' | 'dialog')`, `route`, `unroute`, `unrouteAll`, `context.cookies`, `addCookies`, `clearCookies`, `browser.newContext`, `newPage`, `close`, `locator.focus()`, `waitForEvent('download' | 'filechooser')`, request `dispose`, and the mutation-hook calls of [TB-X2](#tb-x2), each with its register row; and, with no seed row yet, listeners for other events (`on`, `once`, `off`, `removeListener`), `storageState`, `grantPermissions`, `clearPermissions`, `setOffline`, `setGeolocation`, `setExtraHTTPHeaders`, `context.pages`, `page.isClosed`, `bringToFront` and `video`.
+- **Detection**: the no-equivalent table: `page.on('console' | 'pageerror' | 'request' | 'dialog')`, `route`, `unroute`, `unrouteAll`, `context.cookies`, `addCookies`, `clearCookies`, `browser.newContext`, `newPage`, `close`, `locator.focus()`, `waitForEvent('download' | 'filechooser')`, request `dispose`, and the mutation-hook calls of [TB-X2](#tb-x2), each with its register row; and, with no seed row yet, listeners for other events (`on`, `once`, `off`, `removeListener`, and `waitForEvent` with a literal event other than `popup`, `page`, `download` and `filechooser`), `storageState`, `grantPermissions`, `clearPermissions`, `setOffline`, `setGeolocation`, `setExtraHTTPHeaders`, `context.pages`, `page.isClosed`, `bringToFront` and `video`.
 - **Judgment**: in a spec, the call belongs in a verb or fixture, or carries `// framework-gap: FG-<n>` naming the matching row.
 
 ```ts
