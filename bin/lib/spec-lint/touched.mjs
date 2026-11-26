@@ -43,8 +43,16 @@ export function parseDiff(text) {
   return out;
 }
 
+/** Throws a ChangeError naming the directory when it is not inside a git work tree. */
+function workTree(root) {
+  let inside = '';
+  try { inside = git(root, ['rev-parse', '--is-inside-work-tree']).trim(); } catch { /* not a repository */ }
+  if (inside !== 'true') throw new ChangeError(`${root} is not a git work tree`);
+}
+
 /** The staged change: index versus HEAD, with each changed file's staged content. */
 export function stagedChange(root) {
+  workTree(root);
   let diff;
   try { diff = git(root, ['diff', '--cached', '--no-color', '--no-ext-diff', '-U0', '-M', '--relative']); } catch (e) { throw new ChangeError(`git diff --cached failed: ${String(e.stderr || e.message).trim()}`); }
   const files = parseDiff(diff);
@@ -58,6 +66,7 @@ export function stagedChange(root) {
 
 /** The change against the merge-base of HEAD and `ref`: the working tree, plus untracked files as new files. */
 export function baseChange(root, ref) {
+  workTree(root);
   let mb;
   try { mb = git(root, ['merge-base', 'HEAD', ref]).trim(); } catch (e) { throw new ChangeError(`no merge-base of HEAD and ${ref}: ${String(e.stderr || e.message).trim()}`); }
   const files = parseDiff(git(root, ['diff', '--no-color', '--no-ext-diff', '-U0', '-M', '--relative', mb]));
@@ -77,7 +86,10 @@ export function markTouched(project, change) {
     const c = change.files.get(f.file);
     if (!c || c.status === 'D') { f.touched = false; continue; }
     if (c.lines === null) { f.touched = true; continue; }
-    f.touched = touchedAt(file, f, c.lines);
+    // a finding may name the other lines that make it (a generated test's loop and table, a helper's users)
+    const extra = f.data && Array.isArray(f.data.ranges) ? f.data.ranges : [];
+    const outside = !!(f.data && f.data.outsideTests) && [...c.lines].some((l) => !(file && file.tests || []).some((t) => l >= t.line && l <= t.endLine));
+    f.touched = touchedAt(file, f, c.lines) || outside || [...c.lines].some((l) => extra.some(([s, e]) => l >= s && l <= e));
   }
 }
 

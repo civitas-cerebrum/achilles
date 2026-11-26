@@ -129,7 +129,7 @@ test('--staged outside a git work tree exits 2; --staged with --base is a usage 
     writeProject(root, { 'tests/e2e/a.spec.ts': SPEC });
     const r = run(root, ['--staged']);
     assert.equal(r.status, 2);
-    assert.match(r.stderr, /the change cannot be read/);
+    assert.match(r.stderr, /is not a git work tree/);
     assert.equal(run(root, ['--staged', '--base', 'main']).status, 2);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -190,5 +190,58 @@ test('--id-index writes the index; --check passes when it lists every id and fai
     const suite = json(run(root, ['--suite', '--json']));
     assert.ok(suite.findings.some((f) => f.rule === 'TB-I2' && f.file === 'tests/e2e/c.spec.ts' && /not in the id index/.test(f.message)));
     assert.ok(existsSync(path.join(root, 'tests/e2e/docs/test-ids.md')));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--staged: editing the table a loop iterates touches the tests it generates', () => {
+  const spec = "import { test } from './fixtures/base';\nconst SIZES = ['S', 'M'];\nfor (const s of SIZES) {\n  test(`TCAB-01${s} · size ${s}`, async ({ steps }) => {\n    await steps.click(s, 'ProductPage');\n  });\n}\n";
+  const root = repo({ 'tests/e2e/a.spec.ts': spec });
+  try {
+    writeFileSync(path.join(root, 'tests/e2e/a.spec.ts'), spec.replace("['S', 'M']", "['S', 'M', 'L']"));
+    git(root, 'add', '-A');
+    const s1 = json(run(root, ['--staged', '--json'])).findings.filter((f) => f.rule === 'TB-S1');
+    assert.deepEqual(s1.map((f) => f.touched), [true]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--staged: removing the second user of an in-spec helper charges the helper', () => {
+  const spec = "import { test } from './fixtures/base';\nasync function open(steps) {\n  await steps.click('a', 'HomePage');\n}\n\ntest('TCAB-0001 · one', async ({ steps }) => {\n  await open(steps);\n});\n\ntest('TCAB-0002 · two', async ({ steps }) => {\n  await open(steps);\n});\n";
+  const root = repo({ 'tests/e2e/a.spec.ts': spec });
+  try {
+    writeFileSync(path.join(root, 'tests/e2e/a.spec.ts'), spec.replace("\ntest('TCAB-0002 · two', async ({ steps }) => {\n  await open(steps);\n});\n", ''));
+    git(root, 'add', '-A');
+    const s2 = json(run(root, ['--staged', '--json'])).findings.filter((f) => f.rule === 'TB-S2');
+    assert.deepEqual(s2.map((f) => [f.line, f.touched]), [[2, true]]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--stdin: a version gap in a new or edited test blocks; in an untouched test it is not reported', () => {
+  const root = tempRoot();
+  try {
+    const old = SPEC.replace(/page\.goto\('\/(one|two)'\)/g, 'page.evaluate(() => document.title.length > 0)');
+    writeProject(root, { 'tests/e2e/a.spec.ts': old }, { pin: '0.3.3' });
+    const after = old.replace("  await steps.verifyPresence('heading', 'HomePage');\n});\n\ntest('TCAB-0002", "  await steps.verifyPresence('heading', 'HomePage');\n  await steps.verifyPresence('footer', 'HomePage');\n});\n\ntest('TCAB-0002");
+    const rep = json(run(root, ['--stdin', '--json'], JSON.stringify({ file: 'tests/e2e/a.spec.ts', before: old, after })));
+    assert.deepEqual(rep.findings.filter((f) => f.rule === 'TB-A13').map((f) => [f.line, f.severity]), [[4, 'blocking']]);
+    assert.equal(rep.ok, false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--id-index keeps retired ids; --check accepts them and refuses one in use again', () => {
+  const root = tempRoot();
+  const one = (id) => `import { test } from './fixtures/base';\ntest('${id} · a', async ({ steps }) => {\n  await steps.verifyPresence('cart', 'CartPage');\n});\n`;
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': one('TCAB-0001'), 'tests/e2e/b.spec.ts': one('TCAB-0002') });
+    assert.equal(run(root, ['--id-index']).status, 0);
+    rmSync(path.join(root, 'tests/e2e/b.spec.ts'));
+    assert.equal(run(root, ['--id-index', '--check']).status, 1, 'a listed id no longer in use must be retired');
+    assert.equal(run(root, ['--id-index']).status, 0);
+    const index = readFileSync(path.join(root, 'tests/e2e/docs/test-ids.md'), 'utf8');
+    assert.match(index, /## Retired[\s\S]*\| TCAB-0002 \|/);
+    assert.equal(run(root, ['--id-index', '--check']).status, 0, 'retired ids are accepted');
+    writeProject(root, { 'tests/e2e/c.spec.ts': one('TCAB-0002') });
+    const c = run(root, ['--id-index', '--check']);
+    assert.equal(c.status, 1);
+    assert.match(c.stderr, /retired ids in use again: TCAB-0002/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

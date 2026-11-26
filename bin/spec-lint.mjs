@@ -31,7 +31,7 @@ import { projectRoot } from './lib/project-root.mjs';
 import { lintProject, lintWrite, BudgetError, DEFAULT_FILE_BUDGET_MS, RULEBOOK } from './lib/spec-lint/engine.mjs';
 import { SurfaceError } from './lib/spec-lint/surface.mjs';
 import { stagedChange, baseChange, ChangeError } from './lib/spec-lint/touched.mjs';
-import { renderIndex } from './lib/spec-lint/rules/identity.mjs';
+import { renderIndex, indexIds } from './lib/spec-lint/rules/identity.mjs';
 import { INDEX_FILE } from './lib/spec-lint/ids.mjs';
 
 const USAGE = 'achilles-spec-lint [paths…] [--json] [--quiet] [--budget-ms <n>] [--staged | --base <ref>] [--suite] [--stdin] [--id-index [--check]]';
@@ -132,18 +132,23 @@ function main(argv) {
 /** --id-index: write (or with --check, compare) the suite's id index. */
 function idIndex(root, report, args) {
   const ids = report.ids || [];
-  const text = renderIndex(ids);
   const abs = path.join(root, INDEX_FILE);
+  const before = existsSync(abs) ? indexIds(readFileSync(abs, 'utf8')) : null;
+  const inUse = new Set(ids.map((x) => x.id));
+  // an id listed before and no longer used is retired; retired ids stay listed
+  const retired = before ? [...before.retired, ...[...before.active].filter((x) => !inUse.has(x))] : [];
+  const text = renderIndex(ids, retired);
   const dupes = report.findings.filter((f) => f.rule === 'TB-I2' && /also used by/.test(f.message));
   if (args.check) {
-    const listed = existsSync(abs) ? indexIds(readFileSync(abs, 'utf8')) : null;
-    const inUse = new Set(ids.map((x) => x.id));
-    const missing = listed ? [...inUse].filter((x) => !listed.has(x)).sort() : [...inUse].sort();
+    const listed = before ? before.active : null;
+    const missing = listed ? [...inUse].filter((x) => !listed.has(x) && !before.retired.has(x)).sort() : [...inUse].sort();
     const stale = listed ? [...listed].filter((x) => !inUse.has(x)).sort() : [];
-    const upToDate = !!listed && !missing.length && !stale.length;
-    if (args.json) process.stdout.write(`${JSON.stringify({ index: INDEX_FILE, exists: !!listed, upToDate, ids: inUse.size, missing, stale, duplicates: dupes.map((f) => ({ file: f.file, line: f.line, message: f.message })) }, null, 2)}\n`);
+    const reused = before ? [...inUse].filter((x) => before.retired.has(x)).sort() : [];
+    const upToDate = !!listed && !missing.length && !stale.length && !reused.length;
+    const list = (xs) => `${xs.slice(0, 10).join(', ')}${xs.length > 10 ? ', …' : ''}`;
+    if (args.json) process.stdout.write(`${JSON.stringify({ index: INDEX_FILE, exists: !!listed, upToDate, ids: inUse.size, missing, stale, reused, duplicates: dupes.map((f) => ({ file: f.file, line: f.line, message: f.message })) }, null, 2)}\n`);
     else {
-      if (!upToDate) process.stderr.write(`[TB-I2] ${INDEX_FILE}: ${!listed ? 'the id index does not exist' : `the id index is out of date${missing.length ? `; not listed: ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ', …' : ''}` : ''}${stale.length ? `; listed but not in use: ${stale.slice(0, 10).join(', ')}${stale.length > 10 ? ', …' : ''}` : ''}`}\n→ Do: run \`achilles-spec-lint --id-index\` and commit the index with the tests\n→ Why/how: ${RULEBOOK}#tb-i2\n`);
+      if (!upToDate) process.stderr.write(`[TB-I2] ${INDEX_FILE}: ${!listed ? 'the id index does not exist' : `the id index is out of date${missing.length ? `; not listed: ${list(missing)}` : ''}${stale.length ? `; listed but not in use (retire them): ${list(stale)}` : ''}${reused.length ? `; retired ids in use again: ${list(reused)}` : ''}`}\n→ Do: ${reused.length ? 'give the reused cases fresh ids, then ' : ''}run \`achilles-spec-lint --id-index\` and commit the index with the tests\n→ Why/how: ${RULEBOOK}#tb-i2\n`);
       for (const f of dupes) process.stderr.write(`${format(f)}\n`);
       if (!args.quiet) process.stdout.write(`spec-lint: id index ${upToDate ? 'up to date' : 'out of date'}, ${inUse.size} id(s), ${dupes.length} duplicate(s)\n`);
     }
@@ -155,16 +160,6 @@ function idIndex(root, report, args) {
   if (args.json) process.stdout.write(`${JSON.stringify({ index: INDEX_FILE, written: true, ids: ids.length, duplicates: dupes.length }, null, 2)}\n`);
   else if (!args.quiet) process.stdout.write(`spec-lint: wrote ${INDEX_FILE} (${ids.length} id(s)${dupes.length ? `, ${dupes.length} duplicate(s) to fix` : ''})\n`);
   return dupes.length ? 1 : 0;
-}
-
-/** The ids the first column of a generated index lists. */
-function indexIds(text) {
-  const out = new Set();
-  for (const line of text.split(/\r?\n/)) {
-    const m = /^\|\s*([^|\s]+)\s*\|/.exec(line);
-    if (m && m[1] !== 'Id' && !/^-+$/.test(m[1])) out.add(m[1]);
-  }
-  return out;
 }
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
