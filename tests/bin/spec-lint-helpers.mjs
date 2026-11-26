@@ -11,6 +11,9 @@
 // (the next line), `<!-- EXPECT … -->` in Markdown. A directory fixture holds a project tree plus
 // fixture.json ({ rules, pin, project }). Projects are written outside any git checkout, so the surface
 // chain falls through to the shipped snapshot for the pinned version.
+//
+// Code fixtures are stored with a `.txt` suffix (`bad-1-goto.spec.ts.txt`) so no TypeScript tooling run
+// over this repository (the plugin validator's type check) loads them; materialise() drops the suffix.
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,6 +21,16 @@ import { fileURLToPath } from 'node:url';
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const FIXTURES = path.join(REPO, 'tests', 'bin', 'fixtures', 'spec-lint');
+
+/** Copies a fixture tree into `root`, dropping the `.txt` suffix of stored code files. */
+export function materialise(src, root) {
+  for (const f of walk(src)) {
+    const to = path.join(root, f.replace(/\.txt$/, ''));
+    mkdirSync(path.dirname(to), { recursive: true });
+    cpSync(path.join(src, f), to);
+  }
+  return root;
+}
 
 export function tempRoot() {
   return realpathSync(mkdtempSync(path.join(os.tmpdir(), 'spec-lint-')));
@@ -67,7 +80,7 @@ export function loadFixture(fixturePath, defaultRule) {
   const root = tempRoot();
   if (statSync(fixturePath).isDirectory()) {
     const meta = JSON.parse(readFileSync(path.join(fixturePath, 'fixture.json'), 'utf8'));
-    cpSync(fixturePath, root, { recursive: true });
+    materialise(fixturePath, root);
     rmSync(path.join(root, 'fixture.json'));
     writeProject(root, {}, { pin: meta.pin || '0.3.12' });
     const files = walk(root).filter((f) => f !== 'package.json');
@@ -75,7 +88,7 @@ export function loadFixture(fixturePath, defaultRule) {
     return { root, rules: meta.rules || [defaultRule], expected, project: meta.project || [], fileLevel: [], cleanup: () => rmSync(root, { recursive: true, force: true }) };
   }
   const text = readFileSync(fixturePath, 'utf8');
-  const place = header(text, 'place') || `tests/e2e/${path.basename(fixturePath)}`;
+  const place = header(text, 'place') || `tests/e2e/${path.basename(fixturePath).replace(/\.txt$/, '')}`;
   writeProject(root, { [place]: text }, { pin: header(text, 'pin') || '0.3.12' });
   const rules = (header(text, 'rules') || defaultRule).split(/\s+/);
   const project = (header(text, 'expect-project') || '').split(/\s+/).filter(Boolean);

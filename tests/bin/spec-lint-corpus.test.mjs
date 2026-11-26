@@ -3,10 +3,10 @@
 // CLEAN-BLOCKING lines carry no blocking finding of the listed ids.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { lintProject, implementedRules } from '../../bin/lib/spec-lint/engine.mjs';
-import { FIXTURES, tempRoot } from './spec-lint-helpers.mjs';
+import { FIXTURES, materialise, tempRoot } from './spec-lint-helpers.mjs';
 
 const CORPUS = path.join(FIXTURES, 'corpus');
 const walk = (dir) => readdirSync(dir).flatMap((f) => {
@@ -17,7 +17,7 @@ const walk = (dir) => readdirSync(dir).flatMap((f) => {
 test('the seeded corpus: every marked line of the implemented families matches', () => {
   const root = tempRoot();
   try {
-    cpSync(CORPUS, root, { recursive: true });
+    materialise(CORPUS, root);
     const report = lintProject({ root });
     const implemented = new Set(implementedRules().map((r) => r.id));
     const at = new Map();

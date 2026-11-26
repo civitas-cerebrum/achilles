@@ -12,6 +12,11 @@ const dirs = readdirSync(FIXTURES).filter((d) => /^TB-|^bindings$/.test(d) && st
 // The mechanical rules of this engine: each needs at least two compliant and two non-compliant fixtures.
 const MECHANICAL = ['TB-A1', 'TB-A2', 'TB-A2b', 'TB-A3', 'TB-A4', 'TB-A5', 'TB-A7', 'TB-A9', 'TB-A10', 'TB-A11', 'TB-A12', 'TB-A13', 'TB-A14', 'TB-G0', 'TB-G1'];
 
+test('no fixture is stored with a code extension (TypeScript tooling over the repository must not load them)', () => {
+  const walk = (d) => readdirSync(d).flatMap((f) => (statSync(path.join(d, f)).isDirectory() ? walk(path.join(d, f)) : [path.join(d, f)]));
+  assert.deepEqual(walk(FIXTURES).filter((f) => /\.(?:[cm]?[jt]sx?)$/.test(f)).map((f) => path.relative(FIXTURES, f)), []);
+});
+
 test('every mechanical rule has at least two compliant and two non-compliant fixtures', () => {
   for (const rule of MECHANICAL) {
     assert.ok(dirs.includes(rule), `fixture directory ${rule} missing`);
