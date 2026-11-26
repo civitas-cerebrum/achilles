@@ -7,3 +7,7 @@ export async function nullishAlias(steps) { const s = steps ?? null; await s.cli
 export async function objStore(steps) { const o: any = {}; o.s = steps; await o.s.click('closePromo', 'HomePage'); }
 export async function argumentsIt(steps) { await arguments[0].click('closePromo', 'HomePage'); }
 export async function bearerOnly(user: string) { return { Authorization: `Bearer ${user}` }; }
+export class Menu {
+  constructor(private steps: any) {}
+  async close() { await this.steps.click('closeMenu', 'HomePage'); }
+}

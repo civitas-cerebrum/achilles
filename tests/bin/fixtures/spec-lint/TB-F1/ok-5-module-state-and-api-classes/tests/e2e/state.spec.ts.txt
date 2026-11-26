@@ -1,0 +1,8 @@
+// spec-lint fixture: module state set from data, and a class that uses its Steps only for API calls, in teardown branches: bookkeeping
+import { test } from './fixtures/base';
+import { setUser, bump, setToken, deleteLastUser, UserApi } from './data/state';
+
+test.beforeAll(async () => { setUser({ id: 1 }); bump(2); setToken('t'); });
+test.afterEach(async ({ steps }) => { if (process.env.CREATED) await deleteLastUser(steps); });
+test.afterEach(async ({ steps }) => { if (process.env.CREATED) await new UserApi(steps).remove(); });
+test('TCAB-1401 · body', async ({ steps }) => { await steps.verifyText('a', 'HomePage', 'x'); });

@@ -128,9 +128,10 @@ export function makeDrives(project, { localFunction, importsOf }) {
   });
 
   /**
-   * Names of a module's top-level `let` / `var` variables assigned anywhere in it from a function parameter that
-   * may hold a binding (untyped, `any`, framework-typed or framework-named): `let current; export function
-   * remember(s) { current = s; }`. Read inside that module, they hold the binding.
+   * Names of a module's top-level `let` / `var` variables assigned anywhere in it from a parameter that holds a
+   * binding: one binding-shaped by its own type or name, or one that some call in the project hands a binding
+   * to (`remember(steps)` with `export function remember(s: any) { current = s; }`). Read inside that module,
+   * they hold the binding; a setter that only ever receives data does not taint its variable.
    */
   function moduleTaint(file) {
     if (file.facts.moduleTaint) return file.facts.moduleTaint;
@@ -141,10 +142,10 @@ export function makeDrives(project, { localFunction, importsOf }) {
     }
     const out = new Set();
     if (vars.size) {
-      const loose = (p) => { const q = p.type === 'AssignmentPattern' ? p.left : p; const tn = q.type === 'Identifier' ? typeName(q) : null; return q.type === 'Identifier' && (!tn || tn === 'any' || tn === 'unknown' || bindingParamNames(q).length > 0); };
       anyNode(file.ast.program, (fn) => {
         if (!isFn(fn)) return false;
-        const params = new Set(fn.params.filter(loose).flatMap((p) => patternNames(p)));
+        const handed = bindingPositions(fn);
+        const params = new Set(fn.params.flatMap((p, i) => (bindingParamNames(p).length || handed.has(i) ? patternNames(p) : [])));
         if (!params.size) return false;
         anyNode(fn.body, (x) => {
           if (x.type !== 'AssignmentExpression' || x.operator !== '=') return false;
@@ -156,6 +157,74 @@ export function makeDrives(project, { localFunction, importsOf }) {
       });
     }
     return (file.facts.moduleTaint = out);
+  }
+
+  /**
+   * Calls in the project that hand a binding-shaped argument (a framework-like name, or a member read of one such
+   * as `fx.page`) to a named function: [{ file, name, positions }]. Built once per project.
+   */
+  let handOns = null;
+  const bindingArg = (a) => { const u = unwrap(a); if (!u) return false; if (u.type === 'Identifier') return BINDING_NAME.test(u.name); if (isMember(u) && !u.computed) return BINDING_NAME.test(propName(u) || ''); return false; };
+  function projectHandOns() {
+    if (handOns) return handOns;
+    handOns = [];
+    for (const f of project.allFiles) {
+      anyNode(f.ast.program, (x) => {
+        if (!isCall(x) || unwrap(x.callee).type !== 'Identifier') return false;
+        const positions = x.arguments.map((a, i) => (bindingArg(a) ? i : -1)).filter((i) => i >= 0);
+        if (positions.length) handOns.push({ file: f, name: unwrap(x.callee).name, positions });
+        return false;
+      });
+    }
+    return handOns;
+  }
+
+  /** Parameter positions of `fn` that some call in the project hands a binding to. */
+  function bindingPositions(fn) {
+    const out = new Set();
+    for (const h of projectHandOns()) {
+      if (h.positions.every((i) => out.has(i))) continue;
+      const target = resolve(h.file, h.name);
+      if (target && target.fn === fn) for (const i of h.positions) out.add(i);
+    }
+    return out;
+  }
+
+  /** A class declared in the file or imported from a project module, or null. */
+  function resolveClass(file, name, depth = 0) {
+    for (let st of file.ast.program.body) {
+      if ((st.type === 'ExportNamedDeclaration' || st.type === 'ExportDefaultDeclaration') && st.declaration) st = st.declaration;
+      if (st.type === 'ClassDeclaration' && st.id && st.id.name === name) return st;
+    }
+    const imp = importsOf(file).get(name);
+    if (!imp || depth > MAX_DEPTH) return null;
+    const target = resolveRelative(file.abs, imp.source);
+    const tf = target && project.allFiles.find((f) => f.abs === target);
+    return tf ? resolveClass(tf, imp.imported, depth + 1) : null;
+  }
+
+  /**
+   * A class that uses what its constructor stores only for api*, request* or sql* member calls: no other member
+   * call on a stored field, no stored field handed on, no call rooted at a binding-like name.
+   */
+  function classApiOnly(cls) {
+    const fields = new Set();
+    const ctor = cls.body.body.find((m) => m.type === 'ClassMethod' && m.kind === 'constructor');
+    if (ctor) {
+      const params = new Set();
+      for (const p of ctor.params) { if (p.type === 'TSParameterProperty') for (const n of patternNames(p.parameter)) fields.add(n); else for (const n of patternNames(p)) params.add(n); }
+      anyNode(ctor.body, (x) => { if (x.type === 'AssignmentExpression' && isMember(x.left) && unwrap(x.left.object).type === 'ThisExpression' && unwrap(x.right).type === 'Identifier' && params.has(unwrap(x.right).name)) fields.add(propName(x.left)); return false; });
+    }
+    const field = (e) => { const u = unwrap(e); return !!u && isMember(u) && unwrap(u.object).type === 'ThisExpression' && fields.has(propName(u)); };
+    return !anyNode(cls.body, (x) => {
+      if (!isCall(x)) return false;
+      if (x.arguments.some((a) => field(a))) return true;
+      const c = unwrap(x.callee);
+      if (!isMember(c)) return false;
+      if (field(c.object)) return !BACK_DOOR.test(propName(c) || '');
+      const { root, first } = chain(c);
+      return !!root && BINDING_NAME.test(root) && root !== 'request' && !(first && BACK_DOOR.test(first));
+    });
   }
 
   /** Functions declared under `root` by name (closures a call may run). */
@@ -213,6 +282,11 @@ export function makeDrives(project, { localFunction, importsOf }) {
       }
       const positions = x.arguments.map((a, i) => (handsOn(a, tainted) ? i : -1)).filter((i) => i >= 0);
       if (!positions.length) return false;
+      // `new X(steps)`: a class whose methods use the binding only for api*, request* or sql* calls does not drive
+      if (x.type === 'NewExpression' && c.type === 'Identifier' && file) {
+        const cls = resolveClass(file, c.name);
+        if (cls) return !classApiOnly(cls);
+      }
       if (c.type === 'Identifier' && /^(expect|String|Number|Boolean)$/.test(c.name)) return false;
       if (isMember(c) && chain(c).root === 'console') return false;
       const target = c.type === 'Identifier' && file ? resolve(file, c.name) : null;

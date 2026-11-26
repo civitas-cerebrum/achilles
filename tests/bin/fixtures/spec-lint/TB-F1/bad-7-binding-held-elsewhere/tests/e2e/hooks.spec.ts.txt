@@ -1,6 +1,6 @@
 // spec-lint fixture: a binding held in module state, a closure, an assignment, a conditional or nullish alias, an object, or `arguments` still drives in a hook branch
 import { test } from './fixtures/base';
-import { remember, closeViaGlobal, assignAlias, condAlias, nullishAlias, objStore, argumentsIt, bearerOnly } from './flows/held';
+import { remember, closeViaGlobal, assignAlias, condAlias, nullishAlias, objStore, argumentsIt, bearerOnly, Menu } from './flows/held';
 
 test.beforeAll(async ({ steps }) => { remember(steps); });
 test.beforeEach(async () => { if (process.env.A) await closeViaGlobal(); }); // EXPECT TB-F1
@@ -11,6 +11,7 @@ test.beforeEach(async ({ steps }) => { if (process.env.E) await nullishAlias(ste
 test.beforeEach(async ({ steps }) => { if (process.env.F) await objStore(steps); }); // EXPECT TB-F1
 test.beforeEach(async ({ steps }) => { if (process.env.K) await argumentsIt(steps); }); // EXPECT TB-F1
 test.beforeEach(async ({ steps }) => { let s; s = steps; if (process.env.N) await s.click('a', 'HomePage'); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { if (process.env.M) await new Menu(steps).close(); }); // EXPECT TB-F1
 test.afterEach(async ({ steps }, testInfo) => {
   if (process.env.O) {
     const h = await bearerOnly('u');
