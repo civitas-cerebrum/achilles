@@ -2,7 +2,8 @@
 // bindings/ produces exactly the findings its markers name (see spec-lint-helpers.mjs for the grammar).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { lintProject } from '../../bin/lib/spec-lint/engine.mjs';
 import { FIXTURES, REPO, loadFixture, compare, tempRoot, writeProject } from './spec-lint-helpers.mjs';
@@ -19,6 +20,17 @@ const MECHANICAL = ruleKinds(readFileSync(path.join(REPO, 'skills/achilles-orche
 test('no fixture is stored with a code extension (TypeScript tooling over the repository must not load them)', () => {
   const walk = (d) => readdirSync(d).flatMap((f) => (statSync(path.join(d, f)).isDirectory() ? walk(path.join(d, f)) : [path.join(d, f)]));
   assert.deepEqual(walk(FIXTURES).filter((f) => /\.(?:[cm]?[jt]sx?)$/.test(f)).map((f) => path.relative(FIXTURES, f)), []);
+});
+
+test('every fixture file is committable (none is ignored by the repository) and stored dot-paths materialise', () => {
+  const walk = (d) => readdirSync(d).flatMap((f) => (statSync(path.join(d, f)).isDirectory() ? walk(path.join(d, f)) : [path.join(d, f)]));
+  const files = walk(FIXTURES).map((f) => path.relative(REPO, f));
+  const r = spawnSync('git', ['-C', REPO, 'check-ignore', '--stdin'], { input: files.join('\n'), encoding: 'utf8' });
+  if (r.status !== 128) assert.equal(r.stdout.trim(), '', 'fixture files the repository ignores (they would be missing from a clean checkout)');
+  for (const name of ['bad-2-unresolvable', 'ok-2-path-anchor-and-defect-id']) {
+    const fx = loadFixture(path.join(FIXTURES, 'TB-I4', name), 'TB-I4');
+    try { assert.ok(existsSync(path.join(fx.root, '.achilles', 'defect-confirmations')), `${name}: .achilles/defect-confirmations is materialised`); } finally { fx.cleanup(); }
+  }
 });
 
 test('every mechanical rule has at least two compliant and two non-compliant fixtures', () => {

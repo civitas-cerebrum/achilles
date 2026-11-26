@@ -15,6 +15,7 @@
 //
 // Code fixtures are stored with a `.txt` suffix (`bad-1-goto.spec.ts.txt`) so no TypeScript tooling run
 // over this repository (the plugin validator's type check) loads them; materialise() drops the suffix.
+// Paths the repository ignores are stored under another name: `_achilles/` becomes `.achilles/`.
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,7 +27,7 @@ export const FIXTURES = path.join(REPO, 'tests', 'bin', 'fixtures', 'spec-lint')
 /** Copies a fixture tree into `root`, dropping the `.txt` suffix of stored code files. */
 export function materialise(src, root) {
   for (const f of walk(src)) {
-    const to = path.join(root, f.replace(/\.txt$/, ''));
+    const to = path.join(root, f.replace(/\.txt$/, '').replace(/(^|\/)_achilles(\/|$)/g, '$1.achilles$2'));
     mkdirSync(path.dirname(to), { recursive: true });
     cpSync(path.join(src, f), to);
   }
