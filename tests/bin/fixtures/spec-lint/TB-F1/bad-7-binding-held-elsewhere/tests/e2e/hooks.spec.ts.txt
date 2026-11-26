@@ -1,0 +1,21 @@
+// spec-lint fixture: a binding held in module state, a closure, an assignment, a conditional or nullish alias, an object, or `arguments` still drives in a hook branch
+import { test } from './fixtures/base';
+import { remember, closeViaGlobal, assignAlias, condAlias, nullishAlias, objStore, argumentsIt, bearerOnly } from './flows/held';
+
+test.beforeAll(async ({ steps }) => { remember(steps); });
+test.beforeEach(async () => { if (process.env.A) await closeViaGlobal(); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { const go = () => steps.click('closePromo', 'HomePage'); if (process.env.B) await go(); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { if (process.env.C) await assignAlias(steps); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { if (process.env.D) await condAlias(steps); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { if (process.env.E) await nullishAlias(steps); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { if (process.env.F) await objStore(steps); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { if (process.env.K) await argumentsIt(steps); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { let s; s = steps; if (process.env.N) await s.click('a', 'HomePage'); }); // EXPECT TB-F1
+test.afterEach(async ({ steps }, testInfo) => {
+  if (process.env.O) {
+    const h = await bearerOnly('u');
+    testInfo.annotations.push({ type: 'x', description: String(h) });
+    await steps.apiDelete('/u');
+  }
+});
+test('TCAB-1301 · body', async ({ steps }) => { await steps.verifyText('a', 'HomePage', 'x'); });

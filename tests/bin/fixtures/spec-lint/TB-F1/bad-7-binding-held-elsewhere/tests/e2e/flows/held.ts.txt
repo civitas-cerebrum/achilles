@@ -1,0 +1,9 @@
+let current: any;
+export function remember(s: any) { current = s; }
+export async function closeViaGlobal() { await current.click('closePromo', 'HomePage'); }
+export async function assignAlias(steps) { let s; s = steps; await s.click('closePromo', 'HomePage'); }
+export async function condAlias(steps) { const s = process.env.X ? steps : steps; await s.click('closePromo', 'HomePage'); }
+export async function nullishAlias(steps) { const s = steps ?? null; await s.click('closePromo', 'HomePage'); }
+export async function objStore(steps) { const o: any = {}; o.s = steps; await o.s.click('closePromo', 'HomePage'); }
+export async function argumentsIt(steps) { await arguments[0].click('closePromo', 'HomePage'); }
+export async function bearerOnly(user: string) { return { Authorization: `Bearer ${user}` }; }

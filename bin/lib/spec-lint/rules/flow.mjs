@@ -181,7 +181,13 @@ export function visitors(project) {
    * teardown through verbs, API calls or cleanup is bookkeeping.
    */
   function branchCounts(b, ctx) {
-    return ctx.region === 'hook' ? anyNode(b, (x) => drivesUi(x, ctx.kind) || uiVerb(x, ctx)) : drives(b, ctx.kind);
+    if (ctx.region !== 'hook') return drives(b, ctx.kind);
+    if (anyNode(b, (x) => drivesUi(x, ctx.kind) || uiVerb(x, ctx))) return true;
+    // closures, aliases and module state that hold the hook's bindings (the shared definition)
+    const tainted = new Set();
+    for (let sc = ctx.scope; sc; sc = sc.parent) for (const [n, k] of sc.vars) if (typeof k === 'string' && ((DRIVER_KINDS.has(k) && k !== 'request') || ['steps', 'repo', 'interactions', 'interactions-part', 'element'].includes(k))) tainted.add(n);
+    const fn = [...ctx.stack].reverse().find(isFn);
+    return drv.driven(b, ctx.file, tainted, 0, fn && fn.body ? fn.body : b);
   }
 
   /**
