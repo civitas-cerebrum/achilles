@@ -9,7 +9,9 @@
 // fixtures by their extend type argument or by what the fixture body passes to use(…), parameters by
 // annotation or name, variables by initialiser or (declared without one) by annotation, later assignments
 // (written to the declaring scope), destructuring over a driver or fixtures value, the `.locator` of a
-// repository element, and the reach-through members of TB-A14 (`repo.driver`, `steps.page`, …).
+// repository element, the reach-through members of TB-A14 (`repo.driver`, `steps.page`, …), and
+// containers: an array or list of one kind is `list:<kind>` (indexing, iteration and iteration callbacks
+// yield the kind), an object literal holding bindings is `obj:{"key":"kind"}`.
 import { isFn, isMember, isCall, propName, memberChain, unwrap, typeName, isStr, strValue } from './ast.mjs';
 
 export const DRIVER_KINDS = new Set(['page', 'frame', 'context', 'browser', 'request', 'locator', 'input']);
@@ -42,6 +44,13 @@ export function reachKind(objKind, prop) {
   return p === 'context' ? 'context' : p === 'browser' ? 'browser' : 'page';
 }
 
+const meaningful = (k) => DRIVER_KINDS.has(k) || FRAMEWORK_KINDS.has(k);
+/** The kind of each element of a `list:<kind>`, or null. */
+export const listElement = (k) => (typeof k === 'string' && k.startsWith('list:') ? k.slice(5) : null);
+const objMembers = (k) => (typeof k === 'string' && k.startsWith('obj:') ? JSON.parse(k.slice(4)) : null);
+const LIST_KEEP = new Set(['filter', 'slice', 'reverse', 'concat', 'toReversed', 'toSorted', 'sort']);
+const LIST_PICK = new Set(['at', 'find', 'findLast', 'pop', 'shift']);
+
 /** The kind of an expression, or null. `env.fixtureKinds` maps project fixture names to kinds. */
 export function kindOf(e, scope, env) {
   e = unwrap(e);
@@ -49,9 +58,28 @@ export function kindOf(e, scope, env) {
   switch (e.type) {
     case 'AwaitExpression': return kindOf(e.argument, scope, env);
     case 'Identifier': return scope.lookup(e.name);
+    case 'ArrayExpression': {
+      for (const el of e.elements) { const k = el && el.type !== 'SpreadElement' ? kindOf(el, scope, env) : el ? listElement(kindOf(el.argument, scope, env)) : null; if (meaningful(k)) return `list:${k}`; }
+      return null;
+    }
+    case 'ObjectExpression': {
+      const out = {};
+      for (const pr of e.properties) {
+        if (pr.type === 'SpreadElement') { Object.assign(out, objMembers(kindOf(pr.argument, scope, env)) || {}); continue; }
+        if (pr.type !== 'ObjectProperty' || pr.computed) continue;
+        const key = pr.key.type === 'Identifier' ? pr.key.name : isStr(pr.key) ? strValue(pr.key) : null;
+        const k = key ? kindOf(pr.value, scope, env) : null;
+        if (meaningful(k)) out[key] = k;
+      }
+      return Object.keys(out).length ? `obj:${JSON.stringify(out)}` : null;
+    }
     case 'MemberExpression': case 'OptionalMemberExpression': {
       const k = kindOf(e.object, scope, env);
       const p = propName(e);
+      const le = listElement(k);
+      if (le) return e.computed ? le : null;
+      const om = objMembers(k);
+      if (om) return p !== null && Object.hasOwn(om, p) ? om[p] : null;
       if (k === 'fixtures') return FIXTURE_KIND[p] || env.fixtureKinds.get(p) || (p ? `fixture:${p}` : null);
       const r = reachKind(k, p);
       if (r) return r;
@@ -71,18 +99,21 @@ export function kindOf(e, scope, env) {
       if (!isMember(c)) return null;
       const p = propName(c);
       const k = kindOf(c.object, scope, env);
+      const le = listElement(k);
+      if (le) return LIST_KEEP.has(p) ? k : LIST_PICK.has(p) ? le : null;
       if (k === 'steps') return p === 'switchToNewTab' || p === 'closeTab' ? 'page' : p === 'forPage' ? 'steps' : null;
       if (k === 'repo') return REPO_ELEMENT_CALLS.test(p || '') ? 'element' : null;
       if (k === 'page' || k === 'frame' || k === 'locator') {
         if (LOCATOR_CTORS.has(p) || LOCATOR_CHAIN.has(p)) return 'locator';
         if (p === 'context') return 'context';
         if (p === 'mainFrame' || p === 'frame' || p === 'parentFrame') return 'frame';
+        if (p === 'frames' || p === 'childFrames') return 'list:frame';
         if (p === 'waitForEvent') { const a = e.arguments[0]; return isStr(a) && /^(popup|page)$/.test(strValue(a)) ? 'page' : null; }
         if (p === 'goto' || p === 'reload' || p === 'waitForResponse' || p === 'waitForRequest') return 'response';
         return null;
       }
-      if (k === 'context') return p === 'newPage' || p === 'waitForEvent' ? 'page' : p === 'browser' ? 'browser' : null;
-      if (k === 'browser') return p === 'newContext' ? 'context' : p === 'newPage' ? 'page' : null;
+      if (k === 'context') return p === 'newPage' || p === 'waitForEvent' ? 'page' : p === 'browser' ? 'browser' : p === 'pages' ? 'list:page' : null;
+      if (k === 'browser') return p === 'newContext' ? 'context' : p === 'newPage' ? 'page' : p === 'contexts' ? 'list:context' : null;
       if (k === 'request') return p === 'newContext' ? 'request' : 'response';
       if (k === 'apirequest' && p === 'newContext') return 'request';
       const ch = memberChain(c);
@@ -101,6 +132,7 @@ const annotationKind = (node) => {
 /** Binds a destructured fixtures parameter (`{ page, steps: s }`). */
 function bindFixturePattern(pattern, scope, env) {
   for (const pr of pattern.properties) {
+    if (pr.type === 'RestElement' && pr.argument.type === 'Identifier') { scope.decls.add(pr.argument.name); scope.vars.set(pr.argument.name, 'fixtures'); continue; }
     if (pr.type !== 'ObjectProperty') continue;
     const key = pr.key.type === 'Identifier' ? pr.key.name : isStr(pr.key) ? strValue(pr.key) : null;
     let v = pr.value;
@@ -130,7 +162,19 @@ export function bindParams(fn, scope, env, { fixtureCallback = false, support = 
         else if (support && !fixtureCallback) scope.vars.set(q.name, 'untyped');
       }
     } else if (q.type === 'ObjectPattern') {
-      for (const pr of q.properties) if (pr.type === 'ObjectProperty' && pr.value.type === 'Identifier') scope.decls.add(pr.value.name);
+      // `{ page }: { page: Page }` by the member's annotation, else `{ page }` by name
+      const lit = q.typeAnnotation && q.typeAnnotation.typeAnnotation;
+      const typed = new Map();
+      if (lit && lit.type === 'TSTypeLiteral') for (const m of lit.members) if (m.type === 'TSPropertySignature' && m.key) { const k = annotationKind(m); if (k) typed.set(m.key.name || m.key.value, k); }
+      for (const pr of q.properties) {
+        let v = pr.type === 'ObjectProperty' ? pr.value : pr.type === 'RestElement' ? pr.argument : null;
+        if (v && v.type === 'AssignmentPattern') v = v.left;
+        if (!v || v.type !== 'Identifier') continue;
+        scope.decls.add(v.name);
+        const key = pr.type === 'ObjectProperty' ? (pr.key.type === 'Identifier' ? pr.key.name : isStr(pr.key) ? strValue(pr.key) : null) : null;
+        const k = key ? typed.get(key) || NAME_KIND[key] : null;
+        if (k) scope.vars.set(v.name, k);
+      }
     }
   });
 }
@@ -162,14 +206,24 @@ export function bindDeclarator(d, scope, env) {
   }
   if (d.id.type === 'ArrayPattern' && d.init) {
     const init = unwrap(d.init.type === 'AwaitExpression' ? d.init.argument : d.init);
-    const arr = isCall(init) && init.arguments[0] && init.arguments[0].type === 'ArrayExpression' ? init.arguments[0].elements : null;
+    const arr = init.type === 'ArrayExpression' ? init.elements
+      : isCall(init) && init.arguments[0] && init.arguments[0].type === 'ArrayExpression' ? init.arguments[0].elements : null;
+    const whole = listElement(kindOf(d.init, scope, env));
     d.id.elements.forEach((el, i) => {
       if (!el || el.type !== 'Identifier') return;
       scope.decls.add(el.name);
-      const k = arr && arr[i] ? kindOf(arr[i], scope, env) : null;
+      const k = (arr && arr[i] && arr[i].type !== 'SpreadElement' ? kindOf(arr[i], scope, env) : null) || whole;
       if (k) scope.vars.set(el.name, k);
     });
   }
+}
+
+/** `for (const p of <list>)` binds `p` to the list's element kind. */
+export function bindForOf(n, scope, env) {
+  const el = listElement(kindOf(n.right, scope, env));
+  if (!el) return;
+  const left = n.left.type === 'VariableDeclaration' ? n.left.declarations[0].id : n.left;
+  if (left && left.type === 'Identifier') { scope.decls.add(left.name); scope.vars.set(left.name, el); }
 }
 
 /** A later assignment `x = await browser.newPage()` writes the kind to the scope that declares `x`. */
@@ -193,12 +247,24 @@ export function bindImports(ast, scope) {
 
 // ── test bindings and the calls that declare tests ─────────────────────────
 
+/**
+ * The member chain of a callee rooted at a test binding, with a namespace import resolved
+ * (`fx.test.describe` → ['test', 'describe']), or null.
+ */
+export function testChain(callee, names) {
+  const ch = memberChain(callee);
+  if (!ch) return null;
+  if (names.namespaces && names.namespaces.has(ch[0]) && ch.length > 1 && TEST_NAMES.has(ch[1])) return ch.slice(1);
+  return names.has(ch[0]) ? ch : null;
+}
+const TEST_NAMES = new Set(['test', 'it', 'describe', 'setup']);
+
 const isTestFactory = (init, names) => {
   const n = unwrap(init && init.type === 'AwaitExpression' ? init.argument : init);
   if (!isCall(n)) return false;
-  const ch = memberChain(n.callee);
+  const ch = testChain(n.callee, names) || memberChain(n.callee);
   if (ch && (ch[0] === 'baseFixture' || ch[0] === 'mergeTests')) return true;
-  if (ch && ch.at(-1) === 'extend' && names.has(ch[0])) return true;
+  if (ch && ch.at(-1) === 'extend' && testChain(n.callee, names)) return true;
   if (isMember(n.callee) && propName(n.callee) === 'extend' && isCall(unwrap(n.callee.object))) return isTestFactory(unwrap(n.callee.object), names);
   return false;
 };
@@ -206,9 +272,13 @@ const isTestFactory = (init, names) => {
 /** Names bound to a Playwright test object in this file: imported `test` / `it`, aliases, extend / baseFixture / mergeTests results. */
 export function testBindings(ast) {
   const names = new Set();
+  names.namespaces = new Set();
   for (const st of ast.program.body) {
     if (st.type !== 'ImportDeclaration') continue;
-    for (const sp of st.specifiers) if (sp.type === 'ImportSpecifier' && ['test', 'it', 'describe', 'setup'].includes(sp.imported.name)) names.add(sp.local.name);
+    for (const sp of st.specifiers) {
+      if (sp.type === 'ImportSpecifier' && TEST_NAMES.has(sp.imported.name)) names.add(sp.local.name);
+      if (sp.type === 'ImportNamespaceSpecifier' && (st.source.value.startsWith('.') || /^@playwright\/test$/.test(st.source.value))) names.namespaces.add(sp.local.name);
+    }
   }
   // require destructuring and factory results, to a fixed point (an extend of an extend)
   for (let changed = true; changed;) {
@@ -218,7 +288,7 @@ export function testBindings(ast) {
       const n = stack.pop();
       if (!n || typeof n.type !== 'string') continue;
       if (n.type === 'VariableDeclarator' && n.init) {
-        if (n.id.type === 'Identifier' && !names.has(n.id.name) && isTestFactory(n.init, names)) { names.add(n.id.name); changed = true; }
+        if (n.id.type === 'Identifier' && !names.has(n.id.name) && (isTestFactory(n.init, names) || (unwrap(n.init).type === 'Identifier' && testChain(unwrap(n.init), names)))) { names.add(n.id.name); changed = true; }
         const r = unwrap(n.init);
         if (n.id.type === 'ObjectPattern' && isCall(r) && r.callee.type === 'Identifier' && r.callee.name === 'require') {
           for (const pr of n.id.properties) {
@@ -256,11 +326,11 @@ export function classifyCall(n, names) {
   const callee = unwrap(n.callee);
   if (isMember(callee) && propName(callee) === 'extend') {
     const obj = unwrap(callee.object);
-    const ch = memberChain(obj);
-    if ((ch && names.has(ch[0])) || (isCall(obj) && (isTestFactory(obj, names) || (obj.callee.type === 'Identifier' && obj.callee.name === 'baseFixture')))) return { type: 'extend' };
+    const ch = testChain(obj, names);
+    if (ch || (isCall(obj) && (isTestFactory(obj, names) || (obj.callee.type === 'Identifier' && obj.callee.name === 'baseFixture')))) return { type: 'extend' };
   }
-  const ch = memberChain(callee);
-  if (!ch || !names.has(ch[0])) return null;
+  const ch = testChain(callee, names);
+  if (!ch) return null;
   const fn = n.arguments.find(isFn) || null;
   if (ch.includes('describe')) {
     if (ch.at(-1) === 'configure') return { type: 'configure' };

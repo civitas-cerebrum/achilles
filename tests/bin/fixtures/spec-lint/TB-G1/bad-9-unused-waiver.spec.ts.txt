@@ -1,0 +1,9 @@
+// spec-lint fixture: a waiver that excuses no finding
+// rules: TB-G1
+import { test, expect } from './fixtures/base';
+
+test('TC-0424 · waives a Steps call', async ({ steps }) => {
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A2 -- left over from before the Steps call replaced the raw one
+  await steps.navigateTo('/orders');
+});

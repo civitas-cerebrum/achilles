@@ -17,8 +17,10 @@ import { loadEquivalents } from './equivalents.mjs';
 import { specifiers, resolveRelative, reachable } from './suite.mjs';
 import {
   Scope, kindOf, bindParams, bindDeclarator, bindAssignment, bindImports, testBindings, classifyCall, idOfTitle,
-  extendFixtures, typedFixtureKinds, typeDeclarations,
+  extendFixtures, typedFixtureKinds, typeDeclarations, bindForOf, listElement,
 } from './bindings.mjs';
+
+const ITERATION = new Set(['forEach', 'map', 'flatMap', 'filter', 'some', 'every', 'find', 'findLast', 'reduce']);
 import { collectComments, blockAbove, readRegister } from './waivers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +35,8 @@ export class BudgetError extends Error {}
 
 const FAMILIES = await Promise.all(readdirSync(RULES_DIR).filter((f) => f.endsWith('.mjs')).sort().map(async (f) => ({ name: f.slice(0, -4), mod: await import(pathToFileURL(path.join(RULES_DIR, f)).href) })));
 const META = new Map(FAMILIES.flatMap(({ mod }) => (mod.RULES || []).map((r) => [r.id, r])));
+/** Rules no waiver applies to, from each family's metadata (`waivable: false`). */
+const UNWAIVABLE = new Set([...META.values()].filter((r) => r.waivable === false).map((r) => r.id));
 
 /** The rules this engine implements: [{ id, title, severity, appliesTo, waivable }]. */
 export function implementedRules() {
@@ -92,6 +96,7 @@ function walkFile(file, project, pass, handlers) {
   if (!file.moduleScope) { file.moduleScope = new Scope(null, null); bindImports(file.ast, file.moduleScope); }
   if (!file.fnScopes) file.fnScopes = new WeakMap();
   if (!file.testsByNode) file.testsByNode = new WeakMap();
+  file.units = [];
 
   const baseCtx = { file, project, region: 'module', nested: false, browser: false, scope: file.moduleScope, test: null, fixture: null, inRoute: null, stack };
 
@@ -123,6 +128,9 @@ function walkFile(file, project, pass, handlers) {
     else next = { ...ctx, nested: true, scope };
     if (ov && ov.browserCode) next.browser = true;
     bindParams(fn, scope, env, { fixtureCallback: !!(ov && ov.fixtureCallback), support: file.kind === 'support' });
+    if (ov && ov.paramKind && fn.params[0] && fn.params[0].type === 'Identifier') { scope.decls.add(fn.params[0].name); scope.vars.set(fn.params[0].name, ov.paramKind); }
+    if (ov && ov.unit) file.units.push({ ...ov.unit, line: fn.loc.start.line, endLine: fn.loc.end.line });
+    else if (!ov && (ctx.region === 'module' || ctx.region === 'describe')) file.units.push({ kind: 'helper', label: fn.id ? fn.id.name : 'a helper', line: fn.loc.start.line, endLine: fn.loc.end.line });
     return makeApi(next);
   }
 
@@ -136,8 +144,8 @@ function walkFile(file, project, pass, handlers) {
           file.testsByNode.set(n, t);
           file.tests.push(t);
         }
-        overrides.set(cls.fn, { region: 'test', nested: false, test: t, fixtureCallback: true, fixture: null });
-      } else if (cls.type === 'hook') overrides.set(cls.fn, { region: 'hook', nested: false, test: null, fixtureCallback: true, fixture: null });
+        overrides.set(cls.fn, { region: 'test', nested: false, test: t, fixtureCallback: true, fixture: null, unit: { kind: 'test', label: `test ${t.id || `"${t.title}"`}`, declLine: n.loc.start.line } });
+      } else if (cls.type === 'hook') overrides.set(cls.fn, { region: 'hook', nested: false, test: null, fixtureCallback: true, fixture: null, unit: { kind: 'hook', label: cls.mod, declLine: n.loc.start.line } });
       else if (cls.type === 'describe') overrides.set(cls.fn, { region: 'describe', nested: false, test: null, fixture: null });
       else if (cls.type === 'step') overrides.set(cls.fn, { region: ctx.region, nested: ctx.nested, test: ctx.test });
       else if (cls.type === 'extend') {
@@ -152,6 +160,11 @@ function walkFile(file, project, pass, handlers) {
     }
     const callee = unwrap(n.callee);
     if (isFn(callee)) overrides.set(callee, { region: ctx.region, nested: ctx.nested, test: ctx.test, fixture: ctx.fixture }); // IIFE: same region
+    if (isMember(callee) && ITERATION.has(propName(callee) || '')) {
+      const el = listElement(ctx.kind(callee.object));
+      const cb = n.arguments.find(isFn);
+      if (el && cb && !overrides.has(cb)) overrides.set(cb, { region: ctx.region, nested: true, test: ctx.test, fixture: ctx.fixture, paramKind: el });
+    }
     if (isMember(callee)) {
       const p = propName(callee);
       const ok = ctx.kind(callee.object);
@@ -177,6 +190,7 @@ function walkFile(file, project, pass, handlers) {
     stack.push(n);
     if (n.type === 'VariableDeclarator') bindDeclarator(n, ctx.scope, env);
     else if (n.type === 'AssignmentExpression') bindAssignment(n, ctx.scope, env);
+    else if (n.type === 'ForOfStatement') bindForOf(n, ctx.scope, env);
     else if (n.type === 'FunctionDeclaration' && n.id) ctx.scope.decls.add(n.id.name);
     if (isCall(n) || n.type === 'NewExpression') onCall(n, ctx);
     if (pass === 2) for (const h of handlers[n.type] || []) h(n, ctx);
@@ -200,20 +214,38 @@ function walkFile(file, project, pass, handlers) {
 
 // ── waivers ───────────────────────────────────────────────────────────────
 
+/** True when a register row's raw methods cover a call of `method` on a binding of `kind`. */
+function rowCovers(row, kind, method) {
+  return row.methods.some((m) => m.method === method && (!m.recv || m.recv === kind));
+}
+
 function applyWaivers(project) {
   const byFile = new Map(project.files.map((f) => [f.rel, f]));
-  // caps: at most 2 waivers per test
-  for (const f of project.files) {
-    for (const t of f.tests) {
-      const inside = (f.waivers || []).filter((w) => w.line >= t.line && w.line <= t.endLine && w.valid);
-      inside.slice(2).forEach((w) => { w.problems.push(`more than 2 waivers in test ${t.id || `"${t.title}"`}`); w.valid = false; });
+  // caps: at most 2 waivers per test, hook or helper. A waiver in the comment block directly above a
+  // test's declaration (a test whose callback is an expression) counts toward that test.
+  for (const f of project.allFiles) {
+    const owner = (w) => {
+      const inner = f.units.filter((u) => w.line >= u.line && w.line <= u.endLine).sort((a, b) => (b.line - a.line) || (a.endLine - b.endLine))[0];
+      if (inner) return inner;
+      let next = w.line + 1;
+      while (f.commentLines.has(next)) next++;
+      return f.units.find((u) => u.declLine === next) || null;
+    };
+    const per = new Map();
+    for (const w of f.waivers) {
+      if (!w.valid) continue;
+      const u = owner(w);
+      if (!u) continue;
+      const n = (per.get(u) || 0) + 1;
+      per.set(u, n);
+      if (n > 2) { w.problems.push(`more than 2 waivers in ${u.kind === 'test' ? u.label : u.kind === 'hook' ? `the ${u.label} hook` : `helper ${u.label}`}`); w.valid = false; }
     }
   }
-  // gap tokens: the row exists, is open, and its waiver cap holds across the suite
+  // gap tokens: the row exists, is open, and its waiver cap holds across every in-scope file of the suite
   const rows = new Map(project.register.rows.map((r) => [r.id, r]));
   const used = new Map();
-  for (const f of project.files) {
-    for (const w of f.waivers || []) {
+  for (const f of project.allFiles) {
+    for (const w of f.waivers) {
       if (!w.gap) continue;
       const row = rows.get(w.gap);
       if (!row) { w.problems.push(`${w.gap} is not a row of the framework-gap register`); w.valid = false; continue; }
@@ -233,9 +265,9 @@ function applyWaivers(project) {
   for (const [k, fds] of groups) {
     const [rel, stmtLine, rule] = k.split('\0');
     const f = byFile.get(rel);
-    if (!f || !f.waivers) continue;
+    if (!f) continue;
     const above = new Set(blockAbove(Number(stmtLine), f.commentLines));
-    const w = f.waivers.find((x) => above.has(x.line) && x.rule === rule);
+    const w = f.waivers.find((x) => above.has(x.line) && x.rule === rule && !x.matched);
     if (!w) continue;
     w.matched = true;
     const meta = META.get(rule);
@@ -243,8 +275,19 @@ function applyWaivers(project) {
     if (!waivable) { if (!w.problems.some((p) => /unwaivable/.test(p))) w.problems.push(`${rule} is unwaivable here`); w.valid = false; continue; }
     if (fds.length > 1) { w.problems.push(`a waiver excuses one raw call; the statement has ${fds.length} ${rule} findings`); w.valid = false; continue; }
     if (!w.valid) continue;
+    const d = fds[0].data || {};
+    if (rule === 'TB-A1' && !d.hatch) { w.problems.push('a TB-A1 waiver covers only the escape-hatch form `interactions.<part>.<method>(new WebElement(<locator>))`'); w.valid = false; continue; }
+    if (w.gap && rule !== 'TB-A1' && d.method) {
+      const row = rows.get(w.gap);
+      if (row && !rowCovers(row, d.kind, d.method)) { w.problems.push(`${w.gap} does not cover \`${d.kind}.${d.method}\``); w.valid = false; continue; }
+    }
+    if (!w.valid) continue;
     fds[0].waived = true;
     fds[0].waiver = { reason: w.reason, ...(w.gap ? { gap: w.gap } : {}), line: w.line };
+  }
+  // a waiver of an implemented rule that excuses nothing
+  for (const f of project.files) {
+    for (const w of f.waivers) if (w.valid && !w.matched && META.has(w.rule)) { w.problems.push(`excuses no ${w.rule} finding: remove it`); w.valid = false; }
   }
 }
 
@@ -317,7 +360,7 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
     r.blob = blobId(r.text, algo);
     r.facts = {};
     r.commentLines = commentOnlyLines(r.lines);
-    const cc = r.ast ? collectComments(r.ast, r.lines, project.knownIds) : { waivers: [], citations: [] };
+    const cc = r.ast ? collectComments(r.ast, r.lines, project.knownIds, UNWAIVABLE) : { waivers: [], citations: [] };
     r.waivers = cc.waivers;
     r.citations = cc.citations;
     r.isFixturesModule = r.kind === 'support' && !!r.ast && (/(^|\/)fixtures\//.test(r.rel) || /\bbaseFixture\s*\(|\.extend\s*[<(]/.test(r.text));
@@ -332,6 +375,7 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
   }
 
   const lintable = inScope.filter((r) => (r.kind === 'spec' || r.kind === 'support') && r.ast);
+  project.allFiles = lintable;
   const order = [...lintable.filter((r) => r.kind === 'support'), ...lintable.filter((r) => r.kind === 'spec')];
   for (const r of order) walkFile(r, project, 1, handlers);
   for (const r of order) if (r.selected) walkFile(r, project, 2, handlers);

@@ -1,0 +1,29 @@
+// spec-lint fixture: lifecycle, listeners and context settings inside fixtures are wiring, not UI driving
+// place: tests/e2e/fixtures/base.ts
+// rules: TB-A12
+import { test as base, type Page } from '@playwright/test';
+import { baseFixture } from '@civitas-cerebrum/element-interactions';
+
+type Fx = { second: Page; serverErrors: string[]; offline: void };
+
+export const test = baseFixture(base, 'tests/e2e/page-repository.json').extend<Fx>({
+  second: async ({ context }, use) => {
+    // framework-gap: FG-6
+    const tab = await context.newPage();
+    await use(tab);
+    if (!tab.isClosed()) await tab.close();
+  },
+  serverErrors: async ({ page }, use) => {
+    const errors: string[] = [];
+    page.on('response', (r) => { if (r.status() >= 500) errors.push(r.url()); });
+    await use(errors);
+  },
+  offline: async ({ context }, use) => {
+    await context.grantPermissions(['clipboard-read']);
+    await context.setOffline(true);
+    context.on('requestfailed', () => undefined);
+    await use();
+    await context.setOffline(false);
+    await context.storageState({ path: 'tests/e2e/.auth/state.json' });
+  },
+});

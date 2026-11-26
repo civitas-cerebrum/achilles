@@ -6,8 +6,8 @@ test('TC-0412 · waives three times', async ({ page }) => {
   // achilles-allow TB-A2 -- the media emulation has no Steps form at all
   await page.emulateMedia({ colorScheme: 'dark' });
   // achilles-allow TB-A2 -- the permission grant has no Steps form either
-  await page.context().grantPermissions(['geolocation']);
+  await page.mouse.wheel(0, 10);
   // EXPECT-NEXT TB-G1
-  // achilles-allow TB-A2 -- the bring-to-front call has no Steps form
-  await page.bringToFront();
+  // achilles-allow TB-A2 -- the media emulation has no Steps form
+  await page.touchscreen.tap(1, 1);
 });

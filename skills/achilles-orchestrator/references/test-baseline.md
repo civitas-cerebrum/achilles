@@ -57,9 +57,10 @@ A waiver excuses one statement from one waivable rule. It sits in the comment li
 // achilles-allow TB-<id> -- <reason of at least 15 characters> [gap: FG-<n>]
 ```
 
-- The reason names the actual obstacle, not a stock word; `[gap: FG-<n>]` is required when the obstacle is a framework gap.
-- One raw call per waived statement.
-- **Caps:** at most 2 waivers per test, and per gap row the count recorded in the register. File splits gain nothing.
+- The reason names the actual obstacle, not a stock word; `[gap: FG-<n>]` is required when the obstacle is a framework gap. On a waiver of a raw call the row's raw methods include that call's method; on a [TB-A1](#tb-a1) waiver the row is any open row, and the waived statement is the escape-hatch form ([Framework gaps](#framework-gaps-and-version-gaps)), the only form a TB-A1 waiver covers.
+- One raw call per waived statement. A waiver directly above a test whose callback is a single expression excuses the one raw call in that expression and counts toward that test.
+- A waiver that excuses no finding is removed.
+- **Caps:** at most 2 waivers per test, per hook and per helper function, and per gap row the count recorded in the register, counted over the whole suite. File splits gain nothing.
 - A raw call from the no-equivalent table ([TB-A2b](#tb-a2b)) is not waived but cited: `// framework-gap: FG-<n>` directly above it, inside a verb or fixture.
 - The author writes a waiver; the judge or reviewer decides whether it stands, never the author. A waiver citing a row marked `fixed-in <version>` is a blocking [TB-G1](#tb-g1) finding.
 - **Unwaivable:** [TB-A5](#tb-a5) in durable files, [TB-A13](#tb-a13), [TB-F5](#tb-f5) `waitForTimeout` and `pause` in specs, [TB-F6](#tb-f6) `.only`, [TB-D2](#tb-d2), [TB-S8](#tb-s8), [TB-G0](#tb-g0), [TB-G1](#tb-g1), [TB-G2](#tb-g2).
@@ -161,8 +162,8 @@ await steps.navigateTo(Routes.LOGIN);
 
 A raw call that the Steps API cannot replace lives in a verb or a fixture, or carries the framework-gap citation of its register row.
 
-- **Source** W, R · **Kind** mechanical and judgment · **Severity** advisory in specs (mechanical); blocking by judgment · **Applies to** spec; allowed in fixtures and verbs
-- **Detection**: the no-equivalent table: `page.on('console' | 'pageerror' | 'request' | 'dialog')`, `route`, `unroute`, `unrouteAll`, `context.cookies`, `addCookies`, `clearCookies`, `browser.newContext`, `newPage`, `close`, `locator.focus()`, `waitForEvent('download' | 'filechooser')`, request `dispose`, and the mutation-hook calls of [TB-X2](#tb-x2). Each entry names its register row.
+- **Source** W, R · **Kind** mechanical and judgment · **Severity** advisory in specs (mechanical); blocking by judgment · **Applies to** spec; allowed in fixtures and verbs with the citation of its register row (advisory without it)
+- **Detection**: the no-equivalent table: `page.on('console' | 'pageerror' | 'request' | 'dialog')`, `route`, `unroute`, `unrouteAll`, `context.cookies`, `addCookies`, `clearCookies`, `browser.newContext`, `newPage`, `close`, `locator.focus()`, `waitForEvent('download' | 'filechooser')`, request `dispose`, and the mutation-hook calls of [TB-X2](#tb-x2), each with its register row; and, with no seed row yet, listeners for other events (`on`, `once`, `off`, `removeListener`), `storageState`, `grantPermissions`, `clearPermissions`, `setOffline`, `setGeolocation`, `setExtraHTTPHeaders`, `context.pages`, `page.isClosed`, `bringToFront` and `video`.
 - **Judgment**: in a spec, the call belongs in a verb or fixture, or carries `// framework-gap: FG-<n>` naming the matching row.
 
 ```ts
@@ -181,7 +182,7 @@ clearSessionCookies: async ({ context }, use) => {
 Assertions about pages, elements and responses go through `steps.verify*` or `steps.expect`, never through Playwright's web-first matchers.
 
 - **Source** W · **Kind** mechanical · **Severity** blocking; `toBeOK` advisory (unmeasured) · **Applies to** spec
-- **Detection**: `expect(x).<matcher>` where the matcher applies only to a Locator, Page or APIResponse: `toBeVisible`, `toBeHidden`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeEditable`, `toBeFocused`, `toBeInViewport`, `toBeAttached`, `toBeEmpty`, `toHaveText`, `toHaveValue`, `toHaveValues`, `toHaveCount`, `toHaveAttribute`, `toHaveClass`, `toHaveCSS`, `toHaveId`, `toHaveRole`, `toHaveURL`, `toHaveTitle`, `toHaveScreenshot`, `toHaveAccessibleName`, `toContainText`, `toMatchAriaSnapshot`.
+- **Detection**: `expect(x).<matcher>` where the matcher applies only to a Locator, Page or APIResponse: `toBeVisible`, `toBeHidden`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeEditable`, `toBeFocused`, `toBeInViewport`, `toBeAttached`, `toBeEmpty`, `toHaveText`, `toHaveValue`, `toHaveValues`, `toHaveCount`, `toHaveAttribute`, `toHaveClass`, `toHaveCSS`, `toHaveId`, `toHaveRole`, `toHaveURL`, `toHaveTitle`, `toHaveScreenshot`, `toHaveAccessibleName`, `toHaveAccessibleDescription`, `toHaveAccessibleErrorMessage`, `toHaveJSProperty`, `toContainText`, `toContainClass`, `toMatchAriaSnapshot`.
 - **Not a hit**: `expect(value)` on plain data read through the Steps API.
 
 ```ts
@@ -214,7 +215,7 @@ const theme = await steps.getLocalStorage('theme');
 Durable test code addresses every element by its page-repository name and never carries a selector string of its own.
 
 - **Source** W, R · **Kind** mechanical · **Severity** blocking, unwaivable in durable files · **Applies to** spec, support; `bundle` exempt
-- **Detection**: a string, template or regex literal as the first argument of a [TB-A1](#tb-a1) call, of `waitForSelector`, or of `steps.on(…).findBySelector(…)`; a selector-shaped literal passed as an element or page name to `steps.*`. Never hits: URL-taking steps (`navigateTo`, `waitForUrl`, `waitForResponse`, `verifyUrlContains`, `api*`, `request*`, `openDeepLink`, `expectNoRequest`); a literal inside a callback whose only consumer is `expect(cb).toThrow(…)` or `expect(cb).rejects…` (a refusal test never resolves it). The project's `selectors.no-inline.forbidden` strings are an extra input, advisory (unmeasured).
+- **Detection**: a string, template or regex literal as the first argument of a [TB-A1](#tb-a1) call, of `waitForSelector`, or of `steps.on(…).findBySelector(…)`; a selector-shaped literal passed as an element or page name to `steps.*` (an argument the installed release names `elementName` or `pageName`). Never hits: URL-taking steps (`navigateTo`, `waitForUrl`, `waitForResponse`, `verifyUrlContains`, `api*`, `request*`, `openDeepLink`, `expectNoRequest`); a literal inside a callback whose only consumer is `expect(cb).toThrow(…)` or `expect(cb).rejects…`, or inside a call whose promise only `expect(…).rejects…` consumes (a refusal test never resolves it). The project's `selectors.no-inline.forbidden` strings are an extra input, advisory (unmeasured).
 - **Exceptions**: an evidence bundle may carry bundle-scoped selector proposals; they become repository entries when the scenario graduates to a durable test ([`test-composition-standards.md`](test-composition-standards.md) §3.1).
 
 ```ts
@@ -291,7 +292,7 @@ test('TCLG-000130 · a second session sees the change', async ({ steps, otherUse
 Every `steps.<method>` a test calls is a public method of the framework release the project has installed.
 
 - **Source** N · **Kind** mechanical · **Severity** blocking (methods); advisory (unmeasured) for undeclared fixture names · **Applies to** spec, support
-- **Detection**: compare with the installed surface: `CommonSteps.d.ts` of `@civitas-cerebrum/element-interactions` in the worktree's `node_modules`, else the main checkout's. When neither is installed, the check cannot be made: say so in the return rather than assume a method exists.
+- **Detection**: compare with the installed surface: `CommonSteps.d.ts` of `@civitas-cerebrum/element-interactions` in the worktree's `node_modules`, else the main checkout's, else the surface shipped with Achilles for the release the project pins. When none resolves, the check cannot be made: say so in the return rather than assume a method exists.
 
 ```ts
 // Non-compliant (no such method)

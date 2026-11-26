@@ -6,11 +6,11 @@
 //
 // A waiver sits on its own comment line in the contiguous comment block directly above the statement it
 // excuses. The engine marks the one finding it excuses as waived; TB-G1 reports every malformed waiver.
+// Which rules are unwaivable comes from each rule family's metadata (`waivable: false`).
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 export const REGISTER = 'tests/e2e/docs/framework-gaps.md';
-export const UNWAIVABLE = new Set(['TB-A5', 'TB-A13', 'TB-D2', 'TB-S8', 'TB-G0', 'TB-G1', 'TB-G2']);
 const STOCK = /^(?:needed|necessary|required|temporary|temp|todo|fixme|workaround|hack|legacy|flaky|known issue|framework gap|gap|see above|n\/a|none|ok|later|tbd|no steps equivalent|no equivalent)\.?$/i;
 
 /** The seed rows a register starts with; used when the project has no register file. */
@@ -26,7 +26,7 @@ export const SEED_ROWS = [
 const ownLine = (lines, c) => lines[c.loc.start.line - 1].slice(0, c.loc.start.column).trim() === '';
 
 /** Parses every waiver and citation comment of a file. */
-export function collectComments(ast, lines, knownIds) {
+export function collectComments(ast, lines, knownIds, unwaivable = new Set()) {
   const waivers = [];
   const citations = [];
   for (const c of ast.comments || []) {
@@ -41,7 +41,7 @@ export function collectComments(ast, lines, knownIds) {
       else {
         w.rule = m[1];
         if (!/^TB-[A-Z]\d+[a-z]?$/.test(w.rule) || (knownIds && !knownIds.has(w.rule))) w.problems.push(`${w.rule} is not a rule id of test-baseline.md`);
-        else if (UNWAIVABLE.has(w.rule)) w.problems.push(`${w.rule} is unwaivable`);
+        else if (unwaivable.has(w.rule)) w.problems.push(`${w.rule} is unwaivable`);
         const rest = /^\s+--\s+(.*?)\s*$/.exec(m[2]);
         if (!rest) w.problems.push('the reason follows ` -- ` after the rule id');
         else {

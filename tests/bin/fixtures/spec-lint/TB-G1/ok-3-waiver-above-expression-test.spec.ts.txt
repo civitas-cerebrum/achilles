@@ -1,0 +1,7 @@
+// spec-lint fixture: a waiver directly above a test whose callback is an expression excuses the one raw call
+// in it (the test declaration is that call's statement) and counts toward that test's cap
+// rules: TB-G1 TB-A2
+import { test } from './fixtures/base';
+
+// achilles-allow TB-A2 -- emulateMedia has no Steps form and the dark theme needs it
+test('TC-0425 · emulates dark mode', async ({ page }) => page.emulateMedia({ colorScheme: 'dark' })); // EXPECT TB-A2/waived

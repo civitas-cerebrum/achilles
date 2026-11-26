@@ -1,0 +1,22 @@
+// spec-lint fixture: driver bindings held in arrays, objects, iteration variables and a fixtures rest element
+// rules: TB-A2
+import { test, expect } from './fixtures/base';
+
+test('TC-0510 · drives the page through containers', async ({ page, context, steps, ...rest }) => {
+  const [p1] = [page];
+  await p1.goto('/a'); // EXPECT TB-A2
+  await [page][0].goto('/b'); // EXPECT TB-A2
+  const pages = [page];
+  await pages[0].goto('/c'); // EXPECT TB-A2
+  for (const p of [page]) await p.goto('/d'); // EXPECT TB-A2
+  await Promise.all([page].map((p) => p.goto('/e'))); // EXPECT TB-A2
+  const holder = { page };
+  await holder.page.goto('/f'); // EXPECT TB-A2
+  const o = { p: page };
+  await o.p.goto('/g'); // EXPECT TB-A2
+  await page.frames()[0].goto('/h'); // EXPECT TB-A2
+  const [first] = context.pages();
+  await first.goto('/i'); // EXPECT TB-A2
+  await rest.page.goto('/j'); // EXPECT TB-A2
+  await steps.verifyPresence('heading', 'HomePage');
+});

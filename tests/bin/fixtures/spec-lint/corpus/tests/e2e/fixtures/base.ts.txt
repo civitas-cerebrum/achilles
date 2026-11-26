@@ -6,10 +6,10 @@ const framework = baseFixture(base, 'tests/e2e/page-repository.json', { timeout:
 
 export const test = framework.extend({
   adminPage: async ({ browser }, use) => {
-    const ctx = await browser.newContext(); // CLEAN
-    const pg = await ctx.newPage(); // CLEAN
+    const ctx = await browser.newContext(); // EXPECT TB-A2b
+    const pg = await ctx.newPage(); // EXPECT TB-A2b
     await use(pg);
-    await ctx.close(); // CLEAN
+    await ctx.close(); // EXPECT TB-A2b
   },
   apiCtx: async ({}, use) => {
     const { request } = require('@playwright/test');

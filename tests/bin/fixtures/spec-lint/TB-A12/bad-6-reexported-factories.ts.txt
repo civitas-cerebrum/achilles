@@ -1,0 +1,6 @@
+// spec-lint fixture: a support module re-exporting Playwright's driver factories hands raw drivers to specs
+// place: tests/e2e/utils/playwright.ts
+// rules: TB-A12
+export { chromium, request as req } from '@playwright/test'; // EXPECT TB-A12
+export * as pw from '@playwright/test'; // EXPECT TB-A12
+export { expect } from '@playwright/test';

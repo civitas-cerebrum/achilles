@@ -5,6 +5,6 @@ import { test, expect } from './fixtures/base';
 test('TC-0011 · emulates and pokes', async ({ page, context }) => {
   const m = 'reload';
   await page.emulateMedia({ colorScheme: 'dark' }); // EXPECT TB-A2
-  await context.grantPermissions(['clipboard-read']); // EXPECT TB-A2
+  await page.mouse.wheel(0, 10); // EXPECT TB-A2
   await page[m](); // EXPECT TB-A2
 });

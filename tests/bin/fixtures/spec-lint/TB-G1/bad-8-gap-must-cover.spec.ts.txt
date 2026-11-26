@@ -1,0 +1,15 @@
+// spec-lint fixture: a gap token names a row that covers the waived call; an A1 waiver covers only the escape hatch
+// rules: TB-G1
+import { test, expect } from './fixtures/base';
+
+test('TC-0422 · waives with the wrong row', async ({ page }) => {
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A2 -- the cookie banner cannot be dismissed another way [gap: FG-1]
+  await page.emulateMedia({ colorScheme: 'dark' });
+});
+
+test('TC-0423 · waives a plain raw locator', async ({ page }) => {
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A1 -- the repository cannot address this shadow-root chain [gap: FG-4]
+  await page.locator(process.env.SEL || '').hover();
+});

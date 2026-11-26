@@ -3,18 +3,28 @@
 import {
   isFn, isMember, isCall, propName, memberChain, unwrap, rootIdent, isStr, strValue, anyNode, typeName,
 } from '../ast.mjs';
-import { LOCATOR_CTORS, LOCATOR_CHAIN, DRIVER_KINDS, FRAMEWORK_KINDS, reachKind, classifyCall } from '../bindings.mjs';
+import { LOCATOR_CTORS, LOCATOR_CHAIN, DRIVER_KINDS, FRAMEWORK_KINDS, reachKind, classifyCall, testChain } from '../bindings.mjs';
+import { blockAbove } from '../waivers.mjs';
 
 const PKG = '@civitas-cerebrum/element-interactions';
 const EVAL = new Set(['evaluate', 'evaluateHandle', '$eval', '$$eval', 'addInitScript', 'addStyleTag', 'exposeFunction', 'exposeBinding']);
 const ACCESSORS = new Set(['context', 'mainFrame', 'frames']);
 const SLEEPS = new Set(['waitForTimeout', 'pause']);
-const WEB_MATCHERS = new Set(['toBeVisible', 'toBeHidden', 'toBeEnabled', 'toBeDisabled', 'toBeChecked', 'toBeEditable', 'toBeFocused', 'toBeInViewport', 'toBeAttached', 'toBeEmpty', 'toHaveText', 'toHaveValue', 'toHaveValues', 'toHaveCount', 'toHaveAttribute', 'toHaveClass', 'toHaveCSS', 'toHaveId', 'toHaveRole', 'toHaveURL', 'toHaveTitle', 'toHaveScreenshot', 'toHaveAccessibleName', 'toContainText', 'toMatchAriaSnapshot']);
+const WEB_MATCHERS = new Set(['toBeVisible', 'toBeHidden', 'toBeEnabled', 'toBeDisabled', 'toBeChecked', 'toBeEditable', 'toBeFocused', 'toBeInViewport', 'toBeAttached', 'toBeEmpty', 'toHaveText', 'toHaveValue', 'toHaveValues', 'toHaveCount', 'toHaveAttribute', 'toHaveClass', 'toHaveCSS', 'toHaveId', 'toHaveRole', 'toHaveURL', 'toHaveTitle', 'toHaveScreenshot', 'toHaveAccessibleName', 'toContainText', 'toMatchAriaSnapshot', 'toHaveJSProperty', 'toHaveAccessibleDescription', 'toHaveAccessibleErrorMessage', 'toContainClass']);
 const URL_STEPS = /^(navigateTo|waitForUrl|waitForResponse|verifyUrlContains|expectNoRequest|openDeepLink|api[A-Z]\w*|request[A-Z]\w*)$/;
 const PW_SOURCE = /^(?:@playwright\/test(?:\/.*)?|playwright(?:-core)?(?:\/.*)?)$/;
-const SELECTOR_RE = /^\s*(\/\/|\(\/\/|xpath=|css=|text=|id=|data-testid=|internal:|#[A-Za-z_][\w-]*|\.[A-Za-z_][\w-]*|\[[\w-]+(\s*[~|^$*]?=|\])|[a-z][a-z0-9]*(\[|[.#][A-Za-z_]|:[a-z])|\*|[a-z]+\s*>\s*[a-z.#[])|>>|:has\(|:has-text\(|:nth-|:text\(|\s>\s/;
+// A selector shape, anchored at the start: an XPath, an engine prefix, `#id`, `.class`, `[attr]`, `tag[`,
+// `tag.class`, `tag#id`, `tag:pseudo`, `*`, `tag > tag`, or a Playwright chain (`… >> …`).
+const SELECTOR_RE = /^\s*(?:\/\/|\(\/\/|(?:xpath|css|text|id|data-testid|internal):|#[A-Za-z_][\w-]*|\.[A-Za-z_][\w-]*|\[[\w-]+(?:\s*[~|^$*]?=|\])|[a-z][a-z0-9]*(?:\[|[.#][A-Za-z_]|:[a-z])|\*|[a-z][a-z0-9]*\s*>\s*[a-z.#[*]|\S+\s*>>\s*\S)/;
 const looksSelector = (s) => typeof s === 'string' && s.length > 0 && SELECTOR_RE.test(s) && !/^https?:/.test(s) && !/^\/[\w-]*(\/|$)/.test(s.trim());
+const NAME_PARAM = /^(?:elementName|pageName)$/;
 const FRAMEWORK_FIXTURES = ['steps', 'repo', 'interactions', 'contextStore'];
+// Driver properties that are objects, not methods: reading them is not taking a method off the binding.
+const DRIVER_PROPERTIES = new Set(['keyboard', 'mouse', 'touchscreen', 'request', 'clock', 'coverage', 'accessibility', 'tracing']);
+const BIND_FORMS = new Set(['call', 'apply', 'bind']);
+// Lifecycle of a page or context a fixture owns: closing it, checking whether it is closed.
+const FIXTURE_LIFECYCLE = new Set(['close', 'isClosed']);
+const DRIVER_FACTORIES = new Set(['chromium', 'firefox', 'webkit', 'request', 'selectors', '_electron', '_android']);
 const PW_OPTION_FIXTURES = ['acceptDownloads', 'baseURL', 'bypassCSP', 'colorScheme', 'clientCertificates', 'deviceScaleFactor', 'extraHTTPHeaders', 'geolocation', 'hasTouch', 'httpCredentials', 'ignoreHTTPSErrors', 'isMobile', 'javaScriptEnabled', 'locale', 'offline', 'permissions', 'proxy', 'screenshot', 'serviceWorkers', 'storageState', 'testIdAttribute', 'timezoneId', 'trace', 'userAgent', 'video', 'viewport', 'browserName', 'defaultBrowserType', 'headless', 'channel', 'launchOptions', 'connectOptions', 'contextOptions', 'navigationTimeout', 'actionTimeout'];
 const PW_TEST_FIXTURES = ['page', 'context', 'browser', 'request', 'playwright', ...PW_OPTION_FIXTURES];
 const A9_ALLOWED = new Set([...FRAMEWORK_FIXTURES, 'page', ...PW_OPTION_FIXTURES]);
@@ -69,8 +79,16 @@ function noEquivalentOf(eq, kind, method, call) {
 
 /** Classifies a call on a driver binding: { cat, kind, method, targets?, row?, mutation? } or null. */
 export function classifyRaw(call, ctx) {
-  const callee = unwrap(call.callee);
+  let callee = unwrap(call.callee);
+  if (callee && callee.type === 'SequenceExpression') callee = unwrap(callee.expressions.at(-1));
   if (!isMember(callee)) return null;
+  // `page.goto.call(page, …)`, `.apply(page, […])`, `.bind(page)`: a raw call of the method taken off
+  if (BIND_FORMS.has(propName(callee) || '') && isMember(unwrap(callee.object)) && DRIVER_KINDS.has(ctx.kind(unwrap(callee.object).object))) {
+    const m = propName(callee);
+    const args = m === 'call' ? call.arguments.slice(1) : m === 'apply' && call.arguments[1] && call.arguments[1].type === 'ArrayExpression' ? call.arguments[1].elements : [];
+    const c = classifyRaw({ ...call, callee: unwrap(callee.object), arguments: args }, ctx);
+    return c ? { ...c, via: m } : null;
+  }
   const kind = ctx.kind(callee.object);
   if (!DRIVER_KINDS.has(kind)) return null;
   const eq = ctx.project.equivalents;
@@ -153,6 +171,8 @@ function inRefusalCallback(stack) {
   };
   for (let i = stack.length - 1; i > 0; i--) {
     const f = stack[i];
+    const up = stack[i - 1];
+    if (isCall(up) && up.callee.type === 'Identifier' && up.callee.name === 'expect' && up.arguments[0] === f && !isFn(f)) return refusal(i - 1);
     if (!isFn(f)) continue;
     const parent = stack[i - 1];
     if (isCall(parent) && parent.callee.type === 'Identifier' && parent.callee.name === 'expect' && parent.arguments[0] === f) return refusal(i - 1);
@@ -188,6 +208,19 @@ function inRefusalCallback(stack) {
   return false;
 }
 
+/** The locator call sits in `interactions.<part>.<method>(new WebElement(<locator>))`, the escape-hatch form. */
+function escapeHatch(stack, ctx) {
+  for (let i = stack.length - 2; i >= 1; i--) {
+    const a = stack[i];
+    if (a.type === 'NewExpression' && a.callee.type === 'Identifier' && a.callee.name === 'WebElement') {
+      const p = stack[i - 1];
+      return isCall(p) && isMember(unwrap(p.callee)) && ctx.kind(unwrap(p.callee).object) === 'interactions-part';
+    }
+    if (isFn(a) || /Statement$/.test(a.type)) return false;
+  }
+  return false;
+}
+
 const literalArg = (a) => a && (isStr(a) || a.type === 'TemplateLiteral' || a.type === 'RegExpLiteral');
 /** The source text of a node, whitespace collapsed, at most 60 characters. */
 const src = (ctx, node) => { const t = ctx.file.text.slice(node.start, node.end).replace(/\s+/g, ' '); return t.length > 60 ? `${t.slice(0, 57)}...` : t; };
@@ -215,22 +248,33 @@ export function visitors(project) {
 
     if (file.kind === 'support') {
       if (ctx.inRoute && ctx.inRoute.cited) return;
-      if (c.cat === 'noeq') return;
+      if (c.cat === 'noeq') {
+        const cited = stmt && file.citations.some((x) => x.row && blockAbove(stmt.loc.start.line, file.commentLines).includes(x.line));
+        if (!cited) ctx.report('TB-A2b', n, { severity: 'advisory', message: `\`${display(c, ctx, n)}\` has no Steps equivalent${c.row ? ` (register row ${c.row})` : ''} and no \`// framework-gap:\` citation above it`, do: c.row ? `Cite the row directly above the call: \`// framework-gap: ${c.row}\`.` : 'Cite the register row that covers the call directly above it (`// framework-gap: FG-<n>`); a call no row covers needs a row the person decides on.', data: { row: c.row, kind: c.kind, method: c.method } });
+        return;
+      }
       if (c.cat === 'eval' && c.mutation && file.isFixturesModule && mutationGated(ctx.stack)) return;
       const http = c.kind === 'request';
+      const fixture = ctx.region === 'fixture';
       if (http) {
-        if (ctx.region === 'fixture' || backDoor(enclosingFn(ctx.stack), ctx)) return;
+        if (fixture || backDoor(enclosingFn(ctx.stack), ctx)) return;
         ctx.report('TB-A12', n, { severity: 'advisory', message: `HTTP raw call \`${display(c, ctx, n)}\` in a function that also drives the UI (advisory: the back-door recogniser is unmeasured)`, do: 'Keep HTTP setup in an API back-door helper that drives no UI, or use steps.request* / steps.api*.' });
+        return;
+      }
+      // In a fixture body only UI driving blocks: locators, page scripting, raw calls with a Steps equivalent.
+      if (fixture && (c.cat === 'unlisted' || FIXTURE_LIFECYCLE.has(c.method))) return;
+      if (c.cat === 'unlisted') {
+        ctx.report('TB-A12', n, { severity: 'advisory', message: `\`${display(c, ctx, n)}\` (no known Steps equivalent) in a support module outside the wiring shapes (advisory)`, do: DO_NO_EQUIV, data: { kind: c.kind, method: c.method } });
         return;
       }
       const what = c.cat === 'locator' ? 'raw locator' : c.cat === 'eval' ? 'page scripting' : 'raw call';
       const eqv = c.targets ? availability(c.targets, surface) : null;
-      ctx.report('TB-A12', n, { message: `${what} \`${display(c, ctx, n)}\` in a support module outside the wiring shapes`, do: eqv && eqv.have ? `${doRaw(eqv.have)} Verbs drive the UI through steps.` : RULES.find((r) => r.id === 'TB-A12').do });
+      ctx.report('TB-A12', n, { message: `${what} \`${display(c, ctx, n)}\` in a support module outside the wiring shapes`, do: eqv && eqv.have ? `${doRaw(eqv.have)} Verbs drive the UI through steps.` : RULES.find((r) => r.id === 'TB-A12').do, data: { kind: c.kind, method: c.method } });
       return;
     }
 
     // spec
-    if (c.cat === 'locator') { ctx.report('TB-A1', n, { message: `raw locator \`${display(c, ctx, n)}\` on a driver binding` }); return; }
+    if (c.cat === 'locator') { ctx.report('TB-A1', n, { message: `raw locator \`${display(c, ctx, n)}\` on a driver binding`, data: { kind: c.kind, method: c.method, hatch: escapeHatch(ctx.stack, ctx) } }); return; }
     if (c.cat === 'noeq') {
       const cited = file.citations.some((x) => x.row === c.row && stmt && x.line < stmt.loc.start.line && x.line >= stmt.loc.start.line - 3);
       ctx.report('TB-A2b', n, { message: `\`${display(c, ctx, n)}\` has no Steps equivalent${c.row ? ` (register row ${c.row})` : ''}${cited ? '; cited' : ''}: in a spec it belongs in a verb or fixture`, data: { row: c.row } });
@@ -249,11 +293,11 @@ export function visitors(project) {
     if (c.cat === 'equiv' || c.cat === 'http') {
       const av = availability(c.targets, surface);
       if (!av.have) { versionGap(n, ctx, c, av); return; }
-      ctx.report('TB-A2', n, { message: `raw call \`${display(c, ctx, n)}\` has a Steps equivalent: steps.${av.have}`, do: doRaw(av.have) });
+      ctx.report('TB-A2', n, { message: `raw call \`${display(c, ctx, n)}\` has a Steps equivalent: steps.${av.have}`, do: doRaw(av.have), data: { kind: c.kind, method: c.method } });
       return;
     }
-    if (c.cat === 'computed') { ctx.report('TB-A2', n, { message: 'computed member call on a driver binding (no known Steps equivalent)' }); return; }
-    ctx.report('TB-A2', n, { message: `\`${display(c, ctx, n)}\`: no known Steps equivalent` });
+    if (c.cat === 'computed') { ctx.report('TB-A2', n, { message: 'computed member call on a driver binding (no known Steps equivalent)', data: { kind: c.kind, method: c.method } }); return; }
+    ctx.report('TB-A2', n, { message: `\`${display(c, ctx, n)}\`: no known Steps equivalent`, data: { kind: c.kind, method: c.method } });
   }
 
   function versionGap(n, ctx, c, av) {
@@ -291,7 +335,12 @@ export function visitors(project) {
     if (DRIVER_KINDS.has(k) && (LOCATOR_CTORS.has(p) || p === 'waitForSelector') && literalArg(a0)) return report(a0, `selector literal in \`${k}.${p}(…)\``);
     if (p === 'findBySelector' && literalArg(a0)) return report(a0, 'selector literal in `findBySelector(…)`');
     if (k === 'steps' && p && !URL_STEPS.test(p)) {
-      for (const a of n.arguments.slice(0, 2)) if (a && isStr(a) && looksSelector(strValue(a))) return report(a, `selector-shaped name "${strValue(a)}" passed to steps.${p}`);
+      const params = surface.params && surface.params[p];
+      const positions = params ? params.map((x, i) => (NAME_PARAM.test(x) ? i : -1)).filter((i) => i >= 0) : [];
+      for (const i of positions) {
+        const a = n.arguments[i];
+        if (a && isStr(a) && looksSelector(strValue(a))) return report(a, `selector-shaped name "${strValue(a)}" passed to steps.${p}`);
+      }
     }
   }
 
@@ -311,7 +360,8 @@ export function visitors(project) {
     const cname = ch.join('.');
     if (n.type === 'NewExpression' && /^(WebElement|ElementInteractions|Steps|ElementRepository)$/.test(cname)) return;
     if (/^(expect|expect\.soft|expect\.poll|use)$/.test(cname)) return;
-    if (ch.length === 2 && ch[1] === 'step' && ctx.file.testNames.has(ch[0])) return;
+    const tc = testChain(callee, ctx.file.testNames);
+    if (tc && tc.length === 2 && tc[1] === 'step') return;
     if (isCall(n) && classifyCall(n, ctx.file.testNames)) return;
     const root = rootIdent(callee);
     const ownerKind = root ? ctx.kind(root) : null;
@@ -355,7 +405,7 @@ export function visitors(project) {
     const k = ctx.kind(n.object);
     const p = propName(n);
     if (k === 'untyped') {
-      if (file.kind === 'support' && p && /^(page|driver|browser|context|_.*)$/.test(p)) ctx.report('TB-A14', n, { severity: 'advisory', message: `\`.${p}\` read on an untyped parameter used as a framework object (advisory: name-based, unmeasured)`, do: 'Type the parameter as Steps and use its public methods.' });
+      if (file.kind === 'support' && p && (/^(page|driver|browser)$/.test(p) || (/^(context|_.*)$/.test(p) && usedAsSteps(n.object, ctx)))) ctx.report('TB-A14', n, { severity: 'advisory', message: `\`.${p}\` read on an untyped parameter used as a framework object (advisory: name-based, unmeasured)`, do: 'Type the parameter as Steps and use its public methods.' });
       return;
     }
     if (!FRAMEWORK_KINDS.has(k)) return;
@@ -367,6 +417,47 @@ export function visitors(project) {
       return;
     }
     if (p.startsWith('_') || privatesOf(k).has(p)) ctx.report('TB-A14', n, { message: `non-public member \`${src(ctx, n)}\`` });
+  }
+
+  /** The untyped receiver is used as a Steps object elsewhere in its function (calls a Steps method on it). */
+  function usedAsSteps(id, ctx) {
+    if (id.type !== 'Identifier') return false;
+    const decl = ctx.scope.declaring(id.name);
+    const fn = decl && decl.fn;
+    if (!fn) return false;
+    return anyNode(fn.body, (x) => isCall(x) && isMember(unwrap(x.callee)) && unwrap(unwrap(x.callee).object).type === 'Identifier' && unwrap(unwrap(x.callee).object).name === id.name && surface.methods.has(propName(unwrap(x.callee)) || ''));
+  }
+
+  /** A driver method read off its binding without being called there (`const go = page.goto`, `(0, page.goto)`, `Reflect.apply(page.goto, …)`). */
+  function methodRead(n, ctx) {
+    const k = ctx.kind(n.object);
+    if (!DRIVER_KINDS.has(k)) return;
+    const p = propName(n);
+    if (p !== null && DRIVER_PROPERTIES.has(p)) return;
+    let i = ctx.stack.length - 2;
+    let child = n;
+    while (i >= 0 && ctx.stack[i].type === 'ParenthesizedExpression') { child = ctx.stack[i]; i--; }
+    const parent = ctx.stack[i];
+    if (!parent) return;
+    if (isCall(parent) && parent.callee === child) return;
+    if (isMember(parent) && parent.object === child) return; // `page.goto.call(…)` is a call of goto; `page.keyboard.press` reads a property
+    if (parent.type === 'SequenceExpression' && parent.expressions.at(-1) === child && isCall(ctx.stack[i - 1]) && ctx.stack[i - 1].callee === parent) return;
+    if (parent.type === 'AssignmentExpression' && parent.left === child) return;
+    if (isCall(parent) && (memberChain(unwrap(parent.callee)) || [])[0] === 'expect') return;
+    const c = classifyRaw({ type: 'CallExpression', callee: n, arguments: [], loc: n.loc, start: n.start, end: n.end }, ctx);
+    if (!c || c.cat === 'accessor' || c.cat === 'chain' || c.cat === 'ignore') return;
+    extracted(n, c, ctx);
+  }
+
+  function extracted(node, c, ctx) {
+    const what = `\`${c.kind}.${c.method}\` taken off the driver binding (a raw call by another route)`;
+    if (ctx.file.kind === 'support') {
+      if (c.cat === 'noeq' || (ctx.region === 'fixture' && (c.cat === 'unlisted' || c.kind === 'request'))) return;
+      ctx.report('TB-A12', node, { severity: c.kind === 'request' || c.cat === 'unlisted' ? 'advisory' : 'blocking', message: what, data: { kind: c.kind, method: c.method } });
+      return;
+    }
+    if (c.cat === 'noeq') return;
+    ctx.report(c.cat === 'locator' ? 'TB-A1' : c.cat === 'eval' ? 'TB-A4' : 'TB-A2', node, { message: what, data: { kind: c.kind, method: c.method } });
   }
 
   function reflection(n, ctx) {
@@ -404,10 +495,16 @@ export function visitors(project) {
       if (!typeOnly) ctx.report('TB-A7', n, { message: `value import from ${n.source.value} in a spec` });
     },
     ExportNamedDeclaration(n, ctx) {
-      if (ctx.file.kind === 'spec' && n.source && PW_SOURCE.test(n.source.value) && n.exportKind !== 'type') ctx.report('TB-A7', n, { message: `re-export from ${n.source.value} in a spec` });
+      if (!n.source || !PW_SOURCE.test(n.source.value) || n.exportKind === 'type') return;
+      if (ctx.file.kind === 'spec') { ctx.report('TB-A7', n, { message: `re-export from ${n.source.value} in a spec` }); return; }
+      const names = n.specifiers.filter((sp) => sp.exportKind !== 'type').map((sp) => (sp.type === 'ExportNamespaceSpecifier' ? '*' : sp.local.name || sp.local.value));
+      const hit = names.filter((x) => x === '*' || DRIVER_FACTORIES.has(x));
+      if (hit.length) ctx.report('TB-A12', n, { message: `a support module re-exports Playwright's driver factories (${hit.join(', ')}) from ${n.source.value}`, do: 'Re-export only test and expect from the fixtures module; drivers come from fixtures, never from an import.' });
     },
     ExportAllDeclaration(n, ctx) {
-      if (ctx.file.kind === 'spec' && PW_SOURCE.test(n.source.value) && n.exportKind !== 'type') ctx.report('TB-A7', n, { message: `re-export from ${n.source.value} in a spec` });
+      if (!PW_SOURCE.test(n.source.value) || n.exportKind === 'type') return;
+      if (ctx.file.kind === 'spec') ctx.report('TB-A7', n, { message: `re-export from ${n.source.value} in a spec` });
+      else ctx.report('TB-A12', n, { message: `a support module re-exports everything of ${n.source.value}, driver factories included`, do: 'Re-export only test and expect from the fixtures module; drivers come from fixtures, never from an import.' });
     },
     ImportExpression(n, ctx) {
       if (ctx.file.kind === 'spec' && isStr(n.source) && PW_SOURCE.test(strValue(n.source))) ctx.report('TB-A7', n, { message: `dynamic import of ${strValue(n.source)} in a spec` });
@@ -429,6 +526,7 @@ export function visitors(project) {
     NewExpression(n, ctx) { leaks(n, ctx); },
     MemberExpression(n, ctx) {
       reach(n, ctx);
+      methodRead(n, ctx);
       const lines = ctx.file.facts.tsIgnoreLines;
       if (lines && lines.has(n.loc.start.line) && FRAMEWORK_KINDS.has(ctx.kind(n.object)) && !ctx.file.facts.tsIgnoreReported.has(n.loc.start.line)) {
         ctx.file.facts.tsIgnoreReported.add(n.loc.start.line);
@@ -444,6 +542,20 @@ export function visitors(project) {
     },
     VariableDeclarator(n, ctx) {
       if (n.id.type === 'Identifier' && n.init && typeName(n.id) === 'any' && FRAMEWORK_KINDS.has(ctx.kind(n.init))) ctx.report('TB-A14', n, { message: `\`any\`-typed alias of a ${ctx.kind(n.init)} binding` });
+      if (n.id.type !== 'ObjectPattern' || !n.init) return;
+      const k = ctx.kind(n.init);
+      for (const pr of n.id.properties) {
+        if (pr.type !== 'ObjectProperty') continue;
+        const key = pr.key.type === 'Identifier' ? pr.key.name : isStr(pr.key) ? strValue(pr.key) : null;
+        if (!key) continue;
+        if (FRAMEWORK_KINDS.has(k) && (reachKind(k, key) || key.startsWith('_') || privatesOf(k).has(key))) {
+          if (!(ctx.file.isFixturesModule && ctx.region === 'fixture' && k === 'repo' && key === 'driver')) ctx.report('TB-A14', pr, { message: `\`${key}\` destructured out of a ${k} binding` });
+        }
+        if (DRIVER_KINDS.has(k) && !DRIVER_PROPERTIES.has(key)) {
+          const c = classifyRaw({ type: 'CallExpression', callee: { type: 'MemberExpression', object: n.init, property: { type: 'Identifier', name: key }, computed: false }, arguments: [] }, ctx);
+          if (c && c.cat !== 'accessor' && c.cat !== 'chain' && c.cat !== 'ignore') extracted(pr, c, ctx);
+        }
+      }
     },
     ReturnStatement(n, ctx) {
       if (ctx.file.kind !== 'spec' || !n.argument || !['test', 'hook', 'helper', 'describe'].includes(ctx.region)) return;

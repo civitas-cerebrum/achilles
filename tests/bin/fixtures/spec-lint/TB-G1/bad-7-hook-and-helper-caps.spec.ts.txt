@@ -1,0 +1,27 @@
+// spec-lint fixture: the two-waiver cap holds per hook and per helper, not only per test
+// rules: TB-G1
+import { test, expect } from './fixtures/base';
+
+async function go(page) {
+  // achilles-allow TB-A2 -- the media emulation has no Steps form at all
+  await page.emulateMedia({ colorScheme: 'dark' });
+  // achilles-allow TB-A2 -- the screen orientation has no Steps form either
+  await page.mouse.wheel(0, 10);
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A2 -- the touch screen tap has no Steps form
+  await page.touchscreen.tap(1, 1);
+}
+
+test.beforeEach(async ({ page }) => {
+  // achilles-allow TB-A2 -- the media emulation has no Steps form at all
+  await page.emulateMedia({ colorScheme: 'dark' });
+  // achilles-allow TB-A2 -- the screen orientation has no Steps form either
+  await page.mouse.wheel(0, 10);
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A2 -- the touch screen tap has no Steps form
+  await page.touchscreen.tap(1, 1);
+});
+
+test('TC-0421 · uses the helper', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage');
+});

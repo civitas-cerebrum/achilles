@@ -1,0 +1,18 @@
+// spec-lint fixture: driver methods taken off the binding and called indirectly are raw calls
+// rules: TB-A1 TB-A2
+import { test, expect } from './fixtures/base';
+
+test('TC-0015 · calls methods indirectly', async ({ page }) => {
+  await page.goto.call(page, '/h'); // EXPECT TB-A2
+  await page.goto.apply(page, ['/i']); // EXPECT TB-A2
+  await page.goto.bind(page)('/j'); // EXPECT TB-A2
+  await (0, page.goto)('/k'); // EXPECT TB-A2
+  const go = page.reload; // EXPECT TB-A2
+  const { goBack } = page; // EXPECT TB-A2
+  await Reflect.apply(page.goto, page, ['/l']); // EXPECT TB-A2
+  const find = page.locator.bind(page); // EXPECT TB-A1
+  await find('#a').click();
+  const { keyboard, mouse } = page;
+  await keyboard.press('Enter'); // EXPECT TB-A2
+  expect([go, goBack, mouse].length).toBe(3);
+});

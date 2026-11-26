@@ -1,0 +1,17 @@
+// spec-lint fixture: an aliased test binding and the fixtures module's namespace are test bindings too
+// rules: TB-A2
+import { test } from './fixtures/base';
+import * as fx from './fixtures/base';
+
+const t = test;
+t('TC-0511 · an alias declares a test', async ({ page }) => {
+  await page.goto('/b'); // EXPECT TB-A2
+});
+fx.test('TC-0512 · a namespace member declares a test', async ({ page }) => {
+  await page.goto('/c'); // EXPECT TB-A2
+});
+fx.test.describe('group', () => {
+  fx.test.beforeEach(async ({ page }) => {
+    await page.reload(); // EXPECT TB-A2
+  });
+});

@@ -1,0 +1,5 @@
+// spec-lint fixture: underscore and context members on plain data in a data module are not framework reads
+// place: tests/e2e/data/rows.ts
+// rules: TB-A14
+export function idOf(row) { return row._id; }
+export function ctxName(o) { return o.context; }
