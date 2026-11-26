@@ -256,3 +256,16 @@ test('--id-index keeps retired ids; --check accepts them and refuses one in use 
     assert.match(c.stderr, /retired ids in use again: TCAB-0002/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('--staged and --base without git on PATH say git was not found (exit 2)', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': SPEC });
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: root, PATH: path.dirname(process.execPath) };
+    for (const args of [['--staged'], ['--base', 'main']]) {
+      const r = spawnSync(process.execPath, [BIN, ...args], { cwd: root, encoding: 'utf8', env });
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, /git was not found on PATH/);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

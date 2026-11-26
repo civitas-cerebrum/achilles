@@ -46,7 +46,9 @@ export function parseDiff(text) {
 /** Throws a ChangeError naming the directory when it is not inside a git work tree. */
 function workTree(root) {
   let inside = '';
-  try { inside = git(root, ['rev-parse', '--is-inside-work-tree']).trim(); } catch { /* not a repository */ }
+  try { inside = git(root, ['rev-parse', '--is-inside-work-tree']).trim(); } catch (e) {
+    if (e && e.code === 'ENOENT') throw new ChangeError('git was not found on PATH');
+  }
   if (inside !== 'true') throw new ChangeError(`${root} is not a git work tree`);
 }
 
