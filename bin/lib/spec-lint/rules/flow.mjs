@@ -9,6 +9,7 @@ import {
 import { DRIVER_KINDS } from '../bindings.mjs';
 import { resolveRelative } from '../suite.mjs';
 import { pointersAbove, resolveRef, refNames, SENTINEL_TITLE } from '../defects.mjs';
+import { makeDrives } from '../drives.mjs';
 
 const RULEBOOK = 'skills/achilles-orchestrator/references/test-baseline.md';
 const TIMERS = /^(?:node:)?timers\/promises$/;
@@ -39,7 +40,7 @@ function swallows(fn) {
 }
 
 /** Top-level functions of a file whose body builds a timer sleep (setTimeout, timers/promises). */
-function timerHelpers(file, importedSleep = () => false) {
+function timerHelpers(file, importedSleep = () => false, bodyDrives = () => false) {
   const out = new Set();
   const timerImports = new Set();
   for (const st of file.ast.program.body) if (st.type === 'ImportDeclaration' && TIMERS.test(st.source.value)) for (const sp of st.specifiers) timerImports.add(sp.local.name);
@@ -68,7 +69,6 @@ function timerHelpers(file, importedSleep = () => false) {
   const isTimer = (fn) => {
     const b = fn.body;
     if (b.type !== 'BlockStatement') return sleepExpr(b) || (unwrap(b).type === 'AwaitExpression' && sleepExpr(b));
-    const params = new Set(fn.params.map((p) => (p.type === 'AssignmentPattern' ? p.left : p)).filter((p) => p.type === 'Identifier').map((p) => p.name));
     const awaitedSleep = (n) => anyNode(n, (x) => x.type === 'AwaitExpression' && sleepExpr(x.argument), { intoFunctions: false });
     const fixedCount = (l) => l.type === 'ForStatement' && l.init && l.test && l.test.type === 'BinaryExpression' && /^<=?$/.test(l.test.operator) && unwrap(l.test.right).type === 'NumericLiteral'
       && !anyNode(l.body, (x) => x.type === 'IfStatement' || x.type === 'BreakStatement' || x.type === 'ReturnStatement' || x.type === 'ThrowStatement' || x.type === 'ConditionalExpression' || x.type === 'LogicalExpression', { intoFunctions: false });
@@ -79,15 +79,7 @@ function timerHelpers(file, importedSleep = () => false) {
     }
     if (!unconditional) return false;
     if (anyNode(b, (x) => LOOPS.has(x.type) && !b.body.includes(x), { intoFunctions: false })) return false; // a nested loop
-    const drives = anyNode(b, (x) => {
-      if (!isCall(x) || sleepExpr(x)) return false;
-      const c = unwrap(x.callee);
-      if ((memberChain(c) || [])[0] === 'console') return false;
-      let r = c;
-      while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
-      if (r && r.type === 'Identifier' && (params.has(r.name) || /^(page|steps|context|browser|locator|repo|interactions|driver)$/.test(r.name))) return true;
-      return x.arguments.some((a) => anyNode(a, (y) => y.type === 'Identifier' && (params.has(y.name) || /^(page|steps|context|browser|repo|interactions|driver)$/.test(y.name))));
-    }, { intoFunctions: false }); // the sleep promise's own executor is not driving
+    const drives = bodyDrives(fn);
     return !drives;
   };
   for (const st of body) {
@@ -116,66 +108,6 @@ function importsOf(file) {
 }
 
 /** A function body whose every call is an api* / request* / sql* call (on any receiver) or a plain value call. */
-const PURE_GLOBALS = new Set(['String', 'Number', 'Boolean', 'BigInt', 'Symbol', 'parseInt', 'parseFloat', 'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI', 'isNaN', 'isFinite', 'structuredClone']);
-const PURE_ROOTS = new Set(['JSON', 'Math', 'Object', 'Array', 'Date', 'Promise', 'console', 'process', 'Number', 'String', 'URL', 'URLSearchParams', 'Buffer']);
-
-/**
- * A verb body whose every call is an api* / request* / sql* call, a call on a value that is not the binding
- * (a response's `json()`), a known pure global or an in-file function that is itself API-only. A parameter is
- * tainted, and so are its aliases, destructured members and member reads (`const s = steps`, `const { click }
- * = steps`, `const x = steps.page`); a call rooted at a tainted name, handing one on, or of an unknown bare
- * function drives.
- */
-function apiOnly(fn, file = null, depth = 0) {
-  const tainted = new Set(fn.params.flatMap((p) => patternNames(p.type === 'AssignmentPattern' ? p.left : p)));
-  const rootOf = (e) => { let r = unwrap(e); while (r && (isMember(r) || isCall(r) || r.type === 'AwaitExpression')) r = r.type === 'AwaitExpression' ? unwrap(r.argument) : isMember(r) ? unwrap(r.object) : unwrap(r.callee); return r; };
-  const backDoorCall = (e) => { let u = unwrap(e); if (u && u.type === 'AwaitExpression') u = unwrap(u.argument); return isCall(u) && isMember(unwrap(u.callee)) && /^(api|request|sql)[A-Z]/.test(propName(unwrap(u.callee)) || ''); };
-  for (let changed = true; changed;) {
-    changed = false;
-    anyNode(fn.body, (x) => {
-      if (x.type !== 'VariableDeclarator' || !x.init || backDoorCall(x.init)) return false;
-      const r = rootOf(x.init);
-      if (r && r.type === 'Identifier' && tainted.has(r.name)) for (const n of patternNames(x.id)) if (!tainted.has(n)) { tainted.add(n); changed = true; }
-      return false;
-    });
-  }
-  const localFns = new Map();
-  anyNode(fn.body, (x) => {
-    if (x.type === 'FunctionDeclaration' && x.id) localFns.set(x.id.name, x);
-    if (x.type === 'VariableDeclarator' && x.id.type === 'Identifier' && isFn(unwrap(x.init))) localFns.set(x.id.name, unwrap(x.init));
-    return false;
-  });
-  return !anyNode(fn.body, (x) => {
-    if (!isCall(x)) return false;
-    const c = unwrap(x.callee);
-    if (isMember(c) && /^(api|request|sql)[A-Z]/.test(propName(c) || '')) return false;
-    // handing a tainted name on (to another verb), inside an object or array too
-    if (x.arguments.some((a) => anyNode(a, (y) => y.type === 'Identifier' && tainted.has(y.name)))) return true;
-    const r = rootOf(c);
-    if (!r || r.type !== 'Identifier') return false;
-    if (tainted.has(r.name) || /^(page|steps|context|browser|locator|repo|interactions|driver)$/.test(r.name)) return true;
-    if (c.type === 'Identifier') {
-      // a bare call: a pure global, an in-file API-only function, else it may drive
-      if (PURE_GLOBALS.has(c.name)) return false;
-      if (depth >= 3) return true;
-      const local = localFns.get(c.name) || (file ? localFunction(file, c.name) : null);
-      return !(local && local !== fn && apiOnly(local, file, depth + 1));
-    }
-    return false;
-  });
-}
-
-/** Identifier names a binding pattern declares. */
-function patternNames(p) {
-  if (!p) return [];
-  if (p.type === 'Identifier') return [p.name];
-  if (p.type === 'ObjectPattern') return p.properties.flatMap((x) => patternNames(x.type === 'RestElement' ? x.argument : x.value));
-  if (p.type === 'ArrayPattern') return p.elements.flatMap(patternNames);
-  if (p.type === 'AssignmentPattern') return patternNames(p.left);
-  if (p.type === 'RestElement') return patternNames(p.argument);
-  return [];
-}
-
 const nullish = (a) => { const u = unwrap(a); return !u || u.type === 'NullLiteral' || (u.type === 'Identifier' && u.name === 'undefined') || (u.type === 'UnaryExpression' && u.operator === 'void'); };
 
 /** The in-file function a name is bound to at module level, or null. */
@@ -197,6 +129,7 @@ function handlerSwallows(file, a) {
 }
 
 export function visitors(project) {
+  const drv = makeDrives(project, { localFunction, importsOf });
   const timers = new Map(); // abs → { helpers, timerImports }
 
   /** `name` called in `file` resolves to a timer sleep helper (local, imported from a project module, or timers/promises). */
@@ -260,23 +193,11 @@ export function visitors(project) {
     const c = unwrap(x.callee);
     if (isMember(c) && ctx.kind(c.object)) return false; // a call on the binding itself: drivesUi decides
     // the call hands on a binding: directly, or inside an object or array argument (`opts({ steps })`, `[page]`)
-    const actor = (k) => !!k && (DRIVER_KINDS.has(k) || k === 'steps' || k === 'repo' || k === 'interactions' || k === 'interactions-part' || k.startsWith('fixture:'));
+    const actor = (k) => !!k && ((DRIVER_KINDS.has(k) && k !== 'request') || k === 'steps' || k === 'repo' || k === 'interactions' || k === 'interactions-part' || k.startsWith('fixture:'));
     const holds = (k) => actor(k) || (typeof k === 'string' && (k.startsWith('list:') ? actor(k.slice(5)) : k.startsWith('obj:') ? Object.values(JSON.parse(k.slice(4))).some(actor) : false));
-    if (!x.arguments.some((a) => holds(ctx.kind(a && a.type === 'SpreadElement' ? a.argument : a)))) return false;
-    const target = c.type === 'Identifier' ? verbTarget(ctx.file, c.name, 0) : null;
-    return !(target && apiOnly(target.fn, target.file));
+    return drv.callDrives(x, ctx.file, (a) => holds(ctx.kind(a && a.type === 'SpreadElement' ? a.argument : a)));
   }
 
-  /** The function a name resolves to, with its file: declared in the file, or imported from a project module. */
-  function verbTarget(file, name, depth) {
-    const local = localFunction(file, name);
-    if (local) return { fn: local, file };
-    const imp = importsOf(file).get(name);
-    if (!imp || depth > 4) return null;
-    const target = resolveRelative(file.abs, imp.source);
-    const tf = target && project.allFiles.find((f) => f.abs === target);
-    return tf ? verbTarget(tf, imp.imported, depth + 1) : null;
-  }
 
   function wrapper(node, ctx, kind) {
     if (!flowRegion(ctx)) return;
@@ -399,11 +320,11 @@ export function visitors(project) {
   return {
     projectStart(p) {
       // to a fixed point: a helper may sleep through a helper imported from another module
-      for (const f of p.allFiles) timers.set(f.abs, timerHelpers(f));
+      for (const f of p.allFiles) timers.set(f.abs, timerHelpers(f, () => false, (fn) => drv.bodyDrives(fn, f)));
       for (let round = 0; round < 4; round++) {
         let grew = false;
         for (const f of p.allFiles) {
-          const next = timerHelpers(f, (name) => { const imp = importsOf(f).get(name); return !!imp && sleepHelper(f, name); });
+          const next = timerHelpers(f, (name) => { const imp = importsOf(f).get(name); return !!imp && sleepHelper(f, name); }, (fn) => drv.bodyDrives(fn, f));
           if (next.helpers.size > timers.get(f.abs).helpers.size) { timers.set(f.abs, next); grew = true; }
         }
         if (!grew) break;

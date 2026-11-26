@@ -1,3 +1,4 @@
+import { helperElsewhere } from '@acme/verbs';
 export async function aliasClose(steps) {
   const s = steps;
   await s.click('closePromo', 'HomePage');
@@ -6,15 +7,14 @@ export async function destructClose(steps) {
   const { click } = steps;
   await click('closePromo', 'HomePage');
 }
+export async function optsBag(opts) {
+  await opts.steps.click('closePromo', 'HomePage');
+}
+export async function handsOnElsewhere(steps) {
+  await helperElsewhere(steps);
+}
 export async function viaApiResult(steps) {
   const r = await steps.apiGet('/promo');
   const act = r.actions.close;
   await act();
-}
-export async function optsBag(opts) {
-  await opts.steps.click('closePromo', 'HomePage');
-}
-export async function apiOnlyReal(steps) {
-  const r = await steps.apiDelete('/accounts/u');
-  return String(await r.json());
 }

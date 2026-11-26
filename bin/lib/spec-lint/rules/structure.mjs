@@ -10,6 +10,25 @@ import { DRIVER_KINDS, FRAMEWORK_KINDS, classifyCall, TYPE_KIND, kindOf, testBin
 import { idPattern, idsIn } from '../ids.mjs';
 import { typeName, parseCode } from '../ast.mjs';
 import { resolveRelative } from '../suite.mjs';
+import { makeDrives } from '../drives.mjs';
+
+/** The module-level function a name is bound to, or null. */
+function moduleFunction(file, name) {
+  for (let st of file.ast.program.body) {
+    if ((st.type === 'ExportNamedDeclaration' || st.type === 'ExportDefaultDeclaration') && st.declaration) st = st.declaration;
+    if (st.type === 'FunctionDeclaration' && st.id && st.id.name === name) return st;
+    if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && d.id.name === name && isFn(unwrap(d.init))) return unwrap(d.init);
+  }
+  return null;
+}
+
+/** Local name → { source, imported } of a file's imports. */
+function importMap(file) {
+  if (file.facts.importMap) return file.facts.importMap;
+  const out = new Map();
+  for (const st of file.ast.program.body) if (st.type === 'ImportDeclaration') for (const sp of st.specifiers) out.set(sp.local.name, { source: st.source.value, imported: sp.type === 'ImportSpecifier' ? (sp.imported.name || sp.imported.value) : sp.type === 'ImportDefaultSpecifier' ? 'default' : '*' });
+  return (file.facts.importMap = out);
+}
 
 const RULEBOOK = 'skills/achilles-orchestrator/references/test-baseline.md';
 export const CONSTANT_TABLE_SETTING = 'specs.constant-table-tests';
@@ -57,13 +76,14 @@ function constantTable(file, iterated) {
  * binding called, steps only through api*, request* or sql*, and no call handing steps or a driver to a verb.
  * Kinds are read in the test's own scope.
  */
-function nonUi(fn, kind) {
+function nonUi(fn, kind, file, drv) {
   const p0 = fn.params[0];
   if (p0 && p0.type === 'ObjectPattern' && p0.properties.some((pr) => pr.type === 'ObjectProperty' && /^(page|context|browser|repo|interactions)$/.test(pr.key.name || pr.key.value))) return false;
   const actor = (k) => typeof k === 'string' && ((DRIVER_KINDS.has(k) && k !== 'request') || FRAMEWORK_KINDS.has(k));
   return !anyNode(fn.body, (x) => {
     if (!isCall(x)) return false;
-    if (x.arguments.some((a) => actor(kind(a && a.type === 'SpreadElement' ? a.argument : a)))) return true;
+    // handing a binding on drives only when the function it reaches drives (the shared definition)
+    if (x.arguments.some((a) => actor(kind(a && a.type === 'SpreadElement' ? a.argument : a)))) return drv.callDrives(x, file, (a) => actor(kind(a && a.type === 'SpreadElement' ? a.argument : a)));
     const c = unwrap(x.callee);
     if (!isMember(c)) return false;
     const k = kind(c.object);
@@ -139,13 +159,13 @@ function injectedFields(n) {
  * method, the repository, interactions or a driver on a parameter or module binding; 'field' when its UI calls
  * go only through an injected `this.<field>`; 'none' otherwise (api*, request*, sql* calls are not UI).
  */
-function classTable(file) {
+function classTable(file, drv) {
   if (file.facts.classTable) return file.facts.classTable;
   const out = new Map();
   const rank = { none: 0, field: 1, blocking: 2 };
   const visit = (n) => {
     if (!n || typeof n.type !== 'string') return;
-    if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id) out.set(n.id.name, classify(n, rank));
+    if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id) out.set(n.id.name, classify(n, rank, file, drv));
     for (const k of Object.keys(n)) {
       if (k === 'loc' || k.endsWith('Comments')) continue;
       const v = n[k];
@@ -162,7 +182,7 @@ function classTable(file) {
  * class a Steps or driver binding). A field handed to another call or returned from a getter is 'field'; only
  * api*, request* and sql* member calls on it keep the class 'none'.
  */
-function classify(n, rank) {
+function classify(n, rank, file, drv) {
   const typed = injectedFields(n);
   const all = new Set([...typed, ...constructorFields(n)]);
   const methodActorParams = new Set();
@@ -174,8 +194,9 @@ function classify(n, rank) {
     anyNode(n.body, (x) => {
       if (x.type === 'ReturnStatement' && x.argument && thisField(x.argument)) up('field');
       if (!isCall(x)) return false;
-      if (x.arguments.some((a) => thisField(a))) up('field');
-      if (x.arguments.some((a) => { const u = unwrap(a); return u && u.type === 'Identifier' && UI_NAMES.test(u.name) && u.name !== 'request'; })) up('field');
+      // handing the field (or a UI-named binding) to a function counts when that function drives
+      const uiNamed = (a) => { const u = unwrap(a); return !!u && u.type === 'Identifier' && UI_NAMES.test(u.name) && u.name !== 'request'; };
+      if (x.arguments.some((a) => thisField(a) || uiNamed(a)) && drv.callDrives(x, file, (a) => thisField(a) || uiNamed(a))) up('field');
       const c = unwrap(x.callee);
       if (!isMember(c) || BACK_DOOR.test(propName(c) || '')) return false;
       const o = unwrap(c.object);
@@ -239,6 +260,7 @@ function declaredIn(fn) {
 }
 
 export function visitors(project) {
+  const drv = makeDrives(project, { localFunction: moduleFunction, importsOf: importMap });
   const ids = idPattern(project.root, project.rules);
   const tablesAllowed = !!(project.rules?.rules?.[CONSTANT_TABLE_SETTING]?.allowed === true);
   const report = (file, rule, node, message, extra = {}) => project.findings.push({
@@ -293,7 +315,7 @@ export function visitors(project) {
       if (g) {
         const scope = file.fnScopes && file.fnScopes.get(c.fn);
         const kind = scope ? (e) => kindOf(e, scope, { fixtureKinds: project.fixtureKinds }) : ctx.kind;
-        const table = g.iterated && constantTable(file, g.iterated) && nonUi(c.fn, kind);
+        const table = g.iterated && constantTable(file, g.iterated) && nonUi(c.fn, kind, file, drv);
         if (!(table && tablesAllowed)) {
           const t = file.testsByNode.get(n);
           ctx.report('TB-S1', n, { message: `test declared inside ${g.how}${table ? ` (a non-UI constant table is not accepted at present; the \`${CONSTANT_TABLE_SETTING}\` setting is off)` : ''}`, test: t || null, data: { ranges: g.ranges } });
@@ -382,7 +404,7 @@ export function visitors(project) {
 
   /** 'blocking' | 'field' | 'none' for a class declared in this file or imported from a project module; null when unknown. */
   function classKind(file, name, depth = 0) {
-    const local = classTable(file).get(name);
+    const local = classTable(file, drv).get(name);
     if (local) return local.any;
     if (depth > 4) return null;
     for (const st of file.ast.program.body) {
@@ -414,7 +436,7 @@ export function visitors(project) {
     ClassDeclaration: onClass,
     ClassExpression: onClass,
     fileEnd(file) {
-      for (const [name, c] of classTable(file)) {
+      for (const [name, c] of classTable(file, drv)) {
         if (c.typed === 'none' || project.findings.some((f) => f.file === file.rel && f.rule === 'TB-S3' && f.line === c.node.loc.start.line)) continue;
         report(file, 'TB-S3', c.node, c.typed === 'field' ? `class ${name} drives through its injected field (it hands it to a call or returns it) (advisory: unmeasured)` : `class ${name} drives the UI: a page-object layer`, { severity: c.typed === 'field' ? 'advisory' : 'blocking' });
       }

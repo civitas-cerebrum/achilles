@@ -1,10 +1,10 @@
-// spec-lint fixture: a verb that aliases, destructures or calls an unknown function, or a binding handed inside an object, still drives in a hook branch
+// spec-lint fixture: a verb that aliases or destructures the binding, receives it inside an object, or hands it to a function the lint cannot read still drives in a hook branch
 import { test } from './fixtures/base';
-import { aliasClose, destructClose, viaApiResult, optsBag, apiOnlyReal } from './flows/sneaky';
+import { aliasClose, destructClose, optsBag, handsOnElsewhere, viaApiResult } from './flows/sneaky';
 
 test.beforeEach(async ({ steps }) => { if (process.env.A) await aliasClose(steps); }); // EXPECT TB-F1
 test.beforeEach(async ({ steps }) => { if (process.env.B) await destructClose(steps); }); // EXPECT TB-F1
-test.beforeEach(async ({ steps }) => { if (process.env.C) await viaApiResult(steps); }); // EXPECT TB-F1
 test.beforeEach(async ({ steps }) => { if (process.env.D) await optsBag({ steps }); }); // EXPECT TB-F1
-test.afterEach(async ({ steps }) => { if (process.env.E) await apiOnlyReal(steps); });
+test.beforeEach(async ({ steps }) => { if (process.env.E) await handsOnElsewhere(steps); }); // EXPECT TB-F1
+test.afterEach(async ({ steps }) => { if (process.env.C) await viaApiResult(steps); });
 test('TCAB-1202 · body', async ({ steps }) => { await steps.verifyText('a', 'HomePage', 'x'); });
