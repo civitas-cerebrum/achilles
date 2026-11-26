@@ -10,7 +10,3 @@ export async function deleteLastUser(steps) {
   const auth = token.trim();
   await steps.apiDelete(`/users/${id}?n=${label}`, { headers: { Authorization: auth } });
 }
-export class UserApi {
-  constructor(private steps: any) {}
-  async remove() { const id = lastUser.id.toString(); await this.steps.apiDelete(`/users/${id}`); }
-}

@@ -12,7 +12,7 @@ export class Holder { // EXPECT TB-S3/advisory
   constructor(private s: Steps) {}
   get steps() { return this.s; }
 }
-class Untyped {
+class Untyped { // EXPECT TB-S3/advisory
   constructor(private st: any) {}
   async go() { await signIn(this.st, 'u'); }
 }

@@ -123,6 +123,7 @@ export function makeDrives(project, { localFunction, importsOf }) {
 
   /** A value comes from a tainted name: an alias, a member read, a container, or a branch of a conditional. */
   const fromBinding = (e, tainted) => alternatives(e).some((v) => {
+    if (v.type === 'NewExpression' && v.arguments.some((a) => handsOn(a, tainted))) return true; // an instance holding the binding
     const { root: r, first } = chain(v);
     return (r && tainted.has(r) && !(first && BACK_DOOR.test(first))) || handsOn(v, tainted);
   });
@@ -170,13 +171,24 @@ export function makeDrives(project, { localFunction, importsOf }) {
     handOns = [];
     for (const f of project.allFiles) {
       anyNode(f.ast.program, (x) => {
-        if (!isCall(x) || unwrap(x.callee).type !== 'Identifier') return false;
+        if ((!isCall(x) && x.type !== 'NewExpression') || unwrap(x.callee).type !== 'Identifier') return false;
         const positions = x.arguments.map((a, i) => (bindingArg(a) ? i : -1)).filter((i) => i >= 0);
-        if (positions.length) handOns.push({ file: f, name: unwrap(x.callee).name, positions });
+        if (positions.length) handOns.push({ file: f, name: unwrap(x.callee).name, positions, isNew: x.type === 'NewExpression' });
         return false;
       });
     }
     return handOns;
+  }
+
+  /** Constructor positions of class `name` (declared in `file`) that some `new` in the project hands a binding to. */
+  function newBindingPositions(name) {
+    const out = new Set();
+    for (const h of projectHandOns()) {
+      if (!h.isNew) continue;
+      const imp = importsOf(h.file).get(h.name);
+      if (h.name === name || (imp && imp.imported === name)) for (const i of h.positions) out.add(i);
+    }
+    return out;
   }
 
   /** Parameter positions of `fn` that some call in the project hands a binding to. */
@@ -188,43 +200,6 @@ export function makeDrives(project, { localFunction, importsOf }) {
       if (target && target.fn === fn) for (const i of h.positions) out.add(i);
     }
     return out;
-  }
-
-  /** A class declared in the file or imported from a project module, or null. */
-  function resolveClass(file, name, depth = 0) {
-    for (let st of file.ast.program.body) {
-      if ((st.type === 'ExportNamedDeclaration' || st.type === 'ExportDefaultDeclaration') && st.declaration) st = st.declaration;
-      if (st.type === 'ClassDeclaration' && st.id && st.id.name === name) return st;
-    }
-    const imp = importsOf(file).get(name);
-    if (!imp || depth > MAX_DEPTH) return null;
-    const target = resolveRelative(file.abs, imp.source);
-    const tf = target && project.allFiles.find((f) => f.abs === target);
-    return tf ? resolveClass(tf, imp.imported, depth + 1) : null;
-  }
-
-  /**
-   * A class that uses what its constructor stores only for api*, request* or sql* member calls: no other member
-   * call on a stored field, no stored field handed on, no call rooted at a binding-like name.
-   */
-  function classApiOnly(cls) {
-    const fields = new Set();
-    const ctor = cls.body.body.find((m) => m.type === 'ClassMethod' && m.kind === 'constructor');
-    if (ctor) {
-      const params = new Set();
-      for (const p of ctor.params) { if (p.type === 'TSParameterProperty') for (const n of patternNames(p.parameter)) fields.add(n); else for (const n of patternNames(p)) params.add(n); }
-      anyNode(ctor.body, (x) => { if (x.type === 'AssignmentExpression' && isMember(x.left) && unwrap(x.left.object).type === 'ThisExpression' && unwrap(x.right).type === 'Identifier' && params.has(unwrap(x.right).name)) fields.add(propName(x.left)); return false; });
-    }
-    const field = (e) => { const u = unwrap(e); return !!u && isMember(u) && unwrap(u.object).type === 'ThisExpression' && fields.has(propName(u)); };
-    return !anyNode(cls.body, (x) => {
-      if (!isCall(x)) return false;
-      if (x.arguments.some((a) => field(a))) return true;
-      const c = unwrap(x.callee);
-      if (!isMember(c)) return false;
-      if (field(c.object)) return !BACK_DOOR.test(propName(c) || '');
-      const { root, first } = chain(c);
-      return !!root && BINDING_NAME.test(root) && root !== 'request' && !(first && BACK_DOOR.test(first));
-    });
   }
 
   /** Functions declared under `root` by name (closures a call may run). */
@@ -282,11 +257,6 @@ export function makeDrives(project, { localFunction, importsOf }) {
       }
       const positions = x.arguments.map((a, i) => (handsOn(a, tainted) ? i : -1)).filter((i) => i >= 0);
       if (!positions.length) return false;
-      // `new X(steps)`: a class whose methods use the binding only for api*, request* or sql* calls does not drive
-      if (x.type === 'NewExpression' && c.type === 'Identifier' && file) {
-        const cls = resolveClass(file, c.name);
-        if (cls) return !classApiOnly(cls);
-      }
       if (c.type === 'Identifier' && /^(expect|String|Number|Boolean)$/.test(c.name)) return false;
       if (isMember(c) && chain(c).root === 'console') return false;
       const target = c.type === 'Identifier' && file ? resolve(file, c.name) : null;
@@ -303,7 +273,7 @@ export function makeDrives(project, { localFunction, importsOf }) {
     return !target || bodyDrives(target.fn, target.file, positions, 1);
   }
 
-  return { bodyDrives, driven, callDrives, resolve };
+  return { bodyDrives, driven, callDrives, resolve, newBindingPositions };
 }
 
 export { isFn };

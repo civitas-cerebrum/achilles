@@ -1,0 +1,13 @@
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+import { Sub, EmptySub, HandsOn, LocalAlias, Destruct, ApiReal } from '../flows/cls';
+
+export function screens(steps: Steps) {
+  return {
+    sub: new Sub(steps), // EXPECT TB-S3/advisory
+    empty: new EmptySub(steps), // EXPECT TB-S3/advisory
+    handsOn: new HandsOn(steps), // EXPECT TB-S3/advisory
+    alias: new LocalAlias(steps), // EXPECT TB-S3/advisory
+    destruct: new Destruct(steps), // EXPECT TB-S3/advisory
+    api: new ApiReal(steps),
+  };
+}

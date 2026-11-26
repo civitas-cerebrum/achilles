@@ -1,0 +1,7 @@
+// spec-lint fixture: module state set from data, read by an API-only teardown verb in a hook branch: bookkeeping
+import { test } from './fixtures/base';
+import { setUser, bump, setToken, deleteLastUser } from './data/state';
+
+test.beforeAll(async () => { setUser({ id: 1 }); bump(2); setToken('t'); });
+test.afterEach(async ({ steps }) => { if (process.env.CREATED) await deleteLastUser(steps); });
+test('TCAB-1401 · body', async ({ steps }) => { await steps.verifyText('a', 'HomePage', 'x'); });

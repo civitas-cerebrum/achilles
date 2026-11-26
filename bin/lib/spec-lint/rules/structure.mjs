@@ -178,40 +178,99 @@ function classTable(file, drv) {
 
 /**
  * One class: { typed, any, node }. `typed` uses the fields injected from a Steps, framework, driver or UI-named
- * parameter; `any` also counts fields taken from any constructor parameter (used when a construction hands the
- * class a Steps or driver binding). A field handed to another call or returned from a getter is 'field'; only
- * api*, request* and sql* member calls on it keep the class 'none'.
+ * parameter, or from a constructor parameter some `new` in the project hands a binding to; `any` also counts
+ * fields taken from any constructor parameter (used when a construction hands the class a binding). The
+ * `extends` chain is followed for fields and methods; an ancestor the lint cannot read, in a class constructed
+ * with a binding, counts as at least 'field'. A field handed to a call that drives, returned, aliased or
+ * destructured and then called, or called with a non-api method, is 'field'.
  */
-function classify(n, rank, file, drv) {
-  const typed = injectedFields(n);
-  const all = new Set([...typed, ...constructorFields(n)]);
+function classify(n, rank, file, drv, depth = 0) {
+  const chainOf = [n];
+  let unresolvedAncestor = false;
+  for (let c = n, i = 0; c.superClass && i < 4; i++) {
+    const sup = unwrap(c.superClass);
+    const parent = sup && sup.type === 'Identifier' ? classNode(file, sup.name, drv) : null;
+    if (!parent) { unresolvedAncestor = !(sup && /(Page|Screen)$/.test(sup.name || '')); break; }
+    chainOf.push(parent.node);
+    c = parent.node;
+  }
+  const ctorOwner = chainOf.find((c) => c.body.body.some((m) => m.type === 'ClassMethod' && m.kind === 'constructor')) || n;
+  const handed = n.id ? drv.newBindingPositions(n.id.name) : new Set();
+  // a subclass without its own constructor is built through this one: `new EmptySub(steps)` fills Clicker's fields
+  if (n.id) anyNode(file.ast.program, (x) => {
+    if ((x.type === 'ClassDeclaration' || x.type === 'ClassExpression') && x.id && x.superClass && unwrap(x.superClass).type === 'Identifier' && unwrap(x.superClass).name === n.id.name && !x.body.body.some((m) => m.type === 'ClassMethod' && m.kind === 'constructor')) for (const i of drv.newBindingPositions(x.id.name)) handed.add(i);
+    return false;
+  });
+  const typed = new Set([...chainOf.flatMap((c) => [...injectedFields(c)]), ...fieldsAtPositions(ctorOwner, handed)]);
+  const all = new Set([...typed, ...chainOf.flatMap((c) => [...constructorFields(c)])]);
   const methodActorParams = new Set();
-  for (const m of n.body.body) if (m.type === 'ClassMethod' && m.kind !== 'constructor') for (const p of m.params) { const k = p.type === 'Identifier' ? TYPE_KIND[typeName(p)] : null; if (k && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) methodActorParams.add(p.name); }
+  for (const cls of chainOf) for (const m of cls.body.body) if (m.type === 'ClassMethod' && m.kind !== 'constructor') for (const p of m.params) { const k = p.type === 'Identifier' ? TYPE_KIND[typeName(p)] : null; if (k && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) methodActorParams.add(p.name); }
   const scan = (fields) => {
     let kind = 'none';
     const up = (k) => { if (rank[k] > rank[kind]) kind = k; };
     const thisField = (e) => { const u = unwrap(e); return !!u && isMember(u) && unwrap(u.object).type === 'ThisExpression' && fields.has(propName(u)); };
-    anyNode(n.body, (x) => {
-      if (x.type === 'ReturnStatement' && x.argument && thisField(x.argument)) up('field');
-      if (!isCall(x)) return false;
-      // handing the field (or a UI-named binding) to a function counts when that function drives
-      const uiNamed = (a) => { const u = unwrap(a); return !!u && u.type === 'Identifier' && UI_NAMES.test(u.name) && u.name !== 'request'; };
-      if (x.arguments.some((a) => thisField(a) || uiNamed(a)) && drv.callDrives(x, file, (a) => thisField(a) || uiNamed(a))) up('field');
-      const c = unwrap(x.callee);
-      if (!isMember(c) || BACK_DOOR.test(propName(c) || '')) return false;
-      const o = unwrap(c.object);
-      if (thisField(o)) { up('field'); return false; }
-      let r = o;
-      while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
-      if (r && r.type === 'Identifier' && ((UI_NAMES.test(r.name) && r.name !== 'request') || methodActorParams.has(r.name))) { up('blocking'); return true; }
-      return false;
-    });
-    const sup = n.superClass && unwrap(n.superClass);
-    const supName = sup && (sup.type === 'Identifier' ? sup.name : isMember(sup) ? propName(sup) : null);
-    if (supName && /(Page|Screen)$/.test(supName)) kind = 'blocking';
+    for (const cls of chainOf) {
+      // aliases of a field inside methods: `const st = this.s`, `const { s } = this`
+      const aliases = new Set();
+      anyNode(cls.body, (x) => {
+        if (x.type !== 'VariableDeclarator' || !x.init) return false;
+        if (x.id.type === 'Identifier' && thisField(x.init)) aliases.add(x.id.name);
+        if (x.id.type === 'ObjectPattern' && unwrap(x.init).type === 'ThisExpression') for (const pr of x.id.properties) if (pr.type === 'ObjectProperty' && fields.has(pr.key.name || pr.key.value) && pr.value.type === 'Identifier') aliases.add(pr.value.name);
+        return false;
+      });
+      const held = (e) => thisField(e) || (unwrap(e) && unwrap(e).type === 'Identifier' && aliases.has(unwrap(e).name));
+      anyNode(cls.body, (x) => {
+        if (x.type === 'ReturnStatement' && x.argument && held(x.argument)) up('field');
+        if (!isCall(x)) return false;
+        // handing the field (or a UI-named binding) to a function counts when that function drives
+        const uiNamed = (a) => { const u = unwrap(a); return !!u && u.type === 'Identifier' && UI_NAMES.test(u.name) && u.name !== 'request'; };
+        if (x.arguments.some((a) => held(a) || uiNamed(a)) && drv.callDrives(x, file, (a) => held(a) || uiNamed(a))) up('field');
+        const c = unwrap(x.callee);
+        if (!isMember(c) || BACK_DOOR.test(propName(c) || '')) return false;
+        const o = unwrap(c.object);
+        if (held(o)) { up('field'); return false; }
+        let r = o;
+        while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
+        if (r && r.type === 'Identifier' && ((UI_NAMES.test(r.name) && r.name !== 'request') || methodActorParams.has(r.name))) { up('blocking'); return true; }
+        return false;
+      });
+    }
+    if (unresolvedAncestor && handed.size) up('field');
+    for (const cls of chainOf) {
+      const sup = cls.superClass && unwrap(cls.superClass);
+      const supName = sup && (sup.type === 'Identifier' ? sup.name : isMember(sup) ? propName(sup) : null);
+      if (supName && /(Page|Screen)$/.test(supName)) kind = 'blocking';
+    }
     return kind;
   };
   return { typed: scan(typed), any: scan(all), node: n };
+}
+
+/** A class node by name: declared in the file, or imported from a project module (its classTable entry). */
+function classNode(file, name, drv) {
+  for (let st of file.ast.program.body) {
+    if ((st.type === 'ExportNamedDeclaration' || st.type === 'ExportDefaultDeclaration') && st.declaration) st = st.declaration;
+    if (st.type === 'ClassDeclaration' && st.id && st.id.name === name) return { node: st, file };
+  }
+  return null;
+}
+
+/** Fields the constructor fills from the parameters at `positions`. */
+function fieldsAtPositions(n, positions) {
+  const out = new Set();
+  const ctor = n.body.body.find((m) => m.type === 'ClassMethod' && m.kind === 'constructor');
+  if (!ctor || !positions.size) return out;
+  const params = new Set();
+  ctor.params.forEach((p, i) => {
+    if (!positions.has(i)) return;
+    if (p.type === 'TSParameterProperty' && p.parameter.type === 'Identifier') out.add(p.parameter.name);
+    if (p.type === 'Identifier') params.add(p.name);
+  });
+  anyNode(ctor.body, (x) => {
+    if (x.type === 'AssignmentExpression' && isMember(x.left) && x.left.object.type === 'ThisExpression' && unwrap(x.right).type === 'Identifier' && params.has(unwrap(x.right).name)) out.add(propName(x.left));
+    return false;
+  });
+  return out;
 }
 
 /** Fields a constructor takes from any parameter (`constructor(private x)`, `this.x = x`). */
@@ -438,7 +497,7 @@ export function visitors(project) {
     fileEnd(file) {
       for (const [name, c] of classTable(file, drv)) {
         if (c.typed === 'none' || project.findings.some((f) => f.file === file.rel && f.rule === 'TB-S3' && f.line === c.node.loc.start.line)) continue;
-        report(file, 'TB-S3', c.node, c.typed === 'field' ? `class ${name} drives through its injected field (it hands it to a call or returns it) (advisory: unmeasured)` : `class ${name} drives the UI: a page-object layer`, { severity: c.typed === 'field' ? 'advisory' : 'blocking' });
+        report(file, 'TB-S3', c.node, c.typed === 'field' ? `class ${name} drives the UI through its injected field (calls, hands on, returns or aliases it) (advisory: unmeasured)` : `class ${name} drives the UI: a page-object layer`, { severity: c.typed === 'field' ? 'advisory' : 'blocking' });
       }
       if (file.kind !== 'spec') return;
       const { d, uses } = helpers(file);
