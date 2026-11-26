@@ -324,7 +324,7 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
     fixtureKinds: new Map(), extendKeys: new Set(), extendOpen: false,
   };
   for (const p of scope.problems) project.projectFindings.push({ rule: 'scope', severity: 'advisory', file: p.file, message: `${p.file}: ${p.message}; the default test glob and tests/** apply`, do: 'Keep testDir, testMatch, testIgnore and projects in the Playwright config as literal values (or path.join / path.resolve over __dirname) so the lint can see which files run.', why: `${RULEBOOK}#scope` });
-  for (const n of surface.notes) project.projectFindings.push({ rule: 'surface', severity: 'advisory', message: n, do: 'Upgrade @civitas-cerebrum/achilles.', why: docOf('TB-A10') });
+  for (const n of surface.notes) project.projectFindings.push({ rule: 'surface', severity: 'advisory', message: n, do: 'Nothing to change in the suite: the checks read the installed type definitions.', why: docOf('TB-A10') });
 
   // classify and parse
   const algo = useGit ? objectFormat(root) : 'sha1';

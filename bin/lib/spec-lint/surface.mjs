@@ -157,7 +157,7 @@ function finish(s, source, where, dir) {
   const newest = versions.at(-1);
   const notes = [];
   if (newest && semver.valid(s.version) && semver.compare(s.version, newest) > 0) {
-    notes.push(`the shipped surface table stops at ${newest}, older than the installed ${s.version}: upgrade Achilles; the installed type definitions are used for method checks`);
+    notes.push(`the installed ${s.version} is newer than every release in the shipped surface table (newest ${newest}); its own type definitions are used for the method checks`);
   }
   return {
     package: PACKAGE, version: s.version, source, where,

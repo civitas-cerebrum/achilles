@@ -53,7 +53,8 @@ test('worktree node_modules wins, follows extends, and notes a release newer tha
     assert.equal(s.version, '9.9.9');
     assert.ok(s.methods.has('click') && s.methods.has('navigateTo'));
     assert.ok(s.privates.steps.has('secret') && s.privates.steps.has('page'));
-    assert.match(s.notes.join(' '), /older than the installed 9\.9\.9/);
+    assert.match(s.notes.join(' '), /installed 9\.9\.9 is newer than every release in the shipped surface table/);
+    assert.doesNotMatch(s.notes.join(' '), /upgrade/i);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
