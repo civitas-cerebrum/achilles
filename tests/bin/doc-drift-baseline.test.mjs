@@ -64,7 +64,7 @@ test('a clean tree passes both checks', () => {
 test('a citation of a missing anchor fails with file and line', () => {
   const root = tree({
     [BASELINE]: RULEBOOK,
-    'skills/review/SKILL.md': 'line one\nCheck [TB-A9](../achilles-orchestrator/references/test-baseline.md#tb-a9).\n',
+    'skills/review/SKILL.md': 'line one\nCheck [fixtures](../achilles-orchestrator/references/test-baseline.md#tb-a9).\n',
   });
   const f = baselineFindings(root);
   assert.equal(f.citations.length, 1);
@@ -72,7 +72,7 @@ test('a citation of a missing anchor fails with file and line', () => {
 });
 
 test('an in-file link to a missing anchor fails', () => {
-  const root = tree({ [BASELINE]: RULEBOOK + '\nSee [TB-Z1](#tb-z1).\n' });
+  const root = tree({ [BASELINE]: RULEBOOK + '\nSee [the missing rule](#tb-z1).\n' });
   const f = baselineFindings(root);
   assert.equal(f.citations.length, 1);
   assert.match(f.citations[0], /#tb-z1/);
@@ -108,6 +108,30 @@ test('the restated check covers skills/ only; other trees may quote a rule', () 
     'docs/harness/claude-code.md': 'A spec makes no member call on a driver binding unless the method is listed.\n',
   });
   assert.deepEqual(baselineFindings(root).restated, []);
+});
+
+test('a rulebook with no rules is a finding', () => {
+  const root = tree({ [BASELINE]: '# Test baseline\n\nNothing here yet.\n' });
+  const f = baselineFindings(root);
+  assert.equal(f.rules.length, 1);
+  assert.match(f.rules[0], /no TB rules/);
+});
+
+test('a rule id declared twice is a finding', () => {
+  const root = tree({ [BASELINE]: RULEBOOK + '\n<a id="tb-a1"></a>\n#### TB-A1 Raw locators again\n\nA second home for the same rule id is a fork of the rule.\n' });
+  const f = baselineFindings(root);
+  assert.equal(f.rules.length, 1);
+  assert.match(f.rules[0], /TB-A1 is declared 2 times/);
+});
+
+test('a bare TB id under skills/ must name a rule; placeholders are not ids', () => {
+  const root = tree({
+    [BASELINE]: RULEBOOK,
+    'skills/review/SKILL.md': 'Check TB-A1 and TB-A2.\nThen TB-Q7, which does not exist.\nCite as `TB-<id>`.\n',
+  });
+  const f = baselineFindings(root);
+  assert.equal(f.citations.length, 1);
+  assert.match(f.citations[0], /skills\/review\/SKILL\.md:2: TB-Q7/);
 });
 
 test('an absent rulebook is a finding, not a crash', () => {
