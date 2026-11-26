@@ -15,10 +15,11 @@ Restated rules drift into contradictions (inline-selector policy, `test.fail()`,
 
 | Concern | Canonical home |
 |---|---|
+| Test-code rules (every `TB-<id>`: framework surface, flow control, structure, identity, oracle, data, timeouts, support files, waivers, framework-gap register) | [`test-baseline.md`](test-baseline.md) |
 | Stage 2 inspection, Stage 3 authoring, Stage 4a/4b review, fix mode | [`stages-protocol.md`](stages-protocol.md) |
 | Steps API surface (signatures, options, selector formats) | [`api-reference.md`](api-reference.md) |
-| Causal verification ("would this assertion pass under a no-op?") | [`stages-protocol.md`](stages-protocol.md) §"Stage 3" item 5 (Stage 4b item 11 is the review-side form) |
-| No inline selectors + the one scope exception | [`stages-protocol.md`](stages-protocol.md) §"Stage 3" item 4; exception in `../../evidence-capture/SKILL.md` (§3.1 below) |
+| Causal verification ("would this assertion pass under a no-op?") | [`test-baseline.md`](test-baseline.md#tb-r5) (oracle presence: [TB-R4](test-baseline.md#tb-r4)) |
+| No inline selectors + the one scope exception | [`test-baseline.md`](test-baseline.md#tb-a5); exception in `../../evidence-capture/SKILL.md` (§3.1 below) |
 | App bugs reported, never worked around | [`../SKILL.md`](../SKILL.md) §7 rule 7; classification in `../../failure-diagnosis/SKILL.md` |
 | App-context write-back on every page visit | [`stages-protocol.md`](stages-protocol.md) §"App context" |
 | Visual-regression variants (`verifyVisualMatch` + masks) | `../../test-composer/SKILL.md` §"Visual regression" |
@@ -41,31 +42,33 @@ Restated rules drift into contradictions (inline-selector policy, `test.fail()`,
 | Selector conventions and inertness | `../../selector-development/references/selector-convention.md`, `inertness-contract.md` |
 | Selector evidence notes and standing authorisation | [`selector-evidence.md`](selector-evidence.md) |
 | Scenario block as the requirement, and the lint | [`scenario-block.md`](scenario-block.md) |
-| `test.fail()` policy (one sanctioned use; §3.2) | [`verify-change/phase-7-durable-tests.md`](verify-change/phase-7-durable-tests.md) |
+| `test.fail()` policy (two defect-sentinel forms; §3.2) | [`test-baseline.md`](test-baseline.md#tb-f6) (forms and pointer grammar); sentinel lifecycle in [`verify-change/phase-7-durable-tests.md`](verify-change/phase-7-durable-tests.md) |
 | Style-interaction verification (mock-DOM styling tests) | [`verify-change/style-interaction-verification.md`](verify-change/style-interaction-verification.md) |
 | Commit-or-discard gate | [`verify-change/phase-8c-8e-scoring-and-commit.md`](verify-change/phase-8c-8e-scoring-and-commit.md) |
 | Deck print-safety rules | `../../qa-reporting/SKILL.md` §"Print-safety rules" |
-| Test identity (ids on every case; `@known-defect`) | [`test-identity.md`](test-identity.md) |
-| Stage 4b compliance sweep as every mode's exit gate | [`stages-protocol.md`](stages-protocol.md) §"Stage 4b is every mode's exit gate" |
+| Test identity (ids on every case; `@known-defect`) | [`test-baseline.md`](test-baseline.md#tb-i1) (TB-I1 to TB-I4); consumers and the no-rerun contract in [`test-identity.md`](test-identity.md) |
+| Stage 4b compliance sweep as every mode's exit gate | rules checked: [`test-baseline.md`](test-baseline.md); when it runs: [`stages-protocol.md`](stages-protocol.md) §"Stage 4b is every mode's exit gate" |
 | Smoke-versus-e2e depth doctrine | §5 of this file |
 | Stage 4c judge loop | §4 of this file |
 | Commit subjects | [`commit-conventions.md`](commit-conventions.md) |
 
 ## §3 Contradiction resolutions (normative record)
 
-**3.1 Inline selectors.** Durable suite specs: hard ban; every selector lives in `page-repository.json`. The one exception: `evidence-capture` bundles may carry bundle-scoped inline selector proposals (the bundle is not the suite); they become repository entries when the scenario is authored as a durable test.
+**3.1 Inline selectors.** Durable suite specs: hard ban ([TB-A5](test-baseline.md#tb-a5)). The one exception: `evidence-capture` bundles may carry bundle-scoped inline selector proposals (the bundle is not the suite); they become repository entries when the scenario is authored as a durable test.
 
-**3.2 `test.fail()`.** Legal only as a defect sentinel tied to a tracked ticket with a removed-when-fixed lifecycle (verify-change phase 7). Banned everywhere no ticket owns the marker: coverage passes and bug hunts keep suspected bugs ledger-only.
+**3.2 `test.fail()`.** Legal only as a defect sentinel tied to a resolvable defect record, in one of two forms ([`test-baseline.md`](test-baseline.md#defect-pointers-and-sentinels)): (a) the verify-change sentinel, titled `<id> · [SENTINEL <KEY>-D<n>] …`; (b) `test.fail(true, '<register key>: <reason>')` with `@known-defect` and a per-test `// defect:` pointer resolving to that key. Both follow the removed-when-fixed lifecycle (verify-change phase 7). Banned everywhere no defect record owns the marker: coverage passes and bug hunts keep suspected bugs ledger-only.
 
 **3.3 Stability runs.** Two numbers: 3 consecutive greens for any new or edited test; 5 consecutive, in suite order, for a heal of a previously flaky test. Home: `failure-diagnosis`.
 
-**3.4 Serial mode.** Tenant-mutating specs use file-level `test.describe.configure({ mode: 'serial' })` with a `// serial-deliberate: <reason>` comment above it; the annotation satisfies the Stage 4a §6 review. Unannotated serial mode is flagged.
+**3.4 Serial mode.** Tenant-mutating specs use file-level serial mode annotated per [TB-S7](test-baseline.md#tb-s7); the annotation satisfies the Stage 4a §6 review.
 
 **3.5 Test-data shape.** `tests/fixtures/test-data.ts` may hold env-sourced durable identities (accounts that exist by design). Any identity a test creates is generated per attempt inside the test body; module-scope generation collides on retry.
 
 **3.6 Oracle taxonomies.** L0–L3 is the strength ladder (which layer confirms the effect). `test-optimization.md` §3b's round-trip / delta / shape oracles are assertion forms within a rung. Pick the rung the priority demands, then the form that keeps the assertion stable there.
 
-**3.7 Scaffold prerequisites.** `test-optimization.md`'s HELPER SLOT markers in `base.ts` and the infrastructure audit tags resolve to the onboard workflow's Phase 1 scaffold and the journey-mapping test-infrastructure probe.
+**3.7 Spec shape against the rulebook.** Settled in [`test-baseline.md`](test-baseline.md): test titles use the middle-dot separator `<ID> · <behaviour>` ([TB-I1](test-baseline.md#tb-i1)); no describe needs its own timeout ([TB-W2](test-baseline.md#tb-w2)); a test whose data may be in either of two states does not branch: a fixture resolves the state, or the test skips by name ([TB-F1](test-baseline.md#tb-f1)); the conditional Steps members (`retryUntil`, `isVisible` and `isPresent` feeding a branch, `clickIfPresent`, `ifVisible()`, `{ optional: true }`) are flow control in a spec ([TB-F4](test-baseline.md#tb-f4), [TB-F7](test-baseline.md#tb-f7)); verbs live in flow modules or fixtures ([TB-R2](test-baseline.md#tb-r2)); the oracle must be present and tied to the action, and guard checks may follow it ([TB-R4](test-baseline.md#tb-r4)); the escape hatch wraps a repository selector in `new WebElement(…)` and cites a register row ([framework gaps](test-baseline.md#framework-gaps-and-version-gaps)); the verify-change mutation hooks are a sanctioned wiring shape ([TB-X2](test-baseline.md#tb-x2)).
+
+**3.8 Scaffold prerequisites.** `test-optimization.md`'s HELPER SLOT markers in `base.ts` and the infrastructure audit tags resolve to the onboard workflow's Phase 1 scaffold and the journey-mapping test-infrastructure probe.
 
 ## §4 Stage 4c: composition judge (mandatory at every composing exit)
 

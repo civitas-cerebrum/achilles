@@ -798,7 +798,7 @@ repo.driver;                                                       // bound Page
 
 ## Raw Interactions API
 
-Bypass the repository for dynamically generated locators. **Verified at 0.3.6:** every `interact` / `verify` / `extract` method takes a `WebElement` (the element-repository `Element`), **not** a raw Playwright `Locator`. To bridge a raw locator, wrap it with `new WebElement(locator)` at the call site:
+Bypass the repository for dynamically generated locators. In durable test code this is the framework-gap escape hatch only: the selector still comes from the repository (`repo.getSelector`), and the call carries a waiver citing its register row ([`test-baseline.md`](test-baseline.md#framework-gaps-and-version-gaps); procedure in [`framework-gap.md`](framework-gap.md)). The inline selector below shows the API shape, not durable code. **Verified at 0.3.6:** every `interact` / `verify` / `extract` method takes a `WebElement` (the element-repository `Element`), **not** a raw Playwright `Locator`. To bridge a raw locator, wrap it with `new WebElement(locator)` at the call site:
 
 ```ts
 import { ElementInteractions, WebElement } from '@civitas-cerebrum/element-interactions';

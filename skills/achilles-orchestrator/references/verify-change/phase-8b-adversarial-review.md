@@ -24,7 +24,7 @@ The mission names and the one-line charter of each are in the workflow ([`../../
 | `E2E_MUTATION_INIT` | a JS string | `page.addInitScript({ content })`; note the object form: a bare string silently does nothing |
 
 ```ts
-// in the `page` fixture; inert unless the driver sets these
+// in the `page` fixture; inert unless the driver sets these (a sanctioned wiring shape: test-baseline.md#tb-x2)
 if (process.env.E2E_MUTATION_INIT) await page.addInitScript({ content: process.env.E2E_MUTATION_INIT })
 if (process.env.E2E_MUTATION_CSS) {
   const css = process.env.E2E_MUTATION_CSS

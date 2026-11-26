@@ -1,0 +1,137 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { walk } from './util.mjs';
+
+// Check 15 — the test baseline stays the one home of its rules.
+//   a) every rule heading `#### TB-<id> …` in test-baseline.md is reachable at
+//      `#tb-<id>` (its heading slug, or an explicit `<a id="tb-<id>">`), and every
+//      cited `test-baseline.md#<anchor>` (and every in-file `](#<anchor>)`) exists;
+//   b) the first sentence of each rule (its normative sentence, at least six
+//      words) appears in no other file under skills/, compared after
+//      normalising case, punctuation, backticks and whitespace.
+export const BASELINE = 'skills/achilles-orchestrator/references/test-baseline.md';
+const MIN_WORDS = 6;
+const RULE_HEADING = /^#{2,6}\s+TB-([A-Z]\d+[a-z]?)\b/;
+// `test-baseline.md#tb-<id>` (a placeholder) is not a citation.
+const CITATION = /test-baseline\.md#([A-Za-z0-9_-]+)(?![A-Za-z0-9_<-])/g;
+const LOCAL_LINK = /\]\(#([A-Za-z0-9_-]+)\)/g;
+
+export function normalise(text) {
+  return String(text).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+// GitHub's heading slug: lower-case, punctuation except `-` and `_` removed, spaces to `-`.
+export function slug(heading) {
+  return heading.trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replace(/ /g, '-');
+}
+
+function stripFences(lines) {
+  let fenced = false;
+  return lines.map((line) => {
+    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; return ''; }
+    return fenced ? '' : line;
+  });
+}
+
+export function anchorsOf(text) {
+  const out = new Set();
+  for (const line of stripFences(String(text).split('\n'))) {
+    for (const m of line.matchAll(/<a\s+(?:id|name)="([^"]+)"/g)) out.add(m[1]);
+    const h = line.match(/^#{1,6}\s+(.*?)\s*$/);
+    if (h) out.add(slug(h[1]));
+  }
+  return out;
+}
+
+// The first sentence of a paragraph: it ends at `.`, `!` or `?` followed by
+// whitespace or the end, outside inline code.
+function firstSentence(paragraph) {
+  let code = false;
+  for (let i = 0; i < paragraph.length; i++) {
+    const c = paragraph[i];
+    if (c === '`') code = !code;
+    else if (!code && /[.!?]/.test(c) && (i + 1 === paragraph.length || /\s/.test(paragraph[i + 1]))) return paragraph.slice(0, i + 1);
+  }
+  return paragraph;
+}
+
+// Rule sections: { id, heading, line, normative } for every `TB-<id>` heading;
+// the normative sentence is the first sentence of the first prose paragraph after it.
+export function ruleSections(text) {
+  const lines = stripFences(String(text).split('\n'));
+  const rules = [];
+  lines.forEach((line, i) => {
+    const m = line.match(RULE_HEADING);
+    if (!m) return;
+    const para = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j].trim();
+      if (!para.length && (l === '' || /^<a\s/.test(l))) continue; // blank lines and anchors before the paragraph
+      if (l === '' || /^(#{1,6}\s|[-*|>]|<a\s)/.test(l)) break;     // the paragraph ends; a list or heading is not prose
+      para.push(l);
+    }
+    rules.push({ id: m[1], heading: line.replace(/^#+\s+/, ''), line: i + 1, normative: para.length ? firstSentence(para.join(' ')) : '' });
+  });
+  return rules;
+}
+
+const lineOf = (text, index) => text.slice(0, index).split('\n').length;
+
+export function baselineFindings(root = '.') {
+  const at = (p) => join(root, p);
+  const rel = (p) => relative(root, p).split('\\').join('/');
+  const findings = { rules: [], citations: [], restated: [] };
+  if (!existsSync(at(BASELINE))) {
+    findings.rules.push(`${BASELINE}: not found`);
+    return findings;
+  }
+  const text = readFileSync(at(BASELINE), 'utf8');
+  const anchors = anchorsOf(text);
+  const rules = ruleSections(text);
+
+  for (const r of rules) {
+    const want = `tb-${r.id.toLowerCase()}`;
+    if (!anchors.has(want)) findings.rules.push(`${BASELINE}:${r.line}: TB-${r.id} is not reachable at #${want} (add <a id="${want}"></a> above the heading)`);
+    const words = normalise(r.normative).split(' ').filter(Boolean).length;
+    if (words < MIN_WORDS) findings.rules.push(`${BASELINE}:${r.line}: TB-${r.id} normative sentence has ${words} words; it needs at least six words to be checked for restatement`);
+  }
+
+  const sources = [
+    ...walk(at('skills'), (p) => p.endsWith('.md')),
+    ...walk(at('docs'), (p) => p.endsWith('.md')),
+    ...walk(at('agents'), (p) => p.endsWith('.md')),
+    ...walk(at('claude-code'), (p) => /\.(ts|tsx|js|mjs|md)$/.test(p) && !p.includes('node_modules')),
+    ...walk(at('pi'), (p) => /\.(ts|js|mjs|md)$/.test(p) && !p.includes('node_modules')),
+    ...['CONTRIBUTING.md', 'README.md', 'CHANGELOG.md'].map(at).filter(existsSync),
+  ];
+  for (const file of sources) {
+    const body = readFileSync(file, 'utf8');
+    const name = rel(file);
+    for (const m of body.matchAll(CITATION)) {
+      if (!anchors.has(m[1])) findings.citations.push(`${name}:${lineOf(body, m.index)}: test-baseline.md#${m[1]} does not exist`);
+    }
+    if (name === BASELINE) {
+      for (const m of body.matchAll(LOCAL_LINK)) {
+        if (!anchors.has(m[1])) findings.citations.push(`${name}:${lineOf(body, m.index)}: #${m[1]} does not exist`);
+      }
+    }
+  }
+
+  const checked = rules.filter((r) => normalise(r.normative).split(' ').length >= MIN_WORDS);
+  for (const file of walk(at('skills'), () => true)) {
+    const name = rel(file);
+    if (name === BASELINE) continue;
+    const flat = ` ${normalise(readFileSync(file, 'utf8'))} `;
+    for (const r of checked) {
+      if (flat.includes(` ${normalise(r.normative)} `)) findings.restated.push(`${name}: restates the normative sentence of TB-${r.id}; cite test-baseline.md#tb-${r.id.toLowerCase()} instead`);
+    }
+  }
+  return findings;
+}
+
+export function run(report) {
+  const f = baselineFindings('.');
+  report(`test-baseline rules are reachable at #tb-<id> and their normative sentences are checkable`, f.rules.length === 0, f.rules);
+  report('cited test-baseline.md anchors exist', f.citations.length === 0, f.citations);
+  report('no file under skills/ restates a test-baseline normative sentence', f.restated.length === 0, f.restated);
+}

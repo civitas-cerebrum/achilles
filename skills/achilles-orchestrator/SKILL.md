@@ -151,7 +151,8 @@ Stated once; workflows cite this section.
 | [`references/stages-protocol.md`](references/stages-protocol.md) | Stage 2 inspection, Stage 3 authoring, Stage 4a/4b/4c review |
 | [`references/test-composition-standards.md`](references/test-composition-standards.md) | Composing canon index, contradiction record, the judge charter, depth doctrine |
 | [`references/scenario-block.md`](references/scenario-block.md) | The scenario block as requirement, and the lint |
-| [`references/spec-shape.md`](references/spec-shape.md) | Flat spec architecture and the readability check |
+| [`references/test-baseline.md`](references/test-baseline.md) | The test-code rulebook: every `TB-<id>` rule, severities, waivers, defect pointers, the framework-gap register |
+| [`references/spec-shape.md`](references/spec-shape.md) | Flat spec architecture, worked against the rulebook |
 | [`references/test-optimization.md`](references/test-optimization.md) | Stage 4a checks and the whole-suite gate |
 | [`references/test-identity.md`](references/test-identity.md) | Test ids and `@known-defect` |
 | [`references/selector-evidence.md`](references/selector-evidence.md) | Provisional entries, `achilles-selector-evidence`, standing authorisation |

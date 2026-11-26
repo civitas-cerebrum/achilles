@@ -59,7 +59,7 @@ The return carries `budget consumed: <n>/<budget> probes, <closed>/<total> categ
 
 Gates: 1b needs 1a; 2 needs 1a + 1b; 3 and 4 need 2 (and may run together); 5 needs 2–4; 6 needs 5; 7 needs 6. Work them in order.
 
-Assertion strategy for reproduction tests: assert the **correct** behaviour, so the test fails against the bug today and turns green, unmodified, when it is fixed. Never lock buggy behaviour; never `test.fail()` (the one sanctioned use is a ticketed sentinel in the verify-change workflow). Every reproduction spec gets the Stage 4b compliance sweep and the judge review before the report cites it.
+Assertion strategy for reproduction tests: assert the **correct** behaviour, so the test fails against the bug today and turns green, unmodified, when it is fixed. Never lock buggy behaviour; never `test.fail()` (only a defect sentinel tied to a resolvable defect record may use it, [TB-F6](../achilles-orchestrator/references/test-baseline.md#tb-f6)). Every reproduction spec gets the Stage 4b compliance sweep and the judge review before the report cites it.
 
 ## Findings and ledger
 

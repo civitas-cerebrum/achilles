@@ -275,7 +275,7 @@ await steps.verifyCount('rows', 'PageName', { exactly: before + 1 });
 | **A. UI-covered elsewhere** | `UI-covers:` field in `journey-map.md` | Does any journey claim to UI-cover this flow? |
 | **B. API equivalent discovered** | `Mutation endpoints (UI-driven)` in `app-context.md`'s Test Infrastructure | Is there a logged endpoint whose URL + method + body shape matches the prerequisite? |
 
-**Both YES → recommend API shortcut helper.** Populate the helper in `base.ts` if absent, replace UI calls in the spec under review with the helper call.
+**Both YES → recommend API shortcut helper.** Populate the helper in `base.ts` (as a fixture) or a flow module if absent ([TB-X1](test-baseline.md#tb-x1), back-door shape [TB-A12](test-baseline.md#tb-a12)), replace UI calls in the spec under review with the helper call.
 
 **Either NO → keep UI flow.**
 - A-fail: flag a coverage gap to journey-mapping. The spec stays UI-driven so that *some* journey eventually covers this flow via UI.

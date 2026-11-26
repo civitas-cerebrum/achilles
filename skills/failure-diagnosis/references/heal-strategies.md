@@ -23,7 +23,7 @@ Once you've classified the failure as a test issue and checked edge cases, pick 
 1. If the observed failure shape exactly matches a documented quirk or app-degradation signal recorded in Stage 0's `app-context.md` read → (h) documented-quirk match → report; do NOT heal.
 2. If the failing frames run through a dependency and Stage 0a shows a version delta that accounts for the behaviour → (i) dependency / framework upgrade → propose the bump; do NOT heal the test. **Check this before (3)–(7)**: a framework defect presents as a selector, timing, or state failure, so every one of those rules will happily "match" it and produce a durable workaround for a fixed bug.
 3. If screenshot shows wrong UI (500, error page, broken layout, missing-that-should-be-present component) → **app bug**, go to Stage 6. Do not heal.
-4. If page-repo lookup failed → (a) selector re-learn → proceed to Stage 4b
+4. If page-repo lookup failed → (a) selector re-learn → proceed to §"Selector re-learning"
 5. If timeout on a known-good element with correct surrounding state → (b) timing hardening
 6. If pattern hypothesis (from the repair-suite workflow's clustering, when present) or empirical check says "state leak" → (e) state isolation
 7. If live DOM shows step order does not match test sequence → (c) flow drift → propose
@@ -67,7 +67,7 @@ evidence, or appends a still-flaking observation). No other skill
 edits the ledger, and entries are never deleted: a released entry
 keeps its history.
 
-# Stage 4b — Live DOM re-learning (for heal strategy (a) only)
+# Selector re-learning (live DOM, for heal strategy (a) only)
 
 When the heal strategy is (a) selector re-learn, do NOT guess a replacement selector. Use `playwright-cli` to open the page at the navigation state where the lookup fails (`npx playwright-cli -s=fd-<short-slug> open --browser=chromium <URL>` followed by whatever `goto` / `click` chain reproduces the failure state), then locate candidates by stable signals.
 
