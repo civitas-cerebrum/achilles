@@ -120,6 +120,529 @@
     "waitForUrl"
   ],
   "properties": [],
+  "params": {
+    "apiDelete": [
+      "pathOrProvider",
+      "pathOrOptions",
+      "maybeOptions"
+    ],
+    "apiGet": [
+      "pathOrProvider",
+      "pathOrOptions",
+      "maybeOptions"
+    ],
+    "apiHead": [
+      "pathOrProvider",
+      "maybePath"
+    ],
+    "apiPatch": [
+      "pathOrProvider",
+      "bodyOrPath",
+      "optionsOrBody",
+      "maybeOptions"
+    ],
+    "apiPost": [
+      "pathOrProvider",
+      "bodyOrPath",
+      "optionsOrBody",
+      "maybeOptions"
+    ],
+    "apiPut": [
+      "pathOrProvider",
+      "bodyOrPath",
+      "optionsOrBody",
+      "maybeOptions"
+    ],
+    "backOrForward": [
+      "direction"
+    ],
+    "check": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "cleanEmails": [
+      "options"
+    ],
+    "clearInput": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "clearLocalStorage": [],
+    "clearSessionStorage": [],
+    "click": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "clickIfPresent": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "clickListedElement": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "clickNth": [
+      "elementName",
+      "pageName",
+      "index"
+    ],
+    "clickRandom": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "closeDbConnections": [],
+    "closeTab": [
+      "targetPage"
+    ],
+    "doubleClick": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "dragAndDrop": [
+      "elementName",
+      "pageName",
+      "dragOptions",
+      "options"
+    ],
+    "dragAndDropListedElement": [
+      "elementName",
+      "pageName",
+      "elementText",
+      "dragOptions"
+    ],
+    "dropFiles": [
+      "elementName",
+      "pageName",
+      "filenames",
+      "options"
+    ],
+    "expect": [
+      "elementName",
+      "pageName"
+    ],
+    "expectNoRequest": [
+      "urlPattern",
+      "action",
+      "options"
+    ],
+    "fill": [
+      "elementName",
+      "pageName",
+      "text",
+      "options"
+    ],
+    "fillForm": [
+      "pageName",
+      "fields"
+    ],
+    "getAll": [
+      "elementName",
+      "pageName",
+      "getAllOptions",
+      "options"
+    ],
+    "getAttribute": [
+      "elementName",
+      "pageName",
+      "attributeName",
+      "options"
+    ],
+    "getCount": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "getCssProperty": [
+      "elementName",
+      "pageName",
+      "property",
+      "options"
+    ],
+    "getCurrentPath": [],
+    "getHtml": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "getInputValue": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "getListedElementData": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "getLocalStorage": [
+      "key"
+    ],
+    "getPageHtml": [
+      "options"
+    ],
+    "getSessionStorage": [
+      "key"
+    ],
+    "getTabCount": [],
+    "getText": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "getUrl": [],
+    "hover": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "isPresent": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "isVisible": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "markEmail": [
+      "action",
+      "options"
+    ],
+    "navigateTo": [
+      "url",
+      "options"
+    ],
+    "on": [
+      "elementName",
+      "pageName"
+    ],
+    "pressKey": [
+      "key"
+    ],
+    "receiveAllEmails": [
+      "options"
+    ],
+    "receiveEmail": [
+      "options"
+    ],
+    "refresh": [],
+    "removeLocalStorage": [
+      "key"
+    ],
+    "removeSessionStorage": [
+      "key"
+    ],
+    "retryUntil": [
+      "action",
+      "verification",
+      "maxRetries",
+      "delayMs"
+    ],
+    "rightClick": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "screenshot": [
+      "elementNameOrOptions",
+      "pageName",
+      "options"
+    ],
+    "scrollIntoView": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "selectDropdown": [
+      "elementName",
+      "pageName",
+      "dropdownOptions",
+      "options"
+    ],
+    "selectMultiple": [
+      "elementName",
+      "pageName",
+      "values",
+      "options"
+    ],
+    "sendEmail": [
+      "options"
+    ],
+    "setLocalStorage": [
+      "key",
+      "value"
+    ],
+    "setSessionStorage": [
+      "key",
+      "value"
+    ],
+    "setSliderValue": [
+      "elementName",
+      "pageName",
+      "value",
+      "options"
+    ],
+    "setViewport": [
+      "width",
+      "height"
+    ],
+    "sqlDelete": [
+      "table",
+      "provider"
+    ],
+    "sqlExecute": [
+      "sqlOrProvider",
+      "sql",
+      "params"
+    ],
+    "sqlInsert": [
+      "table",
+      "provider"
+    ],
+    "sqlPing": [
+      "provider"
+    ],
+    "sqlQuery": [
+      "sqlOrProvider",
+      "sql",
+      "params"
+    ],
+    "sqlScript": [
+      "sqlTextOrProvider",
+      "maybeSqlText"
+    ],
+    "sqlSelect": [
+      "table",
+      "provider"
+    ],
+    "sqlTransaction": [
+      "fnOrProvider",
+      "fn"
+    ],
+    "sqlUpdate": [
+      "table",
+      "provider"
+    ],
+    "switchToNewTab": [
+      "action"
+    ],
+    "typeSequentially": [
+      "elementName",
+      "pageName",
+      "text",
+      "delay",
+      "options"
+    ],
+    "uncheck": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "uploadFile": [
+      "elementName",
+      "pageName",
+      "filePath",
+      "options"
+    ],
+    "verifyAbsence": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "verifyAllPresent": [
+      "targets"
+    ],
+    "verifyApiHeader": [
+      "response",
+      "headerName",
+      "expectedValue"
+    ],
+    "verifyApiStatus": [
+      "response",
+      "expectedStatus"
+    ],
+    "verifyAttribute": [
+      "elementName",
+      "pageName",
+      "attributeName",
+      "expectedValue",
+      "options"
+    ],
+    "verifyCount": [
+      "elementName",
+      "pageName",
+      "countOptions",
+      "options"
+    ],
+    "verifyCssProperty": [
+      "elementName",
+      "pageName",
+      "property",
+      "expectedValue",
+      "options"
+    ],
+    "verifyHtml": [
+      "elementName",
+      "pageName",
+      "expected",
+      "htmlOptions",
+      "options"
+    ],
+    "verifyHtmlContains": [
+      "elementName",
+      "pageName",
+      "substring",
+      "htmlOptions",
+      "options"
+    ],
+    "verifyHtmlMatches": [
+      "elementName",
+      "pageName",
+      "regex",
+      "htmlOptions",
+      "options"
+    ],
+    "verifyImages": [
+      "elementName",
+      "pageName",
+      "scroll",
+      "options"
+    ],
+    "verifyInputValue": [
+      "elementName",
+      "pageName",
+      "expectedValue",
+      "options"
+    ],
+    "verifyListOrder": [
+      "elementName",
+      "pageName",
+      "direction",
+      "options"
+    ],
+    "verifyListedElement": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "verifyLocalStorage": [
+      "key",
+      "options"
+    ],
+    "verifyOrder": [
+      "elementName",
+      "pageName",
+      "expectedTexts",
+      "options"
+    ],
+    "verifyPageHtml": [
+      "expected",
+      "options"
+    ],
+    "verifyPageHtmlContains": [
+      "substring",
+      "options"
+    ],
+    "verifyPageHtmlMatches": [
+      "regex",
+      "options"
+    ],
+    "verifyPresence": [
+      "elementName",
+      "pageName",
+      "options"
+    ],
+    "verifySessionStorage": [
+      "key",
+      "options"
+    ],
+    "verifySqlColumn": [
+      "result",
+      "column",
+      "expected"
+    ],
+    "verifySqlContains": [
+      "result",
+      "partialRow"
+    ],
+    "verifySqlEmpty": [
+      "result"
+    ],
+    "verifySqlNotEmpty": [
+      "result"
+    ],
+    "verifySqlRowCount": [
+      "result",
+      "expected"
+    ],
+    "verifySqlValue": [
+      "result",
+      "rowIndex",
+      "column",
+      "expected"
+    ],
+    "verifyState": [
+      "elementName",
+      "pageName",
+      "state",
+      "timeout"
+    ],
+    "verifyTabCount": [
+      "expectedCount"
+    ],
+    "verifyText": [
+      "elementName",
+      "pageName",
+      "expectedText",
+      "verifyOptions",
+      "options"
+    ],
+    "verifyTextContains": [
+      "elementName",
+      "pageName",
+      "expectedText",
+      "options"
+    ],
+    "verifyUrlContains": [
+      "text"
+    ],
+    "verifyVisualMatch": [
+      "snapshotName",
+      "options"
+    ],
+    "waitAndClick": [
+      "elementName",
+      "pageName",
+      "state",
+      "options"
+    ],
+    "waitForNetworkIdle": [
+      "options"
+    ],
+    "waitForResponse": [
+      "urlPattern",
+      "action"
+    ],
+    "waitForState": [
+      "elementName",
+      "pageName",
+      "state",
+      "options"
+    ],
+    "waitForUrl": [
+      "url",
+      "action",
+      "options"
+    ]
+  },
   "privates": {
     "steps": [
       "actionWithStrategy",
@@ -153,6 +676,22 @@
     "interactions": [
       "log",
       "utils"
+    ],
+    "repo": [
+      "_driver",
+      "defaultTimeout",
+      "findPage",
+      "formatSingleSelector",
+      "getFormattersForPlatform",
+      "pageData",
+      "resolveElement",
+      "resolveFromSingleSelector",
+      "resolveWithFallback",
+      "stripFallback"
+    ],
+    "element": [
+      "defaultTimeout",
+      "ensureAttached"
     ]
   }
 }

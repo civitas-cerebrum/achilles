@@ -65,6 +65,12 @@
     { "on": ["context"], "methods": ["newPage", "close"], "row": "FG-6" },
     { "on": ["page", "frame", "context"], "methods": ["waitForEvent"], "args": ["download", "filechooser"], "row": null },
     { "on": ["request"], "methods": ["dispose"], "row": null },
-    { "on": ["page", "context"], "methods": ["addStyleTag", "addInitScript"], "mutationHook": true, "row": null }
+    { "on": ["page", "context"], "methods": ["addStyleTag", "addInitScript"], "mutationHook": true, "row": null },
+    { "on": ["page", "context", "browser"], "methods": ["on", "once", "off", "removeListener", "addListener", "removeAllListeners"], "row": null },
+    { "on": ["context", "request"], "methods": ["storageState"], "row": null },
+    { "on": ["context"], "methods": ["grantPermissions", "clearPermissions", "setOffline", "setGeolocation", "pages"], "row": null },
+    { "on": ["page", "context"], "methods": ["setExtraHTTPHeaders"], "row": null },
+    { "on": ["page"], "methods": ["isClosed", "bringToFront", "video"], "row": null },
+    { "on": ["browser"], "methods": ["contexts", "isConnected", "version"], "row": null }
   ]
 }

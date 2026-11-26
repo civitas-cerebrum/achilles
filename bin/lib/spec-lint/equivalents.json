@@ -565,6 +565,77 @@
       ],
       "mutationHook": true,
       "row": null
+    },
+    {
+      "on": [
+        "page",
+        "context",
+        "browser"
+      ],
+      "methods": [
+        "on",
+        "once",
+        "off",
+        "removeListener",
+        "addListener",
+        "removeAllListeners"
+      ],
+      "row": null
+    },
+    {
+      "on": [
+        "context",
+        "request"
+      ],
+      "methods": [
+        "storageState"
+      ],
+      "row": null
+    },
+    {
+      "on": [
+        "context"
+      ],
+      "methods": [
+        "grantPermissions",
+        "clearPermissions",
+        "setOffline",
+        "setGeolocation",
+        "pages"
+      ],
+      "row": null
+    },
+    {
+      "on": [
+        "page",
+        "context"
+      ],
+      "methods": [
+        "setExtraHTTPHeaders"
+      ],
+      "row": null
+    },
+    {
+      "on": [
+        "page"
+      ],
+      "methods": [
+        "isClosed",
+        "bringToFront",
+        "video"
+      ],
+      "row": null
+    },
+    {
+      "on": [
+        "browser"
+      ],
+      "methods": [
+        "contexts",
+        "isConnected",
+        "version"
+      ],
+      "row": null
     }
   ]
 }

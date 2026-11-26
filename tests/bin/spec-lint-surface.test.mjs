@@ -77,6 +77,36 @@ test('a linked worktree without node_modules uses the main checkout', () => {
   }
 });
 
+test('a project in a subdirectory of a linked worktree uses the same subdirectory of the main checkout', () => {
+  const main = tempRoot();
+  const wt = `${main}-wt`;
+  const vcs = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: main, stdio: 'ignore' });
+  try {
+    writeProject(path.join(main, 'apps', 'web'), { 'README.md': 'x' }, { pin: '0.3.6' });
+    vcs('init', '-q');
+    vcs('add', 'apps');
+    vcs('commit', '-q', '-m', 'init');
+    vcs('worktree', 'add', '-q', wt);
+    fakePackage(path.join(main, 'apps', 'web'), '0.3.12');
+    const s = resolveSurface(path.join(wt, 'apps', 'web'), parser);
+    assert.equal(s.source, 'checkout');
+    assert.equal(s.version, '0.3.12');
+  } finally {
+    rmSync(wt, { recursive: true, force: true });
+    rmSync(main, { recursive: true, force: true });
+  }
+});
+
+test('shipped snapshots carry the repository and element private names', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ repo }) => { repo.pageData; });\n" });
+    const r = lintProject({ root, useGit: false });
+    assert.equal(r.stepsSurface.source, 'snapshot');
+    assert.ok(r.findings.some((f) => f.rule === 'TB-A14' && /pageData/.test(f.message)));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('no node_modules: the shipped snapshot for the pinned version, the lock file, or the highest range match', () => {
   const root = tempRoot();
   try {

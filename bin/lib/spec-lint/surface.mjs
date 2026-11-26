@@ -23,7 +23,8 @@ export class SurfaceError extends Error {}
 
 /** Members of one declared class: public instance methods and properties, private/protected names. */
 export function classMembers(ast, className) {
-  const out = { found: false, methods: [], properties: [], privates: [], superClass: null };
+  const out = { found: false, methods: [], properties: [], privates: [], superClass: null, params: {} };
+  const paramName = (q) => (q.type === 'TSParameterProperty' ? paramName(q.parameter) : q.type === 'AssignmentPattern' ? paramName(q.left) : q.type === 'RestElement' ? paramName(q.argument) : q.type === 'Identifier' ? q.name : '');
   const visit = (body) => {
     for (const st of body) {
       const d = st.type === 'ExportNamedDeclaration' || st.type === 'ExportDefaultDeclaration' ? st.declaration : st;
@@ -36,7 +37,12 @@ export function classMembers(ast, className) {
         if (m.accessibility === 'private' || m.accessibility === 'protected' || m.type === 'ClassPrivateProperty' || m.type === 'ClassPrivateMethod') { out.privates.push(key); continue; }
         const isMethod = m.type === 'TSDeclareMethod' || m.type === 'ClassMethod';
         if (isMethod && (m.kind === 'get' || m.kind === 'set')) out.properties.push(key);
-        else if (isMethod) out.methods.push(key);
+        else if (isMethod) {
+          out.methods.push(key);
+          const names = (m.params || []).map(paramName);
+          const prev = out.params[key];
+          if (!prev || names.length > prev.length) out.params[key] = names;
+        }
         else out.properties.push(key);
       }
     }
@@ -65,7 +71,10 @@ function readClass(parser, file, className, depth = 0) {
     const spec = importOf(ast, own.superClass);
     const base = spec && spec.startsWith('.') ? path.resolve(path.dirname(file), `${spec}.d.ts`) : file;
     const sup = readClass(parser, base, own.superClass, depth + 1);
-    if (sup) for (const k of ['methods', 'properties', 'privates']) own[k] = [...new Set([...own[k], ...sup[k]])].sort();
+    if (sup) {
+      for (const k of ['methods', 'properties', 'privates']) own[k] = [...new Set([...own[k], ...sup[k]])].sort();
+      own.params = { ...sup.params, ...own.params };
+    }
   }
   return own;
 }
@@ -82,8 +91,16 @@ export function readPackageSurface(parser, pkgDir) {
     version: pkg.version,
     methods: steps.methods,
     properties: steps.properties,
+    params: Object.fromEntries(Object.entries(steps.params).sort(([a], [b]) => (a < b ? -1 : 1))),
     privates: { steps: steps.privates, interactions: facade ? facade.privates : [] },
   };
+}
+
+/** Private names of ElementRepository and WebElement in an unpacked element-repository package directory. */
+export function repositoryPrivatesAt(parser, dir) {
+  const repo = readClass(parser, path.join(dir, 'dist', 'repo', 'ElementRepository.d.ts'), 'ElementRepository');
+  const el = readClass(parser, path.join(dir, 'dist', 'types', 'WebElement.d.ts'), 'WebElement');
+  return { repo: repo ? repo.privates : [], element: el ? el.privates : [] };
 }
 
 /** Private names of the repository classes, read from an installed element-repository next to the framework. */
@@ -91,9 +108,7 @@ function repositoryPrivates(parser, pkgDir) {
   const candidates = [path.join(pkgDir, 'node_modules', ...REPO_PACKAGE.split('/')), path.join(pkgDir, '..', '..', ...REPO_PACKAGE.split('/'))];
   const dir = candidates.find((d) => existsSync(path.join(d, 'package.json')));
   if (!dir) return { repo: [], element: [] };
-  const repo = readClass(parser, path.join(dir, 'dist', 'repo', 'ElementRepository.d.ts'), 'ElementRepository');
-  const el = readClass(parser, path.join(dir, 'dist', 'types', 'WebElement.d.ts'), 'WebElement');
-  return { repo: repo ? repo.privates : [], element: el ? el.privates : [] };
+  return repositoryPrivatesAt(parser, dir);
 }
 
 /** Every shipped snapshot version, ascending. */
@@ -124,12 +139,16 @@ export function pinnedVersion(root) {
   return range ? { range, from: 'package.json' } : null;
 }
 
+/** The main checkout's directory for this project: the parent of the common git dir, plus the project's prefix in the repository. */
 function mainCheckout(root) {
   try {
-    const out = execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const out = git('rev-parse', '--path-format=absolute', '--git-common-dir');
     if (!out) return null;
-    const dir = path.dirname(out);
-    return realpathSync(dir) === realpathSync(root) ? null : dir;
+    const top = path.dirname(out);
+    const prefix = git('rev-parse', '--show-prefix');
+    const dir = path.join(top, prefix);
+    return existsSync(dir) && realpathSync(dir) === realpathSync(root) ? null : dir;
   } catch { return null; }
 }
 
@@ -142,7 +161,7 @@ function finish(s, source, where, dir) {
   }
   return {
     package: PACKAGE, version: s.version, source, where,
-    methods: new Set(s.methods), properties: new Set(s.properties || []),
+    methods: new Set(s.methods), properties: new Set(s.properties || []), params: s.params || {},
     privates: { steps: new Set(s.privates?.steps || []), interactions: new Set(s.privates?.interactions || []), repo: new Set(s.privates?.repo || []), element: new Set(s.privates?.element || []) },
     notes,
   };
