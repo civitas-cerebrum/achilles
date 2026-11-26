@@ -1,0 +1,11 @@
+// spec-lint fixture: node's http and https modules in a spec
+// rules: TB-N1
+import { test } from './fixtures/base';
+import https from 'node:https'; // EXPECT TB-N1
+import * as http from 'http'; // EXPECT TB-N1
+
+test('TCAB-0921 · raw http', async ({ steps }) => {
+  https.get('https://api.example.com/x');
+  http.get('http://api.example.com/x');
+  await steps.verifyPresence('heading', 'HomePage');
+});

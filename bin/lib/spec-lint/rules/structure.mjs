@@ -4,11 +4,12 @@
 // setting, the factory rule `specs.constant-table-tests` (`{ "allowed": true }`), which is off by default.
 import {
   isFn, isMember, isCall, propName, unwrap, isStr, strValue, anyNode,
-  onePass, LOOPS, ITERATION, isAssertion, declarations, referencedNames, statementOf, commentBlockAbove,
+  onePass, LOOPS, ITERATION, isAssertion, declarations, referencedNames, statementOf, commentBlockAbove, testModifier,
 } from '../shapes.mjs';
-import { DRIVER_KINDS, FRAMEWORK_KINDS, classifyCall, TYPE_KIND } from '../bindings.mjs';
+import { DRIVER_KINDS, FRAMEWORK_KINDS, classifyCall, TYPE_KIND, kindOf } from '../bindings.mjs';
 import { idPattern, idsIn } from '../ids.mjs';
 import { typeName } from '../ast.mjs';
+import { resolveRelative } from '../suite.mjs';
 
 const RULEBOOK = 'skills/achilles-orchestrator/references/test-baseline.md';
 export const CONSTANT_TABLE_SETTING = 'specs.constant-table-tests';
@@ -51,16 +52,153 @@ function constantTable(file, iterated) {
   return false;
 }
 
-/** A test that drives no UI: no page / context / browser fixture, no driver binding, steps only through api*, request* or sql*. */
+/**
+ * A test that drives no UI: no page / context / browser / repo / interactions fixture, no driver or framework
+ * binding called, steps only through api*, request* or sql*, and no call handing steps or a driver to a verb.
+ * Kinds are read in the test's own scope.
+ */
 function nonUi(fn, kind) {
   const p0 = fn.params[0];
-  if (p0 && p0.type === 'ObjectPattern' && p0.properties.some((pr) => pr.type === 'ObjectProperty' && /^(page|context|browser)$/.test(pr.key.name || pr.key.value))) return false;
+  if (p0 && p0.type === 'ObjectPattern' && p0.properties.some((pr) => pr.type === 'ObjectProperty' && /^(page|context|browser|repo|interactions)$/.test(pr.key.name || pr.key.value))) return false;
+  const actor = (k) => typeof k === 'string' && ((DRIVER_KINDS.has(k) && k !== 'request') || FRAMEWORK_KINDS.has(k));
   return !anyNode(fn.body, (x) => {
-    if (!isCall(x) || !isMember(unwrap(x.callee))) return false;
-    const k = kind(unwrap(x.callee).object);
-    if (DRIVER_KINDS.has(k) && k !== 'request') return true;
-    return k === 'steps' && !/^(api|request|sql)[A-Z]/.test(propName(unwrap(x.callee)) || '');
+    if (!isCall(x)) return false;
+    if (x.arguments.some((a) => actor(kind(a && a.type === 'SpreadElement' ? a.argument : a)))) return true;
+    const c = unwrap(x.callee);
+    if (!isMember(c)) return false;
+    const k = kind(c.object);
+    if (k === 'steps') return !/^(api|request|sql)[A-Z]/.test(propName(c) || '');
+    return actor(k);
   });
+}
+
+/**
+ * How often a factory function runs: each direct call counts once, a call inside a loop or an iteration
+ * callback counts as many, and any other reference (`sizes.forEach(factory)`, `[factory]`) counts as many.
+ * Returns { uses, ranges } with the line ranges of the call sites.
+ */
+function factoryUses(program, name, decl) {
+  let uses = 0;
+  const ranges = [];
+  const rec = (n, stack) => {
+    if (!n || typeof n.type !== 'string') return;
+    if (n.type === 'Identifier' && n.name === name) {
+      const parent = stack.at(-1);
+      const key = stack.key;
+      const declaring = parent && ((parent === decl) || (parent.type === 'VariableDeclarator' && parent.id === n) || (parent.type === 'FunctionDeclaration' && parent.id === n));
+      const asKey = parent && ((isMember(parent) && parent.property === n && !parent.computed) || (parent.type === 'ObjectProperty' && parent.key === n && !parent.computed));
+      if (!declaring && !asKey) {
+        const st = [...stack].reverse().find((x) => /Statement$|Declaration$/.test(x.type) && x.type !== 'BlockStatement') || n;
+        ranges.push([st.loc.start.line, st.loc.end.line]);
+        if (parent && isCall(parent) && unwrap(parent.callee) === n) {
+          let many = false;
+          for (let i = stack.length - 1; i > 0; i--) {
+            const a = stack[i];
+            if (LOOPS.has(a.type) && !onePass(a)) { many = true; break; }
+            if (isFn(a) && isCall(stack[i - 1]) && isMember(unwrap(stack[i - 1].callee)) && ITERATION.has(propName(unwrap(stack[i - 1].callee)) || '')) { many = true; break; }
+          }
+          uses += many ? 2 : 1;
+        } else uses += 2;
+      }
+      return;
+    }
+    stack.push(n);
+    for (const k of Object.keys(n)) {
+      if (k === 'loc' || k.endsWith('Comments') || k === 'typeAnnotation') continue;
+      const v = n[k];
+      if (Array.isArray(v)) { for (const x of v) if (x && typeof x.type === 'string') rec(x, stack); } else if (v && typeof v.type === 'string') rec(v, stack);
+    }
+    stack.pop();
+  };
+  rec(program, []);
+  return { uses, ranges };
+}
+
+const BACK_DOOR = /^(api|request|sql)[A-Z]/;
+
+/** Fields a class's constructor takes from a Steps, framework or driver parameter. */
+function injectedFields(n) {
+  const injected = new Set();
+  const ctor = n.body.body.find((m) => m.type === 'ClassMethod' && m.kind === 'constructor');
+  const actor = (p) => { const k = TYPE_KIND[typeName(p)]; return (k && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) || UI_NAMES.test(p.name || ''); };
+  if (!ctor) return injected;
+  const params = new Set();
+  for (const p of ctor.params) {
+    if (p.type === 'TSParameterProperty' && p.parameter.type === 'Identifier' && actor(p.parameter)) injected.add(p.parameter.name);
+    if (p.type === 'Identifier' && actor(p)) params.add(p.name);
+  }
+  anyNode(ctor.body, (x) => {
+    if (x.type === 'AssignmentExpression' && isMember(x.left) && x.left.object.type === 'ThisExpression' && unwrap(x.right).type === 'Identifier' && params.has(unwrap(x.right).name)) injected.add(propName(x.left));
+    return false;
+  });
+  return injected;
+}
+
+/**
+ * Static classification of a file's classes for `new <Name>(steps)`: 'blocking' when a method calls a Steps UI
+ * method, the repository, interactions or a driver on a parameter or module binding; 'field' when its UI calls
+ * go only through an injected `this.<field>`; 'none' otherwise (api*, request*, sql* calls are not UI).
+ */
+function classTable(file) {
+  if (file.facts.classTable) return file.facts.classTable;
+  const out = new Map();
+  const visit = (n) => {
+    if (!n || typeof n.type !== 'string') return;
+    if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id) {
+      const injected = injectedFields(n);
+      let kind = 'none';
+      anyNode(n.body, (x) => {
+        if (!isCall(x) || !isMember(unwrap(x.callee))) return false;
+        const c = unwrap(x.callee);
+        if (BACK_DOOR.test(propName(c) || '')) return false;
+        const o = unwrap(c.object);
+        if (isMember(o) && unwrap(o.object).type === 'ThisExpression') { if (injected.has(propName(o)) && kind === 'none') kind = 'field'; return false; }
+        let r = o;
+        while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
+        if (r && r.type === 'Identifier' && UI_NAMES.test(r.name) && r.name !== 'request') { kind = 'blocking'; return true; }
+        return false;
+      });
+      const sup = n.superClass && unwrap(n.superClass);
+      const supName = sup && (sup.type === 'Identifier' ? sup.name : isMember(sup) ? propName(sup) : null);
+      if (supName && /(Page|Screen)$/.test(supName)) kind = 'blocking';
+      out.set(n.id.name, kind);
+    }
+    for (const k of Object.keys(n)) {
+      if (k === 'loc' || k.endsWith('Comments')) continue;
+      const v = n[k];
+      if (Array.isArray(v)) { for (const x of v) if (x && typeof x.type === 'string') visit(x); } else if (v && typeof v.type === 'string') visit(v);
+    }
+  };
+  visit(file.ast.program);
+  return (file.facts.classTable = out);
+}
+
+/** A string literal, or a file-level `const` holding one. */
+function constString(file, v) {
+  if (!v) return null;
+  if (isStr(v)) return strValue(v);
+  if (v.type !== 'Identifier') return null;
+  for (const st of file.ast.program.body) {
+    const d = st.type === 'ExportNamedDeclaration' ? st.declaration : st;
+    if (d && d.type === 'VariableDeclaration' && d.kind === 'const') for (const x of d.declarations) if (x.id.type === 'Identifier' && x.id.name === v.name && x.init && isStr(unwrap(x.init))) return strValue(unwrap(x.init));
+  }
+  return null;
+}
+
+/** Names declared inside a function (its parameters, variables and functions): they shadow file-level helpers. */
+function declaredIn(fn) {
+  const out = new Set();
+  const pat = (p) => {
+    if (!p) return;
+    if (p.type === 'Identifier') out.add(p.name);
+    else if (p.type === 'ObjectPattern') p.properties.forEach((x) => pat(x.type === 'RestElement' ? x.argument : x.value));
+    else if (p.type === 'ArrayPattern') p.elements.forEach(pat);
+    else if (p.type === 'AssignmentPattern') pat(p.left);
+    else if (p.type === 'RestElement') pat(p.argument);
+  };
+  fn.params.forEach(pat);
+  anyNode(fn.body, (x) => { if (x.type === 'VariableDeclarator') pat(x.id); else if (x.type === 'FunctionDeclaration' && x.id) out.add(x.id.name); return false; });
+  return out;
 }
 
 export function visitors(project) {
@@ -74,24 +212,37 @@ export function visitors(project) {
   const classes = new WeakMap(); // class node → { drives, field }
 
   /** TB-S1: where a test declaration sits: a loop, an iteration callback or a factory, up to its describe or module. */
+  // Each result carries `ranges`: the lines of the generating construct (the loop or call statement, the factory
+  // and its call sites) and of the iterated table's declaration, so a change there touches the generated tests.
   function generated(n, ctx) {
     const st = ctx.stack;
+    const span = (x) => [x.loc.start.line, x.loc.end.line];
+    const statementAt = (i) => { for (let j = i; j >= 0; j--) if (/Statement$|Declaration$/.test(st[j].type) && st[j].type !== 'BlockStatement') return st[j]; return st[i]; };
+    const tableRange = (iterated) => {
+      const id = iterated && unwrap(iterated);
+      if (!id || id.type !== 'Identifier') return [];
+      for (const s of ctx.file.ast.program.body) {
+        const d = s.type === 'ExportNamedDeclaration' ? s.declaration : s;
+        if (d && d.type === 'VariableDeclaration' && d.declarations.some((x) => x.id.type === 'Identifier' && x.id.name === id.name)) return [span(d)];
+      }
+      return [];
+    };
     for (let i = st.length - 2; i >= 0; i--) {
       const a = st[i], child = st[i + 1];
-      if (LOOPS.has(a.type) && child === a.body && !onePass(a)) return { how: 'a loop', iterated: a.type === 'ForOfStatement' ? a.right : null };
+      if (LOOPS.has(a.type) && child === a.body && !onePass(a)) { const it = a.type === 'ForOfStatement' || a.type === 'ForInStatement' ? a.right : null; return { how: 'a loop', iterated: it, ranges: [span(a), ...tableRange(it)] }; }
       if (isFn(a)) {
         const parent = st[i - 1];
         if (parent && isCall(parent) && parent.arguments.includes(a)) {
           const c = classifyCall(parent, ctx.file.testNames);
-          if (c && (c.type === 'describe' || c.type === 'test' || c.type === 'hook' || c.type === 'step')) return null;
+          if (c && c.type === 'describe') continue; // a describe inside a loop still generates its tests
+          if (c && (c.type === 'test' || c.type === 'hook' || c.type === 'step')) return null;
           const p = isMember(unwrap(parent.callee)) ? propName(unwrap(parent.callee)) : null;
-          if (p && ITERATION.has(p)) return { how: `a .${p}(…) callback`, iterated: unwrap(parent.callee).object };
+          if (p && ITERATION.has(p)) { const it = unwrap(parent.callee).object; return { how: `a .${p}(…) callback`, iterated: it, ranges: [span(statementAt(i - 1)), ...tableRange(it)] }; }
         }
         const name = a.id ? a.id.name : parent && parent.type === 'VariableDeclarator' && parent.id.type === 'Identifier' ? parent.id.name : null;
         if (!name) return null;
-        let calls = 0;
-        anyNode(ctx.file.ast.program, (x) => { if (isCall(x) && unwrap(x.callee).type === 'Identifier' && unwrap(x.callee).name === name) calls++; return false; });
-        return calls > 1 ? { how: `factory ${name}(), called ${calls} times`, iterated: null } : null;
+        const f = factoryUses(ctx.file.ast.program, name, a);
+        return f.uses > 1 ? { how: `factory ${name}(), which runs more than once`, iterated: null, ranges: [span(a), ...f.ranges] } : null;
       }
     }
     return null;
@@ -103,10 +254,12 @@ export function visitors(project) {
     if (file.kind === 'spec' && c && c.type === 'test') {
       const g = generated(n, ctx);
       if (g) {
-        const table = g.iterated && constantTable(file, g.iterated) && nonUi(c.fn, ctx.kind);
+        const scope = file.fnScopes && file.fnScopes.get(c.fn);
+        const kind = scope ? (e) => kindOf(e, scope, { fixtureKinds: project.fixtureKinds }) : ctx.kind;
+        const table = g.iterated && constantTable(file, g.iterated) && nonUi(c.fn, kind);
         if (!(table && tablesAllowed)) {
           const t = file.testsByNode.get(n);
-          ctx.report('TB-S1', n, { message: `test declared inside ${g.how}${table ? ` (a non-UI constant table is not accepted at present; the \`${CONSTANT_TABLE_SETTING}\` setting is off)` : ''}`, test: t || null });
+          ctx.report('TB-S1', n, { message: `test declared inside ${g.how}${table ? ` (a non-UI constant table is not accepted at present; the \`${CONSTANT_TABLE_SETTING}\` setting is off)` : ''}`, test: t || null, data: { ranges: g.ranges } });
         }
       }
       const title = c.title && !c.title.dynamic ? c.title.text : null;
@@ -120,7 +273,7 @@ export function visitors(project) {
     if (file.kind === 'spec' && c && c.type === 'configure') serialMode(n, ctx);
     if (file.kind === 'spec' && c && c.type === 'describe' && c.mod === 'serial') {
       const st = statementOf(ctx.stack);
-      if (!commentBlockAbove(file, (st || n).loc.start.line).some((l) => /serial-deliberate:/.test(l))) ctx.report('TB-S7', n, { severity: 'advisory', message: '`test.describe.serial` without a `// serial-deliberate:` reason (advisory: prefer test.describe.configure)' });
+      if (!commentBlockAbove(file, (st || n).loc.start.line).some((l) => /serial-deliberate:\s*\S/.test(l))) ctx.report('TB-S7', n, { severity: 'advisory', message: '`test.describe.serial` without a `// serial-deliberate:` reason (advisory: prefer test.describe.configure)' });
     }
     // TB-S3: classes whose methods drive the UI through framework objects or a driver binding
     const cls = ctx.stack.slice().reverse().find((x) => x.type === 'ClassDeclaration' || x.type === 'ClassExpression');
@@ -130,8 +283,9 @@ export function visitors(project) {
       // `this.<field>.<method>(…)`: memberChain stops at `this`, so read the field off the receiver directly
       const field = isMember(obj) && unwrap(obj.object).type === 'ThisExpression' ? propName(obj) : null;
       const k = ctx.kind(obj);
-      if (info && !info.drives && !field && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) { info.drives = true; ctx.report('TB-S3', cls, { message: `class ${cls.id ? cls.id.name : '(anonymous)'} calls ${k} methods: a page-object layer` }); }
-      if (info && !info.field && field && info.injected.has(field)) { info.field = true; ctx.report('TB-S3', cls, { severity: 'advisory', message: `class ${cls.id ? cls.id.name : '(anonymous)'} drives through its injected \`this.${field}\` (advisory: unmeasured)` }); }
+      const backDoor = k === 'steps' && /^(api|request|sql)[A-Z]/.test(propName(unwrap(n.callee)) || '');
+      if (info && !info.drives && !field && !backDoor && (FRAMEWORK_KINDS.has(k) || (DRIVER_KINDS.has(k) && k !== 'request'))) { info.drives = true; ctx.report('TB-S3', cls, { message: `class ${cls.id ? cls.id.name : '(anonymous)'} calls ${k} methods: a page-object layer` }); }
+      if (info && !info.field && field && info.injected.has(field) && !/^(api|request|sql)[A-Z]/.test(propName(unwrap(n.callee)) || '')) { info.field = true; ctx.report('TB-S3', cls, { severity: 'advisory', message: `class ${cls.id ? cls.id.name : '(anonymous)'} drives through its injected \`this.${field}\` (advisory: unmeasured)` }); }
     }
   }
 
@@ -139,27 +293,14 @@ export function visitors(project) {
     const o = unwrap(n.arguments[0]);
     if (!o || o.type !== 'ObjectExpression') return;
     const mode = o.properties.find((p) => p.type === 'ObjectProperty' && (p.key.name || p.key.value) === 'mode');
-    if (!mode || !isStr(unwrap(mode.value)) || strValue(unwrap(mode.value)) !== 'serial') return;
+    const value = mode && constString(ctx.file, unwrap(mode.value));
+    if (value !== 'serial') return;
     const st = statementOf(ctx.stack);
     if (!commentBlockAbove(ctx.file, (st || n).loc.start.line).some((l) => /serial-deliberate:\s*\S/.test(l))) ctx.report('TB-S7', n, { message: "`test.describe.configure({ mode: 'serial' })` without `// serial-deliberate: <reason>` directly above it" });
   }
 
   function onClass(n, ctx) {
-    const injected = new Set();
-    const ctor = n.body.body.find((m) => m.type === 'ClassMethod' && m.kind === 'constructor');
-    const actor = (p) => { const k = TYPE_KIND[typeName(p)]; return (k && (FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k))) || UI_NAMES.test(p.name || ''); };
-    if (ctor) {
-      const params = new Set();
-      for (const p of ctor.params) {
-        if (p.type === 'TSParameterProperty' && p.parameter.type === 'Identifier' && actor(p.parameter)) injected.add(p.parameter.name);
-        if (p.type === 'Identifier' && actor(p)) params.add(p.name);
-      }
-      anyNode(ctor.body, (x) => {
-        if (x.type === 'AssignmentExpression' && isMember(x.left) && x.left.object.type === 'ThisExpression' && unwrap(x.right).type === 'Identifier' && params.has(unwrap(x.right).name)) injected.add(propName(x.left));
-        return false;
-      });
-    }
-    classes.set(n, { drives: false, field: false, injected });
+    classes.set(n, { drives: false, field: false, injected: injectedFields(n) });
     const sup = n.superClass && unwrap(n.superClass);
     const supName = sup && (sup.type === 'Identifier' ? sup.name : isMember(sup) ? propName(sup) : null);
     if (supName && /(Page|Screen)$/.test(supName)) ctx.report('TB-S3', n, { message: `class ${n.id ? n.id.name : '(anonymous)'} extends ${supName}: a page-object layer` });
@@ -177,13 +318,32 @@ export function visitors(project) {
       return seen;
     };
     const uses = new Map(d.helpers.map((h) => [h.name, new Set()]));
-    const testsUnder = (describes) => d.tests.filter((t) => describes.every((x) => t.describes.includes(x)));
-    for (const t of d.tests) for (const x of closure([...referencedNames(t.fn)].filter((n) => byName.has(n)))) uses.get(x).add(t.call);
+    // a skipped or fixme test does not run, so it does not use the helper; a local of the same name shadows it
+    const runs = d.tests.filter((t) => { const m = testModifier(t.call, file.testNames) || []; return !m.includes('skip') && !m.includes('fixme'); });
+    const named = (fn) => { const own = declaredIn(fn); return [...referencedNames(fn)].filter((n) => byName.has(n) && !own.has(n)); };
+    const testsUnder = (describes) => runs.filter((t) => describes.every((x) => t.describes.includes(x)));
+    for (const t of runs) for (const x of closure(named(t.fn))) uses.get(x).add(t.call);
     for (const h of d.hooks) {
-      const names = closure([...referencedNames(h.fn)].filter((n) => byName.has(n)));
+      const names = closure(named(h.fn));
       for (const t of testsUnder(h.describes)) for (const x of names) uses.get(x).add(t.call);
     }
     return { d, uses };
+  }
+
+  /** 'blocking' | 'field' | 'none' for a class declared in this file or imported from a project module; null when unknown. */
+  function classKind(file, name, depth = 0) {
+    const local = classTable(file).get(name);
+    if (local) return local;
+    if (depth > 4) return null;
+    for (const st of file.ast.program.body) {
+      if (st.type !== 'ImportDeclaration') continue;
+      const sp = st.specifiers.find((x) => x.local.name === name);
+      if (!sp) continue;
+      const target = resolveRelative(file.abs, st.source.value);
+      const tf = target && project.allFiles.find((f) => f.abs === target);
+      return tf ? classKind(tf, sp.type === 'ImportSpecifier' ? (sp.imported.name || sp.imported.value) : name, depth + 1) : null;
+    }
+    return null;
   }
 
   return {
@@ -192,7 +352,13 @@ export function visitors(project) {
       const name = unwrap(n.callee).type === 'Identifier' ? unwrap(n.callee).name : null;
       if (!name || FRAMEWORK_CTORS.test(name)) return;
       const arg = n.arguments.find((a) => { const k = ctx.kind(a); return FRAMEWORK_KINDS.has(k) || DRIVER_KINDS.has(k); });
-      if (arg) ctx.report('TB-S3', n, { message: `\`new ${name}(…)\` wraps a ${ctx.kind(arg)} binding: a page-object layer` });
+      if (arg) {
+        // the construction follows its class: blocking for a page-object layer, advisory when the class drives only
+        // through an injected field, nothing when it makes no UI call; an unknown class stays blocking
+        const kind = classKind(ctx.file, name);
+        if (kind === 'none') return;
+        ctx.report('TB-S3', n, { severity: kind === 'field' ? 'advisory' : 'blocking', message: `\`new ${name}(…)\` wraps a ${ctx.kind(arg)} binding: ${kind === 'field' ? 'a class that drives through its injected field (advisory: unmeasured)' : 'a page-object layer'}` });
+      }
       else if (ctx.file.kind === 'spec' && /(Page|Screen|Flow)$/.test(name)) ctx.report('TB-S2', n, { message: `\`new ${name}()\` in a spec file` });
     },
     ClassDeclaration: onClass,
@@ -207,7 +373,8 @@ export function visitors(project) {
         if (!ui) continue;
         const n = uses.get(h.name).size;
         if (h.exported) report(file, 'TB-S2', h.node, `exported spec helper ${h.name}(): a helper other files use belongs in a support module`, { region: h.describes.length ? 'describe' : 'module' });
-        else if (n < 2) report(file, 'TB-S2', h.node, `helper ${h.name}() drives the UI and is used by ${n} test${n === 1 ? '' : 's'} of this file`, { region: h.describes.length ? 'describe' : 'module' });
+        // touched also when a user test changes, or a change outside every test removed a user
+        else if (n < 2) report(file, 'TB-S2', h.node, `helper ${h.name}() drives the UI and is used by ${n} test${n === 1 ? '' : 's'} of this file`, { region: h.describes.length ? 'describe' : 'module', data: { ranges: d.tests.filter((t) => uses.get(h.name).has(t.call)).map((t) => [t.line, t.endLine]), outsideTests: true } });
         else if (anyNode(body, (x) => isAssertion(x, (e) => (e.type === 'Identifier' && e.name === 'steps' ? 'steps' : null)))) report(file, 'TB-S2a', h.node, `shared in-spec helper ${h.name}() holds assertions (used by ${n} tests): the scenario's outcome check belongs in each test (advisory)`, { region: h.describes.length ? 'describe' : 'module' });
       }
       for (const t of d.tests) {

@@ -1,0 +1,5 @@
+export async function ping(url: string) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 2000);
+  try { return await fetch(url, { signal: ctl.signal }); } finally { clearTimeout(timer); }
+}

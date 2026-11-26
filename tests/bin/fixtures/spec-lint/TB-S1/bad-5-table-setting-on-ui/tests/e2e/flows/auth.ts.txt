@@ -1,0 +1,2 @@
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+export async function signIn(steps: Steps, code: string) { await steps.fill('user', 'LoginPage', code); }

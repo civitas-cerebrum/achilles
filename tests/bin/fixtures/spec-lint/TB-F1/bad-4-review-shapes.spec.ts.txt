@@ -1,0 +1,23 @@
+// spec-lint fixture: a local function called once, loops that end in break, a conditional that picks the action, a beforeEach that drives the UI
+// rules: TB-F1
+import { test } from './fixtures/base';
+
+test.beforeEach(async ({ steps }) => {
+  if (await steps.isVisible('cookieWall', 'HomePage')) await steps.click('accept', 'HomePage'); // EXPECT TB-F1
+});
+
+test('TCAB-0901 · shapes', async ({ steps }) => {
+  const shown = await steps.isVisible('banner', 'HomePage');
+  const close = async () => {
+    if (shown) await steps.click('close', 'HomePage'); // EXPECT TB-F1
+  };
+  await close();
+  for (const _ of [1, 2]) { // EXPECT TB-F1
+    if (shown) await steps.click('close', 'HomePage'); // EXPECT TB-F1
+    break;
+  }
+  await steps[shown ? 'click' : 'hover']('close', 'HomePage'); // EXPECT TB-F1
+  shown && steps.click('close', 'HomePage'); // EXPECT TB-F1
+  const go = shown ? () => steps.click('a', 'HomePage') : () => Promise.resolve(); // EXPECT TB-F1
+  await go();
+});

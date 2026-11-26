@@ -1,0 +1,21 @@
+// spec-lint fixture: non-literal titles, a describe in a loop, a factory passed by reference or called in a loop
+// rules: TB-S1
+import { test } from './fixtures/base';
+
+const CASES = [{ title: 'TCAB-0911 · size S', el: 's' }];
+for (const c of [...CASES, ...CASES]) {
+  test(c.title, async ({ steps }) => { await steps.click(c.el, 'ProductPage'); }); // EXPECT TB-S1
+}
+for (const size of ['L', 'XL']) {
+  test.describe(`size ${size}`, () => {
+    test('TCAB-0912 · selectable', async ({ steps }) => { await steps.click(size, 'ProductPage'); }); // EXPECT TB-S1
+  });
+}
+function byReference(size: string) {
+  test(`TCAB-0913 · ${size}`, async ({ steps }) => { await steps.click(size, 'ProductPage'); }); // EXPECT TB-S1
+}
+['P', 'R'].forEach(byReference);
+function inLoop(size: string) {
+  test(`TCAB-0914 · ${size}`, async ({ steps }) => { await steps.click(size, 'ProductPage'); }); // EXPECT TB-S1
+}
+for (const s of ['a', 'b']) inLoop(s);

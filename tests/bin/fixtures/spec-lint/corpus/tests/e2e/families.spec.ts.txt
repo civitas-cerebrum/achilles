@@ -5,8 +5,9 @@ import { pause } from './utils/timing';
 
 const RUN_ID = Date.now(); // EXPECT TB-D4
 
-class CheckoutScreen { // EXPECT TB-S2
+class CheckoutScreen { // EXPECT TB-S2 TB-S3
   constructor(private readonly steps: unknown) {}
+  async pay(steps) { await steps.click('payButton', 'CheckoutPage'); }
 }
 
 test('TC-0401 · first of a pair', async ({ steps }) => {

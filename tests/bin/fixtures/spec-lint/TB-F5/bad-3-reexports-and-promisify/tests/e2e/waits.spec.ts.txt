@@ -1,0 +1,21 @@
+// spec-lint fixture: sleep helpers through re-exports and export *, promisified and aliased timers, a package sleep; an abort timer is not a wait
+import { test } from './fixtures/base';
+import util from 'node:util';
+import { sleep as viaIndex } from './utils';
+import { nap, zz } from './utils/sleep-b';
+import { sleep as pkgSleep } from 'some-wait-package';
+import { ping } from './utils/net';
+
+const pause = util.promisify(setTimeout);
+const st = setTimeout;
+
+test('TCAB-0904 · waits', async ({ steps }) => {
+  await viaIndex(100); // EXPECT TB-F5
+  await nap(100); // EXPECT TB-F5
+  await zz(100); // EXPECT TB-F5
+  await pause(100); // EXPECT TB-F5
+  await new Promise((r) => st(r, 100)); // EXPECT TB-F5
+  await pkgSleep(100); // EXPECT TB-F5
+  await ping('/health');
+  await steps.verifyPresence('heading', 'HomePage');
+});

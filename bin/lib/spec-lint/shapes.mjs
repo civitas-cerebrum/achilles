@@ -9,8 +9,18 @@ export const ITERATION = new Set(['forEach', 'map', 'flatMap', 'filter', 'some',
 const ASSERT_NAME = /^(expect|verify|assert)/i;
 const ACTOR_KIND = (k) => typeof k === 'string' && (DRIVER_KINDS.has(k) || FRAMEWORK_KINDS.has(k) || k.startsWith('fixture:') || k === 'fixtures');
 
-/** A loop that runs its body at most once: `for (… of [x])`, `do {} while (false)`, `for (let i = 0; i < 1; …)`. */
+/** A loop body whose last statement is an unconditional `break` (unlabelled) or `return`. */
+const endsUnconditionally = (body) => {
+  const last = body && body.type === 'BlockStatement' ? body.body.at(-1) : body;
+  return !!last && ((last.type === 'BreakStatement' && !last.label) || last.type === 'ReturnStatement');
+};
+
+/**
+ * A loop that runs its body at most once: `for (… of [x])`, `do {} while (false)`, `for (let i = 0; i < 1; …)`,
+ * or any loop whose body ends in an unconditional `break` or `return`.
+ */
 export function onePass(n) {
+  if (LOOPS.has(n.type) && endsUnconditionally(n.body)) return true;
   if (n.type === 'ForOfStatement') { const r = unwrap(n.right); return r.type === 'ArrayExpression' && r.elements.length <= 1; }
   if (n.type === 'DoWhileStatement') { const t = unwrap(n.test); return (t.type === 'BooleanLiteral' && !t.value) || (t.type === 'NumericLiteral' && t.value === 0); }
   if (n.type === 'ForStatement' && n.test && n.test.type === 'BinaryExpression' && n.init && n.init.type === 'VariableDeclaration') {
@@ -29,12 +39,36 @@ export function* upToFunction(stack) {
   }
 }
 
-/** The current node sits in the body of a loop (one-pass loops excluded) inside its own function. */
-export function inLoop(stack) {
-  for (const [a, child] of upToFunction(stack)) {
+/**
+ * The current node sits in the body of a loop (one-pass loops excluded) inside its own function, looking
+ * through `test.step` callbacks (a step body is part of the test body).
+ */
+export function inLoop(stack, names = null) {
+  for (let i = stack.length - 2; i >= 0; i--) {
+    const a = stack[i], child = stack[i + 1];
+    if (isFn(a)) {
+      const parent = stack[i - 1];
+      const step = names && parent && isCall(parent) && parent.arguments.includes(a) && (classifyCall(parent, names) || {}).type === 'step';
+      if (!step) return false;
+      continue;
+    }
     if (LOOPS.has(a.type) && !onePass(a) && child === a.body) return true;
   }
   return false;
+}
+
+/**
+ * The node drives the UI or asserts: an assertion, a Steps call other than api* / request* / sql*, a repository
+ * or interactions call, or a raw call on a page, frame, context, browser or locator binding.
+ */
+export function drivesUi(x, kind) {
+  if (!isCall(x)) return false;
+  if (isAssertion(x, kind)) return true;
+  const c = unwrap(x.callee);
+  if (!isMember(c)) return false;
+  const k = kind(c.object);
+  if (k === 'steps') return !/^(api|request|sql)[A-Z]/.test(propName(c) || '');
+  return k === 'repo' || k === 'interactions' || k === 'interactions-part' || k === 'element' || (DRIVER_KINDS.has(k) && k !== 'request');
 }
 
 /** The node is an assertion call: `expect…`, `steps.verify*` / `steps.expect`, a Steps chain ending in a matcher, a call of `expect…`, `verify…` or `assert…`. */

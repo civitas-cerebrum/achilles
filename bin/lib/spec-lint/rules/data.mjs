@@ -21,10 +21,22 @@ export const RULES = [
 ];
 
 /** A generation primitive: Date.now(), Math.random(), randomUUID(), crypto.random*, faker.*. */
-function primitive(x) {
+const GENERATOR_PACKAGES = /^(@faker-js\/faker|faker|chance|nanoid|uuid)$/;
+
+/** Local names a file binds to a generator package (`import { faker as f } from '@faker-js/faker'`). */
+function generatorImports(file) {
+  if (file.facts.generatorImports) return file.facts.generatorImports;
+  const out = new Set();
+  for (const st of file.ast.program.body) if (st.type === 'ImportDeclaration' && GENERATOR_PACKAGES.test(st.source.value)) for (const sp of st.specifiers) out.add(sp.local.name);
+  return (file.facts.generatorImports = out);
+}
+
+function primitive(x, file = null) {
+  if (x.type === 'NewExpression') return unwrap(x.callee).type === 'Identifier' && unwrap(x.callee).name === 'Date' && x.arguments.length === 0;
   if (!isCall(x)) return false;
   const ch = memberChain(unwrap(x.callee)) || [];
   const name = ch.join('.');
+  if (file && ch.length && generatorImports(file).has(ch[0])) return true;
   return name === 'Date.now' || name === 'Math.random' || /(^|\.)randomUUID$/.test(name) || /^crypto\.random\w*$/.test(name) || /^(randomBytes|randomInt)$/.test(name) || ch[0] === 'faker' || ch[0] === 'chance' || ch[0] === 'nanoid' || name === 'uuid' || name === 'uuidv4' || name === 'v4';
 }
 
@@ -45,7 +57,7 @@ export function visitors(project) {
     }
     return false;
   };
-  const generates = (file, x) => primitive(x) || (isCall(x) && unwrap(x.callee).type === 'Identifier' && isGenerator(file, unwrap(x.callee).name));
+  const generates = (file, x) => primitive(x, file) || (isCall(x) && unwrap(x.callee).type === 'Identifier' && isGenerator(file, unwrap(x.callee).name));
 
   const esc = (file) => { let e = escapes.get(file); if (!e) { e = { nonNull: 0, asAny: 0, tsIgnore: 0, first: null }; escapes.set(file, e); } return e; };
   const note = (file, node, k) => { const e = esc(file); e[k]++; if (!e.first || node.loc.start.line < e.first.loc.start.line) e.first = node; };
@@ -72,6 +84,17 @@ export function visitors(project) {
     else if (v.type === 'LogicalExpression' && (v.operator === '||' || v.operator === '??') && isStr(unwrap(v.right)) && strValue(unwrap(v.right)).length >= 4) ctx.report('TB-D2', node, { message: `\`${name}\` falls back to a literal when the env value is missing (advisory: is it a real credential?)` });
   }
 
+  function generation(n, ctx) {
+    const { file } = ctx;
+    const dataModule = file.kind === 'spec' || (file.kind === 'support' && (DATA_DIR.test(file.rel) || file.isFixturesModule));
+    if (!dataModule || !generates(file, n)) return;
+    const label = n.type === 'NewExpression' ? 'new Date()' : `${(memberChain(unwrap(n.callee)) || ['…']).join('.')}(…)`;
+    // the outermost generating call reports once
+    if (ctx.stack.slice(0, -1).some((a) => (isCall(a) || a.type === 'NewExpression') && generates(file, a))) return;
+    if (ctx.region === 'module') ctx.report('TB-D4', n, { message: `\`${label}\` generates data once at module scope: a retry reuses it` });
+    else if (ctx.region === 'describe') ctx.report('TB-D4', n, { severity: 'advisory', message: `\`${label}\` generates data once in a describe callback, outside tests and hooks (advisory: unmeasured)` });
+  }
+
   return {
     projectStart(p) {
       for (const f of p.allFiles) {
@@ -79,7 +102,7 @@ export function visitors(project) {
         for (let st of f.ast.program.body) {
           if ((st.type === 'ExportNamedDeclaration' || st.type === 'ExportDefaultDeclaration') && st.declaration) st = st.declaration;
           const fns = st.type === 'FunctionDeclaration' && st.id ? [[st.id.name, st]] : st.type === 'VariableDeclaration' ? st.declarations.filter((d) => d.id.type === 'Identifier' && isFn(unwrap(d.init))).map((d) => [d.id.name, unwrap(d.init)]) : [];
-          for (const [name, fn] of fns) if (anyNode(fn.body, primitive)) gen.add(name);
+          for (const [name, fn] of fns) if (anyNode(fn.body, (x) => primitive(x, f))) gen.add(name);
           // route constants of support modules: `const ROUTES = { LOGIN: '/login' }`, `export const LOGIN_PATH = '/login'`
           if (f.kind === 'support' && st.type === 'VariableDeclaration') {
             for (const d of st.declarations) {
@@ -99,15 +122,8 @@ export function visitors(project) {
     TemplateLiteral: literal,
     VariableDeclarator(n, ctx) { if (n.id.type === 'Identifier') secretPair(n.id.name, n.init, n, ctx); },
     ObjectProperty(n, ctx) { secretPair(propKey(n), n.value, n, ctx); },
-    CallExpression(n, ctx) {
-      const { file } = ctx;
-      const dataModule = file.kind === 'spec' || (file.kind === 'support' && (DATA_DIR.test(file.rel) || file.isFixturesModule));
-      if (!dataModule || !generates(file, n)) return;
-      // the outermost generating call reports once
-      if (ctx.stack.slice(0, -1).some((a) => isCall(a) && generates(file, a))) return;
-      if (ctx.region === 'module') ctx.report('TB-D4', n, { message: `\`${(memberChain(unwrap(n.callee)) || ['…']).join('.')}(…)\` generates data once at module scope: a retry reuses it` });
-      else if (ctx.region === 'describe') ctx.report('TB-D4', n, { severity: 'advisory', message: `\`${(memberChain(unwrap(n.callee)) || ['…']).join('.')}(…)\` generates data once in a describe callback, outside tests and hooks (advisory: unmeasured)` });
-    },
+    NewExpression(n, ctx) { generation(n, ctx); },
+    CallExpression(n, ctx) { generation(n, ctx); },
     fileEnd(file) {
       for (const c of file.ast.comments || []) if (/^[\s*/]*@ts-(ignore|expect-error)\b/.test(c.value)) note(file, c, 'tsIgnore'); // the directive, not prose naming it
       const e = escapes.get(file);

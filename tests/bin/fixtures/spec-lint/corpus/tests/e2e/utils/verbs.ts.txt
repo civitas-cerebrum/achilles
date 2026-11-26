@@ -12,3 +12,4 @@ export async function keyed(steps: Steps, k: string) { return steps[k]; } // EXP
 export async function go(s: any) { await s.page.goto('/x'); } // EXPECT TB-A14
 export async function goLoose(s) { await s.driver.goto('/x'); } // EXPECT TB-A14
 export async function openCart(steps: Steps) { await steps.click('cartButton', 'HeaderPage'); } // CLEAN
+export async function returnAllOrders(steps: Steps, owner: string) { await steps.apiDelete(`/orders?owner=${owner}`); } // CLEAN

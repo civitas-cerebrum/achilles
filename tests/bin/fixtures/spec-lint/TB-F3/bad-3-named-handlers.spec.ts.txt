@@ -1,0 +1,17 @@
+// spec-lint fixture: named and unreadable rejection handlers, identity handlers, .then with a non-function second argument, Promise.any
+// rules: TB-F3
+import { test } from './fixtures/base';
+
+const noop = () => {};
+function rethrow(e: unknown) { throw e; }
+
+test('TCAB-0903 · handlers', async ({ steps }) => {
+  await steps.click('a', 'HomePage').catch(noop); // EXPECT TB-F3
+  await steps.click('a', 'HomePage').catch(console.log); // EXPECT TB-F3
+  await steps.click('a', 'HomePage').catch((e) => e); // EXPECT TB-F3
+  await steps.click('a', 'HomePage').then(undefined, noop); // EXPECT TB-F3
+  await Promise.any([steps.click('a', 'HomePage')]); // EXPECT TB-F3
+  await steps.click('a', 'HomePage').catch(rethrow);
+  await steps.click('a', 'HomePage').then(null, null);
+  await steps.verifyPresence('heading', 'HomePage');
+});

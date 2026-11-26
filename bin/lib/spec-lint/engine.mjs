@@ -155,6 +155,35 @@ function walkFile(file, project, pass, handlers) {
     return makeApi(next);
   }
 
+  /**
+   * A function declared in a test or hook body and called exactly once there (and referenced nowhere else) is
+   * analysed as that body, like an IIFE.
+   */
+  function inlineOnceCalled(fn, ov) {
+    if (!fn.body || fn.body.type !== 'BlockStatement') return;
+    const local = new Map();
+    for (const st of fn.body.body) {
+      if (st.type === 'FunctionDeclaration' && st.id) local.set(st.id.name, st);
+      if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && isFn(unwrap(d.init))) local.set(d.id.name, unwrap(d.init));
+    }
+    if (!local.size) return;
+    const calls = new Map(), refs = new Map();
+    const rec = (x, parent, key) => {
+      if (!x || typeof x.type !== 'string') return;
+      if (x.type === 'Identifier' && local.has(x.name) && !(parent && ((isMember(parent) && key === 'property' && !parent.computed) || (parent.type === 'FunctionDeclaration' && key === 'id') || (parent.type === 'VariableDeclarator' && key === 'id')))) {
+        refs.set(x.name, (refs.get(x.name) || 0) + 1);
+        if (parent && isCall(parent) && key === 'callee') calls.set(x.name, (calls.get(x.name) || 0) + 1);
+      }
+      for (const k of Object.keys(x)) {
+        if (k === 'loc' || k.endsWith('Comments') || k === 'typeAnnotation') continue;
+        const v = x[k];
+        if (Array.isArray(v)) { for (const c of v) if (c && typeof c.type === 'string') rec(c, x, k); } else if (v && typeof v.type === 'string') rec(v, x, k);
+      }
+    };
+    rec(fn.body, null, null);
+    for (const [name, f] of local) if (calls.get(name) === 1 && refs.get(name) === 1 && !overrides.has(f)) overrides.set(f, ov);
+  }
+
   function onCall(n, ctx) {
     const cls = classifyCall(n, file.testNames);
     if (cls) {
@@ -166,7 +195,11 @@ function walkFile(file, project, pass, handlers) {
           file.tests.push(t);
         }
         overrides.set(cls.fn, { region: 'test', nested: false, test: t, fixtureCallback: true, fixture: null, unit: { kind: 'test', label: `test ${t.id || `"${t.title}"`}`, declLine: n.loc.start.line } });
-      } else if (cls.type === 'hook') overrides.set(cls.fn, { region: 'hook', nested: false, test: null, fixtureCallback: true, fixture: null, unit: { kind: 'hook', label: cls.mod, declLine: n.loc.start.line } });
+        inlineOnceCalled(cls.fn, { region: 'test', nested: false, test: t, fixture: null });
+      } else if (cls.type === 'hook') {
+        overrides.set(cls.fn, { region: 'hook', nested: false, test: null, fixtureCallback: true, fixture: null, unit: { kind: 'hook', label: cls.mod, declLine: n.loc.start.line } });
+        inlineOnceCalled(cls.fn, { region: 'hook', nested: false, test: null, fixture: null });
+      }
       else if (cls.type === 'describe') {
         overrides.set(cls.fn, { region: 'describe', nested: false, test: null, fixture: null });
         file.describes.push({ title: cls.title ? cls.title.text : null, line: n.loc.start.line, endLine: n.loc.end.line, node: n });
@@ -495,13 +528,20 @@ export function lintWrite({ root, file, before, after, ...opts }) {
   const key = (f, text) => `${f.rule}\0${f.test ? f.test.title : ''}\0${(text.split(/\r?\n/)[f.line - 1] || '').trim()}`;
   const left = new Map();
   for (const f of old ? old.findings : []) { const k = key(f, before); left.set(k, (left.get(k) || 0) + 1); }
+  // a test is edited when its text differs from the test of the same title before (or it is new)
+  const testText = (report, text) => new Map(((report && report.files.find((x) => x.path === rel)) || { tests: [] }).tests.map((t) => [t.title, text.split(/\r?\n/).slice(t.line - 1, t.endLine).join('\n')]));
+  const was = old ? testText(old, before) : new Map();
+  const is = testText(now, after);
+  const edited = (f) => !!f.test && was.get(f.test.title) !== is.get(f.test.title);
   const fresh = now.findings.filter((f) => {
     if (f.file !== rel) return false;
     const k = key(f, after);
     const n = left.get(k) || 0;
-    if (n > 0) { left.set(k, n - 1); return false; }
+    if (n > 0) { left.set(k, n - 1); return f.rule === 'TB-A13' && edited(f); } // a version gap in an edited test is charged
     return true;
   });
+  // a version gap blocks in a new or edited test (upgrade first)
+  for (const f of fresh) if (f.rule === 'TB-A13' && (f.test ? edited(f) : !old)) f.severity = 'blocking';
   const blocking = fresh.filter((f) => f.severity === 'blocking' && !f.waived).length;
   return {
     ...now,

@@ -1,0 +1,13 @@
+// spec-lint fixture: new Date() and an aliased faker import at module scope
+// rules: TB-D4
+import { test } from './fixtures/base';
+import { faker as f } from '@faker-js/faker';
+
+const stamp = new Date().toISOString(); // EXPECT TB-D4
+const name = f.person.firstName(); // EXPECT TB-D4
+const fixed = new Date('2020-01-01');
+
+test('TCAB-0920 · uses', async ({ steps }) => {
+  const now = new Date();
+  await steps.fill('a', 'HomePage', `${stamp}${name}${fixed.getTime()}${now.getTime()}`);
+});

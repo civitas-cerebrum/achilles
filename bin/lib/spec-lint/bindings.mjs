@@ -86,7 +86,8 @@ export function kindOf(e, scope, env) {
       if (r) return r;
       if (k === 'interactions' && /^(interact|verify|extract|navigate)$/.test(p || '')) return 'interactions-part';
       if (k === 'element' && p === 'locator') return 'locator';
-      if (p === 'steps' && k !== 'steps' && !e.computed) return 'steps';
+      // `.steps` is a Steps object only on a framework object or a project fixture (never on plain data: `plan.steps`)
+      if (p === 'steps' && !e.computed && (FRAMEWORK_KINDS.has(k) && k !== 'steps' || (typeof k === 'string' && k.startsWith('fixture:')))) return 'steps';
       if (k === 'page' && (p === 'keyboard' || p === 'mouse' || p === 'touchscreen')) return 'input';
       if ((k === 'page' || k === 'context') && p === 'request') return 'request';
       return null;
@@ -157,7 +158,10 @@ export function bindParams(fn, scope, env, { fixtureCallback = false, support = 
       scope.decls.add(q.name);
       const ak = annotationKind(q);
       const tn = typeName(q);
+      const lit = q.typeAnnotation && q.typeAnnotation.typeAnnotation;
+      const members = lit && lit.type === 'TSTypeLiteral' ? Object.fromEntries(lit.members.filter((m) => m.type === 'TSPropertySignature' && m.key && annotationKind(m)).map((m) => [m.key.name || m.key.value, annotationKind(m)])) : null;
       if (ak) scope.vars.set(q.name, ak);
+      else if (members && Object.keys(members).length) scope.vars.set(q.name, `obj:${JSON.stringify(members)}`);
       else if (!tn || tn === 'any' || tn === 'unknown') {
         if (NAME_KIND[q.name]) scope.vars.set(q.name, NAME_KIND[q.name]);
         else if (support && !fixtureCallback) scope.vars.set(q.name, 'untyped');
@@ -256,6 +260,7 @@ export function testChain(callee, names) {
   const ch = memberChain(callee);
   if (!ch) return null;
   if (names.namespaces && names.namespaces.has(ch[0]) && ch.length > 1 && TEST_NAMES.has(ch[1])) return ch.slice(1);
+  if (names.aliases && names.aliases.has(ch[0])) return [...names.aliases.get(ch[0]), ...ch.slice(1)];
   return names.has(ch[0]) ? ch : null;
 }
 const TEST_NAMES = new Set(['test', 'it', 'describe', 'setup']);
@@ -274,6 +279,7 @@ const isTestFactory = (init, names) => {
 export function testBindings(ast) {
   const names = new Set();
   names.namespaces = new Set();
+  names.aliases = new Map(); // `const only = test.only`, `const { describe, beforeEach } = test`
   for (const st of ast.program.body) {
     if (st.type !== 'ImportDeclaration') continue;
     for (const sp of st.specifiers) {
@@ -291,6 +297,17 @@ export function testBindings(ast) {
       if (n.type === 'VariableDeclarator' && n.init) {
         if (n.id.type === 'Identifier' && !names.has(n.id.name) && (isTestFactory(n.init, names) || (unwrap(n.init).type === 'Identifier' && testChain(unwrap(n.init), names)))) { names.add(n.id.name); changed = true; }
         const r = unwrap(n.init);
+        if (n.id.type === 'Identifier' && !names.has(n.id.name) && !names.aliases.has(n.id.name) && isMember(r)) {
+          const ch = testChain(r, names);
+          if (ch && ch.length > 1) { names.aliases.set(n.id.name, ch); changed = true; }
+        }
+        if (n.id.type === 'ObjectPattern' && (r.type === 'Identifier' || isMember(r)) && testChain(r, names)) {
+          const base = testChain(r, names);
+          for (const pr of n.id.properties) {
+            const key = pr.type === 'ObjectProperty' ? (pr.key.type === 'Identifier' ? pr.key.name : isStr(pr.key) ? strValue(pr.key) : null) : null;
+            if (key && pr.value.type === 'Identifier' && !names.aliases.has(pr.value.name)) { names.aliases.set(pr.value.name, [...base, key]); changed = true; }
+          }
+        }
         if (n.id.type === 'ObjectPattern' && isCall(r) && r.callee.type === 'Identifier' && r.callee.name === 'require') {
           for (const pr of n.id.properties) {
             const key = pr.type === 'ObjectProperty' && pr.key.type === 'Identifier' ? pr.key.name : null;
@@ -341,7 +358,9 @@ export function classifyCall(n, names) {
   if (ch.length === 2 && ch[1] === 'step') return fn ? { type: 'step', fn } : null;
   if (ch.length === 2 && ch[1] === 'extend') return { type: 'extend' };
   if (ch.length === 1 || (ch.length === 2 && TEST_MODIFIERS.has(ch[1]))) {
-    const title = titleOf(n.arguments[0]);
+    const a0 = unwrap(n.arguments[0]);
+    // a title that is not a literal (`test(c.title, …)`, `test(TITLE, …)`) still declares a test
+    const title = titleOf(n.arguments[0]) || (fn && a0 && !isFn(a0) && n.arguments.length >= 2 ? { text: '…', dynamic: true, node: a0 } : null);
     if (title && fn) return { type: 'test', fn, title, mod: ch[1] || null };
     if (ch.length === 2) return { type: 'annotation', mod: ch[1] };
   }

@@ -3,7 +3,7 @@
 // TB-N3 is judgment.
 import { isCall, isMember, unwrap, isStr, strValue, propName, memberChain } from '../shapes.mjs';
 
-const HTTP_CLIENTS = /^(axios|got|undici|node-fetch|cross-fetch|superagent|ky)(\/.*)?$/;
+const HTTP_CLIENTS = /^(axios|got|undici|node-fetch|cross-fetch|superagent|ky)(\/.*)?$|^(node:)?https?$/;
 const DB_CLIENTS = /^(pg|pg-promise|postgres|mysql|mysql2|mysql2\/promise|sqlite3|better-sqlite3|mssql|tedious|oracledb|knex|typeorm|@prisma\/client|prisma|mongodb|mongoose|sequelize|drizzle-orm(\/.*)?|kysely|@civitas-cerebrum\/sql-client)$/;
 const CONTRACTS = /^tests\/contracts\//;
 
