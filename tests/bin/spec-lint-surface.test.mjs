@@ -283,3 +283,77 @@ test('the pinned surface decides what a method check sees (A10 per installed ver
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+// ── the framework pin as a protected input (commands.mjs surfaceChanges) ──
+
+/** A git repository with `files` committed on main; returns { root, vcs }. */
+function pinRepo(files) {
+  const root = tempRoot();
+  const vcs = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: root, stdio: 'ignore', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_GLOBAL: '/dev/null' } });
+  writeProject(root, { '.gitignore': 'node_modules/\n', ...files });
+  vcs('init', '-q', '-b', 'main');
+  vcs('add', '-A');
+  vcs('commit', '-q', '-m', 'base');
+  return { root, vcs };
+}
+const pinOf = (range) => JSON.stringify({ name: 'p', private: true, dependencies: { '@civitas-cerebrum/element-interactions': range } });
+
+test('a node_modules package linked to a committed directory is no install, and a linked pin is a pin move', async () => {
+  const { symlinkSync, mkdirSync } = await import('node:fs');
+  const { surfaceChanges } = await import('../../bin/lib/spec-lint/commands.mjs');
+  const { root } = pinRepo({ 'package.json': pinOf('0.3.12') });
+  try {
+    // what `npm ci` builds for a `file:` dependency on a committed two-method package
+    fakePackage(path.join(root, 'vendor', 'fake'), '0.3.12', { dts: 'export declare class Steps { click(elementName: string, pageName: string): Promise<void>; }' });
+    const pkgDir = path.join(root, 'vendor', 'fake', 'node_modules', '@civitas-cerebrum', 'element-interactions');
+    mkdirSync(path.join(root, 'node_modules', '@civitas-cerebrum'), { recursive: true });
+    symlinkSync(pkgDir, path.join(root, 'node_modules', '@civitas-cerebrum', 'element-interactions'));
+    writeProject(root, {
+      'package.json': pinOf('file:vendor/fake'),
+      'package-lock.json': JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.12', resolved: '../../vendor/fake', link: true } } }),
+    });
+    assert.throws(() => resolveSurface(root, parser), (e) => e instanceof SurfaceError && /a link out of node_modules, ignored/.test(e.message) && /no registry release/.test(e.message));
+    const c = surfaceChanges(root, 'main');
+    assert.equal(c.length, 1, JSON.stringify(c));
+    assert.match(c[0].detail, /pin moved from package\.json to package-lock\.json \(a linked or path dependency, not a registry release\)/);
+    assert.equal(c[0].weakens, true);
+    // the declaration alone names a path: still a move
+    rmSync(path.join(root, 'package-lock.json'));
+    assert.match(surfaceChanges(root, 'main')[0].detail, /to package\.json \(a linked or path dependency/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a range pin is never "below" a release it may not have installed; a range change weakens only when it admits lower releases', async () => {
+  const { surfaceChanges } = await import('../../bin/lib/spec-lint/commands.mjs');
+  const { root } = pinRepo({ 'package.json': pinOf('^0.3.0') });
+  try {
+    fakePackage(root, '0.3.11');
+    assert.deepEqual(surfaceChanges(root, 'main'), [], 'unchanged range, an older install: no change');
+    writeProject(root, { 'package.json': pinOf('^0.3.5') });
+    assert.deepEqual(surfaceChanges(root, 'main').map((c) => c.weakens), [false]);
+    writeProject(root, { 'package.json': pinOf('>=0.2.0') });
+    const w = surfaceChanges(root, 'main');
+    assert.equal(w[0].weakens, true);
+    assert.match(w[0].detail, /range changed from \^0\.3\.0 to >=0\.2\.0, which admits 0\.2\.\d+ below the 0\.3\.0 the old range admitted/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a new framework release in the shipped table changes nothing for an unchanged project with a range pin', async () => {
+  const { surfaceChanges } = await import('../../bin/lib/spec-lint/commands.mjs');
+  const spec = "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ page, steps }) => { await page.goto('/'); await steps.click('a', 'P'); await steps.getUrl(); });\n";
+  const { root } = pinRepo({ 'package.json': pinOf('^0.3.0'), 'tests/e2e/a.spec.ts': spec });
+  const table = tempRoot();
+  try {
+    cpSync(SURFACES_DIR, table, { recursive: true });
+    const before = lintProject({ root, snapshotsDir: table });
+    // a release appears upstream: the table gains it (same surface as the newest)
+    const newest = shippedVersions(table).at(-1);
+    const next = newest.replace(/\d+$/, (d) => String(Number(d) + 1));
+    writeFileSync(path.join(table, `${next}.json`), JSON.stringify({ ...JSON.parse(readFileSync(path.join(table, `${newest}.json`), 'utf8')), version: next }));
+    const after = lintProject({ root, snapshotsDir: table });
+    assert.equal(after.stepsSurface.version, next);
+    const key = (r) => r.findings.map((f) => `${f.rule} ${f.file}:${f.line} ${f.severity}`).sort();
+    assert.deepEqual(key(after), key(before), 'no new finding');
+    assert.deepEqual(surfaceChanges(root, 'main', { snapshotsDir: table }), [], 'no protected-input change');
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(table, { recursive: true, force: true }); }
+});
+

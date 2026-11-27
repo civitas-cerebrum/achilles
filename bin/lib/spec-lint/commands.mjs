@@ -72,22 +72,35 @@ const PIN_FILES = ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.
 
 /**
  * The framework surface as a protected input: the release the reference commit pins (its own lock file or
- * declaration, else its workspace root's) against the surface the lint resolves now. A lower release, or a pin
- * that now comes from another place, is a weakening change ([TB-G2]).
+ * declaration, else its workspace root's) against the surface the lint resolves now. A pin that now comes from
+ * another place (a linked or path dependency included) is a weakening change ([TB-G2]); a surface below an
+ * exact pin is one too; a changed range weakens only when it admits a shipped release below the lowest the old
+ * range admitted. A new release in the shipped table changes nothing for an unchanged range.
  */
-function surfaceChanges(root, refRev) {
+export function surfaceChanges(root, refRev, { snapshotsDir } = {}) {
   const top = workTreeTop(root) || root;
   const base = pinnedVersion(root, { top, reader: gitReader(root, refRev, top) });
   if (!base) return [];
-  const versions = shippedVersions();
-  const baseVersion = base.exact || semver.maxSatisfying(versions, base.range);
   const out = [];
   const nowPin = pinnedVersion(root, { top });
   if (!nowPin || nowPin.from !== base.from) out.push({ input: 'framework pin', detail: `the ${PACKAGE} pin moved from ${base.from} to ${nowPin ? nowPin.from : 'nowhere'}`, weakens: true });
-  let surface = null;
-  try { surface = resolveSurface(root, parserFor(root)); } catch { /* the lint itself reports that it cannot run */ }
-  if (surface && baseVersion && semver.valid(surface.version) && semver.compare(surface.version, baseVersion) < 0) {
-    out.push({ input: 'framework surface', detail: `the Steps surface is ${surface.version} (${surface.source}), below the ${baseVersion} the reference pins (${base.from})`, weakens: true });
+  // "below" is decided only against an exact pin (a lock entry or an exact declaration): a range names releases
+  // the project may never have installed
+  const exactBase = base.exact || (base.range && semver.valid(base.range) ? base.range : null);
+  if (exactBase) {
+    let surface = null;
+    try { surface = resolveSurface(root, parserFor(root), snapshotsDir ? { snapshotsDir } : {}); } catch { /* the lint itself reports that it cannot run */ }
+    if (surface && semver.valid(surface.version) && semver.compare(surface.version, exactBase) < 0) {
+      out.push({ input: 'framework surface', detail: `the Steps surface is ${surface.version} (${surface.source}), below the ${exactBase} the reference pins (${base.from})`, weakens: true });
+    }
+  } else if (base.range && nowPin && nowPin.range && nowPin.range !== base.range && nowPin.from === base.from) {
+    // a range changed: weakening when it now admits a shipped release below the lowest the old range admitted
+    const versions = shippedVersions(snapshotsDir);
+    const lowest = (r) => versions.find((v) => semver.satisfies(v, r)) || null;
+    const was = lowest(base.range);
+    const is = lowest(nowPin.range);
+    const weakens = !is || !was || semver.compare(is, was) < 0;
+    out.push({ input: 'framework pin', detail: `the ${PACKAGE} range changed from ${base.range} to ${nowPin.range}${weakens ? `, which admits ${is || 'no shipped release'} below the ${was || 'none'} the old range admitted` : ''}`, weakens });
   }
   return out;
 }

@@ -172,9 +172,11 @@ function pnpmVersion(text, rel) {
     if (inImporters && imp) { inProject = imp[2] === rel; continue; }
     const m = inProject ? name.exec(l) : null;
     if (!m) continue;
+    if (/^['"]?(?:link|file):/.test(m[2])) return { linked: true };
     const inline = /^['"]?(\d+\.\d+\.\d+)/.exec(m[2]);
     if (inline) return inline[1];
     for (let j = i + 1; j < lines.length && /^ {8}/.test(lines[j]); j++) {
+      if (/^ {8}version:\s*['"]?(?:link|file):/.test(lines[j])) return { linked: true };
       const v = /^ {8}version:\s*['"]?(\d+\.\d+\.\d+)/.exec(lines[j]);
       if (v) return v[1];
     }
@@ -187,13 +189,20 @@ function pnpmVersion(text, rel) {
 function yarnVersion(text) {
   const found = new Set();
   let inEntry = false;
+  let linked = false;
   for (const l of text.split(/\r?\n/)) {
-    if (/^\S/.test(l)) { inEntry = l.replace(/^"/, '').startsWith(`${PACKAGE}@`); continue; }
+    if (/^\S/.test(l)) { inEntry = l.replace(/^"/, '').startsWith(`${PACKAGE}@`); if (inEntry && /@(?:file|link|portal|workspace):/.test(l)) linked = true; continue; }
+    const r = inEntry ? /^\s+resolved:?\s+"?([^"\s]+)/.exec(l) : null;
+    if (r && !/^https?:/.test(r[1])) linked = true;
     const m = inEntry ? /^\s+version:?\s+"?(\d+\.\d+\.\d+)/.exec(l) : null;
     if (m) found.add(m[1]);
   }
+  if (linked) return { linked: true };
   return found.size === 1 ? [...found][0] : null;
 }
+
+/** A declared range that names a path or a repository instead of registry releases (`file:`, `link:`, a git URL, …). */
+export const notSemverRange = (range) => typeof range === 'string' && (/^(?:file|link|portal|workspace|git|git\+\w+|github|npm|https?):/.test(range) || /[/\\]/.test(range));
 
 /**
  * The framework release a lock file in `dir` records for the project at `rel` (its posix path from `dir`, ''
@@ -203,20 +212,25 @@ function yarnVersion(text) {
 function lockedVersion(dir, rel, rd = DISK) {
   const npmLock = path.join(dir, 'package-lock.json');
   const l = jsonAt(rd, npmLock);
+  // an entry linked to a path (`npm ci` for a `file:` dependency) or resolved outside the registry is no pin
+  const linkedEntry = (e) => !!e && (e.link === true || (typeof e.resolved === 'string' && !/^https?:/.test(e.resolved)) || (typeof e.version === 'string' && !semver.valid(e.version)));
   if (l) {
-    const v = (rel && l.packages?.[`${rel}/node_modules/${PACKAGE}`]?.version) || l.packages?.[`node_modules/${PACKAGE}`]?.version || (!rel && l.dependencies?.[PACKAGE]?.version);
-    if (v) return { exact: v, file: npmLock };
+    const e = (rel && l.packages?.[`${rel}/node_modules/${PACKAGE}`]) || l.packages?.[`node_modules/${PACKAGE}`] || (!rel && l.dependencies?.[PACKAGE]) || null;
+    if (linkedEntry(e)) return { linked: true, file: npmLock };
+    if (e && e.version) return { exact: e.version, file: npmLock };
   }
   const pnpm = path.join(dir, 'pnpm-lock.yaml');
   const pt = rd.read(pnpm);
   if (typeof pt === 'string') {
     const v = pnpmVersion(pt, rel || '.');
+    if (v && v.linked) return { linked: true, file: pnpm };
     if (v) return { exact: v, file: pnpm };
   }
   const yarn = path.join(dir, 'yarn.lock');
   const yt = rd.read(yarn);
   if (typeof yt === 'string') {
     const v = yarnVersion(yt);
+    if (v && v.linked) return { linked: true, file: yarn };
     if (v) return { exact: v, file: yarn };
   }
   return null;
@@ -289,15 +303,22 @@ export function workspaceInputs(root) {
 export function pinnedVersion(root, { top = null, reader = DISK } = {}) {
   const rd = reader;
   const real = realOf(root);
+  // a pin that names a path or a link instead of a registry release pins nothing: `linked` (no surface from it)
+  const linked = (from) => ({ linked: true, from: `${from} (a linked or path dependency, not a registry release)` });
   const own = lockedVersion(real, '', rd);
+  if (own && own.linked) return linked(path.basename(own.file));
   if (own) return { exact: own.exact, from: path.basename(own.file) };
   const above = workspaceDirs(real, top, rd);
   const range = declaredRange(real, rd);
+  if (notSemverRange(range)) return linked('package.json');
   for (const d of above) {
     const l = lockedVersion(d, relPosixOf(d, real), rd);
-    if (l && (!range || semver.satisfies(l.exact, range))) return { exact: l.exact, from: `${relPosixOf(real, l.file)} (workspace lock file)` };
+    const lf = l ? `${relPosixOf(real, l.file)} (workspace lock file)` : null;
+    if (l && l.linked) return linked(lf);
+    if (l && (!range || semver.satisfies(l.exact, range))) return { exact: l.exact, from: lf };
     if (range) continue;
     const r = declaredRange(d, rd);
+    if (notSemverRange(r)) return linked(`${relPosixOf(real, path.join(d, 'package.json'))} (workspace root)`);
     if (r) return { range: r, from: `${relPosixOf(real, path.join(d, 'package.json'))} (workspace root)` };
   }
   return range ? { range, from: 'package.json' } : null;
@@ -354,6 +375,11 @@ export function resolveSurface(root, parser, { snapshotsDir = SURFACES_DIR, useG
     tried.push(`${source}: ${dir}`);
     // an install committed to the repository is content of the change, not the project's install: never trusted
     if (useGit && trackedIn(base, path.join(base, 'node_modules'))) { tried[tried.length - 1] += ' (tracked in the repository, ignored)'; return null; }
+    // a package directory linked elsewhere (`npm ci` for a `file:` dependency) is not an install from the registry
+    const real = realOf(dir);
+    const nm = realOf(path.join(base, 'node_modules'));
+    if (!real.startsWith(`${nm}${path.sep}`)) { tried[tried.length - 1] += ' (a link out of node_modules, ignored)'; return null; }
+    if (useGit && trackedIn(base, real)) { tried[tried.length - 1] += ' (tracked in the repository, ignored)'; return null; }
     const s = readPackageSurface(parser, dir);
     if (!s) return null;
     // a hoisted install another package of the workspace uses is not the project's when its own range excludes it
@@ -378,8 +404,8 @@ export function resolveSurface(root, parser, { snapshotsDir = SURFACES_DIR, useG
   const versions = shippedVersions(snapshotsDir);
   if (!pin) tried.push(`snapshot: no ${PACKAGE} dependency in package.json${top ? ', nor in a workspace directory above it' : ''}`);
   else {
-    const v = pin.exact ? (versions.includes(pin.exact) ? pin.exact : null) : semver.maxSatisfying(versions, pin.range);
-    tried.push(`snapshot: ${pin.exact || pin.range} (${pin.from}) against shipped ${versions[0] || '-'}..${versions.at(-1) || '-'}`);
+    const v = pin.linked ? null : pin.exact ? (versions.includes(pin.exact) ? pin.exact : null) : semver.maxSatisfying(versions, pin.range);
+    tried.push(`snapshot: ${pin.linked ? "no registry release" : pin.exact || pin.range} (${pin.from}) against shipped ${versions[0] || '-'}..${versions.at(-1) || '-'}`);
     if (v) return finish(readSnapshot(v, snapshotsDir), 'snapshot', path.join(snapshotsDir, `${v}.json`), snapshotsDir);
   }
   throw new SurfaceError(`no Steps surface for ${PACKAGE} resolved (${tried.join('; ')})`);
