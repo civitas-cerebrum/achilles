@@ -304,6 +304,23 @@ test('pre-commit: a hand-lowered, a raised and a deleted baseline are refused', 
   } finally { done(root); }
 });
 
+test('pre-commit: a count written under a key the code does not produce gets one clear message', () => {
+  const root = optedIn();
+  try {
+    const b = baselineOf(root);
+    b.files['tests/e2e/a.spec.ts'].tests['TCAB-9999'] = { 'TB-A2': 1 };
+    b.files['tests/e2e/a.spec.ts'].counts['TB-A2'] = 3;
+    b.totals['TB-A2'] = 3;
+    write(root, BASELINE, serialize(b));
+    git(root, 'add', BASELINE);
+    const c = commit(root, 'invented key');
+    assert.notEqual(c.status, 0);
+    assert.match(c.out, /test TCAB-9999 TB-A2 is recorded as 1, but neither the baseline at HEAD nor the code has any there/);
+    assert.equal((c.out.match(/\[baseline\]/g) || []).length, 1);
+    assert.match(c.out, /0 protected input change\(s\) \(0 weakening, 0 refused\)/);
+  } finally { done(root); }
+});
+
 test('pre-commit: fails open with a warning when the lint is not installed', () => {
   const root = optedIn({}, { link: false });
   try {
@@ -829,6 +846,61 @@ test('--install-hook reads hook names case-insensitively where the file system d
       assert.match(r.stderr, /\.githooks holds pre-commit/);
       assert.equal(read(root, '.githooks/PRE-COMMIT'), '#!/bin/sh\necho upper\n');
     } else assert.equal(r.status, 0, 'on a case-sensitive file system the file is not a hook git runs');
+  } finally { done(root); }
+});
+
+test('the committed hook is the same through a symbolic link to the project, and works in a clone elsewhere', () => {
+  const root = repo();
+  const links = tempRoot();
+  const clone = path.join(tempRoot(), 'clone');
+  try {
+    const via = path.join(links, 'linked-project');
+    symlinkSync(root, via);
+    const r = spawnSync(process.execPath, [BIN, '--init-baseline'], { cwd: via, encoding: 'utf8', env: { ...env(), CLAUDE_PROJECT_DIR: via } });
+    assert.equal(r.status, 0, r.stderr);
+    const text = read(root, '.githooks/pre-commit');
+    assert.match(text, /^dir="\$top"$/m, 'only the top level, no path through the link');
+    assert.doesNotMatch(text, /\.\.\/|\/private\/|\/var\/|\/tmp\//);
+    const again = run(root, ['--install-hook']);
+    assert.match(again.stdout, /already installed \(githooks: \.githooks\/pre-commit\)/);
+    assert.equal(read(root, '.githooks/pre-commit'), text, 'byte-identical through the real path');
+    git(root, 'add', '-A');
+    assert.equal(commit(root, 'baseline').status, 0);
+    // a clone at another place, the first one moved away: the check runs there and blocks
+    assert.equal(gitRaw(SANDBOX, 'clone', '-q', `file://${root}`, clone).status, 0);
+    rmSync(root, { recursive: true, force: true });
+    mkdirSync(path.join(clone, 'node_modules', '@civitas-cerebrum'), { recursive: true });
+    symlinkSync(REPO, path.join(clone, 'node_modules', '@civitas-cerebrum', 'achilles'));
+    assert.equal(run(clone, ['--install-hook']).status, 0);
+    assert.equal(git(clone, 'status', '--porcelain').trim(), '', 'installing in the clone leaves the committed hook as it is');
+    write(clone, 'tests/e2e/a.spec.ts', SPEC.replace("await page.goto('/two');", "await page.goto('/two');\n  await page.reload();"));
+    git(clone, 'add', 'tests/e2e/a.spec.ts');
+    const c = commit(clone, 'bad in the clone');
+    assert.notEqual(c.status, 0, c.out);
+    assert.match(c.out, /\[TB-A2\]/);
+  } finally { done(root); done(links); done(path.dirname(clone)); }
+});
+
+test('the hand-add line for a global hooks path carries no machine path', () => {
+  const outside = tempRoot();
+  const root = repo();
+  try {
+    writeFileSync(GLOBAL, `[core]\n\thooksPath = ${outside}\n`);
+    const r = run(root, ['--install-hook']);
+    assert.equal(r.status, 2);
+    const line = /Add this line[^:]*: (.*)$/m.exec(r.stderr)[1];
+    assert.equal(line, 'node "$(git rev-parse --show-toplevel)/node_modules/@civitas-cerebrum/achilles/bin/spec-lint.mjs" --pre-commit; [ $? -ne 1 ] || exit 1');
+  } finally { writeFileSync(GLOBAL, ''); done(root); done(outside); }
+});
+
+test('an activated dormant pre-commit keeps the same mode label on every run', () => {
+  const root = repo({ '.githooks/pre-commit': '#!/bin/sh\necho mine\n' });
+  try {
+    const first = run(root, ['--install-hook', '--activate-hooks', 'pre-commit']);
+    assert.equal(first.status, 0, first.stderr);
+    assert.match(first.stdout, /\(githooks: \.githooks\/pre-commit\)/);
+    const second = run(root, ['--install-hook']);
+    assert.match(second.stdout, /already installed \(githooks: \.githooks\/pre-commit\)/);
   } finally { done(root); }
 });
 

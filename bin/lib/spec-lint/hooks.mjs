@@ -32,6 +32,7 @@ const posix = (p) => p.split(path.sep).join('/');
 
 /** The hook script for a project at `rel` (from the top level of its work tree; '' for the top level). */
 export function hookScript(rel) {
+  if (path.isAbsolute(rel) || rel.split('/').includes('..')) throw new HookError(`the project's place in the repository (${rel}) is not a path inside it`);
   const dir = rel ? `$top/${rel}` : '$top';
   return `#!/bin/sh
 ${MARKER}: the test-baseline check of the staged change (achilles-spec-lint --pre-commit).
@@ -178,9 +179,13 @@ export function installHook(root, { activate = [] } = {}) {
   let top;
   let common;
   try {
-    top = git(root, ['rev-parse', '--show-toplevel']);
-    common = path.resolve(root, git(root, ['rev-parse', '--git-common-dir']));
+    // real paths on both sides: a project reached through a symbolic link (a linked workspace, /tmp on macOS)
+    // must give the same committed hook as one reached directly
+    root = realpathSync(root);
+    top = realpathSync(git(root, ['rev-parse', '--show-toplevel']));
+    common = realpathSync(path.resolve(root, git(root, ['rev-parse', '--git-common-dir'])));
   } catch { throw new HookError(`${root} is not in a git work tree`); }
+  if (!within(top, root)) throw new HookError(`the project ${root} is not inside its git work tree ${top}`);
   const guard = guardFor(top, common);
   const put = (abs, text) => { guard(abs); return write(abs, text); };
   const rel = posix(path.relative(top, root));
@@ -205,7 +210,8 @@ export function installHook(root, { activate = [] } = {}) {
     const r = chain(own, scriptRef(top, at), top, guard);
     changed = r.changed || changed;
     notes.push(`commit ${fromTop(at)} and ${fromTop(own)} with the baseline`);
-    return { mode: r.mode, path: fromTop(own), changed, notes, committed: true, extra: [fromTop(at)] };
+    // the committed .githooks keeps its label however many runs it took
+    return { mode: home === path.join(top, '.githooks') ? 'githooks' : r.mode, path: fromTop(own), changed, notes, committed: true, extra: [fromTop(at)] };
   }
   const lh = LEFTHOOK.map((f) => path.join(top, f)).find(existsSync);
   if (lh) {
