@@ -4,7 +4,7 @@
 // whole extension (delegate_qa and every guard) does not load.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,9 +14,11 @@ const EXTENSION = fileURLToPath(new URL('../../pi/index.ts', import.meta.url));
 const STUB = fileURLToPath(new URL('./pi-stub.mjs', import.meta.url));
 
 // The keys of pi's getAliases() (dist/core/extensions/loader.js); pi is not installed here, so each
-// points at a stub. 'claude-code' is deliberately absent, as it is in pi's map.
+// points at a stub. pi has no entry for 'claude-code'; here it points at a path that does not exist,
+// so a runtime import of it fails even on a machine where a 'claude-code' package happens to resolve.
 const PI_PACKAGES = ['pi-coding-agent', 'pi-agent-core', 'pi-tui', 'pi-ai/providers/all', 'pi-ai/compat', 'pi-ai/models', 'pi-ai/oauth', 'pi-ai'];
 const alias = Object.fromEntries([
+  ['claude-code', '/nonexistent/claude-code'],
   ...PI_PACKAGES.flatMap((p) => [[`@earendil-works/${p}`, STUB], [`@mariozechner/${p}`, STUB]]),
   ...['typebox', 'typebox/compile', 'typebox/value', '@sinclair/typebox', '@sinclair/typebox/compile', '@sinclair/typebox/value'].map((p) => [p, STUB]),
 ]);
@@ -70,10 +72,14 @@ test('in an expert process the guards load and the Bash judge refuses a commit-c
   const [guard] = pi.handlers.get('tool_call') ?? [];
   assert.equal(typeof guard, 'function');
   const ctx = { cwd: mkdtempSync(join(tmpdir(), 'ach-pi-load-')) };
-  const call = (command) => guard({ toolName: 'bash', toolCallId: command, input: { command } }, ctx);
-  const denied = await call('git commit --no-verify -m "fix: x"');
-  assert.equal(denied?.block, true);
-  assert.match(denied.reason, /^achilles: /);
-  assert.doesNotMatch(denied.reason, /Bash judge failed/);
-  assert.equal(await call('git commit -m "fix: x"'), undefined);
+  try {
+    const call = (command) => guard({ toolName: 'bash', toolCallId: command, input: { command } }, ctx);
+    const denied = await call('git commit --no-verify -m "fix: x"');
+    assert.equal(denied?.block, true);
+    assert.match(denied.reason, /^achilles: /);
+    assert.doesNotMatch(denied.reason, /Bash judge failed/);
+    assert.equal(await call('git commit -m "fix: x"'), undefined);
+  } finally {
+    rmSync(ctx.cwd, { recursive: true, force: true });
+  }
 });
