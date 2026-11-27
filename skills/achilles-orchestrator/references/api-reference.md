@@ -2,6 +2,8 @@
 
 The following sections document the full API available for writing tests in Stage 3.
 
+Version labels follow the published releases of `@civitas-cerebrum/element-interactions`: a release number followed by `+` marks the first release that ships a Steps method; an option, a return type, a fluent member or a repository behaviour says "from 0.3.8" instead.
+
 ## Table of Contents
 - [Setup — Fixtures](#setup--fixtures)
 - [Locator Format](#locator-format) (css, xpath, id, text, role+name, regex, iframe)
@@ -157,8 +159,8 @@ import { DropdownSelectType, ListedElementMatch, VerifyListedOptions, GetListedD
 ```ts
 await steps.navigateTo('/path');
 await steps.navigateTo('/search', { query: { q: 'hello', page: '2' } });   // appends ?q=hello&page=2
-await steps.navigateTo('/path', { waitUntil: 'domcontentloaded' });        // 0.3.7+ — SPA-safe; default is 'load'
-const res = await steps.navigateTo('/missing-route');                      // 0.3.8+ — returns Response | null
+await steps.navigateTo('/path', { waitUntil: 'domcontentloaded' });        // waitUntil from 0.3.7 — SPA-safe; default is 'load'
+const res = await steps.navigateTo('/missing-route');                      // returns Response | null from 0.3.8
 expect(res?.status()).toBe(404);                                           // assert 404/redirect contracts (no raw page.goto)
 await steps.refresh();
 await steps.backOrForward('back'); // or 'forward'
@@ -194,7 +196,7 @@ await steps.closeTab(newPage);
 const count = steps.getTabCount();
 ```
 
-> **`navigateTo` waitUntil (0.3.7+).** The second arg is `{ query?, waitUntil? }`.
+> **`navigateTo` waitUntil (from 0.3.7).** The second arg is `{ query?, waitUntil? }`.
 > `waitUntil` (`'load'` default, `'domcontentloaded'`, `'networkidle'`, `'commit'`)
 > threads straight into `page.goto`. Prefer `'domcontentloaded'` for SPA
 > navigations that stall a cold WebKit/Safari on the full `'load'` event — this is
@@ -266,7 +268,7 @@ const count = await steps.getCount('elementName', 'PageName');
 const inputVal = await steps.getInputValue('elementName', 'PageName');
 const color = await steps.getCssProperty('elementName', 'PageName', 'color');
 const box = await steps.getBoundingBox('elementName', 'PageName');  // 0.3.8+ — { x, y, width, height } | null (null when not rendered)
-const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.3.8+)
+const inner = await steps.getHtml('elementName', 'PageName');                 // innerHTML  (0.3.3+)
 const outer = await steps.getHtml('elementName', 'PageName', { outer: true }); // outerHTML (incl. the tag)
 
 // Bulk extraction
@@ -355,7 +357,7 @@ await steps.verifyListOrder('listItems', 'PageName', 'asc');               // or
 await steps.verifyCssProperty('elementName', 'PageName', 'color', 'rgb(255, 0, 0)');
 ```
 
-> **`"list": true` entries (0.3.12+).** For a repository entry marked `"list": true`,
+> **`"list": true` entries (from 0.3.12).** For a repository entry marked `"list": true`,
 > reached without a narrowing strategy, `verifyPresence` passes when ANY match is
 > visible (not only the first), and `getAll` waits for at least one match and
 > throws on an empty list instead of returning `[]`. `.nth()`, `.random()`,
@@ -574,7 +576,7 @@ const href = await steps.getListedElementData('tableRows', 'PageName', {
 > **`waitForState` semantics — throwing as of 0.3.7 (below the `>=0.3.8` peer floor, so always present).** `waitForState` throws on timeout and returns `Promise<boolean>` (`true` = state reached). Use `{ optional: true }` to keep the soft-probe behavior — the call then resolves `false` on timeout instead of rejecting; follow a non-optional wait with an explicit `verify*` only if you want a more specific failure message.
 
 ```ts
-// waitForState THROWS on timeout (0.3.7+) and returns Promise<boolean>.
+// waitForState THROWS on timeout and returns Promise<boolean> (from 0.3.7).
 await steps.waitForState('elementName', 'PageName');                        // default: 'visible'; throws on timeout
 await steps.waitForState('elementName', 'PageName', 'hidden');              // also: 'attached', 'detached'
 // Soft probe: { optional: true } resolves false on timeout instead of throwing.
@@ -584,7 +586,7 @@ const present = await steps.waitForState('elementName', 'PageName', 'visible', {
 await steps.waitForState('elementName', 'PageName', 'visible', { timeout: 5_000 });
 await steps.waitAndClick('elementName', 'PageName');                        // waits for visible, then clicks; throws if never visible
 await steps.waitForNetworkIdle();
-await steps.waitForNetworkIdle({ timeout: 10000, optional: true });        // 0.3.7+ — bounded; optional swallows timeout (flow control: TB-F7)
+await steps.waitForNetworkIdle({ timeout: 10000, optional: true });        // options from 0.3.7 — bounded; optional swallows timeout (flow control: TB-F7)
 await steps.waitForResponse('/api/data', async () => {
   await steps.click('submitButton', 'PageName');
 });
@@ -687,12 +689,12 @@ await steps.on('productCards', 'CollectionsPage').random().click({ withoutScroll
 await steps.on('productCards', 'CollectionsPage').nth(2).click();
 await steps.on('categories', 'HomePage').byText('Buttons').click();
 await steps.on('items', 'ListPage').byAttribute('data-status', 'active').click();
-// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (0.3.8+)
+// .visible() — resolve the VISIBLE match among responsive duplicates, then act.   (from 0.3.8)
 // Selects the visible one and proceeds (throws if none visible) — unlike ifVisible()
 // which SKIPS when hidden. Replaces getByRole(...).filter({ visible: true }).first().
 await steps.on('accordionTrigger', 'ProductPage').visible().click();
 
-// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (0.3.8+)
+// Scoped child queries — resolve a child WITHIN the parent element, then act/verify.   (from 0.3.8)
 // Closes scoped getByRole counts and page.locator(parent).getByText/.locator(child) compositions.
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button').count.toBe(2);
 await steps.on('cookieDialog', 'CookieBanner').findByRole('button', { name: /preferences|manage/i }).count.toBe(0);
