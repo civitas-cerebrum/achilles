@@ -6,14 +6,13 @@
 
 ## 1. Every test case carries a stable ID
 
-**Rule.** The title of every test case begins with a stable identifier:
+**Rule:** [TB-I1](test-baseline.md#tb-i1) (uniqueness and the index: [TB-I2](test-baseline.md#tb-i2)). This section explains the default shape and why the ID exists.
 
 ```ts
 test('TCLG-000420 · a wrong password is rejected', async ({ steps }) => { … });
-test.fail('TCSG-000110 · a duplicate registration surfaces a conflict', async ({ steps }) => { … });
 ```
 
-Shape: **`TC` + up to three more letters of area code (2–5 letters in total), a dash, and a 4–6 digit ordinal**: `TC-0042`, `TCLG-000420`, `TCSGN-000110`. Optionally bracketed (`[TCLG-000420]`). The ID is the **first token of the title**, followed by a separator (space, `·`, `—`, `-`, `:`, `|`) and the sentence describing the behaviour. Describe-block titles need no ID; the case is the unit of identity.
+Shape: **`TC` + up to three more letters of area code (2–5 letters in total), a dash, and a 4–6 digit ordinal**: `TC-0042`, `TCLG-000420`, `TCSGN-000110`. Optionally bracketed (`[TCLG-000420]`). The ID is the **first token of the title**, followed by ` · ` (the canonical separator; tools that read ids also accept a space, `—`, `-`, `:` or `|`) and the sentence describing the behaviour. Describe-block titles need no ID; the case is the unit of identity.
 
 The `TC` stem is load-bearing: it makes an ID greppable across a whole repo with no false positives (no product string looks like `TCLG-000420`), and the wide ordinal means a suite never renumbers to make room. Area codes are the team's to choose: `TCLG` login, `TCSG` signup, `TCCK` checkout.
 
@@ -46,6 +45,7 @@ The Claude Code adapter's spec-hygiene hook advises on a spec write that adds a 
 **Rule.** A test that asserts the behaviour the app *should* have, while a confirmed and reported defect makes it fail today, carries the `@known-defect` tag, on the test title or on its enclosing `describe`:
 
 ```ts
+// defect: tests/e2e/docs/adversarial-findings.md#j-signup-02
 test.describe('Signup — duplicate email @known-defect', () => {
   test('TCSG-000110 · registering an already-used email surfaces a conflict', async ({ steps }) => { … });
 });
@@ -53,9 +53,9 @@ test.describe('Signup — duplicate email @known-defect', () => {
 
 This is the regression-guard pattern: the test is not weakened to agree with the bug, and it is not skipped. It fails today and turns green (unedited) the day the defect is fixed. Weakening or skipping it makes the suite agree with the bug, at which point it can no longer detect it.
 
-**Every `@known-defect` test points at a filed defect.** A tag with no report behind it is indistinguishable from a broken test that someone silenced. The pointer lives in a comment at the top of the spec (bug report path, ticket key, or `adversarial-findings.md` anchor).
+**Every `@known-defect` test points at a filed defect.** A tag with no report behind it is indistinguishable from a broken test that someone silenced. The pointer is a per-test `// defect: <ref>` line in that test's own comment block, never one comment at the top of the spec ([TB-I4](test-baseline.md#tb-i4); grammar in [Defect pointers and sentinels](test-baseline.md#defect-pointers-and-sentinels)).
 
-The `test.fail()` defect sentinels of `achilles-orchestrator/references/verify-change/phase-7-durable-tests.md` are the authoring-time counterpart of this tag: a sentinel asserts the *correct* behaviour against a ticketed defect and is deleted the day the fix flips it loud. Sentinels carry `@known-defect` alongside `test.fail()` so the no-rerun contract below exempts them the same way; the repair drivers key on the tag, not on the reported status, and `test.fail()` inverts only the reporting.
+The `test.fail()` defect sentinels (the two accepted forms: [`test-baseline.md`](test-baseline.md#defect-pointers-and-sentinels); lifecycle: `achilles-orchestrator/references/verify-change/phase-7-durable-tests.md`) are the authoring-time counterpart of this tag: a sentinel asserts the *correct* behaviour against a ticketed defect and is deleted the day the fix flips it loud. Sentinels carry `@known-defect` alongside `test.fail()` so the no-rerun contract below exempts them the same way; the repair drivers key on the tag, not on the reported status, and `test.fail()` inverts only the reporting.
 
 ### The no-rerun contract
 

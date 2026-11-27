@@ -28,6 +28,7 @@
         "selectors.no-inline": { "$ref": "#/$defs/selectorsNoInline" },
         "selectors.evidence": { "$ref": "#/$defs/selectorsEvidence" },
         "specs.shape": { "$ref": "#/$defs/specsShape" },
+        "specs.constant-table-tests": { "$ref": "#/$defs/specsConstantTableTests" },
         "spend.opt-in": { "$ref": "#/$defs/spendOptIn" },
         "secrets.none": { "$ref": "#/$defs/secretsNone" },
         "process.evidence": { "$ref": "#/$defs/processEvidence" },
@@ -83,6 +84,15 @@
         "evidenceDir": { "$ref": "#/$defs/relPath", "default": "docs/evidence/selectors" },
         "provisionalKey": { "type": "string", "minLength": 1, "default": "provisional" },
         "action": { "type": "string", "minLength": 1, "description": "May carry the placeholders <Page> and <element>; the gate fills them in." }
+      },
+      "additionalProperties": false
+    },
+    "specsConstantTableTests": {
+      "type": "object",
+      "required": ["allowed"],
+      "properties": {
+        "description": { "type": "string" },
+        "allowed": { "type": "boolean", "description": "true lets a spec declare non-UI tests from a module-level constant table (TB-S1). Not accepted at present: off by default, and turning it on is a rule-input change (TB-G2)." }
       },
       "additionalProperties": false
     },

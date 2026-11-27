@@ -1,0 +1,10 @@
+// spec-lint fixture: one scenario
+// place: tests/perf/one-scenario.js.js
+// rules: TB-K3
+import http from 'k6/http';
+import { config } from './config.js';
+export const options = {
+  thresholds: { http_req_duration: ['p(95)<800'] },
+  scenarios: { checkoutPeak: { executor: 'ramping-vus', stages: [{ duration: '1m', target: 20 }] } },
+};
+export default function () { http.get(`${config.baseUrl}/api/items`); }

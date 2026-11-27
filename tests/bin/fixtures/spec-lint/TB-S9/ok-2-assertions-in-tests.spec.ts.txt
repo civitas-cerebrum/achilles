@@ -1,0 +1,8 @@
+// spec-lint fixture: assertions only in the test body
+// rules: TB-S9
+import { test, expect } from './fixtures/base';
+
+test('TCHK-000401 · totals add up', async ({ steps }) => {
+  const total = await steps.getText('total', 'CartPage');
+  expect(total).toBe('12.00');
+});

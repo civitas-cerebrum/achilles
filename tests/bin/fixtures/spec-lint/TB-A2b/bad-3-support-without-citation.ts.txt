@@ -1,0 +1,10 @@
+// spec-lint fixture: a no-equivalent call in a verb without its register citation (advisory)
+// place: tests/e2e/flows/session-flow.ts
+// rules: TB-A2b
+import type { BrowserContext } from '@playwright/test';
+
+export async function expireSession(context: BrowserContext) {
+  await context.clearCookies(); // EXPECT TB-A2b/advisory
+  // framework-gap: FG-1
+  await context.addCookies([]);
+}

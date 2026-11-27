@@ -1,0 +1,9 @@
+// spec-lint fixture: overrides with their reason
+// rules: TB-W1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0072 · waits', async ({ steps }) => {
+  // slow: report generation takes up to 60 s on the shared environment
+  await steps.waitForState('report', 'ReportsPage', 'visible', { timeout: 90_000 });
+  await steps.waitForState('chart', 'ReportsPage', 'visible', { timeout: 30_000 }); // perf: the chart renders after the export
+});

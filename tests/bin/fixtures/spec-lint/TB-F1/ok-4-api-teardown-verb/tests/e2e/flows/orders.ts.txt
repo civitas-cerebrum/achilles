@@ -1,0 +1,12 @@
+import { expect } from '../fixtures/base';
+
+const bearer = (user: string) => ({ Authorization: `Bearer ${user}` });
+
+export async function returnAllOrders(steps, owner: string, testInfo) {
+  const list = await steps.apiGet(`/orders?owner=${owner}`, { headers: bearer(owner) });
+  for (const order of list.data) {
+    const r = await steps.apiPost(`/orders/${order.id}/return`, {}, { headers: bearer(owner) });
+    expect(r.status, `return of ${order.id}`).toBe(200);
+  }
+  testInfo.annotations.push({ type: 'returned-orders', description: owner });
+}

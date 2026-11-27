@@ -1,0 +1,27 @@
+// spec-lint fixture: with the constant-table setting on, only non-UI tables pass
+import { test, expect } from './fixtures/base';
+import { signIn } from './flows/auth';
+
+const ROWS = [{ code: 'A', status: 200 }, { code: 'B', status: 404 }];
+
+for (const row of ROWS) {
+  test(`TCAB-09A${row.code} · api ${row.code}`, async ({ steps }) => {
+    const r = await steps.apiGet(`/x/${row.code}`);
+    expect(r.status).toBe(row.status);
+  });
+}
+for (const row of ROWS) {
+  test(`TCAB-09B${row.code} · ui ${row.code}`, async ({ steps }) => { // EXPECT TB-S1
+    await steps.click(row.code, 'HomePage');
+  });
+}
+for (const row of ROWS) {
+  test(`TCAB-09C${row.code} · via verb ${row.code}`, async ({ steps }) => { // EXPECT TB-S1
+    await signIn(steps, row.code);
+  });
+}
+ROWS.forEach((row) => {
+  test(`TCAB-09D${row.code} · via repo ${row.code}`, async ({ steps, repo, interactions }) => { // EXPECT TB-S1
+    await interactions.interact.click(await repo.get(row.code, 'HomePage'));
+  });
+});

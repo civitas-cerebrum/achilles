@@ -1,0 +1,16 @@
+// spec-lint fixture: a method in neither table inside a verb is advisory; a UI call in a fixture body is blocking
+// place: tests/e2e/fixtures/base.ts
+// rules: TB-A12
+import { test as base, type Page } from '@playwright/test';
+import { baseFixture } from '@civitas-cerebrum/element-interactions';
+
+export async function darkMode(page: Page) {
+  await page.emulateMedia({ colorScheme: 'dark' }); // EXPECT TB-A12/advisory
+}
+
+export const test = baseFixture(base, 'tests/e2e/page-repository.json').extend<{ home: Page }>({
+  home: async ({ page }, use) => {
+    await page.goto('/home'); // EXPECT TB-A12/blocking
+    await use(page);
+  },
+});

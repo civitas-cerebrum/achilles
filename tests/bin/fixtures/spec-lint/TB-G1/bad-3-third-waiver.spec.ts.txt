@@ -1,0 +1,13 @@
+// spec-lint fixture: more than two waivers in one test
+// rules: TB-G1
+import { test, expect } from './fixtures/base';
+
+test('TC-0412 · waives three times', async ({ page }) => {
+  // achilles-allow TB-A4 -- the theme flag must exist before any page script runs
+  await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+  // achilles-allow TB-A4 -- the clock hook must exist before any page script runs
+  await page.exposeFunction('now', () => 0);
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A4 -- the binding must exist before any page script runs
+  await page.exposeBinding('tick', () => 0);
+});

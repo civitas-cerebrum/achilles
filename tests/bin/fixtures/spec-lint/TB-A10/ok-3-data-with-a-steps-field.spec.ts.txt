@@ -1,0 +1,9 @@
+// spec-lint fixture: a plain object's `steps` field is data, not the Steps API
+// rules: TB-A10
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0919 · plan', async ({ steps }) => {
+  const plan = { steps: ['a', 'b'] as string[] };
+  plan.steps.push(await steps.getText('x', 'HomePage'));
+  expect(plan.steps.join(',')).toContain('a');
+});

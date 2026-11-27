@@ -1,0 +1,12 @@
+// spec-lint fixture: conditional teardown through an API-only verb (api calls, status asserts, annotations, a pure helper taking a parameter) is bookkeeping
+import { test } from './fixtures/base';
+import { returnAllOrders } from './flows/orders';
+
+let owner = '';
+test.afterEach(async ({ steps }, testInfo) => {
+  if (owner) await returnAllOrders(steps, owner, testInfo);
+});
+test('TCAB-1203 · body', async ({ steps }) => {
+  owner = await steps.getText('owner', 'HomePage');
+  await steps.verifyPresence('heading', 'HomePage');
+});

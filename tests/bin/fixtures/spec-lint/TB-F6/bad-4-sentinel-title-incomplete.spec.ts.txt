@@ -1,0 +1,15 @@
+// spec-lint fixture: a [SENTINEL] title alone is not form (a): it needs test.fail(true, '<id>: …') and @known-defect
+// rules: TB-F6
+import { test } from './fixtures/base';
+
+// defect: SHOP-12-D1
+test('TCAB-0909 · [SENTINEL SHOP-12-D1] a cancelled order is not charged', async ({ steps }) => {
+  test.fail(); // EXPECT TB-F6
+  await steps.verifyText('chargeStatus', 'OrderPage', 'Not charged');
+});
+
+// defect: SHOP-12-D2
+test('TCAB-0910 · [SENTINEL SHOP-12-D2] a refund is shown @known-defect', async ({ steps }) => {
+  test.fail(true, 'the refund line is missing'); // EXPECT TB-F6
+  await steps.verifyPresence('refundLine', 'OrderPage');
+});

@@ -1,0 +1,13 @@
+// spec-lint fixture: for and while loops in a test body
+// rules: TB-F2
+import { test } from './fixtures/base';
+
+test('TCAB-0020 · six wrong pins lock the card', async ({ steps }) => {
+  for (let i = 0; i < 6; i++) await steps.fill('pin', 'CardPage', '0000'); // EXPECT TB-F2
+  let left = 3;
+  while (left > 0) { // EXPECT TB-F2
+    await steps.click('submit', 'CardPage');
+    left--;
+  }
+  await steps.verifyPresence('lockedBanner', 'CardPage');
+});

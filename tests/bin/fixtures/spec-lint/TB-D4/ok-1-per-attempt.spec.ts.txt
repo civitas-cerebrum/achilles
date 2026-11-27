@@ -1,0 +1,12 @@
+// spec-lint fixture: generated inside the test and a hook
+// rules: TB-D4
+import { test, expect } from './fixtures/base';
+
+let nonce: string;
+test.beforeEach(() => { nonce = crypto.randomUUID(); });
+
+test('TCAB-0062 · signs up', async ({ steps }) => {
+  const email = `user-${Date.now()}@example.com`;
+  await steps.fill('emailInput', 'SignupPage', email + nonce);
+  await steps.verifyPresence('welcome', 'SignupPage');
+});

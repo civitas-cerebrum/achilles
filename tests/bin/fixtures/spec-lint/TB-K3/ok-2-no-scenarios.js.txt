@@ -1,0 +1,7 @@
+// spec-lint fixture: plain vus and duration
+// place: tests/perf/no-scenarios.js.js
+// rules: TB-K3
+import http from 'k6/http';
+import { config } from './config.js';
+export const options = { vus: 5, duration: '1m', thresholds: { http_req_duration: ['p(95)<800'] } };
+export default function () { http.get(`${config.baseUrl}/api/items`); }

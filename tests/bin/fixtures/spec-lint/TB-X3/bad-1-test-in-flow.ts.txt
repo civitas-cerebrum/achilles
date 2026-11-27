@@ -1,0 +1,8 @@
+// spec-lint fixture: a flow module declares a test
+// place: tests/e2e/flows/login-flow.ts
+// rules: TB-X3
+import { test } from '../fixtures/base';
+
+test('login works', async ({ steps }) => { // EXPECT TB-X3
+  await steps.navigateTo('/login');
+});

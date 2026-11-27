@@ -1,0 +1,8 @@
+// spec-lint fixture: a per-test timeout and a raw call timeout
+// rules: TB-W1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0071 · slow', { timeout: 120_000 }, async ({ page, steps }) => { // EXPECT TB-W1/advisory
+  await page.goto('/', { timeout: 30_000 }); // EXPECT TB-W1/advisory
+  await steps.verifyPresence('heading', 'HomePage');
+});

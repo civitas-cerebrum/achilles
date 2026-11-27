@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // Asserts the tarball holds what a consumer loads (the CLIs, every skill, the agent definitions, the
 // schemas, the reporter, the plugin manifests and the adapter) and nothing from the test trees, the
-// lints, the inert hook specs or the package's own fixtures; and the declared engines.
+// lints, the inert hook specs or the package's own fixtures; the declared engines; and that the spec lint's
+// shipped framework tables (bin/lib/spec-lint/surfaces/*.json, equivalents.json) are present and well formed
+// (offline: `npm run build:equivalents` regenerates them from the registry).
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { checkShippedTables } from '../bin/lib/spec-lint/equivalents.mjs';
 
 // npm 11 prints an array, npm 12 an object keyed by package name.
 const report = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { encoding: 'utf8' }));
@@ -22,12 +25,15 @@ for (const f of readdirSync('claude-code/lib')) required.add(`claude-code/lib/${
 for (const f of readdirSync('claude-code/data')) required.add(`claude-code/data/${f}`);
 for (const f of readdirSync('schemas')) if (/\.(json|txt)$/.test(f)) required.add(`schemas/${f}`);
 for (const f of readdirSync('schemas/subagent-returns')) if (f.endsWith('.json')) required.add(`schemas/subagent-returns/${f}`);
+for (const d of ['bin/lib/spec-lint', 'bin/lib/spec-lint/rules', 'bin/lib/spec-lint/surfaces']) if (existsSync(d)) for (const f of readdirSync(d)) if (/\.(mjs|json)$/.test(f)) required.add(`${d}/${f}`);
 
 const missing = [...required].filter((p) => !packed.has(p)).sort();
 const forbidden = [...packed].filter((p) => /(^|\/)tests?\/|fixtures\/|^scripts\/lint|^scripts\/check-pack|node_modules\/|^\.claude-plugin\/types\//.test(p)).sort();
 const engines = pkg.engines?.node === '>=20' ? [] : [`engines.node is ${JSON.stringify(pkg.engines?.node)}, expected ">=20"`];
+const tables = checkShippedTables();
 for (const p of missing) console.error(`check-pack: MISSING ${p}`);
 for (const p of forbidden) console.error(`check-pack: FORBIDDEN ${p}`);
 for (const e of engines) console.error(`check-pack: ${e}`);
+for (const t of tables) console.error(`check-pack: spec-lint tables: ${t}`);
 console.log(`check-pack: ${packed.size} files, ${missing.length} missing, ${forbidden.length} forbidden`);
-process.exit(missing.length || forbidden.length || engines.length ? 1 : 0);
+process.exit(missing.length || forbidden.length || engines.length || tables.length ? 1 : 0);

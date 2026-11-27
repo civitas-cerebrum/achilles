@@ -1,0 +1,7 @@
+import { WebElement } from '@civitas-cerebrum/element-interactions';
+import { test } from './fixtures/base';
+
+test('TC-0006 · opens the hover menu', async ({ page, repo, interactions }) => {
+  // achilles-allow TB-A1 -- the hover-intent submenu needs a raw locator chain [gap: FG-7]
+  await interactions.interact.hover(new WebElement(page.locator(repo.getSelector('submenu', 'NavPage')))); // EXPECT TB-A1/waived
+});

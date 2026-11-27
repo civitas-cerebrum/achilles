@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "specs.shape": {
+      "titleIdPattern": "^[A-Z]{3}-\\d{2} — ",
+      "scenarioDocs": [
+        "tests/e2e/docs/scenarios/*.md"
+      ]
+    }
+  }
+}

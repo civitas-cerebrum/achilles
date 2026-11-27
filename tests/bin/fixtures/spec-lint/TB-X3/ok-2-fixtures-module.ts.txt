@@ -1,0 +1,10 @@
+// spec-lint fixture: a fixtures module with extend and a fixture-level hook declares no tests
+// place: tests/e2e/fixtures/base.ts
+// rules: TB-X3
+import { test as base } from '@playwright/test';
+import { baseFixture } from '@civitas-cerebrum/element-interactions';
+
+export const test = baseFixture(base, 'tests/e2e/page-repository.json').extend({
+  account: async ({}, use) => { await use({ email: 'a@example.com' }); },
+});
+test.beforeEach(async ({ steps }) => { await steps.navigateTo('/'); });

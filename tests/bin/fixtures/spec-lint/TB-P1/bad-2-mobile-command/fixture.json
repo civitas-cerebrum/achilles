@@ -1,0 +1,6 @@
+{
+  "description": "a mobile: command string and the global $",
+  "rules": [
+    "TB-P1"
+  ]
+}

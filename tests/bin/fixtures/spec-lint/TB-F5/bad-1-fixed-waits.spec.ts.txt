@@ -1,0 +1,15 @@
+// spec-lint fixture: waitForTimeout (unwaivable: the waiver does not apply), page.pause, an awaited
+// promise-sleep and an in-file sleep helper
+// rules: TB-F5
+import { test } from './fixtures/base';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test('TCAB-0050 · fixed waits', async ({ page, steps }) => {
+  // achilles-allow TB-F5 -- the animation has no state the Steps API can wait for
+  await page.waitForTimeout(500); // EXPECT TB-F5/blocking
+  await page.pause(); // EXPECT TB-F5/blocking
+  await new Promise((r) => setTimeout(r, 300)); // EXPECT TB-F5/blocking
+  await sleep(200); // EXPECT TB-F5/blocking
+  await steps.verifyPresence('heading', 'HomePage');
+});

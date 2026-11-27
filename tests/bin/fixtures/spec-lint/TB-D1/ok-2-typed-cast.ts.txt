@@ -1,0 +1,5 @@
+// spec-lint fixture: a cast to a real type is not an escape
+// place: tests/e2e/data/orders.ts
+// rules: TB-D1
+type Order = { id: string };
+export const parse = (s: string) => JSON.parse(s) as Order;

@@ -1,0 +1,6 @@
+// spec-lint fixture: a database helper in a support module is not TB-N4
+// place: tests/e2e/support/db.ts
+// rules: TB-N4
+import { Client } from 'pg';
+
+export const connect = () => new Client();

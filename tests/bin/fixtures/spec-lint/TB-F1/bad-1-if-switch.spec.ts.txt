@@ -1,0 +1,20 @@
+// spec-lint fixture: an if, an else-if chain and a switch whose branches act or assert, in a test and a hook
+// rules: TB-F1
+import { test } from './fixtures/base';
+
+test.beforeEach(async ({ steps }) => {
+  if (await steps.isVisible('cookieWall', 'HomePage')) await steps.click('accept', 'HomePage'); // EXPECT TB-F1
+});
+
+test('TCAB-0001 · branches decide the test', async ({ steps }) => {
+  const shown = await steps.isVisible('banner', 'HomePage');
+  if (shown) { // EXPECT TB-F1
+    await steps.verifyText('banner', 'HomePage', 'Sale');
+  } else if (!shown) {
+    await steps.click('open', 'HomePage');
+  }
+  switch (shown) { // EXPECT TB-F1
+    case true: await steps.click('close', 'HomePage'); break;
+    default: break;
+  }
+});

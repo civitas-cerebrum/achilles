@@ -18,6 +18,7 @@ import { basename, isAbsolute, normalize, relative, resolve, within } from './po
 import { ATTRIBUTION, OUTBOUND_REF, unreachableDeny, unreachableFiles } from './attribution'
 import { contentSecret } from './secrets'
 import { commands, gitCall, isReader, nestedCommand, unresolved, type Command } from './shell'
+import { shellWrites } from './shell-writes'
 
 // Hook 1, the Bash judge: one parsed-command model, small judges. Denies only what is
 // irreversible or dangerous (a hook or signing bypass, AI attribution on a commit, PR or issue, a
@@ -37,7 +38,7 @@ const HARD_MAX_VUS = 1000
 const HARD_MAX_DURATION_S = 3600
 const PERF_CONFIG = 'tests/perf/perf-onboarding.config.json'
 
-type Verdict = { deny?: string; notes: string[]; command: string }
+type Verdict = { deny?: string; notes: string[]; command: string; writes?: string[] }
 
 type Ctx = { root: string; home: string; who: Who; rules: FactoryRules | undefined; text: string }
 
@@ -506,6 +507,12 @@ export async function judgeBash($: EngineInterface, command: string, w: Who): Pr
   }
   const ctx: Ctx = { root, home, who: w, rules, text: command }
   const all = expand(command, root, home)
+  // Record-only input for the touched list: a parser surprise must never become a refusal.
+  try {
+    v.writes = shellWrites(all, home)
+  } catch {
+    v.writes = []
+  }
   const inserts: { at: number; replaceTo?: number; text: string }[] = []
   for (const j of all) {
     await judgeGit($, ctx, j, v)

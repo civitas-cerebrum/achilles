@@ -1,0 +1,7 @@
+// spec-lint fixture: options without thresholds
+// place: tests/perf/no-thresholds.js.js
+// rules: TB-K2
+import http from 'k6/http';
+import { config } from './config.js';
+export const options = { vus: 50, duration: '5m' }; // EXPECT TB-K2/advisory
+export default function () { http.get(`${config.baseUrl}/api/items`); }

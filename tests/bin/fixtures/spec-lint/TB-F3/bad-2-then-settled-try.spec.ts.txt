@@ -1,0 +1,18 @@
+// spec-lint fixture: .then with a rejection handler, allSettled, a try that swallows (advisory), try/finally (advisory)
+// rules: TB-F3
+import { test } from './fixtures/base';
+
+test('TCAB-0031 · other swallows', async ({ steps }) => {
+  await steps.click('pay', 'CheckoutPage').then(() => undefined, () => undefined); // EXPECT TB-F3/blocking
+  await Promise.allSettled([steps.verifyPresence('receipt', 'OrderPage')]); // EXPECT TB-F3/blocking
+  try { // EXPECT TB-F3/advisory
+    await steps.verifyPresence('receipt', 'OrderPage');
+  } catch {
+    // tolerated
+  }
+  try { // EXPECT TB-F3/advisory
+    await steps.click('export', 'OrderPage');
+  } finally {
+    await steps.click('close', 'OrderPage');
+  }
+});

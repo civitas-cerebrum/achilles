@@ -11,7 +11,9 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Type } from '@earendil-works/pi-ai'
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
-import { registerGuards } from './guards'
+import { engine, registerGuards } from './guards'
+import { complianceParagraph } from './compliance'
+import { headOf } from '../claude-code/hooks/spec-lint-child'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const ORCHESTRATOR = 'achilles-orchestrator'
@@ -45,8 +47,8 @@ const children = new Set<ChildProcess>()
 // The parent's thinking level, for an agent whose definition names no effort (set when the extension loads).
 let parentThinking: () => string | undefined = () => undefined
 
-/** Runs `role` on `prompt` in its own pi process and resolves to its final message, or a BLOCKED one. */
-function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: AbortSignal, run = process.env.ACHILLES_RUN): Promise<string> {
+/** Runs `role` on `prompt` in its own pi process and resolves to its final message (or a BLOCKED one) and the process id. */
+function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: AbortSignal, run = process.env.ACHILLES_RUN): Promise<{ text: string; pid?: number }> {
   const agent = agentFile(role)
   const dir = mkdtempSync(join(tmpdir(), 'achilles-pi-'))
   const system = join(dir, 'system.md')
@@ -93,13 +95,13 @@ function runAgent(role: string, prompt: string, ctx: ExtensionContext, signal?: 
       children.delete(proc)
       signal?.removeEventListener('abort', kill)
       rmSync(dir, { recursive: true, force: true })
-      resolve(code === 0 && text ? text : `BLOCKED\n${role} ended without a final message (${signal?.aborted ? 'aborted' : error || `exit code ${code}`}).${text ? `\nLast message:\n${text}` : ''}${stderr.trim() ? `\n${stderr.trim()}` : ''}`)
+      resolve({ pid: proc.pid, text: code === 0 && text ? text : `BLOCKED\n${role} ended without a final message (${signal?.aborted ? 'aborted' : error || `exit code ${code}`}).${text ? `\nLast message:\n${text}` : ''}${stderr.trim() ? `\n${stderr.trim()}` : ''}` })
     })
     // A pi that cannot start (not on PATH, not executable) emits no close: answer here.
     proc.on('error', err => {
       children.delete(proc)
       rmSync(dir, { recursive: true, force: true })
-      resolve(`BLOCKED\n${role} could not start: ${err.message}`)
+      resolve({ text: `BLOCKED\n${role} could not start: ${err.message}` })
     })
   })
 }
@@ -123,7 +125,7 @@ async function delegate(pi: ExtensionAPI, ctx: ExtensionContext, task: string, c
   const lead = resume ? `Resume run ${id}: read ${dir}/resume.json before anything else and continue from where it stopped, in the same state directory.\n` : ''
   const prompt = `[achilles run=${id}]\n${lead}Run ${id}. State directory: ${dir}/ (briefs/<slug>.md, reports/<slug>.md, resume.json).\n\nTask: ${task}${context ? `\n\nContext:\n${context}` : ''}`
   active.add(id)
-  const run = runAgent(ORCHESTRATOR, prompt, ctx, undefined, id).then(text => {
+  const run = runAgent(ORCHESTRATOR, prompt, ctx, undefined, id).then(({ text }) => {
     active.delete(id)
     ctx.ui.setStatus('achilles', undefined)
     return `${HANDBACK_LEAD(id)}\n\nTask: ${task}\n\n${TERMINAL.test(text) ? text : `BLOCKED\nThe orchestrator ended without a hand-back word.\n${text}`}`
@@ -186,8 +188,13 @@ export default function (pi: ExtensionAPI) {
       async execute(_id, params, signal, _update, ctx) {
         const expert = params.subagent_type.replace(/^achilles:/, '').replace(/^(?!achilles-)/, 'achilles-')
         if (!EXPERTS.includes(expert)) throw new Error(`Unknown expert "${params.subagent_type}". Dispatch one of ${EXPERTS.join(', ')}.`)
-        const text = await runAgent(expert, params.prompt, ctx, signal)
-        return { content: [{ type: 'text', text }], details: undefined }
+        // An author's hand-back is linted against the commit its dispatch started from, so its own commits count.
+        const author = expert === 'achilles-author'
+        const head = author ? await headOf(engine(ctx.cwd, ROOT), ctx.cwd).catch(() => undefined) : undefined
+        const { text, pid } = await runAgent(expert, params.prompt, ctx, signal)
+        // The files the author's process wrote, linted with touched-test semantics: a short paragraph, notes only.
+        const compliance = author ? await complianceParagraph(engine(ctx.cwd, ROOT), ctx.cwd, process.env.ACHILLES_RUN ?? 'pi', pid, head).catch(() => undefined) : undefined
+        return { content: [{ type: 'text', text: compliance ? `${text}\n\n${compliance}` : text }], details: undefined }
       },
     })
   }

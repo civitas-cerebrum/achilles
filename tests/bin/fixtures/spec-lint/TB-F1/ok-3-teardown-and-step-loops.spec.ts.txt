@@ -1,0 +1,26 @@
+// spec-lint fixture: conditional teardown through an API-only verb in an after hook, an if inside a loop inside a step, a local function called twice
+// rules: TB-F1
+import { test } from './fixtures/base';
+
+async function returnOrder(steps, id: string) { await steps.apiPost(`/orders/${id}/return`, {}); }
+
+let order = '';
+test.afterEach(async ({ steps }) => {
+  if (order) await returnOrder(steps, order);
+});
+test.afterAll(async ({ request }) => {
+  if (order) await request.delete(`/api/orders/${order}`);
+});
+
+test('TCAB-0902 · body', async ({ steps }) => {
+  order = await steps.getText('orderId', 'OrderPage');
+  await test.step('rows', async () => {
+    for (const row of ['a', 'b']) {
+      if (row === 'a') await steps.click(row, 'OrderPage');
+    }
+  });
+  const open = async (name: string) => { if (name) await steps.click(name, 'OrderPage'); };
+  await open('x');
+  await open('y');
+  await steps.verifyPresence('heading', 'OrderPage');
+});

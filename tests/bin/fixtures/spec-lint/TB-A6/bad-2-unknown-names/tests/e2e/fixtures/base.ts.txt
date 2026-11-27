@@ -1,0 +1,10 @@
+// spec-lint fixture: a fixture that builds the repository from a JSON module it imports
+import { test as base } from '@playwright/test';
+import { ElementRepository } from '@civitas-cerebrum/element-repository';
+import pages from '../page-repository.json';
+
+export const test = base.extend<{ repo: ElementRepository }>({
+  repo: async ({ page }, use) => {
+    await use(new ElementRepository(page, pages));
+  },
+});

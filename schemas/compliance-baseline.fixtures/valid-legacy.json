@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "ruleset": "tb-1",
+  "engine": "0.2.0",
+  "createdFrom": "0123456789abcdef0123456789abcdef01234567",
+  "idPattern": "^\\s*[[(]?([A-Z]{2,5}-[0-9]{2,4})[\\])]?(?=[\\s:·—|-]|$)",
+  "hook": { "mode": "githooks", "path": ".githooks/pre-commit" },
+  "totals": { "TB-A1": 4, "TB-A2": 2, "TB-S7": 1 },
+  "files": {
+    "tests/e2e/cart.spec.ts": {
+      "counts": { "TB-A1": 4, "TB-A2": 2, "TB-S7": 1 },
+      "waived": { "TB-A2": 1 },
+      "tests": { "CRT-01": { "TB-A1": 3 }, "adds an item#1": { "TB-A1": 1, "TB-A2": 2 } },
+      "describes": { "cart > checkout": { "TB-S7": 1 } },
+      "fileScope": {}
+    }
+  }
+}

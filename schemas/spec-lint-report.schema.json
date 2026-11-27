@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/spec-lint-report.schema.json",
+  "title": "achilles-spec-lint report",
+  "description": "What `achilles-spec-lint --json` prints: the Steps surface used, every linted file with its tests, every finding against the test baseline (skills/achilles-orchestrator/references/test-baseline.md) and the project-level findings. `ok` is false when an unwaived blocking finding exists (in touched code, when a change is given).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tool", "version", "ok", "stepsSurface", "files", "findings", "project", "summary", "timing"],
+  "properties": {
+    "tool": { "const": "achilles-spec-lint" },
+    "version": { "type": "string", "minLength": 1 },
+    "ok": { "type": "boolean" },
+    "stepsSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "version", "source"],
+      "properties": {
+        "package": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "source": { "enum": ["worktree", "workspace", "checkout", "snapshot"], "description": "where the surface came from: the project's node_modules, a workspace root's above it (hoisted), the main checkout's, or the snapshot shipped for the pinned release" }
+      }
+    },
+    "change": {
+      "type": "object",
+      "description": "the change the run compared against (--staged, --base or --stdin); findings then carry `touched`, and only touched blocking findings make `ok` false",
+      "additionalProperties": false,
+      "required": ["from", "files"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "files": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "ids": {
+      "type": "array",
+      "description": "--suite: every test id of the suite with its file, line and title",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "file", "line", "title"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string" }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "blob", "parsed", "tests"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["spec", "support", "k6", "bundle"] },
+          "blob": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$", "description": "git's object id of the content (sha1, or sha256 in a sha256 repository)" },
+          "parsed": { "type": "boolean" },
+          "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } },
+          "followedFrom": { "type": "string", "description": "--suite: the spec whose imports led to this module" }
+        }
+      }
+    },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "project": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "severity", "message", "do", "why"],
+        "properties": {
+          "rule": { "type": "string", "pattern": "^(TB-[A-Z][0-9]+[a-z]?|scope|surface)$" },
+          "severity": { "enum": ["blocking", "advisory"] },
+          "file": { "type": "string" },
+          "message": { "type": "string", "minLength": 1 },
+          "do": { "type": "string", "minLength": 1 },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "specs", "support", "blocking", "advisory", "waived"],
+      "properties": {
+        "files": { "type": "integer", "minimum": 0 },
+        "specs": { "type": "integer", "minimum": 0 },
+        "support": { "type": "integer", "minimum": 0 },
+        "blocking": { "type": "integer", "minimum": 0 },
+        "advisory": { "type": "integer", "minimum": 0 },
+        "waived": { "type": "integer", "minimum": 0 },
+        "legacy": { "type": "integer", "minimum": 0, "description": "blocking findings outside the touched code (not charged to the change)" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ms"],
+      "properties": { "ms": { "type": "integer", "minimum": 0 } }
+    }
+  },
+  "$defs": {
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "id", "line", "endLine"],
+      "properties": {
+        "title": { "type": "string" },
+        "id": { "type": ["string", "null"] },
+        "line": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "severity", "file", "line", "column", "region", "message", "do", "why", "test", "waived"],
+      "properties": {
+        "rule": { "type": "string", "pattern": "^TB-[A-Z][0-9]+[a-z]?$" },
+        "severity": { "enum": ["blocking", "advisory"] },
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 },
+        "region": { "enum": ["module", "describe", "test", "hook", "helper", "fixture", "spec-fixture"] },
+        "message": { "type": "string", "minLength": 1 },
+        "do": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "pattern": "^skills/achilles-orchestrator/references/test-baseline\\.md#" },
+        "test": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["title", "id", "line"],
+              "properties": { "title": { "type": "string" }, "id": { "type": ["string", "null"] }, "line": { "type": "integer", "minimum": 1 } }
+            }
+          ]
+        },
+        "waived": { "type": "boolean" },
+        "waiver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "line"],
+          "properties": { "reason": { "type": "string", "minLength": 15 }, "gap": { "type": "string", "pattern": "^FG-[0-9]+$" }, "line": { "type": "integer", "minimum": 1 } }
+        },
+        "data": { "type": "object" },
+        "followedFrom": { "type": "string", "description": "the spec whose imports led to this module (--suite)" },
+        "touched": { "type": "boolean", "description": "the finding sits in a test or construct the change touches (--staged / --base)" }
+      },
+      "if": { "properties": { "waived": { "const": true } } },
+      "then": { "properties": { "waiver": true }, "required": ["waiver"] }
+    }
+  }
+}

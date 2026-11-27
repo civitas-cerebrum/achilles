@@ -1,0 +1,6 @@
+{
+  "description": "a literal route where a route constant holds the same path",
+  "rules": [
+    "TB-D3"
+  ]
+}

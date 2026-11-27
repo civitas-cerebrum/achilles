@@ -1,0 +1,11 @@
+// spec-lint fixture: a test.step inside another test.step
+// rules: TB-S4
+import { test, expect } from './fixtures/base';
+
+test('TCCK-000101 · checkout', async ({ steps }) => {
+  await test.step('checkout', async () => { // EXPECT TB-S4/advisory
+    await test.step('pay', async () => { // EXPECT TB-S4/blocking
+      await steps.click('payButton', 'CheckoutPage');
+    });
+  });
+});

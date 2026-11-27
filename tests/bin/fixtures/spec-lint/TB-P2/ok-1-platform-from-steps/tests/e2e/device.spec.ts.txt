@@ -1,0 +1,7 @@
+// spec-lint fixture: no capability literal
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0132 · starts', async ({ steps }) => {
+  test.skip(steps.platform !== 'android', 'the hardware back key exists only on Android');
+  await steps.verifyPresence('heading', 'HomeScreen');
+});

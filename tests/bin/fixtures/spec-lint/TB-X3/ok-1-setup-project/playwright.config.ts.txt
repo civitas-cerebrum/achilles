@@ -1,0 +1,7 @@
+export default {
+  testDir: 'tests/e2e',
+  projects: [
+    { name: 'setup', testMatch: /.*\.setup\.ts/ },
+    { name: 'e2e', dependencies: ['setup'] },
+  ],
+};

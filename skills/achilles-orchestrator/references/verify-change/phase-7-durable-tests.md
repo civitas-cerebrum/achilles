@@ -13,18 +13,19 @@ suite proves nothing as evidence either.
 
 For each defect whose verdict in [phase-7a-defect-confirmation](phase-7a-defect-confirmation.md) is `bug`, write a **sentinel**: assert the *correct* behaviour and mark it `test.fail()`. It fails today, keeps the suite green, and flips to a loud "expected to fail but passed" the moment someone fixes the bug, which is the signal to delete it.
 
-**A sentinel cites where the defect is recorded**: the tracker issue key once filed, and until then its entry in `docs/evidence/<ticket>/defect-audit.md`. The run's own notes or knowledge base are not a record. A `real-in-source`, `spec-ambiguity` or `not-a-bug` verdict never gets a sentinel; an existing sentinel whose defect gets one of those verdicts is removed in the same pass.
+**A sentinel cites where the defect is recorded** in its own `// defect: <ref>` line: the tracker issue key once filed, and until then its defect id or its entry in `docs/evidence/<ticket>/defect-audit.md` (pointer grammar: [`../test-baseline.md`](../test-baseline.md#defect-pointers-and-sentinels)). The run's own notes or knowledge base are not a record. A `real-in-source`, `spec-ambiguity` or `not-a-bug` verdict never gets a sentinel; an existing sentinel whose defect gets one of those verdicts is removed in the same pass.
 
-**Scope of the `test.fail()` licence.** This section is the ONE sanctioned use of `test.fail()` in the whole suite: a defect sentinel **tied to a tracked ticket**, with a removed-when-fixed lifecycle (the "flips loud → delete" mechanism above IS the lifecycle). Where no ticket owns the marker it is banned: coverage-expansion and its adversarial passes never commit `test.fail()`; their suspected bugs stay ledger-only (see `../../workflows/expand-coverage.md` §"Not this workflow"; resolution record: `../test-composition-standards.md` §3.2).
+**Scope of the `test.fail()` licence.** A sentinel written here takes form (a) of the two accepted sentinel forms ([TB-F6](../test-baseline.md#tb-f6)), **tied to a resolvable defect record**, with a removed-when-fixed lifecycle (the "flips loud → delete" mechanism above IS the lifecycle). Where no defect record owns the marker it is banned: coverage-expansion and its adversarial passes never commit `test.fail()`; their suspected bugs stay ledger-only (see `../../workflows/expand-coverage.md` §"Not this workflow"; resolution record: `../test-composition-standards.md` §3.2).
 
 ```ts
+// defect: <TICKET>-D1
 test('TCSG-000110 · [SENTINEL <TICKET>-D1] <correct behaviour> @known-defect', async ({ steps }) => {
-  test.fail(true, 'Known defect: <what is wrong>. Delete this sentinel once fixed.')
+  test.fail(true, '<TICKET>-D1: <what is wrong>. Delete this sentinel once fixed.')
   await steps.verifyCount('stateMarker', 'SomePage', { exactly: 0 })
 })
 ```
 
-Sentinels carry the `@known-defect` tag (canonical: `../test-identity.md` §2) so the repair-suite workflow and `failure-diagnosis` exempt them from heal and rerun cycles; the tag marks the intentional relationship to a filed defect; `test.fail()` only inverts the reporting. The title's leading test ID follows `test-identity.md` §1.
+Sentinels carry the `@known-defect` tag (canonical: `../test-identity.md` §2) so the repair-suite workflow and `failure-diagnosis` exempt them from heal and rerun cycles; the tag marks the intentional relationship to a filed defect; `test.fail()` only inverts the reporting. The title's leading test ID follows [TB-I1](../test-baseline.md#tb-i1).
 
 **Pick a durable observable.** A sentinel is worthless if the app erases its own evidence; see the session-storage trap below.
 

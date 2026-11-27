@@ -1,0 +1,10 @@
+// spec-lint fixture: a spec that types the repository path again to build its own repository
+import { test } from './fixtures/base';
+import { ElementRepository } from '@civitas-cerebrum/element-repository';
+
+test('TCAB-0631 · the home page opens in a second tab', async ({ steps, context }) => {
+  const other = await context.newPage();
+  const repo = new ElementRepository(other, 'tests/e2e/page-repository.json'); // EXPECT TB-A6/advisory
+  await steps.verifyPresence('heading', 'HomePage');
+  void repo;
+});

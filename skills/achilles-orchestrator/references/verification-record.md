@@ -38,7 +38,7 @@ The verifier, an agent that did not write or review the change, writes `docs/evi
 ## Gates
 - <type check, unit + conventions guard, hook fixture cases, scenario lint: result and counts>
 - Secrets: <evidence dirs scanned by env variable NAME; no values printed>
-- Readability: <spec-shape.md check: flat, steps visible, oracle call present, no test that cannot fail>
+- Readability: <spec-shape.md check against the test-baseline.md rules it lists (TB-S1, TB-R1, TB-R2, TB-R4, TB-R5 and the rest of that checklist)>
 
 ## Runs
 | Spec file | Context | Run label (`--output`) | Result | Resources (id → final state) |

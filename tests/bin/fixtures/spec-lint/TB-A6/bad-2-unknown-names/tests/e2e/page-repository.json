@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {
+      "name": "CartPage",
+      "elements": [
+        { "elementName": "itemRow", "selector": { "css": "li.item" }, "list": true },
+        { "elementName": "itemTitle", "selector": { "css": ".title" } },
+        { "elementName": "checkoutButton", "selector": { "role": "button", "name": "Checkout" } }
+      ]
+    }
+  ]
+}

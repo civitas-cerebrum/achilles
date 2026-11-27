@@ -1,0 +1,7 @@
+// spec-lint fixture: steps only
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0122 · signs in', async ({ steps }) => {
+  await steps.click('loginButton', 'LoginScreen');
+  await steps.verifyPresence('heading', 'HomeScreen');
+});

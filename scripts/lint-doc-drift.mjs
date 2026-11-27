@@ -12,6 +12,10 @@
 //  11 anchors             every cited §"Heading" exists in the cited file
 //  12 role-dispatch-sites role names in prose ↔ the six agents; no dispatch-prefix grammar
 //  14 prose               em-dash density per file; banned stock phrases
+//  15 test-baseline       TB rule anchors and citations resolve; no skill restates a rule's normative sentence;
+//                         every mechanical rule has an achilles-spec-lint rule and fixtures
+//  16 since-labels        every "<version>+" label of the Steps API reference names the first published release
+//                         of its Steps methods (the shipped surfaces under bin/lib/spec-lint/surfaces/)
 //
 // Checks 3, 4, 7, 9 and 13 (hook manifest, role map, mandate ledger, activation
 // list, factory manifest) left with the bash hook runtime and the role kernel
@@ -28,9 +32,11 @@ import * as agents from './lint/agents.mjs';
 import * as anchors from './lint/anchors.mjs';
 import * as roleDispatchSites from './lint/role-dispatch-sites.mjs';
 import * as prose from './lint/prose.mjs';
+import * as testBaseline from './lint/test-baseline.mjs';
+import * as sinceLabels from './lint/since-labels.mjs';
 
 const { report, state } = makeReport();
-for (const check of [registry, links, hookRefs, docsCounts, optInSurfaces, agents, anchors, roleDispatchSites, prose]) check.run(report);
+for (const check of [registry, links, hookRefs, docsCounts, optInSurfaces, agents, anchors, roleDispatchSites, prose, testBaseline, sinceLabels]) check.run(report);
 
 if (state.failed) {
   console.error('\nlint-doc-drift: drift detected (see [FAIL] lines above).');

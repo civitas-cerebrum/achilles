@@ -1,0 +1,14 @@
+// spec-lint fixture: the in-file helpers the test calls assert nothing either
+// rules: TB-R4
+import { test, expect } from './fixtures/base';
+
+async function openCart(steps) { await steps.click('cartButton', 'HeaderPage'); }
+
+test('TCAB-0002 · opens the cart', async ({ steps }) => { // EXPECT TB-R4/advisory
+  await openCart(steps);
+});
+
+test('TCAB-0003 · opens the cart twice', async ({ steps }) => { // EXPECT TB-R4/advisory
+  await openCart(steps);
+  await openCart(steps);
+});

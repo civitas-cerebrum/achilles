@@ -1,0 +1,2 @@
+// a route constant module
+export const Routes = { LOGIN: '/login' };

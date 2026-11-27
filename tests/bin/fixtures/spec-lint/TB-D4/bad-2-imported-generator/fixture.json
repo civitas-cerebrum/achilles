@@ -1,0 +1,6 @@
+{
+  "description": "an imported generator called at module scope, and a data module generating at its module scope",
+  "rules": [
+    "TB-D4"
+  ]
+}

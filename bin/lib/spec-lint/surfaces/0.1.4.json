@@ -1,0 +1,373 @@
+{
+  "package": "@civitas-cerebrum/element-interactions",
+  "version": "0.1.4",
+  "source": "npm",
+  "methods": [
+    "backOrForward",
+    "check",
+    "cleanEmails",
+    "clearInput",
+    "click",
+    "clickIfPresent",
+    "clickListedElement",
+    "clickNth",
+    "clickRandom",
+    "clickWithoutScrolling",
+    "closeTab",
+    "doubleClick",
+    "dragAndDrop",
+    "dragAndDropListedElement",
+    "fill",
+    "fillForm",
+    "getAll",
+    "getAttribute",
+    "getCount",
+    "getCssProperty",
+    "getInputValue",
+    "getListedElementData",
+    "getTabCount",
+    "getText",
+    "hover",
+    "markEmail",
+    "navigateTo",
+    "pressKey",
+    "receiveAllEmails",
+    "receiveEmail",
+    "refresh",
+    "retryUntil",
+    "rightClick",
+    "screenshot",
+    "scrollIntoView",
+    "selectDropdown",
+    "selectMultiple",
+    "sendEmail",
+    "setSliderValue",
+    "setViewport",
+    "switchToNewTab",
+    "typeSequentially",
+    "uncheck",
+    "uploadFile",
+    "verifyAbsence",
+    "verifyAttribute",
+    "verifyCount",
+    "verifyCssProperty",
+    "verifyImages",
+    "verifyInputValue",
+    "verifyListOrder",
+    "verifyListedElement",
+    "verifyOrder",
+    "verifyPresence",
+    "verifyState",
+    "verifyTabCount",
+    "verifyText",
+    "verifyTextContains",
+    "verifyUrlContains",
+    "waitAndClick",
+    "waitForNetworkIdle",
+    "waitForResponse",
+    "waitForState"
+  ],
+  "properties": [],
+  "params": {
+    "backOrForward": [
+      "direction"
+    ],
+    "check": [
+      "pageName",
+      "elementName"
+    ],
+    "cleanEmails": [
+      "options"
+    ],
+    "clearInput": [
+      "pageName",
+      "elementName"
+    ],
+    "click": [
+      "pageName",
+      "elementName"
+    ],
+    "clickIfPresent": [
+      "pageName",
+      "elementName"
+    ],
+    "clickListedElement": [
+      "pageName",
+      "elementName",
+      "options"
+    ],
+    "clickNth": [
+      "pageName",
+      "elementName",
+      "index"
+    ],
+    "clickRandom": [
+      "pageName",
+      "elementName"
+    ],
+    "clickWithoutScrolling": [
+      "pageName",
+      "elementName"
+    ],
+    "closeTab": [
+      "targetPage"
+    ],
+    "doubleClick": [
+      "pageName",
+      "elementName"
+    ],
+    "dragAndDrop": [
+      "pageName",
+      "elementName",
+      "options"
+    ],
+    "dragAndDropListedElement": [
+      "pageName",
+      "elementName",
+      "elementText",
+      "options"
+    ],
+    "fill": [
+      "pageName",
+      "elementName",
+      "text"
+    ],
+    "fillForm": [
+      "pageName",
+      "fields"
+    ],
+    "getAll": [
+      "pageName",
+      "elementName",
+      "options"
+    ],
+    "getAttribute": [
+      "pageName",
+      "elementName",
+      "attributeName"
+    ],
+    "getCount": [
+      "pageName",
+      "elementName"
+    ],
+    "getCssProperty": [
+      "pageName",
+      "elementName",
+      "property"
+    ],
+    "getInputValue": [
+      "pageName",
+      "elementName"
+    ],
+    "getListedElementData": [
+      "pageName",
+      "elementName",
+      "options"
+    ],
+    "getTabCount": [],
+    "getText": [
+      "pageName",
+      "elementName"
+    ],
+    "hover": [
+      "pageName",
+      "elementName"
+    ],
+    "markEmail": [
+      "action",
+      "options"
+    ],
+    "navigateTo": [
+      "url"
+    ],
+    "pressKey": [
+      "key"
+    ],
+    "receiveAllEmails": [
+      "options"
+    ],
+    "receiveEmail": [
+      "options"
+    ],
+    "refresh": [],
+    "retryUntil": [
+      "action",
+      "verification",
+      "maxRetries",
+      "delayMs"
+    ],
+    "rightClick": [
+      "pageName",
+      "elementName"
+    ],
+    "screenshot": [
+      "pageNameOrOptions",
+      "elementName",
+      "options"
+    ],
+    "scrollIntoView": [
+      "pageName",
+      "elementName"
+    ],
+    "selectDropdown": [
+      "pageName",
+      "elementName",
+      "options"
+    ],
+    "selectMultiple": [
+      "pageName",
+      "elementName",
+      "values"
+    ],
+    "sendEmail": [
+      "options"
+    ],
+    "setSliderValue": [
+      "pageName",
+      "elementName",
+      "value"
+    ],
+    "setViewport": [
+      "width",
+      "height"
+    ],
+    "switchToNewTab": [
+      "action"
+    ],
+    "typeSequentially": [
+      "pageName",
+      "elementName",
+      "text",
+      "delay"
+    ],
+    "uncheck": [
+      "pageName",
+      "elementName"
+    ],
+    "uploadFile": [
+      "pageName",
+      "elementName",
+      "filePath"
+    ],
+    "verifyAbsence": [
+      "pageName",
+      "elementName"
+    ],
+    "verifyAttribute": [
+      "pageName",
+      "elementName",
+      "attributeName",
+      "expectedValue"
+    ],
+    "verifyCount": [
+      "pageName",
+      "elementName",
+      "options"
+    ],
+    "verifyCssProperty": [
+      "pageName",
+      "elementName",
+      "property",
+      "expectedValue"
+    ],
+    "verifyImages": [
+      "pageName",
+      "elementName",
+      "scroll"
+    ],
+    "verifyInputValue": [
+      "pageName",
+      "elementName",
+      "expectedValue"
+    ],
+    "verifyListOrder": [
+      "pageName",
+      "elementName",
+      "direction"
+    ],
+    "verifyListedElement": [
+      "pageName",
+      "elementName",
+      "options"
+    ],
+    "verifyOrder": [
+      "pageName",
+      "elementName",
+      "expectedTexts"
+    ],
+    "verifyPresence": [
+      "pageName",
+      "elementName"
+    ],
+    "verifyState": [
+      "pageName",
+      "elementName",
+      "state",
+      "timeout"
+    ],
+    "verifyTabCount": [
+      "expectedCount"
+    ],
+    "verifyText": [
+      "pageName",
+      "elementName",
+      "expectedText",
+      "options"
+    ],
+    "verifyTextContains": [
+      "pageName",
+      "elementName",
+      "expectedText"
+    ],
+    "verifyUrlContains": [
+      "text"
+    ],
+    "waitAndClick": [
+      "pageName",
+      "elementName",
+      "state"
+    ],
+    "waitForNetworkIdle": [],
+    "waitForResponse": [
+      "urlPattern",
+      "action"
+    ],
+    "waitForState": [
+      "pageName",
+      "elementName",
+      "state"
+    ]
+  },
+  "privates": {
+    "steps": [
+      "email",
+      "extract",
+      "interact",
+      "navigate",
+      "page",
+      "repo",
+      "utils",
+      "verify"
+    ],
+    "interactions": [
+      "log",
+      "utils"
+    ],
+    "repo": [
+      "_driver",
+      "defaultTimeout",
+      "findPage",
+      "formatSingleSelector",
+      "getFormattersForPlatform",
+      "pageData",
+      "resolveElement",
+      "resolveFromSingleSelector",
+      "resolveWithFallback",
+      "stripFallback"
+    ],
+    "element": [
+      "defaultTimeout",
+      "ensureAttached"
+    ]
+  }
+}

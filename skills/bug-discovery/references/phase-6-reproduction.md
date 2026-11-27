@@ -48,19 +48,20 @@ Assert the **correct** behavior so the test **fails** against the current buggy 
 **Tag every such test `@known-defect`, and give it a test ID.** A reproduction test is a deliberate red, and nothing downstream can tell a deliberate red from a broken test by looking at it. The tag is what stops the repair-suite workflow / the repair-suite workflow / `failure-diagnosis` from spending reruns, workers, and diagnosis cycles re-deriving a conclusion this pass already reached and filed, and it is what keeps the red out of the `unresolved` bucket that holds a repair run's exit code open. Pair it with the `@finding` reference so the report behind the tag is one grep away, and start the title with a stable ID so the evidence bundle at `bug-evidence/<TEST-ID>/` keeps its name when the title is reworded:
 
 ```ts
+// defect: tests/e2e/docs/adversarial-findings.md#<journey-slug>-03
 test('TCBD-000412 · @bug-discovery @known-defect double-click submit creates duplicate', async ({ steps }) => {
   // ...
 });
 ```
 
-Conventions and the full no-rerun contract: [`test-identity.md`](../../achilles-orchestrator/references/test-identity.md).
+The per-test `// defect:` pointer is [TB-I4](../../achilles-orchestrator/references/test-baseline.md#tb-i4); conventions and the full no-rerun contract: [`test-identity.md`](../../achilles-orchestrator/references/test-identity.md).
 
 **Exit gate.** Every spec this skill writes or edits gets the Stage 4b compliance sweep before the return, announced with the **API Compliance Review** block ([`stages-protocol.md`](../../achilles-orchestrator/references/stages-protocol.md) §"Stage 4b is every mode's exit gate").
 
 
 **If a test fails for unexpected reasons** (not the intended bug reproduction: e.g., wrong selector, navigation error, test code issue): invoke the `failure-diagnosis` protocol to diagnose and fix. The failure-diagnosis pipeline distinguishes between test issues (fix autonomously) and app bugs (report). Only use this for unintended failures; the expected failure from the bug reproduction is not a test issue.
 
-Example: double-click creates duplicates → test double-clicks and asserts `verifyCount('Page', 'records', { exactly: originalCount + 1 })`.
+Example: double-click creates duplicates → test double-clicks and asserts `verifyCount('records', 'Page', { exactly: originalCount + 1 })`.
 
 ## Visibility Pre-Check in Reproduction Tests
 
@@ -68,7 +69,7 @@ Every reproduction test for a user-visible bug MUST include a visibility asserti
 
 ```ts
 // User-visible bug — verify element is visible first, then assert correct behavior
-test('@bug-discovery expired job listing links to live posting', async ({ steps }) => {
+test('TCBD-000413 · @bug-discovery expired job listing links to live posting', async ({ steps }) => {
   await steps.navigateTo('/careers');
   await steps.verifyPresence('viewListingButton', 'CareersPage'); // visibility pre-check
   // ... then assert the bug
@@ -83,7 +84,7 @@ For DOM-only findings, tag tests with `@dom-only` instead of `@bug-discovery`, a
  * @severity info
  * @visibility dom-only
  */
-test('@dom-only missing H1 on blog page', async ({ steps, page }) => {
+test('TCBD-000414 · @dom-only missing H1 on blog page', async ({ steps }) => {
   // DOM inspection — no visibility pre-check needed
 });
 ```

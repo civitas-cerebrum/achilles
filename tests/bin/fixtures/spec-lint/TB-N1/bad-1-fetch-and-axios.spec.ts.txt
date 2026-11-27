@@ -1,0 +1,11 @@
+// spec-lint fixture: fetch and an HTTP client in a spec
+// rules: TB-N1
+import axios from 'axios'; // EXPECT TB-N1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0090 · reads a user', async ({ steps }) => {
+  const res = await fetch(`${process.env.API_URL}/users/42`); // EXPECT TB-N1
+  const other = await axios.get('/users/43');
+  expect(res.status + other.status).toBe(400);
+  await steps.verifyPresence('heading', 'HomePage');
+});

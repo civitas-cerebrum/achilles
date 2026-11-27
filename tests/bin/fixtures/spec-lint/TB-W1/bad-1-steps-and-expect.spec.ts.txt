@@ -1,0 +1,8 @@
+// spec-lint fixture: per-call timeouts on steps and expect without a reason
+// rules: TB-W1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0070 · waits', async ({ steps }) => {
+  await steps.waitForState('report', 'ReportsPage', 'visible', { timeout: 90_000 }); // EXPECT TB-W1/advisory
+  await expect.poll(() => steps.getCount('rows', 'ReportsPage'), { timeout: 20_000 }).toBe(3); // EXPECT TB-W1/advisory
+});

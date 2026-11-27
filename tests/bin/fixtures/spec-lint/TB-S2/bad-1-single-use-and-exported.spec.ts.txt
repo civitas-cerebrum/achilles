@@ -1,0 +1,20 @@
+// spec-lint fixture: a UI-driving helper with one caller; an exported spec helper
+// rules: TB-S2
+import { test, expect } from './fixtures/base';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+async function openSettings(steps: Steps) { // EXPECT TB-S2
+  await steps.click('settingsLink', 'HeaderPage');
+}
+
+export async function signOut(steps: Steps) { // EXPECT TB-S2
+  await steps.click('signOutLink', 'HeaderPage');
+}
+
+test('TCST-000101 · the settings open', async ({ steps }) => {
+  await openSettings(steps);
+  await signOut(steps);
+});
+test('TCST-000102 · signing out ends the session', async ({ steps }) => {
+  await signOut(steps);
+});

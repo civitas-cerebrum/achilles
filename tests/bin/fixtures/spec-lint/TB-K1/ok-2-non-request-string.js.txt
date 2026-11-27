@@ -1,0 +1,8 @@
+// spec-lint fixture: an origin in a plain string is not a request
+// place: tests/perf/non-request-string.js.js
+// rules: TB-K1
+import http from 'k6/http';
+import { config } from './config.js';
+export const options = { thresholds: { http_req_duration: ['p(95)<800'] } };
+const DOCS = 'https://docs.example.com/perf';
+export default function () { http.get(`${config.baseUrl}/api/items`, { tags: { docs: DOCS } }); }

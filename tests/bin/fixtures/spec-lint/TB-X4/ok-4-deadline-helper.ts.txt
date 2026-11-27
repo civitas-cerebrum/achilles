@@ -1,0 +1,25 @@
+// spec-lint fixture: the deadline is checked through a helper of the same module, and x = x + 1 steps a counter
+// place: tests/e2e/flows/import-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+const IMPORT_BUDGET_MS = 30_000;
+function failAfter(deadline: number, what: string) {
+  if (Date.now() > deadline) throw new Error(`${what} did not finish in time`);
+}
+
+export async function waitForImport(steps: Steps) {
+  const deadline = Date.now() + IMPORT_BUDGET_MS;
+  while (true) {
+    failAfter(deadline, 'the import');
+    if (await steps.isVisible('importDone', 'ImportPage')) break;
+    await steps.click('refresh', 'ImportPage');
+  }
+  let page = 0;
+  while (true) {
+    page = page + 1;
+    if (page > 20) break;
+    await steps.click('nextPage', 'ImportPage');
+  }
+  await steps.verifyPresence('importDone', 'ImportPage');
+}

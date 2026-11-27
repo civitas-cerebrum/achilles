@@ -1,0 +1,13 @@
+{
+  "base": "factory-rules.example.json",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/rules/specs.constant-table-tests",
+      "value": {
+        "allowed": "yes"
+      }
+    }
+  ],
+  "expectError": "/rules/specs.constant-table-tests/allowed: must be boolean"
+}

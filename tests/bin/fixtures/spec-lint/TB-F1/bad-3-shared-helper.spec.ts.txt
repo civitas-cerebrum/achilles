@@ -1,0 +1,18 @@
+// spec-lint fixture: a shared in-spec helper is held to the flow rules as if it were the test body
+// rules: TB-F1
+import { test } from './fixtures/base';
+
+async function openPanel(steps, open: boolean) {
+  if (open) await steps.click('panelToggle', 'HomePage'); // EXPECT TB-F1
+  return open;
+}
+
+test('TCAB-0003 · opens the panel', async ({ steps }) => {
+  await openPanel(steps, true);
+  await steps.verifyPresence('panel', 'HomePage');
+});
+
+test('TCAB-0004 · keeps the panel closed', async ({ steps }) => {
+  await openPanel(steps, false);
+  await steps.verifyAbsence('panel', 'HomePage');
+});

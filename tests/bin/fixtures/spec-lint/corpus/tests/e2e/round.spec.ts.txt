@@ -1,0 +1,65 @@
+// Corpus spec: shapes found in review: non-literal titles, describes and factories that generate tests,
+// once-called local functions, loops that end in break, conditional callees, named rejection handlers.
+import { test, expect } from './fixtures/base';
+import { returnAllOrders } from './utils/verbs';
+
+const CASES = [{ title: 'TC-0501 · size S', el: 's' }, { title: 'TC-0502 · size M', el: 'm' }];
+const TITLE = 'TC-0503 · a constant title';
+const noop = () => {};
+
+for (const c of CASES) {
+  test(c.title, async ({ steps }) => { // EXPECT TB-S1
+    await steps.click(c.el, 'ProductPage');
+  });
+}
+CASES.forEach(({ title, el }) => test(title, async ({ steps }) => { await steps.click(el, 'ProductPage'); })); // EXPECT TB-S1
+
+for (const size of ['L', 'XL']) {
+  test.describe(`size ${size}`, () => {
+    test('TC-0504 · selectable', async ({ steps }) => { // EXPECT TB-S1
+      await steps.click(size, 'ProductPage');
+    });
+  });
+}
+
+function declareSize(size: string) {
+  test(`TC-0505 · size ${size}`, async ({ steps }) => { // EXPECT TB-S1
+    await steps.click(size, 'ProductPage');
+  });
+}
+['P', 'R'].forEach(declareSize);
+
+test(TITLE, async ({ steps }) => {
+  const shown = await steps.isVisible('banner', 'HomePage');
+  async function maybeClose() {
+    if (shown) await steps.click('close', 'HomePage'); // EXPECT TB-F1
+  }
+  await maybeClose();
+  while (true) { // EXPECT TB-F1
+    if (shown) await steps.click('close', 'HomePage'); // EXPECT TB-F1
+    break;
+  }
+  await (shown ? steps.click : steps.hover)('close', 'HomePage'); // EXPECT TB-F1
+  await steps.click('pay', 'CheckoutPage').catch(noop); // EXPECT TB-F3
+  await steps.click('pay', 'CheckoutPage').then(null, noop); // EXPECT TB-F3
+  await Promise.any([steps.verifyPresence('receipt', 'OrderPage')]); // EXPECT TB-F3
+  const plan = { steps: ['a'] as string[] };
+  plan.steps.push(await steps.getText('x', 'HomePage')); // CLEAN
+  await test.step('rows', async () => {
+    for (const row of plan.steps) {
+      if (row) await steps.click(row, 'HomePage'); // CLEAN-BLOCKING TB-F1
+    }
+  });
+  expect(plan.steps.length).toBe(2);
+});
+
+test.describe('teardown', () => {
+  let owner = '';
+  test.afterEach(async ({ steps }) => {
+    if (owner) await returnAllOrders(steps, owner); // CLEAN
+  });
+  test('TC-0506 · body', async ({ steps }) => {
+    owner = await steps.getText('owner', 'HomePage');
+    await steps.verifyPresence('heading', 'HomePage'); // CLEAN
+  });
+});

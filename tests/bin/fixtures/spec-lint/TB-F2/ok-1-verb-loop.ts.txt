@@ -1,0 +1,10 @@
+// spec-lint fixture: a verb may hold a bounded loop
+// place: tests/e2e/flows/wizard.ts
+// rules: TB-F2
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+const MAX_SCREENS = 5;
+export async function finishWizard(steps: Steps) {
+  for (let i = 0; i < MAX_SCREENS && await steps.isVisible('next', 'WizardPage'); i++) await steps.click('next', 'WizardPage');
+  await steps.verifyPresence('done', 'WizardPage');
+}

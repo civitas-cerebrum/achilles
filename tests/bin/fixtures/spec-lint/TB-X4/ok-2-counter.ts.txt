@@ -1,0 +1,10 @@
+// spec-lint fixture: a counted loop
+// place: tests/e2e/flows/wizard-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+const MAX_WIZARD_SCREENS = 6;
+export async function finishWizard(steps: Steps) {
+  for (let screen = 0; screen < MAX_WIZARD_SCREENS && await steps.isVisible('nextButton', 'WizardPage'); screen++) await steps.click('nextButton', 'WizardPage');
+  await steps.verifyPresence('wizardDone', 'WizardPage');
+}

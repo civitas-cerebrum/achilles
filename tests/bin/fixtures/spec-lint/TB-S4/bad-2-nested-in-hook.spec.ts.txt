@@ -1,0 +1,14 @@
+// spec-lint fixture: a nested test.step in a hook
+// rules: TB-S4
+import { test, expect } from './fixtures/base';
+
+test.beforeEach(async ({ steps }) => {
+  await test.step('arrive', async () => { // EXPECT TB-S4/advisory
+    await test.step('open home', async () => { // EXPECT TB-S4/blocking
+      await steps.navigateTo('/');
+    });
+  });
+});
+test('TCCK-000201 · home shows', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage');
+});

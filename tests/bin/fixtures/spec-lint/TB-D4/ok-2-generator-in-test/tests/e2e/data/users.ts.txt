@@ -1,0 +1,4 @@
+// a generator module
+export function makeCustomer() {
+  return { email: `c-${Date.now()}@example.com` };
+}

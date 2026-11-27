@@ -1,0 +1,5 @@
+// spec-lint fixture: the same id in two files
+import { test, expect } from './fixtures/base';
+test('TCAB-000101 · first', async ({ steps }) => { // EXPECT TB-I2
+  await steps.verifyPresence('heading', 'HomePage');
+});

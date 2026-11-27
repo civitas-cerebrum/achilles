@@ -1,0 +1,8 @@
+// spec-lint fixture: one page name per platform, merged: each platform's elements resolve
+import { test } from './fixtures/base';
+
+test('TCAB-0611 · picking a choice shows it', async ({ steps }) => {
+  await steps.click('firstChoice', 'ChoicesPage');
+  await steps.verifyPresence('choiceResult', 'ChoicesPage');
+  await steps.verifyPresence('choiceLabel', 'ChoicesPage');
+});

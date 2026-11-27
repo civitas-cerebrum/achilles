@@ -1,0 +1,16 @@
+// spec-lint fixture: a sleep inside a route handler, a non-awaited timer and a helper definition are not TB-F5
+// rules: TB-F5
+import { test } from './fixtures/base';
+
+const later = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test('TCAB-0052 · latency injection', async ({ page, steps }) => {
+  await page.route('**/api/slow', async (route) => {
+    await new Promise((r) => setTimeout(r, 2000));
+    await route.continue();
+  });
+  setTimeout(() => undefined, 10);
+  const pending = later(10);
+  await steps.waitForState('orderConfirmation', 'OrderPage', 'visible');
+  void pending;
+});

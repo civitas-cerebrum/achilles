@@ -1,0 +1,359 @@
+// The Steps surface chain of achilles-spec-lint (worktree node_modules, then the main checkout, then the
+// shipped snapshot for the pinned version), the declaration reader and the version helper.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { resolveSurface, classMembers, SurfaceError, shippedVersions, SURFACES_DIR } from '../../bin/lib/spec-lint/surface.mjs';
+import { checkShippedTables, EQUIVALENTS_FILE } from '../../bin/lib/spec-lint/equivalents.mjs';
+import { parserFor, parseDts } from '../../bin/lib/spec-lint/ast.mjs';
+import * as semver from '../../bin/lib/spec-lint/semver.mjs';
+import { lintProject } from '../../bin/lib/spec-lint/engine.mjs';
+import { REPO, tempRoot, writeProject } from './spec-lint-helpers.mjs';
+
+const parser = parserFor(REPO);
+const DTS = `
+import { Base } from './Base';
+export declare class Steps extends Base {
+  private page;
+  protected repo: unknown;
+  readonly platform: string;
+  get driverName(): string;
+  constructor(repo: unknown);
+  click(elementName: string, pageName: string): Promise<void>;
+  static create(): Steps;
+}`;
+const BASE = 'export declare class Base { navigateTo(url: string): Promise<void>; private secret; }';
+
+function fakePackage(root, version, { dts = DTS } = {}) {
+  const dir = 'node_modules/@civitas-cerebrum/element-interactions';
+  writeProject(root, {
+    [`${dir}/package.json`]: JSON.stringify({ name: '@civitas-cerebrum/element-interactions', version }),
+    [`${dir}/dist/steps/CommonSteps.d.ts`]: dts,
+    [`${dir}/dist/steps/Base.d.ts`]: BASE,
+  });
+}
+
+test('classMembers reads public methods, properties, private names', () => {
+  const m = classMembers(parseDts(parser, DTS), 'Steps');
+  assert.deepEqual(m.methods, ['click']);
+  assert.deepEqual(m.properties, ['driverName', 'platform']);
+  assert.deepEqual(m.privates, ['page', 'repo']);
+  assert.equal(m.superClass, 'Base');
+});
+
+test('worktree node_modules wins, follows extends, and notes a release newer than the shipped table', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, {}, { pin: '0.3.6' });
+    fakePackage(root, '9.9.9');
+    const s = resolveSurface(root, parser, { useGit: false });
+    assert.equal(s.source, 'worktree');
+    assert.equal(s.version, '9.9.9');
+    assert.ok(s.methods.has('click') && s.methods.has('navigateTo'));
+    assert.ok(s.privates.steps.has('secret') && s.privates.steps.has('page'));
+    assert.match(s.notes.join(' '), /installed 9\.9\.9 is newer than every release in the shipped surface table/);
+    assert.doesNotMatch(s.notes.join(' '), /upgrade/i);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a linked worktree without node_modules uses the main checkout', () => {
+  const main = tempRoot();
+  const wt = `${main}-wt`;
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: main, stdio: 'ignore' });
+  try {
+    writeProject(main, { 'README.md': 'x' }, { pin: '0.3.6' });
+    git('init', '-q');
+    git('add', 'package.json', 'README.md');
+    git('commit', '-q', '-m', 'init');
+    git('worktree', 'add', '-q', wt);
+    fakePackage(main, '0.3.12');
+    const s = resolveSurface(wt, parser);
+    assert.equal(s.source, 'checkout');
+    assert.equal(s.version, '0.3.12');
+  } finally {
+    rmSync(wt, { recursive: true, force: true });
+    rmSync(main, { recursive: true, force: true });
+  }
+});
+
+test('a project in a subdirectory of a linked worktree uses the same subdirectory of the main checkout', () => {
+  const main = tempRoot();
+  const wt = `${main}-wt`;
+  const vcs = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: main, stdio: 'ignore' });
+  try {
+    writeProject(path.join(main, 'apps', 'web'), { 'README.md': 'x' }, { pin: '0.3.6' });
+    vcs('init', '-q');
+    vcs('add', 'apps');
+    vcs('commit', '-q', '-m', 'init');
+    vcs('worktree', 'add', '-q', wt);
+    fakePackage(path.join(main, 'apps', 'web'), '0.3.12');
+    const s = resolveSurface(path.join(wt, 'apps', 'web'), parser);
+    assert.equal(s.source, 'checkout');
+    assert.equal(s.version, '0.3.12');
+  } finally {
+    rmSync(wt, { recursive: true, force: true });
+    rmSync(main, { recursive: true, force: true });
+  }
+});
+
+/** A git work tree with an npm workspace root at the top and a package under packages/app. */
+function workspace({ root = {}, app = {} } = {}) {
+  const top = tempRoot();
+  const vcs = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: top, stdio: 'ignore', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_GLOBAL: '/dev/null' } });
+  writeProject(top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['packages/*'], ...root }) });
+  writeProject(path.join(top, 'packages', 'app'), { 'package.json': JSON.stringify({ name: 'app', private: true, ...app }) });
+  vcs('init', '-q');
+  return { top, app: path.join(top, 'packages', 'app') };
+}
+const declares = (range) => ({ devDependencies: { '@civitas-cerebrum/element-interactions': range } });
+
+test('a workspace package that relies on the root: the hoisted install, else the root lock file or declaration', () => {
+  const w = workspace({ root: declares('^0.3.5') });
+  try {
+    // the install is hoisted to the workspace root
+    fakePackage(w.top, '0.3.12');
+    let s = resolveSurface(w.app, parser);
+    assert.equal(s.source, 'workspace');
+    assert.equal(s.version, '0.3.12');
+    assert.ok(lintProject({ root: w.app }).stepsSurface.source === 'workspace');
+    // no install: the root's lock file names the release installed for the package
+    rmSync(path.join(w.top, 'node_modules'), { recursive: true, force: true });
+    writeProject(w.top, { 'package-lock.json': JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.7' } } }) });
+    s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.7']);
+    // a pnpm workspace: the importer entry of the package
+    rmSync(path.join(w.top, 'package-lock.json'));
+    writeProject(w.top, { 'pnpm-lock.yaml': "lockfileVersion: '9.0'\nimporters:\n  .:\n    devDependencies:\n      '@civitas-cerebrum/element-interactions':\n        specifier: ^0.3.5\n        version: 0.3.9\n  packages/app:\n    dependencies:\n      '@civitas-cerebrum/element-interactions':\n        specifier: ^0.3.5\n        version: 0.3.8(@playwright/test@1.50.0)\n" });
+    assert.equal(resolveSurface(w.app, parser).version, '0.3.8');
+    // a yarn workspace
+    rmSync(path.join(w.top, 'pnpm-lock.yaml'));
+    writeProject(w.top, { 'yarn.lock': '"@civitas-cerebrum/element-interactions@^0.3.5":\n  version "0.3.6"\n  resolved "https://example.invalid/x.tgz"\n' });
+    assert.equal(resolveSurface(w.app, parser).version, '0.3.6');
+    // no lock file: the root's declaration
+    rmSync(path.join(w.top, 'yarn.lock'));
+    s = resolveSurface(w.app, parser);
+    assert.equal(s.version, shippedVersions().filter((v) => semver.satisfies(v, '^0.3.5')).at(-1));
+  } finally { rmSync(w.top, { recursive: true, force: true }); }
+});
+
+test('the project\'s own declaration wins over the workspace root', () => {
+  const w = workspace({ root: declares('^0.3.5'), app: declares('0.3.6') });
+  try {
+    // a hoisted install outside the project's own range belongs to another package
+    fakePackage(w.top, '0.3.12');
+    let s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.6']);
+    // a root lock entry outside the range does not narrow it either
+    writeProject(w.top, { 'package-lock.json': JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.12' }, 'packages/app/node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.6' } } }) });
+    s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.6']);
+    // a hoisted install inside the range is used
+    writeProject(w.app, { 'package.json': JSON.stringify({ name: 'app', ...declares('^0.3.7') }) });
+    s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['workspace', '0.3.12']);
+    // the project's own install comes first
+    fakePackage(w.app, '0.3.9');
+    assert.deepEqual([resolveSurface(w.app, parser).source, resolveSurface(w.app, parser).version], ['worktree', '0.3.9']);
+  } finally { rmSync(w.top, { recursive: true, force: true }); }
+});
+
+test('only a workspace root that covers the project is walked, and a committed node_modules is never trusted', () => {
+  const vcs = (cwd, ...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd, stdio: 'ignore', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_GLOBAL: '/dev/null' } });
+  // a directory above that declares no workspace covering the project
+  const w = workspace({ root: declares('0.3.12') });
+  try {
+    writeProject(w.top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['tools/*'], ...declares('0.3.12') }) });
+    fakePackage(w.top, '0.3.12');
+    assert.throws(() => resolveSurface(w.app, parser), SurfaceError);
+    // pnpm-workspace.yaml covers it
+    writeProject(w.top, { 'package.json': JSON.stringify({ name: 'mono', private: true, ...declares('0.3.12') }), 'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n  - '!packages/legacy'\n" });
+    assert.equal(resolveSurface(w.app, parser).source, 'workspace');
+  } finally { rmSync(w.top, { recursive: true, force: true }); }
+  // a node_modules force-added to the repository: a two-method surface would hide TB-A10
+  const c = workspace({ root: declares('0.3.12') });
+  try {
+    fakePackage(c.top, '0.3.12', { dts: 'export declare class Steps { click(elementName: string, pageName: string): Promise<void>; }' });
+    vcs(c.top, 'add', '-f', 'node_modules');
+    vcs(c.top, 'commit', '-q', '-m', 'vendored');
+    const s = resolveSurface(c.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.12'], 'the shipped surface, not the committed one');
+    assert.ok(s.methods.size > 10);
+    rmSync(path.join(c.top, 'package.json'));
+    writeProject(c.top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['packages/*'] }) });
+    assert.throws(() => resolveSurface(c.app, parser), (e) => /tracked in the repository, ignored/.test(e.message));
+  } finally { rmSync(c.top, { recursive: true, force: true }); }
+});
+
+test('the walk stops at the work tree\'s top level, and no declaration anywhere still cannot run', () => {
+  const outer = tempRoot();
+  try {
+    // an install and a declaration above the work tree are not the project's
+    writeProject(outer, { 'package.json': JSON.stringify({ name: 'outer', ...declares('0.3.12') }) });
+    fakePackage(outer, '0.3.12');
+    const top = path.join(outer, 'repo');
+    writeProject(top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['packages/*'] }) });
+    writeProject(path.join(top, 'packages', 'app'), { 'package.json': JSON.stringify({ name: 'app' }) });
+    execFileSync('git', ['init', '-q'], { cwd: top, stdio: 'ignore' });
+    const app = path.join(top, 'packages', 'app');
+    assert.throws(() => resolveSurface(app, parser), (e) => e instanceof SurfaceError && /snapshot: no @civitas-cerebrum\/element-interactions dependency in package\.json, nor in a workspace directory above it/.test(e.message));
+    const r = spawnSync(process.execPath, [path.join(REPO, 'bin', 'spec-lint.mjs')], { cwd: app, env: { ...process.env, CLAUDE_PROJECT_DIR: app }, encoding: 'utf8' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /spec lint cannot run: no Steps surface/);
+  } finally { rmSync(outer, { recursive: true, force: true }); }
+});
+
+test('shipped snapshots carry the repository and element private names', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ repo }) => { repo.pageData; });\n" });
+    const r = lintProject({ root, useGit: false });
+    assert.equal(r.stepsSurface.source, 'snapshot');
+    assert.ok(r.findings.some((f) => f.rule === 'TB-A14' && /pageData/.test(f.message)));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('no node_modules: the shipped snapshot for the pinned version, the lock file, or the highest range match', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, {}, { pin: '0.3.6' });
+    let s = resolveSurface(root, parser, { useGit: false });
+    assert.equal(s.source, 'snapshot');
+    assert.equal(s.version, '0.3.6');
+    writeProject(root, { 'package.json': JSON.stringify({ dependencies: { '@civitas-cerebrum/element-interactions': '^0.3.5' } }) });
+    s = resolveSurface(root, parser, { useGit: false });
+    assert.equal(s.version, shippedVersions().filter((v) => semver.satisfies(v, '^0.3.5')).at(-1));
+    writeProject(root, { 'package-lock.json': JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.7' } } }) });
+    s = resolveSurface(root, parser, { useGit: false });
+    assert.equal(s.version, '0.3.7');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('nothing resolves: the error names every place tried, and the engine refuses to run', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'package.json': JSON.stringify({ name: 'bare' }) });
+    assert.throws(() => resolveSurface(root, parser, { useGit: false }), (e) => e instanceof SurfaceError && /worktree: .*snapshot: no @civitas-cerebrum\/element-interactions dependency/.test(e.message));
+    assert.throws(() => lintProject({ root, useGit: false }), SurfaceError);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('the shipped surfaces and equivalence table are well formed and agree', () => {
+  assert.deepEqual(checkShippedTables(), []);
+  assert.ok(shippedVersions().length >= 10);
+});
+
+test('a hand-edited table or a missing surface is refused', () => {
+  const dir = tempRoot();
+  try {
+    cpSync(SURFACES_DIR, path.join(dir, 'surfaces'), { recursive: true });
+    const eq = JSON.parse(readFileSync(EQUIVALENTS_FILE, 'utf8'));
+    eq.methods.goto.targets[0].since = '0.3.9';
+    writeFileSync(path.join(dir, 'equivalents.json'), JSON.stringify(eq));
+    assert.match(checkShippedTables({ equivalentsFile: path.join(dir, 'equivalents.json'), surfacesDir: path.join(dir, 'surfaces') }).join(' '), /methods disagrees with the shipped surfaces/);
+    rmSync(path.join(dir, 'surfaces', '0.3.12.json'));
+    writeFileSync(path.join(dir, 'equivalents.json'), readFileSync(EQUIVALENTS_FILE));
+    assert.match(checkShippedTables({ equivalentsFile: path.join(dir, 'equivalents.json'), surfacesDir: path.join(dir, 'surfaces') }).join(' '), /releases differ/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('semver: ranges npm writes', () => {
+  assert.ok(semver.satisfies('0.3.12', '>=0.3.12 <1.0.0'));
+  assert.ok(!semver.satisfies('0.4.0', '^0.3.7'));
+  assert.ok(semver.satisfies('0.3.9', '~0.3.7'));
+  assert.ok(semver.satisfies('0.3.9', '0.3.x'));
+  assert.ok(semver.satisfies('1.2.3', '1.0.0 - 1.2.3'));
+  assert.ok(semver.satisfies('0.2.1', '^0.3.0 || 0.2.1'));
+  assert.equal(semver.maxSatisfying(['0.3.5', '0.3.10', '0.3.9'], '^0.3.5'), '0.3.10');
+  assert.equal(semver.compare('0.3.10', '0.3.9'), 1);
+  assert.equal(semver.compare('1.0.0-rc.1', '1.0.0'), -1);
+});
+
+test('the pinned surface decides what a method check sees (A10 per installed version)', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ steps }) => { await steps.getUrl(); });\n" }, { pin: '0.3.5' });
+    const old = lintProject({ root, useGit: false });
+    assert.equal(old.stepsSurface.version, '0.3.5');
+    assert.equal(old.stepsSurface.source, 'snapshot');
+    assert.ok(old.findings.some((f) => f.rule === 'TB-A10'));
+    writeProject(root, { 'package.json': JSON.stringify({ dependencies: { '@civitas-cerebrum/element-interactions': '0.3.7' } }) });
+    assert.ok(!lintProject({ root, useGit: false }).findings.some((f) => f.rule === 'TB-A10'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// ── the framework pin as a protected input (commands.mjs surfaceChanges) ──
+
+/** A git repository with `files` committed on main; returns { root, vcs }. */
+function pinRepo(files) {
+  const root = tempRoot();
+  const vcs = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: root, stdio: 'ignore', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_GLOBAL: '/dev/null' } });
+  writeProject(root, { '.gitignore': 'node_modules/\n', ...files });
+  vcs('init', '-q', '-b', 'main');
+  vcs('add', '-A');
+  vcs('commit', '-q', '-m', 'base');
+  return { root, vcs };
+}
+const pinOf = (range) => JSON.stringify({ name: 'p', private: true, dependencies: { '@civitas-cerebrum/element-interactions': range } });
+
+test('a node_modules package linked to a committed directory is no install, and a linked pin is a pin move', async () => {
+  const { symlinkSync, mkdirSync } = await import('node:fs');
+  const { surfaceChanges } = await import('../../bin/lib/spec-lint/commands.mjs');
+  const { root } = pinRepo({ 'package.json': pinOf('0.3.12') });
+  try {
+    // what `npm ci` builds for a `file:` dependency on a committed two-method package
+    fakePackage(path.join(root, 'vendor', 'fake'), '0.3.12', { dts: 'export declare class Steps { click(elementName: string, pageName: string): Promise<void>; }' });
+    const pkgDir = path.join(root, 'vendor', 'fake', 'node_modules', '@civitas-cerebrum', 'element-interactions');
+    mkdirSync(path.join(root, 'node_modules', '@civitas-cerebrum'), { recursive: true });
+    symlinkSync(pkgDir, path.join(root, 'node_modules', '@civitas-cerebrum', 'element-interactions'));
+    writeProject(root, {
+      'package.json': pinOf('file:vendor/fake'),
+      'package-lock.json': JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.12', resolved: '../../vendor/fake', link: true } } }),
+    });
+    assert.throws(() => resolveSurface(root, parser), (e) => e instanceof SurfaceError && /a link out of node_modules, ignored/.test(e.message) && /no registry release/.test(e.message));
+    const c = surfaceChanges(root, 'main');
+    assert.equal(c.length, 1, JSON.stringify(c));
+    assert.match(c[0].detail, /pin moved from package\.json to package-lock\.json \(a linked or path dependency, not a registry release\)/);
+    assert.equal(c[0].weakens, true);
+    // the declaration alone names a path: still a move
+    rmSync(path.join(root, 'package-lock.json'));
+    assert.match(surfaceChanges(root, 'main')[0].detail, /to package\.json \(a linked or path dependency/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a range pin is never "below" a release it may not have installed; a range change weakens only when it admits lower releases', async () => {
+  const { surfaceChanges } = await import('../../bin/lib/spec-lint/commands.mjs');
+  const { root } = pinRepo({ 'package.json': pinOf('^0.3.0') });
+  try {
+    fakePackage(root, '0.3.11');
+    assert.deepEqual(surfaceChanges(root, 'main'), [], 'unchanged range, an older install: no change');
+    writeProject(root, { 'package.json': pinOf('^0.3.5') });
+    assert.deepEqual(surfaceChanges(root, 'main').map((c) => c.weakens), [false]);
+    writeProject(root, { 'package.json': pinOf('>=0.2.0') });
+    const w = surfaceChanges(root, 'main');
+    assert.equal(w[0].weakens, true);
+    assert.match(w[0].detail, /range changed from \^0\.3\.0 to >=0\.2\.0, which admits 0\.2\.\d+ below the 0\.3\.0 the old range admitted/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a new framework release in the shipped table changes nothing for an unchanged project with a range pin', async () => {
+  const { surfaceChanges } = await import('../../bin/lib/spec-lint/commands.mjs');
+  const spec = "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ page, steps }) => { await page.goto('/'); await steps.click('a', 'P'); await steps.getUrl(); });\n";
+  const { root } = pinRepo({ 'package.json': pinOf('^0.3.0'), 'tests/e2e/a.spec.ts': spec });
+  const table = tempRoot();
+  try {
+    cpSync(SURFACES_DIR, table, { recursive: true });
+    const before = lintProject({ root, snapshotsDir: table });
+    // a release appears upstream: the table gains it (same surface as the newest)
+    const newest = shippedVersions(table).at(-1);
+    const next = newest.replace(/\d+$/, (d) => String(Number(d) + 1));
+    writeFileSync(path.join(table, `${next}.json`), JSON.stringify({ ...JSON.parse(readFileSync(path.join(table, `${newest}.json`), 'utf8')), version: next }));
+    const after = lintProject({ root, snapshotsDir: table });
+    assert.equal(after.stepsSurface.version, next);
+    const key = (r) => r.findings.map((f) => `${f.rule} ${f.file}:${f.line} ${f.severity}`).sort();
+    assert.deepEqual(key(after), key(before), 'no new finding');
+    assert.deepEqual(surfaceChanges(root, 'main', { snapshotsDir: table }), [], 'no protected-input change');
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(table, { recursive: true, force: true }); }
+});
+

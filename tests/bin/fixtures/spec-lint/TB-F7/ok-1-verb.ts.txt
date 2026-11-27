@@ -1,0 +1,10 @@
+// spec-lint fixture: optional actions are allowed in support modules
+// place: tests/e2e/flows/cookies.ts
+// rules: TB-F7
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function dismissCookieBanner(steps: Steps) {
+  await steps.clickIfPresent('acceptCookies', 'HomePage');
+  await steps.on('promo', 'HomePage').ifVisible().click();
+  await steps.waitForState('banner', 'HomePage', 'hidden', { optional: true });
+}

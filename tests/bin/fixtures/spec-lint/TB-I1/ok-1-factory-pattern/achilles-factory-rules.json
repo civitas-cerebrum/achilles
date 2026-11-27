@@ -1,0 +1,7 @@
+{
+  "rules": {
+    "specs.shape": {
+      "titleIdPattern": "^[A-Z]{3}-\\d{2} — "
+    }
+  }
+}

@@ -1,0 +1,18 @@
+// spec-lint fixture: a helper two tests of the file use
+// rules: TB-S2
+import { test, expect } from './fixtures/base';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+/** File-local: only the suspension tests sign in as a suspended account. */
+async function signInSuspended(steps: Steps) {
+  await steps.click('signInLink', 'HeaderPage');
+}
+
+test('TCST-000301 · a suspended account sees the notice', async ({ steps }) => {
+  await signInSuspended(steps);
+  await steps.verifyPresence('suspendedNotice', 'HomePage');
+});
+test('TCST-000302 · a suspended account cannot order', async ({ steps }) => {
+  await signInSuspended(steps);
+  await steps.verifyAbsence('orderButton', 'HomePage');
+});

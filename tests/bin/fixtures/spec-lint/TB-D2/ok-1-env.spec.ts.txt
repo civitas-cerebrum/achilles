@@ -1,0 +1,11 @@
+// spec-lint fixture: credentials from env, short boundary data
+// rules: TB-D2
+import { test, expect } from './fixtures/base';
+
+const password = process.env.E2E_PASSWORD;
+const pin = 'abc';
+
+test('TCAB-0041 · signs in', async ({ steps }) => {
+  await steps.fill('passwordInput', 'LoginPage', `${password}${pin}`);
+  await steps.verifyPresence('heading', 'HomePage');
+});

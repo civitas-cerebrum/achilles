@@ -1,0 +1,18 @@
+// spec-lint fixture: a top-of-file pointer covers nothing; free text is not the grammar; a sentinel without a pointer
+// rules: TB-I4
+// defect: SHOP-1
+import { test, expect } from './fixtures/base';
+
+// Known defect, see the README
+test('TCSG-000110 · a duplicate email surfaces a conflict @known-defect', async ({ steps }) => { // EXPECT TB-I4
+  await steps.verifyPresence('conflictError', 'SignupPage');
+});
+
+test('TCSG-000120 · an untagged test needs no pointer', async ({ steps }) => {
+  await steps.verifyPresence('form', 'SignupPage');
+});
+
+test('TCSG-000130 · the badge counts unread only', async ({ steps }) => { // EXPECT TB-I4
+  test.fail(true, 'L3: the badge counts archived messages');
+  await steps.verifyText('badge', 'InboxPage', '2');
+});

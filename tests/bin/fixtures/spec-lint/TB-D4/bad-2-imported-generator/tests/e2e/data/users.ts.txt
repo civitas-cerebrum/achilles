@@ -1,0 +1,5 @@
+// a generator module
+export function makeCustomer() {
+  return { email: `c-${Date.now()}@example.com` };
+}
+export const RUN_ID = Date.now(); // EXPECT TB-D4

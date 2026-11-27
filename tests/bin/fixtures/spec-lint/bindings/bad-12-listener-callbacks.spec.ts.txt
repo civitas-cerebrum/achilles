@@ -1,0 +1,9 @@
+// spec-lint fixture: the page a page / popup listener or waitForEvent callback receives is a driver binding
+// rules: TB-A2
+import { test } from './fixtures/base';
+
+test('TC-0513 · drives new pages from listeners', async ({ page, context }) => {
+  context.on('page', async (p) => { await p.goto('/x'); }); // EXPECT TB-A2
+  page.once('popup', async (p) => { await p.reload(); }); // EXPECT TB-A2
+  await context.waitForEvent('page', { predicate: async (p) => { await p.goBack(); return true; } }); // EXPECT TB-A2 TB-A2
+});

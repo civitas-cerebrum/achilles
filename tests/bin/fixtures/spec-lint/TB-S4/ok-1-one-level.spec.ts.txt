@@ -1,0 +1,12 @@
+// spec-lint fixture: steps one level deep (each use is an advisory note)
+// rules: TB-S4
+import { test, expect } from './fixtures/base';
+
+test('TCCK-000301 · pay by card', async ({ steps }) => {
+  await test.step('fill the card', async () => { // EXPECT TB-S4/advisory
+    await steps.fill('cardNumber', 'CheckoutPage', '4242');
+  });
+  await test.step('pay', async () => { // EXPECT TB-S4/advisory
+    await steps.click('payButton', 'CheckoutPage');
+  });
+});

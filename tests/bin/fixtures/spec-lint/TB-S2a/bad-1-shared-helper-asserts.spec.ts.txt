@@ -1,0 +1,17 @@
+// spec-lint fixture: a shared in-spec helper that holds the scenario's assertion
+// rules: TB-S2a
+import { test, expect } from './fixtures/base';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+async function expectNameFree(steps: Steps, name: string) { // EXPECT TB-S2a/advisory
+  await steps.verifyText('availability', 'SignupPage', `${name} is available`);
+}
+
+test('TCSG-000101 · a rejected name stays free', async ({ steps }) => {
+  await steps.fill('username', 'SignupPage', 'taken');
+  await expectNameFree(steps, 'taken');
+});
+test('TCSG-000102 · a cancelled name stays free', async ({ steps }) => {
+  await steps.click('cancel', 'SignupPage');
+  await expectNameFree(steps, 'cancelled');
+});

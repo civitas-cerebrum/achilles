@@ -1,0 +1,11 @@
+// spec-lint fixture: serial mode with its reason in the block directly above
+// rules: TB-S7
+import { test, expect } from './fixtures/base';
+
+// The address book is shared by the account.
+// serial-deliberate: every test edits the one shared address book
+test.describe.configure({ mode: 'serial' });
+
+test('TCSR-000301 · one', async ({ steps }) => {
+  await steps.click('addressAdd', 'AccountPage');
+});

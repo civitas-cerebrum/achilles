@@ -1,0 +1,4 @@
+export async function signIn(steps, user: string) {
+  await steps.fill('user', 'LoginPage', user);
+  await steps.click('submit', 'LoginPage');
+}

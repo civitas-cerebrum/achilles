@@ -1,0 +1,8 @@
+// spec-lint fixture: the comment says why
+// rules: TB-R8
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0022 · lockout', async ({ steps }) => {
+  // the lockout banner appears only after the server has counted the attempt
+  await steps.verifyPresence('lockoutBanner', 'LoginPage');
+});

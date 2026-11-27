@@ -1,0 +1,15 @@
+// Corpus verb module: reach-through inside verbs, reflection, and untyped parameters used as framework objects.
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function withPage(fx: { steps?: Steps }) { await (fx.steps as any).page.goto('/v'); } // EXPECT TB-A12 TB-A14
+export async function viaSteps(steps: Steps) { await (steps as any).page.goto('/v'); } // EXPECT TB-A12 TB-A14
+export async function withList(..._a: unknown[]) {}
+export async function withFn(_f: () => unknown) {}
+export async function typeWith(_k: unknown) {}
+export async function readEl(_e: unknown) {}
+export async function reflect(steps: Steps) { return Reflect.get(steps, 'page'); } // EXPECT TB-A14
+export async function keyed(steps: Steps, k: string) { return steps[k]; } // EXPECT TB-A14
+export async function go(s: any) { await s.page.goto('/x'); } // EXPECT TB-A14
+export async function goLoose(s) { await s.driver.goto('/x'); } // EXPECT TB-A14
+export async function openCart(steps: Steps) { await steps.click('cartButton', 'HeaderPage'); } // CLEAN
+export async function returnAllOrders(steps: Steps, owner: string) { await steps.apiDelete(`/orders?owner=${owner}`); } // CLEAN

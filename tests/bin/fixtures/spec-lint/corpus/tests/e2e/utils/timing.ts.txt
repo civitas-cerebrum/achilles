@@ -1,0 +1,12 @@
+// Corpus support module: a sleep helper built from setTimeout, and a test declared in a support module.
+import { test } from '../fixtures/base';
+
+export const pause = (ms: number) => new Promise((r) => setTimeout(r, ms)); // CLEAN
+
+test('TC-0499 · a test in a support module', async () => {}); // EXPECT TB-X3
+
+export async function waitUntilReady(steps: { isVisible(e: string, p: string): Promise<boolean> }) {
+  while (true) { // EXPECT TB-X4
+    if (await steps.isVisible('ready', 'HomePage')) return;
+  }
+}

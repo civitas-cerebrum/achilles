@@ -1,0 +1,12 @@
+// spec-lint fixture: the fixtures module builds framework objects
+// place: tests/e2e/fixtures/base.ts
+// rules: TB-S3
+import { test as base } from '@playwright/test';
+import { Steps, ElementRepository } from '@civitas-cerebrum/element-interactions';
+
+export const test = base.extend({
+  otherSteps: async ({ page }, use) => {
+    const repo = new ElementRepository('tests/e2e/page-repository.json', page);
+    await use(new Steps(repo));
+  },
+});

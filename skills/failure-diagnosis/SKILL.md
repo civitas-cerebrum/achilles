@@ -233,12 +233,12 @@ Contribution path for promoted entries: `CONTRIBUTING.md` at the repository root
 
 ### Stage 4a — Heal strategy selection
 
-Pick the heal strategy whose precondition holds; applying the wrong one masks the defect. The strategy table, quarantine ledger and Stage 4b live DOM re-learning: [heal-strategies.md](references/heal-strategies.md).
+Pick the heal strategy whose precondition holds; applying the wrong one masks the defect. The strategy table, quarantine ledger and selector re-learning: [heal-strategies.md](references/heal-strategies.md).
 
 ### Stage 5 — Fix and stability (test issues only)
 
 1. **Apply the fix** per the heal strategy selected in Stage 4a. Use the Steps API correctly: refer to [`../achilles-orchestrator/references/api-reference.md`](../achilles-orchestrator/references/api-reference.md) for all method signatures.
-2. **If the fix requires new selectors:** Stage 4b has produced the proposal. For Auto strategies the update applies directly; for Propose strategies return `operator-pending` with the proposal and apply it on the re-dispatch that carries the ruling.
+2. **If the fix requires new selectors:** selector re-learning has produced the proposal. For Auto strategies the update applies directly; for Propose strategies return `operator-pending` with the proposal and apply it on the re-dispatch that carries the ruling.
 3. **Run the test until the stability bar is met**: 3 consecutive green for a fix to a new or edited test; 5 consecutive for a heal of a previously-flaky test (suite order for flaky heals, per the repair-suite workflow). A single pass is not sufficient: flaky tests are worse than failing tests.
    ```bash
    # Run the specific test file repeatedly (5 shown: the flaky-heal bar; 3 suffices for a non-flaky fix)

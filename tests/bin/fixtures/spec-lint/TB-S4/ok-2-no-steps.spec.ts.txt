@@ -1,0 +1,7 @@
+// spec-lint fixture: no test.step at all
+// rules: TB-S4
+import { test, expect } from './fixtures/base';
+
+test('TCCK-000401 · pay by card', async ({ steps }) => {
+  await steps.click('payButton', 'CheckoutPage');
+});

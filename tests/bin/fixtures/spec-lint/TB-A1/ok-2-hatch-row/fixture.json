@@ -1,0 +1,4 @@
+{
+  "description": "an escape-hatch waiver naming a register row whose methods name the escape hatch",
+  "rules": ["TB-A1"]
+}

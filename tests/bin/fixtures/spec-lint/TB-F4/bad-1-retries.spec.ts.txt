@@ -1,0 +1,12 @@
+// spec-lint fixture: steps.retryUntil and a hand-rolled bounded retry in a spec
+// rules: TB-F4
+import { test } from './fixtures/base';
+
+test('TCAB-0040 · retried in the test', async ({ steps }) => {
+  await steps.retryUntil(async () => { await steps.click('refresh', 'InboxPage'); }, async () => { await steps.verifyPresence('newMail', 'InboxPage'); }, 3, 1000); // EXPECT TB-F4
+  for (let i = 0; i < 3; i++) { // EXPECT TB-F4
+    if (await steps.isVisible('newMail', 'InboxPage')) break;
+    await steps.click('refresh', 'InboxPage');
+  }
+  await steps.verifyPresence('newMail', 'InboxPage');
+});

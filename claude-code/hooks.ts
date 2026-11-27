@@ -4,6 +4,8 @@ import type { AchillesRun } from './types'
 import { registerBashJudge } from './hooks/bash-hook'
 import { dispatchAdvice } from './hooks/dispatch'
 import { registerOutbound } from './hooks/attribution'
+import { complianceReturn, registerComplianceNotes } from './hooks/compliance-notes'
+import { headOf } from './hooks/spec-lint-child'
 import { registerHygiene } from './hooks/hygiene'
 import { registerLedger } from './hooks/ledger'
 import { PANE, registerPane, rememberHandback } from './hooks/pane'
@@ -249,6 +251,8 @@ export const register: Register = on => {
     const parent = isExpert(subagentType) ? whoIs(await readRuns($), e.parentAgentId) : undefined
     const advice = parent?.role === 'orchestrator' ? await dispatchAdvice($, e, roleOf(subagentType), parent) : undefined
     const rewritten = { ...e, subagentType, ...(advice ? { prompt: advice.prompt } : {}), ...(advice?.background === false ? { background: false } : {}) }
+    // The commit the dispatch starts from, read before the expert starts: its first write and any commit it makes come after.
+    const dispatchHead = parent?.role === 'orchestrator' ? headOf($, await $.session.cwd()).catch(() => undefined) : undefined
     const started = await next(advice || subagentType !== e.subagentType ? rewritten : e)
     for (const n of advice?.notes ?? []) await note($, e.parentAgentId, n)
     const m = MARK.exec(e.prompt)
@@ -261,7 +265,9 @@ export const register: Register = on => {
     if (parent?.role === 'orchestrator') {
       if (started.agentId !== undefined) {
         const role = roleOf(subagentType)
-        const expert = { agentId: started.agentId, role, ...advice?.fields, since: await $.clock.now() }
+        // The author's hand-back is linted against the dispatch's commit, so its own commits count.
+        const head = await dispatchHead
+        const expert = { agentId: started.agentId, role, ...advice?.fields, since: await $.clock.now(), ...(head ? { head } : {}) }
         await editRun($, parent.run.id, r => ({ ...r, experts: [...r.experts, expert], dispatched: { ...r.dispatched, [role]: (r.dispatched?.[role] ?? 0) + 1 } }))
         await refreshProgress($, parent.run.id)
       }
@@ -313,7 +319,7 @@ export const register: Register = on => {
       if (after?.held !== undefined && after.experts.length === 0)
         await handBack($, after, `${after.held}\n\nNote: the experts still at work when this hand-back was written have since reported; read ${after.dir}/reports/ before resuming.`)
       await Promise.all([
-        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e)] : []),
+        ...(e.reason === 'answer' ? [reviewReturn($, w, e), recordReceipt($, w, e), recordConfirmation($, w, e), complianceReturn($, w, e).catch(() => undefined)] : []),
         closeSelectorScope($, w, e),
         closeSessions($, w),
         recordFinished($, w, e),
@@ -328,6 +334,7 @@ export const register: Register = on => {
   registerOutbound(on)
   registerReturnTracking(on)
   registerHygiene(on)
+  registerComplianceNotes(on)
   registerSelector(on)
   registerReporting(on)
   registerProgress(on)

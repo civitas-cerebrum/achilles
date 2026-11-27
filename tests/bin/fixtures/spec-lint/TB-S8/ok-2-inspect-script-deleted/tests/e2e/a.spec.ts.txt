@@ -1,0 +1,5 @@
+// spec-lint fixture: a durable spec
+import { test, expect } from './fixtures/base';
+test('TCIN-000101 · home', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage');
+});

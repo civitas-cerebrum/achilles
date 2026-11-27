@@ -1,0 +1,15 @@
+// spec-lint fixture: the assertion sits in an in-file helper both tests call
+// rules: TB-R4
+import { test, expect } from './fixtures/base';
+
+async function expectCartOpen(steps) { await steps.verifyPresence('cartPanel', 'CartPage'); }
+
+test('TCAB-0007 · opens from the header', async ({ steps }) => {
+  await steps.click('cartButton', 'HeaderPage');
+  await expectCartOpen(steps);
+});
+
+test('TCAB-0008 · opens from the footer', async ({ steps }) => {
+  await steps.click('cartLink', 'FooterPage');
+  await expectCartOpen(steps);
+});

@@ -1,0 +1,9 @@
+// spec-lint fixture: a verb-led comment that gives a reason
+// rules: TB-R8
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0023 · resends', async ({ steps }) => {
+  // click resend because the first code expires
+  await steps.click('resendCode', 'TwoFactorPage');
+  await steps.verifyPresence('codeSent', 'TwoFactorPage');
+});

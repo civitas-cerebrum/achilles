@@ -1,0 +1,9 @@
+// spec-lint fixture: titles carry ids of the pattern pinned by specs.shape.titleIdPattern
+import { test, expect } from './fixtures/base';
+
+test('LGN-04 · a wrong password is rejected', async ({ steps }) => {
+  await steps.click('submit', 'LoginPage');
+});
+test('LGN-05 · a locked account is told so', async ({ steps }) => {
+  await steps.click('submit', 'LoginPage');
+});

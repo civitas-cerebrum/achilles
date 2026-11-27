@@ -1,0 +1,9 @@
+// spec-lint fixture: destructured parameters (typed and untyped) and indexed frames in a support module
+// place: tests/e2e/flows/cart-flow.ts
+// rules: TB-A12
+import type { Page } from '@playwright/test';
+
+export async function openCart({ page }: { page: Page }) { await page.click('#cart'); } // EXPECT TB-A12
+export async function openCart2({ page }) { await page.goto('/cart'); } // EXPECT TB-A12
+export async function frames(page: Page) { await page.frames()[0].goto('/z'); } // EXPECT TB-A12
+export async function first(page: Page) { const [p] = [page]; await p.goto('/z'); } // EXPECT TB-A12

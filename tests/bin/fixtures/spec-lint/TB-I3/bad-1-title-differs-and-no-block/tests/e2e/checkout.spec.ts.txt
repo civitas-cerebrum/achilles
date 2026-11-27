@@ -1,0 +1,8 @@
+// spec-lint fixture: test titles and tags against the scenario block
+import { test, expect } from './fixtures/base';
+test('CHK-03 · cancel returns to checkout', async ({ steps }) => { // EXPECT TB-I3
+  await steps.click('cancelPayment', 'CheckoutPage');
+});
+test('CHK-09 · a scenario nobody wrote down', { tag: ['@e2e'] }, async ({ steps }) => { // EXPECT TB-I3
+  await steps.click('cancelPayment', 'CheckoutPage');
+});

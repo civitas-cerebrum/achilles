@@ -1,0 +1,28 @@
+// spec-lint fixture: an API client class built from `request` calls only HTTP methods on its field: not a page-object layer
+// place: tests/e2e/data/orders-api.ts
+// rules: TB-S3
+import type { APIRequestContext } from '@playwright/test';
+
+export class OrdersApi {
+  constructor(private request: APIRequestContext) {}
+  async create(body: Record<string, unknown>) {
+    return this.request.post('/api/orders', { data: body });
+  }
+  async get(id: string) {
+    return this.request.get(`/api/orders/${id}`);
+  }
+}
+
+export class CustomersApi {
+  private readonly http: APIRequestContext;
+  constructor(request: APIRequestContext) {
+    this.http = request;
+  }
+  async remove(id: string) {
+    await this.http.delete(`/api/customers/${id}`);
+  }
+}
+
+export function ordersFor(request: APIRequestContext) {
+  return new OrdersApi(request);
+}

@@ -1,0 +1,9 @@
+// spec-lint fixture: a visibility read and { optional: false } are not optional actions
+// rules: TB-F7
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0083 · reads visibility', async ({ steps }) => {
+  const shown = await steps.isVisible('promo', 'HomePage');
+  expect(shown).toBe(true);
+  await steps.waitForState('toast', 'HomePage', 'visible', { optional: false });
+});

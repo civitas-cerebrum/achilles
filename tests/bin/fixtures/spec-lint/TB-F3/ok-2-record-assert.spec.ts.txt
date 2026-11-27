@@ -1,0 +1,18 @@
+// spec-lint fixture: a catch that records into a collection asserted later, or rethrows, is not a swallow
+// rules: TB-F3
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0033 · errors are collected and asserted', async ({ steps }) => {
+  const errors: unknown[] = [];
+  try {
+    await steps.click('submit', 'FormPage');
+  } catch (e) {
+    errors.push(e);
+  }
+  try {
+    await steps.verifyPresence('done', 'FormPage');
+  } catch (e) {
+    throw new Error(`the form did not finish: ${e}`);
+  }
+  expect(errors).toEqual([]);
+});

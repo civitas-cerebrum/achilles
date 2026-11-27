@@ -1,0 +1,8 @@
+// spec-lint fixture: the title used outside a path
+// rules: TB-R7
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0012 · annotates', async ({ steps }, testInfo) => {
+  testInfo.annotations.push({ type: 'note', description: testInfo.title });
+  await steps.verifyPresence('heading', 'HomePage');
+});

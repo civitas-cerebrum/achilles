@@ -1,0 +1,11 @@
+// spec-lint fixture: constructor options, test.setTimeout and observation windows are not hits
+// rules: TB-W1
+import { test, expect } from './fixtures/base';
+
+class Budget { constructor(public o: { timeout: number }) {} }
+const budget = new Budget({ timeout: 5_000 });
+
+test('TCAB-0073 · waits', async ({ steps }) => {
+  test.setTimeout(budget.o.timeout);
+  await steps.expect('toast', 'HomePage').timeout(2_000).toBeVisible();
+});

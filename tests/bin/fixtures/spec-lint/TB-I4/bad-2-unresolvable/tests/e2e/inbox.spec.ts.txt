@@ -1,0 +1,23 @@
+// spec-lint fixture: pointers that do not resolve
+import { test, expect } from './fixtures/base';
+
+// defect: SHOP-12-D9
+test('TCIB-000101 · an unrecorded defect id @known-defect', async ({ steps }) => { // EXPECT TB-I4
+  await steps.verifyText('badge', 'InboxPage', '2');
+});
+
+// defect: tests/e2e/docs/missing.md
+test('TCIB-000102 · a missing file @known-defect', async ({ steps }) => { // EXPECT TB-I4
+  await steps.verifyText('badge', 'InboxPage', '2');
+});
+
+// defect: tests/e2e/docs/known-issues.md#l9
+test('TCIB-000103 · a missing anchor @known-defect', async ({ steps }) => { // EXPECT TB-I4
+  await steps.verifyText('badge', 'InboxPage', '2');
+});
+
+test.describe('archived messages @known-defect', () => { // EXPECT TB-I4
+  test('TCIB-000104 · inside an uncovered describe', async ({ steps }) => {
+    await steps.verifyText('badge', 'InboxPage', '2');
+  });
+});

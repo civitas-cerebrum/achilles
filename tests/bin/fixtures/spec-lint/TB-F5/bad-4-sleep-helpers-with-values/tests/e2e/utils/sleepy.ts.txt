@@ -1,0 +1,12 @@
+import { sleep } from './sleep';
+export async function sleepThen<T>(ms: number, x: T) { await sleep(ms); return x; } // EXPECT TB-F5/advisory
+export async function settle() { for (let i = 0; i < 3; i++) await sleep(100); } // EXPECT TB-F5/advisory
+export async function waitABit() { console.log('waiting'); await sleep(500); } // EXPECT TB-F5/advisory
+export const nap2 = async (ms: number) => { const t = ms * 2; await new Promise((r) => setTimeout(r, t)); }; // EXPECT TB-F5/advisory
+export async function pollReady(steps) {
+  for (let i = 0; i < 10; i++) {
+    if (await steps.isVisible('ready', 'HomePage')) return;
+    await sleep(200); // EXPECT TB-F5/advisory
+  }
+  throw new Error('not ready');
+}

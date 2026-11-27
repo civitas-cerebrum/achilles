@@ -1,0 +1,4 @@
+{
+  "description": "register validation: a row naming a method with a Steps equivalent, a row in neither table, a citation of a fixed-in row, a row's waiver cap exceeded",
+  "rules": ["TB-G1"]
+}

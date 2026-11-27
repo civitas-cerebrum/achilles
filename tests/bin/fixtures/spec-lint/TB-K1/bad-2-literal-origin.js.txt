@@ -1,0 +1,8 @@
+// spec-lint fixture: an origin literal in a request call
+// place: tests/perf/literal-origin.js.js
+// rules: TB-K1
+import http from 'k6/http';
+export const options = { thresholds: { http_req_duration: ['p(95)<800'] } };
+export default function () {
+  http.get('https://shop.io/api/items'); // EXPECT TB-K1/advisory
+}

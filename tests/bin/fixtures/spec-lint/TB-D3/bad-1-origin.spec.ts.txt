@@ -1,0 +1,10 @@
+// spec-lint fixture: a hard-coded origin, also as an env fallback
+// rules: TB-D3
+import { test, expect } from './fixtures/base';
+
+const API = process.env.API_URL || 'https://staging.shop.io'; // EXPECT TB-D3/advisory
+
+test('TCAB-0050 · opens', async ({ steps }) => {
+  await steps.navigateTo('https://staging.shop.io/login'); // EXPECT TB-D3/advisory
+  await steps.verifyText('apiBase', 'LoginPage', API);
+});

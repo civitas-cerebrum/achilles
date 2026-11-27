@@ -1,0 +1,9 @@
+// spec-lint fixture: destructuring the page out of steps is a reach-through
+// place: tests/e2e/flows/raw-flow.ts
+// rules: TB-A14
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function withSteps(steps: Steps) {
+  const { page } = steps; // EXPECT TB-A14
+  return page;
+}

@@ -1,0 +1,29 @@
+import { mystery } from '@acme/verbs';
+export class ApiCls {
+  constructor(protected s: any) {}
+  async seed() { await this.s.apiPost('/seed', {}); }
+}
+export class Sub extends ApiCls { // EXPECT TB-S3/advisory
+  async close() { await this.s.click('closePromo', 'HomePage'); }
+}
+export class Clicker { // EXPECT TB-S3/advisory
+  constructor(protected s: any) {}
+  async close() { await this.s.click('closePromo', 'HomePage'); }
+}
+export class EmptySub extends Clicker {} // EXPECT TB-S3/advisory
+export class HandsOn { // EXPECT TB-S3/advisory
+  constructor(private s: any) {}
+  async go() { await mystery(this.s); }
+}
+export class LocalAlias { // EXPECT TB-S3/advisory
+  constructor(private s: any) {}
+  async go() { const st = this.s; await st.click('closePromo', 'HomePage'); }
+}
+export class Destruct { // EXPECT TB-S3/advisory
+  constructor(private s: any) {}
+  async go() { const { s } = this; await s.click('closePromo', 'HomePage'); }
+}
+export class ApiReal {
+  constructor(private s: any) {}
+  async go() { await this.s.apiDelete('/x'); }
+}

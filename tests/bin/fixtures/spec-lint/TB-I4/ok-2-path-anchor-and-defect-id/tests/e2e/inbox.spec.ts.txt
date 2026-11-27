@@ -1,0 +1,19 @@
+// spec-lint fixture: pointers that resolve: a heading slug, an explicit anchor, a recorded defect id
+import { test, expect } from './fixtures/base';
+
+// defect: tests/e2e/docs/known-issues.md#l3-badge-counts-archived-messages
+test('TCIB-000201 · the badge counts unread only @known-defect', async ({ steps }) => {
+  await steps.verifyText('badge', 'InboxPage', '2');
+});
+
+// defect: tests/e2e/docs/known-issues.md#l3
+test('TCIB-000202 · the badge ignores archived mail @known-defect', async ({ steps }) => {
+  test.fail(true, 'L3: the badge counts archived messages');
+  await steps.verifyText('badge', 'InboxPage', '2');
+});
+
+// defect: SHOP-12-D1
+test('TCIB-000203 · [SENTINEL SHOP-12-D1] a cancelled order is not charged @known-defect', async ({ steps }) => {
+  test.fail(true, 'SHOP-12-D1: a cancelled order is charged');
+  await steps.verifyText('chargeStatus', 'OrderPage', 'Not charged');
+});

@@ -1,0 +1,5 @@
+{
+  "entries": [
+    { "page": "ChoicesPage", "platform": "ios", "elementName": "choiceLabel", "selector": { "accessibility id": "label" } }
+  ]
+}

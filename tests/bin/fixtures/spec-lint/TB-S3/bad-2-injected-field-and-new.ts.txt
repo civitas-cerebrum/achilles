@@ -1,0 +1,16 @@
+// spec-lint fixture: a constructor-injected steps field (advisory); new <Name>(page)
+// place: tests/e2e/flows/screens.ts
+// rules: TB-S3
+import type { Page } from '@playwright/test';
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export class Screens { // EXPECT TB-S3/advisory
+  constructor(private steps: Steps) {}
+  async open() {
+    await this.steps.click('menuButton', 'HomePage');
+  }
+}
+
+export function build(page: Page) {
+  return new MenuHelper(page); // EXPECT TB-S3
+}

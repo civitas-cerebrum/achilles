@@ -1,0 +1,6 @@
+// a setup project file
+import { test as setup } from './base';
+
+setup('sign in once', async ({ steps }) => {
+  await steps.navigateTo('/login');
+});

@@ -1,0 +1,10 @@
+// spec-lint fixture: non-null, as any and @ts-ignore are counted once per file at the first
+// rules: TB-D1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0030 · counts', async ({ steps }) => {
+  const order = (await steps.getText('orderId', 'OrderPage'))!; // EXPECT TB-D1/advisory
+  const raw = order as any;
+  // @ts-ignore
+  await steps.verifyText('orderId', 'OrderPage', raw.trim());
+});

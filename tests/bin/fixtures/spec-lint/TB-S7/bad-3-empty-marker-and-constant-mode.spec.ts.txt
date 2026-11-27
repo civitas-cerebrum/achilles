@@ -1,0 +1,17 @@
+// spec-lint fixture: a serial-deliberate marker without a reason, and the serial mode held in a constant
+// rules: TB-S7
+import { test } from './fixtures/base';
+
+const MODE = 'serial';
+test.describe('a', () => {
+  // serial-deliberate:
+  test.describe.configure({ mode: 'serial' }); // EXPECT TB-S7
+  test('TCAB-0922 · a', async ({ steps }) => { await steps.verifyPresence('heading', 'HomePage'); });
+});
+test.describe('b', () => {
+  test.describe.configure({ mode: MODE }); // EXPECT TB-S7
+  test('TCAB-0923 · b', async ({ steps }) => { await steps.verifyPresence('heading', 'HomePage'); });
+});
+test.describe.serial('c', () => { // EXPECT TB-S7/advisory
+  test('TCAB-0924 · c', async ({ steps }) => { await steps.verifyPresence('heading', 'HomePage'); });
+});

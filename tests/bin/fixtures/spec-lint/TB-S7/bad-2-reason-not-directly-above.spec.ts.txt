@@ -1,0 +1,13 @@
+// spec-lint fixture: the reason is separated by a blank line; a serial describe without a reason (advisory)
+// rules: TB-S7
+import { test, expect } from './fixtures/base';
+
+// serial-deliberate: every test edits the one shared address book
+
+test.describe.configure({ mode: 'serial' }); // EXPECT TB-S7
+
+test.describe.serial('address book', () => { // EXPECT TB-S7/advisory
+  test('TCSR-000201 · one', async ({ steps }) => {
+    await steps.click('addressAdd', 'AccountPage');
+  });
+});

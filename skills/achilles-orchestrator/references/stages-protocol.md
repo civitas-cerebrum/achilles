@@ -63,8 +63,8 @@ Entries that cannot be seen live (source-only, user-supplied, behind an interact
 1. Read `tests/fixtures/base.ts` (or `tests/e2e/fixtures/base.ts`) and `playwright.config.ts`; create or repair only what is missing or broken. Read `../../test-data-conventions/SKILL.md` and `tests/e2e/docs/test-data-plan.md`; create the plan from the skill's template when it is missing.
 2. Add the proposed entries to `page-repository.json` with `"provisional": true`, run `npx achilles-selector-evidence --page <Page> --element <element> …` for each (count 1, or ≥ 1 for `"list": true`; it writes `<Page>.<element>.md` + `.png`), and drop the flag in the same change ([`selector-evidence.md`](selector-evidence.md)). An entry the tool refuses or cannot reach stays flagged and is named in the return.
 3. Read [`api-reference.md`](api-reference.md) in full; never write `steps.*` calls from memory.
-4. Write the test through the Steps API: every interaction via `steps.*`; no raw `page.locator()`; selectors only by repository name; a stable test id at the head of every title ([`test-identity.md`](test-identity.md)); `test.describe.configure({ timeout: 60_000 })` on every describe block.
-5. **Every test ends with a verification that proves the action's effect, causally.** Ask: if the action had silently done nothing, would this assertion still pass? If yes, it is a tautology. Catch: clicking a list item then asserting the list is present; hovering then asserting visibility; filling then asserting the input exists; clicking a button then asserting the button is enabled; filtering by regex then asserting the parent collection exists. Verify the specific effect instead (navigation, a selected-state attribute, the filled value or a dependent element, a modal, a URL change, the filtered result). Only a documented framework-smoke case may end on `verifyState('visible')`, with a one-line comment saying why.
+4. Write the test to [`test-baseline.md`](test-baseline.md): the Steps API only ([TB-A1](test-baseline.md#tb-a1) to [TB-A4](test-baseline.md#tb-a4)), repository names only ([TB-A5](test-baseline.md#tb-a5)), a stable id at the head of every title ([TB-I1](test-baseline.md#tb-i1)), a timeout budget only where a test needs more than the default ([TB-W1](test-baseline.md#tb-w1), [TB-W2](test-baseline.md#tb-w2)).
+5. **Every test proves the action's effect, causally**: the oracle is present and tied to the action ([TB-R4](test-baseline.md#tb-r4)), and it would fail if the action had silently done nothing ([TB-R5](test-baseline.md#tb-r5), which lists the tautologies to catch).
 6. Run `npx playwright test <spec>`.
 7. On failure, follow `failure-diagnosis` (evidence floor first: trace, DOM at failure, console; classify; heal or report). New selectors go through Stage 2 again. App bugs are returned as `app-bug` with evidence and the test left as written.
 8. On pass, meet the stability bar (3 consecutive greens), then run Stages 4a and 4b, stage the files (`git add`; the orchestrator commits) and return.
@@ -77,23 +77,19 @@ Load [`test-optimization.md`](test-optimization.md) and run its checks over ever
 
 ## Stage 4b: API compliance review
 
-Runs every time Stage 4a returns clean, per spec, before moving on. Load the API reference again; cross-reference every call. Checklist:
+Runs every time Stage 4a returns clean, per spec, before moving on. Load the API reference again and check every touched test against [`test-baseline.md`](test-baseline.md) (only the touched test must be clean). Checklist:
 
-1. **Signatures**: argument count, order (`elementName` before `pageName`), types.
-2. **Imports**: every type (`DropdownSelectType`, `EmailFilterType`, `FillFormValue`, …) from `@civitas-cerebrum/element-interactions` or `@civitas-cerebrum/email-client`; nothing invented.
-3. **Naming**: `pageName` PascalCase, `elementName` camelCase, both present in `page-repository.json`.
-4. **Listed elements**: `child` as `{ pageName, elementName }`, not an inline selector.
-5. **Dropdowns**: `DropdownSelectType.RANDOM | .VALUE | .INDEX` with the matching companion field.
-6. **Email API**: `sendEmail` / `receiveEmail` / `receiveAllEmails` / `cleanEmails` signatures; `EmailFilterType` filters.
-7. **No raw Playwright** where a `steps.*` equivalent exists.
-8. **Fixtures**: only `steps`, `repo`, `interactions`, `contextStore`, `page` plus the project's own.
-9. **Waits**: state strings `'visible' | 'hidden' | 'attached' | 'detached'`; the `waitForResponse` callback pattern.
-10. **Verifications**: `{ exactly | greaterThan | lessThan }` for `verifyCount`; bare `verifyText()` asserts non-empty (the 4-arg `notEmpty` form is deprecated).
-11. **Causal verification** on every test (the Stage 3 doctrine, review-side): presence of a trailing assertion, and it fails under a no-op.
-12. **Identity**: every case titled `TCXX-NNNNNN · <behaviour>` (another shape only via the project's configured pattern); an intentional red carries `@known-defect` and names its report ([`test-identity.md`](test-identity.md)).
-13. **Timeouts**: strip per-call overrides, `{ timeout }` options and inflated describe timeouts unless performance fatigue is recorded (a timeout-class failure Stage 3 resolved with the override, a slow-page note in `app-context.md`, or a `// perf:` / `// slow:` comment). Fixture-level and `test.setTimeout()` stay. Re-run after stripping; a timeout failure means the fatigue is real: revert that call and add the `// perf:` comment.
+1. **Signatures, imports, option shapes**: [TB-A7](test-baseline.md#tb-a7), [TB-A8](test-baseline.md#tb-a8), [TB-A10](test-baseline.md#tb-a10).
+2. **Repository names** (including `child: { pageName, elementName }`): [TB-A5](test-baseline.md#tb-a5), [TB-A6](test-baseline.md#tb-a6).
+3. **No raw Playwright**: [TB-A1](test-baseline.md#tb-a1) to [TB-A4](test-baseline.md#tb-a4), [TB-A2b](test-baseline.md#tb-a2b), [TB-A11](test-baseline.md#tb-a11), [TB-A12](test-baseline.md#tb-a12), [TB-A14](test-baseline.md#tb-a14); a version gap is an upgrade ([TB-A13](test-baseline.md#tb-a13)).
+4. **Fixtures**: [TB-A9](test-baseline.md#tb-a9).
+5. **Flow control and structure**: [TB-F1](test-baseline.md#tb-f1) to [TB-F7](test-baseline.md#tb-f7), [TB-S1](test-baseline.md#tb-s1) to [TB-S9](test-baseline.md#tb-s9).
+6. **Oracle**: [TB-R4](test-baseline.md#tb-r4), [TB-R5](test-baseline.md#tb-r5), [TB-R6](test-baseline.md#tb-r6).
+7. **Identity**: [TB-I1](test-baseline.md#tb-i1) to [TB-I4](test-baseline.md#tb-i4).
+8. **Timeouts**: [TB-W1](test-baseline.md#tb-w1). Strip an override without a recorded reason and re-run; a timeout failure means the need is real: revert that call and add the `// perf:` or `// slow:` comment.
+9. **Support files the change touched**: [TB-X1](test-baseline.md#tb-x1) to [TB-X4](test-baseline.md#tb-x4).
 
-Report the review in the return under the heading **API Compliance Review** (files reviewed; per issue the file:line, what is wrong, the correct usage; or "All API calls match the documented signatures"). Fix every issue, investigate why it was written (a misread signature propagates into the next scenario), re-run, confirm green.
+Report the review in the return under the heading **API Compliance Review** (files reviewed; per issue the rule id (`TB-…`), the file:line, what is wrong, the correct usage; or "All API calls match the documented signatures"). Fix every issue, investigate why it was written (a misread signature propagates into the next scenario), re-run, confirm green.
 
 ## Stage 4c: composition judge
 

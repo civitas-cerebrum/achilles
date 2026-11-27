@@ -1,0 +1,13 @@
+// spec-lint fixture: a verb holds the bounded retry and ends on a hard check
+// place: tests/e2e/flows/inbox.ts
+// rules: TB-F4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function waitForNewMail(steps: Steps) {
+  for (let i = 0; i < 3; i++) {
+    if (await steps.isVisible('newMail', 'InboxPage')) break;
+    await steps.click('refresh', 'InboxPage');
+  }
+  await steps.retryUntil(async () => { await steps.click('refresh', 'InboxPage'); }, async () => { await steps.verifyPresence('newMail', 'InboxPage'); }, 3, 1000);
+  await steps.verifyPresence('newMail', 'InboxPage');
+}

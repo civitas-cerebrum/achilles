@@ -1,0 +1,17 @@
+// spec-lint fixture: constructing a class follows its class: advisory when it drives only through an injected field, blocking for a page-object layer
+// place: tests/e2e/fixtures/screens.ts
+// rules: TB-S3
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export class Screens { // EXPECT TB-S3/advisory
+  constructor(private readonly steps: Steps) {}
+  async open(name: string) { await this.steps.click(name, 'MenuPage'); }
+}
+export class CartScreen { // EXPECT TB-S3/blocking
+  async open(steps: Steps) { await steps.click('cart', 'HeaderPage'); }
+}
+export function build(steps: Steps) {
+  const a = new Screens(steps); // EXPECT TB-S3/advisory
+  const b = new CartScreen(steps); // EXPECT TB-S3/blocking
+  return { a, b };
+}

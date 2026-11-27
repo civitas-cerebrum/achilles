@@ -90,7 +90,7 @@ Every expert writes its report to the path the brief named (`.achilles/runs/<run
 
 `status` is one of the four hand-back words (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_CONTEXT`, `BLOCKED`) or the workflow's result word, which the brief names: `new-tests-landed`, `covered-exhaustively` (needs the per-expectation mapping table in the spill), `findings-emitted`, `clean`, `healed`, `app-bug`, `quarantined`, `operator-pending`, `known-defect`, `unresolved`, `greenlight`, `improvements-needed`, `section-complete`, `journey-map-authored`, `blocked`, `skipped` (carries the authoriser). `no-new-tests-by-rationalisation` is not a return; re-dispatch with a brief that quotes the violation.
 
-On receipt: check the shape (the grep checks in [`finding-and-ledger-schema.md`](references/finding-and-ledger-schema.md) §4.1), record the result in the state file, then act: `DONE` → review; `DONE_WITH_CONCERNS` → rule on each concern (§7), then review; `NEEDS_CONTEXT` → answer with rulings and resume the same expert, or escalate the question upward if only the user can answer; `BLOCKED` → owner action, split the task, or re-dispatch with a stronger model; never retry blindly and never perform an action the expert's scope refused.
+On receipt: check the shape (the grep checks in [`finding-and-ledger-schema.md`](references/finding-and-ledger-schema.md) §4.1), record the result in the state file, then act: `DONE` → review; `DONE_WITH_CONCERNS` → rule on each concern (§7), then review; `NEEDS_CONTEXT` → answer with rulings and resume the same expert, or escalate the question upward if only the user can answer (a rule-input change, [TB-G2](references/test-baseline.md#tb-g2), always escalates upward); `BLOCKED` → owner action, split the task, or re-dispatch with a stronger model; never retry blindly and never perform an action the expert's scope refused.
 
 ## 6. Hand-back contract (upward)
 
@@ -151,7 +151,8 @@ Stated once; workflows cite this section.
 | [`references/stages-protocol.md`](references/stages-protocol.md) | Stage 2 inspection, Stage 3 authoring, Stage 4a/4b/4c review |
 | [`references/test-composition-standards.md`](references/test-composition-standards.md) | Composing canon index, contradiction record, the judge charter, depth doctrine |
 | [`references/scenario-block.md`](references/scenario-block.md) | The scenario block as requirement, and the lint |
-| [`references/spec-shape.md`](references/spec-shape.md) | Flat spec architecture and the readability check |
+| [`references/test-baseline.md`](references/test-baseline.md) | The test-code rulebook: every `TB-<id>` rule, severities, waivers, defect pointers, the framework-gap register |
+| [`references/spec-shape.md`](references/spec-shape.md) | Flat spec architecture and the readability check, worked against the rulebook |
 | [`references/test-optimization.md`](references/test-optimization.md) | Stage 4a checks and the whole-suite gate |
 | [`references/test-identity.md`](references/test-identity.md) | Test ids and `@known-defect` |
 | [`references/selector-evidence.md`](references/selector-evidence.md) | Provisional entries, `achilles-selector-evidence`, standing authorisation |

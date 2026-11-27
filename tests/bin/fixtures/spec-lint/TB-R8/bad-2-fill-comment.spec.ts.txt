@@ -1,0 +1,9 @@
+// spec-lint fixture: another what-comment
+// rules: TB-R8
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0021 · fills', async ({ steps }) => {
+  // fill email // EXPECT TB-R8/advisory
+  await steps.fill('emailInput', 'LoginPage', 'a@example.com');
+  await steps.verifyInputValue('emailInput', 'LoginPage', 'a@example.com');
+});

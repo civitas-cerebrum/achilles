@@ -1,0 +1,8 @@
+export class UserApi {
+  constructor(private steps: any) {}
+  async remove() { await this.steps.apiDelete('/users/1'); }
+}
+export class Exposer {
+  constructor(private s: any) {}
+  get steps() { return this.s; }
+}

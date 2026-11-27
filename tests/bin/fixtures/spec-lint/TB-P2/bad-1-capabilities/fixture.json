@@ -1,0 +1,6 @@
+{
+  "description": "a capability literal in a native-driver spec",
+  "rules": [
+    "TB-P2"
+  ]
+}

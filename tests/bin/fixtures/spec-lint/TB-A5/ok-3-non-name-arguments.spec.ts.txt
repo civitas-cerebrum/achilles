@@ -1,0 +1,11 @@
+// spec-lint fixture: arguments that are not element or page names are never selector-checked
+// rules: TB-A5
+import { test, expect } from './fixtures/base';
+
+test('TC-0055 · reads page data', async ({ steps }) => {
+  await steps.verifyPageContainsText('Home > Shoes');
+  const href = await steps.getWindowProperty('location.href');
+  const token = await steps.getLocalStorage('auth.token');
+  const w = await steps.evaluateScript('window.scrollY > 0');
+  expect([href, token, w]).toHaveLength(3);
+});

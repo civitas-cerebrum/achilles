@@ -1,0 +1,8 @@
+// spec-lint fixture: an instance built from the binding in a hook branch drives, whatever its class does.
+// API helpers used in hook branches should be verbs (functions over steps), which the lint resolves.
+import { test } from './fixtures/base';
+import { UserApi, Exposer } from './flows/classes';
+
+test.afterEach(async ({ steps }) => { if (process.env.CREATED) await new UserApi(steps).remove(); }); // EXPECT TB-F1
+test.beforeEach(async ({ steps }) => { const e = new Exposer(steps); if (process.env.I) await e.steps.click('a', 'HomePage'); }); // EXPECT TB-F1
+test('TCAB-1501 · body', async ({ steps }) => { await steps.verifyText('a', 'HomePage', 'x'); });

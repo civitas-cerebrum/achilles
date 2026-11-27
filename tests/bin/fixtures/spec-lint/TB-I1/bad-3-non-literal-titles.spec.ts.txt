@@ -1,0 +1,12 @@
+// spec-lint fixture: a test whose title is not a literal is still a test; a file constant title is read
+// rules: TB-I1
+// expect-project: TB-I1
+import { test } from './fixtures/base';
+
+const TITLE = 'a constant title without an id';
+const GOOD = 'TCAB-0925 · a constant title with an id';
+const titles = { first: 'TCAB-0926 · first' };
+
+test(TITLE, async ({ steps }) => { await steps.verifyPresence('heading', 'HomePage'); }); // EXPECT TB-I1/advisory
+test(GOOD, async ({ steps }) => { await steps.verifyPresence('heading', 'HomePage'); });
+test(titles.first, async ({ steps }) => { await steps.verifyPresence('heading', 'HomePage'); }); // EXPECT TB-I1/advisory

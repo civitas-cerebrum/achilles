@@ -1,0 +1,10 @@
+// spec-lint fixture: a file-level configure with mode and timeout
+// rules: TB-W2
+import { test, expect } from './fixtures/base';
+
+// serial-deliberate: every test edits the one shared report
+test.describe.configure({ mode: 'serial', timeout: 90_000 }); // EXPECT TB-W2/advisory
+
+test('TCAB-0081 · loads', async ({ steps }) => {
+  await steps.verifyPresence('report', 'ReportsPage');
+});

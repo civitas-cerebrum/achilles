@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civitas-cerebrum.github.io/element-interactions/schemas/compliance-baseline.schema.json",
+  "title": "Compliance baseline",
+  "description": "tests/compliance-baseline.json, written by `achilles-spec-lint --init-baseline` and lowered by `--update-baseline`: the blocking findings of the test baseline (skills/achilles-orchestrator/references/test-baseline.md) the suite had when it was recorded, per file, per rule and per test, describe and file scope. Only rules the ruleset counts are recorded; a count only goes down. Every count is at least 1; a rule, test, describe or file with none is left out.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "ruleset", "engine", "createdFrom", "idPattern", "totals", "files"],
+  "properties": {
+    "version": { "const": 1 },
+    "ruleset": { "type": "string", "pattern": "^tb-[0-9]+$", "description": "the ruleset the counts were recorded under (bin/lib/spec-lint/rulesets.mjs)" },
+    "engine": { "type": "string", "minLength": 1, "description": "the Achilles version that last wrote the file" },
+    "createdFrom": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "description": "the commit the baseline was recorded from" },
+    "idPattern": { "type": "string", "minLength": 1, "description": "the suite's pinned test-id pattern (a regular expression with the id in group 1), or \"house-default\"" },
+    "hook": {
+      "type": "object",
+      "description": "how the pre-commit check was installed in the clone that recorded the baseline",
+      "additionalProperties": false,
+      "required": ["mode", "path"],
+      "properties": {
+        "mode": { "enum": ["githooks", "chained", "wrapped", "lefthook", "shared"] },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "totals": { "$ref": "#/$defs/counts" },
+    "files": {
+      "type": "object",
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "$ref": "#/$defs/file" }
+    }
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "propertyNames": { "pattern": "^TB-[A-Z][0-9]+[a-z]?$" },
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "buckets": {
+      "type": "object",
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "$ref": "#/$defs/counts" }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counts", "waived", "tests", "describes", "fileScope"],
+      "properties": {
+        "counts": { "$ref": "#/$defs/counts", "description": "unwaived blocking findings per rule (the sum of the three buckets)" },
+        "waived": { "$ref": "#/$defs/counts", "description": "waived findings of counted rules per rule" },
+        "tests": { "$ref": "#/$defs/buckets", "description": "per test: its id, else `<title>#<n>` (the n-th test of that title in the file)" },
+        "describes": { "$ref": "#/$defs/buckets", "description": "per describe scope outside every test: the describe titles from the outermost, joined with ` > `" },
+        "fileScope": { "$ref": "#/$defs/counts", "description": "outside every test and describe" }
+      }
+    }
+  }
+}

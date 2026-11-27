@@ -1,0 +1,6 @@
+// spec-lint fixture: names are not checked against a repository that is not there
+import { test } from './fixtures/base';
+
+test('TCAB-0641 · the home page shows its heading', async ({ steps }) => {
+  await steps.verifyPresence('anyName', 'AnyPage');
+});

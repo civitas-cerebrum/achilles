@@ -1,0 +1,11 @@
+// spec-lint fixture: a repository method with an unknown element, a name that is not a constant (not checked)
+import { test } from './fixtures/base';
+import { checkOut, titles } from './flows/cart-flow';
+
+test('TCAB-0621 · checking out the cart', async ({ steps, repo }) => {
+  const dynamic = process.env.ROW_NAME || 'itemRow';
+  await steps.verifyPresence(dynamic, 'CartPage');
+  await repo.get('itemRows', 'CartPage'); // EXPECT TB-A6/advisory
+  await titles(steps);
+  await checkOut(steps);
+});

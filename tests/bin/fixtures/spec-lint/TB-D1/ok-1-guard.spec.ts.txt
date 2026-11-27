@@ -1,0 +1,9 @@
+// spec-lint fixture: a checked value instead of an escape
+// rules: TB-D1
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0031 · guards', async ({ steps }) => {
+  const order = await steps.getText('orderId', 'OrderPage');
+  if (!order) throw new Error('the order page shows no order id');
+  await steps.verifyText('orderId', 'OrderPage', order.trim());
+});

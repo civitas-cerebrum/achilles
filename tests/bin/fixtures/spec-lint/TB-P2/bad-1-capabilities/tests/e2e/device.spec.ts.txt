@@ -1,0 +1,8 @@
+// spec-lint fixture: capability literal
+import { test, expect } from './fixtures/base';
+
+const caps = { platformName: 'Android', 'appium:deviceName': 'Pixel 7' }; // EXPECT TB-P2
+
+test('TCAB-0130 · starts', async ({ steps }) => {
+  await steps.verifyText('platform', 'HomeScreen', caps.platformName);
+});

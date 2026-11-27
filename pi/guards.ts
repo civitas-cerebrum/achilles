@@ -5,7 +5,6 @@
 // note is appended to the tool's result for the model to read. A bash call with no timeout gets one
 // (pi's has no default, and one command that never returns holds the expert, the orchestrator
 // and the main session with it): ACHILLES_PI_BASH_TIMEOUT seconds, 600 by default, as Claude Code caps.
-import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { EngineInterface } from 'claude-code'
@@ -14,25 +13,17 @@ import { judgeBash } from '../claude-code/hooks/bash-judge'
 import { factoryRules, placeFile, ruleOf, threeLine } from '../claude-code/hooks/io'
 import { contentSecret } from '../claude-code/hooks/secrets'
 import type { Who } from '../claude-code/hooks/context'
+import { shellRecorder, writeRecorder, type Settle } from './compliance'
+import { runProcess, type RunInit } from './run'
 
-function engine(root: string, pluginRoot: string): EngineInterface {
+export function engine(root: string, pluginRoot: string): EngineInterface {
   const $ = {
     session: { cwd: async () => root },
     env: { get: async (k: string) => process.env[k] },
     plugin: { root: pluginRoot },
     fs: { read: (p: string) => readFile(p, 'utf8'), exists: async (p: string) => existsSync(p) },
     process: {
-      run: (argv: string[], o: { cwd?: string; stdin?: string; timeoutMs?: number; env?: Record<string, string> } = {}) =>
-        new Promise((resolve, reject) => {
-          const p = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd ?? root, env: { ...process.env, ...o.env }, timeout: o.timeoutMs })
-          let stdout = ''
-          let stderr = ''
-          p.stdout.on('data', d => (stdout += d))
-          p.stderr.on('data', d => (stderr += d))
-          p.on('error', reject)
-          p.on('close', code => resolve({ stdout, stderr, exitCode: code ?? 1 }))
-          p.stdin.end(o.stdin ?? '')
-        }),
+      run: (argv: string[], o: RunInit = {}) => runProcess(argv, o, root),
     },
   }
   return $ as unknown as EngineInterface
@@ -66,6 +57,7 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
     ...(short === 'orchestrator' ? {} : { expert: { agentId: `${short}-${process.pid}`, role: short } }),
   } as Who
   const notes = new Map<string, string[]>()
+  const settles = new Map<string, Settle>()
 
   pi.on('tool_call', async (e, ctx) => {
     const $ = engine(ctx.cwd, pluginRoot)
@@ -78,10 +70,20 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
       if (typeof input.timeout !== 'number' || input.timeout <= 0) input.timeout = BASH_TIMEOUT
       const said = v.notes.filter(n => !n.startsWith('__slug:'))
       if (said.length > 0) notes.set(e.toolCallId, said)
+      // Record only: a failure here never blocks the call (pi turns a handler's throw into a refusal).
+      try {
+        const shell = shellRecorder($, ctx.cwd, runId, short, ('writes' in v ? v.writes : undefined) ?? [])
+        if (shell) settles.set(e.toolCallId, shell)
+      } catch {}
       return
     }
     if ((e.toolName === 'write' || e.toolName === 'edit') && typeof input.path === 'string') {
       const { abs, rel } = placeFile(ctx.cwd, input.path)
+      try {
+        const landed = e.toolName === 'write' ? (input.content ?? '') : await edited(abs, input.edits ?? [])
+        const settle = landed === undefined ? undefined : await writeRecorder($, ctx.cwd, runId, short, abs, landed)
+        if (settle) settles.set(e.toolCallId, settle)
+      } catch {}
       // Run state the orchestrator and the gates read back (ledgers, cycle and coverage state,
       // resume files) must stay parseable: a write or edit that breaks one is refused.
       if (STATE_JSON.test(rel)) {
@@ -97,9 +99,12 @@ export function registerGuards(pi: ExtensionAPI, role: string, pluginRoot: strin
     }
   })
 
-  pi.on('tool_result', e => {
-    const said = notes.get(e.toolCallId)
-    if (!said) return
+  pi.on('tool_result', async e => {
+    const settle = settles.get(e.toolCallId)
+    settles.delete(e.toolCallId)
+    const more = settle ? await settle((e as { isError?: boolean }).isError === true).catch(() => [] as string[]) : []
+    const said = [...(notes.get(e.toolCallId) ?? []), ...more]
+    if (said.length === 0) return
     notes.delete(e.toolCallId)
     return { content: [...e.content, ...said.map(n => ({ type: 'text' as const, text: `achilles: ${n}` }))] }
   })

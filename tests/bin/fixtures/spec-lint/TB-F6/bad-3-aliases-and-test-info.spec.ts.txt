@@ -1,0 +1,18 @@
+// spec-lint fixture: .only through aliases and destructuring, expected failures through testInfo
+// rules: TB-F6
+import { test } from './fixtures/base';
+
+const only = test.only;
+const { only: focused, describe } = test;
+
+only('TCAB-0905 · extracted only', async ({ steps }) => { await steps.click('a', 'HomePage'); }); // EXPECT TB-F6
+focused('TCAB-0906 · destructured only', async ({ steps }) => { await steps.click('a', 'HomePage'); }); // EXPECT TB-F6
+describe.only('a focused describe', () => { // EXPECT TB-F6
+  test('TCAB-0907 · inner', async ({ steps }) => { await steps.click('a', 'HomePage'); });
+});
+test('TCAB-0908 · through testInfo', async ({ steps }, testInfo) => {
+  testInfo.fail(); // EXPECT TB-F6
+  testInfo.expectedStatus = 'failed'; // EXPECT TB-F6
+  test.info().fail(); // EXPECT TB-F6
+  await steps.click('a', 'HomePage');
+});

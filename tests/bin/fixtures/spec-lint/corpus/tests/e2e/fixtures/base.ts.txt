@@ -1,0 +1,27 @@
+// Fixtures module of the corpus. The extend is untyped: fixture kinds are inferred from what use(...) receives.
+import { test as base } from '@playwright/test';
+import { baseFixture } from '@civitas-cerebrum/element-interactions';
+
+const framework = baseFixture(base, 'tests/e2e/page-repository.json', { timeout: 10_000 });
+
+export const test = framework.extend({
+  adminPage: async ({ browser }, use) => {
+    const ctx = await browser.newContext(); // EXPECT TB-A2b
+    const pg = await ctx.newPage(); // EXPECT TB-A2b
+    await use(pg);
+    await ctx.close(); // EXPECT TB-A2b
+  },
+  apiCtx: async ({}, use) => {
+    const { request } = require('@playwright/test');
+    await use(await request.newContext());
+  },
+  rawDriver: async ({ repo }, use) => {
+    await use(repo.driver); // CLEAN
+  },
+  warmedPage: async ({ page }, use) => {
+    await page.goto('/warm'); // EXPECT TB-A12
+    if (process.env.E2E_MUTATION_CSS) await page.addStyleTag({ content: process.env.E2E_MUTATION_CSS }); // CLEAN
+    await use(page);
+  },
+});
+export { expect } from '@playwright/test';

@@ -1,0 +1,11 @@
+// spec-lint fixture: a skipped or fixme test is not a user; a local of the same name does not use the helper
+// rules: TB-S2
+import { test } from './fixtures/base';
+
+async function openB(steps) { await steps.click('b', 'HomePage'); } // EXPECT TB-S2
+async function openC(steps) { await steps.click('c', 'HomePage'); } // EXPECT TB-S2
+
+test('TCAB-0915 · b', async ({ steps }) => { await openB(steps); });
+test.skip('TCAB-0916 · b skipped', async ({ steps }) => { await openB(steps); });
+test('TCAB-0917 · c', async ({ steps }) => { await openC(steps); });
+test('TCAB-0918 · shadows c', async ({ steps }) => { const openC = 1; void openC; await steps.click('x', 'HomePage'); });

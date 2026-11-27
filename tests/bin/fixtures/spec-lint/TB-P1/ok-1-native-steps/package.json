@@ -1,0 +1,8 @@
+{
+  "name": "p",
+  "private": true,
+  "dependencies": {
+    "@civitas-cerebrum/element-interactions": "0.3.12",
+    "webdriverio": "9.0.0"
+  }
+}

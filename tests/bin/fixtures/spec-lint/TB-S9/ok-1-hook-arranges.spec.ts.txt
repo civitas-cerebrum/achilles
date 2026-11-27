@@ -1,0 +1,10 @@
+// spec-lint fixture: a hook that only arranges
+// rules: TB-S9
+import { test, expect } from './fixtures/base';
+
+test.beforeEach(async ({ steps }) => {
+  await steps.navigateTo('/login');
+});
+test('TCHK-000301 · login form shows', async ({ steps }) => {
+  await steps.verifyPresence('loginForm', 'LoginPage');
+});

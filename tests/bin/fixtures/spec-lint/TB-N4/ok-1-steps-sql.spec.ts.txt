@@ -1,0 +1,9 @@
+// spec-lint fixture: the database through steps.sql*
+// rules: TB-N4
+import type { Client } from 'pg';
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0112 · reads a row', async ({ steps }) => {
+  const rows = await steps.sqlQuery('select 1');
+  expect(rows as unknown as Client).toBeTruthy();
+});

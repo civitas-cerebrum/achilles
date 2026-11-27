@@ -1,0 +1,6 @@
+{
+  "description": "raw driver calls in a native-driver spec",
+  "rules": [
+    "TB-P1"
+  ]
+}

@@ -1,0 +1,9 @@
+// spec-lint fixture: the constant, and a path no constant holds
+import { test, expect } from './fixtures/base';
+import { Routes } from './data/routes';
+
+test('TCAB-0053 · opens login', async ({ steps }) => {
+  await steps.navigateTo(Routes.LOGIN);
+  await steps.navigateTo('/help');
+  await steps.verifyUrlContains(Routes.LOGIN);
+});

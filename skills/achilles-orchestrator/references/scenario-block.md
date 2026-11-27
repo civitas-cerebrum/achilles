@@ -12,7 +12,7 @@ A scenario exists in a suite that has opted into the `specs.shape` factory rule 
 Copy the block below into a scenario document listed in `specs.shape.scenarioDocs`, fill every field, then run the
 lint (`npx achilles-scenario-lint`, or the `specs.shape.lint` command of the project). The lint checks the field
 names, the `- **Field**: ` bullet shape and the enum word at the start of a value. Free text may follow an enum
-value. The test that implements the block is titled `'<ID> — <title>'`.
+value. The test that implements the block is titled `'<ID> · <title>'` ([TB-I3](test-baseline.md#tb-i3)).
 
 ```markdown
 #### <ID> — <title>

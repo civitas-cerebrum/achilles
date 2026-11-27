@@ -1,0 +1,9 @@
+// spec-lint fixture: generator inside the test
+import { test, expect } from './fixtures/base';
+import { makeCustomer } from './data/users';
+
+test('TCAB-0063 · signs up', async ({ steps }) => {
+  const user = makeCustomer();
+  await steps.fill('emailInput', 'SignupPage', user.email);
+  await steps.verifyPresence('welcome', 'SignupPage');
+});

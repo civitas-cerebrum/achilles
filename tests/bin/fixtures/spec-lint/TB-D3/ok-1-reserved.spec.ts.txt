@@ -1,0 +1,11 @@
+// spec-lint fixture: reserved-domain and localhost fallbacks are fine
+// rules: TB-D3
+import { test, expect } from './fixtures/base';
+
+const API = process.env.API_URL || 'https://api.example.com';
+const LOCAL = process.env.BASE_URL ?? 'http://localhost:3000';
+
+test('TCAB-0052 · opens', async ({ steps }) => {
+  await steps.navigateTo('/');
+  await steps.verifyText('apiBase', 'HomePage', API + LOCAL + 'https://shop.test/');
+});

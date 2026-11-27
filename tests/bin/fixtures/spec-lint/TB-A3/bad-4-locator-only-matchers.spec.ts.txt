@@ -1,0 +1,11 @@
+// spec-lint fixture: the remaining locator-only matchers
+// rules: TB-A3
+import { test, expect } from './fixtures/base';
+
+test('TC-0035 · checks the field', async ({ page }) => {
+  const field = page.getByLabel('Email');
+  await expect(field).toHaveJSProperty('value', 'a@example.test'); // EXPECT TB-A3
+  await expect(field).toHaveAccessibleDescription('Your email'); // EXPECT TB-A3
+  await expect(field).toHaveAccessibleErrorMessage('Required'); // EXPECT TB-A3
+  await expect(field).toContainClass('invalid'); // EXPECT TB-A3
+});

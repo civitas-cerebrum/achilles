@@ -1,0 +1,8 @@
+// spec-lint fixture: the refusal exception covers an expected rejection of the call itself
+// rules: TB-A5
+import { test, expect } from './fixtures/base';
+
+test('TC-0056 · unknown elements are refused', async ({ steps }) => {
+  await expect(steps.click('div.nope', 'CartPage')).rejects.toThrow(/not found/);
+  await expect(async () => steps.click('#missing', 'CartPage')).rejects.toThrow();
+});

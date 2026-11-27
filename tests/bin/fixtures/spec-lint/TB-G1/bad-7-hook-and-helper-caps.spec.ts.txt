@@ -1,0 +1,27 @@
+// spec-lint fixture: the two-waiver cap holds per hook and per helper, not only per test
+// rules: TB-G1
+import { test, expect } from './fixtures/base';
+
+async function go(page) {
+  // achilles-allow TB-A4 -- the theme flag must exist before any page script runs
+  await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+  // achilles-allow TB-A4 -- the clock hook must exist before any page script runs
+  await page.exposeFunction('now', () => 0);
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A4 -- the binding must exist before any page script runs
+  await page.exposeBinding('tick', () => 0);
+}
+
+test.beforeEach(async ({ page }) => {
+  // achilles-allow TB-A4 -- the theme flag must exist before any page script runs
+  await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+  // achilles-allow TB-A4 -- the clock hook must exist before any page script runs
+  await page.exposeFunction('now', () => 0);
+  // EXPECT-NEXT TB-G1
+  // achilles-allow TB-A4 -- the binding must exist before any page script runs
+  await page.exposeBinding('tick', () => 0);
+});
+
+test('TC-0421 · uses the helper', async ({ steps }) => {
+  await steps.verifyPresence('heading', 'HomePage');
+});

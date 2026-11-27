@@ -1,0 +1,12 @@
+// spec-lint fixture: a helper that sleeps unconditionally around plain values, logging or a fixed-count loop is a sleep helper; a poll is not
+import { test } from './fixtures/base';
+import { sleepThen, settle, waitABit, nap2, pollReady } from './utils/sleepy';
+
+test('TCAB-1201 · helpers that sleep', async ({ steps }) => {
+  await sleepThen(100, 1); // EXPECT TB-F5
+  await settle(); // EXPECT TB-F5
+  await waitABit(); // EXPECT TB-F5
+  await nap2(100); // EXPECT TB-F5
+  await pollReady(steps);
+  await steps.verifyText('a', 'HomePage', 'x');
+});

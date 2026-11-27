@@ -1,0 +1,4 @@
+// spec-lint fixture: an any-annotated page parameter in a verb is still a driver binding
+// place: tests/e2e/flows/orders-flow.ts
+// rules: TB-A12
+export async function openOrders(page: any) { await page.goto('/orders'); } // EXPECT TB-A12

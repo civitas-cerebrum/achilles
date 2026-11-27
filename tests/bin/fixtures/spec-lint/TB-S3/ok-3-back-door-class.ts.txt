@@ -1,0 +1,11 @@
+// spec-lint fixture: a class whose only framework calls are api*, request* or sql* is not a page-object layer
+// place: tests/e2e/data/ledger.ts
+// rules: TB-S3
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export class ListingLedger {
+  private ids: string[] = [];
+  add(id: string) { this.ids.push(id); }
+  async clear(x: { steps: Steps }) { for (const id of this.ids) await x.steps.apiDelete(`/listings/${id}`); }
+}
+export function ledgerFor(steps: Steps) { return new ListingLedger(); }

@@ -1,0 +1,9 @@
+// spec-lint fixture: waits for an application state; steps.pace is advisory only
+// rules: TB-F5
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0053 · waits for state', async ({ steps }) => {
+  await steps.waitForState('orderConfirmation', 'OrderPage', 'visible');
+  await expect.poll(() => steps.getCount('row', 'OrderPage')).toBe(1);
+  await steps.pace(200); // EXPECT TB-F5/advisory
+});

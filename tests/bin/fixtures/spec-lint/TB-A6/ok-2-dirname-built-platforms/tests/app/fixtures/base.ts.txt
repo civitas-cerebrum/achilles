@@ -1,0 +1,8 @@
+// spec-lint fixture: the path resolved from the module's own directory, pointing at a generated repository
+import path from 'node:path';
+import { test as base } from '@playwright/test';
+import { baseFixture } from '@civitas-cerebrum/element-interactions';
+
+const REPOSITORY = path.resolve(__dirname, '../page-repository.json');
+
+export const test = baseFixture(base, REPOSITORY);

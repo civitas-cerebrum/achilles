@@ -1,0 +1,15 @@
+// spec-lint fixture: sentinel form (a) and skips that give their reason
+// rules: TB-F6
+import { test } from './fixtures/base';
+
+// defect: SHOP-12-D1
+test('TCAB-0070 · [SENTINEL SHOP-12-D1] a cancelled order is not charged @known-defect', async ({ steps }) => {
+  test.fail(true, 'SHOP-12-D1: a cancelled order is charged. Delete this sentinel once fixed.');
+  await steps.verifyText('chargeStatus', 'OrderPage', 'Not charged');
+});
+
+test('TCAB-0071 · skips by premise', async ({ steps }) => {
+  test.skip(steps.platform !== 'android', 'the hardware back key exists only on Android');
+  test.skip(true, 'premise: the archive is empty in this environment');
+  await steps.verifyPresence('archive', 'InboxPage');
+});

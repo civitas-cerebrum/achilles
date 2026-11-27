@@ -1,0 +1,8 @@
+// spec-lint fixture: outside tests/contracts the rule does not apply
+// rules: TB-N2
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0103 · reads', async ({ steps }) => {
+  const res = await steps.apiGet('/orders/7');
+  expect(res).toBeTruthy();
+});

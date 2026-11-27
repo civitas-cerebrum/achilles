@@ -1,0 +1,6 @@
+// spec-lint fixture: a support module is counted too
+// place: tests/e2e/data/orders.ts
+// rules: TB-D1
+export function first(list: string[] | undefined) {
+  return list![0]; // EXPECT TB-D1/advisory
+}

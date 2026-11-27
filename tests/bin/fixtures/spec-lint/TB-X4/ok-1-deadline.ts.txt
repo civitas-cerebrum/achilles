@@ -1,0 +1,13 @@
+// spec-lint fixture: a deadline-bounded loop
+// place: tests/e2e/flows/report-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function waitForReport(steps: Steps, deadline: number) {
+  while (true) {
+    if (Date.now() > deadline) throw new Error('the report did not appear in time');
+    if (await steps.isVisible('report', 'ReportsPage')) break;
+    await steps.click('refresh', 'ReportsPage');
+  }
+  await steps.verifyPresence('report', 'ReportsPage');
+}

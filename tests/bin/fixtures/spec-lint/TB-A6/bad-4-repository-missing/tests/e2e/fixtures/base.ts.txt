@@ -1,0 +1,5 @@
+// spec-lint fixture: the generated repository has not been built: one project finding, no name is checked
+import { test as base } from '@playwright/test';
+import { baseFixture } from '@civitas-cerebrum/element-interactions';
+
+export const test = baseFixture(base, 'tests/e2e/page-repository.json');

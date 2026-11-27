@@ -1,0 +1,13 @@
+// spec-lint fixture: .catch in route handlers, callbacks and hooks, and a rethrowing handler, are not TB-F3
+// rules: TB-F3
+import { test } from './fixtures/base';
+
+test.beforeEach(async ({ steps }) => {
+  await steps.click('dismissTour', 'HomePage').catch(() => null);
+});
+
+test('TCAB-0032 · handlers outside the test body', async ({ page, steps }) => {
+  await page.route('**/api', async (route) => { await route.fulfill({ json: {} }).catch(() => {}); });
+  await steps.click('save', 'FormPage').catch((e) => { throw new Error(`save failed: ${e}`); });
+  await steps.verifyPresence('saved', 'FormPage');
+});

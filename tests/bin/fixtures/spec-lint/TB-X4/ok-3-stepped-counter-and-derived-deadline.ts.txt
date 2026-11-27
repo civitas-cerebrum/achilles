@@ -1,0 +1,23 @@
+// spec-lint fixture: a counter the loop steps, and a deadline computed from the clock, each guarding an exit
+// place: tests/e2e/flows/sync-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+const MAX_ATTEMPTS = 5;
+const SYNC_BUDGET_MS = 20_000;
+
+export async function syncUntilDone(steps: Steps) {
+  let attempt = 0;
+  for (;;) {
+    attempt++;
+    if (attempt > MAX_ATTEMPTS) throw new Error(`sync did not finish in ${MAX_ATTEMPTS} attempts`);
+    await steps.click('syncButton', 'SettingsPage');
+    if (await steps.isVisible('syncDone', 'SettingsPage')) break;
+  }
+  const end = Date.now() + SYNC_BUDGET_MS;
+  while (await steps.isVisible('spinner', 'SettingsPage')) {
+    if (end < Date.now()) throw new Error('the spinner did not go away');
+    await steps.pace(250);
+  }
+  await steps.verifyPresence('syncDone', 'SettingsPage');
+}

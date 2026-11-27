@@ -1,0 +1,17 @@
+// spec-lint fixture: one titled test per scenario; a function that declares a test called once
+// rules: TB-S1
+import { test, expect } from './fixtures/base';
+
+test('TCPD-000210 · size S is selectable', async ({ steps }) => {
+  await steps.click('sizeSmall', 'ProductPage');
+});
+test('TCPD-000220 · size M is selectable', async ({ steps }) => {
+  await steps.click('sizeMedium', 'ProductPage');
+});
+
+function declareOnce() {
+  test('TCPD-000230 · declared once', async ({ steps }) => {
+    await steps.click('sizeLarge', 'ProductPage');
+  });
+}
+declareOnce();

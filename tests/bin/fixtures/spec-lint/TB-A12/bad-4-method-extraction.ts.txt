@@ -1,0 +1,7 @@
+// spec-lint fixture: driver methods called through call / bind in a support module
+// place: tests/e2e/flows/nav-flow.ts
+// rules: TB-A12
+import type { Page } from '@playwright/test';
+
+export const go = async (p: Page) => { await p.goto.call(p, '/x'); }; // EXPECT TB-A12
+export const go2 = async (p: Page) => { const g = p.goto.bind(p); await g('/x'); }; // EXPECT TB-A12

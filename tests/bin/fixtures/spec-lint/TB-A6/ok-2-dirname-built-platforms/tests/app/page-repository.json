@@ -1,0 +1,20 @@
+{
+  "pages": [
+    {
+      "name": "ChoicesPage",
+      "platform": "android",
+      "elements": [
+        { "elementName": "choiceResult", "selector": { "id": "com.example:id/result" } },
+        { "elementName": "firstChoice", "selector": { "id": "com.example:id/first" } }
+      ]
+    },
+    {
+      "name": "ChoicesPage",
+      "platform": "ios",
+      "elements": [
+        { "elementName": "firstChoice", "selector": { "accessibility id": "first" } },
+        { "elementName": "choiceLabel", "selector": { "accessibility id": "label" } }
+      ]
+    }
+  ]
+}

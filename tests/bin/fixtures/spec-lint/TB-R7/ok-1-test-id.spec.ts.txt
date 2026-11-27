@@ -1,0 +1,10 @@
+// spec-lint fixture: evidence keyed on the test id
+// rules: TB-R7
+import path from 'node:path';
+import { test, expect } from './fixtures/base';
+
+test('TCAB-0011 · keeps evidence', async ({ steps }, testInfo) => {
+  const dir = path.join('evidence', testInfo.testId);
+  await steps.verifyPresence('heading', 'HomePage');
+  return dir;
+});
