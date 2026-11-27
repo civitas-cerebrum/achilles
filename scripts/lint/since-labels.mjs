@@ -33,6 +33,7 @@ export function firstReleases(root = '.') {
     const s = JSON.parse(readFileSync(join(dir, `${v}.json`), 'utf8'));
     for (const m of [...(s.methods || []), ...(s.properties || [])]) if (!first.has(m)) first.set(m, v);
   }
+  first.newest = versions.at(-1) || null;
   return first;
 }
 
@@ -74,7 +75,9 @@ export function sinceLabels(text) {
 /** Problems: a label that names no Steps method, or that differs from the newest first release of its methods. */
 export function sinceProblems(text, first, file = API_REFERENCE) {
   const problems = [];
+  const newestShipped = first.newest || [...first.values()].sort(cmp).at(-1);
   for (const { line, label, methods } of sinceLabels(text)) {
+    if (newestShipped && cmp(label, newestShipped) > 0) { problems.push(`${file}:${line}: the since label ${label}+ is not in any shipped surface (newest ${newestShipped}): run \`npm run build:equivalents\` once ${label} is published`); continue; }
     const known = methods.filter((m) => first.has(m));
     if (!known.length) { problems.push(`${file}:${line}: the since label ${label}+ names no Steps method (an option, return type, fluent member or repository behaviour is written "from ${label}")`); continue; }
     const newest = known.reduce((a, m) => (cmp(first.get(m), first.get(a)) > 0 ? m : a));

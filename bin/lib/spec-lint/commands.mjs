@@ -20,10 +20,13 @@ import { idPattern } from './ids.mjs';
 import { BASELINE_FILE, parseBaseline, serialize, recount, makeBaseline, remap, ratchet, checkCopy, updateBaseline, inferIdPattern } from './baseline.mjs';
 import { CURRENT_RULESET, promotedBetween } from './rulesets.mjs';
 import { headCommit, baselineAt, baselineCommit, baselineInHistory, renamesSince, headView, indexView, contentKeyParts, prefixOf, isShallow, lastValidBaseline } from './views.mjs';
-import { inputsAt, inputsOnDisk, compareInputs, inputPaths } from './inputs.mjs';
+import { inputsAt, inputsOnDisk, compareInputs, inputPaths, unevaluatedConfigs, unevaluatedLine } from './inputs.mjs';
 import { cacheKey, readCache, writeCache } from './cache.mjs';
 import { installHook, HookError } from './hooks.mjs';
 import { gitSync, catBlobs } from './git.mjs';
+import { pinnedVersion, gitReader, workTreeTop, shippedVersions, resolveSurface, PACKAGE } from './surface.mjs';
+import { parserFor } from './ast.mjs';
+import * as semver from './semver.mjs';
 
 const require = createRequire(import.meta.url);
 const { DEFAULT_ID_RE } = require('../../../claude-code/lib/test-id-scan.js');
@@ -63,6 +66,30 @@ function copyLine(v, where) {
     case 'upgrade-mixed': return three('baseline', `${f}: the ruleset upgrade (${v.detail}) comes with other changes: ${v.files.slice(0, 5).join(', ')}${v.files.length > 5 ? ', …' : ''}`, 'make the ruleset upgrade a change of its own that touches only the baseline file, then the other changes');
     default: return three('baseline', `${f}: ${v.detail}`, 'restore the field: only `achilles-spec-lint --update-baseline` changes the baseline, and the id pattern is a rule input that needs the person\'s decision');
   }
+}
+
+const PIN_FILES = ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'];
+
+/**
+ * The framework surface as a protected input: the release the reference commit pins (its own lock file or
+ * declaration, else its workspace root's) against the surface the lint resolves now. A lower release, or a pin
+ * that now comes from another place, is a weakening change ([TB-G2]).
+ */
+function surfaceChanges(root, refRev) {
+  const top = workTreeTop(root) || root;
+  const base = pinnedVersion(root, { top, reader: gitReader(root, refRev, top) });
+  if (!base) return [];
+  const versions = shippedVersions();
+  const baseVersion = base.exact || semver.maxSatisfying(versions, base.range);
+  const out = [];
+  const nowPin = pinnedVersion(root, { top });
+  if (!nowPin || nowPin.from !== base.from) out.push({ input: 'framework pin', detail: `the ${PACKAGE} pin moved from ${base.from} to ${nowPin ? nowPin.from : 'nowhere'}`, weakens: true });
+  let surface = null;
+  try { surface = resolveSurface(root, parserFor(root)); } catch { /* the lint itself reports that it cannot run */ }
+  if (surface && baseVersion && semver.valid(surface.version) && semver.compare(surface.version, baseVersion) < 0) {
+    out.push({ input: 'framework surface', detail: `the Steps surface is ${surface.version} (${surface.source}), below the ${baseVersion} the reference pins (${base.from})`, weakens: true });
+  }
+  return out;
 }
 
 /** Lints the whole suite of a view against a change, through the cache. */
@@ -185,8 +212,11 @@ function check(root, { change, view, refRev, copyText, renames, where, budgetMs,
   const inputs = refRev ? inputsAt(root, refRev) : null;
   const now = inputs ? inputsNow() : null;
   const inputChanges = inputs ? compareInputs(inputs, now) : [];
+  // the Steps surface the change is judged against may not fall below, or move away from, the reference's pin
+  if (inputs && strictInputs) inputChanges.push(...surfaceChanges(root, refRev));
+  const unevaluated = inputs ? unevaluatedConfigs(now, inputs) : [];
   // a change of protected inputs alone passes, reported for the owner's review; mixed with test code it is refused
-  const paths = inputs ? inputPaths(inputs, now) : new Set();
+  const paths = inputs ? new Set([...inputPaths(inputs, now), ...PIN_FILES]) : new Set();
   const inputsOnly = inputChanges.length > 0 && [...change.files.keys()].every((f) => paths.has(f) || f === BASELINE_FILE);
   const { report, cache } = suiteLint(root, { view, change, baselineIdPattern: opted ? pattern : undefined, budgetMs, useCache: !ci, inputs });
   const touched = report.findings.filter((f) => f.severity === 'blocking' && !f.waived && f.touched !== false);
@@ -207,7 +237,7 @@ function check(root, { change, view, refRev, copyText, renames, where, budgetMs,
     if (at) copyProblems.push({ kind: 'recreated', at });
   }
   const protectedFail = strictInputs && !inputsOnly ? inputChanges.filter((c) => c.weakens) : [];
-  return { report, cache, touched, ratchet: r, copyProblems, opted, ref: refB, refAt: refFound ? refFound.at : null, refRev, inputChanges, protectedFail, review: strictInputs && inputsOnly };
+  return { report, cache, touched, ratchet: r, copyProblems, opted, ref: refB, refAt: refFound ? refFound.at : null, refRev, inputChanges, unevaluated, protectedFail, review: strictInputs && inputsOnly };
 }
 
 function printCheck(res, { out, err, mode, where, tag }) {
@@ -215,6 +245,7 @@ function printCheck(res, { out, err, mode, where, tag }) {
   for (const v of res.ratchet.violations) err(ratchetLine(v, where));
   for (const v of res.copyProblems) err(copyLine(v, where));
   for (const n of res.ratchet.notes) err(`[ratchet] note: ${n}`);
+  for (const u of res.unevaluated) err(`[${tag}] note: ${unevaluatedLine(u)}`);
   if (res.ref && res.refAt && res.refAt !== res.refRev) err(`[baseline] note: compared with the last valid copy (${res.refAt})`);
   if (res.review) err(three(tag, `protected input changed: needs the owner's review: the change touches only rule inputs (${res.inputChanges.map((c) => `${c.input}: ${c.detail}, ${c.weakens ? 'weakens' : 'tightens'}`).join('; ')})`, 'the repository owner reviews and merges it deliberately (an admin merge until rulings exist); a change that mixes rule inputs with test code is refused', `${RULEBOOK}#tb-g2`));
   else for (const c of res.inputChanges) err(c.weakens && res.protectedFail.includes(c)
@@ -228,7 +259,7 @@ const okOf = (res) => !res.touched.length && !res.ratchet.violations.length && !
 
 const jsonOf = (res, mode, extra = {}) => ({
   tool: 'achilles-spec-lint', mode, ok: okOf(res), baseline: res.opted ? { ruleset: res.ref ? res.ref.ruleset : null, violations: res.ratchet.violations, problems: res.copyProblems, notes: res.ratchet.notes } : null,
-  protectedInputs: res.inputChanges, ...(res.review ? { review: 'protected input changed: needs the owner\'s review' } : {}), cache: res.cache, lint: res.report, ...extra,
+  protectedInputs: { changes: res.inputChanges, unevaluated: res.unevaluated }, ...(res.review ? { review: 'protected input changed: needs the owner\'s review' } : {}), cache: res.cache, lint: res.report, ...extra,
 });
 
 export function ratchetCmd(root, { out, err, base, ci, budgetMs }) {

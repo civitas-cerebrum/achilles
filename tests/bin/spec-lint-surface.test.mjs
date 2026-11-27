@@ -159,6 +159,33 @@ test('the project\'s own declaration wins over the workspace root', () => {
   } finally { rmSync(w.top, { recursive: true, force: true }); }
 });
 
+test('only a workspace root that covers the project is walked, and a committed node_modules is never trusted', () => {
+  const vcs = (cwd, ...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd, stdio: 'ignore', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_GLOBAL: '/dev/null' } });
+  // a directory above that declares no workspace covering the project
+  const w = workspace({ root: declares('0.3.12') });
+  try {
+    writeProject(w.top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['tools/*'], ...declares('0.3.12') }) });
+    fakePackage(w.top, '0.3.12');
+    assert.throws(() => resolveSurface(w.app, parser), SurfaceError);
+    // pnpm-workspace.yaml covers it
+    writeProject(w.top, { 'package.json': JSON.stringify({ name: 'mono', private: true, ...declares('0.3.12') }), 'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n  - '!packages/legacy'\n" });
+    assert.equal(resolveSurface(w.app, parser).source, 'workspace');
+  } finally { rmSync(w.top, { recursive: true, force: true }); }
+  // a node_modules force-added to the repository: a two-method surface would hide TB-A10
+  const c = workspace({ root: declares('0.3.12') });
+  try {
+    fakePackage(c.top, '0.3.12', { dts: 'export declare class Steps { click(elementName: string, pageName: string): Promise<void>; }' });
+    vcs(c.top, 'add', '-f', 'node_modules');
+    vcs(c.top, 'commit', '-q', '-m', 'vendored');
+    const s = resolveSurface(c.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.12'], 'the shipped surface, not the committed one');
+    assert.ok(s.methods.size > 10);
+    rmSync(path.join(c.top, 'package.json'));
+    writeProject(c.top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['packages/*'] }) });
+    assert.throws(() => resolveSurface(c.app, parser), (e) => /tracked in the repository, ignored/.test(e.message));
+  } finally { rmSync(c.top, { recursive: true, force: true }); }
+});
+
 test('the walk stops at the work tree\'s top level, and no declaration anywhere still cannot run', () => {
   const outer = tempRoot();
   try {

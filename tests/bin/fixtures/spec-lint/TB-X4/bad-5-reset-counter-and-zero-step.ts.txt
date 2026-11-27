@@ -1,0 +1,20 @@
+// spec-lint fixture: a counter the loop resets, and a step of zero, bound nothing
+// place: tests/e2e/flows/retry-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function retryBanner(steps: Steps) {
+  let tries = 0;
+  while (true) { // EXPECT TB-X4/advisory
+    tries++;
+    if (tries > 3) break;
+    if (await steps.isVisible('errorBanner', 'HomePage')) tries = 0;
+    await steps.click('retryButton', 'HomePage');
+  }
+  let waited = 0;
+  for (;;) { // EXPECT TB-X4/advisory
+    waited += 0;
+    if (waited > 10) break;
+    await steps.click('refresh', 'HomePage');
+  }
+}

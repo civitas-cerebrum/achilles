@@ -51,7 +51,7 @@ import { SurfaceError } from './lib/spec-lint/surface.mjs';
 import { stagedChange, baseChange, ChangeError } from './lib/spec-lint/touched.mjs';
 import { renderIndex, indexIds } from './lib/spec-lint/rules/identity.mjs';
 import { INDEX_FILE } from './lib/spec-lint/ids.mjs';
-import { initBaseline, updateBaselineCmd, ratchetCmd, preCommit, installHookCmd, UsageError, HookError } from './lib/spec-lint/commands.mjs';
+import { initBaseline, updateBaselineCmd, ratchetCmd, preCommit, installHookCmd, UsageError, HookError, ANCHOR } from './lib/spec-lint/commands.mjs';
 
 const USAGE = 'achilles-spec-lint [paths…] [--json] [--quiet] [--budget-ms <n>] [--staged | --base <ref>] [--suite] [--stdin] [--id-index [--check]] | --init-baseline | --update-baseline [--ruleset-upgrade] | --ratchet --base <ref> [--ci] | --ci --base <ref> | --pre-commit | --install-hook [--activate-hooks <names>]';
 const DOC = RULEBOOK;
@@ -190,7 +190,7 @@ function baselineMode(root, args) {
     return flush(ratchetCmd(root, { ...io, base: args.base, ci: args.ci }));
   } catch (e) {
     if (lines.err.length) process.stderr.write(`${lines.err.join('\n')}\n`);
-    if (e instanceof HookError) return fail(2, `the pre-commit check was not installed: ${e.message}`, e.todo || 'fix the hooks setup as the message says and install again; CI still checks every change');
+    if (e instanceof HookError) { process.stderr.write(`[spec-lint] the pre-commit check was not installed: ${e.message}\n→ Do: ${e.todo || 'fix the hooks setup as the message says and install again; CI still checks every change'}\n→ Why/how: ${ANCHOR}\n`); return 2; }
     if (e instanceof UsageError) return fail(2, e.message, args.mode === 'init' ? 'see the message; the baseline is recorded once per project' : `use ${USAGE}`);
     if (e instanceof SurfaceError) return fail(2, `spec lint cannot run: ${e.message}`, 'install the project dependencies (npm ci), or pin @civitas-cerebrum/element-interactions in package.json to a published release');
     if (e instanceof BudgetError) return fail(3, `${e.message}`, 'split the file, or raise --budget-ms when the machine is slow');

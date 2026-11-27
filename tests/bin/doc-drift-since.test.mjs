@@ -69,3 +69,8 @@ test('a wrong label and a label on an option are refused', () => {
   assert.match(p[1], /^api\.md:3: labelled 0\.3\.7\+, but .*navigateTo 0\.1\.1/);
   assert.match(p[2], /^api\.md:6: the since label 0\.3\.12\+ names no Steps method/);
 });
+
+test('a label newer than every shipped surface asks for the surfaces to be rebuilt', () => {
+  const doc = '```ts\nawait steps.someFutureMethod(); // 9.9.9+\n```\n';
+  assert.deepEqual(sinceProblems(doc, first, 'api.md'), [`api.md:2: the since label 9.9.9+ is not in any shipped surface (newest ${first.newest}): run \`npm run build:equivalents\` once 9.9.9 is published`]);
+});

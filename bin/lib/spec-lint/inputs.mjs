@@ -7,12 +7,13 @@
 // loads: any change there counts as a selection change. CI and `--ratchet` lint with the merge-base's inputs
 // and fail a change that weakens one; the pre-commit check lints with HEAD's and names the change.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { gitSync } from './git.mjs';
 import { REGISTER } from './waivers.mjs';
 import { parserFor } from './ast.mjs';
-import { configSelection, findConfigs, isConfigPath, SELECTION_KEYS as SELECTION } from './config-scope.mjs';
+import { configSelection, findConfigs, isConfigPath, within, SELECTION_KEYS as SELECTION } from './config-scope.mjs';
+import { workTreeTop } from './surface.mjs';
 
 const factoryPath = () => process.env.FACTORY_RULES && !path.isAbsolute(process.env.FACTORY_RULES) ? process.env.FACTORY_RULES : 'achilles-factory-rules.json';
 
@@ -34,16 +35,18 @@ const MODULE_EXTS = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs', '.json'];
  * the config and of the relative modules it loads (followed three levels deep), which decide a change when
  * the selection is not static.
  */
-function configShape(root, parser, read, rel) {
+function configShape(root, parser, read, rel, top) {
   const text = read(rel);
   if (typeof text !== 'string') return null;
   const { selection, unevaluable, imports } = configSelection(parser, text, path.join(root, rel), root);
   const deps = { [rel]: digest(text) };
+  const outside = [];
   const queue = imports.map((s) => [rel, s, 1]);
   while (queue.length && Object.keys(deps).length < 25) {
     const [from, spec, depth] = queue.shift();
     const base = path.posix.normalize(path.posix.join(path.posix.dirname(from), spec));
-    if (base.startsWith('..')) { deps[spec] = '(outside the project)'; continue; }
+    // a module elsewhere in the work tree is read like any other; only one outside the work tree is unknown
+    if (!within(top, path.resolve(root, base))) { if (!outside.includes(base)) outside.push(base); deps[base] = '(outside the work tree)'; continue; }
     const candidates = [...MODULE_EXTS.map((e) => base + e), ...MODULE_EXTS.slice(1).map((e) => base.replace(/\.[cm]?js$/, e)), ...MODULE_EXTS.slice(1).map((e) => `${base}/index${e}`)];
     const hit = candidates.find((c) => typeof read(c) === 'string');
     if (!hit) { deps[base] = '(missing)'; continue; }
@@ -54,15 +57,19 @@ function configShape(root, parser, read, rel) {
       try { for (const s of configSelection(parser, t, path.join(root, hit), root).imports) queue.push([hit, s, depth + 1]); } catch { /* not code */ }
     }
   }
-  return { selection, unevaluable, deps };
+  return { selection, unevaluable, deps, outside };
 }
 
-function shape(root, read, configNames) {
+const realOf = (p) => { try { return realpathSync(p); } catch { return p; } };
+const topOf = (root) => realOf(workTreeTop(root) || root);
+
+function shape(root, read, configNames, top) {
+  root = realOf(root);
   const factoryText = read(factoryPath());
   const parser = parserFor(root);
   const configs = {};
   for (const f of configNames) {
-    const c = configShape(root, parser, read, f);
+    const c = configShape(root, parser, read, f, top);
     if (c) configs[f] = c;
   }
   return { factoryText, factory: parseJson(factoryText), register: read(REGISTER), envPattern: envValue(read('.env')), configs };
@@ -71,10 +78,14 @@ function shape(root, read, configNames) {
 /** The protected inputs as committed at `rev` (a commit), or staged in the index when `rev` is ''. */
 export function inputsAt(root, rev) {
   const cache = new Map();
+  const top = topOf(root);
+  const real = realOf(root);
   const read = (rel) => {
     if (!cache.has(rel)) {
       let t = null;
-      try { t = gitSync(root, ['show', `${rev}:./${rel}`]); } catch { /* not there */ }
+      // paths from the work tree's top level, so a module beside the project (../shared/…) is read too
+      const fromTop = path.relative(top, path.resolve(real, rel)).split(path.sep).join('/');
+      if (!fromTop.startsWith('..')) { try { t = gitSync(root, ['show', `${rev}:${fromTop}`]); } catch { /* not there */ } }
       cache.set(rel, t);
     }
     return cache.get(rel);
@@ -84,7 +95,7 @@ export function inputsAt(root, rev) {
     const list = rev === '' ? gitSync(root, ['ls-files']) : gitSync(root, ['ls-tree', '-r', '--name-only', rev, './']);
     names = list.split('\n').map((x) => x.trim()).filter((x) => x && isConfigPath(x));
   } catch { /* none */ }
-  return shape(root, read, names);
+  return shape(root, read, names, top);
 }
 
 /** The files that hold protected inputs, at either side (the modules a config loads included). */
@@ -97,7 +108,28 @@ export function inputPaths(base, now) {
 export function inputsOnDisk(root) {
   const read = (rel) => { const p = path.join(root, rel); try { return existsSync(p) ? readFileSync(p, 'utf8') : null; } catch { return null; } };
   const names = findConfigs(root).map((abs) => path.relative(root, abs).split(path.sep).join('/'));
-  return shape(root, read, names);
+  return shape(root, read, names, topOf(root));
+}
+
+/**
+ * The configs whose test selection the check cannot evaluate, for the summary: [{ config, keys, why, outside }].
+ * Such a selection is compared only by the text of the config and the modules it loads, so a change through an
+ * environment variable, a package or a workflow file is not seen; `outside` lists loaded modules outside the
+ * work tree, which are not compared at all.
+ */
+export function unevaluatedConfigs(...sides) {
+  const out = new Map();
+  for (const side of sides) for (const [config, c] of Object.entries((side && side.configs) || {})) {
+    if (out.has(config) || !c.unevaluable.length) continue;
+    const parts = c.unevaluable.map((u) => { const m = /^([\w.[\]]+) \((.*)\)$/.exec(u); return m ? { key: m[1], why: m[2] } : { key: 'the config', why: u }; });
+    out.set(config, { config, keys: [...new Set(parts.map((p) => p.key))], why: [...new Set(parts.map((p) => p.why))], outside: c.outside || [] });
+  }
+  return [...out.values()].sort((a, b) => (a.config < b.config ? -1 : 1));
+}
+
+/** The summary line for one config `unevaluatedConfigs` returned. */
+export function unevaluatedLine(u) {
+  return `${u.config}: ${u.keys.join(', ')} cannot be evaluated statically (${u.why.join('; ')}); compared by the text of the config and the modules it loads only: a change through an environment variable, a package or a workflow file is not seen${u.outside.length ? `; ${u.outside.join(', ')} ${u.outside.length === 1 ? 'is' : 'are'} outside the work tree and not compared` : ''}`;
 }
 
 /** True only for the rule change known to tighten: the constant-table setting switched off. */

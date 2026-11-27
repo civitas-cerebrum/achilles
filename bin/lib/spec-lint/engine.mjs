@@ -382,7 +382,7 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
   const surface = resolveSurface(root, parser, { snapshotsDir, useGit });
   const scope = projectScope(root, parser);
   const project = {
-    root, parser, surface, equivalents: loadEquivalents(), budgetMs,
+    root, parser, surface, equivalents: loadEquivalents(), budgetMs, useGit,
     rules: inputs ? inputs.factory : factoryRules(root), register: readRegister(root, inputs ? inputs.register : undefined), knownIds: knownRuleIds(),
     findings: [], projectFindings: [], files: [],
     fixtureKinds: new Map(), extendKeys: new Set(), extendOpen: false,

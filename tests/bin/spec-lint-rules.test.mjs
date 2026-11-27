@@ -177,3 +177,75 @@ test('TB-X4: only an exit guarded by a counter the loop steps, or by a deadline,
     assert.match(x4[0].message, /^`for \(;;\)` without a counter or deadline that ends it/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('TB-X4: x = x ± k steps a counter; += 0, a reset counter or a reset deadline do not; a deadline helper guards; a state-only for is reported', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/flows/g.ts': [
+      "import type { Steps } from '@civitas-cerebrum/element-interactions';",
+      "function assertBefore(deadline: number) { if (Date.now() > deadline) throw new Error('late'); }",
+      'const expired = (deadline: number) => Date.now() > deadline;',
+      'export async function stepped(steps: Steps) {',
+      "  let n = 0; while (true) { n = n + 1; if (n > 5) throw new Error('x'); await steps.click('b', 'P'); }",
+      '}',
+      'export async function zero(steps: Steps) {',
+      "  let n = 0; while (true) { n += 0; if (n > 5) break; await steps.click('b', 'P'); }",
+      '}',
+      'export async function reset(steps: Steps) {',
+      "  let n = 0; while (true) { n++; if (n > 5) break; n = 0; await steps.click('b', 'P'); }",
+      '}',
+      'export async function movingDeadline(steps: Steps) {',
+      "  let end = Date.now() + 5000; while (true) { end = Date.now() + 5000; if (Date.now() > end) break; await steps.click('b', 'P'); }",
+      '}',
+      'export async function helper(steps: Steps) {',
+      "  const end = Date.now() + 5000; while (true) { assertBefore(end); await steps.click('b', 'P'); }",
+      '}',
+      'export async function guardHelper(steps: Steps) {',
+      "  const end = Date.now() + 5000; while (true) { if (expired(end)) break; await steps.click('b', 'P'); }",
+      '}',
+      'export async function stateFor(steps: Steps) {',
+      "  for (; await steps.isVisible('more', 'P');) await steps.click('more', 'P');",
+      '}',
+      '',
+    ].join('\n') });
+    const report = lintProject({ root, useGit: false });
+    const x4 = report.findings.filter((f) => f.rule === 'TB-X4').map((f) => [f.line, f.data.shape]);
+    assert.deepEqual(x4, [[8, 'forever'], [11, 'forever'], [14, 'forever'], [23, 'state']], JSON.stringify(report.findings.filter((f) => f.rule === 'TB-X4').map((f) => f.message)));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('TB-A6 reads the repository only inside the work tree, as a bounded regular file, and never echoes foreign content', async () => {
+  const { symlinkSync, mkdirSync, writeFileSync } = await import('node:fs');
+  const outer = tempRoot();
+  // a decoy outside the project: its names must never appear in a message
+  const decoy = path.join(outer, 'outside');
+  mkdirSync(decoy, { recursive: true });
+  writeFileSync(path.join(decoy, 'x.json'), JSON.stringify({ pages: [{ name: 'DecoyPage', elements: [{ elementName: 'decoyElementName' }] }] }));
+  const spec = "import { test } from './fixtures/base';\ntest('TCAB-0801 · x', async ({ steps }) => { await steps.click('decoyElementNam', 'DecoyPage'); });\n";
+  const base = (arg, extra = '') => `import { test as base } from '@playwright/test';\nimport { baseFixture } from '@civitas-cerebrum/element-interactions';\n${extra}export const test = baseFixture(base, ${arg});\n`;
+  const lint = (files, prep) => {
+    const root = path.join(outer, `p${Math.random().toString(36).slice(2)}`);
+    writeProject(root, { 'tests/e2e/a.spec.ts': spec, ...files });
+    if (prep) prep(root);
+    const r = lintProject({ root, useGit: false });
+    return { a6: r.findings.filter((f) => f.rule === 'TB-A6'), project: r.project.filter((p) => p.rule === 'TB-A6').map((p) => p.message), all: JSON.stringify(r) };
+  };
+  try {
+    const cases = [
+      [{ 'tests/e2e/fixtures/base.ts': base("'../outside/x.json'") }, null, /leaves the work tree/],
+      [{ 'tests/e2e/fixtures/base.ts': base(`'${path.join(decoy, 'x.json')}'`) }, null, /leaves the work tree/],
+      [{ 'tests/e2e/fixtures/base.ts': base("'tests/e2e/repo.json'") }, (r) => symlinkSync(path.join(decoy, 'x.json'), path.join(r, 'tests/e2e/repo.json')), /leaves the work tree through a symbolic link/],
+      [{ 'tests/e2e/fixtures/base.ts': base('pages', "import pages from '../../../../outside/x.json';\n") }, null, /leaves the work tree/],
+      [{ 'tests/e2e/fixtures/base.ts': base("'tests/e2e/repo.json'") }, (r) => mkdirSync(path.join(r, 'tests/e2e/repo.json')), /is not a regular file/],
+      [{ 'tests/e2e/fixtures/base.ts': base("'tests/e2e/repo.json'"), 'tests/e2e/repo.json': ' '.repeat(9 * 1024 * 1024) }, null, /larger than 8 MB/],
+      [{ 'tests/e2e/fixtures/base.ts': base("'tests/e2e/repo.json'"), 'tests/e2e/repo.json': '{"pages": [ {"name": "SecretishPage", oops' }, null, /^tests\/e2e\/fixtures\/base\.ts: the page repository tests\/e2e\/repo\.json is not valid JSON( \(at position \d+\))?; /],
+    ];
+    for (const [files, prep, want] of cases) {
+      const r = lint(files, prep);
+      assert.deepEqual(r.a6, [], 'nothing is checked against it');
+      assert.equal(r.project.length, 1, JSON.stringify(r.project));
+      assert.match(r.project[0], want);
+      assert.doesNotMatch(r.all, /decoyElementName|SecretishPage|oops/, 'no content of the file appears in the report');
+    }
+  } finally { rmSync(outer, { recursive: true, force: true }); }
+});

@@ -15,11 +15,15 @@
 // them; `steps.on` and `steps.expect` included), the first two arguments of the repository's name methods, and
 // every `{ pageName, elementName }` object, when the value is a literal or a constant of the same file.
 // Retyping the repository path outside the fixtures module is advisory too.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { isCall, isMember, isStr, strValue, unwrap, propName, memberChain } from '../ast.mjs';
 import { staticValue, Unevaluable } from '../config-scope.mjs';
 import { reachable } from '../suite.mjs';
+import { workTreeTop } from '../surface.mjs';
+
+const MAX_REPOSITORY_BYTES = 8 * 1024 * 1024;
+const realOf = (p) => { try { return realpathSync(p); } catch { return p; } };
 
 const URL_STEPS = /^(navigateTo|waitForUrl|waitForResponse|verifyUrlContains|expectNoRequest|openDeepLink|api[A-Z]\w*|request[A-Z]\w*)$/;
 const REPO_PAIR = new Set(['get', 'getAll', 'getRandom', 'getByText', 'getByAttribute', 'getByIndex', 'getVisible', 'getByRole', 'getElementMeta', 'getSelectorRaw', 'getSelector']);
@@ -122,10 +126,29 @@ export function visitors(project) {
     }
   }
 
+  // the repository is read only inside the work tree (the project root without git), only as a regular file of
+  // a bounded size, and its content never appears in a message beyond the names it defines
+  let boundary = null;
+  const boundaryOf = () => (boundary ??= realOf(project.useGit === false ? project.root : workTreeTop(project.root) || project.root));
+  const inside = (dir, abs) => { const r = path.relative(dir, abs); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+
   function load(abs) {
+    const shown = inside(project.root, abs) ? rel(abs) : 'a path outside the project';
+    const top = boundaryOf();
+    if (!inside(top, path.resolve(abs))) return { problem: `the page repository path leaves the work tree (${shown}); it is not read` };
+    let real = null;
+    let st = null;
+    try { real = realpathSync(abs); st = statSync(real); } catch { /* not there on disk */ }
+    if (real && !inside(top, real)) return { problem: `the page repository path ${shown} leaves the work tree through a symbolic link; it is not read` };
+    if (st && !st.isFile()) return { problem: `the page repository ${shown} is not a regular file; it is not read` };
+    if (st && st.size > MAX_REPOSITORY_BYTES) return { problem: `the page repository ${shown} is larger than ${MAX_REPOSITORY_BYTES / (1024 * 1024)} MB; it is not read` };
     const text = textOf(abs);
-    if (typeof text !== 'string') return { problem: `the page repository ${rel(abs)} the fixture loads does not exist (when a build step generates it, run that first)` };
-    try { return { abs, rel: rel(abs), index: indexOf(JSON.parse(text)) }; } catch (e) { return { problem: `the page repository ${rel(abs)} is not valid JSON (${e.message})` }; }
+    if (typeof text !== 'string') return { problem: `the page repository ${shown} the fixture loads does not exist (when a build step generates it, run that first)` };
+    if (text.length > MAX_REPOSITORY_BYTES) return { problem: `the page repository ${shown} is larger than ${MAX_REPOSITORY_BYTES / (1024 * 1024)} MB; it is not read` };
+    try { return { abs, rel: rel(abs), index: indexOf(JSON.parse(text)) }; } catch (e) {
+      const at = /position (\d+)/.exec(String(e && e.message));
+      return { problem: `the page repository ${shown} is not valid JSON${at ? ` (at position ${at[1]})` : ''}` };
+    }
   }
 
   /** The repositories a file is checked against: those of the fixtures modules it reaches, else all. */

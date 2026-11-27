@@ -487,7 +487,7 @@ test('--ci reads the rule inputs from the merge-base: a change that weakens one 
     const r = run(root, ['--ci', '--base', 'main', '--json']);
     assert.equal(r.status, 1);
     const rep = JSON.parse(r.stdout);
-    assert.ok(rep.protectedInputs.some((c) => c.input === 'achilles-factory-rules.json' && c.weakens));
+    assert.ok(rep.protectedInputs.changes.some((c) => c.input === 'achilles-factory-rules.json' && c.weakens));
     assert.ok(rep.lint.findings.some((f) => f.rule === 'TB-S1' && f.touched), 'the data table is linted under the merge-base rules');
     const human = run(root, ['--ci', '--base', 'main']);
     assert.match(human.stderr, /\[ci\] protected input changed: achilles-factory-rules\.json: rule specs\.constant-table-tests added \(weakens\)/);
@@ -565,6 +565,52 @@ test('--ci compares the configs\' evaluated test selection at the merge-base, su
     r = run(root, ['--ci', '--base', 'main']);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /\[ci\] protected input changed: tools\/playwright\.config\.ts: its test selection changed \(grepInvert\)/);
+  } finally { done(root); }
+});
+
+test('--ci holds the framework surface to the merge-base pin: a lower release or a moved pin is a protected input change', () => {
+  const root = optedIn();
+  try {
+    git(root, 'checkout', '-q', '-b', 'feature');
+    write(root, 'package.json', JSON.stringify({ name: 'p', private: true, dependencies: { '@civitas-cerebrum/element-interactions': '0.3.6' } }));
+    let r = run(root, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /needs the owner's review: the change touches only rule inputs \(framework surface: the Steps surface is 0\.3\.6 \(snapshot\), below the 0\.3\.12 the reference pins \(package\.json\), weakens\)/);
+    write(root, 'tests/e2e/a.spec.ts', `${SPEC}${CLEAN_TEST}`);
+    r = run(root, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /\[ci\] protected input changed: framework surface: .*below the 0\.3\.12/);
+    // an upgrade is not a weakening, but a pin that moves to a lock file is named
+    write(root, 'package.json', JSON.stringify({ name: 'p', private: true, dependencies: { '@civitas-cerebrum/element-interactions': '^0.3.12' } }));
+    write(root, 'package-lock.json', JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.12' } } }));
+    r = run(root, ['--ci', '--base', 'main']);
+    assert.match(r.stderr, /framework pin: the @civitas-cerebrum\/element-interactions pin moved from package\.json to package-lock\.json/);
+    assert.doesNotMatch(r.stderr, /framework surface:/);
+  } finally { done(root); }
+});
+
+test('--ci names a config selection it cannot evaluate, and compares the modules it loads from elsewhere in the work tree', () => {
+  const pkg = JSON.stringify({ name: 'e2e', private: true, dependencies: { '@civitas-cerebrum/element-interactions': '0.3.12' } });
+  const cfg = "import { defineConfig } from '@playwright/test';\nimport { IGNORED } from '../shared/selection';\nexport default defineConfig({ testDir: './tests/e2e', testIgnore: IGNORED, grepInvert: new RegExp(process.env.SKIP || 'x') });\n";
+  const root = repo({ 'e2e/package.json': pkg, 'e2e/playwright.config.ts': cfg, 'e2e/tests/e2e/fixtures/base.ts': BASE, 'e2e/tests/e2e/a.spec.ts': SPEC, 'shared/selection.ts': "export const IGNORED = ['**/legacy/**'];\n" });
+  try {
+    const e2e = path.join(root, 'e2e');
+    assert.equal(run(e2e, ['--init-baseline']).status, 0);
+    git(root, 'add', '-A');
+    assert.equal(commit(root, 'baseline', '--no-verify').status, 0);
+    git(root, 'checkout', '-q', '-b', 'feature');
+    let r = run(e2e, ['--ci', '--base', 'main', '--json']);
+    assert.equal(r.status, 0, r.stderr);
+    const u = JSON.parse(r.stdout).protectedInputs.unevaluated;
+    assert.deepEqual(u.map((x) => [x.config, x.keys]), [['playwright.config.ts', ['testIgnore', 'grepInvert']]]);
+    r = run(e2e, ['--ci', '--base', 'main']);
+    assert.match(r.stderr, /\[ci\] note: playwright\.config\.ts: testIgnore, grepInvert cannot be evaluated statically \(.*\); compared by the text of the config and the modules it loads only: a change through an environment variable, a package or a workflow file is not seen/);
+    // the shared module beside the project is part of the comparison
+    write(root, 'shared/selection.ts', "export const IGNORED = ['**/legacy/**', '**/checkout/**'];\n");
+    write(e2e, 'tests/e2e/a.spec.ts', `${SPEC}${CLEAN_TEST}`);
+    r = run(e2e, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /\[ci\] protected input changed: playwright\.config\.ts: its test selection cannot be evaluated statically \(.*\) and \.\.\/shared\/selection\.ts changed \(weakens\)/);
   } finally { done(root); }
 });
 
@@ -830,6 +876,7 @@ test('--install-hook: a second project of the same repository is refused where t
     const second = run(admin, ['--install-hook']);
     assert.equal(second.status, 2, second.stdout);
     assert.match(second.stderr, /\.githooks\/achilles-pre-commit already runs the check of the project in web/);
+    assert.match(second.stderr, /→ Why\/how: skills\/achilles-orchestrator\/references\/test-baseline\.md#baseline-and-ratchet/);
     assert.equal(read(root, '.githooks/achilles-pre-commit'), text, 'the first project keeps its check');
     // the same project again is idempotent
     const again = run(web, ['--install-hook']);
