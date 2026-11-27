@@ -2,7 +2,7 @@ import type { EngineInterface } from 'claude-code'
 import { update } from 'claude-code'
 
 import type { AchillesExpert, AchillesRun, AchillesStage } from '../types'
-import { listDir, run, walk, isSpecPath } from './io'
+import { listDir, walk, isSpecPath } from './io'
 import { basename, relTo, resolve } from './posix'
 
 export * from './io'
@@ -141,14 +141,6 @@ export async function findDirs($: EngineInterface, dir: string, name: string, op
     }
   }
   return out
-}
-
-/** The checkout that owns `.achilles/`: the main work tree of the session's repository (a worktree resolves to it), else the session directory. */
-export async function checkoutRoot($: EngineInterface, cwd: string): Promise<string> {
-  const r = await run($, ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, timeoutMs: 3000 })
-  if (!r.ok || r.exitCode !== 0) return cwd
-  const common = r.stdout.trim()
-  return common.endsWith('/.git') ? common.slice(0, -5) : cwd
 }
 
 /** The newest modification time of any spec file under `dir` (0 when none). */
