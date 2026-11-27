@@ -22,6 +22,12 @@ test('a child that reads its stdin and exits cleanly returns its output', { skip
   assert.equal(r.stdout.trim(), '6');
 });
 
+test('a child killed by a signal reads as 128 + the signal, never as exit 1', { skip: !strips && 'this Node does not load TypeScript' }, async () => {
+  const { runProcess } = await load();
+  const r = await runProcess(['sh', '-c', 'kill -TERM $$'], { timeoutMs: 4000 });
+  assert.equal(r.exitCode, 143);
+});
+
 test('a child past its bound is killed and the call fails', { skip: !strips && 'this Node does not load TypeScript' }, async () => {
   const { runProcess } = await load();
   await assert.rejects(runProcess(['sh', '-c', 'sleep 5'], { timeoutMs: 300 }), /timed out after 300 ms/);
