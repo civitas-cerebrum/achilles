@@ -17,10 +17,22 @@
 //   --stdin           write mode: reads {"file","before","after"} and reports only the findings new in "after"
 //   --id-index        writes the suite's id index (tests/e2e/docs/test-ids.md); with --check, compares instead
 //
-// It advises: nothing here is wired into a hook or refuses a workflow step.
+// The compliance baseline (tests/compliance-baseline.json, lib/spec-lint/commands.mjs):
+//   --init-baseline   records the baseline from HEAD, pins the id pattern, installs the pre-commit check
+//   --update-baseline lowers the recorded counts to the content (never raises); --ruleset-upgrade also records
+//                     the rules a newer ruleset added or promoted
+//   --ratchet --base <ref>  the change against the baseline at the merge-base (touched tests clean, untouched
+//                     counts not above it, the change's own copy only lowered, never deleted); --ci also lists
+//                     deleted test ids and waiver changes
+//   --pre-commit      the git hook entry point: the same on the index against HEAD's baseline; when it cannot
+//                     run it warns and exits 0
+//   --install-hook    installs the pre-commit check alone (in every other clone)
 //
-// Exit 0 = no unwaived blocking finding (in touched code, with --staged / --base); 1 = blocking findings, or an
-// id index that is out of date; 2 = usage or configuration (including no Steps surface resolved, no git);
+// Nothing here is wired into an Achilles hook or refuses a workflow step; the project's own pre-commit hook
+// and CI run these commands.
+//
+// Exit 0 = no unwaived blocking finding (in touched code, with --staged / --base); 1 = blocking findings, a
+// ratchet or baseline-file violation, or an id index that is out of date; 2 = usage or configuration (including no Steps surface resolved, no git);
 // 3 = a file ran past the time budget (default 5000 ms per file). Messages have three lines:
 // `[TB-<id>] <file>:<line> <test id>: <what>` / `→ Do: …` / `→ Why/how: <rulebook anchor>`.
 // `--json` prints the report of schemas/spec-lint-report.schema.json.
@@ -33,8 +45,9 @@ import { SurfaceError } from './lib/spec-lint/surface.mjs';
 import { stagedChange, baseChange, ChangeError } from './lib/spec-lint/touched.mjs';
 import { renderIndex, indexIds } from './lib/spec-lint/rules/identity.mjs';
 import { INDEX_FILE } from './lib/spec-lint/ids.mjs';
+import { initBaseline, updateBaselineCmd, ratchetCmd, preCommit, installHookCmd, UsageError } from './lib/spec-lint/commands.mjs';
 
-const USAGE = 'achilles-spec-lint [paths…] [--json] [--quiet] [--budget-ms <n>] [--staged | --base <ref>] [--suite] [--stdin] [--id-index [--check]]';
+const USAGE = 'achilles-spec-lint [paths…] [--json] [--quiet] [--budget-ms <n>] [--staged | --base <ref>] [--suite] [--stdin] [--id-index [--check]] | --init-baseline | --update-baseline [--ruleset-upgrade] | --ratchet --base <ref> [--ci] | --ci --base <ref> | --pre-commit | --install-hook';
 const DOC = RULEBOOK;
 
 const fail = (code, what, todo) => {
@@ -52,7 +65,7 @@ function format(f) {
 }
 
 function parseArgs(argv) {
-  const args = { paths: [], json: false, quiet: false, budgetMs: DEFAULT_FILE_BUDGET_MS, staged: false, base: null, suite: false, stdin: false, idIndex: false, check: false };
+  const args = { paths: [], json: false, quiet: false, budgetMs: DEFAULT_FILE_BUDGET_MS, staged: false, base: null, suite: false, stdin: false, idIndex: false, check: false, init: false, update: false, upgrade: false, ratchet: false, ci: false, preCommit: false, installHook: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const value = () => (a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i]);
@@ -63,6 +76,13 @@ function parseArgs(argv) {
     else if (a === '--stdin') args.stdin = true;
     else if (a === '--id-index') args.idIndex = true;
     else if (a === '--check') args.check = true;
+    else if (a === '--init-baseline') args.init = true;
+    else if (a === '--update-baseline') args.update = true;
+    else if (a === '--ruleset-upgrade') args.upgrade = true;
+    else if (a === '--ratchet') args.ratchet = true;
+    else if (a === '--ci') { args.ci = true; args.ratchet = true; }
+    else if (a === '--pre-commit') args.preCommit = true;
+    else if (a === '--install-hook') args.installHook = true;
     else if (a === '--base' || a.startsWith('--base=')) {
       args.base = value();
       if (!args.base || args.base.startsWith('-')) return { error: `--base needs a git ref (got ${JSON.stringify(args.base)})` };
@@ -76,6 +96,15 @@ function parseArgs(argv) {
   if (args.staged && args.base) return { error: '--staged and --base are two ways to name the change: pass one' };
   if (args.stdin && (args.staged || args.base || args.paths.length || args.idIndex)) return { error: '--stdin lints one write; it takes no paths, --staged, --base or --id-index' };
   if (args.check && !args.idIndex) return { error: '--check goes with --id-index' };
+  const modes = ['init', 'update', 'ratchet', 'preCommit', 'installHook'].filter((m) => args[m]);
+  if (args.upgrade && !args.update) return { error: '--ruleset-upgrade goes with --update-baseline' };
+  if (modes.length > 1) return { error: 'pass one of --init-baseline, --update-baseline, --ratchet (or --ci), --pre-commit and --install-hook' };
+  if (modes.length) {
+    if (args.paths.length || args.stdin || args.idIndex || args.suite || args.staged) return { error: 'the baseline commands lint the whole suite: they take no paths, --stdin, --id-index, --suite or --staged' };
+    if (args.ratchet && !args.base) return { error: `${args.ci ? '--ci' : '--ratchet'} needs --base <ref> (the branch the change merges into, e.g. origin/main)` };
+    if (!args.ratchet && args.base) return { error: '--base goes with --ratchet here; the other baseline commands take no ref' };
+    args.mode = modes[0];
+  }
   return args;
 }
 
@@ -104,6 +133,7 @@ function main(argv) {
   for (const p of args.paths) {
     if (!existsSync(path.resolve(root, p))) return fail(2, `${p} not found under ${root}`, 'pass existing spec or support files, or no paths to lint the whole suite');
   }
+  if (args.mode) return baselineMode(root, args);
   try {
     if (args.stdin) {
       let input;
@@ -125,6 +155,34 @@ function main(argv) {
     if (e instanceof SurfaceError) return fail(2, `spec lint cannot run: ${e.message}`, 'install the project dependencies (npm ci), or pin @civitas-cerebrum/element-interactions in package.json to a published release');
     if (e instanceof BudgetError) return fail(3, `${e.message}`, 'split the file, or raise --budget-ms when the machine is slow');
     if (e instanceof ChangeError) return fail(2, `the change cannot be read: ${e.message}`, 'run inside the git work tree, and name a ref that exists (git fetch it first)');
+    throw e;
+  }
+}
+
+/** The baseline commands: their own report (`--json`) or lines; exit 0, 1, 2 or 3. */
+function baselineMode(root, args) {
+  const lines = { out: [], err: [] };
+  const io = { out: (s) => lines.out.push(s), err: (s) => lines.err.push(s), budgetMs: args.budgetMs };
+  const flush = (r) => {
+    if (lines.err.length) process.stderr.write(`${lines.err.join('\n')}\n`);
+    // time since this process started (module loading included): the figure the commit-gate budget is about
+    if (args.json) process.stdout.write(`${JSON.stringify({ ...r.report, elapsedMs: Math.round(performance.now()) }, null, 2)}\n`);
+    else if (!args.quiet && lines.out.length) process.stdout.write(`${lines.out.join('\n')}\n`);
+    return r.code;
+  };
+  if (args.mode === 'preCommit') return flush(preCommit(root, io));
+  try {
+    if (args.mode === 'init') return flush(initBaseline(root, io));
+    if (args.mode === 'installHook') return flush(installHookCmd(root, io));
+    if (args.mode === 'update') return flush(updateBaselineCmd(root, { ...io, upgrade: args.upgrade }));
+    return flush(ratchetCmd(root, { ...io, base: args.base, ci: args.ci }));
+  } catch (e) {
+    if (lines.err.length) process.stderr.write(`${lines.err.join('\n')}\n`);
+    if (e instanceof UsageError) return fail(2, e.message, args.mode === 'init' ? 'see the message; the baseline is recorded once per project' : `use ${USAGE}`);
+    if (e instanceof SurfaceError) return fail(2, `spec lint cannot run: ${e.message}`, 'install the project dependencies (npm ci), or pin @civitas-cerebrum/element-interactions in package.json to a published release');
+    if (e instanceof BudgetError) return fail(3, `${e.message}`, 'split the file, or raise --budget-ms when the machine is slow');
+    if (e instanceof ChangeError) return fail(2, `the change cannot be read: ${e.message}`, 'run inside the git work tree, and name a ref that exists (git fetch it first)');
+    if (e && typeof e.status === 'number' && e.stderr !== undefined) return fail(2, `git failed: ${String(e.stderr || e.message).trim().split('\n')[0]}`, 'run inside the git work tree with at least one commit');
     throw e;
   }
 }

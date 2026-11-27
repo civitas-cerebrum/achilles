@@ -117,6 +117,7 @@ validateStandaloneFixtures('schemas/perf-summary.schema.json', 'schemas/perf-sum
 validateStandaloneFixtures('schemas/self-repair-report.schema.json', 'schemas/self-repair-report.fixtures');
 validateStandaloneFixtures('schemas/evidence-video.schema.json', 'schemas/evidence-video.fixtures');
 validateStandaloneFixtures('schemas/spec-lint-report.schema.json', 'schemas/spec-lint-report.fixtures');
+validateStandaloneFixtures('schemas/compliance-baseline.schema.json', 'schemas/compliance-baseline.fixtures');
 
 // The factory-rules schema is the per-project rule-file contract (bin/ reads it),
 // so it has its own block. Its floors and closed

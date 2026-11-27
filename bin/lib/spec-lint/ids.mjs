@@ -27,8 +27,10 @@ function envFileValue(root, key) {
 /**
  * The project's id pattern: { re, pinned, source, text }. `re` matches at the start of a title with the id in
  * group 1 (or the whole match). An unparseable pinned value is reported and the house default applies.
+ * `recorded` stands in for the baseline file's `idPattern` (the baseline a ratchet compares against, or the
+ * pattern an init is about to record); undefined reads the file on disk.
  */
-export function idPattern(root, factory, env = process.env) {
+export function idPattern(root, factory, env = process.env, recorded = undefined) {
   const fromEnv = env.CIVITAS_TEST_ID_PATTERN || envFileValue(root, 'CIVITAS_TEST_ID_PATTERN');
   const problems = [];
   if (fromEnv) {
@@ -45,9 +47,9 @@ export function idPattern(root, factory, env = process.env) {
     problems.push(`specs.shape.titleIdPattern (${shape}) is not a valid regular expression`);
   }
   const bl = path.join(root, BASELINE_FILE);
-  if (existsSync(bl)) {
-    let rec = null;
-    try { rec = JSON.parse(readFileSync(bl, 'utf8')).idPattern; } catch { problems.push(`${BASELINE_FILE} does not parse`); }
+  if (recorded !== undefined || existsSync(bl)) {
+    let rec = recorded === undefined ? null : recorded;
+    if (recorded === undefined) try { rec = JSON.parse(readFileSync(bl, 'utf8')).idPattern; } catch { problems.push(`${BASELINE_FILE} does not parse`); }
     if (rec === 'house-default') return { re: DEFAULT_ID_RE, pinned: true, source: `${BASELINE_FILE} idPattern`, text: 'house-default', problems };
     if (typeof rec === 'string' && rec) {
       const re = compile(rec);

@@ -65,7 +65,7 @@ export function stagedChange(root) {
     try { contents.set(rel, git(root, ['show', `:./${rel}`])); } catch { /* not readable from the index: the working tree is used */ }
     if (c.status === 'M') try { before.set(rel, git(root, ['show', `HEAD:./${rel}`])); } catch { /* no base version */ }
   }
-  return { files, contents, before, from: 'the index against HEAD' };
+  return { files, contents, before, from: 'the index against HEAD', base: 'HEAD' };
 }
 
 /** The change against the merge-base of HEAD and `ref`: the working tree, plus untracked files as new files. */
@@ -77,7 +77,7 @@ export function baseChange(root, ref) {
   for (const rel of git(root, ['ls-files', '--others', '--exclude-standard']).split('\n').filter(Boolean)) if (!files.has(rel)) files.set(rel, { status: 'A', lines: null });
   const before = new Map();
   for (const [rel, c] of files) if (c.status === 'M') try { before.set(rel, git(root, ['show', `${mb}:./${rel}`])); } catch { /* no base version */ }
-  return { files, contents: new Map(), before, from: `the working tree against ${ref} (merge-base ${mb.slice(0, 12)})` };
+  return { files, contents: new Map(), before, from: `the working tree against ${ref} (merge-base ${mb.slice(0, 12)})`, base: mb };
 }
 
 const inRange = (l, u) => l >= u.line && l <= u.endLine;

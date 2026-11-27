@@ -86,7 +86,7 @@ function readPackage(root) {
   try { return JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')); } catch { return {}; }
 }
 
-function factoryRules(root) {
+export function factoryRules(root) {
   const p = path.isAbsolute(process.env.FACTORY_RULES || '') ? process.env.FACTORY_RULES : path.join(root, process.env.FACTORY_RULES || 'achilles-factory-rules.json');
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
 }
@@ -368,10 +368,14 @@ function applyWaivers(project) {
  * budgetMs (per file), contents (rel → text read instead of the file on disk; a path that does not exist
  * is linted as if it did), change (touched.mjs: rel → { status, lines }, plus staged contents; every finding
  * then carries `touched`, and only touched blocking findings count), suite (ids across files, and the
- * support modules the selected specs import are linted too, with `followedFrom`).
+ * support modules the selected specs import are linted too, with `followedFrom`), tracked (rel paths: the
+ * files of a git tree view; a file on disk outside it is not part of the project, `contents` supplies the
+ * tree's text where it differs from the disk), all (report on every in-scope file even when a change is given:
+ * the baseline recount), baselineIdPattern (stands in for the baseline file's recorded `idPattern`; null: none).
+ * The returned report carries a non-enumerable `facts`: rel → { kind, tests, describes } for the baseline buckets.
  * Throws SurfaceError when no Steps surface resolves and BudgetError when a file runs out of time.
  */
-export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, useGit = true, budgetMs = DEFAULT_FILE_BUDGET_MS, contents = null, change = null, suite = false } = {}) {
+export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, useGit = true, budgetMs = DEFAULT_FILE_BUDGET_MS, contents = null, change = null, suite = false, tracked = null, all = false, baselineIdPattern = undefined } = {}) {
   const t0 = Date.now();
   root = path.resolve(root);
   const parser = parserFor(root);
@@ -382,7 +386,7 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
     rules: factoryRules(root), register: readRegister(root), knownIds: knownRuleIds(),
     findings: [], projectFindings: [], files: [],
     fixtureKinds: new Map(), extendKeys: new Set(), extendOpen: false,
-    pkg: readPackage(root), change, suite, k6Files: [],
+    pkg: readPackage(root), change, suite, k6Files: [], baselineIdPattern,
   };
   const override = new Map([...(change ? change.contents : []), ...(contents ? (contents instanceof Map ? contents : Object.entries(contents)) : [])].map(([k, v]) => [path.resolve(root, k), v]));
   for (const p of scope.problems) project.projectFindings.push({ rule: 'scope', severity: 'advisory', file: p.file, message: `${p.file}: ${p.message}; the default test glob and tests/** apply`, do: 'Keep testDir, testMatch, testIgnore and projects in the Playwright config as literal values (or path.join / path.resolve over __dirname) so the lint can see which files run.', why: `${RULEBOOK}#scope` });
@@ -394,7 +398,9 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
   // A config-named globalSetup / globalTeardown module is support wherever it sits (also outside the spec roots).
   const globals = scope.configs.flatMap((c) => c.globals).map(resolveModuleFile).filter((g) => g && within(root, g));
   const virtual = [...override.keys()].filter((a) => CODE_EXT.test(a) && within(root, a) && !/\.d\.[cm]?ts$/.test(a));
+  const inView = tracked ? new Set([...tracked].map((r) => path.resolve(root, r))) : null;
   for (const abs of [...new Set([...candidateFiles(root, scope.specRoots), ...globals, ...virtual])].sort()) {
+    if (inView && !inView.has(abs) && !override.has(abs)) continue;
     const stat = scope.staticKind(abs);
     if (stat === 'excluded') continue;
     const rel = relPosix(root, abs);
@@ -436,7 +442,7 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
 
   let selected = null;
   if (paths) selected = new Set(paths.map((p) => path.resolve(root, p)));
-  else if (change) selected = new Set([...change.files].filter(([, c]) => c.status !== 'D').map(([rel]) => path.resolve(root, rel)));
+  else if (change && !all) selected = new Set([...change.files].filter(([, c]) => c.status !== 'D').map(([rel]) => path.resolve(root, rel)));
   if (selected && suite) {
     // follow the imports of the selected specs: the support modules they reach are linted too
     for (const r of inScope) {
@@ -493,9 +499,10 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
   project.findings.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line || a.column - b.column || (a.rule < b.rule ? -1 : 1)));
   const charged = (f) => f.severity === 'blocking' && !f.waived && f.touched !== false;
   const blocking = project.findings.filter(charged).length;
+  const facts = new Map(inScope.map((r) => [r.rel, { kind: r.kind, tests: r.tests || [], describes: (r.describes || []).map(({ title, line, endLine }) => ({ title, line, endLine })) }]));
   const legacy = project.findings.filter((f) => f.severity === 'blocking' && !f.waived && f.touched === false).length;
   const advisory = project.findings.filter((f) => f.severity === 'advisory' && !f.waived).length + project.projectFindings.length;
-  return {
+  const report = {
     tool: 'achilles-spec-lint',
     version: JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')).version,
     ok: blocking === 0,
@@ -515,6 +522,8 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
     ...(suite && project.suiteIds ? { ids: project.suiteIds } : {}),
     timing: { ms: Date.now() - t0 },
   };
+  Object.defineProperty(report, 'facts', { value: facts, enumerable: false });
+  return report;
 }
 
 /**

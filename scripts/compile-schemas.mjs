@@ -56,6 +56,7 @@ compileStandalone('run-summary', 'schemas/run-summary.schema.json');
 compileStandalone('self-repair-report', 'schemas/self-repair-report.schema.json');
 compileStandalone('evidence-video', 'schemas/evidence-video.schema.json');
 compileStandalone('spec-lint-report', 'schemas/spec-lint-report.schema.json');
+compileStandalone('compliance-baseline', 'schemas/compliance-baseline.schema.json');
 
 if (failures > 0) {
   console.error(`\n${failures} schema(s) failed to compile.`);

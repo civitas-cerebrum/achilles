@@ -104,7 +104,7 @@ function titleText(file, t) {
 }
 
 export function visitors(project) {
-  const pattern = idPattern(project.root, project.rules);
+  const pattern = idPattern(project.root, project.rules, process.env, project.baselineIdPattern);
   const blocks = scenarioBlocks(project.root, project.rules);
   project.idPattern = pattern;
   const push = (file, rule, line, message, extra = {}) => project.findings.push({
