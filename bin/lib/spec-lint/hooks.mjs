@@ -25,7 +25,14 @@ const ORIGINAL = 'pre-commit.achilles-original';
 const LEFTHOOK = ['lefthook.yml', 'lefthook.yaml', '.lefthook.yml', '.lefthook.yaml'];
 const PKG = '@civitas-cerebrum/achilles';
 
-export class HookError extends Error {}
+export class HookError extends Error {
+  constructor(message, { written = [] } = {}) { super(message); this.written = written; }
+}
+
+/** The script a shared hooks directory calls: committed in the repository, absent in every other one. */
+export const SHARED_SCRIPT = '.githooks/achilles-pre-commit';
+/** The one line for a shared (global, system or outside) pre-commit: runs the repository's own check, skips where there is none. */
+export const SHARED_LINE = `s="$(git rev-parse --show-toplevel)/${SHARED_SCRIPT}"; [ ! -f "$s" ] || sh "$s" || exit 1`;
 
 const git = (root, args) => gitSync(root, args).trim();
 const posix = (p) => p.split(path.sep).join('/');
@@ -197,8 +204,11 @@ export function installHook(root, { activate = [] } = {}) {
     const local = configGet(root, ['--local']);
     const dir = path.resolve(top, effective.replace(/^~(?=\/|$)/, process.env.HOME || '/'));
     if (!within(top, dir) || effective !== local) {
-      const lint = `${rel ? `${rel}/` : ''}node_modules/${PKG}/bin/spec-lint.mjs`;
-      throw new HookError(`core.hooksPath is ${effective}${effective !== local ? ', set outside this repository (a global or system setting)' : ', outside this work tree'}: installing there would change every repository that uses it. Add this line to the pre-commit there by hand instead: node "$(git rev-parse --show-toplevel)/${lint}" --pre-commit; [ $? -ne 1 ] || exit 1`);
+      // the shared directory is left alone; the check itself is committed here, and the line that calls it
+      // skips every repository that has none (the script finds the project, a hoisted install, and fails open)
+      const shared = path.join(top, SHARED_SCRIPT);
+      put(shared, script);
+      throw new HookError(`core.hooksPath is ${effective}${effective !== local ? ', set outside this repository (a global or system setting)' : ', outside this work tree'}: installing there would change every repository that uses it. The check is written to ${SHARED_SCRIPT} (commit it); add this line to the pre-commit there by hand: ${SHARED_LINE}`, { written: [SHARED_SCRIPT] });
     }
     // husky: core.hooksPath is .husky/_ (v9, generated) or .husky (v4 to v8); the project's own file is .husky/pre-commit
     const hp = posix(effective).replace(/\/+$/, '');

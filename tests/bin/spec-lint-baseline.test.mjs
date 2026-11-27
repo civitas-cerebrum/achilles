@@ -11,7 +11,7 @@ import { REPO, tempRoot, writeProject } from './spec-lint-helpers.mjs';
 import { ratchet, updateBaseline, checkCopy, recount, inferIdPattern, parseBaseline, serialize } from '../../bin/lib/spec-lint/baseline.mjs';
 import { RULESETS, CURRENT_RULESET, promotedBetween, validateRulesets } from '../../bin/lib/spec-lint/rulesets.mjs';
 import { implementedRules, lintProject } from '../../bin/lib/spec-lint/engine.mjs';
-import { hookScript, MARKER } from '../../bin/lib/spec-lint/hooks.mjs';
+import { hookScript, MARKER, SHARED_LINE } from '../../bin/lib/spec-lint/hooks.mjs';
 
 const BIN = path.join(REPO, 'bin', 'spec-lint.mjs');
 const BASELINE = 'tests/compliance-baseline.json';
@@ -761,7 +761,8 @@ test('--install-hook never writes outside the repository: a global or outside ho
     const r = run(root, ['--install-hook']);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /set outside this repository/);
-    assert.match(r.stderr, /--pre-commit; \[ \$\? -ne 1 \] \|\| exit 1/);
+    assert.ok(r.stderr.includes(SHARED_LINE), 'the line that calls the committed script');
+    assert.ok(existsSync(path.join(root, '.githooks', 'achilles-pre-commit')), 'the check is written into the repository');
     assert.deepEqual(readdirSync(outside), []);
     // a relative global path is refused too: it would apply to every repository
     writeFileSync(GLOBAL, '[core]\n\thooksPath = .shared-hooks\n');
@@ -881,16 +882,37 @@ test('the committed hook is the same through a symbolic link to the project, and
   } finally { done(root); done(links); done(path.dirname(clone)); }
 });
 
-test('the hand-add line for a global hooks path carries no machine path', () => {
-  const outside = tempRoot();
-  const root = repo();
+test('a global hooks path: the committed check runs from one shared line, which skips repositories without it', () => {
+  const shared = tempRoot();
+  const plain = tempRoot();
+  const root = repo({ 'app/package.json': JSON.stringify({ name: 'app', private: true, dependencies: { '@civitas-cerebrum/element-interactions': '0.3.12' } }), 'app/tests/e2e/fixtures/base.ts': BASE, 'app/tests/e2e/a.spec.ts': SPEC });
   try {
-    writeFileSync(GLOBAL, `[core]\n\thooksPath = ${outside}\n`);
-    const r = run(root, ['--install-hook']);
-    assert.equal(r.status, 2);
-    const line = /Add this line[^:]*: (.*)$/m.exec(r.stderr)[1];
-    assert.equal(line, 'node "$(git rev-parse --show-toplevel)/node_modules/@civitas-cerebrum/achilles/bin/spec-lint.mjs" --pre-commit; [ $? -ne 1 ] || exit 1');
-  } finally { writeFileSync(GLOBAL, ''); done(root); done(outside); }
+    writeFileSync(GLOBAL, `[core]\n\thooksPath = ${shared}\n`);
+    const app = path.join(root, 'app');
+    const init = run(app, ['--init-baseline']);
+    assert.equal(init.status, 0, init.stderr);
+    const line = /add this line to the pre-commit there by hand: (.*)$/m.exec(init.stderr)[1];
+    assert.equal(line, SHARED_LINE, 'no machine path in the printed line');
+    assert.match(init.stdout, /git add tests\/compliance-baseline\.json \.githooks\/achilles-pre-commit/);
+    assert.deepEqual(readdirSync(shared), [], 'nothing written in the shared directory');
+    // the person adds the line to the shared pre-commit
+    writeFileSync(path.join(shared, 'pre-commit'), `#!/bin/sh\n${line}\n`);
+    spawnSync('chmod', ['+x', path.join(shared, 'pre-commit')]);
+    // an unrelated repository without Achilles commits as before
+    writeFileSync(path.join(plain, 'readme.txt'), 'x\n');
+    git(plain, 'init', '-q', '-b', 'main');
+    git(plain, 'add', '-A');
+    assert.equal(commit(plain, 'unrelated').status, 0);
+    // the subdirectory project: the baseline commit passes, a bad commit is refused
+    git(root, 'add', '-A');
+    let c = commit(root, 'baseline');
+    assert.equal(c.status, 0, c.out);
+    write(app, 'tests/e2e/a.spec.ts', SPEC.replace("await page.goto('/two');", "await page.goto('/two');\n  await page.reload();"));
+    git(root, 'add', '-A');
+    c = commit(root, 'bad');
+    assert.notEqual(c.status, 0, c.out);
+    assert.match(c.out, /\[TB-A2\] tests\/e2e\/a\.spec\.ts/);
+  } finally { writeFileSync(GLOBAL, ''); done(root); done(shared); done(plain); }
 });
 
 test('an activated dormant pre-commit keeps the same mode label on every run', () => {
