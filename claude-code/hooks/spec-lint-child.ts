@@ -66,6 +66,9 @@ export async function objectIdOf($: EngineInterface, top: string, rel: string): 
   return /^[0-9a-f]{40,64}$/.test(id) ? id : undefined
 }
 
+/** Why a child that did not finish could not check: a timeout is said once ("it timed out after 8000 ms"), any other reason in brackets. */
+export const unfinished = (reason: string) => (/^timed out\b/.test(reason) ? `it ${reason}` : `it did not finish (${reason})`)
+
 async function child($: EngineInterface, top: string, args: string[], stdin?: string, timeoutMs = WAIT_MS): Promise<LintRun> {
   const r = await run($, ['node', `${$.plugin.root}/bin/spec-lint.mjs`, ...args, '--json', '--quiet', '--budget-ms', String(FILE_BUDGET_MS)], {
     cwd: top,
@@ -73,7 +76,7 @@ async function child($: EngineInterface, top: string, args: string[], stdin?: st
     timeoutMs,
     ...(stdin === undefined ? {} : { stdin }),
   })
-  if (!r.ok) return { ok: false, why: `it did not finish (${r.reason})` }
+  if (!r.ok) return { ok: false, why: unfinished(r.reason) }
   if (r.exitCode === 3) return { ok: false, why: `it ran past its time budget of ${FILE_BUDGET_MS / 1000} s per file` }
   if (r.exitCode !== 0 && r.exitCode !== 1) return { ok: false, why: (firstLine(r.stderr).replace(/^\[spec-lint\]\s*/, '') || `exit ${r.exitCode}`).slice(0, 200) }
   try {

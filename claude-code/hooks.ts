@@ -251,6 +251,8 @@ export const register: Register = on => {
     const parent = isExpert(subagentType) ? whoIs(await readRuns($), e.parentAgentId) : undefined
     const advice = parent?.role === 'orchestrator' ? await dispatchAdvice($, e, roleOf(subagentType), parent) : undefined
     const rewritten = { ...e, subagentType, ...(advice ? { prompt: advice.prompt } : {}), ...(advice?.background === false ? { background: false } : {}) }
+    // The commit the dispatch starts from, read before the expert starts: its first write and any commit it makes come after.
+    const dispatchHead = parent?.role === 'orchestrator' ? headOf($, await $.session.cwd()).catch(() => undefined) : undefined
     const started = await next(advice || subagentType !== e.subagentType ? rewritten : e)
     for (const n of advice?.notes ?? []) await note($, e.parentAgentId, n)
     const m = MARK.exec(e.prompt)
@@ -263,8 +265,8 @@ export const register: Register = on => {
     if (parent?.role === 'orchestrator') {
       if (started.agentId !== undefined) {
         const role = roleOf(subagentType)
-        // The commit the dispatch starts from: the author's hand-back is linted against it, so its own commits count.
-        const head = await headOf($, await $.session.cwd()).catch(() => undefined)
+        // The author's hand-back is linted against the dispatch's commit, so its own commits count.
+        const head = await dispatchHead
         const expert = { agentId: started.agentId, role, ...advice?.fields, since: await $.clock.now(), ...(head ? { head } : {}) }
         await editRun($, parent.run.id, r => ({ ...r, experts: [...r.experts, expert], dispatched: { ...r.dispatched, [role]: (r.dispatched?.[role] ?? 0) + 1 } }))
         await refreshProgress($, parent.run.id)

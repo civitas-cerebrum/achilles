@@ -4,6 +4,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { AchillesRun } from '../types'
 import { capRows } from '../hooks/compliance-notes'
+import { unfinished } from '../hooks/spec-lint-child'
 import { ROOT, START, cleanLint, ended, engine, fakeBlob, notes, spawnExpert, startRun, type Harness } from './harness'
 
 // The write-time notes of the test baseline: a Write or Edit of a spec or support file by an Achilles
@@ -335,6 +336,19 @@ test('hand-back: the author is linted against the commit its dispatch started fr
   expect(run.argv).toEqual(expect.arrayContaining(['--base', DISPATCH, SPEC]))
 })
 
+test('hand-back: the dispatch commit is read before the expert starts, so a commit it makes at once is still counted', async ($, on) => {
+  const h = engine(on)
+  mock.session(on)
+  const DISPATCH = 'a'.repeat(40)
+  // once the author has been started, HEAD names the commit it made
+  h.procs.push(argv => (argv[0] === 'git' && argv.includes('HEAD') && argv.includes('--verify') ? `${h.spawns.some(s => s.subagentType.endsWith('author')) ? 'b'.repeat(40) : DISPATCH}\n` : undefined))
+  const { author } = await setup($, h)
+  await $.tool.call({ tool: 'Write', file_path: `${ROOT}/${SPEC}`, content: 'x', agentId: author } as never)
+  await $.turn.complete(ended(author, 'DONE\nTests written and committed.'))
+  const run = lintRuns(h).find(r => r.argv.includes('--base'))!
+  expect(run.argv).toEqual(expect.arrayContaining(['--base', DISPATCH, SPEC]))
+})
+
 test('hand-back: only an author is checked; a reviewer or a reproducer that wrote a file is not', async ($, on) => {
   const h = engine(on)
   mock.session(on)
@@ -356,6 +370,11 @@ test('the object id is read from the file on disk after the write when git can s
   const { author } = await setup($, h)
   await $.tool.call({ tool: 'Write', file_path: `${ROOT}/${SPEC}`, content: 'x', agentId: author } as never)
   expect(touched()[0]!.objectId).toBe('c'.repeat(40))
+})
+
+test('a lint child that timed out is said once; another reason is said in brackets', () => {
+  expect(unfinished('timed out after 8000 ms')).toBe('it timed out after 8000 ms')
+  expect(unfinished('spawn node ENOENT')).toBe('it did not finish (spawn node ENOENT)')
 })
 
 test('rows are capped per agent: one agent writing many files never evicts another agent\'s rows', () => {

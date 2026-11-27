@@ -5,7 +5,6 @@
 // note is appended to the tool's result for the model to read. A bash call with no timeout gets one
 // (pi's has no default, and one command that never returns holds the expert, the orchestrator
 // and the main session with it): ACHILLES_PI_BASH_TIMEOUT seconds, 600 by default, as Claude Code caps.
-import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { EngineInterface } from 'claude-code'
@@ -15,6 +14,7 @@ import { factoryRules, placeFile, ruleOf, threeLine } from '../claude-code/hooks
 import { contentSecret } from '../claude-code/hooks/secrets'
 import type { Who } from '../claude-code/hooks/context'
 import { shellRecorder, writeRecorder, type Settle } from './compliance'
+import { runProcess, type RunInit } from './run'
 
 export function engine(root: string, pluginRoot: string): EngineInterface {
   const $ = {
@@ -23,36 +23,7 @@ export function engine(root: string, pluginRoot: string): EngineInterface {
     plugin: { root: pluginRoot },
     fs: { read: (p: string) => readFile(p, 'utf8'), exists: async (p: string) => existsSync(p) },
     process: {
-      run: (argv: string[], o: { cwd?: string; stdin?: string; timeoutMs?: number; env?: Record<string, string> } = {}) =>
-        new Promise((resolve, reject) => {
-          const p = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd ?? root, env: { ...process.env, ...o.env } })
-          let stdout = ''
-          let stderr = ''
-          let settled = false
-          const finish = (f: () => void) => {
-            if (settled) return
-            settled = true
-            if (timer) clearTimeout(timer)
-            f()
-          }
-          // The wait is a bound: past it the child is killed outright and the call fails, even when the child
-          // ignores SIGTERM or a grandchild still holds its pipes.
-          const timer = o.timeoutMs
-            ? setTimeout(() => {
-                p.kill('SIGKILL')
-                p.stdout.destroy()
-                p.stderr.destroy()
-                finish(() => reject(new Error(`timed out after ${o.timeoutMs} ms`)))
-              }, o.timeoutMs)
-            : undefined
-          p.stdout.on('data', d => (stdout += d))
-          p.stderr.on('data', d => (stderr += d))
-          p.on('error', err => finish(() => reject(err)))
-          p.on('close', code => finish(() => resolve({ stdout, stderr, exitCode: code ?? 1 })))
-          // A child that exits before reading all of a large stdin closes the pipe: EPIPE is not this process's death.
-          p.stdin.on('error', () => undefined)
-          p.stdin.end(o.stdin ?? '')
-        }),
+      run: (argv: string[], o: RunInit = {}) => runProcess(argv, o, root),
     },
   }
   return $ as unknown as EngineInterface
