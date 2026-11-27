@@ -18,7 +18,7 @@
       "additionalProperties": false,
       "required": ["mode", "path"],
       "properties": {
-        "mode": { "enum": ["githooks", "chained", "wrapped", "lefthook"] },
+        "mode": { "enum": ["githooks", "chained", "wrapped", "lefthook", "shared"] },
         "path": { "type": "string", "minLength": 1 }
       }
     },

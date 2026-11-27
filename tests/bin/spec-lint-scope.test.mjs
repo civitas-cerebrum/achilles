@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
 import { lintProject } from '../../bin/lib/spec-lint/engine.mjs';
 import { tempRoot, writeProject } from './spec-lint-helpers.mjs';
+import { inputsOnDisk, compareInputs } from '../../bin/lib/spec-lint/inputs.mjs';
 
 const SPEC = "import { test } from './fixtures/base';\ntest('TC-1 · x', async ({ steps }) => { await steps.navigateTo('/'); });\n";
 const RAW_SPEC = "import { test } from './fixtures/base';\ntest('TC-2 · x', async ({ page }) => { await page.goto('/'); });\n";
@@ -136,4 +137,50 @@ test('one project-level advisory counts the code files under the spec roots that
     assert.match(notes[0].message, /^2 code files under the spec roots are neither a spec nor a support module and are not linted: tests\/e2e\/misc\/also-unused\.ts, tests\/e2e\/misc\/unused\.ts$/);
     assert.equal(notes[0].severity, 'advisory');
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// ── the configs' test selection as a protected input (inputs.mjs) ─────────
+
+/** The config changes between two versions of a project's files: [{ input, detail, weakens }]. */
+function configDelta(before, after) {
+  const a = project(before);
+  const b = project(after);
+  try { return compareInputs(inputsOnDisk(a), inputsOnDisk(b)).filter((c) => /config/.test(c.input)); } finally { rmSync(a, { recursive: true, force: true }); rmSync(b, { recursive: true, force: true }); }
+}
+
+test('protected configs: the evaluated selection is compared, so a constant changed elsewhere in the config is a change', () => {
+  const cfg = (dir) => `import { defineConfig } from '@playwright/test';\nconst SUITE = '${dir}';\nconst retries = 1;\nexport default defineConfig({\n  testDir: SUITE,\n  retries,\n});\n`;
+  const d = configDelta({ 'playwright.config.ts': cfg('./tests/e2e') }, { 'playwright.config.ts': cfg('./tests/e2e/smoke') });
+  assert.deepEqual(d, [{ input: 'playwright.config.ts', detail: 'its test selection changed (testDir)', weakens: true }]);
+  // a setting outside the selection is not a protected change
+  assert.deepEqual(configDelta({ 'playwright.config.ts': cfg('./tests/e2e') }, { 'playwright.config.ts': cfg('./tests/e2e').replace('retries = 1', 'retries = 2') }), []);
+});
+
+test('protected configs: a new entry of a multi-line array, top level or per project', () => {
+  const cfg = (extra) => `export default {\n  testIgnore: [\n    '**/legacy/**',\n${extra}  ],\n  projects: [\n    { name: 'web', grepInvert: /@slow/ },\n  ],\n};\n`;
+  const d = configDelta({ 'playwright.config.ts': cfg('') }, { 'playwright.config.ts': cfg("    '**/checkout/**',\n") });
+  assert.deepEqual(d.map((c) => c.detail), ['its test selection changed (testIgnore)']);
+  const p = configDelta({ 'playwright.config.ts': cfg('') }, { 'playwright.config.ts': cfg('').replace('/@slow/', '/@slow|@checkout/') });
+  assert.deepEqual(p.map((c) => c.detail), ['its test selection changed (projects[0] (web))']);
+});
+
+test('protected configs: a config in a subdirectory is found, and a new one is a change', () => {
+  const cfg = "export default { testDir: './specs', grep: /@smoke/ };\n";
+  assert.deepEqual(configDelta({ 'apps/web/playwright.config.ts': cfg }, { 'apps/web/playwright.config.ts': cfg.replace('@smoke', '@smoke|@wip') }).map((c) => `${c.input}: ${c.detail}`), ['apps/web/playwright.config.ts: its test selection changed (grep)']);
+  assert.deepEqual(configDelta({}, { 'apps/web/playwright.config.ts': cfg }).map((c) => `${c.input}: ${c.detail}`), ['apps/web/playwright.config.ts: a new Playwright config: its test selection needs review']);
+  assert.deepEqual(configDelta({ 'apps/web/playwright.config.ts': cfg }, { 'apps/web/playwright.config.ts': cfg }), []);
+});
+
+test('protected configs: a selection spread from another module is compared through that module\'s text', () => {
+  const cfg = "import { defineConfig } from '@playwright/test';\nimport shared from './playwright.shared';\nexport default defineConfig({ ...shared, retries: 1 });\n";
+  const shared = (ignore) => `export default { testDir: './tests', testIgnore: ['${ignore}'] };\n`;
+  const d = configDelta({ 'playwright.config.ts': cfg, 'playwright.shared.ts': shared('**/a/**') }, { 'playwright.config.ts': cfg, 'playwright.shared.ts': shared('**/checkout/**') });
+  assert.equal(d.length, 1);
+  assert.equal(d[0].weakens, true);
+  assert.match(d[0].detail, /cannot be evaluated statically \(.*\) and playwright\.shared\.ts changed/);
+  // nothing it loads changed: no change
+  assert.deepEqual(configDelta({ 'playwright.config.ts': cfg, 'playwright.shared.ts': shared('**/a/**') }, { 'playwright.config.ts': cfg, 'playwright.shared.ts': shared('**/a/**') }), []);
+  // a value read from the environment is not static either: a change of the config's text is a change
+  const env = (n) => `export default { grep: process.env.GREP ? new RegExp(process.env.GREP) : undefined, retries: ${n} };\n`;
+  assert.match(configDelta({ 'playwright.config.ts': env(1) }, { 'playwright.config.ts': env(2) })[0].detail, /cannot be evaluated statically \(grep/);
 });

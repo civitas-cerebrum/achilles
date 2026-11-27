@@ -544,6 +544,30 @@ test('--ci: an added factory rule is a weakening, so a permissive one cannot rid
   } finally { done(alone); }
 });
 
+test('--ci compares the configs\' evaluated test selection at the merge-base, subdirectories included', () => {
+  const cfg = (ignore) => `import { defineConfig } from '@playwright/test';\nconst IGNORED = [\n  '**/legacy/**',\n${ignore}];\nexport default defineConfig({ testDir: './tests/e2e', testIgnore: IGNORED });\n`;
+  const root = optedIn({ 'playwright.config.ts': cfg(''), 'tools/playwright.config.ts': "export default { testDir: '../tests/e2e' };\n" });
+  try {
+    git(root, 'checkout', '-q', '-b', 'feature');
+    // a constant entry added on its own line, far from the testIgnore key
+    write(root, 'playwright.config.ts', cfg("  '**/a.spec.ts',\n"));
+    let r = run(root, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /needs the owner's review: the change touches only rule inputs \(playwright\.config\.ts: its test selection changed \(testIgnore\), weakens\)/);
+    // mixed with test code it is refused
+    write(root, 'tests/e2e/a.spec.ts', `${SPEC}${CLEAN_TEST}`);
+    r = run(root, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /\[ci\] protected input changed: playwright\.config\.ts: its test selection changed \(testIgnore\) \(weakens\)/);
+    // the config in a subdirectory is protected too
+    write(root, 'playwright.config.ts', cfg(''));
+    write(root, 'tools/playwright.config.ts', "export default { testDir: '../tests/e2e', grepInvert: /TCAB/ };\n");
+    r = run(root, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /\[ci\] protected input changed: tools\/playwright\.config\.ts: its test selection changed \(grepInvert\)/);
+  } finally { done(root); }
+});
+
 test('pre-commit reads the rule inputs from HEAD: a working-tree setting does not relax the check, and the change is named', () => {
   const root = optedIn();
   try {
@@ -753,32 +777,80 @@ test('--install-hook wraps a pre-commit that is not a shell script, and runs it 
   } finally { done(root); }
 });
 
-test('--install-hook never writes outside the repository: a global or outside hooks path is refused with the line to add', () => {
+test('--install-hook never writes outside the repository: under a global or outside hooks path it installs the committed check and prints the line to add (exit 0)', () => {
   const outside = tempRoot();
   const root = repo();
   try {
     writeFileSync(GLOBAL, `[core]\n\thooksPath = ${outside}\n`);
     const r = run(root, ['--install-hook']);
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /set outside this repository/);
-    assert.ok(r.stderr.includes(SHARED_LINE), 'the line that calls the committed script');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /pre-commit check installed \(shared: \.githooks\/achilles-pre-commit\)/);
+    assert.match(r.stdout, /set outside this repository/);
+    assert.ok(r.stdout.includes(`installed the committed check; add this line to your shared hook: ${SHARED_LINE}`), r.stdout);
+    assert.doesNotMatch(`${r.stdout}${r.stderr}`, /→ Do:/, 'not a usage error');
     assert.ok(existsSync(path.join(root, '.githooks', 'achilles-pre-commit')), 'the check is written into the repository');
     assert.deepEqual(readdirSync(outside), []);
-    // a relative global path is refused too: it would apply to every repository
+    const again = run(root, ['--install-hook']);
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /already installed \(shared: /);
+    // once the shared pre-commit calls it, the note says so
+    writeFileSync(path.join(outside, 'pre-commit'), `#!/bin/sh\n${SHARED_LINE}\n`);
+    assert.match(run(root, ['--install-hook']).stdout, /the shared pre-commit already calls it/);
+    rmSync(path.join(outside, 'pre-commit'));
+    // a relative global path is shared too: it would apply to every repository
     writeFileSync(GLOBAL, '[core]\n\thooksPath = .shared-hooks\n');
-    assert.equal(run(root, ['--install-hook']).status, 2);
+    assert.equal(run(root, ['--install-hook']).status, 0);
     assert.ok(!existsSync(path.join(root, '.shared-hooks')));
     writeFileSync(GLOBAL, '');
     // a local path outside the work tree
     git(root, 'config', 'core.hooksPath', outside);
-    assert.equal(run(root, ['--install-hook']).status, 2);
+    assert.equal(run(root, ['--install-hook']).status, 0);
     assert.deepEqual(readdirSync(outside), []);
-    // the init still records the baseline, says the check is not installed, and records no hook
+    // the init records the baseline and the shared check, and says what to add and commit
     const init = run(root, ['--init-baseline']);
     assert.equal(init.status, 0, init.stderr);
-    assert.match(init.stderr, /the pre-commit check was not installed/);
-    assert.equal(baselineOf(root).hook, undefined);
+    assert.doesNotMatch(init.stderr, /was not installed/);
+    assert.ok(init.stdout.includes(SHARED_LINE));
+    assert.match(init.stdout, /git add tests\/compliance-baseline\.json \.githooks\/achilles-pre-commit/);
+    assert.deepEqual(baselineOf(root).hook, { mode: 'shared', path: '.githooks/achilles-pre-commit' });
+    assert.deepEqual(readdirSync(outside), []);
   } finally { writeFileSync(GLOBAL, ''); done(root); done(outside); }
+});
+
+test('--install-hook: a second project of the same repository is refused where the committed script serves another one', () => {
+  const shared = tempRoot();
+  const pkg = (name) => JSON.stringify({ name, private: true, dependencies: { '@civitas-cerebrum/element-interactions': '0.3.12' } });
+  const root = repo({ 'web/package.json': pkg('web'), 'web/tests/e2e/fixtures/base.ts': BASE, 'web/tests/e2e/a.spec.ts': SPEC, 'admin/package.json': pkg('admin'), 'admin/tests/e2e/fixtures/base.ts': BASE, 'admin/tests/e2e/a.spec.ts': SPEC });
+  try {
+    writeFileSync(GLOBAL, `[core]\n\thooksPath = ${shared}\n`);
+    const web = path.join(root, 'web');
+    const admin = path.join(root, 'admin');
+    assert.equal(run(web, ['--install-hook']).status, 0);
+    const text = read(root, '.githooks/achilles-pre-commit');
+    const second = run(admin, ['--install-hook']);
+    assert.equal(second.status, 2, second.stdout);
+    assert.match(second.stderr, /\.githooks\/achilles-pre-commit already runs the check of the project in web/);
+    assert.equal(read(root, '.githooks/achilles-pre-commit'), text, 'the first project keeps its check');
+    // the same project again is idempotent
+    const again = run(web, ['--install-hook']);
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /already installed/);
+    // the init of the second project records its baseline and says why no check was installed
+    const init = run(admin, ['--init-baseline']);
+    assert.equal(init.status, 0, init.stderr);
+    assert.match(init.stderr, /the pre-commit check was not installed: .*already runs the check of the project in web/);
+    assert.equal(baselineOf(admin).hook, undefined);
+    writeFileSync(GLOBAL, '');
+    // the same refusal under a hooks path inside the work tree: .githooks/pre-commit serves the first project
+    const local = repo({ 'web/package.json': pkg('web'), 'web/tests/e2e/a.spec.ts': SPEC, 'admin/package.json': pkg('admin'), 'admin/tests/e2e/a.spec.ts': SPEC });
+    try {
+      assert.equal(run(path.join(local, 'web'), ['--install-hook']).status, 0);
+      const r = run(path.join(local, 'admin'), ['--install-hook']);
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, /\.githooks\/pre-commit already runs the check of the project in web/);
+      assert.match(read(local, '.githooks/pre-commit'), /^dir="\$top\/web"$/m);
+    } finally { done(local); }
+  } finally { writeFileSync(GLOBAL, ''); done(root); done(shared); }
 });
 
 test('--install-hook never follows a planted symbolic link out of the repository', () => {
@@ -891,7 +963,7 @@ test('a global hooks path: the committed check runs from one shared line, which 
     const app = path.join(root, 'app');
     const init = run(app, ['--init-baseline']);
     assert.equal(init.status, 0, init.stderr);
-    const line = /add this line to the pre-commit there by hand: (.*)$/m.exec(init.stderr)[1];
+    const line = /add this line to your shared hook: (.*)$/m.exec(init.stdout)[1];
     assert.equal(line, SHARED_LINE, 'no machine path in the printed line');
     assert.match(init.stdout, /git add tests\/compliance-baseline\.json \.githooks\/achilles-pre-commit/);
     assert.deepEqual(readdirSync(shared), [], 'nothing written in the shared directory');
@@ -913,6 +985,29 @@ test('a global hooks path: the committed check runs from one shared line, which 
     assert.notEqual(c.status, 0, c.out);
     assert.match(c.out, /\[TB-A2\] tests\/e2e\/a\.spec\.ts/);
   } finally { writeFileSync(GLOBAL, ''); done(root); done(shared); done(plain); }
+});
+
+test('a workspace package that declares no framework dependency of its own resolves through the workspace root, so the shared check blocks', () => {
+  const shared = tempRoot();
+  const root = repo({ 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['packages/*'], devDependencies: { '@civitas-cerebrum/element-interactions': '0.3.12' } }), 'packages/app/package.json': JSON.stringify({ name: 'app', private: true }), 'packages/app/tests/e2e/fixtures/base.ts': BASE, 'packages/app/tests/e2e/a.spec.ts': SPEC });
+  try {
+    writeFileSync(GLOBAL, `[core]\n\thooksPath = ${shared}\n`);
+    const app = path.join(root, 'packages', 'app');
+    const init = run(app, ['--init-baseline']);
+    assert.equal(init.status, 0, init.stderr);
+    assert.deepEqual(baselineOf(app).totals, { 'TB-A2': 2 });
+    writeFileSync(path.join(shared, 'pre-commit'), `#!/bin/sh\n${SHARED_LINE}\n`);
+    spawnSync('chmod', ['+x', path.join(shared, 'pre-commit')]);
+    git(root, 'add', '-A');
+    let c = commit(root, 'baseline');
+    assert.equal(c.status, 0, c.out);
+    write(app, 'tests/e2e/a.spec.ts', SPEC.replace("await page.goto('/two');", "await page.goto('/two');\n  await page.reload();"));
+    git(root, 'add', '-A');
+    c = commit(root, 'bad');
+    assert.notEqual(c.status, 0, c.out);
+    assert.match(c.out, /\[TB-A2\] tests\/e2e\/a\.spec\.ts/);
+    assert.doesNotMatch(c.out, /could not run/);
+  } finally { writeFileSync(GLOBAL, ''); done(root); done(shared); }
 });
 
 test('an activated dormant pre-commit keeps the same mode label on every run', () => {

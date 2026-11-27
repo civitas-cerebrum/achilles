@@ -7,6 +7,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { gitSync, catBlobs } from './git.mjs';
 import { BASELINE_FILE } from './ids.mjs';
+import { workspaceInputs } from './surface.mjs';
 
 const git = (root, args) => gitSync(root, args);
 const z = (s) => s.split('\0').filter(Boolean);
@@ -107,5 +108,7 @@ export function contentKeyParts(root) {
     .sort().map((p) => `${p}\0${hashFile(path.join(root, p))}`);
   const pkg = path.join(root, 'node_modules', '@civitas-cerebrum', 'element-interactions', 'package.json');
   const env = path.join(root, '.env');
-  return [staged, disk.join('\n'), existsSync(pkg) ? hashFile(pkg) : '-', existsSync(env) ? hashFile(env) : '-'].join('\n\u0001\n');
+  // a workspace root's hoisted install and lock files decide the surface of a package that declares nothing
+  const above = workspaceInputs(root).map((f) => `${f}\0${hashFile(f)}`).join('\n');
+  return [staged, disk.join('\n'), existsSync(pkg) ? hashFile(pkg) : '-', existsSync(env) ? hashFile(env) : '-', above].join('\n\u0001\n');
 }

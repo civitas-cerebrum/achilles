@@ -7,7 +7,8 @@
 // Lints every in-scope spec and support file of the project (or only the given paths) against the mechanical
 // rules the engine implements (bin/lib/spec-lint/rules/*.mjs). The project root is $CLAUDE_PROJECT_DIR, else
 // the current directory; path arguments resolve against it. The Steps surface comes from the worktree's
-// node_modules, else the main checkout's, else the snapshot shipped for the pinned framework version.
+// node_modules, else a workspace root's above it (hoisted), else the main checkout's, else the snapshot shipped
+// for the pinned framework version (the project's own pin, else its workspace root's).
 //
 //   --staged          lint the staged change (index against HEAD): only the changed files, and only findings
 //                     in a touched test, describe or file scope count; the others are reported as legacy
@@ -26,7 +27,12 @@
 //                     deleted test ids and waiver changes
 //   --pre-commit      the git hook entry point: the same on the index against HEAD's baseline; when it cannot
 //                     run it warns and exits 0
-//   --install-hook    installs the pre-commit check alone (in every other clone)
+//   --install-hook    installs the pre-commit check alone (in every other clone). Exit 0 when it is installed or
+//                     already was, also under a hooks path outside the work tree (a global or system setting, a
+//                     shared directory): nothing is written there, the committed `.githooks/achilles-pre-commit`
+//                     is written and the one line to add to the shared pre-commit is printed; exit 2 when it
+//                     cannot be installed (a symbolic link on the way, dormant hooks not named with
+//                     --activate-hooks, the repository's check script already serving another project)
 //
 // Nothing here is wired into an Achilles hook or refuses a workflow step; the project's own pre-commit hook
 // and CI run these commands.
@@ -45,7 +51,7 @@ import { SurfaceError } from './lib/spec-lint/surface.mjs';
 import { stagedChange, baseChange, ChangeError } from './lib/spec-lint/touched.mjs';
 import { renderIndex, indexIds } from './lib/spec-lint/rules/identity.mjs';
 import { INDEX_FILE } from './lib/spec-lint/ids.mjs';
-import { initBaseline, updateBaselineCmd, ratchetCmd, preCommit, installHookCmd, UsageError } from './lib/spec-lint/commands.mjs';
+import { initBaseline, updateBaselineCmd, ratchetCmd, preCommit, installHookCmd, UsageError, HookError } from './lib/spec-lint/commands.mjs';
 
 const USAGE = 'achilles-spec-lint [paths…] [--json] [--quiet] [--budget-ms <n>] [--staged | --base <ref>] [--suite] [--stdin] [--id-index [--check]] | --init-baseline | --update-baseline [--ruleset-upgrade] | --ratchet --base <ref> [--ci] | --ci --base <ref> | --pre-commit | --install-hook [--activate-hooks <names>]';
 const DOC = RULEBOOK;
@@ -184,6 +190,7 @@ function baselineMode(root, args) {
     return flush(ratchetCmd(root, { ...io, base: args.base, ci: args.ci }));
   } catch (e) {
     if (lines.err.length) process.stderr.write(`${lines.err.join('\n')}\n`);
+    if (e instanceof HookError) return fail(2, `the pre-commit check was not installed: ${e.message}`, e.todo || 'fix the hooks setup as the message says and install again; CI still checks every change');
     if (e instanceof UsageError) return fail(2, e.message, args.mode === 'init' ? 'see the message; the baseline is recorded once per project' : `use ${USAGE}`);
     if (e instanceof SurfaceError) return fail(2, `spec lint cannot run: ${e.message}`, 'install the project dependencies (npm ci), or pin @civitas-cerebrum/element-interactions in package.json to a published release');
     if (e instanceof BudgetError) return fail(3, `${e.message}`, 'split the file, or raise --budget-ms when the machine is slow');

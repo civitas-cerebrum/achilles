@@ -117,8 +117,9 @@ export function initBaseline(root, { out, err, budgetMs, activate = [] }) {
   const { report } = suiteLint(root, { view, baselineIdPattern: id, budgetMs, useCache: false });
   let hook = null;
   let hookProblem = null;
+  let hookTodo = null;
   let hookWritten = [];
-  try { hook = installHook(root, { activate }); } catch (e) { if (e instanceof HookError) { hookProblem = e.message; hookWritten = e.written || []; } else throw e; }
+  try { hook = installHook(root, { activate }); } catch (e) { if (e instanceof HookError) { hookProblem = e.message; hookTodo = e.todo; hookWritten = e.written || []; } else throw e; }
   const counts = recount(report);
   // only a check committed with the baseline is recorded (a local hooks directory is not part of the repository)
   const b = makeBaseline({ counts, engine: ENGINE, createdFrom: head, idPattern: id, ...(hook && hook.committed ? { hook: { mode: hook.mode, path: hook.path } } : {}) });
@@ -129,7 +130,7 @@ export function initBaseline(root, { out, err, budgetMs, activate = [] }) {
   const files = Object.keys(counts.files).length;
   const toCommit = [BASELINE_FILE, ...(hook && hook.mode === 'githooks' ? ['.githooks/'] : []), ...(hook && hook.committed && hook.mode !== 'githooks' ? [hook.path, ...hook.extra] : []), ...hookWritten];
   out(`spec-lint: recorded ${BASELINE_FILE} from HEAD ${head.slice(0, 12)}: ${n} blocking finding(s) in ${files} file(s) (ruleset ${CURRENT_RULESET}); id pattern ${id === 'house-default' ? 'the house default' : id}${pinned.pinned ? ` (from ${pinned.source})` : inferred && id !== 'house-default' ? ` (inferred from ${inferred.matched} of ${inferred.of} titles)` : ''}; pre-commit check ${hook ? `${hook.mode} (${hook.path})` : 'not installed'}`);
-  if (hookProblem) err(three('hook', `the pre-commit check was not installed: ${hookProblem}`, 'add it by hand as the message says, or fix the hooks setup and run `achilles-spec-lint --install-hook`; CI still checks every change'));
+  if (hookProblem) err(three('hook', `the pre-commit check was not installed: ${hookProblem}`, hookTodo || 'fix the hooks setup as the message says and run `achilles-spec-lint --install-hook`; CI still checks every change'));
   if (!pinned.pinned) out(`  to pin another before you commit it: delete ${BASELINE_FILE} and run \`CIVITAS_TEST_ID_PATTERN='<pattern with the id in group 1>' npx achilles-spec-lint --init-baseline\` (the counts depend on the pattern, so the file is not edited by hand)`);
   for (const x of hook ? hook.notes : []) out(`  ${x}`);
   out(`Commit these alone as \`chore(test): compliance baseline\`, then commit your change:\n  git add ${[...new Set(toCommit)].join(' ')}\n  git commit -m "chore(test): compliance baseline"`);
@@ -138,9 +139,9 @@ export function initBaseline(root, { out, err, budgetMs, activate = [] }) {
 
 // ── --install-hook ────────────────────────────────────────────────────────
 
+/** Exit 0 when the check is installed (also the committed script of a shared hooks path); a HookError (exit 2) otherwise. */
 export function installHookCmd(root, { out, activate = [] }) {
-  let hook;
-  try { hook = installHook(root, { activate }); } catch (e) { if (e instanceof HookError) throw new UsageError(e.message); throw e; }
+  const hook = installHook(root, { activate });
   out(`spec-lint: pre-commit check ${hook.changed ? 'installed' : 'already installed'} (${hook.mode}: ${hook.path})`);
   for (const x of hook.notes) out(`  ${x}`);
   return { code: 0, report: { tool: 'achilles-spec-lint', mode: 'install-hook', ok: true, hook } };
@@ -290,4 +291,4 @@ export function preCommit(root, { out, err, budgetMs }) {
   }
 }
 
-export { ChangeError };
+export { ChangeError, HookError };

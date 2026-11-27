@@ -17,7 +17,7 @@
       "properties": {
         "package": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 },
-        "source": { "enum": ["worktree", "checkout", "snapshot"] }
+        "source": { "enum": ["worktree", "workspace", "checkout", "snapshot"], "description": "where the surface came from: the project's node_modules, a workspace root's above it (hoisted), the main checkout's, or the snapshot shipped for the pinned release" }
       }
     },
     "change": {

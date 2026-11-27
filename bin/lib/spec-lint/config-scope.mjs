@@ -190,6 +190,79 @@ export function readConfig(root, abs, parser) {
 
 export const within = (dir, abs) => { const r = path.relative(dir, abs); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
 
+// ── the test selection of a config, evaluated (the protected input of TB-G2) ──
+
+/** The selection keys of a config and of each of its projects. */
+export const SELECTION_KEYS = ['testDir', 'testMatch', 'testIgnore', 'grep', 'grepInvert'];
+
+/** True for a project-relative posix path findConfigs would return (same name rule, same skipped directories, same depth). */
+export function isConfigPath(rel) {
+  const parts = rel.split('/');
+  const dirs = parts.slice(0, -1);
+  return CONFIG_RE.test(parts.at(-1)) && dirs.length <= 4 && dirs.every((d) => d && !SKIP_DIRS.has(d) && !d.startsWith('.'));
+}
+
+/**
+ * The test selection a config makes, evaluated as the lint reads it: `testDir`, `testMatch`, `testIgnore`,
+ * `grep`, `grepInvert` at the top and per project (with the project's name), paths relative to `root`,
+ * regular expressions as `/source/flags`. Constants declared in the config are followed. Returns
+ * { selection, unevaluable, imports }: `unevaluable` lists what could not be read statically (then the
+ * selection is incomplete), `imports` the relative module specifiers the config loads.
+ */
+export function configSelection(parser, text, abs, root) {
+  const env = { dir: path.dirname(abs), consts: new Map() };
+  const unevaluable = [];
+  let ast = null;
+  try { ast = parseCode(parser, text, abs); } catch (e) { return { selection: null, unevaluable: [`does not parse (${e.message})`], imports: [] }; }
+  const imports = [];
+  for (const st of ast.program.body) {
+    if ((st.type === 'ImportDeclaration' || st.type === 'ExportAllDeclaration' || st.type === 'ExportNamedDeclaration') && st.source && st.source.value.startsWith('.')) imports.push(st.source.value);
+  }
+  const stack = [ast.program];
+  while (stack.length) {
+    const n = stack.pop();
+    if (!n || typeof n.type !== 'string') continue;
+    if (isCall(n) && n.callee.type === 'Identifier' && n.callee.name === 'require' && isStr(n.arguments[0]) && strValue(n.arguments[0]).startsWith('.')) imports.push(strValue(n.arguments[0]));
+    for (const k of Object.keys(n)) {
+      if (k === 'loc' || k.endsWith('Comments')) continue;
+      const v = n[k];
+      if (Array.isArray(v)) for (const c of v) { if (c && typeof c.type === 'string') stack.push(c); } else if (v && typeof v.type === 'string') stack.push(v);
+    }
+  }
+  const ser = (v) => {
+    if (v instanceof RegExp) return `/${v.source}/${v.flags}`;
+    if (Array.isArray(v)) return v.map(ser);
+    if (typeof v === 'string') return path.isAbsolute(v) ? (within(root, v) ? `./${path.relative(root, v).split(path.sep).join('/')}` : v) : v;
+    if (v === undefined) return null;
+    if (v && typeof v === 'object') throw new Unevaluable('an object');
+    return v;
+  };
+  const read = (obj, key, where) => {
+    if (!obj || !(key in obj)) return undefined;
+    try {
+      const v = evaluate(obj[key].node, env);
+      return ser(key === 'testDir' && typeof v === 'string' ? path.resolve(env.dir, v) : v);
+    } catch (e) { unevaluable.push(`${where}${key} (${e instanceof Unevaluable ? e.message : e.message})`); return '(not static)'; }
+  };
+  let top;
+  try { top = configObject(ast, env); } catch (e) { return { selection: null, unevaluable: [`the exported config is not a static object (${e.message})`], imports: [...new Set(imports)] }; }
+  if (!top) return { selection: null, unevaluable: ['no exported config object'], imports: [...new Set(imports)] };
+  const pick = (obj, where) => Object.fromEntries(SELECTION_KEYS.map((k) => [k, read(obj, k, where)]).filter(([, v]) => v !== undefined));
+  const selection = pick(top, '');
+  if ('projects' in top) {
+    let raw;
+    try { raw = evaluate(top.projects.node, env); } catch (e) { unevaluable.push(`projects (${e.message})`); raw = null; }
+    if (Array.isArray(raw)) {
+      selection.projects = raw.map((p, i) => {
+        if (!p || typeof p !== 'object' || p instanceof RegExp || Array.isArray(p)) { unevaluable.push(`projects[${i}] (not an object literal)`); return '(not static)'; }
+        const name = read(p, 'name', `projects[${i}].`);
+        return { ...(name !== undefined ? { name } : {}), ...pick(p, `projects[${i}].`) };
+      });
+    } else if (raw !== null) unevaluable.push('projects (not an array)');
+  }
+  return { selection, unevaluable, imports: [...new Set(imports)] };
+}
+
 /** Every playwright*.config.* under root (outside node_modules and report folders). */
 export function findConfigs(root) {
   const out = [];

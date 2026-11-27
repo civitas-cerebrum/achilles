@@ -2,7 +2,7 @@
 // shipped snapshot for the pinned version), the declaration reader and the version helper.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolveSurface, classMembers, SurfaceError, shippedVersions, SURFACES_DIR } from '../../bin/lib/spec-lint/surface.mjs';
@@ -96,6 +96,85 @@ test('a project in a subdirectory of a linked worktree uses the same subdirector
     rmSync(wt, { recursive: true, force: true });
     rmSync(main, { recursive: true, force: true });
   }
+});
+
+/** A git work tree with an npm workspace root at the top and a package under packages/app. */
+function workspace({ root = {}, app = {} } = {}) {
+  const top = tempRoot();
+  const vcs = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: top, stdio: 'ignore', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_GLOBAL: '/dev/null' } });
+  writeProject(top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['packages/*'], ...root }) });
+  writeProject(path.join(top, 'packages', 'app'), { 'package.json': JSON.stringify({ name: 'app', private: true, ...app }) });
+  vcs('init', '-q');
+  return { top, app: path.join(top, 'packages', 'app') };
+}
+const declares = (range) => ({ devDependencies: { '@civitas-cerebrum/element-interactions': range } });
+
+test('a workspace package that relies on the root: the hoisted install, else the root lock file or declaration', () => {
+  const w = workspace({ root: declares('^0.3.5') });
+  try {
+    // the install is hoisted to the workspace root
+    fakePackage(w.top, '0.3.12');
+    let s = resolveSurface(w.app, parser);
+    assert.equal(s.source, 'workspace');
+    assert.equal(s.version, '0.3.12');
+    assert.ok(lintProject({ root: w.app }).stepsSurface.source === 'workspace');
+    // no install: the root's lock file names the release installed for the package
+    rmSync(path.join(w.top, 'node_modules'), { recursive: true, force: true });
+    writeProject(w.top, { 'package-lock.json': JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.7' } } }) });
+    s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.7']);
+    // a pnpm workspace: the importer entry of the package
+    rmSync(path.join(w.top, 'package-lock.json'));
+    writeProject(w.top, { 'pnpm-lock.yaml': "lockfileVersion: '9.0'\nimporters:\n  .:\n    devDependencies:\n      '@civitas-cerebrum/element-interactions':\n        specifier: ^0.3.5\n        version: 0.3.9\n  packages/app:\n    dependencies:\n      '@civitas-cerebrum/element-interactions':\n        specifier: ^0.3.5\n        version: 0.3.8(@playwright/test@1.50.0)\n" });
+    assert.equal(resolveSurface(w.app, parser).version, '0.3.8');
+    // a yarn workspace
+    rmSync(path.join(w.top, 'pnpm-lock.yaml'));
+    writeProject(w.top, { 'yarn.lock': '"@civitas-cerebrum/element-interactions@^0.3.5":\n  version "0.3.6"\n  resolved "https://example.invalid/x.tgz"\n' });
+    assert.equal(resolveSurface(w.app, parser).version, '0.3.6');
+    // no lock file: the root's declaration
+    rmSync(path.join(w.top, 'yarn.lock'));
+    s = resolveSurface(w.app, parser);
+    assert.equal(s.version, shippedVersions().filter((v) => semver.satisfies(v, '^0.3.5')).at(-1));
+  } finally { rmSync(w.top, { recursive: true, force: true }); }
+});
+
+test('the project\'s own declaration wins over the workspace root', () => {
+  const w = workspace({ root: declares('^0.3.5'), app: declares('0.3.6') });
+  try {
+    // a hoisted install outside the project's own range belongs to another package
+    fakePackage(w.top, '0.3.12');
+    let s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.6']);
+    // a root lock entry outside the range does not narrow it either
+    writeProject(w.top, { 'package-lock.json': JSON.stringify({ packages: { 'node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.12' }, 'packages/app/node_modules/@civitas-cerebrum/element-interactions': { version: '0.3.6' } } }) });
+    s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['snapshot', '0.3.6']);
+    // a hoisted install inside the range is used
+    writeProject(w.app, { 'package.json': JSON.stringify({ name: 'app', ...declares('^0.3.7') }) });
+    s = resolveSurface(w.app, parser);
+    assert.deepEqual([s.source, s.version], ['workspace', '0.3.12']);
+    // the project's own install comes first
+    fakePackage(w.app, '0.3.9');
+    assert.deepEqual([resolveSurface(w.app, parser).source, resolveSurface(w.app, parser).version], ['worktree', '0.3.9']);
+  } finally { rmSync(w.top, { recursive: true, force: true }); }
+});
+
+test('the walk stops at the work tree\'s top level, and no declaration anywhere still cannot run', () => {
+  const outer = tempRoot();
+  try {
+    // an install and a declaration above the work tree are not the project's
+    writeProject(outer, { 'package.json': JSON.stringify({ name: 'outer', ...declares('0.3.12') }) });
+    fakePackage(outer, '0.3.12');
+    const top = path.join(outer, 'repo');
+    writeProject(top, { 'package.json': JSON.stringify({ name: 'mono', private: true, workspaces: ['packages/*'] }) });
+    writeProject(path.join(top, 'packages', 'app'), { 'package.json': JSON.stringify({ name: 'app' }) });
+    execFileSync('git', ['init', '-q'], { cwd: top, stdio: 'ignore' });
+    const app = path.join(top, 'packages', 'app');
+    assert.throws(() => resolveSurface(app, parser), (e) => e instanceof SurfaceError && /snapshot: no @civitas-cerebrum\/element-interactions dependency in package\.json, nor in a workspace directory above it/.test(e.message));
+    const r = spawnSync(process.execPath, [path.join(REPO, 'bin', 'spec-lint.mjs')], { cwd: app, env: { ...process.env, CLAUDE_PROJECT_DIR: app }, encoding: 'utf8' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /spec lint cannot run: no Steps surface/);
+  } finally { rmSync(outer, { recursive: true, force: true }); }
 });
 
 test('shipped snapshots carry the repository and element private names', () => {

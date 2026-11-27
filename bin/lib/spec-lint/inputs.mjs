@@ -1,15 +1,18 @@
 // The rule inputs the test baseline protects (test-baseline.md TB-G2), read from a commit so a change cannot
 // relax the rules it is checked against: the factory rules' `specs.*` and `secrets.*` rules (and the file
-// itself), the id pattern in a committed `.env`, the framework-gap register, and the `grep`, `grepInvert`,
-// `testIgnore` and `testMatch` lines of the Playwright configs. CI and `--ratchet` lint with the merge-base's
-// inputs and fail a change that weakens one; the pre-commit check lints with HEAD's and names the change.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+// itself), the id pattern in a committed `.env`, the framework-gap register, and the test selection of every
+// Playwright config of the project (found as the lint's scope finds them, subdirectories included): `testDir`,
+// `testMatch`, `testIgnore`, `grep` and `grepInvert`, at the top and per project, evaluated statically. A
+// selection that cannot be evaluated is compared through the text of the config and the relative modules it
+// loads: any change there counts as a selection change. CI and `--ratchet` lint with the merge-base's inputs
+// and fail a change that weakens one; the pre-commit check lints with HEAD's and names the change.
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { gitSync } from './git.mjs';
 import { REGISTER } from './waivers.mjs';
-
-const CONFIG = /^playwright[^/]*\.config\.[cm]?[jt]s$/;
-const SELECTION = /\b(grep|grepInvert|testIgnore|testMatch)\s*:/;
+import { parserFor } from './ast.mjs';
+import { configSelection, findConfigs, isConfigPath, SELECTION_KEYS as SELECTION } from './config-scope.mjs';
 
 const factoryPath = () => process.env.FACTORY_RULES && !path.isAbsolute(process.env.FACTORY_RULES) ? process.env.FACTORY_RULES : 'achilles-factory-rules.json';
 
@@ -23,39 +26,78 @@ const envValue = (text) => {
 };
 
 const parseJson = (text) => { if (typeof text !== 'string') return null; try { return JSON.parse(text); } catch { return null; } };
+const digest = (text) => createHash('sha1').update(text).digest('hex');
+const MODULE_EXTS = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs', '.json'];
 
-function shape(read, configNames) {
+/**
+ * One config's protected shape: its evaluated selection, what could not be evaluated, and the text digests of
+ * the config and of the relative modules it loads (followed three levels deep), which decide a change when
+ * the selection is not static.
+ */
+function configShape(root, parser, read, rel) {
+  const text = read(rel);
+  if (typeof text !== 'string') return null;
+  const { selection, unevaluable, imports } = configSelection(parser, text, path.join(root, rel), root);
+  const deps = { [rel]: digest(text) };
+  const queue = imports.map((s) => [rel, s, 1]);
+  while (queue.length && Object.keys(deps).length < 25) {
+    const [from, spec, depth] = queue.shift();
+    const base = path.posix.normalize(path.posix.join(path.posix.dirname(from), spec));
+    if (base.startsWith('..')) { deps[spec] = '(outside the project)'; continue; }
+    const candidates = [...MODULE_EXTS.map((e) => base + e), ...MODULE_EXTS.slice(1).map((e) => base.replace(/\.[cm]?js$/, e)), ...MODULE_EXTS.slice(1).map((e) => `${base}/index${e}`)];
+    const hit = candidates.find((c) => typeof read(c) === 'string');
+    if (!hit) { deps[base] = '(missing)'; continue; }
+    if (deps[hit]) continue;
+    const t = read(hit);
+    deps[hit] = digest(t);
+    if (depth < 3 && /\.[cm]?[jt]s$/.test(hit)) {
+      try { for (const s of configSelection(parser, t, path.join(root, hit), root).imports) queue.push([hit, s, depth + 1]); } catch { /* not code */ }
+    }
+  }
+  return { selection, unevaluable, deps };
+}
+
+function shape(root, read, configNames) {
   const factoryText = read(factoryPath());
+  const parser = parserFor(root);
   const configs = {};
   for (const f of configNames) {
-    const t = read(f);
-    if (typeof t === 'string') configs[f] = t.split(/\r?\n/).filter((l) => SELECTION.test(l)).map((l) => l.trim());
+    const c = configShape(root, parser, read, f);
+    if (c) configs[f] = c;
   }
   return { factoryText, factory: parseJson(factoryText), register: read(REGISTER), envPattern: envValue(read('.env')), configs };
 }
 
 /** The protected inputs as committed at `rev` (a commit), or staged in the index when `rev` is ''. */
 export function inputsAt(root, rev) {
-  const read = (rel) => { try { return gitSync(root, ['show', `${rev}:./${rel}`]); } catch { return null; } };
+  const cache = new Map();
+  const read = (rel) => {
+    if (!cache.has(rel)) {
+      let t = null;
+      try { t = gitSync(root, ['show', `${rev}:./${rel}`]); } catch { /* not there */ }
+      cache.set(rel, t);
+    }
+    return cache.get(rel);
+  };
   let names = [];
   try {
-    const list = rev === '' ? gitSync(root, ['ls-files']) : gitSync(root, ['ls-tree', '--name-only', rev, './']);
-    names = list.split('\n').map((x) => x.trim()).filter((x) => CONFIG.test(x));
+    const list = rev === '' ? gitSync(root, ['ls-files']) : gitSync(root, ['ls-tree', '-r', '--name-only', rev, './']);
+    names = list.split('\n').map((x) => x.trim()).filter((x) => x && isConfigPath(x));
   } catch { /* none */ }
-  return shape(read, names);
+  return shape(root, read, names);
 }
 
-/** The files that hold protected inputs, at either side. */
+/** The files that hold protected inputs, at either side (the modules a config loads included). */
 export function inputPaths(base, now) {
-  return new Set([factoryPath(), '.env', REGISTER, ...Object.keys(base.configs), ...Object.keys(now.configs)]);
+  const configFiles = [base, now].flatMap((s) => Object.values(s.configs).flatMap((c) => Object.keys(c.deps)));
+  return new Set([factoryPath(), '.env', REGISTER, ...Object.keys(base.configs), ...Object.keys(now.configs), ...configFiles]);
 }
 
 /** The protected inputs as they are on disk. */
 export function inputsOnDisk(root) {
-  const read = (rel) => { const p = path.join(root, rel); return existsSync(p) ? readFileSync(p, 'utf8') : null; };
-  let names = [];
-  try { names = readdirSync(root).filter((x) => CONFIG.test(x)); } catch { /* none */ }
-  return shape(read, names);
+  const read = (rel) => { const p = path.join(root, rel); try { return existsSync(p) ? readFileSync(p, 'utf8') : null; } catch { return null; } };
+  const names = findConfigs(root).map((abs) => path.relative(root, abs).split(path.sep).join('/'));
+  return shape(root, read, names);
 }
 
 /** True only for the rule change known to tighten: the constant-table setting switched off. */
@@ -91,9 +133,38 @@ export function compareInputs(base, now) {
   for (const [id, line] of rb) if (ra.get(id) !== line) out.push({ input: REGISTER, detail: `row ${id} ${ra.has(id) ? 'changed' : 'added'}`, weakens: true });
   for (const id of ra.keys()) if (!rb.has(id)) out.push({ input: REGISTER, detail: `row ${id} removed`, weakens: false });
   for (const file of [...new Set([...Object.keys(base.configs), ...Object.keys(now.configs)])].sort()) {
-    const a = JSON.stringify(base.configs[file] || []);
-    const b = JSON.stringify(now.configs[file] || []);
-    if (a !== b) out.push({ input: file, detail: 'its grep, grepInvert, testIgnore or testMatch changed', weakens: true });
+    const d = configChange(base.configs[file], now.configs[file]);
+    if (d) out.push({ input: file, detail: d, weakens: true });
   }
   return out;
+}
+
+/** Which selection keys differ between two evaluated selections (per project by position). */
+function changedKeys(a, b) {
+  const keys = [];
+  for (const k of SELECTION) if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) keys.push(k);
+  const pa = a.projects || [];
+  const pb = b.projects || [];
+  if (pa.length !== pb.length) keys.push(`projects (${pa.length} to ${pb.length})`);
+  else pa.forEach((p, i) => { if (JSON.stringify(p) !== JSON.stringify(pb[i])) keys.push(`projects[${i}]${p && p.name ? ` (${p.name})` : ''}`); });
+  return keys;
+}
+
+/**
+ * How a config's test selection changed, or null. Both sides evaluated: the evaluated values are compared.
+ * Either side not static: any change of the config's text or of a relative module it loads is a change (the
+ * value cannot be compared, so it goes to the owner's review).
+ */
+function configChange(a, b) {
+  if (!a && !b) return null;
+  if (!a) return 'a new Playwright config: its test selection needs review';
+  if (!b) return 'the Playwright config is deleted';
+  if (!a.unevaluable.length && !b.unevaluable.length) {
+    const keys = changedKeys(a.selection || {}, b.selection || {});
+    return keys.length ? `its test selection changed (${keys.join(', ')})` : null;
+  }
+  if (JSON.stringify(a.deps) === JSON.stringify(b.deps)) return null;
+  const what = [...new Set([...a.unevaluable, ...b.unevaluable])].slice(0, 3).join('; ');
+  const moved = Object.keys({ ...a.deps, ...b.deps }).filter((f) => a.deps[f] !== b.deps[f]);
+  return `its test selection cannot be evaluated statically (${what}) and ${moved.join(', ')} changed`;
 }

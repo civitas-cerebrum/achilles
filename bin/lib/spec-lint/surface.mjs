@@ -2,10 +2,16 @@
 //
 // Resolution chain, first hit wins:
 //   1. worktree  <root>/node_modules/@civitas-cerebrum/element-interactions (the installed type definitions)
-//   2. checkout  the main checkout's node_modules (the parent of `git rev-parse --git-common-dir`), for a
-//                linked worktree that has no node_modules of its own
-//   3. snapshot  bin/lib/spec-lint/surfaces/<version>.json shipped with this package, for the version the
-//                project pins (package-lock.json, else the package.json range: the highest shipped match)
+//   2. workspace the same under a directory above the project, up to the work tree's top level and never
+//                above it (a package of an npm, yarn or pnpm workspace whose install is hoisted to the root);
+//                skipped when the project's own package.json declares a range that install does not satisfy
+//   3. checkout  the main checkout's node_modules (the parent of `git rev-parse --git-common-dir`), for a
+//                linked worktree that has no node_modules of its own, with the same walk up
+//   4. snapshot  bin/lib/spec-lint/surfaces/<version>.json shipped with this package, for the version the
+//                project pins: its own package-lock.json, else its own package.json range (a workspace lock
+//                file above it narrows that range to the installed release; the highest shipped match
+//                otherwise); a project that declares nothing takes the lock file, else the declaring
+//                package.json, of the nearest workspace directory above it
 // When none resolves the lint cannot run, and says what it tried.
 import { gitSync } from './git.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
@@ -121,21 +127,128 @@ export function readSnapshot(version, dir = SURFACES_DIR) {
   return JSON.parse(readFileSync(path.join(dir, `${version}.json`), 'utf8'));
 }
 
-/** The version the project pins: the lock file's installed version, else the package.json range. */
-export function pinnedVersion(root) {
-  const lock = path.join(root, 'package-lock.json');
-  if (existsSync(lock)) {
-    try {
-      const l = JSON.parse(readFileSync(lock, 'utf8'));
-      const v = l.packages?.[`node_modules/${PACKAGE}`]?.version || l.dependencies?.[PACKAGE]?.version;
-      if (v) return { exact: v, from: 'package-lock.json' };
-    } catch { /* fall through to package.json */ }
-  }
-  const pj = path.join(root, 'package.json');
+/** The range a package.json in `dir` declares for the framework, or null. */
+function declaredRange(dir) {
+  const pj = path.join(dir, 'package.json');
   if (!existsSync(pj)) return null;
   let p;
   try { p = JSON.parse(readFileSync(pj, 'utf8')); } catch { return null; }
-  const range = p.dependencies?.[PACKAGE] || p.devDependencies?.[PACKAGE] || p.peerDependencies?.[PACKAGE] || p.optionalDependencies?.[PACKAGE];
+  return p.dependencies?.[PACKAGE] || p.devDependencies?.[PACKAGE] || p.peerDependencies?.[PACKAGE] || p.optionalDependencies?.[PACKAGE] || null;
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+
+/** pnpm-lock.yaml: the release the importer at `rel` ('.' for the root) resolved, else a single package entry. */
+function pnpmVersion(text, rel) {
+  const lines = text.split(/\r?\n/);
+  const name = new RegExp(`^ {6}(['"]?)${escapeRe(PACKAGE)}\\1:\\s*(.*)$`);
+  let inImporters = false;
+  let inProject = false;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^importers:\s*$/.test(l)) { inImporters = true; continue; }
+    if (inImporters && /^\S/.test(l)) break;
+    const imp = /^ {2}(?! )(['"]?)(.+?)\1:\s*$/.exec(l);
+    if (inImporters && imp) { inProject = imp[2] === rel; continue; }
+    const m = inProject ? name.exec(l) : null;
+    if (!m) continue;
+    const inline = /^['"]?(\d+\.\d+\.\d+)/.exec(m[2]);
+    if (inline) return inline[1];
+    for (let j = i + 1; j < lines.length && /^ {8}/.test(lines[j]); j++) {
+      const v = /^ {8}version:\s*['"]?(\d+\.\d+\.\d+)/.exec(lines[j]);
+      if (v) return v[1];
+    }
+  }
+  const found = new Set([...text.matchAll(new RegExp(`^ {2}['"]?/?${escapeRe(PACKAGE)}[@/](\\d+\\.\\d+\\.\\d+)`, 'gm'))].map((m) => m[1]));
+  return found.size === 1 ? [...found][0] : null;
+}
+
+/** yarn.lock: the release it resolved the framework to, when it resolved exactly one. */
+function yarnVersion(text) {
+  const found = new Set();
+  let inEntry = false;
+  for (const l of text.split(/\r?\n/)) {
+    if (/^\S/.test(l)) { inEntry = l.replace(/^"/, '').startsWith(`${PACKAGE}@`); continue; }
+    const m = inEntry ? /^\s+version:?\s+"?(\d+\.\d+\.\d+)/.exec(l) : null;
+    if (m) found.add(m[1]);
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
+
+/**
+ * The framework release a lock file in `dir` records for the project at `rel` (its posix path from `dir`, ''
+ * for `dir` itself): package-lock.json (the project's nested entry, else the hoisted one), pnpm-lock.yaml (the
+ * project's importer) or yarn.lock. Returns { exact, file } or null.
+ */
+function lockedVersion(dir, rel) {
+  const npmLock = path.join(dir, 'package-lock.json');
+  if (existsSync(npmLock)) {
+    try {
+      const l = JSON.parse(readFileSync(npmLock, 'utf8'));
+      const v = (rel && l.packages?.[`${rel}/node_modules/${PACKAGE}`]?.version) || l.packages?.[`node_modules/${PACKAGE}`]?.version || (!rel && l.dependencies?.[PACKAGE]?.version);
+      if (v) return { exact: v, file: npmLock };
+    } catch { /* not a lock file */ }
+  }
+  const pnpm = path.join(dir, 'pnpm-lock.yaml');
+  if (existsSync(pnpm)) {
+    const v = pnpmVersion(readFileSync(pnpm, 'utf8'), rel || '.');
+    if (v) return { exact: v, file: pnpm };
+  }
+  const yarn = path.join(dir, 'yarn.lock');
+  if (existsSync(yarn)) {
+    const v = yarnVersion(readFileSync(yarn, 'utf8'));
+    if (v) return { exact: v, file: yarn };
+  }
+  return null;
+}
+
+/** The directories above `root` up to and including `top`, nearest first; none when `top` does not hold `root`. */
+function workspaceDirs(root, top) {
+  if (!top) return [];
+  const rel = path.relative(top, root);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return [];
+  const out = [];
+  for (let d = path.dirname(root); ; d = path.dirname(d)) {
+    out.push(d);
+    if (d === top || path.dirname(d) === d) break;
+  }
+  return out;
+}
+
+const realOf = (p) => { try { return realpathSync(p); } catch { return p; } };
+const relPosixOf = (from, to) => path.relative(from, to).split(path.sep).join('/');
+
+/** The top level of the work tree that holds `root` (its real path), or null (no git, not in a work tree). */
+export function workTreeTop(root) {
+  try {
+    const t = gitSync(root, ['rev-parse', '--show-toplevel'], { stderr: 'ignore', timeoutMs: 10000 }).trim();
+    return t ? realOf(t) : null;
+  } catch { return null; }
+}
+
+/** The files above the project the resolved surface may come from (a workspace root's install and lock files), for a cache key. */
+export function workspaceInputs(root) {
+  return workspaceDirs(realOf(root), workTreeTop(root)).flatMap((d) => [path.join(d, 'node_modules', ...PACKAGE.split('/'), 'package.json'), ...['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'].map((f) => path.join(d, f))]);
+}
+
+/**
+ * The version the project pins: its own lock file's installed version, else its own package.json range (a
+ * workspace lock file above it, up to `top`, narrows that range to the release installed for it). A project
+ * that declares nothing takes the nearest workspace directory's lock file, else its declaring package.json.
+ */
+export function pinnedVersion(root, { top = null } = {}) {
+  const own = lockedVersion(root, '');
+  if (own) return { exact: own.exact, from: path.basename(own.file) };
+  const real = realOf(root);
+  const above = workspaceDirs(real, top);
+  const range = declaredRange(root);
+  for (const d of above) {
+    const l = lockedVersion(d, relPosixOf(d, real));
+    if (l && (!range || semver.satisfies(l.exact, range))) return { exact: l.exact, from: `${relPosixOf(real, l.file)} (workspace lock file)` };
+    if (range) continue;
+    const r = declaredRange(d);
+    if (r) return { range: r, from: `${relPosixOf(real, path.join(d, 'package.json'))} (workspace root)` };
+  }
   return range ? { range, from: 'package.json' } : null;
 }
 
@@ -149,6 +262,14 @@ function mainCheckout(root) {
     const prefix = git('rev-parse', '--show-prefix');
     const dir = path.join(top, prefix);
     return existsSync(dir) && realpathSync(dir) === realpathSync(root) ? null : dir;
+  } catch { return null; }
+}
+
+/** The main checkout's top level (the parent of the common git directory), or null. */
+function mainTop(root) {
+  try {
+    const out = gitSync(root, ['rev-parse', '--path-format=absolute', '--git-common-dir'], { stderr: 'ignore', timeoutMs: 10000 }).trim();
+    return out ? realOf(path.dirname(out)) : null;
   } catch { return null; }
 }
 
@@ -170,27 +291,34 @@ function finish(s, source, where, dir) {
 /** Resolves the surface for the project at `root`. Throws SurfaceError naming every place tried. */
 export function resolveSurface(root, parser, { snapshotsDir = SURFACES_DIR, useGit = true } = {}) {
   const tried = [];
-  const fromNodeModules = (base, source) => {
+  const range = declaredRange(root);
+  const fromNodeModules = (base, source, { hoisted = false } = {}) => {
     const dir = path.join(base, 'node_modules', ...PACKAGE.split('/'));
+    if (!existsSync(path.join(dir, 'package.json'))) { if (!hoisted) tried.push(`${source}: ${dir}`); return null; }
     tried.push(`${source}: ${dir}`);
-    if (!existsSync(path.join(dir, 'package.json'))) return null;
     const s = readPackageSurface(parser, dir);
     if (!s) return null;
+    // a hoisted install another package of the workspace uses is not the project's when its own range excludes it
+    if (hoisted && range && semver.valid(s.version) && !semver.satisfies(s.version, range)) { tried[tried.length - 1] += ` (${s.version}, outside the project's ${range})`; return null; }
     s.privates = { ...s.privates, ...repositoryPrivates(parser, dir) };
     return finish(s, source, dir, snapshotsDir);
   };
-  const wt = fromNodeModules(root, 'worktree');
+  // the project's own directory, then each workspace directory above it up to the work tree's top level
+  const walk = (base, source, top, hoistedAs) => fromNodeModules(base, source)
+    || workspaceDirs(base, top).reduce((hit, d) => hit || fromNodeModules(d, hoistedAs, { hoisted: true }), null);
+  const top = useGit ? workTreeTop(root) : null;
+  const wt = walk(realOf(root), 'worktree', top, 'workspace');
   if (wt) return wt;
   if (useGit) {
     const main = mainCheckout(root);
     if (main) {
-      const co = fromNodeModules(main, 'checkout');
+      const co = walk(realOf(main), 'checkout', mainTop(root), 'checkout');
       if (co) return co;
     } else tried.push('checkout: not a linked worktree');
   }
-  const pin = pinnedVersion(root);
+  const pin = pinnedVersion(root, { top });
   const versions = shippedVersions(snapshotsDir);
-  if (!pin) tried.push(`snapshot: no ${PACKAGE} dependency in package.json`);
+  if (!pin) tried.push(`snapshot: no ${PACKAGE} dependency in package.json${top ? ', nor in a workspace directory above it' : ''}`);
   else {
     const v = pin.exact ? (versions.includes(pin.exact) ? pin.exact : null) : semver.maxSatisfying(versions, pin.range);
     tried.push(`snapshot: ${pin.exact || pin.range} (${pin.from}) against shipped ${versions[0] || '-'}..${versions.at(-1) || '-'}`);

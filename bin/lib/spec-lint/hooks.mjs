@@ -13,8 +13,12 @@
 //   wrapped    the existing pre-commit is not a shell script: it is moved to `pre-commit.achilles-original`
 //              and a new pre-commit runs the check, then the original
 //   lefthook   a lefthook configuration and no hooks path: a `pre-commit` command that runs the script
-// A hooks path outside the work tree (a global or system setting, a shared directory) is refused with the line
-// to add by hand: the installer never writes outside the repository. Running it again changes nothing.
+//   shared     a hooks path outside the work tree (a global or system setting, a shared directory): nothing is
+//              written there; the check is written to `.githooks/achilles-pre-commit` (committed) and the one
+//              line to add to the shared pre-commit by hand is printed
+// The installer never writes outside the repository. Running it again changes nothing. One repository's
+// script serves one project: installing a second project where the script runs another one's check is refused
+// (the message names that project).
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
@@ -26,7 +30,7 @@ const LEFTHOOK = ['lefthook.yml', 'lefthook.yaml', '.lefthook.yml', '.lefthook.y
 const PKG = '@civitas-cerebrum/achilles';
 
 export class HookError extends Error {
-  constructor(message, { written = [] } = {}) { super(message); this.written = written; }
+  constructor(message, { written = [], todo = null } = {}) { super(message); this.written = written; this.todo = todo; }
 }
 
 /** The script a shared hooks directory calls: committed in the repository, absent in every other one. */
@@ -74,6 +78,12 @@ exit 0
 
 const HEADLINE = `${MARKER}: the test-baseline check of the staged change`;
 const isOurs = (text) => text.includes(HEADLINE);
+/** The project an installed script runs the check of ('' for the top level), or null when it names none. */
+export function servedProject(text) {
+  const m = /^dir="\$top(?:\/(.*))?"$/m.exec(text);
+  return m ? m[1] || '' : null;
+}
+const projectName = (rel) => (rel ? `the project in ${rel}` : 'the project at the top level');
 const SCRIPT = 'achilles-pre-commit';
 
 /** Every hook name git runs (a file of another name in a hooks directory is not a hook). */
@@ -194,21 +204,37 @@ export function installHook(root, { activate = [] } = {}) {
   } catch { throw new HookError(`${root} is not in a git work tree`); }
   if (!within(top, root)) throw new HookError(`the project ${root} is not inside its git work tree ${top}`);
   const guard = guardFor(top, common);
-  const put = (abs, text) => { guard(abs); return write(abs, text); };
   const rel = posix(path.relative(top, root));
   const script = hookScript(rel);
   const fromTop = (abs) => posix(path.relative(top, abs));
+  // the check script: written only where none runs another project's check (same project: idempotent)
+  const put = (abs, text) => {
+    guard(abs);
+    if (text === script && existsSync(abs)) {
+      const was = readFileSync(abs, 'utf8');
+      const served = isOurs(was) ? servedProject(was) : null;
+      if (served !== null && served !== rel) {
+        throw new HookError(`${fromTop(abs)} already runs the check of ${projectName(served)}: one repository's check script serves one project, so installing ${projectName(rel)} would switch that one off`, { todo: `keep the check of ${projectName(served)}, or, when that project moved or no longer records a baseline, delete ${fromTop(abs)} and run \`achilles-spec-lint --install-hook\` again; CI still checks every change` });
+      }
+    }
+    return write(abs, text);
+  };
   const notes = [];
   const effective = configGet(root, []);
   if (effective) {
     const local = configGet(root, ['--local']);
     const dir = path.resolve(top, effective.replace(/^~(?=\/|$)/, process.env.HOME || '/'));
     if (!within(top, dir) || effective !== local) {
-      // the shared directory is left alone; the check itself is committed here, and the line that calls it
-      // skips every repository that has none (the script finds the project, a hoisted install, and fails open)
-      const shared = path.join(top, SHARED_SCRIPT);
-      put(shared, script);
-      throw new HookError(`core.hooksPath is ${effective}${effective !== local ? ', set outside this repository (a global or system setting)' : ', outside this work tree'}: installing there would change every repository that uses it. The check is written to ${SHARED_SCRIPT} (commit it); add this line to the pre-commit there by hand: ${SHARED_LINE}`, { written: [SHARED_SCRIPT] });
+      // the shared directory is left alone (read, never written); the check itself is committed here, and the
+      // line that calls it skips every repository that has none (the script finds the project, a hoisted
+      // install, and fails open)
+      const changed = put(path.join(top, SHARED_SCRIPT), script);
+      let calls = false;
+      try { calls = readFileSync(path.join(dir, 'pre-commit'), 'utf8').includes(SHARED_SCRIPT); } catch { /* no shared pre-commit yet */ }
+      notes.push(`core.hooksPath is ${effective}${effective !== local ? ', set outside this repository (a global or system setting)' : ', outside this work tree'}: nothing is written there, since it serves every repository that uses it`);
+      notes.push(calls ? `the shared pre-commit already calls it (${SHARED_SCRIPT})` : `installed the committed check; add this line to your shared hook: ${SHARED_LINE}`);
+      notes.push(`commit ${SHARED_SCRIPT} with the baseline`);
+      return { mode: 'shared', path: SHARED_SCRIPT, changed, notes, committed: true, extra: [] };
     }
     // husky: core.hooksPath is .husky/_ (v9, generated) or .husky (v4 to v8); the project's own file is .husky/pre-commit
     const hp = posix(effective).replace(/\/+$/, '');
