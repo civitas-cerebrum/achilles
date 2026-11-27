@@ -111,29 +111,59 @@ test('--init-baseline reads HEAD only: an uncommitted finding and an untracked s
   } finally { done(root); }
 });
 
-test('--init-baseline pins the id pattern the titles use, and counts the tests without one', () => {
-  const spec = "import { test } from './fixtures/base';\ntest('LGN-01 · signs in', async ({ steps }) => { await steps.navigateTo('/'); });\ntest('LGN-02 · signs out', async ({ steps }) => { await steps.navigateTo('/'); });\ntest('no id here', async ({ steps }) => { await steps.navigateTo('/'); });\n";
+test('--init-baseline pins the id pattern the titles use, says how to change it, and counts the tests without one', () => {
+  const ids = Array.from({ length: 10 }, (_, i) => `test('LGN-${String(i + 1).padStart(2, '0')} · case ${i}', async ({ steps }) => { await steps.navigateTo('/'); });`);
+  const spec = `import { test } from './fixtures/base';\n${ids.join('\n')}\ntest('no id here', async ({ steps }) => { await steps.navigateTo('/'); });\n`;
   const root = repo({ 'tests/e2e/a.spec.ts': spec });
   try {
     const r = run(root, ['--init-baseline']);
     assert.equal(r.status, 0, r.stderr);
     const b = baselineOf(root);
-    assert.notEqual(b.idPattern, 'house-default');
-    assert.match('LGN-01 · signs in', new RegExp(b.idPattern));
-    assert.doesNotMatch('TCAB-0001 · x', new RegExp(b.idPattern));
+    assert.equal(b.idPattern, '^\\s*([A-Z]{2,5}-[0-9]{2,4})', 'the documented pattern, which every id fits');
+    assert.match(r.stdout, /id pattern \^\\s\*\(\[A-Z\]\{2,5\}-\[0-9\]\{2,4\}\) \(inferred from 10 of 11 titles\)/);
+    assert.match(r.stdout, /to pin another before you commit it: delete tests\/compliance-baseline\.json and run `CIVITAS_TEST_ID_PATTERN=/);
     assert.deepEqual(b.files['tests/e2e/a.spec.ts'].tests, { 'no id here#1': { 'TB-I1': 1 } });
   } finally { done(root); }
 });
 
-test('inferIdPattern: the house default when most titles use it or none has an id; a pattern over the prefixes in use otherwise', () => {
+test('--init-baseline pins a consistent lowercase multi-segment convention, and the house default for a mixed suite', () => {
+  const names = ['j-cart-manage-1-01', 'j-cart-manage-1-02', 'j-checkout-2-01', 'j-checkout-flow-3-11', 'j-search-4-01'];
+  const spec = `import { test } from './fixtures/base';\n${names.map((n) => `test('${n} adds an item', async ({ steps }) => { await steps.navigateTo('/'); });`).join('\n')}\n`;
+  const root = repo({ 'tests/e2e/a.spec.ts': spec });
+  try {
+    assert.equal(run(root, ['--init-baseline']).status, 0);
+    const b = baselineOf(root);
+    assert.notEqual(b.idPattern, 'house-default');
+    const re = new RegExp(b.idPattern);
+    for (const n of names) assert.equal(re.exec(`${n} adds an item`)[1], n);
+    assert.equal(re.exec('j-orders-12-104 lists orders')[1], 'j-orders-12-104', 'ordinary growth fits');
+    assert.equal(re.exec('adds an item'), null);
+    assert.deepEqual(b.totals, {}, 'every test already carries its id');
+  } finally { done(root); }
+  const mixed = ['LGN-01 · a', 'j-cart-1-01 b', 'TCAB-0001 · c', 'plain title', 'SGN-02 · e'];
+  const m = repo({ 'tests/e2e/a.spec.ts': `import { test } from './fixtures/base';\n${mixed.map((t) => `test('${t}', async ({ steps }) => { await steps.navigateTo('/'); });`).join('\n')}\n` });
+  try {
+    assert.equal(run(m, ['--init-baseline']).status, 0);
+    assert.equal(baselineOf(m).idPattern, 'house-default');
+  } finally { done(m); }
+});
+
+test('inferIdPattern: one shape held by at least 90% of the titles, widened for ordinary growth; else the house default', () => {
   const house = /^\s*[[(]?(TC[A-Z]{0,3}-\d{4,6})[\])]?(?=[\s:·—|-]|$)/;
-  assert.equal(inferIdPattern(['plain title', 'another'], house), 'house-default');
-  assert.equal(inferIdPattern(['TCAB-0001 · a', 'TCAB-0002 · b', 'LGN-01 · c'], house), 'house-default');
-  const p = new RegExp(inferIdPattern(['LGN-01 · a', 'SIGNUP-104 · b'], house));
-  assert.equal(p.exec('SIGNUP-104 · b')[1], 'SIGNUP-104');
-  assert.equal(p.exec('LGN-01 · a')[1], 'LGN-01');
-  const multi = new RegExp(inferIdPattern(['TCP-AND-0001 · a', 'TCP-IOS-0002 · b'], house));
+  const pin = (titles) => inferIdPattern(titles, house).pattern;
+  assert.equal(pin(['plain title', 'another']), 'house-default');
+  assert.equal(pin(['TCAB-0001 · a', 'TCAB-0002 · b', 'TCLG-000003 · c']), 'house-default');
+  assert.equal(pin(['LGN-01 · a', 'SGN-02 · b', 'LGN-03 · c']), '^\\s*([A-Z]{2,5}-[0-9]{2,4})');
+  // never narrower than the observed ids
+  const wide = new RegExp(pin(['SIGNUPX-10404 · b', 'LGN-01 · a']));
+  assert.equal(wide.exec('SIGNUPX-10404 · b')[1], 'SIGNUPX-10404');
+  assert.equal(wide.exec('AB-01 · c')[1], 'AB-01', 'two-letter prefixes fit');
+  const multi = new RegExp(pin(['TCP-AND-0001 · a', 'TCP-IOS-0002 · b']));
   assert.equal(multi.exec('TCP-AND-0001 · a')[1], 'TCP-AND-0001');
+  // below the threshold: the house default
+  assert.equal(pin(['LGN-01 · a', 'LGN-02 · b', 'plain', 'plainer']), 'house-default');
+  const r = inferIdPattern(['LGN-01 · a', 'LGN-02 · b'], house);
+  assert.deepEqual([r.matched, r.of], [2, 2]);
 });
 
 test('--init-baseline is refused when the baseline exists, and when it existed in an ancestor commit', () => {
@@ -147,6 +177,7 @@ test('--init-baseline is refused when the baseline exists, and when it existed i
     const r = run(root, ['--init-baseline']);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /existed in an ancestor commit/);
+    assert.match(r.stderr, new RegExp(`last held by commit ${git(root, 'rev-parse', 'HEAD~1').trim().slice(0, 12)}`), 'the last commit that had it, not the deleting one');
     assert.match(r.stderr, /git log --diff-filter=D -- tests\/compliance-baseline\.json/);
     assert.ok(!existsSync(path.join(root, BASELINE)));
   } finally { done(root); }
@@ -163,6 +194,18 @@ test('pre-commit: a touched test with a new blocking finding is refused; the com
     assert.notEqual(c.status, 0);
     assert.match(c.out, /\[TB-A2\] tests\/e2e\/a\.spec\.ts:9 TCAB-0002/);
     assert.match(c.out, /1 blocking in touched code|2 blocking in touched code/);
+  } finally { done(root); }
+});
+
+test('pre-commit: under a recorded house default, a test without an id is told about the house default', () => {
+  const root = optedIn();
+  try {
+    write(root, 'tests/e2e/a.spec.ts', `${SPEC}\ntest('adds an item', async ({ steps }) => { await steps.navigateTo('/'); });\n`);
+    git(root, 'add', 'tests/e2e/a.spec.ts');
+    const c = commit(root, 'no id');
+    assert.notEqual(c.status, 0);
+    assert.match(c.out, /\[TB-I1\][^\n]*the house default recorded in tests\/compliance-baseline\.json/);
+    assert.doesNotMatch(c.out, /the pinned pattern \(tests\/compliance-baseline\.json idPattern\)/);
   } finally { done(root); }
 });
 

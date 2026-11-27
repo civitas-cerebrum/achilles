@@ -302,24 +302,44 @@ export function updateBaseline(ref, content, { upgrade = false, engine, rulesets
 
 // ── the id pattern an init pins ───────────────────────────────────────────
 
-const ID_TOKEN = /^\s*[[(]?([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*)-(\d{2,6})[\])]?(?=[\s:·—|-]|$)/;
+/** The share of titles one id shape must hold to be pinned; below it the suite has no consistent ids. */
+export const ID_SHARE = 0.9;
+const DOCUMENTED = '^\\s*([A-Z]{2,5}-[0-9]{2,4})';
+const LEAD = /^\s*[[(]?([^\s\])·:—|]+)/;
+// the shapes an id takes: a single uppercase prefix, several uppercase segments, or a lowercase convention of
+// any number of segments; each ends in a hyphen and a run of digits
+const SHAPES = [
+  { name: 'upper', re: /^([A-Z]+)-(\d+)$/ },
+  { name: 'upper-multi', re: /^([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)+)-(\d+)$/ },
+  { name: 'lower', re: /^([a-z][a-z0-9]*(?:-[a-z0-9]+)*)-(\d+)$/ },
+];
+const range = (xs, lo, hi) => `{${Math.min(lo, ...xs)},${Math.max(hi, ...xs)}}`;
 
 /**
- * The id pattern the suite already uses, from its test titles: `house-default` when most ids match the house
- * default (or no test has an id), else a pattern over the prefixes and digit counts in use.
+ * The id pattern the suite already uses, from its test titles: { pattern, matched, of }. One shape held by at
+ * least ID_SHARE of the titles is pinned, widened for ordinary growth (a prefix of 2 to 5 letters, 2 to 4
+ * digits, or wider when the ids are), and the documented `^\s*([A-Z]{2,5}-[0-9]{2,4})` when every id fits it;
+ * `house-default` when the house default holds that share, or when no shape does.
  */
 export function inferIdPattern(titles, houseDefault) {
-  const ids = titles.map((t) => ID_TOKEN.exec(t || '')).filter(Boolean);
-  if (!ids.length) return 'house-default';
+  const of = titles.length;
+  const share = (n) => of > 0 && n / of >= ID_SHARE;
   const house = titles.filter((t) => houseDefault.test(t || '')).length;
-  if (house * 2 >= ids.length) return 'house-default';
-  const prefixes = ids.map((m) => m[1]);
-  const digits = ids.map((m) => m[2].length);
-  const dRange = `{${Math.min(...digits)},${Math.max(...digits)}}`;
-  let prefix;
-  if (prefixes.every((p) => /^[A-Z]+$/.test(p))) {
-    const lens = prefixes.map((p) => p.length);
-    prefix = `[A-Z]{${Math.min(...lens)},${Math.max(...lens)}}`;
-  } else prefix = '[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*';
-  return `^\\s*[[(]?(${prefix}-[0-9]${dRange})[\\])]?(?=[\\s:·—|-]|$)`;
+  if (!of || share(house)) return { pattern: 'house-default', matched: house, of };
+  let best = null;
+  for (const shape of SHAPES) {
+    const hits = titles.map((t) => LEAD.exec(t || '')).filter(Boolean).map((m) => shape.re.exec(m[1])).filter(Boolean);
+    if (!best || hits.length > best.hits.length) best = { shape, hits };
+  }
+  if (!best || !share(best.hits.length)) return { pattern: 'house-default', matched: best ? best.hits.length : 0, of };
+  const digits = best.hits.map((m) => m[2].length);
+  const d = range(digits, 2, 4);
+  let pattern;
+  if (best.shape.name === 'upper') {
+    const lens = best.hits.map((m) => m[1].length);
+    const p = range(lens, 2, 5);
+    pattern = p === '{2,5}' && d === '{2,4}' ? DOCUMENTED : `^\\s*([A-Z]${p}-[0-9]${d})`;
+  } else if (best.shape.name === 'upper-multi') pattern = `^\\s*[[(]?([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)+-[0-9]${d})[\\])]?(?=[\\s:·—|]|$)`;
+  else pattern = `^\\s*[[(]?([a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9]${d})[\\])]?(?=[\\s:·—|]|$)`;
+  return { pattern, matched: best.hits.length, of };
 }

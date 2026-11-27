@@ -82,6 +82,13 @@ function suiteLint(root, { view = null, change = null, baselineIdPattern, budget
   return { report, cache: key ? 'miss' : 'off' };
 }
 
+/** The last commit in HEAD's history whose tree holds the baseline file. */
+function lastHolder(root) {
+  let commits = [];
+  try { commits = gitSync(root, ['log', '--format=%H', 'HEAD', '--', BASELINE_FILE]).split('\n').map((x) => x.trim()).filter(Boolean); } catch { return null; }
+  return commits.find((c) => baselineAt(root, c) !== null) || null;
+}
+
 const readFile = (abs) => (existsSync(abs) ? readFileSync(abs, 'utf8') : null);
 const lsIndex = (root, rel) => { try { return gitSync(root, ['ls-files', '--', rel]).trim() !== ''; } catch { return false; } };
 
@@ -92,17 +99,19 @@ export function initBaseline(root, { out, err, budgetMs, activate = [] }) {
   if (!head) throw new UsageError('there is no commit yet: commit the suite first; the baseline is recorded from HEAD');
   if (existsSync(path.join(root, BASELINE_FILE)) || lsIndex(root, BASELINE_FILE)) throw new UsageError(`${BASELINE_FILE} exists already: a baseline is recorded once; lower it with --update-baseline`);
   if (baselineInHistory(root)) {
-    const at = baselineCommit(root, 'HEAD');
-    throw new UsageError(`${BASELINE_FILE} existed in an ancestor commit (${at.slice(0, 12)}; see \`git log --diff-filter=D -- ${BASELINE_FILE}\`): restore that baseline instead of recording a new one, which would forgive every finding it counted`);
+    const at = lastHolder(root) || baselineCommit(root, 'HEAD');
+    throw new UsageError(`${BASELINE_FILE} existed in an ancestor commit (last held by commit ${at.slice(0, 12)}; see \`git log --diff-filter=D -- ${BASELINE_FILE}\`): restore that baseline instead of recording a new one, which would forgive every finding it counted`);
   }
   if (isShallow(root)) throw new UsageError('this is a shallow clone: whether an ancestor held a baseline cannot be checked; fetch the full history first (`git fetch --unshallow`)');
   const view = headView(root);
   const pinned = idPattern(root, factoryRules(root), process.env, null);
   let id;
+  let inferred = null;
   if (pinned.pinned) id = pinned.re.source;
   else {
     const first = suiteLint(root, { view, baselineIdPattern: null, budgetMs, useCache: false }).report;
-    id = inferIdPattern(first.files.flatMap((f) => f.tests.map((t) => t.title)), DEFAULT_ID_RE);
+    inferred = inferIdPattern(first.files.flatMap((f) => f.tests.map((t) => t.title)), DEFAULT_ID_RE);
+    id = inferred.pattern;
   }
   const { report } = suiteLint(root, { view, baselineIdPattern: id, budgetMs, useCache: false });
   let hook = null;
@@ -117,8 +126,9 @@ export function initBaseline(root, { out, err, budgetMs, activate = [] }) {
   const n = Object.values(counts.totals).reduce((a, x) => a + x, 0);
   const files = Object.keys(counts.files).length;
   const toCommit = [BASELINE_FILE, ...(hook && hook.mode === 'githooks' ? ['.githooks/'] : []), ...(hook && hook.committed && hook.mode !== 'githooks' ? [hook.path, ...hook.extra] : [])];
-  out(`spec-lint: recorded ${BASELINE_FILE} from HEAD ${head.slice(0, 12)}: ${n} blocking finding(s) in ${files} file(s) (ruleset ${CURRENT_RULESET}); id pattern ${id === 'house-default' ? 'the house default' : id}${pinned.pinned ? ` (from ${pinned.source})` : ''}; pre-commit check ${hook ? `${hook.mode} (${hook.path})` : 'not installed'}`);
+  out(`spec-lint: recorded ${BASELINE_FILE} from HEAD ${head.slice(0, 12)}: ${n} blocking finding(s) in ${files} file(s) (ruleset ${CURRENT_RULESET}); id pattern ${id === 'house-default' ? 'the house default' : id}${pinned.pinned ? ` (from ${pinned.source})` : inferred && id !== 'house-default' ? ` (inferred from ${inferred.matched} of ${inferred.of} titles)` : ''}; pre-commit check ${hook ? `${hook.mode} (${hook.path})` : 'not installed'}`);
   if (hookProblem) err(three('hook', `the pre-commit check was not installed: ${hookProblem}`, 'add it by hand as the message says, or fix the hooks setup and run `achilles-spec-lint --install-hook`; CI still checks every change'));
+  if (!pinned.pinned) out(`  to pin another before you commit it: delete ${BASELINE_FILE} and run \`CIVITAS_TEST_ID_PATTERN='<pattern with the id in group 1>' npx achilles-spec-lint --init-baseline\` (the counts depend on the pattern, so the file is not edited by hand)`);
   for (const x of hook ? hook.notes : []) out(`  ${x}`);
   out(`Commit these alone as \`chore(test): compliance baseline\`, then commit your change:\n  git add ${[...new Set(toCommit)].join(' ')}\n  git commit -m "chore(test): compliance baseline"`);
   return { code: 0, report: { tool: 'achilles-spec-lint', mode: 'init-baseline', ok: true, baseline: BASELINE_FILE, createdFrom: head, idPattern: id, totals: counts.totals, files, hook, ...(hookProblem ? { hookProblem } : {}) } };

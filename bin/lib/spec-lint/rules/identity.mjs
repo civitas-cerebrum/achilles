@@ -125,7 +125,7 @@ export function visitors(project) {
       if (title.dynamic) { push(file, 'TB-I1', t.line, `${title.node ? 'the title is not a literal' : 'template-literal title'}: its id cannot be read statically (advisory)`, { severity: 'advisory', test }); continue; }
       const m = idOf(title.text, pattern);
       if (!m) {
-        push(file, 'TB-I1', t.line, `title "${title.text.slice(0, 60)}" does not start with an id matching ${pattern.pinned ? `the pinned pattern (${pattern.source})` : 'the house default (unpinned, advisory)'}`, { severity: pattern.pinned ? 'blocking' : 'advisory', test });
+        push(file, 'TB-I1', t.line, `title "${title.text.slice(0, 60)}" does not start with an id matching ${!pattern.pinned ? 'the house default (unpinned, advisory)' : pattern.text === 'house-default' ? `the house default recorded in ${pattern.source.replace(/ idPattern$/, '')}` : `the pinned pattern (${pattern.source})`}`, { severity: pattern.pinned ? 'blocking' : 'advisory', test });
         continue;
       }
       if (!/^\s*·\s/.test(m.rest) && m.rest.trim()) push(file, 'TB-I1', t.line, `id ${m.id} is followed by "${m.rest.trim().slice(0, 1)}"; the canonical separator is \` · \` (advisory)`, { severity: 'advisory', test });
