@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { makeAjv } from '../../scripts/lib/ajv.mjs';
 import { REPO, tempRoot, writeProject } from './spec-lint-helpers.mjs';
@@ -119,7 +119,7 @@ test('--init-baseline pins the id pattern the titles use, says how to change it,
     const r = run(root, ['--init-baseline']);
     assert.equal(r.status, 0, r.stderr);
     const b = baselineOf(root);
-    assert.equal(b.idPattern, '^\\s*([A-Z]{2,5}-[0-9]{2,4})(?=[\\s:·—|]|$)', 'the documented pattern, which every id fits');
+    assert.equal(b.idPattern, '^\\s*[[(]?([A-Z]{2,5}-[0-9]{2,4})[\\])]?(?=[\\s:·—|]|$)', 'the documented pattern, which every id fits');
     assert.match(r.stdout, /\(inferred from 10 of 11 titles\)/);
     assert.equal(new RegExp(b.idPattern).exec('LGN-01234 · x'), null, 'a longer id is not read as a shorter one');
     assert.match(r.stdout, /to pin another before you commit it: delete tests\/compliance-baseline\.json and run `CIVITAS_TEST_ID_PATTERN=/);
@@ -154,8 +154,12 @@ test('inferIdPattern: one shape held by at least 90% of the titles, widened for 
   const pin = (titles) => inferIdPattern(titles, house).pattern;
   assert.equal(pin(['plain title', 'another']), 'house-default');
   assert.equal(pin(['TCAB-0001 · a', 'TCAB-0002 · b', 'TCLG-000003 · c']), 'house-default');
-  assert.equal(pin(['LGN-01 · a', 'SGN-02 · b', 'LGN-03 · c']), '^\\s*([A-Z]{2,5}-[0-9]{2,4})(?=[\\s:·—|]|$)');
+  assert.equal(pin(['LGN-01 · a', 'SGN-02 · b', 'LGN-03 · c']), '^\\s*[[(]?([A-Z]{2,5}-[0-9]{2,4})[\\])]?(?=[\\s:·—|]|$)');
   assert.equal(new RegExp(pin(['LGN-01 · a', 'SGN-02 · b'])).exec('LGN-01234 · x'), null);
+  // a bracketed id counts as a hit, and the pinned pattern reads it
+  const bracketed = new RegExp(pin(['[LGN-12] signs in', '[LGN-13] signs out', 'LGN-14 · resets']));
+  assert.equal(bracketed.exec('[LGN-12] signs in')[1], 'LGN-12');
+  assert.equal(bracketed.exec('(SGN-7001) x')[1], 'SGN-7001');
   // hyphenated words ending in digits are not a lowercase id convention
   assert.equal(pin(['covid-19 spikes', 'top-10 lists', 'mp3-128 plays', 'h-1 heading']), 'house-default');
   // never narrower than the observed ids
@@ -498,6 +502,31 @@ test('--ci reads the rule inputs from the merge-base: a change that weakens one 
   } finally { done(reg); }
 });
 
+test('--ci: an added factory rule is a weakening, so a permissive one cannot ride along with test code', () => {
+  const permissive = JSON.stringify({ rules: { 'specs.shape': { titleIdPattern: '^(?:TC[A-Z]+-[0-9]{4}|no)' } } });
+  const noId = "import { test } from './fixtures/base';\ntest('no · id at all', async ({ steps }) => { await steps.navigateTo('/'); });\n";
+  // M6: the new rule mixed with test code is refused
+  const mixed = optedIn();
+  try {
+    git(mixed, 'checkout', '-q', '-b', 'feature');
+    write(mixed, 'achilles-factory-rules.json', permissive);
+    write(mixed, 'tests/e2e/b.spec.ts', noId);
+    const r = run(mixed, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /protected input changed: achilles-factory-rules\.json: rule specs\.shape added \(weakens\)/);
+    assert.match(r.stderr, /\[TB-I1\] tests\/e2e\/b\.spec\.ts/, 'the test is checked under the base pattern');
+  } finally { done(mixed); }
+  // M7: alone it goes to the owner's review, marked as weakening; only once merged does a later change rely on it
+  const alone = optedIn();
+  try {
+    git(alone, 'checkout', '-q', '-b', 'rules');
+    write(alone, 'achilles-factory-rules.json', permissive);
+    const r = run(alone, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /needs the owner's review: the change touches only rule inputs \(achilles-factory-rules\.json: rule specs\.shape added, weakens\)/);
+  } finally { done(alone); }
+});
+
 test('pre-commit reads the rule inputs from HEAD: a working-tree setting does not relax the check, and the change is named', () => {
   const root = optedIn();
   try {
@@ -772,6 +801,22 @@ test('--install-hook never follows a planted symbolic link out of the repository
       untouched();
     } finally { done(r5); }
   } finally { done(outside); }
+});
+
+test('--install-hook replaces a file rather than writing into it, so a hard link to an outside file is not followed', () => {
+  const outside = tempRoot();
+  writeFileSync(path.join(outside, 'target'), '#!/bin/sh\necho outside\n');
+  const root = repo();
+  try {
+    mkdirSync(path.join(root, 'tools', 'hooks'), { recursive: true });
+    linkSync(path.join(outside, 'target'), path.join(root, 'tools', 'hooks', 'pre-commit'));
+    git(root, 'config', 'core.hooksPath', 'tools/hooks');
+    const r = run(root, ['--install-hook']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(readFileSync(path.join(outside, 'target'), 'utf8'), '#!/bin/sh\necho outside\n', 'the outside file is untouched');
+    assert.ok(read(root, 'tools/hooks/pre-commit').includes(MARKER));
+    assert.equal(statSync(path.join(root, 'tools', 'hooks', 'pre-commit')).nlink, 1);
+  } finally { done(root); done(outside); }
 });
 
 test('--install-hook reads hook names case-insensitively where the file system does', () => {

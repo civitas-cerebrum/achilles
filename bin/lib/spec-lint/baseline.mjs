@@ -305,7 +305,7 @@ export function updateBaseline(ref, content, { upgrade = false, engine, rulesets
 /** The share of titles one id shape must hold to be pinned; below it the suite has no consistent ids. */
 export const ID_SHARE = 0.9;
 const BOUNDARY = '(?=[\\s:·—|]|$)';
-const DOCUMENTED = `^\\s*([A-Z]{2,5}-[0-9]{2,4})${BOUNDARY}`;
+const DOCUMENTED = `^\\s*[[(]?([A-Z]{2,5}-[0-9]{2,4})[\\])]?${BOUNDARY}`;
 const LEAD = /^\s*[[(]?([^\s\])·:—|]+)/;
 // the shapes an id takes: a single uppercase prefix, several uppercase segments, or a lowercase convention of
 // any number of segments; each ends in a hyphen and a run of digits
@@ -347,7 +347,7 @@ export function inferIdPattern(titles, houseDefault) {
   if (best.shape.name === 'upper') {
     const lens = best.hits.map((m) => m[1].length);
     const p = range(lens, 2, 5);
-    pattern = p === '{2,5}' && d === '{2,4}' ? DOCUMENTED : `^\\s*([A-Z]${p}-[0-9]${d})${BOUNDARY}`;
+    pattern = p === '{2,5}' && d === '{2,4}' ? DOCUMENTED : `^\\s*[[(]?([A-Z]${p}-[0-9]${d})[\\])]?${BOUNDARY}`;
   } else if (best.shape.name === 'upper-multi') pattern = `^\\s*[[(]?([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)+-[0-9]${d})[\\])]?(?=[\\s:·—|]|$)`;
   else pattern = `^\\s*[[(]?([a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9]${d})[\\])]?(?=[\\s:·—|]|$)`;
   return { pattern, matched: best.hits.length, of };

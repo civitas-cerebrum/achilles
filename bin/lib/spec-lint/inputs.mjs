@@ -58,18 +58,9 @@ export function inputsOnDisk(root) {
   return shape(read, names);
 }
 
-/** True when a rule change only tightens: the rule is new, the constant-table setting goes off, or every array only gained entries. */
+/** True only for the rule change known to tighten: the constant-table setting switched off. */
 function tightens(key, was, is) {
-  // the one permissive setting: turning it on weakens, wherever it comes from
-  if (key === 'specs.constant-table-tests') return !(is && is.allowed === true && !(was && was.allowed === true));
-  if (was === undefined && is !== undefined) return true;
-  if (is === undefined) return false;
-  const sup = (x, y) => {
-    if (Array.isArray(x) && Array.isArray(y)) return x.every((v) => y.some((w) => JSON.stringify(w) === JSON.stringify(v)));
-    if (x && y && typeof x === 'object' && typeof y === 'object') return Object.keys(x).every((k) => k in y && sup(x[k], y[k])) && Object.keys(y).every((k) => k in x || Array.isArray(y[k]));
-    return JSON.stringify(x) === JSON.stringify(y);
-  };
-  return sup(was, is);
+  return key === 'specs.constant-table-tests' && !!(was && was.allowed === true) && !(is && is.allowed === true);
 }
 
 const rowsOf = (text) => new Map((typeof text === 'string' ? text.split(/\r?\n/) : []).map((l) => l.trim()).filter((l) => /^\|\s*FG-\d+\s*\|/.test(l)).map((l) => [/FG-\d+/.exec(l)[0], l]));
@@ -77,9 +68,9 @@ const guarded = (rules) => Object.fromEntries(Object.entries((rules && rules.rul
 const forbidden = (rules) => new Set((((rules && rules.rules) || {})['selectors.no-inline'] || {}).forbidden || []);
 
 /**
- * How `now` differs from `base`: [{ input, detail, weakens }]. `weakens` is false only for a change known to
- * tighten (a rule added, an array that only gained entries, the constant-table setting switched off, a register
- * row removed); every other change is read as weakening.
+ * How `now` differs from `base`: [{ input, detail, weakens }]. `weakens` is false only for the forms known to
+ * tighten: `selectors.no-inline.forbidden` gaining entries, a register row removed, the constant-table setting
+ * switched off. Every other change, an added rule included (a new rule can be permissive), is read as weakening.
  */
 export function compareInputs(base, now) {
   const out = [];

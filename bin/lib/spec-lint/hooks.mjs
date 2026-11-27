@@ -111,11 +111,22 @@ function guardFor(top, common) {
   };
 }
 
+/**
+ * Writes through a temporary file in the same directory renamed over the target: a hard link to a file
+ * elsewhere is replaced, never written into, and the window for a link planted mid-write is narrow.
+ */
+function replace(abs, text) {
+  const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.achilles-${process.pid}.tmp`);
+  writeFileSync(tmp, text, { mode: 0o755, flag: 'wx' });
+  renameSync(tmp, abs);
+  chmodSync(abs, 0o755);
+}
+
 function write(abs, text) {
   mkdirSync(path.dirname(abs), { recursive: true });
   const before = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
-  if (before !== text) writeFileSync(abs, text);
-  chmodSync(abs, 0o755);
+  if (before !== text || (existsSync(abs) && lstatSync(abs).nlink > 1)) replace(abs, text);
+  else chmodSync(abs, 0o755);
   return before !== text;
 }
 
@@ -133,8 +144,7 @@ function chain(file, ref, top, guard) {
   if (isShell(text)) {
     const body = text.startsWith('#!') && !text.includes('\n') ? `${text}\n` : text;
     const at = body.startsWith('#!') ? body.indexOf('\n') + 1 : 0;
-    writeFileSync(file, `${body.slice(0, at)}${callLine(ref)}${body.slice(at)}`);
-    chmodSync(file, 0o755);
+    replace(file, `${body.slice(0, at)}${callLine(ref)}${body.slice(at)}`);
     return { mode: 'chained', changed: true };
   }
   const original = path.join(path.dirname(file), ORIGINAL);
@@ -150,7 +160,9 @@ function lefthook(configFile, scriptFromTop) {
   if (text.includes(SCRIPT)) return false;
   const doc = parseDocument(text);
   doc.setIn(['pre-commit', 'commands', 'achilles-test-baseline', 'run'], `sh ${scriptFromTop}`);
-  writeFileSync(configFile, String(doc));
+  const tmp = path.join(path.dirname(configFile), `.${path.basename(configFile)}.achilles-${process.pid}.tmp`);
+  writeFileSync(tmp, String(doc), { flag: 'wx' });
+  renameSync(tmp, configFile);
   return true;
 }
 
