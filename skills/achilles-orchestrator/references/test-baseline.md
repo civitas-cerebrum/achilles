@@ -2,7 +2,7 @@
 
 The one canonical home of every rule that test code written or edited by Achilles follows: specs, support modules, evidence bundles and k6 scripts. Each rule has a short id (`TB-<family><n>`); other files cite it as `test-baseline.md#tb-<id>` and never restate it. The first sentence of a rule is its normative sentence; Achilles' own documentation checks keep cited ids resolvable and keep normative sentences out of other skills.
 
-**Who checks the rules today.** The author checks every touched test against this file in the Stage 4b sweep ([`stages-protocol.md`](stages-protocol.md)); at a composing exit the composition judge (which re-checks a sample) or the Stage B reviewer reads it again from the code and the scenario ([`test-composition-standards.md`](test-composition-standards.md) §4); an incremental heal gets the author's sweep only. **Mechanical** rules are written so a machine can decide them from the code; **judgment** rules need a reader. The lint `achilles-spec-lint` decides the mechanical rules from the code and reports its findings (three lines each, or `--json`); Achilles itself refuses nothing on them yet. A project that records a compliance baseline binds commits through its own pre-commit hook and CI ([Baseline and ratchet](#baseline-and-ratchet)). The rules it cannot decide yet ([TB-A6](#tb-a6), [TB-G2](#tb-g2)) and every judgment rule are still applied by reading.
+**Who checks the rules today.** The author checks every touched test against this file in the Stage 4b sweep ([`stages-protocol.md`](stages-protocol.md)); at a composing exit the composition judge (which re-checks a sample) or the Stage B reviewer reads it again from the code and the scenario ([`test-composition-standards.md`](test-composition-standards.md) §4); an incremental heal gets the author's sweep only. **Mechanical** rules are written so a machine can decide them from the code; **judgment** rules need a reader. The lint `achilles-spec-lint` decides the mechanical rules from the code and reports its findings (three lines each, or `--json`); Achilles itself refuses nothing on them yet. A project that records a compliance baseline binds commits through its own pre-commit hook and CI ([Baseline and ratchet](#baseline-and-ratchet)). The rule it cannot decide yet ([TB-G2](#tb-g2)) and every judgment rule are still applied by reading.
 
 ## Contents
 
@@ -242,8 +242,8 @@ await steps.click('removeItemButton', 'CartPage');
 
 Every element and page name a test hands to the framework names an entry of the page repository the fixture loads.
 
-- **Source** W, N · **Kind** mechanical · **Severity** advisory until a mechanical check can resolve the repository exactly as the fixture does (resolved path, generated repository, page names merged across platforms), then blocking; retyping the repository path outside the fixtures module: advisory · **Applies to** spec, support
-- **Detection**: every literal or file-constant `(elementName, pageName)` pair passed to `steps.*`, `steps.on`, `steps.expect` or `repo.*`, and every `child: { pageName, elementName }`.
+- **Source** W, N · **Kind** mechanical · **Severity** advisory (unmeasured): blocking once a live measurement shows no false alarm; retyping the repository path outside the fixtures module: advisory · **Applies to** spec, support
+- **Detection**: every literal or file-constant `(elementName, pageName)` pair passed to `steps.*` (the arguments the installed release names `elementName` and `pageName`; `steps.on` and `steps.expect` included), the first two arguments of the repository's name methods (`repo.get`, `getSelector`, …), and every `{ pageName, elementName }` object such as `child:`; a page name alone (`steps.fillForm`) must name a page. The repository is the one the fixture loads, resolved as the fixture resolves it: the path argument of `baseFixture(…)` or `new ElementRepository(…)` in the fixtures module, evaluated (a literal against the project root, `path.resolve` or `path.join` over `__dirname`, the module's constants, a JSON module it imports); the file at that path is the built repository when a build step generates it, never its sources; pages that repeat a name (one entry per platform) are merged. A file is checked against the repositories of the fixtures modules it imports, else against every repository of the project. A repository that is not there or cannot be resolved is one project finding, and nothing is checked against it.
 
 ```ts
 // Non-compliant (no `submitBtn` on LoginPage in the repository)
@@ -484,7 +484,7 @@ test.fail('TCCK-000310 · a cancelled order is not charged', async ({ steps }) =
 An optional action in a spec is followed by a check that fails when the action did not happen.
 
 - **Source** W · **Kind** mechanical and judgment · **Severity** advisory (mechanical); blocking by judgment · **Applies to** spec; allowed in support
-- **Detection**: `steps.clickIfPresent`, `steps.on(…).ifVisible()…`, `{ optional: true }` on a steps call. These members are flow control: in a spec the reader asks "does the test pass if the element never appears?", and a yes is must-fix.
+- **Detection**: `steps.clickIfPresent`, `steps.on(…).ifVisible()…`, `{ optional: true }` on a steps call. These members are flow control: in a spec the reader asks "does the test pass if the element never appears?", and a yes is must-fix. The narrow form, the call's result discarded and no later check in the test on the same element and page, is marked as such; it is advisory (unmeasured) as well.
 
 ```ts
 // Non-compliant
@@ -1000,7 +1000,8 @@ test('login works', async ({ steps }) => { /* … */ });
 
 A loop or retry inside a verb has a deadline or a counter, and a hard check follows it.
 
-- **Source** W, R · **Kind** mechanical and judgment · **Severity** `while (true)`, `for (;;)` or a `for` with no test and no deadline or counter: advisory until the shape has a measured mechanical definition, then blocking; other bound shapes advisory; blocking by judgment ("idempotent or state-aware attempts, followed by a hard gate?") · **Applies to** support
+- **Source** W, R · **Kind** mechanical and judgment · **Severity** `while (true)`, `do … while (true)`, `for (;;)` or a `for` with no test, without a deadline or counter: advisory (unmeasured), blocking once a live measurement confirms it; a `while` bounded only by page state: advisory; blocking by judgment ("idempotent or state-aware attempts, followed by a hard gate?") · **Applies to** support
+- **Detection**: a loop of those shapes whose body has no exit (`break`, `return`, `throw`) guarded by a comparison of a counter or a deadline. A counter is a variable the loop itself steps (`++`, `--`, `+=`, `-=`); a deadline is `Date.now()`, `performance.now()` or `new Date()`, or a variable computed from one. A name alone is neither: `if (accountCreated) break` does not bound the loop.
 
 ```ts
 // Non-compliant

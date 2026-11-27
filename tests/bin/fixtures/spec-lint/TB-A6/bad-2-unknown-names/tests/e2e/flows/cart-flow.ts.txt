@@ -1,0 +1,14 @@
+// spec-lint fixture: unknown page and element names in a verb, a child object and a repository call
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+const CART = 'CartPage';
+
+export async function checkOut(steps: Steps) {
+  await steps.click('checkoutBtn', CART); // EXPECT TB-A6/advisory
+  await steps.verifyPresence('orderPlaced', 'ConfirmationPage'); // EXPECT TB-A6/advisory
+  await steps.fillForm('PaymentPage', {}); // EXPECT TB-A6/advisory
+}
+
+export async function titles(steps: Steps) {
+  return steps.getAll('itemRow', CART, { child: { pageName: 'CartPage', elementName: 'itemName' } }); // EXPECT TB-A6/advisory
+}

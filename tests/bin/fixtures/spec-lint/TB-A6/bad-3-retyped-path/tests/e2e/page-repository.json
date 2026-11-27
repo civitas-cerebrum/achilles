@@ -1,0 +1,10 @@
+{
+  "pages": [
+    {
+      "name": "HomePage",
+      "elements": [
+        { "elementName": "heading", "selector": { "role": "heading", "level": 1 } }
+      ]
+    }
+  ]
+}

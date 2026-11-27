@@ -1,5 +1,5 @@
-// Family A: framework surface (test-baseline.md §Family A). TB-A6 (repository names resolve) waits for
-// the definition fix; TB-A8 is judgment.
+// Family A: framework surface (test-baseline.md §Family A). TB-A6 (repository names resolve) is in
+// repository.mjs; TB-A8 is judgment.
 import {
   isFn, isMember, isCall, propName, memberChain, unwrap, rootIdent, isStr, strValue, anyNode, typeName,
 } from '../ast.mjs';

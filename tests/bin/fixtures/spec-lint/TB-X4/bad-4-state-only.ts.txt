@@ -1,0 +1,11 @@
+// spec-lint fixture: a while loop bounded only by page state (the advisory shape)
+// place: tests/e2e/flows/feed-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function loadWholeFeed(steps: Steps) {
+  while (await steps.isVisible('loadMoreButton', 'FeedPage')) { // EXPECT TB-X4/advisory
+    await steps.click('loadMoreButton', 'FeedPage');
+  }
+  await steps.verifyPresence('feedEnd', 'FeedPage');
+}

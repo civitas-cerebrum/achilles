@@ -1,7 +1,6 @@
 // Suite-level facts across files: the import graph (which support modules a spec reaches, used for the
-// support classification and, with --suite, for following a touched spec's imports), and the repository
-// resolution of TB-A6 (a later unit: the definition fix that resolves the repository exactly as the
-// fixture does is not implemented yet, so it resolves nothing).
+// support classification, for following a touched spec's imports with --suite, and for finding the fixtures
+// module whose page repository a file is checked against, TB-A6 in rules/repository.mjs).
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { isCall, isStr, strValue } from './ast.mjs';
@@ -48,9 +47,4 @@ export function reachable(starts, edges) {
     for (const g of edges.get(f) || []) if (!seen.has(g)) { seen.add(g); stack.push(g); }
   }
   return seen;
-}
-
-/** TB-A6 (later unit): repository names are not resolved yet. */
-export function unresolvedRepositoryNames() {
-  return [];
 }

@@ -158,7 +158,6 @@ export const ENGINE_RULES_DIR = 'bin/lib/spec-lint/rules';
 export const FIXTURES_DIR = 'tests/bin/fixtures/spec-lint';
 // Mechanical rules the engine does not detect itself, and why.
 export const DEFERRED = {
-  'TB-A6': 'repository names resolve only once the lint resolves the repository exactly as the fixture does (a later unit)',
   'TB-G2': 'rule inputs are decided at the commit gate (a later unit); the engine lists the rule only to keep it unwaivable',
   'TB-P3': 'detected as TB-F1 on the platform branch',
 };

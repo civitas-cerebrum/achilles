@@ -1,0 +1,5 @@
+// spec-lint fixture: the fixtures module declares the repository path once
+import { test as base } from '@playwright/test';
+import { baseFixture } from '@civitas-cerebrum/element-interactions';
+
+export const test = baseFixture(base, 'tests/e2e/page-repository.json');

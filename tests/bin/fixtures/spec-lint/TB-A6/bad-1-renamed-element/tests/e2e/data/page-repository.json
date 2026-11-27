@@ -1,0 +1,25 @@
+{
+  "pages": [
+    {
+      "name": "LoginPage",
+      "elements": [
+        { "elementName": "emailInput", "selector": { "role": "textbox", "name": "Email" } },
+        { "elementName": "passwordInput", "selector": { "role": "textbox", "name": "Password" } },
+        { "elementName": "signInButton", "selector": { "role": "button", "name": "Sign in" } }
+      ]
+    },
+    {
+      "name": "DashboardPage",
+      "elements": [
+        { "elementName": "welcomeBanner", "selector": { "role": "heading", "name": "Welcome" } }
+      ]
+    },
+    {
+      "name": "ResultsPage",
+      "elements": [
+        { "elementName": "resultRow", "selector": { "css": "li.result" }, "list": true },
+        { "elementName": "rowName", "selector": { "css": ".name" } }
+      ]
+    }
+  ]
+}

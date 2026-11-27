@@ -431,6 +431,9 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
   }
   const edges = new Map();
   for (const r of records) if (r.ast) edges.set(r.abs, specifiers(r.ast).map((s) => resolveRelative(r.abs, s)).filter((x) => x && byAbs.has(x)));
+  project.edges = edges;
+  // a file's text as the linted view holds it (the change's content where it has one), else the disk's; null when absent
+  project.textOf = (abs) => (override.has(abs) ? override.get(abs) : existsSync(abs) ? readFileSync(abs, 'utf8') : null);
   const fromSpecs = reachable(records.filter((r) => r.kind === 'spec').map((r) => r.abs), edges);
   for (const r of records) if (!r.kind && r.stat === 'candidate' && (fromSpecs.has(r.abs) || r.parseError)) r.kind = 'support';
   const inScope = records.filter((r) => r.kind);

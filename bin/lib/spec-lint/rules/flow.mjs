@@ -4,7 +4,7 @@
 // modules (advisory there).
 import {
   isFn, isMember, isCall, propName, memberChain, unwrap, isStr, strValue, anyNode,
-  onePass, inLoop, isDriving, drives, drivesUi, awaitsDriving, statementOf, enclosingDeclarations, tagsOf, testModifier, LOOPS, ITERATION,
+  onePass, inLoop, isDriving, isAssertion, drives, drivesUi, awaitsDriving, statementOf, enclosingDeclarations, tagsOf, testModifier, LOOPS, ITERATION,
 } from '../shapes.mjs';
 import { DRIVER_KINDS } from '../bindings.mjs';
 import { resolveRelative } from '../suite.mjs';
@@ -126,6 +126,41 @@ function handlerSwallows(file, a) {
   if (isFn(u)) return swallows(u);
   if (u && u.type === 'Identifier') { const f = localFunction(file, u.name); return f ? swallows(f) : true; }
   return true;
+}
+
+/** The literal (elementName, pageName) of a call's first two arguments, or null. */
+function namePair(call) {
+  const [a, b] = [call.arguments[0], call.arguments[1]].map((x) => unwrap(x));
+  return a && b && isStr(a) && isStr(b) ? [strValue(a), strValue(b)] : null;
+}
+
+/**
+ * TB-F7's narrow form: the optional call's result is discarded (its statement is the call chain alone, awaited
+ * or not) and no later statement of the enclosing blocks, up to the test's function, asserts on the same
+ * element and page. Returns '' or the message suffix. The broad form measured 0 true positives in 10 sampled
+ * live hits; the narrow one has no live measurement yet, so both stay advisory.
+ */
+function narrowOptional(n, ctx, about) {
+  if (!about) return '';
+  const stack = ctx.stack;
+  let s = stack.length - 1;
+  for (; s >= 0 && stack[s].type !== 'ExpressionStatement'; s--) if (isFn(stack[s])) return '';
+  if (s < 0) return '';
+  let e = unwrap(stack[s].expression);
+  if (e && e.type === 'AwaitExpression') e = unwrap(e.argument);
+  let onChain = false;
+  for (let x = e; x && (isCall(x) || isMember(x)); x = isCall(x) ? unwrap(x.callee) : unwrap(x.object)) if (x === n) { onChain = true; break; }
+  if (!onChain) return '';
+  const same = (y) => { const pair = isCall(y) ? namePair(y) : null; return !!pair && pair[0] === about[0] && pair[1] === about[1]; };
+  const checks = (root) => anyNode(root, (x) => isAssertion(x, ctx.kind) && anyNode(x, same));
+  for (let i = s; i > 0; i--) {
+    const parent = stack[i - 1];
+    if (isFn(parent)) break;
+    const list = parent.type === 'BlockStatement' || parent.type === 'Program' ? parent.body : null;
+    const at = list ? list.indexOf(stack[i]) : -1;
+    if (at >= 0 && list.slice(at + 1).some(checks)) return '';
+  }
+  return `; its result is discarded and no later check reads \`${about[0]}\` on \`${about[1]}\` (the narrow form, advisory: unmeasured)`;
 }
 
 export function visitors(project) {
@@ -270,8 +305,14 @@ export function visitors(project) {
       let r = callee;
       while (isMember(r) || isCall(r)) r = isMember(r) ? unwrap(r.object) : unwrap(r.callee);
       const rooted = r && ctx.kind(r) === 'steps';
-      if (rooted && (p === 'clickIfPresent' || p === 'ifVisible')) ctx.report('TB-F7', n, { message: `\`${p}\` in a spec: does the test pass if the element never appears?` });
-      else if (rooted && n.arguments.some((a) => { const o = unwrap(a); return o && o.type === 'ObjectExpression' && o.properties.some((q) => q.type === 'ObjectProperty' && (q.key.name === 'optional' || q.key.value === 'optional') && unwrap(q.value).type === 'BooleanLiteral' && unwrap(q.value).value); })) ctx.report('TB-F7', n, { message: `\`{ optional: true }\` on steps.${p} in a spec: does the test pass if the element never appears?` });
+      // the element the optional call is about: its own (elementName, pageName), or the steps.on(…) below ifVisible
+      const onCall = isCall(unwrap(callee.object)) ? unwrap(callee.object) : null;
+      const report7 = (message, about) => { const narrow = narrowOptional(n, ctx, about); ctx.report('TB-F7', n, { message: `${message}${narrow}`, ...(narrow ? { data: { narrow: true } } : {}) }); };
+      if (rooted && (p === 'clickIfPresent' || p === 'ifVisible')) report7(`\`${p}\` in a spec: does the test pass if the element never appears?`, p === 'ifVisible' ? (onCall && propName(unwrap(onCall.callee)) === 'on' ? namePair(onCall) : null) : namePair(n));
+      else if (rooted && n.arguments.some((a) => { const o = unwrap(a); return o && o.type === 'ObjectExpression' && o.properties.some((q) => q.type === 'ObjectProperty' && (q.key.name === 'optional' || q.key.value === 'optional') && unwrap(q.value).type === 'BooleanLiteral' && unwrap(q.value).value); })) {
+        const params = project.surface.params && project.surface.params[p];
+        report7(`\`{ optional: true }\` on steps.${p} in a spec: does the test pass if the element never appears?`, params && params[0] === 'elementName' && params[1] === 'pageName' ? namePair(n) : null);
+      }
     }
   }
 

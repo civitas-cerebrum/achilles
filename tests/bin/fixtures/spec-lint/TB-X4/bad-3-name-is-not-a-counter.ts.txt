@@ -1,0 +1,14 @@
+// spec-lint fixture: a variable whose name looks like a bound (count, max, retry) is not a counter unless the loop steps it
+// place: tests/e2e/flows/account-flow.ts
+// rules: TB-X4
+import type { Steps } from '@civitas-cerebrum/element-interactions';
+
+export async function createAccount(steps: Steps, maxRetries: number) {
+  let accountCreated = false;
+  while (true) { // EXPECT TB-X4/advisory
+    await steps.click('createButton', 'SignupPage');
+    accountCreated = await steps.isVisible('welcomeBanner', 'DashboardPage');
+    if (accountCreated || maxRetries > 3) break;
+  }
+  await steps.verifyPresence('welcomeBanner', 'DashboardPage');
+}

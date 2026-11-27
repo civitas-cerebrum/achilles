@@ -14,6 +14,7 @@
 //   excluded tests/e2e/inspect/**, node_modules, reports, .d.ts, JSON, the configs themselves
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseCode, isStr, strValue, unwrap, memberChain, isCall } from './ast.mjs';
 
 export const CODE_EXT = /\.(?:[cm]?[jt]sx?)$/i;
@@ -83,7 +84,15 @@ function matcher(entry, testDir) {
 
 // ── static evaluation of a config ─────────────────────────────────────────
 
-class Unevaluable extends Error {}
+export class Unevaluable extends Error {}
+
+/**
+ * The static value of an expression: literals, arrays, `+`, `path.join` / `path.resolve` (relative to `env.cwd`,
+ * else `env.dir`), `path.dirname`, `__dirname`, `import.meta.dirname` / `import.meta.url`, `fileURLToPath`,
+ * `new URL(<rel>, import.meta.url)` and the module's constants (`env.consts`); `env.file` is the module itself.
+ * Throws Unevaluable otherwise.
+ */
+export function staticValue(node, env) { return evaluate(node, env); }
 
 function evaluate(node, env) {
   const n = unwrap(node);
@@ -113,13 +122,21 @@ function evaluate(node, env) {
     const name = ch && ch.join('.');
     if (name && /^(?:path\.)?(?:join|resolve)$/.test(name)) {
       const parts = n.arguments.map((a) => evaluate(a, env));
-      return name.endsWith('resolve') ? path.resolve(env.dir, ...parts) : path.join(...parts);
+      return name.endsWith('resolve') ? path.resolve(env.cwd || env.dir, ...parts) : path.join(...parts);
     }
+    if (name && /^(?:path\.)?dirname$/.test(name) && n.arguments.length === 1) return path.dirname(evaluate(n.arguments[0], env));
     if (name === 'defineConfig' && n.arguments.length === 1) return evaluate(n.arguments[0], env);
     if (name === 'require.resolve' && n.arguments.length === 1) return path.resolve(env.dir, evaluate(n.arguments[0], env));
-    if (name === 'fileURLToPath' || name === 'url.fileURLToPath') return env.dir;
+    if (name === 'fileURLToPath' || name === 'url.fileURLToPath') {
+      if (!env.file) return env.dir;
+      const v = evaluate(n.arguments[0], env);
+      if (typeof v !== 'string' || !v.startsWith('file:')) throw new Unevaluable('fileURLToPath of a non-file URL');
+      return fileURLToPath(v);
+    }
   }
   if (n.type === 'MemberExpression' && memberChain(n)?.join('.') === 'import.meta.dirname') return env.dir;
+  if (n.type === 'MemberExpression' && env.file && memberChain(n)?.join('.') === 'import.meta.url') return pathToFileURL(env.file).href;
+  if (n.type === 'NewExpression' && n.callee.type === 'Identifier' && n.callee.name === 'URL' && n.arguments.length === 2) return new URL(evaluate(n.arguments[0], env), evaluate(n.arguments[1], env)).href;
   throw new Unevaluable(n.type);
 }
 
@@ -141,7 +158,7 @@ function configObject(ast, env) {
 export function readConfig(root, abs, parser) {
   const rel = path.relative(root, abs).split(path.sep).join('/');
   const dir = path.dirname(abs);
-  const env = { dir, consts: new Map() };
+  const env = { dir, file: abs, consts: new Map() };
   const problems = [];
   let top = null;
   try {
@@ -210,7 +227,7 @@ export function isConfigPath(rel) {
  * selection is incomplete), `imports` the relative module specifiers the config loads.
  */
 export function configSelection(parser, text, abs, root) {
-  const env = { dir: path.dirname(abs), consts: new Map() };
+  const env = { dir: path.dirname(abs), file: abs, consts: new Map() };
   const unevaluable = [];
   let ast = null;
   try { ast = parseCode(parser, text, abs); } catch (e) { return { selection: null, unevaluable: [`does not parse (${e.message})`], imports: [] }; }

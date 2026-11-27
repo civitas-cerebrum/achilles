@@ -122,3 +122,58 @@ test('messages name the normalised callee, the actual receiver and the installed
     assert.match(msg('TB-A4', 9), /has steps\.getLocalStorage$/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('TB-F7 marks the narrow form: the result is discarded and no later check reads the same element', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/a.spec.ts': [
+      "import { test } from './fixtures/base';",
+      "test('TCAB-0701 · optional members', async ({ steps }) => {",
+      "  await steps.clickIfPresent('acceptCookies', 'HomePage');",
+      "  await steps.clickIfPresent('promoClose', 'HomePage');",
+      "  const shown = await steps.clickIfPresent('survey', 'HomePage');",
+      "  await steps.on('banner', 'HomePage').ifVisible().click();",
+      "  await steps.waitForState('toast', 'HomePage', 'visible', { optional: true });",
+      "  if (shown) await steps.click('surveyClose', 'HomePage');",
+      "  await steps.verifyAbsence('promoClose', 'HomePage');",
+      "  await steps.on('banner', 'HomePage').text.toBe('');",
+      '});',
+      '',
+    ].join('\n') });
+    const report = lintProject({ root, useGit: false });
+    const f7 = Object.fromEntries(report.findings.filter((f) => f.rule === 'TB-F7').map((f) => [f.line, f]));
+    assert.deepEqual(Object.keys(f7).map(Number), [3, 4, 5, 6, 7]);
+    assert.ok(Object.values(f7).every((f) => f.severity === 'advisory'));
+    assert.deepEqual(Object.entries(f7).filter(([, f]) => f.data && f.data.narrow).map(([l]) => Number(l)), [3, 7], 'discarded and never checked again');
+    assert.match(f7[3].message, /no later check reads `acceptCookies` on `HomePage` \(the narrow form, advisory: unmeasured\)$/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('TB-X4: only an exit guarded by a counter the loop steps, or by a deadline, bounds a forever loop', () => {
+  const root = tempRoot();
+  try {
+    writeProject(root, { 'tests/e2e/flows/f.ts': [
+      "import type { Steps } from '@civitas-cerebrum/element-interactions';",
+      'export async function a(steps: Steps, limit: number) {',
+      '  let n = 0;',
+      "  while (true) { if (n++ >= limit) throw new Error('x'); await steps.click('b', 'P'); }",
+      '}',
+      'export async function b(steps: Steps) {',
+      '  const started = performance.now();',
+      "  do { await steps.click('b', 'P'); if (performance.now() - started > 9000) break; } while (true);",
+      '}',
+      'export async function c(steps: Steps) {',
+      "  for (;;) { for (const x of [1, 2]) { if (x > 1) break; } await steps.click('b', 'P'); }",
+      '}',
+      'export async function d(steps: Steps, maxTries: number) {',
+      "  while (1) { if (maxTries > 2) break; await steps.click('b', 'P'); }",
+      '}',
+      '',
+    ].join('\n') });
+    const report = lintProject({ root, useGit: false });
+    const x4 = report.findings.filter((f) => f.rule === 'TB-X4');
+    assert.deepEqual(x4.map((f) => f.line), [11, 14], x4.map((f) => f.message).join('\n'));
+    assert.ok(x4.every((f) => f.severity === 'advisory' && f.data.shape === 'forever'));
+    assert.match(x4[0].message, /^`for \(;;\)` without a counter or deadline that ends it/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -169,11 +169,11 @@ test('this repository passes both checks', () => {
 test('engine coverage: a mechanical rule needs an engine rule and a fixture directory; judgment rules and deferred ones do not', () => {
   const book = [
     '#### TB-A1 One', '', 'First rule sentence for the lint check here.', '', '- **Source** W · **Kind** mechanical · **Severity** blocking', '',
-    '#### TB-A6 Two', '', 'Second rule sentence for the lint check here.', '', '- **Source** W · **Kind** mechanical · **Severity** advisory', '',
+    '#### TB-G2 Two', '', 'Second rule sentence for the lint check here.', '', '- **Source** W · **Kind** mechanical · **Severity** advisory', '',
     '#### TB-R1 Three', '', 'Third rule sentence for the lint check here.', '', '- **Source** W · **Kind** judgment · **Severity** blocking', '',
     '#### TB-F2 Four', '', 'Fourth rule sentence for the lint check here.', '', '- **Source** W · **Kind** mechanical and judgment · **Severity** advisory', '',
   ].join('\n');
-  assert.deepEqual(ruleKinds(book).map((r) => `${r.id} ${r.kind}`), ['TB-A1 mechanical', 'TB-A6 mechanical', 'TB-R1 judgment', 'TB-F2 mechanical and judgment']);
+  assert.deepEqual(ruleKinds(book).map((r) => `${r.id} ${r.kind}`), ['TB-A1 mechanical', 'TB-G2 mechanical', 'TB-R1 judgment', 'TB-F2 mechanical and judgment']);
   const root = tree({
     [BASELINE]: book,
     'bin/lib/spec-lint/rules/a.mjs': "export const RULES = [\n  { id: 'TB-A1', title: 'x' },\n  { id: 'TB-Z9', title: 'not in the book' },\n];\n",

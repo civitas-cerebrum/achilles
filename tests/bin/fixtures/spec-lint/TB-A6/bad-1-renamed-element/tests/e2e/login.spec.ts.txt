@@ -1,0 +1,17 @@
+// spec-lint fixture: the spec of ok-1 unchanged; every use of the renamed element is a hit
+import { test } from './fixtures/base';
+
+const LOGIN = 'LoginPage';
+const Pages = { dashboard: 'DashboardPage', results: 'ResultsPage' } as const;
+
+test('TCAB-0601 · a known user signs in', async ({ steps, repo }) => {
+  await steps.navigateTo('/login');
+  await steps.fill('emailInput', LOGIN, 'user@example.invalid');
+  await steps.fill('passwordInput', 'LoginPage', 'not-a-real-secret');
+  await steps.click('submitButton', LOGIN); // EXPECT TB-A6/advisory
+  await steps.verifyPresence('welcomeBanner', Pages.dashboard);
+  await steps.on('submitButton', 'LoginPage').click(); // EXPECT TB-A6/advisory
+  const names = await steps.getAll('resultRow', Pages.results, { child: { pageName: 'ResultsPage', elementName: 'rowName' } });
+  await repo.getSelector('passwordInput', 'LoginPage');
+  void names;
+});
