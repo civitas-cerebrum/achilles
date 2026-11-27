@@ -15,7 +15,7 @@
 //   lefthook   a lefthook configuration and no hooks path: a `pre-commit` command that runs the script
 // A hooks path outside the work tree (a global or system setting, a shared directory) is refused with the line
 // to add by hand: the installer never writes outside the repository. Running it again changes nothing.
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
 import { gitSync } from './git.mjs';
@@ -82,7 +82,33 @@ const isShell = (text) => { const m = /^#!\s*(\S+)(?:\s+(\S+))?/.exec(text); if 
 /** The hooks in a directory: files named as git hooks (not `.sample`), other than this check. */
 function hooksIn(dir) {
   if (!existsSync(dir)) return [];
-  return readdirSync(dir).filter((f) => HOOK_NAMES.has(f) && statSync(path.join(dir, f)).isFile() && !isOurs(readFileSync(path.join(dir, f), 'utf8'))).sort();
+  const names = readdirSync(dir);
+  // on a case-insensitive file system `PRE-COMMIT` is the pre-commit git runs: names compare case-insensitively there
+  const folds = (f) => f !== f.toLowerCase() && !names.includes(f.toLowerCase()) && existsSync(path.join(dir, f.toLowerCase()));
+  return [...new Set(names.filter((f) => (HOOK_NAMES.has(f) || (HOOK_NAMES.has(f.toLowerCase()) && folds(f))) && statSync(path.join(dir, f)).isFile() && !isOurs(readFileSync(path.join(dir, f), 'utf8'))).map((f) => (HOOK_NAMES.has(f) ? f : f.toLowerCase())))].sort();
+}
+
+/**
+ * Refuses a write that could land outside the repository: the path (by name) and the real path of its nearest
+ * existing directory must sit in the work tree or the git common directory, and neither the file nor any
+ * existing directory between it and that root may be a symbolic link (a planted link would redirect the write).
+ */
+function guardFor(top, common) {
+  const realTop = realpathSync(top);
+  const realCommon = realpathSync(common);
+  return (abs) => {
+    const base = within(top, abs) ? top : within(common, abs) ? common : null;
+    if (!base) throw new HookError(`refusing to write ${abs}: it is outside this repository`);
+    for (let p = abs; p !== base && within(base, p); p = path.dirname(p)) {
+      let st = null;
+      try { st = lstatSync(p); } catch { continue; }
+      if (st.isSymbolicLink()) throw new HookError(`refusing to write ${abs}: ${p} is a symbolic link, which could send the write outside the repository; replace it with a real file or directory`);
+    }
+    let dir = path.dirname(abs);
+    while (!existsSync(dir)) dir = path.dirname(dir);
+    const real = realpathSync(dir);
+    if (!within(realTop, real) && !within(realCommon, real)) throw new HookError(`refusing to write ${abs}: its directory resolves to ${real}, outside this repository`);
+  };
 }
 
 function write(abs, text) {
@@ -143,7 +169,7 @@ export function installHook(root, { activate = [] } = {}) {
     top = git(root, ['rev-parse', '--show-toplevel']);
     common = path.resolve(root, git(root, ['rev-parse', '--git-common-dir']));
   } catch { throw new HookError(`${root} is not in a git work tree`); }
-  const guard = (abs) => { if (!within(top, abs) && !within(common, abs)) throw new HookError(`refusing to write ${abs}: it is outside this repository`); };
+  const guard = guardFor(top, common);
   const put = (abs, text) => { guard(abs); return write(abs, text); };
   const rel = posix(path.relative(top, root));
   const script = hookScript(rel);

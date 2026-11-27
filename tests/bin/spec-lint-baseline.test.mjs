@@ -119,8 +119,9 @@ test('--init-baseline pins the id pattern the titles use, says how to change it,
     const r = run(root, ['--init-baseline']);
     assert.equal(r.status, 0, r.stderr);
     const b = baselineOf(root);
-    assert.equal(b.idPattern, '^\\s*([A-Z]{2,5}-[0-9]{2,4})', 'the documented pattern, which every id fits');
-    assert.match(r.stdout, /id pattern \^\\s\*\(\[A-Z\]\{2,5\}-\[0-9\]\{2,4\}\) \(inferred from 10 of 11 titles\)/);
+    assert.equal(b.idPattern, '^\\s*([A-Z]{2,5}-[0-9]{2,4})(?=[\\s:·—|]|$)', 'the documented pattern, which every id fits');
+    assert.match(r.stdout, /\(inferred from 10 of 11 titles\)/);
+    assert.equal(new RegExp(b.idPattern).exec('LGN-01234 · x'), null, 'a longer id is not read as a shorter one');
     assert.match(r.stdout, /to pin another before you commit it: delete tests\/compliance-baseline\.json and run `CIVITAS_TEST_ID_PATTERN=/);
     assert.deepEqual(b.files['tests/e2e/a.spec.ts'].tests, { 'no id here#1': { 'TB-I1': 1 } });
   } finally { done(root); }
@@ -153,7 +154,10 @@ test('inferIdPattern: one shape held by at least 90% of the titles, widened for 
   const pin = (titles) => inferIdPattern(titles, house).pattern;
   assert.equal(pin(['plain title', 'another']), 'house-default');
   assert.equal(pin(['TCAB-0001 · a', 'TCAB-0002 · b', 'TCLG-000003 · c']), 'house-default');
-  assert.equal(pin(['LGN-01 · a', 'SGN-02 · b', 'LGN-03 · c']), '^\\s*([A-Z]{2,5}-[0-9]{2,4})');
+  assert.equal(pin(['LGN-01 · a', 'SGN-02 · b', 'LGN-03 · c']), '^\\s*([A-Z]{2,5}-[0-9]{2,4})(?=[\\s:·—|]|$)');
+  assert.equal(new RegExp(pin(['LGN-01 · a', 'SGN-02 · b'])).exec('LGN-01234 · x'), null);
+  // hyphenated words ending in digits are not a lowercase id convention
+  assert.equal(pin(['covid-19 spikes', 'top-10 lists', 'mp3-128 plays', 'h-1 heading']), 'house-default');
   // never narrower than the observed ids
   const wide = new RegExp(pin(['SIGNUPX-10404 · b', 'LGN-01 · a']));
   assert.equal(wide.exec('SIGNUPX-10404 · b')[1], 'SIGNUPX-10404');
@@ -465,7 +469,7 @@ test('--ci reads the rule inputs from the merge-base: a change that weakens one 
     assert.ok(rep.protectedInputs.some((c) => c.input === 'achilles-factory-rules.json' && c.weakens));
     assert.ok(rep.lint.findings.some((f) => f.rule === 'TB-S1' && f.touched), 'the data table is linted under the merge-base rules');
     const human = run(root, ['--ci', '--base', 'main']);
-    assert.match(human.stderr, /\[ci\] protected input changed: achilles-factory-rules\.json: rule specs\.constant-table-tests changed/);
+    assert.match(human.stderr, /\[ci\] protected input changed: achilles-factory-rules\.json: rule specs\.constant-table-tests added \(weakens\)/);
   } finally { done(root); }
   const env = optedIn();
   try {
@@ -481,9 +485,16 @@ test('--ci reads the rule inputs from the merge-base: a change that weakens one 
   try {
     git(reg, 'checkout', '-q', '-b', 'feature');
     write(reg, 'tests/e2e/docs/framework-gaps.md', '| Row | Missing capability | Raw methods | Status |\n|---|---|---|---|\n| FG-9 | everything | goto | open |\n');
-    const r = run(reg, ['--ci', '--base', 'main']);
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /protected input changed: tests\/e2e\/docs\/framework-gaps\.md: row FG-9 added/);
+    // rule inputs alone: the ratchet passes, and the change is reported for the owner's review
+    const r = run(reg, ['--ci', '--base', 'main', '--json']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(JSON.parse(r.stdout).review, "protected input changed: needs the owner's review");
+    assert.match(r.stderr, /protected input changed: needs the owner's review: the change touches only rule inputs \(tests\/e2e\/docs\/framework-gaps\.md: row FG-9 added, weakens\)/);
+    // the same with test code is refused
+    write(reg, 'tests/e2e/a.spec.ts', `${SPEC}${CLEAN_TEST}`);
+    const mixed = run(reg, ['--ci', '--base', 'main']);
+    assert.equal(mixed.status, 1);
+    assert.match(mixed.stderr, /\[ci\] protected input changed: tests\/e2e\/docs\/framework-gaps\.md: row FG-9 added \(weakens\)/);
   } finally { done(reg); }
 });
 
@@ -721,6 +732,59 @@ test('--install-hook never writes outside the repository: a global or outside ho
     assert.match(init.stderr, /the pre-commit check was not installed/);
     assert.equal(baselineOf(root).hook, undefined);
   } finally { writeFileSync(GLOBAL, ''); done(root); done(outside); }
+});
+
+test('--install-hook never follows a planted symbolic link out of the repository', () => {
+  const outside = tempRoot();
+  writeFileSync(path.join(outside, 'profile'), 'keep me\n');
+  writeFileSync(path.join(outside, 'pre-commit'), '#!/bin/sh\necho outside\n');
+  const untouched = () => {
+    assert.equal(readFileSync(path.join(outside, 'profile'), 'utf8'), 'keep me\n');
+    assert.equal(readFileSync(path.join(outside, 'pre-commit'), 'utf8'), '#!/bin/sh\necho outside\n');
+    assert.deepEqual(readdirSync(outside).sort(), ['pre-commit', 'profile']);
+  };
+  try {
+    // the hooks path names an in-repo directory that is a link to outside
+    const r1 = repo();
+    try {
+      mkdirSync(path.join(r1, 'tools'));
+      symlinkSync(outside, path.join(r1, 'tools', 'hooks'));
+      git(r1, 'config', 'core.hooksPath', 'tools/hooks');
+      const r = run(r1, ['--install-hook']);
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, /is a symbolic link/);
+      untouched();
+    } finally { done(r1); }
+    // the script the installer writes is a planted link to an outside file
+    const r4 = repo({ 'tools/hooks/pre-commit': '#!/bin/sh\necho mine\n' });
+    try {
+      symlinkSync(path.join(outside, 'profile'), path.join(r4, 'tools', 'hooks', 'achilles-pre-commit'));
+      git(r4, 'config', 'core.hooksPath', 'tools/hooks');
+      assert.equal(run(r4, ['--install-hook']).status, 2);
+      untouched();
+    } finally { done(r4); }
+    // husky's directory is a link to outside
+    const r5 = repo();
+    try {
+      symlinkSync(outside, path.join(r5, '.husky'));
+      git(r5, 'config', 'core.hooksPath', '.husky/_');
+      assert.equal(run(r5, ['--install-hook']).status, 2);
+      untouched();
+    } finally { done(r5); }
+  } finally { done(outside); }
+});
+
+test('--install-hook reads hook names case-insensitively where the file system does', () => {
+  const root = repo({ '.githooks/PRE-COMMIT': '#!/bin/sh\necho upper\n' });
+  try {
+    const insensitive = existsSync(path.join(root, '.githooks', 'pre-commit'));
+    const r = run(root, ['--install-hook']);
+    if (insensitive) {
+      assert.equal(r.status, 2, 'the dormant hook is seen, not overwritten');
+      assert.match(r.stderr, /\.githooks holds pre-commit/);
+      assert.equal(read(root, '.githooks/PRE-COMMIT'), '#!/bin/sh\necho upper\n');
+    } else assert.equal(r.status, 0, 'on a case-sensitive file system the file is not a hook git runs');
+  } finally { done(root); }
 });
 
 test('--install-hook does not switch on dormant hooks in .githooks unless they are named', () => {

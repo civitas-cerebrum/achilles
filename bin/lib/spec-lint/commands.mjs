@@ -20,7 +20,7 @@ import { idPattern } from './ids.mjs';
 import { BASELINE_FILE, parseBaseline, serialize, recount, makeBaseline, remap, ratchet, checkCopy, updateBaseline, inferIdPattern } from './baseline.mjs';
 import { CURRENT_RULESET, promotedBetween } from './rulesets.mjs';
 import { headCommit, baselineAt, baselineCommit, baselineInHistory, renamesSince, headView, indexView, contentKeyParts, prefixOf, isShallow, lastValidBaseline } from './views.mjs';
-import { inputsAt, inputsOnDisk, compareInputs } from './inputs.mjs';
+import { inputsAt, inputsOnDisk, compareInputs, inputPaths } from './inputs.mjs';
 import { cacheKey, readCache, writeCache } from './cache.mjs';
 import { installHook, HookError } from './hooks.mjs';
 import { gitSync, catBlobs } from './git.mjs';
@@ -180,7 +180,11 @@ function check(root, { change, view, refRev, copyText, renames, where, budgetMs,
   const pattern = refB ? refB.idPattern : copy && copy.baseline ? copy.baseline.idPattern : undefined;
   // the rule inputs come from the reference commit, never from the change being checked
   const inputs = refRev ? inputsAt(root, refRev) : null;
-  const inputChanges = inputs ? compareInputs(inputs, inputsNow()) : [];
+  const now = inputs ? inputsNow() : null;
+  const inputChanges = inputs ? compareInputs(inputs, now) : [];
+  // a change of protected inputs alone passes, reported for the owner's review; mixed with test code it is refused
+  const paths = inputs ? inputPaths(inputs, now) : new Set();
+  const inputsOnly = inputChanges.length > 0 && [...change.files.keys()].every((f) => paths.has(f) || f === BASELINE_FILE);
   const { report, cache } = suiteLint(root, { view, change, baselineIdPattern: opted ? pattern : undefined, budgetMs, useCache: !ci, inputs });
   const touched = report.findings.filter((f) => f.severity === 'blocking' && !f.waived && f.touched !== false);
   const copyRuleset = copy && copy.baseline ? copy.baseline.ruleset : null;
@@ -199,8 +203,8 @@ function check(root, { change, view, refRev, copyText, renames, where, budgetMs,
     const at = baselineCommit(root, refRev);
     if (at) copyProblems.push({ kind: 'recreated', at });
   }
-  const protectedFail = strictInputs ? inputChanges.filter((c) => c.weakens) : [];
-  return { report, cache, touched, ratchet: r, copyProblems, opted, ref: refB, refAt: refFound ? refFound.at : null, refRev, inputChanges, protectedFail };
+  const protectedFail = strictInputs && !inputsOnly ? inputChanges.filter((c) => c.weakens) : [];
+  return { report, cache, touched, ratchet: r, copyProblems, opted, ref: refB, refAt: refFound ? refFound.at : null, refRev, inputChanges, protectedFail, review: strictInputs && inputsOnly };
 }
 
 function printCheck(res, { out, err, mode, where, tag }) {
@@ -209,9 +213,10 @@ function printCheck(res, { out, err, mode, where, tag }) {
   for (const v of res.copyProblems) err(copyLine(v, where));
   for (const n of res.ratchet.notes) err(`[ratchet] note: ${n}`);
   if (res.ref && res.refAt && res.refAt !== res.refRev) err(`[baseline] note: compared with the last valid copy (${res.refAt})`);
-  for (const c of res.inputChanges) err(c.weakens && res.protectedFail.includes(c)
-    ? three(tag, `protected input changed: ${c.input}: ${c.detail}`, 'a rule input changes only when the person decided it; the check reads the inputs of the base, so restore it here and make that change with the decision on record', `${RULEBOOK}#tb-g2`)
-    : `[${tag}] protected input changed: ${c.input}: ${c.detail}${c.weakens ? ' (CI refuses this without the person\'s decision; this check reads the inputs of HEAD)' : ''}`);
+  if (res.review) err(three(tag, `protected input changed: needs the owner's review: the change touches only rule inputs (${res.inputChanges.map((c) => `${c.input}: ${c.detail}, ${c.weakens ? 'weakens' : 'tightens'}`).join('; ')})`, 'the repository owner reviews and merges it deliberately (an admin merge until rulings exist); a change that mixes rule inputs with test code is refused', `${RULEBOOK}#tb-g2`));
+  else for (const c of res.inputChanges) err(c.weakens && res.protectedFail.includes(c)
+    ? three(tag, `protected input changed: ${c.input}: ${c.detail} (weakens)`, 'move the rule-input change into a change of its own, with no test code, for the repository owner to review and merge deliberately; the check reads the inputs of the base', `${RULEBOOK}#tb-g2`)
+    : `[${tag}] protected input changed: ${c.input}: ${c.detail} (${c.weakens ? 'weakens' : 'tightens'})${c.weakens && tag === 'pre-commit' ? '; this commit is checked with the inputs of HEAD, and CI refuses it mixed with test code' : ''}`);
   const s = res.report.summary;
   out(`spec-lint: ${mode}: ${s.files} file(s), ${res.touched.length} blocking in touched code, ${s.legacy ?? 0} legacy; ${res.opted ? `${res.ratchet.violations.length} ratchet violation(s), ${res.copyProblems.length} baseline-file problem(s) against the baseline ${where}` : 'no compliance baseline (the ratchet starts with `achilles-spec-lint --init-baseline`)'}; ${res.protectedFail.length} protected input(s) weakened; cache ${res.cache}${res.cache === 'hit' ? '' : `; ${res.report.timing.ms} ms`}`);
 }
@@ -220,7 +225,7 @@ const okOf = (res) => !res.touched.length && !res.ratchet.violations.length && !
 
 const jsonOf = (res, mode, extra = {}) => ({
   tool: 'achilles-spec-lint', mode, ok: okOf(res), baseline: res.opted ? { ruleset: res.ref ? res.ref.ruleset : null, violations: res.ratchet.violations, problems: res.copyProblems, notes: res.ratchet.notes } : null,
-  protectedInputs: res.inputChanges, cache: res.cache, lint: res.report, ...extra,
+  protectedInputs: res.inputChanges, ...(res.review ? { review: 'protected input changed: needs the owner\'s review' } : {}), cache: res.cache, lint: res.report, ...extra,
 });
 
 export function ratchetCmd(root, { out, err, base, ci, budgetMs }) {
@@ -273,7 +278,7 @@ export function preCommit(root, { out, err, budgetMs }) {
     const res = check(root, {
       change, view: indexView(root), refRev: head ? 'HEAD' : null, copyText: baselineAt(root, ''),
       renames: head ? renamesSince(root, baselineCommit(root, 'HEAD'), { cached: true }) : new Map(), where: 'at HEAD', budgetMs,
-      strictInputs: false, inputsNow: () => inputsOnDisk(root),
+      strictInputs: false, inputsNow: () => inputsAt(root, ''),
     });
     printCheck(res, { out, err, mode: 'pre-commit', where: 'at HEAD', tag: 'pre-commit' });
     return { code: okOf(res) ? 0 : 1, report: jsonOf(res, 'pre-commit') };

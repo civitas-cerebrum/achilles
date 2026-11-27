@@ -304,7 +304,8 @@ export function updateBaseline(ref, content, { upgrade = false, engine, rulesets
 
 /** The share of titles one id shape must hold to be pinned; below it the suite has no consistent ids. */
 export const ID_SHARE = 0.9;
-const DOCUMENTED = '^\\s*([A-Z]{2,5}-[0-9]{2,4})';
+const BOUNDARY = '(?=[\\s:·—|]|$)';
+const DOCUMENTED = `^\\s*([A-Z]{2,5}-[0-9]{2,4})${BOUNDARY}`;
 const LEAD = /^\s*[[(]?([^\s\])·:—|]+)/;
 // the shapes an id takes: a single uppercase prefix, several uppercase segments, or a lowercase convention of
 // any number of segments; each ends in a hyphen and a run of digits
@@ -318,7 +319,8 @@ const range = (xs, lo, hi) => `{${Math.min(lo, ...xs)},${Math.max(hi, ...xs)}}`;
 /**
  * The id pattern the suite already uses, from its test titles: { pattern, matched, of }. One shape held by at
  * least ID_SHARE of the titles is pinned, widened for ordinary growth (a prefix of 2 to 5 letters, 2 to 4
- * digits, or wider when the ids are), and the documented `^\s*([A-Z]{2,5}-[0-9]{2,4})` when every id fits it;
+ * digits, or wider when the ids are; a lowercase convention needs three distinct ids under one leading segment),
+ * and the documented `^\s*([A-Z]{2,5}-[0-9]{2,4})` with its right boundary when every id fits it;
  * `house-default` when the house default holds that share, or when no shape does.
  */
 export function inferIdPattern(titles, houseDefault) {
@@ -328,7 +330,14 @@ export function inferIdPattern(titles, houseDefault) {
   if (!of || share(house)) return { pattern: 'house-default', matched: house, of };
   let best = null;
   for (const shape of SHAPES) {
-    const hits = titles.map((t) => LEAD.exec(t || '')).filter(Boolean).map((m) => shape.re.exec(m[1])).filter(Boolean);
+    let hits = titles.map((t) => LEAD.exec(t || '')).filter(Boolean).map((m) => shape.re.exec(m[1])).filter(Boolean);
+    // a lowercase convention needs at least three distinct ids under one leading segment: ordinary hyphenated
+    // words ending in digits (covid-19, top-10) are not ids
+    if (shape.name === 'lower') {
+      const groups = new Map();
+      for (const h of hits) { const g = h[0].split('-')[0]; if (!groups.has(g)) groups.set(g, new Set()); groups.get(g).add(h[0]); }
+      hits = hits.filter((h) => groups.get(h[0].split('-')[0]).size >= 3);
+    }
     if (!best || hits.length > best.hits.length) best = { shape, hits };
   }
   if (!best || !share(best.hits.length)) return { pattern: 'house-default', matched: best ? best.hits.length : 0, of };
@@ -338,7 +347,7 @@ export function inferIdPattern(titles, houseDefault) {
   if (best.shape.name === 'upper') {
     const lens = best.hits.map((m) => m[1].length);
     const p = range(lens, 2, 5);
-    pattern = p === '{2,5}' && d === '{2,4}' ? DOCUMENTED : `^\\s*([A-Z]${p}-[0-9]${d})`;
+    pattern = p === '{2,5}' && d === '{2,4}' ? DOCUMENTED : `^\\s*([A-Z]${p}-[0-9]${d})${BOUNDARY}`;
   } else if (best.shape.name === 'upper-multi') pattern = `^\\s*[[(]?([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)+-[0-9]${d})[\\])]?(?=[\\s:·—|]|$)`;
   else pattern = `^\\s*[[(]?([a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9]${d})[\\])]?(?=[\\s:·—|]|$)`;
   return { pattern, matched: best.hits.length, of };
