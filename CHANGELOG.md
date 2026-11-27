@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- **The pi extension loads again.** pi refused `pi/index.ts` with "Cannot find module 'claude-code'": the Bash judge it imports reached, through the AI-signature detector, a module with a runtime import of the Claude Code host. So on pi there was no `delegate_qa`, no `/achilles` and no guard in the orchestrator's or the experts' processes. The detector now depends only on the host-free helpers, the outbound hooks that need run state moved to `claude-code/hooks/outbound.ts`, and a test loads the extension with pi's loader and alias map.
 - **Briefs and reports named by absolute path.** An orchestrator in a worktree or a nested checkout dispatches with absolute paths, which the adapter did not recognise: it read no brief, and it never found the reproducer's `defect-repro` block in its report, so verdicts went unrecorded and reproducers were dispatched twice. Both forms are read now, and an unrecorded verdict is completed by the same reproducer.
 - **A reproducer brief without a defect id or the `defect-repro` schema is named at dispatch.** Such a brief produced a verdict the adapter could not record, and the reproducers were dispatched a second time.
 - **Resuming a run from a worktree session.** `delegate_qa` with `run` looked for `resume.json` only in the main work tree, while a session started in a worktree keeps its run state there; it now accepts either.

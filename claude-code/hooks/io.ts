@@ -161,3 +161,11 @@ export async function validateDoc($: EngineInterface, schema: string, text: stri
     return { unavailable: firstLine(r.stderr) || `exit ${r.exitCode}` }
   }
 }
+
+/** The checkout that owns `.achilles/`: the main work tree of the session's repository (a worktree resolves to it), else the session directory. */
+export async function checkoutRoot($: EngineInterface, cwd: string): Promise<string> {
+  const r = await run($, ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, timeoutMs: 3000 })
+  if (!r.ok || r.exitCode !== 0) return cwd
+  const common = r.stdout.trim()
+  return common.endsWith('/.git') ? common.slice(0, -5) : cwd
+}
