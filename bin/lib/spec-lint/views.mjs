@@ -46,13 +46,36 @@ export function renamesSince(root, from, { cached = false } = {}) {
   return out;
 }
 
-/** The files of HEAD under `root`, and the committed text of those that differ on disk. */
-export function headView(root) {
+/** The files of commit `rev` (HEAD by default) under `root`, and the committed text of those that differ on disk. */
+export function headView(root, rev = 'HEAD') {
   const prefix = prefixOf(root);
-  const tracked = new Set(z(git(root, ['ls-tree', '-r', '-z', '--name-only', '--full-tree', 'HEAD'])).filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length)));
-  const differ = z(git(root, ['diff', '--name-only', '-z', '--relative', 'HEAD'])).filter((p) => tracked.has(p));
-  const blobs = catBlobs(root, differ.map((p) => `HEAD:${prefix}${p}`));
-  return { tracked, contents: new Map(differ.map((p) => [p, blobs.get(`HEAD:${prefix}${p}`)]).filter(([, t]) => typeof t === 'string')), from: 'HEAD' };
+  const tracked = new Set(z(git(root, ['ls-tree', '-r', '-z', '--name-only', '--full-tree', rev])).filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length)));
+  const differ = z(git(root, ['diff', '--name-only', '-z', '--relative', rev])).filter((p) => tracked.has(p));
+  const blobs = catBlobs(root, differ.map((p) => `${rev}:${prefix}${p}`));
+  return { tracked, contents: new Map(differ.map((p) => [p, blobs.get(`${rev}:${prefix}${p}`)]).filter(([, t]) => typeof t === 'string')), from: rev === 'HEAD' ? 'HEAD' : `commit ${rev.slice(0, 12)}` };
+}
+
+/** True in a shallow clone (history cut off: what an ancestor held cannot be known). */
+export function isShallow(root) {
+  try { return git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true'; } catch { return false; }
+}
+
+/**
+ * The baseline as of `rev` that parses: its own copy, else the copy of the nearest ancestor that changed the
+ * file and left a valid one (so a corrupt copy does not also fail the change that repairs it). Returns
+ * { text, at } or null; `parse` decides validity.
+ */
+export function lastValidBaseline(root, rev, parse) {
+  const own = baselineAt(root, rev);
+  if (own === null) return null;
+  if (!parse(own).problems) return { text: own, at: rev };
+  let commits = [];
+  try { commits = git(root, ['log', '--format=%H', rev, '--', BASELINE_FILE]).split('\n').map((x) => x.trim()).filter(Boolean); } catch { /* none */ }
+  for (const c of commits) {
+    const t = baselineAt(root, c);
+    if (t !== null && !parse(t).problems) return { text: t, at: c };
+  }
+  return { text: own, at: rev };
 }
 
 /** The files of the index under `root`, and the staged text of those that differ on disk. */

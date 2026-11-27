@@ -28,10 +28,11 @@ function envFileValue(root, key) {
  * The project's id pattern: { re, pinned, source, text }. `re` matches at the start of a title with the id in
  * group 1 (or the whole match). An unparseable pinned value is reported and the house default applies.
  * `recorded` stands in for the baseline file's `idPattern` (the baseline a ratchet compares against, or the
- * pattern an init is about to record); undefined reads the file on disk.
+ * pattern an init is about to record); undefined reads the file on disk. `envFile` stands in for the `.env`
+ * value (a commit's; null: none); undefined reads `.env` on disk.
  */
-export function idPattern(root, factory, env = process.env, recorded = undefined) {
-  const fromEnv = env.CIVITAS_TEST_ID_PATTERN || envFileValue(root, 'CIVITAS_TEST_ID_PATTERN');
+export function idPattern(root, factory, env = process.env, recorded = undefined, envFile = undefined) {
+  const fromEnv = env.CIVITAS_TEST_ID_PATTERN || (envFile === undefined ? envFileValue(root, 'CIVITAS_TEST_ID_PATTERN') : envFile);
   const problems = [];
   if (fromEnv) {
     const re = compile(fromEnv);

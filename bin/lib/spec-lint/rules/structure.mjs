@@ -321,7 +321,7 @@ function declaredIn(fn) {
 
 export function visitors(project) {
   const drv = makeDrives(project, { localFunction: moduleFunction, importsOf: importMap });
-  const ids = idPattern(project.root, project.rules, process.env, project.baselineIdPattern);
+  const ids = idPattern(project.root, project.rules, process.env, project.baselineIdPattern, project.inputs ? project.inputs.envPattern : undefined);
   const tablesAllowed = !!(project.rules?.rules?.[CONSTANT_TABLE_SETTING]?.allowed === true);
   const report = (file, rule, node, message, extra = {}) => project.findings.push({
     rule, severity: extra.severity || RULES.find((r) => r.id === rule).severity, file: file.rel, line: node.loc.start.line, column: node.loc.start.column + 1,

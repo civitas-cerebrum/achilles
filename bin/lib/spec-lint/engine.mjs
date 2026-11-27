@@ -371,11 +371,11 @@ function applyWaivers(project) {
  * support modules the selected specs import are linted too, with `followedFrom`), tracked (rel paths: the
  * files of a git tree view; a file on disk outside it is not part of the project, `contents` supplies the
  * tree's text where it differs from the disk), all (report on every in-scope file even when a change is given:
- * the baseline recount), baselineIdPattern (stands in for the baseline file's recorded `idPattern`; null: none).
+ * the baseline recount), baselineIdPattern (stands in for the baseline file's recorded `idPattern`; null: none), inputs (the protected rule inputs read from a commit, inputs.mjs: the factory rules, the register and the `.env` id pattern used instead of the disk's).
  * The returned report carries a non-enumerable `facts`: rel → { kind, tests, describes } for the baseline buckets.
  * Throws SurfaceError when no Steps surface resolves and BudgetError when a file runs out of time.
  */
-export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, useGit = true, budgetMs = DEFAULT_FILE_BUDGET_MS, contents = null, change = null, suite = false, tracked = null, all = false, baselineIdPattern = undefined } = {}) {
+export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, useGit = true, budgetMs = DEFAULT_FILE_BUDGET_MS, contents = null, change = null, suite = false, tracked = null, all = false, baselineIdPattern = undefined, inputs = null } = {}) {
   const t0 = Date.now();
   root = path.resolve(root);
   const parser = parserFor(root);
@@ -383,10 +383,10 @@ export function lintProject({ root, paths = null, snapshotsDir = SURFACES_DIR, u
   const scope = projectScope(root, parser);
   const project = {
     root, parser, surface, equivalents: loadEquivalents(), budgetMs,
-    rules: factoryRules(root), register: readRegister(root), knownIds: knownRuleIds(),
+    rules: inputs ? inputs.factory : factoryRules(root), register: readRegister(root, inputs ? inputs.register : undefined), knownIds: knownRuleIds(),
     findings: [], projectFindings: [], files: [],
     fixtureKinds: new Map(), extendKeys: new Set(), extendOpen: false,
-    pkg: readPackage(root), change, suite, k6Files: [], baselineIdPattern,
+    pkg: readPackage(root), change, suite, k6Files: [], baselineIdPattern, inputs,
   };
   const override = new Map([...(change ? change.contents : []), ...(contents ? (contents instanceof Map ? contents : Object.entries(contents)) : [])].map(([k, v]) => [path.resolve(root, k), v]));
   for (const p of scope.problems) project.projectFindings.push({ rule: 'scope', severity: 'advisory', file: p.file, message: `${p.file}: ${p.message}; the default test glob and tests/** apply`, do: 'Keep testDir, testMatch, testIgnore and projects in the Playwright config as literal values (or path.join / path.resolve over __dirname) so the lint can see which files run.', why: `${RULEBOOK}#scope` });

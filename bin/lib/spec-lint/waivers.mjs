@@ -82,10 +82,10 @@ function parseMethod(s) {
 }
 
 /** The project's register rows, or the seed rows when it has none. */
-export function readRegister(root) {
+export function readRegister(root, text = undefined) {
   const abs = path.join(root, REGISTER);
-  if (!existsSync(abs)) return { file: null, rows: SEED_ROWS };
-  const lines = readFileSync(abs, 'utf8').split(/\r?\n/);
+  if (text === null || (text === undefined && !existsSync(abs))) return { file: null, rows: SEED_ROWS };
+  const lines = (text === undefined ? readFileSync(abs, 'utf8') : text).split(/\r?\n/);
   const rows = [];
   let cols = null;
   lines.forEach((raw, i) => {

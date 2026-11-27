@@ -181,33 +181,42 @@ const fileCounts = (files, rules) => {
 
 /**
  * The ratchet: the untouched counts `now` against the reference baseline `ref` (already moved along renames).
- * A rule a ruleset newer than the reference's added or promoted is not compared (its counts would rise without
- * a change to the suite). Returns { violations, notes }; each violation names file, scope, key, rule, the
- * reference count and the count now.
+ * A rule that a ruleset newer than the reference's added or promoted has no recorded count yet: it is compared
+ * with `refContent`, the reference commit's own content counted by this engine, when that is given, and is not
+ * compared otherwise. Returns { violations, notes }; each violation names file, scope, key, rule, the reference
+ * count and the count now.
  */
-export function ratchet(ref, now, { rulesets = RULESETS, current = CURRENT_RULESET } = {}) {
+export function ratchet(ref, now, { rulesets = RULESETS, current = CURRENT_RULESET, refContent = null } = {}) {
   const promoted = promotedBetween(ref.ruleset, current, rulesets);
-  const rules = new Set([...counted(ref.ruleset, rulesets)].filter((r) => !promoted.has(r)));
+  const recorded = new Set([...counted(ref.ruleset, rulesets)].filter((r) => !promoted.has(r)));
+  const later = new Set([...promoted].filter((r) => counted(current, rulesets).has(r)));
   const notes = [];
-  if (promoted.size && order(current, rulesets) > order(ref.ruleset, rulesets)) notes.push(`the baseline was recorded under ruleset ${ref.ruleset}; ${[...promoted].sort().join(', ')} ${promoted.size === 1 ? 'is' : 'are'} not compared until \`achilles-spec-lint --update-baseline --ruleset-upgrade\` records ${promoted.size === 1 ? 'it' : 'them'} (ruleset ${current})`);
+  if (later.size && !refContent) notes.push(`the baseline was recorded under ruleset ${ref.ruleset}; ${[...later].sort().join(', ')} ${later.size === 1 ? 'is' : 'are'} not compared until \`achilles-spec-lint --update-baseline --ruleset-upgrade\` records ${later.size === 1 ? 'it' : 'them'} (ruleset ${current})`);
+  else if (later.size) notes.push(`the baseline was recorded under ruleset ${ref.ruleset}; ${[...later].sort().join(', ')} ${later.size === 1 ? 'is' : 'are'} compared with the reference commit's own content until \`achilles-spec-lint --update-baseline --ruleset-upgrade\` records ${later.size === 1 ? 'it' : 'them'} (ruleset ${current})`);
   const violations = [];
-  const was = cells(ref.files, rules);
-  for (const [k, n] of cells(now.files, rules)) {
-    const b = was.get(k) || 0;
-    if (n > b) { const [file, scope, key, rule] = JSON.parse(k); violations.push({ kind: 'increase', file, scope, key, rule, baseline: b, now: n }); }
-  }
-  // a file or the totals can rise while every bucket holds (findings moved between buckets)
-  const hit = new Set(violations.map((v) => JSON.stringify([v.file, v.rule])));
-  const wasFile = fileCounts(ref.files, rules);
-  for (const [k, n] of fileCounts(now.files, rules)) {
-    const b = wasFile.get(k) || 0;
-    if (n > b && !hit.has(k)) { const [file, rule] = JSON.parse(k); violations.push({ kind: 'increase', file, scope: 'file', key: '', rule, baseline: b, now: n }); hit.add(k); }
-  }
-  for (const r of rules) {
-    const n = (now.totals || {})[r] || 0;
-    const b = (ref.totals || {})[r] || 0;
-    if (n > b && !violations.some((v) => v.rule === r)) violations.push({ kind: 'increase', file: '', scope: 'totals', key: '', rule: r, baseline: b, now: n });
-  }
+  const compare = (refSide, rules) => {
+    const was = cells(refSide.files, rules);
+    const found = [];
+    for (const [k, n] of cells(now.files, rules)) {
+      const b = was.get(k) || 0;
+      if (n > b) { const [file, scope, key, rule] = JSON.parse(k); found.push({ kind: 'increase', file, scope, key, rule, baseline: b, now: n }); }
+    }
+    // a file or the totals can rise while every bucket holds (findings moved between buckets)
+    const hit = new Set(found.map((v) => JSON.stringify([v.file, v.rule])));
+    const wasFile = fileCounts(refSide.files, rules);
+    for (const [k, n] of fileCounts(now.files, rules)) {
+      const b = wasFile.get(k) || 0;
+      if (n > b && !hit.has(k)) { const [file, rule] = JSON.parse(k); found.push({ kind: 'increase', file, scope: 'file', key: '', rule, baseline: b, now: n }); hit.add(k); }
+    }
+    for (const r of rules) {
+      const n = (now.totals || {})[r] || 0;
+      const b = (refSide.totals || {})[r] || 0;
+      if (n > b && !found.some((v) => v.rule === r)) found.push({ kind: 'increase', file: '', scope: 'totals', key: '', rule: r, baseline: b, now: n });
+    }
+    return found;
+  };
+  violations.push(...compare(ref, recorded));
+  if (refContent && later.size) violations.push(...compare(refContent, later));
   return { violations, notes };
 }
 
@@ -215,9 +224,11 @@ const sameBaseline = (a, b) => serialize(a) === serialize(b);
 
 /**
  * The change's own copy of the baseline against the reference (`ref`, moved along renames; null when the change
- * creates the file) and the full count of the content (`content`). Returns a list of violations.
+ * creates the file) and the full count of the content (`content`). A rule the copy's newer ruleset added or
+ * promoted may be recorded up to its count in the reference commit's own content (`refContent`, counted by this
+ * engine), never above, so a regression written in the same change is not absorbed. Returns a list of violations.
  */
-export function checkCopy(ref, copy, content, { rulesets = RULESETS, current = CURRENT_RULESET } = {}) {
+export function checkCopy(ref, copy, content, { rulesets = RULESETS, current = CURRENT_RULESET, refContent = null } = {}) {
   if (!copy && !ref) return [];
   if (!copy) return [{ kind: 'deleted' }];
   if (copy.problems) return copy.problems.map((p) => ({ kind: 'invalid', detail: p }));
@@ -227,11 +238,13 @@ export function checkCopy(ref, copy, content, { rulesets = RULESETS, current = C
   if (ref) {
     if (c.idPattern !== ref.idPattern) out.push({ kind: 'idPattern', detail: `idPattern changed from ${JSON.stringify(ref.idPattern)} to ${JSON.stringify(c.idPattern)}` });
     if (c.createdFrom !== ref.createdFrom) out.push({ kind: 'createdFrom', detail: `createdFrom changed from ${ref.createdFrom} to ${c.createdFrom}` });
+    if (JSON.stringify(c.hook || null) !== JSON.stringify(ref.hook || null)) out.push({ kind: 'hook', detail: `the recorded pre-commit check changed from ${JSON.stringify(ref.hook || null)} to ${JSON.stringify(c.hook || null)}` });
     if (order(c.ruleset, rulesets) < order(ref.ruleset, rulesets)) out.push({ kind: 'ruleset', detail: `ruleset went back from ${ref.ruleset} to ${c.ruleset}` });
   } else if (c.ruleset !== current) out.push({ kind: 'ruleset', detail: `a new baseline is recorded under the current ruleset ${current}, not ${c.ruleset}` });
   const rules = counted(c.ruleset, rulesets);
   const upgraded = ref ? promotedBetween(ref.ruleset, c.ruleset, rulesets) : new Set();
   const was = ref ? cells(ref.files, rules) : null;
+  const base = refContent ? cells(refContent.files, rules) : null;
   const is = cells(c.files, rules);
   const has = cells(content.files, rules);
   for (const k of new Set([...is.keys(), ...has.keys(), ...(was ? was.keys() : [])])) {
@@ -244,9 +257,8 @@ export function checkCopy(ref, copy, content, { rulesets = RULESETS, current = C
       else if (n > r) out.push({ kind: 'padded', ...cell });
       continue;
     }
-    const b = was.get(k) || 0;
-    const ceiling = upgraded.has(rule) ? Math.max(b, r) : b;
-    if (n > ceiling) out.push({ kind: 'raised', ...cell, baseline: b });
+    const b = upgraded.has(rule) ? (base ? base.get(k) || 0 : 0) : was.get(k) || 0;
+    if (n > b) out.push({ kind: 'raised', ...cell, baseline: b });
     else if (n < r) out.push({ kind: 'lowered', ...cell, baseline: b });
   }
   return out;

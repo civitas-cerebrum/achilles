@@ -34,16 +34,28 @@ export function countedRules(id) {
   return new Set(r ? r.blocking : []);
 }
 
-/** Rules new or promoted in the rulesets after `from` up to and including `to`. */
+/**
+ * Checks a ruleset history: every ruleset after the first lists, as an array under `promoted`, every rule it
+ * adds to `blocking` or whose blocking definition it widens. Throws on a malformed history.
+ */
+export function validateRulesets(rulesets = RULESETS) {
+  rulesets.forEach((r, i) => {
+    if (i === 0) return;
+    if (!Array.isArray(r.promoted)) throw new Error(`ruleset ${r.id}: \`promoted\` must be an array of the rules it adds or widens`);
+    const prev = new Set(rulesets[i - 1].blocking);
+    const missing = r.blocking.filter((x) => !prev.has(x) && !r.promoted.includes(x));
+    if (missing.length) throw new Error(`ruleset ${r.id}: ${missing.join(', ')} become blocking but are not listed under \`promoted\``);
+    const unknown = r.promoted.filter((x) => !r.blocking.includes(x));
+    if (unknown.length) throw new Error(`ruleset ${r.id}: promoted ${unknown.join(', ')} are not in its \`blocking\` list`);
+  });
+}
+
+/** Rules added or promoted in the rulesets after `from` up to and including `to`. */
 export function promotedBetween(from, to, rulesets = RULESETS) {
+  validateRulesets(rulesets);
   const a = rulesets.findIndex((r) => r.id === from);
   const b = rulesets.findIndex((r) => r.id === to);
   const out = new Set();
-  for (let i = a + 1; i <= b; i++) {
-    const r = rulesets[i];
-    const prev = new Set(rulesets[i - 1].blocking);
-    for (const id of r.promoted || r.blocking) out.add(id);
-    for (const id of r.blocking) if (!prev.has(id)) out.add(id);
-  }
+  for (let i = Math.max(a + 1, 1); i <= b; i++) for (const id of rulesets[i].promoted) out.add(id);
   return out;
 }

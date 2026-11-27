@@ -18,8 +18,9 @@ import { lintProject, factoryRules, PACKAGE_ROOT, RULEBOOK, DEFAULT_FILE_BUDGET_
 import { stagedChange, baseChange, ChangeError } from './touched.mjs';
 import { idPattern } from './ids.mjs';
 import { BASELINE_FILE, parseBaseline, serialize, recount, makeBaseline, remap, ratchet, checkCopy, updateBaseline, inferIdPattern } from './baseline.mjs';
-import { CURRENT_RULESET } from './rulesets.mjs';
-import { headCommit, baselineAt, baselineCommit, baselineInHistory, renamesSince, headView, indexView, contentKeyParts, prefixOf } from './views.mjs';
+import { CURRENT_RULESET, promotedBetween } from './rulesets.mjs';
+import { headCommit, baselineAt, baselineCommit, baselineInHistory, renamesSince, headView, indexView, contentKeyParts, prefixOf, isShallow, lastValidBaseline } from './views.mjs';
+import { inputsAt, inputsOnDisk, compareInputs } from './inputs.mjs';
 import { cacheKey, readCache, writeCache } from './cache.mjs';
 import { installHook, HookError } from './hooks.mjs';
 import { gitSync, catBlobs } from './git.mjs';
@@ -57,16 +58,18 @@ function copyLine(v, where) {
     case 'raised': return three('baseline', `${f}: ${cellName(v)} ${v.rule} is recorded as ${v.recorded}, above the ${v.baseline} in the baseline ${where}`, 'a baseline count only goes down: restore it, fix the findings, or run `achilles-spec-lint --update-baseline`');
     case 'lowered': return three('baseline', `${f}: ${cellName(v)} ${v.rule} is recorded as ${v.recorded}, but the code has ${v.content}`, 'counts are recomputed from the code: fix the findings first, then run `achilles-spec-lint --update-baseline`');
     case 'padded': return three('baseline', `${f}: ${cellName(v)} ${v.rule} is recorded as ${v.recorded}, but the code has ${v.content}`, 'a new baseline records exactly what the code has: write it with `achilles-spec-lint --init-baseline`');
+    case 'recreated': return three('baseline', `${f}: the change records a new baseline, but ${v.at ? `commit ${v.at.slice(0, 12)}` : 'an ancestor'} held one that was deleted since`, `restore that baseline (\`git checkout ${v.at ? v.at.slice(0, 12) : '<commit>'}^ -- ${f}\` or the last commit that had it): recording a new one would forgive every finding it counted`);
+    case 'upgrade-mixed': return three('baseline', `${f}: the ruleset upgrade (${v.detail}) comes with other changes: ${v.files.slice(0, 5).join(', ')}${v.files.length > 5 ? ', …' : ''}`, 'make the ruleset upgrade a change of its own that touches only the baseline file, then the other changes');
     default: return three('baseline', `${f}: ${v.detail}`, 'restore the field: only `achilles-spec-lint --update-baseline` changes the baseline, and the id pattern is a rule input that needs the person\'s decision');
   }
 }
 
 /** Lints the whole suite of a view against a change, through the cache. */
-function suiteLint(root, { view = null, change = null, baselineIdPattern, budgetMs = DEFAULT_FILE_BUDGET_MS, useCache = true }) {
+function suiteLint(root, { view = null, change = null, baselineIdPattern, budgetMs = DEFAULT_FILE_BUDGET_MS, useCache = true, inputs = null }) {
   const parts = useCache ? (() => {
     try {
       return [ENGINE, CURRENT_RULESET, view ? view.from : 'the working tree', headCommit(root), change ? change.from : null, change ? [...change.files].map(([r, c]) => [r, c.status, c.lines ? [...c.lines] : null]) : null,
-        baselineIdPattern === undefined ? '(file)' : baselineIdPattern, process.env.CIVITAS_TEST_ID_PATTERN || '', process.env.FACTORY_RULES || '', budgetMs, contentKeyParts(root)];
+        baselineIdPattern === undefined ? '(file)' : baselineIdPattern, inputs ? JSON.stringify(inputs) : '(disk)', process.env.CIVITAS_TEST_ID_PATTERN || '', process.env.FACTORY_RULES || '', budgetMs, contentKeyParts(root)];
     } catch { return null; }
   })() : null;
   const key = parts ? cacheKey(parts) : null;
@@ -74,7 +77,7 @@ function suiteLint(root, { view = null, change = null, baselineIdPattern, budget
     const hit = readCache(root, key);
     if (hit) return { report: hit, cache: 'hit' };
   }
-  const report = lintProject({ root, budgetMs, change, suite: true, all: true, tracked: view ? view.tracked : null, contents: view ? view.contents : null, baselineIdPattern });
+  const report = lintProject({ root, budgetMs, change, suite: true, all: true, tracked: view ? view.tracked : null, contents: view ? view.contents : null, baselineIdPattern, inputs });
   if (key) writeCache(root, key, report);
   return { report, cache: key ? 'miss' : 'off' };
 }
@@ -84,7 +87,7 @@ const lsIndex = (root, rel) => { try { return gitSync(root, ['ls-files', '--', r
 
 // ── --init-baseline ───────────────────────────────────────────────────────
 
-export function initBaseline(root, { out, err, budgetMs }) {
+export function initBaseline(root, { out, err, budgetMs, activate = [] }) {
   const head = headCommit(root);
   if (!head) throw new UsageError('there is no commit yet: commit the suite first; the baseline is recorded from HEAD');
   if (existsSync(path.join(root, BASELINE_FILE)) || lsIndex(root, BASELINE_FILE)) throw new UsageError(`${BASELINE_FILE} exists already: a baseline is recorded once; lower it with --update-baseline`);
@@ -92,6 +95,7 @@ export function initBaseline(root, { out, err, budgetMs }) {
     const at = baselineCommit(root, 'HEAD');
     throw new UsageError(`${BASELINE_FILE} existed in an ancestor commit (${at.slice(0, 12)}; see \`git log --diff-filter=D -- ${BASELINE_FILE}\`): restore that baseline instead of recording a new one, which would forgive every finding it counted`);
   }
+  if (isShallow(root)) throw new UsageError('this is a shallow clone: whether an ancestor held a baseline cannot be checked; fetch the full history first (`git fetch --unshallow`)');
   const view = headView(root);
   const pinned = idPattern(root, factoryRules(root), process.env, null);
   let id;
@@ -101,27 +105,30 @@ export function initBaseline(root, { out, err, budgetMs }) {
     id = inferIdPattern(first.files.flatMap((f) => f.tests.map((t) => t.title)), DEFAULT_ID_RE);
   }
   const { report } = suiteLint(root, { view, baselineIdPattern: id, budgetMs, useCache: false });
-  let hook;
-  try { hook = installHook(root); } catch (e) { if (e instanceof HookError) throw new UsageError(`the pre-commit check could not be installed: ${e.message}`); throw e; }
+  let hook = null;
+  let hookProblem = null;
+  try { hook = installHook(root, { activate }); } catch (e) { if (e instanceof HookError) hookProblem = e.message; else throw e; }
   const counts = recount(report);
-  const b = makeBaseline({ counts, engine: ENGINE, createdFrom: head, idPattern: id, hook: { mode: hook.mode, path: hook.path } });
+  // only a check committed with the baseline is recorded (a local hooks directory is not part of the repository)
+  const b = makeBaseline({ counts, engine: ENGINE, createdFrom: head, idPattern: id, ...(hook && hook.committed ? { hook: { mode: hook.mode, path: hook.path } } : {}) });
   const abs = path.join(root, BASELINE_FILE);
   mkdirSync(path.dirname(abs), { recursive: true });
   writeFileSync(abs, serialize(b));
   const n = Object.values(counts.totals).reduce((a, x) => a + x, 0);
   const files = Object.keys(counts.files).length;
-  const toCommit = [BASELINE_FILE, ...(hook.mode === 'githooks' ? ['.githooks/'] : [])];
-  out(`spec-lint: recorded ${BASELINE_FILE} from HEAD ${head.slice(0, 12)}: ${n} blocking finding(s) in ${files} file(s) (ruleset ${CURRENT_RULESET}); id pattern ${id === 'house-default' ? 'the house default' : id}${pinned.pinned ? ` (from ${pinned.source})` : ''}; pre-commit check ${hook.mode} (${hook.path})`);
-  for (const x of hook.notes) out(`  ${x}`);
-  out(`Commit these alone as \`chore(test): compliance baseline\`, then commit your change:\n  git add ${toCommit.join(' ')}${hook.mode === 'chained' || hook.mode === 'wrapped' || hook.mode === 'lefthook' ? ` ${hook.path}` : ''}\n  git commit -m "chore(test): compliance baseline"`);
-  return { code: 0, report: { tool: 'achilles-spec-lint', mode: 'init-baseline', ok: true, baseline: BASELINE_FILE, createdFrom: head, idPattern: id, totals: counts.totals, files, hook } };
+  const toCommit = [BASELINE_FILE, ...(hook && hook.mode === 'githooks' ? ['.githooks/'] : []), ...(hook && hook.committed && hook.mode !== 'githooks' ? [hook.path, ...hook.extra] : [])];
+  out(`spec-lint: recorded ${BASELINE_FILE} from HEAD ${head.slice(0, 12)}: ${n} blocking finding(s) in ${files} file(s) (ruleset ${CURRENT_RULESET}); id pattern ${id === 'house-default' ? 'the house default' : id}${pinned.pinned ? ` (from ${pinned.source})` : ''}; pre-commit check ${hook ? `${hook.mode} (${hook.path})` : 'not installed'}`);
+  if (hookProblem) err(three('hook', `the pre-commit check was not installed: ${hookProblem}`, 'add it by hand as the message says, or fix the hooks setup and run `achilles-spec-lint --install-hook`; CI still checks every change'));
+  for (const x of hook ? hook.notes : []) out(`  ${x}`);
+  out(`Commit these alone as \`chore(test): compliance baseline\`, then commit your change:\n  git add ${[...new Set(toCommit)].join(' ')}\n  git commit -m "chore(test): compliance baseline"`);
+  return { code: 0, report: { tool: 'achilles-spec-lint', mode: 'init-baseline', ok: true, baseline: BASELINE_FILE, createdFrom: head, idPattern: id, totals: counts.totals, files, hook, ...(hookProblem ? { hookProblem } : {}) } };
 }
 
 // ── --install-hook ────────────────────────────────────────────────────────
 
-export function installHookCmd(root, { out }) {
+export function installHookCmd(root, { out, activate = [] }) {
   let hook;
-  try { hook = installHook(root); } catch (e) { if (e instanceof HookError) throw new UsageError(e.message); throw e; }
+  try { hook = installHook(root, { activate }); } catch (e) { if (e instanceof HookError) throw new UsageError(e.message); throw e; }
   out(`spec-lint: pre-commit check ${hook.changed ? 'installed' : 'already installed'} (${hook.mode}: ${hook.path})`);
   for (const x of hook.notes) out(`  ${x}`);
   return { code: 0, report: { tool: 'achilles-spec-lint', mode: 'install-hook', ok: true, hook } };
@@ -150,36 +157,60 @@ export function updateBaselineCmd(root, { out, err, upgrade, budgetMs }) {
 
 // ── --ratchet / --pre-commit ──────────────────────────────────────────────
 
-function check(root, { change, view, refText, copyText, renames, where, budgetMs }) {
-  const ref = refText === null ? null : parseBaseline(refText);
-  if (ref && ref.problems) throw new UsageError(`the baseline ${where} is not valid: ${ref.problems.join('; ')}`);
+function check(root, { change, view, refRev, copyText, renames, where, budgetMs, ci = false, strictInputs, inputsNow }) {
+  // the reference: the baseline at the reference commit, or the last valid one before it when that copy is corrupt
+  const refFound = refRev ? lastValidBaseline(root, refRev, (t) => parseBaseline(t)) : null;
+  const ref = refFound ? parseBaseline(refFound.text) : null;
+  if (ref && ref.problems) throw new UsageError(`the baseline ${where} is not valid, nor is any earlier copy: ${ref.problems.join('; ')}`);
   const parsedCopy = copyText === null ? null : parseBaseline(copyText);
   // the change's copy follows the same renames: a file moved without an update keeps its entry
   const copy = parsedCopy && parsedCopy.baseline ? { baseline: remap(parsedCopy.baseline, renames) } : parsedCopy;
   const refB = ref ? remap(ref.baseline, renames) : null;
   const opted = !!(refB || copy);
   const pattern = refB ? refB.idPattern : copy && copy.baseline ? copy.baseline.idPattern : undefined;
-  const { report, cache } = suiteLint(root, { view, change, baselineIdPattern: opted ? pattern : undefined, budgetMs });
+  // the rule inputs come from the reference commit, never from the change being checked
+  const inputs = refRev ? inputsAt(root, refRev) : null;
+  const inputChanges = inputs ? compareInputs(inputs, inputsNow()) : [];
+  const { report, cache } = suiteLint(root, { view, change, baselineIdPattern: opted ? pattern : undefined, budgetMs, useCache: !ci, inputs });
   const touched = report.findings.filter((f) => f.severity === 'blocking' && !f.waived && f.touched !== false);
-  const r = refB ? ratchet(refB, recount(report, { filter: (f) => f.touched === false })) : { violations: [], notes: [] };
-  const copyProblems = opted ? checkCopy(refB, copy, recount(report)) : [];
-  return { report, cache, touched, ratchet: r, copyProblems, opted, ref: refB };
+  const copyRuleset = copy && copy.baseline ? copy.baseline.ruleset : null;
+  const needRefContent = refB && (promotedBetween(refB.ruleset, CURRENT_RULESET).size > 0 || (copyRuleset && copyRuleset !== refB.ruleset));
+  // rules newer than the reference's ruleset are held to the reference commit's own content, counted by this engine
+  const refContent = needRefContent ? recount(suiteLint(root, { view: headView(root, refRev), baselineIdPattern: refB.idPattern, budgetMs, useCache: !ci, inputs }).report) : null;
+  const r = refB ? ratchet(refB, recount(report, { filter: (f) => f.touched === false }), { refContent }) : { violations: [], notes: [] };
+  const copyProblems = opted ? checkCopy(refB, copy, recount(report), { refContent }) : [];
+  if (refB && copyRuleset && copyRuleset !== refB.ruleset) {
+    const others = [...change.files.keys()].filter((f) => f !== BASELINE_FILE);
+    if (others.length) copyProblems.push({ kind: 'upgrade-mixed', detail: `${refB.ruleset} to ${copyRuleset}`, files: others });
+  }
+  if (!refB && copy && refRev) {
+    // a new baseline where an ancestor held one: a re-created baseline forgives what the old one counted
+    if (isShallow(root)) throw new UsageError('this is a shallow clone and the change records a baseline: whether an ancestor held one cannot be checked; fetch the full history (`git fetch --unshallow`, or `fetch-depth: 0` in CI)');
+    const at = baselineCommit(root, refRev);
+    if (at) copyProblems.push({ kind: 'recreated', at });
+  }
+  const protectedFail = strictInputs ? inputChanges.filter((c) => c.weakens) : [];
+  return { report, cache, touched, ratchet: r, copyProblems, opted, ref: refB, refAt: refFound ? refFound.at : null, refRev, inputChanges, protectedFail };
 }
 
-function printCheck(res, { out, err, mode, where }) {
+function printCheck(res, { out, err, mode, where, tag }) {
   for (const f of res.touched) err(lineOf(f));
   for (const v of res.ratchet.violations) err(ratchetLine(v, where));
   for (const v of res.copyProblems) err(copyLine(v, where));
   for (const n of res.ratchet.notes) err(`[ratchet] note: ${n}`);
+  if (res.ref && res.refAt && res.refAt !== res.refRev) err(`[baseline] note: compared with the last valid copy (${res.refAt})`);
+  for (const c of res.inputChanges) err(c.weakens && res.protectedFail.includes(c)
+    ? three(tag, `protected input changed: ${c.input}: ${c.detail}`, 'a rule input changes only when the person decided it; the check reads the inputs of the base, so restore it here and make that change with the decision on record', `${RULEBOOK}#tb-g2`)
+    : `[${tag}] protected input changed: ${c.input}: ${c.detail}${c.weakens ? ' (CI refuses this without the person\'s decision; this check reads the inputs of HEAD)' : ''}`);
   const s = res.report.summary;
-  out(`spec-lint: ${mode}: ${s.files} file(s), ${res.touched.length} blocking in touched code, ${s.legacy ?? 0} legacy; ${res.opted ? `${res.ratchet.violations.length} ratchet violation(s), ${res.copyProblems.length} baseline-file problem(s) against the baseline ${where}` : 'no compliance baseline (the ratchet starts with `achilles-spec-lint --init-baseline`)'}; cache ${res.cache}${res.cache === "hit" ? "" : `; ${res.report.timing.ms} ms`}`);
+  out(`spec-lint: ${mode}: ${s.files} file(s), ${res.touched.length} blocking in touched code, ${s.legacy ?? 0} legacy; ${res.opted ? `${res.ratchet.violations.length} ratchet violation(s), ${res.copyProblems.length} baseline-file problem(s) against the baseline ${where}` : 'no compliance baseline (the ratchet starts with `achilles-spec-lint --init-baseline`)'}; ${res.protectedFail.length} protected input(s) weakened; cache ${res.cache}${res.cache === 'hit' ? '' : `; ${res.report.timing.ms} ms`}`);
 }
 
-const okOf = (res) => !res.touched.length && !res.ratchet.violations.length && !res.copyProblems.length;
+const okOf = (res) => !res.touched.length && !res.ratchet.violations.length && !res.copyProblems.length && !res.protectedFail.length;
 
 const jsonOf = (res, mode, extra = {}) => ({
   tool: 'achilles-spec-lint', mode, ok: okOf(res), baseline: res.opted ? { ruleset: res.ref ? res.ref.ruleset : null, violations: res.ratchet.violations, problems: res.copyProblems, notes: res.ratchet.notes } : null,
-  cache: res.cache, lint: res.report, ...extra,
+  protectedInputs: res.inputChanges, cache: res.cache, lint: res.report, ...extra,
 });
 
 export function ratchetCmd(root, { out, err, base, ci, budgetMs }) {
@@ -187,10 +218,10 @@ export function ratchetCmd(root, { out, err, base, ci, budgetMs }) {
   const mb = change.base;
   const where = `at the merge-base ${mb.slice(0, 12)}`;
   const res = check(root, {
-    change, view: null, refText: baselineAt(root, mb), copyText: readFile(path.join(root, BASELINE_FILE)),
-    renames: renamesSince(root, baselineCommit(root, mb)), where, budgetMs,
+    change, view: null, refRev: mb, copyText: readFile(path.join(root, BASELINE_FILE)),
+    renames: renamesSince(root, baselineCommit(root, mb)), where, budgetMs, ci, strictInputs: true, inputsNow: () => inputsOnDisk(root),
   });
-  printCheck(res, { out, err, mode: ci ? 'ci' : 'ratchet', where });
+  printCheck(res, { out, err, mode: ci ? 'ci' : 'ratchet', where, tag: ci ? 'ci' : 'ratchet' });
   let extra = {};
   if (ci) {
     const d = ciDeltas(root, change, res, budgetMs);
@@ -230,10 +261,11 @@ export function preCommit(root, { out, err, budgetMs }) {
     const change = stagedChange(root);
     const head = headCommit(root);
     const res = check(root, {
-      change, view: indexView(root), refText: head ? baselineAt(root, 'HEAD') : null, copyText: baselineAt(root, ''),
+      change, view: indexView(root), refRev: head ? 'HEAD' : null, copyText: baselineAt(root, ''),
       renames: head ? renamesSince(root, baselineCommit(root, 'HEAD'), { cached: true }) : new Map(), where: 'at HEAD', budgetMs,
+      strictInputs: false, inputsNow: () => inputsOnDisk(root),
     });
-    printCheck(res, { out, err, mode: 'pre-commit', where: 'at HEAD' });
+    printCheck(res, { out, err, mode: 'pre-commit', where: 'at HEAD', tag: 'pre-commit' });
     return { code: okOf(res) ? 0 : 1, report: jsonOf(res, 'pre-commit') };
   } catch (e) {
     err(`achilles-pre-commit: warning: the test-baseline check could not run (${String(e && e.message ? e.message : e).split('\n')[0].slice(0, 300)}). The commit goes ahead; CI still checks it.\n→ Why/how: ${ANCHOR}`);

@@ -4,19 +4,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { makeAjv } from '../../scripts/lib/ajv.mjs';
 import { REPO, tempRoot, writeProject } from './spec-lint-helpers.mjs';
 import { ratchet, updateBaseline, checkCopy, recount, inferIdPattern, parseBaseline, serialize } from '../../bin/lib/spec-lint/baseline.mjs';
-import { RULESETS, CURRENT_RULESET, promotedBetween } from '../../bin/lib/spec-lint/rulesets.mjs';
+import { RULESETS, CURRENT_RULESET, promotedBetween, validateRulesets } from '../../bin/lib/spec-lint/rulesets.mjs';
 import { implementedRules, lintProject } from '../../bin/lib/spec-lint/engine.mjs';
 import { hookScript, MARKER } from '../../bin/lib/spec-lint/hooks.mjs';
 
 const BIN = path.join(REPO, 'bin', 'spec-lint.mjs');
 const BASELINE = 'tests/compliance-baseline.json';
 const validateBaseline = makeAjv().compile(JSON.parse(readFileSync(path.join(REPO, 'schemas', 'compliance-baseline.schema.json'), 'utf8')));
-const GIT_ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid', GIT_CONFIG_NOSYSTEM: '1', HOME: '/nonexistent', CIVITAS_TEST_ID_PATTERN: '' };
+// every git and lint call runs with a throwaway HOME and global configuration, and no system configuration:
+// the installer must never reach a real repository or a real user's settings
+const SANDBOX = tempRoot();
+const GLOBAL = path.join(SANDBOX, 'gitconfig');
+writeFileSync(GLOBAL, '');
+process.on('exit', () => rmSync(SANDBOX, { recursive: true, force: true }));
+const GIT_ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: '/dev/null', GIT_CONFIG_GLOBAL: GLOBAL, HOME: SANDBOX, CIVITAS_TEST_ID_PATTERN: '' };
 const env = () => { const e = { ...process.env, ...GIT_ENV }; delete e.CLAUDE_PROJECT_DIR; delete e.GIT_INDEX_FILE; delete e.GIT_DIR; return e; };
 const gitRaw = (root, ...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8', env: env() });
 const git = (root, ...a) => { const r = gitRaw(root, ...a); assert.equal(r.status, 0, `git ${a.join(' ')}: ${r.stderr}`); return r.stdout; };
@@ -403,6 +409,121 @@ test('--ci: a deleted baseline fails; deleted test ids and waiver changes are li
   } finally { done(root); }
 });
 
+test('--ci reads the rule inputs from the merge-base: a change that weakens one fails, and its own setting is not used', () => {
+  const table = "import { test } from './fixtures/base';\nconst ROWS = [{ id: 'TCAB-0101', q: 'a' }, { id: 'TCAB-0102', q: 'b' }];\nfor (const row of ROWS) {\n  test(`${row.id} · search ${row.q}`, async ({ steps }) => {\n    await steps.navigateTo(`/search?q=${row.q}`);\n  });\n}\n";
+  const root = optedIn();
+  try {
+    git(root, 'checkout', '-q', '-b', 'feature');
+    write(root, 'achilles-factory-rules.json', JSON.stringify({ rules: { 'specs.constant-table-tests': { allowed: true } } }));
+    write(root, 'tests/e2e/table.spec.ts', table);
+    const r = run(root, ['--ci', '--base', 'main', '--json']);
+    assert.equal(r.status, 1);
+    const rep = JSON.parse(r.stdout);
+    assert.ok(rep.protectedInputs.some((c) => c.input === 'achilles-factory-rules.json' && c.weakens));
+    assert.ok(rep.lint.findings.some((f) => f.rule === 'TB-S1' && f.touched), 'the data table is linted under the merge-base rules');
+    const human = run(root, ['--ci', '--base', 'main']);
+    assert.match(human.stderr, /\[ci\] protected input changed: achilles-factory-rules\.json: rule specs\.constant-table-tests changed/);
+  } finally { done(root); }
+  const env = optedIn();
+  try {
+    git(env, 'checkout', '-q', '-b', 'feature');
+    write(env, '.env', 'CIVITAS_TEST_ID_PATTERN=^\\s*(.+)\n');
+    write(env, 'tests/e2e/b.spec.ts', "import { test } from './fixtures/base';\ntest('no id here', async ({ steps }) => { await steps.navigateTo('/'); });\n");
+    const r = run(env, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /protected input changed: \.env: CIVITAS_TEST_ID_PATTERN changed/);
+    assert.match(r.stderr, /\[TB-I1\] tests\/e2e\/b\.spec\.ts/, 'the recorded pattern still applies');
+  } finally { done(env); }
+  const reg = optedIn();
+  try {
+    git(reg, 'checkout', '-q', '-b', 'feature');
+    write(reg, 'tests/e2e/docs/framework-gaps.md', '| Row | Missing capability | Raw methods | Status |\n|---|---|---|---|\n| FG-9 | everything | goto | open |\n');
+    const r = run(reg, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /protected input changed: tests\/e2e\/docs\/framework-gaps\.md: row FG-9 added/);
+  } finally { done(reg); }
+});
+
+test('pre-commit reads the rule inputs from HEAD: a working-tree setting does not relax the check, and the change is named', () => {
+  const root = optedIn();
+  try {
+    write(root, 'achilles-factory-rules.json', JSON.stringify({ rules: { 'specs.constant-table-tests': { allowed: true } } }));
+    write(root, 'tests/e2e/table.spec.ts', "import { test } from './fixtures/base';\nconst ROWS = ['a', 'b'];\nfor (const q of ROWS) {\n  test(`TCAB-01${q} · search ${q}`, async ({ steps }) => { await steps.navigateTo(`/s?q=${q}`); });\n}\n");
+    git(root, 'add', '-A');
+    const c = commit(root, 'allow tables');
+    assert.notEqual(c.status, 0);
+    assert.match(c.out, /\[TB-S1\]/);
+    assert.match(c.out, /\[pre-commit\] protected input changed: achilles-factory-rules\.json/);
+  } finally { done(root); }
+});
+
+test('--ci: a baseline re-created where an ancestor held one fails; a shallow clone is asked for full history', () => {
+  const root = optedIn();
+  try {
+    // on main, a direct push adds a finding and deletes the baseline
+    write(root, 'tests/e2e/a.spec.ts', SPEC.replace("await page.goto('/two');", "await page.goto('/two');\n  await page.reload();"));
+    git(root, 'rm', '-q', BASELINE);
+    git(root, 'add', '-A');
+    assert.equal(commit(root, 'direct push', '--no-verify').status, 0);
+    git(root, 'checkout', '-q', '-b', 'feature');
+    // a fresh count written by hand (the init refuses here), committed on the branch
+    const fresh = tempRoot();
+    try {
+      writeProject(fresh, { 'tests/e2e/fixtures/base.ts': BASE, 'tests/e2e/a.spec.ts': read(root, 'tests/e2e/a.spec.ts') });
+      git(fresh, 'init', '-q', '-b', 'main');
+      git(fresh, 'add', '-A');
+      git(fresh, 'commit', '-q', '-m', 'x');
+      assert.equal(run(fresh, ['--init-baseline']).status, 0);
+      write(root, BASELINE, read(fresh, BASELINE));
+    } finally { done(fresh); }
+    git(root, 'add', BASELINE);
+    assert.equal(commit(root, 're-create', '--no-verify').status, 0);
+    const r = run(root, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /records a new baseline, but commit [0-9a-f]{12} held one that was deleted since/);
+    // a shallow clone of the branch cannot tell: exit 2
+    const shallow = tempRoot();
+    try {
+      rmSync(shallow, { recursive: true, force: true });
+      const cl = gitRaw(SANDBOX, 'clone', '-q', '--depth', '1', '--no-local', '--branch', 'feature', `file://${root}`, shallow);
+      assert.equal(cl.status, 0, cl.stderr);
+      git(shallow, 'fetch', '-q', '--depth', '1', 'origin', 'main:main');
+      const s2 = run(shallow, ['--ci', '--base', 'main']);
+      assert.equal(s2.status, 2, s2.stderr);
+      assert.match(s2.stderr, /shallow clone|merge-base/);
+      assert.equal(run(shallow, ['--init-baseline']).status, 2);
+    } finally { done(shallow); }
+  } finally { done(root); }
+});
+
+test('--ci: a corrupt baseline at the merge-base is compared through the last valid copy, so the repair can pass', () => {
+  const root = optedIn();
+  try {
+    const good = read(root, BASELINE);
+    write(root, BASELINE, '{ not json');
+    git(root, 'add', BASELINE);
+    assert.equal(commit(root, 'corrupt', '--no-verify').status, 0);
+    git(root, 'checkout', '-q', '-b', 'repair');
+    write(root, BASELINE, good);
+    const r = run(root, ['--ci', '--base', 'main']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /compared with the last valid copy/);
+  } finally { done(root); }
+});
+
+test('moving a legacy test into another file touches it there: the move fails until the test is clean', () => {
+  const root = optedIn();
+  try {
+    const lines = SPEC.split('\n');
+    write(root, 'tests/e2e/a.spec.ts', lines.slice(0, 7).join('\n'));
+    write(root, 'tests/e2e/b.spec.ts', `import { test } from './fixtures/base';\n\n${lines.slice(7).join('\n')}`);
+    git(root, 'add', '-A');
+    const c = commit(root, 'move the second test');
+    assert.notEqual(c.status, 0);
+    assert.match(c.out, /\[TB-A2\] tests\/e2e\/b\.spec\.ts:\d+ TCAB-0002/);
+  } finally { done(root); }
+});
+
 test('--ratchet on a project without a baseline is the touched lint alone', () => {
   const root = repo();
   try {
@@ -439,14 +560,15 @@ test('--install-hook on a fresh clone: .githooks with core.hooksPath; twice chan
   } finally { done(root); }
 });
 
-test('--install-hook chains into husky: one line appended to .husky/pre-commit, which husky runs', () => {
+test('--install-hook chains into husky: the call goes first in .husky/pre-commit, which husky runs', () => {
   const root = repo({ '.husky/pre-commit': 'echo husky-ran\n', '.husky/_/pre-commit': '#!/bin/sh\nsh -e .husky/pre-commit\n' });
   try {
     git(root, 'config', 'core.hooksPath', '.husky/_');
     spawnSync('chmod', ['+x', path.join(root, '.husky/_/pre-commit')]);
     assert.equal(run(root, ['--install-hook']).status, 0);
     const text = read(root, '.husky/pre-commit');
-    assert.ok(text.startsWith('echo husky-ran\n'), 'the existing hook is kept');
+    assert.ok(text.startsWith(`${MARKER}: the test-baseline check\n`), 'the check runs first');
+    assert.ok(text.endsWith('echo husky-ran\n'), 'the existing hook is kept, last');
     assert.equal(text.split(MARKER).length - 1, 1);
     assert.ok(existsSync(path.join(root, '.husky/achilles-pre-commit')));
     assert.equal(git(root, 'config', '--get', 'core.hooksPath').trim(), '.husky/_', 'the hooks path is left alone');
@@ -463,17 +585,17 @@ test('--install-hook chains into husky: one line appended to .husky/pre-commit, 
     git(root, 'add', 'tests/e2e/a.spec.ts');
     c = commit(root, 'bad');
     assert.notEqual(c.status, 0);
-    assert.match(c.out, /husky-ran[\s\S]*\[TB-A2\]/);
+    assert.match(c.out, /\[TB-A2\]/);
   } finally { done(root); }
 });
 
-test('--install-hook chains into a custom hooks path, and wraps a hook that exits early', () => {
+test('--install-hook chains into a custom hooks path: the check runs first and the hook keeps its own final status', () => {
   const root = repo({ '.hooks/pre-commit': '#!/bin/sh\necho custom-ran\n' });
   try {
     git(root, 'config', 'core.hooksPath', '.hooks');
     spawnSync('chmod', ['+x', path.join(root, '.hooks/pre-commit')]);
     assert.equal(run(root, ['--init-baseline']).status, 0);
-    assert.match(read(root, '.hooks/pre-commit'), /^#!\/bin\/sh\necho custom-ran\n/);
+    assert.match(read(root, '.hooks/pre-commit'), new RegExp(`^#!/bin/sh\\n${MARKER}: the test-baseline check\\n.*\\necho custom-ran\\n$`));
     git(root, 'add', '-A');
     let c = commit(root, 'baseline');
     assert.equal(c.status, 0, c.out);
@@ -482,27 +604,110 @@ test('--install-hook chains into a custom hooks path, and wraps a hook that exit
     git(root, 'add', 'tests/e2e/a.spec.ts');
     c = commit(root, 'bad');
     assert.notEqual(c.status, 0);
-    assert.match(c.out, /custom-ran[\s\S]*\[TB-A2\]/);
+    assert.match(c.out, /\[TB-A2\]/);
   } finally { done(root); }
-  const early = repo({ '.hooks/pre-commit': '#!/bin/sh\necho early-ran\nexit 0\n' });
+  // a hook whose last command fails (no `exit`) still fails the commit once chained
+  const failing = repo({ '.hooks/pre-commit': '#!/bin/sh\necho lint-staged-ran\nfalse\n' });
+  try {
+    git(failing, 'config', 'core.hooksPath', '.hooks');
+    spawnSync('chmod', ['+x', path.join(failing, '.hooks/pre-commit')]);
+    assert.equal(run(failing, ['--install-hook']).status, 0);
+    write(failing, 'tests/e2e/a.spec.ts', `${SPEC}${CLEAN_TEST}`);
+    git(failing, 'add', 'tests/e2e/a.spec.ts');
+    const c = commit(failing, 'clean, but the project hook fails');
+    assert.notEqual(c.status, 0, c.out);
+    assert.match(c.out, /lint-staged-ran/);
+  } finally { done(failing); }
+  // an early `&& exit 0` cannot skip the check
+  const early = repo({ '.hooks/pre-commit': '#!/bin/sh\ntrue && exit 0\necho never\n' });
   try {
     git(early, 'config', 'core.hooksPath', '.hooks');
     spawnSync('chmod', ['+x', path.join(early, '.hooks/pre-commit')]);
-    const r = run(early, ['--install-hook']);
-    assert.match(r.stdout, /wrapped/);
-    assert.equal(read(early, '.hooks/pre-commit.achilles-original'), '#!/bin/sh\necho early-ran\nexit 0\n');
-    const text = read(early, '.hooks/pre-commit');
-    run(early, ['--install-hook']);
-    assert.equal(read(early, '.hooks/pre-commit'), text, 'idempotent');
-    write(early, 'tests/e2e/a.spec.ts', `${SPEC}${CLEAN_TEST}`);
+    assert.equal(run(early, ['--init-baseline']).status, 0);
     git(early, 'add', '-A');
-    const c = commit(early, 'clean');
-    assert.equal(c.status, 0, c.out);
-    assert.match(c.out, /early-ran/);
+    assert.equal(commit(early, 'baseline').status, 0);
+    write(early, 'tests/e2e/a.spec.ts', SPEC.replace("await page.goto('/two');", "await page.goto('/two');\n  await page.reload();"));
+    git(early, 'add', 'tests/e2e/a.spec.ts');
+    const c = commit(early, 'bad');
+    assert.notEqual(c.status, 0);
+    assert.match(c.out, /\[TB-A2\]/);
   } finally { done(early); }
 });
 
+test('--install-hook wraps a pre-commit that is not a shell script, and runs it after the check', () => {
+  const root = repo({ '.hooks/pre-commit': "#!/usr/bin/env node\nconsole.log('node-hook-ran');\n" });
+  try {
+    git(root, 'config', 'core.hooksPath', '.hooks');
+    spawnSync('chmod', ['+x', path.join(root, '.hooks/pre-commit')]);
+    const r = run(root, ['--install-hook']);
+    assert.match(r.stdout, /wrapped/);
+    assert.equal(read(root, '.hooks/pre-commit.achilles-original'), "#!/usr/bin/env node\nconsole.log('node-hook-ran');\n");
+    const text = read(root, '.hooks/pre-commit');
+    run(root, ['--install-hook']);
+    assert.equal(read(root, '.hooks/pre-commit'), text, 'idempotent');
+    write(root, 'tests/e2e/a.spec.ts', `${SPEC}${CLEAN_TEST}`);
+    git(root, 'add', '-A');
+    const c = commit(root, 'clean');
+    assert.equal(c.status, 0, c.out);
+    assert.match(c.out, /node-hook-ran/);
+  } finally { done(root); }
+});
+
+test('--install-hook never writes outside the repository: a global or outside hooks path is refused with the line to add', () => {
+  const outside = tempRoot();
+  const root = repo();
+  try {
+    writeFileSync(GLOBAL, `[core]\n\thooksPath = ${outside}\n`);
+    const r = run(root, ['--install-hook']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /set outside this repository/);
+    assert.match(r.stderr, /--pre-commit; \[ \$\? -ne 1 \] \|\| exit 1/);
+    assert.deepEqual(readdirSync(outside), []);
+    // a relative global path is refused too: it would apply to every repository
+    writeFileSync(GLOBAL, '[core]\n\thooksPath = .shared-hooks\n');
+    assert.equal(run(root, ['--install-hook']).status, 2);
+    assert.ok(!existsSync(path.join(root, '.shared-hooks')));
+    writeFileSync(GLOBAL, '');
+    // a local path outside the work tree
+    git(root, 'config', 'core.hooksPath', outside);
+    assert.equal(run(root, ['--install-hook']).status, 2);
+    assert.deepEqual(readdirSync(outside), []);
+    // the init still records the baseline, says the check is not installed, and records no hook
+    const init = run(root, ['--init-baseline']);
+    assert.equal(init.status, 0, init.stderr);
+    assert.match(init.stderr, /the pre-commit check was not installed/);
+    assert.equal(baselineOf(root).hook, undefined);
+  } finally { writeFileSync(GLOBAL, ''); done(root); done(outside); }
+});
+
+test('--install-hook does not switch on dormant hooks in .githooks unless they are named', () => {
+  const root = repo({ '.githooks/commit-msg': '#!/bin/sh\necho dormant\n' });
+  try {
+    const r = run(root, ['--install-hook']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /\.githooks holds commit-msg, which git does not run today/);
+    assert.equal(gitRaw(root, 'config', '--get', 'core.hooksPath').status, 1, 'no hooks path set');
+    assert.ok(!existsSync(path.join(root, '.githooks/pre-commit')));
+    const ok = run(root, ['--install-hook', '--activate-hooks', 'commit-msg']);
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.equal(git(root, 'config', '--get', 'core.hooksPath').trim(), '.githooks');
+  } finally { done(root); }
+});
+
 test('--install-hook chains into the default hooks directory instead of hiding an active hook there', () => {
+  const lfs = repo();
+  try {
+    // an active hook of another name (a commit-msg, git-lfs's pre-push): a hooks path would switch it off
+    const hooks = path.join(lfs, '.git', 'hooks');
+    writeFileSync(path.join(hooks, 'pre-push'), '#!/bin/sh\necho lfs\n');
+    spawnSync('chmod', ['+x', path.join(hooks, 'pre-push')]);
+    const r = run(lfs, ['--install-hook']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /chained/);
+    assert.equal(gitRaw(lfs, 'config', '--get', 'core.hooksPath').status, 1, 'no hooks path set');
+    assert.ok(readFileSync(path.join(hooks, 'pre-commit'), 'utf8').includes(MARKER));
+    assert.equal(readFileSync(path.join(hooks, 'pre-push'), 'utf8'), '#!/bin/sh\necho lfs\n');
+  } finally { done(lfs); }
   const root = repo();
   try {
     const hooks = path.join(root, '.git', 'hooks');
@@ -512,7 +717,7 @@ test('--install-hook chains into the default hooks directory instead of hiding a
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /chained/);
     assert.equal(gitRaw(root, 'config', '--get', 'core.hooksPath').status, 1, 'no hooks path set');
-    assert.match(readFileSync(path.join(hooks, 'pre-commit'), 'utf8'), /^#!\/bin\/sh\necho local-ran\n/);
+    assert.match(readFileSync(path.join(hooks, 'pre-commit'), 'utf8'), /^#!\/bin\/sh\n# achilles-pre-commit[\s\S]*echo local-ran\n$/);
   } finally { done(root); }
 });
 
@@ -530,6 +735,33 @@ test('--install-hook adds a pre-commit command to a lefthook configuration, once
   } finally { done(root); }
 });
 
+test('--install-hook: an active hooks path (husky) wins over a lefthook configuration', () => {
+  const root = repo({ 'lefthook.yml': 'pre-commit:\n  commands: {}\n', '.husky/pre-commit': 'echo husky-ran\n' });
+  try {
+    git(root, 'config', 'core.hooksPath', '.husky/_');
+    const r = run(root, ['--install-hook']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(read(root, '.husky/pre-commit').includes(MARKER));
+    assert.doesNotMatch(read(root, 'lefthook.yml'), /achilles/);
+  } finally { done(root); }
+});
+
+test('the hook finds a hoisted install in a workspace root above the project', () => {
+  const root = repo({ 'app/package.json': JSON.stringify({ name: 'app', private: true, dependencies: { '@civitas-cerebrum/element-interactions': '0.3.12' } }), 'app/tests/e2e/fixtures/base.ts': BASE, 'app/tests/e2e/a.spec.ts': SPEC });
+  try {
+    const app = path.join(root, 'app');
+    const init = run(app, ['--init-baseline']);
+    assert.equal(init.status, 0, init.stderr);
+    git(root, 'add', '-A');
+    assert.equal(commit(root, 'baseline').status, 0);
+    write(app, 'tests/e2e/a.spec.ts', SPEC.replace("await page.goto('/two');", "await page.goto('/two');\n  await page.reload();"));
+    git(root, 'add', '-A');
+    const c = commit(root, 'bad');
+    assert.notEqual(c.status, 0, c.out);
+    assert.match(c.out, /\[TB-A2\] tests\/e2e\/a\.spec\.ts/);
+  } finally { done(root); }
+});
+
 test('the hook script fails open on any exit but 1, and runs the project-local install', () => {
   const s = hookScript('app');
   assert.match(s, /dir="\$top\/app"/);
@@ -544,6 +776,7 @@ const rs = [
   { id: 'tb-1', blocking: ['TB-A1'], promoted: null },
   { id: 'tb-2', blocking: ['TB-A1', 'TB-A2'], promoted: ['TB-A2'] },
 ];
+const rsWiden = [...rs, { id: 'tb-3', blocking: ['TB-A1', 'TB-A2'], promoted: ['TB-A1'] }];
 const fileOf = (tests) => {
   const counts = {};
   for (const c of Object.values(tests)) for (const [r, n] of Object.entries(c)) counts[r] = (counts[r] || 0) + n;
@@ -552,29 +785,54 @@ const fileOf = (tests) => {
 const bl = (ruleset, tests) => { const f = fileOf(tests); return { version: 1, ruleset, engine: 'x', createdFrom: 'a'.repeat(40), idPattern: 'house-default', totals: { ...f.counts }, files: { 'tests/e2e/a.spec.ts': f } }; };
 const content = (tests) => { const f = fileOf(tests); return { totals: { ...f.counts }, files: { 'tests/e2e/a.spec.ts': f } }; };
 
-test('ruleset upgrade: a rule a newer ruleset promotes is not compared until recorded; --ruleset-upgrade records it from the content', () => {
+test('ruleset upgrade: a promoted rule is held to the reference content until recorded; --ruleset-upgrade records it from the content', () => {
   const ref = bl('tb-1', { T1: { 'TB-A1': 2 } });
+  const refContent = content({ T1: { 'TB-A1': 2, 'TB-A2': 3 } });
   const now = content({ T1: { 'TB-A1': 2, 'TB-A2': 3 } });
-  const r = ratchet(ref, now, { rulesets: rs, current: 'tb-2' });
-  assert.deepEqual(r.violations, []);
-  assert.match(r.notes[0], /TB-A2 is not compared until `achilles-spec-lint --update-baseline --ruleset-upgrade`/);
+  // without the reference content the rule is not compared, and the note says so
+  const blind = ratchet(ref, content({ T1: { 'TB-A1': 2, 'TB-A2': 9 } }), { rulesets: rs, current: 'tb-2' });
+  assert.deepEqual(blind.violations, []);
+  assert.match(blind.notes[0], /TB-A2 is not compared until `achilles-spec-lint --update-baseline --ruleset-upgrade`/);
+  // with it, the promoted rule may not rise above what the reference commit had
+  assert.deepEqual(ratchet(ref, now, { rulesets: rs, current: 'tb-2', refContent }).violations, []);
+  const worse = ratchet(ref, content({ T1: { 'TB-A1': 2, 'TB-A2': 4 } }), { rulesets: rs, current: 'tb-2', refContent });
+  assert.deepEqual(worse.violations.map((v) => [v.rule, v.baseline, v.now]), [['TB-A2', 3, 4]]);
   const plain = updateBaseline(ref, now, { rulesets: rs, current: 'tb-2' });
   assert.equal(plain.next.ruleset, 'tb-1');
   assert.deepEqual(plain.next.totals, { 'TB-A1': 2 });
   const up = updateBaseline(ref, now, { upgrade: true, rulesets: rs, current: 'tb-2' });
   assert.equal(up.next.ruleset, 'tb-2');
   assert.deepEqual(up.next.files['tests/e2e/a.spec.ts'].tests, { T1: { 'TB-A1': 2, 'TB-A2': 3 } });
-  // the upgraded copy passes the copy check; padding the promoted rule above the content does not
   const parsed = parseBaseline(serialize(up.next), { rulesets: rs });
-  assert.deepEqual(checkCopy(ref, parsed, now, { rulesets: rs, current: 'tb-2' }), []);
-  const padded = structuredClone(up.next);
-  padded.files['tests/e2e/a.spec.ts'].tests.T1['TB-A2'] = 5;
-  padded.files['tests/e2e/a.spec.ts'].counts['TB-A2'] = 5;
-  padded.totals['TB-A2'] = 5;
-  assert.deepEqual(checkCopy(ref, parseBaseline(serialize(padded), { rulesets: rs }), now, { rulesets: rs, current: 'tb-2' }).map((v) => v.kind), ['raised']);
+  assert.deepEqual(checkCopy(ref, parsed, now, { rulesets: rs, current: 'tb-2', refContent }), []);
+  // a regression written in the same change is not absorbed: the ceiling is the reference content, not the change's
+  const regressed = content({ T1: { 'TB-A1': 2, 'TB-A2': 5 } });
+  const absorb = updateBaseline(ref, regressed, { upgrade: true, rulesets: rs, current: 'tb-2' });
+  assert.deepEqual(checkCopy(ref, parseBaseline(serialize(absorb.next), { rulesets: rs }), regressed, { rulesets: rs, current: 'tb-2', refContent }).map((v) => [v.kind, v.baseline, v.recorded]), [['raised', 3, 5]]);
+  // without the reference content nothing promoted may be recorded at all
+  assert.deepEqual(checkCopy(ref, parsed, now, { rulesets: rs, current: 'tb-2' }).map((v) => v.kind), ['raised']);
   // once recorded, the promoted rule ratchets like any other
   assert.equal(ratchet(up.next, content({ T1: { 'TB-A1': 2, 'TB-A2': 4 } }), { rulesets: rs, current: 'tb-2' }).violations.length, 1);
   assert.deepEqual([...promotedBetween('tb-1', 'tb-2', rs)], ['TB-A2']);
+  // a widened definition (TB-A1 in tb-3) is held to the reference content too
+  assert.deepEqual([...promotedBetween('tb-2', 'tb-3', rsWiden)], ['TB-A1']);
+});
+
+test('rulesets: every ruleset after the first lists what it promotes, as an array', () => {
+  assert.doesNotThrow(() => validateRulesets(RULESETS));
+  assert.doesNotThrow(() => validateRulesets(rsWiden));
+  assert.throws(() => validateRulesets([...rs, { id: 'tb-3', blocking: ['TB-A1', 'TB-A2'], promoted: null }]), /`promoted` must be an array/);
+  assert.throws(() => validateRulesets([rs[0], { id: 'tb-2', blocking: ['TB-A1', 'TB-A2'], promoted: [] }]), /TB-A2 become blocking but are not listed/);
+  assert.throws(() => promotedBetween('tb-1', 'tb-3', [...rs, { id: 'tb-3', blocking: ['TB-A1'] }]), /must be an array/);
+});
+
+test('copy check: a changed id pattern or recorded hook in the change\'s copy is a protected-input change', () => {
+  const ref = { ...bl('tb-1', { T1: { 'TB-A1': 2 } }), hook: { mode: 'githooks', path: '.githooks/pre-commit' } };
+  const now = content({ T1: { 'TB-A1': 2 } });
+  const widened = { ...ref, idPattern: '^\\s*(.+)' };
+  assert.deepEqual(checkCopy(ref, parseBaseline(serialize(widened), { rulesets: rs }), now, { rulesets: rs, current: 'tb-1' }).map((v) => v.kind), ['idPattern']);
+  const moved = { ...ref, hook: { mode: 'chained', path: '.hooks/pre-commit' } };
+  assert.deepEqual(checkCopy(ref, parseBaseline(serialize(moved), { rulesets: rs }), now, { rulesets: rs, current: 'tb-1' }).map((v) => v.kind), ['hook']);
 });
 
 test('the shipped ruleset counts every rule the engine blocks on, except the ones decided per change', () => {

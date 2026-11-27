@@ -47,7 +47,7 @@ import { renderIndex, indexIds } from './lib/spec-lint/rules/identity.mjs';
 import { INDEX_FILE } from './lib/spec-lint/ids.mjs';
 import { initBaseline, updateBaselineCmd, ratchetCmd, preCommit, installHookCmd, UsageError } from './lib/spec-lint/commands.mjs';
 
-const USAGE = 'achilles-spec-lint [paths…] [--json] [--quiet] [--budget-ms <n>] [--staged | --base <ref>] [--suite] [--stdin] [--id-index [--check]] | --init-baseline | --update-baseline [--ruleset-upgrade] | --ratchet --base <ref> [--ci] | --ci --base <ref> | --pre-commit | --install-hook';
+const USAGE = 'achilles-spec-lint [paths…] [--json] [--quiet] [--budget-ms <n>] [--staged | --base <ref>] [--suite] [--stdin] [--id-index [--check]] | --init-baseline | --update-baseline [--ruleset-upgrade] | --ratchet --base <ref> [--ci] | --ci --base <ref> | --pre-commit | --install-hook [--activate-hooks <names>]';
 const DOC = RULEBOOK;
 
 const fail = (code, what, todo) => {
@@ -65,7 +65,7 @@ function format(f) {
 }
 
 function parseArgs(argv) {
-  const args = { paths: [], json: false, quiet: false, budgetMs: DEFAULT_FILE_BUDGET_MS, staged: false, base: null, suite: false, stdin: false, idIndex: false, check: false, init: false, update: false, upgrade: false, ratchet: false, ci: false, preCommit: false, installHook: false };
+  const args = { paths: [], json: false, quiet: false, budgetMs: DEFAULT_FILE_BUDGET_MS, staged: false, base: null, suite: false, stdin: false, idIndex: false, check: false, init: false, update: false, upgrade: false, ratchet: false, ci: false, preCommit: false, installHook: false, activate: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const value = () => (a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i]);
@@ -83,6 +83,11 @@ function parseArgs(argv) {
     else if (a === '--ci') { args.ci = true; args.ratchet = true; }
     else if (a === '--pre-commit') args.preCommit = true;
     else if (a === '--install-hook') args.installHook = true;
+    else if (a === '--activate-hooks' || a.startsWith('--activate-hooks=')) {
+      const v = value();
+      if (!v || v.startsWith('-')) return { error: '--activate-hooks needs the hook names, comma-separated (e.g. commit-msg,pre-push)' };
+      args.activate = v.split(",").map((x) => x.trim()).filter(Boolean);
+    }
     else if (a === '--base' || a.startsWith('--base=')) {
       args.base = value();
       if (!args.base || args.base.startsWith('-')) return { error: `--base needs a git ref (got ${JSON.stringify(args.base)})` };
@@ -98,6 +103,7 @@ function parseArgs(argv) {
   if (args.check && !args.idIndex) return { error: '--check goes with --id-index' };
   const modes = ['init', 'update', 'ratchet', 'preCommit', 'installHook'].filter((m) => args[m]);
   if (args.upgrade && !args.update) return { error: '--ruleset-upgrade goes with --update-baseline' };
+  if (args.activate.length && !args.init && !args.installHook) return { error: '--activate-hooks goes with --init-baseline or --install-hook' };
   if (modes.length > 1) return { error: 'pass one of --init-baseline, --update-baseline, --ratchet (or --ci), --pre-commit and --install-hook' };
   if (modes.length) {
     if (args.paths.length || args.stdin || args.idIndex || args.suite || args.staged) return { error: 'the baseline commands lint the whole suite: they take no paths, --stdin, --id-index, --suite or --staged' };
@@ -162,7 +168,7 @@ function main(argv) {
 /** The baseline commands: their own report (`--json`) or lines; exit 0, 1, 2 or 3. */
 function baselineMode(root, args) {
   const lines = { out: [], err: [] };
-  const io = { out: (s) => lines.out.push(s), err: (s) => lines.err.push(s), budgetMs: args.budgetMs };
+  const io = { out: (s) => lines.out.push(s), err: (s) => lines.err.push(s), budgetMs: args.budgetMs, activate: args.activate };
   const flush = (r) => {
     if (lines.err.length) process.stderr.write(`${lines.err.join('\n')}\n`);
     // time since this process started (module loading included): the figure the commit-gate budget is about
